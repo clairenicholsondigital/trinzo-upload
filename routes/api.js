@@ -83,7 +83,7 @@ async function askAgent(prompt, userId) {
 
   await sendMessage(token, conversationId, userId, prompt);
 
-  await new Promise((resolve) => setTimeout(resolve, 9000));
+  await new Promise((resolve) => setTimeout(resolve, 90000));
 
   const { botMessages, activitiesData } = await getBotMessages(token, conversationId, userId);
 
