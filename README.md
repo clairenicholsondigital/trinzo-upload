@@ -5,6 +5,7 @@ Create a `.env` file using existing pattern:
 
 - `PORT` (optional, default `3978`)
 - `DIRECTLINE_SECRET` (required, Copilot Studio Direct Line secret)
+- `POWER_AUTOMATE_WEBHOOK_URL` (required for finalisation step; HTTP trigger URL from your Power Automate flow)
 
 ## Run locally
 ```bash
@@ -19,7 +20,7 @@ Open `http://localhost:3978`.
 2. Extract text via `POST /api/extract-docx`.
 3. Send extracted text to agent via `POST /api/agent/process`.
 4. Review/edit meeting minutes fields in UI.
-5. Finalise by sending approved JSON back via `POST /api/agent/finalise`.
+5. Finalise by sending approved JSON to your Power Automate webhook via `POST /api/agent/finalise`.
 
-## Copilot Studio requirement
-The finalisation prompt expects your Copilot Studio topic/tool to trigger a Power Automate flow and return confirmation and/or a file link. If this is missing, the UI displays a warning.
+## Power Automate requirement
+The finalisation endpoint posts approved meeting minutes JSON directly to `POWER_AUTOMATE_WEBHOOK_URL` (HTTP trigger flow).

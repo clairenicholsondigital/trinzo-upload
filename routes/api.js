@@ -1,6 +1,7 @@
 const express = require('express');
 const multer = require('multer');
 const mammoth = require('mammoth');
+const fetch = require('node-fetch');
 const {
   generateToken,
   startConversation,
@@ -75,6 +76,56 @@ function normalizeReviewData(candidate) {
 
 function hasAnyApprovedContent(reviewData) {
   return Object.values(reviewData).some((value) => String(value || '').trim().length > 0);
+}
+
+
+function buildFinalisationPayload(reviewData) {
+  return {
+    approved: true,
+    approvedAt: new Date().toISOString(),
+    source: 'trinzo-upload',
+    reviewData
+  };
+}
+
+async function postToWebhook(payload) {
+  const webhookUrl = process.env.POWER_AUTOMATE_WEBHOOK_URL;
+
+  if (!webhookUrl) {
+    const error = new Error('POWER_AUTOMATE_WEBHOOK_URL is not configured.');
+    error.statusCode = 500;
+    throw error;
+  }
+
+  const response = await fetch(webhookUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+
+  const rawBody = await response.text();
+  let parsedBody = null;
+
+  if (rawBody) {
+    try {
+      parsedBody = JSON.parse(rawBody);
+    } catch (error) {
+      parsedBody = rawBody;
+    }
+  }
+
+  if (!response.ok) {
+    const error = new Error(`Webhook call failed with status ${response.status}.`);
+    error.statusCode = 502;
+    error.details = parsedBody || rawBody || null;
+    throw error;
+  }
+
+  return {
+    status: response.status,
+    body: parsedBody,
+    rawBody
+  };
 }
 
 async function askAgent(prompt, userId) {
@@ -221,38 +272,23 @@ router.post('/agent/finalise', async (req, res) => {
       });
     }
 
-    const approvedContent = JSON.stringify(reviewData, null, 2);
-
-    const agent = await askAgent(approvedContent, 'trinzo-finalise-user');
-
-    if (!agent.finalText) {
-      return res.status(502).json({
-        ok: false,
-        error: 'Final agent call failed: empty response.',
-        conversationId: agent.conversationId
-      });
-    }
-
-    const hasLink = /(https?:\/\/\S+)/i.test(agent.finalText);
-    const hasConfirmation = /(success|successful|created|submitted|completed|generated|saved|file link|document|triggered)/i.test(agent.finalText);
-    const looksLikeQuestion = /\?\s*$/.test(agent.finalText);
+    const payload = buildFinalisationPayload(reviewData);
+    const webhookResult = await postToWebhook(payload);
 
     return res.json({
       ok: true,
-      conversationId: agent.conversationId,
-      approvedContent,
-      finalMessage: agent.finalText,
-      confirmationDetected: (hasLink || hasConfirmation) && !looksLikeQuestion,
-      warning:
-        (hasLink || hasConfirmation) && !looksLikeQuestion
-          ? null
-          : 'The agent replied, but did not clearly confirm that Power Automate ran. Check the finalise topic and flow mapping.'
+      approvedContent: JSON.stringify(reviewData, null, 2),
+      payload,
+      webhookStatus: webhookResult.status,
+      webhookResponse: webhookResult.body || webhookResult.rawBody || null,
+      finalMessage: 'Approved content sent to Power Automate webhook successfully.'
     });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({
+    return res.status(error.statusCode || 500).json({
       ok: false,
-      error: error.message || 'Final agent call failed.'
+      error: error.message || 'Finalisation webhook call failed.',
+      details: error.details || null
     });
   }
 });

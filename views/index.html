@@ -49,10 +49,10 @@ pre { background: #020617; border: 1px solid #334155; border-radius: 10px; paddi
       <label>Discussion points</label><textarea id="discussionPoints"></textarea>
       <label>Action points</label><textarea id="meetingActionPoint"></textarea>
       <label>Action point owners</label><textarea id="meetingActionPointOwner"></textarea>
-      <button id="finaliseBtn" onclick="finaliseWithAgent()">4) Approve & Send Back to Agent</button>
+      <button id="finaliseBtn" onclick="finaliseWithAgent()">4) Approve & Send to Webhook</button>
     </div>
 
-    <h3>Final Agent Confirmation</h3>
+    <h3>Final Webhook Response</h3>
     <pre id="finalOutput"></pre>
   </div>
 </div>
@@ -156,8 +156,8 @@ function collectReviewData() {
 async function finaliseWithAgent() {
   const reviewData = collectReviewData();
 
-  setStage('Send approved output back to agent');
-  setStatus('Sending approved/edited output to agent for flow triggering...');
+  setStage('Send approved output to webhook');
+  setStatus('Sending approved/edited output to Power Automate webhook...');
   document.getElementById('finalOutput').textContent = '';
 
   try {
@@ -166,17 +166,17 @@ async function finaliseWithAgent() {
       body: JSON.stringify({ reviewData })
     });
     const data = await response.json();
-    if (!response.ok || !data.ok) throw new Error(data.error || 'Final agent call failed');
+    if (!response.ok || !data.ok) throw new Error(data.error || 'Final webhook call failed');
 
     document.getElementById('finalOutput').textContent = data.finalMessage || '';
     if (data.warning) {
       setStatus(`Completed with warning: ${data.warning}`, 'error');
     } else {
-      setStatus('Success. Agent finalisation complete.', 'success');
+      setStatus('Success. Webhook finalisation complete.', 'success');
     }
     setStage('Done');
   } catch (err) {
-    setStatus(`Final agent call failed: ${err.message}`, 'error');
+    setStatus(`Final webhook call failed: ${err.message}`, 'error');
   }
 }
 </script>
