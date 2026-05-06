@@ -28,12 +28,28 @@ const REVIEW_TEMPLATE = {
 function extractJsonFromText(text) {
   if (!text) return null;
 
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) return null;
+  let cleaned = String(text).trim();
+
+  cleaned = cleaned
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/```$/i, '')
+    .trim();
+
+  const firstBrace = cleaned.indexOf('{');
+  const lastBrace = cleaned.lastIndexOf('}');
+
+  if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
+    return null;
+  }
+
+  const jsonText = cleaned.slice(firstBrace, lastBrace + 1);
 
   try {
-    return JSON.parse(match[0]);
+    return JSON.parse(jsonText);
   } catch (error) {
+    console.error('JSON parse failed:', error.message);
+    console.error('Raw agent output:', text);
     return null;
   }
 }
@@ -125,20 +141,29 @@ router.post('/agent/process', async (req, res) => {
       return res.status(400).json({ ok: false, error: 'Missing extractedText.' });
     }
 
-    const prompt = `Process the following meeting transcript/document text and return structured meeting minutes output.
+    const prompt = `Return meeting minutes as JSON.
 
-Return ONLY valid JSON.
-Return exactly these string fields and no extra fields:
+You must reply with a single valid JSON object only.
+
+Do not say "sure".
+Do not say "here is".
+Do not use markdown.
+Do not wrap the JSON in code fences.
+Do not ask a follow-up question.
+Do not include any text before or after the JSON.
+
+The JSON object must use exactly these keys:
 ${JSON.stringify(REVIEW_TEMPLATE, null, 2)}
 
 Rules:
-- Only use information explicitly present in the transcript.
-- Do not invent names, dates, actions, decisions or attendees.
-- If a field is not stated, use an empty string.
-- Do not include markdown.
-- Do not include explanatory text outside the JSON.
+- Use only information explicitly present in the transcript.
+- If a value is missing, use an empty string.
+- Every value must be a string.
+- No arrays.
+- No nested objects.
+- No extra keys.
 
-Transcript text:
+Transcript:
 ${extractedText}`;
 
     const agent = await askAgent(prompt, 'trinzo-process-user');
@@ -186,7 +211,7 @@ router.post('/agent/finalise', async (req, res) => {
     if (!hasAnyApprovedContent(reviewData)) {
       return res.status(400).json({
         ok: false,
-        error: 'No approved review content provided.'
+        error: 'Cannot finalise. No reviewed meeting minutes content was provided.'
       });
     }
 
@@ -219,7 +244,7 @@ ${approvedContent}`;
       warning:
         (hasLink || hasConfirmation) && !looksLikeQuestion
           ? null
-          : 'The agent replied, but did not clearly confirm that Power Automate ran. Check the Copilot topic and flow mapping.'
+          : 'The agent replied, but did not clearly confirm that Power Automate ran. Check the finalise topic and flow mapping.'
     });
   } catch (error) {
     console.error(error);
