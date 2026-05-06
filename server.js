@@ -13,10 +13,6 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'index.html'));
 });
 
-app.get('/chat-test', (req, res) => {
-  res.sendFile(path.join(__dirname, 'views', 'chat-test.html'));
-});
-
 app.use('/api', apiRoutes);
 
 app.listen(PORT, '0.0.0.0', () => {
