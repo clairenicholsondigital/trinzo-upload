@@ -74,7 +74,7 @@ async function saveMeetingMinutes(payload) {
 BEGIN;
 WITH inserted_meeting AS (
   INSERT INTO meetings (meeting_title, meeting_description, source, status, webhook_status, last_activity_at)
-  VALUES (${q(meetingTitle)}, ${q(meetingDescription)}, ${q(source)}, 'queued', COALESCE(NULLIF(webhook_status,''), 'not_sent'), NOW())
+  VALUES (${q(meetingTitle)}, ${q(meetingDescription)}, ${q(source)}, 'queued', 'not_sent', NOW())
   RETURNING id
 ), inserted_autosave AS (
   INSERT INTO meeting_autosaves (meeting_id, transcript_text, transcript_length, payload)
