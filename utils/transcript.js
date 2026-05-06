@@ -1,39 +1,34 @@
 function extractTextFromUpload(file, mammoth) {
   const fileName = file.originalname || '';
   const mimeType = file.mimetype || '';
+  const lowered = fileName.toLowerCase();
 
-  if (fileName.toLowerCase().endsWith('.docx')) {
-    return mammoth.extractRawText({ buffer: file.buffer }).then(result => ({
+  if (lowered.endsWith('.docx')) {
+    return mammoth.extractRawText({ buffer: file.buffer }).then((result) => ({
       fileName,
       mimeType,
-      text: result.value || ''
+      text: result.value || '',
+      unsupported: false
     }));
   }
 
-  if (fileName.toLowerCase().endsWith('.txt') || mimeType.startsWith('text/')) {
+  if (lowered.endsWith('.txt') || mimeType.startsWith('text/')) {
     return Promise.resolve({
       fileName,
       mimeType,
-      text: file.buffer.toString('utf8')
+      text: file.buffer.toString('utf8'),
+      unsupported: false
     });
   }
 
   return Promise.resolve({
     fileName,
     mimeType,
-    text: '[File received, but this starter only extracts .txt and .docx files.]'
+    text: '',
+    unsupported: true
   });
 }
 
-function chunkText(text, chunkSize) {
-  const chunks = [];
-  for (let i = 0; i < text.length; i += chunkSize) {
-    chunks.push(text.slice(i, i + chunkSize));
-  }
-  return chunks;
-}
-
 module.exports = {
-  extractTextFromUpload,
-  chunkText
+  extractTextFromUpload
 };
