@@ -86,11 +86,11 @@ async function saveMeetingMinutes(payload) {
     .join('\n');
 
   const clientSql = clientAttendees
-    .map((name) => `INSERT INTO meeting_participants (meeting_id, participant_name, participant_type) VALUES (new_meeting_id, ${q(name)}, 'client');`)
+    .map((name) => `INSERT INTO meeting_participants (meeting_id, participant_name, participant_group) VALUES (new_meeting_id, ${q(name)}, 'client');`)
     .join('\n');
 
   const trinzoSql = participantsTrinzo
-    .map((name) => `INSERT INTO meeting_participants (meeting_id, participant_name, participant_type) VALUES (new_meeting_id, ${q(name)}, 'trinzo');`)
+    .map((name) => `INSERT INTO meeting_participants (meeting_id, participant_name, participant_group) VALUES (new_meeting_id, ${q(name)}, 'trinzo');`)
     .join('\n');
 
   const itemsSql = items
