@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Meeting Database Manager</title>
+<style>
+body { font-family: Arial, sans-serif; background: #0f172a; color: #fff; margin: 0; padding: 2rem; }
+.container { max-width: 1100px; margin: 0 auto; }
+.card { background: #111827; border-radius: 16px; padding: 1.5rem; border: 1px solid #334155; margin-bottom: 1rem; }
+a { color:#5eead4; }
+button { background: #14b8a6; border: none; color: #04111d; padding: 0.6rem 0.9rem; border-radius: 10px; cursor: pointer; font-weight: 700; margin-right: 0.4rem; }
+pre, textarea, input { width:100%; background:#020617; color:#fff; border:1px solid #334155; border-radius:10px; padding:0.6rem; }
+textarea { min-height: 220px; font-family: monospace; }
+table { width:100%; border-collapse: collapse; }
+th, td { border-bottom: 1px solid #334155; text-align:left; padding:0.5rem; vertical-align: top; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="card">
+    <h1>Meeting Database Manager</h1>
+    <p><a href="/">← Back to home</a></p>
+    <button onclick="loadMeetings()">Refresh list</button>
+    <p id="status"></p>
+    <table>
+      <thead><tr><th>ID</th><th>Title</th><th>Date</th><th>Location</th><th>Created</th><th>Actions</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+  <div class="card">
+    <h2>View / Edit Meeting JSON</h2>
+    <input id="meetingId" placeholder="Meeting ID" />
+    <textarea id="meetingJson" placeholder="Meeting JSON"></textarea>
+    <button onclick="saveMeeting()">Save Changes</button>
+    <button onclick="deleteMeeting()">Delete Meeting</button>
+    <pre id="output"></pre>
+  </div>
+</div>
+<script>
+function setStatus(msg){ document.getElementById('status').textContent = msg; }
+function setOutput(data){ document.getElementById('output').textContent = typeof data === 'string' ? data : JSON.stringify(data,null,2); }
+async function loadMeetings(){
+  setStatus('Loading...');
+  const response = await fetch('/api/meetings');
+  const data = await response.json();
+  if(!response.ok || !data.success){ setStatus(data.error || 'Failed'); return; }
+  const rows = document.getElementById('rows');
+  rows.innerHTML = data.meetings.map((m)=>`<tr><td>${m.id}</td><td>${m.meetingTitle}</td><td>${m.meetingDate||''}</td><td>${m.meetingLocation||''}</td><td>${m.createdAt}</td><td><button onclick="viewMeeting(${m.id})">View</button></td></tr>`).join('');
+  setStatus(`Loaded ${data.meetings.length} meetings.`);
+}
+async function viewMeeting(id){
+  const response = await fetch(`/api/meetings/${id}`);
+  const data = await response.json();
+  if(!response.ok || !data.success){ setOutput(data.error || 'Failed'); return; }
+  document.getElementById('meetingId').value = id;
+  document.getElementById('meetingJson').value = JSON.stringify(data.meeting, null, 2);
+  setOutput({ success:true, message:`Loaded meeting ${id}`});
+}
+async function saveMeeting(){
+  const id = document.getElementById('meetingId').value.trim();
+  if(!id) return setOutput('Meeting ID is required.');
+  let payload; try { payload = JSON.parse(document.getElementById('meetingJson').value || '{}'); } catch(e){ return setOutput(e.message); }
+  const response = await fetch(`/api/meetings/${id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  const data = await response.json(); setOutput(data); if(data.success) loadMeetings();
+}
+async function deleteMeeting(){
+  const id = document.getElementById('meetingId').value.trim();
+  if(!id) return setOutput('Meeting ID is required.');
+  const response = await fetch(`/api/meetings/${id}`, { method:'DELETE' });
+  const data = await response.json(); setOutput(data); if(data.success) { document.getElementById('meetingJson').value=''; loadMeetings(); }
+}
+loadMeetings();
+</script>
+</body>
+</html>
