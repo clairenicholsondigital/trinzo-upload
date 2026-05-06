@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Trinzo meeting minutes test</title>
+<style>
+body { font-family: Arial, sans-serif; background: #0f172a; color: #fff; margin: 0; padding: 2rem; }
+.container { max-width: 920px; margin: 0 auto; }
+.card { background: #111827; border-radius: 18px; padding: 1.5rem; border: 1px solid #334155; }
+h1 { margin-top: 0; }
+p { color: #cbd5e1; line-height: 1.5; }
+input[type=file] { width: 100%; margin: 1rem 0; padding: 0.8rem; background: #020617; border: 1px solid #334155; border-radius: 12px; color: #fff; }
+button { background: #14b8a6; border: none; color: #04111d; padding: 0.9rem 1.2rem; border-radius: 12px; cursor: pointer; font-size: 1rem; font-weight: 700; margin-right: 0.5rem; margin-bottom: 0.5rem; }
+button.secondary { background: #6366f1; color: #fff; }
+button:disabled { opacity: 0.55; cursor: not-allowed; }
+.status { margin-top: 1rem; color: #93c5fd; }
+pre { background: #020617; padding: 1rem; border-radius: 12px; overflow-x: auto; white-space: pre-wrap; margin-top: 1rem; border: 1px solid #1e293b; }
+.small { font-size: 0.9rem; color: #94a3b8; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="card">
+    <h1>Trinzo meeting minutes test</h1>
+    <p>Upload a Word or TXT transcript. Use “Extract text only” to test file parsing, or “Process with Trinzo Copilot” to send chunks to the agent.</p>
+
+    <input type="file" id="fileInput" accept=".docx,.txt,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+
+    <button onclick="extractOnly()">Extract text only</button>
+    <button class="secondary" onclick="processMeeting()">Process with Trinzo Copilot</button>
+
+    <div class="status" id="status"></div>
+    <p class="small" id="meta"></p>
+    <pre id="output"></pre>
+  </div>
+</div>
+
+<script>
+function getFileOrWarn() {
+  const input = document.getElementById('fileInput');
+  const status = document.getElementById('status');
+
+  if (!input.files.length) {
+    status.textContent = 'Choose a Word or TXT file first.';
+    return null;
+  }
+
+  return input.files[0];
+}
+
+async function postFile(endpoint) {
+  const file = getFileOrWarn();
+  const status = document.getElementById('status');
+  const output = document.getElementById('output');
+  const meta = document.getElementById('meta');
+
+  if (!file) return;
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  status.textContent = endpoint === '/api/process-meeting'
+    ? 'Processing with Trinzo Copilot. This can take a little while for long transcripts...'
+    : 'Extracting text...';
+
+  output.textContent = '';
+  meta.textContent = 'File: ' + file.name + ' | Size: ' + file.size + ' bytes';
+
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      body: formData
+    });
+
+    const data = await response.json();
+
+    status.textContent = response.ok ? 'Complete' : 'Failed';
+    output.textContent = JSON.stringify(data, null, 2);
+  } catch (error) {
+    status.textContent = 'Request failed';
+    output.textContent = String(error);
+  }
+}
+
+function extractOnly() {
+  postFile('/api/upload');
+}
+
+function processMeeting() {
+  postFile('/api/process-meeting');
+}
+</script>
+</body>
+</html>
