@@ -141,10 +141,16 @@ router.post('/agent/process', async (req, res) => {
       return res.status(400).json({ ok: false, error: 'Missing extractedText.' });
     }
 
-    const prompt = `Return meeting minutes as JSON.
+    const prompt = `Format meeting transcript for review
+
+Return meeting minutes as JSON.
 
 You must reply with a single valid JSON object only.
 
+Do not trigger Power Automate.
+Do not finalise anything.
+Do not save anything.
+Do not ask for confirmation.
 Do not say "sure".
 Do not say "here is".
 Do not use markdown.
@@ -217,12 +223,7 @@ router.post('/agent/finalise', async (req, res) => {
 
     const approvedContent = JSON.stringify(reviewData, null, 2);
 
-    const prompt = `Finalise approved meeting minutes JSON
-
-Approved JSON:
-${approvedContent}`;
-
-    const agent = await askAgent(prompt, 'trinzo-finalise-user');
+    const agent = await askAgent(approvedContent, 'trinzo-finalise-user');
 
     if (!agent.finalText) {
       return res.status(502).json({
@@ -233,12 +234,13 @@ ${approvedContent}`;
     }
 
     const hasLink = /(https?:\/\/\S+)/i.test(agent.finalText);
-    const hasConfirmation = /(success|successful|created|submitted|completed|generated|saved|file link|document)/i.test(agent.finalText);
+    const hasConfirmation = /(success|successful|created|submitted|completed|generated|saved|file link|document|triggered)/i.test(agent.finalText);
     const looksLikeQuestion = /\?\s*$/.test(agent.finalText);
 
     return res.json({
       ok: true,
       conversationId: agent.conversationId,
+      approvedContent,
       finalMessage: agent.finalText,
       confirmationDetected: (hasLink || hasConfirmation) && !looksLikeQuestion,
       warning:
