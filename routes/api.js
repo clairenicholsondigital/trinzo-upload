@@ -138,7 +138,42 @@ function hasAnyApprovedContent(reviewData) {
 }
 
 function buildFinalisationPayload(reviewData) {
-  return { approved: true, approvedAt: new Date().toISOString(), source: 'trinzo-upload', reviewData };
+  const minutes = Array.isArray(reviewData.meetingMinutes) ? reviewData.meetingMinutes : [];
+  const nextSteps = Array.isArray(reviewData.nextSteps) ? reviewData.nextSteps : [];
+
+  return {
+    approved: 'true',
+    approvedAt: new Date().toISOString(),
+    source: 'trinzo-upload',
+
+    meetingTitle: asString(reviewData.meetingTitle),
+    meetingDate: asString(reviewData.meetingDate),
+    meetingLocation: asString(reviewData.meetingLocation),
+    meetingDescription: asString(reviewData.meetingDescription),
+
+    meetingObjectives: asStringArray(reviewData.meetingObjectives).join('\n'),
+
+    clientAttendees: asStringArray(reviewData.participants?.client).join('\n'),
+    participantsTrinzo: asStringArray(reviewData.participants?.trinzo).join('\n'),
+
+    itemTopic: minutes.map((item) => asString(item.topic)).filter(Boolean).join('\n'),
+
+    discussionPoints: minutes
+      .flatMap((item) => asStringArray(item.discussionPoints))
+      .join('\n'),
+
+    meetingActionPoint: nextSteps
+      .map((item) => asString(item.action))
+      .filter(Boolean)
+      .join('\n'),
+
+    meetingActionPointOwner: nextSteps
+      .map((item) => asString(item.owner))
+      .filter(Boolean)
+      .join('\n'),
+
+    approvedcontent: JSON.stringify(reviewData, null, 2)
+  };
 }
 
 async function postToWebhook(payload) { /* unchanged */
