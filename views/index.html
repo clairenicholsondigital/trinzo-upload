@@ -93,12 +93,28 @@ pre { white-space:pre-wrap; background:#071126; border:1px solid var(--border); 
   <textarea id="nextSteps"></textarea>
 </div>
 
+
+<div class="section" id="meetingStatusPanel">
+  <h3>Meeting Status</h3>
+  <div class="row">
+    <div><label>Meeting ID</label><pre id="statusMeetingId"></pre></div>
+    <div><label>Meeting status</label><pre id="statusMeetingState"></pre></div>
+  </div>
+  <div class="row">
+    <div><label>Webhook status</label><pre id="statusWebhook"></pre></div>
+    <div><label>Latest job</label><pre id="statusJob"></pre></div>
+  </div>
+  <label>Last error</label><pre id="statusError"></pre>
+  <button class="secondary" onclick="refreshMeetingStatus()">Refresh status</button>
+</div>
+
 <div class="section"><h3>Final Webhook Response</h3><pre id="finalOutput"></pre></div>
 </div></div>
 
 <script>
-let extractedText = '';
+let extractedText = "";
 let reviewData = null;
+let currentMeetingId = Number(localStorage.getItem("meetingId") || 0);
 const stepper = document.getElementById('stepper');
 
 function setStatus(message, type = '') { const status = document.getElementById('status'); status.textContent = message; status.className = `status ${type}`.trim(); }
@@ -110,11 +126,13 @@ function getSelectedFile(){ const input = document.getElementById('fileInput'); 
 const uploadBox = document.getElementById('uploadBox');
 ['dragenter','dragover'].forEach(evt=>uploadBox.addEventListener(evt,(e)=>{ e.preventDefault(); uploadBox.classList.add('drag'); }));
 ['dragleave','drop'].forEach(evt=>uploadBox.addEventListener(evt,(e)=>{ e.preventDefault(); uploadBox.classList.remove('drag'); }));
+if (currentMeetingId) { refreshMeetingStatus(); setStatus(`Resume previous meeting available: ${currentMeetingId}`); }
+
 uploadBox.addEventListener('drop',(e)=>{ const files = e.dataTransfer.files; if(files && files.length){ document.getElementById('fileInput').files = files; setStatus(`File selected: ${files[0].name}`,'success'); setStep(1); }});
 
 document.getElementById('fileInput').addEventListener('change', (e)=>{ if(e.target.files.length){ setStatus(`File selected: ${e.target.files[0].name}`,'success'); setStep(1); }});
 
-async function extractText(){ const file = getSelectedFile(); if(!file) return; setStatus('Extracting text...'); document.getElementById('extractedPreview').textContent=''; try { const formData = new FormData(); formData.append('file',file); const response = await fetch('/api/extract-docx',{method:'POST',body:formData}); const data=await response.json(); if(!response.ok||!data.ok) throw new Error(data.error||'Extraction failed'); extractedText=data.extractedText; document.getElementById('extractedPreview').textContent=extractedText.slice(0,6000); document.getElementById('processBtn').disabled=false; setStep(2); setStatus('Text extracted. Review preview then send to agent.','success'); } catch(err){ setStatus(`Failed text extraction: ${err.message}`,'error'); }}
+async function extractText(){ const file = getSelectedFile(); if(!file) return; setStatus('Extracting text...'); document.getElementById('extractedPreview').textContent=''; try { const formData = new FormData(); formData.append('file',file); const response = await fetch('/api/extract-docx',{method:'POST',body:formData}); const data=await response.json(); if(!response.ok||!data.ok) throw new Error(data.error||'Extraction failed'); extractedText=data.extractedText; document.getElementById('extractedPreview').textContent=extractedText.slice(0,6000); await saveMeetingDraft(); document.getElementById('processBtn').disabled=false; setStep(2); setStatus(`Text extracted and meeting ${currentMeetingId} queued. Review preview then send to agent.`,'success'); await refreshMeetingStatus(); } catch(err){ setStatus(`Failed text extraction: ${err.message}`,'error'); }}
 
 function populateFields(data){
   document.getElementById('meetingTitle').value = data.meetingTitle || '';
@@ -126,6 +144,28 @@ function populateFields(data){
   document.getElementById('meetingDescription').value = data.meetingDescription || '';
   document.getElementById('meetingMinutes').value = (data.meetingMinutes || []).map(item => `${item.topic}: ${(item.discussionPoints || []).join('; ')}`).join('\n');
   document.getElementById('nextSteps').value = (data.nextSteps || []).map(item => `${item.action} | ${item.owner} | ${item.deadline}`).join('\n');
+}
+
+
+async function saveMeetingDraft() {
+  const response = await fetch('/api/meetings/save', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ meetingTitle: 'Uploaded transcript review', transcriptText: extractedText, payload:{ source:'trinzo-upload-ui' } }) });
+  const data = await response.json();
+  if (!response.ok || !data.success) throw new Error(data.error || 'Failed to save meeting draft.');
+  currentMeetingId = data.meetingId;
+  localStorage.setItem('meetingId', String(currentMeetingId));
+  return data;
+}
+
+async function refreshMeetingStatus() {
+  if (!currentMeetingId) return;
+  const response = await fetch(`/api/meetings/${currentMeetingId}/status`);
+  const data = await response.json();
+  if (!response.ok || !data.success) return;
+  document.getElementById('statusMeetingId').textContent = String(data.meeting?.id || '');
+  document.getElementById('statusMeetingState').textContent = data.meeting?.status || '';
+  document.getElementById('statusWebhook').textContent = data.meeting?.webhookStatus || '';
+  document.getElementById('statusJob').textContent = data.latestJob ? `${data.latestJob.jobType} / ${data.latestJob.status} (attempt ${data.latestJob.attempts})` : 'none';
+  document.getElementById('statusError').textContent = data.meeting?.lastError || data.latestJob?.errorMessage || '';
 }
 
 function collectReviewData(){
@@ -145,7 +185,8 @@ function collectReviewData(){
 
 async function processWithAgent(){ if(!extractedText.trim()) return setStatus('Empty extracted text. Extract first.','error'); setStep(3); setStatus('Sending transcript to agent. This can take a little while...'); try { const response=await fetch('/api/agent/process',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({extractedText})}); const data=await response.json(); if(!response.ok||!data.ok) throw new Error(data.error||'Agent failed'); reviewData = data.reviewData; populateFields(reviewData); document.getElementById('reviewSection').classList.remove('hidden'); document.getElementById('finaliseBtn').disabled=false; setStep(4); setStatus('Agent output ready. Edit fields, then confirm and send.','success'); } catch(err){ setStatus(`Agent processing failed: ${err.message}`,'error'); }}
 
-async function finaliseWithAgent(){ const payloadReviewData = collectReviewData(); setStep(5); setStatus('Sending approved meeting minutes to webhook...'); document.getElementById('finalOutput').textContent=''; try { const response=await fetch('/api/agent/finalise',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reviewData: payloadReviewData, transcript: extractedText})}); const data=await response.json(); if(!response.ok||!data.ok) throw new Error(data.error||'Final webhook call failed'); document.getElementById('finalOutput').textContent = data.finalMessage || 'Done'; setStatus('Success. Approved output sent to webhook.','success'); } catch(err){ setStatus(`Final webhook call failed: ${err.message}`,'error'); }}
+async function finaliseWithAgent(){ const payloadReviewData = collectReviewData(); setStep(5); setStatus('Sending approved meeting minutes to webhook...'); document.getElementById('finalOutput').textContent=''; try { if (currentMeetingId) { await fetch(`/api/meetings/${currentMeetingId}/webhook`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reviewData: payloadReviewData, transcript: extractedText})}); await refreshMeetingStatus(); }
+    const response=await fetch('/api/agent/finalise',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reviewData: payloadReviewData, transcript: extractedText})}); const data=await response.json(); if(!response.ok||!data.ok) throw new Error(data.error||'Final webhook call failed'); document.getElementById('finalOutput').textContent = data.finalMessage || 'Done'; setStatus('Success. Approved output sent to webhook.','success'); } catch(err){ setStatus(`Final webhook call failed: ${err.message}`,'error'); }}
 </script>
 </body>
 </html>
