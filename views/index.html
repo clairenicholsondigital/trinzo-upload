@@ -35,6 +35,53 @@ button:disabled { opacity:.6; cursor:not-allowed; }
 .list-pills { display:flex; flex-wrap:wrap; gap:.4rem; margin:.4rem 0; }
 .pill { background:#1f3558; color:#c8d7f2; border-radius:999px; padding:.2rem .55rem; font-size:.8rem; }
 pre { white-space:pre-wrap; background:#071126; border:1px solid var(--border); border-radius:10px; padding:.65rem; }
+
+.accordion {
+  margin-top:1rem;
+  border-top:1px solid #223052;
+  padding-top:1rem;
+}
+
+.accordion details {
+  background:#0a1328;
+  border:1px solid var(--border);
+  border-radius:14px;
+  overflow:hidden;
+}
+
+.accordion summary {
+  cursor:pointer;
+  padding:.8rem 1rem;
+  font-weight:700;
+  color:var(--text);
+  list-style:none;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:.75rem;
+}
+
+.accordion summary::-webkit-details-marker {
+  display:none;
+}
+
+.accordion summary::after {
+  content:"+";
+  color:var(--accent);
+  font-size:1.2rem;
+  line-height:1;
+}
+
+.accordion details[open] summary::after {
+  content:"−";
+}
+
+.accordion pre {
+  margin:0 1rem 1rem;
+  max-height:420px;
+  overflow:auto;
+}
+
 @media (max-width:900px){ .steps { grid-template-columns:1fr 1fr; } .row { grid-template-columns:1fr; } }
 </style>
 </head>
@@ -66,9 +113,11 @@ pre { white-space:pre-wrap; background:#071126; border:1px solid var(--border); 
   <button id="finaliseBtn" onclick="finaliseWithAgent()" disabled>Confirm & Send to Webhook</button>
 </div>
 
-<div class="section">
-  <h3>Extracted Text</h3>
-  <pre id="extractedPreview"></pre>
+<div class="accordion">
+  <details id="extractedTextAccordion">
+    <summary>Extracted text preview</summary>
+    <pre id="extractedPreview"></pre>
+  </details>
 </div>
 
 <div id="reviewSection" class="hidden section">
@@ -92,7 +141,6 @@ pre { white-space:pre-wrap; background:#071126; border:1px solid var(--border); 
   <label>Next steps (Action | Owner | Deadline, one per line)</label>
   <textarea id="nextSteps"></textarea>
 </div>
-
 
 <div class="section" id="meetingStatusPanel">
   <h3>Meeting Status</h3>
@@ -132,7 +180,7 @@ uploadBox.addEventListener('drop',(e)=>{ const files = e.dataTransfer.files; if(
 
 document.getElementById('fileInput').addEventListener('change', (e)=>{ if(e.target.files.length){ setStatus(`File selected: ${e.target.files[0].name}`,'success'); setStep(1); }});
 
-async function extractText(){ const file = getSelectedFile(); if(!file) return; setStatus('Extracting text...'); document.getElementById('extractedPreview').textContent=''; try { const formData = new FormData(); formData.append('file',file); const response = await fetch('/api/extract-docx',{method:'POST',body:formData}); const data=await response.json(); if(!response.ok||!data.ok) throw new Error(data.error||'Extraction failed'); extractedText=data.extractedText; document.getElementById('extractedPreview').textContent=extractedText.slice(0,6000); await saveMeetingDraft(); document.getElementById('processBtn').disabled=false; setStep(2); setStatus(`Text extracted and meeting ${currentMeetingId} queued. Review preview then send to agent.`,'success'); await refreshMeetingStatus(); } catch(err){ setStatus(`Failed text extraction: ${err.message}`,'error'); }}
+async function extractText(){ const file = getSelectedFile(); if(!file) return; setStatus('Extracting text...'); document.getElementById('extractedPreview').textContent=''; try { const formData = new FormData(); formData.append('file',file); const response = await fetch('/api/extract-docx',{method:'POST',body:formData}); const data=await response.json(); if(!response.ok||!data.ok) throw new Error(data.error||'Extraction failed'); extractedText=data.extractedText; document.getElementById('extractedPreview').textContent=extractedText.slice(0,6000); await saveMeetingDraft(); document.getElementById('processBtn').disabled=false; setStep(2); setStatus(`Text extracted and meeting ${currentMeetingId} queued. Open the preview accordion if you want to check the raw text, then send to agent.`,'success'); await refreshMeetingStatus(); } catch(err){ setStatus(`Failed text extraction: ${err.message}`,'error'); }}
 
 function populateFields(data){
   document.getElementById('meetingTitle').value = data.meetingTitle || '';
@@ -145,7 +193,6 @@ function populateFields(data){
   document.getElementById('meetingMinutes').value = (data.meetingMinutes || []).map(item => `${item.topic}: ${(item.discussionPoints || []).join('; ')}`).join('\n');
   document.getElementById('nextSteps').value = (data.nextSteps || []).map(item => `${item.action} | ${item.owner} | ${item.deadline}`).join('\n');
 }
-
 
 async function saveMeetingDraft() {
   const response = await fetch('/api/meetings/save', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ meetingTitle: 'Uploaded transcript review', transcriptText: extractedText, payload:{ source:'trinzo-upload-ui' } }) });
