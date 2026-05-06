@@ -33,6 +33,3 @@ The finalisation endpoint posts approved meeting minutes JSON directly to `POWER
 
 ## SQL migration
 - Run `sql/migrations/20260506_add_meeting_minutes_schema.sql` to add tables for meetings, objectives, participants, minute items, next steps, and autosave transcript snapshots.
-
-- New `GET /api/db/health` endpoint verifies frontend-to-database connectivity.
-- `POST /api/extract-docx` now attempts to create a meeting job + autosave snapshot immediately after upload/extraction.

@@ -144,34 +144,13 @@ async function askAgent(prompt, userId) {
   return { conversationId, botMessages, activitiesData, finalText: botMessages[botMessages.length - 1] || '' };
 }
 
-
-
-router.get('/db/health', async (req, res) => {
-  try {
-    const now = await testConnection();
-    return res.json({ ok: true, connected: true, databaseTime: now });
-  } catch (error) {
-    return res.status(500).json({ ok: false, connected: false, error: error.message });
-  }
-});
-
 router.post('/extract-docx', upload.single('file'), async (req, res) => { /* unchanged */
   try {
     if (!req.file) return res.status(400).json({ ok: false, error: 'No file selected.' });
     const { fileName, mimeType, text, unsupported } = await extractTextFromUpload(req.file, mammoth);
     if (unsupported) return res.status(400).json({ ok: false, error: 'Unsupported file type. Please upload a .docx or .txt file.' });
     if (!text || !text.trim()) return res.status(400).json({ ok: false, error: 'Text extraction succeeded but content is empty.' });
-
-    let savedJob = null;
-    let dbWarning = null;
-    try {
-      savedJob = await saveUploadedJob({ fileName, mimeType, transcriptText: text });
-    } catch (dbError) {
-      dbWarning = `Upload processed but DB save failed: ${dbError.message}`;
-      console.error('DB save failed:', dbError.message);
-    }
-
-    return res.json({ ok: true, fileName, mimeType, extractedText: text, extractedTextLength: text.length, savedJob, dbWarning });
+    return res.json({ ok: true, fileName, mimeType, extractedText: text, extractedTextLength: text.length });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ ok: false, error: error.message || 'Failed text extraction.' });
