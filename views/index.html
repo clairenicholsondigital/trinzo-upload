@@ -33,8 +33,10 @@ pre { background: #020617; border: 1px solid #334155; border-radius: 10px; paddi
   <label>Meeting Minutes JSON (includes autosave + transcript)</label>
   <textarea id="reviewJson"></textarea>
   <button id="finaliseBtn" onclick="finaliseWithAgent()">4) Approve & Send to Webhook</button>
+  <button id="dbSaveBtn" onclick="testDatabaseSave()">Test database save</button>
 </div>
 <h3>Final Webhook Response</h3><pre id="finalOutput"></pre>
+<h3>Database Save Result</h3><pre id="dbSaveOutput"></pre>
 </div></div>
 <script>
 let extractedText = '';
@@ -44,6 +46,59 @@ function getSelectedFile() { const input = document.getElementById('fileInput');
 async function extractText() { const file = getSelectedFile(); if (!file) return; setStage('Extract text'); setStatus('Extracting text...'); document.getElementById('extractedPreview').textContent=''; const formData = new FormData(); formData.append('file', file); try { const response = await fetch('/api/extract-docx',{method:'POST',body:formData}); const data=await response.json(); if(!response.ok||!data.ok) throw new Error(data.error||'Failed text extraction'); extractedText=data.extractedText; document.getElementById('extractedPreview').textContent=extractedText.slice(0,4000); document.getElementById('processBtn').disabled=false; setStatus('Text extracted successfully.','success'); } catch(err){ setStatus(`Failed text extraction: ${err.message}`,'error'); }}
 async function processWithAgent(){ if(!extractedText.trim()) return setStatus('Empty extracted text. Please extract first.','error'); setStage('Send text to agent'); setStatus('Generating structured JSON...'); try{ const response=await fetch('/api/agent/process',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({extractedText})}); const data=await response.json(); if(!response.ok||!data.ok) throw new Error(data.error||'Agent processing failed'); document.getElementById('reviewJson').value = data.reviewDataJson || JSON.stringify(data.reviewData,null,2); document.getElementById('reviewSection').classList.remove('hidden'); setStage('Review AI output'); setStatus('Review/edit JSON and finalise.','success'); }catch(err){ setStatus(`Agent processing failed: ${err.message}`,'error'); }}
 async function finaliseWithAgent(){ let reviewData; try{ reviewData = JSON.parse(document.getElementById('reviewJson').value || '{}'); }catch(err){ return setStatus(`JSON invalid: ${err.message}`,'error'); } setStage('Send approved output to webhook'); setStatus('Sending approved/edited output...'); document.getElementById('finalOutput').textContent=''; try{ const response=await fetch('/api/agent/finalise',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reviewData, transcript: extractedText})}); const data=await response.json(); if(!response.ok||!data.ok) throw new Error(data.error||'Final webhook call failed'); document.getElementById('finalOutput').textContent=data.finalMessage||''; setStatus('Success. Webhook finalisation complete.','success'); setStage('Done'); }catch(err){ setStatus(`Final webhook call failed: ${err.message}`,'error'); }}
+
+async function testDatabaseSave(){
+  const samplePayload = {
+    meetingTitle: 'Front end database test',
+    meetingDate: '2026-05-06',
+    meetingLocation: 'VPS test',
+    meetingDescription: 'Testing that the front end can save to PostgreSQL through the Express backend.',
+    meetingObjectives: [
+      'Confirm front end can reach backend',
+      'Confirm backend can write to PostgreSQL'
+    ],
+    clientAttendees: ['Client Person'],
+    participantsTrinzo: ['Trinzo Person'],
+    items: [
+      {
+        topic: 'Database connectivity',
+        discussionPoints: [
+          'Frontend submitted a test payload',
+          'Backend inserted records into PostgreSQL'
+        ]
+      }
+    ],
+    nextSteps: [
+      {
+        actionText: 'Check saved database row from psql',
+        ownerName: 'Claire',
+        deadline: '2026-05-07'
+      }
+    ],
+    transcriptText: 'This is a short test transcript.',
+    payload: { source: 'front-end-test' }
+  };
+
+  setStage('Test save to PostgreSQL');
+  setStatus('Sending test meeting payload to backend...');
+  document.getElementById('dbSaveOutput').textContent = '';
+
+  try {
+    const response = await fetch('/api/meetings/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(samplePayload)
+    });
+    const data = await response.json();
+    if (!response.ok || !data.success) throw new Error(data.error || 'Database save failed');
+    document.getElementById('dbSaveOutput').textContent = JSON.stringify(data, null, 2);
+    setStatus(`Database save success. Meeting ID: ${data.meetingId}`, 'success');
+  } catch (err) {
+    document.getElementById('dbSaveOutput').textContent = JSON.stringify({ success: false, error: err.message }, null, 2);
+    setStatus(`Database save failed: ${err.message}`, 'error');
+  }
+}
+
 </script>
 </body>
 </html>
