@@ -142,10 +142,6 @@ function buildFinalisationPayload(reviewData) {
   const nextSteps = Array.isArray(reviewData.nextSteps) ? reviewData.nextSteps : [];
 
   return {
-    approved: 'true',
-    approvedAt: new Date().toISOString(),
-    source: 'trinzo-upload',
-
     meetingTitle: asString(reviewData.meetingTitle),
     meetingDate: asString(reviewData.meetingDate),
     meetingLocation: asString(reviewData.meetingLocation),
@@ -156,23 +152,16 @@ function buildFinalisationPayload(reviewData) {
     clientAttendees: asStringArray(reviewData.participants?.client).join('\n'),
     participantsTrinzo: asStringArray(reviewData.participants?.trinzo).join('\n'),
 
-    itemTopic: minutes.map((item) => asString(item.topic)).filter(Boolean).join('\n'),
+    meetingItems: minutes.map((item) => ({
+      itemTopic: asString(item?.topic),
+      discussionPoints: asStringArray(item?.discussionPoints).join('\n')
+    })),
 
-    discussionPoints: minutes
-      .flatMap((item) => asStringArray(item.discussionPoints))
-      .join('\n'),
-
-    meetingActionPoint: nextSteps
-      .map((item) => asString(item.action))
-      .filter(Boolean)
-      .join('\n'),
-
-    meetingActionPointOwner: nextSteps
-      .map((item) => asString(item.owner))
-      .filter(Boolean)
-      .join('\n'),
-
-    approvedcontent: JSON.stringify(reviewData, null, 2)
+    nextSteps: nextSteps.map((item) => ({
+      meetingActionPoint: asString(item?.action),
+      meetingActionPointOwner: asString(item?.owner),
+      meetingActionPointDeadline: asString(item?.deadline)
+    }))
   };
 }
 
