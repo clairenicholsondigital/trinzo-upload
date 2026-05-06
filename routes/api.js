@@ -7,128 +7,171 @@ const {
   sendMessage,
   getBotMessages
 } = require('../utils/copilot');
-const { extractTextFromUpload, chunkText } = require('../utils/transcript');
+const { extractTextFromUpload } = require('../utils/transcript');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
-router.post('/messages', async (req, res) => {
-  res.json({
-    type: 'message',
-    text: 'Hello from your VPS Microsoft 365 agent'
-  });
-});
+const REVIEW_TEMPLATE = {
+  meetingTitle: '',
+  meetingDate: '',
+  meetingDescription: '',
+  meetingObjectives: '',
+  clientAttendees: '',
+  participantsTrinzo: '',
+  itemTopic: '',
+  discussionPoints: '',
+  meetingActionPoint: '',
+  meetingActionPointOwner: ''
+};
 
-router.post('/upload', upload.single('file'), async (req, res) => {
+function extractJsonFromText(text) {
+  if (!text) return null;
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) return null;
+
+  try {
+    return JSON.parse(match[0]);
+  } catch (error) {
+    return null;
+  }
+}
+
+function normalizeReviewData(candidate) {
+  const result = { ...REVIEW_TEMPLATE };
+  if (!candidate || typeof candidate !== 'object') return result;
+
+  Object.keys(REVIEW_TEMPLATE).forEach((key) => {
+    const value = candidate[key];
+    if (Array.isArray(value)) {
+      result[key] = value.join(', ');
+    } else if (typeof value === 'string') {
+      result[key] = value;
+    } else if (value != null) {
+      result[key] = String(value);
+    }
+  });
+
+  return result;
+}
+
+async function askAgent(prompt, userId) {
+  const token = await generateToken();
+  const conversationId = await startConversation(token);
+  await sendMessage(token, conversationId, userId, prompt);
+  await new Promise((resolve) => setTimeout(resolve, 9000));
+  const { botMessages, activitiesData } = await getBotMessages(token, conversationId, userId);
+
+  return {
+    conversationId,
+    botMessages,
+    activitiesData,
+    finalText: botMessages[botMessages.length - 1] || ''
+  };
+}
+
+router.post('/extract-docx', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ ok: false, error: 'No file uploaded. Use form-data field name: file' });
+      return res.status(400).json({ ok: false, error: 'No file selected.' });
     }
 
-    const { fileName, mimeType, text } = await extractTextFromUpload(req.file, mammoth);
+    const { fileName, mimeType, text, unsupported } = await extractTextFromUpload(req.file, mammoth);
+
+    if (unsupported) {
+      return res.status(400).json({
+        ok: false,
+        error: 'Unsupported file type. Please upload a .docx or .txt file.'
+      });
+    }
+
+    if (!text || !text.trim()) {
+      return res.status(400).json({ ok: false, error: 'Text extraction succeeded but content is empty.' });
+    }
 
     return res.json({
       ok: true,
       fileName,
       mimeType,
-      sizeBytes: req.file.size,
-      extractedTextPreview: text.slice(0, 3000),
+      extractedText: text,
       extractedTextLength: text.length
     });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ ok: false, error: error.message || 'Upload failed' });
+    return res.status(500).json({ ok: false, error: error.message || 'Failed text extraction.' });
   }
 });
 
-router.post('/copilot-ask', async (req, res) => {
+router.post('/agent/process', async (req, res) => {
   try {
-    const prompt = req.body?.prompt;
-    if (!prompt) return res.status(400).json({ ok: false, error: 'Missing prompt' });
+    const extractedText = req.body?.extractedText;
+    if (!extractedText || !extractedText.trim()) {
+      return res.status(400).json({ ok: false, error: 'Missing extractedText.' });
+    }
 
-    const tokenData = { token: await generateToken() };
-    return res.json({ ok: true, tokenData });
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ ok: false, error: error.message, details: error.details });
-  }
-});
+    const prompt = `Process the following meeting transcript/document text and return structured meeting minutes output. Return ONLY valid JSON with exactly these string fields:\n${JSON.stringify(REVIEW_TEMPLATE, null, 2)}\n\nTranscript text:\n${extractedText}`;
 
-router.post('/copilot-chat', async (req, res) => {
-  try {
-    const prompt = req.body?.prompt;
-    if (!prompt) return res.status(400).json({ ok: false, error: 'Missing prompt' });
+    const agent = await askAgent(prompt, 'trinzo-process-user');
 
-    const token = await generateToken();
-    const conversationId = await startConversation(token);
+    if (!agent.finalText) {
+      return res.status(502).json({ ok: false, error: 'Agent processing failed: empty response.', conversationId: agent.conversationId });
+    }
 
-    const sendData = await sendMessage(token, conversationId, 'trinzo-test-user', prompt);
-
-    await new Promise(resolve => setTimeout(resolve, 9000));
-
-    const { botMessages, activitiesData } = await getBotMessages(token, conversationId, 'trinzo-test-user');
-
-    if (!botMessages.length) {
+    const parsed = extractJsonFromText(agent.finalText);
+    if (!parsed) {
       return res.status(502).json({
         ok: false,
-        error: 'No bot response returned',
-        conversationId,
-        activitiesData
+        error: 'Agent returned invalid output (JSON not found).',
+        agentRawOutput: agent.finalText,
+        conversationId: agent.conversationId
       });
     }
 
-    return res.json({ ok: true, conversationId, sendData, botMessages, activitiesData });
+    const reviewData = normalizeReviewData(parsed);
+
+    return res.json({
+      ok: true,
+      conversationId: agent.conversationId,
+      reviewData,
+      agentRawOutput: agent.finalText
+    });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ ok: false, error: error.message, details: error.details });
+    return res.status(500).json({ ok: false, error: error.message || 'Agent processing failed.' });
   }
 });
 
-router.post('/process-meeting', upload.single('file'), async (req, res) => {
+router.post('/agent/finalise', async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ ok: false, error: 'No file uploaded' });
+    const reviewData = normalizeReviewData(req.body?.reviewData);
+    const approvedContent = JSON.stringify(reviewData, null, 2);
 
-    const { fileName, text } = await extractTextFromUpload(req.file, mammoth);
-    const transcriptText = text || '';
-
-    if (!transcriptText.trim()) {
-      return res.status(400).json({ ok: false, error: 'No transcript text extracted' });
+    if (!approvedContent.trim() || approvedContent === JSON.stringify(REVIEW_TEMPLATE, null, 2)) {
+      return res.status(400).json({ ok: false, error: 'No approved review content provided.' });
     }
 
-    const chunks = chunkText(transcriptText, 6000);
+    const prompt = `The user has reviewed and approved the following meeting minutes output. Trigger the configured Power Automate flow using this approved content. Return the file link or confirmation message if available.\n\nApproved content JSON:\n${approvedContent}`;
 
-    const token = await generateToken();
-    const conversationId = await startConversation(token);
+    const agent = await askAgent(prompt, 'trinzo-finalise-user');
 
-    const chunkSummaries = [];
-    for (let i = 0; i < chunks.length; i += 1) {
-      const chunkPrompt = `You are assisting with meeting-minutes extraction. Read transcript chunk ${i + 1} of ${chunks.length} and return concise notes only for later consolidation. Focus on title/date/context/objectives/attendees/trinzo participants/topics/discussion/action points/owners/deadlines.\n\n${chunks[i]}`;
-      await sendMessage(token, conversationId, 'trinzo-meeting-parser', chunkPrompt);
-      await new Promise(resolve => setTimeout(resolve, 9000));
-      const { botMessages } = await getBotMessages(token, conversationId, 'trinzo-meeting-parser');
-      chunkSummaries.push(botMessages[botMessages.length - 1] || '');
-
-      if (i < chunks.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 6000));
-      }
+    if (!agent.finalText) {
+      return res.status(502).json({ ok: false, error: 'Final agent call failed: empty response.', conversationId: agent.conversationId });
     }
 
-    const finalPrompt = `Create ONE whole-meeting JSON object from all chunk notes. Return ONLY valid JSON with exactly these fields:\n{\n  "meetingTitle": "",\n  "meetingDate": "",\n  "meetingDescription": "",\n  "meetingObjectives": [],\n  "clientAttendees": [],\n  "participantsTrinzo": [],\n  "itemTopic": "",\n  "discussionPoints": [],\n  "meetingActionPoint": "",\n  "meetingActionPointOwner": "",\n  "meetingActionPointDeadline": ""\n}\n\nChunk notes:\n${chunkSummaries.join('\n\n---\n\n')}`;
+    const hasLink = /(https?:\/\/\S+)/i.test(agent.finalText);
+    const hasConfirmation = /(confirm|success|created|submitted|completed|generated)/i.test(agent.finalText);
 
-    await sendMessage(token, conversationId, 'trinzo-meeting-parser', finalPrompt);
-    await new Promise(resolve => setTimeout(resolve, 9000));
-
-    const { botMessages, activitiesData } = await getBotMessages(token, conversationId, 'trinzo-meeting-parser');
-    const finalResponseText = botMessages[botMessages.length - 1];
-
-    if (!finalResponseText) {
-      return res.status(502).json({ ok: false, error: 'No bot response returned', conversationId, activitiesData });
-    }
-
-    return res.json({ ok: true, fileName, chunkCount: chunks.length, meeting: finalResponseText });
+    return res.json({
+      ok: true,
+      conversationId: agent.conversationId,
+      finalMessage: agent.finalText,
+      confirmationDetected: hasLink || hasConfirmation,
+      // TODO: In Copilot Studio, ensure the topic/tool invokes Power Automate and returns an explicit file link/confirmation string.
+      warning: hasLink || hasConfirmation ? null : 'Power Automate confirmation/file link missing from the agent reply.'
+    });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ ok: false, error: error.message, details: error.details });
+    return res.status(500).json({ ok: false, error: error.message || 'Final agent call failed.' });
   }
 });
 
