@@ -9,7 +9,13 @@ const {
   getBotMessages
 } = require('../utils/copilot');
 const { extractTextFromUpload } = require('../utils/transcript');
-const { testConnection, saveUploadedJob } = require('../utils/db');
+const {
+  testConnection,
+  saveUploadedJob,
+  saveMeetingMinutes,
+  hasDatabaseConfig,
+  getDatabaseConfigError
+} = require('../utils/db');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -188,6 +194,28 @@ router.post('/agent/finalise', async (req, res) => {
   } catch (error) {
     console.error(error);
     return res.status(error.statusCode || 500).json({ ok: false, error: error.message || 'Finalisation webhook call failed.', details: error.details || null });
+  }
+});
+
+
+router.post('/meetings/save', async (req, res) => {
+  console.log('[POST /api/meetings/save] Route hit');
+
+  if (!hasDatabaseConfig()) {
+    return res.status(500).json({ success: false, error: getDatabaseConfigError() });
+  }
+
+  try {
+    const result = await saveMeetingMinutes(req.body || {});
+    console.log(`[POST /api/meetings/save] Meeting inserted with ID ${result.meetingId}`);
+    return res.json({
+      success: true,
+      meetingId: result.meetingId,
+      message: 'Meeting saved to database'
+    });
+  } catch (error) {
+    console.error('[POST /api/meetings/save] Database save failed:', error.message);
+    return res.status(500).json({ success: false, error: error.message || 'Database save failed.' });
   }
 });
 
