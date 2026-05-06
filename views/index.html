@@ -47,6 +47,11 @@ pre { white-space:pre-wrap; background:#071126; border:1px solid var(--border); 
   border:1px solid var(--border);
   border-radius:14px;
   overflow:hidden;
+  margin-bottom:.75rem;
+}
+
+.accordion details:last-child {
+  margin-bottom:0;
 }
 
 .accordion summary {
@@ -72,14 +77,26 @@ pre { white-space:pre-wrap; background:#071126; border:1px solid var(--border); 
   line-height:1;
 }
 
-.accordion details[open] summary::after {
+.accordion details[open] > summary::after {
   content:"−";
 }
 
+.accordion-body {
+  padding:0 1rem 1rem;
+}
+
 .accordion pre {
-  margin:0 1rem 1rem;
+  margin:0;
   max-height:420px;
   overflow:auto;
+}
+
+.debug-accordion > details {
+  background:#081225;
+}
+
+.debug-accordion .nested-accordion details {
+  background:#0b1630;
 }
 
 @media (max-width:900px){ .steps { grid-template-columns:1fr 1fr; } .row { grid-template-columns:1fr; } }
@@ -111,13 +128,6 @@ pre { white-space:pre-wrap; background:#071126; border:1px solid var(--border); 
   <button id="extractBtn" onclick="extractText()">Extract Text</button>
   <button id="processBtn" onclick="processWithAgent()" disabled>Send to Agent</button>
   <button id="finaliseBtn" onclick="finaliseWithAgent()" disabled>Confirm & Send to Webhook</button>
-</div>
-
-<div class="accordion">
-  <details id="extractedTextAccordion">
-    <summary>Extracted text preview</summary>
-    <pre id="extractedPreview"></pre>
-  </details>
 </div>
 
 <div id="reviewSection" class="hidden section">
@@ -156,7 +166,29 @@ pre { white-space:pre-wrap; background:#071126; border:1px solid var(--border); 
   <button class="secondary" onclick="refreshMeetingStatus()">Refresh status</button>
 </div>
 
-<div class="section"><h3>Final Webhook Response</h3><pre id="finalOutput"></pre></div>
+<div class="accordion debug-accordion">
+  <details id="debugInformationAccordion">
+    <summary>Debug information</summary>
+    <div class="accordion-body nested-accordion">
+
+      <details id="extractedTextAccordion">
+        <summary>Extracted text preview</summary>
+        <div class="accordion-body">
+          <pre id="extractedPreview"></pre>
+        </div>
+      </details>
+
+      <details id="finalWebhookAccordion">
+        <summary>Final webhook response</summary>
+        <div class="accordion-body">
+          <pre id="finalOutput"></pre>
+        </div>
+      </details>
+
+    </div>
+  </details>
+</div>
+
 </div></div>
 
 <script>
@@ -180,7 +212,7 @@ uploadBox.addEventListener('drop',(e)=>{ const files = e.dataTransfer.files; if(
 
 document.getElementById('fileInput').addEventListener('change', (e)=>{ if(e.target.files.length){ setStatus(`File selected: ${e.target.files[0].name}`,'success'); setStep(1); }});
 
-async function extractText(){ const file = getSelectedFile(); if(!file) return; setStatus('Extracting text...'); document.getElementById('extractedPreview').textContent=''; try { const formData = new FormData(); formData.append('file',file); const response = await fetch('/api/extract-docx',{method:'POST',body:formData}); const data=await response.json(); if(!response.ok||!data.ok) throw new Error(data.error||'Extraction failed'); extractedText=data.extractedText; document.getElementById('extractedPreview').textContent=extractedText.slice(0,6000); await saveMeetingDraft(); document.getElementById('processBtn').disabled=false; setStep(2); setStatus(`Text extracted and meeting ${currentMeetingId} queued. Open the preview accordion if you want to check the raw text, then send to agent.`,'success'); await refreshMeetingStatus(); } catch(err){ setStatus(`Failed text extraction: ${err.message}`,'error'); }}
+async function extractText(){ const file = getSelectedFile(); if(!file) return; setStatus('Extracting text...'); document.getElementById('extractedPreview').textContent=''; try { const formData = new FormData(); formData.append('file',file); const response = await fetch('/api/extract-docx',{method:'POST',body:formData}); const data=await response.json(); if(!response.ok||!data.ok) throw new Error(data.error||'Extraction failed'); extractedText=data.extractedText; document.getElementById('extractedPreview').textContent=extractedText.slice(0,6000); await saveMeetingDraft(); document.getElementById('processBtn').disabled=false; setStep(2); setStatus(`Text extracted and meeting ${currentMeetingId} queued. Debug information is available at the bottom if needed.`,'success'); await refreshMeetingStatus(); } catch(err){ setStatus(`Failed text extraction: ${err.message}`,'error'); }}
 
 function populateFields(data){
   document.getElementById('meetingTitle').value = data.meetingTitle || '';
@@ -233,7 +265,7 @@ function collectReviewData(){
 async function processWithAgent(){ if(!extractedText.trim()) return setStatus('Empty extracted text. Extract first.','error'); setStep(3); setStatus('Sending transcript to agent. This can take a little while...'); try { const response=await fetch('/api/agent/process',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({extractedText})}); const data=await response.json(); if(!response.ok||!data.ok) throw new Error(data.error||'Agent failed'); reviewData = data.reviewData; populateFields(reviewData); document.getElementById('reviewSection').classList.remove('hidden'); document.getElementById('finaliseBtn').disabled=false; setStep(4); setStatus('Agent output ready. Edit fields, then confirm and send.','success'); } catch(err){ setStatus(`Agent processing failed: ${err.message}`,'error'); }}
 
 async function finaliseWithAgent(){ const payloadReviewData = collectReviewData(); setStep(5); setStatus('Sending approved meeting minutes to webhook...'); document.getElementById('finalOutput').textContent=''; try { if (currentMeetingId) { await fetch(`/api/meetings/${currentMeetingId}/webhook`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reviewData: payloadReviewData, transcript: extractedText})}); await refreshMeetingStatus(); }
-    const response=await fetch('/api/agent/finalise',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reviewData: payloadReviewData, transcript: extractedText})}); const data=await response.json(); if(!response.ok||!data.ok) throw new Error(data.error||'Final webhook call failed'); document.getElementById('finalOutput').textContent = data.finalMessage || 'Done'; setStatus('Success. Approved output sent to webhook.','success'); } catch(err){ setStatus(`Final webhook call failed: ${err.message}`,'error'); }}
+    const response=await fetch('/api/agent/finalise',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reviewData: payloadReviewData, transcript: extractedText})}); const data=await response.json(); if(!response.ok||!data.ok) throw new Error(data.error||'Final webhook call failed'); document.getElementById('finalOutput').textContent = data.finalMessage || 'Done'; setStatus('Success. Approved output sent to webhook. Final response is in Debug information at the bottom.','success'); } catch(err){ setStatus(`Final webhook call failed: ${err.message}`,'error'); }}
 </script>
 </body>
 </html>
