@@ -37,13 +37,8 @@ async function testConnection() {
   return out.split('\n')[0] || null;
 }
 
-function q(value) {
-  return `'${String(value || '').replace(/'/g, "''")}'`;
-}
-
-function qJson(value) {
-  return `'${JSON.stringify(value || {}).replace(/'/g, "''")}'::jsonb`;
-}
+function q(value) { return `'${String(value || '').replace(/'/g, "''")}'`; }
+function qJson(value) { return `'${JSON.stringify(value || {}).replace(/'/g, "''")}'::jsonb`; }
 
 async function saveUploadedJob({ fileName, mimeType, transcriptText }) {
   const title = fileName || 'Uploaded transcript';
@@ -69,73 +64,135 @@ SELECT id::text || '|' || created_at::text FROM inserted_meeting;`;
 }
 
 async function saveMeetingMinutes(payload) {
-  const meetingTitle = payload?.meetingTitle || 'Untitled meeting';
-  const meetingDate = payload?.meetingDate || null;
-  const meetingLocation = payload?.meetingLocation || '';
-  const meetingDescription = payload?.meetingDescription || '';
-  const meetingObjectives = Array.isArray(payload?.meetingObjectives) ? payload.meetingObjectives : [];
-  const clientAttendees = Array.isArray(payload?.clientAttendees) ? payload.clientAttendees : [];
-  const participantsTrinzo = Array.isArray(payload?.participantsTrinzo) ? payload.participantsTrinzo : [];
-  const items = Array.isArray(payload?.items) ? payload.items : [];
-  const nextSteps = Array.isArray(payload?.nextSteps) ? payload.nextSteps : [];
+  const meetingTitle = payload?.meetingTitle || 'Uploaded transcript review';
+  const meetingDescription = payload?.meetingDescription || 'Auto-created from uploaded transcript.';
   const transcriptText = payload?.transcriptText || '';
-  const source = payload?.payload?.source || 'front-end-test';
-
-  const objectivesSql = meetingObjectives
-    .map((objective) => `INSERT INTO meeting_objectives (meeting_id, objective_text) VALUES (new_meeting_id, ${q(objective)});`)
-    .join('\n');
-
-  const clientSql = clientAttendees
-    .map((name) => `INSERT INTO meeting_participants (meeting_id, participant_name, participant_group) VALUES (new_meeting_id, ${q(name)}, 'client');`)
-    .join('\n');
-
-  const trinzoSql = participantsTrinzo
-    .map((name) => `INSERT INTO meeting_participants (meeting_id, participant_name, participant_group) VALUES (new_meeting_id, ${q(name)}, 'trinzo');`)
-    .join('\n');
-
-  const itemsSql = items
-    .map((item) => `INSERT INTO meeting_minutes_items (meeting_id, topic, discussion_points) VALUES (new_meeting_id, ${q(item?.topic || '')}, ${qJson(item?.discussionPoints || [])});`)
-    .join('\n');
-
-  const nextStepsSql = nextSteps
-    .map((step) => `INSERT INTO meeting_next_steps (meeting_id, action_text, owner_name, deadline) VALUES (new_meeting_id, ${q(step?.actionText || '')}, ${q(step?.ownerName || '')}, ${step?.deadline ? q(step.deadline) : 'NULL'});`)
-    .join('\n');
+  const autosavePayload = payload?.payload || {};
+  const source = payload?.payload?.source || 'trinzo-upload';
 
   const sql = `
 BEGIN;
 WITH inserted_meeting AS (
-  INSERT INTO meetings (meeting_title, meeting_date, meeting_location, meeting_description, source)
-  VALUES (${q(meetingTitle)}, ${meetingDate ? q(meetingDate) : 'NULL'}, ${q(meetingLocation)}, ${q(meetingDescription)}, ${q(source)})
+  INSERT INTO meetings (meeting_title, meeting_description, source, status, webhook_status, last_activity_at)
+  VALUES (${q(meetingTitle)}, ${q(meetingDescription)}, ${q(source)}, 'queued', COALESCE(NULLIF(webhook_status,''), 'not_sent'), NOW())
   RETURNING id
-)
-SELECT id INTO TEMP TABLE temp_inserted_meeting FROM inserted_meeting;
-DO $$
-DECLARE new_meeting_id INT;
-BEGIN
-  SELECT id INTO new_meeting_id FROM temp_inserted_meeting LIMIT 1;
-  ${objectivesSql}
-  ${clientSql}
-  ${trinzoSql}
-  ${itemsSql}
-  ${nextStepsSql}
+), inserted_autosave AS (
   INSERT INTO meeting_autosaves (meeting_id, transcript_text, transcript_length, payload)
-  VALUES (new_meeting_id, ${q(transcriptText)}, LENGTH(${q(transcriptText)}), ${qJson(payload?.payload || {})});
-END $$;
-SELECT id::text FROM temp_inserted_meeting LIMIT 1;
+  SELECT id, ${q(transcriptText)}, LENGTH(${q(transcriptText)}), ${qJson(autosavePayload)}
+  FROM inserted_meeting
+), inserted_job AS (
+  INSERT INTO meeting_jobs (meeting_id, job_type, status, attempts, max_attempts, run_after, created_at, updated_at)
+  SELECT id, 'agent_extract', 'queued', 0, 3, NOW(), NOW(), NOW()
+  FROM inserted_meeting
+  RETURNING id, meeting_id
+)
+SELECT meeting_id::text || '|' || id::text FROM inserted_job;
 COMMIT;`;
-
   const out = await runPsql(sql);
-  const meetingId = Number((out.split('\n').find((line) => /^\d+$/.test(line)) || '').trim());
-  return { meetingId };
+  const row = out.split('\n').find((line) => /^\d+\|\d+$/.test(line));
+  const [meetingId, jobId] = (row || '|').split('|');
+  return { meetingId: Number(meetingId), jobId: Number(jobId), status: 'queued' };
 }
+
+async function getMeetingStatus(meetingId) {
+  const sql = `
+SELECT m.id::text, COALESCE(m.status,''), COALESCE(m.webhook_status,'not_sent'), COALESCE(m.last_error,''), COALESCE(m.last_activity_at::text,''),
+COALESCE(j.id::text,''), COALESCE(j.job_type,''), COALESCE(j.status,''), COALESCE(j.attempts::text,'0'), COALESCE(j.error_message,'')
+FROM meetings m
+LEFT JOIN LATERAL (
+  SELECT id, job_type, status, attempts, error_message
+  FROM meeting_jobs
+  WHERE meeting_id = m.id
+  ORDER BY created_at DESC, id DESC
+  LIMIT 1
+) j ON TRUE
+WHERE m.id = ${Number(meetingId)}
+LIMIT 1;`;
+  const out = await runPsql(sql);
+  const line = out.split('\n').find(Boolean);
+  if (!line) return null;
+  const [id, status, webhookStatus, lastError, lastActivityAt, jobId, jobType, jobStatus, attempts, errorMessage] = line.split('|');
+  return {
+    meeting: { id: Number(id), status, webhookStatus, lastError, lastActivityAt },
+    latestJob: jobId ? { id: Number(jobId), jobType, status: jobStatus, attempts: Number(attempts || 0), errorMessage } : null
+  };
+}
+
+async function claimNextJob(lockedBy = 'manual-runner') {
+  const sql = `
+WITH candidate AS (
+  SELECT id
+  FROM meeting_jobs
+  WHERE status = 'queued'
+    AND (run_after IS NULL OR run_after <= NOW())
+    AND attempts < max_attempts
+  ORDER BY created_at ASC
+  LIMIT 1
+  FOR UPDATE SKIP LOCKED
+)
+UPDATE meeting_jobs j
+SET status = 'running',
+    attempts = COALESCE(attempts, 0) + 1,
+    locked_at = NOW(),
+    locked_by = ${q(lockedBy)},
+    updated_at = NOW()
+FROM candidate
+WHERE j.id = candidate.id
+RETURNING j.id::text, j.meeting_id::text, j.job_type, j.status, j.attempts::text, j.max_attempts::text;`;
+  const out = await runPsql(sql);
+  const line = out.split('\n').find(Boolean);
+  if (!line) return null;
+  const [id, meetingId, jobType, status, attempts, maxAttempts] = line.split('|');
+  return { id: Number(id), meetingId: Number(meetingId), jobType, status, attempts: Number(attempts), maxAttempts: Number(maxAttempts) };
+}
+
+async function markJobCompleted(jobId, meetingId, resultPayload) {
+  const sql = `
+BEGIN;
+UPDATE meeting_jobs
+SET status = 'completed', result_payload = ${qJson(resultPayload)}, error_message = NULL, locked_at = NULL, locked_by = NULL, updated_at = NOW()
+WHERE id = ${Number(jobId)};
+UPDATE meetings SET status = CASE WHEN status = 'webhook_pending' THEN status ELSE 'processed' END, processing_completed_at = NOW(), last_activity_at = NOW() WHERE id = ${Number(meetingId)};
+COMMIT;`;
+  await runPsql(sql);
+}
+
+async function markJobFailure(job, errorMessage) {
+  const shouldRetry = job.attempts < job.maxAttempts;
+  const sql = shouldRetry ? `
+BEGIN;
+UPDATE meeting_jobs
+SET status = 'queued', error_message = ${q(errorMessage)}, locked_at = NULL, locked_by = NULL, run_after = NOW() + INTERVAL '2 minutes', updated_at = NOW()
+WHERE id = ${Number(job.id)};
+UPDATE meetings SET status = 'queued', last_error = ${q(errorMessage)}, last_activity_at = NOW() WHERE id = ${Number(job.meetingId)};
+COMMIT;` : `
+BEGIN;
+UPDATE meeting_jobs
+SET status = 'failed', error_message = ${q(errorMessage)}, locked_at = NULL, locked_by = NULL, updated_at = NOW()
+WHERE id = ${Number(job.id)};
+UPDATE meetings SET status = 'failed', last_error = ${q(errorMessage)}, last_activity_at = NOW() WHERE id = ${Number(job.meetingId)};
+COMMIT;`;
+  await runPsql(sql);
+  return shouldRetry;
+}
+
+async function queueWebhookJob(meetingId, payload) {
+  const sql = `
+BEGIN;
+UPDATE meetings SET webhook_status = 'pending', status = 'webhook_pending', last_activity_at = NOW() WHERE id = ${Number(meetingId)};
+INSERT INTO meeting_jobs (meeting_id, job_type, status, attempts, max_attempts, run_after, result_payload, created_at, updated_at)
+VALUES (${Number(meetingId)}, 'webhook_send', 'queued', 0, 3, NOW(), ${qJson(payload)}, NOW(), NOW())
+RETURNING id::text;
+COMMIT;`;
+  const out = await runPsql(sql);
+  const jobId = Number((out.split('\n').find((line) => /^\d+$/.test(line)) || '').trim());
+  return { jobId, webhookStatus: 'pending' };
+}
+
 
 function parseJsonArray(value) {
   if (!value) return [];
-  try {
-    return JSON.parse(value);
-  } catch {
-    return [];
-  }
+  try { return JSON.parse(value); } catch { return []; }
 }
 
 async function listMeetings() {
@@ -144,68 +201,68 @@ SELECT id::text, meeting_title, COALESCE(meeting_date::text, ''), COALESCE(meeti
 FROM meetings
 ORDER BY created_at DESC;`;
   const out = await runPsql(sql);
-  return out
-    .split('\n')
-    .filter(Boolean)
-    .map((line) => {
-      const [id, meetingTitle, meetingDate, meetingLocation, meetingDescription, createdAt] = line.split('|');
-      return { id: Number(id), meetingTitle, meetingDate, meetingLocation, meetingDescription, createdAt };
-    });
+  return out.split('\n').filter(Boolean).map((line) => {
+    const [id, meetingTitle, meetingDate, meetingLocation, meetingDescription, createdAt] = line.split('|');
+    return { id: Number(id), meetingTitle, meetingDate, meetingLocation, meetingDescription, createdAt };
+  });
 }
 
 async function getMeetingById(meetingId) {
-  const sql = `
-SELECT m.id::text, COALESCE(m.meeting_title, ''), COALESCE(m.meeting_date::text, ''), COALESCE(m.meeting_location, ''), COALESCE(m.meeting_description, ''),
-COALESCE((SELECT json_agg(objective_text) FROM meeting_objectives mo WHERE mo.meeting_id = m.id), '[]'::json)::text,
-COALESCE((SELECT json_agg(participant_name) FROM meeting_participants mp WHERE mp.meeting_id = m.id AND mp.participant_group = 'client'), '[]'::json)::text,
-COALESCE((SELECT json_agg(participant_name) FROM meeting_participants mp WHERE mp.meeting_id = m.id AND mp.participant_group = 'trinzo'), '[]'::json)::text,
-COALESCE((SELECT json_agg(json_build_object('id', mi.id, 'topic', mi.topic, 'discussionPoints', mi.discussion_points)) FROM meeting_minutes_items mi WHERE mi.meeting_id = m.id), '[]'::json)::text,
-COALESCE((SELECT json_agg(json_build_object('id', ns.id, 'actionText', ns.action_text, 'ownerName', ns.owner_name, 'deadline', ns.deadline)) FROM meeting_next_steps ns WHERE ns.meeting_id = m.id), '[]'::json)::text,
-COALESCE((SELECT transcript_text FROM meeting_autosaves ma WHERE ma.meeting_id = m.id ORDER BY ma.id DESC LIMIT 1), ''),
-m.created_at::text
-FROM meetings m
-WHERE m.id = ${Number(meetingId)}
-LIMIT 1;`;
+  const sql = `SELECT id::text, COALESCE(meeting_title,''), COALESCE(meeting_date::text,''), COALESCE(meeting_location,''), COALESCE(meeting_description,''), created_at::text FROM meetings WHERE id = ${Number(meetingId)} LIMIT 1;`;
   const out = await runPsql(sql);
   const line = out.split('\n').find(Boolean);
   if (!line) return null;
-  const [id, meetingTitle, meetingDate, meetingLocation, meetingDescription, meetingObjectives, clientAttendees, participantsTrinzo, items, nextSteps, transcriptText, createdAt] = line.split('|');
-  return {
-    id: Number(id),
-    meetingTitle,
-    meetingDate,
-    meetingLocation,
-    meetingDescription,
-    meetingObjectives: parseJsonArray(meetingObjectives),
-    clientAttendees: parseJsonArray(clientAttendees),
-    participantsTrinzo: parseJsonArray(participantsTrinzo),
-    items: parseJsonArray(items),
-    nextSteps: parseJsonArray(nextSteps),
-    transcriptText,
-    createdAt
-  };
+  const [id, meetingTitle, meetingDate, meetingLocation, meetingDescription, createdAt] = line.split('|');
+  return { id: Number(id), meetingTitle, meetingDate, meetingLocation, meetingDescription, createdAt };
 }
 
 async function deleteMeetingById(meetingId) {
-  const sql = `DELETE FROM meetings WHERE id = ${Number(meetingId)} RETURNING id::text;`;
-  const out = await runPsql(sql);
-  const deleted = out.split('\n').find((line) => /^\d+$/.test(line));
-  return Boolean(deleted);
+  const out = await runPsql(`DELETE FROM meetings WHERE id = ${Number(meetingId)} RETURNING id::text;`);
+  return Boolean(out.split('\n').find((line) => /^\d+$/.test(line)));
 }
 
 async function updateMeetingById(meetingId, payload) {
-  await deleteMeetingById(meetingId);
-  return saveMeetingMinutes(payload);
+  await runPsql(`UPDATE meetings SET meeting_title=${q(payload?.meetingTitle || '')}, meeting_date=${payload?.meetingDate ? q(payload.meetingDate) : 'NULL'}, meeting_location=${q(payload?.meetingLocation || '')}, meeting_description=${q(payload?.meetingDescription || '')}, updated_at = NOW() WHERE id = ${Number(meetingId)};`);
+  return { meetingId: Number(meetingId) };
 }
 
+
+
+async function markWebhookSuccess(jobId, meetingId, webhookResponse) {
+  const sql = `BEGIN;
+UPDATE meeting_jobs SET status='completed', result_payload=${qJson(webhookResponse)}, error_message=NULL, locked_at=NULL, locked_by=NULL, updated_at=NOW() WHERE id=${Number(jobId)};
+UPDATE meetings SET webhook_status='sent', webhook_sent_at=NOW(), webhook_response=${qJson(webhookResponse)}, status='completed', last_error='', processing_completed_at=NOW(), last_activity_at=NOW() WHERE id=${Number(meetingId)};
+COMMIT;`;
+  await runPsql(sql);
+}
+
+async function markWebhookFailure(job, errorMessage) {
+  const shouldRetry = job.attempts < job.maxAttempts;
+  const sql = shouldRetry ? `BEGIN;
+UPDATE meeting_jobs SET status='queued', error_message=${q(errorMessage)}, locked_at=NULL, locked_by=NULL, run_after=NOW()+INTERVAL '2 minutes', updated_at=NOW() WHERE id=${Number(job.id)};
+UPDATE meetings SET webhook_status='failed', status='failed', last_error=${q(errorMessage)}, last_activity_at=NOW() WHERE id=${Number(job.meetingId)};
+COMMIT;` : `BEGIN;
+UPDATE meeting_jobs SET status='failed', error_message=${q(errorMessage)}, locked_at=NULL, locked_by=NULL, updated_at=NOW() WHERE id=${Number(job.id)};
+UPDATE meetings SET webhook_status='failed', status='failed', last_error=${q(errorMessage)}, last_activity_at=NOW() WHERE id=${Number(job.meetingId)};
+COMMIT;`;
+  await runPsql(sql);
+}
 module.exports = {
   testConnection,
-  saveUploadedJob,
-  saveMeetingMinutes,
   listMeetings,
   getMeetingById,
   deleteMeetingById,
   updateMeetingById,
+  saveUploadedJob,
+  saveMeetingMinutes,
+  getMeetingStatus,
+  claimNextJob,
+  markJobCompleted,
+  markJobFailure,
+  queueWebhookJob,
+  markWebhookSuccess,
+  markWebhookFailure,
   hasDatabaseConfig,
-  getDatabaseConfigError
+  getDatabaseConfigError,
+  runPsql
 };

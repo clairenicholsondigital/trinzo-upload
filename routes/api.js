@@ -17,6 +17,13 @@ const {
   getMeetingById,
   deleteMeetingById,
   updateMeetingById,
+  getMeetingStatus,
+  claimNextJob,
+  markJobCompleted,
+  markJobFailure,
+  queueWebhookJob,
+  markWebhookSuccess,
+  markWebhookFailure,
   hasDatabaseConfig,
   getDatabaseConfigError
 } = require('../utils/db');
@@ -212,11 +219,7 @@ router.post('/meetings/save', async (req, res) => {
   try {
     const result = await saveMeetingMinutes(req.body || {});
     console.log(`[POST /api/meetings/save] Meeting inserted with ID ${result.meetingId}`);
-    return res.json({
-      success: true,
-      meetingId: result.meetingId,
-      message: 'Meeting saved to database'
-    });
+    return res.json({ success: true, meetingId: result.meetingId, jobId: result.jobId, status: result.status });
   } catch (error) {
     console.error('[POST /api/meetings/save] Database save failed:', error.message);
     return res.status(500).json({ success: false, error: error.message || 'Database save failed.' });
@@ -254,6 +257,66 @@ router.put('/meetings/:id', async (req, res) => {
     return res.json({ success: true, meetingId: result.meetingId, message: 'Meeting updated.' });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message || 'Failed to update meeting.' });
+  }
+});
+
+
+
+router.get('/meetings/:meetingId/status', async (req, res) => {
+  if (!hasDatabaseConfig()) return res.status(500).json({ success: false, error: getDatabaseConfigError() });
+  try {
+    const data = await getMeetingStatus(req.params.meetingId);
+    if (!data) return res.status(404).json({ success: false, error: 'Meeting not found.' });
+    return res.json({ success: true, ...data });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message || 'Failed to load meeting status.' });
+  }
+});
+
+router.post('/jobs/run-once', async (req, res) => {
+  if (!hasDatabaseConfig()) return res.status(500).json({ success: false, error: getDatabaseConfigError() });
+  const workerId = `manual-${process.pid}`;
+  try {
+    const job = await claimNextJob(workerId);
+    if (!job) return res.json({ success: true, message: 'No queued jobs available.' });
+
+    if (job.jobType === 'agent_extract') {
+      // Hook existing extraction pipeline here when background extraction is wired.
+      await markJobCompleted(job.id, job.meetingId, { message: 'Agent extract job claimed successfully. Hook existing extraction here.' });
+      return res.json({ success: true, processed: { ...job, finalStatus: 'completed' } });
+    }
+
+    if (job.jobType === 'webhook_send') {
+      const meeting = await getMeetingById(job.meetingId);
+      const payload = buildFinalisationPayload({ meetingTitle: meeting?.meetingTitle || '', meetingDate: meeting?.meetingDate || '', meetingLocation: meeting?.meetingLocation || '', meetingDescription: meeting?.meetingDescription || '', meetingObjectives: [], participants: { client: [], trinzo: [] }, meetingMinutes: [], nextSteps: [] });
+      try {
+        const webhookResult = await postToWebhook(payload);
+        await markWebhookSuccess(job.id, job.meetingId, { webhookStatus: webhookResult.status, webhookResponse: webhookResult.body || webhookResult.rawBody || null });
+        return res.json({ success: true, processed: { ...job, finalStatus: 'completed' } });
+      } catch (error) {
+        await markWebhookFailure(job, error.message || 'Webhook send failed.');
+        return res.status(502).json({ success: false, processed: { ...job, finalStatus: 'failed' }, error: error.message || 'Webhook send failed.' });
+      }
+    }
+
+    await markJobFailure(job, `Unsupported job type: ${job.jobType}`);
+    return res.status(400).json({ success: false, error: `Unsupported job type: ${job.jobType}` });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message || 'Job runner failed.' });
+  }
+});
+
+router.post('/meetings/:meetingId/webhook', async (req, res) => {
+  if (!hasDatabaseConfig()) return res.status(500).json({ success: false, error: getDatabaseConfigError() });
+  try {
+    const meeting = await getMeetingById(req.params.meetingId);
+    if (!meeting) return res.status(404).json({ success: false, error: 'Meeting not found.' });
+    const reviewData = normalizeReviewData(req.body?.reviewData || meeting, req.body?.transcript || '');
+    const payload = buildFinalisationPayload(reviewData);
+    const queued = await queueWebhookJob(req.params.meetingId, payload);
+    return res.json({ success: true, meetingId: Number(req.params.meetingId), jobId: queued.jobId, webhookStatus: queued.webhookStatus });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message || 'Failed to queue webhook job.' });
   }
 });
 
