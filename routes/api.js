@@ -228,18 +228,47 @@ async function askAgent(prompt, userId) {
   const conversationId = await startConversation(token);
 
   await sendMessage(token, conversationId, userId, prompt);
-  await new Promise((resolve) => setTimeout(resolve, 90000));
 
-  const { botMessages, activitiesData } = await getBotMessages(token, conversationId, userId);
+  const maxWaitMs = 90000;
+  const pollEveryMs = 3000;
+  const startedAt = Date.now();
+
+  let lastResult = {
+    botMessages: [],
+    activitiesData: [],
+    finalText: ''
+  };
+
+  while (Date.now() - startedAt < maxWaitMs) {
+    const { botMessages, activitiesData } = await getBotMessages(token, conversationId, userId);
+
+    lastResult = {
+      botMessages,
+      activitiesData,
+      finalText: botMessages[botMessages.length - 1] || ''
+    };
+
+    if (lastResult.finalText) {
+      const parsed = extractJsonFromText(lastResult.finalText);
+
+      if (parsed) {
+        return {
+          conversationId,
+          botMessages,
+          activitiesData,
+          finalText: lastResult.finalText
+        };
+      }
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, pollEveryMs));
+  }
 
   return {
     conversationId,
-    botMessages,
-    activitiesData,
-    finalText: botMessages[botMessages.length - 1] || ''
+    ...lastResult
   };
 }
-
 router.post('/extract-docx', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ ok: false, error: 'No file selected.' });
