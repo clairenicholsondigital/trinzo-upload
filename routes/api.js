@@ -9,6 +9,7 @@ const {
   getBotMessages
 } = require('../utils/copilot');
 const { extractTextFromUpload } = require('../utils/transcript');
+const { testConnection, saveUploadedJob } = require('../utils/db');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });

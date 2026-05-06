@@ -6,6 +6,7 @@ Create a `.env` file using existing pattern:
 - `PORT` (optional, default `3978`)
 - `DIRECTLINE_SECRET` (required, Copilot Studio Direct Line secret)
 - `POWER_AUTOMATE_WEBHOOK_URL` (required for finalisation step; HTTP trigger URL from your Power Automate flow)
+- `DATABASE_URL` (optional; Postgres connection string) or `PGHOST`/`PGPORT`/`PGDATABASE`/`PGUSER`/`PGPASSWORD`
 
 ## Run locally
 ```bash
