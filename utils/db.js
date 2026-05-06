@@ -129,4 +129,83 @@ COMMIT;`;
   return { meetingId };
 }
 
-module.exports = { testConnection, saveUploadedJob, saveMeetingMinutes, hasDatabaseConfig, getDatabaseConfigError };
+function parseJsonArray(value) {
+  if (!value) return [];
+  try {
+    return JSON.parse(value);
+  } catch {
+    return [];
+  }
+}
+
+async function listMeetings() {
+  const sql = `
+SELECT id::text, meeting_title, COALESCE(meeting_date::text, ''), COALESCE(meeting_location, ''), COALESCE(meeting_description, ''), created_at::text
+FROM meetings
+ORDER BY created_at DESC;`;
+  const out = await runPsql(sql);
+  return out
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => {
+      const [id, meetingTitle, meetingDate, meetingLocation, meetingDescription, createdAt] = line.split('|');
+      return { id: Number(id), meetingTitle, meetingDate, meetingLocation, meetingDescription, createdAt };
+    });
+}
+
+async function getMeetingById(meetingId) {
+  const sql = `
+SELECT m.id::text, COALESCE(m.meeting_title, ''), COALESCE(m.meeting_date::text, ''), COALESCE(m.meeting_location, ''), COALESCE(m.meeting_description, ''),
+COALESCE((SELECT json_agg(objective_text) FROM meeting_objectives mo WHERE mo.meeting_id = m.id), '[]'::json)::text,
+COALESCE((SELECT json_agg(participant_name) FROM meeting_participants mp WHERE mp.meeting_id = m.id AND mp.participant_group = 'client'), '[]'::json)::text,
+COALESCE((SELECT json_agg(participant_name) FROM meeting_participants mp WHERE mp.meeting_id = m.id AND mp.participant_group = 'trinzo'), '[]'::json)::text,
+COALESCE((SELECT json_agg(json_build_object('id', mi.id, 'topic', mi.topic, 'discussionPoints', mi.discussion_points)) FROM meeting_minutes_items mi WHERE mi.meeting_id = m.id), '[]'::json)::text,
+COALESCE((SELECT json_agg(json_build_object('id', ns.id, 'actionText', ns.action_text, 'ownerName', ns.owner_name, 'deadline', ns.deadline)) FROM meeting_next_steps ns WHERE ns.meeting_id = m.id), '[]'::json)::text,
+COALESCE((SELECT transcript_text FROM meeting_autosaves ma WHERE ma.meeting_id = m.id ORDER BY ma.id DESC LIMIT 1), ''),
+m.created_at::text
+FROM meetings m
+WHERE m.id = ${Number(meetingId)}
+LIMIT 1;`;
+  const out = await runPsql(sql);
+  const line = out.split('\n').find(Boolean);
+  if (!line) return null;
+  const [id, meetingTitle, meetingDate, meetingLocation, meetingDescription, meetingObjectives, clientAttendees, participantsTrinzo, items, nextSteps, transcriptText, createdAt] = line.split('|');
+  return {
+    id: Number(id),
+    meetingTitle,
+    meetingDate,
+    meetingLocation,
+    meetingDescription,
+    meetingObjectives: parseJsonArray(meetingObjectives),
+    clientAttendees: parseJsonArray(clientAttendees),
+    participantsTrinzo: parseJsonArray(participantsTrinzo),
+    items: parseJsonArray(items),
+    nextSteps: parseJsonArray(nextSteps),
+    transcriptText,
+    createdAt
+  };
+}
+
+async function deleteMeetingById(meetingId) {
+  const sql = `DELETE FROM meetings WHERE id = ${Number(meetingId)} RETURNING id::text;`;
+  const out = await runPsql(sql);
+  const deleted = out.split('\n').find((line) => /^\d+$/.test(line));
+  return Boolean(deleted);
+}
+
+async function updateMeetingById(meetingId, payload) {
+  await deleteMeetingById(meetingId);
+  return saveMeetingMinutes(payload);
+}
+
+module.exports = {
+  testConnection,
+  saveUploadedJob,
+  saveMeetingMinutes,
+  listMeetings,
+  getMeetingById,
+  deleteMeetingById,
+  updateMeetingById,
+  hasDatabaseConfig,
+  getDatabaseConfigError
+};

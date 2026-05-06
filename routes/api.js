@@ -13,6 +13,10 @@ const {
   testConnection,
   saveUploadedJob,
   saveMeetingMinutes,
+  listMeetings,
+  getMeetingById,
+  deleteMeetingById,
+  updateMeetingById,
   hasDatabaseConfig,
   getDatabaseConfigError
 } = require('../utils/db');
@@ -216,6 +220,51 @@ router.post('/meetings/save', async (req, res) => {
   } catch (error) {
     console.error('[POST /api/meetings/save] Database save failed:', error.message);
     return res.status(500).json({ success: false, error: error.message || 'Database save failed.' });
+  }
+});
+
+router.get('/meetings', async (req, res) => {
+  if (!hasDatabaseConfig()) return res.status(500).json({ success: false, error: getDatabaseConfigError() });
+  try {
+    const meetings = await listMeetings();
+    return res.json({ success: true, meetings });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message || 'Failed to load meetings.' });
+  }
+});
+
+router.get('/meetings/:id', async (req, res) => {
+  if (!hasDatabaseConfig()) return res.status(500).json({ success: false, error: getDatabaseConfigError() });
+  try {
+    const meeting = await getMeetingById(req.params.id);
+    if (!meeting) return res.status(404).json({ success: false, error: 'Meeting not found.' });
+    return res.json({ success: true, meeting });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message || 'Failed to load meeting.' });
+  }
+});
+
+router.put('/meetings/:id', async (req, res) => {
+  if (!hasDatabaseConfig()) return res.status(500).json({ success: false, error: getDatabaseConfigError() });
+  try {
+    const existing = await getMeetingById(req.params.id);
+    if (!existing) return res.status(404).json({ success: false, error: 'Meeting not found.' });
+    const payload = { ...req.body, payload: { ...(req.body?.payload || {}), source: 'meeting-update' } };
+    const result = await updateMeetingById(req.params.id, payload);
+    return res.json({ success: true, meetingId: result.meetingId, message: 'Meeting updated.' });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message || 'Failed to update meeting.' });
+  }
+});
+
+router.delete('/meetings/:id', async (req, res) => {
+  if (!hasDatabaseConfig()) return res.status(500).json({ success: false, error: getDatabaseConfigError() });
+  try {
+    const deleted = await deleteMeetingById(req.params.id);
+    if (!deleted) return res.status(404).json({ success: false, error: 'Meeting not found.' });
+    return res.json({ success: true, message: 'Meeting deleted.' });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message || 'Failed to delete meeting.' });
   }
 });
 
