@@ -27,6 +27,7 @@ const REVIEW_TEMPLATE = {
 
 function extractJsonFromText(text) {
   if (!text) return null;
+
   const match = text.match(/\{[\s\S]*\}/);
   if (!match) return null;
 
@@ -43,6 +44,7 @@ function normalizeReviewData(candidate) {
 
   Object.keys(REVIEW_TEMPLATE).forEach((key) => {
     const value = candidate[key];
+
     if (Array.isArray(value)) {
       result[key] = value.join(', ');
     } else if (typeof value === 'string') {
@@ -55,11 +57,18 @@ function normalizeReviewData(candidate) {
   return result;
 }
 
+function hasAnyApprovedContent(reviewData) {
+  return Object.values(reviewData).some((value) => String(value || '').trim().length > 0);
+}
+
 async function askAgent(prompt, userId) {
   const token = await generateToken();
   const conversationId = await startConversation(token);
+
   await sendMessage(token, conversationId, userId, prompt);
+
   await new Promise((resolve) => setTimeout(resolve, 9000));
+
   const { botMessages, activitiesData } = await getBotMessages(token, conversationId, userId);
 
   return {
@@ -86,7 +95,10 @@ router.post('/extract-docx', upload.single('file'), async (req, res) => {
     }
 
     if (!text || !text.trim()) {
-      return res.status(400).json({ ok: false, error: 'Text extraction succeeded but content is empty.' });
+      return res.status(400).json({
+        ok: false,
+        error: 'Text extraction succeeded but content is empty.'
+      });
     }
 
     return res.json({
@@ -98,30 +110,53 @@ router.post('/extract-docx', upload.single('file'), async (req, res) => {
     });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ ok: false, error: error.message || 'Failed text extraction.' });
+    return res.status(500).json({
+      ok: false,
+      error: error.message || 'Failed text extraction.'
+    });
   }
 });
 
 router.post('/agent/process', async (req, res) => {
   try {
     const extractedText = req.body?.extractedText;
+
     if (!extractedText || !extractedText.trim()) {
       return res.status(400).json({ ok: false, error: 'Missing extractedText.' });
     }
 
-    const prompt = `Process the following meeting transcript/document text and return structured meeting minutes output. Return ONLY valid JSON with exactly these string fields:\n${JSON.stringify(REVIEW_TEMPLATE, null, 2)}\n\nTranscript text:\n${extractedText}`;
+    const prompt = `Process the following meeting transcript/document text and return structured meeting minutes output.
+
+Return ONLY valid JSON.
+Return exactly these string fields and no extra fields:
+${JSON.stringify(REVIEW_TEMPLATE, null, 2)}
+
+Rules:
+- Only use information explicitly present in the transcript.
+- Do not invent names, dates, actions, decisions or attendees.
+- If a field is not stated, use an empty string.
+- Do not include markdown.
+- Do not include explanatory text outside the JSON.
+
+Transcript text:
+${extractedText}`;
 
     const agent = await askAgent(prompt, 'trinzo-process-user');
 
     if (!agent.finalText) {
-      return res.status(502).json({ ok: false, error: 'Agent processing failed: empty response.', conversationId: agent.conversationId });
+      return res.status(502).json({
+        ok: false,
+        error: 'Agent processing failed: empty response.',
+        conversationId: agent.conversationId
+      });
     }
 
     const parsed = extractJsonFromText(agent.finalText);
+
     if (!parsed) {
       return res.status(502).json({
         ok: false,
-        error: 'Agent returned invalid output (JSON not found).',
+        error: 'Agent returned invalid output. JSON not found.',
         agentRawOutput: agent.finalText,
         conversationId: agent.conversationId
       });
@@ -137,41 +172,86 @@ router.post('/agent/process', async (req, res) => {
     });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ ok: false, error: error.message || 'Agent processing failed.' });
+    return res.status(500).json({
+      ok: false,
+      error: error.message || 'Agent processing failed.'
+    });
   }
 });
 
 router.post('/agent/finalise', async (req, res) => {
   try {
     const reviewData = normalizeReviewData(req.body?.reviewData);
-    const approvedContent = JSON.stringify(reviewData, null, 2);
 
-    if (!approvedContent.trim() || approvedContent === JSON.stringify(REVIEW_TEMPLATE, null, 2)) {
-      return res.status(400).json({ ok: false, error: 'No approved review content provided.' });
+    if (!hasAnyApprovedContent(reviewData)) {
+      return res.status(400).json({
+        ok: false,
+        error: 'No approved review content provided.'
+      });
     }
 
-    const prompt = `The user has reviewed and approved the following meeting minutes output. Trigger the configured Power Automate flow using this approved content. Return the file link or confirmation message if available.\n\nApproved content JSON:\n${approvedContent}`;
+    const approvedContent = JSON.stringify(reviewData, null, 2);
+
+    const prompt = `Finalise approved meeting minutes JSON
+
+Approved JSON:
+${approvedContent}`;
 
     const agent = await askAgent(prompt, 'trinzo-finalise-user');
 
     if (!agent.finalText) {
-      return res.status(502).json({ ok: false, error: 'Final agent call failed: empty response.', conversationId: agent.conversationId });
+      return res.status(502).json({
+        ok: false,
+        error: 'Final agent call failed: empty response.',
+        conversationId: agent.conversationId
+      });
     }
 
     const hasLink = /(https?:\/\/\S+)/i.test(agent.finalText);
-    const hasConfirmation = /(confirm|success|created|submitted|completed|generated)/i.test(agent.finalText);
+    const hasConfirmation = /(success|successful|created|submitted|completed|generated|saved|file link|document)/i.test(agent.finalText);
+    const looksLikeQuestion = /\?\s*$/.test(agent.finalText);
 
     return res.json({
       ok: true,
       conversationId: agent.conversationId,
       finalMessage: agent.finalText,
-      confirmationDetected: hasLink || hasConfirmation,
-      // TODO: In Copilot Studio, ensure the topic/tool invokes Power Automate and returns an explicit file link/confirmation string.
-      warning: hasLink || hasConfirmation ? null : 'Power Automate confirmation/file link missing from the agent reply.'
+      confirmationDetected: (hasLink || hasConfirmation) && !looksLikeQuestion,
+      warning:
+        (hasLink || hasConfirmation) && !looksLikeQuestion
+          ? null
+          : 'The agent replied, but did not clearly confirm that Power Automate ran. Check the Copilot topic and flow mapping.'
     });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ ok: false, error: error.message || 'Final agent call failed.' });
+    return res.status(500).json({
+      ok: false,
+      error: error.message || 'Final agent call failed.'
+    });
+  }
+});
+
+router.post('/copilot-chat', async (req, res) => {
+  try {
+    const prompt = req.body?.prompt;
+
+    if (!prompt || !prompt.trim()) {
+      return res.status(400).json({ ok: false, error: 'Missing prompt.' });
+    }
+
+    const agent = await askAgent(prompt, 'trinzo-chat-test-user');
+
+    return res.json({
+      ok: true,
+      conversationId: agent.conversationId,
+      botMessages: agent.botMessages,
+      finalText: agent.finalText
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      ok: false,
+      error: error.message || 'Chat test failed.'
+    });
   }
 });
 
