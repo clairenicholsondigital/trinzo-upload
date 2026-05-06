@@ -8,11 +8,9 @@
 body { font-family: Arial, sans-serif; background: #0f172a; color: #fff; margin: 0; padding: 2rem; }
 .container { max-width: 980px; margin: 0 auto; }
 .card { background: #111827; border-radius: 16px; padding: 1.5rem; border: 1px solid #334155; }
-.row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-input[type=file], input[type=text], textarea { width: 100%; margin: 0.5rem 0 1rem; padding: 0.7rem; background: #020617; border: 1px solid #334155; border-radius: 10px; color: #fff; }
-textarea { min-height: 80px; }
+input[type=file], textarea { width: 100%; margin: 0.5rem 0 1rem; padding: 0.7rem; background: #020617; border: 1px solid #334155; border-radius: 10px; color: #fff; }
+textarea { min-height: 320px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 button { background: #14b8a6; border: none; color: #04111d; padding: 0.8rem 1rem; border-radius: 10px; cursor: pointer; font-weight: 700; margin-right: 0.5rem; margin-top: 0.5rem; }
-button:disabled { opacity: .5; cursor: not-allowed; }
 .status { margin: 1rem 0; padding: 0.8rem; border-radius: 10px; background: #1e293b; }
 .status.error { background: #7f1d1d; }
 .status.success { background: #14532d; }
@@ -22,163 +20,30 @@ pre { background: #020617; border: 1px solid #334155; border-radius: 10px; paddi
 </style>
 </head>
 <body>
-<div class="container">
-  <div class="card">
-    <h1>Document to Agent Workflow (Option B)</h1>
-    <div class="stage" id="stageLabel">Stage: Upload document</div>
-    <div id="status" class="status">Select a .docx or .txt file to start.</div>
-
-    <input type="file" id="fileInput" accept=".docx,.txt,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
-    <button id="extractBtn" onclick="extractText()">1) Extract Text</button>
-    <button id="processBtn" onclick="processWithAgent()" disabled>2) Send Text to Agent</button>
-
-    <h3>Extracted Text Preview</h3>
-    <pre id="extractedPreview"></pre>
-
-    <div id="reviewSection" class="hidden">
-      <h2>3) Review & Edit AI Output</h2>
-      <div class="row">
-        <div><label>Meeting title</label><input id="meetingTitle" type="text" /></div>
-        <div><label>Meeting date</label><input id="meetingDate" type="text" /></div>
-      </div>
-      <label>Meeting description</label><textarea id="meetingDescription"></textarea>
-      <label>Meeting objectives</label><textarea id="meetingObjectives"></textarea>
-      <label>Client attendees</label><textarea id="clientAttendees"></textarea>
-      <label>Trinzo participants</label><textarea id="participantsTrinzo"></textarea>
-      <label>Item/topic</label><textarea id="itemTopic"></textarea>
-      <label>Discussion points</label><textarea id="discussionPoints"></textarea>
-      <label>Action points</label><textarea id="meetingActionPoint"></textarea>
-      <label>Action point owners</label><textarea id="meetingActionPointOwner"></textarea>
-      <button id="finaliseBtn" onclick="finaliseWithAgent()">4) Approve & Send to Webhook</button>
-    </div>
-
-    <h3>Final Webhook Response</h3>
-    <pre id="finalOutput"></pre>
-  </div>
+<div class="container"><div class="card">
+<h1>Document to Agent Workflow (Option B)</h1>
+<div class="stage" id="stageLabel">Stage: Upload document</div>
+<div id="status" class="status">Select a .docx or .txt file to start.</div>
+<input type="file" id="fileInput" accept=".docx,.txt,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+<button id="extractBtn" onclick="extractText()">1) Extract Text</button>
+<button id="processBtn" onclick="processWithAgent()" disabled>2) Convert to Structured JSON</button>
+<h3>Extracted Text Preview</h3><pre id="extractedPreview"></pre>
+<div id="reviewSection" class="hidden">
+  <h2>3) Review & Edit Structured JSON</h2>
+  <label>Meeting Minutes JSON (includes autosave + transcript)</label>
+  <textarea id="reviewJson"></textarea>
+  <button id="finaliseBtn" onclick="finaliseWithAgent()">4) Approve & Send to Webhook</button>
 </div>
-
+<h3>Final Webhook Response</h3><pre id="finalOutput"></pre>
+</div></div>
 <script>
 let extractedText = '';
-
-const reviewFields = [
-  'meetingTitle','meetingDate','meetingDescription','meetingObjectives','clientAttendees',
-  'participantsTrinzo','itemTopic','discussionPoints','meetingActionPoint','meetingActionPointOwner'
-];
-
-function setStatus(message, type = '') {
-  const status = document.getElementById('status');
-  status.textContent = message;
-  status.className = `status ${type}`.trim();
-}
-
-function setStage(text) {
-  document.getElementById('stageLabel').textContent = `Stage: ${text}`;
-}
-
-function getSelectedFile() {
-  const input = document.getElementById('fileInput');
-  if (!input.files.length) {
-    setStatus('No file selected.', 'error');
-    return null;
-  }
-  return input.files[0];
-}
-
-async function extractText() {
-  const file = getSelectedFile();
-  if (!file) return;
-
-  if (!file.name.toLowerCase().endsWith('.docx') && !file.name.toLowerCase().endsWith('.txt')) {
-    setStatus('Unsupported file type. Please upload .docx or .txt.', 'error');
-    return;
-  }
-
-  setStage('Extract text');
-  setStatus('Extracting text...');
-  document.getElementById('extractedPreview').textContent = '';
-
-  const formData = new FormData();
-  formData.append('file', file);
-
-  try {
-    const response = await fetch('/api/extract-docx', { method: 'POST', body: formData });
-    const data = await response.json();
-    if (!response.ok || !data.ok) throw new Error(data.error || 'Failed text extraction');
-
-    extractedText = data.extractedText;
-    if (!extractedText.trim()) throw new Error('Empty extracted text.');
-
-    document.getElementById('extractedPreview').textContent = extractedText.slice(0, 4000);
-    document.getElementById('processBtn').disabled = false;
-    setStatus('Text extracted successfully.', 'success');
-  } catch (err) {
-    setStatus(`Failed text extraction: ${err.message}`, 'error');
-  }
-}
-
-async function processWithAgent() {
-  if (!extractedText.trim()) {
-    setStatus('Empty extracted text. Please extract first.', 'error');
-    return;
-  }
-
-  setStage('Send text to agent');
-  setStatus('Sending extracted text to agent for processing...');
-
-  try {
-    const response = await fetch('/api/agent/process', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ extractedText })
-    });
-    const data = await response.json();
-    if (!response.ok || !data.ok) throw new Error(data.error || 'Agent processing failed');
-
-    if (!data.reviewData) throw new Error('Agent returned invalid/empty output');
-
-    reviewFields.forEach((field) => {
-      document.getElementById(field).value = data.reviewData[field] || '';
-    });
-
-    document.getElementById('reviewSection').classList.remove('hidden');
-    setStage('Review AI output');
-    setStatus('Review and edit the fields, then approve final submission.', 'success');
-  } catch (err) {
-    setStatus(`Agent processing failed: ${err.message}`, 'error');
-  }
-}
-
-function collectReviewData() {
-  const payload = {};
-  reviewFields.forEach((field) => payload[field] = document.getElementById(field).value || '');
-  return payload;
-}
-
-async function finaliseWithAgent() {
-  const reviewData = collectReviewData();
-
-  setStage('Send approved output to webhook');
-  setStatus('Sending approved/edited output to Power Automate webhook...');
-  document.getElementById('finalOutput').textContent = '';
-
-  try {
-    const response = await fetch('/api/agent/finalise', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reviewData })
-    });
-    const data = await response.json();
-    if (!response.ok || !data.ok) throw new Error(data.error || 'Final webhook call failed');
-
-    document.getElementById('finalOutput').textContent = data.finalMessage || '';
-    if (data.warning) {
-      setStatus(`Completed with warning: ${data.warning}`, 'error');
-    } else {
-      setStatus('Success. Webhook finalisation complete.', 'success');
-    }
-    setStage('Done');
-  } catch (err) {
-    setStatus(`Final webhook call failed: ${err.message}`, 'error');
-  }
-}
+function setStatus(message, type = '') { const status = document.getElementById('status'); status.textContent = message; status.className = `status ${type}`.trim(); }
+function setStage(text) { document.getElementById('stageLabel').textContent = `Stage: ${text}`; }
+function getSelectedFile() { const input = document.getElementById('fileInput'); if (!input.files.length) { setStatus('No file selected.', 'error'); return null; } return input.files[0]; }
+async function extractText() { const file = getSelectedFile(); if (!file) return; setStage('Extract text'); setStatus('Extracting text...'); document.getElementById('extractedPreview').textContent=''; const formData = new FormData(); formData.append('file', file); try { const response = await fetch('/api/extract-docx',{method:'POST',body:formData}); const data=await response.json(); if(!response.ok||!data.ok) throw new Error(data.error||'Failed text extraction'); extractedText=data.extractedText; document.getElementById('extractedPreview').textContent=extractedText.slice(0,4000); document.getElementById('processBtn').disabled=false; setStatus('Text extracted successfully.','success'); } catch(err){ setStatus(`Failed text extraction: ${err.message}`,'error'); }}
+async function processWithAgent(){ if(!extractedText.trim()) return setStatus('Empty extracted text. Please extract first.','error'); setStage('Send text to agent'); setStatus('Generating structured JSON...'); try{ const response=await fetch('/api/agent/process',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({extractedText})}); const data=await response.json(); if(!response.ok||!data.ok) throw new Error(data.error||'Agent processing failed'); document.getElementById('reviewJson').value = data.reviewDataJson || JSON.stringify(data.reviewData,null,2); document.getElementById('reviewSection').classList.remove('hidden'); setStage('Review AI output'); setStatus('Review/edit JSON and finalise.','success'); }catch(err){ setStatus(`Agent processing failed: ${err.message}`,'error'); }}
+async function finaliseWithAgent(){ let reviewData; try{ reviewData = JSON.parse(document.getElementById('reviewJson').value || '{}'); }catch(err){ return setStatus(`JSON invalid: ${err.message}`,'error'); } setStage('Send approved output to webhook'); setStatus('Sending approved/edited output...'); document.getElementById('finalOutput').textContent=''; try{ const response=await fetch('/api/agent/finalise',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reviewData, transcript: extractedText})}); const data=await response.json(); if(!response.ok||!data.ok) throw new Error(data.error||'Final webhook call failed'); document.getElementById('finalOutput').textContent=data.finalMessage||''; setStatus('Success. Webhook finalisation complete.','success'); setStage('Done'); }catch(err){ setStatus(`Final webhook call failed: ${err.message}`,'error'); }}
 </script>
 </body>
 </html>
