@@ -105,6 +105,7 @@ pre { white-space:pre-wrap; background:#071126; border:1px solid var(--border); 
 .debug-status-panel pre {
   min-height:50px;
 }
+.footer { margin-top:1rem; border-top:1px solid #223052; padding-top:.8rem; color:var(--muted); text-align:center; }
 
 @media (max-width:900px){ .steps { grid-template-columns:1fr 1fr; } .row { grid-template-columns:1fr; } }
 </style>
@@ -113,7 +114,6 @@ pre { white-space:pre-wrap; background:#071126; border:1px solid var(--border); 
 <div class="container"><div class="card">
 <h1>Transcript → Meeting Minutes Workflow</h1>
 <p class="subtitle">A simple guided process for extracting, reviewing, and sending clean meeting notes.</p>
-<p><a href="/meetings">Open Meeting Database Manager →</a></p>
 
 <div class="steps" id="stepper">
   <div class="step active" data-step="1">1. Upload file</div>
@@ -138,25 +138,9 @@ pre { white-space:pre-wrap; background:#071126; border:1px solid var(--border); 
 </div>
 
 <div id="reviewSection" class="hidden section">
-  <h3>Review & Edit (no JSON editing needed)</h3>
-  <div class="row">
-    <div><label>Meeting title</label><input id="meetingTitle" type="text" /></div>
-    <div><label>Meeting date</label><input id="meetingDate" type="date" /></div>
-  </div>
-  <div class="row">
-    <div><label>Location</label><input id="meetingLocation" type="text" /></div>
-    <div><label>Client attendees (comma separated)</label><input id="clientAttendees" type="text" /></div>
-  </div>
-  <div class="row">
-    <div><label>Trinzo participants (comma separated)</label><input id="trinzoParticipants" type="text" /></div>
-    <div><label>Objectives (one per line)</label><textarea id="meetingObjectives"></textarea></div>
-  </div>
-  <label>Description</label>
-  <textarea id="meetingDescription"></textarea>
-  <label>Meeting minutes (Topic: points, one topic block per line)</label>
-  <textarea id="meetingMinutes"></textarea>
-  <label>Next steps (Action | Owner | Deadline, one per line)</label>
-  <textarea id="nextSteps"></textarea>
+  <h3>Review & Edit</h3>
+  <p class="subtitle">Open the dedicated edit screen to review and update meeting details before sending.</p>
+  <p><a href="/review" target="_blank" rel="noopener">Open edit screen →</a></p>
 </div>
 
 <div class="accordion debug-accordion">
@@ -200,10 +184,14 @@ pre { white-space:pre-wrap; background:#071126; border:1px solid var(--border); 
 </div>
 
 </div></div>
+<footer class="footer">
+  <a href="https://trinzo.virtual-hub.online/meetings" target="_blank" rel="noopener">Open Meeting Database Manager →</a>
+</footer>
 
 <script>
 let extractedText = "";
 let reviewData = null;
+const REVIEW_STORAGE_KEY = "reviewData";
 let currentMeetingId = Number(localStorage.getItem("meetingId") || 0);
 const stepper = document.getElementById('stepper');
 
@@ -269,16 +257,8 @@ async function extractText(){
   }
 }
 
-function populateFields(data){
-  document.getElementById('meetingTitle').value = data.meetingTitle || '';
-  document.getElementById('meetingDate').value = data.meetingDate || '';
-  document.getElementById('meetingLocation').value = data.meetingLocation || '';
-  document.getElementById('clientAttendees').value = (data.participants?.client || []).join(', ');
-  document.getElementById('trinzoParticipants').value = (data.participants?.trinzo || []).join(', ');
-  document.getElementById('meetingObjectives').value = (data.meetingObjectives || []).join('\n');
-  document.getElementById('meetingDescription').value = data.meetingDescription || '';
-  document.getElementById('meetingMinutes').value = (data.meetingMinutes || []).map(item => `${item.topic}: ${(item.discussionPoints || []).join('; ')}`).join('\n');
-  document.getElementById('nextSteps').value = (data.nextSteps || []).map(item => `${item.action} | ${item.owner} | ${item.deadline}`).join('\n');
+function saveReviewDataToStorage(data){
+  localStorage.setItem(REVIEW_STORAGE_KEY, JSON.stringify(data || {}));
 }
 
 async function saveMeetingDraft() {
@@ -317,37 +297,11 @@ async function refreshMeetingStatus() {
   document.getElementById('statusError').textContent = data.meeting?.lastError || data.latestJob?.errorMessage || '';
 }
 
-function collectReviewData(){
-  const minutes = splitLines(document.getElementById('meetingMinutes').value).map(line=>{
-    const [topic, ...rest] = line.split(':');
-    return {
-      topic: (topic||'').trim(),
-      discussionPoints: splitLines((rest.join(':')||'').split(';').join('\n'))
-    };
-  }).filter(v=>v.topic||v.discussionPoints.length);
-
-  const nextSteps = splitLines(document.getElementById('nextSteps').value).map(line=>{
-    const [action, owner, deadline] = line.split('|').map(v=>(v||'').trim());
-    return {
-      action: action||'',
-      owner: owner||'',
-      deadline: deadline||''
-    };
-  }).filter(v=>v.action||v.owner||v.deadline);
-
-  return {
-    meetingTitle: document.getElementById('meetingTitle').value.trim(),
-    meetingDate: document.getElementById('meetingDate').value,
-    meetingLocation: document.getElementById('meetingLocation').value.trim(),
-    meetingDescription: document.getElementById('meetingDescription').value.trim(),
-    meetingObjectives: splitLines(document.getElementById('meetingObjectives').value),
-    participants: {
-      client: splitComma(document.getElementById('clientAttendees').value),
-      trinzo: splitComma(document.getElementById('trinzoParticipants').value)
-    },
-    meetingMinutes: minutes,
-    nextSteps
-  };
+function getReviewDataFromStorage(){
+  const raw = localStorage.getItem(REVIEW_STORAGE_KEY);
+  if (!raw) return null;
+  try { return JSON.parse(raw); }
+  catch { return null; }
 }
 
 async function processWithAgent(){
@@ -368,7 +322,7 @@ async function processWithAgent(){
     if(!response.ok||!data.ok) throw new Error(data.error||'Agent failed');
 
     reviewData = data.reviewData;
-    populateFields(reviewData);
+    saveReviewDataToStorage(reviewData);
 
     document.getElementById('reviewSection').classList.remove('hidden');
     document.getElementById('finaliseBtn').disabled=false;
@@ -381,7 +335,8 @@ async function processWithAgent(){
 }
 
 async function finaliseWithAgent(){
-  const payloadReviewData = collectReviewData();
+  const payloadReviewData = getReviewDataFromStorage();
+  if (!payloadReviewData) return setStatus('No review data found. Process transcript first, then use the edit screen.','error');
 
   setStep(5);
   setStatus('Sending approved meeting minutes to webhook...');
