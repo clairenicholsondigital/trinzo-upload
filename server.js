@@ -17,6 +17,10 @@ app.get('/meetings', (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'meetings.html'));
 });
 
+app.get('/review', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'review.html'));
+});
+
 app.use('/api', apiRoutes);
 
 app.listen(PORT, '0.0.0.0', () => {
