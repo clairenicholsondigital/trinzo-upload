@@ -1,0 +1,6 @@
+<!doctype html><html><head><meta charset='utf-8'><title>Register</title></head><body><h1>Register</h1>
+<p><a href='/auth'>Back to auth</a></p>
+<input id='fullName' placeholder='Full name'><input id='email' placeholder='Email'><input id='password' type='password' placeholder='Password'><button id='go'>Register</button><pre id='out'></pre>
+<script>
+document.getElementById('go').onclick=async()=>{const r=await fetch('/api/auth/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fullName:fullName.value,email:email.value,password:password.value})});out.textContent=JSON.stringify(await r.json(),null,2)}
+</script></body></html>

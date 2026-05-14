@@ -247,6 +247,42 @@ UPDATE meetings SET webhook_status='failed', status='failed', last_error=${q(err
 COMMIT;`;
   await runPsql(sql);
 }
+
+async function createAuthUser({ email, fullName, passwordSalt, passwordHash }) {
+  const sql = `INSERT INTO auth_users (email, full_name, password_salt, password_hash) VALUES (${q(email.toLowerCase())}, ${q(fullName || '')}, ${q(passwordSalt)}, ${q(passwordHash)}) RETURNING id::text, email, full_name;`;
+  const out = await runPsql(sql);
+  const [id, userEmail, name] = (out.split('\n').find(Boolean) || '||').split('|');
+  return { id: Number(id), email: userEmail, fullName: name };
+}
+
+async function findAuthUserByEmail(email) {
+  const sql = `SELECT id::text, email, full_name, password_salt, password_hash, is_active::text FROM auth_users WHERE email = ${q(String(email || '').toLowerCase())} LIMIT 1;`;
+  const out = await runPsql(sql);
+  const line = out.split('\n').find(Boolean);
+  if (!line) return null;
+  const [id, userEmail, fullName, passwordSalt, passwordHash, isActive] = line.split('|');
+  return { id: Number(id), email: userEmail, fullName, passwordSalt, passwordHash, isActive: isActive === 't' };
+}
+
+async function touchAuthLastLogin(userId) {
+  await runPsql(`UPDATE auth_users SET last_login_at = NOW(), updated_at = NOW() WHERE id = ${Number(userId)};`);
+}
+
+async function createPasswordResetToken(userId, resetToken) {
+  await runPsql(`INSERT INTO auth_password_reset_tokens (user_id, reset_token, expires_at) VALUES (${Number(userId)}, ${q(resetToken)}, NOW() + INTERVAL '30 minutes');`);
+}
+
+async function consumePasswordResetToken(resetToken) {
+  const sql = `UPDATE auth_password_reset_tokens SET used_at = NOW() WHERE id = (SELECT id FROM auth_password_reset_tokens WHERE reset_token = ${q(resetToken)} AND used_at IS NULL AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1) RETURNING user_id::text;`;
+  const out = await runPsql(sql);
+  const line = out.split('\n').find(Boolean);
+  return line ? { userId: Number(line) } : null;
+}
+
+async function updateAuthPassword(userId, salt, hash) {
+  await runPsql(`UPDATE auth_users SET password_salt = ${q(salt)}, password_hash = ${q(hash)}, updated_at = NOW() WHERE id = ${Number(userId)};`);
+}
+
 module.exports = {
   testConnection,
   listMeetings,
@@ -264,5 +300,11 @@ module.exports = {
   markWebhookFailure,
   hasDatabaseConfig,
   getDatabaseConfigError,
-  runPsql
+  runPsql,
+  createAuthUser,
+  findAuthUserByEmail,
+  touchAuthLastLogin,
+  createPasswordResetToken,
+  consumePasswordResetToken,
+  updateAuthPassword
 };
