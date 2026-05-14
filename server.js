@@ -3,6 +3,7 @@ require('dotenv').config();
 const path = require('path');
 const express = require('express');
 const apiRoutes = require('./routes/api');
+const authRoutes = require('./routes/auth');
 
 const app = express();
 const PORT = process.env.PORT || 3978;
@@ -21,7 +22,25 @@ app.get('/review', (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'review.html'));
 });
 
+
+app.get('/auth', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'auth.html'));
+});
+
+app.get('/auth/login', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'auth-login.html'));
+});
+
+app.get('/auth/register', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'auth-register.html'));
+});
+
+app.get('/auth/forgot-password', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'auth-forgot-password.html'));
+});
+
 app.use('/api', apiRoutes);
+app.use('/api/auth', authRoutes);
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log('Agent listening on port ' + PORT);
