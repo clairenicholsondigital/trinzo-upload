@@ -73,6 +73,13 @@ router.post('/login', async (req, res) => {
   }
 });
 
+router.get('/login', (req, res) => {
+  return res.status(405).json({
+    success: false,
+    error: 'Method Not Allowed. Use POST /api/auth/login for authentication and GET /auth/login for the login page.'
+  });
+});
+
 router.post('/logout', (req, res) => {
   const token = readCookie(req, 'auth_session');
   if (token) sessions.delete(token);
