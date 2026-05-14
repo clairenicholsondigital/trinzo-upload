@@ -31,8 +31,20 @@ app.get('/auth/login', (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'auth-login.html'));
 });
 
+app.get('/login', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'auth-login.html'));
+});
+
 app.get('/auth/register', (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'auth-register.html'));
+});
+
+app.get('/register-success', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'register-success.html'));
+});
+
+app.get('/dashboard', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'dashboard.html'));
 });
 
 app.get('/auth/forgot-password', (req, res) => {

@@ -1,6 +1,23 @@
-<!doctype html><html><head><meta charset='utf-8'><title>Register</title></head><body><h1>Register</h1>
+<!doctype html>
+<html>
+<head>
+  <meta charset='utf-8'>
+  <title>Register</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
+  <style>
+    body { font-family:"Roboto",sans-serif; font-optical-sizing:auto; font-style:normal; font-variation-settings:"wdth" 100; }
+  </style>
+</head>
+<body><h1>Register</h1>
 <p><a href='/auth'>Back to auth</a></p>
 <input id='fullName' placeholder='Full name'><input id='email' placeholder='Email'><input id='password' type='password' placeholder='Password'><button id='go'>Register</button><pre id='out'></pre>
 <script>
-document.getElementById('go').onclick=async()=>{const r=await fetch('/api/auth/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fullName:fullName.value,email:email.value,password:password.value})});out.textContent=JSON.stringify(await r.json(),null,2)}
+document.getElementById('go').onclick=async()=>{
+  const r=await fetch('/api/auth/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fullName:fullName.value,email:email.value,password:password.value})});
+  const data = await r.json();
+  out.textContent=JSON.stringify(data,null,2);
+  if (r.ok && data.success) window.location.href = '/register-success';
+}
 </script></body></html>
