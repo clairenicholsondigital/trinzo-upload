@@ -42,6 +42,7 @@ a { color:#67e8f9; }
     <div id="status" class="status">Edit fields and save your updates.</div>
 
     <div class="toolbar">
+      Tools:
       <button type="button" class="secondary" onclick="toggleFindReplace()">Find and replace</button>
       <button type="button" class="secondary" onclick="normaliseAllEditableText(true)">Apply British spelling</button>
     </div>
@@ -164,7 +165,9 @@ const US_TO_UK_REPLACEMENTS = [
   ['Labor', 'Labour'],
   ['labor', 'labour'],
   ['Favor', 'Favour'],
-  ['favor', 'favour']
+  ['favor', 'favour'],
+  ['Emphasize','Emphasise'],
+  ['emphasize', 'emphasise'],
 ];
 
 function splitLines(text){
