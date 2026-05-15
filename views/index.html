@@ -195,7 +195,7 @@ const REVIEW_STORAGE_KEY = "reviewData";
 const WORKFLOW_STATE_KEY = "workflowState";
 let currentMeetingId = Number(localStorage.getItem("meetingId") || 0);
 const stepper = document.getElementById('stepper');
-
+const WORKFLOW_RETURN_STEP_KEY = "workflowReturnStep";
 function setStatus(message, type = '') { const status = document.getElementById('status'); status.textContent = message; status.className = `status ${type}`.trim(); }
 function setStep(n){ document.querySelectorAll('.step').forEach((s)=>s.classList.toggle('active', Number(s.dataset.step)===n)); }
 function splitLines(text){ return (text||'').split('\n').map(v=>v.trim()).filter(Boolean); }
@@ -214,26 +214,37 @@ function persistWorkflowState(){
 
 function restoreWorkflowState(){
   const raw = localStorage.getItem(WORKFLOW_STATE_KEY);
-  if (!raw) return;
+  const returnStep = localStorage.getItem(WORKFLOW_RETURN_STEP_KEY);
+  const savedReviewData = getReviewDataFromStorage();
+
+  if (!raw && !savedReviewData) return;
 
   try {
-    const state = JSON.parse(raw);
+    const state = raw ? JSON.parse(raw) : {};
+
     if (state.currentMeetingId) {
       currentMeetingId = Number(state.currentMeetingId);
       localStorage.setItem('meetingId', String(currentMeetingId));
     }
+
     extractedText = state.extractedText || '';
-    document.getElementById('extractedPreview').textContent = extractedText ? extractedText.slice(0,6000) : '';
+    document.getElementById('extractedPreview').textContent = extractedText ? extractedText.slice(0, 6000) : '';
+
     document.getElementById('processBtn').disabled = !(state.processEnabled || extractedText);
-    document.getElementById('finaliseBtn').disabled = !state.finaliseEnabled;
-    if (state.reviewVisible) {
+    document.getElementById('finaliseBtn').disabled = !(state.finaliseEnabled || savedReviewData);
+
+    if (state.reviewVisible || savedReviewData || returnStep === 'review') {
+      reviewData = savedReviewData;
       document.getElementById('reviewSection').classList.remove('hidden');
       setStep(4);
-      setStatus('Progress restored. Continue from Review & Edit.', 'success');
+      setStatus('Edits restored. You can confirm and send when ready.', 'success');
     }
-  } catch {}
-}
 
+    localStorage.removeItem(WORKFLOW_RETURN_STEP_KEY);
+  } catch {
+    setStatus('Unable to restore previous workflow progress.', 'error');
+  }
+}
 
 const uploadBox = document.getElementById('uploadBox');
 ['dragenter','dragover'].forEach(evt=>uploadBox.addEventListener(evt,(e)=>{ e.preventDefault(); uploadBox.classList.add('drag'); }));
