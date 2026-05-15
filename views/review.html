@@ -26,7 +26,7 @@ a { color:#67e8f9; }
 <body>
 <div class="container"><div class="card">
   <h1>Review & Edit Meeting Details</h1>
-  <p><a href="/">← Back to workflow</a></p>
+<p><button type="button" onclick="saveAndReturnToWorkflow()">← Back to workflow</button></p>
   <div id="status" class="status">Edit fields and save your updates.</div>
 
   <div class="row">
@@ -58,6 +58,20 @@ function splitLines(text){ return (text||'').split('\n').map(v=>v.trim()).filter
 function splitComma(text){ return (text||'').split(',').map(v=>v.trim()).filter(Boolean); }
 function setStatus(msg){ document.getElementById('status').textContent = msg; }
 
+function saveAndReturnToWorkflow(){
+  const payload = collectReviewData();
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+
+  // Optional helper flag so the workflow page knows to reopen the review/confirm step
+  localStorage.setItem('workflowReturnStep', 'review');
+
+  // Go back if possible, otherwise fall back to workflow page
+  if (window.history.length > 1) {
+    window.history.back();
+  } else {
+    window.location.href = '/';
+  }
+}
 function populateFields(data){
   document.getElementById('meetingTitle').value = data.meetingTitle || '';
   document.getElementById('meetingDate').value = data.meetingDate || '';
