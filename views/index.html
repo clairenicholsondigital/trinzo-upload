@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
 <style>
-:root { color-scheme: dark; --bg:#0b1020; --panel:#11192f; --panel2:#0f172a; --border:#2d3d60; --muted:#95a7cb; --text:#eef3ff; --accent:#22d3ee; --accent2:#34d399; --danger:#dc2626; }
+:root { color-scheme: dark; --bg:#0b1020; --panel:#11192f; --panel2:#0f172a; --border:#2d3d60; --muted:#95a7cb; --text:#eef3ff; --accent:#02173B; --accent2:#17D0C4; --danger:#dc2626; }
 * { box-sizing: border-box; }
 body { margin:0; padding:1rem; background: radial-gradient(1200px 650px at 10% -10%, #1e293b, var(--bg)); color:var(--text); font-family:"Roboto",sans-serif; font-optical-sizing:auto; font-style:normal; font-variation-settings:"wdth" 100; }
 .container { max-width:1100px; margin:0 auto; }
@@ -19,7 +19,7 @@ h3 { margin:.2rem 0 .8rem; }
 a { color:#67e8f9; }
 .steps { display:grid; grid-template-columns:repeat(5,minmax(120px,1fr)); gap:.5rem; margin:1rem 0; }
 .step { background:#0a1328; border:1px solid var(--border); border-radius:12px; padding:.7rem; color:var(--muted); font-size:.86rem; }
-.step.active { border-color:var(--accent); color:var(--text); box-shadow:0 0 0 1px rgba(34,211,238,.25) inset; }
+.step.active { background:rgba(23,208,196,.14); border-color:var(--accent2); color:var(--text); box-shadow:0 0 0 1px rgba(23,208,196,.35) inset; }
 .status { margin:.75rem 0; padding:.75rem .9rem; border-radius:12px; background:#17233f; border:1px solid var(--border); }
 .status.error { background:#3a1515; border-color:#7f1d1d; }
 .status.success { background:#0f2f29; border-color:#116149; }
@@ -27,7 +27,7 @@ a { color:#67e8f9; }
 .upload-box.drag { border-color:var(--accent2); transform:translateY(-1px); }
 input[type=file], input[type=text], input[type=date], textarea { width:100%; background:#071126; color:var(--text); border:1px solid var(--border); border-radius:10px; padding:.65rem; font:inherit; }
 textarea { min-height:110px; resize:vertical; }
-button { background:linear-gradient(180deg,var(--accent2),#10b981); color:#03221f; border:none; border-radius:10px; padding:.65rem .95rem; font-weight:700; cursor:pointer; }
+button { background:linear-gradient(180deg,var(--accent2),#0fb5ab); color:#02173B; border:none; border-radius:10px; padding:.65rem .95rem; font-weight:700; cursor:pointer; }
 button.secondary { background:#132847; color:#dbeafe; border:1px solid var(--border); }
 button:disabled { opacity:.6; cursor:not-allowed; }
 .row { display:grid; grid-template-columns:1fr 1fr; gap:.8rem; }
@@ -106,13 +106,15 @@ pre { white-space:pre-wrap; background:#071126; border:1px solid var(--border); 
   min-height:50px;
 }
 .footer { margin-top:1rem; border-top:1px solid #223052; padding-top:.8rem; color:var(--muted); text-align:center; }
+.header { display:flex; align-items:center; gap:.8rem; margin-bottom:.75rem; }
+.logo { height:34px; width:auto; }
 
 @media (max-width:900px){ .steps { grid-template-columns:1fr 1fr; } .row { grid-template-columns:1fr; } }
 </style>
 </head>
 <body>
 <div class="container"><div class="card">
-<h1>Transcript → Meeting Minutes Workflow</h1>
+<div class="header"><img class="logo" src="https://www.trinzo.com/wp-content/uploads/2024/09/trinzo-logo.svg" alt="Trinzo logo" /><h1>Transcript → Meeting Minutes Workflow</h1></div>
 <p class="subtitle">A simple guided process for extracting, reviewing, and sending clean meeting notes.</p>
 
 <div class="steps" id="stepper">
@@ -140,7 +142,7 @@ pre { white-space:pre-wrap; background:#071126; border:1px solid var(--border); 
 <div id="reviewSection" class="hidden section">
   <h3>Review & Edit</h3>
   <p class="subtitle">Open the dedicated edit screen to review and update meeting details before sending.</p>
-  <p><a href="/review" target="_blank" rel="noopener">Open edit screen →</a></p>
+  <p><a href="/review">Open edit screen →</a></p>
 </div>
 
 <div class="accordion debug-accordion">
@@ -184,14 +186,13 @@ pre { white-space:pre-wrap; background:#071126; border:1px solid var(--border); 
 </div>
 
 </div></div>
-<footer class="footer">
-  <a href="https://trinzo.virtual-hub.online/meetings" target="_blank" rel="noopener">Open Meeting Database Manager →</a>
-</footer>
+<footer class="footer"></footer>
 
 <script>
 let extractedText = "";
 let reviewData = null;
 const REVIEW_STORAGE_KEY = "reviewData";
+const WORKFLOW_STATE_KEY = "workflowState";
 let currentMeetingId = Number(localStorage.getItem("meetingId") || 0);
 const stepper = document.getElementById('stepper');
 
@@ -201,6 +202,39 @@ function splitLines(text){ return (text||'').split('\n').map(v=>v.trim()).filter
 function splitComma(text){ return (text||'').split(',').map(v=>v.trim()).filter(Boolean); }
 function getSelectedFile(){ const input = document.getElementById('fileInput'); if (!input.files.length) { setStatus('No file selected.', 'error'); return null; } return input.files[0]; }
 
+function persistWorkflowState(){
+  localStorage.setItem(WORKFLOW_STATE_KEY, JSON.stringify({
+    extractedText,
+    currentMeetingId,
+    reviewVisible: !document.getElementById('reviewSection').classList.contains('hidden'),
+    processEnabled: !document.getElementById('processBtn').disabled,
+    finaliseEnabled: !document.getElementById('finaliseBtn').disabled
+  }));
+}
+
+function restoreWorkflowState(){
+  const raw = localStorage.getItem(WORKFLOW_STATE_KEY);
+  if (!raw) return;
+
+  try {
+    const state = JSON.parse(raw);
+    if (state.currentMeetingId) {
+      currentMeetingId = Number(state.currentMeetingId);
+      localStorage.setItem('meetingId', String(currentMeetingId));
+    }
+    extractedText = state.extractedText || '';
+    document.getElementById('extractedPreview').textContent = extractedText ? extractedText.slice(0,6000) : '';
+    document.getElementById('processBtn').disabled = !(state.processEnabled || extractedText);
+    document.getElementById('finaliseBtn').disabled = !state.finaliseEnabled;
+    if (state.reviewVisible) {
+      document.getElementById('reviewSection').classList.remove('hidden');
+      setStep(4);
+      setStatus('Progress restored. Continue from Review & Edit.', 'success');
+    }
+  } catch {}
+}
+
+
 const uploadBox = document.getElementById('uploadBox');
 ['dragenter','dragover'].forEach(evt=>uploadBox.addEventListener(evt,(e)=>{ e.preventDefault(); uploadBox.classList.add('drag'); }));
 ['dragleave','drop'].forEach(evt=>uploadBox.addEventListener(evt,(e)=>{ e.preventDefault(); uploadBox.classList.remove('drag'); }));
@@ -208,6 +242,7 @@ const uploadBox = document.getElementById('uploadBox');
 if (currentMeetingId) {
   refreshMeetingStatus();
   setStatus(`Resume previous meeting available: ${currentMeetingId}`);
+  persistWorkflowState();
 }
 
 uploadBox.addEventListener('drop',(e)=>{
@@ -250,6 +285,7 @@ async function extractText(){
     document.getElementById('processBtn').disabled=false;
     setStep(2);
     setStatus(`Text extracted and meeting ${currentMeetingId} queued. Debug information is available at the bottom if needed.`,'success');
+    persistWorkflowState();
 
     await refreshMeetingStatus();
   } catch(err){
@@ -329,6 +365,7 @@ async function processWithAgent(){
 
     setStep(4);
     setStatus('Agent output ready. Edit fields, then confirm and send.','success');
+    persistWorkflowState();
   } catch(err){
     setStatus(`Agent processing failed: ${err.message}`,'error');
   }
@@ -371,13 +408,17 @@ async function finaliseWithAgent(){
 
     document.getElementById('finalOutput').textContent = data.finalMessage || 'Done';
     setStatus('Success. Approved output sent to webhook. Debug information is available at the bottom.','success');
+    persistWorkflowState();
 
     await refreshMeetingStatus();
   } catch(err){
     setStatus(`Final webhook call failed: ${err.message}`,'error');
     await refreshMeetingStatus();
   }
+
 }
+
+restoreWorkflowState();
 </script>
 </body>
 </html>
