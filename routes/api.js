@@ -2,6 +2,10 @@ const express = require('express');
 const multer = require('multer');
 const mammoth = require('mammoth');
 const fetch = require('node-fetch');
+const fs = require('fs/promises');
+const os = require('os');
+const path = require('path');
+const { spawn } = require('child_process');
 
 const {
   generateToken,
@@ -31,6 +35,13 @@ const {
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
+const testUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }
+});
+
+const MAX_TRANSCRIPT_CHARS = 2 * 1024 * 1024;
+const PYTHON_TIMEOUT_MS = Number(process.env.TRANSCRIPT_TEST_TIMEOUT_MS || 30000);
 
 const REVIEW_TEMPLATE = {
   meetingTitle: '',
@@ -62,6 +73,159 @@ const REVIEW_TEMPLATE = {
     transcriptLength: 0
   }
 };
+
+
+function runUploadMiddleware(req, res, middleware) {
+  return new Promise((resolve, reject) => {
+    middleware(req, res, (error) => {
+      if (error) reject(error);
+      else resolve();
+    });
+  });
+}
+
+async function readTestTranscript(req) {
+  const bodyText = typeof req.body?.text === 'string' ? req.body.text : '';
+
+  if (bodyText.trim()) {
+    return { text: bodyText, source: 'text' };
+  }
+
+  if (!req.file) {
+    const error = new Error('Provide transcript text or upload a transcript file.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const extraction = await extractTextFromUpload(req.file, mammoth);
+
+  if (extraction.unsupported) {
+    const error = new Error('Unsupported file type. Please upload a .txt, .docx, or .csv file.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return { text: extraction.text || '', source: 'file', fileName: extraction.fileName };
+}
+
+function validateTranscriptText(text) {
+  if (!text || !text.trim()) {
+    const error = new Error('Transcript text is empty. Paste text or upload a non-empty transcript file.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (text.length > MAX_TRANSCRIPT_CHARS) {
+    const error = new Error(`Transcript is too large. Maximum supported text length is ${MAX_TRANSCRIPT_CHARS} characters.`);
+    error.statusCode = 413;
+    throw error;
+  }
+}
+
+function parsePythonJson(rawOutput, scriptName) {
+  try {
+    return JSON.parse(rawOutput);
+  } catch (error) {
+    const wrapped = new Error(`${scriptName} returned output that could not be parsed as JSON.`);
+    wrapped.statusCode = 502;
+    wrapped.details = {
+      parseError: error.message,
+      rawOutput: rawOutput.slice(0, 4000)
+    };
+    throw wrapped;
+  }
+}
+
+async function runPythonTranscriptScript(scriptName, transcriptText) {
+  validateTranscriptText(transcriptText);
+
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'trinzo-transcript-'));
+  const tempPath = path.join(tempDir, 'transcript.txt');
+  const scriptPath = path.join(__dirname, '..', 'scripts', scriptName);
+
+  try {
+    await fs.writeFile(tempPath, transcriptText, 'utf8');
+
+    const rawOutput = await new Promise((resolve, reject) => {
+      const child = spawn(process.env.PYTHON_BIN || 'python3', [scriptPath, tempPath], {
+        cwd: path.join(__dirname, '..'),
+        env: process.env,
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+
+      let stdout = '';
+      let stderr = '';
+      let timedOut = false;
+
+      const timer = setTimeout(() => {
+        timedOut = true;
+        child.kill('SIGKILL');
+      }, PYTHON_TIMEOUT_MS);
+
+      child.stdout.on('data', (chunk) => {
+        stdout += chunk.toString('utf8');
+      });
+
+      child.stderr.on('data', (chunk) => {
+        stderr += chunk.toString('utf8');
+      });
+
+      child.on('error', (error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+
+      child.on('close', (code) => {
+        clearTimeout(timer);
+        if (timedOut) {
+          const error = new Error(`${scriptName} timed out after ${PYTHON_TIMEOUT_MS}ms.`);
+          error.statusCode = 504;
+          error.details = { stderr };
+          reject(error);
+          return;
+        }
+
+        if (code !== 0) {
+          const error = new Error(`${scriptName} failed with exit code ${code}.`);
+          error.statusCode = 502;
+          error.details = { stderr: stderr.slice(0, 4000), stdout: stdout.slice(0, 4000) };
+          reject(error);
+          return;
+        }
+
+        resolve(stdout);
+      });
+    });
+
+    return parsePythonJson(rawOutput, scriptName);
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  }
+}
+
+function sendTestError(res, error) {
+  console.error('[Transcript test endpoint failed]', error);
+  return res.status(error.statusCode || 500).json({
+    ok: false,
+    error: error.message || 'Transcript analysis failed.',
+    details: error.details || null
+  });
+}
+
+function withTestUpload(handler) {
+  return async (req, res) => {
+    try {
+      await runUploadMiddleware(req, res, testUpload.single('file'));
+      return handler(req, res);
+    } catch (error) {
+      if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+        error.statusCode = 413;
+        error.message = 'Uploaded file is too large. Maximum upload size is 5 MB.';
+      }
+      return sendTestError(res, error);
+    }
+  };
+}
 
 function extractJsonFromText(text) {
   if (!text) return null;
@@ -269,6 +433,43 @@ async function askAgent(prompt, userId) {
     ...lastResult
   };
 }
+
+router.post('/meeting-minutes-test', withTestUpload(async (req, res) => {
+  try {
+    const transcript = await readTestTranscript(req);
+    validateTranscriptText(transcript.text);
+    const result = await runPythonTranscriptScript('python_llm_meeting_minutes.py', transcript.text);
+
+    return res.json({
+      ok: true,
+      source: transcript.source,
+      fileName: transcript.fileName || null,
+      transcriptLength: transcript.text.length,
+      result
+    });
+  } catch (error) {
+    return sendTestError(res, error);
+  }
+}));
+
+router.post('/project-update-test', withTestUpload(async (req, res) => {
+  try {
+    const transcript = await readTestTranscript(req);
+    validateTranscriptText(transcript.text);
+    const result = await runPythonTranscriptScript('python_llm.py', transcript.text);
+
+    return res.json({
+      ok: true,
+      source: transcript.source,
+      fileName: transcript.fileName || null,
+      transcriptLength: transcript.text.length,
+      result
+    });
+  } catch (error) {
+    return sendTestError(res, error);
+  }
+}));
+
 router.post('/extract-docx', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ ok: false, error: 'No file selected.' });

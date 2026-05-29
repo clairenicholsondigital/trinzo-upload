@@ -9,6 +9,7 @@ const app = express();
 const PORT = process.env.PORT || 3978;
 
 app.use(express.json({ limit: '25mb' }));
+app.use('/static', express.static(path.join(__dirname, 'public')));
 
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'index.html'));
@@ -20,6 +21,14 @@ app.get('/meetings', (req, res) => {
 
 app.get('/review', (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'review.html'));
+});
+
+app.get('/meeting-minutes-test', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'meeting-minutes-test.html'));
+});
+
+app.get('/project-update-test', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'project-update-test.html'));
 });
 
 
