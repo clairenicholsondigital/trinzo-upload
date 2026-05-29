@@ -12,7 +12,7 @@ function extractTextFromUpload(file, mammoth) {
     }));
   }
 
-  if (lowered.endsWith('.txt') || mimeType.startsWith('text/')) {
+  if (lowered.endsWith('.txt') || lowered.endsWith('.csv') || mimeType.startsWith('text/')) {
     return Promise.resolve({
       fileName,
       mimeType,
