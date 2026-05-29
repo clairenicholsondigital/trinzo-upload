@@ -2,3 +2,6 @@ node_modules/
 .env
 agent.log
 *.log
+
+__pycache__/
+.pytest_cache/
