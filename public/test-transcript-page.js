@@ -159,7 +159,6 @@ function meetingMinutesSummary(result) {
     { label: 'Date', value: result.meetingDate || '—' },
     { label: 'Client participants', value: listValue(participants.client) },
     { label: 'Trinzo participants', value: listValue(participants.trinzo) },
-    { label: 'Unknown participants', value: listValue(participants.unknown) },
     { label: 'Action count', value: String(actionCount) }
   ];
 }
