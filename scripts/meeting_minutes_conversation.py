@@ -56,6 +56,8 @@ def extract_response_commitment(
 
     if re.search(r"\b(do both)\b", lowered):
         return {"inherits_task": True, "collaborator": collaborator, "request_count": 2}
+    if re.fullmatch(r"(i'll|i will|i can)[.!]?", lowered):
+        return {"inherits_task": True, "collaborator": collaborator, "request_count": 1}
     if re.search(r"\b(do that|do it|handle that|handle it|take that|take it|look into that|look into it)\b", lowered):
         return {"inherits_task": True, "collaborator": collaborator, "request_count": 1}
     if re.search(r"\bwork with [A-Z][a-z]+ on (?:that|it)\b", stripped, flags=re.IGNORECASE):

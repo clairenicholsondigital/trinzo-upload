@@ -309,6 +309,33 @@ I can't do that before Friday.
 
         self.assertEqual(result["meetingActionPoint"], [])
 
+    def test_refusal_then_later_acceptance_still_creates_action(self):
+        transcript = """Working session
+
+6 June 2026
+
+Jack Cunningham:
+Can you update the API documentation?
+
+Ciara Griffin:
+I won't have time before Friday.
+
+Conor Flynn:
+I will.
+"""
+
+        result = analyse(transcript)
+
+        self.assertIn("Update the API documentation.", result["meetingActionPoint"])
+        index = result["meetingActionPoint"].index("Update the API documentation.")
+        self.assertEqual(result["meetingActionPointOwner"][index], "Conor Flynn")
+        self.assertEqual(result["meetingActionPointDeadline"][index], "")
+        evidence = result["internalEvidence"]["actions"][index]["_evidence"]
+        self.assertGreaterEqual(len(evidence), 3)
+        self.assertEqual(evidence[0]["speaker"], "Jack Cunningham")
+        self.assertTrue(any(item["speaker"] == "Ciara Griffin" for item in evidence))
+        self.assertTrue(any(item["speaker"] == "Conor Flynn" for item in evidence))
+
     def test_request_and_short_volunteer_reply_link_into_actions(self):
         transcript = """General check-in
 

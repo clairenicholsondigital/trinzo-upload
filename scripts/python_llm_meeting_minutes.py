@@ -115,6 +115,7 @@ NON_BUSINESS_PATTERNS = [
     "like and subscribe",
 ]
 OWNER_CONFIDENCE_MIN = 0.55
+CONVERSATIONAL_ACTION_EVIDENCE: dict[str, list[dict[str, str]]] = {}
 
 def load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
@@ -1453,6 +1454,7 @@ def build_structured_actions(
             continue
         if not is_valid_action_output(polished_action):
             continue
+        conversational_evidence = CONVERSATIONAL_ACTION_EVIDENCE.get(polished_action.lower(), [])
         structured.append(
             {
                 "meetingActionPoint": polished_action,
@@ -1460,7 +1462,7 @@ def build_structured_actions(
                 "meetingActionPointDeadline": deadline,
                 "actionConfidence": round(owner_confidence, 2),
                 "relatedMilestone": related_milestone or "unlinked",
-                "_evidence": [evidence_ref(action_turn)] if action_turn else [],
+                "_evidence": dedupe_evidence_refs((conversational_evidence + ([evidence_ref(action_turn)] if action_turn else []))),
             }
         )
     return structured
@@ -1584,6 +1586,8 @@ def extract_named_assignment_actions(raw_turns: list[dict[str, str]], config: di
 
 
 def extract_linked_conversational_actions(raw_turns: list[dict[str, str]], config: dict[str, Any]) -> tuple[list[str], list[str], list[str]]:
+    global CONVERSATIONAL_ACTION_EVIDENCE
+    CONVERSATIONAL_ACTION_EVIDENCE = {}
     actions: list[str] = []
     owners: list[str] = []
     deadlines: list[str] = []
@@ -1611,6 +1615,8 @@ def extract_linked_conversational_actions(raw_turns: list[dict[str, str]], confi
                         "requester": speaker,
                         "sentence_index": sentence_index,
                         "deadline": infer_action_deadline(stripped, {"deadline": ""}, config),
+                        "request_timestamp": turn.get("timestamp", ""),
+                        "evidence_refs": [],
                     }
                 )
                 sentence_index += 1
@@ -1619,6 +1625,14 @@ def extract_linked_conversational_actions(raw_turns: list[dict[str, str]], confi
             commitment = extract_response_commitment(stripped, speaker, config)
             if commitment:
                 if commitment.get("rejects_request"):
+                    for pending in reversed(pending_requests):
+                        if pending.get("requester") != speaker:
+                            pending.setdefault("evidence_refs", []).append(
+                                evidence_ref({"speaker": speaker, "timestamp": turn.get("timestamp", "")})
+                            )
+                            pending["rejected_by"] = speaker
+                            pending["rejection_text"] = stripped
+                            break
                     sentence_index += 1
                     continue
                 if commitment.get("acknowledges_request"):
@@ -1658,6 +1672,16 @@ def extract_linked_conversational_actions(raw_turns: list[dict[str, str]], confi
                             actions.append(action_text)
                             owners.append(speaker or "Owner not specified")
                             deadlines.append(response_deadline or pending.get("deadline", ""))
+                            conversational_refs = [
+                                evidence_ref(
+                                    {"speaker": pending.get("requester", ""), "timestamp": pending.get("request_timestamp", "")}
+                                )
+                            ]
+                            conversational_refs.extend(pending.get("evidence_refs", []))
+                            conversational_refs.append(
+                                evidence_ref({"speaker": speaker, "timestamp": turn.get("timestamp", "")})
+                            )
+                            CONVERSATIONAL_ACTION_EVIDENCE[key] = dedupe_evidence_refs(conversational_refs)
                         pending_requests = [
                             item
                             for item in pending_requests
@@ -1672,6 +1696,9 @@ def extract_linked_conversational_actions(raw_turns: list[dict[str, str]], confi
                             actions.append(action_text)
                             owners.append(speaker or "Owner not specified")
                             deadlines.append(response_deadline)
+                            CONVERSATIONAL_ACTION_EVIDENCE[key] = dedupe_evidence_refs(
+                                [evidence_ref({"speaker": speaker, "timestamp": turn.get("timestamp", "")})]
+                            )
 
             sentence_index += 1
 
