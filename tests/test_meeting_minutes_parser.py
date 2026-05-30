@@ -42,6 +42,7 @@ class MeetingMinutesParserTest(unittest.TestCase):
             ["Review the webinar flow, confirm presentation readiness, and agree final preparation actions."],
         )
         self.assertEqual(len(result["discussionPoints"]), 5)
+        self.assertTrue(all("Agreed RAG status:" not in point for point in result["discussionPoints"]))
         self.assertEqual(len(result["meetingActionPoint"]), 3)
         self.assertEqual(result["meetingActionPointOwner"][0], "Ciara Griffin")
         self.assertEqual(result["meetingActionPointDeadline"][0], "by Friday")
@@ -50,6 +51,11 @@ class MeetingMinutesParserTest(unittest.TestCase):
         self.assertEqual(result["meetingActionPointDeadline"][2], "Before next week")
         self.assertEqual(result["meetingActionPointConfidence"][0], 0.95)
         self.assertEqual(result["meetingActionPointConfidence"][2], 0.2)
+        self.assertEqual(result["meetingActionPointRelatedMilestone"], ["unlinked", "unlinked", "unlinked"])
+        self.assertEqual(result["healthSummary"], {})
+        self.assertEqual(len(result["meetingSections"]), 5)
+        self.assertEqual(result["meetingSections"][0]["section"], "Webinar flow")
+        self.assertIn("webinar flow", result["executiveSummary"].lower())
         self.assertTrue("executiveSummary" in result)
         json.dumps(result)
 
@@ -96,12 +102,14 @@ class MeetingMinutesParserTest(unittest.TestCase):
         self.assertEqual(result["meetingActionPointConfidence"][3], 0.85)
         self.assertEqual(result["healthSummary"]["blue"], 1)
         self.assertEqual(result["healthSummary"]["blocked"], 1)
+        self.assertEqual(result["healthSummary"]["in_review"], 1)
         self.assertIn("AI pipeline strategy remains blocked pending further input.", result["executiveSummary"])
         self.assertIn(
             "Use case intake funnel, Vendor strategy rollout, and Innovation grant feedback remain active workstreams requiring further attention.",
             result["executiveSummary"],
         )
         self.assertNotIn("Three AI webinars delivered. Not complete.", " ".join(result["discussionPoints"]))
+        self.assertEqual(result["meetingSections"], [])
         json.dumps(result)
 
     def test_project_analyser_handles_inline_turn_transcripts(self):

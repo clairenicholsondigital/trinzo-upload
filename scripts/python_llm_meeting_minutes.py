@@ -24,11 +24,9 @@ INLINE_TURN_RE = re.compile(
 )
 MEETING_TYPES = {
     "project_status_review",
-    "governance_review",
-    "steering_group",
-    "implementation_review",
-    "workshop",
     "webinar_rehearsal",
+    "presentation_review",
+    "sales_or_client_discussion",
     "general_meeting",
 }
 MILESTONE_CATEGORY_MAP = {
@@ -43,6 +41,39 @@ MILESTONE_CATEGORY_MAP = {
     "ei_grant_feedback": "governance",
     "ai_governance_framework": "governance",
 }
+WEBINAR_SECTION_RULES = [
+    {
+        "section": "Webinar flow",
+        "keywords": ["webinar", "run through", "flow", "agenda"],
+        "summary": "The team reviewed the webinar agenda and overall flow to make sure the session structure was clear before delivery.",
+    },
+    {
+        "section": "Slides and visuals",
+        "keywords": ["slide", "slides", "imagery", "visual", "deck"],
+        "summary": "Slide content and supporting visuals were reviewed to keep the material clear and consistent with the workshop narrative.",
+    },
+    {
+        "section": "Messaging",
+        "keywords": ["educational", "salesy", "messaging", "scope", "questions"],
+        "summary": "The group refined the messaging so the webinar stayed educational, handled likely questions well, and explained the process clearly.",
+    },
+    {
+        "section": "Demo preparation",
+        "keywords": ["demo", "workshop material", "registration list", "client attendees"],
+        "summary": "Preparation work for the live walkthrough was reviewed, including supporting materials and attendee readiness.",
+    },
+    {
+        "section": "Timing and rehearsal",
+        "keywords": ["timing", "practice", "rehearsal", "before the webinar", "by friday"],
+        "summary": "Timing and rehearsal preparation were discussed so the session could be delivered smoothly and within the planned window.",
+    },
+]
+NON_BUSINESS_PATTERNS = [
+    "try not to vape",
+    "talk french",
+    "take your top off",
+    "like and subscribe",
+]
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -216,10 +247,10 @@ def status_phrase(label: str, status: str) -> str:
     plural = is_plural_label(label)
     mapping = {
         "complete": "were marked complete" if plural else "was marked complete",
+        "in_review": "are in review" if plural else "is in review",
         "in_progress": "are in progress" if plural else "is in progress",
         "scheduled": "are scheduled" if plural else "is scheduled",
         "awaiting_input": "are awaiting input" if plural else "is awaiting input",
-        "needs_review": "need review" if plural else "needs review",
         "delayed": "are delayed" if plural else "is delayed",
         "paused": "are paused" if plural else "is paused",
         "blocked": "are blocked" if plural else "is blocked"
@@ -324,48 +355,57 @@ def infer_item_topic(text: str, config: dict[str, Any]) -> str:
     return config["item_topic_default"]
 
 
-def classify_meeting_type(
-    text: str,
-    analysis: dict[str, Any],
-) -> str:
-    lowered = text.lower()
-    segments = [segment for segment in analysis.get("segments", []) if segment.get("milestone") != "unclassified"]
-    categories = [MILESTONE_CATEGORY_MAP.get(segment["milestone"], "general") for segment in segments]
-    governance_count = categories.count("governance")
-    implementation_count = categories.count("implementation")
-    delivery_count = categories.count("delivery")
+def detect_meeting_mode(cleaned_turns: list[dict[str, Any]]) -> str:
+    score = {
+        "project_status_review": 0,
+        "webinar_rehearsal": 0,
+        "presentation_review": 0,
+        "sales_or_client_discussion": 0,
+        "general_meeting": 0,
+    }
+    webinar_terms = [
+        "webinar", "practice", "rehearsal", "presentation", "slides", "demo", "flow",
+        "timing", "educational", "not salesy", "run through", "practice it",
+    ]
+    project_terms = [
+        "rag", "green", "amber", "red", "blocked", "milestone", "status", "complete",
+        "due", "dependency", "risk", "project update",
+    ]
+    presentation_terms = ["slides", "deck", "presentation", "visual", "imagery"]
+    sales_terms = ["client", "proposal", "pricing", "commercial", "sales"]
 
-    if len(segments) >= 4:
-        return "project_status_review"
-    if any(term in lowered for term in ("practice call", "slide deck", "registration list")):
+    for turn in cleaned_turns:
+        text = " ".join(turn.get("sentences") or [turn.get("text", "")]).lower()
+        score["webinar_rehearsal"] += sum(2 for term in webinar_terms if term in text)
+        score["project_status_review"] += sum(2 for term in project_terms if term in text)
+        score["presentation_review"] += sum(1 for term in presentation_terms if term in text)
+        score["sales_or_client_discussion"] += sum(1 for term in sales_terms if term in text)
+
+    if score["webinar_rehearsal"] >= max(score["project_status_review"] + 1, 4):
         return "webinar_rehearsal"
-    if "webinar" in lowered and len(segments) <= 2:
-        return "webinar_rehearsal"
-    if governance_count and governance_count >= max(delivery_count, implementation_count) and len(segments) <= 3:
-        return "governance_review"
-    if governance_count and delivery_count:
+    if score["project_status_review"] >= max(score["webinar_rehearsal"], 4):
         return "project_status_review"
-    if implementation_count > delivery_count and implementation_count >= 2:
-        return "implementation_review"
-    if "workshop" in lowered:
-        return "workshop"
+    if score["presentation_review"] >= 3:
+        return "presentation_review"
+    if score["sales_or_client_discussion"] >= 3:
+        return "sales_or_client_discussion"
     return "general_meeting"
 
 
-def infer_meeting_theme(meeting_type: str, analysis: dict[str, Any]) -> str:
+def infer_meeting_theme(meeting_type: str, analysis: dict[str, Any], cleaned_turns: list[dict[str, Any]]) -> str:
     segments = [segment for segment in analysis.get("segments", []) if segment.get("milestone") != "unclassified"]
     milestone_names = {segment["milestone"] for segment in segments}
     if meeting_type == "webinar_rehearsal":
         return "Webinar rehearsal and presentation review"
+    if meeting_type == "presentation_review":
+        return "Presentation and delivery review"
+    if meeting_type == "sales_or_client_discussion":
+        return "Client discussion and follow-up review"
     if "ai_governance_framework" in milestone_names and "ai_pipeline_strategy" in milestone_names:
         return "AI delivery and governance review"
     if meeting_type == "project_status_review":
         return "AI programme project status review"
-    if meeting_type == "implementation_review":
-        return "Implementation workstream review"
-    if meeting_type == "governance_review":
-        return "AI delivery and governance review"
-    if meeting_type == "workshop":
+    if any("workshop" in " ".join(turn.get("sentences") or [turn.get("text", "")]).lower() for turn in cleaned_turns):
         return "Workshop review"
     return "General meeting review"
 
@@ -373,14 +413,12 @@ def infer_meeting_theme(meeting_type: str, analysis: dict[str, Any]) -> str:
 def objectives_for_meeting_type(meeting_type: str, meeting_theme: str, analysis: dict[str, Any]) -> list[str]:
     if meeting_type == "project_status_review":
         return ["Review programme milestones, confirm status updates, identify blockers, and agree actions before the next review cycle."]
-    if meeting_type == "implementation_review":
-        return ["Review progress on active workstreams and agree next delivery actions."]
-    if meeting_type == "governance_review":
-        return ["Review governance items, approvals, risks, and required follow-up actions."]
     if meeting_type == "webinar_rehearsal":
         return ["Review the webinar flow, confirm presentation readiness, and agree final preparation actions."]
-    if meeting_type == "workshop":
-        return ["Review workshop objectives, key discussion themes, and agreed follow-up actions."]
+    if meeting_type == "presentation_review":
+        return ["Review the presentation structure, messaging, and delivery preparation."]
+    if meeting_type == "sales_or_client_discussion":
+        return ["Review the client discussion topics, clarify follow-up points, and agree next actions."]
     return [f"Review {meeting_theme.lower()} and agree next actions."]
 
 
@@ -401,6 +439,8 @@ def milestone_outcome_sentence(segment: dict[str, Any], label: str) -> str:
 
     if delivery_status == "complete" and agreed_rag_status == "blue":
         return f"{label} {has} been completed and {plural and 'are' or 'is'} awaiting formal review."
+    if delivery_status == "in_review":
+        return f"{label} {plural and 'are' or 'is'} in review following completion work."
     if delivery_status == "complete" and agreed_rag_status == "green":
         return f"{label} {was} confirmed as complete."
     if delivery_status == "blocked" and agreed_rag_status == "red":
@@ -530,7 +570,7 @@ def build_health_summary(segments: list[dict[str, Any]]) -> dict[str, int]:
         "in_progress": 0,
         "scheduled": 0,
         "awaiting_input": 0,
-        "needs_review": 0,
+        "in_review": 0,
         "delayed": 0,
         "not_started": 0,
     }
@@ -541,6 +581,15 @@ def build_health_summary(segments: list[dict[str, Any]]) -> dict[str, int]:
 
 
 def build_executive_summary(meeting_theme: str, meeting_type: str, segments: list[dict[str, Any]], config: dict[str, Any]) -> str:
+    if meeting_type != "project_status_review":
+        if meeting_type == "webinar_rehearsal":
+            return "The meeting focused on rehearsing the webinar flow, refining supporting materials, and confirming final preparation actions."
+        if meeting_type == "presentation_review":
+            return "The meeting focused on reviewing the presentation structure, messaging, and delivery preparation."
+        if meeting_type == "sales_or_client_discussion":
+            return "The meeting focused on client discussion points, follow-up items, and agreed next actions."
+        return f"The meeting focused on {meeting_theme.lower()}."
+
     complete = [milestone_label(segment, config) for segment in segments if segment.get("delivery_status") == "complete"]
     active = [milestone_label(segment, config) for segment in segments if segment.get("delivery_status") == "in_progress"]
     blocked = [milestone_label(segment, config) for segment in segments if segment.get("delivery_status") == "blocked"]
@@ -609,6 +658,98 @@ def extract_turn_level_discussion_points(raw_turns: list[dict[str, str]]) -> lis
         if len(points) >= 5:
             break
     return dedupe(points)
+
+
+def is_business_relevant(text: str) -> bool:
+    lowered = text.lower()
+    return not any(pattern in lowered for pattern in NON_BUSINESS_PATTERNS)
+
+
+def cluster_sentence_for_mode(sentence: str, meeting_mode: str) -> str | None:
+    lowered = sentence.lower()
+    if not is_business_relevant(sentence):
+        return None
+    if meeting_mode == "webinar_rehearsal":
+        if any(term in lowered for term in ("agenda", "flow", "run through", "before the webinar")):
+            return "Webinar agenda and flow"
+        if any(term in lowered for term in ("workshop", "validation team", "clear view", "process questions")):
+            return "Case study and AI discovery workshop explanation"
+        if any(term in lowered for term in ("slide", "slides", "deck", "imagery", "visual")):
+            return "Slide design and workshop imagery"
+        if any(term in lowered for term in ("educational", "salesy", "scope")):
+            return "Educational positioning rather than sales-led messaging"
+        if any(term in lowered for term in ("demo", "registration list", "client attendees")):
+            return "Live demo setup and framing"
+        if any(term in lowered for term in ("timeline", "timing", "practice", "rehearsal", "friday", "next week")):
+            return "Timing and rehearsal preparation"
+    if meeting_mode == "presentation_review":
+        if any(term in lowered for term in ("slide", "deck", "presentation", "visual")):
+            return "Presentation structure and visuals"
+    if meeting_mode == "sales_or_client_discussion":
+        if any(term in lowered for term in ("client", "proposal", "commercial", "sales")):
+            return "Client priorities and follow-up"
+    return None
+
+
+def build_cluster_sentence(cluster: str, sentences: list[str]) -> str:
+    if cluster == "Webinar agenda and flow":
+        return "The team reviewed the webinar agenda and flow so the session sequence would be clear before delivery."
+    if cluster == "Case study and AI discovery workshop explanation":
+        return "Discussion covered how the workshop approach should be explained so attendees understood the context behind the webinar content."
+    if cluster == "Slide design and workshop imagery":
+        return "Slide content and supporting visuals were reviewed to keep the material clear and aligned with the workshop narrative."
+    if cluster == "Educational positioning rather than sales-led messaging":
+        return "The messaging was positioned as educational and process-led rather than overtly sales-focused."
+    if cluster == "Live demo setup and framing":
+        return "The group reviewed practical preparation items for the live walkthrough, including attendee readiness and supporting materials."
+    if cluster == "Timing and rehearsal preparation":
+        return "Timing and rehearsal preparation were reviewed so the session could be delivered smoothly and within the planned window."
+    if cluster == "Presentation structure and visuals":
+        return "The presentation structure and visuals were reviewed to improve clarity and delivery."
+    if cluster == "Client priorities and follow-up":
+        return "Client-facing discussion points and follow-up priorities were clarified during the meeting."
+    fallback = sentences[0] if sentences else ""
+    return finalize_sentence(sentence_case(normalize_text_fragment(fallback)))
+
+
+def extract_general_discussion_points(cleaned_turns: list[dict[str, Any]], meeting_mode: str) -> list[str]:
+    clusters: dict[str, list[str]] = {}
+    for turn in cleaned_turns:
+        for sentence in turn.get("sentences") or [turn.get("text", "")]:
+            cluster = cluster_sentence_for_mode(sentence, meeting_mode)
+            if not cluster:
+                continue
+            clusters.setdefault(cluster, []).append(sentence)
+    points = [build_cluster_sentence(cluster, sentences) for cluster, sentences in clusters.items()]
+    return points[:8]
+
+
+def build_meeting_sections(cleaned_turns: list[dict[str, Any]], meeting_mode: str, structured_actions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if meeting_mode != "webinar_rehearsal":
+        return []
+    lowered_actions = [item["meetingActionPoint"] for item in structured_actions]
+    sections = []
+    for rule in WEBINAR_SECTION_RULES:
+        matching_sentences = []
+        matching_actions = []
+        for turn in cleaned_turns:
+            for sentence in turn.get("sentences") or [turn.get("text", "")]:
+                lowered = sentence.lower()
+                if any(keyword in lowered for keyword in rule["keywords"]) and is_business_relevant(sentence):
+                    matching_sentences.append(sentence)
+        for action in lowered_actions:
+            lowered = action.lower()
+            if any(keyword in lowered for keyword in rule["keywords"]):
+                matching_actions.append(action)
+        if matching_sentences or matching_actions:
+            sections.append(
+                {
+                    "section": rule["section"],
+                    "summary": rule["summary"],
+                    "actions": matching_actions,
+                }
+            )
+    return sections
 
 
 def extract_action_block(raw_turns: list[dict[str, str]]) -> tuple[list[str], str]:
@@ -908,9 +1049,10 @@ def build_project_review_actions(
 def build_template_values(text: str, analysis: dict[str, Any], turns: list[Any], config: dict[str, Any]) -> dict[str, Any]:
     meeting_title, meeting_date, meeting_location = extract_header_fields(text, config)
     raw_turns = extract_raw_turn_entries(text)
+    cleaned_turns = analysis.get("cleaned_turns", [])
     segments = [segment for segment in analysis["segments"] if segment.get("milestone") != "unclassified"]
-    meeting_type = classify_meeting_type(text, analysis)
-    meeting_theme = infer_meeting_theme(meeting_type, analysis)
+    meeting_type = detect_meeting_mode(cleaned_turns)
+    meeting_theme = infer_meeting_theme(meeting_type, analysis, cleaned_turns)
     if not meeting_title:
         meeting_title = meeting_theme
 
@@ -925,7 +1067,7 @@ def build_template_values(text: str, analysis: dict[str, Any], turns: list[Any],
     actions, block_deadline = extract_action_block(raw_turns)
     if meeting_type == "project_status_review":
         structured_actions = build_project_review_actions(segments, raw_turns, config)
-    elif meeting_type == "webinar_rehearsal":
+    elif meeting_type in {"webinar_rehearsal", "presentation_review", "sales_or_client_discussion", "general_meeting"}:
         if not actions:
             actions, action_owners, action_deadlines = extract_generic_actions(text, raw_turns, config)
         else:
@@ -934,6 +1076,8 @@ def build_template_values(text: str, analysis: dict[str, Any], turns: list[Any],
         if not actions:
             actions, action_owners, action_deadlines = extract_fallback_actions(raw_turns, config)
         structured_actions = build_structured_actions(actions, action_owners, action_deadlines, raw_turns, config)
+        for item in structured_actions:
+            item["relatedMilestone"] = "unlinked"
     elif actions:
         action_owners = [owner_for_action(action, config) for action in actions]
         action_deadlines = [deadline_for_action(action, block_deadline, config) for action in actions]
@@ -941,13 +1085,16 @@ def build_template_values(text: str, analysis: dict[str, Any], turns: list[Any],
     else:
         structured_actions = []
 
-    discussion_points = build_milestone_discussion_points(segments, config) if meeting_type != "webinar_rehearsal" else []
-    if not discussion_points and meeting_type == "webinar_rehearsal":
-        discussion_points = build_discussion_points(analysis["segments"], config)
-    if not discussion_points and meeting_type == "webinar_rehearsal":
+    discussion_points = build_milestone_discussion_points(segments, config) if meeting_type == "project_status_review" else []
+    if not discussion_points and meeting_type != "project_status_review":
+        discussion_points = extract_general_discussion_points(cleaned_turns, meeting_type)
+    if not discussion_points and meeting_type != "project_status_review":
         discussion_points = extract_generic_discussion_points(text, raw_turns, config)
-    if not discussion_points and meeting_type == "webinar_rehearsal":
+    if not discussion_points and meeting_type != "project_status_review":
         discussion_points = extract_turn_level_discussion_points(raw_turns)
+
+    meeting_sections = build_meeting_sections(cleaned_turns, meeting_type, structured_actions)
+    health_summary = build_health_summary(segments) if meeting_type == "project_status_review" else {}
 
     template_values = {
         "meetingTitle": meeting_title,
@@ -967,7 +1114,8 @@ def build_template_values(text: str, analysis: dict[str, Any], turns: list[Any],
         "meetingActionPointRelatedMilestone": [item["relatedMilestone"] for item in structured_actions],
         "actions": structured_actions,
         "executiveSummary": build_executive_summary(meeting_theme, meeting_type, segments, config),
-        "healthSummary": build_health_summary(segments),
+        "healthSummary": health_summary,
+        "meetingSections": meeting_sections,
     }
     return template_values
 
