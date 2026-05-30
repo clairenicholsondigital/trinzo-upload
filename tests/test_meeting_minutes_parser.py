@@ -35,8 +35,8 @@ class MeetingMinutesParserTest(unittest.TestCase):
         self.assertEqual(result["meetingType"], "webinar_rehearsal")
         self.assertEqual(result["meetingStyle"], "feedback_review")
         self.assertEqual(result["meetingTheme"], "Webinar rehearsal and presentation review")
-        self.assertEqual(result["participants.client"], ["Ciara Griffin"])
-        self.assertEqual(result["participants.trinzo"], ["Conor Flynn", "Jack Cunningham"])
+        self.assertEqual(result["participants.client"], [])
+        self.assertEqual(result["participants.trinzo"], ["Ciara Griffin", "Conor Flynn", "Jack Cunningham"])
         self.assertEqual(result["itemTopic"], "Webinar rehearsal and presentation review")
         self.assertEqual(
             result["meetingObjectives"],
@@ -137,8 +137,8 @@ Jack Cunningham   1:10Agreed, let's keep the session educational rather than sal
             ["Review programme milestones, confirm status updates, identify blockers, and agree actions before the next review cycle."],
         )
         self.assertEqual(result["itemTopic"], "AI delivery and governance review")
-        self.assertEqual(result["participants.client"], ["Ciara Griffin"])
-        self.assertEqual(result["participants.trinzo"], ["Conor Flynn"])
+        self.assertEqual(result["participants.client"], [])
+        self.assertEqual(result["participants.trinzo"], ["Ciara Griffin", "Conor Flynn"])
         self.assertEqual(len(result["discussionPoints"]), 10)
         self.assertEqual(
             result["discussionPoints"][2],
@@ -154,7 +154,7 @@ Jack Cunningham   1:10Agreed, let's keep the session educational rather than sal
         )
         self.assertEqual(
             result["discussionPoints"][6],
-            "Ad hoc SOW delivery remains in progress. One request is scheduled, one is underway, and one has not yet been scoped. Clearer visibility on workload is still needed. Agreed RAG status: green.",
+            "Ad hoc Statement of Work (SOW) delivery remains in progress. One request is scheduled, one is underway, and one has not yet been scoped. Clearer visibility on workload is still needed. Agreed RAG status: green.",
         )
         self.assertEqual(
             result["discussionPoints"][7],
@@ -179,6 +179,12 @@ Jack Cunningham   1:10Agreed, let's keep the session educational rather than sal
         self.assertEqual(result["meetingSections"], [])
         self.assertEqual(result["decisions"], [])
         json.dumps(result)
+
+    def test_glossary_expands_known_abbreviations_in_minutes_output(self):
+        project_transcript = PROJECT_FIXTURE.read_text(encoding="utf-8")
+        result = analyse(project_transcript)
+
+        self.assertIn("Statement of Work (SOW)", " ".join(result["discussionPoints"]))
 
     def test_project_analyser_handles_inline_turn_transcripts(self):
         result = analyse_project(self.transcript)

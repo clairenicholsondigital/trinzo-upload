@@ -16,6 +16,7 @@ from typing import Any
 REPO_DIR = Path(__file__).resolve().parent.parent
 PYTHON_LLM_SCRIPT = REPO_DIR / "scripts" / "python_llm.py"
 MINUTES_CONFIG = REPO_DIR / "config" / "meeting_minutes_rules.json"
+GLOSSARY_CONFIG = REPO_DIR / "config" / "meeting_minutes_glossary.json"
 TURN_RE = re.compile(r"^(?P<speaker>.+?)\s+(?P<timestamp>\d+:\d{2})$")
 RAW_SPEAKER_RE = re.compile(r"^([A-Z][A-Za-z ]+?)\s+\d+:\d{2}", re.MULTILINE)
 INLINE_TURN_RE = re.compile(
@@ -93,6 +94,12 @@ NON_DECISION_PATTERNS = [
 
 def load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def load_glossary(path: Path) -> dict[str, str]:
+    if not path.exists():
+        return {}
+    return {key: value for key, value in load_json(path).items() if isinstance(key, str) and isinstance(value, str)}
 
 
 def load_analyzer_module():
@@ -281,6 +288,34 @@ def dedupe_evidence_refs(refs: list[dict[str, str]]) -> list[dict[str, str]]:
         seen.add(key)
         output.append(ref)
     return output
+
+
+def expand_known_abbreviations(text: str, glossary: dict[str, str]) -> str:
+    expanded = text
+    for acronym, meaning in sorted(glossary.items(), key=lambda item: len(item[0]), reverse=True):
+        if meaning.lower() in expanded.lower():
+            continue
+        pattern = re.compile(rf"\b{re.escape(acronym)}\b")
+        expanded = pattern.sub(f"{meaning} ({acronym})", expanded)
+    return expanded
+
+
+def apply_glossary_to_output(value: Any, glossary: dict[str, str]) -> Any:
+    if not glossary:
+        return value
+    if isinstance(value, str):
+        return expand_known_abbreviations(value, glossary)
+    if isinstance(value, list):
+        return [apply_glossary_to_output(item, glossary) for item in value]
+    if isinstance(value, dict):
+        output: dict[str, Any] = {}
+        for key, item in value.items():
+            if key in {"meetingActionPointOwner", "meetingActionPointDeadline", "relatedMilestone", "_evidence", "speaker", "timestamp"}:
+                output[key] = item
+            else:
+                output[key] = apply_glossary_to_output(item, glossary)
+        return output
+    return value
 
 
 def decision_signal_score(text: str) -> float:
@@ -1598,7 +1633,8 @@ def build_template_values(text: str, analysis: dict[str, Any], turns: list[Any],
         "decisionDetails": decision_details,
         "internalEvidence": internal_evidence,
     }
-    return template_values
+    glossary = load_glossary(GLOSSARY_CONFIG)
+    return apply_glossary_to_output(template_values, glossary)
 
 
 def parse_speaker_turns(text: str) -> list[Any]:
