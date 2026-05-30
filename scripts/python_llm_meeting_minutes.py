@@ -12,12 +12,12 @@ from pathlib import Path
 import sys
 from typing import Any
 
-from meeting_minutes_patterns import (
-    DECISION_CUE_PATTERNS,
-    DECISION_ACCEPTANCE_PATTERNS,
-    NON_DECISION_PATTERNS,
-)
 try:
+    from .meeting_minutes_patterns import (
+        DECISION_CUE_PATTERNS,
+        DECISION_ACCEPTANCE_PATTERNS,
+        NON_DECISION_PATTERNS,
+    )
     from .meeting_minutes_conversation import (
         build_linked_action_text as conversation_build_linked_action_text,
         extract_request_task as conversation_extract_request_task,
@@ -32,6 +32,11 @@ try:
         split_sentences as text_split_sentences,
     )
 except ImportError:
+    from meeting_minutes_patterns import (
+        DECISION_CUE_PATTERNS,
+        DECISION_ACCEPTANCE_PATTERNS,
+        NON_DECISION_PATTERNS,
+    )
     from meeting_minutes_conversation import (
         build_linked_action_text as conversation_build_linked_action_text,
         extract_request_task as conversation_extract_request_task,
