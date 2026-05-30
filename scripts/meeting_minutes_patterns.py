@@ -37,14 +37,53 @@ DECISION_ACCEPTANCE_PATTERNS = [
 ]
 
 NON_DECISION_PATTERNS = [
+    # Questions
     re.compile(r"\?$"),
+
+    # Agenda/navigation chatter
     re.compile(
         r"^\s*(?:agenda|today|first|next|then|what we want to do|we're working through|we are working through)\b",
         re.IGNORECASE,
     ),
+
+    # Meeting admin
     re.compile(r"\blet's capture actions\b", re.IGNORECASE),
+
+    # Discussion rather than decisions
     re.compile(
         r"\b(?:risk is|there is a risk|may ask|might ask|could ask|for example|that means|this means|we discussed|we reviewed|we considered)\b",
+        re.IGNORECASE,
+    ),
+
+    # Generic filler statements
+    re.compile(
+        r"\blet'?s see if we can\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\bthat's just kind of\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\bgive you a bit of background\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\bdo you see where i'm getting at\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\bif that makes sense\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\byou know\b",
+        re.IGNORECASE,
+    ),
+
+    # Rehearsal/presentation filler
+    re.compile(
+        r"^\s*(?:say|talk through|go through|show|remember when)\b",
         re.IGNORECASE,
     ),
 ]
