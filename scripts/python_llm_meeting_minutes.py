@@ -269,6 +269,44 @@ def dedupe_evidence_refs(refs: list[dict[str, str]]) -> list[dict[str, str]]:
     return output
 
 
+def rank_turn_evidence(turn: dict[str, Any], meeting_mode: str) -> float:
+    text = " ".join(turn.get("sentences") or [turn.get("text", "")]).lower()
+    score = 0.0
+    if not is_business_relevant(text):
+        return 0.0
+    if meeting_mode == "project_status_review":
+        if any(term in text for term in ("blocked", "complete", "amber", "green", "red", "blue", "review", "scheduled")):
+            score += 0.8
+        if any(term in text for term in ("risk", "dependency", "input", "templates", "sales")):
+            score += 0.4
+    else:
+        if any(term in text for term in ("webinar", "workshop", "slide", "deck", "demo", "timeline", "scope", "registration", "attendees")):
+            score += 0.7
+        if any(term in text for term in ("agree", "should", "need", "must", "update", "check", "confirm", "review", "questions")):
+            score += 0.4
+        if any(term in text for term in ("educational", "salesy", "validation team", "process questions")):
+            score += 0.3
+    return round(score, 2)
+
+
+def ranked_turns(cleaned_turns: list[dict[str, Any]], meeting_mode: str) -> list[dict[str, Any]]:
+    ranked = []
+    for turn in cleaned_turns:
+        score = rank_turn_evidence(turn, meeting_mode)
+        if score <= 0:
+            continue
+        ranked.append(
+            {
+                "speaker": turn.get("speaker", ""),
+                "timestamp": turn.get("timestamp", ""),
+                "sentences": turn.get("sentences") or [turn.get("text", "")],
+                "score": score,
+            }
+        )
+    ranked.sort(key=lambda item: item["score"], reverse=True)
+    return ranked
+
+
 def strip_leading_speaker_reference(text: str) -> str:
     cleaned = text.strip()
     cleaned = re.sub(r"^can you\s+[A-Z][a-z]+\s+", "", cleaned, flags=re.IGNORECASE)
@@ -734,6 +772,49 @@ def build_executive_summary(meeting_theme: str, meeting_type: str, segments: lis
     return "\n\n".join(paragraphs[:3]).strip()
 
 
+def build_evidence_only_summary(
+    cleaned_turns: list[dict[str, Any]],
+    meeting_type: str,
+    discussion_point_details: list[dict[str, Any]],
+    decision_details: list[dict[str, Any]],
+    structured_actions: list[dict[str, Any]],
+) -> str:
+    if meeting_type == "project_status_review":
+        return ""
+
+    ranked = ranked_turns(cleaned_turns, meeting_type)
+    sentences: list[str] = []
+
+    if meeting_type == "webinar_rehearsal":
+        purpose = "The meeting focused on rehearsing the webinar delivery and checking presentation readiness."
+        sentences.append(purpose)
+    elif ranked:
+        lead = normalize_text_fragment((ranked[0]["sentences"] or [""])[0])
+        if lead:
+            sentences.append(finalize_sentence(sentence_case(lead)))
+
+    if discussion_point_details:
+        sentences.append(discussion_point_details[0]["discussionPoint"])
+    if len(discussion_point_details) > 1:
+        sentences.append(discussion_point_details[1]["discussionPoint"])
+    if decision_details:
+        sentences.append(f"Key decisions included {normalize_text_fragment(decision_details[0]['decision']).lower()}.")
+    if structured_actions:
+        actions_text = format_label_list([item["meetingActionPoint"].rstrip(".") for item in structured_actions[:2]])
+        sentences.append(finalize_sentence(f"Actions agreed included {actions_text.lower()}"))
+
+    unique: list[str] = []
+    seen = set()
+    for sentence in sentences:
+        cleaned = finalize_sentence(sentence)
+        key = cleaned.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(cleaned)
+    return " ".join(unique[:5]).strip()
+
+
 def extract_generic_discussion_points(text: str, raw_turns: list[dict[str, str]], config: dict[str, Any]) -> list[str]:
     points: list[str] = []
     source_turns = raw_turns or [{"speaker": "", "content": text}]
@@ -834,10 +915,12 @@ def extract_general_discussion_details(cleaned_turns: list[dict[str, Any]], meet
             )
     details = []
     for cluster, sentences in clusters.items():
+        evidence = dedupe_evidence_refs(cluster_refs.get(cluster, []))
         details.append(
             {
                 "discussionPoint": build_cluster_sentence(cluster, sentences),
-                "_evidence": dedupe_evidence_refs(cluster_refs.get(cluster, [])),
+                "_evidence": evidence,
+                "evidenceScore": round(min(1.0, 0.45 + 0.15 * len(evidence)), 2),
             }
         )
     return details[:8]
@@ -1062,20 +1145,28 @@ def build_decisions(
         return [], []
 
     details: list[dict[str, Any]] = []
-    for turn in cleaned_turns:
-        text = " ".join(turn.get("sentences") or [turn.get("text", "")])
+    for turn in ranked_turns(cleaned_turns, meeting_mode):
+        text = " ".join(turn.get("sentences") or [""])
         lowered = text.lower()
         decision = ""
+        confidence = 0.0
         if "need a clear view of what happens before the webinar" in lowered:
             decision = "The webinar should show the validation team what happens before the session begins."
+            confidence = 0.82
         elif "main issue is making sure the timeline is clear" in lowered or ("timeline is clear" in lowered and "scope" in lowered):
             decision = "The webinar should explain the timeline and scope more clearly."
+            confidence = 0.78
         elif "may ask detailed process questions" in lowered:
             decision = "The workshop material should prepare for detailed process questions from attendees."
+            confidence = 0.74
+        elif "not salesy" in lowered or "educational" in lowered:
+            decision = "The webinar should remain educational rather than sounding sales-led."
+            confidence = 0.72
         if decision:
             details.append(
                 {
                     "decision": decision,
+                    "decisionConfidence": confidence,
                     "_evidence": [{"speaker": turn.get("speaker", ""), "timestamp": turn.get("timestamp", "")}],
                 }
             )
@@ -1085,6 +1176,7 @@ def build_decisions(
             details.append(
                 {
                     "decision": action["meetingActionPoint"],
+                    "decisionConfidence": 0.58,
                     "_evidence": action.get("_evidence", []),
                 }
             )
@@ -1097,7 +1189,7 @@ def build_decisions(
             continue
         seen.add(key)
         unique_details.append(item)
-    return [item["decision"] for item in unique_details], unique_details
+    return [item["decision"] for item in unique_details], unique_details[:5]
 
 
 def build_internal_evidence(
@@ -1347,6 +1439,15 @@ def build_template_values(text: str, analysis: dict[str, Any], turns: list[Any],
     meeting_sections = build_meeting_sections(cleaned_turns, meeting_type, structured_actions)
     health_summary = build_health_summary(segments) if meeting_type == "project_status_review" else {}
     decisions, decision_details = build_decisions(cleaned_turns, meeting_type, structured_actions)
+    executive_summary = build_evidence_only_summary(
+        cleaned_turns,
+        meeting_type,
+        discussion_point_details,
+        decision_details,
+        structured_actions,
+    )
+    if not executive_summary:
+        executive_summary = build_executive_summary(meeting_theme, meeting_type, segments, config)
     internal_evidence = build_internal_evidence(
         discussion_point_details,
         structured_actions,
@@ -1372,7 +1473,7 @@ def build_template_values(text: str, analysis: dict[str, Any], turns: list[Any],
         "meetingActionPointConfidence": [item["actionConfidence"] for item in structured_actions],
         "meetingActionPointRelatedMilestone": [item["relatedMilestone"] for item in structured_actions],
         "actions": structured_actions,
-        "executiveSummary": build_executive_summary(meeting_theme, meeting_type, segments, config),
+        "executiveSummary": executive_summary,
         "healthSummary": health_summary,
         "meetingSections": meeting_sections,
         "decisions": decisions,
