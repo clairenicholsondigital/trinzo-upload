@@ -1,0 +1,170 @@
+{
+  "meeting_location_default": "Online",
+  "meeting_objectives_default": [
+    "Review AI programme milestone progress",
+    "Identify risks, blockers and next actions"
+  ],
+  "item_topic_default": "AI programme milestone review",
+  "participant_groups": {
+    "Ciara Griffin": "client",
+    "Conor Flynn": "trinzo",
+    "Jack Cunningham": "trinzo"
+  },
+  "item_topic_rules": [
+    {
+      "contains_any": ["practice call", "webinar"],
+      "topic": "Webinar rehearsal and presentation review"
+    },
+    {
+      "contains_any": ["ai programme", "milestone"],
+      "topic": "AI programme milestone review"
+    }
+  ],
+  "generic_objective_rules": [
+    {
+      "contains_any": ["agenda", "welcome and kick off", "kick off by"],
+      "objective": "Review and refine the webinar agenda and delivery flow"
+    },
+    {
+      "contains_any": ["live demonstration", "demo", "solutions that came out of that project", "case study"],
+      "objective": "Align the case study and demo narrative for the webinar"
+    },
+    {
+      "contains_any": ["keep it educational", "not salesy", "provide roi", "not sales-led"],
+      "objective": "Keep the webinar educational and audience-appropriate"
+    },
+    {
+      "contains_any": ["practice it", "tight for time", "flow", "practice call"],
+      "objective": "Tighten the presentation flow, timing, and handoffs before the webinar"
+    }
+  ],
+  "generic_discussion_rules": [
+    {
+      "contains_any": ["complaints handling process", "cycle time", "regulated workflow"],
+      "point": "The team reviewed the complaints-handling case study and how it demonstrates AI opportunity identification in a regulated workflow."
+    },
+    {
+      "contains_any": ["ai discovery workshop", "define, measure, analyze, improve, and control", "gemba observation"],
+      "point": "They discussed the AI discovery workshop method and how it is used to identify process improvement opportunities."
+    },
+    {
+      "contains_any": ["there are no people", "add people to this", "hands-on", "picture"],
+      "point": "They agreed the slides need stronger, more people-centred visuals to match the practical nature of the workshop."
+    },
+    {
+      "contains_any": ["responsible adoption of ai in a gxp environment", "gxp setting", "regulatory expertise"],
+      "point": "They refined the wording around responsible AI adoption in a GXP or regulated environment."
+    },
+    {
+      "contains_any": ["repetitive", "consistent structure", "knowledge", "delegation", "triage system"],
+      "point": "They reviewed the criteria used to decide whether a process is a good candidate for AI automation."
+    },
+    {
+      "contains_any": ["not salesy", "keep it educational", "first time we're talking about our offerings"],
+      "point": "They agreed the webinar should stay educational rather than sounding overly sales-led."
+    },
+    {
+      "contains_any": ["low-hanging fruit", "reduce the burden", "boxes", "augment where their knowledge might be limited"],
+      "point": "They shaped the demo narrative around a low-hanging-fruit triage use case that adds value quickly."
+    },
+    {
+      "contains_any": ["tight for time", "7 minutes", "click through really quickly", "keep them as simple as possible"],
+      "point": "They discussed time management, simpler slides, and the need to keep each section concise."
+    },
+    {
+      "contains_any": ["upskill team", "learning culture", "what it is what it's not", "adoption is still going to be a challenge"],
+      "point": "They discussed adoption and upskilling, including the need to build AI understanding across the client team."
+    }
+  ],
+  "milestone_labels": {
+    "repeatable_ai_use_cases": "Repeatable AI use cases",
+    "use_case_intake_funnel": "Use case intake funnel",
+    "stage_gate_internal_review": "Stage gate review process",
+    "ai_pipeline_strategy": "AI pipeline strategy",
+    "webinars": "AI webinars",
+    "ai_commercial_impact_report": "AI Commercial Impact Report",
+    "ad_hoc_sows": "Ad hoc SOW delivery",
+    "stage_gate_vendor_strategy": "Vendor strategy rollout",
+    "ei_grant_feedback": "Innovation grant feedback",
+    "ai_governance_framework": "AI governance framework draft"
+  },
+  "action_owner_rules": [
+    {
+      "contains_any": ["grant", "emma"],
+      "owner": "Emma"
+    },
+    {
+      "contains_any": ["sales", "pipeline", "vendor", "stage gate", "routing"],
+      "owner": "Ciara Griffin / Conor Flynn"
+    }
+  ],
+  "action_deadline_rules": [
+    {
+      "contains_any": ["this week", "grant", "follow up"],
+      "deadline": "This week"
+    },
+    {
+      "contains_any": ["tomorrow"],
+      "deadline": "Tomorrow"
+    },
+    {
+      "contains_any": ["next week"],
+      "deadline": "Before next week"
+    },
+    {
+      "contains_any": ["tomorrow", "before webinar", "practice call"],
+      "deadline": "Before the webinar"
+    }
+  ],
+  "generic_action_rules": [
+    {
+      "contains_any": ["find a way to clean that up"],
+      "action": "Tighten the wording in the opening presentation sections.",
+      "owner": "Jack Cunningham",
+      "deadline": "Before the webinar"
+    },
+    {
+      "contains_any": ["use the phrase", "responsible adoption of ai in a gxp setting"],
+      "action": "Update the regulatory messaging to use the responsible AI adoption phrasing.",
+      "owner": "Jack Cunningham",
+      "deadline": "Before the webinar"
+    },
+    {
+      "contains_any": ["add people to this", "picture", "there are no people there"],
+      "action": "Improve the slides with stronger workshop-room imagery and more human visual context.",
+      "owner": "Ciara Griffin",
+      "deadline": "Before the webinar"
+    },
+    {
+      "contains_any": ["practice it a couple more times", "practice it a lot"],
+      "action": "Run a few more practice rounds to tighten timing and delivery.",
+      "owner": "Jack Cunningham / Conor Flynn / Ciara Griffin",
+      "owner_mode": "speaker",
+      "deadline": "Before the webinar"
+    },
+    {
+      "contains_any": ["don't just jump into the demo", "explain what you're actually doing"],
+      "action": "Add a clearer spoken setup before the live demo starts.",
+      "owner": "Conor Flynn",
+      "deadline": "Before the webinar"
+    },
+    {
+      "contains_any": ["not salesy", "keep it educational", "not sales-led"],
+      "action": "Keep the webinar framing educational rather than sales-led.",
+      "owner": "Ciara Griffin / Conor Flynn / Jack Cunningham",
+      "deadline": "Before the webinar"
+    },
+    {
+      "contains_any": ["keep them as simple as possible", "vertical list", "picture on the far side"],
+      "action": "Simplify the slide layouts so the spoken delivery carries the detail.",
+      "owner": "Ciara Griffin",
+      "deadline": "Before the webinar"
+    },
+    {
+      "contains_any": ["double down on the delegation", "decision maker", "responsible people"],
+      "action": "Clarify the delegation and decision-making explanation in the AI suitability section.",
+      "owner": "Ciara Griffin",
+      "deadline": "Before the webinar"
+    }
+  ]
+}

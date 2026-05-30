@@ -1,0 +1,275 @@
+{
+  "filler_exact": [
+    "yeah",
+    "yeah.",
+    "yeah, yeah",
+    "yeah, yeah.",
+    "mhm",
+    "mhm.",
+    "okay",
+    "okay.",
+    "that's fine",
+    "that’s fine",
+    "no",
+    "no."
+  ],
+  "filler_fragments": [
+    "you know what i mean",
+    "mhm",
+    "yeah",
+    "okay stop that",
+    "turn off the button",
+    "what was the second thing",
+    "was that with the",
+    "stats report",
+    "i think again",
+    "stop that"
+  ],
+  "weak_openers": [
+    "yeah",
+    "mhm",
+    "okay",
+    "ok",
+    "so",
+    "and",
+    "but",
+    "well"
+  ],
+  "status_cues": {
+    "complete": [
+      "let's say complete",
+      "lets say complete",
+      "is complete",
+      "complete"
+    ],
+    "in_review": [
+      "in review",
+      "needs review from leadership",
+      "pending leadership review",
+      "status blue",
+      "blue"
+    ],
+    "scheduled": [
+      "end of the quarter",
+      "due at the end of the quarter",
+      "is booked",
+      "booked",
+      "still due end of quarter",
+      "not due yet",
+      "planned",
+      "pending"
+    ],
+    "blocked": [
+      "still blocked",
+      "can't be until",
+      "cannot be until",
+      "waiting on",
+      "due to a sales capacity issue",
+      "need sales input",
+      "don't have it"
+    ],
+    "paused": [
+      "on pause",
+      "paused"
+    ],
+    "at_risk": [
+      "at risk",
+      "amber",
+      "red",
+      "needs refinement",
+      "haven't finalised",
+      "pushed out",
+      "take a while",
+      "gonna take a while",
+      "going to take a while",
+      "needs more work",
+      "isn't working properly yet",
+      "is not operational",
+      "not operational",
+      "doesn't exist yet"
+    ],
+    "waiting": [
+      "until we hear more",
+      "nothing came in",
+      "nothing received",
+      "no update",
+      "follow up this week"
+    ],
+    "in_progress": [
+      "still building that",
+      "in the middle of that",
+      "we need to have the call",
+      "start putting them through",
+      "documenting it more",
+      "refining it more",
+      "underway",
+      "routing isn't working properly yet",
+      "going to reach out"
+    ],
+    "green": [
+      "green",
+      "delivered",
+      "on track"
+    ]
+  },
+  "blocker_cues": [
+    "still blocked",
+    "can't be until",
+    "cannot be until",
+    "due to a sales capacity issue",
+    "waiting on",
+    "on pause",
+    "need sales input",
+    "don't have it"
+  ],
+  "action_cues": [
+    "we need to",
+    "we will",
+    "we should",
+    "going to reach out",
+    "discuss tomorrow",
+    "start putting them through",
+    "review and maybe add",
+    "strengthen where we can improve",
+    "follow up",
+    "review stage gate templates",
+    "confirm ai pipeline dependencies with sales",
+    "draft vendor strategy document",
+    "validate intake workflow routing"
+  ],
+  "status_signals": {
+    "red": "blocked",
+    "amber": "at_risk",
+    "green": "green",
+    "blue": "in_review"
+  },
+  "reason_signals": {
+    "positive": {
+      "complete": [
+        "complete",
+        "completed version one yesterday",
+        "live and documented",
+        "actual deliverable is there",
+        "delivered"
+      ],
+      "operational": [
+        "operational",
+        "on track",
+        "healthy",
+        "active",
+        "validated"
+      ]
+    },
+    "attention": {
+      "scheduled": [
+        "booked",
+        "still due end of quarter",
+        "end of quarter",
+        "planned",
+        "scheduled"
+      ],
+      "needs_review": [
+        "needs review",
+        "pending leadership review",
+        "haven't finalised the templates",
+        "needs refinement"
+      ],
+      "awaiting_input": [
+        "follow up this week",
+        "no update",
+        "nothing received",
+        "waiting on",
+        "need sales input"
+      ],
+      "delayed": [
+        "amber",
+        "not operational",
+        "isn't working properly yet",
+        "doesn't exist yet",
+        "later in june"
+      ]
+    },
+    "negative": {
+      "blocked": [
+        "still blocked",
+        "cannot proceed",
+        "can't be until",
+        "don't have it"
+      ],
+      "capacity_issue": [
+        "capacity issue",
+        "visibility on workload",
+        "resource constrained"
+      ],
+      "not_scoped": [
+        "hasn't been scoped",
+        "not scoped"
+      ],
+      "dependency_blocked": [
+        "need sales input",
+        "don't have it",
+        "pending leadership review"
+      ]
+    }
+  },
+  "milestones": {
+    "repeatable_ai_use_cases": [
+      "repeatable ai use cases",
+      "repeatable ai use case library",
+      "products build for repeatable ai use cases",
+      "use case one",
+      "use case two"
+    ],
+    "use_case_intake_funnel": [
+      "intake workflow and request funnel",
+      "use case intake funnel",
+      "request funnel",
+      "intake funnel"
+    ],
+    "stage_gate_internal_review": [
+      "stage gate review process",
+      "stage gate internal review",
+      "stage gate templates",
+      "review templates",
+      "kill decision forms",
+      "review and kill decision forms"
+    ],
+    "ai_pipeline_strategy": [
+      "ai pipeline strategy",
+      "strategy defined",
+      "productized yet"
+    ],
+    "webinars": [
+      "the webinars",
+      "three ai webinars delivered",
+      "three webinars delivered",
+      "webinars delivered"
+    ],
+    "ai_commercial_impact_report": [
+      "ai commercial impact report",
+      "commercial impact report"
+    ],
+    "ad_hoc_sows": [
+      "ad hoc sows",
+      "deliver on ad hoc sows"
+    ],
+    "stage_gate_vendor_strategy": [
+      "stage gate and vendor strategy rollout",
+      "vendor strategy rollout",
+      "building the coalition",
+      "stage gate vendor strategy",
+      "vendor strategy document"
+    ],
+    "ei_grant_feedback": [
+      "innovation grant feedback",
+      "ei grant feedback",
+      "grant feedback",
+      "emma"
+    ],
+    "ai_governance_framework": [
+      "ai governance framework draft",
+      "governance framework draft",
+      "leadership review"
+    ]
+  }
+}

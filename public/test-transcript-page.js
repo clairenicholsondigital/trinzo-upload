@@ -153,12 +153,18 @@ function listValue(value) {
 
 function meetingMinutesSummary(result) {
   const participants = result.participants || {};
-  const actionCount = Array.isArray(result.nextSteps) ? result.nextSteps.length : 0;
+  const clientParticipants = result['participants.client'] || participants.client || [];
+  const trinzoParticipants = result['participants.trinzo'] || participants.trinzo || [];
+  const actionCount = Array.isArray(result.meetingActionPoint)
+    ? result.meetingActionPoint.length
+    : Array.isArray(result.nextSteps)
+      ? result.nextSteps.length
+      : 0;
   return [
     { label: 'Title', value: result.meetingTitle || '—' },
     { label: 'Date', value: result.meetingDate || '—' },
-    { label: 'Client participants', value: listValue(participants.client) },
-    { label: 'Trinzo participants', value: listValue(participants.trinzo) },
+    { label: 'Client participants', value: listValue(clientParticipants) },
+    { label: 'Trinzo participants', value: listValue(trinzoParticipants) },
     { label: 'Action count', value: String(actionCount) }
   ];
 }
