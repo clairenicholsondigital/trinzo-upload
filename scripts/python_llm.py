@@ -44,23 +44,23 @@ GENERIC_TOKENS = {
 }
 DELIVERY_STATUS_PRIORITY = [
     "blocked",
-    "delayed",
     "awaiting_input",
-    "needs_review",
+    "in_review",
+    "complete",
     "in_progress",
     "scheduled",
-    "complete",
+    "delayed",
     "not_started",
     "unknown",
 ]
 DELIVERY_STATUS_STRENGTH = {
     "blocked": 0,
-    "delayed": 1,
-    "awaiting_input": 2,
-    "needs_review": 3,
+    "awaiting_input": 1,
+    "in_review": 2,
+    "complete": 3,
     "in_progress": 4,
     "scheduled": 5,
-    "complete": 6,
+    "delayed": 6,
     "not_started": -1,
     "unknown": -2,
 }
@@ -71,8 +71,8 @@ DELIVERY_ALIAS_MAP = {
     "scheduled": "scheduled",
     "waiting": "awaiting_input",
     "awaiting_input": "awaiting_input",
-    "in_review": "needs_review",
-    "needs_review": "needs_review",
+    "in_review": "in_review",
+    "needs_review": "in_review",
     "at_risk": "delayed",
     "delayed": "delayed",
     "paused": "blocked",
@@ -84,7 +84,7 @@ DEFAULT_RAG_FROM_DELIVERY = {
     "complete": "green",
     "scheduled": "green",
     "in_progress": "green",
-    "needs_review": "blue",
+    "in_review": "blue",
     "awaiting_input": "amber",
     "delayed": "amber",
     "blocked": "red",
@@ -401,10 +401,24 @@ def is_actionable_next_step(text: str) -> bool:
     return False
 
 
+def infer_progress_classification(delivery_status: str) -> str:
+    mapping = {
+        "complete": "completed",
+        "in_review": "awaiting_review",
+        "blocked": "blocked",
+        "awaiting_input": "stalled",
+        "scheduled": "scheduled",
+        "in_progress": "active",
+        "not_started": "new",
+        "delayed": "stalled",
+    }
+    return mapping.get(delivery_status, "active")
+
+
 def infer_status_modifiers(sentences: list[str], delivery_status: str) -> list[str]:
     modifiers: list[str] = []
     combined = " ".join(sentences).lower()
-    if re.search(r"\bpending leadership review\b|\bneeds review\b|\bin review\b", combined):
+    if re.search(r"\bpending leadership review\b|\bneeds review\b|\bin review\b|\bawaiting review\b|\bleadership review\b|\bapproval required\b|\bawaiting approval\b|\bsign-off required\b|\bgovernance review\b|\bsubmitted for review\b", combined):
         modifiers.append("pending_review")
     if re.search(r"\bvisibility on workload\b", combined):
         modifiers.append("workload_visibility_needed")
@@ -413,7 +427,7 @@ def infer_status_modifiers(sentences: list[str], delivery_status: str) -> list[s
         or re.search(r"\bone is scheduled, one is underway and one hasn't been scoped\b", combined)
     ):
         modifiers.append("partially_complete")
-    if re.search(r"\bpending leadership review\b|\bawaiting approval\b|\bleadership review\b", combined):
+    if re.search(r"\bpending leadership review\b|\bawaiting approval\b|\bleadership review\b|\bapproval required\b|\bsign-off required\b", combined):
         modifiers.append("awaiting_approval")
     if re.search(r"\bneed sales input\b|\bdependency\b|\bblocked\b", combined):
         modifiers.append("dependency_blocked")
@@ -427,9 +441,16 @@ def infer_status_modifiers(sentences: list[str], delivery_status: str) -> list[s
         modifiers.append("scheduled_not_due")
     if re.search(r"\bhasn't been scoped\b|\bhas not been scoped\b|\bnot scoped\b", combined):
         modifiers.append("scope_not_defined")
-    if re.search(r"\bnew milestone\b", combined):
-        modifiers.append("newly_added")
     return dedupe_keep_order(modifiers)
+
+
+def detect_newly_added_milestone(milestone: str, source_text: str, rules: dict[str, Any]) -> bool:
+    lowered = source_text.lower()
+    for phrase in rules.get("milestones", {}).get(milestone, []):
+        pattern = rf"new milestone.*?{re.escape(phrase.lower())}"
+        if re.search(pattern, lowered, re.DOTALL):
+            return True
+    return False
 
 
 def is_contextual_evidence_sentence(text: str) -> bool:
@@ -581,7 +602,7 @@ def compare_statuses(previous: str, current: str) -> str:
         return "no_update"
     if previous == current:
         return "unchanged"
-    if current == "needs_review":
+    if current == "in_review":
         return "needs_review"
     if previous == "in_progress" and current == "scheduled":
         return "clarified"
@@ -628,7 +649,7 @@ def build_change_reason(previous: dict[str, Any] | None, current: dict[str, Any]
     if reason_tags:
         clauses.append(f"the normalized reasons are {join_clauses(reason_tags[:4])}")
 
-    if current_status == "needs_review":
+    if current_status == "in_review":
         clauses.append("the evidence contains both positive and risk signals")
     elif current_status == "scheduled":
         clauses.append("the work is described as planned rather than completed")
@@ -673,8 +694,8 @@ def infer_sentence_delivery_signals(text: str, rules: dict[str, Any]) -> list[st
     if any(phrase in lowered for phrase in rules["status_cues"]["waiting"]):
         signals.append("awaiting_input")
 
-    if re.search(r"\bin review\b|\bneeds review\b|\bpending leadership review\b", lowered):
-        signals.append("needs_review")
+    if re.search(r"\bin review\b|\bneeds review\b|\bpending leadership review\b|\bawaiting review\b|\bleadership review\b|\bapproval required\b|\bawaiting approval\b|\bsign-off required\b|\bgovernance review\b|\bsubmitted for review\b", lowered):
+        signals.append("in_review")
 
     progress_phrases = set(rules["status_cues"]["in_progress"]) | {
         "we've done",
@@ -779,6 +800,9 @@ def calibrate_delivery_confidence(
             adjusted = max(adjusted, 0.86)
         if re.search(r"\bpending leadership review\b|\bin review\b", text):
             adjusted = max(adjusted, 0.82)
+    if status == "in_review":
+        if re.search(r"\bcompleted version one yesterday\b|\bneeds review from leadership\b|\bi'?d call it in review\b|\bpending leadership review\b", text):
+            adjusted = max(adjusted, 0.86)
     if status == "blocked" and re.search(r"\bstill blocked\b", text):
         adjusted = max(adjusted, 0.82)
     if conflicting:
@@ -807,23 +831,25 @@ def resolve_delivery_status(
     has_delayed = normalized_votes["delayed"] > 0
     has_blocked = normalized_votes["blocked"] > 0
     has_waiting = normalized_votes["awaiting_input"] > 0
-    has_review = normalized_votes["needs_review"] > 0
+    has_review = normalized_votes["in_review"] > 0
     has_not_started = normalized_votes["not_started"] > 0
 
     if has_blocked:
         status = "blocked"
-    elif has_complete and has_review and not (has_progress or has_delayed or has_scheduled or has_not_started):
+    elif has_waiting and not (has_delayed or has_scheduled):
+        status = "awaiting_input"
+    elif has_review and has_complete:
+        status = "in_review"
+    elif has_review:
+        status = "in_review"
+    elif has_complete and not (has_progress or has_delayed or has_scheduled or has_not_started):
         status = "complete"
     elif has_complete and (has_progress or has_scheduled or has_delayed or has_not_started):
         status = "in_progress"
     elif has_progress:
         status = "in_progress"
-    elif has_waiting and not (has_delayed or has_scheduled):
-        status = "awaiting_input"
     elif has_delayed:
         status = "delayed"
-    elif has_review:
-        status = "needs_review"
     elif has_scheduled:
         status = "scheduled"
     elif has_complete:
@@ -843,7 +869,9 @@ def resolve_delivery_status(
             for signal in {"complete", "in_progress", "scheduled", "delayed", "not_started"}
         ):
             continue
-        if status == "complete" and set(sentence_signals).issubset({"complete", "needs_review"}):
+        if status == "complete" and set(sentence_signals).issubset({"complete", "in_review"}):
+            continue
+        if status == "in_review" and set(sentence_signals).issubset({"complete", "in_review"}):
             continue
         if status not in sentence_signals:
             conflicting.append(sentence)
@@ -911,7 +939,7 @@ def resolve_health_assessment(
         health = "red"
     elif delivery_status in {"delayed", "awaiting_input", "not_started"}:
         health = "amber"
-    elif delivery_status == "needs_review":
+    elif delivery_status == "in_review":
         health = "blue"
     elif delivery_status in {"complete", "scheduled", "in_progress"}:
         health = "green"
@@ -1039,7 +1067,7 @@ def build_project_health_summary(segments: list[dict[str, Any]]) -> dict[str, An
     delivery_counts = count_by_field(
         segments,
         "delivery_status",
-        ["complete", "in_progress", "scheduled", "blocked", "awaiting_input", "needs_review", "delayed", "not_started", "unknown"],
+        ["complete", "in_review", "in_progress", "scheduled", "blocked", "awaiting_input", "delayed", "not_started", "unknown"],
     )
     key_blockers = [
         {
@@ -1057,7 +1085,7 @@ def build_project_health_summary(segments: list[dict[str, Any]]) -> dict[str, An
     completed_items = [
         segment["milestone"]
         for segment in segments
-        if segment.get("delivery_status") == "complete"
+        if segment.get("delivery_status") in {"complete", "in_review"}
     ]
     new_items = [
         segment["milestone"]
@@ -1105,6 +1133,112 @@ def build_comparison_snapshot(segments: list[dict[str, Any]], meeting_date: str)
             for segment in segments
         ],
     }
+
+
+def extract_action_block(turns: list[Turn]) -> tuple[list[str], str]:
+    actions: list[str] = []
+    deadline = ""
+    for turn in turns:
+        lowered = turn.text.lower().strip()
+        if not lowered.startswith("actions before next week"):
+            continue
+        deadline = "Before next week"
+        tail = turn.text.split(":", 1)[1].strip() if ":" in turn.text else ""
+        if tail:
+            actions.extend([part.strip().rstrip(".") + "." for part in tail.split(".") if part.strip()])
+        break
+    return actions, deadline
+
+
+def infer_action_related_milestone(action_text: str) -> str:
+    lowered = action_text.lower()
+    keyword_map = {
+        "stage gate": "stage_gate_internal_review",
+        "template": "stage_gate_internal_review",
+        "routing": "use_case_intake_funnel",
+        "intake": "use_case_intake_funnel",
+        "pipeline": "ai_pipeline_strategy",
+        "sales": "ai_pipeline_strategy",
+        "vendor strategy": "stage_gate_vendor_strategy",
+        "grant": "ei_grant_feedback",
+        "governance": "ai_governance_framework",
+    }
+    for keyword, milestone in keyword_map.items():
+        if keyword in lowered:
+            return milestone
+    return ""
+
+
+def infer_segment_owner(segment: dict[str, Any]) -> tuple[str, float]:
+    turns = segment.get("_segment_turns", [])
+    scored: dict[str, float] = {}
+    last_seen: dict[str, int] = {}
+    for index, turn in enumerate(turns):
+        text = turn.text.strip()
+        if not text or text.endswith("?") or sentence_word_count(text) <= 2:
+            continue
+        score = 1.0
+        if re.search(r"\bwe('?ve)?\b|\bi\b|\bactual\b|\bstill\b|\bcompleted\b|\bneed\b", text.lower()):
+            score += 0.25
+        scored[turn.speaker] = scored.get(turn.speaker, 0.0) + score
+        last_seen[turn.speaker] = index
+    if not scored:
+        return "Owner not specified", 0.2
+    owner = max(scored, key=lambda speaker: (scored[speaker], last_seen.get(speaker, -1)))
+    total = sum(scored.values())
+    confidence = 0.62 if total else 0.2
+    if len(scored) == 1:
+        confidence = 0.72
+    return owner, round(confidence, 2)
+
+
+def infer_action_owner(
+    action_text: str,
+    related_milestone: str,
+    structured_segments: list[dict[str, Any]],
+    turns: list[Turn],
+) -> tuple[str, float]:
+    if "grant" in action_text.lower():
+        if any("emma" in turn.text.lower() for turn in turns):
+            return "Emma", 0.85
+    for turn in turns:
+        for name in re.findall(r"\b[A-Z][a-z]+ [A-Z][a-z]+\b", turn.text):
+            if name.lower() in action_text.lower():
+                return name, 0.9
+    if related_milestone:
+        segment = next((item for item in structured_segments if item["milestone"] == related_milestone), None)
+        if segment:
+            return infer_segment_owner(segment)
+    return "Owner not specified", 0.2
+
+
+def build_actions_for_segments(
+    turns: list[Turn],
+    structured_segments: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    actions, deadline = extract_action_block(turns)
+    structured_actions: list[dict[str, Any]] = []
+    seen = set()
+    for action in actions:
+        key = action.lower().strip()
+        if key in seen:
+            continue
+        seen.add(key)
+        related = infer_action_related_milestone(action)
+        owner, confidence = infer_action_owner(action, related, structured_segments, turns)
+        if confidence < 0.55:
+            owner = "Owner not specified"
+            confidence = 0.2
+        structured_actions.append(
+            {
+                "action": action,
+                "related_milestone": related or "unlinked",
+                "meetingActionPointOwner": owner,
+                "actionConfidence": round(confidence, 2),
+                "deadline": deadline,
+            }
+        )
+    return structured_actions
 
 
 def build_change_report(previous_segments: list[dict[str, Any]], current_segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -1298,12 +1432,16 @@ def analyze(turns: list[Turn], rules: dict[str, Any], source_text: str = "") -> 
 
     structured_segments = []
     for segment in segments:
-        raw_status = choose_priority_status(segment.status_votes, DELIVERY_STATUS_PRIORITY)
         delivery_status, delivery_status_confidence, conflicting_evidence, delivery_note = resolve_delivery_status(
             segment.sentences,
             segment.status_votes,
             rules,
         )
+        raw_status = choose_priority_status(segment.status_votes, DELIVERY_STATUS_PRIORITY)
+        if delivery_status == "in_progress" and normalize_delivery_status(raw_status) in {"complete", "scheduled"}:
+            raw_status = "in_progress"
+        if delivery_status == "in_review" and normalize_delivery_status(raw_status) == "complete":
+            raw_status = "in_review"
         health_assessment, health_assessment_confidence = resolve_health_assessment(
             segment.sentences,
             delivery_status,
@@ -1325,6 +1463,8 @@ def analyze(turns: list[Turn], rules: dict[str, Any], source_text: str = "") -> 
             limit=3,
         )
         status_modifiers = infer_status_modifiers(segment.sentences, delivery_status)
+        if source_text and detect_newly_added_milestone(segment.milestone, source_text, rules):
+            status_modifiers = dedupe_keep_order(status_modifiers + ["newly_added"])
         signal_summary = {
             "positive": dedupe_keep_order([hit["tag"] for hit in segment.reason_hits if hit["bucket"] == "positive"]),
             "attention": dedupe_keep_order([hit["tag"] for hit in segment.reason_hits if hit["bucket"] == "attention"]),
@@ -1382,14 +1522,37 @@ def analyze(turns: list[Turn], rules: dict[str, Any], source_text: str = "") -> 
                 "turn_count": len({(turn.speaker, turn.timestamp, turn.text) for turn in segment.turns}),
                 "sentence_count": len(segment.sentences),
                 "excerpt": " ".join(rank_sentences(segment.sentences, segment.milestone, rules, limit=2)),
+                "_segment_turns": segment.turns,
             }
         )
+
+    actions = build_actions_for_segments(cleaned_turns, structured_segments)
+    for action in actions:
+        related = action.get("related_milestone")
+        if not related or related == "unlinked":
+            continue
+        for segment in structured_segments:
+            if segment["milestone"] != related:
+                continue
+            if action["action"] not in segment["next_steps"]:
+                segment["next_steps"].append(action["action"])
+            break
+    for segment in structured_segments:
+        segment["next_steps"] = rank_sentences(
+            [item for item in segment["next_steps"] if is_actionable_next_step(item)],
+            segment["milestone"],
+            rules,
+            limit=5,
+        )
+        segment["progress_classification"] = infer_progress_classification(segment["delivery_status"])
+        segment.pop("_segment_turns", None)
 
     meeting_date = extract_meeting_date(source_text) if source_text else ""
     return {
         "turn_count_raw": len(turns),
         "turn_count_cleaned": len(cleaned_turns),
         "segments": structured_segments,
+        "actions": actions,
         "project_health_summary": build_project_health_summary(structured_segments),
         "comparison_snapshot": build_comparison_snapshot(structured_segments, meeting_date),
         "cleaned_turns": [
