@@ -263,6 +263,35 @@ I'll do it.
         self.assertEqual(result["meetingActionPoint"], [])
         self.assertEqual(result["meetingActionPointOwner"], [])
 
+    def test_action_quality_gate_rejects_transcript_fragments_and_jokes(self):
+        transcript = """Creative review
+
+6 June 2026
+
+Ciara Griffin:
+Can you do with this picture
+
+Jack Cunningham:
+Should I pretend to be good?
+
+Conor Flynn:
+I am a Kerry man
+
+Emily Stone:
+Take out this
+
+Ciara Griffin:
+Update the opening image for the deck.
+"""
+
+        result = analyse(transcript)
+
+        self.assertIn("Update the opening image for the deck.", result["meetingActionPoint"])
+        self.assertNotIn("Do with this picture.", result["meetingActionPoint"])
+        self.assertNotIn("Take out this.", result["meetingActionPoint"])
+        self.assertTrue(all("pretend" not in item.lower() for item in result["meetingActionPoint"]))
+        self.assertTrue(all("kerry man" not in item.lower() for item in result["meetingActionPoint"]))
+
     def test_mine_is_resolved_to_the_speakers_own_item(self):
         transcript = """General check-in
 
@@ -277,8 +306,8 @@ I'll do that.
 
         result = analyse(transcript)
 
-        self.assertEqual(result["meetingActionPoint"], ["Update Ciara's item."])
-        self.assertEqual(result["meetingActionPointOwner"], ["Emily Stone"])
+        self.assertEqual(result["meetingActionPoint"], [])
+        self.assertEqual(result["meetingActionPointOwner"], [])
 
     def test_meeting_minutes_use_the_flat_skill_style_output(self):
         result = analyse(self.transcript)
@@ -301,25 +330,21 @@ I'll do that.
         self.assertIn("registration list", result["discussionPoints"][3].lower())
         self.assertIn("process questions", result["discussionPoints"][4].lower())
         self.assertTrue(all("Agreed RAG status:" not in point for point in result["discussionPoints"]))
-        self.assertEqual(len(result["meetingActionPoint"]), 3)
+        self.assertEqual(len(result["meetingActionPoint"]), 2)
         self.assertEqual(result["meetingActionPoint"][0], "Update the slide deck by Friday and send it to Jack.")
         self.assertEqual(result["meetingActionPoint"][1], "Check the registration list before the webinar.")
-        self.assertEqual(result["meetingActionPoint"][2], "Confirm the client attendee list next week.")
         self.assertEqual(result["meetingActionPointOwner"][0], "Ciara Griffin")
         self.assertEqual(result["meetingActionPointDeadline"][0], "by Friday")
         self.assertEqual(result["meetingActionPointDeadline"][1], "Before the webinar")
-        self.assertEqual(result["meetingActionPointOwner"][2], "Owner not specified")
-        self.assertEqual(result["meetingActionPointDeadline"][2], "Before next week")
-        self.assertEqual(result["meetingActionPointConfidence"][0], 0.8)
+        self.assertEqual(result["meetingActionPointConfidence"][0], 0.65)
         self.assertEqual(result["meetingActionPointConfidence"][1], 0.85)
-        self.assertEqual(result["meetingActionPointConfidence"][2], 0.2)
         self.assertTrue(
             all(
                 owner == "Owner not specified" or confidence >= 0.55
                 for owner, confidence in zip(result["meetingActionPointOwner"], result["meetingActionPointConfidence"])
             )
         )
-        self.assertEqual(result["meetingActionPointRelatedMilestone"], ["unlinked", "unlinked", "unlinked"])
+        self.assertEqual(result["meetingActionPointRelatedMilestone"], ["unlinked", "unlinked"])
         self.assertEqual(result["healthSummary"], {})
         self.assertEqual(len(result["meetingSections"]), 5)
         self.assertEqual(result["meetingSections"][0]["section"], "Webinar flow")

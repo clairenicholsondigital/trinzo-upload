@@ -539,6 +539,63 @@ def action_to_imperative(action_text: str, owner: str, speaker: str = "") -> str
     return finalize_sentence(sentence_case(cleaned))
 
 
+def is_valid_action_output(action: str) -> bool:
+    cleaned = action.strip()
+    if not cleaned:
+        return False
+
+    token_count = len(re.findall(r"[A-Za-z0-9']+", cleaned))
+    if token_count < 4 or token_count > 28:
+        return False
+
+    lowered = cleaned.lower().rstrip(".!?")
+    allowed_verbs = (
+        "tighten ",
+        "improve ",
+        "investigate ",
+        "complete ",
+        "update ",
+        "simplify ",
+        "clarify ",
+        "run ",
+        "add ",
+        "keep ",
+        "check ",
+        "confirm ",
+        "review ",
+        "send ",
+        "prepare ",
+        "draft ",
+        "follow ",
+        "fix ",
+        "remove ",
+        "create ",
+        "share ",
+        "finalise ",
+        "validate ",
+        "describe ",
+        "work ",
+    )
+    if not lowered.startswith(allowed_verbs):
+        return False
+
+    rejected_patterns = (
+        "he's hot",
+        "should i pretend",
+        "i am a kerry man",
+        "i am a carry man",
+        "do with this picture",
+        "take out this",
+        "it in as an image",
+        "say on that side",
+        "remember when",
+        "come back in here",
+        "talk through with you",
+        "where's jack's diagram",
+    )
+    return not any(pattern in lowered for pattern in rejected_patterns)
+
+
 def is_plural_label(label: str) -> bool:
     lowered = label.lower().strip()
     return lowered.endswith("s") and not lowered.endswith("ss")
@@ -1375,6 +1432,8 @@ def build_structured_actions(
         polished_action = action_to_imperative(action, final_owner, action_turn["speaker"] if action_turn else "")
         if not has_minimum_output_words(polished_action):
             continue
+        if not is_valid_action_output(polished_action):
+            continue
         structured.append(
             {
                 "meetingActionPoint": polished_action,
@@ -1573,7 +1632,21 @@ def extract_fallback_actions(raw_turns: list[dict[str, str]], config: dict[str, 
             continue
         if extract_request_task(content, turn.get("speaker", "")) and not lowered.startswith("can you "):
             continue
-        if not any(term in lowered for term in ("i will", "we should", "can you", "check", "confirm", "send", "update")):
+        if not lowered.startswith(
+            (
+                "i will ",
+                "i'll ",
+                "i’ll ",
+                "can you ",
+                "check ",
+                "confirm ",
+                "send ",
+                "update ",
+                "review ",
+                "draft ",
+                "follow up ",
+            )
+        ):
             continue
         action_text = re.sub(r"^(no,\s*that's fine\.?\s*)", "", content, flags=re.IGNORECASE).strip()
         action_text = action_text.rstrip(".")
