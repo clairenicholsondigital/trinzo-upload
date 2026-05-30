@@ -269,6 +269,37 @@ def dedupe_evidence_refs(refs: list[dict[str, str]]) -> list[dict[str, str]]:
     return output
 
 
+def strip_leading_speaker_reference(text: str) -> str:
+    cleaned = text.strip()
+    cleaned = re.sub(r"^can you\s+[A-Z][a-z]+\s+", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"^[A-Z][a-z]+,\s+", "", cleaned)
+    cleaned = re.sub(r"^[A-Z][a-z]+\s+should\s+", "", cleaned, flags=re.IGNORECASE)
+    return cleaned.strip()
+
+
+def action_to_imperative(action_text: str, owner: str) -> str:
+    cleaned = normalize_text_fragment(action_text)
+    cleaned = cleaned.rstrip("?.!")
+    lowered = cleaned.lower()
+
+    if lowered.startswith("i will "):
+        cleaned = cleaned[7:]
+    elif lowered.startswith("i'll "):
+        cleaned = cleaned[5:]
+    elif lowered.startswith("we should "):
+        cleaned = cleaned[10:]
+    elif lowered.startswith("we need to "):
+        cleaned = cleaned[11:]
+    elif lowered.startswith("can you "):
+        cleaned = strip_leading_speaker_reference(cleaned)
+
+    cleaned = strip_leading_speaker_reference(cleaned)
+    cleaned = re.sub(r"\bthe client attendees\b", "the client attendee list", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bclient attendees\b", "client attendee list", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return finalize_sentence(sentence_case(cleaned))
+
+
 def is_plural_label(label: str) -> bool:
     lowered = label.lower().strip()
     return lowered.endswith("s") and not lowered.endswith("ss")
@@ -1008,9 +1039,10 @@ def build_structured_actions(
             final_owner = "Owner not specified"
             owner_confidence = 0.2
         related_milestone = infer_action_related_milestone(action, config)
+        polished_action = action_to_imperative(action, final_owner)
         structured.append(
             {
-                "meetingActionPoint": finalize_sentence(action),
+                "meetingActionPoint": polished_action,
                 "meetingActionPointOwner": final_owner,
                 "meetingActionPointDeadline": deadline,
                 "actionConfidence": round(owner_confidence, 2),
@@ -1066,6 +1098,32 @@ def build_decisions(
         seen.add(key)
         unique_details.append(item)
     return [item["decision"] for item in unique_details], unique_details
+
+
+def build_internal_evidence(
+    discussion_point_details: list[dict[str, Any]],
+    structured_actions: list[dict[str, Any]],
+    meeting_sections: list[dict[str, Any]],
+    decision_details: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "discussionPoints": [
+            {"text": item["discussionPoint"], "_evidence": item.get("_evidence", [])}
+            for item in discussion_point_details
+        ],
+        "actions": [
+            {"text": item["meetingActionPoint"], "_evidence": item.get("_evidence", [])}
+            for item in structured_actions
+        ],
+        "meetingSections": [
+            {"section": item["section"], "_evidence": item.get("_evidence", [])}
+            for item in meeting_sections
+        ],
+        "decisions": [
+            {"text": item["decision"], "_evidence": item.get("_evidence", [])}
+            for item in decision_details
+        ],
+    }
 
 
 def extract_generic_actions(
@@ -1289,6 +1347,12 @@ def build_template_values(text: str, analysis: dict[str, Any], turns: list[Any],
     meeting_sections = build_meeting_sections(cleaned_turns, meeting_type, structured_actions)
     health_summary = build_health_summary(segments) if meeting_type == "project_status_review" else {}
     decisions, decision_details = build_decisions(cleaned_turns, meeting_type, structured_actions)
+    internal_evidence = build_internal_evidence(
+        discussion_point_details,
+        structured_actions,
+        meeting_sections,
+        decision_details,
+    )
 
     template_values = {
         "meetingTitle": meeting_title,
@@ -1314,6 +1378,7 @@ def build_template_values(text: str, analysis: dict[str, Any], turns: list[Any],
         "decisions": decisions,
         "discussionPointDetails": discussion_point_details,
         "decisionDetails": decision_details,
+        "internalEvidence": internal_evidence,
     }
     return template_values
 
