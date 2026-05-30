@@ -79,6 +79,16 @@ DECISION_CUE_PATTERNS = [
     (re.compile(r"\b(?:agreed|we agreed|let's|lets|we should|should|need to|needs to|must|go with|keep it|make sure|decided|decision is)\b", re.IGNORECASE), 0.2),
     (re.compile(r"\b(?:main issue is|important thing is|better to|rather than|instead of|no, let's|actually, let's)\b", re.IGNORECASE), 0.15),
 ]
+DECISION_ACCEPTANCE_PATTERNS = [
+    re.compile(r"\b(?:agreed|we agreed|let's|lets|go with|keep it|decision is|decided|accepted|that's fine|sounds good|yes, let's|no, let's)\b", re.IGNORECASE),
+    re.compile(r"\b(?:should|need to|needs to|must)\b.*\b(?:clearer|specific|specificly|specifically|educational|sales-led|salesy|positioning|approach|direction|wording|language|scope|timeline)\b", re.IGNORECASE),
+    re.compile(r"\b(?:main issue is|important thing is)\b.*\b(?:clear|clearer|scope|timeline|positioning|approach)\b", re.IGNORECASE),
+]
+NON_DECISION_PATTERNS = [
+    re.compile(r"\?$"),
+    re.compile(r"^\s*(?:agenda|today|first|next|then|what we want to do|we're working through|we are working through)\b", re.IGNORECASE),
+    re.compile(r"\b(?:risk is|there is a risk|may ask|might ask|could ask|for example|that means|this means|we discussed|we reviewed|we considered)\b", re.IGNORECASE),
+]
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -309,16 +319,32 @@ def is_action_like_sentence(text: str) -> bool:
     return False
 
 
+def has_acceptance_evidence(text: str) -> bool:
+    return any(pattern.search(text) for pattern in DECISION_ACCEPTANCE_PATTERNS)
+
+
+def is_non_decision_sentence(text: str) -> bool:
+    stripped = text.strip()
+    if not stripped:
+        return True
+    return any(pattern.search(stripped) for pattern in NON_DECISION_PATTERNS)
+
+
 def build_decision_candidate(
     sentence: str,
     turn: dict[str, Any],
     meeting_mode: str,
     sentence_index: int,
 ) -> dict[str, Any] | None:
-    lowered = sentence.lower()
+    stripped = sentence.strip()
+    lowered = stripped.lower()
     if not is_business_relevant(sentence):
         return None
     if is_action_like_sentence(sentence):
+        return None
+    if is_non_decision_sentence(sentence):
+        return None
+    if not has_acceptance_evidence(sentence):
         return None
 
     decision = ""

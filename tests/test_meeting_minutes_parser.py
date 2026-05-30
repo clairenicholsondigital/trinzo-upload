@@ -69,14 +69,14 @@ class MeetingMinutesParserTest(unittest.TestCase):
         self.assertEqual(result["healthSummary"], {})
         self.assertEqual(len(result["meetingSections"]), 5)
         self.assertEqual(result["meetingSections"][0]["section"], "Webinar flow")
-        self.assertEqual(len(result["decisions"]), 3)
-        self.assertEqual(result["decisions"][0], "The webinar should show the validation team what happens before the session begins.")
+        self.assertEqual(len(result["decisions"]), 1)
+        self.assertEqual(result["decisions"][0], "The webinar should explain the timeline and scope more clearly.")
         self.assertEqual(result["discussionPointDetails"][0]["_evidence"][0]["speaker"], "Jack Cunningham")
         self.assertEqual(result["discussionPointDetails"][0]["evidenceScore"], 0.75)
         self.assertEqual(result["actions"][0]["_evidence"][0]["speaker"], "Ciara Griffin")
         self.assertEqual(result["meetingSections"][0]["_evidence"][0]["speaker"], "Jack Cunningham")
         self.assertEqual(result["internalEvidence"]["actions"][1]["text"], "Check the registration list before the webinar.")
-        self.assertEqual(result["internalEvidence"]["decisions"][0]["_evidence"][0]["speaker"], "Jack Cunningham")
+        self.assertEqual(result["internalEvidence"]["decisions"][0]["_evidence"][0]["speaker"], "Conor Flynn")
         self.assertGreaterEqual(result["decisionDetails"][0]["decisionConfidence"], 0.6)
         self.assertEqual(result["decisionDetails"][0]["decisionType"], "accepted_direction")
         self.assertGreaterEqual(len([s for s in result["executiveSummary"].split(". ") if s.strip()]), 4)
@@ -105,6 +105,23 @@ Jack Cunningham   1:42We should explain the timeline and scope more clearly.
         self.assertIn(
             result["decisionDetails"][0]["decisionType"],
             {"accepted_direction", "approved_change", "rejected_option"},
+        )
+
+    def test_questions_and_descriptions_are_not_extracted_as_decisions(self):
+        transcript = """Webinar practice transcript
+Date: May 20, 2026
+Location: Teams
+Jack Cunningham   0:03Should I pretend to be good?
+Conor Flynn   0:20What we want to do is work through the workshop plan.
+Ciara Griffin 0:42We're working through the workshop material and the risk is that people may ask detailed process questions.
+Jack Cunningham   1:10Agreed, let's keep the session educational rather than sales-led.
+"""
+
+        result = analyse(transcript)
+
+        self.assertEqual(
+            result["decisions"],
+            ["The webinar should remain educational rather than sounding sales-led."],
         )
 
     def test_project_minutes_are_derived_from_milestone_output(self):
