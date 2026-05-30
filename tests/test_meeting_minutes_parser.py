@@ -33,6 +33,7 @@ class MeetingMinutesParserTest(unittest.TestCase):
         self.assertEqual(result["meetingDate"], "20 May 2026")
         self.assertEqual(result["meetingLocation"], "Teams")
         self.assertEqual(result["meetingType"], "webinar_rehearsal")
+        self.assertEqual(result["meetingStyle"], "feedback_review")
         self.assertEqual(result["meetingTheme"], "Webinar rehearsal and presentation review")
         self.assertEqual(result["participants.client"], ["Ciara Griffin"])
         self.assertEqual(result["participants.trinzo"], ["Conor Flynn", "Jack Cunningham"])
@@ -42,6 +43,9 @@ class MeetingMinutesParserTest(unittest.TestCase):
             ["Review the webinar flow, confirm presentation readiness, and agree final preparation actions."],
         )
         self.assertEqual(len(result["discussionPoints"]), 5)
+        self.assertIn("workshop plan", result["discussionPoints"][0].lower())
+        self.assertIn("registration list", result["discussionPoints"][3].lower())
+        self.assertIn("process questions", result["discussionPoints"][4].lower())
         self.assertTrue(all("Agreed RAG status:" not in point for point in result["discussionPoints"]))
         self.assertEqual(len(result["meetingActionPoint"]), 3)
         self.assertEqual(result["meetingActionPointOwner"][0], "Ciara Griffin")
@@ -49,13 +53,25 @@ class MeetingMinutesParserTest(unittest.TestCase):
         self.assertEqual(result["meetingActionPointDeadline"][1], "Before the webinar")
         self.assertEqual(result["meetingActionPointOwner"][2], "Owner not specified")
         self.assertEqual(result["meetingActionPointDeadline"][2], "Before next week")
-        self.assertEqual(result["meetingActionPointConfidence"][0], 0.95)
+        self.assertEqual(result["meetingActionPointConfidence"][0], 0.8)
+        self.assertEqual(result["meetingActionPointConfidence"][1], 0.85)
         self.assertEqual(result["meetingActionPointConfidence"][2], 0.2)
+        self.assertTrue(
+            all(
+                owner == "Owner not specified" or confidence >= 0.55
+                for owner, confidence in zip(result["meetingActionPointOwner"], result["meetingActionPointConfidence"])
+            )
+        )
         self.assertEqual(result["meetingActionPointRelatedMilestone"], ["unlinked", "unlinked", "unlinked"])
         self.assertEqual(result["healthSummary"], {})
         self.assertEqual(len(result["meetingSections"]), 5)
         self.assertEqual(result["meetingSections"][0]["section"], "Webinar flow")
-        self.assertIn("webinar flow", result["executiveSummary"].lower())
+        self.assertEqual(len(result["decisions"]), 3)
+        self.assertEqual(result["discussionPointDetails"][0]["_evidence"][0]["speaker"], "Jack Cunningham")
+        self.assertEqual(result["actions"][0]["_evidence"][0]["speaker"], "Ciara Griffin")
+        self.assertEqual(result["meetingSections"][0]["_evidence"][0]["speaker"], "Jack Cunningham")
+        self.assertGreaterEqual(len([s for s in result["executiveSummary"].split(". ") if s.strip()]), 4)
+        self.assertIn("workshop plan", result["executiveSummary"].lower())
         self.assertTrue("executiveSummary" in result)
         json.dumps(result)
 
@@ -64,6 +80,7 @@ class MeetingMinutesParserTest(unittest.TestCase):
         result = analyse(project_transcript)
 
         self.assertEqual(result["meetingType"], "project_status_review")
+        self.assertEqual(result["meetingStyle"], "status_review")
         self.assertEqual(result["meetingTheme"], "AI delivery and governance review")
         self.assertEqual(result["meetingTitle"], "AI delivery and governance review")
         self.assertEqual(
@@ -100,6 +117,7 @@ class MeetingMinutesParserTest(unittest.TestCase):
         self.assertEqual(result["meetingActionPointRelatedMilestone"][3], "ei_grant_feedback")
         self.assertEqual(result["meetingActionPointOwner"][3], "Emma")
         self.assertEqual(result["meetingActionPointConfidence"][3], 0.85)
+        self.assertEqual(result["actions"][3]["_evidence"][0]["speaker"], "Ciara Griffin")
         self.assertEqual(result["healthSummary"]["blue"], 1)
         self.assertEqual(result["healthSummary"]["blocked"], 1)
         self.assertEqual(result["healthSummary"]["in_review"], 1)
@@ -110,6 +128,7 @@ class MeetingMinutesParserTest(unittest.TestCase):
         )
         self.assertNotIn("Three AI webinars delivered. Not complete.", " ".join(result["discussionPoints"]))
         self.assertEqual(result["meetingSections"], [])
+        self.assertEqual(result["decisions"], [])
         json.dumps(result)
 
     def test_project_analyser_handles_inline_turn_transcripts(self):

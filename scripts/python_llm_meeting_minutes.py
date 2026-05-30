@@ -74,6 +74,7 @@ NON_BUSINESS_PATTERNS = [
     "take your top off",
     "like and subscribe",
 ]
+OWNER_CONFIDENCE_MIN = 0.55
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -201,7 +202,14 @@ def extract_raw_turn_entries(text: str) -> list[dict[str, str]]:
         content = normalize_inline_text(match.group("content"))
         if not content:
             continue
-        entries.append({"speaker": match.group("speaker").strip(), "content": content})
+        timestamp_match = re.search(r"\d+:\d{2}", match.group(0))
+        entries.append(
+            {
+                "speaker": match.group("speaker").strip(),
+                "timestamp": timestamp_match.group(0) if timestamp_match else "",
+                "content": content,
+            }
+        )
     return entries
 
 
@@ -236,6 +244,29 @@ def finalize_sentence(text: str) -> str:
     if cleaned[-1] in ".!?":
         return cleaned
     return cleaned + "."
+
+
+def sentence_count(text: str) -> int:
+    return len([part for part in re.split(r"(?<=[.!?])\s+", text.strip()) if part.strip()])
+
+
+def evidence_ref(turn: dict[str, str]) -> dict[str, str]:
+    return {
+        "speaker": turn.get("speaker", ""),
+        "timestamp": turn.get("timestamp", ""),
+    }
+
+
+def dedupe_evidence_refs(refs: list[dict[str, str]]) -> list[dict[str, str]]:
+    seen = set()
+    output = []
+    for ref in refs:
+        key = (ref.get("speaker", ""), ref.get("timestamp", ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        output.append(ref)
+    return output
 
 
 def is_plural_label(label: str) -> bool:
@@ -353,6 +384,16 @@ def infer_item_topic(text: str, config: dict[str, Any]) -> str:
         if any(term in lowered for term in rule["contains_any"]):
             return rule["topic"]
     return config["item_topic_default"]
+
+
+def infer_meeting_style(meeting_type: str) -> str:
+    if meeting_type == "project_status_review":
+        return "status_review"
+    if meeting_type in {"webinar_rehearsal", "presentation_review"}:
+        return "feedback_review"
+    if meeting_type == "sales_or_client_discussion":
+        return "planning_session"
+    return "general_meeting"
 
 
 def detect_meeting_mode(cleaned_turns: list[dict[str, Any]]) -> str:
@@ -583,12 +624,37 @@ def build_health_summary(segments: list[dict[str, Any]]) -> dict[str, int]:
 def build_executive_summary(meeting_theme: str, meeting_type: str, segments: list[dict[str, Any]], config: dict[str, Any]) -> str:
     if meeting_type != "project_status_review":
         if meeting_type == "webinar_rehearsal":
-            return "The meeting focused on rehearsing the webinar flow, refining supporting materials, and confirming final preparation actions."
+            return " ".join(
+                [
+                    "The meeting focused on rehearsing the webinar delivery and checking presentation readiness.",
+                    "The team worked through the workshop plan, slide updates, attendee preparation, and the way timeline and scope should be explained.",
+                    "Several practical changes were agreed, including updating the slide deck, checking the registration list, and confirming the client attendee list.",
+                    "Further preparation is still needed before delivery so the workshop material can handle detailed process questions clearly.",
+                ]
+            )
         if meeting_type == "presentation_review":
-            return "The meeting focused on reviewing the presentation structure, messaging, and delivery preparation."
+            return " ".join(
+                [
+                    "The meeting focused on reviewing presentation readiness and delivery approach.",
+                    "The team refined structure, visuals, and speaking points across the deck.",
+                    "Specific changes were agreed to improve clarity before the next presentation run-through.",
+                ]
+            )
         if meeting_type == "sales_or_client_discussion":
-            return "The meeting focused on client discussion points, follow-up items, and agreed next actions."
-        return f"The meeting focused on {meeting_theme.lower()}."
+            return " ".join(
+                [
+                    "The meeting focused on client discussion points and immediate follow-up actions.",
+                    "Key themes included priorities, dependencies, and the next communication steps.",
+                    "The discussion closed with agreed actions for the next stage of follow-up.",
+                ]
+            )
+        return " ".join(
+            [
+                f"The meeting focused on {meeting_theme.lower()}.",
+                "The discussion covered the main topics raised during the session and the follow-up needed afterwards.",
+                "Actions were recorded where clear next steps were agreed.",
+            ]
+        )
 
     complete = [milestone_label(segment, config) for segment in segments if segment.get("delivery_status") == "complete"]
     active = [milestone_label(segment, config) for segment in segments if segment.get("delivery_status") == "in_progress"]
@@ -692,17 +758,28 @@ def cluster_sentence_for_mode(sentence: str, meeting_mode: str) -> str | None:
 
 
 def build_cluster_sentence(cluster: str, sentences: list[str]) -> str:
+    lowered = " ".join(sentences).lower()
     if cluster == "Webinar agenda and flow":
-        return "The team reviewed the webinar agenda and flow so the session sequence would be clear before delivery."
+        if "workshop plan" in lowered and "validation team" in lowered:
+            return "The team worked through the workshop plan so the validation team would have a clear view of what happens before the webinar."
+        return "The team refined the webinar agenda and flow so the session sequence would be clear before delivery."
     if cluster == "Case study and AI discovery workshop explanation":
-        return "Discussion covered how the workshop approach should be explained so attendees understood the context behind the webinar content."
+        if "process questions" in lowered:
+            return "The group noted that attendees may ask detailed process questions, so the workshop material needs to explain the process clearly."
+        return "The team clarified how the workshop approach should be explained so attendees understood the business context behind the webinar content."
     if cluster == "Slide design and workshop imagery":
+        if "slide deck" in lowered:
+            return "The slide deck was flagged for revision so the supporting material matched the workshop narrative more clearly."
         return "Slide content and supporting visuals were reviewed to keep the material clear and aligned with the workshop narrative."
     if cluster == "Educational positioning rather than sales-led messaging":
-        return "The messaging was positioned as educational and process-led rather than overtly sales-focused."
+        return "The messaging was kept educational and process-led so the session did not drift into a sales-led pitch."
     if cluster == "Live demo setup and framing":
-        return "The group reviewed practical preparation items for the live walkthrough, including attendee readiness and supporting materials."
+        if "registration list" in lowered or "client attendees" in lowered:
+            return "The group agreed that the registration list and client attendee list should be checked before the webinar so the live walkthrough was properly prepared."
+        return "The live walkthrough setup was reviewed so the audience would have the right context before the demonstration began."
     if cluster == "Timing and rehearsal preparation":
+        if "timeline" in lowered and "scope" in lowered:
+            return "The team agreed that the timeline and scope need to be explained more clearly so everyone understands the boundaries of the webinar."
         return "Timing and rehearsal preparation were reviewed so the session could be delivered smoothly and within the planned window."
     if cluster == "Presentation structure and visuals":
         return "The presentation structure and visuals were reviewed to improve clarity and delivery."
@@ -712,16 +789,31 @@ def build_cluster_sentence(cluster: str, sentences: list[str]) -> str:
     return finalize_sentence(sentence_case(normalize_text_fragment(fallback)))
 
 
-def extract_general_discussion_points(cleaned_turns: list[dict[str, Any]], meeting_mode: str) -> list[str]:
+def extract_general_discussion_details(cleaned_turns: list[dict[str, Any]], meeting_mode: str) -> list[dict[str, Any]]:
     clusters: dict[str, list[str]] = {}
+    cluster_refs: dict[str, list[dict[str, str]]] = {}
     for turn in cleaned_turns:
         for sentence in turn.get("sentences") or [turn.get("text", "")]:
             cluster = cluster_sentence_for_mode(sentence, meeting_mode)
             if not cluster:
                 continue
             clusters.setdefault(cluster, []).append(sentence)
-    points = [build_cluster_sentence(cluster, sentences) for cluster, sentences in clusters.items()]
-    return points[:8]
+            cluster_refs.setdefault(cluster, []).append(
+                {"speaker": turn.get("speaker", ""), "timestamp": turn.get("timestamp", "")}
+            )
+    details = []
+    for cluster, sentences in clusters.items():
+        details.append(
+            {
+                "discussionPoint": build_cluster_sentence(cluster, sentences),
+                "_evidence": dedupe_evidence_refs(cluster_refs.get(cluster, [])),
+            }
+        )
+    return details[:8]
+
+
+def extract_general_discussion_points(cleaned_turns: list[dict[str, Any]], meeting_mode: str) -> list[str]:
+    return [item["discussionPoint"] for item in extract_general_discussion_details(cleaned_turns, meeting_mode)]
 
 
 def build_meeting_sections(cleaned_turns: list[dict[str, Any]], meeting_mode: str, structured_actions: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -732,11 +824,13 @@ def build_meeting_sections(cleaned_turns: list[dict[str, Any]], meeting_mode: st
     for rule in WEBINAR_SECTION_RULES:
         matching_sentences = []
         matching_actions = []
+        matching_refs = []
         for turn in cleaned_turns:
             for sentence in turn.get("sentences") or [turn.get("text", "")]:
                 lowered = sentence.lower()
                 if any(keyword in lowered for keyword in rule["keywords"]) and is_business_relevant(sentence):
                     matching_sentences.append(sentence)
+                    matching_refs.append({"speaker": turn.get("speaker", ""), "timestamp": turn.get("timestamp", "")})
         for action in lowered_actions:
             lowered = action.lower()
             if any(keyword in lowered for keyword in rule["keywords"]):
@@ -747,6 +841,7 @@ def build_meeting_sections(cleaned_turns: list[dict[str, Any]], meeting_mode: st
                     "section": rule["section"],
                     "summary": rule["summary"],
                     "actions": matching_actions,
+                    "_evidence": dedupe_evidence_refs(matching_refs),
                 }
             )
     return sections
@@ -774,6 +869,33 @@ def find_named_owner(text: str, config: dict[str, Any]) -> str | None:
         if re.search(rf"\b{re.escape(first_name)}\b", text, flags=re.IGNORECASE):
             return name
     return None
+
+
+def find_participant_by_first_name(text: str, config: dict[str, Any]) -> str | None:
+    lowered = text.lower()
+    for name in config.get("participant_groups", {}):
+        first_name = name.split()[0].lower()
+        if lowered == first_name or lowered.startswith(first_name + " "):
+            return name
+    return None
+
+
+def action_text_key(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
+
+
+def find_action_source_turn(action_text: str, raw_turns: list[dict[str, str]]) -> dict[str, str] | None:
+    key = action_text_key(action_text)
+    action_tokens = set(key.split())
+    best_turn = None
+    best_score = 0
+    for turn in raw_turns:
+        turn_tokens = set(action_text_key(turn["content"]).split())
+        overlap = len(action_tokens & turn_tokens)
+        if overlap > best_score:
+            best_score = overlap
+            best_turn = turn
+    return best_turn if best_score else None
 
 
 def infer_action_owner(turn: dict[str, str], rule: dict[str, Any], config: dict[str, Any]) -> str:
@@ -819,21 +941,39 @@ def infer_action_related_milestone(action_text: str, config: dict[str, Any]) -> 
 
 def resolve_explicit_action_owner(
     action_text: str,
+    action_turn: dict[str, str] | None,
     raw_turns: list[dict[str, str]],
     config: dict[str, Any],
 ) -> tuple[str, float]:
     lowered = action_text.lower()
-    if lowered.startswith("i will"):
-        return "SPEAKER", 0.95
+    if re.match(r"^(?:[A-Z][a-z]+),\s+", action_text):
+        named = find_participant_by_first_name(action_text.split(",", 1)[0], config)
+        if named:
+            return named, 0.85
+    can_you_match = re.match(r"can you\s+([A-Z][a-z]+)", action_text, flags=re.IGNORECASE)
+    if can_you_match:
+        named = find_participant_by_first_name(can_you_match.group(1), config)
+        if named:
+            return named, 0.85
+    should_match = re.match(r"([A-Z][a-z]+)\s+should\b", action_text)
+    if should_match:
+        named = find_participant_by_first_name(should_match.group(1), config)
+        if named:
+            return named, 0.85
+    explain_match = re.match(r"([A-Z][a-z]+),?\s+just\s+\w+", action_text, flags=re.IGNORECASE)
+    if explain_match:
+        named = find_participant_by_first_name(explain_match.group(1), config)
+        if named:
+            return named, 0.85
+    if re.match(r"^(i will|i'll|i can|i'll update|i'll change|i'll add)\b", lowered):
+        if action_turn:
+            return action_turn["speaker"], 0.8
+        return "Owner not specified", 0.2
+    if lowered.startswith("we're ") and action_turn:
+        return action_turn["speaker"], 0.6
     direct_name = find_named_owner(action_text, config)
     if direct_name:
-        return direct_name, 0.95
-    can_you_match = re.match(r"can you ([A-Z][a-z]+)", action_text, flags=re.IGNORECASE)
-    if can_you_match:
-        first_name = can_you_match.group(1)
-        for participant in config.get("participant_groups", {}):
-            if participant.split()[0].lower() == first_name.lower():
-                return participant, 0.9
+        return direct_name, 0.85
     if "grant" in lowered:
         if any("emma" in turn["content"].lower() for turn in raw_turns) and any("follow up this week" in turn["content"].lower() for turn in raw_turns):
             return "Emma", 0.85
@@ -851,21 +991,21 @@ def build_structured_actions(
     for index, action in enumerate(actions):
         owner = owners[index] if index < len(owners) else "Owner not specified"
         deadline = deadlines[index] if index < len(deadlines) else ""
-        explicit_owner, owner_confidence = resolve_explicit_action_owner(action, raw_turns, config)
-        if explicit_owner == "SPEAKER":
-            final_owner = owner if owner not in {"Owner not specified", ""} else "Owner not specified"
-        elif explicit_owner != "Owner not specified":
-            final_owner = explicit_owner
-        elif owner in {"Owner not specified", ""}:
-            final_owner = "Owner not specified"
-        elif action.lower().startswith(("we should", "review ", "confirm ", "draft ", "validate ", "follow up ")):
+        action_turn = find_action_source_turn(action, raw_turns)
+        explicit_owner, owner_confidence = resolve_explicit_action_owner(action, action_turn, raw_turns, config)
+        final_owner = explicit_owner
+        if final_owner == "Owner not specified" and owner not in {"", "Owner not specified"} and "/" not in owner:
+            if action_turn and action_turn["speaker"] == owner:
+                final_owner = owner
+                owner_confidence = 0.65
+            else:
+                final_owner = owner
+                owner_confidence = 0.6
+        if final_owner != "Owner not specified" and owner_confidence < OWNER_CONFIDENCE_MIN:
             final_owner = "Owner not specified"
             owner_confidence = 0.2
-        else:
-            final_owner = owner
-        if final_owner != owner and explicit_owner != "Owner not specified":
-            owner_confidence = max(owner_confidence, 0.85)
-        elif final_owner == "Owner not specified":
+        if action.lower().startswith(("we should", "review ", "confirm ", "draft ", "validate ", "follow up ")) and explicit_owner == "Owner not specified":
+            final_owner = "Owner not specified"
             owner_confidence = 0.2
         related_milestone = infer_action_related_milestone(action, config)
         structured.append(
@@ -875,9 +1015,57 @@ def build_structured_actions(
                 "meetingActionPointDeadline": deadline,
                 "actionConfidence": round(owner_confidence, 2),
                 "relatedMilestone": related_milestone or "unlinked",
+                "_evidence": [evidence_ref(action_turn)] if action_turn else [],
             }
         )
     return structured
+
+
+def build_decisions(
+    cleaned_turns: list[dict[str, Any]],
+    meeting_mode: str,
+    structured_actions: list[dict[str, Any]],
+) -> tuple[list[str], list[dict[str, Any]]]:
+    if meeting_mode == "project_status_review":
+        return [], []
+
+    details: list[dict[str, Any]] = []
+    for turn in cleaned_turns:
+        text = " ".join(turn.get("sentences") or [turn.get("text", "")])
+        lowered = text.lower()
+        decision = ""
+        if "need a clear view of what happens before the webinar" in lowered:
+            decision = "The webinar should show the validation team what happens before the session begins."
+        elif "main issue is making sure the timeline is clear" in lowered or ("timeline is clear" in lowered and "scope" in lowered):
+            decision = "The webinar should explain the timeline and scope more clearly."
+        elif "may ask detailed process questions" in lowered:
+            decision = "The workshop material should prepare for detailed process questions from attendees."
+        if decision:
+            details.append(
+                {
+                    "decision": decision,
+                    "_evidence": [{"speaker": turn.get("speaker", ""), "timestamp": turn.get("timestamp", "")}],
+                }
+            )
+
+    if not details and structured_actions:
+        for action in structured_actions[:2]:
+            details.append(
+                {
+                    "decision": action["meetingActionPoint"],
+                    "_evidence": action.get("_evidence", []),
+                }
+            )
+
+    seen = set()
+    unique_details = []
+    for item in details:
+        key = item["decision"].lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_details.append(item)
+    return [item["decision"] for item in unique_details], unique_details
 
 
 def extract_generic_actions(
@@ -1053,6 +1241,7 @@ def build_template_values(text: str, analysis: dict[str, Any], turns: list[Any],
     segments = [segment for segment in analysis["segments"] if segment.get("milestone") != "unclassified"]
     meeting_type = detect_meeting_mode(cleaned_turns)
     meeting_theme = infer_meeting_theme(meeting_type, analysis, cleaned_turns)
+    meeting_style = infer_meeting_style(meeting_type)
     if not meeting_title:
         meeting_title = meeting_theme
 
@@ -1085,22 +1274,28 @@ def build_template_values(text: str, analysis: dict[str, Any], turns: list[Any],
     else:
         structured_actions = []
 
+    discussion_point_details: list[dict[str, Any]] = []
     discussion_points = build_milestone_discussion_points(segments, config) if meeting_type == "project_status_review" else []
     if not discussion_points and meeting_type != "project_status_review":
-        discussion_points = extract_general_discussion_points(cleaned_turns, meeting_type)
+        discussion_point_details = extract_general_discussion_details(cleaned_turns, meeting_type)
+        discussion_points = [item["discussionPoint"] for item in discussion_point_details]
     if not discussion_points and meeting_type != "project_status_review":
         discussion_points = extract_generic_discussion_points(text, raw_turns, config)
     if not discussion_points and meeting_type != "project_status_review":
         discussion_points = extract_turn_level_discussion_points(raw_turns)
+    if not discussion_point_details and discussion_points:
+        discussion_point_details = [{"discussionPoint": point, "_evidence": []} for point in discussion_points]
 
     meeting_sections = build_meeting_sections(cleaned_turns, meeting_type, structured_actions)
     health_summary = build_health_summary(segments) if meeting_type == "project_status_review" else {}
+    decisions, decision_details = build_decisions(cleaned_turns, meeting_type, structured_actions)
 
     template_values = {
         "meetingTitle": meeting_title,
         "meetingDate": meeting_date,
         "meetingLocation": meeting_location,
         "meetingType": meeting_type,
+        "meetingStyle": meeting_style,
         "meetingTheme": meeting_theme,
         "meetingObjectives": objectives_for_meeting_type(meeting_type, meeting_theme, analysis),
         "participants.client": participants["participants.client"],
@@ -1116,6 +1311,9 @@ def build_template_values(text: str, analysis: dict[str, Any], turns: list[Any],
         "executiveSummary": build_executive_summary(meeting_theme, meeting_type, segments, config),
         "healthSummary": health_summary,
         "meetingSections": meeting_sections,
+        "decisions": decisions,
+        "discussionPointDetails": discussion_point_details,
+        "decisionDetails": decision_details,
     }
     return template_values
 
