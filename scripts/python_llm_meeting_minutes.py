@@ -1163,7 +1163,7 @@ def extract_turn_level_discussion_points(raw_turns: list[dict[str, str]]) -> lis
                 "investigation",
                 "blocker",
             )
-        ):
+        ) or is_issue_statement(content):
             points.append(finalize_sentence(sentence_case(content.rstrip("."))))
         if len(points) >= 5:
             break
@@ -1194,6 +1194,20 @@ def is_valid_discussion_point_candidate(text: str, speaker: str = "") -> bool:
     return True
 
 
+def is_issue_statement(text: str) -> bool:
+    lowered = text.lower()
+    return any(
+        phrase in lowered
+        for phrase in (
+            "isn't clear",
+            "is not clear",
+            "not clear",
+            "unclear",
+            "confusing",
+        )
+    )
+
+
 def cluster_sentence_for_mode(sentence: str, meeting_mode: str) -> str | None:
     lowered = sentence.lower()
     if not is_business_relevant(sentence):
@@ -1211,7 +1225,10 @@ def cluster_sentence_for_mode(sentence: str, meeting_mode: str) -> str | None:
             return "Educational positioning rather than sales-led messaging"
         if any(term in lowered for term in ("demo", "registration list", "client attendees")):
             return "Live demo setup and framing"
-        if any(term in lowered for term in ("timeline", "timing", "practice", "rehearsal", "friday", "next week")):
+        if (
+            ("timeline" in lowered and "scope" in lowered)
+            or any(term in lowered for term in ("timing", "practice", "rehearsal", "before the webinar"))
+        ):
             return "Timing and rehearsal preparation"
     if meeting_mode == "presentation_review":
         if any(term in lowered for term in ("slide", "deck", "presentation", "visual")):
@@ -1226,7 +1243,12 @@ def cluster_sentence_for_mode(sentence: str, meeting_mode: str) -> str | None:
             return "Open issue investigation"
         if any(term in lowered for term in ("custom branding", "suggestion", "customer", "not prioritise", "discussion only")):
             return "Feature prioritisation decisions"
-        if any(term in lowered for term in ("documentation", "api", "friday", "hanging around", "when can it be done")):
+        if (
+            ("documentation" in lowered and "api" in lowered)
+            or ("documentation" in lowered and "hanging around" in lowered)
+            or ("documentation" in lowered and "when can it be done" in lowered)
+            or ("documentation" in lowered and "changes the api again" in lowered)
+        ):
             return "Documentation and follow-up delivery"
     return None
 

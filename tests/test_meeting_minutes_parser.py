@@ -406,6 +406,24 @@ Yes, I'll do that.
         self.assertEqual(result["discussionPoints"], [])
         self.assertNotIn("can you update the attendee list", result["executiveSummary"].lower())
 
+    def test_deadline_word_does_not_create_synthetic_discussion_point(self):
+        transcript = """Working session
+
+6 June 2026
+
+Jack Cunningham:
+The explanation isn't clear.
+
+Ciara Griffin:
+I'll think that through before Friday.
+"""
+
+        result = analyse(transcript)
+
+        self.assertEqual(result["discussionPoints"], ["The explanation isn't clear."])
+        self.assertNotIn("api documentation", " ".join(result["discussionPoints"]).lower())
+        self.assertNotIn("api documentation", result["executiveSummary"].lower())
+
     def test_request_and_short_volunteer_reply_link_into_actions(self):
         transcript = """General check-in
 
