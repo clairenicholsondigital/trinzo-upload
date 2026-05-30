@@ -64,6 +64,8 @@ MINUTES_CONFIG = REPO_DIR / "config" / "meeting_minutes_rules.json"
 GLOSSARY_CONFIG = REPO_DIR / "config" / "meeting_minutes_glossary.json"
 TURN_RE = re.compile(r"^(?P<speaker>.+?)\s+(?P<timestamp>\d+:\d{2})$")
 RAW_SPEAKER_RE = re.compile(r"^([A-Z][A-Za-z ]+?)\s+\d+:\d{2}", re.MULTILINE)
+COLON_SPEAKER_RE = re.compile(r"^(?P<speaker>[A-Z][A-Za-z ]+):\s*(?P<tail>.*)$")
+ACTION_BLOCK_HEADING_RE = re.compile(r"^actions(?:\s+before\s+(?:next\s+week|the\s+webinar))?:\s*$", re.IGNORECASE)
 INLINE_TURN_RE = re.compile(
     r"(?m)^(?P<speaker>[A-Z][A-Za-z ]+?)\s+\d+:\d{2}(?P<content>.*?)(?=^[A-Z][A-Za-z ]+?\s+\d+:\d{2}|\Z)",
     re.DOTALL,
@@ -382,6 +384,8 @@ def decision_subject_group(text: str) -> str:
 
 def rewrite_subject_decision(text: str) -> str:
     lowered = text.lower()
+    if "validation example" in lowered and "broad" in lowered and "validation-specific" in lowered:
+        return "The webinar should keep the validation example broad rather than too validation-specific."
     if "keep it broad" in lowered or "stay broad" in lowered or "remain broad" in lowered:
         return "The webinar should remain broad rather than validation-specific."
     if "validation-specific" in lowered or "validation specific" in lowered:
@@ -1396,19 +1400,35 @@ def build_meeting_sections(cleaned_turns: list[dict[str, Any]], meeting_mode: st
     return sections
 
 
-def extract_action_block(raw_turns: list[dict[str, str]]) -> tuple[list[str], str]:
+def extract_action_block(text: str) -> tuple[list[str], str]:
     actions: list[str] = []
     block_deadline = ""
-    for turn in raw_turns:
-        content = turn["content"].strip()
-        lowered = content.lower()
-        if not lowered.startswith("actions before next week"):
+    in_block = False
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
             continue
-        block_deadline = "Before next week"
-        tail = content.split(":", 1)[1].strip() if ":" in content else ""
-        if tail:
-            actions.extend([part.strip().rstrip(".") for part in tail.split(".") if part.strip()])
-        break
+        if ACTION_BLOCK_HEADING_RE.match(line):
+            lowered = line.lower()
+            in_block = True
+            if "next week" in lowered:
+                block_deadline = "Before next week"
+            elif "before the webinar" in lowered:
+                block_deadline = "Before the webinar"
+            else:
+                block_deadline = ""
+            continue
+        if not in_block:
+            continue
+        if TURN_RE.match(line):
+            break
+        colon_match = COLON_SPEAKER_RE.match(line)
+        if colon_match:
+            speaker_label = colon_match.group("speaker").strip().lower()
+            if speaker_label not in {"date", "location"}:
+                break
+            continue
+        actions.extend([part.strip().rstrip(".") for part in split_sentences(line) if part.strip()])
     return actions, block_deadline
 
 
@@ -2086,7 +2106,7 @@ def build_template_values(text: str, analysis: dict[str, Any], turns: list[Any],
     if not participants["participants.client"] and not participants["participants.trinzo"]:
         participants = extract_participants_from_text(text, config)
 
-    actions, block_deadline = extract_action_block(source_turns)
+    actions, block_deadline = extract_action_block(text)
     if meeting_type == "project_status_review":
         structured_actions = build_project_review_actions(segments, raw_turns, config)
     elif meeting_type in {"webinar_rehearsal", "presentation_review", "sales_or_client_discussion", "general_meeting"}:

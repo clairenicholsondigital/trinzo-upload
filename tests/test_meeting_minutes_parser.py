@@ -58,6 +58,26 @@ Yeah.
         )
         self.assertTrue(turns[0].text.startswith("Okay, before we start"))
 
+    def test_action_block_headings_are_not_treated_as_speakers(self):
+        transcript = """Weekly Delivery Review
+
+5 June 2026
+
+Ciara Griffin:
+We need to tidy the final webinar prep.
+
+Actions before the webinar:
+Update the opening slide.
+Check the attendee list.
+
+Tom Baker:
+Fine.
+"""
+
+        turns = parse_speaker_turns(transcript)
+
+        self.assertEqual([turn.speaker for turn in turns], ["Ciara Griffin", "Tom Baker"])
+
     def test_colon_style_meeting_preserves_unknown_participants_and_resolution_decisions(self):
         transcript = """Weekly Delivery Review
 
@@ -213,6 +233,66 @@ No, discussion only. No action for that.
         self.assertIn("notification email", " ".join(result["discussionPoints"]).lower())
         self.assertIn("custom branding", " ".join(result["discussionPoints"]).lower())
         self.assertIn("api documentation", result["executiveSummary"].lower())
+
+    def test_action_block_before_webinar_extracts_actions_until_next_speaker_turn(self):
+        transcript = """Webinar prep
+
+6 June 2026
+
+Ciara Griffin:
+We are nearly there.
+
+Actions before the webinar:
+Update the opening slide.
+Check the attendee list.
+
+Tom Baker:
+Thanks.
+"""
+
+        result = analyse(transcript)
+
+        self.assertEqual(
+            result["meetingActionPoint"][:2],
+            ["Update the opening slide.", "Check the attendee list."],
+        )
+        self.assertEqual(result["meetingActionPointDeadline"][:2], ["Before the webinar", "Before the webinar"])
+        self.assertNotIn("Actions before the webinar", result["participants.client"] + result["participants.trinzo"])
+
+    def test_plain_actions_block_extracts_actions_without_heading_deadline(self):
+        transcript = """Working session
+
+6 June 2026
+
+Actions:
+Share the revised notes.
+Prepare the follow-up email.
+"""
+
+        result = analyse(transcript)
+
+        self.assertEqual(
+            result["meetingActionPoint"][:2],
+            ["Share the revised notes.", "Prepare the follow-up email."],
+        )
+        self.assertEqual(result["meetingActionPointDeadline"][:2], ["", ""])
+
+    def test_action_only_text_does_not_create_duplicate_governance_discussion(self):
+        transcript = """Daily AI Check In
+
+6 June 2026
+
+Ciara Griffin:
+The intake workflow is still in progress.
+
+Actions before next week:
+Prepare governance framework for leadership review.
+"""
+
+        result = analyse(transcript)
+
+        self.assertIn("Prepare governance framework for leadership review.", result["meetingActionPoint"])
+        self.assertNotIn("governance framework", " ".join(result["discussionPoints"]).lower())
 
     def test_request_and_volunteer_turns_link_into_actions(self):
         transcript = """Creative review
@@ -618,6 +698,50 @@ Conor Flynn   1:00Yeah, that's better.
         )
         self.assertEqual(len(result["decisionDetails"]), 1)
         self.assertEqual(result["decisionDetails"][0]["topic"], "audience_framing")
+
+    def test_vague_agenda_and_process_cues_are_not_extracted_as_decisions(self):
+        transcript = """Validation webinar review
+
+6 June 2026
+
+Jack Cunningham:
+Let's run through the opening.
+
+Conor Flynn:
+Let's see if we can do something there.
+
+Ciara Griffin:
+Let's give background on the project first.
+"""
+
+        result = analyse(transcript)
+
+        self.assertEqual(result["decisions"], [])
+
+    def test_validation_example_broad_reversal_uses_specific_wording(self):
+        transcript = """Validation webinar review
+
+6 June 2026
+
+Jack Cunningham:
+Let's make the validation example validation-specific.
+
+Conor Flynn:
+Agreed.
+
+Ciara Griffin:
+Actually, let's keep the validation example broad rather than too validation-specific.
+
+Conor Flynn:
+Yeah, that's better.
+"""
+
+        result = analyse(transcript)
+
+        self.assertEqual(
+            result["decisions"],
+            ["The webinar should keep the validation example broad rather than too validation-specific."],
+        )
 
     def test_questions_and_descriptions_are_not_extracted_as_decisions(self):
         transcript = """Webinar practice transcript

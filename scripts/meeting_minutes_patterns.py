@@ -61,6 +61,30 @@ NON_DECISION_PATTERNS = [
         re.IGNORECASE,
     ),
     re.compile(
+        r"^\s*let'?s run through\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\blet'?s see if we can do something\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"^\s*let'?s give background\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\bgive background\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\bdo something there\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\bdo something\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
         r"\bthat's just kind of\b",
         re.IGNORECASE,
     ),
