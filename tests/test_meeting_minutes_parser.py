@@ -260,7 +260,24 @@ I'll do it.
         result = analyse(transcript)
 
         self.assertEqual(result["meetingType"], "general_meeting")
-        self.assertEqual(result["meetingActionPoint"], ["Update that."])
+        self.assertEqual(result["meetingActionPoint"], [])
+        self.assertEqual(result["meetingActionPointOwner"], [])
+
+    def test_mine_is_resolved_to_the_speakers_own_item(self):
+        transcript = """General check-in
+
+6 June 2026
+
+Ciara Griffin:
+Can somebody update mine?
+
+Emily Stone:
+I'll do that.
+"""
+
+        result = analyse(transcript)
+
+        self.assertEqual(result["meetingActionPoint"], ["Update Ciara's item."])
         self.assertEqual(result["meetingActionPointOwner"], ["Emily Stone"])
 
     def test_meeting_minutes_use_the_flat_skill_style_output(self):

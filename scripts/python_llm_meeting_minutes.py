@@ -12,6 +12,35 @@ from pathlib import Path
 import sys
 from typing import Any
 
+try:
+    from .meeting_minutes_conversation import (
+        build_linked_action_text as conversation_build_linked_action_text,
+        extract_request_task as conversation_extract_request_task,
+        extract_response_commitment as conversation_extract_response_commitment,
+    )
+    from .meeting_minutes_text import (
+        finalize_sentence as text_finalize_sentence,
+        has_minimum_output_words,
+        normalize_requested_task as text_normalize_requested_task,
+        normalize_text_fragment as text_normalize_text_fragment,
+        sentence_case as text_sentence_case,
+        split_sentences as text_split_sentences,
+    )
+except ImportError:
+    from meeting_minutes_conversation import (
+        build_linked_action_text as conversation_build_linked_action_text,
+        extract_request_task as conversation_extract_request_task,
+        extract_response_commitment as conversation_extract_response_commitment,
+    )
+    from meeting_minutes_text import (
+        finalize_sentence as text_finalize_sentence,
+        has_minimum_output_words,
+        normalize_requested_task as text_normalize_requested_task,
+        normalize_text_fragment as text_normalize_text_fragment,
+        sentence_case as text_sentence_case,
+        split_sentences as text_split_sentences,
+    )
+
 
 REPO_DIR = Path(__file__).resolve().parent.parent
 PYTHON_LLM_SCRIPT = REPO_DIR / "scripts" / "python_llm.py"
@@ -246,19 +275,11 @@ def participant_bucket_for_speaker(speaker: str, speaker_map: dict[str, str]) ->
 
 
 def sentence_case(text: str) -> str:
-    text = text.strip().rstrip(".")
-    if not text:
-        return text
-    return text[0].upper() + text[1:]
+    return text_sentence_case(text)
 
 
 def finalize_sentence(text: str) -> str:
-    cleaned = text.strip()
-    if not cleaned:
-        return cleaned
-    if cleaned[-1] in ".!?":
-        return cleaned
-    return cleaned + "."
+    return text_finalize_sentence(text)
 
 
 def sentence_count(text: str) -> int:
@@ -331,8 +352,8 @@ def decision_type_for_sentence(text: str) -> str:
     return "accepted_direction"
 
 
-def generic_decision_text(text: str) -> str:
-    cleaned = normalize_text_fragment(text)
+def generic_decision_text(text: str, speaker: str = "") -> str:
+    cleaned = normalize_text_fragment(text, speaker)
     cleaned = re.sub(r"^(agreed|we agreed)\b[,.]?\s*", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"^(i think|probably|maybe|right|so)\b[,.]?\s*", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"^(no,\s*)", "", cleaned, flags=re.IGNORECASE)
@@ -368,6 +389,7 @@ def build_decision_candidate(
 ) -> dict[str, Any] | None:
     stripped = sentence.strip()
     lowered = stripped.lower()
+    speaker = turn.get("speaker", "")
     if not is_business_relevant(sentence):
         return None
     if is_action_like_sentence(sentence):
@@ -410,18 +432,18 @@ def build_decision_candidate(
         specificity_bonus = 0.14
     elif "main priority" in lowered:
         topic = f"priority_{sentence_index}"
-        decision = generic_decision_text(sentence)
+        decision = generic_decision_text(sentence, speaker)
         specificity_bonus = 0.1
     elif any(term in lowered for term in ("go with", "let's", "we agreed", "agreed", "decision is")):
         topic = f"generic_{sentence_index}"
-        decision = generic_decision_text(sentence)
+        decision = generic_decision_text(sentence, speaker)
         specificity_bonus = 0.1
     elif decision_signal_score(sentence) >= 0.2 and meeting_mode != "project_status_review":
         topic = f"generic_{sentence_index}"
-        decision = generic_decision_text(sentence)
+        decision = generic_decision_text(sentence, speaker)
         specificity_bonus = 0.05
 
-    if not decision:
+    if not decision or not has_minimum_output_words(decision):
         return None
 
     confidence = round(
@@ -505,8 +527,8 @@ def strip_leading_speaker_reference(text: str) -> str:
     return cleaned.strip()
 
 
-def action_to_imperative(action_text: str, owner: str) -> str:
-    cleaned = normalize_text_fragment(action_text)
+def action_to_imperative(action_text: str, owner: str, speaker: str = "") -> str:
+    cleaned = normalize_text_fragment(action_text, speaker or owner if owner != "Owner not specified" else "")
     cleaned = cleaned.rstrip("?.!")
     lowered = cleaned.lower()
 
@@ -576,8 +598,7 @@ def build_discussion_points(segments: list[dict[str, Any]], config: dict[str, An
 
 
 def split_sentences(text: str) -> list[str]:
-    text = re.sub(r"(?<=\w)(?=[A-Z][a-z])", ". ", text)
-    return [part.strip() for part in re.split(r"(?<=[.!?])\s+", text) if part.strip()]
+    return text_split_sentences(text)
 
 
 def find_rule_hits(text: str, rules: list[dict[str, Any]], field: str) -> list[str]:
@@ -610,10 +631,8 @@ def milestone_label(segment: dict[str, Any], config: dict[str, Any]) -> str:
     return config["milestone_labels"].get(segment["milestone"], segment["milestone"].replace("_", " ").title())
 
 
-def normalize_text_fragment(text: str) -> str:
-    cleaned = re.sub(r"^(okay|right|so|yeah|true|fine|interesting|correct)\b[,.]?\s*", "", text.strip(), flags=re.IGNORECASE)
-    cleaned = re.sub(r"\s+", " ", cleaned)
-    return cleaned.strip().rstrip(".")
+def normalize_text_fragment(text: str, speaker: str = "") -> str:
+    return text_normalize_text_fragment(text, speaker)
 
 
 def sentence_join(parts: list[str]) -> str:
@@ -1262,66 +1281,20 @@ def infer_action_deadline(text: str, rule: dict[str, Any], config: dict[str, Any
     return rule["deadline"]
 
 
-def normalize_requested_task(task_text: str) -> str:
-    cleaned = normalize_text_fragment(task_text)
-    cleaned = re.sub(r"^(also|just)\b\s*", "", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\bfor us\b", "", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\s+", " ", cleaned).strip()
-    return cleaned.rstrip("?.!")
+def normalize_requested_task(task_text: str, speaker: str = "") -> str:
+    return text_normalize_requested_task(task_text, speaker)
 
 
-def extract_request_task(sentence: str) -> str | None:
-    stripped = sentence.strip()
-    patterns = [
-        r"^can\s+(?:somebody|someone|anybody|anyone)\s+(?P<task>.+?)\??$",
-        r"^can\s+you\s+(?P<task>.+?)\??$",
-        r"^could\s+(?:somebody|someone|anybody|anyone)\s+(?P<task>.+?)\??$",
-        r"^we\s+need\s+(?P<task>.+?)\.?$",
-        r"^someone\s+needs\s+to\s+(?P<task>.+?)\.?$",
-    ]
-    for pattern in patterns:
-        match = re.match(pattern, stripped, flags=re.IGNORECASE)
-        if not match:
-            continue
-        task = normalize_requested_task(match.group("task"))
-        if task:
-            return task
-    return None
+def extract_request_task(sentence: str, speaker: str = "") -> str | None:
+    return conversation_extract_request_task(sentence, speaker)
 
 
-def extract_response_commitment(sentence: str, config: dict[str, Any]) -> dict[str, Any] | None:
-    stripped = sentence.strip()
-    lowered = stripped.lower()
-    if not re.search(r"\b(i'll|i will|i can)\b", lowered):
-        return None
-
-    collaborator = None
-    collaborator_match = re.search(r"\b(?:work|pair)\s+with\s+([A-Z][a-z]+)\b", stripped)
-    if collaborator_match:
-        collaborator = find_participant_by_first_name(collaborator_match.group(1), config)
-
-    if re.search(r"\b(do that|do it|handle that|handle it|take that|take it|look into that|look into it)\b", lowered):
-        return {"inherits_task": True, "collaborator": collaborator}
-    if re.search(r"\bwork with [A-Z][a-z]+ on (?:that|it)\b", stripped, flags=re.IGNORECASE):
-        return {"inherits_task": True, "collaborator": collaborator}
-
-    explicit_match = re.search(r"\b(?:i'll|i will|i can)\s+(?P<task>.+)$", stripped, flags=re.IGNORECASE)
-    if not explicit_match:
-        return None
-    explicit_task = normalize_requested_task(explicit_match.group("task"))
-    if not explicit_task:
-        return None
-    return {"inherits_task": False, "task": explicit_task, "collaborator": collaborator}
+def extract_response_commitment(sentence: str, speaker: str, config: dict[str, Any]) -> dict[str, Any] | None:
+    return conversation_extract_response_commitment(sentence, speaker, config, find_participant_by_first_name)
 
 
-def build_linked_action_text(task: str, collaborator: str | None) -> str:
-    task = normalize_requested_task(task)
-    if not task:
-        return ""
-    if collaborator:
-        first_name = collaborator.split()[0]
-        return finalize_sentence(f"Work with {first_name} to {task}")
-    return finalize_sentence(task)
+def build_linked_action_text(task: str, collaborator: str | None, speaker: str = "") -> str:
+    return conversation_build_linked_action_text(task, collaborator, speaker)
 
 
 def infer_action_related_milestone(action_text: str, config: dict[str, Any]) -> str:
@@ -1411,7 +1384,9 @@ def build_structured_actions(
             final_owner = "Owner not specified"
             owner_confidence = 0.2
         related_milestone = infer_action_related_milestone(action, config)
-        polished_action = action_to_imperative(action, final_owner)
+        polished_action = action_to_imperative(action, final_owner, action_turn["speaker"] if action_turn else "")
+        if not has_minimum_output_words(polished_action):
+            continue
         structured.append(
             {
                 "meetingActionPoint": polished_action,
@@ -1562,7 +1537,7 @@ def extract_linked_conversational_actions(raw_turns: list[dict[str, str]], confi
                 item for item in pending_requests if sentence_index - item["sentence_index"] <= 4
             ]
 
-            request_task = extract_request_task(stripped)
+            request_task = extract_request_task(stripped, speaker)
             if request_task and not lowered.startswith("can you "):
                 pending_requests.append(
                     {
@@ -1574,14 +1549,14 @@ def extract_linked_conversational_actions(raw_turns: list[dict[str, str]], confi
                 sentence_index += 1
                 continue
 
-            commitment = extract_response_commitment(stripped, config)
+            commitment = extract_response_commitment(stripped, speaker, config)
             if commitment:
                 action_text = ""
                 if commitment.get("inherits_task") and pending_requests:
                     pending = pending_requests[-1]
-                    action_text = build_linked_action_text(pending["task"], commitment.get("collaborator"))
+                    action_text = build_linked_action_text(pending["task"], commitment.get("collaborator"), speaker)
                 elif commitment.get("task"):
-                    action_text = build_linked_action_text(commitment["task"], commitment.get("collaborator"))
+                    action_text = build_linked_action_text(commitment["task"], commitment.get("collaborator"), speaker)
 
                 if action_text:
                     key = action_text.lower()
@@ -1608,7 +1583,7 @@ def extract_fallback_actions(raw_turns: list[dict[str, str]], config: dict[str, 
         lowered = content.lower()
         if not content:
             continue
-        if extract_request_task(content) and not lowered.startswith("can you "):
+        if extract_request_task(content, turn.get("speaker", "")) and not lowered.startswith("can you "):
             continue
         if not any(term in lowered for term in ("i will", "we should", "can you", "check", "confirm", "send", "update")):
             continue
