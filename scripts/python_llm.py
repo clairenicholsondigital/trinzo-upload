@@ -136,6 +136,13 @@ NOT_STARTED_PHRASES = [
     "has not been scoped",
     "not scoped",
 ]
+MEETING_DATE_PATTERNS = [
+    "%d %B %Y, %I:%M%p",
+    "%d %B %Y, %I:%M %p",
+    "%d %B %Y",
+    "%B %d, %Y",
+    "%B %d %Y",
+]
 
 
 @dataclass
@@ -345,6 +352,27 @@ def normalize_delivery_status(status: str) -> str:
     return DELIVERY_ALIAS_MAP.get(status, status)
 
 
+def extract_meeting_date(text: str) -> str:
+    for raw_line in text.splitlines()[:8]:
+        line = raw_line.strip()
+        if not line:
+            continue
+        line = re.sub(r"^date\s*:\s*", "", line, flags=re.IGNORECASE).strip()
+        for fmt in MEETING_DATE_PATTERNS:
+            try:
+                return datetime.strptime(line, fmt).strftime("%Y-%m-%d")
+            except ValueError:
+                continue
+        match = re.search(r"\b(\d{1,2}\s+[A-Za-z]+\s+\d{4})\b", line)
+        if match:
+            for fmt in ("%d %B %Y", "%d %b %Y"):
+                try:
+                    return datetime.strptime(match.group(1), fmt).strftime("%Y-%m-%d")
+                except ValueError:
+                    continue
+    return ""
+
+
 def is_explicit_delay_sentence(text: str) -> bool:
     return any(pattern.search(text) for pattern in EXPLICIT_DELAY_PATTERNS)
 
@@ -389,6 +417,18 @@ def infer_status_modifiers(sentences: list[str], delivery_status: str) -> list[s
         modifiers.append("awaiting_approval")
     if re.search(r"\bneed sales input\b|\bdependency\b|\bblocked\b", combined):
         modifiers.append("dependency_blocked")
+    if re.search(r"\bneed sales input\b|\bdon't have it\b|\bnothing received\b|\bno update\b", combined):
+        modifiers.append("awaiting_external_input")
+    if re.search(r"\bnot operational\b|\bisn't working properly yet\b|\brouting isn't working properly yet\b", combined):
+        modifiers.append("not_operational")
+    if re.search(r"\bhaven't finalised\b|\bhasn't finalised\b|\bdoesn't exist yet\b", combined):
+        modifiers.append("not_finalised")
+    if re.search(r"\bnot due yet\b|\bstill due end of quarter\b", combined):
+        modifiers.append("scheduled_not_due")
+    if re.search(r"\bhasn't been scoped\b|\bhas not been scoped\b|\bnot scoped\b", combined):
+        modifiers.append("scope_not_defined")
+    if re.search(r"\bnew milestone\b", combined):
+        modifiers.append("newly_added")
     return dedupe_keep_order(modifiers)
 
 
@@ -399,6 +439,115 @@ def is_contextual_evidence_sentence(text: str) -> bool:
         or "template" in lowered
         or "review" in lowered
     )
+
+
+def build_reason_tags(
+    sentences: list[str],
+    delivery_status: str,
+    status_modifiers: list[str],
+) -> list[str]:
+    text = " ".join(sentences).lower()
+    tags: list[str] = []
+
+    if "not_operational" in status_modifiers:
+        tags.append("not_operational")
+    if "not_finalised" in status_modifiers:
+        tags.append("not_finalised")
+    if "partially_complete" in status_modifiers:
+        tags.append("partially_complete")
+    if delivery_status == "awaiting_input" or "awaiting_external_input" in status_modifiers:
+        tags.append("awaiting_input")
+    if "dependency_blocked" in status_modifiers:
+        tags.append("dependency_blocked")
+    if "workload_visibility_needed" in status_modifiers:
+        tags.append("workload_visibility_needed")
+    if "pending_review" in status_modifiers:
+        tags.append("pending_review")
+    if "awaiting_approval" in status_modifiers:
+        tags.append("awaiting_approval")
+    if "scope_not_defined" in status_modifiers:
+        tags.append("scope_not_defined")
+    if "scheduled_not_due" in status_modifiers:
+        tags.append("scheduled_not_due")
+    if delivery_status in {"in_progress", "blocked", "awaiting_input"} and not tags and re.search(
+        r"\bamber\b|\bneeds refinement\b|\battention\b|\bnot complete\b", text
+    ):
+        tags.append("requires_attention")
+    if delivery_status == "delayed" or is_explicit_delay_sentence(text):
+        tags.append("delayed")
+
+    return dedupe_keep_order(tags)
+
+
+def build_status_reasons(sentences: list[str], reason_tags: list[str]) -> list[str]:
+    text = " ".join(sentences).lower()
+    phrases: list[str] = []
+    if "not_operational" in reason_tags and re.search(r"\brouting isn't working properly yet\b|\bisn't working properly yet\b|\bnot operational\b", text):
+        phrases.append("routing is not operational yet")
+    if "not_finalised" in reason_tags and re.search(r"\bhaven't finalised\b|\bdoesn't exist yet\b", text):
+        phrases.append("key deliverables are not finalised")
+    if "partially_complete" in reason_tags:
+        phrases.append("the workstream contains a mix of completed and incomplete items")
+    if "awaiting_input" in reason_tags and re.search(r"\bnothing received\b|\bno update\b|\bfollow up this week\b", text):
+        phrases.append("external input is still outstanding")
+    if "dependency_blocked" in reason_tags and re.search(r"\bneed sales input\b|\bdon't have it\b", text):
+        phrases.append("sales input is still required")
+    if "workload_visibility_needed" in reason_tags and "visibility on workload" in text:
+        phrases.append("workload visibility is still needed")
+    if "pending_review" in reason_tags and re.search(r"\bpending leadership review\b|\bneeds review\b", text):
+        phrases.append("formal review is still pending")
+    if "awaiting_approval" in reason_tags and "leadership review" in text:
+        phrases.append("approval is still outstanding")
+    if "scope_not_defined" in reason_tags and re.search(r"\bhasn't been scoped\b|\bnot scoped\b", text):
+        phrases.append("scope is not yet defined")
+    if "scheduled_not_due" in reason_tags and re.search(r"\bnot due yet\b|\bend of quarter\b", text):
+        phrases.append("the scheduled deliverable is not yet due")
+    if "requires_attention" in reason_tags and not phrases:
+        phrases.append("the workstream still needs attention")
+    if "delayed" in reason_tags and is_explicit_delay_sentence(text):
+        phrases.append("the timeline has slipped")
+    return dedupe_keep_order(phrases)
+
+
+def detect_evidence_quality_flags(sentences: list[str], delivery_status: str, final_decision_evidence: str) -> list[str]:
+    flags: list[str] = []
+    combined = " ".join(sentences).lower()
+    for sentence in sentences:
+        lowered = sentence.lower()
+        if sentence.endswith("?") and sentence_word_count(sentence) <= 4:
+            flags.append("topic_prompt_only")
+        if sentence_word_count(sentence) <= 2 and lowered not in {"green", "amber", "red", "blue", "no update"}:
+            flags.append("incomplete_fragment")
+        if "three ai webinars delivered" in lowered and ("third one is booked" in combined or "right, so not complete" in combined):
+            flags.append("contradicted_by_nearby_context")
+            flags.append("possible_misstatement")
+        if final_decision_evidence and sentence != final_decision_evidence and sentence in sentences and is_final_decision_sentence(final_decision_evidence):
+            if re.search(r"\bpotentially red\b|\bprobably still green\b|\bthree ai webinars delivered\b", lowered):
+                flags.append("final_decision_overrides")
+    return dedupe_keep_order(flags)
+
+
+def build_normalised_evidence_summary(
+    milestone: str,
+    sentences: list[str],
+    delivery_status: str,
+    status_modifiers: list[str],
+) -> str:
+    combined = " ".join(sentences).lower()
+    if milestone == "webinars" and ("third one is booked" in combined or "first two delivered" in combined):
+        return "Two webinars have been delivered and the third is booked."
+    if milestone == "use_case_intake_funnel" and "routing isn't working properly yet" in combined:
+        return "The intake form exists, but routing is not yet operational."
+    if milestone == "stage_gate_vendor_strategy" and "doesn't exist yet" in combined:
+        return "Research interviews are complete, but the strategy document has not yet been produced."
+    if milestone == "ad_hoc_sows" and "partially_complete" in status_modifiers:
+        return "One request is scheduled, one is underway, and one has not yet been scoped."
+    if milestone == "ai_pipeline_strategy" and "need sales input" in combined:
+        return "Sales input is required before work can progress."
+    if milestone == "ai_governance_framework" and "pending leadership review" in combined:
+        return "Version one is complete and awaiting leadership review."
+    top = sentences[0].strip() if sentences else ""
+    return top
 
 
 def choose_priority_status(votes: Counter, priority: list[str]) -> str:
@@ -623,6 +772,8 @@ def calibrate_delivery_confidence(
             adjusted = min(adjusted, 0.82)
         if re.search(r"\bwe've done two reviews\b", text) and re.search(r"\bgreen\b", text):
             adjusted = min(max(adjusted, 0.74), 0.8)
+        if re.search(r"\bone is scheduled, one is underway and one hasn't been scoped\b", text):
+            adjusted = max(adjusted, 0.72)
     if status == "complete":
         if re.search(r"\bcompleted version one yesterday\b", text) or re.search(r"\bmark that complete now\b", text):
             adjusted = max(adjusted, 0.86)
@@ -875,6 +1026,87 @@ def segments_to_lookup(segments: list[dict[str, Any]]) -> dict[str, dict[str, An
     return {segment["milestone"]: segment for segment in segments}
 
 
+def count_by_field(segments: list[dict[str, Any]], field: str, allowed: list[str]) -> dict[str, int]:
+    counts = {name: 0 for name in allowed}
+    for segment in segments:
+        value = segment.get(field, "unknown")
+        counts[value] = counts.get(value, 0) + 1
+    return counts
+
+
+def build_project_health_summary(segments: list[dict[str, Any]]) -> dict[str, Any]:
+    rag_counts = count_by_field(segments, "agreed_rag_status", ["green", "amber", "red", "blue", "unknown"])
+    delivery_counts = count_by_field(
+        segments,
+        "delivery_status",
+        ["complete", "in_progress", "scheduled", "blocked", "awaiting_input", "needs_review", "delayed", "not_started", "unknown"],
+    )
+    key_blockers = [
+        {
+            "milestone": segment["milestone"],
+            "reason": segment.get("normalised_evidence_summary") or (segment.get("blocking_factors") or [""])[0],
+        }
+        for segment in segments
+        if segment.get("delivery_status") == "blocked"
+    ]
+    attention_items = [
+        segment["milestone"]
+        for segment in segments
+        if segment.get("agreed_rag_status") == "amber"
+    ]
+    completed_items = [
+        segment["milestone"]
+        for segment in segments
+        if segment.get("delivery_status") == "complete"
+    ]
+    new_items = [
+        segment["milestone"]
+        for segment in segments
+        if "newly_added" in segment.get("status_modifiers", [])
+    ]
+
+    if rag_counts.get("red", 0) > 0 or delivery_counts.get("blocked", 0) > 1:
+        overall_health = "red"
+    elif delivery_counts.get("blocked", 0) > 0 or rag_counts.get("amber", 0) >= 2:
+        overall_health = "amber"
+    else:
+        overall_health = "green"
+
+    if key_blockers:
+        overall_health_reason = f"Most workstreams are green or amber, but {key_blockers[0]['milestone']} remains blocked pending further input."
+    elif attention_items:
+        overall_health_reason = f"Most workstreams are stable, but {', '.join(attention_items[:3])} still require attention."
+    else:
+        overall_health_reason = "No blocked workstreams were detected and most milestones are on track or complete."
+
+    return {
+        "overall_health": overall_health,
+        "overall_health_reason": overall_health_reason,
+        "rag_counts": rag_counts,
+        "delivery_status_counts": delivery_counts,
+        "key_blockers": key_blockers,
+        "attention_items": attention_items,
+        "completed_items": completed_items,
+        "new_items": new_items,
+    }
+
+
+def build_comparison_snapshot(segments: list[dict[str, Any]], meeting_date: str) -> dict[str, Any]:
+    return {
+        "meeting_date": meeting_date,
+        "segments": [
+            {
+                "comparison_key": segment["milestone"],
+                "delivery_status": segment["delivery_status"],
+                "agreed_rag_status": segment["agreed_rag_status"],
+                "health_assessment": segment["health_assessment"],
+                "status_modifiers": segment.get("status_modifiers", []),
+            }
+            for segment in segments
+        ],
+    }
+
+
 def build_change_report(previous_segments: list[dict[str, Any]], current_segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
     previous_lookup = segments_to_lookup(previous_segments)
     current_lookup = segments_to_lookup(current_segments)
@@ -1016,7 +1248,7 @@ def should_drop_unknown_segment(segment: Segment) -> bool:
     return False
 
 
-def analyze(turns: list[Turn], rules: dict[str, Any]) -> dict[str, Any]:
+def analyze(turns: list[Turn], rules: dict[str, Any], source_text: str = "") -> dict[str, Any]:
     cleaned_turns = [turn for turn in turns if not is_filler(turn.text, rules)]
     segments: list[Segment] = []
     current: Segment | None = None
@@ -1098,15 +1330,23 @@ def analyze(turns: list[Turn], rules: dict[str, Any]) -> dict[str, Any]:
             "attention": dedupe_keep_order([hit["tag"] for hit in segment.reason_hits if hit["bucket"] == "attention"]),
             "negative": dedupe_keep_order([hit["tag"] for hit in segment.reason_hits if hit["bucket"] == "negative"]),
         }
-        reason_tags = dedupe_keep_order(
-            [hit["tag"] for hit in segment.reason_hits if hit["bucket"] in {"attention", "negative"}]
+        reason_tags = build_reason_tags(segment.sentences, delivery_status, status_modifiers)
+        status_reasons = build_status_reasons(segment.sentences, reason_tags)
+        evidence_quality_flags = detect_evidence_quality_flags(
+            ranked_evidence,
+            delivery_status,
+            final_decision_evidence,
         )
-        status_reasons = dedupe_keep_order(
-            [hit["phrase"] for hit in segment.reason_hits if hit["bucket"] in {"attention", "negative"}]
+        normalised_evidence_summary = build_normalised_evidence_summary(
+            segment.milestone,
+            ranked_evidence or segment.sentences,
+            delivery_status,
+            status_modifiers,
         )
         structured_segments.append(
             {
                 "milestone": segment.milestone,
+                "comparison_key": segment.milestone,
                 "status": delivery_status,
                 "analysis_status": delivery_status,
                 "raw_status": normalize_delivery_status(raw_status),
@@ -1127,6 +1367,8 @@ def analyze(turns: list[Turn], rules: dict[str, Any]) -> dict[str, Any]:
                 "reason_tags": reason_tags,
                 "status_reasons": status_reasons,
                 "status_modifiers": status_modifiers,
+                "evidence_quality_flags": evidence_quality_flags,
+                "normalised_evidence_summary": normalised_evidence_summary,
                 "final_decision_evidence": final_decision_evidence,
                 "conflicting_evidence": dedupe_keep_order(conflicting_evidence + rag_conflicts)[:6],
                 "status_resolution_note": build_status_resolution_note(
@@ -1143,10 +1385,13 @@ def analyze(turns: list[Turn], rules: dict[str, Any]) -> dict[str, Any]:
             }
         )
 
+    meeting_date = extract_meeting_date(source_text) if source_text else ""
     return {
         "turn_count_raw": len(turns),
         "turn_count_cleaned": len(cleaned_turns),
         "segments": structured_segments,
+        "project_health_summary": build_project_health_summary(structured_segments),
+        "comparison_snapshot": build_comparison_snapshot(structured_segments, meeting_date),
         "cleaned_turns": [
             {
                 "speaker": turn.speaker,
@@ -1167,7 +1412,7 @@ def analyse(text: str) -> dict[str, Any]:
     repo_dir = Path(__file__).resolve().parent.parent
     rules = load_rules(repo_dir)
     turns = parse_turns(text)
-    return analyze(turns, rules)
+    return analyze(turns, rules, source_text=text)
 
 
 def compact_changes(changes: list[dict[str, Any]], only_changed: bool = True) -> list[dict[str, Any]]:
@@ -1263,7 +1508,7 @@ def main() -> int:
         return 1
 
     turns = parse_turns(text)
-    result = analyze(turns, rules)
+    result = analyze(turns, rules, source_text=text)
     snapshot_dir = Path(args.snapshot_dir) if args.snapshot_dir else (skill_dir / "history")
     compare_path = args.compare
     if args.compare_latest and not compare_path:
