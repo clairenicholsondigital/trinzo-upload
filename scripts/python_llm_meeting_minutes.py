@@ -84,6 +84,7 @@ DECISION_ACCEPTANCE_PATTERNS = [
     re.compile(r"\b(?:agreed|we agreed|let's|lets|go with|keep it|decision is|decided|accepted|that's fine|sounds good|yes, let's|no, let's)\b", re.IGNORECASE),
     re.compile(r"\b(?:should|need to|needs to|must)\b.*\b(?:clearer|specific|specificly|specifically|educational|sales-led|salesy|positioning|approach|direction|wording|language|scope|timeline)\b", re.IGNORECASE),
     re.compile(r"\b(?:main issue is|important thing is)\b.*\b(?:clear|clearer|scope|timeline|positioning|approach)\b", re.IGNORECASE),
+    re.compile(r"\b(?:main priority|priority for next week|priority next week|not really a blocker anymore|no longer a blocker|blocker anymore)\b", re.IGNORECASE),
 ]
 NON_DECISION_PATTERNS = [
     re.compile(r"\?$"),
@@ -169,11 +170,8 @@ def extract_participants(segments: list[dict[str, Any]], config: dict[str, Any])
             if speaker in seen:
                 continue
             seen.add(speaker)
-            bucket = speaker_map.get(speaker)
-            if bucket == "client":
-                participants["participants.client"].append(speaker)
-            elif bucket == "trinzo":
-                participants["participants.trinzo"].append(speaker)
+            bucket = participant_bucket_for_speaker(speaker, speaker_map)
+            participants[f"participants.{bucket}"].append(speaker)
     return participants
 
 
@@ -186,11 +184,8 @@ def extract_participants_from_turns(turns: list[Any], config: dict[str, Any]) ->
         if speaker in seen:
             continue
         seen.add(speaker)
-        bucket = speaker_map.get(speaker)
-        if bucket == "client":
-            participants["participants.client"].append(speaker)
-        elif bucket == "trinzo":
-            participants["participants.trinzo"].append(speaker)
+        bucket = participant_bucket_for_speaker(speaker, speaker_map)
+        participants[f"participants.{bucket}"].append(speaker)
     return participants
 
 
@@ -203,11 +198,8 @@ def extract_participants_from_text(text: str, config: dict[str, Any]) -> dict[st
         if speaker in seen:
             continue
         seen.add(speaker)
-        bucket = speaker_map.get(speaker)
-        if bucket == "client":
-            participants["participants.client"].append(speaker)
-        elif bucket == "trinzo":
-            participants["participants.trinzo"].append(speaker)
+        bucket = participant_bucket_for_speaker(speaker, speaker_map)
+        participants[f"participants.{bucket}"].append(speaker)
     return participants
 
 
@@ -243,12 +235,13 @@ def extract_participants_from_raw_turns(raw_turns: list[dict[str, str]], config:
         if speaker in seen:
             continue
         seen.add(speaker)
-        bucket = speaker_map.get(speaker)
-        if bucket == "client":
-            participants["participants.client"].append(speaker)
-        elif bucket == "trinzo":
-            participants["participants.trinzo"].append(speaker)
+        bucket = participant_bucket_for_speaker(speaker, speaker_map)
+        participants[f"participants.{bucket}"].append(speaker)
     return participants
+
+
+def participant_bucket_for_speaker(speaker: str, speaker_map: dict[str, str]) -> str:
+    return "trinzo" if speaker_map.get(speaker) == "trinzo" else "client"
 
 
 def sentence_case(text: str) -> str:
@@ -339,6 +332,7 @@ def decision_type_for_sentence(text: str) -> str:
 
 def generic_decision_text(text: str) -> str:
     cleaned = normalize_text_fragment(text)
+    cleaned = re.sub(r"^(agreed|we agreed)\b[,.]?\s*", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"^(i think|probably|maybe|right|so)\b[,.]?\s*", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"^(no,\s*)", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"^(actually,\s*)", "", cleaned, flags=re.IGNORECASE)
@@ -409,6 +403,14 @@ def build_decision_candidate(
         topic = "educational_tone"
         decision = "The webinar should remain educational rather than sounding sales-led."
         specificity_bonus = 0.16
+    elif "not really a blocker anymore" in lowered or "no longer a blocker" in lowered:
+        topic = "resolved_blocker"
+        decision = "The previously raised issue was no longer considered a blocker."
+        specificity_bonus = 0.14
+    elif "main priority" in lowered:
+        topic = f"priority_{sentence_index}"
+        decision = generic_decision_text(sentence)
+        specificity_bonus = 0.1
     elif any(term in lowered for term in ("go with", "let's", "we agreed", "agreed", "decision is")):
         topic = f"generic_{sentence_index}"
         decision = generic_decision_text(sentence)
