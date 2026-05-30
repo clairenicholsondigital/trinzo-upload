@@ -222,7 +222,7 @@ def build_discussion_points(segments: list[dict[str, Any]], config: dict[str, An
     labels = config["milestone_labels"]
     points = []
     for segment in segments:
-        if segment.get("milestone") == "unclassified" and segment.get("analysis_status") == "unknown":
+        if segment.get("milestone") == "unclassified":
             continue
         label = labels.get(segment["milestone"], segment["milestone"].replace("_", " "))
         point = f"{label} {status_phrase(label, segment['analysis_status'])}{reason_phrase(segment)}."

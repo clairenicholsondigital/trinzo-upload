@@ -1,0 +1,54 @@
+Ciara Griffin 0:03 Right, let's run through the AI programme items quickly. The repeatable AI use case library, I think we can probably mark that complete now because use cases one and two are both live and documented.
+Conor Flynn 0:15 Yeah, agreed. We still have some polish work but the actual deliverable is there.
+Ciara Griffin 0:21 Okay, complete. The intake workflow and request funnel?
+Conor Flynn 0:27 Still building that. The form is there but routing isn't working properly yet.
+Ciara Griffin 0:32 So green or amber?
+Conor Flynn 0:35 I'd probably say amber. If somebody asks me if it's operational I'd have to say no.
+Ciara Griffin 0:42 Okay, amber. Stage gate review process?
+Conor Flynn 0:48 We've done two reviews through it already.
+Ciara Griffin 0:51 Yeah but we haven't finalised the templates.
+Conor Flynn 0:54 True.
+Ciara Griffin 0:56 Maybe that's green but needs refinement.
+Conor Flynn 1:01 Yeah I'd leave it green.
+Ciara Griffin 1:05 AI pipeline strategy.
+Conor Flynn 1:08 Still blocked.
+Ciara Griffin 1:09 Blocked?
+Conor Flynn 1:11 Yeah. We need sales input and we don't have it. Keone starts next week but realistically I don't think we're touching that until later in June.
+Ciara Griffin 1:22 Okay so that's amber then.
+Conor Flynn 1:25 Potentially red if we're honest.
+Ciara Griffin 1:27 Let's put amber and discuss it next week.
+Conor Flynn 1:31 Fine.
+Ciara Griffin 1:35 Three AI webinars delivered.
+Conor Flynn 1:39 First two delivered. Third one is booked.
+Ciara Griffin 1:42 Right, so not complete.
+Ciara Griffin 1:47 Green?
+Conor Flynn 1:48 Green.
+Ciara Griffin 1:51 AI Commercial Impact Report.
+Conor Flynn 1:55 Nothing new there. Still due end of quarter.
+Ciara Griffin 2:00 So green.
+Conor Flynn 2:01 Green because it's not due yet.
+Ciara Griffin 2:06 Ad hoc SOW delivery.
+Conor Flynn 2:09 Actually we've had three requests come in this week. One is scheduled, one is underway and one hasn't been scoped.
+Ciara Griffin 2:18 Interesting. So probably still green but we need visibility on workload.
+Conor Flynn 2:23 Agreed.
+Ciara Griffin 2:26 Vendor strategy rollout.
+Conor Flynn 2:29 The interviews are complete. We've done eight interviews. The actual strategy document doesn't exist yet though.
+Ciara Griffin 2:37 Right. So research complete but rollout not complete.
+Conor Flynn 2:42 Correct.
+Ciara Griffin 2:44 Let's keep it amber.
+Conor Flynn 2:47 Makes sense.
+Ciara Griffin 2:50 Innovation grant feedback?
+Conor Flynn 2:53 Nothing received.
+Ciara Griffin 2:55 Emma chasing?
+Conor Flynn 2:57 Yeah she said she'd follow up this week.
+Ciara Griffin 3:02 Okay. No update.
+Conor Flynn 3:07 One thing we should add.
+Ciara Griffin 3:09 Go ahead.
+Conor Flynn 3:11 The AI governance framework draft. We actually completed version one yesterday.
+Ciara Griffin 3:18 Oh yes. Good catch.
+Conor Flynn 3:20 Needs review from leadership though.
+Ciara Griffin 3:23 So complete or in review?
+Conor Flynn 3:26 I'd call it in review.
+Ciara Griffin 3:29 Okay. New milestone. AI governance framework draft, status blue. Pending leadership review.
+Conor Flynn 3:39 Perfect.
+Ciara Griffin 3:42 Actions before next week: Review stage gate templates. Confirm AI pipeline dependencies with sales. Draft vendor strategy document. Follow up innovation grant feedback. Validate intake workflow routing.

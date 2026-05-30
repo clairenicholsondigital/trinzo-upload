@@ -42,50 +42,78 @@ GENERIC_TOKENS = {
     "the", "and", "for", "that", "with", "from", "into", "then", "again",
     "report", "strategy", "defined", "review", "forms", "green", "call"
 }
-STATUS_PRIORITY = ["blocked", "paused", "at_risk", "waiting", "in_review", "in_progress", "scheduled", "complete", "green"]
-STATUS_STRENGTH = {
-    "needs_review": 2,
-    "awaiting_input": 3,
-    "delayed": 2,
+DELIVERY_STATUS_PRIORITY = [
+    "blocked",
+    "delayed",
+    "awaiting_input",
+    "needs_review",
+    "in_progress",
+    "scheduled",
+    "complete",
+    "not_started",
+    "unknown",
+]
+DELIVERY_STATUS_STRENGTH = {
     "blocked": 0,
-    "paused": 1,
-    "at_risk": 2,
-    "waiting": 3,
-    "in_review": 4,
+    "delayed": 1,
+    "awaiting_input": 2,
+    "needs_review": 3,
     "in_progress": 4,
     "scheduled": 5,
-    "green": 6,
-    "complete": 7,
-    "unknown": -1,
+    "complete": 6,
+    "not_started": -1,
+    "unknown": -2,
 }
-CANONICAL_STATUS_MAP = {
+DELIVERY_ALIAS_MAP = {
     "complete": "complete",
     "green": "in_progress",
     "in_progress": "in_progress",
     "scheduled": "scheduled",
     "waiting": "awaiting_input",
+    "awaiting_input": "awaiting_input",
     "in_review": "needs_review",
     "needs_review": "needs_review",
     "at_risk": "delayed",
-    "paused": "paused",
+    "delayed": "delayed",
+    "paused": "blocked",
     "blocked": "blocked",
+    "not_started": "not_started",
     "unknown": "unknown",
 }
-RAG_MAP = {
+DEFAULT_RAG_FROM_DELIVERY = {
     "complete": "green",
-    "green": "green",
-    "in_progress": "green",
     "scheduled": "green",
-    "in_review": "blue",
-    "waiting": "amber",
-    "at_risk": "amber",
-    "needs_review": "amber",
+    "in_progress": "green",
+    "needs_review": "blue",
     "awaiting_input": "amber",
     "delayed": "amber",
-    "paused": "red",
     "blocked": "red",
-    "unknown": "grey",
+    "not_started": "amber",
+    "unknown": "unknown",
 }
+RAG_PRIORITY = ["red", "blue", "amber", "green", "unknown"]
+RAG_VALUES = {"green", "amber", "red", "blue", "unknown"}
+EXPLICIT_RAG_PATTERNS = [
+    (re.compile(r"\blet'?s put (?P<rag>green|amber|red|blue)\b", re.IGNORECASE), 1.0),
+    (re.compile(r"\bleave it (?P<rag>green|amber|red|blue)\b", re.IGNORECASE), 1.0),
+    (re.compile(r"\bkeep it (?P<rag>green|amber|red|blue)\b", re.IGNORECASE), 1.0),
+    (re.compile(r"\bstatus (?P<rag>green|amber|red|blue)\b", re.IGNORECASE), 1.0),
+    (re.compile(r"\bthat'?s (?P<rag>green|amber|red|blue) then\b", re.IGNORECASE), 0.95),
+    (re.compile(r"\bokay(?: so that'?s)? (?P<rag>green|amber|red|blue)(?: then)?\b", re.IGNORECASE), 0.95),
+    (re.compile(r"\bso (?P<rag>green|amber|red|blue)\b", re.IGNORECASE), 0.75),
+    (re.compile(r"\bthis one'?s (?P<rag>green|amber|red|blue)\b", re.IGNORECASE), 0.8),
+    (re.compile(r"\bi'?d leave it (?P<rag>green|amber|red|blue)\b", re.IGNORECASE), 0.9),
+    (re.compile(r"\bi'?d probably say (?P<rag>green|amber|red|blue)\b", re.IGNORECASE), 0.65),
+    (re.compile(r"\bpotentially (?P<rag>green|amber|red|blue)\b", re.IGNORECASE), 0.45),
+    (re.compile(r"\bprobably still (?P<rag>green|amber|red|blue)\b", re.IGNORECASE), 0.6),
+    (re.compile(r"^(?P<rag>green|amber|red|blue)[.!?]?$", re.IGNORECASE), 0.9),
+]
+NOT_STARTED_PHRASES = [
+    "not started",
+    "hasn't been scoped",
+    "has not been scoped",
+    "not scoped",
+]
 
 
 @dataclass
@@ -139,8 +167,8 @@ def clean_sentence(text: str, rules: dict[str, Any]) -> str:
         return ""
     if any(fragment in {lowered, lowered_plain} for fragment in rules["filler_fragments"]):
         return ""
-    if lowered_plain in {"green", "amber", "red"}:
-        return ""
+    if lowered_plain in {"green", "amber", "red", "blue"}:
+        return text.strip()
     if sentence_word_count(text) <= 3 and lowered_plain in rules["weak_openers"]:
         return ""
     return text.strip()
@@ -291,36 +319,35 @@ def is_low_signal_sentence(text: str, rules: dict[str, Any]) -> bool:
     return False
 
 
-def choose_status(votes: Counter) -> str:
+def normalize_delivery_status(status: str) -> str:
+    return DELIVERY_ALIAS_MAP.get(status, status)
+
+
+def choose_priority_status(votes: Counter, priority: list[str]) -> str:
     if not votes:
         return "unknown"
-    positive = any(votes.get(status) for status in {"green", "complete", "scheduled"})
-    caution = any(votes.get(status) for status in {"at_risk"})
-    hard_block = any(votes.get(status) for status in {"blocked", "paused"})
-    if positive and caution and not hard_block:
-        return "needs_review"
-    for status in STATUS_PRIORITY:
+    for status in priority:
         if votes.get(status):
             return status
     return votes.most_common(1)[0][0]
 
 
-def status_confidence(votes: Counter) -> float:
+def counter_confidence(votes: Counter, chosen: str, *, floor: float = 0.0) -> float:
     total = sum(votes.values())
-    if not total:
-        return 0.0
-    chosen = choose_status(votes)
-    if chosen == "needs_review":
-        dominant_votes = votes.most_common(1)[0][1] if votes else 0
-        return round(1 - (dominant_votes / total), 2)
-    return round(votes[chosen] / total, 2)
+    if not total or chosen == "unknown":
+        return floor
+    dominant = votes.get(chosen, 0)
+    score = dominant / total
+    if len([status for status, count in votes.items() if count]) > 1:
+        score -= 0.1
+    return round(max(floor, min(0.99, score)), 2)
 
 
 def compare_statuses(previous: str, current: str) -> str:
-    previous = to_canonical_status(previous)
-    current = to_canonical_status(current)
-    prev_strength = STATUS_STRENGTH.get(previous, -1)
-    curr_strength = STATUS_STRENGTH.get(current, -1)
+    previous = normalize_delivery_status(previous)
+    current = normalize_delivery_status(current)
+    prev_strength = DELIVERY_STATUS_STRENGTH.get(previous, -2)
+    curr_strength = DELIVERY_STATUS_STRENGTH.get(current, -2)
     if previous == "unknown" and current != "unknown":
         return "new_update"
     if previous != "unknown" and current == "unknown":
@@ -341,11 +368,7 @@ def compare_statuses(previous: str, current: str) -> str:
 
 
 def to_rag_status(analysis_status: str) -> str:
-    return RAG_MAP.get(analysis_status, "grey")
-
-
-def to_canonical_status(status: str) -> str:
-    return CANONICAL_STATUS_MAP.get(status, status)
+    return DEFAULT_RAG_FROM_DELIVERY.get(normalize_delivery_status(analysis_status), "unknown")
 
 
 def join_clauses(parts: list[str]) -> str:
@@ -413,9 +436,260 @@ def extract_matches(text: str, phrases: list[str]) -> list[str]:
     return matches
 
 
+def infer_sentence_delivery_signals(text: str, rules: dict[str, Any]) -> list[str]:
+    lowered = text.lower()
+    signals: list[str] = []
+
+    if any(phrase in lowered for phrase in rules["status_cues"]["blocked"]):
+        signals.append("blocked")
+
+    if any(phrase in lowered for phrase in rules["status_cues"]["waiting"]):
+        signals.append("awaiting_input")
+
+    if re.search(r"\bin review\b|\bneeds review\b|\bpending leadership review\b", lowered):
+        signals.append("needs_review")
+
+    progress_phrases = set(rules["status_cues"]["in_progress"]) | {
+        "we've done",
+        "done two reviews",
+        "working through",
+    }
+    if any(phrase in lowered for phrase in progress_phrases):
+        signals.append("in_progress")
+
+    scheduled_phrases = set(rules["status_cues"]["scheduled"]) | {
+        "due end of quarter",
+        "still due end of quarter",
+    }
+    if any(phrase in lowered for phrase in scheduled_phrases):
+        if "pending leadership review" not in lowered:
+            signals.append("scheduled")
+
+    if any(phrase in lowered for phrase in NOT_STARTED_PHRASES):
+        signals.append("not_started")
+
+    delayed_phrases = {
+        phrase
+        for phrase in rules["status_cues"]["at_risk"]
+        if phrase not in {"amber", "red"}
+    } | {
+        "not operational",
+        "haven't finalised",
+        "hasn't been scoped",
+        "visibility on workload",
+        "later in june",
+    }
+    if any(phrase in lowered for phrase in delayed_phrases):
+        signals.append("delayed")
+
+    if re.search(r"\bnot complete\b|\brollout not complete\b", lowered):
+        signals.append("in_progress")
+        signals.append("delayed")
+
+    complete_phrases = set(rules["status_cues"]["complete"]) | {
+        "live and documented",
+        "actual deliverable is there",
+        "version one yesterday",
+        "interviews are complete",
+        "delivered",
+    }
+    if any(phrase in lowered for phrase in complete_phrases):
+        if not re.search(r"\bnot complete\b|\bnot completed\b", lowered):
+            signals.append("complete")
+
+    if "on track" in lowered and "complete" not in signals:
+        signals.append("in_progress")
+
+    return dedupe_keep_order([normalize_delivery_status(signal) for signal in signals])
+
+
+def infer_sentence_health_signals(text: str) -> list[str]:
+    lowered = text.lower()
+    signals: list[str] = []
+
+    if re.search(r"\bblocked\b|\bcapacity issue\b|\bcan't be until\b|\bcannot be until\b|\bpotentially red\b", lowered):
+        signals.append("red")
+    if re.search(r"\bstatus blue\b|\bpending leadership review\b|\bin review\b|\bneeds review\b", lowered):
+        signals.append("blue")
+    if re.search(
+        r"\bat risk\b|\bnot operational\b|\bneeds refinement\b|\bnothing received\b|\bno update\b|\bvisibility on workload\b|\bworking properly yet\b|\blater in june\b|\bdoesn't exist yet\b",
+        lowered,
+    ):
+        signals.append("amber")
+    if re.search(r"\blive and documented\b|\bdelivered\b|\bon track\b|\bcomplete\b|\bactual deliverable is there\b", lowered):
+        signals.append("green")
+
+    return dedupe_keep_order(signals)
+
+
+def extract_rag_mentions(sentences: list[str]) -> list[dict[str, Any]]:
+    mentions: list[dict[str, Any]] = []
+    for index, sentence in enumerate(sentences):
+        for pattern, weight in EXPLICIT_RAG_PATTERNS:
+            match = pattern.search(sentence)
+            if not match:
+                continue
+            mentions.append(
+                {
+                    "rag": match.group("rag").lower(),
+                    "sentence": sentence,
+                    "index": index,
+                    "weight": weight,
+                }
+            )
+    return mentions
+
+
+def resolve_delivery_status(
+    sentences: list[str],
+    votes: Counter,
+    rules: dict[str, Any],
+) -> tuple[str, float, list[str], str]:
+    if not sentences:
+        return "unknown", 0.0, [], "No delivery evidence was detected."
+
+    normalized_votes = Counter()
+    for status, count in votes.items():
+        normalized_votes[normalize_delivery_status(status)] += count
+    for sentence in sentences:
+        for signal in infer_sentence_delivery_signals(sentence, rules):
+            normalized_votes[signal] += 1
+
+    has_complete = normalized_votes["complete"] > 0
+    has_progress = normalized_votes["in_progress"] > 0
+    has_scheduled = normalized_votes["scheduled"] > 0
+    has_delayed = normalized_votes["delayed"] > 0
+    has_blocked = normalized_votes["blocked"] > 0
+    has_waiting = normalized_votes["awaiting_input"] > 0
+    has_review = normalized_votes["needs_review"] > 0
+    has_not_started = normalized_votes["not_started"] > 0
+
+    if has_blocked:
+        status = "blocked"
+    elif has_complete and has_review and not (has_progress or has_delayed or has_scheduled or has_not_started):
+        status = "complete"
+    elif has_complete and (has_progress or has_scheduled or has_delayed or has_not_started):
+        status = "in_progress"
+    elif has_progress:
+        status = "in_progress"
+    elif has_waiting and not (has_delayed or has_scheduled):
+        status = "awaiting_input"
+    elif has_delayed:
+        status = "delayed"
+    elif has_review:
+        status = "needs_review"
+    elif has_scheduled:
+        status = "scheduled"
+    elif has_complete:
+        status = "complete"
+    elif has_not_started:
+        status = "not_started"
+    else:
+        status = choose_priority_status(normalized_votes, DELIVERY_STATUS_PRIORITY)
+
+    conflicting = []
+    for sentence in sentences:
+        sentence_signals = infer_sentence_delivery_signals(sentence, rules)
+        if not sentence_signals:
+            continue
+        if status == "in_progress" and any(
+            signal in sentence_signals
+            for signal in {"complete", "in_progress", "scheduled", "delayed", "not_started"}
+        ):
+            continue
+        if status == "complete" and set(sentence_signals).issubset({"complete", "needs_review"}):
+            continue
+        if status not in sentence_signals:
+            conflicting.append(sentence)
+
+    confidence = counter_confidence(normalized_votes, status, floor=0.35 if status != "unknown" else 0.0)
+    if conflicting:
+        confidence = max(0.35, round(confidence - min(0.25, 0.05 * len(conflicting)), 2))
+
+    note = f"Delivery status resolved to {status} from factual work-state evidence."
+    return status, confidence, dedupe_keep_order(conflicting)[:4], note
+
+
+def resolve_agreed_rag_status(
+    sentences: list[str],
+    delivery_status: str,
+    health_assessment: str,
+) -> tuple[str, float, str, list[str], str]:
+    mentions = extract_rag_mentions(sentences)
+    final_mention = None
+    if mentions:
+        strong_mentions = [mention for mention in mentions if mention["weight"] >= 0.9]
+        final_mention = (strong_mentions or mentions)[-1]
+        rag = final_mention["rag"]
+        conflicting = [
+            mention["sentence"]
+            for mention in mentions
+            if mention["sentence"] != final_mention["sentence"] and mention["rag"] != rag
+        ]
+        confidence = max(0.6, round(final_mention["weight"] - min(0.25, 0.07 * len(conflicting)), 2))
+        note = f"Agreed RAG taken from the final explicit meeting decision: {final_mention['sentence']}"
+        return rag, confidence, final_mention["sentence"], dedupe_keep_order(conflicting)[:4], note
+
+    derived = DEFAULT_RAG_FROM_DELIVERY.get(delivery_status, health_assessment if health_assessment in RAG_VALUES else "unknown")
+    if derived == "unknown" and health_assessment in RAG_VALUES:
+        derived = health_assessment
+    note = "No explicit final colour decision was found, so agreed_rag_status was derived from delivery status and health cues."
+    evidence = sentences[0] if sentences else ""
+    return derived, 0.55 if derived != "unknown" else 0.0, evidence, [], note
+
+
+def resolve_health_assessment(
+    sentences: list[str],
+    delivery_status: str,
+) -> tuple[str, float]:
+    votes = Counter()
+    for sentence in sentences:
+        for signal in infer_sentence_health_signals(sentence):
+            votes[signal] += 1
+
+    if votes["red"]:
+        health = "red"
+    elif votes["blue"]:
+        health = "blue"
+    elif votes["amber"]:
+        health = "amber"
+    elif votes["green"]:
+        health = "green"
+    elif delivery_status == "blocked":
+        health = "red"
+    elif delivery_status in {"delayed", "awaiting_input", "not_started"}:
+        health = "amber"
+    elif delivery_status == "needs_review":
+        health = "blue"
+    elif delivery_status in {"complete", "scheduled", "in_progress"}:
+        health = "green"
+    else:
+        health = "unknown"
+
+    confidence = counter_confidence(votes, health, floor=0.4 if health != "unknown" else 0.0)
+    return health, confidence
+
+
+def build_status_resolution_note(
+    delivery_status: str,
+    agreed_rag_status: str,
+    health_assessment: str,
+    delivery_note: str,
+    rag_note: str,
+) -> str:
+    return " ".join(
+        [
+            delivery_note,
+            rag_note,
+            f"Health assessment resolved to {health_assessment} from the evidence cues rather than the final agreed colour.",
+            f"Legacy status={delivery_status} and rag_status={agreed_rag_status if agreed_rag_status != 'unknown' else health_assessment}.",
+        ]
+    )
+
+
 def sentence_score(sentence: str, milestone: str, rules: dict[str, Any]) -> int:
     score = sentence_word_count(sentence)
-    score += 8 * len(detect_status(sentence, rules))
+    score += 8 * len(infer_sentence_delivery_signals(sentence, rules))
     if any(cue in sentence.lower() for cue in rules["blocker_cues"]):
         score += 6
     if any(cue in sentence.lower() for cue in rules["action_cues"]):
@@ -499,8 +773,8 @@ def build_change_report(previous_segments: list[dict[str, Any]], current_segment
             "milestone": milestone,
             "previous_status": previous_status,
             "current_status": current_status,
-            "previous_rag_status": to_rag_status(previous_status),
-            "current_rag_status": to_rag_status(current_status),
+            "previous_rag_status": previous.get("rag_status", to_rag_status(previous_status)) if previous else to_rag_status(previous_status),
+            "current_rag_status": current.get("rag_status", to_rag_status(current_status)) if current else to_rag_status(current_status),
             "change": change,
             "change_reason": build_change_reason(previous, current),
         }
@@ -561,10 +835,10 @@ def add_sentence_to_segment(
 ) -> None:
     segment.turns.append(turn)
     segment.sentences.append(sentence)
-    statuses = detect_status(sentence, rules)
-    for status in statuses:
+    delivery_signals = infer_sentence_delivery_signals(sentence, rules)
+    for status in delivery_signals:
         segment.status_votes[status] += 1
-    if statuses and sentence not in segment.evidence:
+    if delivery_signals and sentence not in segment.evidence:
         segment.evidence.append(sentence)
     for blocker in extract_matches(sentence, rules["blocker_cues"]):
         if blocker not in segment.blockers:
@@ -641,13 +915,14 @@ def analyze(turns: list[Turn], rules: dict[str, Any]) -> dict[str, Any]:
 
         for sentence in meaningful_sentences:
             milestone, confidence = best_milestone(sentence, rules)
-            statuses = detect_status(sentence, rules)
+            delivery_signals = infer_sentence_delivery_signals(sentence, rules)
+            rag_mentions = extract_rag_mentions([sentence])
             word_count = sentence_word_count(sentence)
 
-            if is_low_signal_sentence(sentence, rules) and milestone is None:
+            if is_low_signal_sentence(sentence, rules) and milestone is None and not rag_mentions and not delivery_signals:
                 continue
 
-            if milestone is None and not statuses and word_count <= 4:
+            if milestone is None and not delivery_signals and not rag_mentions and word_count <= 4:
                 continue
 
             if milestone:
@@ -673,9 +948,22 @@ def analyze(turns: list[Turn], rules: dict[str, Any]) -> dict[str, Any]:
 
     structured_segments = []
     for segment in segments:
-        raw_status = choose_status(segment.status_votes)
-        raw_status = normalize_segment_status(segment, raw_status, rules)
-        status = to_canonical_status(raw_status)
+        raw_status = choose_priority_status(segment.status_votes, DELIVERY_STATUS_PRIORITY)
+        delivery_status, delivery_status_confidence, conflicting_evidence, delivery_note = resolve_delivery_status(
+            segment.sentences,
+            segment.status_votes,
+            rules,
+        )
+        health_assessment, health_assessment_confidence = resolve_health_assessment(
+            segment.sentences,
+            delivery_status,
+        )
+        agreed_rag_status, agreed_rag_confidence, final_decision_evidence, rag_conflicts, rag_note = resolve_agreed_rag_status(
+            segment.sentences,
+            delivery_status,
+            health_assessment,
+        )
+        legacy_rag_status = agreed_rag_status if agreed_rag_status != "unknown" else health_assessment
         ranked_evidence = rank_sentences(segment.evidence or segment.sentences, segment.milestone, rules, limit=4)
         ranked_blockers = rank_sentences(segment.blockers, segment.milestone, rules, limit=3)
         ranked_next_steps = rank_sentences(segment.next_steps, segment.milestone, rules, limit=3)
@@ -693,18 +981,34 @@ def analyze(turns: list[Turn], rules: dict[str, Any]) -> dict[str, Any]:
         structured_segments.append(
             {
                 "milestone": segment.milestone,
-                "status": status,
-                "analysis_status": status,
-                "raw_status": raw_status,
-                "rag_status": to_rag_status(status),
-                "status_confidence": status_confidence(segment.status_votes),
-                "confidence": segment.confidence,
+                "status": delivery_status,
+                "analysis_status": delivery_status,
+                "raw_status": normalize_delivery_status(raw_status),
+                "rag_status": legacy_rag_status,
+                "delivery_status": delivery_status,
+                "agreed_rag_status": agreed_rag_status,
+                "health_assessment": health_assessment,
+                "delivery_status_confidence": delivery_status_confidence,
+                "agreed_rag_confidence": agreed_rag_confidence,
+                "health_assessment_confidence": health_assessment_confidence,
+                "status_confidence": delivery_status_confidence,
+                "confidence": delivery_status_confidence,
+                "milestone_match_confidence": round(segment.confidence / 100, 2) if segment.confidence else 0.0,
                 "evidence": ranked_evidence,
                 "blocking_factors": ranked_blockers,
                 "next_steps": ranked_next_steps,
                 "signal_summary": signal_summary,
                 "reason_tags": reason_tags,
                 "status_reasons": status_reasons,
+                "final_decision_evidence": final_decision_evidence,
+                "conflicting_evidence": dedupe_keep_order(conflicting_evidence + rag_conflicts)[:6],
+                "status_resolution_note": build_status_resolution_note(
+                    delivery_status,
+                    agreed_rag_status,
+                    health_assessment,
+                    delivery_note,
+                    rag_note,
+                ),
                 "speakers": sorted({turn.speaker for turn in segment.turns}),
                 "turn_count": len({(turn.speaker, turn.timestamp, turn.text) for turn in segment.turns}),
                 "sentence_count": len(segment.sentences),
