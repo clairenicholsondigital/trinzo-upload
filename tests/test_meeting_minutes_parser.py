@@ -101,6 +101,115 @@ Agreed, that needs to stay as the main priority for next week.
         self.assertIn("The previously raised issue was no longer considered a blocker.", result["decisions"])
         self.assertIn("That needs to stay as the main priority for next week.", result["decisions"])
 
+    def test_general_meeting_keeps_named_actions_and_non_priority_decision(self):
+        transcript = """Weekly Delivery Review
+
+5 June 2026
+
+Ciara Griffin:
+Okay, before we start, has everyone seen the customer feedback?
+
+Tom Baker:
+Some of it.
+
+Jack Cunningham:
+Most of it.
+
+Conor Flynn:
+Yeah.
+
+Ciara Griffin:
+Right. So the biggest issue seems to be report export speed.
+
+Tom Baker:
+Although that's actually improved since Monday.
+
+Jack Cunningham:
+Correct. Average export time dropped from thirty seconds to twelve.
+
+Ciara Griffin:
+Good. So that's not really a blocker anymore.
+
+Tom Baker:
+The notification emails are still failing occasionally.
+
+Conor Flynn:
+Only for a handful of users.
+
+Jack Cunningham:
+Do we know why?
+
+Tom Baker:
+Not yet.
+
+Ciara Griffin:
+Okay. We need an investigation there.
+
+Conor Flynn:
+I can look into it.
+
+Tom Baker:
+There was also a suggestion around custom branding.
+
+Jack Cunningham:
+That came from one customer.
+
+Ciara Griffin:
+Let's not prioritise that yet.
+
+Tom Baker:
+Agreed.
+
+Conor Flynn:
+By the way, I still haven't finished the reporting API documentation.
+
+Jack Cunningham:
+That's been hanging around for a while.
+
+Conor Flynn:
+I know.
+
+Ciara Griffin:
+When can it be done?
+
+Conor Flynn:
+Friday.
+
+Jack Cunningham:
+Provided nobody changes the API again.
+
+(Laughter)
+
+Tom Baker:
+No promises.
+
+Ciara Griffin:
+Fine. Let's capture actions. Conor to investigate notification email failures. Conor to complete API documentation by Friday.
+
+Tom Baker:
+Should we also add custom branding?
+
+Ciara Griffin:
+No, discussion only. No action for that.
+"""
+
+        result = analyse(transcript)
+
+        self.assertEqual(result["meetingType"], "general_meeting")
+        self.assertEqual(result["participants.client"], ["Tom Baker"])
+        self.assertCountEqual(result["participants.trinzo"], ["Ciara Griffin", "Jack Cunningham", "Conor Flynn"])
+        self.assertEqual(
+            result["meetingActionPoint"][:2],
+            [
+                "Investigate notification email failures.",
+                "Complete API documentation by Friday.",
+            ],
+        )
+        self.assertEqual(result["meetingActionPointOwner"][:2], ["Conor Flynn", "Conor Flynn"])
+        self.assertEqual(result["meetingActionPointDeadline"][:2], ["", "by Friday"])
+        self.assertIn("Let's not prioritise that yet.", result["decisions"])
+        self.assertNotIn("Let's capture actions.", result["decisions"])
+
     def test_meeting_minutes_use_the_flat_skill_style_output(self):
         result = analyse(self.transcript)
 

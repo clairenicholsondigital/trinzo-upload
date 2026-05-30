@@ -89,6 +89,7 @@ DECISION_ACCEPTANCE_PATTERNS = [
 NON_DECISION_PATTERNS = [
     re.compile(r"\?$"),
     re.compile(r"^\s*(?:agenda|today|first|next|then|what we want to do|we're working through|we are working through)\b", re.IGNORECASE),
+    re.compile(r"\blet's capture actions\b", re.IGNORECASE),
     re.compile(r"\b(?:risk is|there is a risk|may ask|might ask|could ask|for example|that means|this means|we discussed|we reviewed|we considered)\b", re.IGNORECASE),
 ]
 
@@ -520,6 +521,7 @@ def action_to_imperative(action_text: str, owner: str) -> str:
     elif lowered.startswith("can you "):
         cleaned = strip_leading_speaker_reference(cleaned)
 
+    cleaned = re.sub(r"^[A-Z][a-z]+\s+to\s+", "", cleaned)
     cleaned = strip_leading_speaker_reference(cleaned)
     cleaned = re.sub(r"\bthe client attendees\b", "the client attendee list", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\bclient attendees\b", "client attendee list", cleaned, flags=re.IGNORECASE)
@@ -1395,6 +1397,34 @@ def extract_generic_actions(
     return actions, owners, deadlines
 
 
+def extract_named_assignment_actions(raw_turns: list[dict[str, str]], config: dict[str, Any]) -> tuple[list[str], list[str], list[str]]:
+    actions: list[str] = []
+    owners: list[str] = []
+    deadlines: list[str] = []
+    seen = set()
+    for turn in raw_turns:
+        for sentence in split_sentences(turn["content"]):
+            cleaned = sentence.strip().rstrip(".")
+            lowered = cleaned.lower()
+            if not cleaned or "no action" in lowered:
+                continue
+            match = re.match(r"^(?P<owner>[A-Z][a-z]+)\s+to\s+(?P<task>.+)$", cleaned)
+            if not match:
+                continue
+            owner_name = find_participant_by_first_name(match.group("owner"), config)
+            if not owner_name:
+                continue
+            action_text = finalize_sentence(cleaned)
+            key = action_text.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            actions.append(action_text)
+            owners.append(owner_name)
+            deadlines.append(infer_action_deadline(cleaned, {"deadline": ""}, config))
+    return actions, owners, deadlines
+
+
 def extract_fallback_actions(raw_turns: list[dict[str, str]], config: dict[str, Any]) -> tuple[list[str], list[str], list[str]]:
     actions: list[str] = []
     owners: list[str] = []
@@ -1541,9 +1571,12 @@ def build_project_review_actions(
 def build_template_values(text: str, analysis: dict[str, Any], turns: list[Any], config: dict[str, Any]) -> dict[str, Any]:
     meeting_title, meeting_date, meeting_location = extract_header_fields(text, config)
     raw_turns = extract_raw_turn_entries(text)
+    source_turns = raw_turns or [{"speaker": turn.speaker, "content": turn.text, "timestamp": turn.timestamp} for turn in turns]
     cleaned_turns = analysis.get("cleaned_turns", [])
     segments = [segment for segment in analysis["segments"] if segment.get("milestone") != "unclassified"]
     meeting_type = detect_meeting_mode(cleaned_turns)
+    if meeting_type == "project_status_review" and not segments:
+        meeting_type = "general_meeting"
     meeting_theme = infer_meeting_theme(meeting_type, analysis, cleaned_turns)
     meeting_style = infer_meeting_style(meeting_type)
     if not meeting_title:
@@ -1557,18 +1590,28 @@ def build_template_values(text: str, analysis: dict[str, Any], turns: list[Any],
     if not participants["participants.client"] and not participants["participants.trinzo"]:
         participants = extract_participants_from_text(text, config)
 
-    actions, block_deadline = extract_action_block(raw_turns)
+    actions, block_deadline = extract_action_block(source_turns)
     if meeting_type == "project_status_review":
         structured_actions = build_project_review_actions(segments, raw_turns, config)
     elif meeting_type in {"webinar_rehearsal", "presentation_review", "sales_or_client_discussion", "general_meeting"}:
         if not actions:
-            actions, action_owners, action_deadlines = extract_generic_actions(text, raw_turns, config)
+            actions, action_owners, action_deadlines = extract_generic_actions(text, source_turns, config)
         else:
             action_owners = [owner_for_action(action, config) for action in actions]
             action_deadlines = [deadline_for_action(action, block_deadline, config) for action in actions]
+        named_actions, named_action_owners, named_action_deadlines = extract_named_assignment_actions(source_turns, config)
+        if named_actions:
+            existing = {action.lower() for action in actions}
+            for action, owner, deadline in zip(named_actions, named_action_owners, named_action_deadlines):
+                if action.lower() in existing:
+                    continue
+                actions.append(action)
+                action_owners.append(owner)
+                action_deadlines.append(deadline)
+                existing.add(action.lower())
         if not actions:
-            actions, action_owners, action_deadlines = extract_fallback_actions(raw_turns, config)
-        structured_actions = build_structured_actions(actions, action_owners, action_deadlines, raw_turns, config)
+            actions, action_owners, action_deadlines = extract_fallback_actions(source_turns, config)
+        structured_actions = build_structured_actions(actions, action_owners, action_deadlines, source_turns, config)
         for item in structured_actions:
             item["relatedMilestone"] = "unlinked"
     elif actions:
