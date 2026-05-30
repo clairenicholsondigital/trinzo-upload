@@ -336,6 +336,56 @@ I will.
         self.assertTrue(any(item["speaker"] == "Ciara Griffin" for item in evidence))
         self.assertTrue(any(item["speaker"] == "Conor Flynn" for item in evidence))
 
+    def test_contextual_commitment_resolves_recent_problem_statement(self):
+        transcript = """Working session
+
+6 June 2026
+
+Jack Cunningham:
+The opening explanation isn't clear.
+
+Ciara Griffin:
+I'll think that through before tomorrow.
+"""
+
+        result = analyse(transcript)
+
+        self.assertIn("Refine the opening explanation.", result["meetingActionPoint"])
+        index = result["meetingActionPoint"].index("Refine the opening explanation.")
+        self.assertEqual(result["meetingActionPointOwner"][index], "Ciara Griffin")
+        self.assertEqual(result["meetingActionPointDeadline"][index], "Tomorrow")
+
+    def test_contextual_commitment_clarifies_recent_confusing_point(self):
+        transcript = """Working session
+
+6 June 2026
+
+Jack Cunningham:
+The timeline slide is confusing.
+
+Ciara Griffin:
+I'll tighten that up.
+"""
+
+        result = analyse(transcript)
+
+        self.assertIn("Clarify the timeline slide.", result["meetingActionPoint"])
+        index = result["meetingActionPoint"].index("Clarify the timeline slide.")
+        self.assertEqual(result["meetingActionPointOwner"][index], "Ciara Griffin")
+
+    def test_contextual_commitment_without_prior_context_does_not_create_vague_action(self):
+        transcript = """Working session
+
+6 June 2026
+
+Ciara Griffin:
+I'll improve that.
+"""
+
+        result = analyse(transcript)
+
+        self.assertEqual(result["meetingActionPoint"], [])
+
     def test_request_and_short_volunteer_reply_link_into_actions(self):
         transcript = """General check-in
 

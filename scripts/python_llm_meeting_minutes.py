@@ -19,7 +19,10 @@ try:
         NON_DECISION_PATTERNS,
     )
     from .meeting_minutes_conversation import (
+        build_contextual_action_text as conversation_build_contextual_action_text,
         build_linked_action_text as conversation_build_linked_action_text,
+        extract_contextual_commitment as conversation_extract_contextual_commitment,
+        extract_problem_context as conversation_extract_problem_context,
         extract_request_task as conversation_extract_request_task,
         extract_response_commitment as conversation_extract_response_commitment,
     )
@@ -38,7 +41,10 @@ except ImportError:
         NON_DECISION_PATTERNS,
     )
     from meeting_minutes_conversation import (
+        build_contextual_action_text as conversation_build_contextual_action_text,
         build_linked_action_text as conversation_build_linked_action_text,
+        extract_contextual_commitment as conversation_extract_contextual_commitment,
+        extract_problem_context as conversation_extract_problem_context,
         extract_request_task as conversation_extract_request_task,
         extract_response_commitment as conversation_extract_response_commitment,
     )
@@ -558,6 +564,7 @@ def is_valid_action_output(action: str) -> bool:
     allowed_verbs = (
         "tighten ",
         "improve ",
+        "refine ",
         "investigate ",
         "complete ",
         "update ",
@@ -592,6 +599,12 @@ def is_valid_action_output(action: str) -> bool:
         "should i pretend",
         "i am a kerry man",
         "i am a carry man",
+        "think that through",
+        "think about that",
+        "work through that",
+        "tighten that up",
+        "refine that",
+        "improve that",
         "do with this picture",
         "take out this",
         "it in as an image",
@@ -1358,6 +1371,18 @@ def build_linked_action_text(task: str, collaborator: str | None, speaker: str =
     return conversation_build_linked_action_text(task, collaborator, speaker)
 
 
+def extract_contextual_commitment(sentence: str) -> dict[str, str] | None:
+    return conversation_extract_contextual_commitment(sentence)
+
+
+def extract_problem_context(sentence: str) -> dict[str, str] | None:
+    return conversation_extract_problem_context(sentence)
+
+
+def build_contextual_action_text(action_verb: str, subject: str) -> str:
+    return conversation_build_contextual_action_text(action_verb, subject)
+
+
 def infer_action_related_milestone(action_text: str, config: dict[str, Any]) -> str:
     lowered = action_text.lower()
     keyword_map = {
@@ -1593,6 +1618,7 @@ def extract_linked_conversational_actions(raw_turns: list[dict[str, str]], confi
     deadlines: list[str] = []
     seen = set()
     pending_requests: list[dict[str, Any]] = []
+    recent_contexts: list[dict[str, Any]] = []
     sentence_index = 0
 
     for turn in raw_turns:
@@ -1605,6 +1631,9 @@ def extract_linked_conversational_actions(raw_turns: list[dict[str, str]], confi
                 continue
             pending_requests = [
                 item for item in pending_requests if sentence_index - item["sentence_index"] <= 4
+            ]
+            recent_contexts = [
+                item for item in recent_contexts if sentence_index - item["sentence_index"] <= 3
             ]
 
             request_task = extract_request_task(stripped, speaker)
@@ -1621,6 +1650,18 @@ def extract_linked_conversational_actions(raw_turns: list[dict[str, str]], confi
                 )
                 sentence_index += 1
                 continue
+
+            problem_context = extract_problem_context(stripped)
+            if problem_context:
+                recent_contexts.append(
+                    {
+                        "subject": problem_context["subject"],
+                        "default_action_verb": problem_context["default_action_verb"],
+                        "speaker": speaker,
+                        "sentence_index": sentence_index,
+                        "timestamp": turn.get("timestamp", ""),
+                    }
+                )
 
             commitment = extract_response_commitment(stripped, speaker, config)
             if commitment:
@@ -1698,6 +1739,41 @@ def extract_linked_conversational_actions(raw_turns: list[dict[str, str]], confi
                             deadlines.append(response_deadline)
                             CONVERSATIONAL_ACTION_EVIDENCE[key] = dedupe_evidence_refs(
                                 [evidence_ref({"speaker": speaker, "timestamp": turn.get("timestamp", "")})]
+                            )
+
+            contextual_commitment = extract_contextual_commitment(stripped)
+            if contextual_commitment:
+                response_deadline = infer_action_deadline(stripped, {"deadline": ""}, config)
+                matching_context = next(
+                    (
+                        item
+                        for item in reversed(recent_contexts)
+                        if item.get("speaker") != speaker
+                    ),
+                    None,
+                )
+                if matching_context:
+                    action_text = build_contextual_action_text(
+                        contextual_commitment["action_verb"],
+                        matching_context["subject"],
+                    )
+                    if action_text:
+                        key = action_text.lower()
+                        if key not in seen:
+                            seen.add(key)
+                            actions.append(action_text)
+                            owners.append(speaker or "Owner not specified")
+                            deadlines.append(response_deadline)
+                            CONVERSATIONAL_ACTION_EVIDENCE[key] = dedupe_evidence_refs(
+                                [
+                                    evidence_ref(
+                                        {
+                                            "speaker": matching_context.get("speaker", ""),
+                                            "timestamp": matching_context.get("timestamp", ""),
+                                        }
+                                    ),
+                                    evidence_ref({"speaker": speaker, "timestamp": turn.get("timestamp", "")}),
+                                ]
                             )
 
             sentence_index += 1

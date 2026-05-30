@@ -9,6 +9,56 @@ except ImportError:
     from meeting_minutes_text import finalize_sentence, normalize_requested_task
 
 
+def extract_contextual_commitment(sentence: str) -> dict[str, str] | None:
+    stripped = sentence.strip()
+    lowered = stripped.lower()
+    patterns = [
+        (r"\b(?:i'll|i will)\s+think\s+(?:that|it)\s+through\b", "Refine"),
+        (r"\b(?:i'll|i will)\s+think\s+about\s+(?:that|it)\b", "Refine"),
+        (r"\b(?:i'll|i will)\s+work\s+through\s+(?:that|it)\b", "Refine"),
+        (r"\b(?:i'll|i will)\s+tighten\s+(?:that|it)\s+up\b", "Clarify"),
+        (r"\b(?:i'll|i will)\s+refine\s+(?:that|it)\b", "Refine"),
+        (r"\b(?:i'll|i will)\s+improve\s+(?:that|it)\b", "Improve"),
+    ]
+    for pattern, action_verb in patterns:
+        if re.search(pattern, lowered):
+            return {"action_verb": action_verb}
+    return None
+
+
+def extract_problem_context(sentence: str) -> dict[str, str] | None:
+    stripped = sentence.strip().rstrip(".")
+    lowered = stripped.lower()
+    if not stripped or stripped.endswith("?"):
+        return None
+
+    patterns = [
+        (r"^(?:the\s+)?(?P<subject>.+?)\s+isn['’]?t\s+clear\b", "Refine"),
+        (r"^(?:the\s+)?(?P<subject>.+?)\s+is\s+not\s+clear\b", "Refine"),
+        (r"^(?:the\s+)?(?P<subject>.+?)\s+is\s+confusing\b", "Clarify"),
+        (r"^(?:the\s+)?(?P<subject>.+?)\s+feels\s+confusing\b", "Clarify"),
+        (r"^(?:the\s+)?(?P<subject>.+?)\s+needs\s+to\s+be\s+clearer\b", "Clarify"),
+        (r"^(?:the\s+)?(?P<subject>.+?)\s+could\s+be\s+clearer\b", "Clarify"),
+        (r"^(?:the\s+)?(?P<subject>.+?)\s+needs\s+tightening\s+up\b", "Refine"),
+        (r"^(?:the\s+)?(?P<subject>.+?)\s+needs\s+improvement\b", "Improve"),
+    ]
+    for pattern, default_action_verb in patterns:
+        match = re.match(pattern, stripped, flags=re.IGNORECASE)
+        if not match:
+            continue
+        subject = normalize_requested_task(match.group("subject"))
+        if subject:
+            return {"subject": subject, "default_action_verb": default_action_verb}
+    return None
+
+
+def build_contextual_action_text(action_verb: str, subject: str) -> str:
+    cleaned_subject = normalize_requested_task(subject)
+    if not cleaned_subject:
+        return ""
+    return finalize_sentence(f"{action_verb} the {cleaned_subject}")
+
+
 def extract_request_task(sentence: str, speaker: str = "") -> str | None:
     stripped = sentence.strip()
     patterns = [
