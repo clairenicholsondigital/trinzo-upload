@@ -68,8 +68,26 @@ class MeetingMinutesParserTest(unittest.TestCase):
         self.assertEqual(result["participants.client"], ["Ciara Griffin"])
         self.assertEqual(result["participants.trinzo"], ["Conor Flynn"])
         self.assertEqual(len(result["discussionPoints"]), 10)
-        self.assertIn("Agreed RAG status: amber.", result["discussionPoints"][1])
-        self.assertIn("AI pipeline strategy remains blocked", " ".join(result["discussionPoints"]))
+        self.assertEqual(
+            result["discussionPoints"][2],
+            "Stage gate review process remains in progress. Two reviews have already been completed through the process, but the templates have not yet been finalised. Agreed RAG status: green.",
+        )
+        self.assertEqual(
+            result["discussionPoints"][3],
+            "AI pipeline strategy remains blocked, although the team agreed an amber status pending further review. Sales input is still required before work can progress. Agreed RAG status: amber.",
+        )
+        self.assertEqual(
+            result["discussionPoints"][4],
+            "AI webinars remain in progress. Two webinars have been delivered and the third webinar is booked. Agreed RAG status: green.",
+        )
+        self.assertEqual(
+            result["discussionPoints"][6],
+            "Ad hoc SOW delivery remains in progress. One request is scheduled, one is underway, and one has not yet been scoped. Clearer visibility on workload is still needed. Agreed RAG status: green.",
+        )
+        self.assertEqual(
+            result["discussionPoints"][7],
+            "Vendor strategy rollout remains in progress and requires attention. The research interviews are complete, but the strategy document has not yet been produced. Agreed RAG status: amber.",
+        )
         self.assertEqual(result["meetingActionPointRelatedMilestone"][0], "stage_gate_internal_review")
         self.assertEqual(result["meetingActionPointRelatedMilestone"][1], "ai_pipeline_strategy")
         self.assertEqual(result["meetingActionPointRelatedMilestone"][2], "stage_gate_vendor_strategy")
@@ -78,7 +96,12 @@ class MeetingMinutesParserTest(unittest.TestCase):
         self.assertEqual(result["meetingActionPointConfidence"][3], 0.85)
         self.assertEqual(result["healthSummary"]["blue"], 1)
         self.assertEqual(result["healthSummary"]["blocked"], 1)
-        self.assertIn("AI pipeline strategy remains blocked", result["executiveSummary"])
+        self.assertIn("AI pipeline strategy remains blocked pending further input.", result["executiveSummary"])
+        self.assertIn(
+            "Use case intake funnel, Vendor strategy rollout, and Innovation grant feedback remain active workstreams requiring further attention.",
+            result["executiveSummary"],
+        )
+        self.assertNotIn("Three AI webinars delivered. Not complete.", " ".join(result["discussionPoints"]))
         json.dumps(result)
 
     def test_project_analyser_handles_inline_turn_transcripts(self):

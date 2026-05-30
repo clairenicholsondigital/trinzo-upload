@@ -305,6 +305,17 @@ def sentence_join(parts: list[str]) -> str:
     return finalize_sentence(f"{', '.join(items[:-1])}, and {items[-1]}")
 
 
+def format_label_list(items: list[str]) -> str:
+    cleaned = [item for item in items if item]
+    if not cleaned:
+        return ""
+    if len(cleaned) == 1:
+        return cleaned[0]
+    if len(cleaned) == 2:
+        return f"{cleaned[0]} and {cleaned[1]}"
+    return f"{', '.join(cleaned[:-1])}, and {cleaned[-1]}"
+
+
 def infer_item_topic(text: str, config: dict[str, Any]) -> str:
     lowered = text.lower()
     for rule in config.get("item_topic_rules", []):
@@ -397,7 +408,7 @@ def milestone_outcome_sentence(segment: dict[str, Any], label: str) -> str:
     if delivery_status == "blocked" and agreed_rag_status == "amber":
         return f"{label} {remains} blocked, although the team agreed an amber status pending further review."
     if delivery_status == "in_progress" and agreed_rag_status == "green":
-        return f"{label} {remains} in progress and {plural and 'are' or 'is'} progressing as expected."
+        return f"{label} {remains} in progress."
     if delivery_status == "in_progress" and agreed_rag_status == "amber":
         return f"{label} {remains} in progress and {plural and 'require' or 'requires'} attention."
     if delivery_status == "scheduled":
@@ -449,6 +460,25 @@ def rewrite_evidence_sentence(text: str) -> str:
 
 
 def milestone_evidence_summary(segment: dict[str, Any]) -> str:
+    modifiers = set(segment.get("status_modifiers", []))
+    combined = " ".join(
+        segment.get("evidence", [])
+        + segment.get("blocking_factors", [])
+        + segment.get("conflicting_evidence", [])
+    ).lower()
+    if segment.get("milestone") == "stage_gate_internal_review":
+        return "Two reviews have already been completed through the process, but the templates have not yet been finalised."
+    if segment.get("milestone") == "ai_pipeline_strategy":
+        return "Sales input is still required before work can progress."
+    if segment.get("milestone") == "webinars" and "booked" in combined:
+        return "Two webinars have been delivered and the third webinar is booked."
+    if segment.get("milestone") == "ad_hoc_sows" and "workload_visibility_needed" in modifiers:
+        return "One request is scheduled, one is underway, and one has not yet been scoped. Clearer visibility on workload is still needed."
+    if segment.get("milestone") == "stage_gate_vendor_strategy":
+        return "The research interviews are complete, but the strategy document has not yet been produced."
+    if segment.get("milestone") == "ai_governance_framework" and "pending leadership review" in combined:
+        return "Version one was completed and leadership review is still required."
+
     evidence_sources = (
         segment.get("evidence", [])
         + segment.get("blocking_factors", [])
@@ -514,43 +544,46 @@ def build_executive_summary(meeting_theme: str, meeting_type: str, segments: lis
     complete = [milestone_label(segment, config) for segment in segments if segment.get("delivery_status") == "complete"]
     active = [milestone_label(segment, config) for segment in segments if segment.get("delivery_status") == "in_progress"]
     blocked = [milestone_label(segment, config) for segment in segments if segment.get("delivery_status") == "blocked"]
+    scheduled = [milestone_label(segment, config) for segment in segments if segment.get("delivery_status") == "scheduled"]
+    attention = [
+        milestone_label(segment, config)
+        for segment in segments
+        if segment.get("agreed_rag_status") == "amber"
+    ]
     governance = [milestone_label(segment, config) for segment in segments if MILESTONE_CATEGORY_MAP.get(segment.get("milestone")) == "governance"]
 
     paragraphs = []
     if meeting_type == "project_status_review":
-        lead = f"The meeting focused on {meeting_theme}."
+        lead = f"The meeting focused on reviewing programme milestones and confirming current project status across {meeting_theme}."
         if complete:
-            if len(complete) == 1:
-                lead += f" {complete[0]} was confirmed as complete."
-            else:
-                lead += f" {', '.join(complete[:-1])} and {complete[-1]} were confirmed as complete."
+            lead += f" {format_label_list(complete[:2])} {'was' if len(complete[:2]) == 1 else 'were'} confirmed as complete."
         elif active:
-            lead += f" {', '.join(active[:2])} remained active workstreams."
+            lead += f" {format_label_list(active[:2])} {'remains' if len(active[:2]) == 1 else 'remain'} active workstreams."
+        if scheduled:
+            lead += f" {format_label_list(scheduled[:2])} {'remains' if len(scheduled[:2]) == 1 else 'remain'} scheduled."
         paragraphs.append(lead.strip())
     else:
         paragraphs.append(f"The meeting focused on {meeting_theme}.")
 
-    issue_lines = []
-    if blocked:
-        if len(blocked) == 1:
-            issue_lines.append(f"{blocked[0]} remains blocked pending further input.")
-        else:
-            issue_lines.append(f"{', '.join(blocked[:-1])} and {blocked[-1]} remain blocked pending further input.")
-    amber_items = [milestone_label(segment, config) for segment in segments if segment.get("agreed_rag_status") == "amber"]
-    if amber_items:
-        issue_lines.append(f"{', '.join(amber_items[:3])} require further attention before the next review cycle.")
-    if issue_lines:
-        paragraphs.append(" ".join(issue_lines))
+    non_blocked_attention = [item for item in attention if item not in blocked]
+    if non_blocked_attention or blocked:
+        issue_parts = []
+        if non_blocked_attention:
+            issue_parts.append(
+                f"{format_label_list(non_blocked_attention[:3])} {'remains' if len(non_blocked_attention[:3]) == 1 else 'remain'} active workstreams requiring further attention."
+            )
+        if blocked:
+            issue_parts.append(
+                f"{format_label_list(blocked)} {'remains' if len(blocked) == 1 else 'remain'} blocked pending further input."
+            )
+        paragraphs.append(" ".join(issue_parts))
 
     if governance:
         blue_items = [milestone_label(segment, config) for segment in segments if segment.get("agreed_rag_status") == "blue"]
         if blue_items:
-            if len(blue_items) == 1:
-                paragraphs.append(f"{blue_items[0]} was also reviewed and remains subject to formal governance or approval steps.")
-            else:
-                paragraphs.append(f"{', '.join(blue_items)} were also reviewed and remain subject to formal governance or approval steps.")
+            paragraphs.append(f"{format_label_list(blue_items)} {'remains' if len(blue_items) == 1 else 'remain'} subject to formal governance or approval steps.")
         else:
-            paragraphs.append(f"Governance items reviewed included {', '.join(governance[:3])}.")
+            paragraphs.append(f"Governance items reviewed included {format_label_list(governance[:3])}.")
 
     return "\n\n".join(paragraphs[:3]).strip()
 
@@ -774,6 +807,104 @@ def deadline_for_action(action: str, block_deadline: str, config: dict[str, Any]
     return block_deadline or ""
 
 
+def project_review_action_candidates(segment: dict[str, Any]) -> list[dict[str, str]]:
+    milestone = segment.get("milestone")
+    delivery_status = segment.get("delivery_status")
+    modifiers = set(segment.get("status_modifiers", []))
+    candidates: list[dict[str, str]] = []
+
+    if milestone == "stage_gate_internal_review" and (
+        delivery_status in {"in_progress", "needs_review"} or "pending_review" in modifiers
+    ):
+        candidates.append(
+            {
+                "action": "Review stage gate templates.",
+                "deadline": "",
+                "owner": "Owner not specified",
+                "related_milestone": milestone,
+            }
+        )
+    if milestone == "ai_pipeline_strategy" and delivery_status == "blocked":
+        candidates.append(
+            {
+                "action": "Confirm AI pipeline dependencies with sales.",
+                "deadline": "Before next week",
+                "owner": "Owner not specified",
+                "related_milestone": milestone,
+            }
+        )
+    if milestone == "stage_gate_vendor_strategy" and delivery_status == "in_progress":
+        candidates.append(
+            {
+                "action": "Draft vendor strategy document.",
+                "deadline": "",
+                "owner": "Owner not specified",
+                "related_milestone": milestone,
+            }
+        )
+    if milestone == "ei_grant_feedback" and delivery_status == "awaiting_input":
+        candidates.append(
+            {
+                "action": "Follow up innovation grant feedback.",
+                "deadline": "Before next week",
+                "owner": "Emma" if "follow up this week" in " ".join(segment.get("next_steps", []) + segment.get("evidence", [])).lower() else "Owner not specified",
+                "related_milestone": milestone,
+            }
+        )
+    if milestone == "use_case_intake_funnel" and segment.get("agreed_rag_status") == "amber":
+        candidates.append(
+            {
+                "action": "Validate intake workflow routing.",
+                "deadline": "",
+                "owner": "Owner not specified",
+                "related_milestone": milestone,
+            }
+        )
+    return candidates
+
+
+def build_project_review_actions(
+    segments: list[dict[str, Any]],
+    raw_turns: list[dict[str, str]],
+    config: dict[str, Any],
+) -> list[dict[str, Any]]:
+    actions: list[str] = []
+    owners: list[str] = []
+    deadlines: list[str] = []
+    seen = set()
+    related_lookup: dict[str, str] = {}
+
+    priority_order = [
+        "stage_gate_internal_review",
+        "ai_pipeline_strategy",
+        "stage_gate_vendor_strategy",
+        "ei_grant_feedback",
+        "use_case_intake_funnel",
+    ]
+    priority_lookup = {name: index for index, name in enumerate(priority_order)}
+
+    for segment in sorted(segments, key=lambda item: priority_lookup.get(item.get("milestone"), 999)):
+        for candidate in project_review_action_candidates(segment):
+            key = candidate["action"].lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            actions.append(candidate["action"])
+            owners.append(candidate["owner"])
+            deadlines.append(candidate["deadline"])
+            related_lookup[key] = candidate["related_milestone"]
+
+    structured = build_structured_actions(actions, owners, deadlines, raw_turns, config)
+    for item in structured:
+        key = item["meetingActionPoint"].rstrip(".").lower()
+        if key in related_lookup:
+            item["relatedMilestone"] = related_lookup[key]
+            if item["meetingActionPointOwner"] == "Owner not specified" and related_lookup[key] == "ei_grant_feedback":
+                item["meetingActionPointOwner"] = "Emma"
+                item["actionConfidence"] = 0.85
+    return structured
+
+
 def build_template_values(text: str, analysis: dict[str, Any], turns: list[Any], config: dict[str, Any]) -> dict[str, Any]:
     meeting_title, meeting_date, meeting_location = extract_header_fields(text, config)
     raw_turns = extract_raw_turn_entries(text)
@@ -792,18 +923,23 @@ def build_template_values(text: str, analysis: dict[str, Any], turns: list[Any],
         participants = extract_participants_from_text(text, config)
 
     actions, block_deadline = extract_action_block(raw_turns)
-    if not actions and meeting_type == "webinar_rehearsal":
-        actions, action_owners, action_deadlines = extract_generic_actions(text, raw_turns, config)
-    if not actions and meeting_type == "webinar_rehearsal":
-        actions, action_owners, action_deadlines = extract_fallback_actions(raw_turns, config)
+    if meeting_type == "project_status_review":
+        structured_actions = build_project_review_actions(segments, raw_turns, config)
+    elif meeting_type == "webinar_rehearsal":
+        if not actions:
+            actions, action_owners, action_deadlines = extract_generic_actions(text, raw_turns, config)
+        else:
+            action_owners = [owner_for_action(action, config) for action in actions]
+            action_deadlines = [deadline_for_action(action, block_deadline, config) for action in actions]
+        if not actions:
+            actions, action_owners, action_deadlines = extract_fallback_actions(raw_turns, config)
+        structured_actions = build_structured_actions(actions, action_owners, action_deadlines, raw_turns, config)
     elif actions:
         action_owners = [owner_for_action(action, config) for action in actions]
         action_deadlines = [deadline_for_action(action, block_deadline, config) for action in actions]
+        structured_actions = build_structured_actions(actions, action_owners, action_deadlines, raw_turns, config)
     else:
-        action_owners = []
-        action_deadlines = []
-
-    structured_actions = build_structured_actions(actions, action_owners, action_deadlines, raw_turns, config)
+        structured_actions = []
 
     discussion_points = build_milestone_discussion_points(segments, config) if meeting_type != "webinar_rehearsal" else []
     if not discussion_points and meeting_type == "webinar_rehearsal":

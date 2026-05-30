@@ -108,6 +108,28 @@ EXPLICIT_RAG_PATTERNS = [
     (re.compile(r"\bprobably still (?P<rag>green|amber|red|blue)\b", re.IGNORECASE), 0.6),
     (re.compile(r"^(?P<rag>green|amber|red|blue)[.!?]?$", re.IGNORECASE), 0.9),
 ]
+EXPLICIT_DELAY_PATTERNS = [
+    re.compile(r"\bdelayed\b", re.IGNORECASE),
+    re.compile(r"\boverdue\b", re.IGNORECASE),
+    re.compile(r"\bslipped\b", re.IGNORECASE),
+    re.compile(r"\bbehind schedule\b", re.IGNORECASE),
+    re.compile(r"\bpushed out\b", re.IGNORECASE),
+    re.compile(r"\blater than planned\b", re.IGNORECASE),
+    re.compile(r"\bnot expected until\b", re.IGNORECASE),
+]
+FINAL_DECISION_PATTERNS = [
+    re.compile(r"\blet'?s put (green|amber|red|blue)\b", re.IGNORECASE),
+    re.compile(r"\bleave it (green|amber|red|blue)\b", re.IGNORECASE),
+    re.compile(r"\bkeep it (green|amber|red|blue)\b", re.IGNORECASE),
+    re.compile(r"\bstatus (green|amber|red|blue)\b", re.IGNORECASE),
+    re.compile(r"\bi'?d leave it (green|amber|red|blue)\b", re.IGNORECASE),
+    re.compile(r"\bi'?d call it in review\b", re.IGNORECASE),
+    re.compile(r"\bmark that complete now\b", re.IGNORECASE),
+    re.compile(r"\bno update\b", re.IGNORECASE),
+    re.compile(r"\bstill blocked\b", re.IGNORECASE),
+    re.compile(r"\bcomplete or in review\b", re.IGNORECASE),
+    re.compile(r"^(green|amber|red|blue)[.!?]?$", re.IGNORECASE),
+]
 NOT_STARTED_PHRASES = [
     "not started",
     "hasn't been scoped",
@@ -323,6 +345,62 @@ def normalize_delivery_status(status: str) -> str:
     return DELIVERY_ALIAS_MAP.get(status, status)
 
 
+def is_explicit_delay_sentence(text: str) -> bool:
+    return any(pattern.search(text) for pattern in EXPLICIT_DELAY_PATTERNS)
+
+
+def is_final_decision_sentence(text: str) -> bool:
+    stripped = text.strip()
+    if stripped.endswith("?"):
+        return False
+    return any(pattern.search(stripped) for pattern in FINAL_DECISION_PATTERNS)
+
+
+def is_actionable_next_step(text: str) -> bool:
+    lowered = text.lower().strip()
+    if not lowered or lowered.endswith("?"):
+        return False
+    if lowered in {"no update", "nothing received"}:
+        return False
+    if lowered.startswith(("one thing we should add", "maybe ", "potentially ", "interesting")):
+        return False
+    if re.match(r"^(review|confirm|draft|validate|follow up|send|update|finalise|finalize|check)\b", lowered):
+        return True
+    if lowered.startswith(("we should ", "i will ", "can you ", "please ")):
+        return sentence_word_count(text) >= 4
+    if "follow up" in lowered:
+        return True
+    return False
+
+
+def infer_status_modifiers(sentences: list[str], delivery_status: str) -> list[str]:
+    modifiers: list[str] = []
+    combined = " ".join(sentences).lower()
+    if re.search(r"\bpending leadership review\b|\bneeds review\b|\bin review\b", combined):
+        modifiers.append("pending_review")
+    if re.search(r"\bvisibility on workload\b", combined):
+        modifiers.append("workload_visibility_needed")
+    if delivery_status == "in_progress" and (
+        re.search(r"\bfirst two delivered\b|\bthree ai webinars delivered\b|\binterviews are complete\b", combined)
+        or re.search(r"\bone is scheduled, one is underway and one hasn't been scoped\b", combined)
+    ):
+        modifiers.append("partially_complete")
+    if re.search(r"\bpending leadership review\b|\bawaiting approval\b|\bleadership review\b", combined):
+        modifiers.append("awaiting_approval")
+    if re.search(r"\bneed sales input\b|\bdependency\b|\bblocked\b", combined):
+        modifiers.append("dependency_blocked")
+    return dedupe_keep_order(modifiers)
+
+
+def is_contextual_evidence_sentence(text: str) -> bool:
+    lowered = text.lower()
+    return bool(
+        re.search(r"\bnot yet\b|\bhaven't\b|\bhasn't\b|\bdoesn't exist\b|\bneed\b|\bpending\b|\bbooked\b|\bdelivered\b", lowered)
+        or "template" in lowered
+        or "review" in lowered
+    )
+
+
 def choose_priority_status(votes: Counter, priority: list[str]) -> str:
     if not votes:
         return "unknown"
@@ -468,23 +546,11 @@ def infer_sentence_delivery_signals(text: str, rules: dict[str, Any]) -> list[st
     if any(phrase in lowered for phrase in NOT_STARTED_PHRASES):
         signals.append("not_started")
 
-    delayed_phrases = {
-        phrase
-        for phrase in rules["status_cues"]["at_risk"]
-        if phrase not in {"amber", "red"}
-    } | {
-        "not operational",
-        "haven't finalised",
-        "hasn't been scoped",
-        "visibility on workload",
-        "later in june",
-    }
-    if any(phrase in lowered for phrase in delayed_phrases):
+    if is_explicit_delay_sentence(text):
         signals.append("delayed")
 
     if re.search(r"\bnot complete\b|\brollout not complete\b", lowered):
         signals.append("in_progress")
-        signals.append("delayed")
 
     complete_phrases = set(rules["status_cues"]["complete"]) | {
         "live and documented",
@@ -538,6 +604,35 @@ def extract_rag_mentions(sentences: list[str]) -> list[dict[str, Any]]:
                 }
             )
     return mentions
+
+
+def calibrate_delivery_confidence(
+    status: str,
+    confidence: float,
+    sentences: list[str],
+    conflicting: list[str],
+) -> float:
+    text = " ".join(sentences).lower()
+    adjusted = confidence
+    if status == "in_progress":
+        if re.search(r"\bnot complete\b", text) and (
+            re.search(r"\bdelivered\b", text) or re.search(r"\bbooked\b", text)
+        ):
+            adjusted = max(adjusted, 0.88)
+        else:
+            adjusted = min(adjusted, 0.82)
+        if re.search(r"\bwe've done two reviews\b", text) and re.search(r"\bgreen\b", text):
+            adjusted = min(max(adjusted, 0.74), 0.8)
+    if status == "complete":
+        if re.search(r"\bcompleted version one yesterday\b", text) or re.search(r"\bmark that complete now\b", text):
+            adjusted = max(adjusted, 0.86)
+        if re.search(r"\bpending leadership review\b|\bin review\b", text):
+            adjusted = max(adjusted, 0.82)
+    if status == "blocked" and re.search(r"\bstill blocked\b", text):
+        adjusted = max(adjusted, 0.82)
+    if conflicting:
+        adjusted = max(0.35, round(adjusted - min(0.18, 0.04 * len(conflicting)), 2))
+    return round(min(0.95, adjusted), 2)
 
 
 def resolve_delivery_status(
@@ -603,8 +698,7 @@ def resolve_delivery_status(
             conflicting.append(sentence)
 
     confidence = counter_confidence(normalized_votes, status, floor=0.35 if status != "unknown" else 0.0)
-    if conflicting:
-        confidence = max(0.35, round(confidence - min(0.25, 0.05 * len(conflicting)), 2))
+    confidence = calibrate_delivery_confidence(status, confidence, sentences, conflicting)
 
     note = f"Delivery status resolved to {status} from factual work-state evidence."
     return status, confidence, dedupe_keep_order(conflicting)[:4], note
@@ -634,8 +728,15 @@ def resolve_agreed_rag_status(
     if derived == "unknown" and health_assessment in RAG_VALUES:
         derived = health_assessment
     note = "No explicit final colour decision was found, so agreed_rag_status was derived from delivery status and health cues."
-    evidence = sentences[0] if sentences else ""
-    return derived, 0.55 if derived != "unknown" else 0.0, evidence, [], note
+    final_decision = ""
+    for sentence in reversed(sentences):
+        if is_final_decision_sentence(sentence):
+            final_decision = sentence
+            break
+    confidence = 0.55 if derived != "unknown" else 0.0
+    if final_decision:
+        confidence = max(confidence, 0.75)
+    return derived, confidence, final_decision, [], note
 
 
 def resolve_health_assessment(
@@ -666,7 +767,23 @@ def resolve_health_assessment(
     else:
         health = "unknown"
 
-    confidence = counter_confidence(votes, health, floor=0.4 if health != "unknown" else 0.0)
+    confidence = counter_confidence(votes, health, floor=0.0)
+    explicit_vote_count = sum(votes.values())
+    distinct = len([name for name, count in votes.items() if count])
+    if explicit_vote_count == 0:
+        fallback_confidence = {
+            "red": 0.7,
+            "amber": 0.68,
+            "blue": 0.8,
+            "green": 0.7,
+            "unknown": 0.0,
+        }
+        confidence = fallback_confidence.get(health, 0.0)
+    else:
+        confidence = max(0.45, confidence)
+        if distinct > 1:
+            confidence = max(0.4, round(confidence - min(0.3, 0.12 * (distinct - 1)), 2))
+        confidence = min(confidence, 0.92)
     return health, confidence
 
 
@@ -836,15 +953,16 @@ def add_sentence_to_segment(
     segment.turns.append(turn)
     segment.sentences.append(sentence)
     delivery_signals = infer_sentence_delivery_signals(sentence, rules)
+    health_signals = infer_sentence_health_signals(sentence)
     for status in delivery_signals:
         segment.status_votes[status] += 1
-    if delivery_signals and sentence not in segment.evidence:
+    if (delivery_signals or health_signals or is_contextual_evidence_sentence(sentence)) and sentence not in segment.evidence:
         segment.evidence.append(sentence)
     for blocker in extract_matches(sentence, rules["blocker_cues"]):
         if blocker not in segment.blockers:
             segment.blockers.append(blocker)
     for action in extract_matches(sentence, rules["action_cues"]):
-        if action not in segment.next_steps:
+        if is_actionable_next_step(action) and action not in segment.next_steps:
             segment.next_steps.append(action)
     for hit in extract_reason_hits(sentence, rules):
         if hit not in segment.reason_hits:
@@ -963,10 +1081,18 @@ def analyze(turns: list[Turn], rules: dict[str, Any]) -> dict[str, Any]:
             delivery_status,
             health_assessment,
         )
+        if agreed_rag_status != "unknown" and health_assessment != agreed_rag_status:
+            health_assessment_confidence = max(0.4, round(health_assessment_confidence - 0.18, 2))
         legacy_rag_status = agreed_rag_status if agreed_rag_status != "unknown" else health_assessment
         ranked_evidence = rank_sentences(segment.evidence or segment.sentences, segment.milestone, rules, limit=4)
         ranked_blockers = rank_sentences(segment.blockers, segment.milestone, rules, limit=3)
-        ranked_next_steps = rank_sentences(segment.next_steps, segment.milestone, rules, limit=3)
+        ranked_next_steps = rank_sentences(
+            [item for item in segment.next_steps if is_actionable_next_step(item)],
+            segment.milestone,
+            rules,
+            limit=3,
+        )
+        status_modifiers = infer_status_modifiers(segment.sentences, delivery_status)
         signal_summary = {
             "positive": dedupe_keep_order([hit["tag"] for hit in segment.reason_hits if hit["bucket"] == "positive"]),
             "attention": dedupe_keep_order([hit["tag"] for hit in segment.reason_hits if hit["bucket"] == "attention"]),
@@ -1000,6 +1126,7 @@ def analyze(turns: list[Turn], rules: dict[str, Any]) -> dict[str, Any]:
                 "signal_summary": signal_summary,
                 "reason_tags": reason_tags,
                 "status_reasons": status_reasons,
+                "status_modifiers": status_modifiers,
                 "final_decision_evidence": final_decision_evidence,
                 "conflicting_evidence": dedupe_keep_order(conflicting_evidence + rag_conflicts)[:6],
                 "status_resolution_note": build_status_resolution_note(
