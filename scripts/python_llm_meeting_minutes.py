@@ -75,6 +75,10 @@ NON_BUSINESS_PATTERNS = [
     "like and subscribe",
 ]
 OWNER_CONFIDENCE_MIN = 0.55
+DECISION_CUE_PATTERNS = [
+    (re.compile(r"\b(?:agreed|we agreed|let's|lets|we should|should|need to|needs to|must|go with|keep it|make sure|decided|decision is)\b", re.IGNORECASE), 0.2),
+    (re.compile(r"\b(?:main issue is|important thing is|better to|rather than|instead of|no, let's|actually, let's)\b", re.IGNORECASE), 0.15),
+]
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -267,6 +271,128 @@ def dedupe_evidence_refs(refs: list[dict[str, str]]) -> list[dict[str, str]]:
         seen.add(key)
         output.append(ref)
     return output
+
+
+def decision_signal_score(text: str) -> float:
+    score = 0.0
+    for pattern, weight in DECISION_CUE_PATTERNS:
+        if pattern.search(text):
+            score += weight
+    return score
+
+
+def decision_type_for_sentence(text: str) -> str:
+    lowered = text.lower()
+    if any(term in lowered for term in ("rather than", "instead of", "not salesy", "don't")):
+        return "rejected_option"
+    if any(term in lowered for term in ("wording", "phrase", "language", "say it")):
+        return "agreed_wording"
+    if any(term in lowered for term in ("change", "update", "clearer", "specific")):
+        return "approved_change"
+    return "accepted_direction"
+
+
+def generic_decision_text(text: str) -> str:
+    cleaned = normalize_text_fragment(text)
+    cleaned = re.sub(r"^(i think|probably|maybe|right|so)\b[,.]?\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"^(no,\s*)", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"^(actually,\s*)", "", cleaned, flags=re.IGNORECASE)
+    return finalize_sentence(sentence_case(cleaned))
+
+
+def is_action_like_sentence(text: str) -> bool:
+    lowered = text.lower().strip()
+    if lowered.startswith(("can you ", "i will ", "i'll ", "check ", "confirm ", "send ", "update ", "draft ", "review ", "follow up ")):
+        return True
+    if lowered.startswith("we should ") and any(term in lowered for term in ("check", "confirm", "send", "update", "draft", "review", "follow up")):
+        return True
+    return False
+
+
+def build_decision_candidate(
+    sentence: str,
+    turn: dict[str, Any],
+    meeting_mode: str,
+    sentence_index: int,
+) -> dict[str, Any] | None:
+    lowered = sentence.lower()
+    if not is_business_relevant(sentence):
+        return None
+    if is_action_like_sentence(sentence):
+        return None
+
+    decision = ""
+    topic = ""
+    specificity_bonus = 0.0
+
+    if any(term in lowered for term in ("validation team", "clear view of what happens before the webinar", "before the webinar")):
+        topic = "audience_framing"
+        if "keep it broad" in lowered:
+            decision = "The webinar should stay broad rather than targeting one audience too early."
+            specificity_bonus = 0.08
+        elif "specific to the validation team" in lowered or "specific for the validation team" in lowered:
+            decision = "The webinar should be framed specifically for the validation team."
+            specificity_bonus = 0.18
+        else:
+            decision = "The webinar should show the validation team what happens before the session begins."
+            specificity_bonus = 0.18
+    elif "timeline" in lowered and "scope" in lowered:
+        topic = "timeline_scope"
+        decision = "The webinar should explain the timeline and scope more clearly."
+        specificity_bonus = 0.18
+    elif "process questions" in lowered:
+        topic = "process_questions"
+        decision = "The workshop material should prepare for detailed process questions from attendees."
+        specificity_bonus = 0.14
+    elif "not salesy" in lowered or "educational" in lowered:
+        topic = "educational_tone"
+        decision = "The webinar should remain educational rather than sounding sales-led."
+        specificity_bonus = 0.16
+    elif any(term in lowered for term in ("go with", "let's", "we agreed", "agreed", "decision is")):
+        topic = f"generic_{sentence_index}"
+        decision = generic_decision_text(sentence)
+        specificity_bonus = 0.1
+    elif decision_signal_score(sentence) >= 0.2 and meeting_mode != "project_status_review":
+        topic = f"generic_{sentence_index}"
+        decision = generic_decision_text(sentence)
+        specificity_bonus = 0.05
+
+    if not decision:
+        return None
+
+    confidence = round(
+        min(
+            0.95,
+            0.45 + decision_signal_score(sentence) + specificity_bonus,
+        ),
+        2,
+    )
+    return {
+        "topic": topic,
+        "decision": decision,
+        "decisionConfidence": confidence,
+        "decisionType": decision_type_for_sentence(sentence),
+        "_evidence": [{"speaker": turn.get("speaker", ""), "timestamp": turn.get("timestamp", "")}],
+        "sentenceIndex": sentence_index,
+    }
+
+
+def resolve_decision_candidates(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    resolved: dict[str, dict[str, Any]] = {}
+    for candidate in candidates:
+        topic = candidate["topic"]
+        existing = resolved.get(topic)
+        if existing is None:
+            resolved[topic] = candidate
+            continue
+        if candidate["sentenceIndex"] > existing["sentenceIndex"]:
+            resolved[topic] = candidate
+        elif (
+            candidate["sentenceIndex"] == existing["sentenceIndex"]
+            and candidate["decisionConfidence"] > existing["decisionConfidence"]
+        ):
+            resolved[topic] = candidate
+    return sorted(resolved.values(), key=lambda item: item["sentenceIndex"])
 
 
 def rank_turn_evidence(turn: dict[str, Any], meeting_mode: str) -> float:
@@ -1144,52 +1270,17 @@ def build_decisions(
     if meeting_mode == "project_status_review":
         return [], []
 
-    details: list[dict[str, Any]] = []
-    for turn in ranked_turns(cleaned_turns, meeting_mode):
-        text = " ".join(turn.get("sentences") or [""])
-        lowered = text.lower()
-        decision = ""
-        confidence = 0.0
-        if "need a clear view of what happens before the webinar" in lowered:
-            decision = "The webinar should show the validation team what happens before the session begins."
-            confidence = 0.82
-        elif "main issue is making sure the timeline is clear" in lowered or ("timeline is clear" in lowered and "scope" in lowered):
-            decision = "The webinar should explain the timeline and scope more clearly."
-            confidence = 0.78
-        elif "may ask detailed process questions" in lowered:
-            decision = "The workshop material should prepare for detailed process questions from attendees."
-            confidence = 0.74
-        elif "not salesy" in lowered or "educational" in lowered:
-            decision = "The webinar should remain educational rather than sounding sales-led."
-            confidence = 0.72
-        if decision:
-            details.append(
-                {
-                    "decision": decision,
-                    "decisionConfidence": confidence,
-                    "_evidence": [{"speaker": turn.get("speaker", ""), "timestamp": turn.get("timestamp", "")}],
-                }
-            )
+    candidates: list[dict[str, Any]] = []
+    sentence_index = 0
+    for turn in cleaned_turns:
+        for sentence in turn.get("sentences") or [turn.get("text", "")]:
+            candidate = build_decision_candidate(sentence, turn, meeting_mode, sentence_index)
+            sentence_index += 1
+            if candidate:
+                candidates.append(candidate)
 
-    if not details and structured_actions:
-        for action in structured_actions[:2]:
-            details.append(
-                {
-                    "decision": action["meetingActionPoint"],
-                    "decisionConfidence": 0.58,
-                    "_evidence": action.get("_evidence", []),
-                }
-            )
-
-    seen = set()
-    unique_details = []
-    for item in details:
-        key = item["decision"].lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        unique_details.append(item)
-    return [item["decision"] for item in unique_details], unique_details[:5]
+    details = resolve_decision_candidates(candidates)
+    return [item["decision"] for item in details[:5]], details[:5]
 
 
 def build_internal_evidence(

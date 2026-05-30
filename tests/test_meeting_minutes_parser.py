@@ -77,12 +77,35 @@ class MeetingMinutesParserTest(unittest.TestCase):
         self.assertEqual(result["meetingSections"][0]["_evidence"][0]["speaker"], "Jack Cunningham")
         self.assertEqual(result["internalEvidence"]["actions"][1]["text"], "Check the registration list before the webinar.")
         self.assertEqual(result["internalEvidence"]["decisions"][0]["_evidence"][0]["speaker"], "Jack Cunningham")
-        self.assertEqual(result["decisionDetails"][0]["decisionConfidence"], 0.82)
+        self.assertGreaterEqual(result["decisionDetails"][0]["decisionConfidence"], 0.6)
+        self.assertEqual(result["decisionDetails"][0]["decisionType"], "accepted_direction")
         self.assertGreaterEqual(len([s for s in result["executiveSummary"].split(". ") if s.strip()]), 4)
         self.assertIn("workshop plan", result["executiveSummary"].lower())
         self.assertIn("key decisions included", result["executiveSummary"].lower())
         self.assertTrue("executiveSummary" in result)
         json.dumps(result)
+
+    def test_decisions_use_later_turn_overrides_for_same_topic(self):
+        transcript = """Webinar practice transcript
+Date: May 20, 2026
+Location: Teams
+Jack Cunningham   0:03I think we could keep it broad at the start.
+Conor Flynn   0:40No, let's make it specific to the validation team before the webinar.
+Ciara Griffin 1:10Agreed, let's keep it educational rather than salesy.
+Jack Cunningham   1:42We should explain the timeline and scope more clearly.
+"""
+
+        result = analyse(transcript)
+
+        self.assertIn("The webinar should be framed specifically for the validation team.", result["decisions"])
+        self.assertNotIn("The webinar should stay broad rather than targeting one audience too early.", result["decisions"])
+        self.assertIn("The webinar should remain educational rather than sounding sales-led.", result["decisions"])
+        self.assertIn("The webinar should explain the timeline and scope more clearly.", result["decisions"])
+        self.assertTrue(all(detail["decisionConfidence"] >= 0.6 for detail in result["decisionDetails"]))
+        self.assertIn(
+            result["decisionDetails"][0]["decisionType"],
+            {"accepted_direction", "approved_change", "rejected_option"},
+        )
 
     def test_project_minutes_are_derived_from_milestone_output(self):
         project_transcript = PROJECT_FIXTURE.read_text(encoding="utf-8")
