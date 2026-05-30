@@ -386,6 +386,26 @@ I'll improve that.
 
         self.assertEqual(result["meetingActionPoint"], [])
 
+    def test_action_request_does_not_pollute_discussion_points_or_summary(self):
+        transcript = """Working session
+
+6 June 2026
+
+Jack Cunningham:
+Can you update the attendee list?
+
+Conor Flynn:
+Yes, I'll do that.
+"""
+
+        result = analyse(transcript)
+
+        self.assertIn("Update the attendee list.", result["meetingActionPoint"])
+        index = result["meetingActionPoint"].index("Update the attendee list.")
+        self.assertEqual(result["meetingActionPointOwner"][index], "Conor Flynn")
+        self.assertEqual(result["discussionPoints"], [])
+        self.assertNotIn("can you update the attendee list", result["executiveSummary"].lower())
+
     def test_request_and_short_volunteer_reply_link_into_actions(self):
         transcript = """General check-in
 
@@ -492,7 +512,7 @@ I'll do that.
         self.assertEqual(len(result["decisions"]), 1)
         self.assertEqual(result["decisions"][0], "The webinar should explain the timeline and scope more clearly.")
         self.assertEqual(result["discussionPointDetails"][0]["_evidence"][0]["speaker"], "Jack Cunningham")
-        self.assertEqual(result["discussionPointDetails"][0]["evidenceScore"], 0.75)
+        self.assertEqual(result["discussionPointDetails"][0]["evidenceScore"], 0.6)
         self.assertEqual(result["actions"][0]["_evidence"][0]["speaker"], "Ciara Griffin")
         self.assertEqual(result["meetingSections"][0]["_evidence"][0]["speaker"], "Jack Cunningham")
         self.assertEqual(result["internalEvidence"]["actions"][1]["text"], "Check the registration list before the webinar.")

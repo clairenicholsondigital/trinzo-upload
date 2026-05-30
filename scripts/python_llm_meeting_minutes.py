@@ -1068,7 +1068,7 @@ def build_evidence_only_summary(
         sentences.append("The meeting focused on reviewing the main operational issues, follow-up priorities, and agreed next actions.")
     elif ranked:
         lead = normalize_text_fragment((ranked[0]["sentences"] or [""])[0])
-        if lead:
+        if lead and is_valid_discussion_point_candidate(lead):
             sentences.append(finalize_sentence(sentence_case(lead)))
 
     if discussion_point_details:
@@ -1097,6 +1097,8 @@ def extract_generic_discussion_points(text: str, raw_turns: list[dict[str, str]]
     points: list[str] = []
     source_turns = raw_turns or [{"speaker": "", "content": text}]
     for turn in source_turns:
+        if not is_valid_discussion_point_candidate(turn["content"]):
+            continue
         for rule in find_rule_matches(turn["content"], config.get("generic_discussion_rules", [])):
             points.append(rule["point"])
     return dedupe(points)
@@ -1108,6 +1110,8 @@ def extract_turn_level_discussion_points(raw_turns: list[dict[str, str]]) -> lis
         content = turn["content"].strip()
         lowered = content.lower()
         if not content:
+            continue
+        if not is_valid_discussion_point_candidate(content, turn.get("speaker", "")):
             continue
         if any(
             term in lowered
@@ -1139,9 +1143,30 @@ def is_business_relevant(text: str) -> bool:
     return not any(pattern in lowered for pattern in NON_BUSINESS_PATTERNS)
 
 
+def is_valid_discussion_point_candidate(text: str, speaker: str = "") -> bool:
+    stripped = text.strip()
+    lowered = stripped.lower()
+    if not stripped:
+        return False
+    if lowered.startswith(("can you", "could you", "will you", "would you", "please ")):
+        return False
+    if extract_request_task(stripped, speaker):
+        return False
+    direct_request_patterns = (
+        r"^(?:can|could|will|would)\s+you\b",
+        r"^please\b",
+        r"^(?:check|confirm|send|update|review|draft|follow up|fix|prepare|share|create|remove|add)\b",
+    )
+    if any(re.match(pattern, lowered) for pattern in direct_request_patterns):
+        return False
+    return True
+
+
 def cluster_sentence_for_mode(sentence: str, meeting_mode: str) -> str | None:
     lowered = sentence.lower()
     if not is_business_relevant(sentence):
+        return None
+    if not is_valid_discussion_point_candidate(sentence):
         return None
     if meeting_mode == "webinar_rehearsal":
         if any(term in lowered for term in ("agenda", "flow", "run through", "before the webinar")):
@@ -1219,6 +1244,8 @@ def extract_general_discussion_details(cleaned_turns: list[dict[str, Any]], meet
     cluster_refs: dict[str, list[dict[str, str]]] = {}
     for turn in cleaned_turns:
         for sentence in turn.get("sentences") or [turn.get("text", "")]:
+            if not is_valid_discussion_point_candidate(sentence, turn.get("speaker", "")):
+                continue
             cluster = cluster_sentence_for_mode(sentence, meeting_mode)
             if not cluster:
                 continue
