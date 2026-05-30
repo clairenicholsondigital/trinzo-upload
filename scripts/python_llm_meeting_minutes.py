@@ -1642,10 +1642,37 @@ def parse_speaker_turns(text: str) -> list[Any]:
     return analyzer.parse_turns(text)
 
 
+def build_fallback_turns(text: str, analyzer: Any) -> list[Any]:
+    raw_turns = extract_raw_turn_entries(text)
+    return [
+        analyzer.Turn(
+            speaker=entry["speaker"],
+            timestamp=entry["timestamp"],
+            text=entry["content"],
+        )
+        for entry in raw_turns
+    ]
+
+
 def analyse(text: str) -> dict[str, Any]:
     config = load_json(MINUTES_CONFIG)
     analyzer = load_analyzer_module()
     turns = analyzer.parse_turns(text)
+    if not turns:
+        turns = build_fallback_turns(text, analyzer)
+    speakers = sorted({turn.speaker for turn in turns})
+    print("================================")
+    print("TRANSCRIPT LENGTH")
+    print(len(text))
+    print("================================")
+    print("TURN COUNT")
+    print(len(turns))
+    print("================================")
+    print("SPEAKERS")
+    print(speakers)
+    print("================================")
+    print("FIRST 500 CHARS")
+    print(text[:500])
     analysis = analyzer.analyze(turns, analyzer.load_rules(REPO_DIR))
     return build_template_values(text, analysis, turns, config)
 
