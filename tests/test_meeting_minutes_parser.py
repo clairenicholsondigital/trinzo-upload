@@ -209,6 +209,10 @@ No, discussion only. No action for that.
         self.assertEqual(result["meetingActionPointDeadline"][:2], ["", "by Friday"])
         self.assertIn("Let's not prioritise that yet.", result["decisions"])
         self.assertNotIn("Let's capture actions.", result["decisions"])
+        self.assertGreaterEqual(len(result["discussionPoints"]), 3)
+        self.assertIn("notification email", " ".join(result["discussionPoints"]).lower())
+        self.assertIn("custom branding", " ".join(result["discussionPoints"]).lower())
+        self.assertIn("api documentation", result["executiveSummary"].lower())
 
     def test_meeting_minutes_use_the_flat_skill_style_output(self):
         result = analyse(self.transcript)

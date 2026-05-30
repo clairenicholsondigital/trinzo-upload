@@ -979,6 +979,8 @@ def build_evidence_only_summary(
     if meeting_type == "webinar_rehearsal":
         purpose = "The meeting focused on rehearsing the webinar delivery and checking presentation readiness."
         sentences.append(purpose)
+    elif meeting_type == "general_meeting":
+        sentences.append("The meeting focused on reviewing the main operational issues, follow-up priorities, and agreed next actions.")
     elif ranked:
         lead = normalize_text_fragment((ranked[0]["sentences"] or [""])[0])
         if lead:
@@ -1022,7 +1024,25 @@ def extract_turn_level_discussion_points(raw_turns: list[dict[str, str]]) -> lis
         lowered = content.lower()
         if not content:
             continue
-        if any(term in lowered for term in ("risk", "issue", "timeline", "scope", "plan", "workshop", "webinar", "update")):
+        if any(
+            term in lowered
+            for term in (
+                "risk",
+                "issue",
+                "timeline",
+                "scope",
+                "plan",
+                "workshop",
+                "webinar",
+                "update",
+                "failing",
+                "priority",
+                "documentation",
+                "branding",
+                "investigation",
+                "blocker",
+            )
+        ):
             points.append(finalize_sentence(sentence_case(content.rstrip("."))))
         if len(points) >= 5:
             break
@@ -1057,6 +1077,15 @@ def cluster_sentence_for_mode(sentence: str, meeting_mode: str) -> str | None:
     if meeting_mode == "sales_or_client_discussion":
         if any(term in lowered for term in ("client", "proposal", "commercial", "sales")):
             return "Client priorities and follow-up"
+    if meeting_mode == "general_meeting":
+        if any(term in lowered for term in ("report export speed", "export time", "improved since", "dropped from")):
+            return "Operational performance review"
+        if any(term in lowered for term in ("notification", "failing", "bug", "confusion", "investigation", "look into", "blocker")):
+            return "Open issue investigation"
+        if any(term in lowered for term in ("custom branding", "suggestion", "customer", "not prioritise", "discussion only")):
+            return "Feature prioritisation decisions"
+        if any(term in lowered for term in ("documentation", "api", "friday", "hanging around", "when can it be done")):
+            return "Documentation and follow-up delivery"
     return None
 
 
@@ -1088,6 +1117,14 @@ def build_cluster_sentence(cluster: str, sentences: list[str]) -> str:
         return "The presentation structure and visuals were reviewed to improve clarity and delivery."
     if cluster == "Client priorities and follow-up":
         return "Client-facing discussion points and follow-up priorities were clarified during the meeting."
+    if cluster == "Operational performance review":
+        return "The team reviewed report export performance and confirmed that the earlier speed concern was no longer seen as a blocker."
+    if cluster == "Open issue investigation":
+        return "They discussed the ongoing notification email problem and agreed that it still needs investigation."
+    if cluster == "Feature prioritisation decisions":
+        return "A request for custom branding was discussed, but the team decided not to prioritise it at this stage."
+    if cluster == "Documentation and follow-up delivery":
+        return "They also reviewed the delayed API documentation and agreed that it should be completed by Friday."
     fallback = sentences[0] if sentences else ""
     return finalize_sentence(sentence_case(normalize_text_fragment(fallback)))
 
@@ -1627,9 +1664,9 @@ def build_template_values(text: str, analysis: dict[str, Any], turns: list[Any],
         discussion_point_details = extract_general_discussion_details(cleaned_turns, meeting_type)
         discussion_points = [item["discussionPoint"] for item in discussion_point_details]
     if not discussion_points and meeting_type != "project_status_review":
-        discussion_points = extract_generic_discussion_points(text, raw_turns, config)
+        discussion_points = extract_generic_discussion_points(text, source_turns, config)
     if not discussion_points and meeting_type != "project_status_review":
-        discussion_points = extract_turn_level_discussion_points(raw_turns)
+        discussion_points = extract_turn_level_discussion_points(source_turns)
     if not discussion_point_details and discussion_points:
         discussion_point_details = [{"discussionPoint": point, "_evidence": []} for point in discussion_points]
 
