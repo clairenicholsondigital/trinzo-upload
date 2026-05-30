@@ -547,6 +547,25 @@ Jack Cunningham   1:42We should explain the timeline and scope more clearly.
             {"accepted_direction", "approved_change", "rejected_option"},
         )
 
+    def test_decisions_drop_earlier_generic_direction_when_later_reversal_is_clearer(self):
+        transcript = """Webinar practice transcript
+Date: May 20, 2026
+Location: Teams
+Jack Cunningham   0:03Let's make this validation-specific.
+Conor Flynn   0:20Agreed.
+Ciara Griffin 0:40Actually, let's keep it broad.
+Conor Flynn   1:00Yeah, that's better.
+"""
+
+        result = analyse(transcript)
+
+        self.assertEqual(
+            result["decisions"],
+            ["The webinar should remain broad rather than validation-specific."],
+        )
+        self.assertEqual(len(result["decisionDetails"]), 1)
+        self.assertEqual(result["decisionDetails"][0]["topic"], "audience_framing")
+
     def test_questions_and_descriptions_are_not_extracted_as_decisions(self):
         transcript = """Webinar practice transcript
 Date: May 20, 2026

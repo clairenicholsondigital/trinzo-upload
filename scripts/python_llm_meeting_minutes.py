@@ -361,6 +361,38 @@ def generic_decision_text(text: str, speaker: str = "") -> str:
     return finalize_sentence(sentence_case(cleaned))
 
 
+def decision_subject_group(text: str) -> str:
+    lowered = text.lower()
+    if any(
+        term in lowered
+        for term in (
+            "validation-specific",
+            "validation specific",
+            "validation team",
+            "keep it broad",
+            "stay broad",
+            "remain broad",
+            "specific to the validation",
+            "specific for the validation",
+        )
+    ):
+        return "audience_framing"
+    return ""
+
+
+def rewrite_subject_decision(text: str) -> str:
+    lowered = text.lower()
+    if "keep it broad" in lowered or "stay broad" in lowered or "remain broad" in lowered:
+        return "The webinar should remain broad rather than validation-specific."
+    if "validation-specific" in lowered or "validation specific" in lowered:
+        return "The webinar should be validation-specific."
+    if "specific to the validation team" in lowered or "specific for the validation team" in lowered:
+        return "The webinar should be framed specifically for the validation team."
+    if "clear view of what happens before the webinar" in lowered or "before the webinar" in lowered:
+        return "The webinar should show the validation team what happens before the session begins."
+    return ""
+
+
 def is_action_like_sentence(text: str) -> bool:
     lowered = text.lower().strip()
     if lowered.startswith(("can you ", "i will ", "i'll ", "check ", "confirm ", "send ", "update ", "draft ", "review ", "follow up ")):
@@ -402,14 +434,14 @@ def build_decision_candidate(
     decision = ""
     topic = ""
     specificity_bonus = 0.0
+    subject_group = decision_subject_group(sentence)
 
-    if any(term in lowered for term in ("validation team", "clear view of what happens before the webinar", "before the webinar")):
+    if subject_group == "audience_framing" or any(term in lowered for term in ("validation team", "clear view of what happens before the webinar", "before the webinar")):
         topic = "audience_framing"
-        if "keep it broad" in lowered:
-            decision = "The webinar should stay broad rather than targeting one audience too early."
-            specificity_bonus = 0.08
-        elif "specific to the validation team" in lowered or "specific for the validation team" in lowered:
-            decision = "The webinar should be framed specifically for the validation team."
+        decision = rewrite_subject_decision(sentence)
+        if decision == "The webinar should remain broad rather than validation-specific.":
+            specificity_bonus = 0.12
+        elif decision:
             specificity_bonus = 0.18
         else:
             decision = "The webinar should show the validation team what happens before the session begins."
