@@ -245,6 +245,70 @@ Perfect.
         self.assertEqual(result["meetingActionPointOwner"][opening_index], "Emily Stone")
         self.assertEqual(result["meetingActionPointOwner"][deck_index], "Conor Flynn")
 
+    def test_can_you_request_is_owned_by_accepting_speaker_with_deadline(self):
+        transcript = """Working session
+
+6 June 2026
+
+Jack Cunningham:
+Can you update the API documentation?
+
+Ciara Griffin:
+Yes, I'll do that tomorrow.
+"""
+
+        result = analyse(transcript)
+
+        self.assertIn("Update the API documentation.", result["meetingActionPoint"])
+        index = result["meetingActionPoint"].index("Update the API documentation.")
+        self.assertEqual(result["meetingActionPointOwner"][index], "Ciara Griffin")
+        self.assertEqual(result["meetingActionPointDeadline"][index], "Tomorrow")
+
+    def test_ill_do_both_resolves_recent_requests_from_same_requester(self):
+        transcript = """Working session
+
+6 June 2026
+
+Jack Cunningham:
+Can you review the templates?
+
+Ciara Griffin:
+Yes.
+
+Jack Cunningham:
+Can you also check the routing issue?
+
+Ciara Griffin:
+I'll do both this afternoon.
+"""
+
+        result = analyse(transcript)
+
+        self.assertIn("Review the templates.", result["meetingActionPoint"])
+        self.assertIn("Check the routing issue.", result["meetingActionPoint"])
+        review_index = result["meetingActionPoint"].index("Review the templates.")
+        routing_index = result["meetingActionPoint"].index("Check the routing issue.")
+        self.assertEqual(result["meetingActionPointOwner"][review_index], "Ciara Griffin")
+        self.assertEqual(result["meetingActionPointOwner"][routing_index], "Ciara Griffin")
+        self.assertEqual(result["meetingActionPointDeadline"][review_index], "This afternoon")
+        self.assertEqual(result["meetingActionPointDeadline"][routing_index], "This afternoon")
+
+    def test_rejection_does_not_create_conversational_action(self):
+        transcript = """Working session
+
+6 June 2026
+
+Jack Cunningham:
+Can you check the routing issue?
+
+Ciara Griffin:
+I can't do that before Friday.
+"""
+
+        result = analyse(transcript)
+
+        self.assertEqual(result["meetingActionPoint"], [])
+
     def test_request_and_short_volunteer_reply_link_into_actions(self):
         transcript = """General check-in
 
@@ -306,8 +370,8 @@ I'll do that.
 
         result = analyse(transcript)
 
-        self.assertEqual(result["meetingActionPoint"], [])
-        self.assertEqual(result["meetingActionPointOwner"], [])
+        self.assertEqual(result["meetingActionPoint"], ["Update Ciara's item."])
+        self.assertEqual(result["meetingActionPointOwner"], ["Emily Stone"])
 
     def test_meeting_minutes_use_the_flat_skill_style_output(self):
         result = analyse(self.transcript)

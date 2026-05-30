@@ -36,7 +36,17 @@ def extract_response_commitment(
 ) -> dict[str, Any] | None:
     stripped = sentence.strip()
     lowered = stripped.lower()
-    if not re.search(r"\b(i'll|i will|i can)\b", lowered):
+    if re.search(r"\b(no|nope|nah)\b", lowered) or re.search(
+        r"\b(i won['’]t have time|i will not have time|can['’]?t|cannot|not before friday)\b",
+        lowered,
+    ):
+        return {"rejects_request": True}
+
+    accepts_request = bool(
+        re.search(r"\b(yes|yep|yeah|sure|okay|ok)\b", lowered)
+        or re.search(r"\b(i'll|i will|i can)\b", lowered)
+    )
+    if not accepts_request:
         return None
 
     collaborator = None
@@ -44,10 +54,14 @@ def extract_response_commitment(
     if collaborator_match:
         collaborator = find_participant_by_first_name(collaborator_match.group(1), config)
 
+    if re.search(r"\b(do both)\b", lowered):
+        return {"inherits_task": True, "collaborator": collaborator, "request_count": 2}
     if re.search(r"\b(do that|do it|handle that|handle it|take that|take it|look into that|look into it)\b", lowered):
-        return {"inherits_task": True, "collaborator": collaborator}
+        return {"inherits_task": True, "collaborator": collaborator, "request_count": 1}
     if re.search(r"\bwork with [A-Z][a-z]+ on (?:that|it)\b", stripped, flags=re.IGNORECASE):
-        return {"inherits_task": True, "collaborator": collaborator}
+        return {"inherits_task": True, "collaborator": collaborator, "request_count": 1}
+    if re.fullmatch(r"(yes|yep|yeah|sure|okay|ok)[.!]?", lowered):
+        return {"acknowledges_request": True}
 
     explicit_match = re.search(r"\b(?:i'll|i will|i can)\s+(?P<task>.+)$", stripped, flags=re.IGNORECASE)
     if not explicit_match:

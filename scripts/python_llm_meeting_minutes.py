@@ -550,7 +550,7 @@ def is_valid_action_output(action: str) -> bool:
         return False
 
     token_count = len(re.findall(r"[A-Za-z0-9']+", cleaned))
-    if token_count < 4 or token_count > 28:
+    if token_count < 3 or token_count > 28:
         return False
 
     lowered = cleaned.lower().rstrip(".!?")
@@ -582,6 +582,8 @@ def is_valid_action_output(action: str) -> bool:
         "work ",
     )
     if not lowered.startswith(allowed_verbs):
+        return False
+    if token_count == 3 and re.search(r"\b(this|that|it|both|mine)\b", lowered):
         return False
 
     rejected_patterns = (
@@ -1323,8 +1325,16 @@ def infer_action_deadline(text: str, rule: dict[str, Any], config: dict[str, Any
     explicit_match = re.search(r"\bby\s+([A-Z][a-z]+)\b", text)
     if explicit_match:
         return f"by {explicit_match.group(1)}"
+    if "not before friday" in lowered:
+        return ""
     if "before the webinar" in lowered:
         return "Before the webinar"
+    if "before friday" in lowered:
+        return "Before Friday"
+    if "tomorrow" in lowered:
+        return "Tomorrow"
+    if "this afternoon" in lowered:
+        return "This afternoon"
     for deadline_rule in config.get("action_deadline_rules", []):
         if any(term in lowered for term in deadline_rule["contains_any"]):
             return deadline_rule["deadline"]
@@ -1430,7 +1440,11 @@ def build_structured_actions(
         if final_owner != "Owner not specified" and owner_confidence < OWNER_CONFIDENCE_MIN:
             final_owner = "Owner not specified"
             owner_confidence = 0.2
-        if action.lower().startswith(("we should", "review ", "confirm ", "draft ", "validate ", "follow up ")) and explicit_owner == "Owner not specified":
+        if (
+            action.lower().startswith(("we should", "review ", "confirm ", "draft ", "validate ", "follow up "))
+            and explicit_owner == "Owner not specified"
+            and owner in {"", "Owner not specified"}
+        ):
             final_owner = "Owner not specified"
             owner_confidence = 0.2
         related_milestone = infer_action_related_milestone(action, config)
@@ -1590,12 +1604,13 @@ def extract_linked_conversational_actions(raw_turns: list[dict[str, str]], confi
             ]
 
             request_task = extract_request_task(stripped, speaker)
-            if request_task and not lowered.startswith("can you "):
+            if request_task:
                 pending_requests.append(
                     {
                         "task": request_task,
-                        "speaker": speaker,
+                        "requester": speaker,
                         "sentence_index": sentence_index,
+                        "deadline": infer_action_deadline(stripped, {"deadline": ""}, config),
                     }
                 )
                 sentence_index += 1
@@ -1603,22 +1618,60 @@ def extract_linked_conversational_actions(raw_turns: list[dict[str, str]], confi
 
             commitment = extract_response_commitment(stripped, speaker, config)
             if commitment:
-                action_text = ""
+                if commitment.get("rejects_request"):
+                    sentence_index += 1
+                    continue
+                if commitment.get("acknowledges_request"):
+                    for pending in reversed(pending_requests):
+                        if pending.get("requester") != speaker and not pending.get("accepted_by"):
+                            pending["accepted_by"] = speaker
+                            break
+                    sentence_index += 1
+                    continue
+
+                response_deadline = infer_action_deadline(stripped, {"deadline": ""}, config)
                 if commitment.get("inherits_task") and pending_requests:
-                    pending = pending_requests[-1]
-                    action_text = build_linked_action_text(pending["task"], commitment.get("collaborator"), speaker)
+                    unresolved = [
+                        item
+                        for item in pending_requests
+                        if item.get("requester") != speaker
+                        and (not item.get("accepted_by") or item.get("accepted_by") == speaker)
+                    ]
+                    if unresolved:
+                        recent_requester = unresolved[-1]["requester"]
+                        matching = [item for item in unresolved if item.get("requester") == recent_requester]
+                        request_count = commitment.get("request_count", 1)
+                        selected = matching[-request_count:]
+                        resolved_keys = {
+                            (item["requester"], item["task"], item["sentence_index"]) for item in selected
+                        }
+                        for pending in selected:
+                            action_text = build_linked_action_text(
+                                pending["task"], commitment.get("collaborator"), speaker
+                            )
+                            if not action_text:
+                                continue
+                            key = action_text.lower()
+                            if key in seen:
+                                continue
+                            seen.add(key)
+                            actions.append(action_text)
+                            owners.append(speaker or "Owner not specified")
+                            deadlines.append(response_deadline or pending.get("deadline", ""))
+                        pending_requests = [
+                            item
+                            for item in pending_requests
+                            if (item["requester"], item["task"], item["sentence_index"]) not in resolved_keys
+                        ]
                 elif commitment.get("task"):
                     action_text = build_linked_action_text(commitment["task"], commitment.get("collaborator"), speaker)
-
-                if action_text:
-                    key = action_text.lower()
-                    if key not in seen:
-                        seen.add(key)
-                        actions.append(action_text)
-                        owners.append(speaker or "Owner not specified")
-                        deadlines.append(infer_action_deadline(stripped, {"deadline": ""}, config))
-                    if commitment.get("inherits_task"):
-                        pending_requests = pending_requests[:-1]
+                    if action_text:
+                        key = action_text.lower()
+                        if key not in seen:
+                            seen.add(key)
+                            actions.append(action_text)
+                            owners.append(speaker or "Owner not specified")
+                            deadlines.append(response_deadline)
 
             sentence_index += 1
 
@@ -1635,8 +1688,10 @@ def extract_fallback_actions(raw_turns: list[dict[str, str]], config: dict[str, 
         lowered = content.lower()
         if not content:
             continue
-        if extract_request_task(content, turn.get("speaker", "")) and not lowered.startswith("can you "):
-            continue
+        request_task = extract_request_task(content, turn.get("speaker", ""))
+        if request_task:
+            if not lowered.startswith("can you ") or not find_named_owner(content, config):
+                continue
         if not lowered.startswith(
             (
                 "i will ",
