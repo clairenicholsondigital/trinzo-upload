@@ -713,6 +713,22 @@ def find_rule_matches(text: str, rules: list[dict[str, Any]]) -> list[dict[str, 
     return [rule for rule in rules if any(term in lowered for term in rule["contains_any"])]
 
 
+def has_strong_generic_discussion_match(text: str, rule: dict[str, Any]) -> bool:
+    lowered = text.lower()
+    matched_terms = [term for term in rule["contains_any"] if term in lowered]
+    if not matched_terms:
+        return False
+    temporal_terms = {"friday", "tomorrow", "next week", "this afternoon", "by friday"}
+    if all(term in temporal_terms for term in matched_terms):
+        return False
+    paired_requirements = [("api", "documentation"), ("timeline", "scope")]
+    rule_terms = set(rule.get("contains_any", []))
+    for left, right in paired_requirements:
+        if left in rule_terms and right in rule_terms and not (left in lowered and right in lowered):
+            return False
+    return True
+
+
 def dedupe(items: list[str]) -> list[str]:
     seen = set()
     output = []
@@ -773,7 +789,7 @@ def infer_meeting_style(meeting_type: str) -> str:
     return "general_meeting"
 
 
-def detect_meeting_mode(cleaned_turns: list[dict[str, Any]]) -> str:
+def detect_meeting_mode(cleaned_turns: list[dict[str, Any]], meeting_title: str = "") -> str:
     score = {
         "project_status_review": 0,
         "webinar_rehearsal": 0,
@@ -791,6 +807,7 @@ def detect_meeting_mode(cleaned_turns: list[dict[str, Any]]) -> str:
     ]
     presentation_terms = ["slides", "deck", "presentation", "visual", "imagery"]
     sales_terms = ["client", "proposal", "pricing", "commercial", "sales"]
+    title_lowered = meeting_title.lower().strip()
 
     for turn in cleaned_turns:
         text = " ".join(turn.get("sentences") or [turn.get("text", "")]).lower()
@@ -798,6 +815,17 @@ def detect_meeting_mode(cleaned_turns: list[dict[str, Any]]) -> str:
         score["project_status_review"] += sum(2 for term in project_terms if term in text)
         score["presentation_review"] += sum(1 for term in presentation_terms if term in text)
         score["sales_or_client_discussion"] += sum(1 for term in sales_terms if term in text)
+
+    if any(term in title_lowered for term in ("webinar", "validation", "practice", "rehearsal")):
+        score["webinar_rehearsal"] += 3
+    if any(term in title_lowered for term in ("presentation", "slides", "slide", "deck")):
+        score["presentation_review"] += 3
+
+    body_text = " ".join(" ".join(turn.get("sentences") or [turn.get("text", "")]) for turn in cleaned_turns).lower()
+    title_supports_special_mode = bool(
+        re.search(r"\b(let's|agreed|should|update|review|refine|improve|clarify|tighten)\b", body_text)
+        or is_issue_statement(body_text)
+    )
 
     if score["webinar_rehearsal"] >= max(score["project_status_review"] + 1, 4):
         return "webinar_rehearsal"
@@ -807,6 +835,11 @@ def detect_meeting_mode(cleaned_turns: list[dict[str, Any]]) -> str:
         return "presentation_review"
     if score["sales_or_client_discussion"] >= 3:
         return "sales_or_client_discussion"
+    if title_supports_special_mode:
+        if any(term in title_lowered for term in ("presentation", "slides", "slide", "deck")):
+            return "presentation_review"
+        if any(term in title_lowered for term in ("webinar", "validation", "practice", "rehearsal")):
+            return "webinar_rehearsal"
     return "general_meeting"
 
 
@@ -1048,11 +1081,17 @@ def build_executive_summary(meeting_theme: str, meeting_type: str, segments: lis
     if meeting_type == "project_status_review":
         lead = f"The meeting focused on reviewing programme milestones and confirming current project status across {meeting_theme}."
         if complete:
-            lead += f" {format_label_list(complete[:2])} {'was' if len(complete[:2]) == 1 else 'were'} confirmed as complete."
+            complete_labels = complete[:2]
+            complete_verb = "were" if len(complete_labels) > 1 or is_plural_label(complete_labels[0]) else "was"
+            lead += f" {format_label_list(complete_labels)} {complete_verb} confirmed as complete."
         elif active:
-            lead += f" {format_label_list(active[:2])} {'remains' if len(active[:2]) == 1 else 'remain'} active workstreams."
+            active_labels = active[:2]
+            active_verb = "remain" if len(active_labels) > 1 or is_plural_label(active_labels[0]) else "remains"
+            lead += f" {format_label_list(active_labels)} {active_verb} active workstreams."
         if scheduled:
-            lead += f" {format_label_list(scheduled[:2])} {'remains' if len(scheduled[:2]) == 1 else 'remain'} scheduled."
+            scheduled_labels = scheduled[:2]
+            scheduled_verb = "remain" if len(scheduled_labels) > 1 or is_plural_label(scheduled_labels[0]) else "remains"
+            lead += f" {format_label_list(scheduled_labels)} {scheduled_verb} scheduled."
         paragraphs.append(lead.strip())
     else:
         paragraphs.append(f"The meeting focused on {meeting_theme}.")
@@ -1132,6 +1171,8 @@ def extract_generic_discussion_points(text: str, raw_turns: list[dict[str, str]]
         if not is_valid_discussion_point_candidate(turn["content"]):
             continue
         for rule in find_rule_matches(turn["content"], config.get("generic_discussion_rules", [])):
+            if not has_strong_generic_discussion_match(turn["content"], rule):
+                continue
             points.append(rule["point"])
     return dedupe(points)
 
@@ -2029,7 +2070,7 @@ def build_template_values(text: str, analysis: dict[str, Any], turns: list[Any],
     source_turns = raw_turns or [{"speaker": turn.speaker, "content": turn.text, "timestamp": turn.timestamp} for turn in turns]
     cleaned_turns = analysis.get("cleaned_turns", [])
     segments = [segment for segment in analysis["segments"] if segment.get("milestone") != "unclassified"]
-    meeting_type = detect_meeting_mode(cleaned_turns)
+    meeting_type = detect_meeting_mode(cleaned_turns, meeting_title)
     if meeting_type == "project_status_review" and not segments:
         meeting_type = "general_meeting"
     meeting_theme = infer_meeting_theme(meeting_type, analysis, cleaned_turns)

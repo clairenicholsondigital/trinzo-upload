@@ -424,6 +424,41 @@ I'll think that through before Friday.
         self.assertNotIn("api documentation", " ".join(result["discussionPoints"]).lower())
         self.assertNotIn("api documentation", result["executiveSummary"].lower())
 
+    def test_contextual_commitment_resolves_rushed_section_into_action(self):
+        transcript = """Validation slides review
+
+6 June 2026
+
+Jack Cunningham:
+The closing section feels rushed.
+
+Ciara Griffin:
+I'll improve that.
+"""
+
+        result = analyse(transcript)
+
+        self.assertEqual(result["meetingType"], "presentation_review")
+        self.assertIn("Improve the closing section.", result["meetingActionPoint"])
+        index = result["meetingActionPoint"].index("Improve the closing section.")
+        self.assertEqual(result["meetingActionPointOwner"][index], "Ciara Griffin")
+
+    def test_tiny_transcript_uses_title_hints_for_meeting_type(self):
+        transcript = """Validation webinar review
+
+6 June 2026
+
+Jack Cunningham:
+Let's keep it broad.
+
+Conor Flynn:
+Agreed.
+"""
+
+        result = analyse(transcript)
+
+        self.assertEqual(result["meetingType"], "webinar_rehearsal")
+
     def test_request_and_short_volunteer_reply_link_into_actions(self):
         transcript = """General check-in
 
@@ -648,6 +683,8 @@ Jack Cunningham   1:10Agreed, let's keep the session educational rather than sal
         self.assertEqual(result["healthSummary"]["blocked"], 1)
         self.assertEqual(result["healthSummary"]["in_review"], 1)
         self.assertIn("AI pipeline strategy remains blocked pending further input.", result["executiveSummary"])
+        self.assertIn("Repeatable AI use cases were confirmed as complete.", result["executiveSummary"])
+        self.assertNotIn("Repeatable AI use cases was confirmed as complete.", result["executiveSummary"])
         self.assertIn(
             "Use case intake funnel, Vendor strategy rollout, and Innovation grant feedback remain active workstreams requiring further attention.",
             result["executiveSummary"],
