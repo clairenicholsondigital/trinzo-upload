@@ -26,6 +26,38 @@ class MeetingMinutesParserTest(unittest.TestCase):
         )
         self.assertTrue(turns[0].text.startswith("And then what we want to do"))
 
+    def test_colon_style_turns_are_parsed_without_timestamps(self):
+        transcript = """Weekly Delivery Review
+
+5 June 2026
+
+Ciara Griffin:
+Okay, before we start, has everyone seen the customer feedback?
+
+Tom Baker:
+Some of it.
+
+Jack Cunningham:
+Most of it.
+
+Conor Flynn:
+Yeah.
+"""
+
+        turns = parse_speaker_turns(transcript)
+
+        self.assertEqual(len(turns), 4)
+        self.assertEqual(
+            [(turn.speaker, turn.timestamp) for turn in turns],
+            [
+                ("Ciara Griffin", ""),
+                ("Tom Baker", ""),
+                ("Jack Cunningham", ""),
+                ("Conor Flynn", ""),
+            ],
+        )
+        self.assertTrue(turns[0].text.startswith("Okay, before we start"))
+
     def test_meeting_minutes_use_the_flat_skill_style_output(self):
         result = analyse(self.transcript)
 

@@ -38,6 +38,8 @@ except ImportError:  # pragma: no cover
 
 
 TURN_RE = re.compile(r"^(?P<speaker>.+?)\s+(?P<timestamp>\d+:\d{2})(?P<tail>.*)$")
+COLON_SPEAKER_RE = re.compile(r"^(?P<speaker>[A-Z][A-Za-z ]+):\s*(?P<tail>.*)$")
+HEADER_LABELS = {"date", "location"}
 GENERIC_TOKENS = {
     "the", "and", "for", "that", "with", "from", "into", "then", "again",
     "report", "strategy", "defined", "review", "forms", "green", "call"
@@ -228,6 +230,24 @@ def parse_turns(text: str) -> list[Turn]:
             current_speaker = match.group("speaker")
             current_timestamp = match.group("timestamp")
             trailing_text = match.group("tail").strip()
+            buffer = [trailing_text] if trailing_text else []
+            continue
+        colon_match = COLON_SPEAKER_RE.match(line)
+        if colon_match:
+            speaker_label = colon_match.group("speaker").strip()
+            if speaker_label.lower() in HEADER_LABELS:
+                continue
+            if current_speaker and buffer:
+                turns.append(
+                    Turn(
+                        speaker=current_speaker,
+                        timestamp=current_timestamp or "",
+                        text=normalize_text(" ".join(buffer)),
+                    )
+                )
+            current_speaker = speaker_label
+            current_timestamp = ""
+            trailing_text = colon_match.group("tail").strip()
             buffer = [trailing_text] if trailing_text else []
             continue
         if current_speaker:
