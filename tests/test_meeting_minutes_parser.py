@@ -214,6 +214,55 @@ No, discussion only. No action for that.
         self.assertIn("custom branding", " ".join(result["discussionPoints"]).lower())
         self.assertIn("api documentation", result["executiveSummary"].lower())
 
+    def test_request_and_volunteer_turns_link_into_actions(self):
+        transcript = """Creative review
+
+6 June 2026
+
+Ciara Griffin:
+Can somebody update the opening image?
+
+Emily Stone:
+Yep, I'll do that.
+
+Jack Cunningham:
+Can somebody also shorten the deck?
+
+Conor Flynn:
+I'll work with Jack on that.
+
+Ciara Griffin:
+Perfect.
+"""
+
+        result = analyse(transcript)
+
+        self.assertEqual(result["meetingType"], "general_meeting")
+        self.assertIn("Update the opening image.", result["meetingActionPoint"])
+        self.assertIn("Work with Jack to shorten the deck.", result["meetingActionPoint"])
+        opening_index = result["meetingActionPoint"].index("Update the opening image.")
+        deck_index = result["meetingActionPoint"].index("Work with Jack to shorten the deck.")
+        self.assertEqual(result["meetingActionPointOwner"][opening_index], "Emily Stone")
+        self.assertEqual(result["meetingActionPointOwner"][deck_index], "Conor Flynn")
+
+    def test_request_and_short_volunteer_reply_link_into_actions(self):
+        transcript = """General check-in
+
+6 June 2026
+
+Ciara Griffin:
+Can someone update that?
+
+Emily Stone:
+I'll do it.
+"""
+
+        result = analyse(transcript)
+
+        self.assertEqual(result["meetingType"], "general_meeting")
+        self.assertEqual(result["meetingActionPoint"], ["Update that."])
+        self.assertEqual(result["meetingActionPointOwner"], ["Emily Stone"])
+
     def test_meeting_minutes_use_the_flat_skill_style_output(self):
         result = analyse(self.transcript)
 

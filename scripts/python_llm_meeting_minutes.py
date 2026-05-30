@@ -1262,6 +1262,68 @@ def infer_action_deadline(text: str, rule: dict[str, Any], config: dict[str, Any
     return rule["deadline"]
 
 
+def normalize_requested_task(task_text: str) -> str:
+    cleaned = normalize_text_fragment(task_text)
+    cleaned = re.sub(r"^(also|just)\b\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bfor us\b", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned.rstrip("?.!")
+
+
+def extract_request_task(sentence: str) -> str | None:
+    stripped = sentence.strip()
+    patterns = [
+        r"^can\s+(?:somebody|someone|anybody|anyone)\s+(?P<task>.+?)\??$",
+        r"^can\s+you\s+(?P<task>.+?)\??$",
+        r"^could\s+(?:somebody|someone|anybody|anyone)\s+(?P<task>.+?)\??$",
+        r"^we\s+need\s+(?P<task>.+?)\.?$",
+        r"^someone\s+needs\s+to\s+(?P<task>.+?)\.?$",
+    ]
+    for pattern in patterns:
+        match = re.match(pattern, stripped, flags=re.IGNORECASE)
+        if not match:
+            continue
+        task = normalize_requested_task(match.group("task"))
+        if task:
+            return task
+    return None
+
+
+def extract_response_commitment(sentence: str, config: dict[str, Any]) -> dict[str, Any] | None:
+    stripped = sentence.strip()
+    lowered = stripped.lower()
+    if not re.search(r"\b(i'll|i will|i can)\b", lowered):
+        return None
+
+    collaborator = None
+    collaborator_match = re.search(r"\b(?:work|pair)\s+with\s+([A-Z][a-z]+)\b", stripped)
+    if collaborator_match:
+        collaborator = find_participant_by_first_name(collaborator_match.group(1), config)
+
+    if re.search(r"\b(do that|do it|handle that|handle it|take that|take it|look into that|look into it)\b", lowered):
+        return {"inherits_task": True, "collaborator": collaborator}
+    if re.search(r"\bwork with [A-Z][a-z]+ on (?:that|it)\b", stripped, flags=re.IGNORECASE):
+        return {"inherits_task": True, "collaborator": collaborator}
+
+    explicit_match = re.search(r"\b(?:i'll|i will|i can)\s+(?P<task>.+)$", stripped, flags=re.IGNORECASE)
+    if not explicit_match:
+        return None
+    explicit_task = normalize_requested_task(explicit_match.group("task"))
+    if not explicit_task:
+        return None
+    return {"inherits_task": False, "task": explicit_task, "collaborator": collaborator}
+
+
+def build_linked_action_text(task: str, collaborator: str | None) -> str:
+    task = normalize_requested_task(task)
+    if not task:
+        return ""
+    if collaborator:
+        first_name = collaborator.split()[0]
+        return finalize_sentence(f"Work with {first_name} to {task}")
+    return finalize_sentence(task)
+
+
 def infer_action_related_milestone(action_text: str, config: dict[str, Any]) -> str:
     lowered = action_text.lower()
     keyword_map = {
@@ -1288,6 +1350,8 @@ def resolve_explicit_action_owner(
     config: dict[str, Any],
 ) -> tuple[str, float]:
     lowered = action_text.lower()
+    if lowered.startswith("work with "):
+        return "Owner not specified", 0.2
     if re.match(r"^(?:[A-Z][a-z]+),\s+", action_text):
         named = find_participant_by_first_name(action_text.split(",", 1)[0], config)
         if named:
@@ -1313,9 +1377,6 @@ def resolve_explicit_action_owner(
         return "Owner not specified", 0.2
     if lowered.startswith("we're ") and action_turn:
         return action_turn["speaker"], 0.6
-    direct_name = find_named_owner(action_text, config)
-    if direct_name:
-        return direct_name, 0.85
     if "grant" in lowered:
         if any("emma" in turn["content"].lower() for turn in raw_turns) and any("follow up this week" in turn["content"].lower() for turn in raw_turns):
             return "Emma", 0.85
@@ -1362,6 +1423,25 @@ def build_structured_actions(
             }
         )
     return structured
+
+
+def dedupe_structured_actions(structured_actions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    deduped: dict[str, dict[str, Any]] = {}
+    ordered_keys: list[str] = []
+    for item in structured_actions:
+        key = item["meetingActionPoint"].strip().lower()
+        existing = deduped.get(key)
+        if existing is None:
+            deduped[key] = item
+            ordered_keys.append(key)
+            continue
+        if item.get("actionConfidence", 0) > existing.get("actionConfidence", 0):
+            combined = dict(item)
+            combined["_evidence"] = dedupe_evidence_refs(existing.get("_evidence", []) + item.get("_evidence", []))
+            deduped[key] = combined
+        else:
+            existing["_evidence"] = dedupe_evidence_refs(existing.get("_evidence", []) + item.get("_evidence", []))
+    return [deduped[key] for key in ordered_keys]
 
 
 def build_decisions(
@@ -1462,6 +1542,62 @@ def extract_named_assignment_actions(raw_turns: list[dict[str, str]], config: di
     return actions, owners, deadlines
 
 
+def extract_linked_conversational_actions(raw_turns: list[dict[str, str]], config: dict[str, Any]) -> tuple[list[str], list[str], list[str]]:
+    actions: list[str] = []
+    owners: list[str] = []
+    deadlines: list[str] = []
+    seen = set()
+    pending_requests: list[dict[str, Any]] = []
+    sentence_index = 0
+
+    for turn in raw_turns:
+        speaker = turn.get("speaker", "")
+        for sentence in split_sentences(turn.get("content", "")):
+            stripped = sentence.strip()
+            lowered = stripped.lower()
+            if not stripped:
+                sentence_index += 1
+                continue
+            pending_requests = [
+                item for item in pending_requests if sentence_index - item["sentence_index"] <= 4
+            ]
+
+            request_task = extract_request_task(stripped)
+            if request_task and not lowered.startswith("can you "):
+                pending_requests.append(
+                    {
+                        "task": request_task,
+                        "speaker": speaker,
+                        "sentence_index": sentence_index,
+                    }
+                )
+                sentence_index += 1
+                continue
+
+            commitment = extract_response_commitment(stripped, config)
+            if commitment:
+                action_text = ""
+                if commitment.get("inherits_task") and pending_requests:
+                    pending = pending_requests[-1]
+                    action_text = build_linked_action_text(pending["task"], commitment.get("collaborator"))
+                elif commitment.get("task"):
+                    action_text = build_linked_action_text(commitment["task"], commitment.get("collaborator"))
+
+                if action_text:
+                    key = action_text.lower()
+                    if key not in seen:
+                        seen.add(key)
+                        actions.append(action_text)
+                        owners.append(speaker or "Owner not specified")
+                        deadlines.append(infer_action_deadline(stripped, {"deadline": ""}, config))
+                    if commitment.get("inherits_task"):
+                        pending_requests = pending_requests[:-1]
+
+            sentence_index += 1
+
+    return actions, owners, deadlines
+
+
 def extract_fallback_actions(raw_turns: list[dict[str, str]], config: dict[str, Any]) -> tuple[list[str], list[str], list[str]]:
     actions: list[str] = []
     owners: list[str] = []
@@ -1471,6 +1607,8 @@ def extract_fallback_actions(raw_turns: list[dict[str, str]], config: dict[str, 
         content = turn["content"].strip()
         lowered = content.lower()
         if not content:
+            continue
+        if extract_request_task(content) and not lowered.startswith("can you "):
             continue
         if not any(term in lowered for term in ("i will", "we should", "can you", "check", "confirm", "send", "update")):
             continue
@@ -1632,10 +1770,20 @@ def build_template_values(text: str, analysis: dict[str, Any], turns: list[Any],
         structured_actions = build_project_review_actions(segments, raw_turns, config)
     elif meeting_type in {"webinar_rehearsal", "presentation_review", "sales_or_client_discussion", "general_meeting"}:
         if not actions:
-            actions, action_owners, action_deadlines = extract_generic_actions(text, source_turns, config)
+            actions, action_owners, action_deadlines = [], [], []
         else:
             action_owners = [owner_for_action(action, config) for action in actions]
             action_deadlines = [deadline_for_action(action, block_deadline, config) for action in actions]
+        generic_actions, generic_action_owners, generic_action_deadlines = extract_generic_actions(text, source_turns, config)
+        if generic_actions:
+            existing = {action.lower() for action in actions}
+            for action, owner, deadline in zip(generic_actions, generic_action_owners, generic_action_deadlines):
+                if action.lower() in existing:
+                    continue
+                actions.append(action)
+                action_owners.append(owner)
+                action_deadlines.append(deadline)
+                existing.add(action.lower())
         named_actions, named_action_owners, named_action_deadlines = extract_named_assignment_actions(source_turns, config)
         if named_actions:
             existing = {action.lower() for action in actions}
@@ -1646,15 +1794,37 @@ def build_template_values(text: str, analysis: dict[str, Any], turns: list[Any],
                 action_owners.append(owner)
                 action_deadlines.append(deadline)
                 existing.add(action.lower())
-        if not actions:
-            actions, action_owners, action_deadlines = extract_fallback_actions(source_turns, config)
-        structured_actions = build_structured_actions(actions, action_owners, action_deadlines, source_turns, config)
+        linked_actions, linked_action_owners, linked_action_deadlines = extract_linked_conversational_actions(source_turns, config)
+        if linked_actions:
+            existing = {action.lower() for action in actions}
+            for action, owner, deadline in zip(linked_actions, linked_action_owners, linked_action_deadlines):
+                if action.lower() in existing:
+                    continue
+                actions.append(action)
+                action_owners.append(owner)
+                action_deadlines.append(deadline)
+                existing.add(action.lower())
+        fallback_actions, fallback_action_owners, fallback_action_deadlines = extract_fallback_actions(source_turns, config)
+        if fallback_actions:
+            existing = {action.lower() for action in actions}
+            for action, owner, deadline in zip(fallback_actions, fallback_action_owners, fallback_action_deadlines):
+                if action.lower() in existing:
+                    continue
+                actions.append(action)
+                action_owners.append(owner)
+                action_deadlines.append(deadline)
+                existing.add(action.lower())
+        structured_actions = dedupe_structured_actions(
+            build_structured_actions(actions, action_owners, action_deadlines, source_turns, config)
+        )
         for item in structured_actions:
             item["relatedMilestone"] = "unlinked"
     elif actions:
         action_owners = [owner_for_action(action, config) for action in actions]
         action_deadlines = [deadline_for_action(action, block_deadline, config) for action in actions]
-        structured_actions = build_structured_actions(actions, action_owners, action_deadlines, raw_turns, config)
+        structured_actions = dedupe_structured_actions(
+            build_structured_actions(actions, action_owners, action_deadlines, raw_turns, config)
+        )
     else:
         structured_actions = []
 
