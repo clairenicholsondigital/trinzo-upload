@@ -2,7 +2,7 @@ import json
 import unittest
 from pathlib import Path
 
-from scripts.python_meeting_minutes_numbers import analyse
+from scripts.python_meeting_minutes_numbers import analyse, clean_transcript_text, parse_numeric_turns
 
 
 FIXTURE = Path(__file__).parent / "fixtures" / "meeting_minutes_timestamped_transcript.txt"
@@ -10,6 +10,25 @@ PROJECT_FIXTURE = Path(__file__).parent / "fixtures" / "project_update_june_2_20
 
 
 class MeetingMinutesNumbersTest(unittest.TestCase):
+    def test_metadata_lines_are_removed_before_turn_parsing(self):
+        transcript = """Daily AI Check In-20260602_150011-Meeting Transcript
+2 June 2026, 3:00pm
+4m 42s
+Ciara Griffin started transcription
+Ciara Griffin 0:03
+Right, let's run through the AI programme items quickly.
+Conor Flynn 0:15
+Yeah, agreed.
+Ciara Griffin stopped transcription.
+"""
+
+        cleaned = clean_transcript_text(transcript)
+        turns = parse_numeric_turns(transcript)
+
+        self.assertNotIn("started transcription", cleaned.lower())
+        self.assertNotIn("stopped transcription", cleaned.lower())
+        self.assertEqual([turn["speaker"] for turn in turns], ["Ciara Griffin", "Conor Flynn"])
+
     def test_low_content_fallback(self):
         transcript = """Random notes
 
@@ -98,6 +117,7 @@ We haven't decided whether to replace the meeting room video systems.
 
         self.assertIn("The physical office move will take place on 10 September.", result["decisions"])
         self.assertTrue(any("office move timeline" in point.lower() or "meeting room video systems" in point.lower() for point in result["discussionPoints"]))
+        self.assertTrue(result["numberExperimentDebug"]["clusters"])
 
     def test_supplier_contract_renewal_outputs(self):
         transcript = """Customer support contract renewal
@@ -156,6 +176,13 @@ Yes.
         self.assertIn("Send final pricing figures to finance when available.", result["meetingActionPoint"])
         self.assertTrue(any("customer support contract renewal" in point.lower() for point in result["discussionPoints"]))
         self.assertNotIn("The supplier has proposed a three-year commitment.", result["decisions"])
+        self.assertTrue(
+            any(
+                "supplier" in " ".join(cluster["keywords"])
+                or "renewal" in " ".join(cluster["keywords"])
+                for cluster in result["numberExperimentDebug"]["clusters"]
+            )
+        )
 
     def test_daily_ai_check_in_fixture_runs_with_debug(self):
         transcript = PROJECT_FIXTURE.read_text(encoding="utf-8")
@@ -164,6 +191,8 @@ Yes.
         self.assertTrue(result["meetingTitle"])
         self.assertIn("numberExperimentDebug", result)
         self.assertIsInstance(result["numberExperimentDebug"]["topDecisionCandidates"], list)
+        self.assertGreaterEqual(len(result["discussionPoints"]), 3)
+        self.assertTrue(any("status" in point.lower() or "blocker" in point.lower() for point in result["discussionPoints"]))
         json.dumps(result)
 
     def test_webinar_fixture_runs_with_debug(self):
@@ -173,6 +202,34 @@ Yes.
         self.assertEqual(result["meetingTitle"], "Webinar practice transcript")
         self.assertIn("numberExperimentDebug", result)
         json.dumps(result)
+
+    def test_navigation_only_content_does_not_become_output(self):
+        transcript = """Planning check-in
+
+6 June 2026
+
+Ciara Griffin:
+Right, let's run through the agenda.
+
+Conor Flynn:
+Go ahead.
+
+Ciara Griffin:
+Okay, next.
+
+Conor Flynn:
+Anything else?
+
+Ciara Griffin:
+Thanks everyone.
+"""
+
+        result = analyse(transcript)
+
+        self.assertEqual(result["discussionPoints"], [])
+        self.assertEqual(result["decisions"], [])
+        self.assertEqual(result["meetingActionPoint"], [])
+        self.assertEqual(result["executiveSummary"], "No substantive meeting content, decisions, or actions were identified.")
 
 
 if __name__ == "__main__":
