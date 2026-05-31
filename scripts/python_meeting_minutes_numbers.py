@@ -80,6 +80,13 @@ GENERIC_COMMITMENT_PATTERNS = (
     "i'll pick that up", "i will pick that up",
     "i'll own that", "i will own that", "i can own that",
 )
+REJECTION_CUES = (
+    "no", "won't have time", "wont have time", "can't", "cannot", "not before",
+    "unable to", "won't be able to", "wont be able to", "don't have time", "do not have time",
+)
+REQUEST_CLOSURE_CUES = (
+    "okay", "ok", "we'll leave it", "well leave it", "leave it", "fair enough", "no worries",
+)
 ACK_PREFIX_RE = re.compile(r"^(?:yes|yeah|yep|sure|okay|ok|fine|perfect|agreed|right)\b[\s,.-]*", re.IGNORECASE)
 DIRECT_ASSIGNMENT_RE = re.compile(r"^(?P<owner>[A-Z][A-Za-z]+(?: [A-Z][A-Za-z]+){0,2})\s+to\s+(?P<task>.+)$")
 SELF_COMMITMENT_RE = re.compile(r"^(?:i['’]?ll|i will|i can)\s+(?P<task>.+)$", re.IGNORECASE)
@@ -364,6 +371,20 @@ def actions_overlap(left: str, right: str) -> bool:
     if len(overlap) >= 2:
         return True
     return cosine_similarity(Counter(left_tokens), Counter(right_tokens)) >= 0.45
+
+
+def has_rejection_cue(text: str) -> bool:
+    lowered = normalize_text_fragment(text).lower()
+    if not lowered:
+        return False
+    if lowered == "no":
+        return True
+    return any(cue in lowered for cue in REJECTION_CUES)
+
+
+def has_request_closure_cue(text: str) -> bool:
+    lowered = normalize_text_fragment(text).lower()
+    return any(cue in lowered for cue in REQUEST_CLOSURE_CUES)
 
 
 def discussion_similarity(left: str, right: str) -> float:
@@ -916,6 +937,53 @@ def find_future_commitment_action(turns: list[dict[str, str]], index: int) -> tu
     return None
 
 
+def detect_rejected_request_resolution(turns: list[dict[str, str]], request_index: int, context: dict[str, str]) -> dict[str, Any] | None:
+    request_action = context.get("action", "")
+    if not request_action:
+        return None
+
+    rejection_turn: dict[str, str] | None = None
+    closure_turn: dict[str, str] | None = None
+    conflicting_follow_up: dict[str, str] | None = None
+
+    for future_index in range(request_index + 1, min(len(turns), request_index + 5)):
+        future_turn = turns[future_index]
+        future_text = normalize_text_fragment(future_turn["text"])
+        future_lowered = future_text.lower()
+
+        future_context = extract_action_context(future_turn["text"])
+        if future_context and actions_overlap(request_action, future_context["action"]):
+            conflicting_follow_up = future_turn
+            break
+
+        future_commitment = extract_self_commitment_action(future_turn["text"], future_turn["speaker"])
+        if future_commitment and actions_overlap(request_action, future_commitment[0]):
+            conflicting_follow_up = future_turn
+            break
+
+        if rejection_turn is None and has_rejection_cue(future_lowered):
+            rejection_turn = future_turn
+            continue
+
+        if rejection_turn is not None and has_request_closure_cue(future_lowered):
+            closure_turn = future_turn
+            break
+
+    if not rejection_turn or conflicting_follow_up or not closure_turn:
+        return None
+
+    return {
+        "action": request_action,
+        "owner": context.get("owner", ""),
+        "deadline": context.get("deadline", ""),
+        "requestTurn": {"speaker": turns[request_index]["speaker"], "timestamp": turns[request_index]["timestamp"], "text": turns[request_index]["text"]},
+        "rejectionTurn": {"speaker": rejection_turn["speaker"], "timestamp": rejection_turn["timestamp"], "text": rejection_turn["text"]},
+        "closureTurn": {"speaker": closure_turn["speaker"], "timestamp": closure_turn["timestamp"], "text": closure_turn["text"]},
+        "resolution": "explicitly_declined_and_closed",
+        "suppressionConfidence": 0.94,
+    }
+
+
 def merge_commitment_with_request(
     commitment: tuple[str, str, str],
     request_context: dict[str, str] | None,
@@ -936,10 +1004,16 @@ def merge_commitment_with_request(
     return commitment
 
 
-def extract_conversational_actions(turns: list[dict[str, str]]) -> list[tuple[str, str, str, float, list[dict[str, str]]]]:
+def extract_conversational_actions(turns: list[dict[str, str]]) -> tuple[list[tuple[str, str, str, float, list[dict[str, str]]]], list[dict[str, Any]]]:
     actions: list[tuple[str, str, str, float, list[dict[str, str]]]] = []
+    suppressed: list[dict[str, Any]] = []
     for index, turn in enumerate(turns):
         context = extract_action_context(turn["text"])
+        if context and context["kind"] == "request":
+            rejected_resolution = detect_rejected_request_resolution(turns, index, context)
+            if rejected_resolution:
+                suppressed.append(rejected_resolution)
+                context = None
         if context and context["kind"] in {"assignment", "request"}:
             future_commitment = find_future_commitment_action(turns, index)
             if (
@@ -995,7 +1069,7 @@ def extract_conversational_actions(turns: list[dict[str, str]]) -> list[tuple[st
                 ],
             )
         )
-    return actions
+    return actions, suppressed
 
 
 def extract_action_block(text: str) -> list[tuple[str, str, str, list[dict[str, str]]]]:
@@ -2432,6 +2506,16 @@ def augment_general_outputs(
     return final_points
 
 
+def build_rejected_request_discussion(suppressed_item: dict[str, Any]) -> str:
+    action_text = normalize_text_fragment(suppressed_item.get("action", "")).rstrip(".")
+    rejection_text = normalize_text_fragment(suppressed_item.get("rejectionTurn", {}).get("text", "")).rstrip(".")
+    if action_text and rejection_text:
+        return finalize_sentence(f"The request to {action_text[:1].lower() + action_text[1:]} was declined because {rejection_text[:1].lower() + rejection_text[1:]}")
+    if action_text:
+        return finalize_sentence(f"The request to {action_text[:1].lower() + action_text[1:]} was declined")
+    return ""
+
+
 def augment_webinar_rehearsal_outputs(
     turns: list[dict[str, str]],
     discussion_points: list[str],
@@ -2612,7 +2696,8 @@ def analyse(text: str) -> dict[str, Any]:
     action_items: list[tuple[str, str, str, float, list[dict[str, str]]]] = []
     for action, owner, deadline, evidence in extract_action_block(text):
         action_items.append((action, owner, deadline, 0.72, evidence))
-    for action, owner, deadline, confidence, evidence in extract_conversational_actions(turns):
+    conversational_actions, suppressed_rejected_actions = extract_conversational_actions(turns)
+    for action, owner, deadline, confidence, evidence in conversational_actions:
         action_items.append((action, owner, deadline, confidence, evidence))
 
     deduped_actions: dict[str, tuple[str, str, str, float, list[dict[str, str]]]] = {}
@@ -2744,6 +2829,30 @@ def analyse(text: str) -> dict[str, Any]:
                     }
                 )
     final_discussion_keys = {normalize_discussion_key(point) for point in discussion_points}
+    for suppressed_item in suppressed_rejected_actions:
+        suppressed_discussion = build_rejected_request_discussion(suppressed_item)
+        if not suppressed_discussion:
+            continue
+        key = normalize_discussion_key(suppressed_discussion)
+        if key in final_discussion_keys:
+            continue
+        discussion_points.append(suppressed_discussion)
+        final_discussion_keys.add(key)
+        selected_discussion.append(
+            {
+                "text": suppressed_discussion,
+                "sourceType": "rejectedRequest",
+                "earliestTimestamp": timestamp_to_seconds(suppressed_item["requestTurn"]["timestamp"]),
+                "timestampLabel": suppressed_item["requestTurn"]["timestamp"],
+                "selectedReason": "suppressed_rejected_request",
+                "evidence": [
+                    {"speaker": suppressed_item["requestTurn"]["speaker"], "timestamp": suppressed_item["requestTurn"]["timestamp"]},
+                    {"speaker": suppressed_item["rejectionTurn"]["speaker"], "timestamp": suppressed_item["rejectionTurn"]["timestamp"]},
+                    {"speaker": suppressed_item["closureTurn"]["speaker"], "timestamp": suppressed_item["closureTurn"]["timestamp"]},
+                ],
+            }
+        )
+
     for cluster in cluster_debug:
         cluster_key = normalize_discussion_key(cluster["selectedDiscussionPoint"])
         if cluster_key in final_discussion_keys:
@@ -2835,6 +2944,7 @@ def analyse(text: str) -> dict[str, Any]:
         "topicClusters": cluster_debug,
         "winningDecisionClusters": decision_debug["winningDecisionClusters"],
         "rejectedCompetingDecisions": decision_debug["rejectedCompetingDecisions"],
+        "suppressedRejectedActions": suppressed_rejected_actions,
         "statusReviewPoints": [item["text"] for item in status_review_points],
         "finalDiscussionPoints": final_discussion_debug,
         "parsedTurnCount": len(turns),
