@@ -117,7 +117,7 @@ We haven't decided whether to replace the meeting room video systems.
 
         self.assertIn("The physical office move will take place on 10 September.", result["decisions"])
         self.assertTrue(any("office move timeline" in point.lower() or "meeting room video systems" in point.lower() for point in result["discussionPoints"]))
-        self.assertTrue(result["numberExperimentDebug"]["clusters"])
+        self.assertTrue(result["numberExperimentDebug"]["topicClusters"])
 
     def test_supplier_contract_renewal_outputs(self):
         transcript = """Customer support contract renewal
@@ -180,7 +180,7 @@ Yes.
             any(
                 "supplier" in " ".join(cluster["keywords"])
                 or "renewal" in " ".join(cluster["keywords"])
-                for cluster in result["numberExperimentDebug"]["clusters"]
+                for cluster in result["numberExperimentDebug"]["topicClusters"]
             )
         )
 
@@ -191,8 +191,22 @@ Yes.
         self.assertTrue(result["meetingTitle"])
         self.assertIn("numberExperimentDebug", result)
         self.assertIsInstance(result["numberExperimentDebug"]["topDecisionCandidates"], list)
+        self.assertIsInstance(result["numberExperimentDebug"]["topicClusters"], list)
+        self.assertIsInstance(result["numberExperimentDebug"]["rejectedNavigationCandidates"], list)
+        self.assertNotIn("2 June 2026,", result["participants.client"])
+        self.assertFalse(any("pm 4m 42s" in point for point in result["discussionPoints"]))
+        self.assertFalse(any("right, let's run through" in point.lower() for point in result["discussionPoints"]))
         self.assertGreaterEqual(len(result["discussionPoints"]), 3)
-        self.assertTrue(any("status" in point.lower() or "blocker" in point.lower() for point in result["discussionPoints"]))
+        self.assertTrue(
+            any(
+                any(term in point.lower() for term in ("remains", "blocked", "in review", "active", "complete"))
+                for point in result["discussionPoints"]
+            )
+        )
+        self.assertIn("Review stage gate templates.", result["meetingActionPoint"])
+        self.assertIn("Confirm AI pipeline dependencies with sales.", result["meetingActionPoint"])
+        action_map = {item["meetingActionPoint"]: item for item in result["actions"]}
+        self.assertTrue(action_map["Review stage gate templates."]["_evidence"])
         json.dumps(result)
 
     def test_webinar_fixture_runs_with_debug(self):

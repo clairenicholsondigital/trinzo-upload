@@ -38,6 +38,7 @@ METADATA_RE = re.compile(
     re.IGNORECASE,
 )
 ACTION_HEADER_RE = re.compile(r"^(?:actions?|next steps|follow ups?|action items)(?:\s+before\s+.+)?:\s*$", re.IGNORECASE)
+INLINE_ACTION_HEADER_RE = re.compile(r"^(?P<header>(?:actions?|next steps|follow ups?|action items)(?:\s+before\s+.+)?):\s*(?P<tail>.*)$", re.IGNORECASE)
 QUESTION_RE = re.compile(r"\?$")
 DEADLINE_RE = re.compile(
     r"\b(?:tomorrow|today|next week|this afternoon|before [A-Z][a-z]+|by [A-Z][a-z]+|end of quarter|when available|before friday|before the webinar)\b",
@@ -76,6 +77,13 @@ DISCUSSION_TERMS = {
     "status", "renewal", "contract", "supplier", "pricing", "problem", "blocked", "complete", "green",
     "amber", "red", "timeline", "registration", "attendee", "budget", "finance", "legal",
 }
+NON_TOPIC_TERMS = {
+    "green", "amber", "red", "blue", "complete", "blocked", "active", "review", "progress",
+    "operational", "status", "because", "still", "there", "nothing", "new", "next", "week",
+    "today", "tomorrow", "later", "june", "would", "probably", "actual", "deliverable", "due",
+    "item", "main", "right", "okay", "fine", "good", "perfect",
+}
+STATUS_TERMS = ("complete", "blocked", "amber", "green", "red", "blue", "due", "not operational", "awaiting", "in review")
 
 
 def parse_args() -> argparse.Namespace:
@@ -141,10 +149,15 @@ def parse_numeric_turns(text: str) -> list[dict[str, str]]:
         colon_match = COLON_TURN_RE.match(line)
         if timestamp_match:
             flush_current()
+            tail = timestamp_match.group("tail").strip()
+            if INLINE_ACTION_HEADER_RE.match(tail):
+                action_block = True
+                current = None
+                continue
             current = {
                 "speaker": timestamp_match.group("speaker").strip(),
                 "timestamp": timestamp_match.group("timestamp").strip(),
-                "text": timestamp_match.group("tail").strip(),
+                "text": tail,
             }
             action_block = False
             continue
@@ -340,26 +353,53 @@ def normalize_action_text(text: str) -> str:
     return finalize_sentence(cleaned[:1].upper() + cleaned[1:] if cleaned else cleaned)
 
 
-def extract_action_block(text: str) -> list[tuple[str, str, str]]:
+def split_action_tail(text: str) -> list[str]:
+    parts = []
+    for part in re.split(r"(?<=[.!?])\s+|(?<=\w)\.\s+(?=[A-Z])", text.strip()):
+        cleaned = normalize_text_fragment(part).rstrip(".!?")
+        if cleaned:
+            parts.append(cleaned)
+    return parts
+
+
+def extract_action_block(text: str) -> list[tuple[str, str, str, list[dict[str, str]]]]:
     cleaned = clean_transcript_text(text)
     lines = cleaned.splitlines()
-    results: list[tuple[str, str, str]] = []
+    results: list[tuple[str, str, str, list[dict[str, str]]]] = []
     in_block = False
     deadline = ""
+    current_evidence: list[dict[str, str]] = []
     for raw_line in lines:
         line = raw_line.strip()
         if not line:
             continue
+        speaker_match = TURN_RE.match(line)
+        if speaker_match:
+            tail = speaker_match.group("tail").strip()
+            inline_match = INLINE_ACTION_HEADER_RE.match(tail)
+            if inline_match:
+                in_block = True
+                header = inline_match.group("header").lower()
+                deadline = "Before the webinar" if "webinar" in header else ("Before next week" if "next week" in header else "")
+                current_evidence = [{"speaker": speaker_match.group("speaker").strip(), "timestamp": speaker_match.group("timestamp").strip()}]
+                tail_text = inline_match.group("tail").strip()
+                for item in split_action_tail(tail_text):
+                    results.append((normalize_action_text(item), "Owner not specified", deadline, current_evidence))
+                continue
         if ACTION_HEADER_RE.match(line):
             in_block = True
             lowered = line.lower()
             deadline = "Before the webinar" if "webinar" in lowered else ("Before next week" if "next week" in lowered else "")
+            current_evidence = current_evidence or []
             continue
         if not in_block:
+            if speaker_match:
+                current_evidence = [{"speaker": speaker_match.group("speaker").strip(), "timestamp": speaker_match.group("timestamp").strip()}]
             continue
         if TURN_RE.match(line) or COLON_TURN_RE.match(line):
             break
-        results.append((normalize_action_text(line), "Owner not specified", deadline))
+        for item in split_action_tail(line):
+            results.append((normalize_action_text(item), "Owner not specified", deadline, current_evidence))
     return results
 
 
@@ -413,8 +453,154 @@ def derive_decision_from_candidate(candidate: dict[str, Any]) -> str | None:
 
 
 def extract_cluster_keywords(token_counts: Counter[str], speaker_names: set[str], limit: int = 4) -> list[str]:
-    keywords = [token for token, _count in token_counts.most_common() if token not in speaker_names and len(token) > 2]
+    keywords = [
+        token
+        for token, _count in token_counts.most_common()
+        if token not in speaker_names and len(token) > 2 and token not in NON_TOPIC_TERMS
+    ]
     return keywords[:limit]
+
+
+def extract_topic_phrase(cluster: list[dict[str, Any]]) -> str:
+    for item in cluster:
+        text = normalize_text_fragment(item["text"])
+        if ACTION_HEADER_RE.match(text):
+            continue
+        comma_topic = re.match(r"^(?P<topic>(?:The\s+)?[A-Z][A-Za-z0-9&/()' -]{4,80}),\s+", text)
+        if comma_topic and len(tokenize(comma_topic.group("topic"))) <= 8:
+            return comma_topic.group("topic").strip()
+        short_question = re.match(r"^(?P<topic>[^?.!]{4,80})\?$", text)
+        if short_question:
+            return short_question.group("topic").strip()
+        short_label = re.match(r"^(?P<topic>[A-Z][A-Za-z0-9&/()' -]{4,80})\.?$", text)
+        if short_label and len(tokenize(short_label.group("topic"))) <= 8:
+            return short_label.group("topic").strip()
+    return ""
+
+
+def build_status_cluster_point(cluster: list[dict[str, Any]], keywords: list[str]) -> str:
+    cluster_text = " ".join(item["text"] for item in cluster)
+    lowered = cluster_text.lower()
+    topic = extract_topic_phrase(cluster)
+    if topic:
+        topic_text = normalize_text_fragment(topic).lower()
+    elif keywords:
+        topic_text = " ".join(keywords[:3]).lower()
+    else:
+        topic_text = "the workstream"
+    status = "in progress"
+    if "blocked" in lowered:
+        status = "blocked"
+    elif "in review" in lowered or "pending leadership review" in lowered:
+        status = "in review"
+    elif "complete" in lowered and not any(term in lowered for term in ("not complete", "isn't complete", "awaiting", "blocked")):
+        status = "complete"
+    elif any(term in lowered for term in ("due", "scheduled", "booked")):
+        status = "active"
+
+    detail_fragments: list[str] = []
+    for item in cluster:
+        text = normalize_text_fragment(item["text"])
+        text_lowered = text.lower()
+        if text_lowered == topic_text:
+            continue
+        if any(marker in text_lowered for marker in ("because", "but", "routing isn't", "routing is not", "not yet", "awaiting", "needs review", "pending", "input", "scoped", "booked", "doesn't exist", "not operational")):
+            detail_fragments.append(text)
+    detail_fragments = detail_fragments[:2]
+    if status == "blocked" and detail_fragments:
+        return finalize_sentence(f"The {topic_text} remains blocked because {' and '.join(fragment.lower() for fragment in detail_fragments)}")
+    if status == "complete":
+        return finalize_sentence(f"The {topic_text} was reviewed and appears complete")
+    if detail_fragments:
+        return finalize_sentence(f"The {topic_text} remains {status} because {' and '.join(fragment.lower() for fragment in detail_fragments)}")
+    keyword_hint = " ".join(keywords[:2]).strip()
+    if keyword_hint:
+        return finalize_sentence(f"The team reviewed {keyword_hint} and confirmed it remains {status}")
+    return finalize_sentence(f"The team reviewed {topic_text} and confirmed it remains {status}")
+
+
+def looks_like_topic_prompt(text: str) -> bool:
+    cleaned = normalize_text_fragment(text)
+    lowered = cleaned.lower()
+    if not cleaned or any(phrase in lowered for phrase in NAVIGATION_PHRASES):
+        return False
+    if lowered.startswith(
+        (
+            "still ", "we've", "we have", "yeah", "agreed", "no ", "nothing ",
+            "actually ", "true", "correct", "fine", "green", "amber", "red ",
+            "blue ", "blocked", "complete", "in review", "pending", "perfect",
+        )
+    ):
+        return False
+    if any(prefix in lowered for prefix in REQUEST_PREFIXES):
+        return False
+    if any(term in lowered for term in STATUS_TERMS):
+        return False
+    if cleaned.endswith("?"):
+        return True
+    if len(tokenize(cleaned)) <= 8 and cleaned[:1].isupper():
+        return True
+    comma_topic = re.match(r"^(?:The\s+)?[A-Z][A-Za-z0-9&/()' -]{4,80},\s+", cleaned)
+    return bool(comma_topic)
+
+
+def classify_status_from_text(text: str) -> str:
+    lowered = text.lower()
+    if "blocked" in lowered:
+        return "blocked"
+    if "in review" in lowered or "pending leadership review" in lowered:
+        return "in review"
+    if "complete" in lowered and not any(term in lowered for term in ("not complete", "isn't complete", "awaiting", "blocked")):
+        return "complete"
+    if "not operational" in lowered or "still building" in lowered or "in progress" in lowered:
+        return "in progress"
+    if any(term in lowered for term in ("due", "scheduled", "booked", "underway")):
+        return "active"
+    return "in progress"
+
+
+def extract_status_review_points(turns: list[dict[str, str]]) -> list[str]:
+    points: list[str] = []
+    seen = set()
+    for index, turn in enumerate(turns):
+        topic_text = normalize_text_fragment(turn["text"])
+        if not looks_like_topic_prompt(topic_text):
+            continue
+        supporting_turns = turns[index + 1:index + 4]
+        if not supporting_turns:
+            continue
+        combined = " ".join(item["text"] for item in supporting_turns)
+        lowered = combined.lower()
+        if not any(term in lowered for term in STATUS_TERMS) and not any(term in lowered for term in ("problem", "issue", "routing", "pending", "input", "scoped")):
+            continue
+        status = classify_status_from_text(combined)
+        details = []
+        for item in supporting_turns:
+            sentence = normalize_text_fragment(item["text"])
+            sentence_lowered = sentence.lower()
+            if any(
+                marker in sentence_lowered
+                for marker in (
+                    "because", "but", "not yet", "isn't", "is not", "awaiting", "pending",
+                    "routing", "input", "scoped", "booked", "doesn't exist", "don't have", "nothing new",
+                )
+            ):
+                details.append(sentence)
+        topic_normalized = topic_text.rstrip("?.!").lower()
+        if status == "complete":
+            point = finalize_sentence(f"The {topic_normalized} appears complete")
+        elif details:
+            point = finalize_sentence(
+                f"The {topic_normalized} remains {status} because "
+                + " and ".join(fragment.lower() for fragment in details[:2])
+            )
+        else:
+            point = finalize_sentence(f"The {topic_normalized} remains {status}")
+        key = re.sub(r"[^a-z0-9]+", " ", point.lower()).strip()
+        if key not in seen:
+            seen.add(key)
+            points.append(point)
+    return points[:8]
 
 
 def select_discussion_clusters(candidates: list[dict[str, Any]], speaker_names: set[str]) -> tuple[list[str], list[dict[str, Any]]]:
@@ -424,6 +610,8 @@ def select_discussion_clusters(candidates: list[dict[str, Any]], speaker_names: 
         and candidate["scores"].get("low_content", 0) < 0.6
         and candidate["scores"].get("navigation", 0) < 0.75
         and len(candidate.get("tokens", [])) >= 3
+        and candidate["scores"].get("discussion", 0) >= candidate["scores"].get("action", 0)
+        and not ACTION_HEADER_RE.match(candidate["text"].strip())
     ]
     clusters: list[list[dict[str, Any]]] = []
     for candidate in usable:
@@ -462,6 +650,8 @@ def select_discussion_clusters(candidates: list[dict[str, Any]], speaker_names: 
             selected = "The team discussed the office move timeline and unresolved decisions around replacing the meeting room video systems."
         elif any(term in lowered for term in ("validation-specific", "keep it broad")):
             selected = "The team discussed whether the webinar should be validation-specific or broadly applicable and agreed to keep the messaging broad."
+        elif any(term in lowered for term in ("blocked", "complete", "amber", "green", "red", "blue", "not operational", "awaiting", "in review", "due")):
+            selected = build_status_cluster_point(cluster, keywords)
         elif any(term in lowered for term in ("green", "amber", "blocked", "review process", "status", "complete", "in review")):
             selected = "The team reviewed project status, blockers and follow-up work across the active items."
         elif any(term in lowered for term in ("webinar", "timeline", "scope", "registration", "attendee", "demo", "deck", "slide")):
@@ -537,8 +727,8 @@ def analyse(text: str) -> dict[str, Any]:
     speaker_names = {part.lower() for turn in turns for part in turn["speaker"].split()}
 
     action_items: list[tuple[str, str, str, float, list[dict[str, str]]]] = []
-    for action, owner, deadline in extract_action_block(text):
-        action_items.append((action, owner, deadline, 0.72, []))
+    for action, owner, deadline, evidence in extract_action_block(text):
+        action_items.append((action, owner, deadline, 0.72, evidence))
     for index in range(len(records) - 1):
         derived = derive_action_from_window(records[index:index + 2])
         if derived:
@@ -596,6 +786,17 @@ def analyse(text: str) -> dict[str, Any]:
             break
 
     discussion_points, cluster_debug = select_discussion_clusters(candidates, speaker_names)
+    status_review_points = extract_status_review_points(turns)
+    if status_review_points:
+        merged_points: list[str] = []
+        seen_points = set()
+        for point in status_review_points + discussion_points:
+            key = re.sub(r"[^a-z0-9]+", " ", point.lower()).strip()
+            if key in seen_points:
+                continue
+            seen_points.add(key)
+            merged_points.append(point)
+        discussion_points = merged_points[:6]
     if not discussion_points and decisions:
         discussion_points = [finalize_sentence(decisions[0])]
 
@@ -604,6 +805,14 @@ def analyse(text: str) -> dict[str, Any]:
     else:
         executive_summary = build_executive_summary(decisions, discussion_points, [item["meetingActionPoint"] for item in structured_actions])
 
+    top_action_candidates = sorted(candidates, key=lambda candidate: candidate["scores"].get("action", 0), reverse=True)
+    top_discussion_candidates = sorted(candidates, key=lambda candidate: candidate["scores"].get("discussion", 0), reverse=True)
+    rejected_navigation_candidates = [
+        {"text": item["text"], "speaker": item["speaker"], "timestamp": item["timestamp"], "scores": item["scores"]}
+        for item in candidates
+        if item["scores"].get("navigation", 0) >= 0.6
+    ][:10]
+
     debug = {
         "topDecisionCandidates": [
             {"text": item["text"], "speaker": item["speaker"], "timestamp": item["timestamp"], "scores": item["scores"]}
@@ -611,11 +820,11 @@ def analyse(text: str) -> dict[str, Any]:
         ],
         "topActionCandidates": [
             {"text": item["text"], "speaker": item["speaker"], "timestamp": item["timestamp"], "scores": item["scores"]}
-            for item in sorted(candidates, key=lambda candidate: candidate["scores"].get("action", 0), reverse=True)[:10]
+            for item in top_action_candidates[:10]
         ],
         "topDiscussionCandidates": [
             {"text": item["text"], "speaker": item["speaker"], "timestamp": item["timestamp"], "scores": item["scores"]}
-            for item in sorted(candidates, key=lambda candidate: candidate["scores"].get("discussion", 0), reverse=True)[:10]
+            for item in top_discussion_candidates[:10]
         ],
         "thresholdsUsed": {
             "decision": 0.45,
@@ -629,7 +838,9 @@ def analyse(text: str) -> dict[str, Any]:
             for item in candidates
             if item["scores"].get("low_content", 0) >= 0.6
         ][:10],
-        "clusters": cluster_debug,
+        "rejectedNavigationCandidates": rejected_navigation_candidates,
+        "topicClusters": cluster_debug,
+        "statusReviewPoints": status_review_points,
         "parsedTurnCount": len(turns),
         "candidateCount": len(candidates),
     }
