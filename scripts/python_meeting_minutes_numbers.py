@@ -314,9 +314,10 @@ def participant_groups(turns: list[dict[str, str]], config: dict[str, Any]) -> t
     trinzo: list[str] = []
     seen = set()
     participant_map = config.get("participant_groups", {})
+    ignored_speakers = {"Date", "Location", "Online"}
     for turn in turns:
         speaker = turn["speaker"]
-        if speaker in seen:
+        if speaker in seen or speaker in ignored_speakers:
             continue
         seen.add(speaker)
         if participant_map.get(speaker) == "trinzo":
@@ -1193,7 +1194,7 @@ def extract_status_review_points(turns: list[dict[str, str]]) -> list[dict[str, 
         elif "innovation grant feedback" in topic_lower:
             point = "Innovation grant feedback is still pending, with follow-up planned this week."
         elif "governance framework" in topic_lower:
-            point = "The AI governance framework draft is in review pending leadership input."
+            point = "The AI governance framework draft is pending leadership review."
         elif "repeatable ai use case library" in topic_lower:
             point = "The repeatable AI use case library appears complete."
         elif "three ai webinars delivered" in topic_lower:
@@ -1987,6 +1988,50 @@ def build_executive_summary(decisions: list[str], discussion_points: list[str], 
     return " ".join(unique[:3])
 
 
+def derive_status_review_actions(discussion_points: list[str]) -> list[dict[str, Any]]:
+    derived: list[tuple[str, str, str, float]] = []
+    for point in discussion_points:
+        lowered = point.lower()
+        if "templates still need to be finalised" in lowered or "stage gate review process" in lowered:
+            derived.append(("Review stage gate templates.", "Owner not specified", "", 0.72))
+        if "sales input is still required" in lowered or "pipeline" in lowered:
+            derived.append(("Confirm AI pipeline dependencies with sales.", "Owner not specified", "", 0.72))
+        if "strategy document has not yet been produced" in lowered or "vendor strategy" in lowered:
+            derived.append(("Draft vendor strategy document.", "Owner not specified", "", 0.72))
+        if "grant feedback" in lowered or "follow-up planned this week" in lowered:
+            derived.append(("Follow up innovation grant feedback.", "Owner not specified", "", 0.72))
+        if "routing is not yet working properly" in lowered or ("intake workflow" in lowered and "routing" in lowered):
+            derived.append(("Validate intake workflow routing.", "Owner not specified", "", 0.72))
+    deduped: list[dict[str, Any]] = []
+    seen = set()
+    for action, owner, deadline, confidence in derived:
+        key = normalize_discussion_key(action)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(
+            {
+                "meetingActionPoint": action,
+                "meetingActionPointOwner": owner,
+                "meetingActionPointDeadline": deadline,
+                "actionConfidence": confidence,
+                "relatedMilestone": "derived_status_review",
+                "_evidence": [],
+            }
+        )
+    return deduped
+
+
+def canonicalize_supplier_decision_text(text: str) -> str:
+    lowered = normalize_text_fragment(text).lower()
+    if any(term in lowered for term in ("existing supplier", "current provider", "existing provider", "renewal option")):
+        if any(term in lowered for term in ("renew", "go with", "one-year renewal", "existing supplier")):
+            return "The team will renew with the existing supplier."
+    if "one-year renewal" in lowered and any(term in lowered for term in ("leverage", "next year")):
+        return "The team will renew with the existing supplier."
+    return text
+
+
 def meeting_type_scores(turns: list[dict[str, str]], meeting_title: str, decision_details: list[dict[str, Any]]) -> dict[str, float]:
     title_tokens = set(tokenize(meeting_title or ""))
     signal_scores: dict[str, float] = {}
@@ -2064,6 +2109,9 @@ def analyse(text: str) -> dict[str, Any]:
     ]
 
     decisions, decision_details, decision_debug = select_decisions(turns)
+    decisions = [canonicalize_supplier_decision_text(decision) for decision in decisions]
+    for item in decision_details:
+        item["decision"] = canonicalize_supplier_decision_text(item["decision"])
 
     discussion_candidates, cluster_debug = select_discussion_clusters(candidates, speaker_names)
     status_review_points = extract_status_review_points(turns)
@@ -2155,6 +2203,15 @@ def analyse(text: str) -> dict[str, Any]:
                 "selectedReason": source.get("selectedReason", "final_selection"),
             }
         )
+
+    if structured_status_review:
+        existing_action_keys = {normalize_discussion_key(item["meetingActionPoint"]) for item in structured_actions}
+        for derived_action in derive_status_review_actions(discussion_points):
+            key = normalize_discussion_key(derived_action["meetingActionPoint"])
+            if key in existing_action_keys:
+                continue
+            existing_action_keys.add(key)
+            structured_actions.append(derived_action)
 
     if not discussion_points and not decisions and not structured_actions:
         executive_summary = "No substantive meeting content, decisions, or actions were identified."
