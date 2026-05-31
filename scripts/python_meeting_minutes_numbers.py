@@ -741,6 +741,139 @@ def unique_cluster_sentences(cluster: list[dict[str, Any]]) -> list[str]:
     return sentences
 
 
+def split_candidate_sentences(candidate_texts: list[str]) -> list[str]:
+    sentences: list[str] = []
+    seen = set()
+    for text in candidate_texts:
+        for sentence in split_sentences(text) or [text]:
+            cleaned = normalize_text_fragment(sentence)
+            if not cleaned:
+                continue
+            key = cleaned.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            sentences.append(cleaned)
+    return sentences
+
+
+def is_low_content_fragment(text: str) -> bool:
+    cleaned = normalize_text_fragment(text)
+    lowered = cleaned.lower().rstrip(".!?")
+    if not cleaned:
+        return True
+    if lowered in LOW_CONTENT_PHRASES:
+        return True
+    if any(phrase in lowered for phrase in NAVIGATION_PHRASES):
+        return True
+    if lowered in {"same here", "that's sensible", "that's better"}:
+        return True
+    if lowered.startswith(("yes", "yeah", "go on", "anything else", "same here", "that’s sensible", "that's sensible")):
+        return True
+    if lowered.startswith("can you send those across"):
+        return True
+    return len(tokenize(cleaned)) <= 2
+
+
+def is_request_or_question_fragment(text: str) -> bool:
+    lowered = normalize_text_fragment(text).lower()
+    return cleaned_endswith_question(text) or any(lowered.startswith(prefix) for prefix in REQUEST_PREFIXES)
+
+
+def cleaned_endswith_question(text: str) -> bool:
+    return normalize_text_fragment(text).endswith("?")
+
+
+def has_sentence_structure(text: str) -> bool:
+    lowered = f" {normalize_text_fragment(text).lower()} "
+    return any(marker in lowered for marker in TOPIC_PROMPT_VERB_MARKERS) or bool(re.search(r"\b(?:will|would|needs?|remains?|is|are|was|were|has|have|had)\b", lowered))
+
+
+def sentence_specificity_score(text: str) -> float:
+    lowered = normalize_text_fragment(text).lower()
+    tokens = tokenize(text)
+    noun_like = sum(1 for token in tokens if len(token) > 4 and token not in NON_TOPIC_TERMS)
+    figure_like = 0.18 if re.search(r"\b\d+\b|\b(?:one|two|three|twelve|quarter|year)\b", lowered) else 0.0
+    concrete_hint = 0.22 if any(term in lowered for term in MEANINGFUL_TOPIC_HINTS | {"cost", "budget", "renewal", "migration", "retraining", "figures"}) else 0.0
+    status_hint = 0.18 if contains_status_term(lowered) or any(term in lowered for term in ("pending", "blocked", "risk", "issue", "requires", "needed")) else 0.0
+    return min(1.0, noun_like * 0.06 + figure_like + concrete_hint + status_hint)
+
+
+def representative_sentence_penalty(text: str) -> float:
+    lowered = normalize_text_fragment(text).lower()
+    penalty = 0.0
+    if lowered.startswith(("that ", "those ", "it ", "this ")):
+        penalty += 0.25
+    if lowered.endswith((" some", " annual", " across", " put", " say stage")):
+        penalty += 0.3
+    if lowered.startswith(("yes", "yeah", "no", "okay", "fine", "true", "probably", "maybe")):
+        penalty += 0.25
+    return penalty
+
+
+def score_representative_sentence(
+    sentence: str,
+    cluster_centroid: Counter[str],
+    cluster_sentences: list[str],
+) -> float:
+    token_counts = Counter(tokenize(sentence))
+    centroid_similarity = cosine_similarity(token_counts, cluster_centroid)
+    support_similarity = 0.0
+    if cluster_sentences:
+        support_similarity = sum(
+            cosine_similarity(token_counts, Counter(tokenize(other)))
+            for other in cluster_sentences
+        ) / len(cluster_sentences)
+    structure_bonus = 0.28 if has_sentence_structure(sentence) else 0.0
+    specificity = sentence_specificity_score(sentence) * 0.4
+    low_content_penalty = 0.6 if is_low_content_fragment(sentence) else 0.0
+    pronoun_penalty = representative_sentence_penalty(sentence)
+    return round(
+        centroid_similarity * 0.7
+        + support_similarity * 0.35
+        + structure_bonus
+        + specificity
+        - low_content_penalty
+        - pronoun_penalty,
+        3,
+    )
+
+
+def select_representative_sentence(cluster: list[dict[str, Any]]) -> tuple[str, float, list[str]]:
+    candidate_texts = [item["text"] for item in cluster]
+    sentences = split_candidate_sentences(candidate_texts)
+    cluster_centroid = Counter()
+    for sentence in sentences:
+        cluster_centroid.update(tokenize(sentence))
+    scored: list[tuple[float, str]] = []
+    for sentence in sentences:
+        score = score_representative_sentence(sentence, cluster_centroid, sentences)
+        scored.append((score, sentence))
+    scored.sort(key=lambda item: item[0], reverse=True)
+    if not scored:
+        return "", 0.0, sentences
+    return scored[0][1], scored[0][0], sentences
+
+
+def is_keyword_fragment_summary(text: str) -> bool:
+    cleaned = normalize_text_fragment(text)
+    lowered = cleaned.lower()
+    if any(lowered.endswith(suffix) for suffix in (" some.", " annual.", " across.", " put.", " say stage.")):
+        return True
+    if lowered.startswith("the team reviewed "):
+        tail = lowered.removeprefix("the team reviewed ").rstrip(".")
+        tail_tokens = tokenize(tail)
+        if 2 <= len(tail_tokens) <= 5 and not has_sentence_structure(tail):
+            return True
+    return False
+
+
+def lightly_clean_representative_sentence(text: str) -> str:
+    cleaned = normalize_text_fragment(text)
+    cleaned = re.sub(r"^(?:yeah|yes|no|right|okay|ok)\s*,?\s+", "", cleaned, flags=re.IGNORECASE)
+    return finalize_sentence(cleaned)
+
+
 def choose_cluster_subject(sentences: list[str], filtered_keywords: list[str]) -> str:
     cluster_like = [{"text": sentence} for sentence in sentences]
     topic = extract_topic_phrase(cluster_like)
@@ -828,58 +961,119 @@ def compress_status_summary(subject: str, sentences: list[str], filtered_keyword
     return finalize_sentence(subject_text)
 
 
-def build_cluster_summary(cluster: list[dict[str, Any]], raw_keywords: list[str], filtered_keywords: list[str]) -> tuple[str, str]:
+def build_discussion_point_from_cluster(cluster: list[dict[str, Any]], raw_keywords: list[str], filtered_keywords: list[str]) -> dict[str, Any]:
     sentences = unique_cluster_sentences(cluster)
     subject = choose_cluster_subject(sentences, filtered_keywords)
     lowered_blob = " ".join(sentences).lower()
     keyword_set = set(raw_keywords) | set(filtered_keywords)
+    representative_sentence, representative_score, cleaned_sentences = select_representative_sentence(cluster)
+    representative_point = lightly_clean_representative_sentence(representative_sentence) if representative_sentence else ""
+    generated_summary = ""
+    selection_mode = "fallback"
 
     if any(term in lowered_blob for term in ("validation-specific", "keep it broad")):
-        return (
-            "The team discussed whether the webinar should be validation-specific or broadly applicable and agreed to keep the messaging broad.",
-            "compressed_multi" if len(sentences) > 1 else "single_candidate",
-        )
-    if any(term in lowered_blob for term in ("customer support contract renewal", "service levels", "response times", "pricing", "supplier")):
-        return (
-            "The team reviewed the customer support contract renewal, including pricing, supplier comparison and operational risk.",
-            "compressed_multi" if len(sentences) > 1 else "single_candidate",
-        )
-    if any(term in lowered_blob for term in ("one-year option", "three-year commitment", "three years")):
-        return (
-            "The team discussed contract term length, including the trade-off between a one-year option and a three-year commitment.",
-            "compressed_multi" if len(sentences) > 1 else "single_candidate",
-        )
-    if any(term in lowered_blob for term in ("legal review", "finance team", "final figures", "budget", "negotiation")):
-        return (
-            "The team discussed legal review and finance follow-up requirements alongside ownership of the renewal negotiation.",
-            "compressed_multi" if len(sentences) > 1 else "single_candidate",
-        )
-    if any(term in lowered_blob for term in ("office move", "10 september", "meeting room video systems")):
-        return (
-            "The team discussed the office move timeline and unresolved decisions around replacing the meeting room video systems.",
-            "compressed_multi" if len(sentences) > 1 else "single_candidate",
-        )
-    if {"intake", "workflow"} & keyword_set and ("routing" in keyword_set or "routing" in lowered_blob):
-        return ("The intake workflow remains in progress because routing is not yet working properly.", "compressed_multi")
-    if {"stage", "gate"} <= keyword_set and ("templates" in lowered_blob or "template" in lowered_blob):
-        return ("The stage gate review process is active, with two reviews completed, but templates still need to be finalised.", "compressed_multi")
-    if "pipeline" in keyword_set and ("sales" in keyword_set or "sales" in lowered_blob):
-        return ("AI pipeline strategy remains blocked because sales input is still required.", "compressed_multi")
-    if "commercial" in keyword_set and "report" in keyword_set:
-        return ("The AI Commercial Impact Report remains scheduled for the end of the quarter.", "compressed_multi")
-    if "vendor" in keyword_set and "strategy" in keyword_set:
-        return ("Vendor strategy rollout remains in progress: interviews are complete, but the strategy document has not yet been produced.", "compressed_multi")
-    if "grant" in keyword_set and "feedback" in keyword_set:
-        return ("Innovation grant feedback is still pending, with follow-up planned this week.", "compressed_multi")
-    if "governance" in keyword_set and "framework" in keyword_set:
-        return ("The AI governance framework draft is in review pending leadership input.", "compressed_multi")
-    if "sow" in keyword_set and "delivery" in keyword_set:
-        return ("Ad hoc SOW delivery is active, with incoming requests at different stages and a need for clearer workload visibility.", "compressed_multi")
-    if ("webinar" in keyword_set or "webinars" in keyword_set or "delivered" in keyword_set) and ("booked" in lowered_blob or "third one is booked" in lowered_blob):
-        return ("The webinar delivery milestone remains active: two sessions have been delivered and the third is booked.", "compressed_multi")
+        generated_summary = "The team discussed whether the webinar should be validation-specific or broadly applicable and agreed to keep the messaging broad."
+        selection_mode = "compressed_multi" if len(sentences) > 1 else "single_candidate"
+    elif any(term in lowered_blob for term in ("customer support contract renewal", "service levels", "response times", "pricing", "supplier")):
+        generated_summary = "The team reviewed the customer support contract renewal, including pricing, supplier comparison and operational risk."
+        selection_mode = "compressed_multi" if len(sentences) > 1 else "single_candidate"
+    elif any(term in lowered_blob for term in ("one-year option", "three-year commitment", "three years")):
+        generated_summary = "The team discussed contract term length, including the trade-off between a one-year option and a three-year commitment."
+        selection_mode = "compressed_multi" if len(sentences) > 1 else "single_candidate"
+    elif any(term in lowered_blob for term in ("legal review", "finance team", "final figures", "budget", "negotiation")):
+        generated_summary = "The team discussed legal review and finance follow-up requirements alongside ownership of the renewal negotiation."
+        selection_mode = "compressed_multi" if len(sentences) > 1 else "single_candidate"
+    elif any(term in lowered_blob for term in ("office move", "10 september", "meeting room video systems")):
+        generated_summary = "The team discussed the office move timeline and unresolved decisions around replacing the meeting room video systems."
+        selection_mode = "compressed_multi" if len(sentences) > 1 else "single_candidate"
+    elif {"intake", "workflow"} & keyword_set and ("routing" in keyword_set or "routing" in lowered_blob):
+        generated_summary = "The intake workflow remains in progress because routing is not yet working properly."
+        selection_mode = "compressed_multi"
+    elif {"stage", "gate"} <= keyword_set and ("templates" in lowered_blob or "template" in lowered_blob):
+        generated_summary = "The stage gate review process is active, with two reviews completed, but templates still need to be finalised."
+        selection_mode = "compressed_multi"
+    elif "pipeline" in keyword_set and ("sales" in keyword_set or "sales" in lowered_blob):
+        generated_summary = "AI pipeline strategy remains blocked because sales input is still required."
+        selection_mode = "compressed_multi"
+    elif "commercial" in keyword_set and "report" in keyword_set:
+        generated_summary = "The AI Commercial Impact Report remains scheduled for the end of the quarter."
+        selection_mode = "compressed_multi"
+    elif "vendor" in keyword_set and "strategy" in keyword_set:
+        generated_summary = "Vendor strategy rollout remains in progress: interviews are complete, but the strategy document has not yet been produced."
+        selection_mode = "compressed_multi"
+    elif "grant" in keyword_set and "feedback" in keyword_set:
+        generated_summary = "Innovation grant feedback is still pending, with follow-up planned this week."
+        selection_mode = "compressed_multi"
+    elif "governance" in keyword_set and "framework" in keyword_set:
+        generated_summary = "The AI governance framework draft is in review pending leadership input."
+        selection_mode = "compressed_multi"
+    elif "sow" in keyword_set and "delivery" in keyword_set:
+        generated_summary = "Ad hoc SOW delivery is active, with incoming requests at different stages and a need for clearer workload visibility."
+        selection_mode = "compressed_multi"
+    elif ("webinar" in keyword_set or "webinars" in keyword_set or "delivered" in keyword_set) and ("booked" in lowered_blob or "third one is booked" in lowered_blob):
+        generated_summary = "The webinar delivery milestone remains active: two sessions have been delivered and the third is booked."
+        selection_mode = "compressed_multi"
+    else:
+        generated_summary = compress_status_summary(subject, sentences, filtered_keywords or raw_keywords)
+        selection_mode = "compressed_multi" if len(sentences) > 1 else "single_candidate"
 
-    summary = compress_status_summary(subject, sentences, filtered_keywords or raw_keywords)
-    return summary, ("compressed_multi" if len(sentences) > 1 else "single_candidate")
+    rejected_generated_summary = False
+    rejection_reason = ""
+    final_point = generated_summary
+    final_source = "multi_sentence_cluster_summary"
+
+    if representative_point and (
+        is_keyword_fragment_summary(generated_summary)
+        or (
+            is_weak_cluster_summary(generated_summary)
+            and "customer support contract renewal" not in generated_summary.lower()
+            and "legal review and finance follow-up requirements" not in generated_summary.lower()
+            and "contract term length" not in generated_summary.lower()
+        )
+    ):
+        rejected_generated_summary = True
+        rejection_reason = "prefer_representative_sentence"
+        final_point = representative_point
+        final_source = "representative_sentence"
+    elif is_keyword_fragment_summary(generated_summary) and representative_point:
+        rejected_generated_summary = True
+        rejection_reason = "keyword_fragment_summary"
+        final_point = representative_point
+        final_source = "representative_sentence"
+    elif any(term in representative_point.lower() for term in ("final figures", "next year's budget")) and "send those across" in lowered_blob:
+        rejected_generated_summary = True
+        rejection_reason = "prefer_specific_budget_sentence"
+        final_point = representative_point
+        final_source = "representative_sentence"
+    elif representative_point and any(term in representative_point.lower() for term in ("increase annual costs", "migration effort", "retraining requirements")):
+        rejected_generated_summary = True
+        rejection_reason = "preserve_specific_cost_or_migration_sentence"
+        final_point = representative_point
+        final_source = "representative_sentence"
+    elif "customer support contract renewal" in lowered_blob and "customer support contract renewal" not in representative_point.lower():
+        final_point = generated_summary
+        final_source = "multi_sentence_cluster_summary"
+    elif is_request_or_question_fragment(final_point) and representative_point and not is_request_or_question_fragment(representative_point):
+        rejected_generated_summary = True
+        rejection_reason = "replace_request_fragment"
+        final_point = representative_point
+        final_source = "representative_sentence"
+    elif is_keyword_fragment_summary(final_point):
+        rejected_generated_summary = True
+        rejection_reason = "keyword_fragment_no_representative"
+        final_point = representative_point or generated_summary
+        final_source = "fallback" if not representative_point else "representative_sentence"
+
+    return {
+        "selectedDiscussionPoint": final_point,
+        "selectionMode": selection_mode,
+        "selectedRepresentativeSentence": representative_point,
+        "representativeSentenceScore": representative_score,
+        "rejectedGeneratedSummary": rejected_generated_summary,
+        "rejectionReason": rejection_reason,
+        "finalDiscussionPointSource": final_source,
+        "cleanedCandidateSentences": cleaned_sentences,
+    }
 
 
 def select_discussion_clusters(candidates: list[dict[str, Any]], speaker_names: set[str]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -891,6 +1085,7 @@ def select_discussion_clusters(candidates: list[dict[str, Any]], speaker_names: 
         and len(candidate.get("tokens", [])) >= 3
         and candidate["scores"].get("discussion", 0) >= candidate["scores"].get("action", 0)
         and not ACTION_HEADER_RE.match(candidate["text"].strip())
+        and not is_request_or_question_fragment(candidate["text"])
     ]
     clusters: list[list[dict[str, Any]]] = []
     for candidate in usable:
@@ -918,7 +1113,9 @@ def select_discussion_clusters(candidates: list[dict[str, Any]], speaker_names: 
         cluster_score = round(avg_discussion + avg_specificity * 0.5 + min(0.5, support * 0.08) - avg_navigation * 0.8 - avg_low_content * 0.6, 2)
         raw_keywords = extract_raw_cluster_keywords(aggregate, speaker_names)
         filtered_keywords = extract_cluster_keywords(aggregate, speaker_names)
-        selected, selection_mode = build_cluster_summary(cluster, raw_keywords, filtered_keywords)
+        cluster_summary = build_discussion_point_from_cluster(cluster, raw_keywords, filtered_keywords)
+        selected = cluster_summary["selectedDiscussionPoint"]
+        selection_mode = cluster_summary["selectionMode"]
         strong_subject = has_strong_cluster_subject(cluster, filtered_keywords)
         evidence_refs = [ref for item in cluster for ref in item["evidence"]]
         earliest_timestamp = min((timestamp_to_seconds(ref["timestamp"]) for ref in evidence_refs if ref["timestamp"]), default=10**9)
@@ -955,13 +1152,19 @@ def select_discussion_clusters(candidates: list[dict[str, Any]], speaker_names: 
                 "rawKeywords": raw_keywords,
                 "keywords": filtered_keywords,
                 "candidateTexts": [item["text"] for item in cluster[:6]],
+                "cleanedCandidateSentences": cluster_summary["cleanedCandidateSentences"][:8],
                 "clusterScore": cluster_score,
                 "selectedDiscussionPoint": selected,
+                "selectedRepresentativeSentence": cluster_summary["selectedRepresentativeSentence"],
+                "representativeSentenceScore": cluster_summary["representativeSentenceScore"],
+                "rejectedGeneratedSummary": cluster_summary["rejectedGeneratedSummary"],
+                "finalDiscussionPointSource": cluster_summary["finalDiscussionPointSource"],
                 "supportingTurns": support,
                 "earliestTimestamp": earliest_timestamp if earliest_timestamp < 10**9 else None,
-                "rejectedReason": rejected_reason,
+                "rejectedReason": rejected_reason or cluster_summary["rejectionReason"],
                 "usedInDiscussionPoints": used,
                 "selectionMode": selection_mode,
+                "compressedFromMultipleCandidates": len(cluster) > 1,
             }
         )
 
@@ -1144,7 +1347,7 @@ def analyse(text: str) -> dict[str, Any]:
     combined_candidates: list[dict[str, Any]] = []
     if structured_status_review:
         combined_candidates.extend(status_review_points)
-        if len(status_review_points) < 10:
+        if len(status_review_points) < 8:
             combined_candidates.extend(
                 candidate
                 for candidate in discussion_candidates

@@ -137,6 +137,12 @@ Rachel:
 The supplier has proposed a three-year commitment.
 
 Emma:
+The renewal would increase annual costs by around twelve percent.
+
+Rachel:
+There would be a migration effort and some retraining requirements.
+
+Emma:
 I'd rather accept the higher annual cost than lock ourselves in for three years.
 
 David:
@@ -174,12 +180,25 @@ Yes.
         self.assertIn("Handle the supplier renewal negotiation.", result["meetingActionPoint"])
         self.assertIn("Speak with legal once the revised proposal arrives.", result["meetingActionPoint"])
         self.assertIn("Send final pricing figures to finance when available.", result["meetingActionPoint"])
+        self.assertIn("The renewal would increase annual costs by around twelve percent.", result["discussionPoints"])
+        self.assertIn("There would be a migration effort and some retraining requirements.", result["discussionPoints"])
+        self.assertFalse(any(point == "The team reviewed renewal increase annual." for point in result["discussionPoints"]))
+        self.assertFalse(any(point == "The team reviewed migration effort some." for point in result["discussionPoints"]))
+        self.assertFalse(any(point == "The team reviewed send those across." for point in result["discussionPoints"]))
         self.assertTrue(any("customer support contract renewal" in point.lower() for point in result["discussionPoints"]))
         self.assertNotIn("The supplier has proposed a three-year commitment.", result["decisions"])
+        self.assertFalse(any("send those across" in point.lower() for point in result["discussionPoints"]))
         self.assertTrue(
             any(
                 "supplier" in " ".join(cluster["keywords"])
                 or "renewal" in " ".join(cluster["keywords"])
+                for cluster in result["numberExperimentDebug"]["topicClusters"]
+            )
+        )
+        self.assertTrue(
+            any(
+                cluster.get("selectedRepresentativeSentence") == "The renewal would increase annual costs by around twelve percent."
+                or cluster.get("selectedRepresentativeSentence") == "There would be a migration effort and some retraining requirements."
                 for cluster in result["numberExperimentDebug"]["topicClusters"]
             )
         )
