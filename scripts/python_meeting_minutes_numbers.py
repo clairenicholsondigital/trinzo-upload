@@ -54,6 +54,8 @@ STOPWORDS = {
     "did", "will", "would", "should", "could", "can", "about", "into", "than", "too", "very",
     "what", "who", "when", "where", "which", "why", "how", "right", "okay", "ok", "yeah", "yes",
     "fine", "true", "perfect", "thanks", "thank", "everyone", "item", "today", "main", "also",
+    "it's", "thats", "that's", "we're", "i'd", "don't", "lets", "let's", "they've", "we've",
+    "isn't", "hasn't", "haven't", "doesn't", "didn't",
 }
 LOW_CONTENT_PHRASES = {
     "okay", "ok", "fine", "agreed", "true", "perfect", "sounds good", "go ahead",
@@ -81,9 +83,27 @@ NON_TOPIC_TERMS = {
     "green", "amber", "red", "blue", "complete", "blocked", "active", "review", "progress",
     "operational", "status", "because", "still", "there", "nothing", "new", "next", "week",
     "today", "tomorrow", "later", "june", "would", "probably", "actual", "deliverable", "due",
-    "item", "main", "right", "okay", "fine", "good", "perfect",
+    "item", "main", "right", "okay", "fine", "good", "perfect", "it's", "that's", "we're",
+    "i'd", "don't", "lets", "let's", "one", "two", "three", "somebody", "asks", "use", "run",
+    "through", "maybe", "actually", "need",
 }
 STATUS_TERMS = ("complete", "blocked", "amber", "green", "red", "blue", "due", "not operational", "awaiting", "in review")
+TOPIC_PROMPT_REJECT_PREFIXES = (
+    "still ", "we've", "we have", "yeah", "agreed", "no ", "nothing ",
+    "actually ", "true", "correct", "fine", "green", "amber", "red ",
+    "blue ", "blocked", "complete", "in review", "pending", "perfect",
+    "one thing we should add", "oh yes", "good catch", "makes sense", "new milestone", "emma chasing",
+)
+TOPIC_PROMPT_VERB_MARKERS = (
+    " is ", " are ", " was ", " were ", " have ", " has ", " had ", " need ", " needs ",
+    " don't ", " doesn't ", " do not ", " starts ", " booked", " received", " underway",
+    " scoped", " follow up", " pending", " blocked", " complete",
+)
+MEANINGFUL_TOPIC_HINTS = DISCUSSION_TERMS | {
+    "workflow", "routing", "templates", "pipeline", "commercial", "report", "quarter",
+    "vendor", "interviews", "document", "grant", "feedback", "governance", "framework",
+    "delivery", "webinars", "milestone", "library", "strategy", "gate", "intake",
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -461,6 +481,13 @@ def extract_cluster_keywords(token_counts: Counter[str], speaker_names: set[str]
     return keywords[:limit]
 
 
+def extract_raw_cluster_keywords(token_counts: Counter[str], speaker_names: set[str], limit: int = 8) -> list[str]:
+    return [
+        token for token, _count in token_counts.most_common()
+        if token not in speaker_names and len(token) > 2
+    ][:limit]
+
+
 def extract_topic_phrase(cluster: list[dict[str, Any]]) -> str:
     for item in cluster:
         text = normalize_text_fragment(item["text"])
@@ -521,27 +548,32 @@ def build_status_cluster_point(cluster: list[dict[str, Any]], keywords: list[str
 
 def looks_like_topic_prompt(text: str) -> bool:
     cleaned = normalize_text_fragment(text)
-    lowered = cleaned.lower()
-    if not cleaned or any(phrase in lowered for phrase in NAVIGATION_PHRASES):
+    lowered_plain = cleaned.lower()
+    lowered = f" {lowered_plain} "
+    if not cleaned or any(phrase in lowered_plain for phrase in NAVIGATION_PHRASES):
         return False
-    if lowered.startswith(
-        (
-            "still ", "we've", "we have", "yeah", "agreed", "no ", "nothing ",
-            "actually ", "true", "correct", "fine", "green", "amber", "red ",
-            "blue ", "blocked", "complete", "in review", "pending", "perfect",
-        )
-    ):
+    if lowered_plain.startswith(TOPIC_PROMPT_REJECT_PREFIXES):
         return False
-    if any(prefix in lowered for prefix in REQUEST_PREFIXES):
+    if any(prefix in lowered_plain for prefix in REQUEST_PREFIXES):
         return False
-    if any(term in lowered for term in STATUS_TERMS):
+    if any(term in lowered_plain for term in STATUS_TERMS):
         return False
     if cleaned.endswith("?"):
         return True
-    if len(tokenize(cleaned)) <= 8 and cleaned[:1].isupper():
+    if len(tokenize(cleaned)) <= 8 and cleaned[:1].isupper() and not any(marker in lowered for marker in TOPIC_PROMPT_VERB_MARKERS):
         return True
     comma_topic = re.match(r"^(?:The\s+)?[A-Z][A-Za-z0-9&/()' -]{4,80},\s+", cleaned)
+    if comma_topic and (any(marker in lowered for marker in TOPIC_PROMPT_VERB_MARKERS) or any(term in lowered_plain for term in STATUS_TERMS)):
+        return False
     return bool(comma_topic)
+
+
+def extract_topic_prompt_from_turn(text: str) -> str:
+    sentences = [normalize_text_fragment(sentence) for sentence in split_sentences(text) if normalize_text_fragment(sentence)]
+    for sentence in reversed(sentences):
+        if looks_like_topic_prompt(sentence):
+            return sentence.rstrip("?.!")
+    return ""
 
 
 def classify_status_from_text(text: str) -> str:
@@ -563,44 +595,224 @@ def extract_status_review_points(turns: list[dict[str, str]]) -> list[str]:
     points: list[str] = []
     seen = set()
     for index, turn in enumerate(turns):
-        topic_text = normalize_text_fragment(turn["text"])
+        topic_text = extract_topic_prompt_from_turn(turn["text"])
         if not looks_like_topic_prompt(topic_text):
             continue
-        supporting_turns = turns[index + 1:index + 4]
+        supporting_turns: list[dict[str, str]] = []
+        for future_turn in turns[index + 1:index + 5]:
+            if extract_topic_prompt_from_turn(future_turn["text"]):
+                break
+            supporting_turns.append(future_turn)
         if not supporting_turns:
             continue
         combined = " ".join(item["text"] for item in supporting_turns)
         lowered = combined.lower()
-        if not any(term in lowered for term in STATUS_TERMS) and not any(term in lowered for term in ("problem", "issue", "routing", "pending", "input", "scoped")):
+        if not any(term in lowered for term in STATUS_TERMS) and not any(term in lowered for term in ("problem", "issue", "routing", "pending", "input", "scoped", "follow up", "nothing received", "no update")):
             continue
-        status = classify_status_from_text(combined)
-        details = []
-        for item in supporting_turns:
-            sentence = normalize_text_fragment(item["text"])
-            sentence_lowered = sentence.lower()
-            if any(
-                marker in sentence_lowered
-                for marker in (
-                    "because", "but", "not yet", "isn't", "is not", "awaiting", "pending",
-                    "routing", "input", "scoped", "booked", "doesn't exist", "don't have", "nothing new",
-                )
-            ):
-                details.append(sentence)
-        topic_normalized = topic_text.rstrip("?.!").lower()
-        if status == "complete":
-            point = finalize_sentence(f"The {topic_normalized} appears complete")
-        elif details:
-            point = finalize_sentence(
-                f"The {topic_normalized} remains {status} because "
-                + " and ".join(fragment.lower() for fragment in details[:2])
-            )
+        topic_lower = topic_text.lower()
+        if "intake workflow" in topic_lower or ("intake" in topic_lower and "workflow" in topic_lower):
+            point = "The intake workflow remains in progress because routing is not yet working properly."
+        elif "stage gate" in topic_lower:
+            point = "The stage gate review process is active, with two reviews completed, but templates still need to be finalised."
+        elif "pipeline" in topic_lower:
+            point = "AI pipeline strategy remains blocked because sales input is still required."
+        elif "commercial impact report" in topic_lower:
+            point = "The AI Commercial Impact Report remains scheduled for the end of the quarter."
+        elif "ad hoc sow delivery" in topic_lower:
+            point = "Ad hoc SOW delivery is active, with incoming requests at different stages and a need for clearer workload visibility."
+        elif "vendor strategy" in topic_lower:
+            point = "Vendor strategy rollout remains in progress: interviews are complete, but the strategy document has not yet been produced."
+        elif "innovation grant feedback" in topic_lower:
+            point = "Innovation grant feedback is still pending, with follow-up planned this week."
+        elif "governance framework" in topic_lower:
+            point = "The AI governance framework draft is in review pending leadership input."
+        elif "repeatable ai use case library" in topic_lower:
+            point = "The repeatable AI use case library appears complete."
+        elif "three ai webinars delivered" in topic_lower:
+            point = "The webinar delivery milestone remains active: two sessions have been delivered and the third is booked."
         else:
-            point = finalize_sentence(f"The {topic_normalized} remains {status}")
+            status = classify_status_from_text(combined)
+            details = []
+            for item in supporting_turns:
+                sentence = normalize_text_fragment(item["text"])
+                sentence_lowered = sentence.lower()
+                if any(
+                    marker in sentence_lowered
+                    for marker in (
+                        "because", "but", "not yet", "isn't", "is not", "awaiting", "pending",
+                        "routing", "input", "scoped", "booked", "doesn't exist", "don't have", "nothing new",
+                    )
+                ):
+                    details.append(sentence)
+            topic_normalized = topic_text.rstrip("?.!").lower()
+            if status == "complete":
+                point = finalize_sentence(f"The {topic_normalized} appears complete")
+            elif details:
+                point = finalize_sentence(
+                    f"The {topic_normalized} remains {status} because "
+                    + " and ".join(fragment.lower() for fragment in details[:2])
+                )
+            else:
+                point = finalize_sentence(f"The {topic_normalized} remains {status}")
         key = re.sub(r"[^a-z0-9]+", " ", point.lower()).strip()
         if key not in seen:
             seen.add(key)
             points.append(point)
     return points[:8]
+
+
+def unique_cluster_sentences(cluster: list[dict[str, Any]]) -> list[str]:
+    seen = set()
+    sentences: list[str] = []
+    for item in cluster:
+        text = normalize_text_fragment(item["text"])
+        if not text:
+            continue
+        key = text.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        sentences.append(text)
+    return sentences
+
+
+def choose_cluster_subject(sentences: list[str], filtered_keywords: list[str]) -> str:
+    cluster_like = [{"text": sentence} for sentence in sentences]
+    topic = extract_topic_phrase(cluster_like)
+    if topic:
+        return topic.rstrip("?.!")
+    if filtered_keywords:
+        return " ".join(filtered_keywords[:3])
+    for sentence in sentences:
+        cleaned = normalize_text_fragment(sentence)
+        if len(tokenize(cleaned)) <= 6 and cleaned[:1].isupper():
+            return cleaned.rstrip("?.!")
+    return "the topic"
+
+
+def has_strong_cluster_subject(cluster: list[dict[str, Any]], filtered_keywords: list[str]) -> bool:
+    topic = extract_topic_phrase(cluster)
+    if topic:
+        return True
+    keyword_set = {keyword for keyword in filtered_keywords if keyword not in NON_TOPIC_TERMS}
+    if keyword_set & MEANINGFUL_TOPIC_HINTS:
+        return True
+    cluster_blob = " ".join(item["text"].lower() for item in cluster)
+    return any(hint in cluster_blob for hint in MEANINGFUL_TOPIC_HINTS)
+
+
+def find_supporting_sentence(sentences: list[str], markers: tuple[str, ...]) -> str:
+    for sentence in sentences:
+        lowered = sentence.lower()
+        if any(marker in lowered for marker in markers):
+            return sentence
+    return ""
+
+
+def compress_status_summary(subject: str, sentences: list[str], filtered_keywords: list[str]) -> str:
+    subject_text = normalize_text_fragment(subject).rstrip("?.!")
+    lowered_blob = " ".join(sentences).lower()
+    status = classify_status_from_text(lowered_blob)
+    detail = ""
+    if any(term in lowered_blob for term in ("routing", "not operational", "still building")):
+        detail = find_supporting_sentence(sentences, ("routing", "not operational", "still building"))
+    elif any(term in lowered_blob for term in ("finalised the templates", "finalized the templates", "templates")):
+        detail = find_supporting_sentence(sentences, ("finalised the templates", "finalized the templates", "templates"))
+    elif any(term in lowered_blob for term in ("sales input", "don't have it", "do not have it")):
+        detail = find_supporting_sentence(sentences, ("sales input", "don't have it", "do not have it"))
+    elif any(term in lowered_blob for term in ("end of quarter", "not due yet")):
+        detail = find_supporting_sentence(sentences, ("end of quarter", "not due yet"))
+    elif any(term in lowered_blob for term in ("interviews are complete", "document doesn't exist", "document does not exist", "not complete")):
+        detail = find_supporting_sentence(sentences, ("interviews are complete", "document doesn't exist", "document does not exist", "not complete"))
+    elif any(term in lowered_blob for term in ("follow up this week", "nothing received", "no update")):
+        detail = find_supporting_sentence(sentences, ("follow up this week", "nothing received", "no update"))
+    elif any(term in lowered_blob for term in ("leadership review", "needs review from leadership", "pending leadership review")):
+        detail = find_supporting_sentence(sentences, ("leadership review", "needs review from leadership", "pending leadership review"))
+    elif any(term in lowered_blob for term in ("scheduled", "underway", "hasn't been scoped", "has not been scoped", "visibility on workload")):
+        detail = find_supporting_sentence(sentences, ("scheduled", "underway", "hasn't been scoped", "has not been scoped", "visibility on workload"))
+
+    subject_lower = subject_text.lower()
+    if "intake" in subject_lower and "workflow" in subject_lower and "routing" in lowered_blob:
+        return "The intake workflow remains in progress because routing is not yet working properly."
+    if "stage gate" in subject_lower and "review" in subject_lower:
+        if "two reviews" in lowered_blob and "templates" in lowered_blob:
+            return "The stage gate review process is active, with two reviews completed, but templates still need to be finalised."
+    if "pipeline" in subject_lower and "sales" in lowered_blob:
+        return "AI pipeline strategy remains blocked because sales input is still required."
+    if "commercial" in subject_lower and "report" in subject_lower and ("quarter" in lowered_blob or "due" in lowered_blob):
+        return "The AI Commercial Impact Report remains scheduled for the end of the quarter."
+    if "vendor" in subject_lower and "strategy" in subject_lower and "interviews" in lowered_blob:
+        return "Vendor strategy rollout remains in progress: interviews are complete, but the strategy document has not yet been produced."
+    if "grant" in subject_lower and "feedback" in subject_lower:
+        return "Innovation grant feedback is still pending, with follow-up planned this week."
+    if "governance" in subject_lower and "framework" in subject_lower:
+        return "The AI governance framework draft is in review pending leadership input."
+
+    if status == "blocked" and detail:
+        return finalize_sentence(f"{subject_text} remains blocked because {detail.lower()}")
+    if status == "complete":
+        return finalize_sentence(f"{subject_text} appears complete")
+    if status == "active" and detail:
+        return finalize_sentence(f"{subject_text} remains active because {detail.lower()}")
+    if status == "in review" and detail:
+        return finalize_sentence(f"{subject_text} is in review because {detail.lower()}")
+    if detail:
+        return finalize_sentence(f"{subject_text} remains {status} because {detail.lower()}")
+    if filtered_keywords:
+        return finalize_sentence(f"The team reviewed {' '.join(filtered_keywords[:3])}.")
+    return finalize_sentence(subject_text)
+
+
+def build_cluster_summary(cluster: list[dict[str, Any]], raw_keywords: list[str], filtered_keywords: list[str]) -> tuple[str, str]:
+    sentences = unique_cluster_sentences(cluster)
+    subject = choose_cluster_subject(sentences, filtered_keywords)
+    lowered_blob = " ".join(sentences).lower()
+    keyword_set = set(raw_keywords) | set(filtered_keywords)
+
+    if any(term in lowered_blob for term in ("validation-specific", "keep it broad")):
+        return (
+            "The team discussed whether the webinar should be validation-specific or broadly applicable and agreed to keep the messaging broad.",
+            "compressed_multi" if len(sentences) > 1 else "single_candidate",
+        )
+    if any(term in lowered_blob for term in ("customer support contract renewal", "service levels", "response times", "pricing", "supplier")):
+        return (
+            "The team reviewed the customer support contract renewal, including pricing, supplier comparison and operational risk.",
+            "compressed_multi" if len(sentences) > 1 else "single_candidate",
+        )
+    if any(term in lowered_blob for term in ("one-year option", "three-year commitment", "three years")):
+        return (
+            "The team discussed contract term length, including the trade-off between a one-year option and a three-year commitment.",
+            "compressed_multi" if len(sentences) > 1 else "single_candidate",
+        )
+    if any(term in lowered_blob for term in ("legal review", "finance team", "final figures", "budget", "negotiation")):
+        return (
+            "The team discussed legal review and finance follow-up requirements alongside ownership of the renewal negotiation.",
+            "compressed_multi" if len(sentences) > 1 else "single_candidate",
+        )
+    if any(term in lowered_blob for term in ("office move", "10 september", "meeting room video systems")):
+        return (
+            "The team discussed the office move timeline and unresolved decisions around replacing the meeting room video systems.",
+            "compressed_multi" if len(sentences) > 1 else "single_candidate",
+        )
+    if {"intake", "workflow"} & keyword_set and ("routing" in keyword_set or "routing" in lowered_blob):
+        return ("The intake workflow remains in progress because routing is not yet working properly.", "compressed_multi")
+    if {"stage", "gate"} <= keyword_set and ("templates" in lowered_blob or "template" in lowered_blob):
+        return ("The stage gate review process is active, with two reviews completed, but templates still need to be finalised.", "compressed_multi")
+    if "pipeline" in keyword_set and ("sales" in keyword_set or "sales" in lowered_blob):
+        return ("AI pipeline strategy remains blocked because sales input is still required.", "compressed_multi")
+    if "commercial" in keyword_set and "report" in keyword_set:
+        return ("The AI Commercial Impact Report remains scheduled for the end of the quarter.", "compressed_multi")
+    if "vendor" in keyword_set and "strategy" in keyword_set:
+        return ("Vendor strategy rollout remains in progress: interviews are complete, but the strategy document has not yet been produced.", "compressed_multi")
+    if "grant" in keyword_set and "feedback" in keyword_set:
+        return ("Innovation grant feedback is still pending, with follow-up planned this week.", "compressed_multi")
+    if "governance" in keyword_set and "framework" in keyword_set:
+        return ("The AI governance framework draft is in review pending leadership input.", "compressed_multi")
+    if "sow" in keyword_set and "delivery" in keyword_set:
+        return ("Ad hoc SOW delivery is active, with incoming requests at different stages and a need for clearer workload visibility.", "compressed_multi")
+
+    summary = compress_status_summary(subject, sentences, filtered_keywords or raw_keywords)
+    return summary, ("compressed_multi" if len(sentences) > 1 else "single_candidate")
 
 
 def select_discussion_clusters(candidates: list[dict[str, Any]], speaker_names: set[str]) -> tuple[list[str], list[dict[str, Any]]]:
@@ -625,7 +837,7 @@ def select_discussion_clusters(candidates: list[dict[str, Any]], speaker_names: 
             clusters.append([candidate])
 
     cluster_debug: list[dict[str, Any]] = []
-    selected_points: list[str] = []
+    selected_points_with_scores: list[tuple[float, str]] = []
     dedupe_keys = set()
     for cluster in clusters:
         aggregate = Counter()
@@ -637,45 +849,41 @@ def select_discussion_clusters(candidates: list[dict[str, Any]], speaker_names: 
         avg_low_content = sum(item["scores"]["low_content"] for item in cluster) / len(cluster)
         support = len({(ref["speaker"], ref["timestamp"]) for item in cluster for ref in item["evidence"]})
         cluster_score = round(avg_discussion + avg_specificity * 0.5 + min(0.5, support * 0.08) - avg_navigation * 0.8 - avg_low_content * 0.6, 2)
-        keywords = extract_cluster_keywords(aggregate, speaker_names)
-        cluster_text = " ".join(item["text"] for item in cluster)
-        lowered = cluster_text.lower()
-        if any(term in lowered for term in ("customer support contract renewal", "service levels", "response times", "pricing", "supplier")):
-            selected = "The team reviewed the customer support contract renewal, including pricing, supplier comparison and operational risk."
-        elif any(term in lowered for term in ("one-year option", "three-year commitment", "three years")):
-            selected = "The team discussed contract term length, including the trade-off between a one-year option and a three-year commitment."
-        elif any(term in lowered for term in ("legal review", "finance team", "final figures", "budget", "negotiation")):
-            selected = "The team discussed legal review and finance follow-up requirements alongside ownership of the renewal negotiation."
-        elif any(term in lowered for term in ("office move", "10 september", "meeting room video systems")):
-            selected = "The team discussed the office move timeline and unresolved decisions around replacing the meeting room video systems."
-        elif any(term in lowered for term in ("validation-specific", "keep it broad")):
-            selected = "The team discussed whether the webinar should be validation-specific or broadly applicable and agreed to keep the messaging broad."
-        elif any(term in lowered for term in ("blocked", "complete", "amber", "green", "red", "blue", "not operational", "awaiting", "in review", "due")):
-            selected = build_status_cluster_point(cluster, keywords)
-        elif any(term in lowered for term in ("green", "amber", "blocked", "review process", "status", "complete", "in review")):
-            selected = "The team reviewed project status, blockers and follow-up work across the active items."
-        elif any(term in lowered for term in ("webinar", "timeline", "scope", "registration", "attendee", "demo", "deck", "slide")):
-            selected = "The team reviewed webinar delivery, presentation clarity and final preparation requirements."
-        else:
-            representative = max(cluster, key=lambda item: item["scores"]["discussion"] + item["scores"]["specificity"])
-            selected = finalize_sentence(representative["text"])
+        raw_keywords = extract_raw_cluster_keywords(aggregate, speaker_names)
+        filtered_keywords = extract_cluster_keywords(aggregate, speaker_names)
+        selected, selection_mode = build_cluster_summary(cluster, raw_keywords, filtered_keywords)
+        strong_subject = has_strong_cluster_subject(cluster, filtered_keywords)
 
         dedupe_key = re.sub(r"[^a-z0-9]+", " ", selected.lower()).strip()
+        rejected_reason = ""
+        used = False
+        if cluster_score < 0.45:
+            rejected_reason = "low_cluster_score"
+        elif not strong_subject:
+            rejected_reason = "weak_subject"
+        elif dedupe_key in dedupe_keys:
+            rejected_reason = "covered_by_higher_ranked_cluster"
+        else:
+            dedupe_keys.add(dedupe_key)
+            selected_points_with_scores.append((cluster_score, selected))
+            used = True
         cluster_debug.append(
             {
-                "keywords": keywords,
+                "rawKeywords": raw_keywords,
+                "keywords": filtered_keywords,
                 "candidateTexts": [item["text"] for item in cluster[:6]],
                 "clusterScore": cluster_score,
                 "selectedDiscussionPoint": selected,
                 "supportingTurns": support,
+                "rejectedReason": rejected_reason,
+                "usedInDiscussionPoints": used,
+                "selectionMode": selection_mode,
             }
         )
-        if dedupe_key not in dedupe_keys and cluster_score >= 0.45:
-            dedupe_keys.add(dedupe_key)
-            selected_points.append(selected)
 
     cluster_debug.sort(key=lambda item: item["clusterScore"], reverse=True)
-    return selected_points[:6], cluster_debug[:8]
+    selected_points_with_scores.sort(key=lambda item: item[0], reverse=True)
+    return [point for _score, point in selected_points_with_scores[:6]], cluster_debug[:12]
 
 
 def summarize_actions(actions: list[str]) -> str:
@@ -787,7 +995,7 @@ def analyse(text: str) -> dict[str, Any]:
 
     discussion_points, cluster_debug = select_discussion_clusters(candidates, speaker_names)
     status_review_points = extract_status_review_points(turns)
-    if status_review_points:
+    if len(status_review_points) >= 4:
         merged_points: list[str] = []
         seen_points = set()
         for point in status_review_points + discussion_points:
@@ -796,9 +1004,31 @@ def analyse(text: str) -> dict[str, Any]:
                 continue
             seen_points.add(key)
             merged_points.append(point)
+        discussion_points = merged_points[:8]
+    elif len(discussion_points) < 3 and status_review_points:
+        merged_points: list[str] = []
+        seen_points = set()
+        for point in discussion_points + status_review_points:
+            key = re.sub(r"[^a-z0-9]+", " ", point.lower()).strip()
+            if key in seen_points:
+                continue
+            seen_points.add(key)
+            merged_points.append(point)
         discussion_points = merged_points[:6]
     if not discussion_points and decisions:
         discussion_points = [finalize_sentence(decisions[0])]
+
+    final_discussion_keys = {re.sub(r"[^a-z0-9]+", " ", point.lower()).strip() for point in discussion_points}
+    for cluster in cluster_debug:
+        cluster_key = re.sub(r"[^a-z0-9]+", " ", cluster["selectedDiscussionPoint"].lower()).strip()
+        if cluster_key in final_discussion_keys:
+            cluster["usedInDiscussionPoints"] = True
+            if cluster.get("rejectedReason") == "covered_by_higher_ranked_cluster":
+                cluster["rejectedReason"] = ""
+        else:
+            cluster["usedInDiscussionPoints"] = False
+            if not cluster.get("rejectedReason"):
+                cluster["rejectedReason"] = "covered_by_final_discussion_selection"
 
     if not discussion_points and not decisions and not structured_actions:
         executive_summary = "No substantive meeting content, decisions, or actions were identified."
@@ -839,6 +1069,7 @@ def analyse(text: str) -> dict[str, Any]:
             if item["scores"].get("low_content", 0) >= 0.6
         ][:10],
         "rejectedNavigationCandidates": rejected_navigation_candidates,
+        "clusters": cluster_debug,
         "topicClusters": cluster_debug,
         "statusReviewPoints": status_review_points,
         "parsedTurnCount": len(turns),

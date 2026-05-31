@@ -196,6 +196,9 @@ Yes.
         self.assertNotIn("2 June 2026,", result["participants.client"])
         self.assertFalse(any("pm 4m 42s" in point for point in result["discussionPoints"]))
         self.assertFalse(any("right, let's run through" in point.lower() for point in result["discussionPoints"]))
+        self.assertFalse(any("request funnel?" in point.lower() for point in result["discussionPoints"]))
+        self.assertFalse(any(point.lower().startswith("yeah she said") for point in result["discussionPoints"]))
+        self.assertFalse(any("webinar" in point.lower() for point in result["discussionPoints"]))
         self.assertGreaterEqual(len(result["discussionPoints"]), 3)
         self.assertTrue(
             any(
@@ -207,6 +210,11 @@ Yes.
         self.assertIn("Confirm AI pipeline dependencies with sales.", result["meetingActionPoint"])
         action_map = {item["meetingActionPoint"]: item for item in result["actions"]}
         self.assertTrue(action_map["Review stage gate templates."]["_evidence"])
+        self.assertEqual(action_map["Review stage gate templates."]["_evidence"][0]["speaker"], "Ciara Griffin")
+        self.assertEqual(action_map["Review stage gate templates."]["_evidence"][0]["timestamp"], "3:42")
+        used_clusters = [cluster for cluster in result["numberExperimentDebug"]["topicClusters"] if cluster["usedInDiscussionPoints"]]
+        self.assertTrue(all(cluster["selectedDiscussionPoint"] for cluster in used_clusters))
+        self.assertGreaterEqual(len({cluster["selectedDiscussionPoint"] for cluster in used_clusters}), 3)
         json.dumps(result)
 
     def test_webinar_fixture_runs_with_debug(self):
