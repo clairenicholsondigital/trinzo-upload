@@ -1,0 +1,26 @@
+{
+  "testName": "055_dependency_risk_meeting",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
+  ],
+  "expectedActionCount": 0,
+  "expectedDecisionCount": 0,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionTopics": [
+    [
+      "pharma systems",
+      "filter documents",
+      "pending"
+    ],
+    [
+      "timelines",
+      "unaffected"
+    ]
+  ],
+  "mustNotContainDecisions": [
+    "the submission is blocked"
+  ]
+}

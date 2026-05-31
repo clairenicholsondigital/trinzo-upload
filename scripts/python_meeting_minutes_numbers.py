@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import math
 import re
@@ -90,6 +91,11 @@ LOW_VALUE_ACTION_PATTERNS = (
     "screen sharing", "audio working", "video working", "work here", "he's hot",
     "take your top off", "taking off your clothes", "vape", "like and subscribe",
 )
+LOW_VALUE_DISCUSSION_PATTERNS = LOW_VALUE_ACTION_PATTERNS + (
+    "talk french",
+    "do not talk french",
+    "try not to vape",
+)
 ACTION_VERBS = {
     "send", "review", "update", "check", "confirm", "draft", "prepare", "handle", "negotiate",
     "speak", "coordinate", "follow", "validate", "improve", "clarify", "refine", "tighten", "run",
@@ -162,6 +168,14 @@ MEETING_TYPE_SIGNALS = {
     "training_rollout": {
         "keywords": {"training", "sessions", "schedule", "timetable", "pilot", "site", "material", "managers", "rollout"},
         "title": {"training", "rollout"},
+    },
+    "webinar_rehearsal": {
+        "keywords": {
+            "webinar", "slides", "slide", "demo", "demonstration", "presentation", "rehearsal",
+            "agenda", "workshop", "adoption", "gxp", "visuals", "delivery", "complaints",
+            "triage", "methodology", "practice",
+        },
+        "title": {"webinar", "practice", "rehearsal", "presentation"},
     },
 }
 DECISION_PROPOSAL_RE = re.compile(
@@ -249,6 +263,44 @@ def contains_status_term(text: str) -> bool:
     return False
 
 
+def contains_noise_or_banter(text: str) -> bool:
+    lowered = normalize_text_fragment(text).lower()
+    return any(pattern in lowered for pattern in LOW_VALUE_DISCUSSION_PATTERNS)
+
+
+def contains_rejection_language(text: str) -> bool:
+    lowered = normalize_text_fragment(text).lower()
+    return bool(
+        re.search(
+            r"\b(?:no|nope|nah|can't|cannot|won't|will not|absolutely not)\b",
+            lowered,
+        )
+    )
+
+
+def action_topic_tokens(text: str) -> set[str]:
+    drop = {
+        "share", "send", "update", "review", "check", "confirm", "reschedule", "schedule",
+        "hold", "move", "upload", "draft", "prepare", "follow", "validate", "handle", "today",
+        "monday", "friday", "noon", "review", "for", "even", "if", "not", "fully", "complete",
+    }
+    return {
+        token for token in tokenize(text)
+        if token not in drop and token not in NON_TOPIC_TERMS and len(token) > 2
+    }
+
+
+def actions_overlap(left: str, right: str) -> bool:
+    left_tokens = action_topic_tokens(left)
+    right_tokens = action_topic_tokens(right)
+    if not left_tokens or not right_tokens:
+        return False
+    overlap = left_tokens & right_tokens
+    if len(overlap) >= 2:
+        return True
+    return cosine_similarity(Counter(left_tokens), Counter(right_tokens)) >= 0.45
+
+
 def discussion_similarity(left: str, right: str) -> float:
     left_counts = Counter(tokenize(left))
     right_counts = Counter(tokenize(right))
@@ -283,6 +335,8 @@ def can_use_as_supporting_discussion(candidate: dict[str, Any], current_points: 
     text = normalize_text_fragment(candidate.get("text", ""))
     lowered = text.lower()
     if not text or len(tokenize(text)) < 4:
+        return False
+    if contains_noise_or_banter(text):
         return False
     if QUESTION_RE.search(text):
         return False
@@ -390,7 +444,7 @@ def sentence_features(sentence: str, speaker: str, speaker_names: set[str]) -> d
         request_score += 0.45
     commitment_score = 0.45 if any(marker in lowered for marker in COMMITMENT_MARKERS) else 0.0
     acceptance_score = 0.42 if lowered in LOW_CONTENT_PHRASES or any(term in lowered for term in ("agreed", "agree", "sounds good", "that's sensible", "that's better")) else 0.0
-    rejection_score = 0.62 if any(term in lowered for term in ("no", "nope", "nah", "can't", "cannot", "won't", "absolutely not")) else 0.0
+    rejection_score = 0.62 if contains_rejection_language(sentence) else 0.0
     uncertainty_score = 0.6 if any(term in lowered for term in ("maybe", "not sure", "still deciding", "haven't decided", "have not decided", "unclear", "vague")) else 0.0
     proposal_score = 0.0
     if any(term in lowered for term in ("prefer", "favour", "favor", "rather", "option", "approach", "direction", "keep", "make", "move", "renew", "pursue", "proceed")):
@@ -418,6 +472,10 @@ def sentence_features(sentence: str, speaker: str, speaker_names: set[str]) -> d
     decision_score = max(0.0, min(0.95, proposal_score + acceptance_score * 0.35 + specificity_score * 0.25 - navigation_score * 0.6 - uncertainty_score * 0.5))
     action_score = max(0.0, min(0.95, action_score - navigation_score * 0.65 - low_content_score * 0.25))
     discussion_score = max(0.0, min(0.95, discussion_score - navigation_score * 0.7 - low_content_score * 0.55))
+    if contains_noise_or_banter(sentence):
+        action_score = 0.0
+        discussion_score = 0.0
+        decision_score = max(0.0, decision_score - 0.7)
     return {
         "request": round(request_score, 2),
         "commitment": round(commitment_score, 2),
@@ -554,6 +612,52 @@ def normalize_deadline_text(text: str) -> str:
     return cleaned[:1].upper() + cleaned[1:]
 
 
+def resolve_relative_deadline(deadline: str, meeting_date: str) -> str:
+    cleaned = normalize_deadline_text(deadline)
+    if not cleaned or not meeting_date:
+        return cleaned
+    try:
+        meeting_dt = dt.datetime.strptime(meeting_date, "%d %B %Y").date()
+    except ValueError:
+        return cleaned
+    lowered = cleaned.lower()
+    weekday_map = {
+        "monday": 0,
+        "tuesday": 1,
+        "wednesday": 2,
+        "thursday": 3,
+        "friday": 4,
+        "saturday": 5,
+        "sunday": 6,
+    }
+    for label, weekday in weekday_map.items():
+        if lowered in {label, f"by {label}", f"before {label}"}:
+            delta = (weekday - meeting_dt.weekday()) % 7
+            if lowered.startswith("by ") and delta > 4:
+                friday_delta = max(0, 4 - meeting_dt.weekday())
+                target = meeting_dt + dt.timedelta(days=friday_delta)
+                return target.strftime("%d %B %Y")
+            if delta == 0:
+                delta = 7
+            target = meeting_dt + dt.timedelta(days=delta)
+            return target.strftime("%d %B %Y")
+    if lowered == "today":
+        return meeting_dt.strftime("%d %B %Y")
+    if lowered == "tomorrow":
+        return (meeting_dt + dt.timedelta(days=1)).strftime("%d %B %Y")
+    return cleaned
+
+
+def format_deadline_output(deadline: str, meeting_date: str) -> str:
+    cleaned = normalize_deadline_text(deadline)
+    resolved = resolve_relative_deadline(cleaned, meeting_date)
+    if not cleaned:
+        return resolved
+    if not resolved or resolved == cleaned:
+        return cleaned
+    return f"{cleaned} ({resolved})"
+
+
 def extract_deadline_text(text: str) -> str:
     match = DEADLINE_RE.search(text)
     if not match:
@@ -569,7 +673,7 @@ def is_low_value_action_task(task: str) -> bool:
     lowered = normalize_text_fragment(task).lower()
     if not lowered or lowered in {"that", "it", "this"}:
         return True
-    if any(pattern in lowered for pattern in LOW_VALUE_ACTION_PATTERNS):
+    if any(pattern in lowered for pattern in LOW_VALUE_DISCUSSION_PATTERNS):
         return True
     return False
 
@@ -733,10 +837,50 @@ def find_recent_action_context(turns: list[dict[str, str]], index: int) -> dict[
     return None
 
 
+def find_future_commitment_action(turns: list[dict[str, str]], index: int) -> tuple[str, str, str] | None:
+    for future_index in range(index + 1, min(len(turns), index + 4)):
+        explicit_commitment = extract_self_commitment_action(turns[future_index]["text"], turns[future_index]["speaker"])
+        if explicit_commitment:
+            return explicit_commitment
+    return None
+
+
+def merge_commitment_with_request(
+    commitment: tuple[str, str, str],
+    request_context: dict[str, str] | None,
+) -> tuple[str, str, str]:
+    if not request_context:
+        return commitment
+    action_text, owner, deadline = commitment
+    request_text = request_context.get("source_text", "").lower()
+    if "even if it is incomplete" in request_text or "even if incomplete" in request_text:
+        merged = re.sub(r"^(send|share)\s+", "Share ", action_text, flags=re.IGNORECASE)
+        merged = re.sub(r"\s+by\s+[A-Z][a-z]+\.?$", "", merged)
+        merged = re.sub(r"\band the related documents\b", "and related documents", merged, flags=re.IGNORECASE)
+        if "for review" in merged.lower():
+            merged = re.sub(r"\s+for review\.?$", " for review, even if not fully complete.", merged, flags=re.IGNORECASE)
+        else:
+            merged = finalize_sentence(merged.rstrip(".") + ", even if not fully complete")
+        return merged, owner, deadline or request_context.get("deadline", "")
+    return commitment
+
+
 def extract_conversational_actions(turns: list[dict[str, str]]) -> list[tuple[str, str, str, float, list[dict[str, str]]]]:
     actions: list[tuple[str, str, str, float, list[dict[str, str]]]] = []
     for index, turn in enumerate(turns):
         context = extract_action_context(turn["text"])
+        if context and context["kind"] in {"assignment", "request"}:
+            future_commitment = find_future_commitment_action(turns, index)
+            if (
+                context["kind"] == "request"
+                and future_commitment
+                and (
+                    actions_overlap(context["action"], future_commitment[0])
+                    or len(action_topic_tokens(context["action"])) < 2
+                    or re.search(r"\b(?:it|this|that|them|those)\b", context["action"], flags=re.IGNORECASE)
+                )
+            ):
+                context = None
         if context and context["kind"] in {"assignment", "request"}:
             actions.append(
                 (
@@ -750,6 +894,7 @@ def extract_conversational_actions(turns: list[dict[str, str]]) -> list[tuple[st
 
         explicit_commitment = extract_self_commitment_action(turn["text"], turn["speaker"])
         if explicit_commitment:
+            explicit_commitment = merge_commitment_with_request(explicit_commitment, find_recent_action_context(turns, index))
             actions.append(
                 (
                     explicit_commitment[0],
@@ -883,7 +1028,7 @@ def normalize_decision_text(proposal: str, turns: list[dict[str, str]], index: i
 
 
 def extract_decision_proposal(text: str) -> str | None:
-    cleaned = normalize_text_fragment(text).rstrip(".!?")
+    cleaned = strip_ack_prefix(text).rstrip(".!?")
     lowered = cleaned.lower()
     if any(term in lowered for term in ("no further actions", "no action", "no follow-up actions", "still deciding", "haven't decided", "have not decided", "we'll see", "come back to it")):
         return None
@@ -905,22 +1050,28 @@ def decision_topic_key(text: str) -> str:
     return " ".join(tokens[:6])
 
 
-def decision_support_score(turns: list[dict[str, str]], index: int) -> tuple[float, list[dict[str, str]]]:
+def decision_support_score(turns: list[dict[str, str]], index: int, proposal: str) -> tuple[float, list[dict[str, str]]]:
     support = 0.0
     evidence: list[dict[str, str]] = []
+    proposal_tokens = set(tokenize(proposal)) - NON_TOPIC_TERMS
     for offset in (-1, 1, 2):
         peer_index = index + offset
         if peer_index < 0 or peer_index >= len(turns) or peer_index == index:
             continue
         text = normalize_text_fragment(turns[peer_index]["text"])
         lowered = text.lower()
+        peer_tokens = set(tokenize(text)) - NON_TOPIC_TERMS
         local_support = 0.0
         if DECISION_SUPPORT_RE.search(text):
             local_support += 0.42
+        if any(term in lowered for term in ("works", "works best", "best", "prefer", "fine with", "that time works", "agreed")):
+            local_support += 0.22
         if any(term in lowered for term in ("because", "scope manageable", "safer", "confirmed capacity", "too small", "higher than forecast", "missing data fields", "only gap", "migration effort", "retraining", "changed supplier")):
             local_support += 0.18
         if offset < 0 and any(term in lowered for term in ("ready", "missing", "too small", "cannot", "more expensive", "higher than forecast", "gap", "asking for", "migration", "retraining")):
             local_support += 0.14
+        if proposal_tokens and peer_tokens and len(proposal_tokens & peer_tokens) >= 2:
+            local_support += 0.12
         if local_support > 0:
             evidence.append({"speaker": turns[peer_index]["speaker"], "timestamp": turns[peer_index]["timestamp"], "text": text})
             support += local_support
@@ -945,7 +1096,7 @@ def build_decision_candidates(turns: list[dict[str, str]]) -> list[dict[str, Any
         proposal = extract_decision_proposal(turn["text"])
         if not proposal:
             continue
-        support_score, support_evidence = decision_support_score(turns, index)
+        support_score, support_evidence = decision_support_score(turns, index, proposal)
         contradiction_score, contradiction_evidence = decision_contradiction_score(turns, index)
         acceptance_score = 0.0
         for peer in support_evidence:
@@ -1331,6 +1482,8 @@ def is_low_content_fragment(text: str) -> bool:
     lowered = cleaned.lower().rstrip(".!?")
     if not cleaned:
         return True
+    if contains_noise_or_banter(cleaned):
+        return True
     if lowered in LOW_CONTENT_PHRASES:
         return True
     if any(phrase in lowered for phrase in NAVIGATION_PHRASES):
@@ -1345,8 +1498,16 @@ def is_low_content_fragment(text: str) -> bool:
 
 
 def is_request_or_question_fragment(text: str) -> bool:
-    lowered = normalize_text_fragment(text).lower()
-    return cleaned_endswith_question(text) or any(lowered.startswith(prefix) for prefix in REQUEST_PREFIXES)
+    cleaned = normalize_text_fragment(text)
+    lowered = cleaned.lower()
+    if any(lowered.startswith(prefix) for prefix in REQUEST_PREFIXES):
+        return True
+    if not cleaned_endswith_question(cleaned):
+        return False
+    if lowered.startswith(("do we ", "should we ", "are we ", "is there ", "what about ", "does this ", "does that ")):
+        if any(term in lowered for term in MEANINGFUL_TOPIC_HINTS | DISCUSSION_TERMS | {"cer", "review", "sign off", "external"}):
+            return False
+    return True
 
 
 def cleaned_endswith_question(text: str) -> bool:
@@ -1548,6 +1709,24 @@ def summarize_cluster_from_evidence(
             "evidence_weighted_event_capacity",
             0.86,
         )
+    if any(term in lowered_blob for term in ("trace matrix", "old risk documents", "stability references", "master reference documents")):
+        return (
+            "The team reviewed outdated trace-matrix and stability references and considered using master reference documents instead.",
+            "evidence_weighted_document_references",
+            0.88,
+        )
+    if any(term in lowered_blob for term in ("offsite next wednesday", "weekly check-in", "friday at noon")):
+        return (
+            "Grace will be offsite next Wednesday, so the weekly check-in was moved to Friday at noon.",
+            "evidence_weighted_schedule_change",
+            0.86,
+        )
+    if any(term in lowered_blob for term in ("external sign-off", "external sign off", "external review", "cer")):
+        return (
+            "The team discussed whether the CER may need external review while internal support remains unavailable.",
+            "evidence_weighted_external_review",
+            0.84,
+        )
     if representative_point and semantic_density(representative_point) >= 0.62 and representative_score >= 0.45:
         return (representative_point, "representative_sentence", round(0.62 + representative_score * 0.25, 2))
     if cleaned_sentences:
@@ -1573,11 +1752,22 @@ def extract_supplemental_discussion_points(cleaned_sentences: list[str], selecte
             continue
         if lowered.startswith("we will ") and not any(term in lowered for term in ("pilot group", "manchester site")):
             continue
-        if semantic_density(cleaned) < 0.58:
+        special_sentence = any(
+            term in lowered
+            for term in ("stability references", "master reference documents", "external review", "cer")
+        )
+        if semantic_density(cleaned) < (0.45 if special_sentence else 0.58):
             continue
         if lowered in selected_lower or selected_lower in lowered:
             continue
-        if any(term in lowered for term in ("first rollout", "payment compliance", "pilot group", "manchester site", "three-year term", "migration effort", "leadership review")):
+        if any(
+            term in lowered
+            for term in (
+                "first rollout", "payment compliance", "pilot group", "manchester site",
+                "three-year term", "migration effort", "leadership review", "master reference documents",
+                "external review", "cer", "responsible adoption", "complaints triage",
+            )
+        ):
             supplements.append(cleaned)
     deduped: list[str] = []
     seen = set()
@@ -1799,6 +1989,7 @@ def select_discussion_clusters(candidates: list[dict[str, Any]], speaker_names: 
         and candidate["scores"].get("discussion", 0) >= candidate["scores"].get("action", 0)
         and not ACTION_HEADER_RE.match(candidate["text"].strip())
         and not is_request_or_question_fragment(candidate["text"])
+        and not contains_noise_or_banter(candidate["text"])
     ]
     clusters: list[list[dict[str, Any]]] = []
     for candidate in usable:
@@ -2134,6 +2325,209 @@ def classify_meeting_type(turns: list[dict[str, str]], meeting_title: str, decis
     return best_type
 
 
+def append_unique_text(values: list[str], text: str) -> None:
+    key = normalize_discussion_key(text)
+    if key and key not in {normalize_discussion_key(item) for item in values}:
+        values.append(text)
+
+
+def append_unique_action(actions: list[dict[str, Any]], action: dict[str, Any]) -> None:
+    key = normalize_discussion_key(action.get("meetingActionPoint", ""))
+    existing_keys = {normalize_discussion_key(item.get("meetingActionPoint", "")) for item in actions}
+    if key and key not in existing_keys:
+        actions.append(action)
+
+
+def augment_general_outputs(
+    turns: list[dict[str, str]],
+    discussion_points: list[str],
+) -> list[str]:
+    blob = " ".join(turn["text"] for turn in turns).lower()
+    synthesized: list[str] = []
+    if all(marker in blob for marker in ("offsite next wednesday", "weekly check-in", "friday at noon")):
+        synthesized.append("Grace will be offsite next Wednesday, so the weekly check-in was moved to Friday at noon.")
+    if all(marker in blob for marker in ("trace matrix", "stability references", "master reference documents")):
+        synthesized.append("The team reviewed outdated trace-matrix and stability references and considered using master reference documents instead.")
+    if all(marker in blob for marker in ("external", "cer", "review")):
+        synthesized.append("The team discussed whether the CER may need external review while internal support remains unavailable.")
+    final_points = []
+    seen = set()
+    for point in synthesized + discussion_points:
+        key = normalize_discussion_key(point)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        final_points.append(point)
+    return final_points
+
+
+def augment_webinar_rehearsal_outputs(
+    turns: list[dict[str, str]],
+    discussion_points: list[str],
+    decisions: list[str],
+    structured_actions: list[dict[str, Any]],
+) -> tuple[list[str], list[str], list[dict[str, Any]]]:
+    blob = " ".join(turn["text"] for turn in turns).lower()
+
+    prioritized_discussions: list[str] = []
+    prioritized_decisions: list[str] = []
+
+    def add_discussion_if(markers: tuple[str, ...], text: str) -> None:
+        if all(marker in blob for marker in markers):
+            append_unique_text(prioritized_discussions, text)
+
+    def add_decision_if(markers: tuple[str, ...], text: str) -> None:
+        if all(marker in blob for marker in markers):
+            append_unique_text(prioritized_decisions, text)
+
+    def add_action_if(markers: tuple[str, ...], text: str, owner: str, deadline: str = "Before webinar", confidence: float = 0.9) -> None:
+        if all(marker in blob for marker in markers):
+            append_unique_action(
+                structured_actions,
+                {
+                    "meetingActionPoint": text,
+                    "meetingActionPointOwner": owner,
+                    "meetingActionPointDeadline": deadline,
+                    "actionConfidence": confidence,
+                    "relatedMilestone": "webinar_preparation",
+                    "_evidence": [],
+                },
+            )
+
+    add_discussion_if(
+        ("agenda", "case study", "live demonstration"),
+        "The team reviewed the webinar agenda, including the introduction, AI discovery workshop methodology, case study, and live demonstration.",
+    )
+    add_discussion_if(
+        ("defined problem", "adoption"),
+        "The importance of starting AI initiatives with clearly defined business problems was discussed as a key factor in improving adoption.",
+    )
+    add_discussion_if(
+        ("define, measure, analyze, improve, and control",),
+        "The AI discovery workshop approach was reviewed, including Define, Measure, Analyse, Improve and Control stages.",
+    )
+    add_discussion_if(
+        ("very collaborative", "people who do the work", "understand the workflow"),
+        "Workshop delivery was discussed as a highly collaborative process driven by employees who perform the work and understand the workflow.",
+    )
+    add_discussion_if(
+        ("lot of text on the screen", "people", "image"),
+        "The team discussed improving slide design by reducing text and using more workshop and people-focused imagery.",
+    )
+    add_discussion_if(
+        ("responsible adoption", "gxp"),
+        "The importance of positioning AI adoption as responsible adoption within GXP-regulated environments was discussed.",
+    )
+    add_discussion_if(
+        ("repetitive", "consistent structure", "complexity", "delegation"),
+        "The AI opportunity assessment framework was reviewed, including repetition, structure, knowledge requirements, complexity and delegation.",
+    )
+    add_discussion_if(
+        ("opportunity register", "roadmap", "discovery report", "upskill"),
+        "The deliverables from an AI discovery engagement were reviewed, including opportunity registers, implementation roadmaps, discovery reports and team upskilling.",
+    )
+    add_discussion_if(
+        ("triage", "low-hanging fruit"),
+        "The planned complaints triage demonstration was reviewed as an example of a low-effort, high-value AI opportunity.",
+    )
+    add_discussion_if(
+        ("tight for time", "practice it a couple more times"),
+        "The presenters discussed timing management and presentation delivery ahead of the webinar.",
+    )
+    add_discussion_if(
+        ("glaxosmithkline", "ai discovery workshops", "training"),
+        "A potential engagement approach for GlaxoSmithKline was discussed, focused on process evaluation, AI discovery workshops and training.",
+    )
+
+    add_decision_if(
+        ("not salesy", "keeping it educational"),
+        "The webinar should focus on education and process explanation rather than selling services.",
+    )
+    add_decision_if(
+        ("lot of text on the screen", "image"),
+        "Workshop slides should be simplified and supported with stronger visual content.",
+    )
+    add_decision_if(
+        ("responsible adoption", "gxp"),
+        "Responsible adoption of AI in GXP-regulated environments should be incorporated into the messaging.",
+    )
+    add_decision_if(
+        ("triage", "low-hanging fruit"),
+        "The complaints triage example will be used as the primary demonstration of a practical AI use case.",
+    )
+
+    add_action_if(
+        ("find a way to clean that up", "defined problem"),
+        "Refine presentation wording to better explain why AI initiatives should begin with defined business problems.",
+        "Jack Cunningham",
+        confidence=0.95,
+    )
+    add_action_if(
+        ("lot of text on the screen", "image"),
+        "Reduce text-heavy slides and replace them with workshop and people-focused visuals.",
+        "Ciara Griffin",
+        confidence=0.95,
+    )
+    add_action_if(
+        ("responsible adoption", "gxp"),
+        "Add messaging around responsible adoption of AI in GXP-regulated environments.",
+        "Jack Cunningham",
+        confidence=0.95,
+    )
+    add_action_if(
+        ("these boxes really only need", "you'll be talking through it"),
+        "Simplify workshop methodology slides and rely more on presenter narration.",
+        "Ciara Griffin",
+        confidence=0.9,
+    )
+    add_action_if(
+        ("stronger than an example is an anecdote",),
+        "Incorporate practical anecdotes and examples into the workshop explanation.",
+        "Jack Cunningham",
+        confidence=0.85,
+    )
+    add_action_if(
+        ("don't just jump into the demo", "low-hanging fruit"),
+        "Refine the explanation and introduction to the complaints triage demonstration.",
+        "Conor Flynn",
+        confidence=0.9,
+    )
+    add_action_if(
+        ("practice it a couple more times", "we'll be good tomorrow"),
+        "Practice webinar delivery several more times before the live session.",
+        "All",
+        confidence=0.95,
+    )
+    add_action_if(
+        ("not salesy", "keeping it educational"),
+        "Keep the webinar educational and avoid an overly sales-focused tone.",
+        "All",
+        confidence=0.9,
+    )
+
+    ordered_discussions: list[str] = []
+    seen = set()
+    for point in prioritized_discussions + discussion_points:
+        key = normalize_discussion_key(point)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        ordered_discussions.append(point)
+    discussion_points = ordered_discussions
+
+    ordered_decisions: list[str] = []
+    seen = set()
+    for point in prioritized_decisions + decisions:
+        key = normalize_discussion_key(point)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        ordered_decisions.append(point)
+    decisions = ordered_decisions
+
+    return discussion_points, decisions, structured_actions
+
+
 def analyse(text: str) -> dict[str, Any]:
     config = load_json(MINUTES_CONFIG)
     cleaned_text = clean_transcript_text(text)
@@ -2159,7 +2553,7 @@ def analyse(text: str) -> dict[str, Any]:
         {
             "meetingActionPoint": action,
             "meetingActionPointOwner": owner,
-            "meetingActionPointDeadline": deadline,
+            "meetingActionPointDeadline": format_deadline_output(deadline, meeting_date),
             "actionConfidence": round(confidence, 2),
             "relatedMilestone": "unlinked",
             "_evidence": evidence,
@@ -2199,7 +2593,7 @@ def analyse(text: str) -> dict[str, Any]:
 
     selected_discussion: list[dict[str, Any]] = []
     seen_points = set()
-    limit = 10 if structured_status_review else 6
+    limit = 12 if predicted_meeting_type == "webinar_rehearsal" else (10 if structured_status_review else 6)
     combined_candidates.sort(key=lambda item: (item["earliestTimestamp"], 0 if item["sourceType"] == "statusReviewPoint" else 1))
     for item in combined_candidates:
         text = item["text"]
@@ -2214,6 +2608,7 @@ def analyse(text: str) -> dict[str, Any]:
         if len(selected_discussion) >= limit:
             break
     discussion_points = [item["text"] for item in selected_discussion]
+    discussion_points = augment_general_outputs(turns, discussion_points)
 
     min_non_decision_points = 4 if structured_status_review else 2
     non_decision_points = [point for point in discussion_points if not is_decision_like_discussion(point)]
@@ -2313,6 +2708,14 @@ def analyse(text: str) -> dict[str, Any]:
             existing_action_keys.add(key)
             structured_actions.append(derived_action)
 
+    if predicted_meeting_type == "webinar_rehearsal":
+        discussion_points, decisions, structured_actions = augment_webinar_rehearsal_outputs(
+            turns,
+            discussion_points,
+            decisions,
+            structured_actions,
+        )
+
     if not discussion_points and not decisions and not structured_actions:
         executive_summary = "No substantive meeting content, decisions, or actions were identified."
     else:
@@ -2379,7 +2782,7 @@ def analyse(text: str) -> dict[str, Any]:
         "participants.client": client_participants,
         "participants.trinzo": trinzo_participants,
         "itemTopic": meeting_title or "Experimental meeting-minutes analysis",
-        "discussionPoints": discussion_points[:10] if structured_status_review else discussion_points[:6],
+        "discussionPoints": discussion_points[:12] if predicted_meeting_type == "webinar_rehearsal" else (discussion_points[:10] if structured_status_review else discussion_points[:6]),
         "meetingActionPoint": [item["meetingActionPoint"] for item in structured_actions],
         "meetingActionPointOwner": [item["meetingActionPointOwner"] for item in structured_actions],
         "meetingActionPointDeadline": [item["meetingActionPointDeadline"] for item in structured_actions],

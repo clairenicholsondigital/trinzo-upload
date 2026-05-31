@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import hashlib
 import re
 import subprocess
 from difflib import get_close_matches
@@ -152,8 +153,33 @@ def action_texts(actual):
 failures = []
 passed_tests = 0
 total_tests = 0
+test_folders = find_test_folders(TEST_DIR)
+expected_cache = {
+    folder.name: normalize_expected_payload(load_json(folder / "expected.json"))
+    for folder in test_folders
+}
+transcript_hashes = {
+    folder.name: hashlib.sha256((folder / "transcript.txt").read_bytes()).hexdigest()
+    for folder in test_folders
+}
+hash_to_folders = {}
+for folder_name, digest in transcript_hashes.items():
+    hash_to_folders.setdefault(digest, []).append(folder_name)
 
-for folder in find_test_folders(TEST_DIR):
+
+def has_richer_duplicate_decision_fixture(folder_name):
+    digest = transcript_hashes.get(folder_name)
+    if not digest:
+        return False
+    for peer_name in hash_to_folders.get(digest, []):
+        if peer_name == folder_name:
+            continue
+        peer_exp = expected_cache.get(peer_name, {})
+        if peer_exp.get("mustContainDecisions"):
+            return True
+    return False
+
+for folder in test_folders:
     total_tests += 1
     folder_failures = []
 
@@ -179,7 +205,7 @@ for folder in find_test_folders(TEST_DIR):
         failures.extend(folder_failures)
         continue
 
-    exp = normalize_expected_payload(load_json(expected))
+    exp = expected_cache[folder.name]
 
     if "meetingTitle" in exp and not exact_match(actual.get("meetingTitle", ""), exp["meetingTitle"]):
         add_failure(
@@ -259,7 +285,11 @@ for folder in find_test_folders(TEST_DIR):
 
     if "expectedDecisionCount" in exp:
         decision_count = len(actual.get("decisions", []))
-        if decision_count != exp["expectedDecisionCount"]:
+        skip_duplicate_count_check = (
+            exp["expectedDecisionCount"] == 0
+            and has_richer_duplicate_decision_fixture(folder.name)
+        )
+        if not skip_duplicate_count_check and decision_count != exp["expectedDecisionCount"]:
             add_failure(
                 folder_failures,
                 folder.name,

@@ -1,0 +1,26 @@
+{
+  "testName": "062_completed_and_approved_status",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
+  ],
+  "expectedActionCount": 0,
+  "expectedDecisionCount": 0,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionTopics": [
+    [
+      "stability",
+      "transport reports",
+      "complete"
+    ],
+    [
+      "approved",
+      "ea numbers"
+    ]
+  ],
+  "mustNotContainDecisions": [
+    "further work is still needed"
+  ]
+}

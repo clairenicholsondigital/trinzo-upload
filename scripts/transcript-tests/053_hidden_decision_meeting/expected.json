@@ -1,0 +1,36 @@
+{
+  "testName": "053_hidden_decision_meeting",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
+  ],
+  "expectedActionCount": 1,
+  "expectedDecisionCount": 1,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionTopics": [
+    [
+      "grace",
+      "offsite"
+    ],
+    [
+      "friday",
+      "noon"
+    ]
+  ],
+  "mustContainActions": [
+    {
+      "text": "reschedule the weekly check-in",
+      "owner": "David"
+    }
+  ],
+  "mustContainDecisions": [
+    {
+      "text": "move the weekly check-in to Friday at noon"
+    }
+  ],
+  "mustNotContainDecisions": [
+    "cancel the weekly check-in"
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "testName": "059_partial_completion_allowed",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
+  ],
+  "expectedActionCount": 1,
+  "expectedDecisionCount": 0,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionTopics": [
+    [
+      "clinical trace matrix",
+      "gaps"
+    ]
+  ],
+  "mustContainActions": [
+    {
+      "text": "share the updated clinical trace matrix and related documents for review, even if not fully complete",
+      "owner": "Ciaran",
+      "deadline": "05 September 2025"
+    }
+  ],
+  "mustNotContainDecisions": [
+    "wait until the trace matrix is fully complete"
+  ]
+}

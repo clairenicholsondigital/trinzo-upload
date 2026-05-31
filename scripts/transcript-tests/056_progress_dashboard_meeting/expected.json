@@ -1,0 +1,34 @@
+{
+  "testName": "056_progress_dashboard_meeting",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
+  ],
+  "expectedActionCount": 1,
+  "expectedDecisionCount": 0,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionTopics": [
+    [
+      "38 documents",
+      "complete"
+    ],
+    [
+      "21",
+      "80 and 95 percent"
+    ],
+    [
+      "one document",
+      "untouched"
+    ]
+  ],
+  "mustContainActions": [
+    {
+      "text": "keep the tracker updated"
+    }
+  ],
+  "mustNotContainDecisions": [
+    "restart the untouched document"
+  ]
+}

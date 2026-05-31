@@ -1,0 +1,17 @@
+{
+  "testName": "057_rehearsal_banter_filter",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe",
+    "talk french"
+  ],
+  "expectedActionCount": 0,
+  "expectedDecisionCount": 0,
+  "expectedDiscussionCount": 0,
+  "mustNotContainDecisions": [
+    "take your top off",
+    "like and subscribe"
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "testName": "054_document_review_meeting",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
+  ],
+  "expectedActionCount": 0,
+  "expectedDecisionCount": 0,
+  "expectedDiscussionCountMin": 2,
+  "mustContainDiscussionTopics": [
+    [
+      "trace matrix",
+      "old risk documents"
+    ],
+    [
+      "stability references",
+      "outdated"
+    ],
+    [
+      "master reference documents"
+    ]
+  ],
+  "mustNotContainDecisions": [
+    "replace the trace matrix completely"
+  ]
+}

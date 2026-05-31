@@ -1,0 +1,27 @@
+{
+  "testName": "061_no_major_impact_dependency",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
+  ],
+  "expectedActionCount": 0,
+  "expectedDecisionCount": 0,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionTopics": [
+    [
+      "pharma systems",
+      "biocompatibility filter data",
+      "pending"
+    ],
+    [
+      "timelines",
+      "not expected",
+      "major impact"
+    ]
+  ],
+  "mustNotContainDecisions": [
+    "the dependency is a blocker"
+  ]
+}

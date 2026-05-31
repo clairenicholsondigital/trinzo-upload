@@ -1,0 +1,26 @@
+{
+  "testName": "058_submission_date_priority",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
+  ],
+  "expectedActionCount": 0,
+  "expectedDecisionCount": 0,
+  "expectedDiscussionCountMin": 2,
+  "mustContainDiscussionTopics": [
+    [
+      "sgs submission date",
+      "12 sept 2025"
+    ],
+    [
+      "risk",
+      "clinical",
+      "priority"
+    ]
+  ],
+  "mustNotContainDecisions": [
+    "delay the submission date"
+  ]
+}

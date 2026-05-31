@@ -1,0 +1,33 @@
+{
+  "testName": "052_status_update_meeting",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
+  ],
+  "expectedActionCount": 0,
+  "expectedDecisionCount": 0,
+  "expectedDiscussionCountMin": 2,
+  "mustContainDiscussionTopics": [
+    [
+      "supplier documents",
+      "received"
+    ],
+    [
+      "device description",
+      "updated"
+    ],
+    [
+      "biocompatibility package",
+      "pending"
+    ],
+    [
+      "sgs",
+      "review"
+    ]
+  ],
+  "mustNotContainDecisions": [
+    "submit without the biocompatibility package"
+  ]
+}

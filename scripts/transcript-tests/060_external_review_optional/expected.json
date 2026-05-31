@@ -1,0 +1,22 @@
+{
+  "testName": "060_external_review_optional",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
+  ],
+  "expectedActionCount": 0,
+  "expectedDecisionCount": 0,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionTopics": [
+    [
+      "external",
+      "cer",
+      "review"
+    ]
+  ],
+  "mustNotContainDecisions": [
+    "the cer requires external sign-off"
+  ]
+}
