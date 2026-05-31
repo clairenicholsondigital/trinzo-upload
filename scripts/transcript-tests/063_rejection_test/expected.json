@@ -1,0 +1,19 @@
+{
+  "testName": "063_rejection_test",
+  "expectedActionCount": 0,
+  "mustNotContainActions": [
+    "update the slides before friday"
+  ],
+  "mustContainDiscussionTopics": [
+    [
+      "slides",
+      "friday"
+    ]
+  ],
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
+  ]
+}

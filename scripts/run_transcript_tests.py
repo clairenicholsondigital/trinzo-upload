@@ -374,6 +374,10 @@ for folder in test_folders:
                 f"missing action {expected_text!r}; {format_closest(closest_values(actions, expected_text))}",
             )
 
+    for text in exp.get("mustNotContainActions", []):
+        if contains_match(actions, text):
+            add_failure(folder_failures, folder.name, f"forbidden action present: {text!r}")
+
     for text in exp.get("mustContainExecutiveSummary", []):
         if normalize_text(text) not in normalize_text(executive_summary):
             add_failure(
