@@ -1,0 +1,13 @@
+Bug Investigation
+
+Date: 21 August 2026
+Location: Online
+
+Liam 0:01
+We should reproduce it on Safari before touching the payment token code.
+
+Priya 0:09
+I'll look into that.
+
+Liam 0:14
+Okay.

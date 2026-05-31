@@ -1,0 +1,8 @@
+{
+  "meetingTitle": "Negotiation Ownership",
+  "meetingDate": "20 August 2026",
+  "mustContainActions": [
+    "handle the negotiation"
+  ],
+  "expectedDecisionCount": 0
+}

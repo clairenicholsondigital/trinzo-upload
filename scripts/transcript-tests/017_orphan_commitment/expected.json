@@ -1,0 +1,9 @@
+{
+  "meetingTitle": "Loose Follow-up",
+  "meetingDate": "22 August 2026",
+  "expectedActionCount": 0,
+  "expectedDecisionCount": 0,
+  "mustNotContainDiscussionPoints": [
+    "do that"
+  ]
+}

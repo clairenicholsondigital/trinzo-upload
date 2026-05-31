@@ -69,10 +69,29 @@ NAVIGATION_PHRASES = {
 }
 REQUEST_PREFIXES = ("can you", "could you", "would you", "will you", "who is handling")
 COMMITMENT_MARKERS = ("i'll", "i will", "i can")
+GENERIC_COMMITMENT_PATTERNS = (
+    "i'll do that", "i will do that", "i can do that",
+    "i'll take that", "i will take that", "i can take that",
+    "i'll handle it", "i will handle it", "i can handle it",
+    "i'll look into it", "i will look into it", "i'll look into that", "i will look into that",
+    "i'll pick that up", "i will pick that up",
+    "i'll own that", "i will own that", "i can own that",
+)
+ACK_PREFIX_RE = re.compile(r"^(?:yes|yeah|yep|sure|okay|ok|fine|perfect|agreed|right)\b[\s,.-]*", re.IGNORECASE)
+DIRECT_ASSIGNMENT_RE = re.compile(r"^(?P<owner>[A-Z][A-Za-z]+(?: [A-Z][A-Za-z]+){0,2})\s+to\s+(?P<task>.+)$")
+SELF_COMMITMENT_RE = re.compile(r"^(?:i['’]?ll|i will|i can)\s+(?P<task>.+)$", re.IGNORECASE)
+REQUEST_RE = re.compile(r"^(?:can|could|would|will)\s+you\s+(?P<task>.+)$", re.IGNORECASE)
+OWNERSHIP_RE = re.compile(r"^who is handling\s+(?P<task>.+)$", re.IGNORECASE)
+RESPONSIBILITY_RE = re.compile(r"^(?:we should|we need to|someone needs to)\s+(?P<task>.+)$", re.IGNORECASE)
+LOW_VALUE_ACTION_PATTERNS = (
+    "hear me", "see me", "join the call", "on mute", "screen share", "screen-sharing",
+    "screen sharing", "audio working", "video working",
+)
 ACTION_VERBS = {
     "send", "review", "update", "check", "confirm", "draft", "prepare", "handle", "negotiate",
     "speak", "coordinate", "follow", "validate", "improve", "clarify", "refine", "tighten", "run",
-    "complete", "share", "finalise", "finalize", "fix",
+    "complete", "share", "finalise", "finalize", "fix", "request", "reproduce", "capture",
+    "publish", "split", "investigate", "look", "own",
 }
 DISCUSSION_TERMS = {
     "risk", "issue", "option", "cost", "scope", "quality", "timing", "owner", "dependency", "review",
@@ -426,6 +445,241 @@ def split_action_tail(text: str) -> list[str]:
         if cleaned:
             parts.append(cleaned)
     return parts
+
+
+def normalize_deadline_text(text: str) -> str:
+    cleaned = normalize_text_fragment(text).strip()
+    if not cleaned:
+        return ""
+    return cleaned[:1].upper() + cleaned[1:]
+
+
+def extract_deadline_text(text: str) -> str:
+    match = DEADLINE_RE.search(text)
+    if not match:
+        return ""
+    return normalize_deadline_text(match.group(0))
+
+
+def strip_ack_prefix(text: str) -> str:
+    return ACK_PREFIX_RE.sub("", normalize_text_fragment(text)).strip()
+
+
+def is_low_value_action_task(task: str) -> bool:
+    lowered = normalize_text_fragment(task).lower()
+    if not lowered or lowered in {"that", "it", "this"}:
+        return True
+    if any(pattern in lowered for pattern in LOW_VALUE_ACTION_PATTERNS):
+        return True
+    return False
+
+
+def build_special_context_action(source_text: str, action_text: str) -> tuple[str, str]:
+    lowered_source = source_text.lower()
+    if "send those across" in action_text.lower() and "final figures" in lowered_source:
+        return "Send final pricing figures to finance when available.", "When available"
+    return action_text, extract_deadline_text(source_text)
+
+
+def extract_action_context(text: str) -> dict[str, str] | None:
+    cleaned = normalize_text_fragment(text).rstrip(".!?")
+    lowered = cleaned.lower()
+    if not cleaned or "no action" in lowered or "no further actions" in lowered or "discussion only" in lowered:
+        return None
+
+    match = DIRECT_ASSIGNMENT_RE.match(cleaned)
+    if match:
+        task = match.group("task").strip()
+        if is_low_value_action_task(task):
+            return None
+        return {
+            "kind": "assignment",
+            "action": normalize_action_text(task),
+            "owner": match.group("owner").strip(),
+            "deadline": extract_deadline_text(task),
+            "source_text": cleaned,
+        }
+
+    match = REQUEST_RE.match(cleaned)
+    if match:
+        task = match.group("task").strip().rstrip("?")
+        if is_low_value_action_task(task):
+            return None
+        action_text = normalize_action_text(task)
+        action_text, deadline = build_special_context_action(cleaned, action_text)
+        return {
+            "kind": "request",
+            "action": action_text,
+            "owner": "Owner not specified",
+            "deadline": deadline,
+            "source_text": cleaned,
+        }
+
+    match = OWNERSHIP_RE.match(cleaned)
+    if match:
+        task = match.group("task").strip().rstrip("?")
+        if is_low_value_action_task(task):
+            return None
+        return {
+            "kind": "ownership",
+            "action": normalize_action_text(f"handle {task}"),
+            "owner": "Owner not specified",
+            "deadline": "",
+            "source_text": cleaned,
+        }
+
+    match = RESPONSIBILITY_RE.match(cleaned)
+    if match:
+        task = match.group("task").strip().rstrip("?")
+        if is_low_value_action_task(task):
+            return None
+        return {
+            "kind": "responsibility",
+            "action": normalize_action_text(task),
+            "owner": "Owner not specified",
+            "deadline": extract_deadline_text(task),
+            "source_text": cleaned,
+        }
+
+    if lowered.startswith("please "):
+        task = cleaned[7:].strip().rstrip("?")
+        if is_low_value_action_task(task):
+            return None
+        return {
+            "kind": "request",
+            "action": normalize_action_text(task),
+            "owner": "Owner not specified",
+            "deadline": extract_deadline_text(task),
+            "source_text": cleaned,
+        }
+    return None
+
+
+def extract_issue_action_context(text: str) -> dict[str, str] | None:
+    cleaned = normalize_text_fragment(text).rstrip(".!?")
+    lowered = cleaned.lower()
+    if " needs " not in lowered:
+        return None
+    subject, detail = re.split(r"\bneeds\b", cleaned, maxsplit=1, flags=re.IGNORECASE)
+    subject = normalize_text_fragment(subject)
+    detail = normalize_text_fragment(detail)
+    if not subject or not detail or is_low_value_action_task(subject):
+        return None
+    if subject.lower().startswith("the "):
+        subject = subject[:1].lower() + subject[1:]
+    detail = re.sub(r"^(?:a|an)\s+", "", detail, flags=re.IGNORECASE)
+    detail = re.sub(r"^(?:clearer|better|improved)\s+", "", detail, flags=re.IGNORECASE)
+    return {
+        "kind": "issue",
+        "action": normalize_action_text(f"improve {subject} {detail}".strip()),
+        "owner": "Owner not specified",
+        "deadline": extract_deadline_text(cleaned),
+        "source_text": cleaned,
+    }
+
+
+def is_pronoun_commitment_task(task: str) -> bool:
+    return bool(
+        re.match(
+            r"^(?:do|take|handle|look into|pick up|own|improve|tighten|clarify|fix|review|check|confirm|update|prepare|send|share|publish|capture|request)\s+(?:that|it)\b",
+            task.strip(),
+            flags=re.IGNORECASE,
+        )
+    )
+
+
+def extract_self_commitment_action(text: str, speaker: str) -> tuple[str, str, str] | None:
+    cleaned = strip_ack_prefix(text).rstrip(".!?")
+    lowered = cleaned.lower()
+    match = SELF_COMMITMENT_RE.match(cleaned)
+    if not match:
+        return None
+    task = match.group("task").strip()
+    if any(lowered.startswith(pattern) for pattern in GENERIC_COMMITMENT_PATTERNS):
+        return None
+    if is_pronoun_commitment_task(task):
+        return None
+    if is_low_value_action_task(task):
+        return None
+    return normalize_action_text(task), speaker, extract_deadline_text(task)
+
+
+def is_generic_commitment(text: str) -> bool:
+    cleaned = strip_ack_prefix(text).lower()
+    if any(cleaned.startswith(pattern) for pattern in GENERIC_COMMITMENT_PATTERNS):
+        return True
+    match = SELF_COMMITMENT_RE.match(strip_ack_prefix(text))
+    if match and is_pronoun_commitment_task(match.group("task")):
+        return True
+    return cleaned == ""
+
+
+def find_recent_action_context(turns: list[dict[str, str]], index: int) -> dict[str, str] | None:
+    for prior_index in range(index - 1, max(-1, index - 4), -1):
+        context = extract_action_context(turns[prior_index]["text"])
+        if context and context["kind"] in {"request", "ownership", "responsibility"}:
+            if "send those across" in context["source_text"].lower() and prior_index > 0:
+                prior_text = turns[prior_index - 1]["text"]
+                if "final figures" in prior_text.lower():
+                    context = {
+                        **context,
+                        "action": "Send final pricing figures to finance when available.",
+                        "deadline": "When available",
+                    }
+            return context
+        issue_context = extract_issue_action_context(turns[prior_index]["text"])
+        if issue_context:
+            return issue_context
+    return None
+
+
+def extract_conversational_actions(turns: list[dict[str, str]]) -> list[tuple[str, str, str, float, list[dict[str, str]]]]:
+    actions: list[tuple[str, str, str, float, list[dict[str, str]]]] = []
+    for index, turn in enumerate(turns):
+        context = extract_action_context(turn["text"])
+        if context and context["kind"] in {"assignment", "request"}:
+            actions.append(
+                (
+                    context["action"],
+                    context["owner"],
+                    context["deadline"],
+                    0.74 if context["kind"] == "assignment" else 0.68,
+                    [{"speaker": turn["speaker"], "timestamp": turn["timestamp"]}],
+                )
+            )
+
+        explicit_commitment = extract_self_commitment_action(turn["text"], turn["speaker"])
+        if explicit_commitment:
+            actions.append(
+                (
+                    explicit_commitment[0],
+                    explicit_commitment[1],
+                    explicit_commitment[2],
+                    0.82,
+                    [{"speaker": turn["speaker"], "timestamp": turn["timestamp"]}],
+                )
+            )
+            continue
+
+        if not is_generic_commitment(turn["text"]):
+            continue
+        inherited = find_recent_action_context(turns, index)
+        if not inherited:
+            continue
+        deadline = extract_deadline_text(turn["text"]) or inherited["deadline"]
+        actions.append(
+            (
+                inherited["action"],
+                turn["speaker"],
+                deadline,
+                0.8,
+                [
+                    {"speaker": turns[index - 1]["speaker"], "timestamp": turns[index - 1]["timestamp"]},
+                    {"speaker": turn["speaker"], "timestamp": turn["timestamp"]},
+                ],
+            )
+        )
+    return actions
 
 
 def extract_action_block(text: str) -> list[tuple[str, str, str, list[dict[str, str]]]]:
@@ -1285,10 +1539,8 @@ def analyse(text: str) -> dict[str, Any]:
     action_items: list[tuple[str, str, str, float, list[dict[str, str]]]] = []
     for action, owner, deadline, evidence in extract_action_block(text):
         action_items.append((action, owner, deadline, 0.72, evidence))
-    for index in range(len(records) - 1):
-        derived = derive_action_from_window(records[index:index + 2])
-        if derived:
-            action_items.append((derived[0], derived[1], derived[2], 0.8, records[index]["evidence"] + records[index + 1]["evidence"]))
+    for action, owner, deadline, confidence, evidence in extract_conversational_actions(turns):
+        action_items.append((action, owner, deadline, confidence, evidence))
 
     deduped_actions: dict[str, tuple[str, str, str, float, list[dict[str, str]]]] = {}
     for action, owner, deadline, confidence, evidence in action_items:

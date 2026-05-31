@@ -119,6 +119,70 @@ We haven't decided whether to replace the meeting room video systems.
         self.assertTrue(any("office move timeline" in point.lower() or "meeting room video systems" in point.lower() for point in result["discussionPoints"]))
         self.assertTrue(result["numberExperimentDebug"]["topicClusters"])
 
+    def test_request_acceptance_chain_creates_action(self):
+        transcript = """Floor plan follow-up
+
+19 August 2026
+
+Clare:
+Can you send the updated floor plan this afternoon?
+
+Nina:
+Yes, I'll do that.
+"""
+
+        result = analyse(transcript)
+
+        self.assertIn("Send the updated floor plan this afternoon.", result["meetingActionPoint"])
+
+    def test_ownership_question_inherits_action(self):
+        transcript = """Negotiation Ownership
+
+20 August 2026
+
+Rachel:
+Who is handling the negotiation?
+
+David:
+I can take that.
+"""
+
+        result = analyse(transcript)
+
+        self.assertIn("Handle the negotiation.", result["meetingActionPoint"])
+
+    def test_investigation_commitment_inherits_previous_actionable_context(self):
+        transcript = """Bug Investigation
+
+21 August 2026
+
+Liam:
+We should reproduce it on Safari before touching the payment token code.
+
+Priya:
+I'll look into that.
+"""
+
+        result = analyse(transcript)
+
+        self.assertIn("Reproduce it on Safari before touching the payment token code.", result["meetingActionPoint"])
+
+    def test_orphan_commitment_does_not_create_action(self):
+        transcript = """Loose follow-up
+
+22 August 2026
+
+Maya:
+I'll do that.
+
+Jon:
+Okay.
+"""
+
+        result = analyse(transcript)
+
+        self.assertEqual(result["meetingActionPoint"], [])
+
     def test_supplier_contract_renewal_outputs(self):
         transcript = """Customer support contract renewal
 

@@ -1,0 +1,8 @@
+{
+  "meetingTitle": "Floor Plan Follow-up",
+  "meetingDate": "19 August 2026",
+  "mustContainActions": [
+    "send the updated floor plan this afternoon"
+  ],
+  "expectedDecisionCount": 0
+}

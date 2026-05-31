@@ -1,0 +1,8 @@
+{
+  "meetingTitle": "Bug Investigation",
+  "meetingDate": "21 August 2026",
+  "mustContainActions": [
+    "reproduce it on safari"
+  ],
+  "expectedDecisionCount": 0
+}
