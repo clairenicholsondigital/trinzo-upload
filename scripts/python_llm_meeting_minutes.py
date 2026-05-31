@@ -65,7 +65,10 @@ GLOSSARY_CONFIG = REPO_DIR / "config" / "meeting_minutes_glossary.json"
 TURN_RE = re.compile(r"^(?P<speaker>.+?)\s+(?P<timestamp>\d+:\d{2})$")
 RAW_SPEAKER_RE = re.compile(r"^([A-Z][A-Za-z ]+?)\s+\d+:\d{2}", re.MULTILINE)
 COLON_SPEAKER_RE = re.compile(r"^(?P<speaker>[A-Z][A-Za-z ]+):\s*(?P<tail>.*)$")
-ACTION_BLOCK_HEADING_RE = re.compile(r"^actions(?:\s+before\s+(?:next\s+week|the\s+webinar))?:\s*$", re.IGNORECASE)
+ACTION_BLOCK_HEADING_RE = re.compile(
+    r"^(?:actions?|next steps|follow ups?|action items)(?:\s+before\s+(?:next\s+meeting|next\s+week|the\s+webinar))?:\s*$",
+    re.IGNORECASE,
+)
 INLINE_TURN_RE = re.compile(
     r"(?m)^(?P<speaker>[A-Z][A-Za-z ]+?)\s+\d+:\d{2}(?P<content>.*?)(?=^[A-Z][A-Za-z ]+?\s+\d+:\d{2}|\Z)",
     re.DOTALL,
@@ -124,6 +127,16 @@ NON_BUSINESS_PATTERNS = [
 ]
 OWNER_CONFIDENCE_MIN = 0.55
 CONVERSATIONAL_ACTION_EVIDENCE: dict[str, list[dict[str, str]]] = {}
+
+
+def is_action_heading_label(label: str) -> bool:
+    return bool(
+        re.match(
+            r"^(?:actions?|next steps|follow ups?|action items)(?:\s+before\s+(?:next\s+meeting|next\s+week|the\s+webinar))?$",
+            label.strip(),
+            flags=re.IGNORECASE,
+        )
+    )
 
 def load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
@@ -363,6 +376,54 @@ def generic_decision_text(text: str, speaker: str = "") -> str:
     return finalize_sentence(sentence_case(cleaned))
 
 
+def rewrite_general_decision(text: str, speaker: str = "") -> str:
+    cleaned = normalize_text_fragment(text, speaker)
+    lowered = cleaned.lower()
+    if not cleaned:
+        return ""
+    if lowered.startswith(("we haven't decided", "we have not decided", "still deciding", "not sure", "maybe")):
+        return ""
+    if lowered.startswith("let's "):
+        if lowered.startswith("let's not prioritise"):
+            return finalize_sentence(sentence_case(cleaned))
+        body = re.sub(r"^let'?s\s+", "", cleaned, flags=re.IGNORECASE).strip()
+        if not body or body.lower() in {"do that", "see what we can do", "move on", "start with", "run through"}:
+            return ""
+        return finalize_sentence(f"The team agreed to {body.lower()}")
+    if lowered.startswith("we'll "):
+        return finalize_sentence("The team will " + cleaned[5:].lower())
+    if lowered.startswith("we will "):
+        return finalize_sentence(sentence_case(cleaned))
+    if lowered.startswith("the team will "):
+        return finalize_sentence(sentence_case(cleaned))
+    if lowered.startswith(("the physical office move will ", "the office move will ", "the pilot launch will ")):
+        return finalize_sentence(sentence_case(cleaned))
+    if lowered.startswith(("renew with ", "pursue ", "move it to ", "include ", "replace ")):
+        return finalize_sentence(f"The team will {cleaned.lower()}")
+    if " rather than " in lowered or " instead of " in lowered:
+        if not lowered.startswith("the team will "):
+            return finalize_sentence(f"The team will {cleaned.lower()}")
+        return finalize_sentence(sentence_case(cleaned))
+    return finalize_sentence(sentence_case(cleaned))
+
+
+def decision_topic_from_text(text: str) -> str:
+    lowered = text.lower()
+    if any(term in lowered for term in ("one-year contract", "three-year commitment", "contract term", "contract length")):
+        return "contract_term"
+    if any(term in lowered for term in ("supplier renewal", "renew with", "existing supplier")):
+        return "supplier_direction"
+    if any(term in lowered for term in ("proposal", "pricing")):
+        return "commercial_direction"
+    if any(term in lowered for term in ("office move", "relocation", "move will take place", "pilot launch", "monday", "september")):
+        return "timing_direction"
+    if any(term in lowered for term in ("replace", "video", "system", "meeting room")):
+        return "replacement_scope"
+    if any(term in lowered for term in ("risk", "backup supplier", "contingency", "dependency", "blocker")):
+        return "risk_dependency"
+    return ""
+
+
 def decision_subject_group(text: str) -> str:
     lowered = text.lower()
     if any(
@@ -470,13 +531,29 @@ def build_decision_candidate(
         topic = f"priority_{sentence_index}"
         decision = generic_decision_text(sentence, speaker)
         specificity_bonus = 0.1
+    elif any(
+        term in lowered
+        for term in (
+            "will take place",
+            "will renew",
+            "will pursue",
+            "one-year contract",
+            "three-year commitment",
+            "existing supplier",
+            "following monday",
+            "include replacement",
+        )
+    ):
+        topic = decision_topic_from_text(sentence) or f"generic_{sentence_index}"
+        decision = rewrite_general_decision(sentence, speaker)
+        specificity_bonus = 0.16
     elif any(term in lowered for term in ("go with", "let's", "we agreed", "agreed", "decision is")):
-        topic = f"generic_{sentence_index}"
-        decision = generic_decision_text(sentence, speaker)
+        topic = decision_topic_from_text(sentence) or f"generic_{sentence_index}"
+        decision = rewrite_general_decision(sentence, speaker) or generic_decision_text(sentence, speaker)
         specificity_bonus = 0.1
     elif decision_signal_score(sentence) >= 0.2 and meeting_mode != "project_status_review":
-        topic = f"generic_{sentence_index}"
-        decision = generic_decision_text(sentence, speaker)
+        topic = decision_topic_from_text(sentence) or f"generic_{sentence_index}"
+        decision = rewrite_general_decision(sentence, speaker) or generic_decision_text(sentence, speaker)
         specificity_bonus = 0.05
 
     if not decision or not has_minimum_output_words(decision):
@@ -613,11 +690,15 @@ def is_valid_action_output(action: str) -> bool:
         "confirm ",
         "review ",
         "send ",
+        "speak ",
         "prepare ",
         "draft ",
         "follow ",
         "fix ",
+        "handle ",
+        "negotiate ",
         "remove ",
+        "coordinate ",
         "create ",
         "share ",
         "finalise ",
@@ -1044,6 +1125,14 @@ def topic_from_decision_detail(detail: dict[str, Any]) -> str:
         return "how the webinar should be positioned for the audience"
     if topic == "timeline_scope":
         return "how clearly the webinar explains its timeline and scope"
+    if topic in {"commercial_direction", "supplier_direction"} or any(term in decision for term in ("supplier", "pricing")):
+        return "the preferred commercial approach"
+    if topic == "contract_term" or any(term in decision for term in ("one-year contract", "three-year commitment")):
+        return "the preferred contract term"
+    if topic == "timing_direction" or any(term in decision for term in ("take place on", "following monday", "launch")):
+        return "the timing of the planned work"
+    if topic == "replacement_scope" or any(term in decision for term in ("replace", "replacement", "video system")):
+        return "whether replacement should be included in scope"
     return ""
 
 
@@ -1057,6 +1146,14 @@ def build_decision_discussion_point(detail: dict[str, Any]) -> str:
         return "The team discussed how the webinar should be positioned and agreed to keep it educational rather than sales-led."
     if topic == "timeline_scope":
         return "The team discussed how clearly the webinar explained its timeline and scope and agreed that this framing needed to be clearer."
+    if topic in {"commercial_direction", "supplier_direction"} or any(term in lowered for term in ("supplier", "pricing")):
+        return f"The team discussed the commercial options and agreed that {normalize_text_fragment(decision).lower()}."
+    if topic == "contract_term" or any(term in lowered for term in ("one-year contract", "three-year commitment")):
+        return f"The team discussed the contract term options and agreed that {normalize_text_fragment(decision).lower()}."
+    if topic == "timing_direction" or any(term in lowered for term in ("take place on", "following monday", "launch")):
+        return f"The team discussed the timing of the planned work and agreed that {normalize_text_fragment(decision).lower()}."
+    if topic == "replacement_scope" or any(term in lowered for term in ("replace", "replacement", "video system")):
+        return f"The team discussed whether replacement should be included in scope and agreed that {normalize_text_fragment(decision).lower()}."
     return finalize_sentence(sentence_case(normalize_text_fragment(decision)))
 
 
@@ -1254,6 +1351,8 @@ def build_evidence_only_summary(
         return ""
 
     sentences: list[str] = []
+    if not discussion_point_details and not decision_details and not structured_actions:
+        return "The transcript did not contain enough substantive meeting content to extract detailed discussion points, decisions, or actions."
     decision_sentence = build_summary_decision_sentence(decision_details, meeting_type)
     if decision_sentence:
         sentences.append(decision_sentence)
@@ -1376,6 +1475,68 @@ def is_issue_statement(text: str) -> bool:
     )
 
 
+def extract_generic_meeting_topic(text: str) -> str:
+    lowered = text.lower().strip().rstrip(".?")
+    patterns = [
+        r"whether to (?P<topic>.+)",
+        r"who is handling (?P<topic>.+)",
+        r"(?P<topic>.+?) will take place on \b.+$",
+        r"(?P<topic>.+?) will also be needed\b",
+        r"(?P<topic>.+?) is blocked\b",
+        r"(?P<topic>.+?) is delayed\b",
+        r"(?P<topic>.+?) isn't working\b",
+        r"(?P<topic>.+?) is not working\b",
+        r"(?P<topic>.+?) needs review\b",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, lowered)
+        if match:
+            topic = normalize_text_fragment(match.group("topic"))
+            if topic:
+                return topic.lower()
+    noun_phrases = [
+        "supplier renewal",
+        "revised proposal",
+        "legal review",
+        "final pricing figures",
+        "video conferencing systems",
+        "meeting room video systems",
+        "backup supplier",
+        "furniture delivery risk",
+        "pilot launch",
+        "office move",
+        "contract",
+    ]
+    for phrase in noun_phrases:
+        if phrase in lowered:
+            return phrase
+    return ""
+
+
+def build_generic_discussion_from_sentence(sentence: str) -> str:
+    cleaned = normalize_text_fragment(sentence)
+    lowered = cleaned.lower()
+    if not cleaned:
+        return ""
+    unresolved_match = re.search(r"whether to (?P<topic>.+)", lowered)
+    if unresolved_match and any(term in lowered for term in ("haven't decided", "have not decided", "still deciding")):
+        return finalize_sentence(f"The team discussed whether to {unresolved_match.group('topic').rstrip('.?')}")
+    if "backup supplier" in lowered and "risk" in lowered:
+        return "A delivery risk was discussed, with a backup supplier identified as the preferred contingency."
+    if any(term in lowered for term in ("blocked", "dependency", "depends on", "waiting for", "input from")):
+        topic = extract_generic_meeting_topic(cleaned) or "a key dependency"
+        return finalize_sentence(f"The team discussed {topic} and identified it as a dependency or blocker")
+    if any(term in lowered for term in ("cost", "scope", "quality", "timing", "ownership")):
+        topic = extract_generic_meeting_topic(cleaned) or cleaned.lower()
+        return finalize_sentence(f"The team reviewed {topic} as part of the meeting discussion")
+    if is_issue_statement(cleaned):
+        return finalize_sentence(sentence_case(cleaned))
+    if any(term in lowered for term in ("risk", "option", "compare", "rather than", "instead of")):
+        topic = extract_generic_meeting_topic(cleaned) or cleaned.lower()
+        return finalize_sentence(f"The team discussed {topic} and compared possible options")
+    return finalize_sentence(sentence_case(cleaned))
+
+
 def cluster_sentence_for_mode(sentence: str, meeting_mode: str) -> str | None:
     lowered = sentence.lower()
     if not is_business_relevant(sentence):
@@ -1405,6 +1566,16 @@ def cluster_sentence_for_mode(sentence: str, meeting_mode: str) -> str | None:
         if any(term in lowered for term in ("client", "proposal", "commercial", "sales")):
             return "Client priorities and follow-up"
     if meeting_mode == "general_meeting":
+        if any(term in lowered for term in ("whether to", "still deciding", "haven't decided", "have not decided")):
+            return "Option comparison and unresolved choices"
+        if any(term in lowered for term in ("supplier", "contract", "pricing", "proposal", "renewal")):
+            return "Commercial options and supplier decisions"
+        if any(term in lowered for term in ("office move", "relocation", "launch", "monday", "september", "date")):
+            return "Timeline and scheduling decisions"
+        if any(term in lowered for term in ("legal review", "signing", "finance", "negotiation", "owner", "handling")):
+            return "Ownership and follow-up coordination"
+        if any(term in lowered for term in ("risk", "contingency", "backup supplier", "dependency", "blocked", "blocker")):
+            return "Risks, blockers, and dependencies"
         if any(term in lowered for term in ("report export speed", "export time", "improved since", "dropped from")):
             return "Operational performance review"
         if any(term in lowered for term in ("notification", "failing", "bug", "confusion", "investigation", "look into", "blocker")):
@@ -1449,6 +1620,16 @@ def build_cluster_sentence(cluster: str, sentences: list[str]) -> str:
         return "The presentation structure and visuals were reviewed to improve clarity and delivery."
     if cluster == "Client priorities and follow-up":
         return "Client-facing discussion points and follow-up priorities were clarified during the meeting."
+    if cluster == "Option comparison and unresolved choices":
+        return build_generic_discussion_from_sentence(sentences[0] if sentences else "")
+    if cluster == "Commercial options and supplier decisions":
+        return build_generic_discussion_from_sentence(sentences[0] if sentences else "")
+    if cluster == "Timeline and scheduling decisions":
+        return build_generic_discussion_from_sentence(sentences[0] if sentences else "")
+    if cluster == "Ownership and follow-up coordination":
+        return build_generic_discussion_from_sentence(sentences[0] if sentences else "")
+    if cluster == "Risks, blockers, and dependencies":
+        return build_generic_discussion_from_sentence(" ".join(sentences[:2]))
     if cluster == "Operational performance review":
         return "The team reviewed report export performance and confirmed that the earlier speed concern was no longer seen as a blocker."
     if cluster == "Open issue investigation":
@@ -1566,6 +1747,8 @@ def extract_action_block(text: str) -> tuple[list[str], str]:
         colon_match = COLON_SPEAKER_RE.match(line)
         if colon_match:
             speaker_label = colon_match.group("speaker").strip().lower()
+            if is_action_heading_label(colon_match.group("speaker").strip()):
+                continue
             if speaker_label not in {"date", "location"}:
                 break
             continue
@@ -2063,6 +2246,29 @@ def extract_linked_conversational_actions(raw_turns: list[dict[str, str]], confi
 
             sentence_index += 1
 
+    unresolved_acceptances = [
+        item
+        for item in pending_requests
+        if item.get("accepted_by") and not item.get("rejected_by")
+    ]
+    for pending in unresolved_acceptances:
+        action_text = build_linked_action_text(pending["task"], None, pending.get("accepted_by", ""))
+        if not action_text:
+            continue
+        key = action_text.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        actions.append(action_text)
+        owners.append(pending.get("accepted_by", "") or "Owner not specified")
+        deadlines.append(pending.get("deadline", ""))
+        CONVERSATIONAL_ACTION_EVIDENCE[key] = dedupe_evidence_refs(
+            [
+                evidence_ref({"speaker": pending.get("requester", ""), "timestamp": pending.get("request_timestamp", "")}),
+                evidence_ref({"speaker": pending.get("accepted_by", ""), "timestamp": ""}),
+            ]
+        )
+
     return actions, owners, deadlines
 
 
@@ -2381,7 +2587,8 @@ def build_template_values(text: str, analysis: dict[str, Any], turns: list[Any],
 
 def parse_speaker_turns(text: str) -> list[Any]:
     analyzer = load_analyzer_module()
-    return analyzer.parse_turns(text)
+    turns = analyzer.parse_turns(text)
+    return [turn for turn in turns if not is_action_heading_label(getattr(turn, "speaker", ""))]
 
 
 def build_fallback_turns(text: str, analyzer: Any) -> list[Any]:
@@ -2399,7 +2606,7 @@ def build_fallback_turns(text: str, analyzer: Any) -> list[Any]:
 def analyse(text: str) -> dict[str, Any]:
     config = load_json(MINUTES_CONFIG)
     analyzer = load_analyzer_module()
-    turns = analyzer.parse_turns(text)
+    turns = parse_speaker_turns(text)
     if not turns:
         turns = build_fallback_turns(text, analyzer)
     speakers = sorted({turn.speaker for turn in turns})

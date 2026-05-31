@@ -3,7 +3,7 @@ import re
 DECISION_CUE_PATTERNS = [
     (
         re.compile(
-            r"\b(?:agreed|we agreed|let's|lets|we should|should|need to|needs to|must|go with|keep it|make sure|decided|decision is)\b",
+            r"\b(?:agreed|we agreed|let's|lets|we should|should|need to|needs to|must|go with|keep it|make sure|decided|decision is|will take place|will renew|will pursue|agreed to|we'll|we will)\b",
             re.IGNORECASE,
         ),
         0.2,
@@ -34,6 +34,10 @@ DECISION_ACCEPTANCE_PATTERNS = [
         r"\b(?:main priority|priority for next week|priority next week|not really a blocker anymore|no longer a blocker|blocker anymore)\b",
         re.IGNORECASE,
     ),
+    re.compile(
+        r"\b(?:will take place on|will renew with|will pursue|agreed to move|agreed to include|preferred contingency|one-year contract|three-year commitment)\b",
+        re.IGNORECASE,
+    ),
 ]
 
 NON_DECISION_PATTERNS = [
@@ -48,6 +52,9 @@ NON_DECISION_PATTERNS = [
 
     # Meeting admin
     re.compile(r"\blet's capture actions\b", re.IGNORECASE),
+    re.compile(r"^\s*let'?s do that\.?\s*$", re.IGNORECASE),
+    re.compile(r"^\s*go on\.?\s*$", re.IGNORECASE),
+    re.compile(r"^\s*anything else\??\s*$", re.IGNORECASE),
 
     # Discussion rather than decisions
     re.compile(
@@ -110,6 +117,10 @@ NON_DECISION_PATTERNS = [
     ),
     re.compile(
         r"\byou know\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(?:we haven't decided|we have not decided|still deciding|not sure|maybe|needs more discussion|need more discussion|we'll come back to it|we will come back to it|that needs more discussion)\b",
         re.IGNORECASE,
     ),
 

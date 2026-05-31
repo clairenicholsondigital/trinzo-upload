@@ -48,6 +48,8 @@ def extract_problem_context(sentence: str) -> dict[str, str] | None:
         (r"^(?:the\s+)?(?P<subject>.+?)\s+could\s+be\s+clearer\b", "Clarify"),
         (r"^(?:the\s+)?(?P<subject>.+?)\s+needs\s+tightening\s+up\b", "Refine"),
         (r"^(?:the\s+)?(?P<subject>.+?)\s+needs\s+improvement\b", "Improve"),
+        (r"^(?:the\s+)?(?P<subject>.+?)\s+will\s+also\s+be\s+needed\b", "Coordinate"),
+        (r"^(?:the\s+)?(?P<subject>.+?)\s+is\s+needed\b", "Coordinate"),
     ]
     for pattern, default_action_verb in patterns:
         match = re.match(pattern, stripped, flags=re.IGNORECASE)
@@ -85,12 +87,16 @@ def extract_request_task(sentence: str, speaker: str = "") -> str | None:
         r"^could\s+(?:somebody|someone|anybody|anyone)\s+(?P<task>.+?)\??$",
         r"^we\s+need\s+(?P<task>.+?)\.?$",
         r"^someone\s+needs\s+to\s+(?P<task>.+?)\.?$",
+        r"^who\s+is\s+handling\s+(?P<task>.+?)\??$",
     ]
     for pattern in patterns:
         match = re.match(pattern, stripped, flags=re.IGNORECASE)
         if not match:
             continue
-        task = normalize_requested_task(match.group("task"), speaker)
+        raw_task = match.group("task")
+        if pattern.startswith(r"^who\s+is\s+handling"):
+            raw_task = f"handle {raw_task}"
+        task = normalize_requested_task(raw_task, speaker)
         if task:
             return task
     return None
@@ -126,7 +132,7 @@ def extract_response_commitment(
         return {"inherits_task": True, "collaborator": collaborator, "request_count": 2}
     if re.fullmatch(r"(i'll|i will|i can)[.!]?", lowered):
         return {"inherits_task": True, "collaborator": collaborator, "request_count": 1}
-    if re.search(r"\b(do that|do it|handle that|handle it|take that|take it|look into that|look into it)\b", lowered):
+    if re.search(r"\b(do that|do it|handle that|handle it|take that|take it|look into that|look into it|send those across|send that across|send it across)\b", lowered):
         return {"inherits_task": True, "collaborator": collaborator, "request_count": 1}
     if re.search(r"\bwork with [A-Z][a-z]+ on (?:that|it)\b", stripped, flags=re.IGNORECASE):
         return {"inherits_task": True, "collaborator": collaborator, "request_count": 1}

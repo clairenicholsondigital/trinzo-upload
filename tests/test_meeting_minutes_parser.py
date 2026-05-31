@@ -277,6 +277,32 @@ Prepare the follow-up email.
         )
         self.assertEqual(result["meetingActionPointDeadline"][:2], ["", ""])
 
+    def test_next_steps_and_follow_ups_headings_are_not_treated_as_speakers(self):
+        transcript = """Supplier meeting
+
+6 June 2026
+
+Rachel:
+We need to close the renewal.
+
+Next steps:
+Review the revised contract.
+
+Follow ups:
+Send final pricing figures to finance.
+
+David:
+Fine.
+"""
+
+        turns = parse_speaker_turns(transcript)
+
+        self.assertEqual([turn.speaker for turn in turns], ["Rachel", "David"])
+
+        result = analyse(transcript)
+        self.assertIn("Review the revised contract.", result["meetingActionPoint"])
+        self.assertIn("Send final pricing figures to finance.", result["meetingActionPoint"])
+
     def test_action_only_text_does_not_create_duplicate_governance_discussion(self):
         transcript = """Daily AI Check In
 
@@ -556,6 +582,105 @@ I'll do it.
         self.assertEqual(result["meetingType"], "general_meeting")
         self.assertEqual(result["meetingActionPoint"], [])
         self.assertEqual(result["meetingActionPointOwner"], [])
+
+    def test_generic_supplier_meeting_extracts_decisions_actions_and_discussion(self):
+        transcript = """Supplier renewal meeting
+
+6 June 2026
+
+Rachel:
+The team will renew with the existing supplier.
+
+David:
+Agreed.
+
+Rachel:
+The team will pursue a one-year contract rather than a three-year commitment.
+
+Emma:
+Sounds good.
+
+Rachel:
+Who is handling the supplier renewal negotiation?
+
+David:
+I can take that.
+
+Emma:
+Legal review will also be needed before signing.
+
+David:
+I'll speak with legal once the revised proposal arrives.
+
+Emma:
+Can you send final pricing figures to finance when available?
+
+David:
+Yes.
+"""
+
+        result = analyse(transcript)
+
+        self.assertIn("The team will renew with the existing supplier.", result["decisions"])
+        self.assertIn(
+            "The team will pursue a one-year contract rather than a three-year commitment.",
+            result["decisions"],
+        )
+        self.assertTrue(any("commercial options" in point.lower() or "supplier" in point.lower() for point in result["discussionPoints"]))
+        self.assertIn("Handle the supplier renewal negotiation.", result["meetingActionPoint"])
+        self.assertIn("Speak with legal once the revised proposal arrives.", result["meetingActionPoint"])
+        self.assertIn("Send final pricing figures to finance when available.", result["meetingActionPoint"])
+        handle_index = result["meetingActionPoint"].index("Handle the supplier renewal negotiation.")
+        self.assertEqual(result["meetingActionPointOwner"][handle_index], "David")
+
+    def test_generic_scheduling_decision_creates_substantive_discussion_point(self):
+        transcript = """Office relocation planning
+
+6 June 2026
+
+Emma:
+The physical office move will take place on 10 September.
+
+David:
+Agreed.
+
+Emma:
+We haven't decided whether to replace the meeting room video systems.
+
+David:
+That needs more discussion.
+"""
+
+        result = analyse(transcript)
+
+        self.assertIn("The physical office move will take place on 10 September.", result["decisions"])
+        self.assertTrue(any("timing" in point.lower() or "10 september" in point.lower() for point in result["discussionPoints"]))
+        self.assertTrue(any("whether to replace the meeting room video systems" in point.lower() for point in result["discussionPoints"]))
+
+    def test_sparse_generic_meeting_uses_clean_fallback_without_fake_content(self):
+        transcript = """Quick catch-up
+
+6 June 2026
+
+Ciara Griffin:
+Go on.
+
+Jack Cunningham:
+Not sure.
+
+Ciara Griffin:
+Anything else?
+
+Jack Cunningham:
+We'll come back to it.
+"""
+
+        result = analyse(transcript)
+
+        self.assertEqual(result["discussionPoints"], [])
+        self.assertEqual(result["meetingActionPoint"], [])
+        self.assertEqual(result["decisions"], [])
+        self.assertIn("did not contain enough substantive meeting content", result["executiveSummary"].lower())
 
     def test_action_quality_gate_rejects_transcript_fragments_and_jokes(self):
         transcript = """Creative review
