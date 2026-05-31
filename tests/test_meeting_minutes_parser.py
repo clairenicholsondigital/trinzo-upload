@@ -652,9 +652,10 @@ I'll do that.
         self.assertEqual(result["internalEvidence"]["decisions"][0]["_evidence"][0]["speaker"], "Conor Flynn")
         self.assertGreaterEqual(result["decisionDetails"][0]["decisionConfidence"], 0.6)
         self.assertEqual(result["decisionDetails"][0]["decisionType"], "accepted_direction")
-        self.assertGreaterEqual(len([s for s in result["executiveSummary"].split(". ") if s.strip()]), 4)
-        self.assertIn("workshop plan", result["executiveSummary"].lower())
-        self.assertIn("key decisions included", result["executiveSummary"].lower())
+        self.assertGreaterEqual(len([s for s in result["executiveSummary"].split(". ") if s.strip()]), 3)
+        self.assertIn("timeline and scope", result["executiveSummary"].lower())
+        self.assertIn("actions focused on", result["executiveSummary"].lower())
+        self.assertIn("updating presentation materials", result["executiveSummary"].lower())
         self.assertTrue("executiveSummary" in result)
         json.dumps(result)
 
@@ -698,6 +699,13 @@ Conor Flynn   1:00Yeah, that's better.
         )
         self.assertEqual(len(result["decisionDetails"]), 1)
         self.assertEqual(result["decisionDetails"][0]["topic"], "audience_framing")
+        self.assertEqual(
+            result["discussionPoints"],
+            [
+                "The team discussed whether the webinar should be validation-specific or broadly applicable and agreed to keep the messaging broad."
+            ],
+        )
+        self.assertIn("No additional actions were identified.", result["executiveSummary"])
 
     def test_vague_agenda_and_process_cues_are_not_extracted_as_decisions(self):
         transcript = """Validation webinar review
@@ -866,6 +874,9 @@ Run one more practice round.
                 "The webinar should keep the validation example broad rather than too validation-specific.",
             ],
         )
+        self.assertIn("refining webinar messaging and delivery", result["executiveSummary"].lower())
+        self.assertIn("updating attendee information", result["executiveSummary"].lower())
+        self.assertIn("completing a final rehearsal", result["executiveSummary"].lower())
 
     def test_project_minutes_are_derived_from_milestone_output(self):
         project_transcript = PROJECT_FIXTURE.read_text(encoding="utf-8")
@@ -920,6 +931,9 @@ Run one more practice round.
             "Use case intake funnel, Vendor strategy rollout, and Innovation grant feedback remain active workstreams requiring further attention.",
             result["executiveSummary"],
         )
+        self.assertIn("Actions focused on", result["executiveSummary"])
+        self.assertIn("confirming sales dependencies for the ai pipeline", result["executiveSummary"].lower())
+        self.assertIn("validating intake workflow routing", result["executiveSummary"].lower())
         self.assertNotIn("Three AI webinars delivered. Not complete.", " ".join(result["discussionPoints"]))
         self.assertEqual(result["meetingSections"], [])
         self.assertEqual(result["decisions"], [])

@@ -1035,7 +1035,123 @@ def build_health_summary(segments: list[dict[str, Any]]) -> dict[str, int]:
     return summary
 
 
-def build_executive_summary(meeting_theme: str, meeting_type: str, segments: list[dict[str, Any]], config: dict[str, Any]) -> str:
+def topic_from_decision_detail(detail: dict[str, Any]) -> str:
+    topic = detail.get("topic", "")
+    decision = detail.get("decision", "").lower()
+    if topic == "audience_framing" or ("broad" in decision and "validation" in decision):
+        return "whether the webinar should be validation-specific or broadly applicable"
+    if topic == "educational_tone" or "sales-led" in decision:
+        return "how the webinar should be positioned for the audience"
+    if topic == "timeline_scope":
+        return "how clearly the webinar explains its timeline and scope"
+    return ""
+
+
+def build_decision_discussion_point(detail: dict[str, Any]) -> str:
+    decision = detail.get("decision", "")
+    topic = detail.get("topic", "")
+    lowered = decision.lower()
+    if topic == "audience_framing" or ("broad" in lowered and "validation" in lowered):
+        return "The team discussed whether the webinar should be validation-specific or broadly applicable and agreed to keep the messaging broad."
+    if topic == "educational_tone" or "sales-led" in lowered:
+        return "The team discussed how the webinar should be positioned and agreed to keep it educational rather than sales-led."
+    if topic == "timeline_scope":
+        return "The team discussed how clearly the webinar explained its timeline and scope and agreed that this framing needed to be clearer."
+    return finalize_sentence(sentence_case(normalize_text_fragment(decision)))
+
+
+def dedupe_discussion_details(details: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen = set()
+    deduped = []
+    for item in details:
+        key = action_text_key(item.get("discussionPoint", ""))
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item)
+    return deduped
+
+
+def gerund_for_action(action_text: str) -> str:
+    lowered = action_text.lower().strip().rstrip(".")
+    keyword_phrases = [
+        (("opening wording", "opening explanation", "timeline slide", "demo intro"), "refining webinar messaging and delivery"),
+        (("slide deck", "slide", "deck", "visual", "imagery"), "updating presentation materials"),
+        (("registration list", "attendee list", "client attendee list", "attendee information"), "updating attendee information"),
+        (("practice round", "rehearsal"), "completing a final rehearsal"),
+        (("stage gate", "template"), "reviewing stage gate templates"),
+        (("pipeline", "sales"), "confirming sales dependencies for the AI pipeline"),
+        (("vendor strategy",), "drafting the vendor strategy document"),
+        (("innovation grant", "grant feedback"), "following up innovation grant feedback"),
+        (("routing", "intake workflow"), "validating intake workflow routing"),
+        (("api documentation", "documentation"), "completing API documentation"),
+    ]
+    for keywords, phrase in keyword_phrases:
+        if any(keyword in lowered for keyword in keywords):
+            return phrase
+
+    cleaned = normalize_text_fragment(action_text).rstrip(".")
+    match = re.match(r"^(Review|Confirm|Draft|Follow up|Validate|Update|Check|Clarify|Improve|Refine|Tighten|Run|Prepare|Send|Share|Create|Fix|Remove|Add)\s+(.+)$", cleaned, flags=re.IGNORECASE)
+    if not match:
+        return cleaned.lower()
+    verb = match.group(1).lower()
+    rest = match.group(2)
+    gerund_map = {
+        "review": "reviewing",
+        "confirm": "confirming",
+        "draft": "drafting",
+        "follow up": "following up",
+        "validate": "validating",
+        "update": "updating",
+        "check": "checking",
+        "clarify": "clarifying",
+        "improve": "improving",
+        "refine": "refining",
+        "tighten": "tightening",
+        "run": "running",
+        "prepare": "preparing",
+        "send": "sending",
+        "share": "sharing",
+        "create": "creating",
+        "fix": "fixing",
+        "remove": "removing",
+        "add": "adding",
+    }
+    return f"{gerund_map.get(verb, verb + 'ing')} {rest.lower()}"
+
+
+def summarize_action_focus(structured_actions: list[dict[str, Any]]) -> str:
+    if not structured_actions:
+        return ""
+    phrases = dedupe([gerund_for_action(item["meetingActionPoint"]) for item in structured_actions])
+    if not phrases:
+        return ""
+    return finalize_sentence(f"Actions focused on {format_label_list(phrases[:5])}")
+
+
+def build_summary_decision_sentence(decision_details: list[dict[str, Any]], meeting_type: str) -> str:
+    if not decision_details:
+        return ""
+    primary = decision_details[0]
+    topic = topic_from_decision_detail(primary)
+    if meeting_type == "webinar_rehearsal" and topic:
+        if len(decision_details) == 1:
+            return f"The team reviewed {topic} and agreed that {normalize_text_fragment(primary['decision']).lower()}."
+        secondary = normalize_text_fragment(decision_details[1]["decision"]).lower()
+        return f"The team reviewed {topic} and agreed that {normalize_text_fragment(primary['decision']).lower()}. They also agreed that {secondary}."
+    if len(decision_details) == 1:
+        return finalize_sentence(f"The team agreed that {normalize_text_fragment(primary['decision']).lower()}")
+    decisions_text = format_label_list([normalize_text_fragment(item["decision"]).lower() for item in decision_details[:2]])
+    return finalize_sentence(f"Key decisions included {decisions_text}")
+
+
+def build_executive_summary(
+    meeting_theme: str,
+    meeting_type: str,
+    segments: list[dict[str, Any]],
+    config: dict[str, Any],
+    structured_actions: list[dict[str, Any]],
+) -> str:
     if meeting_type != "project_status_review":
         if meeting_type == "webinar_rehearsal":
             return " ".join(
@@ -1113,6 +1229,10 @@ def build_executive_summary(meeting_theme: str, meeting_type: str, segments: lis
             )
         paragraphs.append(" ".join(issue_parts))
 
+    action_summary = summarize_action_focus(structured_actions)
+    if action_summary:
+        paragraphs.append(action_summary)
+
     if governance:
         blue_items = [milestone_label(segment, config) for segment in segments if segment.get("agreed_rag_status") == "blue"]
         if blue_items:
@@ -1120,7 +1240,7 @@ def build_executive_summary(meeting_theme: str, meeting_type: str, segments: lis
         else:
             paragraphs.append(f"Governance items reviewed included {format_label_list(governance[:3])}.")
 
-    return "\n\n".join(paragraphs[:3]).strip()
+    return "\n\n".join(paragraphs).strip()
 
 
 def build_evidence_only_summary(
@@ -1133,28 +1253,31 @@ def build_evidence_only_summary(
     if meeting_type == "project_status_review":
         return ""
 
-    ranked = ranked_turns(cleaned_turns, meeting_type)
     sentences: list[str] = []
-
-    if meeting_type == "webinar_rehearsal":
-        purpose = "The meeting focused on rehearsing the webinar delivery and checking presentation readiness."
-        sentences.append(purpose)
+    decision_sentence = build_summary_decision_sentence(decision_details, meeting_type)
+    if decision_sentence:
+        sentences.append(decision_sentence)
+    elif discussion_point_details:
+        sentences.append(discussion_point_details[0]["discussionPoint"])
+    elif meeting_type == "webinar_rehearsal":
+        sentences.append("The team reviewed webinar delivery, presentation clarity, and final preparation needs.")
     elif meeting_type == "general_meeting":
-        sentences.append("The meeting focused on reviewing the main operational issues, follow-up priorities, and agreed next actions.")
-    elif ranked:
-        lead = normalize_text_fragment((ranked[0]["sentences"] or [""])[0])
-        if lead and is_valid_discussion_point_candidate(lead):
-            sentences.append(finalize_sentence(sentence_case(lead)))
+        sentences.append("The team reviewed the main issues, follow-up priorities, and next steps arising from the discussion.")
 
     if discussion_point_details:
-        sentences.append(discussion_point_details[0]["discussionPoint"])
-    if len(discussion_point_details) > 1:
-        sentences.append(discussion_point_details[1]["discussionPoint"])
-    if decision_details:
-        sentences.append(f"Key decisions included {normalize_text_fragment(decision_details[0]['decision']).lower()}.")
-    if structured_actions:
-        actions_text = format_label_list([item["meetingActionPoint"].rstrip(".") for item in structured_actions[:2]])
-        sentences.append(finalize_sentence(f"Actions agreed included {actions_text.lower()}"))
+        for item in discussion_point_details[:3]:
+            point = item["discussionPoint"]
+            normalized_point = action_text_key(point)
+            if not any(normalized_point == action_text_key(existing) for existing in sentences):
+                sentences.append(point)
+            if len(sentences) >= 3:
+                break
+
+    action_summary = summarize_action_focus(structured_actions)
+    if action_summary:
+        sentences.append(action_summary)
+    elif decision_details:
+        sentences.append("No additional actions were identified.")
 
     unique: list[str] = []
     seen = set()
@@ -1165,7 +1288,7 @@ def build_evidence_only_summary(
             continue
         seen.add(key)
         unique.append(cleaned)
-    return " ".join(unique[:5]).strip()
+    return " ".join(unique[:4]).strip()
 
 
 def extract_generic_discussion_points(text: str, raw_turns: list[dict[str, str]], config: dict[str, Any]) -> list[str]:
@@ -1338,7 +1461,12 @@ def build_cluster_sentence(cluster: str, sentences: list[str]) -> str:
     return finalize_sentence(sentence_case(normalize_text_fragment(fallback)))
 
 
-def extract_general_discussion_details(cleaned_turns: list[dict[str, Any]], meeting_mode: str) -> list[dict[str, Any]]:
+def extract_general_discussion_details(
+    cleaned_turns: list[dict[str, Any]],
+    meeting_mode: str,
+    decision_details: list[dict[str, Any]] | None = None,
+    structured_actions: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
     clusters: dict[str, list[str]] = {}
     cluster_refs: dict[str, list[dict[str, str]]] = {}
     for turn in cleaned_turns:
@@ -1362,7 +1490,19 @@ def extract_general_discussion_details(cleaned_turns: list[dict[str, Any]], meet
                 "evidenceScore": round(min(1.0, 0.45 + 0.15 * len(evidence)), 2),
             }
         )
-    return details[:8]
+    if len(details) < 2:
+        for detail in decision_details or []:
+            decision_point = build_decision_discussion_point(detail)
+            if any(action_text_key(item["discussionPoint"]) == action_text_key(decision_point) for item in details):
+                continue
+            details.append(
+                {
+                    "discussionPoint": decision_point,
+                    "_evidence": detail.get("_evidence", []),
+                    "evidenceScore": detail.get("decisionConfidence", 0.6),
+                }
+            )
+    return dedupe_discussion_details(details)[:8]
 
 
 def extract_general_discussion_points(cleaned_turns: list[dict[str, Any]], meeting_mode: str) -> list[str]:
@@ -1388,7 +1528,8 @@ def build_meeting_sections(cleaned_turns: list[dict[str, Any]], meeting_mode: st
             lowered = action.lower()
             if any(keyword in lowered for keyword in rule["keywords"]):
                 matching_actions.append(action)
-        if matching_sentences or matching_actions:
+        support_count = len(dedupe_evidence_refs(matching_refs)) + len(dedupe(matching_actions))
+        if support_count >= 2 and (matching_sentences or matching_actions):
             sections.append(
                 {
                     "section": rule["section"],
@@ -2171,10 +2312,17 @@ def build_template_values(text: str, analysis: dict[str, Any], turns: list[Any],
     else:
         structured_actions = []
 
+    decisions, decision_details = build_decisions(cleaned_turns, meeting_type, structured_actions)
+
     discussion_point_details: list[dict[str, Any]] = []
     discussion_points = build_milestone_discussion_points(segments, config) if meeting_type == "project_status_review" else []
     if not discussion_points and meeting_type != "project_status_review":
-        discussion_point_details = extract_general_discussion_details(cleaned_turns, meeting_type)
+        discussion_point_details = extract_general_discussion_details(
+            cleaned_turns,
+            meeting_type,
+            decision_details,
+            structured_actions,
+        )
         discussion_points = [item["discussionPoint"] for item in discussion_point_details]
     if not discussion_points and meeting_type != "project_status_review":
         discussion_points = extract_generic_discussion_points(text, source_turns, config)
@@ -2185,7 +2333,6 @@ def build_template_values(text: str, analysis: dict[str, Any], turns: list[Any],
 
     meeting_sections = build_meeting_sections(cleaned_turns, meeting_type, structured_actions)
     health_summary = build_health_summary(segments) if meeting_type == "project_status_review" else {}
-    decisions, decision_details = build_decisions(cleaned_turns, meeting_type, structured_actions)
     executive_summary = build_evidence_only_summary(
         cleaned_turns,
         meeting_type,
@@ -2194,7 +2341,7 @@ def build_template_values(text: str, analysis: dict[str, Any], turns: list[Any],
         structured_actions,
     )
     if not executive_summary:
-        executive_summary = build_executive_summary(meeting_theme, meeting_type, segments, config)
+        executive_summary = build_executive_summary(meeting_theme, meeting_type, segments, config, structured_actions)
     internal_evidence = build_internal_evidence(
         discussion_point_details,
         structured_actions,
