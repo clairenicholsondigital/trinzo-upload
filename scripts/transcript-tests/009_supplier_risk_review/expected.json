@@ -1,0 +1,13 @@
+{
+  "meetingTitle": "Supplier Risk Review",
+  "meetingDate": "11 August 2026",
+  "mustContainDiscussionPoints": [
+    "component traceability",
+    "buffer stock"
+  ],
+  "mustContainDecisions": [
+    "stay with the current supplier for Q4"
+  ],
+  "expectedDecisionCount": 1,
+  "expectedActionCount": 0
+}

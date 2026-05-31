@@ -1,0 +1,13 @@
+{
+  "meetingTitle": "Hiring Debrief",
+  "meetingDate": "8 August 2026",
+  "mustContainDiscussionPoints": [
+    "payment compliance",
+    "make an offer to Priya"
+  ],
+  "mustContainDecisions": [
+    "make an offer to Priya"
+  ],
+  "expectedDecisionCount": 1,
+  "expectedActionCount": 0
+}

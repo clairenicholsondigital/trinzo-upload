@@ -1,0 +1,15 @@
+{
+  "meetingTitle": "Finance Budget Review",
+  "meetingDate": "14 August 2026",
+  "mustContainDiscussionPoints": [
+    "support costs are higher than forecast",
+    "defer the analytics hire until Q4"
+  ],
+  "mustContainActions": [
+    "send the revised forecast on Monday"
+  ],
+  "mustContainDecisions": [
+    "defer the analytics hire until Q4"
+  ],
+  "expectedDecisionCount": 1
+}

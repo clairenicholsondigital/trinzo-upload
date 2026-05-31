@@ -1,0 +1,14 @@
+{
+  "meetingTitle": "Bug Triage",
+  "meetingDate": "20 July 2026",
+  "mustContainDiscussionPoints": [
+    "blocking card payments",
+    "hotfix branch"
+  ],
+  "mustContainActions": [
+    "reproduce it on Safari",
+    "capture logs by 3pm",
+    "prepare a hotfix branch"
+  ],
+  "expectedDecisionCount": 0
+}

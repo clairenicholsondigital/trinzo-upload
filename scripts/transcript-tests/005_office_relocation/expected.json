@@ -1,0 +1,13 @@
+{
+  "meetingTitle": "Office Relocation Planning",
+  "meetingDate": "25 July 2026",
+  "mustContainDiscussionPoints": [
+    "too small for the support team",
+    "Bristol Quay option"
+  ],
+  "mustContainActions": [
+    "request the final lease terms by Friday",
+    "send the updated floor plan this afternoon"
+  ],
+  "expectedDecisionCount": 0
+}

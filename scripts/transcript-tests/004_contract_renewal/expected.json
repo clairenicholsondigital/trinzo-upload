@@ -1,0 +1,16 @@
+{
+  "meetingTitle": "Contract Renewal Review",
+  "meetingDate": "15 July 2026",
+  "mustContainDiscussionPoints": [
+    "three-year term would reduce the increase",
+    "migration effort and retraining"
+  ],
+  "mustContainDecisions": [
+    "renew with the existing supplier"
+  ],
+  "expectedDecisionCount": 1,
+  "expectedActionCount": 0,
+  "mustContainExecutiveSummary": [
+    "renew with the existing supplier"
+  ]
+}

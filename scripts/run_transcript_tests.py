@@ -14,6 +14,9 @@ def contains_any(items, expected):
     joined = "\n".join(items).lower()
     return expected.lower() in joined
 
+def equals_text(value, expected):
+    return str(value).strip().lower() == str(expected).strip().lower()
+
 failures = []
 
 for folder in sorted(TEST_DIR.iterdir()):
@@ -40,6 +43,23 @@ for folder in sorted(TEST_DIR.iterdir()):
     actual = json.loads(result.stdout)
     exp = load_json(expected)
 
+    if "meetingTitle" in exp and not equals_text(actual.get("meetingTitle", ""), exp["meetingTitle"]):
+        failures.append(f"{folder.name}: expected meetingTitle '{exp['meetingTitle']}', got '{actual.get('meetingTitle', '')}'")
+
+    if "meetingDate" in exp and not equals_text(actual.get("meetingDate", ""), exp["meetingDate"]):
+        failures.append(f"{folder.name}: expected meetingDate '{exp['meetingDate']}', got '{actual.get('meetingDate', '')}'")
+
+    if "participants" in exp:
+        expected_participants = exp["participants"]
+        if "client" in expected_participants:
+            actual_client = actual.get("participants.client", [])
+            if actual_client != expected_participants["client"]:
+                failures.append(f"{folder.name}: expected participants.client {expected_participants['client']}, got {actual_client}")
+        if "trinzo" in expected_participants:
+            actual_trinzo = actual.get("participants.trinzo", [])
+            if actual_trinzo != expected_participants["trinzo"]:
+                failures.append(f"{folder.name}: expected participants.trinzo {expected_participants['trinzo']}, got {actual_trinzo}")
+
     if "expectedActionCount" in exp and len(actual.get("actions", [])) != exp["expectedActionCount"]:
         failures.append(f"{folder.name}: expected {exp['expectedActionCount']} actions, got {len(actual.get('actions', []))}")
 
@@ -57,6 +77,18 @@ for folder in sorted(TEST_DIR.iterdir()):
     for text in exp.get("mustContainDiscussionPoints", []):
         if not contains_any(actual.get("discussionPoints", []), text):
             failures.append(f"{folder.name}: missing discussion point: {text}")
+
+    for text in exp.get("mustNotContainDiscussionPoints", []):
+        if contains_any(actual.get("discussionPoints", []), text):
+            failures.append(f"{folder.name}: forbidden discussion point present: {text}")
+
+    for text in exp.get("mustContainActions", []):
+        if not contains_any(actual.get("meetingActionPoint", []), text):
+            failures.append(f"{folder.name}: missing action: {text}")
+
+    for text in exp.get("mustContainExecutiveSummary", []):
+        if text.lower() not in actual.get("executiveSummary", "").lower():
+            failures.append(f"{folder.name}: executive summary missing: {text}")
 
 if failures:
     print("❌ Transcript tests failed")

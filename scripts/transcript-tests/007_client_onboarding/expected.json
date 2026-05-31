@@ -1,0 +1,13 @@
+{
+  "meetingTitle": "Client Onboarding Review",
+  "meetingDate": "4 August 2026",
+  "mustContainDiscussionPoints": [
+    "finance first",
+    "first rollout"
+  ],
+  "mustContainDecisions": [
+    "begin onboarding with finance first"
+  ],
+  "expectedDecisionCount": 1,
+  "expectedActionCount": 0
+}

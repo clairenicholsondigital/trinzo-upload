@@ -1,0 +1,16 @@
+Client Onboarding Review
+
+Date: 4 August 2026
+Location: Online
+
+Sara 0:01
+The finance team is ready to start next Monday, but the warehouse team still has missing data fields.
+
+Eoin 0:10
+We will begin onboarding with finance first and delay warehouse until the data mapping is complete.
+
+Sara 0:20
+That keeps the scope manageable for the first rollout.
+
+Eoin 0:26
+No further actions for this meeting.

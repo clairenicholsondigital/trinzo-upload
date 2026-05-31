@@ -1,0 +1,22 @@
+Bug Triage
+
+Date: 20 July 2026
+Location: Online
+
+Ava 0:01
+The checkout bug is blocking card payments for some mobile users.
+
+Liam 0:08
+Priya to reproduce it on Safari and capture logs by 3pm.
+
+Priya 0:15
+I can do that.
+
+Ava 0:19
+Marco to prepare a hotfix branch if the logs confirm the token issue.
+
+Marco 0:27
+Okay.
+
+Liam 0:31
+No release decision until we see the logs.

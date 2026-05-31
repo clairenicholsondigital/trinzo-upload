@@ -1,0 +1,10 @@
+{
+  "meetingTitle": "Low Substance Catchup",
+  "meetingDate": "22 July 2026",
+  "expectedActionCount": 0,
+  "expectedDecisionCount": 0,
+  "mustNotContainDiscussionPoints": [
+    "hear me",
+    "speak later"
+  ]
+}
