@@ -1,0 +1,694 @@
+Final Practice Call Before Webinar-20260429_090708-Meeting Transcript
+29 April 2026, 08:07am
+31m 30s
+
+Ciara Griffin started transcription
+
+Jack Cunningham   0:03
+And then you find the right areas within those by working through the workshop. Because if you solve a problem that people actually have, they're going to use it. And if you use them in the process of building the solution, they're going to use it. As opposed to, you know, we can make something to automate whatever, and it will work, but it might not really solve a problem that the organization has.
+
+Conor Flynn   0:07
+Yep.
+Yep, I like that. Find a way to clean that up.
+
+Jack Cunningham   0:28
+Yeah.
+
+Ciara Griffin   0:31
+So then I'll just talk through the agenda with you. We're doing the welcome and kick off now and then we'll be go. We'll kick off by talking about our approach to starting and how we've come to developers. We'll give you an example of a
+
+Conor Flynn   0:32
+Yeah.
+
+Ciara Griffin   0:48
+process that we went in and mapped out and then found areas for opportunity for AI. And then we'll give you a live demonstration of one of the solutions that came out of that project. We'll then wrap it up in 45 minutes.
+So then, I'll pass it to Cullen.
+You should probably do.
+
+Conor Flynn   1:08
+Colm. Should I pretend to be good? I am a carry man. Send him on this recording after.
+
+Ciara Griffin   1:10
+Yeah, he might.
+
+Jack Cunningham   1:12
+Yeah.
+Yeah.
+
+Ciara Griffin   1:20
+He'll probably do no longer than like 5 minutes.
+
+Conor Flynn   1:25
+Yeah.
+
+Ciara Griffin   1:25
+On this.
+
+Conor Flynn   1:27
+Yeah.
+Get across to.
+Colm the idea, so I keep hearing people say our original, like, we've deployed something celebrations all over the place and three months later nobody used it, you know what I mean? And then people, our original sin was A, our original sin was B.
+So that relation goes to disaster. Why is that? Try to get that across to him, that he comes across. Where do we start?
+Yeah, anyway.
+
+Ciara Griffin   2:08
+It's kind of all the same thing. And then this is our case study.
+
+Jack Cunningham   2:16
+Um...
+Yeah, do you want me to go through what I say, or ohh, we got it? Yes, I just talked to it.
+
+Conor Flynn   2:22
+I got it.
+
+Ciara Griffin   2:22
+Yeah, go through what you can say because it's good to just practice it out and yeah, right.
+
+Conor Flynn   2:27
+Mm.
+
+Jack Cunningham   2:28
+Yeah, okay. So I suppose I just want to say that, yeah, look, as Ciara said, we go through an example of a use case of how we support a client in identifying opportunities for AI enablement in a regulated workflow. For this specific example, it was a complaints handling process.
+where the client had significant pressure from resource constraints and increasing workload, primarily attributed to the cycle time taken for taking a complaint from intake to closure. So the objective of this was to really assist them in understanding what was driving that cycle time and to identify opportunities
+to reduce that and evaluate AI's role in that. The approach we took then was an on-site workshop to really understand the workflow that we're looking at. I think we can go to the next one.
+So what that workshop is then is that this is something that we call an AI discovery workshop. That's a process that we originally built for assessing manufacturing workflows at a client site to understand where the key areas are to drive stability projects. We then transformed it into looking at transactional processes and the natural evaluation.
+
+Conor Flynn   3:32
+Yeah.
+Yeah.
+
+Jack Cunningham   3:46
+involvement, I can't remember that word, from that point was to see could be used as to identify where the key areas are to start with with AI. So we do this on site, structured three day, very collaborative, with three main rules on this and that the opportunities that we identify here are really driven by the people who do the work, who understand the workflow, who live with it day and day.
+
+Conor Flynn   3:55
+Yeah.
+
+Jack Cunningham   4:08
+All of our work is done on the walls and we use those slides to get the people engaged and get them up and get them thinking really about how the work is done and how it needs to be done.
+
+Conor Flynn   4:08
+Okay.
+
+Jack Cunningham   4:19
+And so we approach that through a to make methodology, so define, measure, analyze, improve, and control. I'll talk a little bit more about each of those sections in the next slide, but I think it's worth mentioning just that what's just important and how we do this is the why we do a workshop. And doing a workshop with a to make methodology ensures
+that you start with a defined problem. I think one of the things we've seen in industry is that adoption is continually identified as one of the key areas of difficulty. But when you start with a defined problem and you know you're actually solving something that people want a solution to, that's critical for driving downstream adoption and running it through a
+
+Conor Flynn   4:59
+Are you not?
+
+Jack Cunningham   5:00
+workshop really engages the team. It's critical to starting that change management because then you get the people in the room mapping their own processes, identifying their own pain points and pending their own solutions. And in a sense, they don't
+
+Conor Flynn   5:02
+Yeah.
+
+Jack Cunningham   5:17
+resist the change because in a sense they are the change and they're the ones driving it.
+
+Conor Flynn   5:21
+That's really good. Is there any way of flashing up a picture of Zeus or something like that, or the work that you've done that will be, you know what I mean? So like that, what you're saying.
+OK, yeah.
+
+Jack Cunningham   5:37
+Um, I, yeah, I always looked like I was looking on my phone for a picture of like a full room, but I couldn't, um, um, find out.
+
+Conor Flynn   5:40
+See, there are no people there, you know.
+
+Ciara Griffin   5:47
+Here, let me see how well I can do with this picture. You can continue.
+
+Conor Flynn   5:56
+You see what's going, you're saying is brilliant, but the image, what you're saying is this is interpersonal, it's practical, it's hands-on, it's about people. And what you're showing is here's a lot of text on the screen.
+
+Jack Cunningham   5:59
+Mm.
+Yeah. Yeah, I could see, I was trying to, I don't know how I don't have a picture of one. I know Rahul had a presentation that had a picture and I couldn't find it, which shows a full room of just stuff and people, but I can look back to my thing and see if there's anything I can actually put in there.
+
+Conor Flynn   6:16
+Mm.
+
+Jack Cunningham   6:25
+But yeah, that makes sense. Let's see if we can do something there. Then on this one.
+So just stepping through the A3. And initially, we spent quite a bit of time on the defined. So we kicked this off a week or two before we're on site to ensure that we're looking at the right area here, the right need for the business at the right time, and that we have a clear defined problem statement that we'll use to validate all of our improvement opportunities against. So
+As I mentioned in this specific example, it was the cycle time for complaints. So every opportunity I identified was rated for impact against how would it affect that cycle time and reduce it down. I have a box here for regulatory context. I think it's one place that Trenso is uniquely positioned in that we can
+provide the transactional process improvement expertise, you can provide the AI expertise, but we also have that second level of the regulatory experts in the room as well to ensure that we don't get a bit too creative.
+
+Conor Flynn   7:27
+Here, just on the see if you can use the phrase.
+responsible adoption of AI in a GXP setting.
+And.
+
+Jack Cunningham   7:39
+Yeah.
+
+Conor Flynn   7:39
+So like you're saying regulatory, so the responsible adoption rather than all here in a GXP, GXP is the environment that is regulated, you know. That's good, but there are no people.
+
+Jack Cunningham   7:44
+Yeah.
+Yeah.
+
+Conor Flynn   7:57
+That's a great room to show, isn't it? That looks cool, doesn't it?
+
+Jack Cunningham   8:00
+Yeah, you just make this on.
+banana or whatever it's called, the picture thing. Yeah, yeah, but no, I'll say that, Conor, I'll just say that, like, that we also provide the regulatory expertise so that we can ensure we drive responsible adoption of AI in a GXP environment.
+
+Ciara Griffin   8:04
+Yeah.
+
+Conor Flynn   8:09
+Add people to this.
+Um...
+Oh.
+
+Jack Cunningham   8:21
+Yeah.
+
+Ciara Griffin   8:27
+I'm trying your flow.
+
+Jack Cunningham   8:29
+No, we're all all good, and that that's all I'll say on that side, anyway, really. There's not too much to say on that one, just that look for probably once there's a problem. OK.
+
+Conor Flynn   8:31
+Yeah.
+It.
+
+Ciara Griffin   8:39
+That's right, I have it here.
+
+Conor Flynn   8:45
+Does it look real?
+She did a lot of people working on their own.
+It's ******* better than nothing than this, yeah.
+
+Jack Cunningham   8:55
+Okay.
+
+Ciara Griffin   9:00
+But like, it's probably not supposed to be real. I'll take out this.
+
+Conor Flynn   9:06
+Yeah.
+
+Jack Cunningham   9:11
+Yeah, I think the people are sitting down there a bit.
+
+Conor Flynn   9:13
+The.
+
+Jack Cunningham   9:14
+AI.
+
+Conor Flynn   9:16
+Yeah.
+
+Jack Cunningham   9:17
+And...
+Okay, then into the actual execution of the workshop on site. So we spend a lot of time looking at our measure and our analyze. And so how we do this is through 9 specific sections. And as I said, we do all of this work on the wall. And if you walk into the room, you'll be able to start at the very initial.
+
+Conor Flynn   9:39
+Okay.
+
+Jack Cunningham   9:39
+side on the left and see what our defined problem was. And as you step around the room, you'll see the progression of the development of these ideas throughout the course of the workshop. The first thing we look at is M1 here, KPIs and metrics. We look at the performance of the targeted workflow as a function of its output. So what are we seeing that indicates that there are some
+
+Conor Flynn   9:56
+Yeah.
+
+Jack Cunningham   10:03
+opportunities for improvement here. What are the points of recognition that indicate that will drive us backwards to identify those? We then spend some time doing some Gemba observation. In the example of the complaints handling process, we would get a person to sit down, take us through the systems, go through how they log complaints, and sit back, be quiet, observe, and just make notes of everything that has happened.
+Hey there.
+From that, then we then map out the core process, and we'll do this as a function of what happened during the Gemba observation, not what is in the procedure. And we'll do it as it's actually happened to enable us to identify any hidden factories that have came up. We do this through IPO diagrams, so inputs, process, outputs. And why we do that is...
+from the inputs, then we can identify if there are any critical inputs driving this process that aren't created in the previous step, then where are they coming from? And that drives us to M4, the key enabling processes. So what processes are providing an input to the complaints handling process that need to be evaluated as well to drive the efficiency in that. A key example there would
+be the investigation process. And when you're looking at driving process improvements in this, it's important to understand what feeds into it and also what the impact of improving this process would have in different areas. Example, if you supercharge complaints handling process, you can shift the bottleneck into testing. And so it's important to get ahead of that.
+
+Conor Flynn   11:19
+T.
+Yeah.
+
+Jack Cunningham   11:24
+We do a cultural understanding. And you may think, why are we talking about culture if we're looking at implementing AI? But through a structured two-part cultural understanding that we do, you will understand and you will unearth a lot of hidden opportunities, things around tribal knowledge where people are having frustrations there that may not come up in mapping the process, which can drive opportunities.
+for AI implementation. We then spend a bit of time understanding best practice in relation to the specific workflow and also in relation to AI solutions within regulated environments. And one thing we hear from clients commonly is that they just they don't know what AI is capable of. So the AI team will spend a bit of time
+coaching the guys through and helping them understand what AI is capable of nearly as important what it isn't capable of.
+From all of those learnings, then we have the team in a state where they can confidently build an ideal state from everything we've learned on the current process and from our new understanding of what AI is capable of, being collaboratively build a future state, which is how this process should run. We then
+
+Conor Flynn   12:26
+No.
+
+Jack Cunningham   12:34
+do a gap analysis of that future state versus what the current state is, which will identify all of the key opportunities. And some of those may just be quick win process improvements, but we'll run them through a bespoke filtering process that the AI team has developed to understand which ones are really suitable for AI. And Ciara will take you through that process.
+
+Conor Flynn   12:55
+Okay, I like that every now and again you put in an example, but what's stronger than an example is an anecdote. And if you can say, if you can take one of those examples and say, I was at a factory and here is an example of obviously redact names or whatever.
+
+Jack Cunningham   13:04
+Mhm.
+
+Conor Flynn   13:17
+That's the answer, but they're not working together, Ciara.
+
+Jack Cunningham   13:17
+Mm.
+
+Ciara Griffin   13:21
+I can't, I don't think it matters that much.
+
+Conor Flynn   13:24
+Okay.
+
+Ciara Griffin   13:29
+We are like, how do we fit this into the?
+You wanted to show it as a separate slide and say this is kind of what our rooms would look like everyone working on the walls.
+
+Jack Cunningham   13:42
+And.
+
+Conor Flynn   13:42
+Yeah, yeah.
+Sorry, go ahead.
+
+Jack Cunningham   13:44
+On the first one, like if you want to put them on one side, the first one, these boxes really only need to be defined, measure, analyze, improve, and control. The detail of them are in the next slides, you know what I mean?
+
+Ciara Griffin   13:55
+Thank you.
+
+Jack Cunningham   14:02
+Like this could just be like a vertical.
+list or something and you have the picture on the far side of the site. That would make more sense.
+
+Conor Flynn   14:13
+Yeah.
+Yeah.
+God, it's as if she's done this before.
+
+Ciara Griffin   15:03
+Okay.
+Huh.
+
+Conor Flynn   15:06
+I think so.
+
+Jack Cunningham   15:16
+Mhm.
+
+Conor Flynn   15:18
+Yeah.
+
+Ciara Griffin   15:24
+And is all the content here?
+Necessary Jack hers like.
+We just leave it, because I know you'll be talking through it, but...
+I just want to keep them as simple as possible.
+
+Jack Cunningham   15:36
+Um...
+Um...
+It's not absolutely necessary, really. I'm gonna say everything that, like, I, yeah, I'll be saying very little of what's in the smaller text.
+
+Conor Flynn   15:49
+You can click through really quickly. You can spend 20 seconds on a slide. Just have lots of stuff here. We can talk it. If you have any questions, we can talk it through in more detail with you.
+
+Jack Cunningham   15:51
+Mm.
+
+Ciara Griffin   15:54
+Yeah.
+
+Jack Cunningham   15:55
+Mm.
+
+Ciara Griffin   16:05
+Go through this side.
+So when we, during the project, when lots of kind of opportunities arose to improve the process, we then sat down and analyzed them through this checklist that once it hits all of these, it is appropriate to build AI around it.
+So is it repetitive? Is it a task that's performed frequently? Because if it's not, then it can be a waste of time to build AI into it. Does it have a consistent structure or input or output?
+So if you have a lot of the same format regularly, it's easier to build something as it will produce it based on that information. Again, do we have a lot of knowledge to input this? So for example, if you are building, Conor is going to show you later,
+Complaints.
+Called a complaints.
+
+Conor Flynn   17:08
+Triage system.
+
+Ciara Griffin   17:09
+triage. So you would be, does it have the knowledge of past complaints and how they were analyzed it? Does it have all of your, I suppose, company partnerships and your KPIs that you have to hit? And then obviously the regulatory framework.
+Complexity, how many steps within the process or how many steps does the task have? The more complex it is, the more difficult it is to build something. And then delegation, would you hand this off to a junior staff?
+
+Conor Flynn   17:42
+And I think it's important to say here, this is one of the lenses that we look at it from, and then I would double down on the delegation. You've got to remember what AI is good for and bad for in a GXP environment. And then can you delegate it to a junior member of staff?
+Do you understand that you're not, you are the decision maker? You know, you're not removing.
+the decision-making process from the responsible people.
+Do you see where I'm getting at?
+
+Ciara Griffin   18:18
+Yeah.
+OK.
+
+Jack Cunningham   18:27
+And I'm easy right here, I can come back in here, or if you want to just continue with this, I don't mind. Whatever we think will flow best.
+
+Ciara Griffin   18:36
+Yeah, I suppose if it's easier for me to just continue it, 'cause then every breaking up the flow. So, from through this, I'm just talking about, I suppose the deliverables from the project was they had an AI opportunity register, so they have had every.
+kind of opportunity listed and how it was appropriate for AI and how difficult or easy it would be to build. With that, they had a roadmap. So based on their internal capacity, their priorities, we built the roadmap with them, prioritizing where they should start based on their maturity.
+
+Conor Flynn   18:58
+Yeah.
+
+Ciara Griffin   19:14
+level also. Final discovery report, this is all the recommendations that we will be given back to the
+Of my lead or the.
+Okay.
+
+Jack Cunningham   19:29
+Yeah.
+
+Ciara Griffin   19:30
+Person who paid for it to sponsor, project sponsor.
+
+Jack Cunningham   19:30
+Yeah, yeah.
+Yeah.
+
+Ciara Griffin   19:34
+an upskill team, because throughout the session we would have guided them on AI, what it is, what it's not, and where it would fit into their process.
+
+Conor Flynn   19:46
+Double down here with the Upskilled team on the adoption thing so far as the own, we all know that the future of work has a lot of AI scattered through it. So you need to have a learning culture running through your organization.
+to successfully adopt any change. And this is particularly important in the AI era. I say that in a nicer way.
+
+Ciara Griffin   20:19
+Yeah, okay.
+
+Conor Flynn   20:25
+Yeah, we remember this from previous. If people didn't know there was a change in this product, I don't understand it. Maybe, maybe an...
+Colm can explain that, but then I'll go into my demo then, and depending on the time.
+I'll do one, two, three, or four examples.
+
+Ciara Griffin   20:54
+Yeah.
+
+Conor Flynn   20:54
+And I'll say, so my warm up to this is, so following Jack's process, we identified that there were, where's Jack's diagram from this morning?
+
+Ciara Griffin   21:06
+I'm sorry, I didn't see it.
+
+Conor Flynn   21:09
+So from the process, if you look at Jack's diagram, we identified that there was a low hanging fruit opportunity to help triaging complaints early. This took a lot of time, put a high burden on people and was the starting point for the cascade of delays all the way along.
+The process.
+So, once the clock process had been cleaned up, we spotted the opportunity to build something like this.
+Yeah.
+And then I'll show, I'll describe that much better, and then I'll bring it up and I'll show how I built it in a skill, but that you can build it in Copilot or whatever you want to build it in.
+And then I'll go through like I did yesterday.
+Finding the right place to start is critical to drive.
+That, where do you say that?
+I think it begins with her.
+
+Jack Cunningham   22:30
+I just under initial.
+
+Conor Flynn   22:32
+I'd be careful about saying that it's a natural, like being definitive about that. I'd say it's one of the factors that helps drive adoption by removing natural barriers to adoption, you know.
+
+Jack Cunningham   22:42
+Mm.
+
+Conor Flynn   22:52
+And adoption is still going to be a ******* challenge, no matter how *******, you know, you know.
+
+Jack Cunningham   22:55
+Mhm.
+Yeah.
+
+Conor Flynn   23:01
+And, but I like the startups.
+Yeah.
+Yeah.
+No, this could be good. And Jack, for the GlaxoSmithKline, I'm recommending that we do people process tools, quick evaluation, then into AI discovery workshops by department in order to do your process, and then into training along those
+Processes.
+
+Jack Cunningham   23:33
+What is for the on-site thing, is it? What do you think?
+
+Conor Flynn   23:36
+For GlaxoSmithKline, yeah, probably June or July.
+
+Jack Cunningham   23:39
+What's glasses? Glasses with kind of what's client, is it?
+
+Conor Flynn   23:44
+Yeah, we've had a couple of meetings with them. They are very advanced in their AI journey and you can hear everything I'm saying here. Their problems are all around adoption and stuff like that. And I'm proposing that their problem is they've stuck tools in on top of old workflows, thinking it'll all run lovely and people are just not using it.
+
+Jack Cunningham   23:45
+Okay.
+Mhm.
+Mhm.
+Mhm.
+Yeah, makes sense.
+
+Ciara Griffin   24:11
+This does not look like.
+
+Conor Flynn   24:15
+See, Jack's picture is lovely. That looks awful.
+
+Ciara Griffin   24:19
+Yeah, but I can't put Jack's picture into the gamma slides.
+
+Jack Cunningham   24:19
+Ahem.
+I can.
+
+Conor Flynn   24:23
+Can you put it in as an image?
+
+Ciara Griffin   24:25
+Yeah.
+
+Jack Cunningham   24:25
+I can put it on the same color background and then...
+might be able to bring it over as an image and so if I fit in there that way.
+
+Ciara Griffin   24:31
+Yeah, I'll snip it then.
+He's hot.
+
+Conor Flynn   24:39
+Mm.
+
+Ciara Griffin   24:39
+Okay, so what's the objective of your demo, Conor?
+
+Conor Flynn   24:44
+Just to give you an example of a low-hanging fruit thing that you could do in a week to immediately add value using tools that you currently have.
+And just, this is one example of something that I had, but like there are hundreds of them.
+And.
+
+Ciara Griffin   25:10
+So I'd say we're going to be very...
+
+Conor Flynn   25:12
+The.
+Tight for time.
+
+Ciara Griffin   25:17
+Very tight for time now.
+
+Jack Cunningham   25:21
+Yeah.
+I put a rough number on it, not trying to kind of wean out.
+Any waffle I have?
+Lane.
+
+Conor Flynn   25:33
+So just be aware of that, Jack, I don't know how used you are to presenting at this sort of thing with digital presenting. Practice it a couple more times because there are two ways it goes. Either exactly as you said, you awful on for 30 minutes or you're finished in 30 seconds. So just make sure that you have your bullet points beside you or
+
+Jack Cunningham   25:47
+Yeah.
+Mhm.
+
+Conor Flynn   25:55
+And...
+Just practice it a lot, yeah.
+
+Jack Cunningham   25:59
+Yeah, I have three sides there. I suppose like I think 7 minutes. Is that too much?
+
+Conor Flynn   26:01
+In.
+No, the seven minutes would be fine. So if Jack's 10 can 7 to 10 minutes, I'll keep mine down to 7 to 10 minutes as well.
+
+Ciara Griffin   26:15
+Yeah.
+
+Conor Flynn   26:16
+And then we'll be okay.
+
+Jack Cunningham   26:18
+Hey, everybody.
+
+Conor Flynn   26:19
+The.
+
+Ciara Griffin   26:20
+And Conor, just when you're introducing that, I suppose, just explain what you're actually doing and don't just jump into the demo because...
+
+Conor Flynn   26:29
+Okay.
+
+Ciara Griffin   26:30
+You did that yesterday, but I know you obviously weren't really ready for it.
+
+Conor Flynn   26:34
+Okay, so the point that I'm trying to make is from the discovery process, we identified low-hanging fruit that was causing this problem. I'll describe the problem, I'll think it out a little bit better. And then I'll say, I built this in the background. Think about this as a week's work.
+two days build, two days testing, and then one day implementation in order to really reduce the burden on individuals for this specific company. Now, every company will have slightly different problems, so you
+you need to do it, but the template is there. So an email comes in, and then we use AI in order to assist the person in filling out boxes, basically, in following the process, but also to augment where their knowledge might be.
+and might be limited.
+
+Ciara Griffin   27:35
+Yeah.
+I think throughout the whole thing, I think we just want to make sure that it's not salesy, like at all. We're just telling them this is our process that we do. We find it the best way to get the results and to implement AI to provide ROI to the team to make sure that it's.
+
+Conor Flynn   27:39
+I.
+
+Ciara Griffin   27:57
+aligned with the direction the company is going. So just for just explaining the process instead of selling it to them.
+
+Conor Flynn   28:05
+Yeah.
+
+Jack Cunningham   28:05
+Mm-hmm.
+
+Ciara Griffin   28:06
+because this is the first time we're talking about, I suppose, our offering, our offerings from the start of the webinar. So just want to make sure that it's, we're just keeping it educational.
+
+Conor Flynn   28:20
+Yeah.
+
+Ciara Griffin   28:22
+And, like, call and be the sales guy if he wants to pop in and say that we're class now and again he can.
+Hey.
+
+Conor Flynn   28:33
+Admin.
+
+Ciara Griffin   28:36
+So, we're kind of happy with the flow.
+We're all going to practice it a couple of times and we'll be good tomorrow.
+
+Conor Flynn   28:44
+Wonderful to work here.
+
+Jack Cunningham   28:46
+Who?
+
+Ciara Griffin   28:47
+Try not to vape on the session, or talk French, or try fight anybody, or talk about Jack taking off his top, or talk about your *** from your cycling thing.
+
+Jack Cunningham   28:49
+And.
+
+Conor Flynn   28:49
+The.
+
+Jack Cunningham   28:54
+Yeah.
+Yeah.
+Yeah.
+
+Conor Flynn   29:02
+There's a lot of things to remember, Ciara.
+
+Ciara Griffin   29:05
+Yeah.
+
+Jack Cunningham   29:07
+Yeah.
+
+Ciara Griffin   29:10
+Okay.
+
+Jack Cunningham   29:11
+Just on a separate thing is I'll just remember when I emailed back about that T thing about not having in that first meeting. That was just because they specifically emailed us somewhere like, do not say anything to us other than field improvement. That's just kind of, let's give you a bit of background on that one.
+
+Ciara Griffin   29:27
+Oh, say Conor didn't even read his emails. No, that's no, you kind of explained it in the office last week, Jack.
+
+Conor Flynn   29:27
+I don't know what you're talking about.
+
+Jack Cunningham   29:30
+Oh, okay.
+Yeah, I saved you a trip to Galway, Conor, anyway.
+
+Ciara Griffin   29:37
+So, so clients, please.
+Yeah.
+A client basically said do not bring anyone else except for lean experts to solve this problem at the minute because they just clearly just want support. And then.
+
+Jack Cunningham   29:42
+Yeah.
+
+Conor Flynn   29:50
+Who is this for which client?
+
+Jack Cunningham   29:52
+That's T connectivity.
+
+Conor Flynn   29:55
+There.
+Mhm.
+
+Jack Cunningham   30:17
+Which kind of like, I think initially we should just not say anything other than...
+Engineers on the floor, and then look, we get.
+
+Conor Flynn   30:22
+Kate.
+
+Ciara Griffin   30:26
+And...
+
+Jack Cunningham   30:27
+Yeah.
+
+Conor Flynn   30:27
+Do we do we have engineers that can be deployed like that?
+
+Jack Cunningham   30:30
+Like that type of stuff I can do. And then I've been checking in with John, who was working with us over in Zeus as well. He said he'll come in as well. Yeah, we'll have to figure that out with him as well. But we're on site with them next week to see how many they'd actually need and what the scope for it is. So, yeah.
+
+Conor Flynn   30:49
+I actually think you could be awful busy, Jack.
+
+Jack Cunningham   30:53
+You never, you never know, like you see, and we want to do a bit of problem solving on the floor for a little.
+to be an engineer.
+
+Ciara Griffin   31:05
+It's kind of your thing, isn't it?
+
+Jack Cunningham   31:07
+Relatively. I don't know what my thing is anymore, to be honest. I see. Never know.
+
+Ciara Griffin   31:12
+Could be webinars, we'll see you tomorrow.
+
+Conor Flynn   31:14
+Yeah, you might have a hidden talent. You got to take your top off, though. Like, if it's going badly, start taking off your clothes.
+
+Jack Cunningham   31:19
+Like and subscribe. Everyone leave then, Conor.
+
+Conor Flynn   31:24
+Yeah.
+
+Ciara Griffin   31:27
+Okay, thanks, guys.
+
+Ciara Griffin stopped transcription

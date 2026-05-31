@@ -1,0 +1,29 @@
+Ciara 0:01
+For the webinar, should we make it validation-specific?
+
+Jack 0:05
+I think so. It would make the examples more targeted.
+
+Conor 0:09
+I'm not convinced. Most attendees won't be from validation teams.
+
+Ciara 0:14
+Good point.
+
+Jack 0:17
+We could keep it validation-specific but mention broader applications.
+
+Conor 0:23
+I think that risks confusing people.
+
+Ciara 0:28
+Actually, let's keep it broad and use validation as one example instead.
+
+Jack 0:34
+Yeah, that works.
+
+Conor 0:37
+Agreed.
+
+Ciara 0:40
+No further actions on that one.

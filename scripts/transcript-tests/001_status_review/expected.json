@@ -1,0 +1,33 @@
+{
+  "assertions": {
+    "meetingType": "project_status_review",
+
+    "participantCount": 2,
+
+    "mustContainDiscussionPoints": [
+      "routing",
+      "sales input",
+      "vendor strategy",
+      "leadership review"
+    ],
+
+    "mustContainActions": [
+      "Review stage gate templates",
+      "Confirm AI pipeline dependencies with sales",
+      "Draft vendor strategy document",
+      "Follow up innovation grant feedback",
+      "Validate intake workflow routing"
+    ],
+
+    "expectedDecisionCount": 0,
+
+    "expectedActionCount": 5,
+
+    "mustNotContain": [
+      "take your top off",
+      "he's hot",
+      "vape",
+      "snip it"
+    ]
+  }
+}

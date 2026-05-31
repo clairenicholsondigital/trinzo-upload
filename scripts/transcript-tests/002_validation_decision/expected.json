@@ -1,0 +1,13 @@
+{
+  "mustContainDecisions": [
+    "The webinar should remain broad rather than validation-specific."
+  ],
+  "mustContainDiscussionPoints": [
+    "The team discussed whether the webinar should be validation-specific or broadly applicable and agreed to keep the messaging broad."
+  ],
+  "expectedActionCount": 0,
+  "expectedDecisionCount": 1,
+  "mustNotContainDecisions": [
+    "The webinar should be validation-specific"
+  ]
+}

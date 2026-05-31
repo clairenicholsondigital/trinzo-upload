@@ -1,0 +1,101 @@
+{
+  "meetingTitle": "Final Practice Call Before Webinar",
+  "meetingDate": "29 April 2026",
+  "meetingLocation": "Online",
+  "participants": {
+    "client": [],
+    "trinzo": [
+      "Ciara Griffin",
+      "Conor Flynn",
+      "Jack Cunningham"
+    ]
+  },
+  "expectedDiscussionTopics": [
+    "webinar agenda and flow",
+    "AI discovery workshop approach",
+    "complaints handling case study",
+    "defined problem and adoption",
+    "workshop visuals and slide simplification",
+    "responsible adoption of AI in a GXP environment",
+    "AI opportunity filtering criteria",
+    "complaints triage demo",
+    "timing and practice before the webinar",
+    "keeping the webinar educational rather than sales focused"
+  ],
+  "expectedActions": [
+    {
+      "text": "Clean up the wording around finding the right areas to start with AI.",
+      "owner": "Jack Cunningham",
+      "deadline": "",
+      "evidenceHint": "0:07"
+    },
+    {
+      "text": "Add or improve workshop imagery showing people working in the room.",
+      "owner": "Jack Cunningham",
+      "deadline": "",
+      "evidenceHint": "5:21"
+    },
+    {
+      "text": "Use the phrase responsible adoption of AI in a GXP environment.",
+      "owner": "Jack Cunningham",
+      "deadline": "",
+      "evidenceHint": "7:27"
+    },
+    {
+      "text": "Simplify the workshop slide by reducing the first slide to define, measure, analyse, improve and control.",
+      "owner": "Ciara Griffin",
+      "deadline": "",
+      "evidenceHint": "13:44"
+    },
+    {
+      "text": "Put Jack's picture into the Gamma slides as an image.",
+      "owner": "Jack Cunningham",
+      "deadline": "",
+      "evidenceHint": "24:23"
+    },
+    {
+      "text": "Conor should explain the demo before showing it.",
+      "owner": "Conor Flynn",
+      "deadline": "",
+      "evidenceHint": "26:20"
+    },
+    {
+      "text": "Everyone should practise the webinar a couple more times before tomorrow.",
+      "owner": "Owner not specified",
+      "deadline": "Before tomorrow",
+      "evidenceHint": "28:36"
+    }
+  ],
+  "expectedDecisions": [
+    {
+      "text": "The webinar should stay educational rather than sales focused.",
+      "evidenceHint": "27:35"
+    },
+    {
+      "text": "Jack's section can run for around seven to ten minutes, with Conor's demo kept to a similar length.",
+      "evidenceHint": "26:01"
+    },
+    {
+      "text": "Ciara will continue through the AI opportunity filtering and deliverables section rather than handing back to Jack.",
+      "evidenceHint": "18:27"
+    }
+  ],
+  "mustRejectAsDiscussionPoints": [
+    "He's hot.",
+    "Wonderful to work here.",
+    "Try not to vape on the session.",
+    "You got to take your top off.",
+    "Like and subscribe.",
+    "Yeah.",
+    "Okay.",
+    "Mm."
+  ],
+  "qualityRules": {
+    "discussionPointsShouldBePolished": true,
+    "allowParaphrase": true,
+    "doNotRequireExactWording": true,
+    "minimumActions": 5,
+    "minimumDecisions": 2,
+    "maximumDiscussionPoints": 10
+  }
+}
