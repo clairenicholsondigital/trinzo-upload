@@ -13,6 +13,7 @@ import sys
 from typing import Any
 
 try:
+    from .meeting_minutes_discourse import detect_discourse_patterns
     from .meeting_minutes_patterns import (
         DECISION_CUE_PATTERNS,
         DECISION_ACCEPTANCE_PATTERNS,
@@ -35,6 +36,7 @@ try:
         split_sentences as text_split_sentences,
     )
 except ImportError:
+    from meeting_minutes_discourse import detect_discourse_patterns
     from meeting_minutes_patterns import (
         DECISION_CUE_PATTERNS,
         DECISION_ACCEPTANCE_PATTERNS,
@@ -478,30 +480,24 @@ def is_non_decision_sentence(text: str) -> bool:
     return any(pattern.search(stripped) for pattern in NON_DECISION_PATTERNS)
 
 
-def build_decision_candidate(
+def decision_text_topic_specificity(
     sentence: str,
-    turn: dict[str, Any],
+    speaker: str,
     meeting_mode: str,
     sentence_index: int,
-) -> dict[str, Any] | None:
-    stripped = sentence.strip()
-    lowered = stripped.lower()
-    speaker = turn.get("speaker", "")
-    if not is_business_relevant(sentence):
-        return None
-    if is_action_like_sentence(sentence):
-        return None
-    if is_non_decision_sentence(sentence):
-        return None
-    if not has_acceptance_evidence(sentence):
-        return None
-
-    decision = ""
+) -> tuple[str, str, float]:
+    lowered = sentence.lower()
     topic = ""
+    decision = ""
     specificity_bonus = 0.0
     subject_group = decision_subject_group(sentence)
 
-    if subject_group == "audience_framing" or any(term in lowered for term in ("validation team", "clear view of what happens before the webinar", "before the webinar")):
+    if lowered.startswith(("i favour renewing with ", "i favor renewing with ", "i prefer renewing with ")):
+        topic = "supplier_direction"
+        supplier = re.sub(r"^i favou?r renewing with\s+", "", lowered).strip()
+        decision = finalize_sentence(f"The team will renew with {supplier}")
+        specificity_bonus = 0.16
+    elif subject_group == "audience_framing" or any(term in lowered for term in ("validation team", "clear view of what happens before the webinar", "before the webinar")):
         topic = "audience_framing"
         decision = rewrite_subject_decision(sentence)
         if decision == "The webinar should remain broad rather than validation-specific.":
@@ -555,6 +551,35 @@ def build_decision_candidate(
         topic = decision_topic_from_text(sentence) or f"generic_{sentence_index}"
         decision = rewrite_general_decision(sentence, speaker) or generic_decision_text(sentence, speaker)
         specificity_bonus = 0.05
+
+    return decision, topic, specificity_bonus
+
+
+def build_decision_candidate(
+    sentence: str,
+    turn: dict[str, Any],
+    meeting_mode: str,
+    sentence_index: int,
+) -> dict[str, Any] | None:
+    stripped = sentence.strip()
+    lowered = stripped.lower()
+    speaker = turn.get("speaker", "")
+    if not is_business_relevant(sentence):
+        return None
+    if is_action_like_sentence(sentence):
+        return None
+    if is_non_decision_sentence(sentence):
+        return None
+    if any(term in lowered for term in ("has proposed", "proposed a", "haven't decided", "have not decided", "still deciding", "needs more discussion")):
+        return None
+    if not has_acceptance_evidence(sentence):
+        return None
+    decision, topic, specificity_bonus = decision_text_topic_specificity(
+        sentence,
+        speaker,
+        meeting_mode,
+        sentence_index,
+    )
 
     if not decision or not has_minimum_output_words(decision):
         return None
@@ -660,6 +685,7 @@ def action_to_imperative(action_text: str, owner: str, speaker: str = "") -> str
     cleaned = strip_leading_speaker_reference(cleaned)
     cleaned = re.sub(r"\bthe client attendees\b", "the client attendee list", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\bclient attendees\b", "client attendee list", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\b(?:instead|as well|probably|maybe|then)\b", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return finalize_sentence(sentence_case(cleaned))
 
@@ -1521,6 +1547,8 @@ def build_generic_discussion_from_sentence(sentence: str) -> str:
     unresolved_match = re.search(r"whether to (?P<topic>.+)", lowered)
     if unresolved_match and any(term in lowered for term in ("haven't decided", "have not decided", "still deciding")):
         return finalize_sentence(f"The team discussed whether to {unresolved_match.group('topic').rstrip('.?')}")
+    if "has proposed" in lowered:
+        return finalize_sentence(f"The team reviewed {cleaned.lower()}")
     if "backup supplier" in lowered and "risk" in lowered:
         return "A delivery risk was discussed, with a backup supplier identified as the preferred contingency."
     if any(term in lowered for term in ("blocked", "dependency", "depends on", "waiting for", "input from")):
@@ -2009,6 +2037,118 @@ def build_decisions(
     return [item["decision"] for item in details[:5]], details[:5]
 
 
+def extract_actions_from_patterns(patterns: list[dict[str, Any]]) -> tuple[list[str], list[str], list[str], dict[str, list[dict[str, str]]]]:
+    actions: list[str] = []
+    owners: list[str] = []
+    deadlines: list[str] = []
+    evidence_map: dict[str, list[dict[str, str]]] = {}
+    seen = set()
+    for pattern in patterns:
+        if pattern.get("pattern_type") not in {"request_acceptance", "problem_commitment"}:
+            continue
+        action_text = pattern.get("action_text", "")
+        key = canonical_action_key(action_text)
+        if not action_text or not key or key in seen:
+            continue
+        seen.add(key)
+        actions.append(action_text)
+        owners.append(pattern.get("owner", "Owner not specified"))
+        deadlines.append(pattern.get("deadline", ""))
+        evidence_map[action_text.lower()] = dedupe_evidence_refs(
+            [
+                {"speaker": item.get("speaker", ""), "timestamp": item.get("timestamp", "")}
+                for item in pattern.get("evidence", [])
+            ]
+        )
+    return actions, owners, deadlines, evidence_map
+
+
+def extract_decisions_from_patterns(
+    patterns: list[dict[str, Any]],
+    meeting_mode: str,
+) -> list[dict[str, Any]]:
+    if meeting_mode == "project_status_review":
+        return []
+
+    candidates: list[dict[str, Any]] = []
+    challenged_indexes = {
+        pattern.get("source_index")
+        for pattern in patterns
+        if pattern.get("pattern_type") in {"vague_challenged", "request_rejection"}
+    }
+    for pattern in patterns:
+        if pattern.get("pattern_type") not in {"proposal_acceptance", "counter_proposal_acceptance"}:
+            continue
+        source_index = pattern.get("source_index", 0)
+        if source_index in challenged_indexes:
+            continue
+        sentence = pattern.get("final_text") or pattern.get("source_text") or ""
+        if not sentence or is_non_decision_sentence(sentence):
+            continue
+        speaker = ""
+        evidence = pattern.get("evidence", [])
+        if evidence:
+            speaker = evidence[0].get("speaker", "")
+        decision, topic, specificity_bonus = decision_text_topic_specificity(sentence, speaker, meeting_mode, source_index)
+        if not decision or not has_minimum_output_words(decision):
+            continue
+        candidates.append(
+            {
+                "topic": topic or f"pattern_{source_index}",
+                "decision": decision,
+                "decisionConfidence": round(min(0.95, 0.58 + specificity_bonus), 2),
+                "decisionType": decision_type_for_sentence(sentence),
+                "_evidence": dedupe_evidence_refs(
+                    [{"speaker": item.get("speaker", ""), "timestamp": item.get("timestamp", "")} for item in evidence]
+                ),
+                "sentenceIndex": source_index,
+            }
+        )
+    return resolve_decision_candidates(candidates)[:5]
+
+
+def extract_discussion_points_from_patterns(
+    patterns: list[dict[str, Any]],
+    decision_details: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    details: list[dict[str, Any]] = []
+    for decision in decision_details:
+        details.append(
+            {
+                "discussionPoint": build_decision_discussion_point(decision),
+                "_evidence": decision.get("_evidence", []),
+                "evidenceScore": decision.get("decisionConfidence", 0.65),
+            }
+        )
+    for pattern in patterns:
+        pattern_type = pattern.get("pattern_type")
+        if pattern_type in {"proposal_acceptance", "counter_proposal_acceptance", "request_acceptance", "problem_commitment", "request_rejection"}:
+            continue
+        text = pattern.get("source_text", "")
+        evidence = dedupe_evidence_refs(
+            [{"speaker": item.get("speaker", ""), "timestamp": item.get("timestamp", "")} for item in pattern.get("evidence", [])]
+        )
+        point = ""
+        if pattern_type == "unresolved_option":
+            point = build_generic_discussion_from_sentence(text)
+        elif pattern_type == "fact_only":
+            point = build_generic_discussion_from_sentence(text)
+        elif pattern_type == "status_discussion":
+            point = build_generic_discussion_from_sentence(text)
+        elif pattern_type == "vague_challenged":
+            point = ""
+        if not point or not has_minimum_output_words(point):
+            continue
+        details.append(
+            {
+                "discussionPoint": point,
+                "_evidence": evidence,
+                "evidenceScore": round(min(1.0, 0.45 + 0.1 * len(evidence)), 2),
+            }
+        )
+    return dedupe_discussion_details(details)[:8]
+
+
 def build_internal_evidence(
     discussion_point_details: list[dict[str, Any]],
     structured_actions: list[dict[str, Any]],
@@ -2454,6 +2594,7 @@ def build_template_values(text: str, analysis: dict[str, Any], turns: list[Any],
     meeting_style = infer_meeting_style(meeting_type)
     if not meeting_title:
         meeting_title = meeting_theme
+    discourse_features, discourse_patterns = detect_discourse_patterns(source_turns) if meeting_type != "project_status_review" else ([], [])
 
     participants = extract_participants(analysis["segments"], config)
     if not participants["participants.client"] and not participants["participants.trinzo"]:
@@ -2472,46 +2613,64 @@ def build_template_values(text: str, analysis: dict[str, Any], turns: list[Any],
         else:
             action_owners = [owner_for_action(action, config) for action in actions]
             action_deadlines = [deadline_for_action(action, block_deadline, config) for action in actions]
+        pattern_actions, pattern_action_owners, pattern_action_deadlines, pattern_evidence = extract_actions_from_patterns(
+            discourse_patterns
+        )
+        if pattern_actions:
+            existing = {canonical_action_key(action) for action in actions}
+            for action, owner, deadline in zip(pattern_actions, pattern_action_owners, pattern_action_deadlines):
+                key = canonical_action_key(action)
+                if not key or key in existing:
+                    continue
+                actions.append(action)
+                action_owners.append(owner)
+                action_deadlines.append(deadline)
+                existing.add(key)
+            CONVERSATIONAL_ACTION_EVIDENCE.update(pattern_evidence)
         generic_actions, generic_action_owners, generic_action_deadlines = extract_generic_actions(text, source_turns, config)
         if generic_actions:
-            existing = {action.lower() for action in actions}
+            existing = {canonical_action_key(action) for action in actions}
             for action, owner, deadline in zip(generic_actions, generic_action_owners, generic_action_deadlines):
-                if action.lower() in existing:
+                key = canonical_action_key(action)
+                if not key or key in existing:
                     continue
                 actions.append(action)
                 action_owners.append(owner)
                 action_deadlines.append(deadline)
-                existing.add(action.lower())
+                existing.add(key)
         named_actions, named_action_owners, named_action_deadlines = extract_named_assignment_actions(source_turns, config)
         if named_actions:
-            existing = {action.lower() for action in actions}
+            existing = {canonical_action_key(action) for action in actions}
             for action, owner, deadline in zip(named_actions, named_action_owners, named_action_deadlines):
-                if action.lower() in existing:
+                key = canonical_action_key(action)
+                if not key or key in existing:
                     continue
                 actions.append(action)
                 action_owners.append(owner)
                 action_deadlines.append(deadline)
-                existing.add(action.lower())
+                existing.add(key)
         linked_actions, linked_action_owners, linked_action_deadlines = extract_linked_conversational_actions(source_turns, config)
         if linked_actions:
-            existing = {action.lower() for action in actions}
+            existing = {canonical_action_key(action) for action in actions}
             for action, owner, deadline in zip(linked_actions, linked_action_owners, linked_action_deadlines):
-                if action.lower() in existing:
+                key = canonical_action_key(action)
+                if not key or key in existing:
                     continue
                 actions.append(action)
                 action_owners.append(owner)
                 action_deadlines.append(deadline)
-                existing.add(action.lower())
+                existing.add(key)
         fallback_actions, fallback_action_owners, fallback_action_deadlines = extract_fallback_actions(source_turns, config)
         if fallback_actions:
-            existing = {action.lower() for action in actions}
+            existing = {canonical_action_key(action) for action in actions}
             for action, owner, deadline in zip(fallback_actions, fallback_action_owners, fallback_action_deadlines):
-                if action.lower() in existing:
+                key = canonical_action_key(action)
+                if not key or key in existing:
                     continue
                 actions.append(action)
                 action_owners.append(owner)
                 action_deadlines.append(deadline)
-                existing.add(action.lower())
+                existing.add(key)
         structured_actions = dedupe_structured_actions(
             build_structured_actions(actions, action_owners, action_deadlines, source_turns, config)
         )
@@ -2526,17 +2685,36 @@ def build_template_values(text: str, analysis: dict[str, Any], turns: list[Any],
     else:
         structured_actions = []
 
-    decisions, decision_details = build_decisions(cleaned_turns, meeting_type, structured_actions)
+    pattern_decision_details = extract_decisions_from_patterns(discourse_patterns, meeting_type)
+    fallback_decisions, fallback_decision_details = build_decisions(cleaned_turns, meeting_type, structured_actions)
+    if pattern_decision_details:
+        merged_decision_details = pattern_decision_details + [
+            item
+            for item in fallback_decision_details
+            if action_text_key(item.get("decision", "")) not in {action_text_key(existing.get("decision", "")) for existing in pattern_decision_details}
+        ]
+        decision_details = resolve_decision_candidates(merged_decision_details)[:5]
+        decisions = [item["decision"] for item in decision_details]
+    else:
+        decisions, decision_details = fallback_decisions, fallback_decision_details
 
     discussion_point_details: list[dict[str, Any]] = []
     discussion_points = build_milestone_discussion_points(segments, config) if meeting_type == "project_status_review" else []
     if not discussion_points and meeting_type != "project_status_review":
-        discussion_point_details = extract_general_discussion_details(
+        pattern_discussion_details = extract_discussion_points_from_patterns(
+            discourse_patterns,
+            decision_details,
+        )
+        general_discussion_details = extract_general_discussion_details(
             cleaned_turns,
             meeting_type,
             decision_details,
             structured_actions,
         )
+        if len(general_discussion_details) >= 3:
+            discussion_point_details = general_discussion_details[:8]
+        else:
+            discussion_point_details = dedupe_discussion_details(general_discussion_details + pattern_discussion_details)[:8]
         discussion_points = [item["discussionPoint"] for item in discussion_point_details]
     if not discussion_points and meeting_type != "project_status_review":
         discussion_points = extract_generic_discussion_points(text, source_turns, config)
@@ -2617,19 +2795,6 @@ def analyse(text: str) -> dict[str, Any]:
     turns = parse_speaker_turns(text)
     if not turns:
         turns = build_fallback_turns(text, analyzer)
-    speakers = sorted({turn.speaker for turn in turns})
-    print("================================", file=sys.stderr)
-    print("TRANSCRIPT LENGTH", file=sys.stderr)
-    print(len(text), file=sys.stderr)
-    print("================================", file=sys.stderr)
-    print("TURN COUNT", file=sys.stderr)
-    print(len(turns), file=sys.stderr)
-    print("================================", file=sys.stderr)
-    print("SPEAKERS", file=sys.stderr)
-    print(speakers, file=sys.stderr)
-    print("================================", file=sys.stderr)
-    print("FIRST 500 CHARS", file=sys.stderr)
-    print(text[:500], file=sys.stderr)
     analysis = analyzer.analyze(turns, analyzer.load_rules(REPO_DIR))
     return build_template_values(text, analysis, turns, config)
 

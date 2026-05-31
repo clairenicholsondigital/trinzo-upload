@@ -735,10 +735,77 @@ Update the rollout plan.
 
         self.assertEqual(
             [item for item in result["meetingActionPoint"] if "rollout plan" in item.lower()],
-            ["Update the rollout plan instead."],
+            ["Update the rollout plan."],
         )
-        rollout_index = result["meetingActionPoint"].index("Update the rollout plan instead.")
+        rollout_index = result["meetingActionPoint"].index("Update the rollout plan.")
         self.assertEqual(result["meetingActionPointOwner"][rollout_index], "Conor Flynn")
+
+    def test_proposal_acceptance_creates_topic_agnostic_decision(self):
+        transcript = """Supplier review
+
+6 June 2026
+
+Emma:
+I favour renewing with the existing supplier.
+
+David:
+I support that.
+
+Rachel:
+Same here.
+"""
+
+        result = analyse(transcript)
+
+        self.assertEqual(
+            result["decisions"],
+            ["The team will renew with the existing supplier."],
+        )
+        self.assertTrue(
+            any("commercial options" in point.lower() or "supplier" in point.lower() for point in result["discussionPoints"])
+        )
+
+    def test_fact_only_supplier_proposal_is_discussion_not_decision(self):
+        transcript = """Supplier review
+
+6 June 2026
+
+David:
+The supplier has proposed a three-year commitment.
+"""
+
+        result = analyse(transcript)
+
+        self.assertEqual(result["decisions"], [])
+        self.assertTrue(any("three-year commitment" in point.lower() for point in result["discussionPoints"]))
+
+    def test_low_content_nonsense_transcript_uses_fallback_summary(self):
+        transcript = """Random notes
+
+6 June 2026
+
+Alice:
+Bananas.
+
+Bob:
+Apples.
+
+Alice:
+Oranges.
+
+Bob:
+Meeting over.
+"""
+
+        result = analyse(transcript)
+
+        self.assertEqual(result["discussionPoints"], [])
+        self.assertEqual(result["decisions"], [])
+        self.assertEqual(result["meetingActionPoint"], [])
+        self.assertEqual(
+            result["executiveSummary"],
+            "No substantive meeting content, decisions, or actions were identified.",
+        )
 
     def test_direct_request_yes_acceptance_creates_action(self):
         transcript = """Finance follow-up
