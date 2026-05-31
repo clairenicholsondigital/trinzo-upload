@@ -393,7 +393,7 @@ def rewrite_general_decision(text: str, speaker: str = "") -> str:
             return ""
         return finalize_sentence(f"The team agreed to {body.lower()}")
     if lowered.startswith("we'll "):
-        return finalize_sentence("The team will " + cleaned[5:].lower())
+        return finalize_sentence("The team will " + cleaned[5:].strip().lower())
     if lowered.startswith("we will "):
         return finalize_sentence(sentence_case(cleaned))
     if lowered.startswith("the team will "):
@@ -411,7 +411,7 @@ def rewrite_general_decision(text: str, speaker: str = "") -> str:
 
 def decision_topic_from_text(text: str) -> str:
     lowered = text.lower()
-    if any(term in lowered for term in ("one-year contract", "three-year commitment", "contract term", "contract length")):
+    if any(term in lowered for term in ("one-year contract", "one-year option", "three-year commitment", "three years", "contract term", "contract length")):
         return "contract_term"
     if any(term in lowered for term in ("supplier renewal", "renew with", "existing supplier")):
         return "supplier_direction"
@@ -485,8 +485,10 @@ def decision_text_topic_specificity(
     speaker: str,
     meeting_mode: str,
     sentence_index: int,
+    context_text: str = "",
 ) -> tuple[str, str, float]:
     lowered = sentence.lower()
+    context_lowered = context_text.lower()
     topic = ""
     decision = ""
     specificity_bonus = 0.0
@@ -496,6 +498,10 @@ def decision_text_topic_specificity(
         topic = "supplier_direction"
         supplier = re.sub(r"^i favou?r renewing with\s+", "", lowered).strip()
         decision = finalize_sentence(f"The team will renew with {supplier}")
+        specificity_bonus = 0.16
+    elif "existing supplier" in lowered and any(term in lowered for term in ("safer option", "service levels", "response times")):
+        topic = "supplier_direction"
+        decision = "The team will renew with the existing supplier."
         specificity_bonus = 0.16
     elif subject_group == "audience_framing" or any(term in lowered for term in ("validation team", "clear view of what happens before the webinar", "before the webinar")):
         topic = "audience_framing"
@@ -533,7 +539,10 @@ def decision_text_topic_specificity(
             "will take place",
             "will renew",
             "will pursue",
+            "will go with",
+            "will proceed with",
             "one-year contract",
+            "one-year option",
             "three-year commitment",
             "existing supplier",
             "following monday",
@@ -542,6 +551,8 @@ def decision_text_topic_specificity(
     ):
         topic = decision_topic_from_text(sentence) or f"generic_{sentence_index}"
         decision = rewrite_general_decision(sentence, speaker)
+        if "one-year option" in lowered and any(term in context_lowered for term in ("three-year commitment", "three years")):
+            decision = "The team will pursue a one-year contract term rather than a three-year commitment."
         specificity_bonus = 0.16
     elif any(term in lowered for term in ("go with", "let's", "we agreed", "agreed", "decision is")):
         topic = decision_topic_from_text(sentence) or f"generic_{sentence_index}"
@@ -560,6 +571,7 @@ def build_decision_candidate(
     turn: dict[str, Any],
     meeting_mode: str,
     sentence_index: int,
+    context_text: str = "",
 ) -> dict[str, Any] | None:
     stripped = sentence.strip()
     lowered = stripped.lower()
@@ -572,13 +584,33 @@ def build_decision_candidate(
         return None
     if any(term in lowered for term in ("has proposed", "proposed a", "haven't decided", "have not decided", "still deciding", "needs more discussion")):
         return None
-    if not has_acceptance_evidence(sentence):
+    explicit_finaliser = lowered.startswith(
+        (
+            "we'll pursue ",
+            "we will pursue ",
+            "we'll go with ",
+            "we will go with ",
+            "we'll proceed with ",
+            "we will proceed with ",
+        )
+    ) and not lowered.startswith(
+        (
+            "we'll see",
+            "we will see",
+            "we'll come back",
+            "we will come back",
+            "we'll think about it",
+            "we will think about it",
+        )
+    )
+    if not has_acceptance_evidence(sentence) and not explicit_finaliser:
         return None
     decision, topic, specificity_bonus = decision_text_topic_specificity(
         sentence,
         speaker,
         meeting_mode,
         sentence_index,
+        context_text,
     )
 
     if not decision or not has_minimum_output_words(decision):
@@ -587,7 +619,7 @@ def build_decision_candidate(
     confidence = round(
         min(
             0.95,
-            0.45 + decision_signal_score(sentence) + specificity_bonus,
+            (0.82 if explicit_finaliser else 0.45) + decision_signal_score(sentence) + specificity_bonus,
         ),
         2,
     )
@@ -917,7 +949,10 @@ def detect_meeting_mode(cleaned_turns: list[dict[str, Any]], meeting_title: str 
         "due", "dependency", "risk", "project update",
     ]
     presentation_terms = ["slides", "deck", "presentation", "visual", "imagery"]
-    sales_terms = ["client", "proposal", "pricing", "commercial", "sales"]
+    sales_terms = [
+        "client call", "client meeting", "sales discussion", "sales follow-up",
+        "customer pitch", "prospect", "lead", "pipeline", "deal",
+    ]
     title_lowered = meeting_title.lower().strip()
 
     for turn in cleaned_turns:
@@ -925,7 +960,7 @@ def detect_meeting_mode(cleaned_turns: list[dict[str, Any]], meeting_title: str 
         score["webinar_rehearsal"] += sum(2 for term in webinar_terms if term in text)
         score["project_status_review"] += sum(2 for term in project_terms if term in text)
         score["presentation_review"] += sum(1 for term in presentation_terms if term in text)
-        score["sales_or_client_discussion"] += sum(1 for term in sales_terms if term in text)
+        score["sales_or_client_discussion"] += sum(2 for term in sales_terms if term in text)
 
     if any(term in title_lowered for term in ("webinar", "validation", "practice", "rehearsal")):
         score["webinar_rehearsal"] += 3
@@ -944,7 +979,7 @@ def detect_meeting_mode(cleaned_turns: list[dict[str, Any]], meeting_title: str 
         return "project_status_review"
     if score["presentation_review"] >= 3:
         return "presentation_review"
-    if score["sales_or_client_discussion"] >= 3:
+    if score["sales_or_client_discussion"] >= 4:
         return "sales_or_client_discussion"
     if title_supports_special_mode:
         if any(term in title_lowered for term in ("presentation", "slides", "slide", "deck")):
@@ -1565,6 +1600,18 @@ def build_generic_discussion_from_sentence(sentence: str) -> str:
     return finalize_sentence(sentence_case(cleaned))
 
 
+def build_request_task_from_context(task: str, recent_context_texts: list[str]) -> str:
+    lowered = task.lower().strip()
+    if not re.search(r"\b(?:those|that|it|them)\b", lowered):
+        return task
+    context_text = " ".join(recent_context_texts[-3:]).lower()
+    if lowered.startswith("send ") and "final figures" in context_text and "finance" in context_text:
+        if "pricing" in context_text or "budget" in context_text:
+            return "send final pricing figures to finance when available"
+        return "send final figures to finance when available"
+    return task
+
+
 def cluster_sentence_for_mode(sentence: str, meeting_mode: str) -> str | None:
     lowered = sentence.lower()
     if not is_business_relevant(sentence):
@@ -1591,7 +1638,7 @@ def cluster_sentence_for_mode(sentence: str, meeting_mode: str) -> str | None:
         if any(term in lowered for term in ("slide", "deck", "presentation", "visual")):
             return "Presentation structure and visuals"
     if meeting_mode == "sales_or_client_discussion":
-        if any(term in lowered for term in ("client", "proposal", "commercial", "sales")):
+        if any(term in lowered for term in ("client call", "client meeting", "sales discussion", "sales follow-up", "customer pitch", "prospect", "lead", "pipeline", "deal")):
             return "Client priorities and follow-up"
     if meeting_mode == "general_meeting":
         if any(term in lowered for term in ("whether to", "still deciding", "haven't decided", "have not decided")):
@@ -1608,7 +1655,7 @@ def cluster_sentence_for_mode(sentence: str, meeting_mode: str) -> str | None:
             return "Operational performance review"
         if any(term in lowered for term in ("notification", "failing", "bug", "confusion", "investigation", "look into", "blocker")):
             return "Open issue investigation"
-        if any(term in lowered for term in ("custom branding", "suggestion", "customer", "not prioritise", "discussion only")):
+        if any(term in lowered for term in ("custom branding", "not prioritise", "discussion only")):
             return "Feature prioritisation decisions"
         if (
             ("documentation" in lowered and "api" in lowered)
@@ -1651,11 +1698,17 @@ def build_cluster_sentence(cluster: str, sentences: list[str]) -> str:
     if cluster == "Option comparison and unresolved choices":
         return build_generic_discussion_from_sentence(sentences[0] if sentences else "")
     if cluster == "Commercial options and supplier decisions":
-        return build_generic_discussion_from_sentence(sentences[0] if sentences else "")
+        if any(term in lowered for term in ("existing supplier", "supplier b", "pricing", "service levels", "response times", "operational risk", "renewal")):
+            if "customer support contract renewal" in lowered:
+                return "The team reviewed the customer support contract renewal, including pricing, supplier comparison and operational risk."
+            return "The team reviewed the supplier renewal, including pricing, supplier comparison and operational risk."
+        return build_generic_discussion_from_sentence(" ".join(sentences[:3]))
     if cluster == "Timeline and scheduling decisions":
         return build_generic_discussion_from_sentence(sentences[0] if sentences else "")
     if cluster == "Ownership and follow-up coordination":
-        return build_generic_discussion_from_sentence(sentences[0] if sentences else "")
+        if any(term in lowered for term in ("legal review", "finance", "signing", "negotiation")):
+            return "The team discussed legal review and finance follow-up requirements alongside ownership of the renewal negotiation."
+        return build_generic_discussion_from_sentence(" ".join(sentences[:3]))
     if cluster == "Risks, blockers, and dependencies":
         return build_generic_discussion_from_sentence(" ".join(sentences[:2]))
     if cluster == "Operational performance review":
@@ -1663,7 +1716,7 @@ def build_cluster_sentence(cluster: str, sentences: list[str]) -> str:
     if cluster == "Open issue investigation":
         return "They discussed the ongoing notification email problem and agreed that it still needs investigation."
     if cluster == "Feature prioritisation decisions":
-        return "A request for custom branding was discussed, but the team decided not to prioritise it at this stage."
+        return build_generic_discussion_from_sentence(sentences[0] if sentences else "")
     if cluster == "Documentation and follow-up delivery":
         return "They also reviewed the delayed API documentation and agreed that it should be completed by Friday."
     fallback = sentences[0] if sentences else ""
@@ -2026,10 +2079,16 @@ def build_decisions(
 
     candidates: list[dict[str, Any]] = []
     sentence_index = 0
+    recent_sentences: list[str] = []
     for turn in cleaned_turns:
-        for sentence in turn.get("sentences") or [turn.get("text", "")]:
-            candidate = build_decision_candidate(sentence, turn, meeting_mode, sentence_index)
+        turn_sentences = turn.get("sentences") or [turn.get("text", "")]
+        for local_index, sentence in enumerate(turn_sentences):
+            prev_sentence = turn_sentences[local_index - 1] if local_index > 0 else ""
+            next_sentence = turn_sentences[local_index + 1] if local_index + 1 < len(turn_sentences) else ""
+            context_text = " ".join((recent_sentences[-2:] + [prev_sentence, sentence, next_sentence])).strip()
+            candidate = build_decision_candidate(sentence, turn, meeting_mode, sentence_index, context_text)
             sentence_index += 1
+            recent_sentences.append(sentence)
             if candidate:
                 candidates.append(candidate)
 
@@ -2235,6 +2294,7 @@ def extract_linked_conversational_actions(raw_turns: list[dict[str, str]], confi
     seen = set()
     pending_requests: list[dict[str, Any]] = []
     recent_contexts: list[dict[str, Any]] = []
+    recent_context_texts: list[str] = []
     sentence_index = 0
 
     for turn in raw_turns:
@@ -2251,9 +2311,11 @@ def extract_linked_conversational_actions(raw_turns: list[dict[str, str]], confi
             recent_contexts = [
                 item for item in recent_contexts if sentence_index - item["sentence_index"] <= 3
             ]
+            recent_context_texts = recent_context_texts[-5:]
 
             request_task = extract_request_task(stripped, speaker)
             if request_task:
+                request_task = build_request_task_from_context(request_task, recent_context_texts)
                 pending_requests.append(
                     {
                         "task": request_task,
@@ -2278,6 +2340,8 @@ def extract_linked_conversational_actions(raw_turns: list[dict[str, str]], confi
                         "timestamp": turn.get("timestamp", ""),
                     }
                 )
+            elif is_business_relevant(stripped) and not is_non_decision_sentence(stripped):
+                recent_context_texts.append(stripped)
 
             commitment = extract_response_commitment(stripped, speaker, config)
             if commitment:

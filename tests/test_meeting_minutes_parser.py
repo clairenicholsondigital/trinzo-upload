@@ -633,6 +633,100 @@ Yes.
         handle_index = result["meetingActionPoint"].index("Handle the supplier renewal negotiation.")
         self.assertEqual(result["meetingActionPointOwner"][handle_index], "David")
 
+    def test_supplier_contract_renewal_regression(self):
+        transcript = """Customer support contract renewal
+
+6 June 2026
+
+Rachel:
+The main item today is the customer support contract renewal.
+
+Emma:
+The existing supplier is still the safer option on service levels and response times.
+
+David:
+Agreed.
+
+Rachel:
+The supplier has proposed a three-year commitment.
+
+Emma:
+I'd rather accept the higher annual cost than lock ourselves in for three years.
+
+David:
+That's sensible.
+
+Emma:
+We'll pursue the one-year option.
+
+Rachel:
+Who is handling the supplier renewal negotiation?
+
+David:
+I can take that.
+
+Emma:
+Legal review will also be needed before signing.
+
+David:
+I'll speak with legal once the revised proposal arrives.
+
+Rachel:
+The finance team will need the final figures for next year's budget.
+
+Emma:
+Can you send those across when available?
+
+David:
+Yes.
+"""
+
+        result = analyse(transcript)
+
+        self.assertEqual(result["meetingType"], "general_meeting")
+        self.assertNotEqual(result["meetingType"], "sales_or_client_discussion")
+        self.assertIn("The team will renew with the existing supplier.", result["decisions"])
+        self.assertIn(
+            "The team will pursue a one-year contract term rather than a three-year commitment.",
+            result["decisions"],
+        )
+        self.assertNotIn("The supplier has proposed a three-year commitment.", result["decisions"])
+        self.assertTrue(
+            any(
+                "customer support contract renewal, including pricing, supplier comparison and operational risk"
+                in point.lower()
+                for point in result["discussionPoints"]
+            )
+        )
+        self.assertTrue(
+            any(
+                "contract term" in point.lower() or "three-year commitment" in point.lower()
+                for point in result["discussionPoints"]
+            )
+        )
+        self.assertTrue(
+            any(
+                "legal review and finance follow-up requirements" in point.lower()
+                for point in result["discussionPoints"]
+            )
+        )
+        self.assertFalse(any("custom branding" in point.lower() for point in result["discussionPoints"]))
+        self.assertIn("Handle the supplier renewal negotiation.", result["meetingActionPoint"])
+        self.assertIn("Speak with legal once the revised proposal arrives.", result["meetingActionPoint"])
+        self.assertIn("Send final pricing figures to finance when available.", result["meetingActionPoint"])
+        self.assertEqual(
+            result["meetingActionPointOwner"][result["meetingActionPoint"].index("Handle the supplier renewal negotiation.")],
+            "David",
+        )
+        self.assertEqual(
+            result["meetingActionPointOwner"][result["meetingActionPoint"].index("Speak with legal once the revised proposal arrives.")],
+            "David",
+        )
+        self.assertEqual(
+            result["meetingActionPointOwner"][result["meetingActionPoint"].index("Send final pricing figures to finance when available.")],
+            "David",
+        )
+
     def test_generic_scheduling_decision_creates_substantive_discussion_point(self):
         transcript = """Office relocation planning
 
