@@ -37,8 +37,9 @@ METADATA_RE = re.compile(
     r"(?:-meeting transcript$)|(?:^\d{1,2}\s+\w+\s+\d{4}(?:,\s*\d{1,2}:\d{2}(?:am|pm))?$)|(?:^\d+m\s+\d+s$)|(?:started transcription\.?$)|(?:stopped transcription\.?$)",
     re.IGNORECASE,
 )
-ACTION_HEADER_RE = re.compile(r"^(?:actions?|next steps|follow ups?|action items)(?:\s+before\s+.+)?:\s*$", re.IGNORECASE)
-INLINE_ACTION_HEADER_RE = re.compile(r"^(?P<header>(?:actions?|next steps|follow ups?|action items)(?:\s+before\s+.+)?):\s*(?P<tail>.*)$", re.IGNORECASE)
+ACTION_HEADER_RE = re.compile(r"^(?:actions?|next steps|follow ups?|action items)(?:\s+before\s+[^:]+)?:\s*$", re.IGNORECASE)
+INLINE_ACTION_HEADER_RE = re.compile(r"^(?P<header>(?:actions?|next steps|follow ups?|action items)(?:\s+before\s+[^:]+)?):\s*(?P<tail>.*)$", re.IGNORECASE)
+INLINE_ACTION_HEADER_SEARCH_RE = re.compile(r"(?P<header>(?:actions?|next steps|follow ups?|action items)(?:\s+before\s+[^:]+)?):\s*(?P<tail>.*)$", re.IGNORECASE)
 QUESTION_RE = re.compile(r"\?$")
 DEADLINE_RE = re.compile(
     r"\b(?:tomorrow|today|next week|this afternoon|before [A-Z][a-z]+|by [A-Z][a-z]+|end of quarter|when available|before friday|before the webinar)\b",
@@ -131,6 +132,52 @@ MEANINGFUL_TOPIC_HINTS = DISCUSSION_TERMS | {
     "vendor", "interviews", "document", "grant", "feedback", "governance", "framework",
     "delivery", "webinars", "milestone", "library", "strategy", "gate", "intake",
 }
+MEETING_TYPE_SIGNALS = {
+    "project_status_review": {
+        "keywords": {"status", "blocked", "complete", "green", "amber", "red", "review", "due", "milestone", "delivery", "progress", "pending"},
+        "title": {"check", "status", "review", "programme"},
+    },
+    "client_onboarding": {
+        "keywords": {"onboarding", "rollout", "finance", "warehouse", "mapping", "scope", "team", "start"},
+        "title": {"onboarding", "client"},
+    },
+    "event_planning": {
+        "keywords": {"registration", "attendees", "workshop", "auditorium", "breakout", "sponsor", "dinner", "signage", "terrace", "event"},
+        "title": {"event", "planning", "workshop"},
+    },
+    "supplier_review": {
+        "keywords": {"supplier", "contract", "pricing", "renewal", "audit", "delivery", "traceability", "capacity", "stock", "commercial"},
+        "title": {"supplier", "risk", "contract"},
+    },
+    "finance_budget_review": {
+        "keywords": {"revenue", "costs", "forecast", "budget", "contractor", "hire", "analytics", "q4", "cap"},
+        "title": {"finance", "budget"},
+    },
+    "hiring_review": {
+        "keywords": {"candidate", "interview", "offer", "role", "mentoring", "engineers", "compliance", "hiring"},
+        "title": {"hiring", "debrief", "interview"},
+    },
+    "training_rollout": {
+        "keywords": {"training", "sessions", "schedule", "timetable", "pilot", "site", "material", "managers", "rollout"},
+        "title": {"training", "rollout"},
+    },
+}
+DECISION_PROPOSAL_RE = re.compile(
+    r"^(?:so\s+|actually,\s+|actually\s+)?(?:(?:we|the team)\s+(?:will|would|should)|we['’]ll|let['’]?s)\s+(?P<proposal>.+)$",
+    re.IGNORECASE,
+)
+DECISION_SUPPORT_RE = re.compile(
+    r"\b(?:agreed?|agree|makes sense|sensible|better|that works|right choice|keep the scope manageable|safer option|confirmed|good idea)\b",
+    re.IGNORECASE,
+)
+DECISION_CONTRADICTION_RE = re.compile(
+    r"\b(?:instead|rather than|but not|won't|will not|cannot|can't|shouldn't|not that|alternative)\b",
+    re.IGNORECASE,
+)
+DECISION_COMPARISON_RE = re.compile(
+    r"\b(?:first|delay|defer|keep|stay|switch|offer|larger|smaller|until|rather than|instead|preferred?|safer)\b",
+    re.IGNORECASE,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -696,7 +743,7 @@ def extract_action_block(text: str) -> list[tuple[str, str, str, list[dict[str, 
         speaker_match = TURN_RE.match(line)
         if speaker_match:
             tail = speaker_match.group("tail").strip()
-            inline_match = INLINE_ACTION_HEADER_RE.match(tail)
+            inline_match = INLINE_ACTION_HEADER_RE.match(tail) or INLINE_ACTION_HEADER_SEARCH_RE.search(tail)
             if inline_match:
                 in_block = True
                 header = inline_match.group("header").lower()
@@ -751,25 +798,240 @@ def derive_action_from_window(window: list[dict[str, Any]]) -> tuple[str, str, s
     return None
 
 
-def derive_decision_from_candidate(candidate: dict[str, Any]) -> str | None:
-    text = normalize_text_fragment(candidate["text"])
-    lowered = text.lower()
-    if any(term in lowered for term in ("haven't decided", "have not decided", "still deciding", "we'll see", "come back to it")):
+def contextual_decision_text(proposal: str, turns: list[dict[str, str]], index: int) -> str:
+    proposal_lower = proposal.lower()
+    if "keep it broad" in proposal_lower:
+        subject = "topic"
+        alternative = "narrow"
+        for prior_index in range(index - 1, max(-1, index - 8), -1):
+            prior = normalize_text_fragment(turns[prior_index]["text"])
+            subject_match = re.search(r"for the (?P<subject>[a-z][a-z0-9 -]+),\s*should we make it (?P<option>[a-z0-9-]+)", prior, flags=re.IGNORECASE)
+            if subject_match:
+                subject = subject_match.group("subject").strip()
+                alternative = subject_match.group("option").strip()
+                break
+            option_match = re.search(r"\b(?P<option>[a-z0-9-]+specific)\b", prior, flags=re.IGNORECASE)
+            if option_match:
+                alternative = option_match.group("option").strip()
+        return finalize_sentence(f"The {subject} should remain broad rather than {alternative}")
+    return ""
+
+
+def normalize_decision_text(proposal: str, turns: list[dict[str, str]], index: int) -> str:
+    contextual = contextual_decision_text(proposal, turns, index)
+    if contextual:
+        return contextual
+    cleaned = normalize_text_fragment(proposal).rstrip(".!?")
+    cleaned = re.sub(r"\b(?:okay|right|so)\b[\s,.-]*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    if not cleaned:
+        return ""
+    return finalize_sentence("The team will " + cleaned[0].lower() + cleaned[1:])
+
+
+def extract_decision_proposal(text: str) -> str | None:
+    cleaned = normalize_text_fragment(text).rstrip(".!?")
+    lowered = cleaned.lower()
+    if any(term in lowered for term in ("no further actions", "no action", "no follow-up actions", "still deciding", "haven't decided", "have not decided", "we'll see", "come back to it")):
         return None
-    if "existing supplier" in lowered and any(term in lowered for term in ("safer option", "service levels", "response times", "renew")):
-        return "The team will renew with the existing supplier."
-    if "keep it broad" in lowered or ("validation-specific" in lowered and "better" in lowered):
-        return "The webinar should remain broad rather than validation-specific."
-    if "one-year option" in lowered:
-        return "The team will pursue a one-year contract term rather than a three-year commitment."
-    if "physical office move will take place on" in lowered:
-        match = re.search(r"physical office move will take place on [^.?!]+", text, flags=re.IGNORECASE)
-        if match:
-            phrase = match.group(0)
-            return finalize_sentence(("The " if not phrase.lower().startswith("the ") else "") + phrase[:1].lower() + phrase[1:] if not phrase.lower().startswith("the ") else phrase)
-    if FINALISER_RE.search(text):
-        return finalize_sentence("The team will " + re.sub(r"^(?:we['’]?ll|we will)\s+", "", text, flags=re.IGNORECASE).lower())
-    return None
+    if any(phrase in lowered for phrase in NAVIGATION_PHRASES):
+        return None
+    match = DECISION_PROPOSAL_RE.match(cleaned)
+    if not match:
+        return None
+    proposal = normalize_text_fragment(match.group("proposal")).rstrip(".!?")
+    if not proposal or len(tokenize(proposal)) < 4:
+        return None
+    if proposal.lower().startswith(("run through", "go through", "start with", "move on")):
+        return None
+    return proposal
+
+
+def decision_topic_key(text: str) -> str:
+    tokens = [token for token in tokenize(text) if token not in NON_TOPIC_TERMS]
+    return " ".join(tokens[:6])
+
+
+def decision_support_score(turns: list[dict[str, str]], index: int) -> tuple[float, list[dict[str, str]]]:
+    support = 0.0
+    evidence: list[dict[str, str]] = []
+    for offset in (-1, 1, 2):
+        peer_index = index + offset
+        if peer_index < 0 or peer_index >= len(turns) or peer_index == index:
+            continue
+        text = normalize_text_fragment(turns[peer_index]["text"])
+        lowered = text.lower()
+        local_support = 0.0
+        if DECISION_SUPPORT_RE.search(text):
+            local_support += 0.42
+        if any(term in lowered for term in ("because", "scope manageable", "safer", "confirmed capacity", "too small", "higher than forecast", "missing data fields", "only gap", "migration effort", "retraining", "changed supplier")):
+            local_support += 0.18
+        if offset < 0 and any(term in lowered for term in ("ready", "missing", "too small", "cannot", "more expensive", "higher than forecast", "gap", "asking for", "migration", "retraining")):
+            local_support += 0.14
+        if local_support > 0:
+            evidence.append({"speaker": turns[peer_index]["speaker"], "timestamp": turns[peer_index]["timestamp"], "text": text})
+            support += local_support
+    return round(min(1.0, support), 2), evidence
+
+
+def decision_contradiction_score(turns: list[dict[str, str]], index: int) -> tuple[float, list[dict[str, str]]]:
+    contradiction = 0.0
+    evidence: list[dict[str, str]] = []
+    for peer_index in range(index + 1, min(len(turns), index + 4)):
+        text = normalize_text_fragment(turns[peer_index]["text"])
+        if DECISION_CONTRADICTION_RE.search(text) and not DECISION_SUPPORT_RE.search(text):
+            contradiction += 0.32
+            evidence.append({"speaker": turns[peer_index]["speaker"], "timestamp": turns[peer_index]["timestamp"], "text": text})
+    return round(min(1.0, contradiction), 2), evidence
+
+
+def build_decision_candidates(turns: list[dict[str, str]]) -> list[dict[str, Any]]:
+    candidates: list[dict[str, Any]] = []
+    total_turns = max(1, len(turns))
+    for index, turn in enumerate(turns):
+        proposal = extract_decision_proposal(turn["text"])
+        if not proposal:
+            continue
+        support_score, support_evidence = decision_support_score(turns, index)
+        contradiction_score, contradiction_evidence = decision_contradiction_score(turns, index)
+        acceptance_score = 0.0
+        for peer in support_evidence:
+            if DECISION_SUPPORT_RE.search(peer["text"]):
+                acceptance_score += 0.35
+        acceptance_score = round(min(1.0, acceptance_score), 2)
+        comparison_score = round(min(1.0, 0.22 * len(DECISION_COMPARISON_RE.findall(proposal))), 2)
+        proposal_score = round(min(1.0, 0.45 + 0.04 * len(tokenize(proposal))), 2)
+        recency_score = round((index + 1) / total_turns * 0.18, 2)
+        if acceptance_score < 0.3 and support_score < 0.25:
+            continue
+        final_score = round(
+            proposal_score
+            + acceptance_score * 0.55
+            + support_score * 0.4
+            + comparison_score * 0.28
+            + recency_score
+            - contradiction_score * 0.7,
+            2,
+        )
+        if final_score < 0.72:
+            continue
+        candidates.append(
+            {
+                "topic": decision_topic_key(proposal),
+                "proposal": proposal,
+                "decision": normalize_decision_text(proposal, turns, index),
+                "proposalScore": proposal_score,
+                "acceptanceScore": acceptance_score,
+                "supportScore": support_score,
+                "comparisonScore": comparison_score,
+                "contradictionScore": contradiction_score,
+                "recencyScore": recency_score,
+                "finalScore": round(min(0.95, final_score), 2),
+                "turnIndex": index,
+                "timestamp": turn["timestamp"],
+                "speaker": turn["speaker"],
+                "supportingTurns": [
+                    {"speaker": turn["speaker"], "timestamp": turn["timestamp"], "text": normalize_text_fragment(turn["text"])}
+                ] + support_evidence,
+                "contradictingTurns": contradiction_evidence,
+            }
+        )
+    return candidates
+
+
+def decision_topics_match(left: str, right: str) -> bool:
+    left_tokens = set(tokenize(left)) - NON_TOPIC_TERMS
+    right_tokens = set(tokenize(right)) - NON_TOPIC_TERMS
+    if not left_tokens or not right_tokens:
+        return False
+    overlap = left_tokens & right_tokens
+    if (
+        ("renewal" in left_tokens or "renew" in left_tokens or "supplier" in left_tokens or "contract" in left_tokens)
+        and ("renewal" in right_tokens or "renew" in right_tokens or "supplier" in right_tokens or "contract" in right_tokens)
+    ):
+        return True
+    return len(overlap) >= 2 or cosine_similarity(Counter(left_tokens), Counter(right_tokens)) >= 0.38
+
+
+def select_decisions(turns: list[dict[str, str]]) -> tuple[list[str], list[dict[str, Any]], dict[str, Any]]:
+    raw_candidates = build_decision_candidates(turns)
+    sorted_candidates = sorted(raw_candidates, key=lambda item: (item["finalScore"], item["turnIndex"]), reverse=True)
+    winners: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
+    for candidate in sorted_candidates:
+        matched_winner = None
+        for winner in winners:
+            if decision_topics_match(candidate["proposal"], winner["proposal"]):
+                matched_winner = winner
+                break
+        if matched_winner is None:
+            winners.append(candidate)
+            continue
+        if candidate["turnIndex"] > matched_winner["turnIndex"] or candidate["finalScore"] > matched_winner["finalScore"] + 0.08:
+            rejected.append({**matched_winner, "rejectedReason": "superseded_by_later_or_stronger_option"})
+            winners.remove(matched_winner)
+            winners.append(candidate)
+        else:
+            rejected.append({**candidate, "rejectedReason": "lower_scoring_competing_option"})
+
+    winners.sort(key=lambda item: (item["turnIndex"], item["finalScore"]))
+    winners = winners[:5]
+    decisions = [item["decision"] for item in winners]
+    decision_details = [
+        {
+            "topic": item["topic"] or re.sub(r"[^a-z0-9]+", " ", item["decision"].lower()).strip(),
+            "decision": item["decision"],
+            "decisionConfidence": item["finalScore"],
+            "decisionType": "accepted_direction",
+            "_evidence": [{"speaker": ref["speaker"], "timestamp": ref["timestamp"]} for ref in item["supportingTurns"]],
+        }
+        for item in winners
+    ]
+    debug = {
+        "winningDecisionClusters": [
+            {
+                "topic": item["topic"],
+                "decision": item["decision"],
+                "proposalScore": item["proposalScore"],
+                "acceptanceScore": item["acceptanceScore"],
+                "supportScore": item["supportScore"],
+                "comparisonScore": item["comparisonScore"],
+                "contradictionScore": item["contradictionScore"],
+                "recencyScore": item["recencyScore"],
+                "finalDecisionScore": item["finalScore"],
+                "supportingTurns": item["supportingTurns"],
+            }
+            for item in winners
+        ],
+        "rejectedCompetingDecisions": [
+            {
+                "topic": item["topic"],
+                "decision": item["decision"],
+                "finalDecisionScore": item["finalScore"],
+                "rejectedReason": item["rejectedReason"],
+                "supportingTurns": item["supportingTurns"],
+            }
+            for item in rejected[:10]
+        ],
+        "topDecisionCandidates": [
+            {
+                "text": item["decision"],
+                "speaker": item["speaker"],
+                "timestamp": item["timestamp"],
+                "scores": {
+                    "proposal": item["proposalScore"],
+                    "acceptance": item["acceptanceScore"],
+                    "support": item["supportScore"],
+                    "comparison": item["comparisonScore"],
+                    "contradiction": item["contradictionScore"],
+                    "recency": item["recencyScore"],
+                    "decision": item["finalScore"],
+                },
+            }
+            for item in sorted_candidates[:10]
+        ],
+    }
+    return decisions, decision_details, debug
 
 
 def extract_cluster_keywords(token_counts: Counter[str], speaker_names: set[str], limit: int = 4) -> list[str]:
@@ -1526,6 +1788,49 @@ def build_executive_summary(decisions: list[str], discussion_points: list[str], 
     return " ".join(unique[:3])
 
 
+def meeting_type_scores(turns: list[dict[str, str]], meeting_title: str, decision_details: list[dict[str, Any]]) -> dict[str, float]:
+    title_tokens = set(tokenize(meeting_title or ""))
+    signal_scores: dict[str, float] = {}
+    for meeting_type, profile in MEETING_TYPE_SIGNALS.items():
+        matched_turns = 0
+        keyword_hits = 0
+        strongest_turn = 0
+        status_bonus = 0.0
+        for turn in turns:
+            tokens = set(tokenize(turn["text"]))
+            hits = len(tokens & profile["keywords"])
+            if hits:
+                matched_turns += 1
+                keyword_hits += hits
+                strongest_turn = max(strongest_turn, hits)
+            if meeting_type == "project_status_review" and (contains_status_term(turn["text"]) or "status" in turn["text"].lower()):
+                status_bonus += 0.12
+        density = matched_turns / max(1, len(turns))
+        title_hits = len(title_tokens & profile["title"])
+        decision_bonus = 0.0
+        if decision_details and meeting_type != "project_status_review":
+            decision_blob = " ".join(item["decision"] for item in decision_details).lower()
+            decision_bonus = 0.08 * len(set(tokenize(decision_blob)) & profile["keywords"])
+        signal_scores[meeting_type] = round(
+            density * 1.6
+            + keyword_hits * 0.12
+            + strongest_turn * 0.1
+            + title_hits * 0.25
+            + status_bonus
+            + decision_bonus,
+            3,
+        )
+    return signal_scores
+
+
+def classify_meeting_type(turns: list[dict[str, str]], meeting_title: str, decision_details: list[dict[str, Any]]) -> str:
+    signal_scores = meeting_type_scores(turns, meeting_title, decision_details)
+    best_type = max(signal_scores, key=signal_scores.get, default="experimental_numeric")
+    if signal_scores.get(best_type, 0.0) < 0.55:
+        return "experimental_numeric"
+    return best_type
+
+
 def analyse(text: str) -> dict[str, Any]:
     config = load_json(MINUTES_CONFIG)
     cleaned_text = clean_transcript_text(text)
@@ -1559,39 +1864,7 @@ def analyse(text: str) -> dict[str, Any]:
         for action, owner, deadline, confidence, evidence in deduped_actions.values()
     ]
 
-    decision_candidates = sorted(
-        [
-            candidate for candidate in candidates
-            if candidate["scores"].get("decision", 0) >= 0.45
-            and candidate["scores"].get("low_content", 0) < 0.6
-            and candidate["scores"].get("navigation", 0) < 0.8
-        ],
-        key=lambda item: item["scores"]["decision"],
-        reverse=True,
-    )
-    decisions: list[str] = []
-    decision_details: list[dict[str, Any]] = []
-    seen_decisions = set()
-    for candidate in decision_candidates:
-        decision = derive_decision_from_candidate(candidate)
-        if not decision:
-            continue
-        key = re.sub(r"[^a-z0-9]+", " ", decision.lower()).strip()
-        if key in seen_decisions:
-            continue
-        seen_decisions.add(key)
-        decisions.append(decision)
-        decision_details.append(
-            {
-                "topic": key,
-                "decision": decision,
-                "decisionConfidence": round(min(0.95, max(0.45, candidate["scores"]["decision"])), 2),
-                "decisionType": "accepted_direction",
-                "_evidence": candidate["evidence"],
-            }
-        )
-        if len(decisions) >= 5:
-            break
+    decisions, decision_details, decision_debug = select_decisions(turns)
 
     discussion_candidates, cluster_debug = select_discussion_clusters(candidates, speaker_names)
     status_review_points = extract_status_review_points(turns)
@@ -1627,6 +1900,24 @@ def analyse(text: str) -> dict[str, Any]:
         if len(selected_discussion) >= limit:
             break
     discussion_points = [item["text"] for item in selected_discussion]
+    for detail in decision_details[:2]:
+        decision_lower = normalize_text_fragment(detail["decision"]).lower()
+        if not any(
+            decision_lower in normalize_text_fragment(point).lower()
+            or normalize_text_fragment(point).lower() in decision_lower
+            for point in discussion_points
+        ):
+            discussion_points.append(detail["decision"])
+            selected_discussion.append(
+                {
+                    "text": detail["decision"],
+                    "sourceType": "decisionSummary",
+                    "earliestTimestamp": timestamp_to_seconds(detail["_evidence"][0]["timestamp"]) if detail.get("_evidence") else 10**9,
+                    "timestampLabel": detail["_evidence"][0]["timestamp"] if detail.get("_evidence") else "",
+                    "selectedReason": "decision_support",
+                    "evidence": detail.get("_evidence", []),
+                }
+            )
     if not discussion_points and decisions:
         discussion_points = [finalize_sentence(decisions[0])]
         selected_discussion = [
@@ -1676,6 +1967,9 @@ def analyse(text: str) -> dict[str, Any]:
             structured_status_review=structured_status_review,
         )
 
+    meeting_type_score_map = meeting_type_scores(turns, meeting_title or "", decision_details)
+    meeting_type = classify_meeting_type(turns, meeting_title or "", decision_details)
+
     top_action_candidates = sorted(candidates, key=lambda candidate: candidate["scores"].get("action", 0), reverse=True)
     top_discussion_candidates = sorted(candidates, key=lambda candidate: candidate["scores"].get("discussion", 0), reverse=True)
     rejected_navigation_candidates = [
@@ -1685,10 +1979,7 @@ def analyse(text: str) -> dict[str, Any]:
     ][:10]
 
     debug = {
-        "topDecisionCandidates": [
-            {"text": item["text"], "speaker": item["speaker"], "timestamp": item["timestamp"], "scores": item["scores"]}
-            for item in decision_candidates[:10]
-        ],
+        "topDecisionCandidates": decision_debug["topDecisionCandidates"],
         "topActionCandidates": [
             {"text": item["text"], "speaker": item["speaker"], "timestamp": item["timestamp"], "scores": item["scores"]}
             for item in top_action_candidates[:10]
@@ -1712,17 +2003,20 @@ def analyse(text: str) -> dict[str, Any]:
         "rejectedNavigationCandidates": rejected_navigation_candidates,
         "clusters": cluster_debug,
         "topicClusters": cluster_debug,
+        "winningDecisionClusters": decision_debug["winningDecisionClusters"],
+        "rejectedCompetingDecisions": decision_debug["rejectedCompetingDecisions"],
         "statusReviewPoints": [item["text"] for item in status_review_points],
         "finalDiscussionPoints": final_discussion_debug,
         "parsedTurnCount": len(turns),
         "candidateCount": len(candidates),
+        "meetingTypeScores": meeting_type_score_map,
     }
 
     return {
         "meetingTitle": meeting_title or "Meeting minutes numbers experiment",
         "meetingDate": meeting_date,
         "meetingLocation": meeting_location,
-        "meetingType": "experimental_numeric",
+        "meetingType": meeting_type,
         "meetingStyle": "experimental_numeric",
         "meetingTheme": meeting_title or "Experimental meeting-minutes analysis",
         "meetingObjectives": [],
