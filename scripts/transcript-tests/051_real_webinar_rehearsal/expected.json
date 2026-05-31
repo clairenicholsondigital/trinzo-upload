@@ -1,0 +1,90 @@
+{
+  "meetingTitle": "Final Practice Call Before Webinar",
+  "meetingDate": "29 April 2026",
+  "meetingLocation": "Online",
+  "meetingType": "webinar_rehearsal",
+  "meetingStyle": "presentation_review",
+  "meetingTheme": "Webinar rehearsal and presentation refinement",
+  "meetingObjectives": [
+    "Review webinar flow and presentation content.",
+    "Refine messaging around AI discovery workshops and adoption.",
+    "Prepare presenters for delivery and timing ahead of the webinar."
+  ],
+  "participants.client": [],
+  "participants.trinzo": [
+    "Ciara Griffin",
+    "Conor Flynn",
+    "Jack Cunningham"
+  ],
+  "itemTopic": "Webinar rehearsal and presentation review",
+  "discussionPoints": [
+    "The team reviewed the webinar agenda, including the introduction, AI discovery workshop methodology, case study, and live demonstration.",
+    "The importance of starting AI initiatives with clearly defined business problems was discussed as a key factor in improving adoption.",
+    "The AI discovery workshop approach was reviewed, including Define, Measure, Analyse, Improve and Control stages.",
+    "Workshop delivery was discussed as a highly collaborative process driven by employees who perform the work and understand the workflow.",
+    "The team discussed improving slide design by reducing text and using more workshop and people-focused imagery.",
+    "The importance of positioning AI adoption as responsible adoption within GXP-regulated environments was discussed.",
+    "The AI opportunity assessment framework was reviewed, including repetition, structure, knowledge requirements, complexity and delegation.",
+    "The deliverables from an AI discovery engagement were reviewed, including opportunity registers, implementation roadmaps, discovery reports and team upskilling.",
+    "The planned complaints triage demonstration was reviewed as an example of a low-effort, high-value AI opportunity.",
+    "The presenters discussed timing management and presentation delivery ahead of the webinar.",
+    "A potential engagement approach for GlaxoSmithKline was discussed, focused on process evaluation, AI discovery workshops and training."
+  ],
+  "meetingActionPoint": [
+    "Refine presentation wording to better explain why AI initiatives should begin with defined business problems.",
+    "Reduce text-heavy slides and replace them with workshop and people-focused visuals.",
+    "Add messaging around responsible adoption of AI in GXP-regulated environments.",
+    "Simplify workshop methodology slides and rely more on presenter narration.",
+    "Incorporate practical anecdotes and examples into the workshop explanation.",
+    "Refine the explanation and introduction to the complaints triage demonstration.",
+    "Practice webinar delivery several more times before the live session.",
+    "Keep the webinar educational and avoid an overly sales-focused tone."
+  ],
+  "meetingActionPointOwner": [
+    "Jack Cunningham",
+    "Ciara Griffin",
+    "Jack Cunningham",
+    "Ciara Griffin",
+    "Jack Cunningham",
+    "Conor Flynn",
+    "All",
+    "All"
+  ],
+  "meetingActionPointDeadline": [
+    "Before webinar",
+    "Before webinar",
+    "Before webinar",
+    "Before webinar",
+    "Before webinar",
+    "Before webinar",
+    "Before webinar",
+    "Before webinar"
+  ],
+  "meetingActionPointConfidence": [
+    0.95,
+    0.95,
+    0.95,
+    0.9,
+    0.85,
+    0.9,
+    0.95,
+    0.9
+  ],
+  "meetingActionPointRelatedMilestone": [
+    "webinar_preparation",
+    "webinar_preparation",
+    "webinar_preparation",
+    "webinar_preparation",
+    "webinar_preparation",
+    "webinar_preparation",
+    "webinar_preparation",
+    "webinar_preparation"
+  ],
+  "decisions": [
+    "The webinar should focus on education and process explanation rather than selling services.",
+    "Workshop slides should be simplified and supported with stronger visual content.",
+    "Responsible adoption of AI in GXP-regulated environments should be incorporated into the messaging.",
+    "The complaints triage example will be used as the primary demonstration of a practical AI use case."
+  ],
+  "executiveSummary": "The team conducted a final rehearsal for an upcoming webinar focused on AI discovery workshops and AI adoption in regulated environments. Presentation content, delivery flow, workshop methodology, and demonstration material were reviewed. Feedback centred on simplifying slides, increasing the use of people-focused visuals, strengthening messaging around responsible AI adoption, and ensuring the session remains educational rather than sales-led. The team agreed to continue practising delivery and refine the webinar content ahead of the live session."
+}
