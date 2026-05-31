@@ -1,12 +1,34 @@
 {
-  "discussionPoints": [
-    "legal cycle is the blocker",
-    "retail and logistics accounts"
+  "testName": "018_sales_pipeline_review",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
   ],
-  "decisions": [
-    "focus on the retail and logistics accounts"
+  "expectedActionCount": 1,
+  "expectedDecisionCount": 1,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionTopics": [
+    [
+      "legal cycle is the blocker"
+    ],
+    [
+      "retail",
+      "logistics accounts"
+    ]
   ],
-  "meetingActionPoint": [
-    "update the forecast by Tuesday"
+  "mustContainActions": [
+    {
+      "text": "update the forecast by Tuesday"
+    }
+  ],
+  "mustContainDecisions": [
+    {
+      "text": "focus on the retail and logistics accounts"
+    }
+  ],
+  "mustNotContainDecisions": [
+    "healthcare prospect this quarter"
   ]
 }

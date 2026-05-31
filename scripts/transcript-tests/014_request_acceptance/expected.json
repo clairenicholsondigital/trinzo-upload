@@ -1,8 +1,16 @@
 {
-  "meetingTitle": "Floor Plan Follow-up",
-  "meetingDate": "19 August 2026",
-  "mustContainActions": [
-    "send the updated floor plan this afternoon"
+  "testName": "014_request_acceptance",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
   ],
-  "expectedDecisionCount": 0
+  "expectedActionCount": 1,
+  "expectedDecisionCount": 0,
+  "mustContainActions": [
+    {
+      "text": "send the updated floor plan this afternoon"
+    }
+  ]
 }

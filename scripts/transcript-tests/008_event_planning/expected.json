@@ -1,13 +1,26 @@
 {
-  "meetingTitle": "Event Planning Review",
-  "meetingDate": "30 July 2026",
-  "mustContainDiscussionPoints": [
-    "one hundred and eighty people",
-    "larger auditorium"
+  "testName": "008_event_planning",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
+  ],
+  "expectedActionCount": 0,
+  "expectedDecisionCount": 1,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionTopics": [
+    [
+      "one hundred",
+      "eighty people"
+    ],
+    [
+      "larger auditorium"
+    ]
   ],
   "mustContainDecisions": [
-    "switch the workshop to the larger auditorium"
-  ],
-  "expectedDecisionCount": 1,
-  "expectedActionCount": 0
+    {
+      "text": "switch the workshop to the larger auditorium"
+    }
+  ]
 }

@@ -1,13 +1,29 @@
 {
-  "meetingTitle": "Training Rollout Review",
-  "meetingDate": "18 August 2026",
-  "mustContainDiscussionPoints": [
-    "shorter sessions",
-    "pilot group to the Manchester site"
+  "testName": "012_training_rollout",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
+  ],
+  "expectedActionCount": 2,
+  "expectedDecisionCount": 0,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionTopics": [
+    [
+      "shorter sessions"
+    ],
+    [
+      "pilot group to the Manchester site"
+    ]
   ],
   "mustContainActions": [
-    "split the material into two forty-five minute sessions",
-    "publish the revised timetable by Thursday"
-  ],
-  "expectedDecisionCount": 0
+    {
+      "text": "split the material into two forty-five minute sessions",
+      "owner": "Louise"
+    },
+    {
+      "text": "publish the revised timetable by Thursday"
+    }
+  ]
 }

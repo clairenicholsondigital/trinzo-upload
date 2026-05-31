@@ -1,12 +1,31 @@
 {
-  "discussionPoints": [
-    "registration slide feels crowded",
-    "keep the live demo to seven minutes"
+  "testName": "030_webinar_rehearsal",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
   ],
-  "decisions": [
-    "keep the live demo to seven minutes"
+  "expectedActionCount": 1,
+  "expectedDecisionCount": 1,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionTopics": [
+    [
+      "registration slide feels crowded"
+    ],
+    [
+      "keep the live demo to seven minutes"
+    ]
   ],
-  "meetingActionPoint": [
-    "remove two bullets from the registration slide"
+  "mustContainActions": [
+    {
+      "text": "remove two bullets from the registration slide",
+      "owner": "Jack"
+    }
+  ],
+  "mustContainDecisions": [
+    {
+      "text": "keep the live demo to seven minutes"
+    }
   ]
 }

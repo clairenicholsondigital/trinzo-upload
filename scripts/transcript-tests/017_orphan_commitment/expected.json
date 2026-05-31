@@ -1,9 +1,15 @@
 {
-  "meetingTitle": "Loose Follow-up",
-  "meetingDate": "22 August 2026",
+  "testName": "017_orphan_commitment",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe",
+    "hear me",
+    "speak later",
+    "do that"
+  ],
   "expectedActionCount": 0,
   "expectedDecisionCount": 0,
-  "mustNotContainDiscussionPoints": [
-    "do that"
-  ]
+  "expectedDiscussionCountMin": 0
 }

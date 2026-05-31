@@ -1,13 +1,25 @@
 {
-  "meetingTitle": "Hiring Debrief",
-  "meetingDate": "8 August 2026",
-  "mustContainDiscussionPoints": [
-    "payment compliance",
-    "make an offer to Priya"
+  "testName": "011_hiring_interview_debrief",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
+  ],
+  "expectedActionCount": 0,
+  "expectedDecisionCount": 1,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionTopics": [
+    [
+      "payment compliance"
+    ],
+    [
+      "make an offer to Priya"
+    ]
   ],
   "mustContainDecisions": [
-    "make an offer to Priya"
-  ],
-  "expectedDecisionCount": 1,
-  "expectedActionCount": 0
+    {
+      "text": "make an offer to Priya"
+    }
+  ]
 }

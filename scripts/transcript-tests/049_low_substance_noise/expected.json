@@ -1,0 +1,16 @@
+{
+  "testName": "049_low_substance_noise",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe",
+    "run through the agenda"
+  ],
+  "expectedActionCount": 0,
+  "expectedDecisionCount": 0,
+  "expectedDiscussionCount": 0,
+  "mustNotContainDecisions": [
+    "run through the agenda"
+  ]
+}

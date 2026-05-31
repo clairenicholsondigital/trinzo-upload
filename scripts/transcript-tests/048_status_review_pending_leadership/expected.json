@@ -1,0 +1,39 @@
+{
+  "testName": "048_status_review_pending_leadership",
+  "expectedMeetingType": "project_status_review",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe",
+    "online remains in progress"
+  ],
+  "expectedActionCount": 4,
+  "expectedDecisionCount": 0,
+  "expectedDiscussionCountMin": 2,
+  "mustContainDiscussionTopics": [
+    [
+      "leadership review"
+    ],
+    [
+      "vendor strategy"
+    ]
+  ],
+  "mustContainActions": [
+    {
+      "text": "review stage gate templates"
+    },
+    {
+      "text": "confirm AI pipeline dependencies with sales"
+    },
+    {
+      "text": "draft vendor strategy document"
+    },
+    {
+      "text": "follow up innovation grant feedback"
+    }
+  ],
+  "mustNotContainDecisions": [
+    "procurement starts now"
+  ]
+}

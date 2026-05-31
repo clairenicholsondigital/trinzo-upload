@@ -1,12 +1,35 @@
 {
-  "discussionPoints": [
-    "carbon reduction",
-    "digital-health outcomes"
+  "testName": "038_grant_application_review",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
   ],
-  "decisions": [
-    "submit the digital-health angle"
+  "expectedActionCount": 1,
+  "expectedDecisionCount": 1,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionTopics": [
+    [
+      "carbon reduction"
+    ],
+    [
+      "digital-health outcomes"
+    ]
   ],
-  "meetingActionPoint": [
-    "rewrite the summary by Wednesday"
+  "mustContainActions": [
+    {
+      "text": "rewrite the summary by Wednesday",
+      "owner": "Neil",
+      "deadline": "by Wednesday"
+    }
+  ],
+  "mustContainDecisions": [
+    {
+      "text": "submit the digital-health angle"
+    }
+  ],
+  "mustNotContainDecisions": [
+    "keep the carbon angle"
   ]
 }

@@ -1,12 +1,31 @@
 {
-  "discussionPoints": [
-    "handoffs were slower than expected",
-    "Friday standups were not adding much value"
+  "testName": "036_project_retrospective",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
   ],
-  "decisions": [
-    "drop the Friday standup"
+  "expectedActionCount": 1,
+  "expectedDecisionCount": 1,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionTopics": [
+    [
+      "handoffs were slower than expected"
+    ],
+    [
+      "Friday standups were not adding much value"
+    ]
   ],
-  "meetingActionPoint": [
-    "update the team cadence note this week"
+  "mustContainActions": [
+    {
+      "text": "update the team cadence note this week",
+      "owner": "Jen"
+    }
+  ],
+  "mustContainDecisions": [
+    {
+      "text": "drop the Friday standup"
+    }
   ]
 }

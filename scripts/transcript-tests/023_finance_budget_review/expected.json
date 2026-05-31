@@ -1,11 +1,27 @@
 {
-  "discussionPoints": [
-    "contractor spend is still above forecast"
+  "testName": "023_finance_budget_review",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
   ],
-  "decisions": [
-    "defer the support analyst backfill"
+  "expectedActionCount": 1,
+  "expectedDecisionCount": 1,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionTopics": [
+    [
+      "contractor spend is still above forecast"
+    ]
   ],
-  "meetingActionPoint": [
-    "send the revised forecast before lunch"
+  "mustContainActions": [
+    {
+      "text": "send the revised forecast before lunch"
+    }
+  ],
+  "mustContainDecisions": [
+    {
+      "text": "defer the support analyst backfill"
+    }
   ]
 }

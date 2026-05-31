@@ -1,11 +1,29 @@
 {
-  "discussionPoints": [
-    "commits us to volume we do not need yet"
+  "testName": "035_procurement_discussion",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
   ],
-  "decisions": [
-    "buy the lower-volume option first"
+  "expectedActionCount": 1,
+  "expectedDecisionCount": 1,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionTopics": [
+    [
+      "commits us to volume we do not need yet"
+    ]
   ],
-  "meetingActionPoint": [
-    "request the revised quote by Tuesday"
+  "mustContainActions": [
+    {
+      "text": "request the revised quote by Tuesday",
+      "owner": "Yasmin",
+      "deadline": "by Tuesday"
+    }
+  ],
+  "mustContainDecisions": [
+    {
+      "text": "buy the lower-volume option first"
+    }
   ]
 }

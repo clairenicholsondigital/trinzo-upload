@@ -1,11 +1,32 @@
 {
-  "discussionPoints": [
-    "contract term length"
+  "testName": "020_contract_negotiation",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
   ],
-  "decisions": [
-    "sign the one-year extension"
+  "expectedActionCount": 1,
+  "expectedDecisionCount": 1,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionTopics": [
+    [
+      "contract term length"
+    ]
   ],
-  "meetingActionPoint": [
-    "redline the exit clause by Friday"
+  "mustContainActions": [
+    {
+      "text": "redline the exit clause by Friday",
+      "owner": "Jon",
+      "deadline": "by Friday"
+    }
+  ],
+  "mustContainDecisions": [
+    {
+      "text": "sign the one-year extension"
+    }
+  ],
+  "mustNotContainDecisions": [
+    "three-year commitment"
   ]
 }

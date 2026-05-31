@@ -1,10 +1,15 @@
 {
-  "meetingTitle": "Low Substance Catchup",
-  "meetingDate": "22 July 2026",
+  "testName": "013_low_substance_fallback",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe",
+    "hear me",
+    "speak later",
+    "do that"
+  ],
   "expectedActionCount": 0,
   "expectedDecisionCount": 0,
-  "mustNotContainDiscussionPoints": [
-    "hear me",
-    "speak later"
-  ]
+  "expectedDiscussionCountMin": 0
 }

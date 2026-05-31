@@ -1,11 +1,28 @@
 {
-  "discussionPoints": [
-    "API latency is still unstable"
+  "testName": "025_incident_response",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
   ],
-  "decisions": [
-    "keep the status page open"
+  "expectedActionCount": 1,
+  "expectedDecisionCount": 1,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionTopics": [
+    [
+      "API latency is still unstable"
+    ]
   ],
-  "meetingActionPoint": [
-    "pull the API logs by 6pm"
+  "mustContainActions": [
+    {
+      "text": "pull the API logs by 6pm",
+      "owner": "Noah"
+    }
+  ],
+  "mustContainDecisions": [
+    {
+      "text": "keep the status page open"
+    }
   ]
 }

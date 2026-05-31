@@ -1,12 +1,32 @@
 {
-  "discussionPoints": [
-    "missed handover notes",
-    "slow follow-up"
+  "testName": "027_customer_complaint_review",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
   ],
-  "decisions": [
-    "refund the last invoice"
+  "expectedActionCount": 1,
+  "expectedDecisionCount": 1,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionTopics": [
+    [
+      "missed handover notes"
+    ],
+    [
+      "slow follow-up"
+    ]
   ],
-  "meetingActionPoint": [
-    "call the customer before noon"
+  "mustContainActions": [
+    {
+      "text": "call the customer before noon",
+      "owner": "Dan",
+      "deadline": "before noon"
+    }
+  ],
+  "mustContainDecisions": [
+    {
+      "text": "refund the last invoice"
+    }
   ]
 }

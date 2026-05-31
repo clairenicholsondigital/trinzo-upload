@@ -1,0 +1,22 @@
+Release Readiness Review
+
+Date: 2 October 2026
+Location: Online
+
+Maya 0:01
+The login bug is still unverified on iOS.
+
+Owen 0:09
+We should delay the Friday release until QA confirms the fix.
+
+Priya 0:16
+Agreed.
+
+Owen 0:20
+Priya to rerun the regression pack by 4pm on Friday.
+
+Priya 0:27
+I'll do it.
+
+Maya 0:31
+If the regression is clean, we can revisit the release on Monday.

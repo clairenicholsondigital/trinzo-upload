@@ -45,6 +45,10 @@ def normalize_expected_payload(payload):
             normalized["mustContainDecisions"] = payload["decisions"]
         if "meetingActionPoint" in payload and "mustContainActions" not in payload:
             normalized["mustContainActions"] = payload["meetingActionPoint"]
+        if "expectedMeetingType" in payload and "meetingType" not in payload:
+            normalized["meetingType"] = payload["expectedMeetingType"]
+        if "expectedParticipants" in payload and "participants" not in payload:
+            normalized["expectedParticipants"] = payload["expectedParticipants"]
         return normalized
     return payload
 
@@ -70,6 +74,42 @@ def contains_match(actual_values, expected_value):
         if expected_norm in actual_norm or actual_norm in expected_norm:
             return True
     return False
+
+
+def contains_all_concepts(actual_values, concepts):
+    normalized_values = unique_normalized_list(actual_values)
+    if not normalized_values:
+        return False
+    if isinstance(concepts, str):
+        concepts = [concepts]
+    for concept in concepts:
+        concept_norm = normalize_text(concept)
+        if not any(concept_norm in actual_norm for actual_norm in normalized_values):
+            return False
+    return True
+
+
+def action_matches(actual_action, expected_action):
+    text = actual_action.get("meetingActionPoint", "") if isinstance(actual_action, dict) else str(actual_action)
+    if isinstance(expected_action, str):
+        return contains_match([text], expected_action)
+    expected_text = expected_action.get("text", "")
+    if expected_text and not contains_match([text], expected_text):
+        return False
+    if expected_action.get("owner") and normalize_text(actual_action.get("meetingActionPointOwner", "")) != normalize_text(expected_action["owner"]):
+        return False
+    if expected_action.get("deadline") and normalize_text(expected_action.get("deadline")) not in normalize_text(actual_action.get("meetingActionPointDeadline", "")):
+        return False
+    return True
+
+
+def decision_matches(actual_decision, expected_decision):
+    if isinstance(expected_decision, str):
+        return contains_match([actual_decision], expected_decision)
+    expected_text = expected_decision.get("text", "")
+    if expected_text and not contains_match([actual_decision], expected_text):
+        return False
+    return True
 
 
 def closest_values(actual_values, expected_value, limit=3):
@@ -174,6 +214,15 @@ for folder in find_test_folders(TEST_DIR):
                     f"expected participants.trinzo {expected_participants['trinzo']!r}, got {actual_trinzo!r}",
                 )
 
+    if "expectedParticipants" in exp:
+        actual_total = actual.get("participants.client", []) + actual.get("participants.trinzo", [])
+        if participant_set(actual_total) != participant_set(exp["expectedParticipants"]):
+            add_failure(
+                folder_failures,
+                folder.name,
+                f"expected participants {exp['expectedParticipants']!r}, got {actual_total!r}",
+            )
+
     if "participantCount" in exp:
         participant_total = len(actual.get("participants.client", [])) + len(actual.get("participants.trinzo", []))
         if participant_total != exp["participantCount"]:
@@ -199,6 +248,15 @@ for folder in find_test_folders(TEST_DIR):
                 f"expected {exp['expectedActionCount']} actions, got {action_count}",
             )
 
+    if "expectedActionCountMin" in exp:
+        action_count = len(actual.get("actions", []))
+        if action_count < exp["expectedActionCountMin"]:
+            add_failure(
+                folder_failures,
+                folder.name,
+                f"expected at least {exp['expectedActionCountMin']} actions, got {action_count}",
+            )
+
     if "expectedDecisionCount" in exp:
         decision_count = len(actual.get("decisions", []))
         if decision_count != exp["expectedDecisionCount"]:
@@ -208,22 +266,61 @@ for folder in find_test_folders(TEST_DIR):
                 f"expected {exp['expectedDecisionCount']} decisions, got {decision_count}",
             )
 
-    decisions = actual.get("decisions", [])
-    discussion_points = actual.get("discussionPoints", [])
-    actions = action_texts(actual)
-    executive_summary = actual.get("executiveSummary", "")
-
-    for text in exp.get("mustContainDecisions", []):
-        if not contains_match(decisions, text):
+    if "expectedDecisionCountMin" in exp:
+        decision_count = len(actual.get("decisions", []))
+        if decision_count < exp["expectedDecisionCountMin"]:
             add_failure(
                 folder_failures,
                 folder.name,
-                f"missing decision {text!r}; {format_closest(closest_values(decisions, text))}",
+                f"expected at least {exp['expectedDecisionCountMin']} decisions, got {decision_count}",
+            )
+
+    if "expectedDiscussionCountMin" in exp:
+        discussion_count = len(actual.get("discussionPoints", []))
+        if discussion_count < exp["expectedDiscussionCountMin"]:
+            add_failure(
+                folder_failures,
+                folder.name,
+                f"expected at least {exp['expectedDiscussionCountMin']} discussion points, got {discussion_count}",
+            )
+
+    if "expectedDiscussionCount" in exp:
+        discussion_count = len(actual.get("discussionPoints", []))
+        if discussion_count != exp["expectedDiscussionCount"]:
+            add_failure(
+                folder_failures,
+                folder.name,
+                f"expected {exp['expectedDiscussionCount']} discussion points, got {discussion_count}",
+            )
+
+    decisions = actual.get("decisions", [])
+    discussion_points = actual.get("discussionPoints", [])
+    actions = action_texts(actual)
+    action_objects = [action for action in actual.get("actions", []) if isinstance(action, dict)]
+    executive_summary = actual.get("executiveSummary", "")
+    discussion_and_summary = discussion_points + ([executive_summary] if executive_summary else [])
+
+    for text in exp.get("mustContainDecisions", []):
+        expected_text = text.get("text", "") if isinstance(text, dict) else text
+        if not any(decision_matches(actual_decision, text) for actual_decision in decisions):
+            add_failure(
+                folder_failures,
+                folder.name,
+                f"missing decision {expected_text!r}; {format_closest(closest_values(decisions, expected_text))}",
             )
 
     for text in exp.get("mustNotContainDecisions", []):
         if contains_match(decisions, text):
             add_failure(folder_failures, folder.name, f"forbidden decision present: {text!r}")
+
+    for concepts in exp.get("mustContainDiscussionTopics", []):
+        if not contains_all_concepts(discussion_and_summary, concepts):
+            expected_hint = concepts[0] if isinstance(concepts, list) else concepts
+            add_failure(
+                folder_failures,
+                folder.name,
+                f"missing discussion topic concepts {concepts!r}; {format_closest(closest_values(discussion_and_summary, expected_hint))}",
+            )
 
     for text in exp.get("mustContainDiscussionPoints", []):
         if not contains_match(discussion_points, text):
@@ -238,11 +335,13 @@ for folder in find_test_folders(TEST_DIR):
             add_failure(folder_failures, folder.name, f"forbidden discussion point present: {text!r}")
 
     for text in exp.get("mustContainActions", []):
-        if not contains_match(actions, text):
+        expected_text = text.get("text", "") if isinstance(text, dict) else text
+        matched = any(action_matches(action, text) for action in action_objects) if isinstance(text, dict) else contains_match(actions, text)
+        if not matched:
             add_failure(
                 folder_failures,
                 folder.name,
-                f"missing action {text!r}; {format_closest(closest_values(actions, text))}",
+                f"missing action {expected_text!r}; {format_closest(closest_values(actions, expected_text))}",
             )
 
     for text in exp.get("mustContainExecutiveSummary", []):

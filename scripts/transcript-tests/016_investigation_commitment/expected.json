@@ -1,8 +1,16 @@
 {
-  "meetingTitle": "Bug Investigation",
-  "meetingDate": "21 August 2026",
-  "mustContainActions": [
-    "reproduce it on safari"
+  "testName": "016_investigation_commitment",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
   ],
-  "expectedDecisionCount": 0
+  "expectedActionCount": 1,
+  "expectedDecisionCount": 0,
+  "mustContainActions": [
+    {
+      "text": "reproduce it on safari"
+    }
+  ]
 }

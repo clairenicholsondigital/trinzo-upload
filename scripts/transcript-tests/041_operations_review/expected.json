@@ -1,12 +1,33 @@
 {
-  "discussionPoints": [
-    "backlog ageing has worsened",
-    "rota fatigue"
+  "testName": "041_operations_review",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
   ],
-  "decisions": [
-    "keep weekend cover internal"
+  "expectedActionCount": 1,
+  "expectedDecisionCount": 1,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionTopics": [
+    [
+      "backlog ageing has worsened"
+    ],
+    [
+      "rota fatigue"
+    ]
   ],
-  "meetingActionPoint": [
-    "update the rota this evening"
+  "mustContainActions": [
+    {
+      "text": "update the rota this evening"
+    }
+  ],
+  "mustContainDecisions": [
+    {
+      "text": "keep weekend cover internal"
+    }
+  ],
+  "mustNotContainDecisions": [
+    "hire temporary cover"
   ]
 }

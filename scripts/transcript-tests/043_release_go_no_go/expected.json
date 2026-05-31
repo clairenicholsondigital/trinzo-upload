@@ -1,0 +1,33 @@
+{
+  "testName": "043_release_go_no_go",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe",
+    "online the"
+  ],
+  "expectedActionCount": 1,
+  "expectedDecisionCount": 1,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionTopics": [
+    [
+      "login bug",
+      "ios"
+    ]
+  ],
+  "mustContainActions": [
+    {
+      "text": "rerun the regression pack by 4pm on Friday",
+      "owner": "Priya"
+    }
+  ],
+  "mustContainDecisions": [
+    {
+      "text": "delay the Friday release until QA confirms the fix"
+    }
+  ],
+  "mustNotContainDecisions": [
+    "ship the Friday release"
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "testName": "046_customer_onboarding_split_rollout",
+  "expectedMeetingType": "client_onboarding",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
+  ],
+  "expectedActionCount": 1,
+  "expectedDecisionCount": 1,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionTopics": [
+    [
+      "finance"
+    ],
+    [
+      "warehouse",
+      "missing"
+    ]
+  ],
+  "mustContainActions": [
+    {
+      "text": "send the missing-field list today",
+      "owner": "Mina"
+    }
+  ],
+  "mustContainDecisions": [
+    {
+      "text": "start onboarding with finance first and hold warehouse until the mapping is complete"
+    }
+  ],
+  "mustNotContainDecisions": [
+    "start warehouse onboarding first"
+  ]
+}

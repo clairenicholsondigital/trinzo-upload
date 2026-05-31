@@ -1,11 +1,28 @@
 {
-  "discussionPoints": [
-    "replace the workaround article with a direct escalation path"
+  "testName": "042_support_escalation_review",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
   ],
-  "decisions": [
-    "replace the workaround article with a direct escalation path"
+  "expectedActionCount": 1,
+  "expectedDecisionCount": 1,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionTopics": [
+    [
+      "replace the workaround article with a direct escalation path"
+    ]
   ],
-  "meetingActionPoint": [
-    "call the customer by 5pm"
+  "mustContainActions": [
+    {
+      "text": "call the customer by 5pm",
+      "owner": "Drew"
+    }
+  ],
+  "mustContainDecisions": [
+    {
+      "text": "replace the workaround article with a direct escalation path"
+    }
   ]
 }

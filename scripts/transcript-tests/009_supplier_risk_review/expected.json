@@ -1,13 +1,25 @@
 {
-  "meetingTitle": "Supplier Risk Review",
-  "meetingDate": "11 August 2026",
-  "mustContainDiscussionPoints": [
-    "component traceability",
-    "buffer stock"
+  "testName": "009_supplier_risk_review",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
+  ],
+  "expectedActionCount": 0,
+  "expectedDecisionCount": 1,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionTopics": [
+    [
+      "component traceability"
+    ],
+    [
+      "buffer stock"
+    ]
   ],
   "mustContainDecisions": [
-    "stay with the current supplier for Q4"
-  ],
-  "expectedDecisionCount": 1,
-  "expectedActionCount": 0
+    {
+      "text": "stay with the current supplier for Q4"
+    }
+  ]
 }

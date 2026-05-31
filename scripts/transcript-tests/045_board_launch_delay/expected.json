@@ -1,0 +1,35 @@
+{
+  "testName": "045_board_launch_delay",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe",
+    "online the"
+  ],
+  "expectedActionCount": 1,
+  "expectedDecisionCount": 1,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionTopics": [
+    [
+      "spain launch"
+    ],
+    [
+      "partner paperwork"
+    ]
+  ],
+  "mustContainActions": [
+    {
+      "text": "update the board pack tonight",
+      "owner": "Leah"
+    }
+  ],
+  "mustContainDecisions": [
+    {
+      "text": "move the Spain launch to September"
+    }
+  ],
+  "mustNotContainDecisions": [
+    "announce the Spain launch in July"
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "testName": "050_partnership_mou_enablement",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
+  ],
+  "expectedActionCount": 2,
+  "expectedDecisionCount": 1,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionTopics": [
+    [
+      "legal review",
+      "reseller clause"
+    ],
+    [
+      "enablement sessions"
+    ]
+  ],
+  "mustContainActions": [
+    {
+      "text": "send the redlined MOU by Thursday",
+      "owner": "Sara"
+    },
+    {
+      "text": "confirm dates with them by Friday",
+      "owner": "Sara"
+    }
+  ],
+  "mustContainDecisions": [
+    {
+      "text": "sign only the marketing MOU this month and defer the reseller clause to legal"
+    }
+  ],
+  "mustNotContainDecisions": [
+    "sign the reseller clause this month"
+  ]
+}

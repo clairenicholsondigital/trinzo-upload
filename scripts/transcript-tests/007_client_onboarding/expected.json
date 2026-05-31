@@ -1,13 +1,25 @@
 {
-  "meetingTitle": "Client Onboarding Review",
-  "meetingDate": "4 August 2026",
-  "mustContainDiscussionPoints": [
-    "finance first",
-    "first rollout"
+  "testName": "007_client_onboarding",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
+  ],
+  "expectedActionCount": 0,
+  "expectedDecisionCount": 1,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionTopics": [
+    [
+      "finance first"
+    ],
+    [
+      "first rollout"
+    ]
   ],
   "mustContainDecisions": [
-    "begin onboarding with finance first"
-  ],
-  "expectedDecisionCount": 1,
-  "expectedActionCount": 0
+    {
+      "text": "begin onboarding with finance first"
+    }
+  ]
 }

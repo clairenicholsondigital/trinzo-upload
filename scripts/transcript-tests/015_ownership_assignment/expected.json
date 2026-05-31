@@ -1,8 +1,16 @@
 {
-  "meetingTitle": "Negotiation Ownership",
-  "meetingDate": "20 August 2026",
-  "mustContainActions": [
-    "handle the negotiation"
+  "testName": "015_ownership_assignment",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
   ],
-  "expectedDecisionCount": 0
+  "expectedActionCount": 1,
+  "expectedDecisionCount": 0,
+  "mustContainActions": [
+    {
+      "text": "handle the negotiation"
+    }
+  ]
 }

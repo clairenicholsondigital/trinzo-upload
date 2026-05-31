@@ -1,13 +1,34 @@
 {
-  "discussionPoints": [
-    "shorter sessions",
-    "pilot group to the Manchester site"
+  "testName": "032_training_rollout",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
   ],
-  "decisions": [
-    "keep the pilot group to the Manchester site"
+  "expectedActionCount": 2,
+  "expectedDecisionCount": 1,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionTopics": [
+    [
+      "shorter sessions"
+    ],
+    [
+      "pilot group to the Manchester site"
+    ]
   ],
-  "meetingActionPoint": [
-    "split the material into two forty-minute sessions",
-    "publish the revised timetable by Thursday"
+  "mustContainActions": [
+    {
+      "text": "split the material into two forty-minute sessions",
+      "owner": "Louise"
+    },
+    {
+      "text": "publish the revised timetable by Thursday"
+    }
+  ],
+  "mustContainDecisions": [
+    {
+      "text": "keep the pilot group to the Manchester site"
+    }
   ]
 }

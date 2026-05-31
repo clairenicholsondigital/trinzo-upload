@@ -1,11 +1,32 @@
 {
-  "discussionPoints": [
-    "cabling contractor cannot finish before the 18th"
+  "testName": "029_office_relocation",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
   ],
-  "decisions": [
-    "move the office relocation to 19 September instead"
+  "expectedActionCount": 1,
+  "expectedDecisionCount": 1,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionTopics": [
+    [
+      "cabling contractor cannot finish before the 18th"
+    ]
   ],
-  "meetingActionPoint": [
-    "confirm the movers tomorrow"
+  "mustContainActions": [
+    {
+      "text": "confirm the movers tomorrow",
+      "owner": "Sophie",
+      "deadline": "tomorrow"
+    }
+  ],
+  "mustContainDecisions": [
+    {
+      "text": "move the office relocation to 19 September instead"
+    }
+  ],
+  "mustNotContainDecisions": [
+    "move on the 12th"
   ]
 }

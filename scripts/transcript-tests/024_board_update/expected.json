@@ -1,11 +1,29 @@
 {
-  "discussionPoints": [
-    "churn commentary is still too vague"
+  "testName": "024_board_update",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
   ],
-  "decisions": [
-    "keep the board pack focused on revenue, margin and churn drivers"
+  "expectedActionCount": 1,
+  "expectedDecisionCount": 1,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionTopics": [
+    [
+      "churn commentary is still too vague"
+    ]
   ],
-  "meetingActionPoint": [
-    "tighten the churn narrative before Thursday"
+  "mustContainActions": [
+    {
+      "text": "tighten the churn narrative before Thursday",
+      "owner": "Tom",
+      "deadline": "before Thursday"
+    }
+  ],
+  "mustContainDecisions": [
+    {
+      "text": "keep the board pack focused on revenue, margin and churn drivers"
+    }
   ]
 }

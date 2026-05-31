@@ -1,12 +1,33 @@
 {
-  "discussionPoints": [
-    "identity mapping is not ready",
-    "defer SSO until phase two"
+  "testName": "028_customer_onboarding",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
   ],
-  "decisions": [
-    "begin onboarding with CSV import first"
+  "expectedActionCount": 1,
+  "expectedDecisionCount": 1,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionTopics": [
+    [
+      "identity mapping is not ready"
+    ],
+    [
+      "defer SSO until phase two"
+    ]
   ],
-  "meetingActionPoint": [
-    "send the onboarding plan by Friday"
+  "mustContainActions": [
+    {
+      "text": "send the onboarding plan by Friday"
+    }
+  ],
+  "mustContainDecisions": [
+    {
+      "text": "begin onboarding with CSV import first"
+    }
+  ],
+  "mustNotContainDecisions": [
+    "SSO on day one"
   ]
 }

@@ -1,12 +1,30 @@
 {
-  "discussionPoints": [
-    "accessibility fixes are still open",
-    "unresolved export bug"
+  "testName": "034_software_release_review",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
   ],
-  "decisions": [
-    "delay the release"
+  "expectedActionCount": 1,
+  "expectedDecisionCount": 1,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionTopics": [
+    [
+      "accessibility fixes are still open"
+    ],
+    [
+      "unresolved export bug"
+    ]
   ],
-  "meetingActionPoint": [
-    "rerun the regression suite tomorrow morning"
+  "mustContainActions": [
+    {
+      "text": "rerun the regression suite tomorrow morning"
+    }
+  ],
+  "mustContainDecisions": [
+    {
+      "text": "delay the release"
+    }
   ]
 }

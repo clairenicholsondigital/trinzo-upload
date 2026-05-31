@@ -1,11 +1,30 @@
 {
-  "discussionPoints": [
-    "saved cards and discount codes"
+  "testName": "026_product_bug_triage",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
   ],
-  "decisions": [
-    "ship the hotfix behind a feature flag"
+  "expectedActionCount": 1,
+  "expectedDecisionCount": 1,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionTopics": [
+    [
+      "saved cards",
+      "discount codes"
+    ]
   ],
-  "meetingActionPoint": [
-    "verify the checkout flow before release"
+  "mustContainActions": [
+    {
+      "text": "verify the checkout flow before release",
+      "owner": "Lewis",
+      "deadline": "before release"
+    }
+  ],
+  "mustContainDecisions": [
+    {
+      "text": "ship the hotfix behind a feature flag"
+    }
   ]
 }

@@ -1,16 +1,32 @@
 {
-  "meetingTitle": "Contract Renewal Review",
-  "meetingDate": "15 July 2026",
-  "mustContainDiscussionPoints": [
-    "three-year term would reduce the increase",
-    "migration effort and retraining"
+  "testName": "004_contract_renewal",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
+  ],
+  "expectedActionCount": 0,
+  "expectedDecisionCount": 1,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionTopics": [
+    [
+      "three-year term would reduce the increase"
+    ],
+    [
+      "migration effort",
+      "retraining"
+    ],
+    [
+      "renew with the existing supplier"
+    ]
   ],
   "mustContainDecisions": [
-    "renew with the existing supplier"
+    {
+      "text": "renew with the existing supplier"
+    }
   ],
-  "expectedDecisionCount": 1,
-  "expectedActionCount": 0,
-  "mustContainExecutiveSummary": [
-    "renew with the existing supplier"
+  "mustNotContainDecisions": [
+    "three-year commitment"
   ]
 }

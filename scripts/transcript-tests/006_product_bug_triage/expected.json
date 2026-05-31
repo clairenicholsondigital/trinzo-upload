@@ -1,14 +1,30 @@
 {
-  "meetingTitle": "Bug Triage",
-  "meetingDate": "20 July 2026",
-  "mustContainDiscussionPoints": [
-    "blocking card payments",
-    "hotfix branch"
+  "testName": "006_product_bug_triage",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
+  ],
+  "expectedActionCount": 2,
+  "expectedDecisionCount": 0,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionTopics": [
+    [
+      "blocking card payments"
+    ],
+    [
+      "hotfix branch"
+    ]
   ],
   "mustContainActions": [
-    "reproduce it on Safari",
-    "capture logs by 3pm",
-    "prepare a hotfix branch"
-  ],
-  "expectedDecisionCount": 0
+    {
+      "text": "reproduce it on Safari and capture logs by 3pm",
+      "owner": "Priya"
+    },
+    {
+      "text": "prepare a hotfix branch",
+      "owner": "Marco"
+    }
+  ]
 }

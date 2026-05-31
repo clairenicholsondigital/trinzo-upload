@@ -1,11 +1,28 @@
 {
-  "discussionPoints": [
-    "paid social leads are not converting"
+  "testName": "033_marketing_campaign_review",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
   ],
-  "decisions": [
-    "pause LinkedIn spend"
+  "expectedActionCount": 1,
+  "expectedDecisionCount": 1,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionTopics": [
+    [
+      "paid social leads are not converting"
+    ]
   ],
-  "meetingActionPoint": [
-    "rewrite the landing-page copy tonight"
+  "mustContainActions": [
+    {
+      "text": "rewrite the landing-page copy tonight",
+      "owner": "Leo"
+    }
+  ],
+  "mustContainDecisions": [
+    {
+      "text": "pause LinkedIn spend"
+    }
   ]
 }

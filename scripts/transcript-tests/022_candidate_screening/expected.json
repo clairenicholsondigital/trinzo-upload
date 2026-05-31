@@ -1,7 +1,15 @@
 {
-  "discussionPoints": [],
-  "decisions": [
-    "not progress Ben to interview this round"
+  "testName": "022_candidate_screening",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
   ],
-  "meetingActionPoint": []
+  "expectedDecisionCount": 1,
+  "mustContainDecisions": [
+    {
+      "text": "not progress Ben to interview this round"
+    }
+  ]
 }

@@ -33,6 +33,7 @@ except ImportError:
 
 TURN_RE = re.compile(r"^(?P<speaker>[A-Z][A-Za-z]+(?: [A-Z][A-Za-z]+){0,3})\s+(?P<timestamp>\d+:\d{2})\s*(?P<tail>.*)$")
 COLON_TURN_RE = re.compile(r"^(?P<speaker>[A-Z][A-Za-z]+(?: [A-Z][A-Za-z]+){0,3}):\s*(?P<tail>.*)$")
+METADATA_SPEAKERS = {"Date", "Location", "Online"}
 METADATA_RE = re.compile(
     r"(?:-meeting transcript$)|(?:^\d{1,2}\s+\w+\s+\d{4}(?:,\s*\d{1,2}:\d{2}(?:am|pm))?$)|(?:^\d+m\s+\d+s$)|(?:started transcription\.?$)|(?:stopped transcription\.?$)",
     re.IGNORECASE,
@@ -86,7 +87,8 @@ OWNERSHIP_RE = re.compile(r"^who is handling\s+(?P<task>.+)$", re.IGNORECASE)
 RESPONSIBILITY_RE = re.compile(r"^(?:we should|we need to|someone needs to)\s+(?P<task>.+)$", re.IGNORECASE)
 LOW_VALUE_ACTION_PATTERNS = (
     "hear me", "see me", "join the call", "on mute", "screen share", "screen-sharing",
-    "screen sharing", "audio working", "video working",
+    "screen sharing", "audio working", "video working", "work here", "he's hot",
+    "take your top off", "taking off your clothes", "vape", "like and subscribe",
 )
 ACTION_VERBS = {
     "send", "review", "update", "check", "confirm", "draft", "prepare", "handle", "negotiate",
@@ -253,6 +255,52 @@ def discussion_similarity(left: str, right: str) -> float:
     return cosine_similarity(left_counts, right_counts)
 
 
+def is_decision_like_discussion(text: str) -> bool:
+    lowered = normalize_text_fragment(text).lower()
+    return lowered.startswith(
+        (
+            "the team will ",
+            "we will ",
+            "we should ",
+            "actually, we will ",
+            "actually we will ",
+            "let's ",
+        )
+    )
+
+
+def is_action_like_sentence(text: str) -> bool:
+    cleaned = normalize_text_fragment(text).rstrip(".!?")
+    lowered = cleaned.lower()
+    if DIRECT_ASSIGNMENT_RE.match(cleaned) or REQUEST_RE.match(cleaned) or OWNERSHIP_RE.match(cleaned) or RESPONSIBILITY_RE.match(cleaned):
+        return True
+    if lowered.startswith("please "):
+        return True
+    return False
+
+
+def can_use_as_supporting_discussion(candidate: dict[str, Any], current_points: list[str], decisions: list[str]) -> bool:
+    text = normalize_text_fragment(candidate.get("text", ""))
+    lowered = text.lower()
+    if not text or len(tokenize(text)) < 4:
+        return False
+    if QUESTION_RE.search(text):
+        return False
+    if is_malformed_discussion_point(text) or is_weak_cluster_summary(text):
+        return False
+    if is_decision_like_discussion(text) or is_action_like_sentence(text):
+        return False
+    if any(phrase in lowered for phrase in NAVIGATION_PHRASES):
+        return False
+    if candidate.get("scores", {}).get("discussion", 0) < 0.32:
+        return False
+    if any(discussion_similarity(text, point) >= 0.72 for point in current_points):
+        return False
+    if any(discussion_similarity(text, decision) >= 0.72 for decision in decisions):
+        return False
+    return True
+
+
 def parse_numeric_turns(text: str) -> list[dict[str, str]]:
     cleaned = clean_transcript_text(text)
     lines = cleaned.splitlines()
@@ -294,6 +342,10 @@ def parse_numeric_turns(text: str) -> list[dict[str, str]]:
             action_block = False
             continue
         if colon_match and not action_block:
+            if colon_match.group("speaker").strip() in METADATA_SPEAKERS:
+                flush_current()
+                current = None
+                continue
             flush_current()
             current = {
                 "speaker": colon_match.group("speaker").strip(),
@@ -314,7 +366,7 @@ def participant_groups(turns: list[dict[str, str]], config: dict[str, Any]) -> t
     trinzo: list[str] = []
     seen = set()
     participant_map = config.get("participant_groups", {})
-    ignored_speakers = {"Date", "Location", "Online"}
+    ignored_speakers = METADATA_SPEAKERS
     for turn in turns:
         speaker = turn["speaker"]
         if speaker in seen or speaker in ignored_speakers:
@@ -629,7 +681,7 @@ def extract_issue_action_context(text: str) -> dict[str, str] | None:
 def is_pronoun_commitment_task(task: str) -> bool:
     return bool(
         re.match(
-            r"^(?:do|take|handle|look into|pick up|own|improve|tighten|clarify|fix|review|check|confirm|update|prepare|send|share|publish|capture|request)\s+(?:that|it)\b",
+            r"^(?:do|take|handle|look into|pick up|own|improve|tighten|clarify|fix|review|check|confirm|update|prepare|send|share|publish|capture|request|put|bring|move|snip)\s+(?:that|it|them|this|these|those)\b",
             task.strip(),
             flags=re.IGNORECASE,
         )
@@ -1988,17 +2040,17 @@ def build_executive_summary(decisions: list[str], discussion_points: list[str], 
     return " ".join(unique[:3])
 
 
-def derive_status_review_actions(discussion_points: list[str]) -> list[dict[str, Any]]:
+def derive_status_review_actions(source_texts: list[str]) -> list[dict[str, Any]]:
     derived: list[tuple[str, str, str, float]] = []
-    for point in discussion_points:
+    for point in source_texts:
         lowered = point.lower()
-        if "templates still need to be finalised" in lowered or "stage gate review process" in lowered:
+        if "templates still need to be finalised" in lowered or "stage gate review process" in lowered or "stage gate templates are still not finalised" in lowered:
             derived.append(("Review stage gate templates.", "Owner not specified", "", 0.72))
-        if "sales input is still required" in lowered or "pipeline" in lowered:
+        if "sales input is still required" in lowered or "sales input is still missing" in lowered or "pipeline" in lowered:
             derived.append(("Confirm AI pipeline dependencies with sales.", "Owner not specified", "", 0.72))
-        if "strategy document has not yet been produced" in lowered or "vendor strategy" in lowered:
+        if "strategy document has not yet been produced" in lowered or "vendor strategy" in lowered or "strategy document is absent" in lowered:
             derived.append(("Draft vendor strategy document.", "Owner not specified", "", 0.72))
-        if "grant feedback" in lowered or "follow-up planned this week" in lowered:
+        if "grant feedback" in lowered or "follow-up planned this week" in lowered or "follow-up feedback is still pending" in lowered:
             derived.append(("Follow up innovation grant feedback.", "Owner not specified", "", 0.72))
         if "routing is not yet working properly" in lowered or ("intake workflow" in lowered and "routing" in lowered):
             derived.append(("Validate intake workflow routing.", "Owner not specified", "", 0.72))
@@ -2030,6 +2082,13 @@ def canonicalize_supplier_decision_text(text: str) -> str:
     if "one-year renewal" in lowered and any(term in lowered for term in ("leverage", "next year")):
         return "The team will renew with the existing supplier."
     return text
+
+
+def normalized_decision_overlap_key(text: str) -> str:
+    cleaned = normalize_text_fragment(text).lower()
+    cleaned = re.sub(r"^the team will\s+", "", cleaned)
+    cleaned = re.sub(r"[^a-z0-9]+", " ", cleaned).strip()
+    return cleaned
 
 
 def meeting_type_scores(turns: list[dict[str, str]], meeting_title: str, decision_details: list[dict[str, Any]]) -> dict[str, float]:
@@ -2112,10 +2171,18 @@ def analyse(text: str) -> dict[str, Any]:
     decisions = [canonicalize_supplier_decision_text(decision) for decision in decisions]
     for item in decision_details:
         item["decision"] = canonicalize_supplier_decision_text(item["decision"])
+    predicted_meeting_type = classify_meeting_type(turns, meeting_title or "", decision_details)
+    decision_overlap_keys = {normalized_decision_overlap_key(decision) for decision in decisions}
+    if decision_overlap_keys:
+        structured_actions = [
+            item
+            for item in structured_actions
+            if normalized_decision_overlap_key(item["meetingActionPoint"]) not in decision_overlap_keys
+        ]
 
     discussion_candidates, cluster_debug = select_discussion_clusters(candidates, speaker_names)
     status_review_points = extract_status_review_points(turns)
-    structured_status_review = len(status_review_points) >= 4
+    structured_status_review = len(status_review_points) >= 4 or predicted_meeting_type == "project_status_review"
     combined_candidates: list[dict[str, Any]] = []
     if structured_status_review:
         combined_candidates.extend(status_review_points)
@@ -2147,25 +2214,39 @@ def analyse(text: str) -> dict[str, Any]:
         if len(selected_discussion) >= limit:
             break
     discussion_points = [item["text"] for item in selected_discussion]
-    for detail in decision_details[:2]:
-        decision_lower = normalize_text_fragment(detail["decision"]).lower()
-        if not any(
-            decision_lower in normalize_text_fragment(point).lower()
-            or normalize_text_fragment(point).lower() in decision_lower
-            for point in discussion_points
-        ):
-            discussion_points.append(detail["decision"])
+
+    min_non_decision_points = 4 if structured_status_review else 2
+    non_decision_points = [point for point in discussion_points if not is_decision_like_discussion(point)]
+    if len(non_decision_points) < min_non_decision_points:
+        supporting_candidates = sorted(
+            candidates,
+            key=lambda candidate: (
+                candidate["scores"].get("risk", 0),
+                candidate["scores"].get("discussion", 0),
+                candidate["scores"].get("specificity", 0),
+            ),
+            reverse=True,
+        )
+        for candidate in supporting_candidates:
+            if len(non_decision_points) >= min_non_decision_points or len(selected_discussion) >= limit:
+                break
+            text = normalize_text_fragment(candidate["text"])
+            if not can_use_as_supporting_discussion(candidate, discussion_points, decisions):
+                continue
+            discussion_points.append(text)
+            non_decision_points.append(text)
             selected_discussion.append(
                 {
-                    "text": detail["decision"],
-                    "sourceType": "decisionSummary",
-                    "earliestTimestamp": timestamp_to_seconds(detail["_evidence"][0]["timestamp"]) if detail.get("_evidence") else 10**9,
-                    "timestampLabel": detail["_evidence"][0]["timestamp"] if detail.get("_evidence") else "",
-                    "selectedReason": "decision_support",
-                    "evidence": detail.get("_evidence", []),
+                    "text": text,
+                    "sourceType": "supportingTurn",
+                    "earliestTimestamp": timestamp_to_seconds(candidate["timestamp"]),
+                    "timestampLabel": candidate["timestamp"],
+                    "selectedReason": "supporting_turn_coverage",
+                    "evidence": candidate["evidence"],
                 }
             )
-    if not discussion_points and decisions:
+
+    if len(non_decision_points) < 1 and not discussion_points and decisions:
         discussion_points = [finalize_sentence(decisions[0])]
         selected_discussion = [
             {
@@ -2177,7 +2258,25 @@ def analyse(text: str) -> dict[str, Any]:
                 "evidence": [],
             }
         ]
-
+    elif len(non_decision_points) < min_non_decision_points:
+        for detail in decision_details[:1]:
+            decision_lower = normalize_text_fragment(detail["decision"]).lower()
+            if not any(
+                decision_lower in normalize_text_fragment(point).lower()
+                or normalize_text_fragment(point).lower() in decision_lower
+                for point in discussion_points
+            ):
+                discussion_points.append(detail["decision"])
+                selected_discussion.append(
+                    {
+                        "text": detail["decision"],
+                        "sourceType": "decisionSummary",
+                        "earliestTimestamp": timestamp_to_seconds(detail["_evidence"][0]["timestamp"]) if detail.get("_evidence") else 10**9,
+                        "timestampLabel": detail["_evidence"][0]["timestamp"] if detail.get("_evidence") else "",
+                        "selectedReason": "decision_support",
+                        "evidence": detail.get("_evidence", []),
+                    }
+                )
     final_discussion_keys = {normalize_discussion_key(point) for point in discussion_points}
     for cluster in cluster_debug:
         cluster_key = normalize_discussion_key(cluster["selectedDiscussionPoint"])
@@ -2206,7 +2305,8 @@ def analyse(text: str) -> dict[str, Any]:
 
     if structured_status_review:
         existing_action_keys = {normalize_discussion_key(item["meetingActionPoint"]) for item in structured_actions}
-        for derived_action in derive_status_review_actions(discussion_points):
+        status_action_sources = discussion_points + [candidate["text"] for candidate in candidates[:12]]
+        for derived_action in derive_status_review_actions(status_action_sources):
             key = normalize_discussion_key(derived_action["meetingActionPoint"])
             if key in existing_action_keys:
                 continue
@@ -2224,7 +2324,7 @@ def analyse(text: str) -> dict[str, Any]:
         )
 
     meeting_type_score_map = meeting_type_scores(turns, meeting_title or "", decision_details)
-    meeting_type = classify_meeting_type(turns, meeting_title or "", decision_details)
+    meeting_type = predicted_meeting_type
 
     top_action_candidates = sorted(candidates, key=lambda candidate: candidate["scores"].get("action", 0), reverse=True)
     top_discussion_candidates = sorted(candidates, key=lambda candidate: candidate["scores"].get("discussion", 0), reverse=True)

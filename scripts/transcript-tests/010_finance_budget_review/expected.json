@@ -1,15 +1,30 @@
 {
-  "meetingTitle": "Finance Budget Review",
-  "meetingDate": "14 August 2026",
-  "mustContainDiscussionPoints": [
-    "support costs are higher than forecast",
-    "defer the analytics hire until Q4"
+  "testName": "010_finance_budget_review",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
+  ],
+  "expectedActionCount": 1,
+  "expectedDecisionCount": 1,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionTopics": [
+    [
+      "support costs are higher than forecast"
+    ],
+    [
+      "defer the analytics hire until Q4"
+    ]
   ],
   "mustContainActions": [
-    "send the revised forecast on Monday"
+    {
+      "text": "send the revised forecast on Monday"
+    }
   ],
   "mustContainDecisions": [
-    "defer the analytics hire until Q4"
-  ],
-  "expectedDecisionCount": 1
+    {
+      "text": "defer the analytics hire until Q4"
+    }
+  ]
 }

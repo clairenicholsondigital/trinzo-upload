@@ -1,33 +1,49 @@
 {
-  "assertions": {
-    "meetingType": "project_status_review",
-
-    "participantCount": 2,
-
-    "mustContainDiscussionPoints": [
-      "routing",
-      "sales input",
-      "vendor strategy",
+  "testName": "001_status_review",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe",
+    "snip it"
+  ],
+  "expectedMeetingType": "project_status_review",
+  "expectedParticipants": [
+    "Ciara Griffin",
+    "Conor Flynn"
+  ],
+  "expectedActionCount": 5,
+  "expectedDecisionCount": 0,
+  "expectedDiscussionCountMin": 4,
+  "mustContainDiscussionTopics": [
+    [
+      "routing"
+    ],
+    [
+      "sales input"
+    ],
+    [
+      "vendor strategy"
+    ],
+    [
       "leadership review"
-    ],
-
-    "mustContainActions": [
-      "Review stage gate templates",
-      "Confirm AI pipeline dependencies with sales",
-      "Draft vendor strategy document",
-      "Follow up innovation grant feedback",
-      "Validate intake workflow routing"
-    ],
-
-    "expectedDecisionCount": 0,
-
-    "expectedActionCount": 5,
-
-    "mustNotContain": [
-      "take your top off",
-      "he's hot",
-      "vape",
-      "snip it"
     ]
-  }
+  ],
+  "mustContainActions": [
+    {
+      "text": "Review stage gate templates"
+    },
+    {
+      "text": "Confirm AI pipeline dependencies with sales"
+    },
+    {
+      "text": "Draft vendor strategy document"
+    },
+    {
+      "text": "Follow up innovation grant feedback"
+    },
+    {
+      "text": "Validate intake workflow routing"
+    }
+  ]
 }

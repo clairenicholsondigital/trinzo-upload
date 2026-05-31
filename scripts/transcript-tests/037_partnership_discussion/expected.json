@@ -1,12 +1,32 @@
 {
-  "discussionPoints": [
-    "exclusivity in healthcare",
-    "ninety-day pilot"
+  "testName": "037_partnership_discussion",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
   ],
-  "decisions": [
-    "run a ninety-day pilot"
+  "expectedActionCount": 1,
+  "expectedDecisionCount": 1,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionTopics": [
+    [
+      "exclusivity in healthcare"
+    ],
+    [
+      "ninety-day pilot"
+    ]
   ],
-  "meetingActionPoint": [
-    "draft the pilot terms by Monday"
+  "mustContainActions": [
+    {
+      "text": "draft the pilot terms by Monday",
+      "owner": "Dean",
+      "deadline": "by Monday"
+    }
+  ],
+  "mustContainDecisions": [
+    {
+      "text": "run a ninety-day pilot"
+    }
   ]
 }

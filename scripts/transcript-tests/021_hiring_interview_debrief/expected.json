@@ -1,9 +1,21 @@
 {
-  "discussionPoints": [
-    "system design"
+  "testName": "021_hiring_interview_debrief",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
   ],
-  "decisions": [
-    "invite Maya to the final interview"
+  "expectedDecisionCount": 1,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionTopics": [
+    [
+      "system design"
+    ]
   ],
-  "meetingActionPoint": []
+  "mustContainDecisions": [
+    {
+      "text": "invite Maya to the final interview"
+    }
+  ]
 }

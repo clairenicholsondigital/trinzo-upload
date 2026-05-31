@@ -1,11 +1,29 @@
 {
-  "discussionPoints": [
-    "breakout room will be too small"
+  "testName": "031_event_planning",
+  "mustNotContain": [
+    "he's hot",
+    "take your top off",
+    "vape",
+    "like and subscribe"
   ],
-  "decisions": [
-    "move the breakout to the main hall"
+  "expectedActionCount": 1,
+  "expectedDecisionCount": 1,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionTopics": [
+    [
+      "breakout room will be too small"
+    ]
   ],
-  "meetingActionPoint": [
-    "update the signage plan by tomorrow"
+  "mustContainActions": [
+    {
+      "text": "update the signage plan by tomorrow",
+      "owner": "Leah",
+      "deadline": "by tomorrow"
+    }
+  ],
+  "mustContainDecisions": [
+    {
+      "text": "move the breakout to the main hall"
+    }
   ]
 }
