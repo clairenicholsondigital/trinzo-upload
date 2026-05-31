@@ -96,6 +96,26 @@ LOW_VALUE_DISCUSSION_PATTERNS = LOW_VALUE_ACTION_PATTERNS + (
     "do not talk french",
     "try not to vape",
 )
+PRESENTATION_REFERENCE_TERMS = (
+    "webinar", "presentation", "presenter", "presenting", "slide", "slides", "demo",
+    "demonstration", "agenda", "case study", "talk through", "go through", "walk through",
+    "what i say", "what you're saying", "what youre saying", "what you're showing", "what youre showing",
+    "explain", "introduce", "show", "demonstrate", "say that", "say this", "keep it educational",
+)
+PRESENTATION_SPEECH_PREFIXES = (
+    "say ", "show ", "explain ", "introduce ", "demonstrate ", "walk through ", "talk through ",
+    "go through ", "give you an example", "just to give you an example", "describe ",
+)
+PRESENTATION_META_PHRASES = (
+    "the point i'm trying to make", "the point im trying to make", "what i say", "what you're saying",
+    "what youre saying", "what you're showing", "what youre showing", "you'll be talking through",
+    "youll be talking through", "we're just keeping it educational", "were just keeping it educational",
+)
+EXPLICIT_CHANGE_CREATE_TERMS = (
+    "change", "create", "add", "remove", "replace", "refine", "improve", "simplify", "update",
+    "rewrite", "tighten", "edit", "draft", "prepare", "practice", "put", "insert", "use", "snip",
+    "reduce", "incorporate",
+)
 ACTION_VERBS = {
     "send", "review", "update", "check", "confirm", "draft", "prepare", "handle", "negotiate",
     "speak", "coordinate", "follow", "validate", "improve", "clarify", "refine", "tighten", "run",
@@ -266,6 +286,51 @@ def contains_status_term(text: str) -> bool:
 def contains_noise_or_banter(text: str) -> bool:
     lowered = normalize_text_fragment(text).lower()
     return any(pattern in lowered for pattern in LOW_VALUE_DISCUSSION_PATTERNS)
+
+
+def is_explicit_change_or_create_action(text: str) -> bool:
+    lowered = normalize_text_fragment(text).lower()
+    verb_pattern = "|".join(re.escape(term) for term in EXPLICIT_CHANGE_CREATE_TERMS)
+    return bool(
+        re.search(rf"^(?:please\s+)?(?:{verb_pattern})\b", lowered)
+        or re.search(rf"\b(?:can|could|will|would|should)\s+you\s+(?:{verb_pattern})\b", lowered)
+        or re.search(rf"\b(?:i['’]?ll|i will|we['’]?ll|we will)\s+(?:{verb_pattern})\b", lowered)
+    )
+
+
+def is_presentation_rehearsal_speech(text: str) -> bool:
+    lowered = normalize_text_fragment(text).lower()
+    if not lowered:
+        return False
+    if any(phrase in lowered for phrase in PRESENTATION_META_PHRASES):
+        return True
+    has_reference = any(term in lowered for term in PRESENTATION_REFERENCE_TERMS)
+    if not has_reference:
+        has_reference = lowered.startswith(PRESENTATION_SPEECH_PREFIXES)
+    if not has_reference:
+        has_reference = any(term in lowered for term in ("slide", "slides", "screen", "image", "picture", "demo", "workshop", "agenda"))
+    if not has_reference:
+        return False
+    if is_explicit_change_or_create_action(lowered):
+        return False
+    has_speech_marker = any(
+        marker in lowered
+        for marker in (
+            "say", "show", "explain", "introduce", "demonstrate", "walk through",
+            "talk through", "go through", "describe", "example", "what i say",
+            "what you're saying", "what youre saying", "what you're showing", "what youre showing",
+        )
+    )
+    if has_speech_marker:
+        return True
+    return any(
+        marker in lowered
+        for marker in (
+            "we're doing", "were doing", "we go through", "we do this", "this is our case study",
+            "all of our work is done", "the point i'm trying to make", "the point im trying to make",
+            "keeping it educational", "during the project", "throughout the session",
+        )
+    )
 
 
 def contains_rejection_language(text: str) -> bool:
@@ -690,6 +755,8 @@ def extract_action_context(text: str) -> dict[str, str] | None:
     lowered = cleaned.lower()
     if not cleaned or "no action" in lowered or "no further actions" in lowered or "discussion only" in lowered:
         return None
+    if is_presentation_rehearsal_speech(cleaned):
+        return None
 
     match = DIRECT_ASSIGNMENT_RE.match(cleaned)
     if match:
@@ -762,6 +829,8 @@ def extract_action_context(text: str) -> dict[str, str] | None:
 def extract_issue_action_context(text: str) -> dict[str, str] | None:
     cleaned = normalize_text_fragment(text).rstrip(".!?")
     lowered = cleaned.lower()
+    if is_presentation_rehearsal_speech(cleaned):
+        return None
     if " needs " not in lowered:
         return None
     subject, detail = re.split(r"\bneeds\b", cleaned, maxsplit=1, flags=re.IGNORECASE)
@@ -795,6 +864,8 @@ def is_pronoun_commitment_task(task: str) -> bool:
 def extract_self_commitment_action(text: str, speaker: str) -> tuple[str, str, str] | None:
     cleaned = strip_ack_prefix(text).rstrip(".!?")
     lowered = cleaned.lower()
+    if is_presentation_rehearsal_speech(cleaned):
+        return None
     match = SELF_COMMITMENT_RE.match(cleaned)
     if not match:
         return None
