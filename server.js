@@ -27,6 +27,10 @@ app.get('/meeting-minutes-test', (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'meeting-minutes-test.html'));
 });
 
+app.get('/meeting-minutes-numbers', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'meeting-minutes-numbers.html'));
+});
+
 app.get('/project-update-test', (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'project-update-test.html'));
 });

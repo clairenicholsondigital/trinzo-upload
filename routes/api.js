@@ -452,6 +452,24 @@ router.post('/meeting-minutes-test', withTestUpload(async (req, res) => {
   }
 }));
 
+router.post('/meeting-minutes-numbers', withTestUpload(async (req, res) => {
+  try {
+    const transcript = await readTestTranscript(req);
+    validateTranscriptText(transcript.text);
+    const result = await runPythonTranscriptScript('python_meeting_minutes_numbers.py', transcript.text);
+
+    return res.json({
+      ok: true,
+      source: transcript.source,
+      fileName: transcript.fileName || null,
+      transcriptLength: transcript.text.length,
+      result
+    });
+  } catch (error) {
+    return sendTestError(res, error);
+  }
+}));
+
 router.post('/project-update-test', withTestUpload(async (req, res) => {
   try {
     const transcript = await readTestTranscript(req);
