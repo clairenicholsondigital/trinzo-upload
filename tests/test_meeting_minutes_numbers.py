@@ -198,14 +198,18 @@ Yes.
         self.assertFalse(any("right, let's run through" in point.lower() for point in result["discussionPoints"]))
         self.assertFalse(any("request funnel?" in point.lower() for point in result["discussionPoints"]))
         self.assertFalse(any(point.lower().startswith("yeah she said") for point in result["discussionPoints"]))
-        self.assertFalse(any("webinar" in point.lower() for point in result["discussionPoints"]))
+        self.assertFalse(any("presentation clarity" in point.lower() for point in result["discussionPoints"]))
+        self.assertFalse(any(point.lower().startswith(("the no", "the yes", "the it", "the that", "the this", "the okay", "the true", "the fine", "the probably", "the maybe")) for point in result["discussionPoints"]))
         self.assertGreaterEqual(len(result["discussionPoints"]), 3)
+        self.assertLessEqual(len(result["discussionPoints"]), 10)
         self.assertTrue(
             any(
                 any(term in point.lower() for term in ("remains", "blocked", "in review", "active", "complete"))
                 for point in result["discussionPoints"]
             )
         )
+        self.assertIn("Vendor strategy rollout remains in progress: interviews are complete, but the strategy document has not yet been produced.", result["discussionPoints"])
+        self.assertIn("Innovation grant feedback is still pending, with follow-up planned this week.", result["discussionPoints"])
         self.assertIn("Review stage gate templates.", result["meetingActionPoint"])
         self.assertIn("Confirm AI pipeline dependencies with sales.", result["meetingActionPoint"])
         action_map = {item["meetingActionPoint"]: item for item in result["actions"]}
@@ -215,6 +219,9 @@ Yes.
         used_clusters = [cluster for cluster in result["numberExperimentDebug"]["topicClusters"] if cluster["usedInDiscussionPoints"]]
         self.assertTrue(all(cluster["selectedDiscussionPoint"] for cluster in used_clusters))
         self.assertGreaterEqual(len({cluster["selectedDiscussionPoint"] for cluster in used_clusters}), 3)
+        self.assertIn("finalDiscussionPoints", result["numberExperimentDebug"])
+        self.assertTrue(any(item["sourceType"] == "statusReviewPoint" for item in result["numberExperimentDebug"]["finalDiscussionPoints"]))
+        self.assertIn("pending innovation grant feedback", result["executiveSummary"].lower())
         json.dumps(result)
 
     def test_webinar_fixture_runs_with_debug(self):

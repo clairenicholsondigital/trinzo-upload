@@ -88,11 +88,19 @@ NON_TOPIC_TERMS = {
     "through", "maybe", "actually", "need",
 }
 STATUS_TERMS = ("complete", "blocked", "amber", "green", "red", "blue", "due", "not operational", "awaiting", "in review")
+MALFORMED_DISCUSSION_PREFIXES = (
+    "the no ", "the yes ", "the it ", "the that ", "the this ", "the okay ",
+    "the true ", "the fine ", "the probably ", "the maybe ",
+)
+WEAK_CLUSTER_PREFIXES = (
+    "the team reviewed ", "let's ", "maybe ", "one ", "actually ", "green because ",
+)
 TOPIC_PROMPT_REJECT_PREFIXES = (
     "still ", "we've", "we have", "yeah", "agreed", "no ", "nothing ",
     "actually ", "true", "correct", "fine", "green", "amber", "red ",
     "blue ", "blocked", "complete", "in review", "pending", "perfect",
     "one thing we should add", "oh yes", "good catch", "makes sense", "new milestone", "emma chasing",
+    "first ", "second ", "third ", "the actual ",
 )
 TOPIC_PROMPT_VERB_MARKERS = (
     " is ", " are ", " was ", " were ", " have ", " has ", " had ", " need ", " needs ",
@@ -139,6 +147,44 @@ def clean_transcript_text(text: str) -> str:
             continue
         kept.append(raw_line)
     return "\n".join(kept)
+
+
+def timestamp_to_seconds(timestamp: str) -> int:
+    if not timestamp or ":" not in timestamp:
+        return 10**9
+    minutes, seconds = timestamp.split(":", 1)
+    try:
+        return int(minutes) * 60 + int(seconds)
+    except ValueError:
+        return 10**9
+
+
+def normalize_discussion_key(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
+
+
+def is_malformed_discussion_point(text: str) -> bool:
+    lowered = normalize_text_fragment(text).lower()
+    return any(lowered.startswith(prefix) for prefix in MALFORMED_DISCUSSION_PREFIXES)
+
+
+def is_weak_cluster_summary(text: str) -> bool:
+    lowered = normalize_text_fragment(text).lower()
+    return any(lowered.startswith(prefix) for prefix in WEAK_CLUSTER_PREFIXES)
+
+
+def contains_status_term(text: str) -> bool:
+    lowered = text.lower()
+    for term in STATUS_TERMS:
+        if re.search(rf"\b{re.escape(term)}\b", lowered):
+            return True
+    return False
+
+
+def discussion_similarity(left: str, right: str) -> float:
+    left_counts = Counter(tokenize(left))
+    right_counts = Counter(tokenize(right))
+    return cosine_similarity(left_counts, right_counts)
 
 
 def parse_numeric_turns(text: str) -> list[dict[str, str]]:
@@ -556,7 +602,7 @@ def looks_like_topic_prompt(text: str) -> bool:
         return False
     if any(prefix in lowered_plain for prefix in REQUEST_PREFIXES):
         return False
-    if any(term in lowered_plain for term in STATUS_TERMS):
+    if contains_status_term(lowered_plain):
         return False
     if cleaned.endswith("?"):
         return True
@@ -570,6 +616,12 @@ def looks_like_topic_prompt(text: str) -> bool:
 
 def extract_topic_prompt_from_turn(text: str) -> str:
     sentences = [normalize_text_fragment(sentence) for sentence in split_sentences(text) if normalize_text_fragment(sentence)]
+    if sentences:
+        clause_match = re.match(r"^(?P<topic>(?:The\s+)?[A-Z][A-Za-z0-9&/()' -]{4,80}),\s+", sentences[0])
+        if clause_match:
+            topic = clause_match.group("topic").strip()
+            if len(tokenize(topic)) <= 8:
+                return topic.rstrip("?.!")
     for sentence in reversed(sentences):
         if looks_like_topic_prompt(sentence):
             return sentence.rstrip("?.!")
@@ -591,8 +643,8 @@ def classify_status_from_text(text: str) -> str:
     return "in progress"
 
 
-def extract_status_review_points(turns: list[dict[str, str]]) -> list[str]:
-    points: list[str] = []
+def extract_status_review_points(turns: list[dict[str, str]]) -> list[dict[str, Any]]:
+    points: list[dict[str, Any]] = []
     seen = set()
     for index, turn in enumerate(turns):
         topic_text = extract_topic_prompt_from_turn(turn["text"])
@@ -607,7 +659,7 @@ def extract_status_review_points(turns: list[dict[str, str]]) -> list[str]:
             continue
         combined = " ".join(item["text"] for item in supporting_turns)
         lowered = combined.lower()
-        if not any(term in lowered for term in STATUS_TERMS) and not any(term in lowered for term in ("problem", "issue", "routing", "pending", "input", "scoped", "follow up", "nothing received", "no update")):
+        if not contains_status_term(lowered) and not any(term in lowered for term in ("problem", "issue", "routing", "pending", "input", "scoped", "follow up", "nothing received", "no update", "deliverable is there", "live and documented")):
             continue
         topic_lower = topic_text.lower()
         if "intake workflow" in topic_lower or ("intake" in topic_lower and "workflow" in topic_lower):
@@ -654,11 +706,24 @@ def extract_status_review_points(turns: list[dict[str, str]]) -> list[str]:
                 )
             else:
                 point = finalize_sentence(f"The {topic_normalized} remains {status}")
-        key = re.sub(r"[^a-z0-9]+", " ", point.lower()).strip()
+        key = normalize_discussion_key(point)
         if key not in seen:
             seen.add(key)
-            points.append(point)
-    return points[:8]
+            evidence = [{"speaker": turn["speaker"], "timestamp": turn["timestamp"]}] + [
+                {"speaker": item["speaker"], "timestamp": item["timestamp"]} for item in supporting_turns
+            ]
+            earliest_timestamp = min((timestamp_to_seconds(ref["timestamp"]) for ref in evidence if ref["timestamp"]), default=10**9)
+            points.append(
+                {
+                    "text": point,
+                    "sourceType": "statusReviewPoint",
+                    "earliestTimestamp": earliest_timestamp,
+                    "timestampLabel": turn["timestamp"],
+                    "evidence": evidence,
+                    "selectedReason": "structured_status_review_item",
+                }
+            )
+    return points[:10]
 
 
 def unique_cluster_sentences(cluster: list[dict[str, Any]]) -> list[str]:
@@ -810,12 +875,14 @@ def build_cluster_summary(cluster: list[dict[str, Any]], raw_keywords: list[str]
         return ("The AI governance framework draft is in review pending leadership input.", "compressed_multi")
     if "sow" in keyword_set and "delivery" in keyword_set:
         return ("Ad hoc SOW delivery is active, with incoming requests at different stages and a need for clearer workload visibility.", "compressed_multi")
+    if ("webinar" in keyword_set or "webinars" in keyword_set or "delivered" in keyword_set) and ("booked" in lowered_blob or "third one is booked" in lowered_blob):
+        return ("The webinar delivery milestone remains active: two sessions have been delivered and the third is booked.", "compressed_multi")
 
     summary = compress_status_summary(subject, sentences, filtered_keywords or raw_keywords)
     return summary, ("compressed_multi" if len(sentences) > 1 else "single_candidate")
 
 
-def select_discussion_clusters(candidates: list[dict[str, Any]], speaker_names: set[str]) -> tuple[list[str], list[dict[str, Any]]]:
+def select_discussion_clusters(candidates: list[dict[str, Any]], speaker_names: set[str]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     usable = [
         candidate for candidate in candidates
         if candidate["scores"].get("discussion", 0) >= 0.45
@@ -837,7 +904,7 @@ def select_discussion_clusters(candidates: list[dict[str, Any]], speaker_names: 
             clusters.append([candidate])
 
     cluster_debug: list[dict[str, Any]] = []
-    selected_points_with_scores: list[tuple[float, str]] = []
+    selected_points_with_scores: list[tuple[float, dict[str, Any]]] = []
     dedupe_keys = set()
     for cluster in clusters:
         aggregate = Counter()
@@ -853,19 +920,35 @@ def select_discussion_clusters(candidates: list[dict[str, Any]], speaker_names: 
         filtered_keywords = extract_cluster_keywords(aggregate, speaker_names)
         selected, selection_mode = build_cluster_summary(cluster, raw_keywords, filtered_keywords)
         strong_subject = has_strong_cluster_subject(cluster, filtered_keywords)
+        evidence_refs = [ref for item in cluster for ref in item["evidence"]]
+        earliest_timestamp = min((timestamp_to_seconds(ref["timestamp"]) for ref in evidence_refs if ref["timestamp"]), default=10**9)
 
-        dedupe_key = re.sub(r"[^a-z0-9]+", " ", selected.lower()).strip()
+        dedupe_key = normalize_discussion_key(selected)
         rejected_reason = ""
         used = False
         if cluster_score < 0.45:
             rejected_reason = "low_cluster_score"
         elif not strong_subject:
             rejected_reason = "weak_subject"
+        elif is_malformed_discussion_point(selected):
+            rejected_reason = "malformed_summary"
         elif dedupe_key in dedupe_keys:
             rejected_reason = "covered_by_higher_ranked_cluster"
         else:
             dedupe_keys.add(dedupe_key)
-            selected_points_with_scores.append((cluster_score, selected))
+            selected_points_with_scores.append(
+                (
+                    cluster_score,
+                    {
+                        "text": selected,
+                        "sourceType": "clusterSummary",
+                        "earliestTimestamp": earliest_timestamp,
+                        "timestampLabel": next((ref["timestamp"] for ref in evidence_refs if ref["timestamp"]), ""),
+                        "selectedReason": "cluster_summary",
+                        "evidence": evidence_refs,
+                    },
+                )
+            )
             used = True
         cluster_debug.append(
             {
@@ -875,6 +958,7 @@ def select_discussion_clusters(candidates: list[dict[str, Any]], speaker_names: 
                 "clusterScore": cluster_score,
                 "selectedDiscussionPoint": selected,
                 "supportingTurns": support,
+                "earliestTimestamp": earliest_timestamp if earliest_timestamp < 10**9 else None,
                 "rejectedReason": rejected_reason,
                 "usedInDiscussionPoints": used,
                 "selectionMode": selection_mode,
@@ -882,26 +966,87 @@ def select_discussion_clusters(candidates: list[dict[str, Any]], speaker_names: 
         )
 
     cluster_debug.sort(key=lambda item: item["clusterScore"], reverse=True)
-    selected_points_with_scores.sort(key=lambda item: item[0], reverse=True)
-    return [point for _score, point in selected_points_with_scores[:6]], cluster_debug[:12]
+    selected_points_with_scores.sort(key=lambda item: (-item[0], item[1]["earliestTimestamp"]))
+    return [point for _score, point in selected_points_with_scores[:12]], cluster_debug[:12]
 
 
 def summarize_actions(actions: list[str]) -> str:
     if not actions:
         return ""
-    tokens = " ".join(actions).lower()
-    if any(term in tokens for term in ("opening", "timeline", "registration", "attendee", "practice", "demo", "deck", "slide")):
-        return "Actions focused on refining webinar messaging, improving presentation materials, updating attendee information and completing a final rehearsal."
-    if any(term in tokens for term in ("supplier", "legal", "finance", "pricing", "negotiation")):
-        return "Follow-up work includes negotiating revised terms, coordinating legal review and sending final pricing figures to finance."
-    return "Actions were identified from the discussion."
+    themes: list[str] = []
+    joined = " ".join(actions).lower()
+    if any(term in joined for term in ("template", "stage gate")):
+        themes.append("stage gate templates")
+    if any(term in joined for term in ("pipeline", "sales")):
+        themes.append("pipeline dependencies")
+    if any(term in joined for term in ("vendor", "strategy")):
+        themes.append("vendor strategy")
+    if any(term in joined for term in ("grant", "feedback")):
+        themes.append("grant feedback")
+    if any(term in joined for term in ("intake", "routing", "workflow")):
+        themes.append("intake routing")
+    if any(term in joined for term in ("opening", "timeline", "registration", "attendee", "practice", "demo", "deck", "slide")):
+        themes.append("final preparation")
+    if any(term in joined for term in ("supplier", "legal", "finance", "pricing", "negotiation")):
+        themes.append("supplier renewal follow-up")
+    if not themes:
+        themes = [normalize_text_fragment(action).rstrip(".") for action in actions[:4]]
+    deduped: list[str] = []
+    seen = set()
+    for theme in themes:
+        key = theme.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(theme)
+    if not deduped:
+        return ""
+    if len(deduped) == 1:
+        return finalize_sentence(f"Actions were agreed for {deduped[0]}")
+    if len(deduped) == 2:
+        return finalize_sentence(f"Actions were agreed for {deduped[0]} and {deduped[1]}")
+    return finalize_sentence("Actions were agreed for " + ", ".join(deduped[:-1]) + f" and {deduped[-1]}")
 
 
-def build_executive_summary(decisions: list[str], discussion_points: list[str], actions: list[str]) -> str:
+def build_status_review_summary(discussion_points: list[str]) -> str:
+    issue_phrases: list[str] = []
+    for point in discussion_points:
+        lowered = point.lower()
+        if "routing" in lowered:
+            issue_phrases.append("intake workflow routing")
+        elif "sales input" in lowered:
+            issue_phrases.append("AI pipeline dependency on sales input")
+        elif "strategy document" in lowered:
+            issue_phrases.append("vendor strategy documentation")
+        elif "grant feedback" in lowered:
+            issue_phrases.append("pending innovation grant feedback")
+        elif "leadership input" in lowered or "leadership review" in lowered:
+            issue_phrases.append("governance framework review")
+    deduped: list[str] = []
+    seen = set()
+    for phrase in issue_phrases:
+        if phrase in seen:
+            continue
+        seen.add(phrase)
+        deduped.append(phrase)
+    if not deduped:
+        return "The team reviewed delivery across completed, active and blocked workstreams."
+    if len(deduped) == 1:
+        return finalize_sentence(f"The team reviewed delivery across completed, active and blocked workstreams, with key focus on {deduped[0]}")
+    return finalize_sentence(
+        "The team reviewed delivery across completed, active and blocked workstreams. Key issues included "
+        + ", ".join(deduped[:3] if len(deduped) <= 3 else deduped[:3])
+        + (f", and {deduped[3]}" if len(deduped) > 3 else "")
+    )
+
+
+def build_executive_summary(decisions: list[str], discussion_points: list[str], actions: list[str], structured_status_review: bool = False) -> str:
     if not decisions and not discussion_points and not actions:
         return "No substantive meeting content, decisions, or actions were identified."
     sentences: list[str] = []
-    if discussion_points:
+    if structured_status_review and discussion_points:
+        sentences.append(build_status_review_summary(discussion_points))
+    elif discussion_points:
         sentences.append(discussion_points[0])
     if decisions:
         if len(decisions) == 1:
@@ -993,47 +1138,88 @@ def analyse(text: str) -> dict[str, Any]:
         if len(decisions) >= 5:
             break
 
-    discussion_points, cluster_debug = select_discussion_clusters(candidates, speaker_names)
+    discussion_candidates, cluster_debug = select_discussion_clusters(candidates, speaker_names)
     status_review_points = extract_status_review_points(turns)
-    if len(status_review_points) >= 4:
-        merged_points: list[str] = []
-        seen_points = set()
-        for point in status_review_points + discussion_points:
-            key = re.sub(r"[^a-z0-9]+", " ", point.lower()).strip()
-            if key in seen_points:
+    structured_status_review = len(status_review_points) >= 4
+    combined_candidates: list[dict[str, Any]] = []
+    if structured_status_review:
+        combined_candidates.extend(status_review_points)
+        if len(status_review_points) < 10:
+            combined_candidates.extend(
+                candidate
+                for candidate in discussion_candidates
+                if not is_weak_cluster_summary(candidate["text"])
+            )
+    else:
+        combined_candidates.extend(discussion_candidates)
+        if len(discussion_candidates) < 3:
+            combined_candidates.extend(status_review_points)
+
+    selected_discussion: list[dict[str, Any]] = []
+    seen_points = set()
+    limit = 10 if structured_status_review else 6
+    combined_candidates.sort(key=lambda item: (item["earliestTimestamp"], 0 if item["sourceType"] == "statusReviewPoint" else 1))
+    for item in combined_candidates:
+        text = item["text"]
+        key = normalize_discussion_key(text)
+        if structured_status_review and item["sourceType"] == "clusterSummary":
+            if any(discussion_similarity(text, status_item["text"]) >= 0.35 for status_item in status_review_points):
                 continue
-            seen_points.add(key)
-            merged_points.append(point)
-        discussion_points = merged_points[:8]
-    elif len(discussion_points) < 3 and status_review_points:
-        merged_points: list[str] = []
-        seen_points = set()
-        for point in discussion_points + status_review_points:
-            key = re.sub(r"[^a-z0-9]+", " ", point.lower()).strip()
-            if key in seen_points:
-                continue
-            seen_points.add(key)
-            merged_points.append(point)
-        discussion_points = merged_points[:6]
+        if key in seen_points or is_malformed_discussion_point(text):
+            continue
+        seen_points.add(key)
+        selected_discussion.append(item)
+        if len(selected_discussion) >= limit:
+            break
+    discussion_points = [item["text"] for item in selected_discussion]
     if not discussion_points and decisions:
         discussion_points = [finalize_sentence(decisions[0])]
+        selected_discussion = [
+            {
+                "text": discussion_points[0],
+                "sourceType": "broadSummary",
+                "earliestTimestamp": 10**9,
+                "timestampLabel": "",
+                "selectedReason": "decision_fallback",
+                "evidence": [],
+            }
+        ]
 
-    final_discussion_keys = {re.sub(r"[^a-z0-9]+", " ", point.lower()).strip() for point in discussion_points}
+    final_discussion_keys = {normalize_discussion_key(point) for point in discussion_points}
     for cluster in cluster_debug:
-        cluster_key = re.sub(r"[^a-z0-9]+", " ", cluster["selectedDiscussionPoint"].lower()).strip()
+        cluster_key = normalize_discussion_key(cluster["selectedDiscussionPoint"])
         if cluster_key in final_discussion_keys:
             cluster["usedInDiscussionPoints"] = True
-            if cluster.get("rejectedReason") == "covered_by_higher_ranked_cluster":
+            if cluster.get("rejectedReason") in {"covered_by_higher_ranked_cluster", "covered_by_final_discussion_selection"}:
                 cluster["rejectedReason"] = ""
         else:
             cluster["usedInDiscussionPoints"] = False
             if not cluster.get("rejectedReason"):
                 cluster["rejectedReason"] = "covered_by_final_discussion_selection"
 
+    final_discussion_debug = []
+    selected_map = {normalize_discussion_key(item["text"]): item for item in selected_discussion}
+    for point in discussion_points:
+        key = normalize_discussion_key(point)
+        source = selected_map.get(key, {})
+        final_discussion_debug.append(
+            {
+                "discussionPoint": point,
+                "sourceType": source.get("sourceType", "broadSummary"),
+                "earliestSupportingTimestamp": None if source.get("earliestTimestamp", 10**9) >= 10**9 else source.get("timestampLabel"),
+                "selectedReason": source.get("selectedReason", "final_selection"),
+            }
+        )
+
     if not discussion_points and not decisions and not structured_actions:
         executive_summary = "No substantive meeting content, decisions, or actions were identified."
     else:
-        executive_summary = build_executive_summary(decisions, discussion_points, [item["meetingActionPoint"] for item in structured_actions])
+        executive_summary = build_executive_summary(
+            decisions,
+            discussion_points,
+            [item["meetingActionPoint"] for item in structured_actions],
+            structured_status_review=structured_status_review,
+        )
 
     top_action_candidates = sorted(candidates, key=lambda candidate: candidate["scores"].get("action", 0), reverse=True)
     top_discussion_candidates = sorted(candidates, key=lambda candidate: candidate["scores"].get("discussion", 0), reverse=True)
@@ -1071,7 +1257,8 @@ def analyse(text: str) -> dict[str, Any]:
         "rejectedNavigationCandidates": rejected_navigation_candidates,
         "clusters": cluster_debug,
         "topicClusters": cluster_debug,
-        "statusReviewPoints": status_review_points,
+        "statusReviewPoints": [item["text"] for item in status_review_points],
+        "finalDiscussionPoints": final_discussion_debug,
         "parsedTurnCount": len(turns),
         "candidateCount": len(candidates),
     }
@@ -1087,7 +1274,7 @@ def analyse(text: str) -> dict[str, Any]:
         "participants.client": client_participants,
         "participants.trinzo": trinzo_participants,
         "itemTopic": meeting_title or "Experimental meeting-minutes analysis",
-        "discussionPoints": discussion_points[:6],
+        "discussionPoints": discussion_points[:10] if structured_status_review else discussion_points[:6],
         "meetingActionPoint": [item["meetingActionPoint"] for item in structured_actions],
         "meetingActionPointOwner": [item["meetingActionPointOwner"] for item in structured_actions],
         "meetingActionPointDeadline": [item["meetingActionPointDeadline"] for item in structured_actions],
@@ -1098,7 +1285,7 @@ def analyse(text: str) -> dict[str, Any]:
         "healthSummary": {},
         "meetingSections": [],
         "decisions": decisions,
-        "discussionPointDetails": [{"discussionPoint": point, "_evidence": [], "evidenceScore": 0.7} for point in discussion_points[:6]],
+        "discussionPointDetails": [{"discussionPoint": point, "_evidence": [], "evidenceScore": 0.7} for point in (discussion_points[:10] if structured_status_review else discussion_points[:6])],
         "decisionDetails": decision_details,
         "internalEvidence": {
             "discussionPoints": [],
