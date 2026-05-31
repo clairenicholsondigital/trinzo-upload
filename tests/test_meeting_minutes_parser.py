@@ -680,7 +680,82 @@ We'll come back to it.
         self.assertEqual(result["discussionPoints"], [])
         self.assertEqual(result["meetingActionPoint"], [])
         self.assertEqual(result["decisions"], [])
-        self.assertIn("did not contain enough substantive meeting content", result["executiveSummary"].lower())
+        self.assertEqual(
+            result["executiveSummary"],
+            "No substantive meeting content, decisions, or actions were identified.",
+        )
+
+    def test_vague_statement_challenged_as_vague_does_not_create_decision_or_action(self):
+        transcript = """Planning meeting
+
+6 June 2026
+
+Ciara Griffin:
+Let's see what we can do.
+
+Jack Cunningham:
+That's vague.
+"""
+
+        result = analyse(transcript)
+
+        self.assertEqual(result["decisions"], [])
+        self.assertEqual(result["meetingActionPoint"], [])
+
+    def test_we_havent_decided_is_not_a_decision(self):
+        transcript = """Relocation planning
+
+6 June 2026
+
+Emma:
+We haven't decided whether to replace the meeting room video systems.
+
+David:
+Still deciding.
+"""
+
+        result = analyse(transcript)
+
+        self.assertEqual(result["decisions"], [])
+        self.assertTrue(any("whether to replace the meeting room video systems" in point.lower() for point in result["discussionPoints"]))
+
+    def test_duplicate_action_from_commitment_and_action_list_is_merged(self):
+        transcript = """Rollout planning
+
+6 June 2026
+
+Conor Flynn:
+I'll update the rollout plan instead.
+
+Actions:
+Update the rollout plan.
+"""
+
+        result = analyse(transcript)
+
+        self.assertEqual(
+            [item for item in result["meetingActionPoint"] if "rollout plan" in item.lower()],
+            ["Update the rollout plan instead."],
+        )
+        rollout_index = result["meetingActionPoint"].index("Update the rollout plan instead.")
+        self.assertEqual(result["meetingActionPointOwner"][rollout_index], "Conor Flynn")
+
+    def test_direct_request_yes_acceptance_creates_action(self):
+        transcript = """Finance follow-up
+
+6 June 2026
+
+Emma:
+Can you send final pricing figures to finance when available?
+
+David:
+Yes.
+"""
+
+        result = analyse(transcript)
+
+        self.assertEqual(result["meetingActionPoint"], ["Send final pricing figures to finance when available."])
+        self.assertEqual(result["meetingActionPointOwner"], ["David"])
 
     def test_action_quality_gate_rejects_transcript_fragments_and_jokes(self):
         transcript = """Creative review

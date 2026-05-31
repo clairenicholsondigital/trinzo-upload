@@ -1352,7 +1352,7 @@ def build_evidence_only_summary(
 
     sentences: list[str] = []
     if not discussion_point_details and not decision_details and not structured_actions:
-        return "The transcript did not contain enough substantive meeting content to extract detailed discussion points, decisions, or actions."
+        return "No substantive meeting content, decisions, or actions were identified."
     decision_sentence = build_summary_decision_sentence(decision_details, meeting_type)
     if decision_sentence:
         sentences.append(decision_sentence)
@@ -1777,6 +1777,14 @@ def action_text_key(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
 
 
+def canonical_action_key(text: str) -> str:
+    lowered = text.lower().strip().rstrip(".!?")
+    lowered = re.sub(r"\b(?:instead|as well|then|probably|maybe)\b", "", lowered)
+    lowered = re.sub(r"\b(?:the|a|an)\b", "", lowered)
+    lowered = re.sub(r"\s+", " ", lowered).strip()
+    return action_text_key(lowered)
+
+
 def find_action_source_turn(action_text: str, raw_turns: list[dict[str, str]]) -> dict[str, str] | None:
     key = action_text_key(action_text)
     action_tokens = set(key.split())
@@ -1965,7 +1973,7 @@ def dedupe_structured_actions(structured_actions: list[dict[str, Any]]) -> list[
     deduped: dict[str, dict[str, Any]] = {}
     ordered_keys: list[str] = []
     for item in structured_actions:
-        key = item["meetingActionPoint"].strip().lower()
+        key = canonical_action_key(item["meetingActionPoint"])
         existing = deduped.get(key)
         if existing is None:
             deduped[key] = item

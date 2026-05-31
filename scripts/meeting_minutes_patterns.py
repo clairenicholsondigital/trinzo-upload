@@ -68,6 +68,10 @@ NON_DECISION_PATTERNS = [
         re.IGNORECASE,
     ),
     re.compile(
+        r"\blet'?s see what we can do\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
         r"^\s*let'?s run through\b",
         re.IGNORECASE,
     ),
