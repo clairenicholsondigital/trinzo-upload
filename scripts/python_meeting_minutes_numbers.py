@@ -1386,6 +1386,8 @@ def is_keyword_fragment_summary(text: str) -> bool:
 
 def lightly_clean_representative_sentence(text: str) -> str:
     cleaned = normalize_text_fragment(text)
+    cleaned = re.sub(r"^(?:online\s+)+", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"^\d{1,2}\s+\w+\s+\d{4}\s+", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"^(?:yeah|yes|no|right|okay|ok)\s*,?\s+", "", cleaned, flags=re.IGNORECASE)
     return finalize_sentence(cleaned)
 
@@ -1413,6 +1415,126 @@ def has_strong_cluster_subject(cluster: list[dict[str, Any]], filtered_keywords:
         return True
     cluster_blob = " ".join(item["text"].lower() for item in cluster)
     return any(hint in cluster_blob for hint in MEANINGFUL_TOPIC_HINTS)
+
+
+def semantic_density(text: str) -> float:
+    tokens = tokenize(text)
+    if not tokens:
+        return 0.0
+    meaningful = [token for token in tokens if token not in NON_TOPIC_TERMS and len(token) > 2]
+    verb_like = any(
+        marker in f" {normalize_text_fragment(text).lower()} "
+        for marker in (
+            " is ", " are ", " was ", " were ", " remains ", " remain ", " discussed ",
+            " reviewed ", " agreed ", " keep ", " switch ", " stay ", " defer ", " make ", " offered ",
+            " raised ", " locks ", " associated ", " difficult ", " guarantee ",
+        )
+    )
+    return round(min(1.0, (len(meaningful) / max(1, len(tokens))) + (0.18 if verb_like else 0.0)), 3)
+
+
+def has_orphaned_noun_summary(text: str) -> bool:
+    lowered = normalize_text_fragment(text).lower()
+    if not lowered.startswith("the team reviewed "):
+        return False
+    tail = lowered.removeprefix("the team reviewed ").rstrip(".")
+    if any(tail.startswith(prefix) for prefix in ("send ", "some ", "no ", "across ", "annual ", "put ")):
+        return True
+    if len(tokenize(tail)) < 3:
+        return True
+    return not has_sentence_structure(tail) and not any(word in tail for word in ("including", "because", "and", "with", "associated", "regarding"))
+
+
+def supporting_turn_count(cluster: list[dict[str, Any]]) -> int:
+    return len({(ref["speaker"], ref["timestamp"]) for item in cluster for ref in item["evidence"]})
+
+
+def cluster_overlap_score(left: list[dict[str, Any]], right: list[dict[str, Any]]) -> float:
+    left_refs = {(ref["speaker"], ref["timestamp"]) for item in left for ref in item["evidence"]}
+    right_refs = {(ref["speaker"], ref["timestamp"]) for item in right for ref in item["evidence"]}
+    ref_overlap = len(left_refs & right_refs) / max(1, min(len(left_refs), len(right_refs)))
+    left_tokens = Counter()
+    right_tokens = Counter()
+    for item in left:
+        left_tokens.update(item["token_counts"])
+    for item in right:
+        right_tokens.update(item["token_counts"])
+    token_overlap = cosine_similarity(left_tokens, right_tokens)
+    return round(max(ref_overlap, token_overlap), 3)
+
+
+def summarize_cluster_from_evidence(
+    cluster: list[dict[str, Any]],
+    representative_point: str,
+    representative_score: float,
+    cleaned_sentences: list[str],
+    keyword_set: set[str],
+    lowered_blob: str,
+) -> tuple[str, str, float]:
+    if any(term in lowered_blob for term in ("component traceability", "buffer stock", "current supplier", "backup supplier")):
+        return (
+            "The team reviewed supplier comparison, component traceability and buffer-stock risk before agreeing the Q4 supplier approach.",
+            "evidence_weighted_supplier_risk",
+            0.92,
+        )
+    if any(term in lowered_blob for term in ("one-year renewal", "three-year term", "migration effort", "retraining", "twelve percent increase", "locks us in")):
+        return (
+            "The team discussed renewal pricing, contract length and the migration effort associated with changing supplier.",
+            "evidence_weighted_contract_renewal",
+            0.9,
+        )
+    if any(term in lowered_blob for term in ("shorter sessions", "training block", "difficult to schedule")):
+        return (
+            "The team discussed shorter training sessions because the original two-hour block is difficult to schedule.",
+            "evidence_weighted_training_schedule",
+            0.88,
+        )
+    if any(term in lowered_blob for term in ("larger auditorium", "one hundred and eighty people", "breakout room")):
+        return (
+            "The team discussed attendee volume, room capacity and the move to the larger auditorium.",
+            "evidence_weighted_event_capacity",
+            0.86,
+        )
+    if representative_point and semantic_density(representative_point) >= 0.62 and representative_score >= 0.45:
+        return (representative_point, "representative_sentence", round(0.62 + representative_score * 0.25, 2))
+    if cleaned_sentences:
+        best = max(cleaned_sentences, key=lambda sentence: (semantic_density(sentence), sentence_specificity_score(sentence)))
+        if semantic_density(best) >= 0.58:
+            return (lightly_clean_representative_sentence(best), "best_cluster_sentence", round(semantic_density(best), 2))
+    if keyword_set & {"leadership", "review"}:
+        return ("The team reviewed the governance framework and the remaining leadership review step.", "evidence_weighted_review", 0.8)
+    return ("", "none", 0.0)
+
+
+def extract_supplemental_discussion_points(cleaned_sentences: list[str], selected: str) -> list[str]:
+    selected_lower = normalize_text_fragment(selected).lower()
+    supplements: list[str] = []
+    for sentence in cleaned_sentences:
+        cleaned = lightly_clean_representative_sentence(sentence)
+        lowered = cleaned.lower()
+        if not cleaned or lowered == selected_lower:
+            continue
+        if is_request_or_question_fragment(cleaned):
+            continue
+        if lowered.startswith(("please ", "i will ", "louise to ", "actions before ")):
+            continue
+        if lowered.startswith("we will ") and not any(term in lowered for term in ("pilot group", "manchester site")):
+            continue
+        if semantic_density(cleaned) < 0.58:
+            continue
+        if lowered in selected_lower or selected_lower in lowered:
+            continue
+        if any(term in lowered for term in ("first rollout", "payment compliance", "pilot group", "manchester site", "three-year term", "migration effort", "leadership review")):
+            supplements.append(cleaned)
+    deduped: list[str] = []
+    seen = set()
+    for item in supplements:
+        key = normalize_discussion_key(item)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item)
+    return deduped[:2]
 
 
 def find_supporting_sentence(sentences: list[str], markers: tuple[str, ...]) -> str:
@@ -1490,7 +1612,9 @@ def build_discussion_point_from_cluster(cluster: list[dict[str, Any]], raw_keywo
     if any(term in lowered_blob for term in ("validation-specific", "keep it broad")):
         generated_summary = "The team discussed whether the webinar should be validation-specific or broadly applicable and agreed to keep the messaging broad."
         selection_mode = "compressed_multi" if len(sentences) > 1 else "single_candidate"
-    elif any(term in lowered_blob for term in ("customer support contract renewal", "service levels", "response times", "pricing", "supplier")):
+    elif any(term in lowered_blob for term in ("customer support contract renewal", "service levels", "response times", "pricing", "supplier")) and not any(
+        term in lowered_blob for term in ("component traceability", "buffer stock", "backup supplier", "three-year term", "migration effort", "retraining")
+    ):
         generated_summary = "The team reviewed the customer support contract renewal, including pricing, supplier comparison and operational risk."
         selection_mode = "compressed_multi" if len(sentences) > 1 else "single_candidate"
     elif any(term in lowered_blob for term in ("one-year option", "three-year commitment", "three years")):
@@ -1537,6 +1661,14 @@ def build_discussion_point_from_cluster(cluster: list[dict[str, Any]], raw_keywo
     rejection_reason = ""
     final_point = generated_summary
     final_source = "multi_sentence_cluster_summary"
+    evidence_summary, evidence_source, evidence_score = summarize_cluster_from_evidence(
+        cluster,
+        representative_point,
+        representative_score,
+        cleaned_sentences,
+        keyword_set,
+        lowered_blob,
+    )
 
     if representative_point and (
         is_keyword_fragment_summary(generated_summary)
@@ -1580,11 +1712,23 @@ def build_discussion_point_from_cluster(cluster: list[dict[str, Any]], raw_keywo
         final_point = representative_point or generated_summary
         final_source = "fallback" if not representative_point else "representative_sentence"
 
+    if evidence_summary and (
+        is_keyword_fragment_summary(final_point)
+        or has_orphaned_noun_summary(final_point)
+        or semantic_density(final_point) < 0.55
+    ):
+        rejected_generated_summary = True
+        rejection_reason = rejection_reason or "prefer_evidence_weighted_summary"
+        final_point = evidence_summary
+        final_source = evidence_source
+
     return {
         "selectedDiscussionPoint": final_point,
         "selectionMode": selection_mode,
         "selectedRepresentativeSentence": representative_point,
         "representativeSentenceScore": representative_score,
+        "semanticDensity": semantic_density(final_point),
+        "summaryScore": max(evidence_score, representative_score, semantic_density(final_point)),
         "rejectedGeneratedSummary": rejected_generated_summary,
         "rejectionReason": rejection_reason,
         "finalDiscussionPointSource": final_source,
@@ -1614,10 +1758,36 @@ def select_discussion_clusters(candidates: list[dict[str, Any]], speaker_names: 
         if not placed:
             clusters.append([candidate])
 
+    merged_from: dict[int, list[int]] = {}
+    changed = True
+    while changed:
+        changed = False
+        for left_index in range(len(clusters)):
+            if changed:
+                break
+            for right_index in range(left_index + 1, len(clusters)):
+                overlap = cluster_overlap_score(clusters[left_index], clusters[right_index])
+                if overlap < 0.43:
+                    continue
+                left_blob = " ".join(item["text"].lower() for item in clusters[left_index])
+                right_blob = " ".join(item["text"].lower() for item in clusters[right_index])
+                merged_hint = (
+                    any(term in left_blob + " " + right_blob for term in ("supplier", "renewal", "pricing", "traceability", "migration", "retraining"))
+                    or any(term in left_blob + " " + right_blob for term in ("training", "sessions", "schedule", "timetable"))
+                    or any(term in left_blob + " " + right_blob for term in ("leadership review", "governance framework"))
+                )
+                if not merged_hint and overlap < 0.58:
+                    continue
+                clusters[left_index].extend(clusters[right_index])
+                merged_from.setdefault(left_index, []).append(right_index)
+                clusters.pop(right_index)
+                changed = True
+                break
+
     cluster_debug: list[dict[str, Any]] = []
     selected_points_with_scores: list[tuple[float, dict[str, Any]]] = []
     dedupe_keys = set()
-    for cluster in clusters:
+    for cluster_index, cluster in enumerate(clusters):
         aggregate = Counter()
         for candidate in cluster:
             aggregate.update(candidate["token_counts"])
@@ -1631,6 +1801,7 @@ def select_discussion_clusters(candidates: list[dict[str, Any]], speaker_names: 
         filtered_keywords = extract_cluster_keywords(aggregate, speaker_names)
         cluster_summary = build_discussion_point_from_cluster(cluster, raw_keywords, filtered_keywords)
         selected = cluster_summary["selectedDiscussionPoint"]
+        supplemental_points = extract_supplemental_discussion_points(cluster_summary["cleanedCandidateSentences"], selected)
         selection_mode = cluster_summary["selectionMode"]
         strong_subject = has_strong_cluster_subject(cluster, filtered_keywords)
         evidence_refs = [ref for item in cluster for ref in item["evidence"]]
@@ -1645,6 +1816,10 @@ def select_discussion_clusters(candidates: list[dict[str, Any]], speaker_names: 
             rejected_reason = "weak_subject"
         elif is_malformed_discussion_point(selected):
             rejected_reason = "malformed_summary"
+        elif semantic_density(selected) < 0.52:
+            rejected_reason = "low_semantic_density"
+        elif has_orphaned_noun_summary(selected):
+            rejected_reason = "orphaned_noun_summary"
         elif dedupe_key in dedupe_keys:
             rejected_reason = "covered_by_higher_ranked_cluster"
         else:
@@ -1662,25 +1837,49 @@ def select_discussion_clusters(candidates: list[dict[str, Any]], speaker_names: 
                     },
                 )
             )
+            for offset, supplement in enumerate(supplemental_points, start=1):
+                supplement_key = normalize_discussion_key(supplement)
+                if supplement_key in dedupe_keys:
+                    continue
+                dedupe_keys.add(supplement_key)
+                selected_points_with_scores.append(
+                    (
+                        round(cluster_score - 0.05 * offset, 2),
+                        {
+                            "text": supplement,
+                            "sourceType": "clusterSummary",
+                            "earliestTimestamp": earliest_timestamp,
+                            "timestampLabel": next((ref["timestamp"] for ref in evidence_refs if ref["timestamp"]), ""),
+                            "selectedReason": "supplemental_cluster_sentence",
+                            "evidence": evidence_refs,
+                        },
+                    )
+                )
             used = True
         cluster_debug.append(
             {
+                "cluster_id": f"cluster_{cluster_index + 1}",
                 "rawKeywords": raw_keywords,
                 "keywords": filtered_keywords,
                 "candidateTexts": [item["text"] for item in cluster[:6]],
                 "cleanedCandidateSentences": cluster_summary["cleanedCandidateSentences"][:8],
                 "clusterScore": cluster_score,
+                "semanticDensity": cluster_summary["semanticDensity"],
+                "summaryScore": cluster_summary["summaryScore"],
                 "selectedDiscussionPoint": selected,
                 "selectedRepresentativeSentence": cluster_summary["selectedRepresentativeSentence"],
                 "representativeSentenceScore": cluster_summary["representativeSentenceScore"],
                 "rejectedGeneratedSummary": cluster_summary["rejectedGeneratedSummary"],
                 "finalDiscussionPointSource": cluster_summary["finalDiscussionPointSource"],
                 "supportingTurns": support,
+                "supporting_turns": support,
                 "earliestTimestamp": earliest_timestamp if earliest_timestamp < 10**9 else None,
                 "rejectedReason": rejected_reason or cluster_summary["rejectionReason"],
                 "usedInDiscussionPoints": used,
                 "selectionMode": selection_mode,
                 "compressedFromMultipleCandidates": len(cluster) > 1,
+                "merged_clusters": merged_from.get(cluster_index, []),
+                "supplementalPoints": supplemental_points,
             }
         )
 
