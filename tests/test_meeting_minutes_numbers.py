@@ -199,9 +199,11 @@ Yes.
         self.assertFalse(any("request funnel?" in point.lower() for point in result["discussionPoints"]))
         self.assertFalse(any(point.lower().startswith("yeah she said") for point in result["discussionPoints"]))
         self.assertFalse(any("presentation clarity" in point.lower() for point in result["discussionPoints"]))
+        self.assertNotIn("The no remains in progress.", result["discussionPoints"])
         self.assertFalse(any(point.lower().startswith(("the no", "the yes", "the it", "the that", "the this", "the okay", "the true", "the fine", "the probably", "the maybe")) for point in result["discussionPoints"]))
         self.assertGreaterEqual(len(result["discussionPoints"]), 3)
         self.assertLessEqual(len(result["discussionPoints"]), 10)
+        self.assertEqual(len(result["discussionPoints"]), len(set(result["discussionPoints"])))
         self.assertTrue(
             any(
                 any(term in point.lower() for term in ("remains", "blocked", "in review", "active", "complete"))
@@ -222,6 +224,12 @@ Yes.
         self.assertIn("finalDiscussionPoints", result["numberExperimentDebug"])
         self.assertTrue(any(item["sourceType"] == "statusReviewPoint" for item in result["numberExperimentDebug"]["finalDiscussionPoints"]))
         self.assertIn("pending innovation grant feedback", result["executiveSummary"].lower())
+        self.assertNotEqual(result["executiveSummary"], "Actions were identified from the discussion.")
+        point_positions = {point: index for index, point in enumerate(result["discussionPoints"])}
+        self.assertLess(
+            point_positions["Vendor strategy rollout remains in progress: interviews are complete, but the strategy document has not yet been produced."],
+            point_positions["Innovation grant feedback is still pending, with follow-up planned this week."],
+        )
         json.dumps(result)
 
     def test_webinar_fixture_runs_with_debug(self):
