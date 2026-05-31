@@ -708,6 +708,15 @@ Jack Cunningham:
 Let's run through the opening.
 
 Conor Flynn:
+Let's go through the timeline next.
+
+Ciara Griffin:
+Let's move on after that.
+
+Jack Cunningham:
+Let's start with the registration flow.
+
+Conor Flynn:
 Let's see if we can do something there.
 
 Ciara Griffin:
@@ -758,6 +767,104 @@ Jack Cunningham   1:10Agreed, let's keep the session educational rather than sal
         self.assertEqual(
             result["decisions"],
             ["The webinar should remain educational rather than sounding sales-led."],
+        )
+
+    def test_webinar_rehearsal_stress_test_regression(self):
+        transcript = """Webinar Rehearsal Stress Test
+
+6 June 2026
+
+Jack Cunningham:
+Let's run through the opening.
+
+Conor Flynn:
+Right, let's run through the deck from the top.
+
+Ciara Griffin:
+Let's start with the first section.
+
+Jack Cunningham:
+The opening explanation isn't clear.
+
+Conor Flynn:
+I'll think that through before Friday.
+
+Jack Cunningham:
+The timeline slide is confusing.
+
+Conor Flynn:
+I'll tighten that up tomorrow.
+
+Jack Cunningham:
+Can you update the registration list?
+
+Conor Flynn:
+Yes, I'll do that.
+
+Jack Cunningham:
+The demo intro needs a clearer spoken setup.
+
+Conor Flynn:
+I'll improve that as well.
+
+Jack Cunningham:
+Can you redesign the whole deck before Friday?
+
+Conor Flynn:
+No, I won't have time before Friday.
+
+Ciara Griffin:
+Let's see if we can do something there.
+
+Jack Cunningham:
+Keep the webinar educational rather than sales-led.
+
+Conor Flynn:
+Agreed.
+
+Ciara Griffin:
+Actually, let's keep the validation example broad rather than too validation-specific.
+
+Conor Flynn:
+Yeah, that's better.
+
+Ciara Griffin:
+Snip it then. He's hot.
+
+Jack Cunningham:
+Ignore that, no action.
+
+Actions before the webinar:
+Tighten the opening wording.
+Check the client attendee list.
+Run one more practice round.
+"""
+
+        result = analyse(transcript)
+
+        expected_action_meta = {
+            "Refine the opening explanation.": ("Conor Flynn", "Before Friday"),
+            "Clarify the timeline slide.": ("Conor Flynn", "Tomorrow"),
+            "Update the registration list.": ("Conor Flynn", ""),
+            "Improve the demo intro spoken setup.": ("Conor Flynn", ""),
+            "Tighten the opening wording.": ("Owner not specified", "Before the webinar"),
+            "Check the client attendee list.": ("Owner not specified", "Before the webinar"),
+            "Run one more practice round.": ("Owner not specified", "Before the webinar"),
+        }
+        self.assertTrue(set(expected_action_meta).issubset(set(result["meetingActionPoint"])))
+        for action_text, (owner, deadline) in expected_action_meta.items():
+            index = result["meetingActionPoint"].index(action_text)
+            self.assertEqual(result["meetingActionPointOwner"][index], owner)
+            self.assertEqual(result["meetingActionPointDeadline"][index], deadline)
+        improve_index = result["meetingActionPoint"].index("Improve the demo intro spoken setup.")
+        self.assertAlmostEqual(result["meetingActionPointConfidence"][improve_index], 0.75, places=2)
+        self.assertNotIn("Redesign the whole deck before Friday.", result["meetingActionPoint"])
+        self.assertEqual(
+            result["decisions"],
+            [
+                "The webinar should remain educational rather than sounding sales-led.",
+                "The webinar should keep the validation example broad rather than too validation-specific.",
+            ],
         )
 
     def test_project_minutes_are_derived_from_milestone_output(self):

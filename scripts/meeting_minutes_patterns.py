@@ -19,7 +19,7 @@ DECISION_CUE_PATTERNS = [
 
 DECISION_ACCEPTANCE_PATTERNS = [
     re.compile(
-        r"\b(?:agreed|we agreed|let's|lets|go with|keep it|decision is|decided|accepted|that's fine|sounds good|yes, let's|no, let's)\b",
+        r"\b(?:agreed|we agreed|let's|lets|go with|keep(?:\s+it|\s+the|\b)|decision is|decided|accepted|that's fine|sounds good|yes, let's|no, let's)\b",
         re.IGNORECASE,
     ),
     re.compile(
@@ -62,6 +62,14 @@ NON_DECISION_PATTERNS = [
     ),
     re.compile(
         r"^\s*let'?s run through\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"^\s*(?:right,\s*)?let'?s\s+(?:go through|move on|start with)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"^\s*(?:right,\s*)?let'?s\s+run through\b",
         re.IGNORECASE,
     ),
     re.compile(

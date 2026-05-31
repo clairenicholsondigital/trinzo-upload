@@ -1622,6 +1622,8 @@ def build_structured_actions(
         if not is_valid_action_output(polished_action):
             continue
         conversational_evidence = CONVERSATIONAL_ACTION_EVIDENCE.get(polished_action.lower(), [])
+        if len(conversational_evidence) >= 2 and final_owner != "Owner not specified":
+            owner_confidence = max(owner_confidence, 0.75)
         structured.append(
             {
                 "meetingActionPoint": polished_action,

@@ -13,12 +13,12 @@ def extract_contextual_commitment(sentence: str) -> dict[str, str] | None:
     stripped = sentence.strip()
     lowered = stripped.lower()
     patterns = [
-        (r"\b(?:i'll|i will)\s+think\s+(?:that|it)\s+through\b", "Refine"),
-        (r"\b(?:i'll|i will)\s+think\s+about\s+(?:that|it)\b", "Refine"),
-        (r"\b(?:i'll|i will)\s+work\s+through\s+(?:that|it)\b", "Refine"),
-        (r"\b(?:i'll|i will)\s+tighten\s+(?:that|it)\s+up\b", "Clarify"),
-        (r"\b(?:i'll|i will)\s+refine\s+(?:that|it)\b", "Refine"),
-        (r"\b(?:i'll|i will)\s+improve\s+(?:that|it)\b", "Improve"),
+        (r"\b(?:i'll|i will)\s+think\s+(?:that|it)\s+through(?:\s+(?:as well|too))?\b", "Refine"),
+        (r"\b(?:i'll|i will)\s+think\s+about\s+(?:that|it)(?:\s+(?:as well|too))?\b", "Refine"),
+        (r"\b(?:i'll|i will)\s+work\s+through\s+(?:that|it)(?:\s+(?:as well|too))?\b", "Refine"),
+        (r"\b(?:i'll|i will)\s+tighten\s+(?:that|it)\s+up(?:\s+(?:as well|too))?\b", "Clarify"),
+        (r"\b(?:i'll|i will)\s+refine\s+(?:that|it)(?:\s+(?:as well|too))?\b", "Refine"),
+        (r"\b(?:i'll|i will)\s+improve\s+(?:that|it)(?:\s+(?:as well|too))?\b", "Improve"),
     ]
     for pattern, action_verb in patterns:
         if re.search(pattern, lowered):
@@ -56,6 +56,17 @@ def extract_problem_context(sentence: str) -> dict[str, str] | None:
         subject = normalize_requested_task(match.group("subject"))
         if subject:
             return {"subject": subject, "default_action_verb": default_action_verb}
+    clearer_match = re.match(
+        r"^(?:the\s+)?(?P<subject>.+?)\s+needs\s+(?:a\s+)?clearer\s+(?P<detail>.+)$",
+        stripped,
+        flags=re.IGNORECASE,
+    )
+    if clearer_match:
+        subject = normalize_requested_task(
+            f"{clearer_match.group('subject')} {clearer_match.group('detail')}"
+        )
+        if subject:
+            return {"subject": subject, "default_action_verb": "Clarify"}
     return None
 
 
