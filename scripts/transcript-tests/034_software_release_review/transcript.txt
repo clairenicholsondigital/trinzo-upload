@@ -1,0 +1,16 @@
+Software Release Review
+
+Date: 24 September 2026
+Location: Online
+
+Sara 0:01
+Accessibility fixes are still open and the analytics dashboard has one unresolved export bug.
+
+Ben 0:11
+We will delay the release until the accessibility fixes land.
+
+Sara 0:17
+Agreed.
+
+Sara 0:19
+I'll rerun the regression suite tomorrow morning.

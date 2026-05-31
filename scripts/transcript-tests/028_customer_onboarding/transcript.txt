@@ -1,0 +1,22 @@
+Customer Onboarding Planning
+
+Date: 18 September 2026
+Location: Online
+
+Rhea 0:01
+The customer wants SSO on day one, but the identity mapping is not ready yet.
+
+Miles 0:11
+Can we still include SSO in phase one?
+
+Rhea 0:15
+No, not for launch.
+
+Miles 0:19
+We will begin onboarding with CSV import first and defer SSO until phase two.
+
+Rhea 0:26
+Agreed.
+
+Rhea 0:28
+I'll send the onboarding plan by Friday.

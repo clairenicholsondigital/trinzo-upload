@@ -1,0 +1,16 @@
+Incident Response Review
+
+Date: 14 September 2026
+Location: Online
+
+Jade 0:01
+The database failover worked, but API latency is still unstable for customers in Europe.
+
+Noah 0:10
+We will keep the status page open until the latency trend stabilises.
+
+Jade 0:16
+Agreed.
+
+Jade 0:18
+Noah to pull the API logs by 6pm.

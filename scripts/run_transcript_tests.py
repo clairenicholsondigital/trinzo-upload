@@ -37,6 +37,15 @@ def unique_normalized_list(values):
 def normalize_expected_payload(payload):
     if isinstance(payload, dict) and "assertions" in payload and isinstance(payload["assertions"], dict):
         return payload["assertions"]
+    if isinstance(payload, dict):
+        normalized = dict(payload)
+        if "discussionPoints" in payload and "mustContainDiscussionPoints" not in payload:
+            normalized["mustContainDiscussionPoints"] = payload["discussionPoints"]
+        if "decisions" in payload and "mustContainDecisions" not in payload:
+            normalized["mustContainDecisions"] = payload["decisions"]
+        if "meetingActionPoint" in payload and "mustContainActions" not in payload:
+            normalized["mustContainActions"] = payload["meetingActionPoint"]
+        return normalized
     return payload
 
 

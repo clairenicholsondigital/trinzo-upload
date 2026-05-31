@@ -1,0 +1,12 @@
+{
+  "discussionPoints": [
+    "accessibility fixes are still open",
+    "unresolved export bug"
+  ],
+  "decisions": [
+    "delay the release"
+  ],
+  "meetingActionPoint": [
+    "rerun the regression suite tomorrow morning"
+  ]
+}

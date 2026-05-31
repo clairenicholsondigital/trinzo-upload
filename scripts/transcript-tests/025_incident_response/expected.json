@@ -1,0 +1,11 @@
+{
+  "discussionPoints": [
+    "API latency is still unstable"
+  ],
+  "decisions": [
+    "keep the status page open"
+  ],
+  "meetingActionPoint": [
+    "pull the API logs by 6pm"
+  ]
+}

@@ -1,0 +1,22 @@
+Supplier Review
+
+Date: 5 September 2026
+Location: Online
+
+Helen 0:01
+Late shipments from the backup supplier are still creating risk for the October plan.
+
+Mark 0:11
+The current supplier costs more, but their SLA has held for the last two quarters.
+
+Helen 0:19
+We will stay with the current supplier for Q1 and review pricing again in December.
+
+Mark 0:27
+Agreed.
+
+Helen 0:31
+Can you send the revised SLA notes this afternoon?
+
+Mark 0:36
+Yes, I'll send them.

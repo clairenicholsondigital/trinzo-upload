@@ -1,0 +1,12 @@
+{
+  "discussionPoints": [
+    "handoffs were slower than expected",
+    "Friday standups were not adding much value"
+  ],
+  "decisions": [
+    "drop the Friday standup"
+  ],
+  "meetingActionPoint": [
+    "update the team cadence note this week"
+  ]
+}

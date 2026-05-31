@@ -1,0 +1,11 @@
+{
+  "discussionPoints": [
+    "single point of failure"
+  ],
+  "decisions": [
+    "escalate that dependency to red"
+  ],
+  "meetingActionPoint": [
+    "update the register by tomorrow"
+  ]
+}

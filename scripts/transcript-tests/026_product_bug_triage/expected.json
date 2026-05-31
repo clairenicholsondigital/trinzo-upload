@@ -1,0 +1,11 @@
+{
+  "discussionPoints": [
+    "saved cards and discount codes"
+  ],
+  "decisions": [
+    "ship the hotfix behind a feature flag"
+  ],
+  "meetingActionPoint": [
+    "verify the checkout flow before release"
+  ]
+}

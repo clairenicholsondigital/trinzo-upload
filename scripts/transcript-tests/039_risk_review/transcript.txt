@@ -1,0 +1,16 @@
+Risk Review
+
+Date: 29 September 2026
+Location: Online
+
+Maria 0:01
+The vendor dependency is still a single point of failure for the reporting workflow.
+
+Tom 0:10
+I agree.
+
+Maria 0:13
+We will escalate that dependency to red on the risk register.
+
+Tom 0:21
+Maria to update the register by tomorrow.

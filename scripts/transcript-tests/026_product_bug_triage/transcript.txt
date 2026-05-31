@@ -1,0 +1,16 @@
+Product Bug Triage
+
+Date: 15 September 2026
+Location: Online
+
+Asha 0:01
+The checkout bug only appears when saved cards and discount codes are used together.
+
+Lewis 0:10
+We will ship the hotfix behind a feature flag tonight.
+
+Asha 0:16
+Agreed.
+
+Asha 0:18
+Lewis to verify the checkout flow before release.

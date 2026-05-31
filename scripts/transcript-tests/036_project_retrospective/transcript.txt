@@ -1,0 +1,16 @@
+Project Retrospective
+
+Date: 26 September 2026
+Location: Online
+
+Jen 0:01
+Handoffs were slower than expected and Friday standups were not adding much value.
+
+Omar 0:09
+We should keep the daily triage, but drop the Friday standup.
+
+Jen 0:18
+Agreed.
+
+Omar 0:21
+Jen to update the team cadence note this week.

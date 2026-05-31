@@ -1,0 +1,12 @@
+{
+  "discussionPoints": [
+    "identity mapping is not ready",
+    "defer SSO until phase two"
+  ],
+  "decisions": [
+    "begin onboarding with CSV import first"
+  ],
+  "meetingActionPoint": [
+    "send the onboarding plan by Friday"
+  ]
+}
