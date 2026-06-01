@@ -160,6 +160,24 @@ Yes, I'll do that.
 
         self.assertIn("Send the updated floor plan this afternoon.", result["meetingActionPoint"])
 
+    def test_dependency_deadline_is_preserved_from_request_thread(self):
+        transcript = """Submission follow-up
+
+19 August 2026
+
+Clare:
+Can you send the submission after legal signs it off?
+
+Nina:
+Yes, I'll do that.
+"""
+
+        result = analyse(transcript)
+
+        self.assertIn("Send the submission after legal signs it off.", result["meetingActionPoint"])
+        index = result["meetingActionPoint"].index("Send the submission after legal signs it off.")
+        self.assertEqual(result["meetingActionPointDeadline"][index], "After legal signs it off")
+
     def test_ownership_question_inherits_action(self):
         transcript = """Negotiation Ownership
 
@@ -191,6 +209,21 @@ I'll look into that.
         result = analyse(transcript)
 
         self.assertIn("Reproduce it on Safari before touching the payment token code.", result["meetingActionPoint"])
+
+    def test_dependency_deadline_is_preserved_from_explicit_commitment(self):
+        transcript = """Legal coordination
+
+21 August 2026
+
+David:
+I'll speak with legal once the revised proposal arrives.
+"""
+
+        result = analyse(transcript)
+
+        self.assertIn("Speak with legal once the revised proposal arrives.", result["meetingActionPoint"])
+        index = result["meetingActionPoint"].index("Speak with legal once the revised proposal arrives.")
+        self.assertEqual(result["meetingActionPointDeadline"][index], "Once the revised proposal arrives")
 
     def test_orphan_commitment_does_not_create_action(self):
         transcript = """Loose follow-up
@@ -261,6 +294,65 @@ Yes, I'll do that.
         self.assertIn("Send the updated floor plan this afternoon.", result["meetingActionPoint"])
         index = result["meetingActionPoint"].index("Send the updated floor plan this afternoon.")
         self.assertEqual(result["meetingActionPointOwner"][index], "Nina")
+
+    def test_generic_commitment_prefers_explicit_request_over_intervening_issue(self):
+        transcript = """Delivery review
+
+1 June 2026
+
+Rachel:
+Can you send the revised deck by Wednesday?
+
+Tom:
+Before that, the legal comments are still coming in.
+
+Nina:
+The appendix also needs the new pricing table.
+
+Tom:
+Yes, I'll do that.
+"""
+
+        result = analyse(transcript)
+
+        self.assertIn("Send the revised deck by Wednesday.", result["meetingActionPoint"])
+        deck_index = result["meetingActionPoint"].index("Send the revised deck by Wednesday.")
+        self.assertEqual(result["meetingActionPointOwner"][deck_index], "Tom")
+        self.assertFalse(
+            any(
+                owner == "Tom" and "pricing table" in action.lower()
+                for action, owner in zip(result["meetingActionPoint"], result["meetingActionPointOwner"])
+            )
+        )
+        self.assertTrue(
+            any(
+                event.get("threadKind") == "request"
+                and event.get("eventType") == "thread_resolved_by_generic_commitment"
+                and event.get("resolvedOwner") == "Tom"
+                for event in result["numberExperimentDebug"]["intermediateEvents"]
+            )
+        )
+
+    def test_multi_owner_commitments_in_one_turn_are_split(self):
+        transcript = """Planning review
+
+22 August 2026
+
+Rachel:
+Tom will confirm the venue and Emma will update the attendee page.
+"""
+
+        result = analyse(transcript)
+
+        self.assertIn("Confirm the venue.", result["meetingActionPoint"])
+        self.assertIn("Update the attendee page.", result["meetingActionPoint"])
+        first_index = result["meetingActionPoint"].index("Confirm the venue.")
+        second_index = result["meetingActionPoint"].index("Update the attendee page.")
+        self.assertEqual(result["meetingActionPointOwner"][first_index], "Tom")
+        self.assertEqual(result["meetingActionPointOwner"][second_index], "Emma")
+        self.assertTrue(
+            any(event.get("eventType") == "named_commitment_action" for event in result["numberExperimentDebug"]["intermediateEvents"])
+        )
 
     def test_supplier_contract_renewal_outputs(self):
         transcript = """Customer support contract renewal

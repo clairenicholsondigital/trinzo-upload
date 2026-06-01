@@ -62,6 +62,23 @@ DEADLINE_RE = re.compile(
     r")\b",
     re.IGNORECASE,
 )
+DEPENDENCY_DEADLINE_RE = re.compile(
+    r"\b(?:after|once)\s+"
+    r"(?:the\s+)?"
+    r"[a-z][a-z0-9'/-]*"
+    r"(?:\s+[a-z][a-z0-9'/-]*){0,5}"
+    r"\s+"
+    r"(?:"
+    r"signs?(?:\s+it\s+off)?|signed(?:\s+it\s+off|\s+off)?|"
+    r"clears?(?:\s+it)?|cleared(?:\s+it)?|"
+    r"approves?(?:\s+it)?|approved(?:\s+it)?|"
+    r"confirms?(?:\s+it)?|confirmed(?:\s+it)?|"
+    r"reviews?(?:\s+it)?|reviewed(?:\s+it)?|"
+    r"arrives?|arrived|lands?|landed|"
+    r"is\s+available|becomes\s+available|comes\s+through"
+    r")\b",
+    re.IGNORECASE,
+)
 FINALISER_RE = re.compile(r"^(?:we['’]?ll|we will)\s+(?:pursue|go with|proceed with)\b", re.IGNORECASE)
 
 STOPWORDS = {
@@ -105,6 +122,11 @@ REQUEST_CLOSURE_CUES = (
 ACK_PREFIX_RE = re.compile(r"^(?:yes|yeah|yep|sure|okay|ok|fine|perfect|agreed|right)\b[\s,.-]*", re.IGNORECASE)
 DIRECT_ASSIGNMENT_RE = re.compile(r"^(?P<owner>[A-Z][A-Za-z]+(?: [A-Z][A-Za-z]+){0,2})\s+to\s+(?P<task>.+)$")
 SELF_COMMITMENT_RE = re.compile(r"^(?:i['’]?ll|i will|i can)\s+(?P<task>.+)$", re.IGNORECASE)
+NAMED_COMMITMENT_RE = re.compile(
+    rf"(?P<owner>{SPEAKER_NAME_RE})\s+(?:will|can)\s+(?P<task>.+?)"
+    rf"(?=(?:,\s*|\s+and\s+)(?:{SPEAKER_NAME_RE})\s+(?:will|can)\b|[.;]|$)",
+    re.IGNORECASE,
+)
 REQUEST_RE = re.compile(r"^(?:can|could|would|will)\s+you\s+(?P<task>.+)$", re.IGNORECASE)
 OWNERSHIP_RE = re.compile(r"^who is handling\s+(?P<task>.+)$", re.IGNORECASE)
 RESPONSIBILITY_RE = re.compile(r"^(?:we should|we need to|someone needs to)\s+(?P<task>.+)$", re.IGNORECASE)
@@ -1076,9 +1098,10 @@ def format_deadline_output(deadline: str, meeting_date: str) -> str:
 
 
 def extract_deadline_text(text: str) -> str:
-    match = DEADLINE_RE.search(text)
-    if not match:
+    matches = [match for match in (DEADLINE_RE.search(text), DEPENDENCY_DEADLINE_RE.search(text)) if match]
+    if not matches:
         return ""
+    match = min(matches, key=lambda item: item.start())
     return normalize_deadline_text(match.group(0))
 
 
@@ -1190,13 +1213,21 @@ def extract_issue_action_context(text: str) -> dict[str, str] | None:
     detail = normalize_text_fragment(detail)
     if not subject or not detail or is_low_value_action_task(subject):
         return None
+    additive_issue = bool(re.search(r"\balso\b", subject, flags=re.IGNORECASE)) or detail.lower().startswith(
+        ("the new ", "new ", "updated ", "revised ")
+    )
+    subject = re.sub(r"\balso\b", "", subject, flags=re.IGNORECASE).strip()
     if subject.lower().startswith("the "):
         subject = subject[:1].lower() + subject[1:]
-    detail = re.sub(r"^(?:a|an)\s+", "", detail, flags=re.IGNORECASE)
-    detail = re.sub(r"^(?:clearer|better|improved)\s+", "", detail, flags=re.IGNORECASE)
+    if additive_issue:
+        action_text = normalize_action_text(f"update {subject} with {detail}".strip())
+    else:
+        detail = re.sub(r"^(?:a|an)\s+", "", detail, flags=re.IGNORECASE)
+        detail = re.sub(r"^(?:clearer|better|improved)\s+", "", detail, flags=re.IGNORECASE)
+        action_text = normalize_action_text(f"improve {subject} {detail}".strip())
     return {
         "kind": "issue",
-        "action": normalize_action_text(f"improve {subject} {detail}".strip()),
+        "action": action_text,
         "owner": "Owner not specified",
         "deadline": extract_deadline_text(cleaned),
         "source_text": cleaned,
@@ -1229,6 +1260,29 @@ def extract_self_commitment_action(text: str, speaker: str) -> tuple[str, str, s
     if is_low_value_action_task(task):
         return None
     return normalize_action_text(task), speaker, extract_deadline_text(task)
+
+
+def extract_named_commitment_actions(text: str) -> list[tuple[str, str, str]]:
+    cleaned = normalize_text_fragment(text)
+    if is_presentation_rehearsal_speech(cleaned):
+        return []
+    actions: list[tuple[str, str, str]] = []
+    chunks = re.split(r"(?<=,)\s+and\s+(?=[A-ZÀ-ÖØ-Þ])|\s+and\s+(?=[A-ZÀ-ÖØ-Þ][A-Za-zÀ-ÖØ-öø-ÿ'`.-]*\s+(?:will|can)\b)", cleaned)
+    for chunk in chunks:
+        chunk = normalize_text_fragment(chunk).strip()
+        if not chunk:
+            continue
+        match = NAMED_COMMITMENT_RE.search(chunk)
+        if not match:
+            continue
+        owner = normalize_text_fragment(match.group("owner")).strip()
+        task = normalize_text_fragment(match.group("task")).rstrip(".!?").strip()
+        if not owner or not task:
+            continue
+        if is_low_value_action_task(task) or is_pronoun_commitment_task(task):
+            continue
+        actions.append((normalize_action_text(task), owner, extract_deadline_text(task)))
+    return actions
 
 
 def is_generic_commitment(text: str) -> bool:
@@ -1324,6 +1378,43 @@ def select_recent_open_thread(
     return None
 
 
+def inherited_thread_priority(thread: dict[str, Any], index: int) -> tuple[float, int]:
+    kind_weight = {
+        "request": 5.0,
+        "ownership": 4.0,
+        "responsibility": 3.0,
+        "issue": 2.0,
+    }.get(thread["kind"], 0.0)
+    gap = index - thread["openedAt"]
+    score = kind_weight - gap * 0.18
+    if thread.get("deadline"):
+        score += 0.35
+    request_text = normalize_text_fragment(thread.get("requestTurn", {}).get("text", ""))
+    if QUESTION_RE.search(request_text):
+        score += 0.25
+    if thread["kind"] == "request" and any(
+        marker in request_text.lower() for marker in ("can you", "could you", "would you", "will you")
+    ):
+        score += 0.2
+    return score, thread["openedAt"]
+
+
+def select_inherited_thread_for_generic_commitment(
+    threads: list[dict[str, Any]],
+    index: int,
+) -> dict[str, Any] | None:
+    candidates = [
+        thread
+        for thread in threads
+        if thread["kind"] in {"request", "ownership", "responsibility", "issue"}
+        and thread_can_accept_follow_up(thread, index)
+        and index - thread["openedAt"] <= 4
+    ]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda thread: inherited_thread_priority(thread, index))
+
+
 def select_matching_action_thread(
     threads: list[dict[str, Any]],
     action_text: str,
@@ -1401,7 +1492,29 @@ def extract_conversational_actions(turns: list[dict[str, str]]) -> tuple[
         context = extract_action_context(turn["text"])
         issue_context = extract_issue_action_context(turn["text"]) if not context else None
         explicit_commitment = extract_self_commitment_action(turn["text"], turn["speaker"])
+        named_commitments = extract_named_commitment_actions(turn["text"])
         generic_commitment = is_generic_commitment(turn["text"])
+
+        if len(named_commitments) >= 2:
+            for action_text, owner, deadline in named_commitments:
+                actions.append(
+                    (
+                        action_text,
+                        owner,
+                        deadline,
+                        0.79,
+                        [{"speaker": turn["speaker"], "timestamp": turn["timestamp"]}],
+                    )
+                )
+                thread_events.append(
+                    {
+                        "eventType": "named_commitment_action",
+                        "action": action_text,
+                        "owner": owner,
+                        "timestamp": turn["timestamp"],
+                    }
+                )
+            continue
 
         if explicit_commitment:
             matching_thread = select_matching_action_thread(threads, explicit_commitment[0], index)
@@ -1446,11 +1559,7 @@ def extract_conversational_actions(turns: list[dict[str, str]]) -> tuple[
             continue
 
         if generic_commitment:
-            inherited_thread = select_recent_open_thread(
-                threads,
-                index,
-                kinds=("request", "ownership", "responsibility", "issue"),
-            )
+            inherited_thread = select_inherited_thread_for_generic_commitment(threads, index)
             if inherited_thread:
                 explicit_commitment = (
                     inherited_thread["action"],

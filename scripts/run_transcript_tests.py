@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import argparse
 import json
 import hashlib
 import re
@@ -9,6 +10,29 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 TEST_DIR = ROOT / "transcript-tests"
 EXTRACTOR = ROOT / "python_meeting_minutes_numbers.py"
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Run transcript regression tests.")
+    parser.add_argument(
+        "--folders",
+        nargs="+",
+        help="Specific transcript-test folder names to run.",
+    )
+    parser.add_argument(
+        "--prefix",
+        help="Only run transcript-test folders whose names start with this value.",
+    )
+    parser.add_argument(
+        "--contains",
+        help="Only run transcript-test folders whose names contain this value.",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        help="Only run the first N matching transcript-test folders.",
+    )
+    return parser.parse_args()
 
 
 def load_json(path):
@@ -62,6 +86,20 @@ def find_test_folders(root):
         if (folder / "transcript.txt").exists() and (folder / "expected.json").exists():
             folders.append(folder)
     return folders
+
+
+def filter_test_folders(folders, args):
+    selected = folders
+    if args.folders:
+        wanted = set(args.folders)
+        selected = [folder for folder in selected if folder.name in wanted]
+    if args.prefix:
+        selected = [folder for folder in selected if folder.name.startswith(args.prefix)]
+    if args.contains:
+        selected = [folder for folder in selected if args.contains in folder.name]
+    if args.limit is not None:
+        selected = selected[: max(args.limit, 0)]
+    return selected
 
 
 def exact_match(actual_value, expected_value):
@@ -150,17 +188,19 @@ def action_texts(actual):
     return outputs
 
 
+args = parse_args()
 failures = []
 passed_tests = 0
 total_tests = 0
-test_folders = find_test_folders(TEST_DIR)
+all_test_folders = find_test_folders(TEST_DIR)
+test_folders = filter_test_folders(all_test_folders, args)
 expected_cache = {
     folder.name: normalize_expected_payload(load_json(folder / "expected.json"))
-    for folder in test_folders
+    for folder in all_test_folders
 }
 transcript_hashes = {
     folder.name: hashlib.sha256((folder / "transcript.txt").read_bytes()).hexdigest()
-    for folder in test_folders
+    for folder in all_test_folders
 }
 hash_to_folders = {}
 for folder_name, digest in transcript_hashes.items():
@@ -404,6 +444,11 @@ if failures:
         print("-", failure)
 else:
     print("✅ All transcript tests passed")
+
+if test_folders:
+    print("Ran folders:", ", ".join(folder.name for folder in test_folders))
+else:
+    print("Ran folders: none")
 
 print(
     f"Summary: total tests={total_tests}, passed tests={passed_tests}, "
