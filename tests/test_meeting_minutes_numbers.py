@@ -183,6 +183,60 @@ Okay.
 
         self.assertEqual(result["meetingActionPoint"], [])
 
+    def test_rejected_request_with_new_owner_is_reassigned_not_suppressed(self):
+        transcript = """Slide reassignment
+
+22 August 2026
+
+Jack:
+Can you update the slides before Friday?
+
+Ciara:
+No, I can't before Friday.
+
+Emma:
+I'll do it.
+"""
+
+        result = analyse(transcript)
+
+        self.assertIn("Update the slides before Friday.", result["meetingActionPoint"])
+        index = result["meetingActionPoint"].index("Update the slides before Friday.")
+        self.assertEqual(result["meetingActionPointOwner"][index], "Emma")
+        self.assertFalse(result["numberExperimentDebug"]["suppressedRejectedActions"])
+        self.assertTrue(
+            any(
+                event.get("threadKind") == "request"
+                and event.get("eventType") == "thread_resolved_by_generic_commitment"
+                and event.get("state") == "accepted"
+                for event in result["numberExperimentDebug"]["intermediateEvents"]
+            )
+        )
+
+    def test_generic_commitment_can_resolve_non_adjacent_request_thread(self):
+        transcript = """Delayed follow-up
+
+22 August 2026
+
+Rachel:
+Can you send the updated floor plan this afternoon?
+
+Nina:
+The supplier call is still running over.
+
+Tom:
+We'll need the revised timings in a minute.
+
+Nina:
+Yes, I'll do that.
+"""
+
+        result = analyse(transcript)
+
+        self.assertIn("Send the updated floor plan this afternoon.", result["meetingActionPoint"])
+        index = result["meetingActionPoint"].index("Send the updated floor plan this afternoon.")
+        self.assertEqual(result["meetingActionPointOwner"][index], "Nina")
+
     def test_supplier_contract_renewal_outputs(self):
         transcript = """Customer support contract renewal
 
@@ -308,6 +362,11 @@ Yes.
         self.assertTrue(any(item["sourceType"] == "statusReviewPoint" for item in result["numberExperimentDebug"]["finalDiscussionPoints"]))
         self.assertIn("pending innovation grant feedback", result["executiveSummary"].lower())
         self.assertNotEqual(result["executiveSummary"], "Actions were identified from the discussion.")
+        self.assertIn("intermediateEvents", result["numberExperimentDebug"])
+        self.assertTrue(any(event["eventType"] == "meeting_type_prediction" for event in result["numberExperimentDebug"]["intermediateEvents"]))
+        self.assertTrue(any(event["eventType"] == "status_review_workstream" for event in result["numberExperimentDebug"]["intermediateEvents"]))
+        self.assertIn("statusReviewWorkstreams", result["numberExperimentDebug"])
+        self.assertTrue(any(item["topic"] for item in result["numberExperimentDebug"]["statusReviewWorkstreams"]))
         point_positions = {point: index for index, point in enumerate(result["discussionPoints"])}
         self.assertLess(
             point_positions["Vendor strategy rollout remains in progress: interviews are complete, but the strategy document has not yet been produced."],

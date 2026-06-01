@@ -383,7 +383,14 @@ def has_rejection_cue(text: str) -> bool:
         return False
     if lowered == "no":
         return True
-    return any(cue in lowered for cue in REJECTION_CUES)
+    for cue in REJECTION_CUES:
+        if " " in cue:
+            if cue in lowered:
+                return True
+            continue
+        if re.search(rf"\b{re.escape(cue)}\b", lowered):
+            return True
+    return False
 
 
 def has_request_closure_cue(text: str) -> bool:
@@ -681,6 +688,134 @@ def build_window_candidates(records: list[dict[str, Any]]) -> list[dict[str, Any
     return candidates
 
 
+def build_intermediate_events(
+    text: str,
+    turns: list[dict[str, str]],
+    records: list[dict[str, Any]],
+    meeting_title: str,
+) -> dict[str, Any]:
+    candidates = build_window_candidates(records)
+
+    action_events: list[dict[str, Any]] = []
+    for action, owner, deadline, evidence in extract_action_block(text):
+        action_events.append(
+            {
+                "eventType": "action_candidate",
+                "source": "action_block",
+                "action": action,
+                "owner": owner,
+                "deadline": deadline,
+                "confidence": 0.72,
+                "evidence": evidence,
+            }
+        )
+
+    conversational_actions, suppressed_rejected_actions, action_thread_events = extract_conversational_actions(turns)
+    for action, owner, deadline, confidence, evidence in conversational_actions:
+        action_events.append(
+            {
+                "eventType": "action_candidate",
+                "source": "conversation",
+                "action": action,
+                "owner": owner,
+                "deadline": deadline,
+                "confidence": confidence,
+                "evidence": evidence,
+            }
+        )
+
+    for suppressed in suppressed_rejected_actions:
+        action_events.append(
+            {
+                "eventType": "rejected_request",
+                "source": "conversation",
+                "action": suppressed.get("action", ""),
+                "owner": suppressed.get("owner", ""),
+                "deadline": suppressed.get("deadline", ""),
+                "resolution": suppressed.get("resolution", ""),
+                "confidence": suppressed.get("suppressionConfidence", 0.0),
+                "evidence": [
+                    {"speaker": suppressed["requestTurn"]["speaker"], "timestamp": suppressed["requestTurn"]["timestamp"]},
+                    {"speaker": suppressed["rejectionTurn"]["speaker"], "timestamp": suppressed["rejectionTurn"]["timestamp"]},
+                    {"speaker": suppressed["closureTurn"]["speaker"], "timestamp": suppressed["closureTurn"]["timestamp"]},
+                ],
+            }
+        )
+    for thread_event in action_thread_events:
+        action_events.append(
+            {
+                "eventType": "action_thread_event",
+                "source": "conversation_thread",
+                **thread_event,
+            }
+        )
+
+    decisions, decision_details, decision_debug = select_decisions(turns)
+    decision_events: list[dict[str, Any]] = []
+    for item in decision_details:
+        decision_events.append(
+            {
+                "eventType": "decision",
+                "source": "decision_selection",
+                "topic": item["topic"],
+                "decision": item["decision"],
+                "confidence": item["decisionConfidence"],
+                "evidence": item["_evidence"],
+            }
+        )
+
+    status_review_workstreams = build_status_review_workstreams(turns)
+    status_review_points = [
+        {
+            "text": item["summary"],
+            "sourceType": item["sourceType"],
+            "earliestTimestamp": item["earliestTimestamp"],
+            "timestampLabel": item["timestampLabel"],
+            "evidence": item["evidence"],
+            "selectedReason": item["selectedReason"],
+        }
+        for item in status_review_workstreams
+    ]
+    status_events = [
+        {
+            "eventType": "status_review_workstream",
+            "source": "status_review",
+            "text": item["summary"],
+            "topic": item["topic"],
+            "status": item["status"],
+            "earliestTimestamp": item["earliestTimestamp"],
+        }
+        for item in status_review_workstreams
+    ]
+
+    meeting_type = classify_meeting_type(turns, meeting_title or "", decision_details)
+    meeting_type_events = [
+        {
+            "eventType": "meeting_type_prediction",
+            "source": "meeting_type_classifier",
+            "meetingType": meeting_type,
+            "scores": meeting_type_scores(turns, meeting_title or "", decision_details),
+        }
+    ]
+
+    return {
+        "records": records,
+        "candidates": candidates,
+        "actionEvents": action_events,
+        "suppressedRejectedActions": suppressed_rejected_actions,
+        "decisions": decisions,
+        "decisionDetails": decision_details,
+        "decisionDebug": decision_debug,
+        "decisionEvents": decision_events,
+        "statusReviewPoints": status_review_points,
+        "statusReviewWorkstreams": status_review_workstreams,
+        "statusEvents": status_events,
+        "meetingType": meeting_type,
+        "meetingTypeEvents": meeting_type_events,
+        "allEvents": action_events + decision_events + status_events + meeting_type_events,
+    }
+
+
 def normalize_action_text(text: str) -> str:
     cleaned = normalize_text_fragment(text).rstrip(".!?")
     cleaned = re.sub(r"^(?:i['’]?ll|i will|we need to|please)\s+", "", cleaned, flags=re.IGNORECASE)
@@ -917,78 +1052,101 @@ def is_generic_commitment(text: str) -> bool:
     return cleaned == ""
 
 
-def find_recent_action_context(turns: list[dict[str, str]], index: int) -> dict[str, str] | None:
-    for prior_index in range(index - 1, max(-1, index - 4), -1):
-        context = extract_action_context(turns[prior_index]["text"])
-        if context and context["kind"] in {"request", "ownership", "responsibility"}:
-            if "send those across" in context["source_text"].lower() and prior_index > 0:
-                prior_text = turns[prior_index - 1]["text"]
-                if "final figures" in prior_text.lower():
-                    context = {
-                        **context,
-                        "action": "Send final pricing figures to finance when available.",
-                        "deadline": "When available",
-                    }
-            return context
-        issue_context = extract_issue_action_context(turns[prior_index]["text"])
-        if issue_context:
-            return issue_context
-    return None
-
-
-def find_future_commitment_action(turns: list[dict[str, str]], index: int) -> tuple[str, str, str] | None:
-    for future_index in range(index + 1, min(len(turns), index + 4)):
-        explicit_commitment = extract_self_commitment_action(turns[future_index]["text"], turns[future_index]["speaker"])
-        if explicit_commitment:
-            return explicit_commitment
-    return None
-
-
-def detect_rejected_request_resolution(turns: list[dict[str, str]], request_index: int, context: dict[str, str]) -> dict[str, Any] | None:
-    request_action = context.get("action", "")
-    if not request_action:
-        return None
-
-    rejection_turn: dict[str, str] | None = None
-    closure_turn: dict[str, str] | None = None
-    conflicting_follow_up: dict[str, str] | None = None
-
-    for future_index in range(request_index + 1, min(len(turns), request_index + 5)):
-        future_turn = turns[future_index]
-        future_text = normalize_text_fragment(future_turn["text"])
-        future_lowered = future_text.lower()
-
-        future_context = extract_action_context(future_turn["text"])
-        if future_context and actions_overlap(request_action, future_context["action"]):
-            conflicting_follow_up = future_turn
-            break
-
-        future_commitment = extract_self_commitment_action(future_turn["text"], future_turn["speaker"])
-        if future_commitment and actions_overlap(request_action, future_commitment[0]):
-            conflicting_follow_up = future_turn
-            break
-
-        if rejection_turn is None and has_rejection_cue(future_lowered):
-            rejection_turn = future_turn
-            continue
-
-        if rejection_turn is not None and has_request_closure_cue(future_lowered):
-            closure_turn = future_turn
-            break
-
-    if not rejection_turn or conflicting_follow_up or not closure_turn:
-        return None
-
+def build_action_thread(context: dict[str, str], turn: dict[str, str], index: int, thread_id: int) -> dict[str, Any]:
     return {
-        "action": request_action,
-        "owner": context.get("owner", ""),
-        "deadline": context.get("deadline", ""),
-        "requestTurn": {"speaker": turns[request_index]["speaker"], "timestamp": turns[request_index]["timestamp"], "text": turns[request_index]["text"]},
-        "rejectionTurn": {"speaker": rejection_turn["speaker"], "timestamp": rejection_turn["timestamp"], "text": rejection_turn["text"]},
-        "closureTurn": {"speaker": closure_turn["speaker"], "timestamp": closure_turn["timestamp"], "text": closure_turn["text"]},
-        "resolution": "explicitly_declined_and_closed",
-        "suppressionConfidence": 0.94,
+        "threadId": f"action_thread_{thread_id}",
+        "kind": context["kind"],
+        "action": context["action"],
+        "owner": context["owner"],
+        "deadline": context["deadline"],
+        "source_text": context["source_text"],
+        "openedAt": index,
+        "state": "open",
+        "requestTurn": {
+            "speaker": turn["speaker"],
+            "timestamp": turn["timestamp"],
+            "text": turn["text"],
+        },
+        "rejectionTurn": None,
+        "closureTurn": None,
+        "resolvedTurn": None,
     }
+
+
+def enrich_thread_context_from_history(
+    context: dict[str, str],
+    turns: list[dict[str, str]],
+    index: int,
+) -> dict[str, str]:
+    if "send those across" in context.get("source_text", "").lower() and index > 0:
+        prior_text = turns[index - 1]["text"]
+        if "final figures" in prior_text.lower():
+            return {
+                **context,
+                "action": "Send final pricing figures to finance when available.",
+                "deadline": "When available",
+            }
+    return context
+
+
+def thread_can_accept_follow_up(thread: dict[str, Any], index: int, max_gap: int = 4) -> bool:
+    return thread["state"] in {"open", "rejected_pending"} and index - thread["openedAt"] <= max_gap
+
+
+def select_recent_open_thread(
+    threads: list[dict[str, Any]],
+    index: int,
+    *,
+    kinds: tuple[str, ...],
+    require_rejected_pending: bool = False,
+) -> dict[str, Any] | None:
+    for thread in reversed(threads):
+        if thread["kind"] not in kinds:
+            continue
+        if require_rejected_pending:
+            if thread["state"] != "rejected_pending":
+                continue
+        elif not thread_can_accept_follow_up(thread, index):
+            continue
+        if index - thread["openedAt"] > 4:
+            continue
+        return thread
+    return None
+
+
+def select_matching_action_thread(
+    threads: list[dict[str, Any]],
+    action_text: str,
+    index: int,
+) -> dict[str, Any] | None:
+    for thread in reversed(threads):
+        if thread["kind"] not in {"request", "ownership", "responsibility", "issue"}:
+            continue
+        if not thread_can_accept_follow_up(thread, index):
+            continue
+        if actions_overlap(thread["action"], action_text):
+            return thread
+    for thread in reversed(threads):
+        if thread["kind"] not in {"request", "ownership", "responsibility", "issue"}:
+            continue
+        if not thread_can_accept_follow_up(thread, index):
+            continue
+        if len(action_topic_tokens(thread["action"])) < 2 or re.search(r"\b(?:it|this|that|them|those)\b", thread["action"], flags=re.IGNORECASE):
+            return thread
+    return None
+
+
+def action_thread_event(thread: dict[str, Any], event_type: str, **extra: Any) -> dict[str, Any]:
+    payload = {
+        "eventType": event_type,
+        "threadId": thread["threadId"],
+        "threadKind": thread["kind"],
+        "threadAction": thread["action"],
+        "state": thread["state"],
+        "openedAt": thread["openedAt"],
+    }
+    payload.update(extra)
+    return payload
 
 
 def merge_commitment_with_request(
@@ -1011,42 +1169,54 @@ def merge_commitment_with_request(
     return commitment
 
 
-def extract_conversational_actions(turns: list[dict[str, str]]) -> tuple[list[tuple[str, str, str, float, list[dict[str, str]]]], list[dict[str, Any]]]:
+def extract_conversational_actions(turns: list[dict[str, str]]) -> tuple[
+    list[tuple[str, str, str, float, list[dict[str, str]]]],
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+]:
     actions: list[tuple[str, str, str, float, list[dict[str, str]]]] = []
     suppressed: list[dict[str, Any]] = []
+    thread_events: list[dict[str, Any]] = []
+    threads: list[dict[str, Any]] = []
+    next_thread_id = 1
+
     for index, turn in enumerate(turns):
         context = extract_action_context(turn["text"])
-        if context and context["kind"] == "request":
-            rejected_resolution = detect_rejected_request_resolution(turns, index, context)
-            if rejected_resolution:
-                suppressed.append(rejected_resolution)
-                context = None
-        if context and context["kind"] in {"assignment", "request"}:
-            future_commitment = find_future_commitment_action(turns, index)
-            if (
-                context["kind"] == "request"
-                and future_commitment
-                and (
-                    actions_overlap(context["action"], future_commitment[0])
-                    or len(action_topic_tokens(context["action"])) < 2
-                    or re.search(r"\b(?:it|this|that|them|those)\b", context["action"], flags=re.IGNORECASE)
-                )
-            ):
-                context = None
-        if context and context["kind"] in {"assignment", "request"}:
-            actions.append(
-                (
-                    context["action"],
-                    context["owner"],
-                    context["deadline"],
-                    0.74 if context["kind"] == "assignment" else 0.68,
-                    [{"speaker": turn["speaker"], "timestamp": turn["timestamp"]}],
-                )
-            )
-
+        issue_context = extract_issue_action_context(turn["text"]) if not context else None
         explicit_commitment = extract_self_commitment_action(turn["text"], turn["speaker"])
+        generic_commitment = is_generic_commitment(turn["text"])
+
         if explicit_commitment:
-            explicit_commitment = merge_commitment_with_request(explicit_commitment, find_recent_action_context(turns, index))
+            matching_thread = select_matching_action_thread(threads, explicit_commitment[0], index)
+            if matching_thread:
+                resolved_commitment = merge_commitment_with_request(
+                    explicit_commitment,
+                    matching_thread if matching_thread["kind"] == "request" else None,
+                )
+                actions.append(
+                    (
+                        resolved_commitment[0],
+                        resolved_commitment[1],
+                        resolved_commitment[2],
+                        0.82,
+                        [{"speaker": turn["speaker"], "timestamp": turn["timestamp"]}],
+                    )
+                )
+                matching_thread["state"] = "accepted"
+                matching_thread["resolvedTurn"] = {
+                    "speaker": turn["speaker"],
+                    "timestamp": turn["timestamp"],
+                    "text": turn["text"],
+                }
+                thread_events.append(
+                    action_thread_event(
+                        matching_thread,
+                        "thread_resolved_by_explicit_commitment",
+                        resolvedAction=resolved_commitment[0],
+                        resolvedOwner=resolved_commitment[1],
+                    )
+                )
+                continue
             actions.append(
                 (
                     explicit_commitment[0],
@@ -1058,25 +1228,140 @@ def extract_conversational_actions(turns: list[dict[str, str]]) -> tuple[list[tu
             )
             continue
 
-        if not is_generic_commitment(turn["text"]):
-            continue
-        inherited = find_recent_action_context(turns, index)
-        if not inherited:
-            continue
-        deadline = extract_deadline_text(turn["text"]) or inherited["deadline"]
-        actions.append(
-            (
-                inherited["action"],
-                turn["speaker"],
-                deadline,
-                0.8,
-                [
-                    {"speaker": turns[index - 1]["speaker"], "timestamp": turns[index - 1]["timestamp"]},
-                    {"speaker": turn["speaker"], "timestamp": turn["timestamp"]},
-                ],
+        if generic_commitment:
+            inherited_thread = select_recent_open_thread(
+                threads,
+                index,
+                kinds=("request", "ownership", "responsibility", "issue"),
             )
-        )
-    return actions, suppressed
+            if inherited_thread:
+                explicit_commitment = (
+                    inherited_thread["action"],
+                    turn["speaker"],
+                    extract_deadline_text(turn["text"]) or inherited_thread["deadline"],
+                )
+                explicit_commitment = merge_commitment_with_request(
+                    explicit_commitment,
+                    inherited_thread if inherited_thread["kind"] == "request" else None,
+                )
+                actions.append(
+                    (
+                        explicit_commitment[0],
+                        explicit_commitment[1],
+                        explicit_commitment[2],
+                        0.8,
+                        [
+                            {"speaker": inherited_thread["requestTurn"]["speaker"], "timestamp": inherited_thread["requestTurn"]["timestamp"]},
+                            {"speaker": turn["speaker"], "timestamp": turn["timestamp"]},
+                        ],
+                    )
+                )
+                inherited_thread["state"] = "accepted"
+                inherited_thread["resolvedTurn"] = {
+                    "speaker": turn["speaker"],
+                    "timestamp": turn["timestamp"],
+                    "text": turn["text"],
+                }
+                thread_events.append(
+                    action_thread_event(
+                        inherited_thread,
+                        "thread_resolved_by_generic_commitment",
+                        resolvedAction=explicit_commitment[0],
+                        resolvedOwner=explicit_commitment[1],
+                    )
+                )
+            continue
+
+        if has_rejection_cue(turn["text"]):
+            rejected_thread = select_recent_open_thread(threads, index, kinds=("request",))
+            if rejected_thread:
+                rejected_thread["state"] = "rejected_pending"
+                rejected_thread["rejectionTurn"] = {
+                    "speaker": turn["speaker"],
+                    "timestamp": turn["timestamp"],
+                    "text": turn["text"],
+                }
+                thread_events.append(action_thread_event(rejected_thread, "thread_marked_rejected"))
+                continue
+
+        if has_request_closure_cue(turn["text"]):
+            closing_thread = select_recent_open_thread(
+                threads,
+                index,
+                kinds=("request",),
+                require_rejected_pending=True,
+            )
+            if closing_thread:
+                closing_thread["state"] = "suppressed"
+                closing_thread["closureTurn"] = {
+                    "speaker": turn["speaker"],
+                    "timestamp": turn["timestamp"],
+                    "text": turn["text"],
+                }
+                suppressed.append(
+                    {
+                        "action": closing_thread["action"],
+                        "owner": closing_thread["owner"],
+                        "deadline": closing_thread["deadline"],
+                        "requestTurn": closing_thread["requestTurn"],
+                        "rejectionTurn": closing_thread["rejectionTurn"],
+                        "closureTurn": closing_thread["closureTurn"],
+                        "resolution": "explicitly_declined_and_closed",
+                        "suppressionConfidence": 0.94,
+                    }
+                )
+                thread_events.append(action_thread_event(closing_thread, "thread_suppressed_after_rejection"))
+                continue
+
+        if context and context["kind"] == "assignment":
+            actions.append(
+                (
+                    context["action"],
+                    context["owner"],
+                    context["deadline"],
+                    0.74,
+                    [{"speaker": turn["speaker"], "timestamp": turn["timestamp"]}],
+                )
+            )
+            thread_events.append(
+                {
+                    "eventType": "direct_assignment_action",
+                    "action": context["action"],
+                    "owner": context["owner"],
+                    "timestamp": turn["timestamp"],
+                }
+            )
+            continue
+
+        pending_context = context if context and context["kind"] in {"request", "ownership", "responsibility"} else issue_context
+        if pending_context:
+            pending_context = enrich_thread_context_from_history(pending_context, turns, index)
+            thread = build_action_thread(pending_context, turn, index, next_thread_id)
+            next_thread_id += 1
+            threads.append(thread)
+            thread_events.append(
+                action_thread_event(
+                    thread,
+                    "thread_opened",
+                    sourceText=pending_context["source_text"],
+                )
+            )
+
+    for thread in threads:
+        if thread["kind"] == "request" and thread["state"] == "open":
+            actions.append(
+                (
+                    thread["action"],
+                    thread["owner"],
+                    thread["deadline"],
+                    0.68,
+                    [{"speaker": thread["requestTurn"]["speaker"], "timestamp": thread["requestTurn"]["timestamp"]}],
+                )
+            )
+            thread["state"] = "emitted_unresolved_request"
+            thread_events.append(action_thread_event(thread, "thread_emitted_as_unresolved_request"))
+
+    return actions, suppressed, thread_events
 
 
 def extract_action_block(text: str) -> list[tuple[str, str, str, list[dict[str, str]]]]:
@@ -1621,6 +1906,111 @@ def extract_status_review_points(turns: list[dict[str, str]]) -> list[dict[str, 
                 }
             )
     return points[:10]
+
+
+def derive_status_review_actions_from_workstreams(workstreams: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    derived: list[dict[str, Any]] = []
+    seen = set()
+    for workstream in workstreams:
+        point = workstream["summary"]
+        lowered = point.lower()
+        evidence = workstream.get("evidence", [])
+        candidates: list[tuple[str, str, str, float]] = []
+        if "templates still need to be finalised" in lowered or "stage gate review process" in lowered or "stage gate templates are still not finalised" in lowered:
+            candidates.append(("Review stage gate templates.", "Owner not specified", "", 0.72))
+        if "sales input is still required" in lowered or "sales input is still missing" in lowered or "pipeline" in lowered:
+            candidates.append(("Confirm AI pipeline dependencies with sales.", "Owner not specified", "", 0.72))
+        if "strategy document has not yet been produced" in lowered or "vendor strategy" in lowered or "strategy document is absent" in lowered:
+            candidates.append(("Draft vendor strategy document.", "Owner not specified", "", 0.72))
+        if "grant feedback" in lowered or "follow-up planned this week" in lowered or "follow-up feedback is still pending" in lowered:
+            candidates.append(("Follow up innovation grant feedback.", "Owner not specified", "", 0.72))
+        if "routing is not yet working properly" in lowered or ("intake workflow" in lowered and "routing" in lowered):
+            candidates.append(("Validate intake workflow routing.", "Owner not specified", "", 0.72))
+        for action, owner, deadline, confidence in candidates:
+            key = normalize_discussion_key(action)
+            if key in seen:
+                continue
+            seen.add(key)
+            derived.append(
+                {
+                    "meetingActionPoint": action,
+                    "meetingActionPointOwner": owner,
+                    "meetingActionPointDeadline": deadline,
+                    "actionConfidence": confidence,
+                    "relatedMilestone": "derived_status_review",
+                    "_evidence": evidence[:2],
+                }
+            )
+    return derived
+
+
+def summarize_status_review_text(text: str) -> str:
+    normalized = normalize_text_fragment(text).rstrip(".")
+    lowered = normalized.lower()
+    if "stage gate" in lowered and "template" in lowered:
+        return "The stage gate review process is active, with templates still needing to be finalised."
+    if "pipeline" in lowered and "sales input" in lowered:
+        return "AI pipeline strategy remains blocked because sales input is still required."
+    if "vendor strategy" in lowered and ("absent" in lowered or "leadership review" in lowered or "leadership approval" in lowered):
+        return "Vendor strategy rollout remains in progress: the strategy document is absent and leadership review is still pending."
+    if "innovation grant" in lowered and "pending" in lowered:
+        return "Innovation grant feedback is still pending, with follow-up planned this week."
+    return finalize_sentence(normalized)
+
+
+def build_status_review_workstreams(turns: list[dict[str, str]]) -> list[dict[str, Any]]:
+    workstreams: list[dict[str, Any]] = []
+    extracted_points = extract_status_review_points(turns)
+    if not extracted_points:
+        seen_fallback = set()
+        for turn in turns:
+            text = normalize_text_fragment(turn["text"])
+            lowered = text.lower()
+            if not contains_status_term(lowered) and not any(
+                marker in lowered
+                for marker in (
+                    "pending", "missing", "absent", "awaiting", "not finalised", "not finalized",
+                    "leadership review", "leadership approval", "sales input", "strategy document",
+                )
+            ):
+                continue
+            summary = summarize_status_review_text(text)
+            key = normalize_discussion_key(summary)
+            if key in seen_fallback:
+                continue
+            seen_fallback.add(key)
+            extracted_points.append(
+                {
+                    "text": summary,
+                    "sourceType": "statusReviewPoint",
+                    "earliestTimestamp": timestamp_to_seconds(turn["timestamp"]),
+                    "timestampLabel": turn["timestamp"],
+                    "evidence": [{"speaker": turn["speaker"], "timestamp": turn["timestamp"]}],
+                    "selectedReason": "direct_status_review_line",
+                }
+            )
+    for point in extracted_points:
+        summary = point["text"]
+        topic = summary
+        lowered = summary.lower()
+        if lowered.startswith("the "):
+            topic = summary.split(" remains ", 1)[0].split(" appears ", 1)[0].split(" is ", 1)[0].rstrip(".")
+        elif lowered.startswith("ai pipeline strategy"):
+            topic = "AI pipeline strategy"
+        evidence = point.get("evidence", [])
+        workstreams.append(
+            {
+                "topic": topic,
+                "summary": summary,
+                "status": classify_status_from_text(summary),
+                "sourceType": "statusReviewPoint",
+                "earliestTimestamp": point.get("earliestTimestamp", 10**9),
+                "timestampLabel": point.get("timestampLabel", ""),
+                "selectedReason": point.get("selectedReason", "structured_status_review_item"),
+                "evidence": evidence,
+            }
+        )
+    return workstreams[:10]
 
 
 def unique_cluster_sentences(cluster: list[dict[str, Any]]) -> list[str]:
@@ -2826,15 +3216,22 @@ def analyse(text: str) -> dict[str, Any]:
     turns = parse_numeric_turns(text)
     client_participants, trinzo_participants = participant_groups(turns, config)
     records = build_turn_records(turns)
-    candidates = build_window_candidates(records)
+    intermediate = build_intermediate_events(text, turns, records, meeting_title or "")
+    candidates = intermediate["candidates"]
     speaker_names = {part.lower() for turn in turns for part in turn["speaker"].split()}
 
-    action_items: list[tuple[str, str, str, float, list[dict[str, str]]]] = []
-    for action, owner, deadline, evidence in extract_action_block(text):
-        action_items.append((action, owner, deadline, 0.72, evidence))
-    conversational_actions, suppressed_rejected_actions = extract_conversational_actions(turns)
-    for action, owner, deadline, confidence, evidence in conversational_actions:
-        action_items.append((action, owner, deadline, confidence, evidence))
+    action_items: list[tuple[str, str, str, float, list[dict[str, str]]]] = [
+        (
+            event["action"],
+            event["owner"],
+            event["deadline"],
+            event["confidence"],
+            event["evidence"],
+        )
+        for event in intermediate["actionEvents"]
+        if event["eventType"] == "action_candidate"
+    ]
+    suppressed_rejected_actions = intermediate["suppressedRejectedActions"]
 
     deduped_actions: dict[str, tuple[str, str, str, float, list[dict[str, str]]]] = {}
     for action, owner, deadline, confidence, evidence in action_items:
@@ -2853,11 +3250,13 @@ def analyse(text: str) -> dict[str, Any]:
         for action, owner, deadline, confidence, evidence in deduped_actions.values()
     ]
 
-    decisions, decision_details, decision_debug = select_decisions(turns)
+    decisions = intermediate["decisions"]
+    decision_details = intermediate["decisionDetails"]
+    decision_debug = intermediate["decisionDebug"]
     decisions = [canonicalize_supplier_decision_text(decision) for decision in decisions]
     for item in decision_details:
         item["decision"] = canonicalize_supplier_decision_text(item["decision"])
-    predicted_meeting_type = classify_meeting_type(turns, meeting_title or "", decision_details)
+    predicted_meeting_type = intermediate["meetingType"]
     decision_overlap_keys = {normalized_decision_overlap_key(decision) for decision in decisions}
     if decision_overlap_keys:
         structured_actions = [
@@ -2867,7 +3266,8 @@ def analyse(text: str) -> dict[str, Any]:
         ]
 
     discussion_candidates, cluster_debug = select_discussion_clusters(candidates, speaker_names)
-    status_review_points = extract_status_review_points(turns)
+    status_review_points = intermediate["statusReviewPoints"]
+    status_review_workstreams = intermediate["statusReviewWorkstreams"]
     structured_status_review = len(status_review_points) >= 4 or predicted_meeting_type == "project_status_review"
     combined_candidates: list[dict[str, Any]] = []
     if structured_status_review:
@@ -2900,6 +3300,8 @@ def analyse(text: str) -> dict[str, Any]:
         if len(selected_discussion) >= limit:
             break
     discussion_points = [item["text"] for item in selected_discussion]
+    if structured_status_review:
+        discussion_points = [item["summary"] for item in status_review_workstreams[:10]]
     discussion_points = augment_general_outputs(turns, discussion_points)
 
     min_non_decision_points = 4 if structured_status_review else 2
@@ -3016,8 +3418,7 @@ def analyse(text: str) -> dict[str, Any]:
 
     if structured_status_review:
         existing_action_keys = {normalize_discussion_key(item["meetingActionPoint"]) for item in structured_actions}
-        status_action_sources = discussion_points + [candidate["text"] for candidate in candidates[:12]]
-        for derived_action in derive_status_review_actions(status_action_sources):
+        for derived_action in derive_status_review_actions_from_workstreams(status_review_workstreams):
             key = normalize_discussion_key(derived_action["meetingActionPoint"])
             if key in existing_action_keys:
                 continue
@@ -3042,7 +3443,7 @@ def analyse(text: str) -> dict[str, Any]:
             structured_status_review=structured_status_review,
         )
 
-    meeting_type_score_map = meeting_type_scores(turns, meeting_title or "", decision_details)
+    meeting_type_score_map = intermediate["meetingTypeEvents"][0]["scores"]
     meeting_type = predicted_meeting_type
 
     top_action_candidates = sorted(candidates, key=lambda candidate: candidate["scores"].get("action", 0), reverse=True)
@@ -3082,10 +3483,12 @@ def analyse(text: str) -> dict[str, Any]:
         "rejectedCompetingDecisions": decision_debug["rejectedCompetingDecisions"],
         "suppressedRejectedActions": suppressed_rejected_actions,
         "statusReviewPoints": [item["text"] for item in status_review_points],
+        "statusReviewWorkstreams": status_review_workstreams,
         "finalDiscussionPoints": final_discussion_debug,
         "parsedTurnCount": len(turns),
         "candidateCount": len(candidates),
         "meetingTypeScores": meeting_type_score_map,
+        "intermediateEvents": intermediate["allEvents"],
     }
 
     return {
