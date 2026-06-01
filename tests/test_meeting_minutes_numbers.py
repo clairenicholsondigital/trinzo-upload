@@ -891,5 +891,86 @@ Thanks everyone.
         self.assertEqual(result["executiveSummary"], "No substantive meeting content, decisions, or actions were identified.")
 
 
+class MeetingExtractionQualityHelpersTest(unittest.TestCase):
+    def test_status_sentence_splitter_keeps_topics_separate_from_evidence(self):
+        from scripts.meeting_extraction_quality import split_status_sentences
+
+        chunks = split_status_sentences(
+            "I'm not functioning. AI commercial impact report. Again, that's not to the end of the quarter, "
+            "so we're on track. Deliver on ad hoc SOWs. That milestone is green."
+        )
+
+        self.assertIn("I'm not functioning", chunks)
+        self.assertIn("AI commercial impact report", chunks)
+        self.assertIn("Deliver on ad hoc SOWs", chunks)
+        self.assertNotIn(
+            "I'm not functioning. AI commercial impact report. Again, that's not to the end of the quarter, so we're on track. Deliver on ad hoc SOWs. That milestone is green.",
+            chunks,
+        )
+
+    def test_topic_evidence_noise_and_client_safe_gates(self):
+        from scripts.meeting_extraction_quality import (
+            is_clean_topic_anchor,
+            is_client_safe_discussion_point,
+            is_status_evidence,
+            is_transcript_noise,
+            is_vague_reference_topic,
+        )
+
+        for topic in (
+            "AI pipeline strategy",
+            "AI commercial impact report",
+            "Use case intake funnel",
+            "Stage gate review process",
+            "Vendor strategy rollout",
+            "Innovation grant feedback review and plan",
+            "Ad hoc SOW delivery",
+        ):
+            self.assertTrue(is_clean_topic_anchor(topic), topic)
+
+        for evidence in ("deadline for that", "under pressure", "slips", "on track", "green", "blocked", "nothing to deliver", "not within our control"):
+            self.assertTrue(is_status_evidence(evidence), evidence)
+            self.assertFalse(is_clean_topic_anchor(evidence), evidence)
+
+        for vague in ("and then the last milestone", "that milestone", "working on it", "deadline for that", "So this is fine"):
+            self.assertTrue(is_vague_reference_topic(vague), vague)
+
+        for noise in ("I'm not functioning", "Button.Not really", "I'll turn off transcription", "", "the"):
+            self.assertTrue(is_transcript_noise(noise), noise)
+
+        self.assertFalse(is_client_safe_discussion_point("The And our deadline for that remains active.", evidence=[{"turnIndex": 1}]))
+        self.assertFalse(is_client_safe_discussion_point("The Soundtrack, we're working on it remains active.", evidence=[{"turnIndex": 1}]))
+        self.assertTrue(is_client_safe_discussion_point("AI pipeline strategy remains blocked because sales input is still required.", evidence=[{"turnIndex": 1}]))
+
+    def test_status_review_sentence_level_regression_filters_malformed_topics(self):
+        transcript = """Status review
+
+22 August 2026
+
+Claire:
+AI pipeline strategy. We're blocked because sales input is still required. I'm not functioning. AI commercial impact report. Again, that's not to the end of the quarter, so we're on track. Deliver on ad hoc SOWs. That milestone is green. Soundtrack, we're working on it. And our deadline for that slips. and then the last milestone is not within our control. Innovation grant feedback review and plan. Follow-up feedback is still pending this week.
+"""
+
+        result = analyse(transcript)
+        combined = "\n".join(
+            result["discussionPoints"]
+            + [item.get("topic", "") for item in result["numberExperimentDebug"]["statusReviewWorkstreams"]]
+            + [item.get("summary", "") for item in result["numberExperimentDebug"]["statusReviewWorkstreams"]]
+        )
+
+        for forbidden in (
+            "The And our deadline for that",
+            "The Deliver on ad hoc SO",
+            "I'm not functioning",
+            "The Soundtrack, we're working on it",
+            "The and then the last milestone",
+        ):
+            self.assertNotIn(forbidden, combined)
+
+        self.assertIn("AI pipeline strategy remains blocked because sales input is still required.", result["discussionPoints"])
+        self.assertIn("The AI Commercial Impact Report remains scheduled for the end of the quarter.", result["discussionPoints"])
+        self.assertFalse(any("Innovation grant" in point and point.lower().startswith("the and") for point in result["discussionPoints"]))
+
+
 if __name__ == "__main__":
     unittest.main()

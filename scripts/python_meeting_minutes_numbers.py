@@ -30,6 +30,14 @@ try:
         split_sentences,
         trim_malformed_trailing_question_fragment as text_trim_malformed_trailing_question_fragment,
     )
+    from .meeting_extraction_quality import (
+        is_clean_topic_anchor,
+        is_client_safe_discussion_point,
+        is_status_evidence,
+        is_transcript_noise,
+        is_vague_reference_topic,
+        split_status_sentences,
+    )
 except ImportError:
     from python_llm_meeting_minutes import (
         MINUTES_CONFIG,
@@ -40,6 +48,14 @@ except ImportError:
         normalize_text_fragment,
         split_sentences,
         trim_malformed_trailing_question_fragment as text_trim_malformed_trailing_question_fragment,
+    )
+    from meeting_extraction_quality import (
+        is_clean_topic_anchor,
+        is_client_safe_discussion_point,
+        is_status_evidence,
+        is_transcript_noise,
+        is_vague_reference_topic,
+        split_status_sentences,
     )
 
 
@@ -2592,6 +2608,10 @@ def is_valid_topic_candidate(text: str) -> bool:
         return False
     lowered = cleaned.lower()
     tokens = topic_candidate_tokens(cleaned)
+    if is_transcript_noise(cleaned) or is_vague_reference_topic(cleaned):
+        return False
+    if is_status_evidence(cleaned) and not is_clean_topic_anchor(cleaned):
+        return False
     if lowered.startswith("the i") or has_personal_pronoun_subject(cleaned):
         return False
     if any(token in FIRST_PERSON_TOPIC_TOKENS for token in tokens) and not is_accepted_first_person_workstream(cleaned):
@@ -2601,6 +2621,31 @@ def is_valid_topic_candidate(text: str) -> bool:
     if any(token in FIRST_PERSON_SETUP_VERBS for token in comma_tokens):
         return False
     return True
+
+
+def canonicalize_status_topic_anchor(text: str) -> str:
+    cleaned = normalize_text_fragment(text).rstrip("?.!")
+    lowered = cleaned.lower()
+    if re.match(r"^deliver(?:ing)?\s+on\s+ad\s+hoc\s+so(?:w|ws|w)?s?\b", lowered):
+        return "Ad hoc SOW delivery"
+    if lowered in {"use case request funnel", "use case intake workflow"}:
+        return "Use case intake funnel"
+    return cleaned
+
+
+def status_review_units_from_turns(turns: list[dict[str, str]]) -> list[dict[str, Any]]:
+    units: list[dict[str, Any]] = []
+    for turn in turns:
+        chunks = split_status_sentences(turn.get("text", "")) or [turn.get("text", "")]
+        for chunk_index, chunk in enumerate(chunks):
+            text = normalize_text_fragment(chunk)
+            if not text or is_transcript_noise(text):
+                continue
+            unit = dict(turn)
+            unit["text"] = text
+            unit["chunkIndex"] = chunk_index
+            units.append(unit)
+    return units
 
 
 def is_valid_status_topic_subject(text: str) -> bool:
@@ -2620,7 +2665,7 @@ def extract_status_subject_from_clause(text: str) -> str:
     match = STATUS_SUBJECT_RE.match(cleaned)
     if not match:
         return ""
-    topic = re.sub(r"^(?:the|a|an)\s+", "", match.group("topic").strip(), flags=re.IGNORECASE)
+    topic = canonicalize_status_topic_anchor(re.sub(r"^(?:the|a|an)\s+", "", match.group("topic").strip(), flags=re.IGNORECASE))
     if is_valid_status_topic_subject(topic):
         return topic.rstrip("?.!")
     return ""
@@ -2658,23 +2703,32 @@ def extract_topic_prompt_from_turn(text: str) -> str:
     sentences = [normalize_text_fragment(sentence) for sentence in split_sentences(text) if normalize_text_fragment(sentence)]
     if sentences:
         first_sentence = sentences[0]
+        if is_transcript_noise(first_sentence) or is_status_evidence(first_sentence):
+            return ""
         clause_match = re.match(r"^(?P<topic>(?:The\s+)?[A-Z][A-Za-z0-9&/()'’ -]{4,80}),\s+(?P<tail>.+)$", first_sentence)
         if clause_match:
             topic = clause_match.group("topic").strip()
-            if len(tokenize(topic)) <= 8 and is_valid_workstream_subject(topic) and is_valid_topic_candidate(topic):
-                return topic.rstrip("?.!")
+            canonical_topic = canonicalize_status_topic_anchor(topic)
+            if len(tokenize(canonical_topic)) <= 8 and is_valid_workstream_subject(canonical_topic) and is_valid_topic_candidate(canonical_topic):
+                return canonical_topic.rstrip("?.!")
             tail_topic = extract_status_subject_from_clause(clause_match.group("tail"))
             if tail_topic:
                 return tail_topic
         sentence_topic = extract_status_subject_from_clause(first_sentence)
         if sentence_topic:
-            return sentence_topic
+            return canonicalize_status_topic_anchor(sentence_topic)
+        canonical_sentence = canonicalize_status_topic_anchor(first_sentence)
+        if is_clean_topic_anchor(canonical_sentence):
+            return canonical_sentence
     for sentence in reversed(sentences):
+        canonical_sentence = canonicalize_status_topic_anchor(sentence)
+        if is_clean_topic_anchor(canonical_sentence):
+            return canonical_sentence.rstrip("?.!")
         if looks_like_topic_prompt(sentence):
-            return sentence.rstrip("?.!")
+            return canonicalize_status_topic_anchor(sentence).rstrip("?.!")
         sentence_topic = extract_status_subject_from_clause(sentence)
         if sentence_topic:
-            return sentence_topic
+            return canonicalize_status_topic_anchor(sentence_topic)
     return ""
 
 
@@ -2752,11 +2806,12 @@ def classify_status_from_text(text: str) -> str:
 def extract_status_review_points(turns: list[dict[str, str]]) -> list[dict[str, Any]]:
     points: list[dict[str, Any]] = []
     seen = set()
-    for index, turn in enumerate(turns):
-        topic_text = extract_topic_prompt_from_turn(turn["text"])
+    status_units = status_review_units_from_turns(turns)
+    for index, turn in enumerate(status_units):
+        topic_text = canonicalize_status_topic_anchor(extract_topic_prompt_from_turn(turn["text"]))
         if not topic_text:
             continue
-        if not looks_like_topic_prompt(topic_text) and not is_valid_topic_candidate(topic_text):
+        if not is_clean_topic_anchor(topic_text) and not looks_like_topic_prompt(topic_text) and not is_valid_topic_candidate(topic_text):
             continue
         if not is_valid_status_topic_subject(topic_text):
             continue
@@ -2764,20 +2819,20 @@ def extract_status_review_points(turns: list[dict[str, str]]) -> list[dict[str, 
             marker in turn["text"].lower()
             for marker in (
                 "pending", "missing", "absent", "awaiting", "not finalised", "not finalized",
-                "leadership review", "leadership approval", "sales input", "strategy document", "confirmed as",
+                "leadership review", "leadership approval", "sales input", "strategy document", "confirmed as", "on track",
             )
         )
         supporting_turns: list[dict[str, str]] = [turn] if direct_status_turn else []
-        for future_turn in turns[index + 1:index + 5]:
-            future_topic = extract_topic_prompt_from_turn(future_turn["text"])
-            if future_topic and looks_like_topic_prompt(future_topic):
+        for future_turn in status_units[index + 1:index + 7]:
+            future_topic = canonicalize_status_topic_anchor(extract_topic_prompt_from_turn(future_turn["text"]))
+            if future_topic and (is_clean_topic_anchor(future_topic) or looks_like_topic_prompt(future_topic)):
                 break
             supporting_turns.append(future_turn)
         if not supporting_turns:
             continue
         combined = " ".join(item["text"] for item in supporting_turns)
         lowered = combined.lower()
-        if not contains_status_term(lowered) and not any(term in lowered for term in ("problem", "issue", "routing", "pending", "input", "scoped", "follow up", "nothing received", "no update", "deliverable is there", "live and documented", "missing", "absent", "not finalised", "not finalized", "leadership review", "leadership approval", "in progress", "confirmed as")):
+        if not contains_status_term(lowered) and not any(term in lowered for term in ("problem", "issue", "routing", "pending", "input", "scoped", "follow up", "nothing received", "no update", "deliverable is there", "live and documented", "missing", "absent", "not finalised", "not finalized", "leadership review", "leadership approval", "in progress", "confirmed as", "on track")):
             continue
         topic_lower = topic_text.lower()
         if "intake workflow" in topic_lower or ("intake" in topic_lower and "workflow" in topic_lower):
@@ -2920,7 +2975,7 @@ def build_status_review_workstreams(turns: list[dict[str, str]]) -> list[dict[st
                 marker in lowered
                 for marker in (
                     "pending", "missing", "absent", "awaiting", "not finalised", "not finalized",
-                    "leadership review", "leadership approval", "sales input", "strategy document", "confirmed as",
+                    "leadership review", "leadership approval", "sales input", "strategy document", "confirmed as", "on track",
                 )
             ):
                 continue
@@ -2954,6 +3009,12 @@ def build_status_review_workstreams(turns: list[dict[str, str]]) -> list[dict[st
             topic = summary.split(" remains ", 1)[0].split(" appears ", 1)[0].split(" is ", 1)[0].rstrip(".")
         elif lowered.startswith("ai pipeline strategy"):
             topic = "AI pipeline strategy"
+        elif lowered.startswith("ad hoc delivery"):
+            topic = "Ad hoc SOW delivery"
+        elif lowered.startswith("innovation grant feedback"):
+            topic = "Innovation grant feedback"
+        elif "commercial impact report" in lowered:
+            topic = "AI commercial impact report"
         evidence = point.get("evidence", [])
         workstreams.append(
             {
@@ -2968,7 +3029,43 @@ def build_status_review_workstreams(turns: list[dict[str, str]]) -> list[dict[st
                 "rawEvidenceText": point.get("rawEvidenceText", " ".join(ref.get("text", "") for ref in evidence if ref.get("text"))),
             }
         )
-    return workstreams[:10]
+    return filter_client_safe_status_workstreams(workstreams)[:10]
+
+
+def filter_client_safe_status_workstreams(workstreams: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    safe: list[dict[str, Any]] = []
+    for workstream in workstreams:
+        evidence = workstream.get("evidence", [])
+        source_turn_indices = [ref.get("turnIndex") for ref in evidence if ref.get("turnIndex") is not None]
+        if not is_client_safe_discussion_point(workstream.get("summary", ""), evidence=evidence, source_turn_indices=source_turn_indices):
+            continue
+        if not is_client_safe_discussion_point(workstream.get("topic", ""), evidence=evidence, source_turn_indices=source_turn_indices):
+            continue
+        safe.append(workstream)
+    return safe
+
+
+def filter_client_safe_discussion_outputs(
+    discussion_points: list[str],
+    final_discussion_debug: list[dict[str, Any]],
+) -> tuple[list[str], list[dict[str, Any]]]:
+    debug_by_text = {item.get("discussionPoint", ""): item for item in final_discussion_debug}
+    safe_points: list[str] = []
+    safe_debug: list[dict[str, Any]] = []
+    for point in discussion_points:
+        debug_item = debug_by_text.get(point, {})
+        evidence = debug_item.get("_evidence", [])
+        source_turn_indices = [ref.get("turnIndex") for ref in evidence if ref.get("turnIndex") is not None]
+        if is_client_safe_discussion_point(point, evidence=evidence, source_turn_indices=source_turn_indices):
+            safe_points.append(point)
+    safe_point_set = set(safe_points)
+    for item in final_discussion_debug:
+        point = item.get("discussionPoint", "")
+        evidence = item.get("_evidence", [])
+        source_turn_indices = [ref.get("turnIndex") for ref in evidence if ref.get("turnIndex") is not None]
+        if point in safe_point_set and is_client_safe_discussion_point(point, evidence=evidence, source_turn_indices=source_turn_indices):
+            safe_debug.append(item)
+    return safe_points, safe_debug
 
 
 def unique_cluster_sentences(cluster: list[dict[str, Any]]) -> list[str]:
@@ -4734,7 +4831,15 @@ def analyse(text: str) -> dict[str, Any]:
 
     for cluster in cluster_debug:
         cluster_key = normalize_discussion_key(cluster["selectedDiscussionPoint"])
-        if cluster_key in final_discussion_keys:
+        similar_status_point = ""
+        if structured_status_review:
+            similar_status_point = next(
+                (point for point in discussion_points if discussion_similarity(cluster.get("selectedDiscussionPoint", ""), point) >= 0.25),
+                "",
+            )
+        if cluster_key in final_discussion_keys or similar_status_point:
+            if similar_status_point:
+                cluster["selectedDiscussionPoint"] = similar_status_point
             cluster["usedInDiscussionPoints"] = True
             if cluster.get("rejectedReason") in {"covered_by_higher_ranked_cluster", "covered_by_final_discussion_selection"}:
                 cluster["rejectedReason"] = ""
@@ -4761,6 +4866,9 @@ def analyse(text: str) -> dict[str, Any]:
                 "evidenceScore": 0.7,
             }
         )
+
+    if structured_status_review:
+        discussion_points, final_discussion_debug = filter_client_safe_discussion_outputs(discussion_points, final_discussion_debug)
 
     if structured_status_review:
         existing_action_keys = {normalize_discussion_key(item["meetingActionPoint"]) for item in structured_actions}
