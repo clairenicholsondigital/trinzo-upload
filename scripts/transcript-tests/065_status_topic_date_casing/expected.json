@@ -1,0 +1,13 @@
+{
+  "testName": "065_status_topic_date_casing",
+  "expectedMeetingType": "project_status_review",
+  "expectedActionCount": 0,
+  "expectedDecisionCount": 0,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionPoints": [
+    "The March Migration Report remains in progress."
+  ],
+  "mustContainExactDiscussionPoints": [
+    "The March Migration Report remains in progress."
+  ]
+}

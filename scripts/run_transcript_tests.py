@@ -400,6 +400,14 @@ for folder in test_folders:
                 f"missing discussion point {text!r}; {format_closest(closest_values(discussion_points, text))}",
             )
 
+    for text in exp.get("mustContainExactDiscussionPoints", []):
+        if str(text).strip() not in [str(point).strip() for point in discussion_points]:
+            add_failure(
+                folder_failures,
+                folder.name,
+                f"missing exact discussion point {text!r}; actual values: {discussion_points!r}",
+            )
+
     for text in exp.get("mustNotContainDiscussionPoints", []):
         if contains_match(discussion_points, text):
             add_failure(folder_failures, folder.name, f"forbidden discussion point present: {text!r}")
