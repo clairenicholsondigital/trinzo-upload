@@ -24,18 +24,22 @@ try:
         MINUTES_CONFIG,
         extract_header_fields,
         finalize_sentence,
+        has_malformed_trailing_question_fragment as text_has_malformed_trailing_question_fragment,
         load_json,
         normalize_text_fragment,
         split_sentences,
+        trim_malformed_trailing_question_fragment as text_trim_malformed_trailing_question_fragment,
     )
 except ImportError:
     from python_llm_meeting_minutes import (
         MINUTES_CONFIG,
         extract_header_fields,
         finalize_sentence,
+        has_malformed_trailing_question_fragment as text_has_malformed_trailing_question_fragment,
         load_json,
         normalize_text_fragment,
         split_sentences,
+        trim_malformed_trailing_question_fragment as text_trim_malformed_trailing_question_fragment,
     )
 
 
@@ -290,6 +294,16 @@ DECISION_COMPARISON_RE = re.compile(
     r"\b(?:first|delay|defer|keep|stay|switch|offer|larger|smaller|until|rather than|instead|preferred?|safer)\b",
     re.IGNORECASE,
 )
+
+MEETING_NAVIGATION_VERB_RE = re.compile(
+    r"\b(?:go\s+back|return|move\s+on|come\s+back|run\s+through|walk\s+through|cover|jump\s+to|look\s+at)\b",
+    re.IGNORECASE,
+)
+MEETING_NAVIGATION_OBJECT_RE = re.compile(
+    r"\b(?:agenda|milestones?|next\s+item|previous\s+item|slides?|sections?|topics?|parking\s+lot)\b",
+    re.IGNORECASE,
+)
+MEETING_NAVIGATION_CONFIDENCE_ADVERB_RE = re.compile(r"\b(?:quickly|briefly|next|again)\b", re.IGNORECASE)
 
 
 def parse_args() -> argparse.Namespace:
@@ -659,6 +673,7 @@ def parse_numeric_turns(text: str) -> list[dict[str, str]]:
         nonlocal current, pending_speaker, pending_timestamp
         if current and current.get("text", "").strip():
             current["text"] = current["text"].strip()
+            current["turnIndex"] = len(turns)
             turns.append(current)
         current = None
         pending_speaker = None
@@ -747,6 +762,44 @@ def parse_numeric_turns(text: str) -> list[dict[str, str]]:
             current["text"] = (current["text"] + " " + line).strip()
     flush_current()
     return turns
+
+
+def evidence_from_turn(turn: dict[str, Any], role: str = "") -> dict[str, Any]:
+    evidence = {
+        "speaker": turn.get("speaker", ""),
+        "timestamp": turn.get("timestamp", ""),
+        "text": normalize_text_fragment(turn.get("text", "")),
+    }
+    if "turnIndex" in turn:
+        evidence["turnIndex"] = turn.get("turnIndex")
+    if role:
+        evidence["role"] = role
+    return evidence
+
+
+def evidence_public_ref(ref: dict[str, Any]) -> dict[str, Any]:
+    evidence = {
+        "speaker": ref.get("speaker", ""),
+        "timestamp": ref.get("timestamp", ""),
+    }
+    if "turnIndex" in ref:
+        evidence["turnIndex"] = ref.get("turnIndex")
+    if ref.get("text"):
+        evidence["text"] = ref.get("text")
+    if ref.get("role"):
+        evidence["role"] = ref.get("role")
+    return evidence
+
+
+def evidence_source_turn_indices(evidence: list[dict[str, Any]]) -> list[int]:
+    indices: list[int] = []
+    seen = set()
+    for ref in evidence:
+        index = ref.get("turnIndex")
+        if isinstance(index, int) and index not in seen:
+            seen.add(index)
+            indices.append(index)
+    return indices
 
 
 def participant_groups(turns: list[dict[str, str]], config: dict[str, Any]) -> tuple[list[str], list[str]]:
@@ -847,7 +900,7 @@ def build_turn_records(turns: list[dict[str, str]]) -> list[dict[str, Any]]:
                     "tokens": tokenize(sentence),
                     "scores": {key: value for key, value in features.items() if key != "token_counts"},
                     "token_counts": features["token_counts"],
-                    "evidence": [{"speaker": turn["speaker"], "timestamp": turn["timestamp"]}],
+                    "evidence": [evidence_from_turn(turn)],
                     "kind": "sentence",
                 }
             )
@@ -1671,7 +1724,7 @@ def extract_conversational_actions(turns: list[dict[str, str]]) -> tuple[
                         owner,
                         deadline,
                         0.79,
-                        [{"speaker": turn["speaker"], "timestamp": turn["timestamp"]}],
+                        [evidence_from_turn(turn)],
                     )
                 )
                 thread_events.append(
@@ -1706,7 +1759,7 @@ def extract_conversational_actions(turns: list[dict[str, str]]) -> tuple[
                         resolved_commitment[1],
                         resolved_commitment[2],
                         0.82,
-                        [{"speaker": turn["speaker"], "timestamp": turn["timestamp"]}],
+                        [evidence_from_turn(turn)],
                     )
                 )
                 matching_thread["state"] = "accepted"
@@ -1730,7 +1783,7 @@ def extract_conversational_actions(turns: list[dict[str, str]]) -> tuple[
                     explicit_commitment[1],
                     explicit_commitment[2],
                     0.82,
-                    [{"speaker": turn["speaker"], "timestamp": turn["timestamp"]}],
+                    [evidence_from_turn(turn)],
                 )
             )
             continue
@@ -1823,7 +1876,7 @@ def extract_conversational_actions(turns: list[dict[str, str]]) -> tuple[
                     context["owner"],
                     context["deadline"],
                     0.74,
-                    [{"speaker": turn["speaker"], "timestamp": turn["timestamp"]}],
+                    [evidence_from_turn(turn)],
                 )
             )
             thread_events.append(
@@ -2033,12 +2086,67 @@ def infer_implicit_decision_proposal(text: str, turns: list[dict[str, str]], ind
     return None
 
 
+def has_durable_decision_commitment(text: str) -> bool:
+    cleaned = normalize_text_fragment(text)
+    lowered = cleaned.lower()
+    if DEADLINE_RE.search(cleaned) or DEPENDENCY_DEADLINE_RE.search(cleaned):
+        return True
+    if re.search(r"\b(?:i['’]?ll|i will|i can)\b", lowered):
+        return True
+    owner_match = re.search(r"\b(?P<owner>[A-ZÀ-ÖØ-Þ][A-Za-zÀ-ÖØ-öø-ÿ'`.-]+)\s+(?:will|owns?|to)\b", cleaned)
+    if owner_match and owner_match.group("owner").lower() not in {"we", "the", "team"}:
+        return True
+    if re.search(r"\b(?:send|share|publish|release|deliver|file|submit|circulate|announce|roll out|launch)\b", lowered) and re.search(
+        r"\b(?:client|customer|user|supplier|vendor|external|public|finance|legal|board|market|contract|proposal|pack|report|deck)\b",
+        lowered,
+    ):
+        return True
+    if re.search(r"\b(?:customer-facing|client-facing|customer|client|user-facing|external)\b", lowered) and re.search(
+        r"\b(?:change|launch|release|message|wording|timeline|scope|pricing|date|deadline|deliverable)\b",
+        lowered,
+    ):
+        return True
+    if re.search(r"\b(?:decision|decided|agreed)\b", lowered) and re.search(
+        r"\b(?:outcome|launch|release|delivery|deliverable|customer|client|pricing|contract|scope|milestone|date|deadline|budget|supplier|renewal|timeline)\b",
+        lowered,
+    ):
+        return True
+    return False
+
+
+def is_meeting_navigation_proposal(text: str) -> bool:
+    cleaned = normalize_text_fragment(text).lower().rstrip(".!?")
+    if not cleaned:
+        return False
+    verb_match = MEETING_NAVIGATION_VERB_RE.search(cleaned)
+    if not verb_match:
+        return False
+    verb = verb_match.group(0)
+    after_verb = cleaned[verb_match.end() : verb_match.end() + 90]
+    score = 2.0
+    has_agenda_object = bool(MEETING_NAVIGATION_OBJECT_RE.search(after_verb) or MEETING_NAVIGATION_OBJECT_RE.search(cleaned))
+    has_confidence_adverb = bool(MEETING_NAVIGATION_CONFIDENCE_ADVERB_RE.search(after_verb) or MEETING_NAVIGATION_CONFIDENCE_ADVERB_RE.search(cleaned))
+    if has_agenda_object:
+        score += 2.0
+    if has_confidence_adverb:
+        score += 1.0
+    if re.search(r"^(?:right[, ]+|okay[, ]+|ok[, ]+)?(?:let['’]?s|we should|we will|we['’]?ll)\b", cleaned):
+        score += 0.5
+    if re.search(r"\b(?:after that|from there|for now)\b", cleaned):
+        score += 1.0
+    if verb in {"move on", "return"} and (has_confidence_adverb or has_agenda_object or "after that" in cleaned):
+        return True
+    return score >= 4.0
+
+
 def extract_decision_proposal(text: str) -> str | None:
     cleaned = strip_ack_prefix(text).rstrip(".!?")
     lowered = cleaned.lower()
     if any(term in lowered for term in ("no further actions", "no action", "no follow-up actions", "still deciding", "haven't decided", "have not decided", "we'll see", "come back to it")):
         return None
     if any(phrase in lowered for phrase in NAVIGATION_PHRASES):
+        return None
+    if is_meeting_navigation_proposal(cleaned) and not has_durable_decision_commitment(cleaned):
         return None
     match = DECISION_PROPOSAL_RE.match(cleaned)
     proposal = normalize_text_fragment(match.group("proposal")).rstrip(".!?") if match else ""
@@ -2051,7 +2159,7 @@ def extract_decision_proposal(text: str) -> str | None:
             proposal = normalize_text_fragment(cleaned).rstrip(".!?")
     if not proposal or len(tokenize(proposal)) < 2:
         return None
-    if proposal.lower().startswith(("run through", "go through", "start with", "move on")):
+    if is_meeting_navigation_proposal(proposal) and not has_durable_decision_commitment(cleaned):
         return None
     return proposal
 
@@ -2097,7 +2205,7 @@ def decision_support_score(turns: list[dict[str, str]], index: int, proposal: st
         if proposal_tokens and peer_tokens and len(proposal_tokens & peer_tokens) >= 2:
             local_support += 0.12
         if local_support > 0:
-            evidence.append({"speaker": turns[peer_index]["speaker"], "timestamp": turns[peer_index]["timestamp"], "text": text})
+            evidence.append(evidence_from_turn(turns[peer_index], "support"))
             support += local_support
     return round(min(1.0, support), 2), evidence
 
@@ -2109,7 +2217,7 @@ def decision_contradiction_score(turns: list[dict[str, str]], index: int) -> tup
         text = normalize_text_fragment(turns[peer_index]["text"])
         if DECISION_CONTRADICTION_RE.search(text) and not DECISION_SUPPORT_RE.search(text):
             contradiction += 0.32
-            evidence.append({"speaker": turns[peer_index]["speaker"], "timestamp": turns[peer_index]["timestamp"], "text": text})
+            evidence.append(evidence_from_turn(turns[peer_index], "contradiction"))
     return round(min(1.0, contradiction), 2), evidence
 
 
@@ -2163,13 +2271,37 @@ def build_decision_candidates(turns: list[dict[str, str]]) -> list[dict[str, Any
                 "turnIndex": index,
                 "timestamp": turn["timestamp"],
                 "speaker": turn["speaker"],
+                "normalizedProposal": normalize_text_fragment(proposal),
+                "sourceTurn": evidence_from_turn(turn, "proposal"),
+                "sourceTurnText": normalize_text_fragment(turn["text"]),
                 "supportingTurns": [
-                    {"speaker": turn["speaker"], "timestamp": turn["timestamp"], "text": normalize_text_fragment(turn["text"])}
+                    evidence_from_turn(turn, "proposal")
                 ] + support_evidence,
                 "contradictingTurns": contradiction_evidence,
             }
         )
     return candidates
+
+
+def build_rejected_navigation_decision_candidates(turns: list[dict[str, str]]) -> list[dict[str, Any]]:
+    rejected: list[dict[str, Any]] = []
+    for turn in turns:
+        cleaned = strip_ack_prefix(turn["text"]).rstrip(".!?")
+        if not cleaned:
+            continue
+        match = DECISION_PROPOSAL_RE.match(cleaned)
+        proposal = normalize_text_fragment(match.group("proposal")).rstrip(".!?") if match else normalize_text_fragment(cleaned).rstrip(".!?")
+        navigation_text = proposal or cleaned
+        if is_meeting_navigation_proposal(navigation_text) and not has_durable_decision_commitment(cleaned):
+            rejected.append(
+                {
+                    "text": normalize_text_fragment(cleaned),
+                    "speaker": turn["speaker"],
+                    "timestamp": turn["timestamp"],
+                    "rejectedReason": "meeting_navigation_intent",
+                }
+            )
+    return rejected
 
 
 def decision_topics_match(left: str, right: str) -> bool:
@@ -2255,6 +2387,7 @@ def select_winning_candidate_from_graph(graph: dict[str, Any]) -> tuple[dict[str
 
 def select_decisions(turns: list[dict[str, str]]) -> tuple[list[str], list[dict[str, Any]], dict[str, Any]]:
     raw_candidates = build_decision_candidates(turns)
+    rejected_navigation_decisions = build_rejected_navigation_decision_candidates(turns)
     sorted_candidates = sorted(raw_candidates, key=lambda item: (item["finalScore"], item["turnIndex"]), reverse=True)
     topic_graphs = build_decision_topic_graphs(raw_candidates)
     winners: list[dict[str, Any]] = []
@@ -2273,7 +2406,12 @@ def select_decisions(turns: list[dict[str, str]]) -> tuple[list[str], list[dict[
             "decision": item["decision"],
             "decisionConfidence": item["finalScore"],
             "decisionType": "accepted_direction",
-            "_evidence": [{"speaker": ref["speaker"], "timestamp": ref["timestamp"]} for ref in item["supportingTurns"]],
+            "normalizedProposal": item.get("normalizedProposal", normalize_text_fragment(item.get("proposal", ""))),
+            "sourceTurnText": item.get("sourceTurnText", ""),
+            "sourceTurn": evidence_public_ref(item.get("sourceTurn", {})),
+            "supportTurnTexts": [ref.get("text", "") for ref in item["supportingTurns"][1:] if ref.get("text")],
+            "supportTurns": [evidence_public_ref(ref) for ref in item["supportingTurns"][1:]],
+            "_evidence": [evidence_public_ref(ref) for ref in item["supportingTurns"]],
         }
         for item in winners
     ]
@@ -2282,6 +2420,8 @@ def select_decisions(turns: list[dict[str, str]]) -> tuple[list[str], list[dict[
             {
                 "topic": item["topic"],
                 "decision": item["decision"],
+                "normalizedProposal": item.get("normalizedProposal", normalize_text_fragment(item.get("proposal", ""))),
+                "sourceTurnText": item.get("sourceTurnText", ""),
                 "proposalScore": item["proposalScore"],
                 "acceptanceScore": item["acceptanceScore"],
                 "supportScore": item["supportScore"],
@@ -2297,6 +2437,8 @@ def select_decisions(turns: list[dict[str, str]]) -> tuple[list[str], list[dict[
             {
                 "topic": item["topic"],
                 "decision": item["decision"],
+                "normalizedProposal": item.get("normalizedProposal", normalize_text_fragment(item.get("proposal", ""))),
+                "sourceTurnText": item.get("sourceTurnText", ""),
                 "finalDecisionScore": item["finalScore"],
                 "rejectedReason": item["rejectedReason"],
                 "supportingTurns": item["supportingTurns"],
@@ -2327,6 +2469,9 @@ def select_decisions(turns: list[dict[str, str]]) -> tuple[list[str], list[dict[
                 "text": item["decision"],
                 "speaker": item["speaker"],
                 "timestamp": item["timestamp"],
+                "normalizedProposal": item.get("normalizedProposal", normalize_text_fragment(item.get("proposal", ""))),
+                "sourceTurnText": item.get("sourceTurnText", ""),
+                "supportTurnTexts": [ref.get("text", "") for ref in item.get("supportingTurns", [])[1:] if ref.get("text")],
                 "scores": {
                     "proposal": item["proposalScore"],
                     "acceptance": item["acceptanceScore"],
@@ -2339,6 +2484,7 @@ def select_decisions(turns: list[dict[str, str]]) -> tuple[list[str], list[dict[
             }
             for item in sorted_candidates[:10]
         ],
+        "rejectedNavigationDecisionCandidates": rejected_navigation_decisions[:10],
     }
     return decisions, decision_details, debug
 
@@ -2688,14 +2834,9 @@ def extract_status_review_points(turns: list[dict[str, str]]) -> list[dict[str, 
         key = normalize_discussion_key(point)
         if key not in seen:
             seen.add(key)
-            evidence = []
-            seen_evidence_refs = set()
-            for item in ([turn] + supporting_turns):
-                ref_key = (item["speaker"], item["timestamp"], item["text"])
-                if ref_key in seen_evidence_refs:
-                    continue
-                seen_evidence_refs.add(ref_key)
-                evidence.append({"speaker": item["speaker"], "timestamp": item["timestamp"], "text": item["text"]})
+            evidence = [evidence_from_turn(turn, "topic")] + [
+                evidence_from_turn(item, "support") for item in supporting_turns
+            ]
             earliest_timestamp = min((timestamp_to_seconds(ref["timestamp"]) for ref in evidence if ref["timestamp"]), default=10**9)
             points.append(
                 {
@@ -2801,8 +2942,7 @@ def build_status_review_workstreams(turns: list[dict[str, str]]) -> list[dict[st
                     "sourceType": "statusReviewPoint",
                     "earliestTimestamp": timestamp_to_seconds(turn["timestamp"]),
                     "timestampLabel": turn["timestamp"],
-                    "evidence": [{"speaker": turn["speaker"], "timestamp": turn["timestamp"], "text": turn["text"]}],
-                    "rawEvidenceText": turn["text"],
+                    "evidence": [evidence_from_turn(turn)],
                     "selectedReason": "direct_status_review_line",
                 }
             )
@@ -2852,6 +2992,7 @@ def split_candidate_sentences(candidate_texts: list[str]) -> list[str]:
     for text in candidate_texts:
         for sentence in split_sentences(text) or [text]:
             cleaned = normalize_text_fragment(sentence)
+            cleaned = trim_malformed_trailing_question_fragment(cleaned)
             if not cleaned:
                 continue
             key = cleaned.lower()
@@ -2943,13 +3084,15 @@ def score_representative_sentence(
     specificity = sentence_specificity_score(sentence) * 0.4
     low_content_penalty = 0.6 if is_low_content_fragment(sentence) else 0.0
     pronoun_penalty = representative_sentence_penalty(sentence)
+    malformed_question_penalty = 0.45 if has_malformed_trailing_question_fragment(sentence) else 0.0
     return round(
         centroid_similarity * 0.7
         + support_similarity * 0.35
         + structure_bonus
         + specificity
         - low_content_penalty
-        - pronoun_penalty,
+        - pronoun_penalty
+        - malformed_question_penalty,
         3,
     )
 
@@ -2983,8 +3126,17 @@ def is_keyword_fragment_summary(text: str) -> bool:
     return False
 
 
+def has_malformed_trailing_question_fragment(text: str) -> bool:
+    return text_has_malformed_trailing_question_fragment(text)
+
+
+def trim_malformed_trailing_question_fragment(text: str) -> str:
+    return text_trim_malformed_trailing_question_fragment(text)
+
+
 def lightly_clean_representative_sentence(text: str) -> str:
     cleaned = normalize_text_fragment(text)
+    cleaned = trim_malformed_trailing_question_fragment(cleaned)
     cleaned = re.sub(r"^(?:online\s+)+", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"^\d{1,2}\s+\w+\s+\d{4}\s+", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"^(?:yeah|yes|no|right|okay|ok)\s*,?\s+", "", cleaned, flags=re.IGNORECASE)
@@ -3543,6 +3695,9 @@ def select_discussion_clusters(candidates: list[dict[str, Any]], speaker_names: 
                         "earliestTimestamp": earliest_timestamp,
                         "timestampLabel": next((ref["timestamp"] for ref in evidence_refs if ref["timestamp"]), ""),
                         "selectedReason": "cluster_summary",
+                        "cleanedCandidateSentences": cluster_summary["cleanedCandidateSentences"],
+                        "representativeSentence": cluster_summary["selectedRepresentativeSentence"],
+                        "sourceTurnIndices": evidence_source_turn_indices(evidence_refs),
                         "evidence": evidence_refs,
                     },
                 )
@@ -3561,6 +3716,9 @@ def select_discussion_clusters(candidates: list[dict[str, Any]], speaker_names: 
                             "earliestTimestamp": earliest_timestamp,
                             "timestampLabel": next((ref["timestamp"] for ref in evidence_refs if ref["timestamp"]), ""),
                             "selectedReason": "supplemental_cluster_sentence",
+                            "cleanedCandidateSentences": cluster_summary["cleanedCandidateSentences"],
+                            "representativeSentence": cluster_summary["selectedRepresentativeSentence"],
+                            "sourceTurnIndices": evidence_source_turn_indices(evidence_refs),
                             "evidence": evidence_refs,
                         },
                     )
@@ -3573,6 +3731,8 @@ def select_discussion_clusters(candidates: list[dict[str, Any]], speaker_names: 
                 "keywords": filtered_keywords,
                 "candidateTexts": [item["text"] for item in cluster[:6]],
                 "cleanedCandidateSentences": cluster_summary["cleanedCandidateSentences"][:8],
+                "representativeSentence": cluster_summary["selectedRepresentativeSentence"],
+                "sourceTurnIndices": evidence_source_turn_indices(evidence_refs),
                 "clusterScore": cluster_score,
                 "semanticDensity": cluster_summary["semanticDensity"],
                 "summaryScore": cluster_summary["summaryScore"],
@@ -4135,10 +4295,22 @@ def extract_plain_analytics_review_outputs(text: str) -> dict[str, Any]:
         "healthSummary": {},
         "meetingSections": [],
         "decisions": decisions,
-        "discussionPointDetails": [{"discussionPoint": point, "_evidence": [], "evidenceScore": 0.7} for point in discussion_points],
+        "discussionPointDetails": [
+            {
+                "discussionPoint": point,
+                "sourceType": "plainAnalyticsFallback",
+                "selectedReason": "plain_analytics_review_marker",
+                "cleanedCandidateSentences": [point],
+                "representativeSentence": point,
+                "sourceTurnIndices": [],
+                "_evidence": [{"role": "plain_analytics_review_marker", "text": point}],
+                "evidenceScore": 0.5,
+            }
+            for point in discussion_points
+        ],
         "decisionDetails": [],
         "internalEvidence": {
-            "discussionPoints": [],
+            "discussionPoints": [{"text": point, "_evidence": [{"role": "plain_analytics_review_marker", "text": point}]} for point in discussion_points],
             "actions": [{"text": item["meetingActionPoint"], "_evidence": item["_evidence"]} for item in actions],
             "meetingSections": [],
             "decisions": [],
@@ -4488,6 +4660,9 @@ def analyse(text: str) -> dict[str, Any]:
                     "earliestTimestamp": timestamp_to_seconds(candidate["timestamp"]),
                     "timestampLabel": candidate["timestamp"],
                     "selectedReason": "supporting_turn_coverage",
+                    "cleanedCandidateSentences": [text],
+                    "representativeSentence": text,
+                    "sourceTurnIndices": evidence_source_turn_indices(candidate["evidence"]),
                     "evidence": candidate["evidence"],
                 }
             )
@@ -4520,6 +4695,9 @@ def analyse(text: str) -> dict[str, Any]:
                         "earliestTimestamp": timestamp_to_seconds(detail["_evidence"][0]["timestamp"]) if detail.get("_evidence") else 10**9,
                         "timestampLabel": detail["_evidence"][0]["timestamp"] if detail.get("_evidence") else "",
                         "selectedReason": "decision_support",
+                        "cleanedCandidateSentences": [detail.get("sourceTurnText", "")] + detail.get("supportTurnTexts", []),
+                        "representativeSentence": detail.get("sourceTurnText", ""),
+                        "sourceTurnIndices": evidence_source_turn_indices(detail.get("_evidence", [])),
                         "evidence": detail.get("_evidence", []),
                     }
                 )
@@ -4540,10 +4718,16 @@ def analyse(text: str) -> dict[str, Any]:
                 "earliestTimestamp": timestamp_to_seconds(suppressed_item["requestTurn"]["timestamp"]),
                 "timestampLabel": suppressed_item["requestTurn"]["timestamp"],
                 "selectedReason": "suppressed_rejected_request",
+                "cleanedCandidateSentences": [
+                    normalize_text_fragment(suppressed_item["requestTurn"].get("text", "")),
+                    normalize_text_fragment(suppressed_item["rejectionTurn"].get("text", "")),
+                    normalize_text_fragment(suppressed_item["closureTurn"].get("text", "")),
+                ],
+                "representativeSentence": normalize_text_fragment(suppressed_item["rejectionTurn"].get("text", "")),
                 "evidence": [
-                    {"speaker": suppressed_item["requestTurn"]["speaker"], "timestamp": suppressed_item["requestTurn"]["timestamp"]},
-                    {"speaker": suppressed_item["rejectionTurn"]["speaker"], "timestamp": suppressed_item["rejectionTurn"]["timestamp"]},
-                    {"speaker": suppressed_item["closureTurn"]["speaker"], "timestamp": suppressed_item["closureTurn"]["timestamp"]},
+                    evidence_from_turn(suppressed_item["requestTurn"], "request"),
+                    evidence_from_turn(suppressed_item["rejectionTurn"], "rejection"),
+                    evidence_from_turn(suppressed_item["closureTurn"], "closure"),
                 ],
             }
         )
@@ -4570,6 +4754,11 @@ def analyse(text: str) -> dict[str, Any]:
                 "sourceType": source.get("sourceType", "broadSummary"),
                 "earliestSupportingTimestamp": None if source.get("earliestTimestamp", 10**9) >= 10**9 else source.get("timestampLabel"),
                 "selectedReason": source.get("selectedReason", "final_selection"),
+                "cleanedCandidateSentences": source.get("cleanedCandidateSentences", []),
+                "representativeSentence": source.get("representativeSentence", ""),
+                "sourceTurnIndices": source.get("sourceTurnIndices", evidence_source_turn_indices(source.get("evidence", []))),
+                "_evidence": source.get("evidence", []),
+                "evidenceScore": 0.7,
             }
         )
 
@@ -4639,13 +4828,11 @@ def analyse(text: str) -> dict[str, Any]:
         "winningDecisionClusters": decision_debug["winningDecisionClusters"],
         "decisionTopicGraphs": decision_debug.get("decisionTopicGraphs", []),
         "rejectedCompetingDecisions": decision_debug["rejectedCompetingDecisions"],
+        "rejectedNavigationDecisionCandidates": decision_debug.get("rejectedNavigationDecisionCandidates", []),
         "abstainedActions": abstained_actions,
         "abstainedDecisions": abstained_decisions,
         "suppressedRejectedActions": suppressed_rejected_actions,
-        "statusReviewPoints": [
-            {"text": item["text"], "rawEvidenceText": item.get("rawEvidenceText", "")}
-            for item in status_review_points
-        ],
+        "statusReviewPoints": status_review_points,
         "statusReviewWorkstreams": status_review_workstreams,
         "finalDiscussionPoints": final_discussion_debug,
         "parsedTurnCount": len(turns),
@@ -4676,10 +4863,10 @@ def analyse(text: str) -> dict[str, Any]:
         "healthSummary": {},
         "meetingSections": [],
         "decisions": decisions,
-        "discussionPointDetails": [{"discussionPoint": point, "_evidence": [], "evidenceScore": 0.7} for point in (discussion_points[:10] if structured_status_review else discussion_points[:6])],
+        "discussionPointDetails": final_discussion_debug[:12] if predicted_meeting_type == "webinar_rehearsal" else (final_discussion_debug[:10] if structured_status_review else final_discussion_debug[:6]),
         "decisionDetails": decision_details,
         "internalEvidence": {
-            "discussionPoints": [],
+            "discussionPoints": [{"text": item["discussionPoint"], "_evidence": item.get("_evidence", [])} for item in (final_discussion_debug[:12] if predicted_meeting_type == "webinar_rehearsal" else (final_discussion_debug[:10] if structured_status_review else final_discussion_debug[:6]))],
             "actions": [{"text": item["meetingActionPoint"], "_evidence": item["_evidence"]} for item in structured_actions],
             "meetingSections": [],
             "decisions": [{"text": item["decision"], "_evidence": item["_evidence"]} for item in decision_details],

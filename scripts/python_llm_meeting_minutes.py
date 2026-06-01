@@ -32,7 +32,9 @@ try:
         has_minimum_output_words,
         normalize_requested_task as text_normalize_requested_task,
         normalize_text_fragment as text_normalize_text_fragment,
+        has_malformed_trailing_question_fragment as text_has_malformed_trailing_question_fragment,
         sentence_case as text_sentence_case,
+        trim_malformed_trailing_question_fragment as text_trim_malformed_trailing_question_fragment,
         split_sentences as text_split_sentences,
     )
 except ImportError:
@@ -55,7 +57,9 @@ except ImportError:
         has_minimum_output_words,
         normalize_requested_task as text_normalize_requested_task,
         normalize_text_fragment as text_normalize_text_fragment,
+        has_malformed_trailing_question_fragment as text_has_malformed_trailing_question_fragment,
         sentence_case as text_sentence_case,
+        trim_malformed_trailing_question_fragment as text_trim_malformed_trailing_question_fragment,
         split_sentences as text_split_sentences,
     )
 
@@ -840,6 +844,14 @@ def build_discussion_points(segments: list[dict[str, Any]], config: dict[str, An
 
 def split_sentences(text: str) -> list[str]:
     return text_split_sentences(text)
+
+
+def trim_malformed_trailing_question_fragment(text: str) -> str:
+    return text_trim_malformed_trailing_question_fragment(text)
+
+
+def has_malformed_trailing_question_fragment(text: str) -> bool:
+    return text_has_malformed_trailing_question_fragment(text)
 
 
 def find_rule_hits(text: str, rules: list[dict[str, Any]], field: str) -> list[str]:

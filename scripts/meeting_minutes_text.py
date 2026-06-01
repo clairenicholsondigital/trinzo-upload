@@ -32,6 +32,85 @@ def finalize_sentence(text: str) -> str:
         return cleaned
     return cleaned + "."
 
+MALFORMED_QUESTION_LEAD_TOKENS = {
+    "a",
+    "about",
+    "after",
+    "an",
+    "around",
+    "as",
+    "at",
+    "before",
+    "by",
+    "for",
+    "from",
+    "in",
+    "into",
+    "of",
+    "on",
+    "onto",
+    "over",
+    "the",
+    "through",
+    "to",
+    "under",
+    "with",
+}
+
+QUESTION_LIKE_FRAGMENT_START_RE = re.compile(
+    r"^(?:"
+    r"are|is|am|was|were|do|does|did|can|could|will|would|should|shall|"
+    r"has|have|had|may|might|must|what|why|when|where|who|how"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def has_malformed_trailing_question_fragment(text: str) -> bool:
+    """Return True when a sentence ends with a short malformed question fragment.
+
+    Some transcript exports occasionally concatenate a substantive statement with a
+    short follow-up question after a dangling lowercase article/preposition, e.g.
+    ``... running it through a Are you not?``.  Detect the pattern using token and
+    question-boundary heuristics so callers can trim or penalize it without relying
+    on exact transcript strings.
+    """
+    cleaned = re.sub(r"\s+", " ", text.strip())
+    if not cleaned.endswith("?"):
+        return False
+
+    match = re.search(r"\b(?P<lead>[a-z]{1,12})\s+(?P<question>[A-Z][^.!?]{1,80}\?)\s*$", cleaned)
+    if not match:
+        return False
+    lead = match.group("lead").lower()
+    if lead not in MALFORMED_QUESTION_LEAD_TOKENS:
+        return False
+
+    question = match.group("question").strip()
+    question_tokens = re.findall(r"[A-Za-z0-9']+", question)
+    if not (2 <= len(question_tokens) <= 6):
+        return False
+    if not QUESTION_LIKE_FRAGMENT_START_RE.search(question):
+        return False
+
+    prefix = cleaned[: match.start()].strip()
+    prefix_tokens = re.findall(r"[A-Za-z0-9']+", prefix)
+    return len(prefix_tokens) >= 4
+
+
+def trim_malformed_trailing_question_fragment(text: str) -> str:
+    """Remove only a malformed trailing short question fragment when present."""
+    cleaned = re.sub(r"\s+", " ", text.strip())
+    if not has_malformed_trailing_question_fragment(cleaned):
+        return text.strip()
+    lead_pattern = "|".join(sorted(MALFORMED_QUESTION_LEAD_TOKENS, key=len, reverse=True))
+    trimmed = re.sub(
+        rf"\s+\b(?:{lead_pattern})\s+[A-Z][^.!?]{{1,80}}\?\s*$",
+        "",
+        cleaned,
+    )
+    return trimmed.strip()
+
 
 def split_sentences(text: str) -> list[str]:
     text = re.sub(r"(?<=\w)(?=[A-Z][a-z])", ". ", text)

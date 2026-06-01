@@ -1,3 +1,4 @@
+from collections import Counter
 import json
 import unittest
 from pathlib import Path
@@ -9,7 +10,11 @@ from scripts.python_meeting_minutes_numbers import (
     decision_topics_match,
     discussion_similarity,
     fuzzy_token_similarity,
+    has_malformed_trailing_question_fragment,
+    lightly_clean_representative_sentence,
     parse_numeric_turns,
+    score_representative_sentence,
+    split_candidate_sentences,
 )
 
 
@@ -18,6 +23,43 @@ PROJECT_FIXTURE = Path(__file__).parent / "fixtures" / "project_update_june_2_20
 
 
 class MeetingMinutesNumbersTest(unittest.TestCase):
+    def test_trims_malformed_trailing_question_fragment_before_discussion_scoring(self):
+        malformed = (
+            "The client adoption problem-solving approach is strongest when the team demonstrates "
+            "the workflow by running it through a Are you not?"
+        )
+
+        cleaned_sentences = split_candidate_sentences([malformed])
+        finalized = lightly_clean_representative_sentence(malformed)
+
+        self.assertEqual(
+            cleaned_sentences,
+            [
+                "The client adoption problem-solving approach is strongest when the team demonstrates "
+                "the workflow by running it through"
+            ],
+        )
+        self.assertEqual(
+            finalized,
+            "The client adoption problem-solving approach is strongest when the team demonstrates "
+            "the workflow by running it through.",
+        )
+        self.assertNotIn("a Are you not?", finalized)
+
+    def test_malformed_trailing_question_fragment_penalizes_untrimmed_candidate(self):
+        malformed = (
+            "The client adoption problem-solving approach is strongest when the team demonstrates "
+            "the workflow by running it through a Are you not?"
+        )
+        trimmed = lightly_clean_representative_sentence(malformed)
+        centroid = Counter({token: 1 for token in malformed.lower().split()})
+
+        self.assertTrue(has_malformed_trailing_question_fragment(malformed))
+        self.assertLess(
+            score_representative_sentence(malformed, centroid, [malformed]),
+            score_representative_sentence(trimmed, centroid, [trimmed]),
+        )
+
     def test_actions_overlap_accepts_structurally_similar_wording(self):
         self.assertTrue(
             actions_overlap(
@@ -154,6 +196,40 @@ Yeah, broad works better.
         result = analyse(transcript)
 
         self.assertIn("The webinar should remain broad rather than validation-specific.", result["decisions"])
+
+    def test_navigation_intent_is_not_a_decision(self):
+        transcript = """Project review
+
+6 June 2026
+
+Alice:
+Let's go back to milestones quickly.
+
+Bob:
+Agreed.
+"""
+
+        result = analyse(transcript)
+
+        self.assertEqual(result["decisions"], [])
+        rejected_navigation = result["numberExperimentDebug"]["rejectedNavigationDecisionCandidates"]
+        self.assertTrue(any(item["rejectedReason"] == "meeting_navigation_intent" for item in rejected_navigation))
+
+    def test_milestone_date_change_remains_a_decision(self):
+        transcript = """Project review
+
+6 June 2026
+
+Alice:
+We will move the milestone date to Friday.
+
+Bob:
+Agreed, that protects the delivery timeline.
+"""
+
+        result = analyse(transcript)
+
+        self.assertIn("The team will move the milestone date to Friday.", result["decisions"])
 
     def test_later_decision_supersedes_earlier_same_topic(self):
         transcript = """Launch timing review
