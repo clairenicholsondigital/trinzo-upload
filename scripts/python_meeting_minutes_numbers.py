@@ -32,8 +32,15 @@ except ImportError:
     )
 
 
-TURN_RE = re.compile(r"^(?P<speaker>[A-Z][A-Za-z]+(?: [A-Z][A-Za-z]+){0,3})\s+(?P<timestamp>\d+:\d{2})\s*(?P<tail>.*)$")
-COLON_TURN_RE = re.compile(r"^(?P<speaker>[A-Z][A-Za-z]+(?: [A-Z][A-Za-z]+){0,3}):\s*(?P<tail>.*)$")
+NAME_TOKEN = r"[A-ZÀ-ÖØ-Þ][A-Za-zÀ-ÖØ-öø-ÿ'`.-]*"
+SPEAKER_NAME_RE = rf"{NAME_TOKEN}(?: {NAME_TOKEN}){{0,5}}"
+TIMESTAMP_TOKEN_RE = r"\d{1,2}(?::|\.)\d{2}(?::\d{2})?(?:\s?(?:am|pm))?"
+
+TURN_RE = re.compile(rf"^(?P<speaker>{SPEAKER_NAME_RE})\s+(?P<timestamp>{TIMESTAMP_TOKEN_RE})\s*(?P<tail>.*)$")
+COLON_TURN_RE = re.compile(rf"^(?P<speaker>{SPEAKER_NAME_RE})\s*:\s*(?P<tail>.*)$")
+HYPHEN_TURN_RE = re.compile(rf"^(?P<speaker>{SPEAKER_NAME_RE})\s*[-–—]\s*(?P<timestamp>{TIMESTAMP_TOKEN_RE})\s*(?P<tail>.*)$")
+SPEAKER_ONLY_RE = re.compile(rf"^(?P<speaker>{SPEAKER_NAME_RE})$")
+TIMESTAMP_ONLY_RE = re.compile(rf"^(?P<timestamp>{TIMESTAMP_TOKEN_RE})$")
 METADATA_SPEAKERS = {"Date", "Location", "Online"}
 METADATA_RE = re.compile(
     r"(?:-meeting transcript$)|(?:^\d{1,2}\s+\w+\s+\d{4}(?:,\s*\d{1,2}:\d{2}(?:am|pm))?$)|(?:^\d+m\s+\d+s$)|(?:started transcription\.?$)|(?:stopped transcription\.?$)",
@@ -44,7 +51,15 @@ INLINE_ACTION_HEADER_RE = re.compile(r"^(?P<header>(?:actions?|next steps|follow
 INLINE_ACTION_HEADER_SEARCH_RE = re.compile(r"(?P<header>(?:actions?|next steps|follow ups?|action items)(?:\s+before\s+[^:]+)?):\s*(?P<tail>.*)$", re.IGNORECASE)
 QUESTION_RE = re.compile(r"\?$")
 DEADLINE_RE = re.compile(
-    r"\b(?:tomorrow|today|next week|this afternoon|before [A-Z][a-z]+|by [A-Z][a-z]+|end of quarter|when available|before friday|before the webinar)\b",
+    r"\b(?:"
+    r"today|tomorrow|this afternoon|this morning|this evening|"
+    r"this week|next week|next month|next sprint|"
+    r"end of day|end of week|end of month|end of quarter|"
+    r"eod|cob|cop|close of play|when available|"
+    r"before the webinar|before [A-Z][a-z]+|by [A-Z][a-z]+|"
+    r"(?:by|before)\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:\s+(?:morning|afternoon|evening|noon|eod|cob|cop))?|"
+    r"(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:\s+(?:morning|afternoon|evening|noon|eod|cob|cop))?"
+    r")\b",
     re.IGNORECASE,
 )
 FINALISER_RE = re.compile(r"^(?:we['’]?ll|we will)\s+(?:pursue|go with|proceed with)\b", re.IGNORECASE)
@@ -258,18 +273,59 @@ def clean_transcript_text(text: str) -> str:
             continue
         if METADATA_RE.search(line) or re.search(r"\b(?:started|stopped) transcription\.?$", line, flags=re.IGNORECASE):
             continue
-        kept.append(raw_line)
+        line = re.sub(r"^[\u2022\u2023\u25E6\u2043\-\*]\s+", "", line)
+        line = re.sub(r"\s+", " ", line).strip()
+        if not line:
+            continue
+        kept.append(line)
     return "\n".join(kept)
 
 
 def timestamp_to_seconds(timestamp: str) -> int:
     if not timestamp or ":" not in timestamp:
-        return 10**9
-    minutes, seconds = timestamp.split(":", 1)
+        if "." in timestamp:
+            timestamp = timestamp.replace(".", ":")
+        else:
+            return 10**9
+    normalized = timestamp.strip().lower().replace(".", ":")
+    normalized = re.sub(r"\s*(am|pm)$", "", normalized)
+    parts = normalized.split(":")
     try:
-        return int(minutes) * 60 + int(seconds)
+        if len(parts) == 2:
+            minutes, seconds = parts
+            return int(minutes) * 60 + int(seconds)
+        if len(parts) == 3:
+            hours, minutes, seconds = parts
+            return int(hours) * 3600 + int(minutes) * 60 + int(seconds)
+        return 10**9
     except ValueError:
         return 10**9
+
+
+def normalize_timestamp_value(timestamp: str) -> str:
+    cleaned = normalize_text_fragment(timestamp).strip()
+    if not cleaned:
+        return ""
+    cleaned = re.sub(r"\s+", " ", cleaned.lower())
+    cleaned = cleaned.replace(".", ":")
+    match = re.match(r"^(?P<core>\d{1,2}:\d{2}(?::\d{2})?)(?:\s*(?P<ampm>am|pm))?$", cleaned)
+    if not match:
+        return timestamp.strip()
+    core = match.group("core")
+    ampm = match.group("ampm")
+    return f"{core} {ampm}" if ampm else core
+
+
+def parse_turn_line(line: str) -> tuple[str, str, str] | None:
+    for pattern in (TURN_RE, HYPHEN_TURN_RE):
+        match = pattern.match(line)
+        if match:
+            return (
+                match.group("speaker").strip(),
+                normalize_timestamp_value(match.group("timestamp").strip()),
+                match.group("tail").strip(),
+            )
+    return None
 
 
 def normalize_discussion_key(text: str) -> str:
@@ -512,13 +568,17 @@ def parse_numeric_turns(text: str) -> list[dict[str, str]]:
     turns: list[dict[str, str]] = []
     current: dict[str, str] | None = None
     action_block = False
+    pending_speaker: str | None = None
+    pending_timestamp: str = ""
 
     def flush_current() -> None:
-        nonlocal current
+        nonlocal current, pending_speaker, pending_timestamp
         if current and current.get("text", "").strip():
             current["text"] = current["text"].strip()
             turns.append(current)
         current = None
+        pending_speaker = None
+        pending_timestamp = ""
 
     for raw_line in lines:
         line = raw_line.strip()
@@ -530,21 +590,31 @@ def parse_numeric_turns(text: str) -> list[dict[str, str]]:
             flush_current()
             action_block = True
             continue
-        timestamp_match = TURN_RE.match(line)
+        parsed_turn = parse_turn_line(line)
         colon_match = COLON_TURN_RE.match(line)
-        if timestamp_match:
+        speaker_only_match = SPEAKER_ONLY_RE.match(line)
+        timestamp_only_match = TIMESTAMP_ONLY_RE.match(line)
+        if parsed_turn:
             flush_current()
-            tail = timestamp_match.group("tail").strip()
+            speaker, timestamp, tail = parsed_turn
             if INLINE_ACTION_HEADER_RE.match(tail):
                 action_block = True
                 current = None
                 continue
             current = {
-                "speaker": timestamp_match.group("speaker").strip(),
-                "timestamp": timestamp_match.group("timestamp").strip(),
+                "speaker": speaker,
+                "timestamp": timestamp,
                 "text": tail,
             }
             action_block = False
+            continue
+        if pending_speaker and timestamp_only_match:
+            pending_timestamp = normalize_timestamp_value(timestamp_only_match.group("timestamp").strip())
+            current = {
+                "speaker": pending_speaker,
+                "timestamp": pending_timestamp,
+                "text": "",
+            }
             continue
         if colon_match and not action_block:
             if colon_match.group("speaker").strip() in METADATA_SPEAKERS:
@@ -558,7 +628,36 @@ def parse_numeric_turns(text: str) -> list[dict[str, str]]:
                 "text": colon_match.group("tail").strip(),
             }
             continue
+        if (
+            speaker_only_match
+            and not action_block
+            and line not in METADATA_SPEAKERS
+            and current is None
+        ):
+            speaker_candidate = speaker_only_match.group("speaker").strip()
+            speaker_tokens = tokenize(speaker_candidate)
+            if (
+                not speaker_tokens
+                or len(speaker_tokens) == 1 and speaker_tokens[0] in LOW_CONTENT_PHRASES
+                or line.endswith((".", "!", "?"))
+            ):
+                if current is not None:
+                    current["text"] = (current["text"] + " " + line).strip()
+                continue
+            flush_current()
+            pending_speaker = speaker_candidate
+            pending_timestamp = ""
+            continue
         if action_block:
+            continue
+        if pending_speaker and current is None:
+            current = {
+                "speaker": pending_speaker,
+                "timestamp": pending_timestamp,
+                "text": line,
+            }
+            pending_speaker = None
+            pending_timestamp = ""
             continue
         if current is not None:
             current["text"] = (current["text"] + " " + line).strip()
@@ -888,6 +987,9 @@ def normalize_deadline_text(text: str) -> str:
     cleaned = normalize_text_fragment(text).strip()
     if not cleaned:
         return ""
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    for upper in ("EOD", "COB", "COP"):
+        cleaned = re.sub(rf"\b{upper.lower()}\b", upper, cleaned, flags=re.IGNORECASE)
     return cleaned[:1].upper() + cleaned[1:]
 
 
@@ -900,6 +1002,7 @@ def resolve_relative_deadline(deadline: str, meeting_date: str) -> str:
     except ValueError:
         return cleaned
     lowered = cleaned.lower()
+    normalized = re.sub(r"^(?:by|before)\s+", "", lowered).strip()
     weekday_map = {
         "monday": 0,
         "tuesday": 1,
@@ -909,6 +1012,18 @@ def resolve_relative_deadline(deadline: str, meeting_date: str) -> str:
         "saturday": 5,
         "sunday": 6,
     }
+    weekday_with_modifier = re.match(
+        r"^(?P<day>monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:\s+(?P<modifier>morning|afternoon|evening|noon|eod|cob|cop))?$",
+        normalized,
+    )
+    if weekday_with_modifier and not lowered.startswith(("by ", "before ")):
+        label = weekday_with_modifier.group("day")
+        weekday = weekday_map[label]
+        delta = (weekday - meeting_dt.weekday()) % 7
+        if delta == 0:
+            delta = 7
+        target = meeting_dt + dt.timedelta(days=delta)
+        return target.strftime("%d %B %Y")
     for label, weekday in weekday_map.items():
         if lowered in {label, f"by {label}", f"before {label}"}:
             delta = (weekday - meeting_dt.weekday()) % 7
@@ -924,6 +1039,29 @@ def resolve_relative_deadline(deadline: str, meeting_date: str) -> str:
         return meeting_dt.strftime("%d %B %Y")
     if lowered == "tomorrow":
         return (meeting_dt + dt.timedelta(days=1)).strftime("%d %B %Y")
+    if lowered in {"this week", "end of week"}:
+        friday_delta = max(0, 4 - meeting_dt.weekday())
+        target = meeting_dt + dt.timedelta(days=friday_delta)
+        return target.strftime("%d %B %Y")
+    if lowered == "next week":
+        next_monday = meeting_dt + dt.timedelta(days=(7 - meeting_dt.weekday()) % 7 or 7)
+        return next_monday.strftime("%d %B %Y")
+    if lowered == "next month":
+        year = meeting_dt.year + (1 if meeting_dt.month == 12 else 0)
+        month = 1 if meeting_dt.month == 12 else meeting_dt.month + 1
+        return dt.date(year, month, 1).strftime("%d %B %Y")
+    if lowered == "end of month":
+        year = meeting_dt.year + (1 if meeting_dt.month == 12 else 0)
+        month = 1 if meeting_dt.month == 12 else meeting_dt.month + 1
+        target = dt.date(year, month, 1) - dt.timedelta(days=1)
+        return target.strftime("%d %B %Y")
+    if lowered == "end of quarter":
+        quarter_end_month = ((meeting_dt.month - 1) // 3 + 1) * 3
+        if quarter_end_month == 12:
+            target = dt.date(meeting_dt.year + 1, 1, 1) - dt.timedelta(days=1)
+        else:
+            target = dt.date(meeting_dt.year, quarter_end_month + 1, 1) - dt.timedelta(days=1)
+        return target.strftime("%d %B %Y")
     return cleaned
 
 
@@ -3181,7 +3319,7 @@ def augment_general_outputs(
 
 
 def looks_like_plain_analytics_review(text: str, turns: list[dict[str, str]]) -> bool:
-    if turns:
+    if turns and (any(turn.get("timestamp") for turn in turns) or len(turns) > 3):
         return False
     lowered = normalize_text_fragment(text).lower()
     required_markers = (
