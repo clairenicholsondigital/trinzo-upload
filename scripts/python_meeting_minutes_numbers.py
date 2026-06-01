@@ -276,6 +276,10 @@ def normalize_discussion_key(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
 
 
+def evidence_count(evidence: list[dict[str, Any]] | None) -> int:
+    return len(evidence or [])
+
+
 def is_malformed_discussion_point(text: str) -> bool:
     lowered = normalize_text_fragment(text).lower()
     return any(lowered.startswith(prefix) for prefix in MALFORMED_DISCUSSION_PREFIXES)
@@ -342,6 +346,53 @@ def is_presentation_rehearsal_speech(text: str) -> bool:
             "keeping it educational", "during the project", "throughout the session",
         )
     )
+
+
+def is_generic_weak_action_text(text: str) -> bool:
+    lowered = normalize_text_fragment(text).lower().rstrip(".!?")
+    if lowered in {
+        "do that", "do this", "handle it", "handle that", "look into it", "look into that",
+        "take that", "take this", "pick that up", "pick this up", "own that", "own this",
+        "review it", "review that", "check it", "check that", "fix it", "fix that",
+    }:
+        return True
+    meaningful = tokenize(lowered)
+    return bool(re.match(r"^(?:do|handle|look|take|pick|own|review|check|fix|send|share)\b", lowered)) and bool(re.search(r"\b(?:it|that|them|those)\b", lowered)) and len(meaningful) <= 4
+
+
+def should_abstain_action_item(item: dict[str, Any]) -> tuple[bool, str]:
+    action_text = normalize_text_fragment(item.get("meetingActionPoint", ""))
+    owner = normalize_text_fragment(item.get("meetingActionPointOwner", ""))
+    deadline = normalize_text_fragment(item.get("meetingActionPointDeadline", ""))
+    confidence = float(item.get("actionConfidence", 0.0))
+    evidence = item.get("_evidence", [])
+    if contains_noise_or_banter(action_text):
+        return True, "noise_or_banter"
+    if len(tokenize(action_text)) < 2:
+        return True, "too_short"
+    if is_generic_weak_action_text(action_text) and confidence < 0.9:
+        return True, "generic_pronoun_action"
+    if (
+        owner == "Owner not specified"
+        and not deadline
+        and confidence < 0.7
+        and evidence_count(evidence) <= 1
+        and len(tokenize(action_text)) <= 4
+    ):
+        return True, "ownerless_low_evidence_action"
+    return False, ""
+
+
+def should_abstain_decision_detail(item: dict[str, Any]) -> tuple[bool, str]:
+    decision_text = normalize_text_fragment(item.get("decision", ""))
+    confidence = float(item.get("decisionConfidence", 0.0))
+    evidence = item.get("_evidence", [])
+    lowered = decision_text.lower()
+    if any(term in lowered for term in ("maybe", "probably", "we'll see", "well see", "come back to it", "still deciding")):
+        return True, "uncertain_decision_language"
+    if confidence < 0.78 and evidence_count(evidence) < 2:
+        return True, "low_confidence_low_evidence_decision"
+    return False, ""
 
 
 def contains_rejection_language(text: str) -> bool:
@@ -1093,6 +1144,27 @@ def thread_can_accept_follow_up(thread: dict[str, Any], index: int, max_gap: int
     return thread["state"] in {"open", "rejected_pending"} and index - thread["openedAt"] <= max_gap
 
 
+def thread_can_accept_long_range_follow_up(
+    thread: dict[str, Any],
+    action_text: str,
+    index: int,
+    max_gap: int = 10,
+) -> bool:
+    if thread["state"] not in {"open", "rejected_pending"}:
+        return False
+    gap = index - thread["openedAt"]
+    if gap <= 4:
+        return True
+    if gap > max_gap:
+        return False
+    thread_tokens = action_topic_tokens(thread["action"])
+    action_tokens = action_topic_tokens(action_text)
+    if len(thread_tokens) < 2 or len(action_tokens) < 2:
+        return False
+    overlap = thread_tokens & action_tokens
+    return len(overlap) >= 2 or cosine_similarity(Counter(thread_tokens), Counter(action_tokens)) >= 0.52
+
+
 def select_recent_open_thread(
     threads: list[dict[str, Any]],
     index: int,
@@ -1123,6 +1195,13 @@ def select_matching_action_thread(
         if thread["kind"] not in {"request", "ownership", "responsibility", "issue"}:
             continue
         if not thread_can_accept_follow_up(thread, index):
+            continue
+        if actions_overlap(thread["action"], action_text):
+            return thread
+    for thread in reversed(threads):
+        if thread["kind"] not in {"request", "ownership", "responsibility", "issue"}:
+            continue
+        if not thread_can_accept_long_range_follow_up(thread, action_text, index):
             continue
         if actions_overlap(thread["action"], action_text):
             return thread
@@ -3318,6 +3397,23 @@ def analyse(text: str) -> dict[str, Any]:
         }
         for action, owner, deadline, confidence, evidence in deduped_actions.values()
     ]
+    abstained_actions: list[dict[str, Any]] = []
+    retained_actions: list[dict[str, Any]] = []
+    for item in structured_actions:
+        should_abstain, reason = should_abstain_action_item(item)
+        if should_abstain:
+            abstained_actions.append(
+                {
+                    "meetingActionPoint": item["meetingActionPoint"],
+                    "meetingActionPointOwner": item["meetingActionPointOwner"],
+                    "meetingActionPointDeadline": item["meetingActionPointDeadline"],
+                    "actionConfidence": item["actionConfidence"],
+                    "abstainedReason": reason,
+                }
+            )
+            continue
+        retained_actions.append(item)
+    structured_actions = retained_actions
 
     decisions = intermediate["decisions"]
     decision_details = intermediate["decisionDetails"]
@@ -3325,6 +3421,24 @@ def analyse(text: str) -> dict[str, Any]:
     decisions = [canonicalize_supplier_decision_text(decision) for decision in decisions]
     for item in decision_details:
         item["decision"] = canonicalize_supplier_decision_text(item["decision"])
+    abstained_decisions: list[dict[str, Any]] = []
+    retained_decision_details: list[dict[str, Any]] = []
+    retained_decisions: list[str] = []
+    for item in decision_details:
+        should_abstain, reason = should_abstain_decision_detail(item)
+        if should_abstain:
+            abstained_decisions.append(
+                {
+                    "decision": item["decision"],
+                    "decisionConfidence": item["decisionConfidence"],
+                    "abstainedReason": reason,
+                }
+            )
+            continue
+        retained_decision_details.append(item)
+        retained_decisions.append(item["decision"])
+    decision_details = retained_decision_details
+    decisions = retained_decisions
     predicted_meeting_type = intermediate["meetingType"]
     decision_overlap_keys = {normalized_decision_overlap_key(decision) for decision in decisions}
     if decision_overlap_keys:
@@ -3551,6 +3665,8 @@ def analyse(text: str) -> dict[str, Any]:
         "winningDecisionClusters": decision_debug["winningDecisionClusters"],
         "decisionTopicGraphs": decision_debug.get("decisionTopicGraphs", []),
         "rejectedCompetingDecisions": decision_debug["rejectedCompetingDecisions"],
+        "abstainedActions": abstained_actions,
+        "abstainedDecisions": abstained_decisions,
         "suppressedRejectedActions": suppressed_rejected_actions,
         "statusReviewPoints": [item["text"] for item in status_review_points],
         "statusReviewWorkstreams": status_review_workstreams,
