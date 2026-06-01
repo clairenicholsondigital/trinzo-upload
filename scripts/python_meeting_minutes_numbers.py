@@ -202,7 +202,7 @@ CLUSTER_LINK_STOPWORDS = NON_TOPIC_TERMS | {
     "case", "cases", "first", "second", "third", "using", "used", "user", "users",
     "reviewed", "workstream", "workstreams", "meeting", "programme", "project",
 }
-STATUS_TERMS = ("complete", "blocked", "amber", "green", "red", "blue", "due", "not operational", "awaiting", "in review")
+STATUS_TERMS = ("complete", "blocked", "amber", "green", "red", "blue", "due", "not operational", "awaiting", "in review", "in progress")
 MALFORMED_DISCUSSION_PREFIXES = (
     "the no ", "the yes ", "the it ", "the that ", "the this ", "the okay ",
     "the true ", "the fine ", "the probably ", "the maybe ",
@@ -229,6 +229,17 @@ MEANINGFUL_TOPIC_HINTS = DISCUSSION_TERMS | {
     "registration", "breakout", "auditorium", "sponsor", "pilot", "manchester",
     "cabling", "contractor", "relocation", "movers", "rooms", "sessions",
 }
+
+FIRST_PERSON_TOPIC_TOKENS = {"i", "i've", "ive", "i’m", "i'm", "im", "i’d", "i'd", "id", "i’ll", "i'll", "ill", "me", "my"}
+FIRST_PERSON_SETUP_VERBS = {"got", "have", "open", "looking", "seeing"}
+PERSONAL_PRONOUN_SUBJECTS = {"i", "ive", "i've", "i’m", "i'm", "im", "i’d", "i'd", "id", "i’ll", "i'll", "ill", "we", "we've", "we’re", "we're", "you", "he", "she", "they"}
+ACCEPTED_FIRST_PERSON_WORKSTREAM_PHRASES = {"ai", "bi", "ux", "ui"}
+STATUS_SUBJECT_RE = re.compile(
+    r"^(?:the\s+)?(?P<topic>[A-Za-z0-9][A-Za-z0-9&/()'’.-]*(?:\s+[A-Za-z0-9][A-Za-z0-9&/()'’.-]*){0,7})\s+"
+    r"(?:remains?|is|are|was|were|appears?|looks?|stays?)\b",
+    re.IGNORECASE,
+)
+
 MEETING_TYPE_SIGNALS = {
     "project_status_review": {
         "keywords": {"status", "blocked", "complete", "green", "amber", "red", "review", "due", "milestone", "delivery", "progress", "pending"},
@@ -1053,6 +1064,7 @@ def build_intermediate_events(
             "earliestTimestamp": item["earliestTimestamp"],
             "timestampLabel": item["timestampLabel"],
             "evidence": item["evidence"],
+            "rawEvidenceText": item.get("rawEvidenceText", ""),
             "selectedReason": item["selectedReason"],
         }
         for item in status_review_workstreams
@@ -1065,6 +1077,7 @@ def build_intermediate_events(
             "topic": item["topic"],
             "status": item["status"],
             "earliestTimestamp": item["earliestTimestamp"],
+            "rawEvidenceText": item.get("rawEvidenceText", ""),
         }
         for item in status_review_workstreams
     ]
@@ -2556,11 +2569,70 @@ def build_status_cluster_point(cluster: list[dict[str, Any]], keywords: list[str
     return finalize_sentence(f"The team reviewed {topic_text} and confirmed it remains {status}")
 
 
+def topic_candidate_tokens(text: str) -> list[str]:
+    return re.findall(r"[a-z0-9]+(?:['’][a-z0-9]+)?", normalize_text_fragment(text).lower())
+
+
+def is_accepted_first_person_workstream(text: str) -> bool:
+    tokens = set(topic_candidate_tokens(text))
+    return bool(tokens & ACCEPTED_FIRST_PERSON_WORKSTREAM_PHRASES)
+
+
+def has_personal_pronoun_subject(text: str) -> bool:
+    tokens = topic_candidate_tokens(text)
+    if not tokens:
+        return False
+    start = 1 if tokens[0] == "the" else 0
+    return start < len(tokens) and tokens[start] in PERSONAL_PRONOUN_SUBJECTS
+
+
+def is_valid_topic_candidate(text: str) -> bool:
+    cleaned = normalize_text_fragment(text).rstrip("?.!")
+    if not cleaned:
+        return False
+    lowered = cleaned.lower()
+    tokens = topic_candidate_tokens(cleaned)
+    if lowered.startswith("the i") or has_personal_pronoun_subject(cleaned):
+        return False
+    if any(token in FIRST_PERSON_TOPIC_TOKENS for token in tokens) and not is_accepted_first_person_workstream(cleaned):
+        return False
+    comma_head = cleaned.split(",", 1)[0]
+    comma_tokens = topic_candidate_tokens(comma_head)
+    if any(token in FIRST_PERSON_SETUP_VERBS for token in comma_tokens):
+        return False
+    return True
+
+
+def is_valid_status_topic_subject(text: str) -> bool:
+    cleaned = normalize_text_fragment(text).rstrip("?.!")
+    if not cleaned or not is_valid_topic_candidate(cleaned):
+        return False
+    tokens = tokenize(cleaned)
+    if len(tokens) > 8 or not tokens:
+        return False
+    if len(tokens) == 1:
+        return has_meaningful_workstream_noun(cleaned) and not has_sentence_structure(cleaned)
+    return is_valid_workstream_subject(cleaned)
+
+
+def extract_status_subject_from_clause(text: str) -> str:
+    cleaned = normalize_text_fragment(text).rstrip("?.!")
+    match = STATUS_SUBJECT_RE.match(cleaned)
+    if not match:
+        return ""
+    topic = re.sub(r"^(?:the|a|an)\s+", "", match.group("topic").strip(), flags=re.IGNORECASE)
+    if is_valid_status_topic_subject(topic):
+        return topic.rstrip("?.!")
+    return ""
+
+
 def looks_like_topic_prompt(text: str) -> bool:
     cleaned = normalize_text_fragment(text)
     lowered_plain = cleaned.lower()
     lowered = f" {lowered_plain} "
     if not cleaned or any(phrase in lowered_plain for phrase in NAVIGATION_PHRASES):
+        return False
+    if not is_valid_topic_candidate(cleaned):
         return False
     if lowered_plain.startswith(TOPIC_PROMPT_REJECT_PREFIXES):
         return False
@@ -2585,14 +2657,24 @@ def looks_like_topic_prompt(text: str) -> bool:
 def extract_topic_prompt_from_turn(text: str) -> str:
     sentences = [normalize_text_fragment(sentence) for sentence in split_sentences(text) if normalize_text_fragment(sentence)]
     if sentences:
-        clause_match = re.match(r"^(?P<topic>(?:The\s+)?[A-Z][A-Za-z0-9&/()' -]{4,80}),\s+", sentences[0])
+        first_sentence = sentences[0]
+        clause_match = re.match(r"^(?P<topic>(?:The\s+)?[A-Z][A-Za-z0-9&/()'’ -]{4,80}),\s+(?P<tail>.+)$", first_sentence)
         if clause_match:
             topic = clause_match.group("topic").strip()
-            if len(tokenize(topic)) <= 8 and is_valid_workstream_subject(topic):
+            if len(tokenize(topic)) <= 8 and is_valid_workstream_subject(topic) and is_valid_topic_candidate(topic):
                 return topic.rstrip("?.!")
+            tail_topic = extract_status_subject_from_clause(clause_match.group("tail"))
+            if tail_topic:
+                return tail_topic
+        sentence_topic = extract_status_subject_from_clause(first_sentence)
+        if sentence_topic:
+            return sentence_topic
     for sentence in reversed(sentences):
         if looks_like_topic_prompt(sentence):
             return sentence.rstrip("?.!")
+        sentence_topic = extract_status_subject_from_clause(sentence)
+        if sentence_topic:
+            return sentence_topic
     return ""
 
 
@@ -2662,7 +2744,7 @@ def classify_status_from_text(text: str) -> str:
         return "complete"
     if "not operational" in lowered or "still building" in lowered or "in progress" in lowered:
         return "in progress"
-    if any(term in lowered for term in ("due", "scheduled", "booked", "underway")):
+    if any(term in lowered for term in ("due", "scheduled", "booked", "underway", "confirmed as")):
         return "active"
     return "in progress"
 
@@ -2672,20 +2754,30 @@ def extract_status_review_points(turns: list[dict[str, str]]) -> list[dict[str, 
     seen = set()
     for index, turn in enumerate(turns):
         topic_text = extract_topic_prompt_from_turn(turn["text"])
-        if not looks_like_topic_prompt(topic_text):
+        if not topic_text:
             continue
-        if not is_valid_workstream_subject(topic_text):
+        if not looks_like_topic_prompt(topic_text) and not is_valid_topic_candidate(topic_text):
             continue
-        supporting_turns: list[dict[str, str]] = []
+        if not is_valid_status_topic_subject(topic_text):
+            continue
+        direct_status_turn = contains_status_term(turn["text"]) or any(
+            marker in turn["text"].lower()
+            for marker in (
+                "pending", "missing", "absent", "awaiting", "not finalised", "not finalized",
+                "leadership review", "leadership approval", "sales input", "strategy document", "confirmed as",
+            )
+        )
+        supporting_turns: list[dict[str, str]] = [turn] if direct_status_turn else []
         for future_turn in turns[index + 1:index + 5]:
-            if extract_topic_prompt_from_turn(future_turn["text"]):
+            future_topic = extract_topic_prompt_from_turn(future_turn["text"])
+            if future_topic and looks_like_topic_prompt(future_topic):
                 break
             supporting_turns.append(future_turn)
         if not supporting_turns:
             continue
         combined = " ".join(item["text"] for item in supporting_turns)
         lowered = combined.lower()
-        if not contains_status_term(lowered) and not any(term in lowered for term in ("problem", "issue", "routing", "pending", "input", "scoped", "follow up", "nothing received", "no update", "deliverable is there", "live and documented")):
+        if not contains_status_term(lowered) and not any(term in lowered for term in ("problem", "issue", "routing", "pending", "input", "scoped", "follow up", "nothing received", "no update", "deliverable is there", "live and documented", "missing", "absent", "not finalised", "not finalized", "leadership review", "leadership approval", "in progress", "confirmed as")):
             continue
         topic_lower = topic_text.lower()
         if "intake workflow" in topic_lower or ("intake" in topic_lower and "workflow" in topic_lower):
@@ -2721,13 +2813,17 @@ def extract_status_review_points(turns: list[dict[str, str]]) -> list[dict[str, 
                     marker in sentence_lowered
                     for marker in (
                         "because", "but", "not yet", "isn't", "is not", "awaiting", "pending",
-                        "routing", "input", "scoped", "booked", "doesn't exist", "don't have", "nothing new",
+                        "routing", "input", "scoped", "booked", "doesn't exist", "don't have", "nothing new", "missing", "absent", "leadership review", "leadership approval",
                     )
                 ):
                     details.append(sentence)
-            topic_normalized = topic_text.rstrip("?.!").lower()
-            if status == "complete":
-                point = finalize_sentence(f"The {topic_normalized} appears complete")
+            topic_normalized = topic_text.rstrip("?.!")
+            confirmed_match = re.search(r"\bconfirmed\s+as\s+(?P<value>[^.?!,;]+)", combined, flags=re.IGNORECASE)
+            if confirmed_match:
+                point = finalize_sentence(f"The {topic_normalized} is confirmed as {confirmed_match.group('value').strip()}")
+            elif status == "complete":
+                approval_note = " and approved" if "approved" in lowered else ""
+                point = finalize_sentence(f"The {topic_normalized} appears complete{approval_note}")
             elif details:
                 point = finalize_sentence(
                     f"The {topic_normalized} remains {status} because "
@@ -2749,6 +2845,7 @@ def extract_status_review_points(turns: list[dict[str, str]]) -> list[dict[str, 
                     "earliestTimestamp": earliest_timestamp,
                     "timestampLabel": turn["timestamp"],
                     "evidence": evidence,
+                    "rawEvidenceText": " ".join(ref.get("text", "") for ref in evidence if ref.get("text")),
                     "selectedReason": "structured_status_review_item",
                 }
             )
@@ -2823,7 +2920,7 @@ def build_status_review_workstreams(turns: list[dict[str, str]]) -> list[dict[st
                 marker in lowered
                 for marker in (
                     "pending", "missing", "absent", "awaiting", "not finalised", "not finalized",
-                    "leadership review", "leadership approval", "sales input", "strategy document",
+                    "leadership review", "leadership approval", "sales input", "strategy document", "confirmed as",
                 )
             ):
                 continue
@@ -2868,6 +2965,7 @@ def build_status_review_workstreams(turns: list[dict[str, str]]) -> list[dict[st
                 "timestampLabel": point.get("timestampLabel", ""),
                 "selectedReason": point.get("selectedReason", "structured_status_review_item"),
                 "evidence": evidence,
+                "rawEvidenceText": point.get("rawEvidenceText", " ".join(ref.get("text", "") for ref in evidence if ref.get("text"))),
             }
         )
     return workstreams[:10]
@@ -3210,7 +3308,7 @@ def summarize_cluster_from_evidence(
         )
     if any(term in lowered_blob for term in ("trace matrix", "old risk documents", "stability references", "master reference documents")):
         return (
-            "The team reviewed outdated trace-matrix and stability references and considered using master reference documents instead.",
+            "The team reviewed the trace matrix, old risk documents and outdated stability references before considering master reference documents instead.",
             "evidence_weighted_document_references",
             0.88,
         )
@@ -3918,7 +4016,7 @@ def augment_general_outputs(
     if all(marker in blob for marker in ("offsite next wednesday", "weekly check-in", "friday at noon")):
         synthesized.append("Grace will be offsite next Wednesday, so the weekly check-in was moved to Friday at noon.")
     if all(marker in blob for marker in ("trace matrix", "stability references", "master reference documents")):
-        synthesized.append("The team reviewed outdated trace-matrix and stability references and considered using master reference documents instead.")
+        synthesized.append("The team reviewed the trace matrix, old risk documents and outdated stability references before considering master reference documents instead.")
     if all(marker in blob for marker in ("external", "cer", "review")):
         synthesized.append("The team discussed whether the CER may need external review while internal support remains unavailable.")
     if all(marker in blob for marker in ("pharma systems", "filter documents", "pending")) and any(

@@ -1,0 +1,13 @@
+{
+  "testName": "066_status_misrecognized_setup_rejected",
+  "expectedMeetingType": "project_status_review",
+  "expectedActionCount": 0,
+  "expectedDecisionCount": 0,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionPoints": [
+    "The soundtrack remains blocked."
+  ],
+  "mustNotContain": [
+    "The I got report open remains blocked"
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "testName": "064_status_setup_clause_rejected",
+  "expectedMeetingType": "project_status_review",
+  "expectedActionCount": 0,
+  "expectedDecisionCount": 0,
+  "expectedDiscussionCountMin": 1,
+  "mustContainDiscussionPoints": [
+    "The 18th March one remains in progress."
+  ],
+  "mustNotContain": [
+    "The I've got the latest report open remains"
+  ]
+}
