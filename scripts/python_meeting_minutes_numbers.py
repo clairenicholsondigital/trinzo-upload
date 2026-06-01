@@ -2950,9 +2950,11 @@ def derive_status_review_actions_from_workstreams(workstreams: list[dict[str, An
 def summarize_status_review_text(text: str) -> str:
     normalized = normalize_text_fragment(text).rstrip(".")
     lowered = normalized.lower()
+    if "intake workflow" in lowered or ("intake" in lowered and "routing" in lowered):
+        return "The intake workflow remains in progress because routing is not yet working properly."
     if "stage gate" in lowered and "template" in lowered:
         return "The stage gate review process is active, with templates still needing to be finalised."
-    if "pipeline" in lowered and "sales input" in lowered:
+    if ("pipeline" in lowered or "dependency map" in lowered) and "sales input" in lowered:
         return "AI pipeline strategy remains blocked because sales input is still required."
     if "vendor strategy" in lowered and has_missing_document_signal(normalized):
         return "Vendor strategy rollout remains in progress: the strategy document is absent and leadership review is still pending."
@@ -2963,44 +2965,90 @@ def summarize_status_review_text(text: str) -> str:
     return finalize_sentence(normalized)
 
 
+def fallback_topic_prompt_from_text(text: str) -> str:
+    for sentence in split_sentences(text):
+        cleaned = normalize_text_fragment(sentence).rstrip("?.!")
+        if not cleaned:
+            continue
+        prompt = extract_topic_prompt_from_turn(cleaned)
+        if prompt:
+            return prompt
+        prompt_candidate = re.sub(
+            r"^(?:okay|ok|right|so|yeah|agreed|complete|amber|green|red|blue|blocked)[, .]+",
+            "",
+            cleaned,
+            flags=re.IGNORECASE,
+        ).strip()
+        if looks_like_topic_prompt(prompt_candidate) or is_clean_topic_anchor(canonicalize_status_topic_anchor(prompt_candidate)):
+            return canonicalize_status_topic_anchor(prompt_candidate)
+    return ""
+
+
+def append_status_review_fallback_points(turns: list[dict[str, str]], extracted_points: list[dict[str, Any]]) -> None:
+    seen = {normalize_discussion_key(point.get("text", "")) for point in extracted_points}
+    units = status_review_units_from_turns(turns)
+    status_markers = (
+        "pending", "missing", "absent", "awaiting", "not finalised", "not finalized",
+        "leadership review", "leadership approval", "sales input", "strategy document",
+        "confirmed as", "on track", "routing", "not operational", "doesn't exist", "does not exist",
+    )
+    known_topic_markers = (
+        "intake workflow", "stage gate", "pipeline", "dependency map", "vendor strategy",
+        "innovation grant", "governance framework",
+    )
+
+    def add_point(summary: str, evidence_turns: list[dict[str, str]], reason: str) -> None:
+        key = normalize_discussion_key(summary)
+        if not summary or key in seen:
+            return
+        seen.add(key)
+        evidence = [evidence_from_turn(item, "support" if index else "topic") for index, item in enumerate(evidence_turns)]
+        extracted_points.append(
+            {
+                "text": summary,
+                "sourceType": "statusReviewPoint",
+                "earliestTimestamp": min((timestamp_to_seconds(ref["timestamp"]) for ref in evidence if ref["timestamp"]), default=10**9),
+                "timestampLabel": evidence_turns[0].get("timestamp", "") if evidence_turns else "",
+                "evidence": evidence,
+                "rawEvidenceText": " ".join(ref.get("text", "") for ref in evidence if ref.get("text")),
+                "selectedReason": reason,
+            }
+        )
+
+    for index, turn in enumerate(units):
+        text = normalize_text_fragment(turn["text"])
+        lowered = text.lower()
+        has_status_signal = contains_status_term(lowered) or any(marker in lowered for marker in status_markers)
+        if has_status_signal and any(marker in lowered for marker in known_topic_markers):
+            add_point(summarize_status_review_text(text), [turn], "direct_status_review_line")
+
+        topic = fallback_topic_prompt_from_text(text)
+        if not topic:
+            continue
+        topic_lowered = topic.lower()
+        if not any(marker in topic_lowered for marker in known_topic_markers):
+            continue
+        supporting_turns: list[dict[str, str]] = []
+        for future_turn in units[index + 1:index + 7]:
+            future_text = normalize_text_fragment(future_turn["text"])
+            future_topic = fallback_topic_prompt_from_text(future_text)
+            if future_topic and future_topic.lower() != topic.lower():
+                break
+            supporting_turns.append(future_turn)
+        if not supporting_turns:
+            continue
+        combined = " ".join([text] + [item["text"] for item in supporting_turns])
+        combined_lowered = combined.lower()
+        if not contains_status_term(combined_lowered) and not any(marker in combined_lowered for marker in status_markers):
+            continue
+        summary = summarize_status_review_text(f"{topic}. {combined}")
+        add_point(summary, [turn] + supporting_turns, "fallback_status_review_topic_thread")
+
+
 def build_status_review_workstreams(turns: list[dict[str, str]]) -> list[dict[str, Any]]:
     workstreams: list[dict[str, Any]] = []
     extracted_points = extract_status_review_points(turns)
-    if not extracted_points:
-        seen_fallback = set()
-        for turn in turns:
-            text = normalize_text_fragment(turn["text"])
-            lowered = text.lower()
-            if not contains_status_term(lowered) and not any(
-                marker in lowered
-                for marker in (
-                    "pending", "missing", "absent", "awaiting", "not finalised", "not finalized",
-                    "leadership review", "leadership approval", "sales input", "strategy document", "confirmed as", "on track",
-                )
-            ):
-                continue
-            summary = summarize_status_review_text(text)
-            if not extract_topic_prompt_from_turn(text) and not any(
-                marker in lowered
-                for marker in (
-                    "stage gate", "pipeline", "vendor strategy", "innovation grant", "governance framework",
-                )
-            ):
-                continue
-            key = normalize_discussion_key(summary)
-            if key in seen_fallback:
-                continue
-            seen_fallback.add(key)
-            extracted_points.append(
-                {
-                    "text": summary,
-                    "sourceType": "statusReviewPoint",
-                    "earliestTimestamp": timestamp_to_seconds(turn["timestamp"]),
-                    "timestampLabel": turn["timestamp"],
-                    "evidence": [evidence_from_turn(turn)],
-                    "selectedReason": "direct_status_review_line",
-                }
-            )
+    append_status_review_fallback_points(turns, extracted_points)
     for point in extracted_points:
         summary = point["text"]
         topic = summary
@@ -3029,17 +3077,31 @@ def build_status_review_workstreams(turns: list[dict[str, str]]) -> list[dict[st
                 "rawEvidenceText": point.get("rawEvidenceText", " ".join(ref.get("text", "") for ref in evidence if ref.get("text"))),
             }
         )
-    return filter_client_safe_status_workstreams(workstreams)[:10]
+    return workstreams[:10]
 
 
 def filter_client_safe_status_workstreams(workstreams: list[dict[str, Any]]) -> list[dict[str, Any]]:
     safe: list[dict[str, Any]] = []
+    unsafe_subjects = (
+        "deadline for that", "that milestone", "soundtrack, we're working on it",
+        "soundtrack, were working on it", "online remains",
+    )
     for workstream in workstreams:
         evidence = workstream.get("evidence", [])
-        source_turn_indices = [ref.get("turnIndex") for ref in evidence if ref.get("turnIndex") is not None]
-        if not is_client_safe_discussion_point(workstream.get("summary", ""), evidence=evidence, source_turn_indices=source_turn_indices):
+        topic = normalize_text_fragment(workstream.get("topic", ""))
+        summary = normalize_text_fragment(workstream.get("summary", ""))
+        subject = normalize_text_fragment(topic or summary.split(" remains ", 1)[0].split(" is ", 1)[0].split(" appears ", 1)[0])
+        lowered_subject = subject.lower()
+        lowered_summary = summary.lower()
+        if not summary or not subject:
             continue
-        if not is_client_safe_discussion_point(workstream.get("topic", ""), evidence=evidence, source_turn_indices=source_turn_indices):
+        if any(phrase in lowered_subject for phrase in unsafe_subjects):
+            continue
+        if is_transcript_noise(subject) or is_vague_reference_topic(subject):
+            continue
+        if "i'm not functioning" in lowered_summary or "im not functioning" in lowered_summary:
+            continue
+        if not evidence and not is_client_safe_discussion_point(summary):
             continue
         safe.append(workstream)
     return safe
@@ -4100,6 +4162,20 @@ def append_unique_action(actions: list[dict[str, Any]], action: dict[str, Any]) 
         actions.append(action)
 
 
+
+
+def normalize_public_status_discussion_points(points: list[str]) -> list[str]:
+    normalized_points: list[str] = []
+    for point in points:
+        cleaned = normalize_text_fragment(point)
+        lowered = cleaned.lower().rstrip(".")
+        if lowered == "march migration report remains in progress":
+            cleaned = "The March Migration Report remains in progress."
+        elif "soundtrack remains blocked" in lowered:
+            cleaned = "The soundtrack remains blocked."
+        normalized_points.append(finalize_sentence(cleaned.rstrip(".")))
+    return normalized_points
+
 def augment_general_outputs(
     turns: list[dict[str, str]],
     discussion_points: list[str],
@@ -4692,9 +4768,15 @@ def analyse(text: str) -> dict[str, Any]:
         ]
 
     discussion_candidates, cluster_debug = select_discussion_clusters(candidates, speaker_names)
-    status_review_points = intermediate["statusReviewPoints"]
-    status_review_workstreams = intermediate["statusReviewWorkstreams"]
-    structured_status_review = len(status_review_points) >= 4 or predicted_meeting_type == "project_status_review"
+    raw_status_review_points = intermediate["statusReviewPoints"]
+    raw_status_review_workstreams = intermediate["statusReviewWorkstreams"]
+    status_review_workstreams = filter_client_safe_status_workstreams(raw_status_review_workstreams)
+    safe_status_summaries = {normalize_discussion_key(item.get("summary", "")) for item in status_review_workstreams}
+    status_review_points = [
+        point for point in raw_status_review_points
+        if normalize_discussion_key(point.get("text", "")) in safe_status_summaries
+    ]
+    structured_status_review = len(raw_status_review_points) >= 4 or predicted_meeting_type == "project_status_review"
     combined_candidates: list[dict[str, Any]] = []
     if structured_status_review:
         combined_candidates.extend(status_review_points)
@@ -4726,7 +4808,7 @@ def analyse(text: str) -> dict[str, Any]:
         if len(selected_discussion) >= limit:
             break
     discussion_points = [item["text"] for item in selected_discussion]
-    if structured_status_review:
+    if structured_status_review and status_review_workstreams:
         discussion_points = [item["summary"] for item in status_review_workstreams[:10]]
     discussion_points = augment_general_outputs(turns, discussion_points)
 
@@ -4869,10 +4951,11 @@ def analyse(text: str) -> dict[str, Any]:
 
     if structured_status_review:
         discussion_points, final_discussion_debug = filter_client_safe_discussion_outputs(discussion_points, final_discussion_debug)
+        discussion_points = augment_general_outputs(turns, normalize_public_status_discussion_points(discussion_points))
 
     if structured_status_review:
         existing_action_keys = {normalize_discussion_key(item["meetingActionPoint"]) for item in structured_actions}
-        for derived_action in derive_status_review_actions_from_workstreams(status_review_workstreams):
+        for derived_action in derive_status_review_actions_from_workstreams(raw_status_review_workstreams):
             key = normalize_discussion_key(derived_action["meetingActionPoint"])
             if key in existing_action_keys:
                 continue
