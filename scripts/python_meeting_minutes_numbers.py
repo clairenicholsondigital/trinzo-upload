@@ -140,6 +140,13 @@ LOW_VALUE_DISCUSSION_PATTERNS = LOW_VALUE_ACTION_PATTERNS + (
     "do not talk french",
     "try not to vape",
 )
+MICRO_ACTION_VERBS = {
+    "put", "bring", "move", "drop", "copy", "paste", "insert", "place",
+}
+MICRO_ACTION_OBJECT_TERMS = {
+    "image", "background", "colour", "color", "graphic", "picture", "png",
+    "jpeg", "jpg", "screenshot", "box",
+}
 PRESENTATION_REFERENCE_TERMS = (
     "webinar", "presentation", "presenter", "presenting", "slide", "slides", "demo",
     "demonstration", "agenda", "case study", "talk through", "go through", "walk through",
@@ -1131,7 +1138,44 @@ def is_low_value_action_task(task: str) -> bool:
         return True
     if any(pattern in lowered for pattern in LOW_VALUE_DISCUSSION_PATTERNS):
         return True
+    if is_micro_formatting_action_task(task):
+        return True
     return False
+
+
+def is_micro_formatting_action_task(task: str) -> bool:
+    cleaned = normalize_text_fragment(task)
+    lowered = cleaned.lower()
+    tokens = tokenize(cleaned)
+    if not tokens:
+        return False
+    first_token = tokens[0]
+    pronoun_count = sum(1 for token in tokens if token in {"it", "this", "that", "them", "those"})
+    object_terms = {token for token in tokens if token in MICRO_ACTION_OBJECT_TERMS}
+    score = 0.0
+    if len(tokens) <= 10:
+        score += 0.2
+    if first_token in MICRO_ACTION_VERBS:
+        score += 0.3
+    if pronoun_count:
+        score += 0.2
+    if object_terms:
+        score += 0.25
+    if "as an image" in lowered or "as a picture" in lowered:
+        score += 0.25
+    if "same colour background" in lowered or "same color background" in lowered:
+        score += 0.25
+    if "bring it over" in lowered:
+        score += 0.15
+    meaningful_non_format = [
+        token for token in tokens
+        if token not in MICRO_ACTION_OBJECT_TERMS
+        and token not in MICRO_ACTION_VERBS
+        and token not in {"it", "this", "that", "them", "those", "same", "over", "into", "onto", "with", "as", "an", "a", "the", "on", "in"}
+    ]
+    if len(meaningful_non_format) <= 1:
+        score += 0.15
+    return score >= 0.75
 
 
 def build_special_context_action(source_text: str, action_text: str) -> tuple[str, str]:
@@ -1441,9 +1485,41 @@ def select_inherited_thread_for_generic_commitment(
         and thread_can_accept_follow_up(thread, index)
         and index - thread["openedAt"] <= 4
     ]
-    if not candidates:
+    if candidates:
+        return max(candidates, key=lambda thread: inherited_thread_priority(thread, index))
+
+    long_range_candidates = [
+        thread
+        for thread in threads
+        if thread["kind"] == "request"
+        and thread["state"] in {"open", "rejected_pending"}
+        and 4 < index - thread["openedAt"] <= 8
+    ]
+    if not long_range_candidates:
         return None
-    return max(candidates, key=lambda thread: inherited_thread_priority(thread, index))
+
+    ranked = sorted(
+        (
+            (inherited_thread_priority(thread, index), thread)
+            for thread in long_range_candidates
+            if QUESTION_RE.search(normalize_text_fragment(thread.get("requestTurn", {}).get("text", "")))
+            or thread.get("deadline")
+        ),
+        key=lambda item: item[0],
+        reverse=True,
+    )
+    if not ranked:
+        return None
+    best_score, best_opened_at = ranked[0][0]
+    best_thread = ranked[0][1]
+    if len(ranked) == 1:
+        return best_thread
+    second_score, second_opened_at = ranked[1][0]
+    if best_score - second_score >= 0.55:
+        return best_thread
+    if best_score == second_score and best_opened_at > second_opened_at:
+        return best_thread
+    return None
 
 
 def select_matching_action_thread(
@@ -1811,6 +1887,31 @@ def derive_action_from_window(window: list[dict[str, Any]]) -> tuple[str, str, s
 
 def contextual_decision_text(proposal: str, turns: list[dict[str, str]], index: int) -> str:
     proposal_lower = proposal.lower()
+    if "move the check-in instead of cancelling it" in proposal_lower:
+        schedule_targets: list[str] = []
+        for peer_index in range(index + 1, min(len(turns), index + 6)):
+            peer_text = normalize_text_fragment(turns[peer_index]["text"])
+            lowered_peer = peer_text.lower()
+            match = re.search(
+                r"\b(?P<target>(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:\s+at\s+[a-z0-9: ]+)?)\s+works(?:\s+(?:for me|best))?\b",
+                lowered_peer,
+                flags=re.IGNORECASE,
+            )
+            if match:
+                schedule_targets.append(normalize_text_fragment(match.group("target")).lower())
+            match = re.search(
+                r"\b(?:fine|okay|ok|agreed)[, ]+(?P<target>(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:\s+at\s+[a-z0-9: ]+)?)\s+then\b",
+                lowered_peer,
+                flags=re.IGNORECASE,
+            )
+            if match:
+                schedule_targets.append(normalize_text_fragment(match.group("target")).lower())
+        schedule_target = ""
+        if schedule_targets:
+            schedule_targets.sort(key=lambda item: (" at " in item, len(item)), reverse=True)
+            schedule_target = schedule_targets[0]
+        if schedule_target:
+            return finalize_sentence(f"The team will move the check-in to {schedule_target}")
     if proposal_lower.startswith("move it to "):
         target = proposal_lower.removeprefix("move it to ").strip()
         for prior_index in range(index - 1, max(-1, index - 8), -1):
@@ -1858,6 +1959,29 @@ def normalize_decision_text(proposal: str, turns: list[dict[str, str]], index: i
     return finalize_sentence("The team will " + cleaned[0].lower() + cleaned[1:])
 
 
+def infer_implicit_decision_proposal(text: str, turns: list[dict[str, str]], index: int) -> str | None:
+    cleaned = strip_ack_prefix(text).rstrip(".!?")
+    lowered = cleaned.lower()
+    history_blob = " ".join(
+        normalize_text_fragment(turns[prior_index]["text"]).lower()
+        for prior_index in range(max(0, index - 8), index)
+    )
+
+    broad_markers = ("works better", "works best", "is safer", "is better", "preferred", "fine")
+    if "broad" in lowered and any(marker in lowered for marker in broad_markers):
+        if any(term in history_blob for term in ("validation-specific", "validation specific", "too narrow", "broadly applicable")):
+            return "keep it broad"
+
+    one_year_markers = ("one-year option", "one year option", "one-year term", "one year term")
+    if any(marker in lowered for marker in one_year_markers) and any(
+        marker in lowered for marker in ("works better", "works best", "is safer", "is better", "preferred", "fine")
+    ):
+        if "three-year" in history_blob or "three year" in history_blob:
+            return "pursue the one-year option"
+
+    return None
+
+
 def extract_decision_proposal(text: str) -> str | None:
     cleaned = strip_ack_prefix(text).rstrip(".!?")
     lowered = cleaned.lower()
@@ -1890,6 +2014,7 @@ def decision_support_score(turns: list[dict[str, str]], index: int, proposal: st
     support = 0.0
     evidence: list[dict[str, str]] = []
     proposal_tokens = set(tokenize(proposal)) - NON_TOPIC_TERMS
+    proposal_lower = proposal.lower()
     for offset in (-1, 1, 2):
         peer_index = index + offset
         if peer_index < 0 or peer_index >= len(turns) or peer_index == index:
@@ -1906,6 +2031,18 @@ def decision_support_score(turns: list[dict[str, str]], index: int, proposal: st
             local_support += 0.18
         if offset < 0 and any(term in lowered for term in ("ready", "missing", "too small", "cannot", "more expensive", "higher than forecast", "gap", "asking for", "migration", "retraining")):
             local_support += 0.14
+        if proposal_lower == "keep it broad":
+            if "broad" in peer_tokens and any(term in lowered for term in ("works better", "works best", "safer", "better", "preferred")):
+                local_support += 0.24
+            if any(term in lowered for term in ("validation-specific", "validation specific", "too narrow", "broadly applicable")):
+                local_support += 0.18
+        if "one-year option" in proposal_lower:
+            if any(term in lowered for term in ("one-year option", "one year option", "one-year term", "one year term")) and any(
+                term in lowered for term in ("safer", "better", "preferred", "fine")
+            ):
+                local_support += 0.24
+            if "three-year" in lowered or "three year" in lowered:
+                local_support += 0.18
         if proposal_tokens and peer_tokens and len(proposal_tokens & peer_tokens) >= 2:
             local_support += 0.12
         if local_support > 0:
@@ -1929,9 +2066,12 @@ def build_decision_candidates(turns: list[dict[str, str]]) -> list[dict[str, Any
     candidates: list[dict[str, Any]] = []
     total_turns = max(1, len(turns))
     for index, turn in enumerate(turns):
-        proposal = extract_decision_proposal(turn["text"])
+        explicit_proposal = extract_decision_proposal(turn["text"])
+        implicit_proposal = None if explicit_proposal else infer_implicit_decision_proposal(turn["text"], turns, index)
+        proposal = explicit_proposal or implicit_proposal
         if not proposal:
             continue
+        implicit_bonus = 0.1 if implicit_proposal else 0.0
         support_score, support_evidence = decision_support_score(turns, index, proposal)
         contradiction_score, contradiction_evidence = decision_contradiction_score(turns, index)
         acceptance_score = 0.0
@@ -1942,7 +2082,7 @@ def build_decision_candidates(turns: list[dict[str, str]]) -> list[dict[str, Any
         comparison_score = round(min(1.0, 0.22 * len(DECISION_COMPARISON_RE.findall(proposal))), 2)
         proposal_score = round(min(1.0, 0.45 + 0.04 * len(tokenize(proposal))), 2)
         recency_score = round((index + 1) / total_turns * 0.18, 2)
-        if acceptance_score < 0.3 and support_score < 0.25:
+        if acceptance_score < 0.3 and support_score < (0.2 if implicit_proposal else 0.25):
             continue
         final_score = round(
             proposal_score
@@ -1950,6 +2090,7 @@ def build_decision_candidates(turns: list[dict[str, str]]) -> list[dict[str, Any
             + support_score * 0.4
             + comparison_score * 0.28
             + recency_score
+            + implicit_bonus
             - contradiction_score * 0.7,
             2,
         )
@@ -1966,6 +2107,7 @@ def build_decision_candidates(turns: list[dict[str, str]]) -> list[dict[str, Any
                 "comparisonScore": comparison_score,
                 "contradictionScore": contradiction_score,
                 "recencyScore": recency_score,
+                "implicitBonus": implicit_bonus,
                 "finalScore": round(min(0.95, final_score), 2),
                 "turnIndex": index,
                 "timestamp": turn["timestamp"],

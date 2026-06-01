@@ -77,6 +77,25 @@ Yeah, that's better.
 
         self.assertIn("The webinar should remain broad rather than validation-specific.", result["decisions"])
 
+    def test_implicit_broad_preference_becomes_decision(self):
+        transcript = """Validation webinar review
+
+6 June 2026
+
+Jack:
+The validation-specific version feels too narrow.
+
+Conor:
+Broad is probably safer.
+
+Ciara:
+Yeah, broad works better.
+"""
+
+        result = analyse(transcript)
+
+        self.assertIn("The webinar should remain broad rather than validation-specific.", result["decisions"])
+
     def test_later_decision_supersedes_earlier_same_topic(self):
         transcript = """Launch timing review
 
@@ -101,6 +120,51 @@ Yes, that's better.
         self.assertNotIn("The team will launch in July.", result["decisions"])
         self.assertIn("decisionTopicGraphs", result["numberExperimentDebug"])
         self.assertTrue(any(len(graph["nodes"]) >= 2 for graph in result["numberExperimentDebug"]["decisionTopicGraphs"]))
+
+    def test_implicit_one_year_option_becomes_decision(self):
+        transcript = """Supplier review
+
+6 June 2026
+
+Emma:
+The three-year term still feels too long.
+
+David:
+The one-year option is safer.
+
+Emma:
+Fine, one-year option then.
+"""
+
+        result = analyse(transcript)
+
+        self.assertIn("The team will pursue a one-year contract term rather than a three-year commitment.", result["decisions"])
+
+    def test_schedule_resolution_is_promoted_into_final_decision(self):
+        transcript = """Weekly check-in planning
+
+4 November 2026
+
+Grace:
+I am offsite next Wednesday so I will miss the usual weekly check-in.
+
+David:
+We should move the check-in instead of cancelling it.
+
+Emma:
+Friday works for me.
+
+David:
+Friday at noon works best.
+
+Grace:
+Fine, Friday at noon then.
+"""
+
+        result = analyse(transcript)
+
+        self.assertIn("the team will move the check-in to friday at noon.", [decision.lower() for decision in result["decisions"]])
+        self.assertNotIn("The team will move the check-in instead of cancelling it.", result["decisions"])
 
     def test_webinar_stress_test_extracts_actions(self):
         transcript = """Webinar Rehearsal Stress Test
@@ -295,6 +359,36 @@ Yes, I'll do that.
         index = result["meetingActionPoint"].index("Send the updated floor plan this afternoon.")
         self.assertEqual(result["meetingActionPointOwner"][index], "Nina")
 
+    def test_generic_commitment_can_resolve_longer_gap_strong_request_thread(self):
+        transcript = """Delayed follow-up
+
+22 August 2026
+
+Rachel:
+Can you send the updated floor plan this afternoon?
+
+Nina:
+The supplier call is still running over.
+
+Tom:
+We still need the revised timings for the venue.
+
+Emma:
+The registration page is ready now.
+
+David:
+Finance has already signed off the travel line.
+
+Nina:
+Yes, I'll do that.
+"""
+
+        result = analyse(transcript)
+
+        self.assertIn("Send the updated floor plan this afternoon.", result["meetingActionPoint"])
+        index = result["meetingActionPoint"].index("Send the updated floor plan this afternoon.")
+        self.assertEqual(result["meetingActionPointOwner"][index], "Nina")
+
     def test_generic_commitment_prefers_explicit_request_over_intervening_issue(self):
         transcript = """Delivery review
 
@@ -355,6 +449,25 @@ Yes, I'll do that.
                 for event in result["numberExperimentDebug"]["intermediateEvents"]
             )
         )
+
+    def test_micro_formatting_requests_do_not_become_actions(self):
+        transcript = """Webinar rehearsal
+
+1 June 2026
+
+Ciara Griffin:
+Can you put it in as an image?
+
+Conor Flynn:
+I can do that.
+
+Ciara Griffin:
+Put it on the same colour background and bring it over as an image.
+"""
+
+        result = analyse(transcript)
+
+        self.assertEqual(result["meetingActionPoint"], [])
 
     def test_multi_owner_commitments_in_one_turn_are_split(self):
         transcript = """Planning review
