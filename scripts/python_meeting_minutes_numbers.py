@@ -280,6 +280,16 @@ DECISION_COMPARISON_RE = re.compile(
     re.IGNORECASE,
 )
 
+MEETING_NAVIGATION_VERB_RE = re.compile(
+    r"\b(?:go\s+back|return|move\s+on|come\s+back|run\s+through|walk\s+through|cover|jump\s+to|look\s+at)\b",
+    re.IGNORECASE,
+)
+MEETING_NAVIGATION_OBJECT_RE = re.compile(
+    r"\b(?:agenda|milestones?|next\s+item|previous\s+item|slides?|sections?|topics?|parking\s+lot)\b",
+    re.IGNORECASE,
+)
+MEETING_NAVIGATION_CONFIDENCE_ADVERB_RE = re.compile(r"\b(?:quickly|briefly|next|again)\b", re.IGNORECASE)
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Experimental numeric meeting-minutes extractor.")
@@ -2020,12 +2030,67 @@ def infer_implicit_decision_proposal(text: str, turns: list[dict[str, str]], ind
     return None
 
 
+def has_durable_decision_commitment(text: str) -> bool:
+    cleaned = normalize_text_fragment(text)
+    lowered = cleaned.lower()
+    if DEADLINE_RE.search(cleaned) or DEPENDENCY_DEADLINE_RE.search(cleaned):
+        return True
+    if re.search(r"\b(?:i['’]?ll|i will|i can)\b", lowered):
+        return True
+    owner_match = re.search(r"\b(?P<owner>[A-ZÀ-ÖØ-Þ][A-Za-zÀ-ÖØ-öø-ÿ'`.-]+)\s+(?:will|owns?|to)\b", cleaned)
+    if owner_match and owner_match.group("owner").lower() not in {"we", "the", "team"}:
+        return True
+    if re.search(r"\b(?:send|share|publish|release|deliver|file|submit|circulate|announce|roll out|launch)\b", lowered) and re.search(
+        r"\b(?:client|customer|user|supplier|vendor|external|public|finance|legal|board|market|contract|proposal|pack|report|deck)\b",
+        lowered,
+    ):
+        return True
+    if re.search(r"\b(?:customer-facing|client-facing|customer|client|user-facing|external)\b", lowered) and re.search(
+        r"\b(?:change|launch|release|message|wording|timeline|scope|pricing|date|deadline|deliverable)\b",
+        lowered,
+    ):
+        return True
+    if re.search(r"\b(?:decision|decided|agreed)\b", lowered) and re.search(
+        r"\b(?:outcome|launch|release|delivery|deliverable|customer|client|pricing|contract|scope|milestone|date|deadline|budget|supplier|renewal|timeline)\b",
+        lowered,
+    ):
+        return True
+    return False
+
+
+def is_meeting_navigation_proposal(text: str) -> bool:
+    cleaned = normalize_text_fragment(text).lower().rstrip(".!?")
+    if not cleaned:
+        return False
+    verb_match = MEETING_NAVIGATION_VERB_RE.search(cleaned)
+    if not verb_match:
+        return False
+    verb = verb_match.group(0)
+    after_verb = cleaned[verb_match.end() : verb_match.end() + 90]
+    score = 2.0
+    has_agenda_object = bool(MEETING_NAVIGATION_OBJECT_RE.search(after_verb) or MEETING_NAVIGATION_OBJECT_RE.search(cleaned))
+    has_confidence_adverb = bool(MEETING_NAVIGATION_CONFIDENCE_ADVERB_RE.search(after_verb) or MEETING_NAVIGATION_CONFIDENCE_ADVERB_RE.search(cleaned))
+    if has_agenda_object:
+        score += 2.0
+    if has_confidence_adverb:
+        score += 1.0
+    if re.search(r"^(?:right[, ]+|okay[, ]+|ok[, ]+)?(?:let['’]?s|we should|we will|we['’]?ll)\b", cleaned):
+        score += 0.5
+    if re.search(r"\b(?:after that|from there|for now)\b", cleaned):
+        score += 1.0
+    if verb in {"move on", "return"} and (has_confidence_adverb or has_agenda_object or "after that" in cleaned):
+        return True
+    return score >= 4.0
+
+
 def extract_decision_proposal(text: str) -> str | None:
     cleaned = strip_ack_prefix(text).rstrip(".!?")
     lowered = cleaned.lower()
     if any(term in lowered for term in ("no further actions", "no action", "no follow-up actions", "still deciding", "haven't decided", "have not decided", "we'll see", "come back to it")):
         return None
     if any(phrase in lowered for phrase in NAVIGATION_PHRASES):
+        return None
+    if is_meeting_navigation_proposal(cleaned) and not has_durable_decision_commitment(cleaned):
         return None
     match = DECISION_PROPOSAL_RE.match(cleaned)
     proposal = normalize_text_fragment(match.group("proposal")).rstrip(".!?") if match else ""
@@ -2038,7 +2103,7 @@ def extract_decision_proposal(text: str) -> str | None:
             proposal = normalize_text_fragment(cleaned).rstrip(".!?")
     if not proposal or len(tokenize(proposal)) < 2:
         return None
-    if proposal.lower().startswith(("run through", "go through", "start with", "move on")):
+    if is_meeting_navigation_proposal(proposal) and not has_durable_decision_commitment(cleaned):
         return None
     return proposal
 
@@ -2159,6 +2224,27 @@ def build_decision_candidates(turns: list[dict[str, str]]) -> list[dict[str, Any
     return candidates
 
 
+def build_rejected_navigation_decision_candidates(turns: list[dict[str, str]]) -> list[dict[str, Any]]:
+    rejected: list[dict[str, Any]] = []
+    for turn in turns:
+        cleaned = strip_ack_prefix(turn["text"]).rstrip(".!?")
+        if not cleaned:
+            continue
+        match = DECISION_PROPOSAL_RE.match(cleaned)
+        proposal = normalize_text_fragment(match.group("proposal")).rstrip(".!?") if match else normalize_text_fragment(cleaned).rstrip(".!?")
+        navigation_text = proposal or cleaned
+        if is_meeting_navigation_proposal(navigation_text) and not has_durable_decision_commitment(cleaned):
+            rejected.append(
+                {
+                    "text": normalize_text_fragment(cleaned),
+                    "speaker": turn["speaker"],
+                    "timestamp": turn["timestamp"],
+                    "rejectedReason": "meeting_navigation_intent",
+                }
+            )
+    return rejected
+
+
 def decision_topics_match(left: str, right: str) -> bool:
     left_tokens = set(tokenize(left)) - NON_TOPIC_TERMS
     right_tokens = set(tokenize(right)) - NON_TOPIC_TERMS
@@ -2242,6 +2328,7 @@ def select_winning_candidate_from_graph(graph: dict[str, Any]) -> tuple[dict[str
 
 def select_decisions(turns: list[dict[str, str]]) -> tuple[list[str], list[dict[str, Any]], dict[str, Any]]:
     raw_candidates = build_decision_candidates(turns)
+    rejected_navigation_decisions = build_rejected_navigation_decision_candidates(turns)
     sorted_candidates = sorted(raw_candidates, key=lambda item: (item["finalScore"], item["turnIndex"]), reverse=True)
     topic_graphs = build_decision_topic_graphs(raw_candidates)
     winners: list[dict[str, Any]] = []
@@ -2326,6 +2413,7 @@ def select_decisions(turns: list[dict[str, str]]) -> tuple[list[str], list[dict[
             }
             for item in sorted_candidates[:10]
         ],
+        "rejectedNavigationDecisionCandidates": rejected_navigation_decisions[:10],
     }
     return decisions, decision_details, debug
 
@@ -4535,6 +4623,7 @@ def analyse(text: str) -> dict[str, Any]:
         "winningDecisionClusters": decision_debug["winningDecisionClusters"],
         "decisionTopicGraphs": decision_debug.get("decisionTopicGraphs", []),
         "rejectedCompetingDecisions": decision_debug["rejectedCompetingDecisions"],
+        "rejectedNavigationDecisionCandidates": decision_debug.get("rejectedNavigationDecisionCandidates", []),
         "abstainedActions": abstained_actions,
         "abstainedDecisions": abstained_decisions,
         "suppressedRejectedActions": suppressed_rejected_actions,
