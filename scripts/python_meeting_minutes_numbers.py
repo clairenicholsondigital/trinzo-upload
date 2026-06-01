@@ -24,18 +24,22 @@ try:
         MINUTES_CONFIG,
         extract_header_fields,
         finalize_sentence,
+        has_malformed_trailing_question_fragment as text_has_malformed_trailing_question_fragment,
         load_json,
         normalize_text_fragment,
         split_sentences,
+        trim_malformed_trailing_question_fragment as text_trim_malformed_trailing_question_fragment,
     )
 except ImportError:
     from python_llm_meeting_minutes import (
         MINUTES_CONFIG,
         extract_header_fields,
         finalize_sentence,
+        has_malformed_trailing_question_fragment as text_has_malformed_trailing_question_fragment,
         load_json,
         normalize_text_fragment,
         split_sentences,
+        trim_malformed_trailing_question_fragment as text_trim_malformed_trailing_question_fragment,
     )
 
 
@@ -2748,6 +2752,7 @@ def split_candidate_sentences(candidate_texts: list[str]) -> list[str]:
     for text in candidate_texts:
         for sentence in split_sentences(text) or [text]:
             cleaned = normalize_text_fragment(sentence)
+            cleaned = trim_malformed_trailing_question_fragment(cleaned)
             if not cleaned:
                 continue
             key = cleaned.lower()
@@ -2839,13 +2844,15 @@ def score_representative_sentence(
     specificity = sentence_specificity_score(sentence) * 0.4
     low_content_penalty = 0.6 if is_low_content_fragment(sentence) else 0.0
     pronoun_penalty = representative_sentence_penalty(sentence)
+    malformed_question_penalty = 0.45 if has_malformed_trailing_question_fragment(sentence) else 0.0
     return round(
         centroid_similarity * 0.7
         + support_similarity * 0.35
         + structure_bonus
         + specificity
         - low_content_penalty
-        - pronoun_penalty,
+        - pronoun_penalty
+        - malformed_question_penalty,
         3,
     )
 
@@ -2879,8 +2886,17 @@ def is_keyword_fragment_summary(text: str) -> bool:
     return False
 
 
+def has_malformed_trailing_question_fragment(text: str) -> bool:
+    return text_has_malformed_trailing_question_fragment(text)
+
+
+def trim_malformed_trailing_question_fragment(text: str) -> str:
+    return text_trim_malformed_trailing_question_fragment(text)
+
+
 def lightly_clean_representative_sentence(text: str) -> str:
     cleaned = normalize_text_fragment(text)
+    cleaned = trim_malformed_trailing_question_fragment(cleaned)
     cleaned = re.sub(r"^(?:online\s+)+", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"^\d{1,2}\s+\w+\s+\d{4}\s+", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"^(?:yeah|yes|no|right|okay|ok)\s*,?\s+", "", cleaned, flags=re.IGNORECASE)
