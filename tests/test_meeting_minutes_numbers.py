@@ -333,6 +333,29 @@ Yes, I'll do that.
             )
         )
 
+    def test_generic_commitment_does_not_resolve_bare_issue_thread(self):
+        transcript = """Ops review
+
+1 June 2026
+
+Rachel:
+The supplier list still needs a clean export.
+
+Tom:
+Yes, I'll do that.
+"""
+
+        result = analyse(transcript)
+
+        self.assertEqual(result["meetingActionPoint"], [])
+        self.assertFalse(
+            any(
+                event.get("threadKind") == "issue"
+                and event.get("eventType") == "thread_resolved_by_generic_commitment"
+                for event in result["numberExperimentDebug"]["intermediateEvents"]
+            )
+        )
+
     def test_multi_owner_commitments_in_one_turn_are_split(self):
         transcript = """Planning review
 
@@ -353,6 +376,98 @@ Tom will confirm the venue and Emma will update the attendee page.
         self.assertTrue(
             any(event.get("eventType") == "named_commitment_action" for event in result["numberExperimentDebug"]["intermediateEvents"])
         )
+
+    def test_weak_status_prompt_does_not_create_malformed_workstream(self):
+        transcript = """Status review
+
+22 August 2026
+
+Claire:
+No recommendation yet?
+
+Sam:
+It's not stopping anyone doing work.
+
+Claire:
+Yeah she said she'd follow up this week.
+
+Emma:
+The governance framework?
+
+Sam:
+Pending leadership review.
+"""
+
+        result = analyse(transcript)
+
+        self.assertFalse(any(point.lower().startswith("the no") for point in result["discussionPoints"]))
+        self.assertFalse(any("said she'd follow" in point.lower() for point in result["discussionPoints"]))
+        self.assertIn("The AI governance framework draft is pending leadership review.", result["discussionPoints"])
+
+    def test_vendor_strategy_pending_review_does_not_create_draft_action(self):
+        transcript = """Status review
+
+22 August 2026
+
+Claire:
+Vendor strategy?
+
+Sam:
+Pending leadership review.
+"""
+
+        result = analyse(transcript)
+
+        self.assertIn(
+            "Vendor strategy rollout remains in progress and is pending leadership review.",
+            result["discussionPoints"],
+        )
+        self.assertNotIn("Draft vendor strategy document.", result["meetingActionPoint"])
+
+    def test_status_review_only_pipeline_blocker_does_not_create_action(self):
+        transcript = """Status review
+
+22 August 2026
+
+Claire:
+AI pipeline strategy.
+
+Sam:
+Sales input is still required.
+"""
+
+        result = analyse(transcript)
+
+        self.assertIn(
+            "AI pipeline strategy remains blocked because sales input is still required.",
+            result["discussionPoints"],
+        )
+        self.assertNotIn("Confirm AI pipeline dependencies with sales.", result["meetingActionPoint"])
+
+    def test_adjacent_topic_prompts_do_not_collapse_distinct_workstreams(self):
+        transcript = """Ops review
+
+22 August 2026
+
+Claire:
+Customer onboarding workflow?
+
+Sam:
+Routing is still broken in the intake form.
+
+Claire:
+Customer onboarding webinar?
+
+Emma:
+Slides are ready and the rehearsal is booked.
+"""
+
+        result = analyse(transcript)
+        lowered_points = [point.lower() for point in result["discussionPoints"]]
+
+        self.assertTrue(any("routing" in point or "intake workflow" in point for point in lowered_points))
+        self.assertTrue(any("rehearsal" in point or "slides" in point or "webinar" in point for point in lowered_points))
+        self.assertGreaterEqual(len(result["numberExperimentDebug"]["topicClusters"]), 2)
 
     def test_supplier_contract_renewal_outputs(self):
         transcript = """Customer support contract renewal

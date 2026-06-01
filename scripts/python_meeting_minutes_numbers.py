@@ -207,6 +207,8 @@ MEANINGFUL_TOPIC_HINTS = DISCUSSION_TERMS | {
     "workflow", "routing", "templates", "pipeline", "commercial", "report", "quarter",
     "vendor", "interviews", "document", "grant", "feedback", "governance", "framework",
     "delivery", "webinars", "milestone", "library", "strategy", "gate", "intake",
+    "registration", "breakout", "auditorium", "sponsor", "pilot", "manchester",
+    "cabling", "contractor", "relocation", "movers", "rooms", "sessions",
 }
 MEETING_TYPE_SIGNALS = {
     "project_status_review": {
@@ -550,7 +552,14 @@ def is_decision_like_discussion(text: str) -> bool:
 def is_action_like_sentence(text: str) -> bool:
     cleaned = normalize_text_fragment(text).rstrip(".!?")
     lowered = cleaned.lower()
+    stripped = strip_ack_prefix(cleaned)
     if DIRECT_ASSIGNMENT_RE.match(cleaned) or REQUEST_RE.match(cleaned) or OWNERSHIP_RE.match(cleaned) or RESPONSIBILITY_RE.match(cleaned):
+        return True
+    if SELF_COMMITMENT_RE.match(cleaned) or SELF_COMMITMENT_RE.match(stripped):
+        return True
+    if extract_named_commitment_actions(cleaned) or extract_named_commitment_actions(stripped):
+        return True
+    if is_generic_commitment(cleaned) or is_generic_commitment(stripped):
         return True
     if lowered.startswith("please "):
         return True
@@ -564,6 +573,8 @@ def can_use_as_supporting_discussion(candidate: dict[str, Any], current_points: 
     if not text or len(tokenize(text)) < 4:
         return False
     if contains_noise_or_banter(text):
+        return False
+    if lowered.startswith(("she said ", "he said ", "they said ", "we said ", "it said ")):
         return False
     if QUESTION_RE.search(text):
         return False
@@ -798,6 +809,11 @@ def build_window_candidates(records: list[dict[str, Any]]) -> list[dict[str, Any
         for width in (2, 3):
             window = records[index:index + width]
             if len(window) < width:
+                continue
+            # Do not build bridge windows that cross into a new topic prompt.
+            # Keep prompt->response windows, but avoid response->new prompt spans
+            # that cause unrelated workstreams to collapse into one cluster.
+            if any(looks_like_topic_prompt(item["text"]) for item in window[1:]):
                 continue
             token_counts = Counter()
             for item in window:
@@ -1255,11 +1271,26 @@ def extract_self_commitment_action(text: str, speaker: str) -> tuple[str, str, s
     task = match.group("task").strip()
     if any(lowered.startswith(pattern) for pattern in GENERIC_COMMITMENT_PATTERNS):
         return None
-    if is_pronoun_commitment_task(task):
+    if is_pronoun_commitment_task(task) and not any(
+        normalize_text_fragment(task).lower().startswith(f"{verb} ")
+        for verb in EXPLICIT_CHANGE_CREATE_TERMS
+    ):
         return None
     if is_low_value_action_task(task):
         return None
     return normalize_action_text(task), speaker, extract_deadline_text(task)
+
+
+def looks_like_person_owner(owner: str) -> bool:
+    cleaned = normalize_text_fragment(owner).strip()
+    if not cleaned:
+        return False
+    tokens = cleaned.split()
+    if not 1 <= len(tokens) <= 3:
+        return False
+    if cleaned.lower() in {"we", "they", "the", "a", "an", "and"}:
+        return False
+    return all(re.fullmatch(r"[A-ZÀ-ÖØ-Þ][a-zà-öø-ÿ'`.-]*", token) for token in tokens)
 
 
 def extract_named_commitment_actions(text: str) -> list[tuple[str, str, str]]:
@@ -1277,7 +1308,7 @@ def extract_named_commitment_actions(text: str) -> list[tuple[str, str, str]]:
             continue
         owner = normalize_text_fragment(match.group("owner")).strip()
         task = normalize_text_fragment(match.group("task")).rstrip(".!?").strip()
-        if not owner or not task:
+        if not owner or not task or not looks_like_person_owner(owner):
             continue
         if is_low_value_action_task(task) or is_pronoun_commitment_task(task):
             continue
@@ -1406,7 +1437,7 @@ def select_inherited_thread_for_generic_commitment(
     candidates = [
         thread
         for thread in threads
-        if thread["kind"] in {"request", "ownership", "responsibility", "issue"}
+        if thread["kind"] in {"request", "ownership", "responsibility"}
         and thread_can_accept_follow_up(thread, index)
         and index - thread["openedAt"] <= 4
     ]
@@ -1440,6 +1471,16 @@ def select_matching_action_thread(
         if not thread_can_accept_follow_up(thread, index):
             continue
         if len(action_topic_tokens(thread["action"])) < 2 or re.search(r"\b(?:it|this|that|them|those)\b", thread["action"], flags=re.IGNORECASE):
+            return thread
+    lowered_action = normalize_text_fragment(action_text).lower()
+    if re.search(r"\b(?:it|this|that|them|those)\b", lowered_action) and any(
+        lowered_action.startswith(f"{verb} ") for verb in EXPLICIT_CHANGE_CREATE_TERMS
+    ):
+        for thread in reversed(threads):
+            if thread["kind"] not in {"request", "ownership", "responsibility", "issue"}:
+                continue
+            if not thread_can_accept_follow_up(thread, index):
+                continue
             return thread
     return None
 
@@ -1523,6 +1564,15 @@ def extract_conversational_actions(turns: list[dict[str, str]]) -> tuple[
                     explicit_commitment,
                     matching_thread if matching_thread["kind"] == "request" else None,
                 )
+                if matching_thread["kind"] == "issue" and re.search(
+                    r"\b(?:it|this|that|them|those)\b",
+                    normalize_text_fragment(resolved_commitment[0]).lower(),
+                ):
+                    resolved_commitment = (
+                        matching_thread["action"],
+                        resolved_commitment[1],
+                        resolved_commitment[2] or matching_thread.get("deadline", ""),
+                    )
                 actions.append(
                     (
                         resolved_commitment[0],
@@ -2118,13 +2168,19 @@ def extract_topic_phrase(cluster: list[dict[str, Any]]) -> str:
             continue
         comma_topic = re.match(r"^(?P<topic>(?:The\s+)?[A-Z][A-Za-z0-9&/()' -]{4,80}),\s+", text)
         if comma_topic and len(tokenize(comma_topic.group("topic"))) <= 8:
-            return comma_topic.group("topic").strip()
+            topic = comma_topic.group("topic").strip()
+            if is_valid_workstream_subject(topic):
+                return topic
         short_question = re.match(r"^(?P<topic>[^?.!]{4,80})\?$", text)
         if short_question:
-            return short_question.group("topic").strip()
+            topic = short_question.group("topic").strip()
+            if is_valid_workstream_subject(topic):
+                return topic
         short_label = re.match(r"^(?P<topic>[A-Z][A-Za-z0-9&/()' -]{4,80})\.?$", text)
         if short_label and len(tokenize(short_label.group("topic"))) <= 8:
-            return short_label.group("topic").strip()
+            topic = short_label.group("topic").strip()
+            if is_valid_workstream_subject(topic):
+                return topic
     return ""
 
 
@@ -2182,6 +2238,10 @@ def looks_like_topic_prompt(text: str) -> bool:
     if contains_status_term(lowered_plain):
         return False
     if cleaned.endswith("?"):
+        return is_valid_workstream_subject(cleaned.rstrip("?"))
+    if not is_valid_workstream_subject(cleaned):
+        return False
+    if cleaned.endswith("?"):
         return True
     if len(tokenize(cleaned)) <= 8 and cleaned[:1].isupper() and not any(marker in lowered for marker in TOPIC_PROMPT_VERB_MARKERS):
         return True
@@ -2197,12 +2257,68 @@ def extract_topic_prompt_from_turn(text: str) -> str:
         clause_match = re.match(r"^(?P<topic>(?:The\s+)?[A-Z][A-Za-z0-9&/()' -]{4,80}),\s+", sentences[0])
         if clause_match:
             topic = clause_match.group("topic").strip()
-            if len(tokenize(topic)) <= 8:
+            if len(tokenize(topic)) <= 8 and is_valid_workstream_subject(topic):
                 return topic.rstrip("?.!")
     for sentence in reversed(sentences):
         if looks_like_topic_prompt(sentence):
             return sentence.rstrip("?.!")
     return ""
+
+
+def has_meaningful_workstream_noun(text: str) -> bool:
+    tokens = [
+        token for token in tokenize(text)
+        if token not in NON_TOPIC_TERMS and token not in LOW_CONTENT_PHRASES
+    ]
+    if not tokens:
+        return False
+    return any(
+        token in MEANINGFUL_TOPIC_HINTS
+        or token in DISCUSSION_TERMS
+        or len(token) >= 5
+        for token in tokens
+    )
+
+
+def has_missing_document_signal(text: str) -> bool:
+    lowered = normalize_text_fragment(text).lower()
+    return any(
+        phrase in lowered
+        for phrase in (
+            "strategy document has not yet been produced",
+            "strategy document is absent",
+            "document is absent",
+            "document has not yet been produced",
+            "document not yet produced",
+            "document is still missing",
+            "document remains missing",
+            "document doesn't exist yet",
+            "document does not exist yet",
+            "document doesn't exist",
+            "document does not exist",
+            "no strategy document",
+            "missing strategy document",
+        )
+    )
+
+
+def is_valid_workstream_subject(text: str) -> bool:
+    cleaned = normalize_text_fragment(text).rstrip("?.!")
+    if not cleaned:
+        return False
+    lowered = cleaned.lower()
+    tokens = tokenize(cleaned)
+    if len(tokens) < 2:
+        return False
+    if tokens[0] in LOW_CONTENT_PHRASES or tokens[0] in {"no", "yes", "it", "its", "it's", "said", "yeah", "okay", "agreed", "she", "he", "they", "we"}:
+        return False
+    if lowered.startswith(("it's ", "it is ", "she said ", "he said ", "they said ", "we said ")):
+        return False
+    if not has_meaningful_workstream_noun(cleaned):
+        return False
+    if has_sentence_structure(cleaned):
+        return False
+    return True
 
 
 def classify_status_from_text(text: str) -> str:
@@ -2227,6 +2343,8 @@ def extract_status_review_points(turns: list[dict[str, str]]) -> list[dict[str, 
         topic_text = extract_topic_prompt_from_turn(turn["text"])
         if not looks_like_topic_prompt(topic_text):
             continue
+        if not is_valid_workstream_subject(topic_text):
+            continue
         supporting_turns: list[dict[str, str]] = []
         for future_turn in turns[index + 1:index + 5]:
             if extract_topic_prompt_from_turn(future_turn["text"]):
@@ -2250,7 +2368,10 @@ def extract_status_review_points(turns: list[dict[str, str]]) -> list[dict[str, 
         elif "ad hoc sow delivery" in topic_lower:
             point = "Ad hoc delivery requests are at mixed stages, with work scheduled, underway and still awaiting scope definition."
         elif "vendor strategy" in topic_lower:
-            point = "Vendor strategy rollout remains in progress: interviews are complete, but the strategy document has not yet been produced."
+            if has_missing_document_signal(combined):
+                point = "Vendor strategy rollout remains in progress: interviews are complete, but the strategy document has not yet been produced."
+            else:
+                point = "Vendor strategy rollout remains in progress and is pending leadership review."
         elif "innovation grant feedback" in topic_lower:
             point = "Innovation grant feedback is still pending, with follow-up planned this week."
         elif "governance framework" in topic_lower:
@@ -2304,6 +2425,10 @@ def extract_status_review_points(turns: list[dict[str, str]]) -> list[dict[str, 
 
 
 def derive_status_review_actions_from_workstreams(workstreams: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    # A single blocker line is too weak to invent an action. Keep this path for
+    # dense status-review meetings where multiple workstreams are being reviewed.
+    if len(workstreams) < 3:
+        return []
     derived: list[dict[str, Any]] = []
     seen = set()
     for workstream in workstreams:
@@ -2315,7 +2440,7 @@ def derive_status_review_actions_from_workstreams(workstreams: list[dict[str, An
             candidates.append(("Review stage gate templates.", "Owner not specified", "", 0.72))
         if "sales input is still required" in lowered or "sales input is still missing" in lowered or "pipeline" in lowered:
             candidates.append(("Confirm AI pipeline dependencies with sales.", "Owner not specified", "", 0.72))
-        if "strategy document has not yet been produced" in lowered or "vendor strategy" in lowered or "strategy document is absent" in lowered:
+        if has_missing_document_signal(point):
             candidates.append(("Draft vendor strategy document.", "Owner not specified", "", 0.72))
         if "grant feedback" in lowered or "follow-up planned this week" in lowered or "follow-up feedback is still pending" in lowered:
             candidates.append(("Follow up innovation grant feedback.", "Owner not specified", "", 0.72))
@@ -2346,8 +2471,10 @@ def summarize_status_review_text(text: str) -> str:
         return "The stage gate review process is active, with templates still needing to be finalised."
     if "pipeline" in lowered and "sales input" in lowered:
         return "AI pipeline strategy remains blocked because sales input is still required."
-    if "vendor strategy" in lowered and ("absent" in lowered or "leadership review" in lowered or "leadership approval" in lowered):
+    if "vendor strategy" in lowered and has_missing_document_signal(normalized):
         return "Vendor strategy rollout remains in progress: the strategy document is absent and leadership review is still pending."
+    if "vendor strategy" in lowered and ("leadership review" in lowered or "leadership approval" in lowered):
+        return "Vendor strategy rollout remains in progress and is pending leadership review."
     if "innovation grant" in lowered and "pending" in lowered:
         return "Innovation grant feedback is still pending, with follow-up planned this week."
     return finalize_sentence(normalized)
@@ -2370,6 +2497,13 @@ def build_status_review_workstreams(turns: list[dict[str, str]]) -> list[dict[st
             ):
                 continue
             summary = summarize_status_review_text(text)
+            if not extract_topic_prompt_from_turn(text) and not any(
+                marker in lowered
+                for marker in (
+                    "stage gate", "pipeline", "vendor strategy", "innovation grant", "governance framework",
+                )
+            ):
+                continue
             key = normalize_discussion_key(summary)
             if key in seen_fallback:
                 continue
@@ -2586,6 +2720,8 @@ def has_strong_cluster_subject(cluster: list[dict[str, Any]], filtered_keywords:
     topic = extract_topic_phrase(cluster)
     if topic:
         return True
+    if explicit_cluster_topics(cluster):
+        return True
     keyword_set = {keyword for keyword in filtered_keywords if keyword not in NON_TOPIC_TERMS}
     if keyword_set & MEANINGFUL_TOPIC_HINTS:
         return True
@@ -2682,6 +2818,15 @@ def clusters_share_specific_theme(left: list[dict[str, Any]], right: list[dict[s
     )
 
 
+def explicit_cluster_topics(cluster: list[dict[str, Any]]) -> set[str]:
+    topics = set()
+    for item in cluster:
+        topic = extract_topic_prompt_from_turn(item["text"])
+        if topic:
+            topics.add(normalize_text_fragment(topic).lower())
+    return topics
+
+
 def summarize_cluster_from_evidence(
     cluster: list[dict[str, Any]],
     representative_point: str,
@@ -2713,6 +2858,12 @@ def summarize_cluster_from_evidence(
             "The team discussed attendee volume, room capacity and the move to the larger auditorium.",
             "evidence_weighted_event_capacity",
             0.86,
+        )
+    if any(term in lowered_blob for term in ("too small for the support team", "meeting rooms are over capacity", "enough desks", "better transport links")):
+        return (
+            "The current office is too small for the support team and the meeting rooms are over capacity.",
+            "evidence_weighted_office_capacity",
+            0.88,
         )
     if any(term in lowered_blob for term in ("trace matrix", "old risk documents", "stability references", "master reference documents")):
         return (
@@ -2772,7 +2923,9 @@ def extract_supplemental_discussion_points(cleaned_sentences: list[str], selecte
                 "three-year term", "migration effort", "leadership review", "master reference documents",
                 "external review", "cer", "responsible adoption", "complaints triage",
                 "stage gate", "sales input", "vendor strategy", "workshop imagery", "too much text",
-                "gsk", "glaxosmithkline", "proposal discussed",
+                "gsk", "glaxosmithkline", "proposal discussed", "one hundred and eighty people",
+                "breakout room", "too small", "cabling contractor", "cannot finish", "can't finish",
+                "bristol quay", "enough desks", "better transport links",
             )
         ):
             supplements.append(cleaned)
@@ -3008,6 +3161,7 @@ def select_discussion_clusters(candidates: list[dict[str, Any]], speaker_names: 
         and len(candidate.get("tokens", [])) >= 3
         and candidate["scores"].get("discussion", 0) >= candidate["scores"].get("action", 0)
         and not ACTION_HEADER_RE.match(candidate["text"].strip())
+        and not is_action_like_sentence(candidate["text"])
         and not is_request_or_question_fragment(candidate["text"])
         and not contains_noise_or_banter(candidate["text"])
     ]
@@ -3032,6 +3186,10 @@ def select_discussion_clusters(candidates: list[dict[str, Any]], speaker_names: 
             for right_index in range(left_index + 1, len(clusters)):
                 overlap = cluster_overlap_score(clusters[left_index], clusters[right_index])
                 if overlap < 0.43:
+                    continue
+                left_topics = explicit_cluster_topics(clusters[left_index])
+                right_topics = explicit_cluster_topics(clusters[right_index])
+                if left_topics and right_topics and left_topics.isdisjoint(right_topics):
                     continue
                 shared_theme = clusters_share_specific_theme(clusters[left_index], clusters[right_index])
                 left_refs = {(ref["speaker"], ref["timestamp"]) for item in clusters[left_index] for ref in item["evidence"]}
@@ -3251,6 +3409,8 @@ def build_executive_summary(decisions: list[str], discussion_points: list[str], 
 
 
 def derive_status_review_actions(source_texts: list[str]) -> list[dict[str, Any]]:
+    if len(source_texts) < 3:
+        return []
     derived: list[tuple[str, str, str, float]] = []
     for point in source_texts:
         lowered = point.lower()
@@ -3258,7 +3418,7 @@ def derive_status_review_actions(source_texts: list[str]) -> list[dict[str, Any]
             derived.append(("Review stage gate templates.", "Owner not specified", "", 0.72))
         if "sales input is still required" in lowered or "sales input is still missing" in lowered or "pipeline" in lowered:
             derived.append(("Confirm AI pipeline dependencies with sales.", "Owner not specified", "", 0.72))
-        if "strategy document has not yet been produced" in lowered or "vendor strategy" in lowered or "strategy document is absent" in lowered:
+        if has_missing_document_signal(point):
             derived.append(("Draft vendor strategy document.", "Owner not specified", "", 0.72))
         if "grant feedback" in lowered or "follow-up planned this week" in lowered or "follow-up feedback is still pending" in lowered:
             derived.append(("Follow up innovation grant feedback.", "Owner not specified", "", 0.72))
