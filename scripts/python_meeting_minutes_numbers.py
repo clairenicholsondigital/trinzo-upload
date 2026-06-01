@@ -252,7 +252,15 @@ PERSONAL_PRONOUN_SUBJECTS = {"i", "ive", "i've", "i’m", "i'm", "im", "i’d", 
 ACCEPTED_FIRST_PERSON_WORKSTREAM_PHRASES = {"ai", "bi", "ux", "ui"}
 STATUS_SUBJECT_RE = re.compile(
     r"^(?:the\s+)?(?P<topic>[A-Za-z0-9][A-Za-z0-9&/()'’.-]*(?:\s+[A-Za-z0-9][A-Za-z0-9&/()'’.-]*){0,7})\s+"
-    r"(?:remains?|is|are|was|were|appears?|looks?|stays?)\b",
+    r"(?:remains?|is|are|was|were|appears?|looks?|stays?)\s+"
+    r"(?:still\s+|currently\s+|already\s+|mostly\s+)?"
+    r"(?:blocked|complete|in\s+review|in\s+progress|pending(?:\s+leadership\s+review)?|awaiting|green|amber|red|blue|not\s+operational|active|scheduled|on\s+track|due)\b",
+    re.IGNORECASE,
+)
+FIRST_PERSON_SETUP_LANGUAGE_RE = re.compile(
+    r"\b(?:i(?:['’])?ve|i\s+have|i\s+got|i(?:['’])?m|i\s+am)\b[^,.;?!]{0,80}\b(?:got|report|open)\b|"
+    r"^\s*(?:the\s+)?i\s+got\b|"
+    r"\bgot\s+(?:the\s+)?latest\s+report\s+open\b",
     re.IGNORECASE,
 )
 
@@ -2630,6 +2638,8 @@ def canonicalize_status_topic_anchor(text: str) -> str:
         return "Ad hoc SOW delivery"
     if lowered in {"use case request funnel", "use case intake workflow"}:
         return "Use case intake funnel"
+    if lowered == "the intake workflow and request funnel":
+        return "Intake workflow and request funnel"
     return cleaned
 
 
@@ -2666,18 +2676,15 @@ def extract_status_subject_from_clause(text: str) -> str:
     if not match:
         return ""
     topic = canonicalize_status_topic_anchor(re.sub(r"^(?:the|a|an)\s+", "", match.group("topic").strip(), flags=re.IGNORECASE))
+    if topic.lower() in {"interview", "interviews"}:
+        return ""
     if is_valid_status_topic_subject(topic):
         return topic.rstrip("?.!")
     return ""
 
 
-def format_status_subject(subject: str) -> str:
-    cleaned = normalize_text_fragment(subject).rstrip("?.!")
-    if not cleaned:
-        return "the topic"
-    if re.match(r"^(?:the|a|an)\s+", cleaned, flags=re.IGNORECASE):
-        return cleaned[:1].upper() + cleaned[1:]
-    return f"The {cleaned}"
+def has_first_person_setup_language(text: str) -> bool:
+    return bool(FIRST_PERSON_SETUP_LANGUAGE_RE.search(normalize_text_fragment(text)))
 
 
 def looks_like_topic_prompt(text: str) -> bool:
@@ -2718,19 +2725,29 @@ def extract_topic_prompt_from_turn(text: str) -> str:
         if clause_match:
             topic = clause_match.group("topic").strip()
             canonical_topic = canonicalize_status_topic_anchor(topic)
-            if len(tokenize(canonical_topic)) <= 8 and is_valid_workstream_subject(canonical_topic) and is_valid_topic_candidate(canonical_topic):
-                return canonical_topic.rstrip("?.!")
             tail_topic = extract_status_subject_from_clause(clause_match.group("tail"))
+            head_is_setup = has_first_person_setup_language(topic)
+            head_is_valid = (
+                len(tokenize(canonical_topic)) <= 8
+                and is_valid_workstream_subject(canonical_topic)
+                and is_valid_topic_candidate(canonical_topic)
+            )
+            if tail_topic and (head_is_setup or not head_is_valid):
+                return tail_topic
+            if head_is_valid and not head_is_setup:
+                return canonical_topic.rstrip("?.!")
             if tail_topic:
                 return tail_topic
+        if is_status_evidence(first_sentence):
+            return ""
         sentence_topic = extract_status_subject_from_clause(first_sentence)
         if sentence_topic:
             return canonicalize_status_topic_anchor(sentence_topic)
-        if is_status_evidence(first_sentence):
-            return ""
-        canonical_sentence = canonicalize_status_topic_anchor(first_sentence)
+        canonical_sentence = canonicalize_status_topic_anchor(sentence)
         if is_clean_topic_anchor(canonical_sentence):
             return canonical_sentence
+        if is_status_evidence(sentence):
+            continue
     for sentence in reversed(sentences):
         canonical_sentence = canonicalize_status_topic_anchor(sentence)
         if is_clean_topic_anchor(canonical_sentence):
