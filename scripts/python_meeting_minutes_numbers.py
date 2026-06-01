@@ -252,7 +252,15 @@ PERSONAL_PRONOUN_SUBJECTS = {"i", "ive", "i've", "i’m", "i'm", "im", "i’d", 
 ACCEPTED_FIRST_PERSON_WORKSTREAM_PHRASES = {"ai", "bi", "ux", "ui"}
 STATUS_SUBJECT_RE = re.compile(
     r"^(?:the\s+)?(?P<topic>[A-Za-z0-9][A-Za-z0-9&/()'’.-]*(?:\s+[A-Za-z0-9][A-Za-z0-9&/()'’.-]*){0,7})\s+"
-    r"(?:remains?|is|are|was|were|appears?|looks?|stays?)\b",
+    r"(?:remains?|is|are|was|were|appears?|looks?|stays?)\s+"
+    r"(?:still\s+|currently\s+|already\s+|mostly\s+)?"
+    r"(?:blocked|complete|in\s+review|in\s+progress|pending(?:\s+leadership\s+review)?|awaiting|green|amber|red|blue|not\s+operational|active|scheduled|on\s+track|due)\b",
+    re.IGNORECASE,
+)
+FIRST_PERSON_SETUP_LANGUAGE_RE = re.compile(
+    r"\b(?:i(?:['’])?ve|i\s+have|i\s+got|i(?:['’])?m|i\s+am)\b[^,.;?!]{0,80}\b(?:got|report|open)\b|"
+    r"^\s*(?:the\s+)?i\s+got\b|"
+    r"\bgot\s+(?:the\s+)?latest\s+report\s+open\b",
     re.IGNORECASE,
 )
 
@@ -2675,6 +2683,10 @@ def extract_status_subject_from_clause(text: str) -> str:
     return ""
 
 
+def has_first_person_setup_language(text: str) -> bool:
+    return bool(FIRST_PERSON_SETUP_LANGUAGE_RE.search(normalize_text_fragment(text)))
+
+
 def looks_like_topic_prompt(text: str) -> bool:
     cleaned = normalize_text_fragment(text)
     lowered_plain = cleaned.lower()
@@ -2705,19 +2717,30 @@ def looks_like_topic_prompt(text: str) -> bool:
 
 def extract_topic_prompt_from_turn(text: str) -> str:
     sentences = [normalize_text_fragment(sentence) for sentence in split_sentences(text) if normalize_text_fragment(sentence)]
-    for sentence in sentences:
-        if is_transcript_noise(sentence):
-            continue
-        clause_match = re.match(r"^(?P<topic>(?:The\s+)?[A-Z][A-Za-z0-9&/()'’ -]{4,80}),\s+(?P<tail>.+)$", sentence)
+    if sentences:
+        first_sentence = sentences[0]
+        if is_transcript_noise(first_sentence):
+            return ""
+        clause_match = re.match(r"^(?P<topic>(?:The\s+)?[A-Z][A-Za-z0-9&/()'’ -]{4,80}),\s+(?P<tail>.+)$", first_sentence)
         if clause_match:
             topic = clause_match.group("topic").strip()
             canonical_topic = canonicalize_status_topic_anchor(topic)
-            if len(tokenize(canonical_topic)) <= 8 and is_valid_workstream_subject(canonical_topic) and is_valid_topic_candidate(canonical_topic):
-                return canonical_topic.rstrip("?.!")
             tail_topic = extract_status_subject_from_clause(clause_match.group("tail"))
+            head_is_setup = has_first_person_setup_language(topic)
+            head_is_valid = (
+                len(tokenize(canonical_topic)) <= 8
+                and is_valid_workstream_subject(canonical_topic)
+                and is_valid_topic_candidate(canonical_topic)
+            )
+            if tail_topic and (head_is_setup or not head_is_valid):
+                return tail_topic
+            if head_is_valid and not head_is_setup:
+                return canonical_topic.rstrip("?.!")
             if tail_topic:
                 return tail_topic
-        sentence_topic = extract_status_subject_from_clause(sentence)
+        if is_status_evidence(first_sentence):
+            return ""
+        sentence_topic = extract_status_subject_from_clause(first_sentence)
         if sentence_topic:
             return canonicalize_status_topic_anchor(sentence_topic)
         canonical_sentence = canonicalize_status_topic_anchor(sentence)
