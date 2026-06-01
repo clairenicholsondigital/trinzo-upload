@@ -2616,17 +2616,52 @@ def is_valid_topic_candidate(text: str) -> bool:
         return False
     lowered = cleaned.lower()
     tokens = topic_candidate_tokens(cleaned)
-    if is_transcript_noise(cleaned) or is_vague_reference_topic(cleaned):
-        return False
-    if is_status_evidence(cleaned) and not is_clean_topic_anchor(cleaned):
-        return False
-    if lowered.startswith("the i") or has_personal_pronoun_subject(cleaned):
+    if re.match(r"^the\s+i(?:['’]?m|['’]?ve|['’]?d|['’]?ll)?\b", lowered) or has_personal_pronoun_subject(cleaned):
         return False
     if any(token in FIRST_PERSON_TOPIC_TOKENS for token in tokens) and not is_accepted_first_person_workstream(cleaned):
         return False
     comma_head = cleaned.split(",", 1)[0]
     comma_tokens = topic_candidate_tokens(comma_head)
     if any(token in FIRST_PERSON_SETUP_VERBS for token in comma_tokens):
+        return False
+    return True
+
+
+def has_strong_status_topic_hint(text: str) -> bool:
+    tokens = set(tokenize(text))
+    return bool(tokens & MEANINGFUL_TOPIC_HINTS)
+
+
+def extract_clean_status_subject_from_clause(text: str) -> str:
+    cleaned = normalize_text_fragment(text).rstrip("?.!")
+    match = STATUS_SUBJECT_RE.match(cleaned)
+    if not match:
+        return ""
+    topic = canonicalize_status_topic_anchor(re.sub(r"^(?:the|a|an)\s+", "", match.group("topic").strip(), flags=re.IGNORECASE))
+    if not topic:
+        return ""
+    if is_valid_workstream_subject(topic):
+        return topic.rstrip("?.!")
+    tokens = tokenize(topic)
+    if len(tokens) == 1 and tokens[0] == "soundtrack" and has_meaningful_workstream_noun(topic) and not has_sentence_structure(topic):
+        return topic.rstrip("?.!")
+    return ""
+
+
+def is_valid_status_topic_candidate(text: str) -> bool:
+    cleaned = normalize_text_fragment(text).rstrip("?.!")
+    lowered = cleaned.lower()
+    if not is_valid_topic_candidate(cleaned):
+        return False
+    if is_transcript_noise(cleaned) or is_vague_reference_topic(cleaned):
+        return False
+    if lowered.startswith(("potentially ", "probably ", "maybe ", "again ", "again,")):
+        return False
+    if is_status_evidence(cleaned) and not (
+        is_clean_topic_anchor(cleaned)
+        or extract_clean_status_subject_from_clause(cleaned)
+        or (is_valid_workstream_subject(cleaned) and has_strong_status_topic_hint(cleaned))
+    ):
         return False
     return True
 
@@ -2763,8 +2798,9 @@ def looks_like_topic_prompt(text: str) -> bool:
     return bool(comma_topic)
 
 
-def extract_topic_prompt_from_turn(text: str) -> str:
+def extract_topic_prompt_from_turn(text: str, status_review: bool = False) -> str:
     sentences = [normalize_text_fragment(sentence) for sentence in split_sentences(text) if normalize_text_fragment(sentence)]
+    topic_candidate_validator = is_valid_status_topic_candidate if status_review else is_valid_topic_candidate
     if sentences:
         first_sentence = sentences[0]
         if is_transcript_noise(first_sentence):
@@ -2800,7 +2836,7 @@ def extract_topic_prompt_from_turn(text: str) -> str:
         canonical_sentence = canonicalize_status_topic_anchor(sentence)
         if is_clean_topic_anchor(canonical_sentence):
             return canonical_sentence.rstrip("?.!")
-        if looks_like_topic_prompt(sentence):
+        if (is_valid_status_topic_candidate(sentence) if status_review else looks_like_topic_prompt(sentence)):
             return canonicalize_status_topic_anchor(sentence).rstrip("?.!")
         sentence_topic = extract_status_subject_from_clause(sentence)
         if sentence_topic:
@@ -2884,7 +2920,7 @@ def extract_status_review_points(turns: list[dict[str, str]]) -> list[dict[str, 
     seen = set()
     status_units = status_review_units_from_turns(turns)
     for index, turn in enumerate(status_units):
-        topic_text = canonicalize_status_topic_anchor(extract_topic_prompt_from_turn(turn["text"]))
+        topic_text = canonicalize_status_topic_anchor(extract_topic_prompt_from_turn(turn["text"], status_review=True))
         if not topic_text:
             continue
         if not is_valid_status_topic_subject(topic_text):
@@ -2925,7 +2961,9 @@ def extract_status_review_points(turns: list[dict[str, str]]) -> list[dict[str, 
         elif "ad hoc sow delivery" in topic_lower:
             point = "Ad hoc delivery requests are at mixed stages, with work scheduled, underway and still awaiting scope definition."
         elif "vendor strategy" in topic_lower:
-            if has_missing_document_signal(combined):
+            if has_missing_document_signal(combined) and ("leadership review" in lowered or "leadership approval" in lowered):
+                point = "Vendor strategy rollout remains in progress: the strategy document is absent and leadership review is still pending."
+            elif has_missing_document_signal(combined):
                 point = "Vendor strategy rollout remains in progress: interviews are complete, but the strategy document has not yet been produced."
             else:
                 point = "Vendor strategy rollout remains in progress and is pending leadership review."
@@ -2997,12 +3035,13 @@ def derive_status_review_actions_from_workstreams(workstreams: list[dict[str, An
         point = workstream["summary"]
         lowered = point.lower()
         evidence = workstream.get("evidence", [])
+        evidence_text = " ".join(ref.get("text", "") for ref in evidence if ref.get("text"))
         candidates: list[tuple[str, str, str, float]] = []
         if "templates still need to be finalised" in lowered or "stage gate review process" in lowered or "stage gate templates are still not finalised" in lowered:
             candidates.append(("Review stage gate templates.", "Owner not specified", "", 0.72))
         if "sales input is still required" in lowered or "sales input is still missing" in lowered or "pipeline" in lowered:
             candidates.append(("Confirm AI pipeline dependencies with sales.", "Owner not specified", "", 0.72))
-        if has_missing_document_signal(point):
+        if has_missing_document_signal(point) or has_missing_document_signal(evidence_text):
             candidates.append(("Draft vendor strategy document.", "Owner not specified", "", 0.72))
         if "grant feedback" in lowered or "follow-up planned this week" in lowered or "follow-up feedback is still pending" in lowered:
             candidates.append(("Follow up innovation grant feedback.", "Owner not specified", "", 0.72))
@@ -3059,7 +3098,7 @@ def build_status_review_workstreams(turns: list[dict[str, str]]) -> list[dict[st
             ):
                 continue
             summary = summarize_status_review_text(text)
-            if not extract_topic_prompt_from_turn(text) and not any(
+            if not extract_topic_prompt_from_turn(text, status_review=True) and not any(
                 marker in lowered
                 for marker in (
                     "stage gate", "pipeline", "vendor strategy", "innovation grant", "governance framework",
@@ -4937,6 +4976,9 @@ def analyse(text: str) -> dict[str, Any]:
     for point in discussion_points:
         key = normalize_discussion_key(point)
         source = selected_map.get(key, {})
+        source_evidence = source.get("evidence")
+        if source_evidence is None:
+            source_evidence = [evidence_from_turn(turn, "synthesized_discussion") for turn in turns]
         final_discussion_debug.append(
             {
                 "discussionPoint": point,
@@ -4945,8 +4987,8 @@ def analyse(text: str) -> dict[str, Any]:
                 "selectedReason": source.get("selectedReason", "final_selection"),
                 "cleanedCandidateSentences": source.get("cleanedCandidateSentences", []),
                 "representativeSentence": source.get("representativeSentence", ""),
-                "sourceTurnIndices": source.get("sourceTurnIndices", evidence_source_turn_indices(source.get("evidence", []))),
-                "_evidence": source.get("evidence", []),
+                "sourceTurnIndices": source.get("sourceTurnIndices", evidence_source_turn_indices(source_evidence)),
+                "_evidence": source_evidence,
                 "evidenceScore": 0.7,
             }
         )

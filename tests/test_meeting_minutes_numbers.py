@@ -1019,6 +1019,34 @@ class MeetingExtractionQualityHelpersTest(unittest.TestCase):
         self.assertFalse(is_client_safe_discussion_point("The Soundtrack, we're working on it remains active.", evidence=[{"turnIndex": 1}]))
         self.assertTrue(is_client_safe_discussion_point("AI pipeline strategy remains blocked because sales input is still required.", evidence=[{"turnIndex": 1}]))
 
+
+    def test_general_discussion_status_progress_concepts_remain_available(self):
+        cases = {
+            "055_dependency_risk_meeting": [
+                ("pharma systems", "filter documents", "pending"),
+                ("timelines", "unaffected"),
+            ],
+            "056_progress_dashboard_meeting": [
+                ("38 documents", "complete"),
+                ("21", "80 and 95 percent"),
+                ("one document", "untouched"),
+            ],
+            "060_external_review_optional": [
+                ("external", "cer", "review"),
+            ],
+        }
+
+        for folder_name, concept_sets in cases.items():
+            with self.subTest(folder_name=folder_name):
+                transcript = Path("scripts/transcript-tests") / folder_name / "transcript.txt"
+                result = analyse(transcript.read_text(encoding="utf-8"))
+                discussion_blob = "\n".join(result["discussionPoints"]).lower()
+                for concepts in concept_sets:
+                    self.assertTrue(
+                        all(concept in discussion_blob for concept in concepts),
+                        f"Missing concepts {concepts!r} in {result['discussionPoints']!r}",
+                    )
+
     def test_status_review_sentence_level_regression_filters_malformed_topics(self):
         transcript = """Status review
 
