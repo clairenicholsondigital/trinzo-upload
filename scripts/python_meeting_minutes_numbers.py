@@ -1619,26 +1619,76 @@ def decision_topics_match(left: str, right: str) -> bool:
     return len(overlap) >= 2 or cosine_similarity(Counter(left_tokens), Counter(right_tokens)) >= 0.38
 
 
+def build_decision_topic_graphs(raw_candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    graphs: list[dict[str, Any]] = []
+    next_graph_id = 1
+    for candidate in sorted(raw_candidates, key=lambda item: (item["turnIndex"], item["finalScore"])):
+        graph = next(
+            (
+                existing
+                for existing in graphs
+                if any(decision_topics_match(candidate["proposal"], node["proposal"]) for node in existing["nodes"])
+            ),
+            None,
+        )
+        if graph is None:
+            graph = {
+                "graphId": f"decision_topic_{next_graph_id}",
+                "topicHints": set(tokenize(candidate["proposal"])),
+                "nodes": [],
+                "edges": [],
+            }
+            next_graph_id += 1
+            graphs.append(graph)
+        for prior_node in graph["nodes"]:
+            relation = "related"
+            if candidate["turnIndex"] > prior_node["turnIndex"]:
+                relation = "supersedes" if candidate["finalScore"] >= prior_node["finalScore"] - 0.05 else "follows"
+            graph["edges"].append(
+                {
+                    "from": prior_node["turnIndex"],
+                    "to": candidate["turnIndex"],
+                    "relation": relation,
+                }
+            )
+        graph["topicHints"].update(tokenize(candidate["proposal"]))
+        graph["nodes"].append(candidate)
+
+    for graph in graphs:
+        graph["nodes"].sort(key=lambda item: (item["turnIndex"], item["finalScore"]))
+        graph["topic"] = " ".join(sorted(graph["topicHints"])[:6]).strip()
+    return graphs
+
+
+def select_winning_candidate_from_graph(graph: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    nodes = graph["nodes"]
+    winner = nodes[0]
+    rejected: list[dict[str, Any]] = []
+    for candidate in nodes[1:]:
+        later_candidate = candidate["turnIndex"] > winner["turnIndex"]
+        stronger_candidate = candidate["finalScore"] > winner["finalScore"] + 0.08
+        accepted_candidate = candidate["acceptanceScore"] >= 0.3 or candidate["supportScore"] >= 0.25
+        if later_candidate and (accepted_candidate or candidate["finalScore"] >= winner["finalScore"] - 0.05):
+            rejected.append({**winner, "rejectedReason": "superseded_within_topic_graph"})
+            winner = candidate
+        elif stronger_candidate:
+            rejected.append({**winner, "rejectedReason": "replaced_by_stronger_topic_candidate"})
+            winner = candidate
+        else:
+            rejected.append({**candidate, "rejectedReason": "retained_earlier_or_stronger_topic_choice"})
+    return winner, rejected
+
+
 def select_decisions(turns: list[dict[str, str]]) -> tuple[list[str], list[dict[str, Any]], dict[str, Any]]:
     raw_candidates = build_decision_candidates(turns)
     sorted_candidates = sorted(raw_candidates, key=lambda item: (item["finalScore"], item["turnIndex"]), reverse=True)
+    topic_graphs = build_decision_topic_graphs(raw_candidates)
     winners: list[dict[str, Any]] = []
     rejected: list[dict[str, Any]] = []
-    for candidate in sorted_candidates:
-        matched_winner = None
-        for winner in winners:
-            if decision_topics_match(candidate["proposal"], winner["proposal"]):
-                matched_winner = winner
-                break
-        if matched_winner is None:
-            winners.append(candidate)
-            continue
-        if candidate["turnIndex"] > matched_winner["turnIndex"] or candidate["finalScore"] > matched_winner["finalScore"] + 0.08:
-            rejected.append({**matched_winner, "rejectedReason": "superseded_by_later_or_stronger_option"})
-            winners.remove(matched_winner)
-            winners.append(candidate)
-        else:
-            rejected.append({**candidate, "rejectedReason": "lower_scoring_competing_option"})
+    for graph in topic_graphs:
+        winner, graph_rejections = select_winning_candidate_from_graph(graph)
+        winners.append(winner)
+        rejected.extend(graph_rejections)
 
     winners.sort(key=lambda item: (item["turnIndex"], item["finalScore"]))
     winners = winners[:5]
@@ -1678,6 +1728,25 @@ def select_decisions(turns: list[dict[str, str]]) -> tuple[list[str], list[dict[
                 "supportingTurns": item["supportingTurns"],
             }
             for item in rejected[:10]
+        ],
+        "decisionTopicGraphs": [
+            {
+                "graphId": graph["graphId"],
+                "topic": graph["topic"],
+                "nodes": [
+                    {
+                        "proposal": node["proposal"],
+                        "decision": node["decision"],
+                        "turnIndex": node["turnIndex"],
+                        "speaker": node["speaker"],
+                        "timestamp": node["timestamp"],
+                        "finalDecisionScore": node["finalScore"],
+                    }
+                    for node in graph["nodes"]
+                ],
+                "edges": graph["edges"],
+            }
+            for graph in topic_graphs
         ],
         "topDecisionCandidates": [
             {
@@ -3480,6 +3549,7 @@ def analyse(text: str) -> dict[str, Any]:
         "clusters": cluster_debug,
         "topicClusters": cluster_debug,
         "winningDecisionClusters": decision_debug["winningDecisionClusters"],
+        "decisionTopicGraphs": decision_debug.get("decisionTopicGraphs", []),
         "rejectedCompetingDecisions": decision_debug["rejectedCompetingDecisions"],
         "suppressedRejectedActions": suppressed_rejected_actions,
         "statusReviewPoints": [item["text"] for item in status_review_points],

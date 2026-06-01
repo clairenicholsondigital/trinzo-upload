@@ -77,6 +77,31 @@ Yeah, that's better.
 
         self.assertIn("The webinar should remain broad rather than validation-specific.", result["decisions"])
 
+    def test_later_decision_supersedes_earlier_same_topic(self):
+        transcript = """Launch timing review
+
+6 June 2026
+
+Leah:
+We should launch in July.
+
+Tom:
+Agreed.
+
+Leah:
+Actually, we should move the launch to September.
+
+Tom:
+Yes, that's better.
+"""
+
+        result = analyse(transcript)
+
+        self.assertIn("The team will move the launch to September.", result["decisions"])
+        self.assertNotIn("The team will launch in July.", result["decisions"])
+        self.assertIn("decisionTopicGraphs", result["numberExperimentDebug"])
+        self.assertTrue(any(len(graph["nodes"]) >= 2 for graph in result["numberExperimentDebug"]["decisionTopicGraphs"]))
+
     def test_webinar_stress_test_extracts_actions(self):
         transcript = """Webinar Rehearsal Stress Test
 
