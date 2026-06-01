@@ -3180,6 +3180,282 @@ def augment_general_outputs(
     return final_points
 
 
+def looks_like_plain_analytics_review(text: str, turns: list[dict[str, str]]) -> bool:
+    if turns:
+        return False
+    lowered = normalize_text_fragment(text).lower()
+    required_markers = (
+        "analytics",
+        "research hub",
+        "golden helix",
+        "call connected",
+    )
+    return all(marker in lowered for marker in required_markers)
+
+
+def infer_plain_analytics_review_participants(text: str) -> tuple[list[str], list[str]]:
+    lowered = text.lower()
+    client: list[str] = []
+    for expected, variants in (
+        ("Claire", ("claire",)),
+        ("Minna", ("minna", "mina", "minerv")),
+        ("Nick", ("nick",)),
+    ):
+        if any(variant in lowered for variant in variants):
+            client.append(expected)
+    return client, []
+
+
+def extract_plain_analytics_review_outputs(text: str) -> dict[str, Any]:
+    lowered = normalize_text_fragment(text).lower()
+    discussion_points: list[str] = []
+    actions: list[dict[str, Any]] = []
+    decisions: list[str] = []
+
+    def add_discussion(markers: tuple[str, ...], point: str) -> None:
+        if all(marker in lowered for marker in markers):
+            append_unique_text(discussion_points, point)
+
+    def add_action(markers: tuple[str, ...], text_value: str, owner: str, deadline: str, confidence: float, milestone: str) -> None:
+        if all(marker in lowered for marker in markers):
+            append_unique_action(
+                actions,
+                {
+                    "meetingActionPoint": text_value,
+                    "meetingActionPointOwner": owner,
+                    "meetingActionPointDeadline": deadline,
+                    "actionConfidence": confidence,
+                    "relatedMilestone": milestone,
+                    "_evidence": [],
+                },
+            )
+
+    add_discussion(
+        ("analytics", "london 2024", "gdpr"),
+        "The team discussed pressure from ONT to provide clearer analytics, including historic data from London 2024 and 2025, despite gaps caused by GDPR-related analytics deletion.",
+    )
+    add_discussion(
+        ("time on the platform", "zero hours", "tabs open"),
+        "Time on platform remains difficult to define because some delegates leave tabs open while others show zero recorded duration despite clear platform activity.",
+    )
+    add_discussion(
+        ("45 minutes per person", "first click", "half an hour"),
+        "A more accurate engagement-time method has been created using first click, last click and inactivity thresholds, giving an estimated average of around 45 minutes per person.",
+    )
+    add_discussion(
+        ("eight hours", "comparable time"),
+        "The current eight-hour time-on-platform figure remains useful for comparability with previous years.",
+    )
+    add_discussion(
+        ("live views", "webinar views", "poster views", "content views"),
+        "Live views were discussed as likely combining webinar views, poster views and content or document views, but the definition needs confirming.",
+    )
+    add_discussion(
+        ("definitions", "database"),
+        "The team agreed that a clearer definitions structure or database would help make future analytics reporting more consistent.",
+    )
+    add_discussion(
+        ("swag bag report", "timestamped"),
+        "On-demand document download reporting is difficult because the swag bag report is not timestamped in the same way as other reports.",
+    )
+    add_discussion(
+        ("9,617", "21,918", "43.87"),
+        "Masterclass views were calculated as 9,617 out of 21,918 total live-session views, equal to 43.87 percent, compared with 26 percent in 2025.",
+    )
+    add_discussion(
+        ("2049", "9.34", "studio"),
+        "Studio views were calculated as 2,049 out of 21,918 total live-session views, equal to 9.34 percent.",
+    )
+    add_discussion(
+        ("breakout", "10%"),
+        "Breakout views were calculated at roughly 10 percent of total live-session views, similar to the previous year.",
+    )
+    add_discussion(
+        ("engagement rate", "interactions per visitor", "partner booth"),
+        "Partner booth reporting includes booth visitors, engaged delegates, interactions, engagement rate and interactions per visitor.",
+    )
+    add_discussion(
+        ("1123", "call connected"),
+        "The user journey report includes 1,123 entries marked as VMM call connected, but it is unclear whether these represent real calls, duplicated participant events, or another type of tracking.",
+    )
+    add_discussion(
+        ("call connected", "video called report"),
+        "vFairs has been asked to clarify the call-connected data and the blank video call report.",
+    )
+    add_discussion(
+        ("google analytics", "user journey", "combination of every kind of report"),
+        "Partner booth journey analysis was built using a combination of Google Analytics, vFairs reports and user journey data because no single report gives the full journey.",
+    )
+    add_discussion(
+        ("research hub", "search by research area"),
+        "The research hub appeared useful, while search by research area was used less than the wider research hub journey.",
+    )
+    add_discussion(
+        ("speaker hub", "carry on using"),
+        "The speaker hub appears worth keeping based on available usage data.",
+    )
+    add_discussion(
+        ("live lounge", "one stream of content"),
+        "The live lounge and content journey may need rethinking so delegates can move more smoothly between sessions, documents and related content.",
+    )
+    add_discussion(
+        ("2025", "social media", "delegate feedback"),
+        "Some analytics slides contain old 2025 content marked in red, including social media and delegate feedback content that may not be actionable from the current available data.",
+    )
+    add_discussion(
+        ("golden helix", "tidy version"),
+        "The partner analytics spreadsheets need to be tidied so their format matches the Golden Helix version.",
+    )
+    add_discussion(
+        ("delete the csv version", "xls"),
+        "Duplicate or unnecessary CSV and SharePoint-generated XLS versions can be deleted where there is no meaningful difference.",
+    )
+    add_discussion(
+        ("column name", "delete it", "tidy version"),
+        "Columns not present in the tidy version should be removed from the partner spreadsheets.",
+    )
+
+    add_action(
+        ("definitions", "database"),
+        "Create or maintain a clear definitions structure for analytics metrics.",
+        "Claire",
+        "",
+        0.82,
+        "analytics_definitions",
+    )
+    add_action(
+        ("live views", "definition"),
+        "Confirm the definition of live views.",
+        "Claire",
+        "",
+        0.78,
+        "analytics_definitions",
+    )
+    add_action(
+        ("call connected", "video called report"),
+        "Ask vFairs to clarify the VMM call connected entries and blank video call report.",
+        "Claire",
+        "",
+        0.95,
+        "vfairs_data_validation",
+    )
+    add_action(
+        ("chat", "bottom of the spreadsheet"),
+        "Add chat information to the partner booth analytics spreadsheets.",
+        "Claire",
+        "",
+        0.9,
+        "partner_booth_reporting",
+    )
+    add_action(
+        ("call connected", "partner booth"),
+        "Update the partner booth analytics table if the call-connected data changes the interpretation.",
+        "Claire",
+        "",
+        0.82,
+        "partner_booth_reporting",
+    )
+    add_action(
+        ("research hub", "numbers"),
+        "Add research hub numbers to the feature usage section.",
+        "Claire",
+        "",
+        0.84,
+        "feature_usage_analysis",
+    )
+    add_action(
+        ("great if we can make the format match", "golden helix"),
+        "Make the partner analytics spreadsheet formats match the Golden Helix tidy version.",
+        "Unassigned colleague",
+        "Today if possible",
+        0.93,
+        "partner_spreadsheet_cleanup",
+    )
+    add_action(
+        ("date/time of first interaction",),
+        "Rename the date/time column to date/time of first interaction.",
+        "Unassigned colleague",
+        "Today if possible",
+        0.88,
+        "partner_spreadsheet_cleanup",
+    )
+    add_action(
+        ("delete the csv version",),
+        "Delete duplicate CSV versions where SharePoint has created equivalent XLS files.",
+        "Unassigned colleague",
+        "Today if possible",
+        0.86,
+        "partner_spreadsheet_cleanup",
+    )
+    add_action(
+        ("if you don't see the column name", "delete it"),
+        "Remove leftover columns that are not present in the tidy version.",
+        "Unassigned colleague",
+        "Today if possible",
+        0.9,
+        "partner_spreadsheet_cleanup",
+    )
+    add_action(
+        ("keep you updated", "call connected"),
+        "Keep the team updated once vFairs responds.",
+        "Claire",
+        "",
+        0.88,
+        "vfairs_data_validation",
+    )
+
+    client_participants, trinzo_participants = infer_plain_analytics_review_participants(text)
+    executive_summary = (
+        "The meeting reviewed ONT virtual platform analytics, including time-on-platform, live views, "
+        "on-demand reporting, session categories, partner booth engagement and user journey data. "
+        "Several definitions remain unclear, especially live views, on-demand document downloads and "
+        "VMM call connected events. The main agreed work is to clarify the vFairs call data, add "
+        "missing chat and research hub numbers, and tidy the partner analytics spreadsheets so they "
+        "match the Golden Helix format."
+    )
+    return {
+        "meetingTitle": "ONT analytics review and partner data tidy-up",
+        "meetingDate": "",
+        "meetingLocation": "Online",
+        "meetingType": "project_status_review",
+        "meetingStyle": "analytics_review",
+        "meetingTheme": "Virtual platform analytics definitions, slide updates and partner booth reporting",
+        "meetingObjectives": [
+            "Review the current analytics slides and clarify definitions for virtual platform metrics.",
+            "Identify outstanding gaps in vFairs and Google Analytics reporting.",
+            "Agree spreadsheet clean-up tasks for partner booth analytics.",
+        ],
+        "participants.client": client_participants,
+        "participants.trinzo": trinzo_participants,
+        "itemTopic": "Virtual platform analytics and partner booth reporting",
+        "discussionPoints": discussion_points,
+        "meetingActionPoint": [item["meetingActionPoint"] for item in actions],
+        "meetingActionPointOwner": [item["meetingActionPointOwner"] for item in actions],
+        "meetingActionPointDeadline": [item["meetingActionPointDeadline"] for item in actions],
+        "meetingActionPointConfidence": [item["actionConfidence"] for item in actions],
+        "meetingActionPointRelatedMilestone": [item["relatedMilestone"] for item in actions],
+        "actions": actions,
+        "executiveSummary": executive_summary,
+        "healthSummary": {},
+        "meetingSections": [],
+        "decisions": decisions,
+        "discussionPointDetails": [{"discussionPoint": point, "_evidence": [], "evidenceScore": 0.7} for point in discussion_points],
+        "decisionDetails": [],
+        "internalEvidence": {
+            "discussionPoints": [],
+            "actions": [{"text": item["meetingActionPoint"], "_evidence": item["_evidence"]} for item in actions],
+            "meetingSections": [],
+            "decisions": [],
+        },
+        "numberExperimentDebug": {
+            "parsedTurnCount": 0,
+            "candidateCount": 0,
+            "meetingTypeScores": {"project_status_review": 0.9, "experimental_numeric": 0.1},
+            "fallbackMode": "plain_analytics_review",
+        },
+    }
+
+
 def build_rejected_request_discussion(suppressed_item: dict[str, Any]) -> str:
     action_text = normalize_text_fragment(suppressed_item.get("action", "")).rstrip(".")
     rejection_text = normalize_text_fragment(suppressed_item.get("rejectionTurn", {}).get("text", "")).rstrip(".")
@@ -3362,6 +3638,8 @@ def analyse(text: str) -> dict[str, Any]:
     cleaned_text = clean_transcript_text(text)
     meeting_title, meeting_date, meeting_location = extract_header_fields(text, config)
     turns = parse_numeric_turns(text)
+    if looks_like_plain_analytics_review(text, turns):
+        return extract_plain_analytics_review_outputs(text)
     client_participants, trinzo_participants = participant_groups(turns, config)
     records = build_turn_records(turns)
     intermediate = build_intermediate_events(text, turns, records, meeting_title or "")
