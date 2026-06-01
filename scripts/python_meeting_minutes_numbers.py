@@ -251,8 +251,16 @@ FIRST_PERSON_SETUP_VERBS = {"got", "have", "open", "looking", "seeing"}
 PERSONAL_PRONOUN_SUBJECTS = {"i", "ive", "i've", "i’m", "i'm", "im", "i’d", "i'd", "id", "i’ll", "i'll", "ill", "we", "we've", "we’re", "we're", "you", "he", "she", "they"}
 ACCEPTED_FIRST_PERSON_WORKSTREAM_PHRASES = {"ai", "bi", "ux", "ui"}
 STATUS_SUBJECT_RE = re.compile(
-    r"^(?:the\s+)?(?P<topic>[A-Za-z0-9][A-Za-z0-9&/()'’.-]*(?:\s+[A-Za-z0-9][A-Za-z0-9&/()'’.-]*){0,7}?)\s+"
-    r"(?:remains?|is|are|was|were|appears?|looks?|stays?)\b",
+    r"^(?:the\s+)?(?P<topic>[A-Za-z0-9][A-Za-z0-9&/()'’.-]*(?:\s+[A-Za-z0-9][A-Za-z0-9&/()'’.-]*){0,7})\s+"
+    r"(?:remains?|is|are|was|were|appears?|looks?|stays?)\s+"
+    r"(?:still\s+|currently\s+|already\s+|mostly\s+)?"
+    r"(?:blocked|complete|in\s+review|in\s+progress|pending(?:\s+leadership\s+review)?|awaiting|green|amber|red|blue|not\s+operational|active|scheduled|on\s+track|due)\b",
+    re.IGNORECASE,
+)
+FIRST_PERSON_SETUP_LANGUAGE_RE = re.compile(
+    r"\b(?:i(?:['’])?ve|i\s+have|i\s+got|i(?:['’])?m|i\s+am)\b[^,.;?!]{0,80}\b(?:got|report|open)\b|"
+    r"^\s*(?:the\s+)?i\s+got\b|"
+    r"\bgot\s+(?:the\s+)?latest\s+report\s+open\b",
     re.IGNORECASE,
 )
 
@@ -2665,6 +2673,8 @@ def canonicalize_status_topic_anchor(text: str) -> str:
         return "Ad hoc SOW delivery"
     if lowered in {"use case request funnel", "use case intake workflow"}:
         return "Use case intake funnel"
+    if lowered == "the intake workflow and request funnel":
+        return "Intake workflow and request funnel"
     return cleaned
 
 
@@ -2685,21 +2695,79 @@ def status_review_units_from_turns(turns: list[dict[str, str]]) -> list[dict[str
 
 def is_valid_status_topic_subject(text: str) -> bool:
     cleaned = normalize_text_fragment(text).rstrip("?.!")
-    if not cleaned or not is_valid_topic_candidate(cleaned):
+    if not cleaned:
         return False
-    tokens = tokenize(cleaned)
-    if len(tokens) > 8 or not tokens:
+    lowered = cleaned.lower()
+    tokens = topic_candidate_tokens(cleaned)
+    if is_transcript_noise(cleaned) or is_vague_reference_topic(cleaned):
         return False
-    if len(tokens) == 1:
+    if lowered.startswith("the i") or has_personal_pronoun_subject(cleaned):
+        return False
+    if any(token in FIRST_PERSON_TOPIC_TOKENS for token in tokens) and not is_accepted_first_person_workstream(cleaned):
+        return False
+    comma_head = cleaned.split(",", 1)[0]
+    comma_tokens = topic_candidate_tokens(comma_head)
+    if any(token in FIRST_PERSON_SETUP_VERBS for token in comma_tokens):
+        return False
+    subject_tokens = tokenize(cleaned)
+    if len(subject_tokens) > 8 or not subject_tokens:
+        return False
+    if len(subject_tokens) == 1:
         return has_meaningful_workstream_noun(cleaned) and not has_sentence_structure(cleaned)
     return is_valid_workstream_subject(cleaned)
 
 
+def clean_status_subject_candidate(text: str) -> str:
+    topic = canonicalize_status_topic_anchor(
+        re.sub(r"^(?:the|a|an)\s+", "", normalize_text_fragment(text).strip(), flags=re.IGNORECASE)
+    )
+    topic = topic.rstrip("?.!,;:")
+    if is_valid_status_topic_subject(topic):
+        return topic
+    return ""
+
+
 def extract_status_subject_from_clause(text: str) -> str:
-    topic = extract_clean_status_subject_from_clause(text)
-    if topic and is_valid_status_topic_candidate(topic) and is_valid_status_topic_subject(topic):
+    cleaned = normalize_text_fragment(text).rstrip("?.!")
+    if not cleaned:
+        return ""
+
+    object_match = re.search(
+        r"\b(?:input|feedback|approval|dependency|dependencies)\s+(?:is|are)\s+still\s+(?:missing|required|pending)\s+for\s+(?:the\s+)?(?P<topic>[^.?!,;]+)",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    if object_match:
+        object_topic = clean_status_subject_candidate(object_match.group("topic"))
+        if object_topic:
+            return object_topic
+
+    for pattern in (
+        r"^(?:the\s+)?(?P<topic>.+?)\s+(?:are|is)\s+still\s+not\s+finali[sz]ed\b",
+        r"^(?:the\s+)?(?P<topic>.+?)\s+(?:are|is)\s+still\s+missing\b",
+        r"^(?:the\s+)?(?P<topic>.+?)\s+(?:are|is)\s+absent\b",
+        r"^(?:the\s+)?(?P<topic>.+?)\s+(?:are|is)\s+still\s+pending\b",
+        r"^(?:the\s+)?(?P<topic>.+?)\s+remains?\s+(?:in\s+progress|blocked)\b",
+    ):
+        match = re.match(pattern, cleaned, flags=re.IGNORECASE)
+        if match:
+            topic = clean_status_subject_candidate(match.group("topic"))
+            if topic:
+                return topic
+
+    match = STATUS_SUBJECT_RE.match(cleaned)
+    if not match:
+        return ""
+    topic = canonicalize_status_topic_anchor(re.sub(r"^(?:the|a|an)\s+", "", match.group("topic").strip(), flags=re.IGNORECASE))
+    if topic.lower() in {"interview", "interviews"}:
+        return ""
+    if is_valid_status_topic_subject(topic):
         return topic.rstrip("?.!")
     return ""
+
+
+def has_first_person_setup_language(text: str) -> bool:
+    return bool(FIRST_PERSON_SETUP_LANGUAGE_RE.search(normalize_text_fragment(text)))
 
 
 def looks_like_topic_prompt(text: str) -> bool:
@@ -2737,29 +2805,33 @@ def extract_topic_prompt_from_turn(text: str, status_review: bool = False) -> st
         first_sentence = sentences[0]
         if is_transcript_noise(first_sentence):
             return ""
-        if status_review and is_status_evidence(first_sentence):
-            sentence_topic = extract_status_subject_from_clause(first_sentence)
-            if not sentence_topic and "," in first_sentence:
-                sentence_topic = extract_status_subject_from_clause(first_sentence.rsplit(",", 1)[1])
-            if sentence_topic:
-                return canonicalize_status_topic_anchor(sentence_topic)
-        if not status_review and is_status_evidence(first_sentence):
-            return ""
         clause_match = re.match(r"^(?P<topic>(?:The\s+)?[A-Z][A-Za-z0-9&/()'’ -]{4,80}),\s+(?P<tail>.+)$", first_sentence)
         if clause_match:
             topic = clause_match.group("topic").strip()
             canonical_topic = canonicalize_status_topic_anchor(topic)
-            if len(tokenize(canonical_topic)) <= 8 and is_valid_workstream_subject(canonical_topic) and topic_candidate_validator(canonical_topic):
-                return canonical_topic.rstrip("?.!")
             tail_topic = extract_status_subject_from_clause(clause_match.group("tail"))
+            head_is_setup = has_first_person_setup_language(topic)
+            head_is_valid = (
+                len(tokenize(canonical_topic)) <= 8
+                and is_valid_workstream_subject(canonical_topic)
+                and is_valid_topic_candidate(canonical_topic)
+            )
+            if tail_topic and (head_is_setup or not head_is_valid):
+                return tail_topic
+            if head_is_valid and not head_is_setup:
+                return canonical_topic.rstrip("?.!")
             if tail_topic:
                 return tail_topic
+        if is_status_evidence(first_sentence):
+            return ""
         sentence_topic = extract_status_subject_from_clause(first_sentence)
         if sentence_topic:
             return canonicalize_status_topic_anchor(sentence_topic)
-        canonical_sentence = canonicalize_status_topic_anchor(first_sentence)
+        canonical_sentence = canonicalize_status_topic_anchor(sentence)
         if is_clean_topic_anchor(canonical_sentence):
             return canonical_sentence
+        if is_status_evidence(sentence):
+            continue
     for sentence in reversed(sentences):
         canonical_sentence = canonicalize_status_topic_anchor(sentence)
         if is_clean_topic_anchor(canonical_sentence):
@@ -2851,8 +2923,6 @@ def extract_status_review_points(turns: list[dict[str, str]]) -> list[dict[str, 
         topic_text = canonicalize_status_topic_anchor(extract_topic_prompt_from_turn(turn["text"], status_review=True))
         if not topic_text:
             continue
-        if not is_clean_topic_anchor(topic_text) and not looks_like_topic_prompt(topic_text) and not is_valid_status_topic_candidate(topic_text):
-            continue
         if not is_valid_status_topic_subject(topic_text):
             continue
         direct_status_turn = contains_status_term(turn["text"]) or any(
@@ -2864,8 +2934,13 @@ def extract_status_review_points(turns: list[dict[str, str]]) -> list[dict[str, 
         )
         supporting_turns: list[dict[str, str]] = [turn] if direct_status_turn else []
         for future_turn in status_units[index + 1:index + 7]:
-            future_topic = canonicalize_status_topic_anchor(extract_topic_prompt_from_turn(future_turn["text"], status_review=True))
+            future_text = normalize_text_fragment(future_turn["text"])
+            future_topic = canonicalize_status_topic_anchor(extract_topic_prompt_from_turn(future_text))
             if future_topic and (is_clean_topic_anchor(future_topic) or looks_like_topic_prompt(future_topic)):
+                future_status_subject = extract_status_subject_from_clause(future_text)
+                if future_status_subject and contains_status_term(future_text):
+                    supporting_turns.append(future_turn)
+                    continue
                 break
             supporting_turns.append(future_turn)
         if not supporting_turns:
@@ -2892,7 +2967,7 @@ def extract_status_review_points(turns: list[dict[str, str]]) -> list[dict[str, 
                 point = "Vendor strategy rollout remains in progress: interviews are complete, but the strategy document has not yet been produced."
             else:
                 point = "Vendor strategy rollout remains in progress and is pending leadership review."
-        elif "innovation grant feedback" in topic_lower:
+        elif "innovation grant" in topic_lower and "feedback" in topic_lower:
             point = "Innovation grant feedback is still pending, with follow-up planned this week."
         elif "governance framework" in topic_lower:
             point = "The AI governance framework draft is pending leadership review."
@@ -2914,20 +2989,20 @@ def extract_status_review_points(turns: list[dict[str, str]]) -> list[dict[str, 
                     )
                 ):
                     details.append(sentence)
-            topic_normalized = topic_text.rstrip("?.!")
+            subject_normalized = format_status_subject(topic_text)
             confirmed_match = re.search(r"\bconfirmed\s+as\s+(?P<value>[^.?!,;]+)", combined, flags=re.IGNORECASE)
             if confirmed_match:
-                point = finalize_sentence(f"The {topic_normalized} is confirmed as {confirmed_match.group('value').strip()}")
+                point = finalize_sentence(f"{subject_normalized} is confirmed as {confirmed_match.group('value').strip()}")
             elif status == "complete":
                 approval_note = " and approved" if "approved" in lowered else ""
-                point = finalize_sentence(f"The {topic_normalized} appears complete{approval_note}")
+                point = finalize_sentence(f"{subject_normalized} appears complete{approval_note}")
             elif details:
                 point = finalize_sentence(
-                    f"The {topic_normalized} remains {status} because "
+                    f"{subject_normalized} remains {status} because "
                     + " and ".join(fragment.lower() for fragment in details[:2])
                 )
             else:
-                point = finalize_sentence(f"The {topic_normalized} remains {status}")
+                point = finalize_sentence(f"{subject_normalized} remains {status}")
         key = normalize_discussion_key(point)
         if key not in seen:
             seen.add(key)
@@ -3288,6 +3363,10 @@ def choose_cluster_subject(sentences: list[str], filtered_keywords: list[str]) -
     topic = extract_topic_phrase(cluster_like)
     if topic:
         return topic.rstrip("?.!")
+    for sentence in sentences:
+        status_topic = extract_topic_prompt_from_turn(sentence) or extract_status_subject_from_clause(sentence)
+        if status_topic:
+            return status_topic.rstrip("?.!")
     if filtered_keywords:
         return " ".join(filtered_keywords[:3])
     for sentence in sentences:
@@ -3531,6 +3610,7 @@ def find_supporting_sentence(sentences: list[str], markers: tuple[str, ...]) -> 
 
 def compress_status_summary(subject: str, sentences: list[str], filtered_keywords: list[str]) -> str:
     subject_text = normalize_text_fragment(subject).rstrip("?.!")
+    formatted_subject = format_status_subject(subject_text)
     lowered_blob = " ".join(sentences).lower()
     status = classify_status_from_text(lowered_blob)
     detail = ""
@@ -3585,15 +3665,15 @@ def compress_status_summary(subject: str, sentences: list[str], filtered_keyword
         return "A possible GSK proposal was discussed, but no action or recommendation was agreed."
 
     if status == "blocked" and detail:
-        return finalize_sentence(f"{subject_text} remains blocked because {detail.lower()}")
+        return finalize_sentence(f"{formatted_subject} remains blocked because {detail.lower()}")
     if status == "complete":
-        return finalize_sentence(f"{subject_text} appears complete")
+        return finalize_sentence(f"{formatted_subject} appears complete")
     if status == "active" and detail:
-        return finalize_sentence(f"{subject_text} remains active because {detail.lower()}")
+        return finalize_sentence(f"{formatted_subject} remains active because {detail.lower()}")
     if status == "in review" and detail:
-        return finalize_sentence(f"{subject_text} is in review because {detail.lower()}")
+        return finalize_sentence(f"{formatted_subject} is in review because {detail.lower()}")
     if detail:
-        return finalize_sentence(f"{subject_text} remains {status} because {detail.lower()}")
+        return finalize_sentence(f"{formatted_subject} remains {status} because {detail.lower()}")
     if filtered_keywords:
         return finalize_sentence(f"The team reviewed {' '.join(filtered_keywords[:3])}.")
     return finalize_sentence(subject_text)

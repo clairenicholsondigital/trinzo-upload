@@ -8,7 +8,10 @@ from scripts.python_meeting_minutes_numbers import (
     analyse,
     clean_transcript_text,
     decision_topics_match,
+    derive_status_review_actions_from_workstreams,
     discussion_similarity,
+    extract_status_subject_from_clause,
+    extract_topic_prompt_from_turn,
     fuzzy_token_similarity,
     has_malformed_trailing_question_fragment,
     lightly_clean_representative_sentence,
@@ -717,6 +720,34 @@ Slides are ready and the rehearsal is booked.
         self.assertTrue(any("rehearsal" in point or "slides" in point or "webinar" in point for point in lowered_points))
         self.assertGreaterEqual(len(result["numberExperimentDebug"]["topicClusters"]), 2)
 
+    def test_status_setup_clause_uses_tail_subject(self):
+        transcript = (Path("scripts/transcript-tests/064_status_setup_clause_rejected/transcript.txt")).read_text()
+        turn_text = "I've got the latest report open, the 18th March one remains in progress."
+
+        self.assertEqual(extract_status_subject_from_clause("the 18th March one remains in progress"), "18th March one")
+        self.assertEqual(extract_topic_prompt_from_turn(turn_text), "18th March one")
+
+        result = analyse(transcript)
+
+        self.assertIn("The 18th March one remains in progress.", result["discussionPoints"])
+        self.assertFalse(
+            any(point.startswith("The I've got the latest report open remains") for point in result["discussionPoints"])
+        )
+
+    def test_misrecognized_setup_clause_uses_tail_subject(self):
+        transcript = (Path("scripts/transcript-tests/066_status_misrecognized_setup_rejected/transcript.txt")).read_text()
+        turn_text = "The I got report open, soundtrack remains blocked."
+
+        self.assertEqual(extract_status_subject_from_clause("soundtrack remains blocked"), "soundtrack")
+        self.assertEqual(extract_topic_prompt_from_turn(turn_text), "soundtrack")
+
+        result = analyse(transcript)
+
+        self.assertIn("The soundtrack remains blocked.", result["discussionPoints"])
+        self.assertFalse(
+            any(point.startswith("The I got report open remains blocked") for point in result["discussionPoints"])
+        )
+
     def test_supplier_contract_renewal_outputs(self):
         transcript = """Customer support contract renewal
 
@@ -801,6 +832,13 @@ Yes.
             )
         )
 
+
+    def test_topic_prompt_skips_initial_status_evidence_sentence(self):
+        self.assertEqual(
+            extract_topic_prompt_from_turn("Okay, complete. The intake workflow and request funnel?"),
+            "Intake workflow and request funnel",
+        )
+
     def test_daily_ai_check_in_fixture_runs_with_debug(self):
         transcript = PROJECT_FIXTURE.read_text(encoding="utf-8")
         result = analyse(transcript)
@@ -828,9 +866,11 @@ Yes.
             )
         )
         self.assertIn("Vendor strategy rollout remains in progress: interviews are complete, but the strategy document has not yet been produced.", result["discussionPoints"])
+        self.assertIn("The intake workflow remains in progress because routing is not yet working properly.", result["discussionPoints"])
         self.assertIn("Innovation grant feedback is still pending, with follow-up planned this week.", result["discussionPoints"])
         self.assertIn("Review stage gate templates.", result["meetingActionPoint"])
         self.assertIn("Confirm AI pipeline dependencies with sales.", result["meetingActionPoint"])
+        self.assertIn("Validate intake workflow routing.", result["meetingActionPoint"])
         action_map = {item["meetingActionPoint"]: item for item in result["actions"]}
         self.assertTrue(action_map["Review stage gate templates."]["_evidence"])
         self.assertEqual(action_map["Review stage gate templates."]["_evidence"][0]["speaker"], "Ciara Griffin")
@@ -853,6 +893,43 @@ Yes.
             point_positions["Innovation grant feedback is still pending, with follow-up planned this week."],
         )
         json.dumps(result)
+
+
+    def test_status_review_extracts_subjects_from_status_evidence_sentences(self):
+        turns = [
+            {"speaker": "Emma", "timestamp": "0:01", "text": "Stage gate templates are still not finalised."},
+            {"speaker": "David", "timestamp": "0:10", "text": "Sales input is still missing for the AI pipeline dependency map."},
+            {"speaker": "Emma", "timestamp": "0:19", "text": "The vendor strategy document is absent and leadership review is still pending."},
+            {"speaker": "David", "timestamp": "0:29", "text": "We are awaiting leadership approval on the vendor strategy before procurement starts."},
+            {"speaker": "Emma", "timestamp": "0:39", "text": "Innovation grant follow-up feedback is still pending."},
+        ]
+
+        extracted_subjects = [extract_topic_prompt_from_turn(turn["text"]) for turn in turns]
+
+        self.assertIn("Stage gate templates", extracted_subjects)
+        self.assertIn("AI pipeline dependency map", extracted_subjects)
+        self.assertIn("vendor strategy document", extracted_subjects)
+        self.assertIn("Innovation grant feedback", extracted_subjects)
+        self.assertEqual(extract_topic_prompt_from_turn("That milestone is green."), "")
+        self.assertEqual(extract_topic_prompt_from_turn("Deadline for that is blocked."), "")
+
+        workstreams = build_status_review_workstreams(turns)
+        workstream_text = "\n".join(item["summary"] for item in workstreams)
+
+        self.assertIn("The stage gate review process is active", workstream_text)
+        self.assertIn("AI pipeline strategy remains blocked", workstream_text)
+        self.assertIn("Vendor strategy rollout remains in progress", workstream_text)
+        self.assertIn("Innovation grant feedback is still pending", workstream_text)
+
+        actions = [
+            item["meetingActionPoint"]
+            for item in derive_status_review_actions_from_workstreams(workstreams)
+        ]
+
+        self.assertIn("Review stage gate templates.", actions)
+        self.assertIn("Confirm AI pipeline dependencies with sales.", actions)
+        self.assertIn("Draft vendor strategy document.", actions)
+        self.assertIn("Follow up innovation grant feedback.", actions)
 
     def test_webinar_fixture_runs_with_debug(self):
         transcript = FIXTURE.read_text(encoding="utf-8")
