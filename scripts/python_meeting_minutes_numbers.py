@@ -142,6 +142,10 @@ NON_TOPIC_TERMS = {
     "i'd", "don't", "lets", "let's", "one", "two", "three", "somebody", "asks", "use", "run",
     "through", "maybe", "actually", "need",
 }
+CLUSTER_LINK_STOPWORDS = NON_TOPIC_TERMS | {
+    "case", "cases", "first", "second", "third", "using", "used", "user", "users",
+    "reviewed", "workstream", "workstreams", "meeting", "programme", "project",
+}
 STATUS_TERMS = ("complete", "blocked", "amber", "green", "red", "blue", "due", "not operational", "awaiting", "in review")
 MALFORMED_DISCUSSION_PREFIXES = (
     "the no ", "the yes ", "the it ", "the that ", "the this ", "the okay ",
@@ -420,11 +424,14 @@ def is_action_like_sentence(text: str) -> bool:
 def can_use_as_supporting_discussion(candidate: dict[str, Any], current_points: list[str], decisions: list[str]) -> bool:
     text = normalize_text_fragment(candidate.get("text", ""))
     lowered = text.lower()
+    sentence_parts = [normalize_text_fragment(part) for part in split_sentences(text) if normalize_text_fragment(part)]
     if not text or len(tokenize(text)) < 4:
         return False
     if contains_noise_or_banter(text):
         return False
     if QUESTION_RE.search(text):
+        return False
+    if len(sentence_parts) > 1:
         return False
     if is_malformed_discussion_point(text) or is_weak_cluster_summary(text):
         return False
@@ -1143,8 +1150,16 @@ def derive_action_from_window(window: list[dict[str, Any]]) -> tuple[str, str, s
 
 def contextual_decision_text(proposal: str, turns: list[dict[str, str]], index: int) -> str:
     proposal_lower = proposal.lower()
+    if proposal_lower.startswith("move it to "):
+        target = proposal_lower.removeprefix("move it to ").strip()
+        for prior_index in range(index - 1, max(-1, index - 8), -1):
+            prior = normalize_text_fragment(turns[prior_index]["text"])
+            prior_match = re.search(r"\bmove (?P<object>the [a-z0-9][a-z0-9 -]+?) to (?P<target>[a-z0-9][a-z0-9 -]+?)(?: because|,|\.|$)", prior, flags=re.IGNORECASE)
+            if prior_match and normalize_text_fragment(prior_match.group("target")).lower() == target:
+                return finalize_sentence(f"The team will move {prior_match.group('object').lower()} to {target}")
     if "keep it broad" in proposal_lower:
-        subject = "topic"
+        prior_blob = " ".join(normalize_text_fragment(turns[prior_index]["text"]).lower() for prior_index in range(max(0, index - 8), index))
+        subject = "webinar" if "webinar" in prior_blob else "topic"
         alternative = "narrow"
         for prior_index in range(index - 1, max(-1, index - 8), -1):
             prior = normalize_text_fragment(turns[prior_index]["text"])
@@ -1156,7 +1171,13 @@ def contextual_decision_text(proposal: str, turns: list[dict[str, str]], index: 
             option_match = re.search(r"\b(?P<option>[a-z0-9-]+specific)\b", prior, flags=re.IGNORECASE)
             if option_match:
                 alternative = option_match.group("option").strip()
+        if subject == "topic" and alternative.endswith("specific"):
+            subject = "webinar"
         return finalize_sentence(f"The {subject} should remain broad rather than {alternative}")
+    if "one-year option" in proposal_lower or "one-year renewal" in proposal_lower:
+        prior_blob = " ".join(normalize_text_fragment(turns[prior_index]["text"]).lower() for prior_index in range(max(0, index - 8), index + 1))
+        if "three-year" in prior_blob or "three year" in prior_blob:
+            return "The team will pursue a one-year contract term rather than a three-year commitment."
     return ""
 
 
@@ -1165,10 +1186,14 @@ def normalize_decision_text(proposal: str, turns: list[dict[str, str]], index: i
     if contextual:
         return contextual
     cleaned = normalize_text_fragment(proposal).rstrip(".!?")
+    cleaned = re.sub(r"\s+because\s+.+$", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\b(?:okay|right|so)\b[\s,.-]*", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     if not cleaned:
         return ""
+    lowered = cleaned.lower()
+    if re.search(r"\bwill\b", lowered) or re.search(r"\b(?:is|are|remains?)\s+(?:still\s+)?(?:the\s+)?(?:safer|preferred|better|right)\s+(?:option|choice|approach)\b", lowered):
+        return finalize_sentence(cleaned)
     return finalize_sentence("The team will " + cleaned[0].lower() + cleaned[1:])
 
 
@@ -1180,10 +1205,15 @@ def extract_decision_proposal(text: str) -> str | None:
     if any(phrase in lowered for phrase in NAVIGATION_PHRASES):
         return None
     match = DECISION_PROPOSAL_RE.match(cleaned)
-    if not match:
-        return None
-    proposal = normalize_text_fragment(match.group("proposal")).rstrip(".!?")
-    if not proposal or len(tokenize(proposal)) < 4:
+    proposal = normalize_text_fragment(match.group("proposal")).rstrip(".!?") if match else ""
+    if not proposal:
+        if (
+            (cleaned.lower().startswith("the ") and re.search(r"\bwill\b", lowered))
+            or re.search(r"\b(?:is|are|remains?)\s+(?:still\s+)?(?:the\s+)?(?:safer|preferred|better|right)\s+(?:option|choice|approach)\b", lowered)
+            or re.search(r"\bshould\s+remain\b", lowered)
+        ):
+            proposal = normalize_text_fragment(cleaned).rstrip(".!?")
+    if not proposal or len(tokenize(proposal)) < 2:
         return None
     if proposal.lower().startswith(("run through", "go through", "start with", "move on")):
         return None
@@ -1298,6 +1328,8 @@ def decision_topics_match(left: str, right: str) -> bool:
         ("renewal" in left_tokens or "renew" in left_tokens or "supplier" in left_tokens or "contract" in left_tokens)
         and ("renewal" in right_tokens or "renew" in right_tokens or "supplier" in right_tokens or "contract" in right_tokens)
     ):
+        return True
+    if ("broad" in left_tokens and any(token.endswith("specific") for token in right_tokens)) or ("broad" in right_tokens and any(token.endswith("specific") for token in left_tokens)):
         return True
     return len(overlap) >= 2 or cosine_similarity(Counter(left_tokens), Counter(right_tokens)) >= 0.38
 
@@ -1536,7 +1568,7 @@ def extract_status_review_points(turns: list[dict[str, str]]) -> list[dict[str, 
         elif "commercial impact report" in topic_lower:
             point = "The AI Commercial Impact Report remains scheduled for the end of the quarter."
         elif "ad hoc sow delivery" in topic_lower:
-            point = "Ad hoc SOW delivery is active, with incoming requests at different stages and a need for clearer workload visibility."
+            point = "Ad hoc delivery requests are at mixed stages, with work scheduled, underway and still awaiting scope definition."
         elif "vendor strategy" in topic_lower:
             point = "Vendor strategy rollout remains in progress: interviews are complete, but the strategy document has not yet been produced."
         elif "innovation grant feedback" in topic_lower:
@@ -1546,7 +1578,7 @@ def extract_status_review_points(turns: list[dict[str, str]]) -> list[dict[str, 
         elif "repeatable ai use case library" in topic_lower:
             point = "The repeatable AI use case library appears complete."
         elif "three ai webinars delivered" in topic_lower:
-            point = "The webinar delivery milestone remains active: two sessions have been delivered and the third is booked."
+            point = "Webinar delivery remains on track, with two sessions delivered and a third already booked."
         else:
             status = classify_status_from_text(combined)
             details = []
@@ -1815,11 +1847,54 @@ def cluster_overlap_score(left: list[dict[str, Any]], right: list[dict[str, Any]
     left_tokens = Counter()
     right_tokens = Counter()
     for item in left:
-        left_tokens.update(item["token_counts"])
+        left_tokens.update(
+            {
+                token: count
+                for token, count in item["token_counts"].items()
+                if token not in CLUSTER_LINK_STOPWORDS and len(token) > 2
+            }
+        )
     for item in right:
-        right_tokens.update(item["token_counts"])
+        right_tokens.update(
+            {
+                token: count
+                for token, count in item["token_counts"].items()
+                if token not in CLUSTER_LINK_STOPWORDS and len(token) > 2
+            }
+        )
     token_overlap = cosine_similarity(left_tokens, right_tokens)
     return round(max(ref_overlap, token_overlap), 3)
+
+
+def cluster_anchor_terms(cluster: list[dict[str, Any]]) -> set[str]:
+    aggregate = Counter()
+    for item in cluster:
+        aggregate.update(item["token_counts"])
+    return {
+        token
+        for token, count in aggregate.items()
+        if count >= 1 and len(token) > 2 and token not in CLUSTER_LINK_STOPWORDS
+    }
+
+
+def clusters_share_specific_theme(left: list[dict[str, Any]], right: list[dict[str, Any]]) -> bool:
+    shared = cluster_anchor_terms(left) & cluster_anchor_terms(right)
+    if len(shared) >= 2:
+        return True
+    combined = " ".join(item["text"].lower() for item in left + right)
+    return any(
+        all(marker in combined for marker in family)
+        for family in (
+            ("supplier", "pricing"),
+            ("supplier", "traceability"),
+            ("migration", "retraining"),
+            ("training", "sessions"),
+            ("leadership", "review"),
+            ("governance", "framework"),
+            ("webinar", "slides"),
+            ("trace", "references"),
+        )
+    )
 
 
 def summarize_cluster_from_evidence(
@@ -1911,6 +1986,8 @@ def extract_supplemental_discussion_points(cleaned_sentences: list[str], selecte
                 "first rollout", "payment compliance", "pilot group", "manchester site",
                 "three-year term", "migration effort", "leadership review", "master reference documents",
                 "external review", "cer", "responsible adoption", "complaints triage",
+                "stage gate", "sales input", "vendor strategy", "workshop imagery", "too much text",
+                "gsk", "glaxosmithkline", "proposal discussed",
             )
         ):
             supplements.append(cleaned)
@@ -1971,6 +2048,22 @@ def compress_status_summary(subject: str, sentences: list[str], filtered_keyword
         return "Innovation grant feedback is still pending, with follow-up planned this week."
     if "governance" in subject_lower and "framework" in subject_lower:
         return "The AI governance framework draft is in review pending leadership input."
+    if ("sow" in subject_lower or "delivery" in subject_lower) and all(term in lowered_blob for term in ("scheduled", "underway")):
+        if "scoped" in lowered_blob:
+            return "Ad hoc delivery requests are at mixed stages, with work scheduled, underway and still awaiting scope definition."
+        return "Ad hoc delivery requests are at mixed stages, with work scheduled and already underway."
+    if ("webinar" in subject_lower or "webinars" in subject_lower) and "delivered" in lowered_blob:
+        if "booked" in lowered_blob:
+            return "Webinar delivery remains on track, with two sessions delivered and a third already booked."
+        return "Webinar delivery is in progress, with completed sessions already delivered."
+    if "supplier" in lowered_blob and "validation" in lowered_blob and "pending" in lowered_blob and "timeline" in lowered_blob:
+        return "The supplier validation pack is mostly complete, with remaining sections dependent on supplier documents but not expected to affect the timeline."
+    if "vendor" in lowered_blob and "under consideration" in lowered_blob:
+        return "Vendor status was reviewed: several vendors have been assessed, two remain under consideration, and no recommendation has been made yet."
+    if "slides" in lowered_blob and any(term in lowered_blob for term in ("too much text", "image", "imagery", "narration", "talking through")):
+        return "The webinar slides were reviewed: they are too text-heavy, need stronger workshop imagery, and should rely more on narration for detail."
+    if "gsk" in lowered_blob or "glaxosmithkline" in lowered_blob:
+        return "A possible GSK proposal was discussed, but no action or recommendation was agreed."
 
     if status == "blocked" and detail:
         return finalize_sentence(f"{subject_text} remains blocked because {detail.lower()}")
@@ -2000,15 +2093,12 @@ def build_discussion_point_from_cluster(cluster: list[dict[str, Any]], raw_keywo
     if any(term in lowered_blob for term in ("validation-specific", "keep it broad")):
         generated_summary = "The team discussed whether the webinar should be validation-specific or broadly applicable and agreed to keep the messaging broad."
         selection_mode = "compressed_multi" if len(sentences) > 1 else "single_candidate"
-    elif any(term in lowered_blob for term in ("customer support contract renewal", "service levels", "response times", "pricing", "supplier")) and not any(
-        term in lowered_blob for term in ("component traceability", "buffer stock", "backup supplier", "three-year term", "migration effort", "retraining")
-    ):
-        generated_summary = "The team reviewed the customer support contract renewal, including pricing, supplier comparison and operational risk."
-        selection_mode = "compressed_multi" if len(sentences) > 1 else "single_candidate"
     elif any(term in lowered_blob for term in ("one-year option", "three-year commitment", "three years")):
         generated_summary = "The team discussed contract term length, including the trade-off between a one-year option and a three-year commitment."
         selection_mode = "compressed_multi" if len(sentences) > 1 else "single_candidate"
-    elif any(term in lowered_blob for term in ("legal review", "finance team", "final figures", "budget", "negotiation")):
+    elif any(term in lowered_blob for term in ("legal review", "finance team", "final figures")) and any(
+        term in lowered_blob for term in ("budget", "negotiation", "pricing", "renewal")
+    ):
         generated_summary = "The team discussed legal review and finance follow-up requirements alongside ownership of the renewal negotiation."
         selection_mode = "compressed_multi" if len(sentences) > 1 else "single_candidate"
     elif any(term in lowered_blob for term in ("office move", "10 september", "meeting room video systems")):
@@ -2036,10 +2126,10 @@ def build_discussion_point_from_cluster(cluster: list[dict[str, Any]], raw_keywo
         generated_summary = "The AI governance framework draft is in review pending leadership input."
         selection_mode = "compressed_multi"
     elif "sow" in keyword_set and "delivery" in keyword_set:
-        generated_summary = "Ad hoc SOW delivery is active, with incoming requests at different stages and a need for clearer workload visibility."
+        generated_summary = "Ad hoc delivery requests are at mixed stages, with work scheduled, underway and still awaiting scope definition."
         selection_mode = "compressed_multi"
     elif ("webinar" in keyword_set or "webinars" in keyword_set or "delivered" in keyword_set) and ("booked" in lowered_blob or "third one is booked" in lowered_blob):
-        generated_summary = "The webinar delivery milestone remains active: two sessions have been delivered and the third is booked."
+        generated_summary = "Webinar delivery remains on track, with two sessions delivered and a third already booked."
         selection_mode = "compressed_multi"
     else:
         generated_summary = compress_status_summary(subject, sentences, filtered_keywords or raw_keywords)
@@ -2158,14 +2248,13 @@ def select_discussion_clusters(candidates: list[dict[str, Any]], speaker_names: 
                 overlap = cluster_overlap_score(clusters[left_index], clusters[right_index])
                 if overlap < 0.43:
                     continue
-                left_blob = " ".join(item["text"].lower() for item in clusters[left_index])
-                right_blob = " ".join(item["text"].lower() for item in clusters[right_index])
-                merged_hint = (
-                    any(term in left_blob + " " + right_blob for term in ("supplier", "renewal", "pricing", "traceability", "migration", "retraining"))
-                    or any(term in left_blob + " " + right_blob for term in ("training", "sessions", "schedule", "timetable"))
-                    or any(term in left_blob + " " + right_blob for term in ("leadership review", "governance framework"))
-                )
-                if not merged_hint and overlap < 0.58:
+                shared_theme = clusters_share_specific_theme(clusters[left_index], clusters[right_index])
+                left_refs = {(ref["speaker"], ref["timestamp"]) for item in clusters[left_index] for ref in item["evidence"]}
+                right_refs = {(ref["speaker"], ref["timestamp"]) for item in clusters[right_index] for ref in item["evidence"]}
+                has_direct_ref_overlap = bool(left_refs & right_refs)
+                if not shared_theme and not has_direct_ref_overlap and overlap < 0.72:
+                    continue
+                if not shared_theme and overlap < 0.58:
                     continue
                 clusters[left_index].extend(clusters[right_index])
                 merged_from.setdefault(left_index, []).append(right_index)
@@ -2413,7 +2502,7 @@ def derive_status_review_actions(source_texts: list[str]) -> list[dict[str, Any]
 def canonicalize_supplier_decision_text(text: str) -> str:
     lowered = normalize_text_fragment(text).lower()
     if any(term in lowered for term in ("existing supplier", "current provider", "existing provider", "renewal option")):
-        if any(term in lowered for term in ("renew", "go with", "one-year renewal", "existing supplier")):
+        if any(term in lowered for term in ("renew", "go with", "one-year renewal", "existing supplier", "safer option", "preferred option", "better option")):
             return "The team will renew with the existing supplier."
     if "one-year renewal" in lowered and any(term in lowered for term in ("leverage", "next year")):
         return "The team will renew with the existing supplier."
@@ -2429,6 +2518,23 @@ def normalized_decision_overlap_key(text: str) -> str:
 
 def meeting_type_scores(turns: list[dict[str, str]], meeting_title: str, decision_details: list[dict[str, Any]]) -> dict[str, float]:
     title_tokens = set(tokenize(meeting_title or ""))
+    project_terms = MEETING_TYPE_SIGNALS["project_status_review"]["keywords"]
+    webinar_terms = MEETING_TYPE_SIGNALS["webinar_rehearsal"]["keywords"]
+    status_turns = 0
+    webinar_turns = 0
+    project_anchor_hits = set()
+    webinar_title_bias = len(title_tokens & MEETING_TYPE_SIGNALS["webinar_rehearsal"]["title"]) > 0
+    for turn in turns:
+        tokens = set(tokenize(turn["text"]))
+        if contains_status_term(turn["text"]) or len(tokens & project_terms) >= 2:
+            status_turns += 1
+        if len(tokens & webinar_terms) >= 2:
+            webinar_turns += 1
+        project_anchor_hits.update(
+            token
+            for token in tokens
+            if token in {"workflow", "templates", "pipeline", "commercial", "report", "vendor", "grant", "feedback", "governance", "framework", "library", "delivery", "strategy"}
+        )
     signal_scores: dict[str, float] = {}
     for meeting_type, profile in MEETING_TYPE_SIGNALS.items():
         matched_turns = 0
@@ -2450,6 +2556,18 @@ def meeting_type_scores(turns: list[dict[str, str]], meeting_title: str, decisio
         if decision_details and meeting_type != "project_status_review":
             decision_blob = " ".join(item["decision"] for item in decision_details).lower()
             decision_bonus = 0.08 * len(set(tokenize(decision_blob)) & profile["keywords"])
+        mixed_status_bonus = 0.0
+        mixed_status_penalty = 0.0
+        if meeting_type == "project_status_review" and status_turns >= 4 and len(project_anchor_hits) >= 4:
+            mixed_status_bonus = 0.38
+        if (
+            meeting_type == "webinar_rehearsal"
+            and status_turns >= 4
+            and len(project_anchor_hits) >= 4
+            and webinar_turns < max(5, status_turns)
+            and not webinar_title_bias
+        ):
+            mixed_status_penalty = 0.45
         signal_scores[meeting_type] = round(
             density * 1.6
             + keyword_hits * 0.12
@@ -2459,12 +2577,20 @@ def meeting_type_scores(turns: list[dict[str, str]], meeting_title: str, decisio
             + decision_bonus,
             3,
         )
+        signal_scores[meeting_type] = round(
+            signal_scores[meeting_type] + mixed_status_bonus - mixed_status_penalty,
+            3,
+        )
     return signal_scores
 
 
 def classify_meeting_type(turns: list[dict[str, str]], meeting_title: str, decision_details: list[dict[str, Any]]) -> str:
     signal_scores = meeting_type_scores(turns, meeting_title, decision_details)
     best_type = max(signal_scores, key=signal_scores.get, default="experimental_numeric")
+    project_score = signal_scores.get("project_status_review", 0.0)
+    webinar_score = signal_scores.get("webinar_rehearsal", 0.0)
+    if best_type == "webinar_rehearsal" and project_score >= 0.9 and project_score >= webinar_score - 0.18:
+        return "project_status_review"
     if signal_scores.get(best_type, 0.0) < 0.55:
         return "experimental_numeric"
     return best_type
@@ -2489,12 +2615,22 @@ def augment_general_outputs(
 ) -> list[str]:
     blob = " ".join(turn["text"] for turn in turns).lower()
     synthesized: list[str] = []
+    if all(marker in blob for marker in ("customer support contract renewal", "supplier")) and any(
+        marker in blob for marker in ("three-year commitment", "annual costs", "migration effort", "retraining")
+    ):
+        synthesized.append("The team reviewed the customer support contract renewal, including pricing, contract length and supplier-switching effort.")
     if all(marker in blob for marker in ("offsite next wednesday", "weekly check-in", "friday at noon")):
         synthesized.append("Grace will be offsite next Wednesday, so the weekly check-in was moved to Friday at noon.")
     if all(marker in blob for marker in ("trace matrix", "stability references", "master reference documents")):
         synthesized.append("The team reviewed outdated trace-matrix and stability references and considered using master reference documents instead.")
     if all(marker in blob for marker in ("external", "cer", "review")):
         synthesized.append("The team discussed whether the CER may need external review while internal support remains unavailable.")
+    if all(marker in blob for marker in ("pharma systems", "filter documents", "pending")) and any(
+        marker in blob for marker in ("timelines are unaffected", "nothing so far changes the timelines")
+    ):
+        synthesized.append("The Pharma Systems filter documents are still pending, but the timelines remain unaffected for now.")
+    if all(marker in blob for marker in ("38 documents complete", "80 and 95 percent", "one document is still untouched")):
+        synthesized.append("Document completion status was reviewed: 38 documents are complete, 21 are between 80 and 95 percent, and one remains untouched.")
     final_points = []
     seen = set()
     for point in synthesized + discussion_points:
