@@ -9,6 +9,7 @@ from scripts.python_meeting_minutes_numbers import (
     clean_transcript_text,
     decision_topics_match,
     discussion_similarity,
+    extract_topic_prompt_from_turn,
     fuzzy_token_similarity,
     has_malformed_trailing_question_fragment,
     lightly_clean_representative_sentence,
@@ -801,6 +802,13 @@ Yes.
             )
         )
 
+
+    def test_topic_prompt_skips_initial_status_evidence_sentence(self):
+        self.assertEqual(
+            extract_topic_prompt_from_turn("Okay, complete. The intake workflow and request funnel?"),
+            "Intake workflow and request funnel",
+        )
+
     def test_daily_ai_check_in_fixture_runs_with_debug(self):
         transcript = PROJECT_FIXTURE.read_text(encoding="utf-8")
         result = analyse(transcript)
@@ -828,9 +836,11 @@ Yes.
             )
         )
         self.assertIn("Vendor strategy rollout remains in progress: interviews are complete, but the strategy document has not yet been produced.", result["discussionPoints"])
+        self.assertIn("The intake workflow remains in progress because routing is not yet working properly.", result["discussionPoints"])
         self.assertIn("Innovation grant feedback is still pending, with follow-up planned this week.", result["discussionPoints"])
         self.assertIn("Review stage gate templates.", result["meetingActionPoint"])
         self.assertIn("Confirm AI pipeline dependencies with sales.", result["meetingActionPoint"])
+        self.assertIn("Validate intake workflow routing.", result["meetingActionPoint"])
         action_map = {item["meetingActionPoint"]: item for item in result["actions"]}
         self.assertTrue(action_map["Review stage gate templates."]["_evidence"])
         self.assertEqual(action_map["Review stage gate templates."]["_evidence"][0]["speaker"], "Ciara Griffin")
