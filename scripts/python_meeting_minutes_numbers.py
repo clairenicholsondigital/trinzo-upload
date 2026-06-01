@@ -2852,8 +2852,13 @@ def extract_status_review_points(turns: list[dict[str, str]]) -> list[dict[str, 
         )
         supporting_turns: list[dict[str, str]] = [turn] if direct_status_turn else []
         for future_turn in status_units[index + 1:index + 7]:
-            future_topic = canonicalize_status_topic_anchor(extract_topic_prompt_from_turn(future_turn["text"]))
+            future_text = normalize_text_fragment(future_turn["text"])
+            future_topic = canonicalize_status_topic_anchor(extract_topic_prompt_from_turn(future_text))
             if future_topic and (is_clean_topic_anchor(future_topic) or looks_like_topic_prompt(future_topic)):
+                future_status_subject = extract_status_subject_from_clause(future_text)
+                if future_status_subject and contains_status_term(future_text):
+                    supporting_turns.append(future_turn)
+                    continue
                 break
             supporting_turns.append(future_turn)
         if not supporting_turns:
@@ -2900,20 +2905,20 @@ def extract_status_review_points(turns: list[dict[str, str]]) -> list[dict[str, 
                     )
                 ):
                     details.append(sentence)
-            topic_normalized = topic_text.rstrip("?.!")
+            subject_normalized = format_status_subject(topic_text)
             confirmed_match = re.search(r"\bconfirmed\s+as\s+(?P<value>[^.?!,;]+)", combined, flags=re.IGNORECASE)
             if confirmed_match:
-                point = finalize_sentence(f"The {topic_normalized} is confirmed as {confirmed_match.group('value').strip()}")
+                point = finalize_sentence(f"{subject_normalized} is confirmed as {confirmed_match.group('value').strip()}")
             elif status == "complete":
                 approval_note = " and approved" if "approved" in lowered else ""
-                point = finalize_sentence(f"The {topic_normalized} appears complete{approval_note}")
+                point = finalize_sentence(f"{subject_normalized} appears complete{approval_note}")
             elif details:
                 point = finalize_sentence(
-                    f"The {topic_normalized} remains {status} because "
+                    f"{subject_normalized} remains {status} because "
                     + " and ".join(fragment.lower() for fragment in details[:2])
                 )
             else:
-                point = finalize_sentence(f"The {topic_normalized} remains {status}")
+                point = finalize_sentence(f"{subject_normalized} remains {status}")
         key = normalize_discussion_key(point)
         if key not in seen:
             seen.add(key)
@@ -3273,6 +3278,10 @@ def choose_cluster_subject(sentences: list[str], filtered_keywords: list[str]) -
     topic = extract_topic_phrase(cluster_like)
     if topic:
         return topic.rstrip("?.!")
+    for sentence in sentences:
+        status_topic = extract_topic_prompt_from_turn(sentence) or extract_status_subject_from_clause(sentence)
+        if status_topic:
+            return status_topic.rstrip("?.!")
     if filtered_keywords:
         return " ".join(filtered_keywords[:3])
     for sentence in sentences:
@@ -3516,6 +3525,7 @@ def find_supporting_sentence(sentences: list[str], markers: tuple[str, ...]) -> 
 
 def compress_status_summary(subject: str, sentences: list[str], filtered_keywords: list[str]) -> str:
     subject_text = normalize_text_fragment(subject).rstrip("?.!")
+    formatted_subject = format_status_subject(subject_text)
     lowered_blob = " ".join(sentences).lower()
     status = classify_status_from_text(lowered_blob)
     detail = ""
@@ -3570,15 +3580,15 @@ def compress_status_summary(subject: str, sentences: list[str], filtered_keyword
         return "A possible GSK proposal was discussed, but no action or recommendation was agreed."
 
     if status == "blocked" and detail:
-        return finalize_sentence(f"{subject_text} remains blocked because {detail.lower()}")
+        return finalize_sentence(f"{formatted_subject} remains blocked because {detail.lower()}")
     if status == "complete":
-        return finalize_sentence(f"{subject_text} appears complete")
+        return finalize_sentence(f"{formatted_subject} appears complete")
     if status == "active" and detail:
-        return finalize_sentence(f"{subject_text} remains active because {detail.lower()}")
+        return finalize_sentence(f"{formatted_subject} remains active because {detail.lower()}")
     if status == "in review" and detail:
-        return finalize_sentence(f"{subject_text} is in review because {detail.lower()}")
+        return finalize_sentence(f"{formatted_subject} is in review because {detail.lower()}")
     if detail:
-        return finalize_sentence(f"{subject_text} remains {status} because {detail.lower()}")
+        return finalize_sentence(f"{formatted_subject} remains {status} because {detail.lower()}")
     if filtered_keywords:
         return finalize_sentence(f"The team reviewed {' '.join(filtered_keywords[:3])}.")
     return finalize_sentence(subject_text)
