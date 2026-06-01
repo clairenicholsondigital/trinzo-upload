@@ -33,6 +33,8 @@ buildTranscriptTestPage({
   intro: 'Experimental comparison page. This runs a separate numeric-scoring Python-only extractor alongside the existing meeting-minutes test route.',
   buttonText: 'Run numbers experiment',
   endpoint: '/api/meeting-minutes-numbers',
+  includeTranscriptMetadata: true,
+  debugPanel: true,
   summary: meetingMinutesSummary
 });
 </script>

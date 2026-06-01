@@ -31,6 +31,12 @@ function buildTranscriptTestPage(config) {
       <div id="summaryGrid" class="summary-grid"></div>
     </section>
 
+    <section id="debugPanel" class="panel hidden">
+      <h2>Numbers experiment provenance</h2>
+      <div id="debugSummary" class="summary-grid"></div>
+      <pre id="debugOutput"></pre>
+    </section>
+
     <section id="jsonPanel" class="panel hidden">
       <div class="json-heading">
         <h2>Raw JSON response</h2>
@@ -50,6 +56,9 @@ function buildTranscriptTestPage(config) {
   const summaryGrid = document.getElementById('summaryGrid');
   const jsonPanel = document.getElementById('jsonPanel');
   const jsonOutput = document.getElementById('jsonOutput');
+  const debugPanel = document.getElementById('debugPanel');
+  const debugSummary = document.getElementById('debugSummary');
+  const debugOutput = document.getElementById('debugOutput');
 
   function setMessage(text, type) {
     message.textContent = text || '';
@@ -82,6 +91,41 @@ function buildTranscriptTestPage(config) {
     jsonPanel.classList.remove('hidden');
   }
 
+  function displayDebugPanel(result, responsePayload) {
+    if (!config.debugPanel) return;
+
+    const debug = result && result.numberExperimentDebug ? result.numberExperimentDebug : {};
+    const details = {
+      transcriptMetadata: responsePayload.transcriptMetadata || null,
+      discussionPointDetails: result && Array.isArray(result.discussionPointDetails) ? result.discussionPointDetails : [],
+      decisionDetails: result && Array.isArray(result.decisionDetails) ? result.decisionDetails : [],
+      statusReviewPoints: debug.statusReviewPoints || [],
+      statusReviewWorkstreams: debug.statusReviewWorkstreams || [],
+      finalDiscussionPoints: debug.finalDiscussionPoints || [],
+      topicClusters: debug.topicClusters || []
+    };
+
+    const digest = responsePayload.transcriptMetadata && responsePayload.transcriptMetadata.transcriptSha256
+      ? responsePayload.transcriptMetadata.transcriptSha256
+      : 'not requested';
+    const detailCounts = [
+      { label: 'Input digest', value: digest },
+      { label: 'Characters', value: String((responsePayload.transcriptMetadata && responsePayload.transcriptMetadata.transcriptLength) || responsePayload.transcriptLength || 0) },
+      { label: 'Discussion details', value: String(details.discussionPointDetails.length) },
+      { label: 'Decision details', value: String(details.decisionDetails.length) },
+      { label: 'Status points', value: String(details.statusReviewPoints.length) }
+    ];
+
+    debugSummary.innerHTML = detailCounts.map((item) => `
+      <div class="summary-item">
+        <div class="summary-label">${item.label}</div>
+        <div class="summary-value">${item.value}</div>
+      </div>
+    `).join('');
+    debugOutput.textContent = JSON.stringify(details, null, 2);
+    debugPanel.classList.remove('hidden');
+  }
+
   async function submitTranscript() {
     const pastedText = textInput.value.trim();
     const file = fileInput.files[0];
@@ -95,6 +139,7 @@ function buildTranscriptTestPage(config) {
     setMessage('Analysing transcript with local Python logic...', 'info');
     summaryPanel.classList.add('hidden');
     jsonPanel.classList.add('hidden');
+    debugPanel.classList.add('hidden');
 
     try {
       const options = { method: 'POST' };
@@ -107,7 +152,10 @@ function buildTranscriptTestPage(config) {
         options.body = formData;
       }
 
-      const response = await fetch(config.endpoint, options);
+      const endpoint = config.includeTranscriptMetadata
+        ? `${config.endpoint}${config.endpoint.includes('?') ? '&' : '?'}includeTranscriptMetadata=1`
+        : config.endpoint;
+      const response = await fetch(endpoint, options);
       const payload = await response.json().catch(() => null);
 
       if (!response.ok || !payload || payload.ok === false) {
@@ -117,6 +165,7 @@ function buildTranscriptTestPage(config) {
 
       setMessage(`Done. Analysed ${payload.transcriptLength || 0} characters from ${payload.source || 'transcript'}.`, 'success');
       displaySummary(payload.result);
+      displayDebugPanel(payload.result, payload);
       displayJson(payload.result);
     } catch (error) {
       setMessage(error.message || 'Transcript analysis failed.', 'error');
@@ -132,6 +181,9 @@ function buildTranscriptTestPage(config) {
     setMessage('', '');
     summaryPanel.classList.add('hidden');
     jsonPanel.classList.add('hidden');
+    debugPanel.classList.add('hidden');
+    debugOutput.textContent = '';
+    debugSummary.innerHTML = '';
     jsonOutput.textContent = '';
   }
 
