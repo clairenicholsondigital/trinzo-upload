@@ -6,6 +6,7 @@ const fs = require('fs/promises');
 const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
+const crypto = require('crypto');
 
 const {
   generateToken,
@@ -106,6 +107,43 @@ async function readTestTranscript(req) {
   }
 
   return { text: extraction.text || '', source: 'file', fileName: extraction.fileName };
+}
+
+
+function truthyFlag(value) {
+  if (Array.isArray(value)) return value.some((item) => truthyFlag(item));
+  if (value == null) return false;
+  return ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase());
+}
+
+function shouldIncludeTranscriptMetadata(req) {
+  return truthyFlag(req.query?.includeTranscriptMetadata)
+    || truthyFlag(req.query?.includeTranscriptDigest)
+    || truthyFlag(req.body?.includeTranscriptMetadata)
+    || truthyFlag(req.body?.includeTranscriptDigest);
+}
+
+function transcriptMetadata(text) {
+  return {
+    transcriptLength: text.length,
+    transcriptSha256: crypto.createHash('sha256').update(text, 'utf8').digest('hex').slice(0, 16)
+  };
+}
+
+function buildTestTranscriptResponse(req, transcript, result) {
+  const response = {
+    ok: true,
+    source: transcript.source,
+    fileName: transcript.fileName || null,
+    transcriptLength: transcript.text.length,
+    result
+  };
+
+  if (shouldIncludeTranscriptMetadata(req)) {
+    response.transcriptMetadata = transcriptMetadata(transcript.text);
+  }
+
+  return response;
 }
 
 function validateTranscriptText(text) {
@@ -440,13 +478,7 @@ router.post('/meeting-minutes-test', withTestUpload(async (req, res) => {
     validateTranscriptText(transcript.text);
     const result = await runPythonTranscriptScript('python_llm_meeting_minutes.py', transcript.text);
 
-    return res.json({
-      ok: true,
-      source: transcript.source,
-      fileName: transcript.fileName || null,
-      transcriptLength: transcript.text.length,
-      result
-    });
+    return res.json(buildTestTranscriptResponse(req, transcript, result));
   } catch (error) {
     return sendTestError(res, error);
   }
@@ -458,13 +490,7 @@ router.post('/meeting-minutes-numbers', withTestUpload(async (req, res) => {
     validateTranscriptText(transcript.text);
     const result = await runPythonTranscriptScript('python_meeting_minutes_numbers.py', transcript.text);
 
-    return res.json({
-      ok: true,
-      source: transcript.source,
-      fileName: transcript.fileName || null,
-      transcriptLength: transcript.text.length,
-      result
-    });
+    return res.json(buildTestTranscriptResponse(req, transcript, result));
   } catch (error) {
     return sendTestError(res, error);
   }
@@ -476,13 +502,7 @@ router.post('/project-update-test', withTestUpload(async (req, res) => {
     validateTranscriptText(transcript.text);
     const result = await runPythonTranscriptScript('python_llm.py', transcript.text);
 
-    return res.json({
-      ok: true,
-      source: transcript.source,
-      fileName: transcript.fileName || null,
-      transcriptLength: transcript.text.length,
-      result
-    });
+    return res.json(buildTestTranscriptResponse(req, transcript, result));
   } catch (error) {
     return sendTestError(res, error);
   }
