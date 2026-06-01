@@ -2638,6 +2638,8 @@ def canonicalize_status_topic_anchor(text: str) -> str:
         return "Ad hoc SOW delivery"
     if lowered in {"use case request funnel", "use case intake workflow"}:
         return "Use case intake funnel"
+    if lowered == "the intake workflow and request funnel":
+        return "Intake workflow and request funnel"
     return cleaned
 
 
@@ -2674,6 +2676,8 @@ def extract_status_subject_from_clause(text: str) -> str:
     if not match:
         return ""
     topic = canonicalize_status_topic_anchor(re.sub(r"^(?:the|a|an)\s+", "", match.group("topic").strip(), flags=re.IGNORECASE))
+    if topic.lower() in {"interview", "interviews"}:
+        return ""
     if is_valid_status_topic_subject(topic):
         return topic.rstrip("?.!")
     return ""
@@ -2739,9 +2743,11 @@ def extract_topic_prompt_from_turn(text: str) -> str:
         sentence_topic = extract_status_subject_from_clause(first_sentence)
         if sentence_topic:
             return canonicalize_status_topic_anchor(sentence_topic)
-        canonical_sentence = canonicalize_status_topic_anchor(first_sentence)
+        canonical_sentence = canonicalize_status_topic_anchor(sentence)
         if is_clean_topic_anchor(canonical_sentence):
             return canonical_sentence
+        if is_status_evidence(sentence):
+            continue
     for sentence in reversed(sentences):
         canonical_sentence = canonicalize_status_topic_anchor(sentence)
         if is_clean_topic_anchor(canonical_sentence):
