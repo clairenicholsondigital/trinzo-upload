@@ -1,0 +1,203 @@
+Thank you. Something else? My god it's so true because I think that's the one Slack on Friday. So... So I guess rewind just a bit. Have you had mineral clay say anything at all to you about analytics? you In any direction. Okay. So, essentially, three... 3.15 on Friday. Claire and Minerv were like well I think Claire was like before 4.15pm PM, can you fill out this table? And I was a bit like... oh my god what's happening at 4.15 and then as well some things of like data that goes back to like London 2024 and I'm like how on earth am I meant to pull out analytics from 2024, you know, when half of the time is we have the GDPR thing of deleting The analytics.
+
+Um... So I would... Sort of putting two and two together and coming up with some kind of a theory is I think probably with their new CEO, I think... What's happening possibly is that they're coming under more pressure with the analytics or looking at the analytics in a different way, something like that. Um... because that's Thank you.
+
+Yeah.
+
+I think that's the thing. It's like... It's always, it has always felt a bit ad hoc and I think that's probably because they just like respond to whatever ONT say rather than have a plan beforehand. because as well if we sort of because there is that discussion that happens with Sanju and of course none of this is what Sanju has ever mentioned to us and All they really care about is, like, who attended, full stop. And.
+
+which is obviously much easier to do. So perhaps if we start off, I will take you through what I've... what this means kind of thing and then we can fill in the gaps obviously ask questions because I should probably pick up that is exactly what Claire and Mina were doing. So, go for it. Bye. So these were the tables that... that Claire was populating on Friday or wanting populated. To me, out of all of these tables... Um...
+
+the kind of key points I'd say are... So there's this whole debate with this time on the platform because... There is a report from On The Fairs, which is like the activity duration report. And I can show you it in a second. I can show you the actual spreadsheet, but... Basically people leave their tabs open. Or they have like cookies set or something, which means that there's an awful lot of people that don't have any time.
+
+Despite the fact they clearly did stuff on the platform, they don't have any time at all recorded. you Which means that so far up until this point, And it's kind of been a bit of a sort of finger in the air estimate of so like you take off the ridiculous number of hours like somebody that's clearly logged on on the first day of the on the first day come off on like the last day and then clearly log on.
+
+because they would have knocked the average up to 165 hours or something. And then you've clearly got potentially... the people that have zero hours recorded despite the fact they did stuff So to date it's been like a take off the really high people, take off the low people and kind of... come up with a sort of average um So this year I will say... I also did a... What I think is probably a much more accurate thing, which is taking basically the time of the first click on the platform and then throughout the times of the timestamps of the clicks and then basically using maths to come up with an average of the amount of time so Assuming that like that overnights would have they wouldn't have been on or if they've not clicked or something for like half an hour then that time would come across off the overall engagement time and that knocks it down to about 45 minutes per person.
+
+So of course that creates a bit of a conversation between Claire and Minna and us of... which one do we take? Obviously this current eight hours one is because it's the comparable time. Um, That's what that one is.
+
+From that That's from...
+
+guarantee themselves from this review number so people that have registered registered for the virtual platform. Um, basically. Basically, this is the number who turned up. Yeah. Bye. So the number of countries online is also, that's like a Google analytics thing of essentially the IP address because there's two different so everybody on the internet has an IP address that is related. You can get like a slightly different IP address which pins you down to like the street that you're on but we use the one that's like the country level one that identifies if you know identifies to that level we're not stalking people um live views.
+
+So I believe... How we've worked this out before and this is one of the ones that I'm slightly shakier on in terms of the definition but I'm pretty sure it's It's the number of webinar views, plus the number of poster views, plus the number of content views. And by content views, I mean like an actual document view or... Yeah. Because I think this is where you could also get, like, does a view... If somebody's gone onto the lobby, does that count as a live view because they have viewed something?
+
+Um... And maybe this is where...
+
+So true.
+
+I totally agree and I think sort of longer term blue sky thinking if you like I'd say what we need is we need like a definitions type of structure type of database type of thing. That actually makes it clear because also I think this time... because there has been on the VFair side of things. There's two back ends then I hate to bring it back up again. But of course they've changed their labels as well.
+
+So you're kind of... trying to make what we did last year... marry up with what and be fairs done and then come up with some sort of happy medium Um... So this was the other thing. So I think it's even harder to be honest, to make it purely the on-demand period, particularly when Claire added in the documents downloaded part, because for from the VFair side of things. It's not actually like it's just one swag bag report.
+
+We don't have a swag bag report that is timestamped necessarily. It's just one report. You can't necessarily like timestamp type whereas the others you can tie like a start and end time to it This one is just a report and... So, bye. I do know for the 2026 button So seven documents were downloaded during the on-demand period, place 666 during the live day. Um... because I know when I'm presented with a table like this you don't really want to put seven on.
+
+Because I don't think that really tells the story of like... Um... you know, just the fact that most of the delegates were just on the platform during the conference to begin with, so probably just did all of the downloading. From that side, Ev. from that side of things and then like um lc 2025 Although I'm quite confident in that 347 number. It does look from the report just by the number of rows on it.
+
+that basically everybody was just downloading everything. It was sort of... you know, it was like, oh, freebies and like just chucking everything into the bag. Whereas, um, This time it was much more You want microbiology, so you go on for the microbiology stuff and... Full stop. Bye. That's a good point and I was just I'm sure I've got to buy info somewhere here. Um... Where's it gone? Because I think if I...
+
+So... And... That's a good point. I'm just gonna... editor I don't know because I um That's wild. Totally. So this one about live and on demand. Um... I think because the 2024 on-demand data I was... So I think basically this one would be... maths of like the first two tables to add them together. Um... which I've just not done based on their slight trickiness in finding the 2024 and 2025 data because of course half of this is like we get to the end And then it's like... Do we think two years later we're going to need some of that?
+
+Probably not. But anyway, that's... So this one was She duplicated the 2025 slide and then just turn the content that she wasn't sure about or was old to red. current version. So anything that's white, I assume, is the current...
+
+And So...
+
+across the It's like a summary of... the live days I'm just going to turn that to because that was just live day specific I'm... And then I looked at this slide and I thought this was This was fine. But a lot of it was stuff that we couldn't really confirm without swooping access to things like total number of people on site, Your guess is as good as mine. So this one was definitely a 2025 slide. And I think...
+
+One of the things that they look at is... like the structure of saying whether it's a live session just or whether, you know, the whole pre-recorded then deployed live. chart is meant to depict despite the fact it's got 225 Info on it. And I think that's what that... So this one, um, was sort of my first past attempt at doing that, of just taking... And, of course, some of this is... because you're sort of taking the agenda and then trying to work out the definition of how they've been categorising some of the sessions I think this is all of the sessions that would have featured in what they would have described as ONT talks Um... And those are the number of views for each of those sessions.
+
+And then the red stuff is the 2025. conclusions that they drew from the 2025 content. And so I guess that means one, two, three, four. four, five, six, seven, eight, So eight sessions in total do you reckon? Because I may as well. Or at least in the table? I don't think that's a minus. I think that is... probably meant to be a bullet point 22% off right so I think what they were doing I think so if that's 2,222 Be abusive.
+
+the across all of the selected sessions. That becomes... Um... If we're then saying views of live sessions was 21,918. views out of 21,918. Do you want to do... Do you have a calculator handy? Do you want to do... 2222 I think divided by 21,918 times 100.
+
+Yeah. That feels logical. Because I think the other... And I'm assuming what they use this for is, like... You have the list of sessions. And then... part of those sessions. sort of like How good is ONT sessions? How good are ONT sessions at drawing in there? All right. The drawing in the view.
+
+So then that similar approach was done on the masterclasses. Bye. Um... That was 9,617. Um...
+
+Which, um.
+
+Yeah, exactly. I could. say Do you want to do... 9,617. divided by 21,918 Yeah, I have remembered that, right?
+
+43.87% was that. So I would say from that... I'm That means... If you... If you then compare it to the 2025, version which was 26% of total views. In 2025. Then in terms of a conclusion, I'd say that that was... Like the masterclasses have doubled in popular life at least. essentially doubled in popularity because you've gone from 26% to 43.87%. Does that make sense? Cool. So then eight is... Is it remotely easy for us to know how many speakers were involved in the masterclasses?
+
+Even better, 13 speakers. So I would say that slide is done. So I know after Minna had said to add the day, basically that is all of the Tuesday sessions.
+
+Perfect.
+
+Okay, so... The other auditorium, so that particular auditorium I'm is 25 data. And we'll come to that stuff just because obviously I know there's like 59 slides. So I'll just whisper. through the stuff that's done. So then Studio... I'm This was like a similar thing. Au revoir. total up the number, basically this was type the number of the session views in total remove ONT and then total up the number of views that have the basically have the word studio in it So that's 2017. And 49.
+
+Um... So up 72.6% from 2025. Um... So if we just... based on consistency because if we start doing one stack for one of them doubtless we'll have another um 2014 oh that's tiny text I can't read that nobody can read that Do you want to... I haven't... do 2049 divided by The 21,918th.
+
+9.34 Do the brackets in the right mathematical place.
+
+Time is 100.
+
+it was 9.34% of total Thank you. So a lot of this at that point is just semi-standard and top in some ways their top three bottom three is what they have shown an interest in the past at beingBye. interested in. Good. So this breakout slide is a 2025 one. I think probably I looked at this and thought, oh God, we can't really do some of the onsites. Or maybe we can, but it's information in a different place.
+
+But also... breakout views so Do you want to do... Oh, I sense this is going to be interesting as a... 21,900... Mm-hmm. 22,198. divided by 21,918. And we'll do total VAs and total percentages.
+
+Cool, so let's... Does that look like all of the breakouts? So that's six breakouts. Six breakouts in total. Oh, that's interesting. 10% of it was 10% last year as well 2198 10% on Are you able to I shed any light on the equivalent of like live stream versus pre-recorded versus um Life. So in other words, delete all of this and say they're all live streamed.
+
+I will just delete.
+
+That one. I'm So does that mean there were six on site? Breakouts are all... Yeah, there were more. I'll leave that one. I'll leave that one now. So compatible partners. Thank you. This. Um...
+
+So there's this. First of all, I forgot the... Well, actually, there's two things. I forgot to chat. and now I've zoomed in to 175% which is not a good sign Um... So I need to... Cats need to be added. But this... this slide deck, this slide... is basically a summary of the number of interactions versus the number of views. Because it's quite interesting to see that You've got a certain number of visitors. and then a certain number of times that they visited that booth.
+
+And then, um... From there, you can then pick out the number of engaged delegates. So by that, it's like... to delegate just click on the booth and then they arrived at the booth thought this is rubbish and left or did they actually click on the stuff in the booth And if they did, that then made them a engaged delegate. And then from that point you can see the number of interactions and then an engagement rate from that. And then from that point At that point you can then go like number of interactions per visitor overall so that takes into account the people that weren't engaged as well as the people that were.
+
+Um... That, if you were to try and rank them, that then gives us genomi, genomise. as the top but also you can then start to say okay well a tea canter can is perhaps even though they had perhaps far fewer visitors, they had much more engaged visitors. And then that's why Just like which way you spin it. Um... the bits that so obviously the chats need to be added but also um Thank you. What's quite interesting, so I've sent an email to Ahmed and Salman this morning, and Because there is a user journey report that has on it like 1,123 things on it that say VMM call connected.
+
+But it doesn't tell you... where it was connected with who for how long or to be honest any of that so obviously begs the question of how people were connecting to a call, what they were doing. you know to be honest really any of that um Well, it might be. But nonetheless. If I... There's also, in the V-fairs back end, there's also, like, a... like a video video called report which is like totally blank with nothing on it um Um...
+
+So really, I think they need to shed some kind of a light on it because... I also don't know about the things like... So if all of those people have the MN call collected, Is that like one per... cool or is that like too percol but sort of like one against each participant I don't know so that is like an outstanding question Um... and one that might need that table updating, I don't know. But that is with BFA's to have a look at.
+
+So... Um...
+
+And I have spoken to Minna about slide 21 and 22, that basically what they want to know is they want to know how people got onto the partner booths in the first place and then what they did afterwards. Which is a slightly... Um... Tricky question. And that is basically because of the detail that is in the VFERS reports or not in the VFERS reports, because in like the user journey report, it says things like general tracking.
+
+Like literally it says the words general tracking or it says the words like, you know, like, Banner Click. And my gut feeling says that Banner Click is like a render, is like the render click, but I don't know for sure. So I've used basically a combination of Google Analytics and Google basically literally a combination of every kind of report that we have to come up with this but basically which is another reason why some of the These numbers might be a bit lower than the number of total partner booth visitors because It's just like who we have tracking for versus who we don't.
+
+Bye. So, can say that 441 of those people, 441 people accessed the Partner Booth Exhibit Hall, just by some means. And then 329 unique external delegates then actually visited at least one booth, so... There's obviously the difference between looking at the category of partner booths versus actually clicking into a booth. So then that gives you the 74.6% figure of like the number of people. Actually, we are in a both.
+
+Um... And then from there I've then given some of the popular activities prior to visiting the booth. That is 46 of those coming directly from the main navigation bar. 26 hopping straight over from a session. And then 13 coming from a notification. And. So that's what happened before. what happened after the data was even trickier to reconcile beforehand with afterwards but um I can say that 18 of the delegates clicked off the partner booth because they responded to a notification. And then...
+
+16 delegates went from that partner booth to look at their swag bag. um So that's like 13 going from the notification to the partner booth and this is 18 delegates who are on the partner booth then clicking off on As in being distracted by the part they're based on? Exactly. Yeah. And... Okay, so that is the partner. So overall, the partner booths are... add the chat like we need to add chats and then also um is this whole cool connected thing and making sure that the call connected because even if like that 1123 number based on what we see in terms of the number of visitors to the partner booths, it still seems really high.
+
+Because if you say that is 100% the partner abuse, then I'm not going to do it. I don't really know how you make 1123 even halving that number match because then it would be like every single person who visited the partner boothsAwesome.
+
+Bye. And you just, yeah, it just, I don't know. So I started this, so moving on, I started this section for the number of, because I know you, you know, I think Chloe and Mina were sort of like, "Shall we consider this feature next time? How many delegates were actually used it?" type of thing. Was it worth it? Um... I have started by putting in the speaker hub information so Probably the speaker hub is a yes, but be sure to carry on using that.
+
+The research hub as well. even though I haven't got the numbers. The numbers are basically... really quite substantial for what I'll add, obviously. But... people basically didn't use the search by research area but they did use the research area hub which is just an interesting thing considering that where the search by research area was on the auditorium page. It's an interesting... side to it. Secret cinema, so... Um...
+
+Those are the number of views that we had. I didn't really know how to... So often. make that much more exciting than it than it was it was at. All days. No, just live days. Um...
+
+It's a good point though. posters and Do you have any numbers to hand about how many posters we had?
+
+73 delegate 14, 0 and T, which made how many in total? I can't do maths quickly. A7. 87 right um just put the number of views in and So I started also looking at the on-demand views. These were as in take the time span of the on-demand, so the time span being like midnight on the 22nd to the 28th. Thank you. like top three posters, how many views, comedies. I use a lot for C.U.T. Cheers. Because the thing with this, I don't think the analysis is quite there yet, but the...
+
+the thing I always think of and judging by the fact the winners were basically the first in their category is is that people see the first ones on the platform but they don't you know like basically you're stuffed if your number 50 because people just don't scroll that far um Live lounge. This is Bye for now. both live and on demand. I think my logic for putting live and on demand here is Is that...
+
+some of the numbers because they are so low and I mean like primithy and only getting well like getting like zero interactions Minai and Mark Bondy I think I do need to make sure this includes the app interaction because I think... or because the platform or vice versa because I think sometimes how we have you know how we click on there on the platform how we click on the render and then it opens up documents I'm not sure how well that gets sort of linked up to...
+
+to become a lot of booth for you. and this is from the booth report so this might not be complete but nonetheless some of the numbers are really low which is why I've done live and on demand together. Um... Documents, top three, bottom three, all the getting started guides. to be honest, is the top. And then the bottom three, perspectives and then work flip overview. Hasta la próxima. Stay quiet.
+
+with great consideration.
+
+Thank you.
+
+That's a good idea.
+
+Yeah, totally.
+
+It's a different way of looking at it as well, because I I think The way I sort of, I mean, this is just purely personal preference, is that the search by research area was kind of a duplication why we didn't necessarily need it and then actually what it seemed like because and I will show you Another slide. Um... So the numbers here basically aren't correct, so take them as a... as an estimate. But I know one thing they're always talking about here is, with these analytics, is a delicate journey.
+
+So what was the most like... frequent set of actions that people did on the platform and it's quite interesting to see that on so On Tuesday. the majority, well we can track it, the majority of people went from the research hub and then they clicked From there, into the auditorium live, they added sessions to their schedule and then they went back to the research hub. And then on Wednesday it switched a bit more to, they went to the auditorium and then to the research hub and then to join the live session via the research hub.
+
+And then on the Thursday, it was more just coming into the auditorium, then the research hub and then joining the live session. It was very much... He sort of started on the Tuesday of like the discovery of what sessions do I want to watch and there was a bit more exploring. And then by the Thursday, it was more just kind of like, I know what I want to watch. They just came in and watched it. Bye.
+
+um Yeah, well, to be honest... Yeah, or to be honest, it might be... maybe a case of slightly reworking what they think of as the live lounge. Because I can't imagine that just... in a like a blue sky thinking ideal world type of thing is that you would maybe see a session. And then to try and chuck you off onto the next session or to try and get you engaged, you might then see, like, have you seen this particular document that might pop up or...
+
+You might go into the live lounge as a way of then accessing the session. So instead of thinking about things in lots of different components, it might just be a case of how can we make this more one stream of content? one stream of content, one stream of... different ways to engage with the same stuff simplify it basically Totally.
+
+Is that right? I'm sure I can. Um... Part because I added different traffic to it. Although I didn't think of... Actually, looking at those numbers in the first place, I do think it's there, which is something better than... general tracking being recorded against the user. I'm... Sayu! This was a 2020... So there's other, like, 2025 versions of slides of... like various literature views um Any of the red content that you see is very focused on Um...
+
+Tony's trying to get off. social media and engagement that's not something that we can really do anything about um or even have access to the information. Um... That's the delegate feedback form that I... Believe just isn't really our thing anyway. Um...
+
+So I... Um... Sure answer to that is no. But I do agree with you and I think we absolutely could and should.
+
+So true.
+
+This is for the speaker.
+
+We get soup. Thank you.
+
+I'm going to go to the next one.
+
+is now in the hands of the government.
+
+Exactly.
+
+And that's some of the things, you know, when we start thinking about it, it's like, Well, obviously, like, why haven't we? It just sounds so... So we're like, duh, surely we should. Bye.
+
+I know.
+
+It's crazy. Done? I mean, yeah, I'm totally with you on that. Completely. Um... So... What I'll perhaps do... I guess right first first question is do how are you like time wise workload wise Okay.
+
+Because I just wondered if I show you some of the because I went through some of the partner data with Minna on Friday and if you were up for it there's no pressure if not if you wanted to have basically help me tidy up some of these sheets because she wanted like difference in and column ordering and things like that.
+
+And if so, I'm just loading.
+
+Spreadsheets.
+
+maybe at some point in the next century.
+
+I don't know. So That I'd be like, that's where we eat.
+
+Um, Can you access the SharePoint, the ONT SharePoint? Do you know...
+
+Yeah.
+
+And can you... Just checking at this point you can access, can you access compatible partners analytics? Within that. Yeah.
+
+Yeah.
+
+If I just share my screen. So I've done this on like three, I think spreadsheet so If you are up for it.
+
+It would be great if we can make the format match.
+
+where basically... So this is the first, so "Golden Helix" is, this is what I would call a tidy version of that spreadsheet. where we have Um. I'm just gonna wait and... Close and see what the... Tell me when it goes out. Yeah. You have news today at the same time. The idea behind having more than one spreadsheet was basically so Nick, when he sends the spreadsheets, can just download the one specific spreadsheet and then send it across.
+
+And So. Thank you. And... user ID Hello. First name, last name, email address.
+
+so that's like the number of times that they were for example this person and yes they are actually So it's like... and visited the booths sometimes. Please. According to the VFA's report, yes. I think that... I think... Well, you know, That reminds me... Yeah, which I think probably should be classified as stalking. Thanks. And that does remind me of something that Mila said, and I don't think it's on here.
+
+But it's just for ultimate clarity, we make this date/time of first interaction Which then takes out the question of did they go at the same time? Does that make sense? I think in terms of trying to be simple In terms of trying to be simple from a how we're going to communicate this to Nick, then yes. I'm not... I'm not sure if we had our time again that that would be the best way to analyse it, I think that might be the way that it stacks on.
+
+Um... So if you were up for it, it would be great if you could help me try to make these match and then perhaps if you were to do that I'll then make sure that the the chat information is on and I'll basically I'll just plonk it at the bottom of the chat at the bottom of the spreadsheet. And Yes, I was too. I think So I don't think anybody's really set a proper deadline. So if... worst came to the worst it wouldn't be the end of the world but probably today All right.
+
+Yes, the office is. I think sometimes what's, I think sometimes what's, um, because I think sometimes what happens because I'm sure I've done that Let me try it. is when I've, 'cause I did originally upload the CSV, and then when I press edit to edit it directly on SharePoint, then I think it's created that XLS instead of just keeping it as a CSB. So when that happens, and I'll just make sure that the bugseekers I'm not about to delete something that we need.
+
+But basically feel free to delete the CSV version. Good night. There is no real difference. It's just what SharePoint has decided it wants to. Um, Or maybe I'll start with... Um... Yeah, feel free to... feel free to delete and then any other columns that you see like institute and job title that's left over then basically just if you don't see it the column if you don't see the column name on the tidy version then basically just delete it because it's things like there's like a partner um and part of the booth name duplicated um you Well, I think the general consensus is that if this is a spreadsheet for bugsy, Then.
+
+Like, obviously, yes. So does that all make sense? Um... So I... If we... do that and hopefully um Obviously I'll keep you updated with what we first say.
