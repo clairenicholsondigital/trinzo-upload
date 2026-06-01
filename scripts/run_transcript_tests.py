@@ -32,6 +32,16 @@ def parse_args():
         type=int,
         help="Only run the first N matching transcript-test folders.",
     )
+    parser.add_argument(
+        "--batch-count",
+        type=int,
+        help="Split the matching transcript-test folders into this many sequential batches.",
+    )
+    parser.add_argument(
+        "--batch-index",
+        type=int,
+        help="1-based batch number to run when using --batch-count.",
+    )
     return parser.parse_args()
 
 
@@ -97,6 +107,15 @@ def filter_test_folders(folders, args):
         selected = [folder for folder in selected if folder.name.startswith(args.prefix)]
     if args.contains:
         selected = [folder for folder in selected if args.contains in folder.name]
+    if args.batch_count is not None or args.batch_index is not None:
+        if not args.batch_count or args.batch_count < 1:
+            raise SystemExit("--batch-count must be a positive integer")
+        if not args.batch_index or args.batch_index < 1 or args.batch_index > args.batch_count:
+            raise SystemExit("--batch-index must be between 1 and --batch-count inclusive")
+        total = len(selected)
+        start = ((args.batch_index - 1) * total) // args.batch_count
+        end = (args.batch_index * total) // args.batch_count
+        selected = selected[start:end]
     if args.limit is not None:
         selected = selected[: max(args.limit, 0)]
     return selected

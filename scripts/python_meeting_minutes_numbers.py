@@ -2675,6 +2675,8 @@ def canonicalize_status_topic_anchor(text: str) -> str:
         return "Use case intake funnel"
     if lowered == "the intake workflow and request funnel":
         return "Intake workflow and request funnel"
+    if lowered in {"innovation grant follow-up feedback", "follow-up feedback"}:
+        return "Innovation grant feedback"
     return cleaned
 
 
@@ -2778,6 +2780,8 @@ def looks_like_topic_prompt(text: str) -> bool:
         return False
     if not is_valid_topic_candidate(cleaned):
         return False
+    if lowered_plain.startswith(("again ", "again,")):
+        return False
     if lowered_plain.startswith(TOPIC_PROMPT_REJECT_PREFIXES):
         return False
     if any(prefix in lowered_plain for prefix in REQUEST_PREFIXES):
@@ -2801,6 +2805,12 @@ def looks_like_topic_prompt(text: str) -> bool:
 def extract_topic_prompt_from_turn(text: str, status_review: bool = False) -> str:
     sentences = [normalize_text_fragment(sentence) for sentence in split_sentences(text) if normalize_text_fragment(sentence)]
     topic_candidate_validator = is_valid_status_topic_candidate if status_review else is_valid_topic_candidate
+    if len(sentences) == 1:
+        embedded_topic_match = re.search(r"[.?!]\s+(?P<topic>(?:The\s+)?[A-Z][^?.!]{3,100}\?)$", text)
+        if embedded_topic_match:
+            embedded_topic = normalize_text_fragment(embedded_topic_match.group("topic"))
+            if (topic_candidate_validator(embedded_topic) if status_review else looks_like_topic_prompt(embedded_topic)):
+                return canonicalize_status_topic_anchor(embedded_topic).rstrip("?.!")
     if sentences:
         first_sentence = sentences[0]
         if is_transcript_noise(first_sentence):
@@ -2823,15 +2833,13 @@ def extract_topic_prompt_from_turn(text: str, status_review: bool = False) -> st
             if tail_topic:
                 return tail_topic
         if is_status_evidence(first_sentence):
-            return ""
+            pass
         sentence_topic = extract_status_subject_from_clause(first_sentence)
         if sentence_topic:
             return canonicalize_status_topic_anchor(sentence_topic)
-        canonical_sentence = canonicalize_status_topic_anchor(sentence)
+        canonical_sentence = canonicalize_status_topic_anchor(first_sentence)
         if is_clean_topic_anchor(canonical_sentence):
             return canonical_sentence
-        if is_status_evidence(sentence):
-            continue
     for sentence in reversed(sentences):
         canonical_sentence = canonicalize_status_topic_anchor(sentence)
         if is_clean_topic_anchor(canonical_sentence):
@@ -2857,6 +2865,30 @@ def has_meaningful_workstream_noun(text: str) -> bool:
         or len(token) >= 5
         for token in tokens
     )
+
+
+def format_status_subject(text: str) -> str:
+    subject = canonicalize_status_topic_anchor(normalize_text_fragment(text).rstrip("?.!"))
+    if not subject:
+        return ""
+    lowered = subject.lower()
+    if lowered.startswith(("the ", "vendor ", "innovation ", "ad hoc ", "webinar ", "three ")):
+        return subject
+    if re.match(r"^\d", subject):
+        return f"The {subject}"
+    if lowered.startswith("ai ") and lowered.endswith(" report"):
+        return f"The {subject}"
+    if lowered.startswith("ai ") and " report" not in lowered:
+        return subject
+    lead_token = tokenize(subject)[0] if tokenize(subject) else ""
+    needs_article = lead_token in {
+        "stage", "intake", "governance", "commercial", "dependency", "review", "request",
+        "training", "reporting", "slides", "feedback", "proposal", "document", "workflow",
+        "process", "templates", "template", "framework", "report",
+    }
+    if needs_article:
+        return f"The {subject}"
+    return subject
 
 
 def has_missing_document_signal(text: str) -> bool:
