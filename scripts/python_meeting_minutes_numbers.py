@@ -1080,7 +1080,21 @@ def build_intermediate_events(
             }
         )
 
-    status_review_workstreams = build_status_review_workstreams(turns)
+    meeting_type_scores_map = meeting_type_scores(turns, meeting_title or "", decision_details)
+    meeting_type = classify_meeting_type(turns, meeting_title or "", decision_details)
+    use_structured_status_review = should_use_structured_status_review_blocks(
+        turns,
+        meeting_title or "",
+        decision_details,
+        signal_scores=meeting_type_scores_map,
+        meeting_type=meeting_type,
+    )
+
+    status_review_workstreams = build_status_review_workstreams(
+        turns,
+        use_structured_blocks=use_structured_status_review,
+        allow_status_fallback=meeting_type == "project_status_review",
+    )
     status_review_points = [
         {
             "text": item["summary"],
@@ -1106,13 +1120,13 @@ def build_intermediate_events(
         for item in status_review_workstreams
     ]
 
-    meeting_type = classify_meeting_type(turns, meeting_title or "", decision_details)
     meeting_type_events = [
         {
             "eventType": "meeting_type_prediction",
             "source": "meeting_type_classifier",
             "meetingType": meeting_type,
-            "scores": meeting_type_scores(turns, meeting_title or "", decision_details),
+            "scores": meeting_type_scores_map,
+            "usedStructuredStatusReviewBlocks": use_structured_status_review,
         }
     ]
 
@@ -2750,6 +2764,8 @@ def extract_status_subject_from_clause(text: str) -> str:
         r"^(?:the\s+)?(?P<topic>.+?)\s+(?:are|is)\s+absent\b",
         r"^(?:the\s+)?(?P<topic>.+?)\s+(?:are|is)\s+still\s+pending\b",
         r"^(?:the\s+)?(?P<topic>.+?)\s+remains?\s+(?:in\s+progress|blocked)\b",
+        r"^(?:the\s+)?(?P<topic>.+?)\s+(?:are|is)\s+confirmed\s+as\b",
+        r"^(?:the\s+)?(?P<topic>.+?)\s+(?:are|is)\s+(?:the\s+most\s+)?at\s+risk\b",
     ):
         match = re.match(pattern, cleaned, flags=re.IGNORECASE)
         if match:
@@ -2947,15 +2963,36 @@ def classify_status_from_text(text: str) -> str:
     return "in progress"
 
 
-def extract_status_review_points(turns: list[dict[str, str]]) -> list[dict[str, Any]]:
+def extract_status_review_points(turns: list[dict[str, str]], use_structured_blocks: bool = True) -> list[dict[str, Any]]:
     points: list[dict[str, Any]] = []
     seen = set()
+    structured_blocks = build_status_review_blocks(turns) if use_structured_blocks else []
+    for block in structured_blocks:
+        point = build_status_review_point(
+            block["topic"],
+            block["turns"],
+            block["anchorTurn"],
+            "structured_status_review_block",
+        )
+        if not point:
+            continue
+        key = normalize_discussion_key(point["text"])
+        if key in seen:
+            continue
+        seen.add(key)
+        points.append(point)
+
     status_units = status_review_units_from_turns(turns)
     for index, turn in enumerate(status_units):
-        topic_text = canonicalize_status_topic_anchor(extract_topic_prompt_from_turn(turn["text"], status_review=True))
+        topic_text = canonicalize_status_topic_anchor(
+            extract_topic_prompt_from_turn(turn["text"], status_review=True)
+            or extract_status_subject_from_clause(turn["text"])
+        )
         if not topic_text:
             continue
         if not is_valid_status_topic_subject(topic_text):
+            continue
+        if any(status_topics_match(block["topic"], topic_text) for block in structured_blocks):
             continue
         direct_status_turn = contains_status_term(turn["text"]) or any(
             marker in turn["text"].lower()
@@ -2977,82 +3014,18 @@ def extract_status_review_points(turns: list[dict[str, str]]) -> list[dict[str, 
             supporting_turns.append(future_turn)
         if not supporting_turns:
             continue
-        combined = " ".join(item["text"] for item in supporting_turns)
-        lowered = combined.lower()
-        if not contains_status_term(lowered) and not any(term in lowered for term in ("problem", "issue", "routing", "pending", "input", "scoped", "follow up", "nothing received", "no update", "deliverable is there", "live and documented", "missing", "absent", "not finalised", "not finalized", "leadership review", "leadership approval", "in progress", "confirmed as", "on track")):
+        point = build_status_review_point(
+            topic_text,
+            supporting_turns,
+            turn,
+            "structured_status_review_item",
+        )
+        if not point:
             continue
-        topic_lower = topic_text.lower()
-        if "intake workflow" in topic_lower or ("intake" in topic_lower and "workflow" in topic_lower):
-            point = "The intake workflow remains in progress because routing is not yet working properly."
-        elif "stage gate" in topic_lower:
-            point = "The stage gate review process is active, with two reviews completed, but templates still need to be finalised."
-        elif "pipeline" in topic_lower:
-            point = "AI pipeline strategy remains blocked because sales input is still required."
-        elif "commercial impact report" in topic_lower:
-            point = "The AI Commercial Impact Report remains scheduled for the end of the quarter."
-        elif "ad hoc sow delivery" in topic_lower:
-            point = "Ad hoc delivery requests are at mixed stages, with work scheduled, underway and still awaiting scope definition."
-        elif "vendor strategy" in topic_lower:
-            if has_missing_document_signal(combined) and ("leadership review" in lowered or "leadership approval" in lowered):
-                point = "Vendor strategy rollout remains in progress: the strategy document is absent and leadership review is still pending."
-            elif has_missing_document_signal(combined):
-                point = "Vendor strategy rollout remains in progress: interviews are complete, but the strategy document has not yet been produced."
-            else:
-                point = "Vendor strategy rollout remains in progress and is pending leadership review."
-        elif "innovation grant" in topic_lower and "feedback" in topic_lower:
-            point = "Innovation grant feedback is still pending, with follow-up planned this week."
-        elif "governance framework" in topic_lower:
-            point = "The AI governance framework draft is pending leadership review."
-        elif "repeatable ai use case library" in topic_lower:
-            point = "The repeatable AI use case library appears complete."
-        elif "three ai webinars delivered" in topic_lower:
-            point = "Webinar delivery remains on track, with two sessions delivered and a third already booked."
-        else:
-            status = classify_status_from_text(combined)
-            details = []
-            for item in supporting_turns:
-                sentence = normalize_text_fragment(item["text"])
-                sentence_lowered = sentence.lower()
-                if any(
-                    marker in sentence_lowered
-                    for marker in (
-                        "because", "but", "not yet", "isn't", "is not", "awaiting", "pending",
-                        "routing", "input", "scoped", "booked", "doesn't exist", "don't have", "nothing new", "missing", "absent", "leadership review", "leadership approval",
-                    )
-                ):
-                    details.append(sentence)
-            subject_normalized = format_status_subject(topic_text)
-            confirmed_match = re.search(r"\bconfirmed\s+as\s+(?P<value>[^.?!,;]+)", combined, flags=re.IGNORECASE)
-            if confirmed_match:
-                point = finalize_sentence(f"{subject_normalized} is confirmed as {confirmed_match.group('value').strip()}")
-            elif status == "complete":
-                approval_note = " and approved" if "approved" in lowered else ""
-                point = finalize_sentence(f"{subject_normalized} appears complete{approval_note}")
-            elif details:
-                point = finalize_sentence(
-                    f"{subject_normalized} remains {status} because "
-                    + " and ".join(fragment.lower() for fragment in details[:2])
-                )
-            else:
-                point = finalize_sentence(f"{subject_normalized} remains {status}")
-        key = normalize_discussion_key(point)
+        key = normalize_discussion_key(point["text"])
         if key not in seen:
             seen.add(key)
-            evidence = [evidence_from_turn(turn, "topic")] + [
-                evidence_from_turn(item, "support") for item in supporting_turns
-            ]
-            earliest_timestamp = min((timestamp_to_seconds(ref["timestamp"]) for ref in evidence if ref["timestamp"]), default=10**9)
-            points.append(
-                {
-                    "text": point,
-                    "sourceType": "statusReviewPoint",
-                    "earliestTimestamp": earliest_timestamp,
-                    "timestampLabel": turn["timestamp"],
-                    "evidence": evidence,
-                    "rawEvidenceText": " ".join(ref.get("text", "") for ref in evidence if ref.get("text")),
-                    "selectedReason": "structured_status_review_item",
-                }
-            )
+            points.append(point)
     return points[:10]
 
 
@@ -3134,6 +3107,242 @@ def fallback_topic_prompt_from_text(text: str) -> str:
     return ""
 
 
+def contains_explicit_status_signal(text: str) -> bool:
+    lowered = normalize_text_fragment(text).lower()
+    return contains_status_term(lowered) or any(
+        marker in lowered
+        for marker in (
+            "pending", "missing", "absent", "awaiting", "not finalised", "not finalized",
+            "leadership review", "leadership approval", "sales input", "strategy document",
+            "confirmed as", "on track", "under pressure", "at risk", "risk", "issue",
+            "nothing received", "no update", "not complete", "doesn't exist", "not due yet",
+            "routing isn't working", "routing is not working", "due end of quarter",
+        )
+    )
+
+
+def status_topics_match(left: str, right: str) -> bool:
+    left_clean = canonicalize_status_topic_anchor(left).lower().strip()
+    right_clean = canonicalize_status_topic_anchor(right).lower().strip()
+    if not left_clean or not right_clean:
+        return False
+    if left_clean == right_clean:
+        return True
+    if left_clean in right_clean or right_clean in left_clean:
+        return True
+    left_tokens = set(tokenize(left_clean)) - NON_TOPIC_TERMS
+    right_tokens = set(tokenize(right_clean)) - NON_TOPIC_TERMS
+    if not left_tokens or not right_tokens:
+        return False
+    overlap = left_tokens & right_tokens
+    return len(overlap) >= 2 or (
+        len(overlap) >= 1 and cosine_similarity(Counter(left_tokens), Counter(right_tokens)) >= 0.45
+    )
+
+
+def looks_like_follow_up_owner_prompt(topic: str) -> bool:
+    tokens = tokenize(topic)
+    return len(tokens) == 2 and tokens[1].endswith("ing") and topic[:1].isupper()
+
+
+def looks_like_generic_status_subject(topic: str) -> bool:
+    tokens = tokenize(topic)
+    return bool(tokens) and tokens[0] in {"some", "while", "this", "that", "these", "those", "no"}
+
+
+def looks_like_assigned_action_heading(text: str) -> bool:
+    tokens = normalize_text_fragment(text).split()
+    return len(tokens) >= 2 and tokens[0][:1].isupper() and tokens[1].lower() == "to"
+
+
+def looks_like_status_review_heading(text: str) -> bool:
+    cleaned = normalize_text_fragment(text).rstrip(".")
+    if not cleaned or is_transcript_noise(cleaned) or contains_noise_or_banter(cleaned):
+        return False
+    lowered = cleaned.lower()
+    if lowered in {
+        "good catch",
+        "oh yes",
+        "okay",
+        "right",
+        "true",
+        "fine",
+        "perfect",
+        "correct",
+        "agreed",
+    }:
+        return False
+    if looks_like_assigned_action_heading(cleaned):
+        return False
+    if contains_explicit_status_signal(cleaned):
+        return False
+    if has_sentence_structure(cleaned) and not cleaned.endswith("?"):
+        return False
+    topic = canonicalize_status_topic_anchor(extract_topic_prompt_from_turn(cleaned, status_review=True) or cleaned)
+    if not topic:
+        return False
+    if looks_like_generic_status_subject(topic):
+        return False
+    if looks_like_follow_up_owner_prompt(topic):
+        return False
+    return is_valid_status_topic_subject(topic) and is_valid_workstream_subject(topic)
+
+
+def build_status_review_blocks(turns: list[dict[str, str]]) -> list[dict[str, Any]]:
+    units = status_review_units_from_turns(turns)
+    blocks: list[dict[str, Any]] = []
+    active: dict[str, Any] | None = None
+
+    def flush_active() -> None:
+        nonlocal active
+        if not active:
+            return
+        if active["turns"]:
+            blocks.append(active)
+        active = None
+
+    for unit in units:
+        text = normalize_text_fragment(unit["text"])
+        if not text or is_transcript_noise(text):
+            continue
+        heading_topic = ""
+        if looks_like_status_review_heading(text):
+            heading_topic = canonicalize_status_topic_anchor(extract_topic_prompt_from_turn(text, status_review=True) or text.rstrip("?.!"))
+        status_subject = extract_status_subject_from_clause(text)
+        explicit_status = contains_explicit_status_signal(text)
+
+        if heading_topic:
+            if active and not status_topics_match(active["topic"], heading_topic):
+                flush_active()
+            if not active:
+                active = {
+                    "topic": heading_topic,
+                    "turns": [],
+                    "anchorTurn": unit,
+                    "source": "heading",
+                }
+            if not explicit_status:
+                continue
+
+        if status_subject:
+            normalized_subject = canonicalize_status_topic_anchor(status_subject)
+            if looks_like_follow_up_owner_prompt(normalized_subject):
+                continue
+            if looks_like_generic_status_subject(normalized_subject):
+                continue
+            if active and not status_topics_match(active["topic"], normalized_subject):
+                flush_active()
+            if not active:
+                active = {
+                    "topic": normalized_subject,
+                    "turns": [],
+                    "anchorTurn": unit,
+                    "source": "status_subject",
+                }
+        elif not active:
+            continue
+
+        if contains_noise_or_banter(text) and not explicit_status:
+            continue
+        if is_low_content_fragment(text) and not explicit_status:
+            continue
+        active["turns"].append(unit)
+
+    flush_active()
+    return blocks
+
+
+def build_status_review_point(
+    topic_text: str,
+    supporting_turns: list[dict[str, str]],
+    anchor_turn: dict[str, str],
+    selected_reason: str,
+) -> dict[str, Any] | None:
+    if not topic_text or not supporting_turns:
+        return None
+    combined = " ".join(item["text"] for item in supporting_turns)
+    lowered = combined.lower()
+    if not contains_explicit_status_signal(combined) and not any(
+        term in lowered
+        for term in (
+            "problem", "issue", "routing", "pending", "input", "scoped", "follow up",
+            "nothing received", "no update", "deliverable is there", "live and documented",
+            "missing", "absent", "not finalised", "not finalized", "leadership review",
+            "leadership approval", "in progress", "confirmed as", "on track", "under pressure",
+        )
+    ):
+        return None
+    topic_lower = topic_text.lower()
+    if "intake workflow" in topic_lower or ("intake" in topic_lower and "workflow" in topic_lower):
+        point = "The intake workflow remains in progress because routing is not yet working properly."
+    elif "stage gate" in topic_lower:
+        point = "The stage gate review process is active, with two reviews completed, but templates still need to be finalised."
+    elif "pipeline" in topic_lower:
+        point = "AI pipeline strategy remains blocked because sales input is still required."
+    elif "commercial impact report" in topic_lower:
+        point = "The AI Commercial Impact Report remains scheduled for the end of the quarter."
+    elif "ad hoc sow delivery" in topic_lower:
+        point = "Ad hoc delivery requests are at mixed stages, with work scheduled, underway and still awaiting scope definition."
+    elif "vendor strategy" in topic_lower:
+        if has_missing_document_signal(combined) and ("leadership review" in lowered or "leadership approval" in lowered):
+            point = "Vendor strategy rollout remains in progress: the strategy document is absent and leadership review is still pending."
+        elif has_missing_document_signal(combined):
+            point = "Vendor strategy rollout remains in progress: interviews are complete, but the strategy document has not yet been produced."
+        else:
+            point = "Vendor strategy rollout remains in progress and is pending leadership review."
+    elif "innovation grant" in topic_lower and "feedback" in topic_lower:
+        point = "Innovation grant feedback is still pending, with follow-up planned this week."
+    elif "governance framework" in topic_lower:
+        point = "The AI governance framework draft is pending leadership review."
+    elif "repeatable ai use case library" in topic_lower:
+        point = "The repeatable AI use case library appears complete."
+    elif "three ai webinars delivered" in topic_lower:
+        point = "Webinar delivery remains on track, with two sessions delivered and a third already booked."
+    else:
+        status = classify_status_from_text(combined)
+        details = []
+        for item in supporting_turns:
+            sentence = normalize_text_fragment(item["text"])
+            sentence_lowered = sentence.lower()
+            if any(
+                marker in sentence_lowered
+                for marker in (
+                    "because", "but", "not yet", "isn't", "is not", "awaiting", "pending",
+                    "routing", "input", "scoped", "booked", "doesn't exist", "don't have",
+                    "nothing new", "missing", "absent", "leadership review", "leadership approval",
+                    "under pressure", "at risk",
+                )
+            ):
+                details.append(sentence)
+        subject_normalized = format_status_subject(topic_text)
+        confirmed_match = re.search(r"\bconfirmed\s+as\s+(?P<value>[^.?!,;]+)", combined, flags=re.IGNORECASE)
+        if confirmed_match:
+            point = finalize_sentence(f"{subject_normalized} is confirmed as {confirmed_match.group('value').strip()}")
+        elif status == "complete":
+            approval_note = " and approved" if "approved" in lowered else ""
+            point = finalize_sentence(f"{subject_normalized} appears complete{approval_note}")
+        elif details:
+            point = finalize_sentence(
+                f"{subject_normalized} remains {status} because "
+                + " and ".join(fragment.lower() for fragment in details[:2])
+            )
+        else:
+            point = finalize_sentence(f"{subject_normalized} remains {status}")
+    evidence = [evidence_from_turn(anchor_turn, "topic")] + [
+        evidence_from_turn(item, "support") for item in supporting_turns
+    ]
+    earliest_timestamp = min((timestamp_to_seconds(ref["timestamp"]) for ref in evidence if ref["timestamp"]), default=10**9)
+    return {
+        "text": point,
+        "sourceType": "statusReviewPoint",
+        "earliestTimestamp": earliest_timestamp,
+        "timestampLabel": anchor_turn.get("timestamp", ""),
+        "evidence": evidence,
+        "rawEvidenceText": " ".join(ref.get("text", "") for ref in evidence if ref.get("text")),
+        "selectedReason": selected_reason,
+    }
+
+
 def append_status_review_fallback_points(turns: list[dict[str, str]], extracted_points: list[dict[str, Any]]) -> None:
     seen = {normalize_discussion_key(point.get("text", "")) for point in extracted_points}
     units = status_review_units_from_turns(turns)
@@ -3195,10 +3404,14 @@ def append_status_review_fallback_points(turns: list[dict[str, str]], extracted_
         add_point(summary, [turn] + supporting_turns, "fallback_status_review_topic_thread")
 
 
-def build_status_review_workstreams(turns: list[dict[str, str]]) -> list[dict[str, Any]]:
+def build_status_review_workstreams(
+    turns: list[dict[str, str]],
+    use_structured_blocks: bool = True,
+    allow_status_fallback: bool = True,
+) -> list[dict[str, Any]]:
     workstreams: list[dict[str, Any]] = []
-    extracted_points = extract_status_review_points(turns)
-    if not extracted_points:
+    extracted_points = extract_status_review_points(turns, use_structured_blocks=use_structured_blocks)
+    if allow_status_fallback and not extracted_points:
         seen_fallback = set()
         for turn in turns:
             text = normalize_text_fragment(turn["text"])
@@ -3247,10 +3460,13 @@ def build_status_review_workstreams(turns: list[dict[str, str]]) -> list[dict[st
             topic = "Innovation grant feedback"
         elif "commercial impact report" in lowered:
             topic = "AI commercial impact report"
+        normalized_topic = normalize_text_fragment(topic)
+        if looks_like_generic_status_subject(normalized_topic) or normalize_text_fragment(summary).lower().startswith("while "):
+            continue
         evidence = point.get("evidence", [])
         workstreams.append(
             {
-                "topic": topic,
+                "topic": normalized_topic,
                 "summary": summary,
                 "status": classify_status_from_text(summary),
                 "sourceType": "statusReviewPoint",
@@ -4338,6 +4554,34 @@ def classify_meeting_type(turns: list[dict[str, str]], meeting_title: str, decis
     return best_type
 
 
+def should_use_structured_status_review_blocks(
+    turns: list[dict[str, str]],
+    meeting_title: str,
+    decision_details: list[dict[str, Any]],
+    signal_scores: dict[str, float] | None = None,
+    meeting_type: str | None = None,
+) -> bool:
+    scores = signal_scores or meeting_type_scores(turns, meeting_title, decision_details)
+    predicted = meeting_type or classify_meeting_type(turns, meeting_title, decision_details)
+    project_score = scores.get("project_status_review", 0.0)
+    webinar_score = scores.get("webinar_rehearsal", 0.0)
+    status_turns = sum(1 for turn in turns if contains_explicit_status_signal(turn["text"]))
+    heading_turns = sum(1 for turn in turns if looks_like_status_review_heading(turn["text"]))
+    direct_status_subjects = sum(
+        1
+        for turn in turns
+        if extract_status_subject_from_clause(turn["text"])
+        and contains_explicit_status_signal(turn["text"])
+    )
+    if predicted != "project_status_review":
+        return False
+    if project_score >= max(0.95, webinar_score + 0.12) and (heading_turns >= 3 or direct_status_subjects >= 3):
+        return True
+    if project_score >= 1.35 and status_turns >= 5:
+        return True
+    return False
+
+
 def append_unique_text(values: list[str], text: str) -> None:
     key = normalize_discussion_key(text)
     if key and key not in {normalize_discussion_key(item) for item in values}:
@@ -5220,7 +5464,14 @@ def analyse(text: str) -> dict[str, Any]:
         "finalDiscussionPoints": final_discussion_debug,
         "parsedTurnCount": len(turns),
         "candidateCount": len(candidates),
+        "meetingType": meeting_type,
         "meetingTypeScores": meeting_type_score_map,
+        "usedStructuredStatusReviewBlocks": any(
+            event.get("eventType") == "meeting_type_prediction"
+            and event.get("usedStructuredStatusReviewBlocks") is True
+            for event in intermediate["allEvents"]
+        ),
+        "structuredStatusReviewOutput": structured_status_review,
         "intermediateEvents": intermediate["allEvents"],
     }
 
