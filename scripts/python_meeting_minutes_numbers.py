@@ -9,8 +9,15 @@ import json
 import math
 import re
 from collections import Counter
+from difflib import SequenceMatcher
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
+
+try:
+    from rapidfuzz import fuzz
+except ImportError:
+    fuzz = None
 
 try:
     from .python_llm_meeting_minutes import (
@@ -296,6 +303,26 @@ def cosine_similarity(left: Counter[str], right: Counter[str]) -> float:
     return numerator / (left_norm * right_norm)
 
 
+@lru_cache(maxsize=8192)
+def fuzzy_similarity(left: str, right: str) -> float:
+    left_normalized = normalize_text_fragment(left).lower()
+    right_normalized = normalize_text_fragment(right).lower()
+    if not left_normalized or not right_normalized:
+        return 0.0
+    if fuzz is not None:
+        return max(
+            fuzz.token_set_ratio(left_normalized, right_normalized) / 100.0,
+            fuzz.ratio(left_normalized, right_normalized) / 100.0,
+        )
+    return SequenceMatcher(None, left_normalized, right_normalized).ratio()
+
+
+def fuzzy_token_similarity(left_tokens: set[str], right_tokens: set[str]) -> float:
+    if not left_tokens or not right_tokens:
+        return 0.0
+    return fuzzy_similarity(" ".join(sorted(left_tokens)), " ".join(sorted(right_tokens)))
+
+
 def clean_transcript_text(text: str) -> str:
     kept: list[str] = []
     for raw_line in text.splitlines():
@@ -513,7 +540,12 @@ def actions_overlap(left: str, right: str) -> bool:
     overlap = left_tokens & right_tokens
     if len(overlap) >= 2:
         return True
-    return cosine_similarity(Counter(left_tokens), Counter(right_tokens)) >= 0.45
+    cosine_score = cosine_similarity(Counter(left_tokens), Counter(right_tokens))
+    if cosine_score >= 0.45:
+        return True
+    if len(overlap) == 1 and max(len(left_tokens), len(right_tokens)) <= 6 and cosine_score >= 0.18:
+        return fuzzy_token_similarity(left_tokens, right_tokens) >= 0.88
+    return False
 
 
 def has_rejection_cue(text: str) -> bool:
@@ -1430,7 +1462,12 @@ def thread_can_accept_long_range_follow_up(
     if len(thread_tokens) < 2 or len(action_tokens) < 2:
         return False
     overlap = thread_tokens & action_tokens
-    return len(overlap) >= 2 or cosine_similarity(Counter(thread_tokens), Counter(action_tokens)) >= 0.52
+    cosine_score = cosine_similarity(Counter(thread_tokens), Counter(action_tokens))
+    if len(overlap) >= 2 or cosine_score >= 0.52:
+        return True
+    if len(overlap) == 1 and max(len(thread_tokens), len(action_tokens)) <= 6 and cosine_score >= 0.2:
+        return fuzzy_token_similarity(thread_tokens, action_tokens) >= 0.9
+    return False
 
 
 def select_recent_open_thread(
@@ -2135,7 +2172,12 @@ def decision_topics_match(left: str, right: str) -> bool:
         return True
     if ("broad" in left_tokens and any(token.endswith("specific") for token in right_tokens)) or ("broad" in right_tokens and any(token.endswith("specific") for token in left_tokens)):
         return True
-    return len(overlap) >= 2 or cosine_similarity(Counter(left_tokens), Counter(right_tokens)) >= 0.38
+    cosine_score = cosine_similarity(Counter(left_tokens), Counter(right_tokens))
+    if len(overlap) >= 2 or cosine_score >= 0.38:
+        return True
+    if len(overlap) == 1 and max(len(left_tokens), len(right_tokens)) <= 6 and cosine_score >= 0.16:
+        return fuzzy_token_similarity(left_tokens, right_tokens) >= 0.86
+    return False
 
 
 def build_decision_topic_graphs(raw_candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:

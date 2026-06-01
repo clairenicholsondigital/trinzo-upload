@@ -2,7 +2,15 @@ import json
 import unittest
 from pathlib import Path
 
-from scripts.python_meeting_minutes_numbers import analyse, clean_transcript_text, parse_numeric_turns
+from scripts.python_meeting_minutes_numbers import (
+    actions_overlap,
+    analyse,
+    clean_transcript_text,
+    decision_topics_match,
+    discussion_similarity,
+    fuzzy_token_similarity,
+    parse_numeric_turns,
+)
 
 
 FIXTURE = Path(__file__).parent / "fixtures" / "meeting_minutes_timestamped_transcript.txt"
@@ -10,6 +18,40 @@ PROJECT_FIXTURE = Path(__file__).parent / "fixtures" / "project_update_june_2_20
 
 
 class MeetingMinutesNumbersTest(unittest.TestCase):
+    def test_actions_overlap_accepts_structurally_similar_wording(self):
+        self.assertTrue(
+            actions_overlap(
+                "Prepare the colourway export pack.",
+                "Prepare the colorways exports pack.",
+            )
+        )
+
+    def test_decision_topics_match_accepts_structurally_similar_wording(self):
+        self.assertTrue(
+            decision_topics_match(
+                "supplier colourway export approach",
+                "supplier colorways exports approach",
+            )
+        )
+
+    def test_fuzzy_token_similarity_handles_near_match_spelling_variants(self):
+        self.assertGreaterEqual(
+            fuzzy_token_similarity(
+                {"colourway", "export", "pack"},
+                {"colorways", "exports", "pack"},
+            ),
+            0.86,
+        )
+
+    def test_discussion_similarity_lifts_reordered_structural_match(self):
+        self.assertGreaterEqual(
+            discussion_similarity(
+                "The team reviewed supplier renewal pricing and migration effort.",
+                "Migration effort and supplier pricing renewal were reviewed by the team.",
+            ),
+            0.75,
+        )
+
     def test_metadata_lines_are_removed_before_turn_parsing(self):
         transcript = """Daily AI Check In-20260602_150011-Meeting Transcript
 2 June 2026, 3:00pm
