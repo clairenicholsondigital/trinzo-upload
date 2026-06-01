@@ -3,7 +3,9 @@ from __future__ import annotations
 import importlib
 import json
 import math
+import os
 import re
+import sys
 import time
 from copy import deepcopy
 from dataclasses import dataclass
@@ -20,6 +22,8 @@ from python_meeting_minutes_numbers import (
 )
 
 MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+EXPERIMENT_USERBASE = Path("/var/tmp/pyuser")
+EXPERIMENT_CACHE_ROOT = Path("/var/tmp/minilm-cache")
 
 PROTOTYPE_TEXTS = {
     "action": [
@@ -67,12 +71,17 @@ class MiniLMBackend:
     def load(cls, enabled: bool = True) -> "MiniLMBackend":
         if not enabled:
             return cls(False, "MiniLM disabled for this run.")
+        inject_experiment_user_site()
         try:
             sentence_transformers = importlib.import_module("sentence_transformers")
         except ModuleNotFoundError:
             return cls(False, "sentence-transformers is not installed.")
+        cache_root = prepare_cache_root()
         try:
-            model = sentence_transformers.SentenceTransformer(MODEL_NAME)
+            model = sentence_transformers.SentenceTransformer(
+                MODEL_NAME,
+                cache_folder=str(cache_root) if cache_root else None,
+            )
         except Exception as exc:  # pragma: no cover - exercised in real envs
             return cls(False, f"Could not load {MODEL_NAME}: {exc}")
         return cls(True, "", model=model, _cache={})
@@ -112,6 +121,27 @@ class MiniLMBackend:
             max((self.similarity(text, prototype) for prototype in PROTOTYPE_TEXTS[prototype_group]), default=0.0),
             4,
         )
+
+
+def inject_experiment_user_site() -> None:
+    major = sys.version_info.major
+    minor = sys.version_info.minor
+    candidate = EXPERIMENT_USERBASE / "lib" / f"python{major}.{minor}" / "site-packages"
+    if candidate.exists():
+        candidate_str = str(candidate)
+        if candidate_str not in sys.path:
+            sys.path.insert(0, candidate_str)
+
+
+def prepare_cache_root() -> Path | None:
+    cache_root = EXPERIMENT_CACHE_ROOT
+    try:
+        cache_root.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return None
+    os.environ.setdefault("HF_HOME", str(cache_root))
+    os.environ.setdefault("SENTENCE_TRANSFORMERS_HOME", str(cache_root / "sentence-transformers"))
+    return cache_root
 
 
 def normalize_text(value: Any) -> str:
@@ -466,9 +496,20 @@ def build_minilm_variant(
     existing_action_keys = {normalized_key(item.get("meetingActionPoint", "")) for item in variant.get("actions", [])}
     existing_decision_keys = {normalized_key(item) for item in variant.get("decisions", [])}
     existing_discussion_keys = {normalized_key(item) for item in variant.get("discussionPoints", [])}
+    action_source_candidates = collect_action_candidates(intermediate)
+    decision_source_candidates = collect_decision_candidates(intermediate)
+    discussion_source_candidates = collect_discussion_candidates(intermediate)
+
+    preload_texts = []
+    preload_texts.extend(candidate["text"] for candidate in action_source_candidates)
+    preload_texts.extend(candidate["text"] for candidate in decision_source_candidates)
+    preload_texts.extend(candidate["text"] for candidate in discussion_source_candidates)
+    for texts in PROTOTYPE_TEXTS.values():
+        preload_texts.extend(texts)
+    backend.encode_many(preload_texts)
 
     action_candidates = []
-    for candidate in collect_action_candidates(intermediate):
+    for candidate in action_source_candidates:
         semantic = backend.score_against_prototypes(candidate["text"], "action")
         combined = round(candidate["baseScore"] * 0.55 + semantic * 0.45, 4)
         candidate["semanticScore"] = semantic
@@ -497,7 +538,7 @@ def build_minilm_variant(
             break
 
     decision_candidates = []
-    for candidate in collect_decision_candidates(intermediate):
+    for candidate in decision_source_candidates:
         semantic = backend.score_against_prototypes(candidate["text"], "decision")
         combined = round(candidate["baseScore"] * 0.6 + semantic * 0.4, 4)
         candidate["semanticScore"] = semantic
@@ -521,7 +562,7 @@ def build_minilm_variant(
             break
 
     discussion_candidates = []
-    for candidate in collect_discussion_candidates(intermediate):
+    for candidate in discussion_source_candidates:
         semantic_discussion = backend.score_against_prototypes(candidate["text"], "discussion")
         semantic_status = max(
             backend.score_against_prototypes(candidate["text"], "status"),
