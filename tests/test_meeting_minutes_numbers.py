@@ -9,6 +9,8 @@ from scripts.python_meeting_minutes_numbers import (
     clean_transcript_text,
     decision_topics_match,
     discussion_similarity,
+    extract_status_subject_from_clause,
+    extract_topic_prompt_from_turn,
     fuzzy_token_similarity,
     has_malformed_trailing_question_fragment,
     lightly_clean_representative_sentence,
@@ -716,6 +718,34 @@ Slides are ready and the rehearsal is booked.
         self.assertTrue(any("routing" in point or "intake workflow" in point for point in lowered_points))
         self.assertTrue(any("rehearsal" in point or "slides" in point or "webinar" in point for point in lowered_points))
         self.assertGreaterEqual(len(result["numberExperimentDebug"]["topicClusters"]), 2)
+
+    def test_status_setup_clause_uses_tail_subject(self):
+        transcript = (Path("scripts/transcript-tests/064_status_setup_clause_rejected/transcript.txt")).read_text()
+        turn_text = "I've got the latest report open, the 18th March one remains in progress."
+
+        self.assertEqual(extract_status_subject_from_clause("the 18th March one remains in progress"), "18th March one")
+        self.assertEqual(extract_topic_prompt_from_turn(turn_text), "18th March one")
+
+        result = analyse(transcript)
+
+        self.assertIn("The 18th March one remains in progress.", result["discussionPoints"])
+        self.assertFalse(
+            any(point.startswith("The I've got the latest report open remains") for point in result["discussionPoints"])
+        )
+
+    def test_misrecognized_setup_clause_uses_tail_subject(self):
+        transcript = (Path("scripts/transcript-tests/066_status_misrecognized_setup_rejected/transcript.txt")).read_text()
+        turn_text = "The I got report open, soundtrack remains blocked."
+
+        self.assertEqual(extract_status_subject_from_clause("soundtrack remains blocked"), "soundtrack")
+        self.assertEqual(extract_topic_prompt_from_turn(turn_text), "soundtrack")
+
+        result = analyse(transcript)
+
+        self.assertIn("The soundtrack remains blocked.", result["discussionPoints"])
+        self.assertFalse(
+            any(point.startswith("The I got report open remains blocked") for point in result["discussionPoints"])
+        )
 
     def test_supplier_contract_renewal_outputs(self):
         transcript = """Customer support contract renewal
