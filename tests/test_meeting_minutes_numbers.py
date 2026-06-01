@@ -29,6 +29,23 @@ Ciara Griffin stopped transcription.
         self.assertNotIn("stopped transcription", cleaned.lower())
         self.assertEqual([turn["speaker"] for turn in turns], ["Ciara Griffin", "Conor Flynn"])
 
+    def test_bracketed_role_labels_are_ignored_in_turn_parsing(self):
+        transcript = """Weekly review
+
+Ciara Griffin (Trinzo) 0:03
+Right, let's run through the analytics items.
+
+Nick [ONT] 0:11
+Yes, that works.
+
+Emma Stone (Client):
+Can you send the updated summary?
+"""
+
+        turns = parse_numeric_turns(transcript)
+
+        self.assertEqual([turn["speaker"] for turn in turns], ["Ciara Griffin", "Nick", "Emma Stone"])
+
     def test_low_content_fallback(self):
         transcript = """Random notes
 

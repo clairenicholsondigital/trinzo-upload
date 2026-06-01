@@ -34,12 +34,13 @@ except ImportError:
 
 NAME_TOKEN = r"[A-ZÀ-ÖØ-Þ][A-Za-zÀ-ÖØ-öø-ÿ'`.-]*"
 SPEAKER_NAME_RE = rf"{NAME_TOKEN}(?: {NAME_TOKEN}){{0,5}}"
+SPEAKER_SUFFIX_RE = r"(?:\s*(?:\([^)\n]{1,40}\)|\[[^\]\n]{1,40}\]))?"
 TIMESTAMP_TOKEN_RE = r"\d{1,2}(?::|\.)\d{2}(?::\d{2})?(?:\s?(?:am|pm))?"
 
-TURN_RE = re.compile(rf"^(?P<speaker>{SPEAKER_NAME_RE})\s+(?P<timestamp>{TIMESTAMP_TOKEN_RE})\s*(?P<tail>.*)$")
-COLON_TURN_RE = re.compile(rf"^(?P<speaker>{SPEAKER_NAME_RE})\s*:\s*(?P<tail>.*)$")
-HYPHEN_TURN_RE = re.compile(rf"^(?P<speaker>{SPEAKER_NAME_RE})\s*[-–—]\s*(?P<timestamp>{TIMESTAMP_TOKEN_RE})\s*(?P<tail>.*)$")
-SPEAKER_ONLY_RE = re.compile(rf"^(?P<speaker>{SPEAKER_NAME_RE})$")
+TURN_RE = re.compile(rf"^(?P<speaker>{SPEAKER_NAME_RE}){SPEAKER_SUFFIX_RE}\s+(?P<timestamp>{TIMESTAMP_TOKEN_RE})\s*(?P<tail>.*)$")
+COLON_TURN_RE = re.compile(rf"^(?P<speaker>{SPEAKER_NAME_RE}){SPEAKER_SUFFIX_RE}\s*:\s*(?P<tail>.*)$")
+HYPHEN_TURN_RE = re.compile(rf"^(?P<speaker>{SPEAKER_NAME_RE}){SPEAKER_SUFFIX_RE}\s*[-–—]\s*(?P<timestamp>{TIMESTAMP_TOKEN_RE})\s*(?P<tail>.*)$")
+SPEAKER_ONLY_RE = re.compile(rf"^(?P<speaker>{SPEAKER_NAME_RE}){SPEAKER_SUFFIX_RE}$")
 TIMESTAMP_ONLY_RE = re.compile(rf"^(?P<timestamp>{TIMESTAMP_TOKEN_RE})$")
 METADATA_SPEAKERS = {"Date", "Location", "Online"}
 METADATA_RE = re.compile(
