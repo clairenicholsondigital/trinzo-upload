@@ -155,6 +155,40 @@ Yeah, broad works better.
 
         self.assertIn("The webinar should remain broad rather than validation-specific.", result["decisions"])
 
+    def test_navigation_intent_is_not_a_decision(self):
+        transcript = """Project review
+
+6 June 2026
+
+Alice:
+Let's go back to milestones quickly.
+
+Bob:
+Agreed.
+"""
+
+        result = analyse(transcript)
+
+        self.assertEqual(result["decisions"], [])
+        rejected_navigation = result["numberExperimentDebug"]["rejectedNavigationDecisionCandidates"]
+        self.assertTrue(any(item["rejectedReason"] == "meeting_navigation_intent" for item in rejected_navigation))
+
+    def test_milestone_date_change_remains_a_decision(self):
+        transcript = """Project review
+
+6 June 2026
+
+Alice:
+We will move the milestone date to Friday.
+
+Bob:
+Agreed, that protects the delivery timeline.
+"""
+
+        result = analyse(transcript)
+
+        self.assertIn("The team will move the milestone date to Friday.", result["decisions"])
+
     def test_later_decision_supersedes_earlier_same_topic(self):
         transcript = """Launch timing review
 
