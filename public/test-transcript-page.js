@@ -449,7 +449,8 @@ function buildTranscriptMinilmOnlyPage(config) {
   const state = {
     payload: null,
     loading: false,
-    improving: false
+    improving: false,
+    schemaOutput: null
   };
 
   const root = document.getElementById('transcriptMinilmOnlyRoot');
@@ -477,10 +478,10 @@ function buildTranscriptMinilmOnlyPage(config) {
 
     <section id="minilmOnlyOutputPanel" class="panel hidden">
       <div class="json-heading">
-        <h2>MiniLM-only output</h2>
-        <button id="copyMinilmOnlyOutputBtn" class="secondary" type="button">Copy schema output</button>
+        <h2>Minutes output</h2>
+        <button id="copyMinilmOnlyOutputBtn" class="secondary" type="button">Copy schema JSON</button>
       </div>
-      <pre id="minilmOnlyOutput"></pre>
+      <div id="minilmOnlyOutput"></div>
     </section>
 
     <section id="minilmOnlyDiagnosticsPanel" class="panel hidden">
@@ -584,25 +585,19 @@ function buildTranscriptMinilmOnlyPage(config) {
     const actionDeadlines = Array.isArray(output.meetingActionPointDeadline) ? output.meetingActionPointDeadline : [];
     const discussionPoints = Array.isArray(output.discussionPoints) ? output.discussionPoints : [];
     return {
-      overview: {
-        title: output.meetingTitle || '',
-        date: output.meetingDate || '',
-        location: output.meetingLocation || 'Online'
-      },
+      meetingTitle: output.meetingTitle || '',
+      meetingDate: output.meetingDate || '',
+      meetingLocation: output.meetingLocation || 'Online',
+      meetingObjectives: deriveObjectives(output),
       participants: {
         client: Array.isArray(participants.client) ? participants.client : [],
         trinzo: Array.isArray(participants.trinzo) ? participants.trinzo : []
       },
-      objectives: deriveObjectives(output),
-      minutes: {
-        topic: output.meetingTitle || 'Meeting discussion',
-        discussionPoints
-      },
-      nextSteps: actionPoints.map((action, index) => ({
-        action,
-        owner: actionOwners[index] || 'Owner not specified',
-        deadline: actionDeadlines[index] || ''
-      }))
+      itemTopic: output.itemTopic || output.meetingTitle || 'Meeting discussion',
+      discussionPoints,
+      meetingActionPoint: actionPoints,
+      meetingActionPointOwner: actionOwners,
+      meetingActionPointDeadline: actionDeadlines
     };
   }
 
@@ -629,14 +624,113 @@ function buildTranscriptMinilmOnlyPage(config) {
     `).join('');
   }
 
+  function renderSchemaList(items) {
+    if (!Array.isArray(items) || !items.length) {
+      return '<span class="schema-empty">—</span>';
+    }
+    return `<ul class="schema-list">${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
+  }
+
+  function renderActionTable(schemaOutput) {
+    const actions = Array.isArray(schemaOutput.meetingActionPoint) ? schemaOutput.meetingActionPoint : [];
+    const owners = Array.isArray(schemaOutput.meetingActionPointOwner) ? schemaOutput.meetingActionPointOwner : [];
+    const deadlines = Array.isArray(schemaOutput.meetingActionPointDeadline) ? schemaOutput.meetingActionPointDeadline : [];
+    if (!actions.length) {
+      return '<span class="schema-empty">—</span>';
+    }
+    return `
+      <table class="schema-subtable">
+        <thead>
+          <tr>
+            <th>Action</th>
+            <th>Owner</th>
+            <th>Deadline</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${actions.map((action, index) => `
+            <tr>
+              <td>${escapeHtml(action)}</td>
+              <td>${escapeHtml(owners[index] || 'Owner not specified')}</td>
+              <td>${escapeHtml(deadlines[index] || '—')}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  function renderParticipantsTable(participants) {
+    const client = Array.isArray(participants.client) ? participants.client : [];
+    const trinzo = Array.isArray(participants.trinzo) ? participants.trinzo : [];
+    return `
+      <table class="schema-subtable">
+        <thead>
+          <tr>
+            <th>Client</th>
+            <th>Trinzo</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>${renderSchemaList(client)}</td>
+            <td>${renderSchemaList(trinzo)}</td>
+          </tr>
+        </tbody>
+      </table>
+    `;
+  }
+
+  function renderSchemaTable(schemaOutput) {
+    return `
+      <table class="schema-table">
+        <tbody>
+          <tr>
+            <th>Meeting title</th>
+            <td>${escapeHtml(schemaOutput.meetingTitle || '—')}</td>
+          </tr>
+          <tr>
+            <th>Meeting date</th>
+            <td>${escapeHtml(schemaOutput.meetingDate || '—')}</td>
+          </tr>
+          <tr>
+            <th>Meeting location</th>
+            <td>${escapeHtml(schemaOutput.meetingLocation || '—')}</td>
+          </tr>
+          <tr>
+            <th>Meeting objectives</th>
+            <td>${renderSchemaList(schemaOutput.meetingObjectives)}</td>
+          </tr>
+          <tr>
+            <th>Participants</th>
+            <td>${renderParticipantsTable(schemaOutput.participants || {})}</td>
+          </tr>
+          <tr>
+            <th>Item topic</th>
+            <td>${escapeHtml(schemaOutput.itemTopic || '—')}</td>
+          </tr>
+          <tr>
+            <th>Discussion points</th>
+            <td>${renderSchemaList(schemaOutput.discussionPoints)}</td>
+          </tr>
+          <tr>
+            <th>Actions</th>
+            <td>${renderActionTable(schemaOutput)}</td>
+          </tr>
+        </tbody>
+      </table>
+    `;
+  }
+
   function displayPayload(payload) {
     state.payload = payload;
     const result = payload.result || {};
     const output = result.output || {};
     const schemaOutput = buildStructuredMinutesSchema(output);
+    state.schemaOutput = schemaOutput;
 
     displayDetailsSummary(payload, result);
-    outputNode.textContent = JSON.stringify(schemaOutput, null, 2);
+    outputNode.innerHTML = renderSchemaTable(schemaOutput);
     rawOutputNode.textContent = JSON.stringify(output, null, 2);
     diagnosticsNode.textContent = JSON.stringify({
       mode: result.mode || 'minilm_only',
@@ -731,10 +825,11 @@ function buildTranscriptMinilmOnlyPage(config) {
     fileInput.value = '';
     textInput.value = '';
     state.payload = null;
+    state.schemaOutput = null;
     setMessage('', '');
     outputPanel.classList.add('hidden');
     diagnosticsPanel.classList.add('hidden');
-    outputNode.textContent = '';
+    outputNode.innerHTML = '';
     rawOutputNode.textContent = '';
     diagnosticsNode.textContent = '';
     summaryGrid.innerHTML = '';
@@ -750,7 +845,7 @@ function buildTranscriptMinilmOnlyPage(config) {
   goBtn.addEventListener('click', submitTranscript);
   if (improveBtn) improveBtn.addEventListener('click', improveMinutes);
   clearBtn.addEventListener('click', resetPage);
-  copyOutputBtn.addEventListener('click', () => copyValue(outputNode.textContent, 'MiniLM-only schema output'));
+  copyOutputBtn.addEventListener('click', () => copyValue(state.schemaOutput ? JSON.stringify(state.schemaOutput, null, 2) : '', 'MiniLM-only schema output'));
   copyRawBtn.addEventListener('click', () => copyValue(rawOutputNode.textContent, 'MiniLM-only raw output'));
   copyDiagnosticsBtn.addEventListener('click', () => copyValue(diagnosticsNode.textContent, 'MiniLM-only diagnostics'));
 }

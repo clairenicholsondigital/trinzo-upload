@@ -35,6 +35,17 @@ button:disabled { opacity:.6; cursor:not-allowed; }
 .summary-item { background:#071126; border:1px solid var(--border); border-radius:10px; padding:.75rem; }
 .summary-label { color:var(--muted); font-size:.85rem; }
 .summary-value { margin-top:.25rem; font-weight:700; overflow-wrap:anywhere; }
+.schema-table { width:100%; border-collapse:collapse; background:#071126; border:1px solid var(--border); border-radius:10px; overflow:hidden; }
+.schema-table th, .schema-table td { border-bottom:1px solid var(--border); padding:.8rem; text-align:left; vertical-align:top; }
+.schema-table th { width:220px; color:var(--muted); font-size:.9rem; font-weight:700; background:#0b1530; }
+.schema-table tr:last-child th, .schema-table tr:last-child td { border-bottom:none; }
+.schema-list { margin:0; padding-left:1.1rem; }
+.schema-list li { margin:.15rem 0; }
+.schema-empty { color:var(--muted); }
+.schema-subtable { width:100%; border-collapse:collapse; }
+.schema-subtable th, .schema-subtable td { border:1px solid var(--border); padding:.65rem; text-align:left; vertical-align:top; }
+.schema-subtable th { width:auto; background:#0b1530; color:var(--muted); font-size:.85rem; }
+.schema-subtable td { background:#091224; }
 pre { white-space:pre-wrap; overflow:auto; max-height:650px; background:#071126; border:1px solid var(--border); border-radius:10px; padding:1rem; }
 .accordion { margin-top:1rem; }
 .accordion details { background:#071126; border:1px solid var(--border); border-radius:10px; margin:.75rem 0; overflow:hidden; }
@@ -43,6 +54,13 @@ pre { white-space:pre-wrap; overflow:auto; max-height:650px; background:#071126;
 .accordion .accordion-body { padding:0 1rem 1rem; }
 .hidden { display:none; }
 a { color:#67e8f9; }
+@media (max-width: 760px) {
+  .schema-table, .schema-table tbody, .schema-table tr, .schema-table th, .schema-table td { display:block; width:100%; }
+  .schema-table tr { border-bottom:1px solid var(--border); }
+  .schema-table tr:last-child { border-bottom:none; }
+  .schema-table th, .schema-table td { border-bottom:none; }
+  .schema-table th { padding-bottom:.25rem; }
+}
 </style>
 </head>
 <body>
