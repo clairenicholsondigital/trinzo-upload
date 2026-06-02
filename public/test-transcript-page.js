@@ -450,7 +450,8 @@ function buildTranscriptMinilmOnlyPage(config) {
     payload: null,
     loading: false,
     improving: false,
-    schemaOutput: null
+    schemaOutput: null,
+    extractedText: ''
   };
 
   const root = document.getElementById('transcriptMinilmOnlyRoot');
@@ -482,6 +483,9 @@ function buildTranscriptMinilmOnlyPage(config) {
         <button id="copyMinilmOnlyOutputBtn" class="secondary" type="button">Copy schema JSON</button>
       </div>
       <div id="minilmOnlyOutput"></div>
+      <div class="panel-actions">
+        <button id="finaliseBtn" type="button" class="hidden">Confirm & Send to SharePoint</button>
+      </div>
     </section>
 
     <section id="minilmOnlyDiagnosticsPanel" class="panel hidden">
@@ -525,6 +529,7 @@ function buildTranscriptMinilmOnlyPage(config) {
   const copyOutputBtn = document.getElementById('copyMinilmOnlyOutputBtn');
   const copyRawBtn = document.getElementById('copyMinilmOnlyRawBtn');
   const copyDiagnosticsBtn = document.getElementById('copyMinilmOnlyDiagnosticsBtn');
+  const finaliseBtn = document.getElementById('finaliseBtn');
   const message = document.getElementById('minilmOnlyMessage');
   const summaryGrid = document.getElementById('minilmOnlySummaryGrid');
   const outputPanel = document.getElementById('minilmOnlyOutputPanel');
@@ -532,9 +537,34 @@ function buildTranscriptMinilmOnlyPage(config) {
   const outputNode = document.getElementById('minilmOnlyOutput');
   const rawOutputNode = document.getElementById('minilmOnlyRawOutput');
   const diagnosticsNode = document.getElementById('minilmOnlyDiagnostics');
+  const REVIEW_STORAGE_KEY = 'reviewData';
+
+  let currentMeetingId = Number(localStorage.getItem('meetingId') || 0);
+
+  function setStep(n) {
+    const stepper = document.getElementById('stepper');
+    if (!stepper) return;
+    stepper.querySelectorAll('.step').forEach((node) => {
+      node.classList.toggle('active', Number(node.dataset.step) === Number(n));
+    });
+  }
 
   function cloneJson(value) {
     return JSON.parse(JSON.stringify(value));
+  }
+
+  function saveReviewDataToStorage(data) {
+    localStorage.setItem(REVIEW_STORAGE_KEY, JSON.stringify(data || {}));
+  }
+
+  function getReviewDataFromStorage() {
+    const raw = localStorage.getItem(REVIEW_STORAGE_KEY);
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
   }
 
   function setMessage(text, type) {
@@ -796,6 +826,37 @@ function buildTranscriptMinilmOnlyPage(config) {
     return output;
   }
 
+  function buildReviewDataFromSchema(schema) {
+    return {
+      meetingTitle: schema.meetingTitle || '',
+      meetingDate: schema.meetingDate || '',
+      meetingLocation: schema.meetingLocation || '',
+      meetingDescription: '',
+      meetingObjectives: Array.isArray(schema.meetingObjectives) ? schema.meetingObjectives : [],
+      participants: {
+        client: Array.isArray(schema.participants?.client) ? schema.participants.client : [],
+        trinzo: Array.isArray(schema.participants?.trinzo) ? schema.participants.trinzo : [],
+      },
+      meetingMinutes: [
+        {
+          topic: schema.itemTopic || '',
+          discussionPoints: Array.isArray(schema.discussionPoints) ? schema.discussionPoints : [],
+        }
+      ],
+      nextSteps: (schema.meetingActionPoint || []).map((action, index) => ({
+        action,
+        owner: schema.meetingActionPointOwner[index] || 'Owner not specified',
+        deadline: schema.meetingActionPointDeadline[index] || '',
+      })),
+      autosave: {
+        enabled: true,
+        savedAt: new Date().toISOString(),
+        transcript: state.extractedText || '',
+        transcriptLength: (state.extractedText || '').length,
+      },
+    };
+  }
+
   function attachSchemaHandlers() {
     const addActionRowBtn = document.getElementById('addActionRowBtn');
     if (addActionRowBtn) {
@@ -813,6 +874,58 @@ function buildTranscriptMinilmOnlyPage(config) {
     }
   }
 
+  async function finaliseWithAgent() {
+    const editedSchema = collectEditedSchemaOutput();
+    const payloadReviewData = editedSchema ? buildReviewDataFromSchema(editedSchema) : getReviewDataFromStorage();
+
+    if (!payloadReviewData) {
+      return setMessage(
+        'No review data found. Process transcript first, then use the edit screen.',
+        'error'
+      );
+    }
+
+    saveReviewDataToStorage(payloadReviewData);
+    setStep(5);
+    setMessage('Sending approved meeting minutes to webhook...', 'info');
+
+    try {
+      if (currentMeetingId) {
+        await fetch(`/api/meetings/${currentMeetingId}/webhook`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            reviewData: payloadReviewData,
+            transcript: state.extractedText
+          })
+        });
+      }
+
+      const response = await fetch('/api/agent/finalise', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          reviewData: payloadReviewData,
+          transcript: state.extractedText
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || 'Final webhook call failed');
+      }
+
+      setMessage('Approved meeting minutes sent successfully.', 'success');
+    } catch (err) {
+      setMessage(`Final webhook call failed: ${err.message}`, 'error');
+    }
+  }
+
   function displayPayload(payload) {
     state.payload = payload;
     const result = payload.result || {};
@@ -823,6 +936,7 @@ function buildTranscriptMinilmOnlyPage(config) {
     displayDetailsSummary(payload, result);
     outputNode.innerHTML = renderSchemaTable(schemaOutput);
     attachSchemaHandlers();
+    saveReviewDataToStorage(buildReviewDataFromSchema(schemaOutput));
     rawOutputNode.textContent = JSON.stringify(output, null, 2);
     diagnosticsNode.textContent = JSON.stringify({
       mode: result.mode || 'minilm_only',
@@ -832,6 +946,7 @@ function buildTranscriptMinilmOnlyPage(config) {
     }, null, 2);
     outputPanel.classList.remove('hidden');
     diagnosticsPanel.classList.remove('hidden');
+    if (finaliseBtn) finaliseBtn.classList.remove('hidden');
     if (improveBtn) improveBtn.disabled = !(state.payload && state.payload.result && state.payload.result.output);
   }
 
@@ -852,12 +967,14 @@ function buildTranscriptMinilmOnlyPage(config) {
     try {
       const options = { method: 'POST' };
       if (pastedText) {
+        state.extractedText = pastedText;
         options.headers = { 'Content-Type': 'application/json' };
         options.body = JSON.stringify({ text: pastedText });
       } else {
         const formData = new FormData();
         formData.append('file', file);
         options.body = formData;
+        state.extractedText = await file.text().catch(() => '');
       }
 
       const endpoint = `${config.endpoint}?includeTranscriptMetadata=1`;
@@ -920,6 +1037,7 @@ function buildTranscriptMinilmOnlyPage(config) {
     textInput.value = '';
     state.payload = null;
     state.schemaOutput = null;
+    state.extractedText = '';
     setMessage('', '');
     outputPanel.classList.add('hidden');
     diagnosticsPanel.classList.add('hidden');
@@ -928,6 +1046,7 @@ function buildTranscriptMinilmOnlyPage(config) {
     diagnosticsNode.textContent = '';
     summaryGrid.innerHTML = '';
     if (improveBtn) improveBtn.disabled = true;
+    if (finaliseBtn) finaliseBtn.classList.add('hidden');
   }
 
   async function copyValue(value, label) {
@@ -938,6 +1057,7 @@ function buildTranscriptMinilmOnlyPage(config) {
 
   goBtn.addEventListener('click', submitTranscript);
   if (improveBtn) improveBtn.addEventListener('click', improveMinutes);
+  if (finaliseBtn) finaliseBtn.addEventListener('click', finaliseWithAgent);
   clearBtn.addEventListener('click', resetPage);
   copyOutputBtn.addEventListener('click', () => {
     const editedSchema = collectEditedSchemaOutput();
