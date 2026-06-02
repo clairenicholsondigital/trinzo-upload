@@ -446,6 +446,47 @@ Yeah.
         self.assertFalse(any("rule takers" in point.lower() for point in output["discussionPoints"]))
         self.assertTrue(any(item.get("reason") in ("single_turn_fallback", "single_turn_low_confidence", "weak_density_and_support", "insufficient_substantive_turns", "weak_window_coherence") for item in diagnostics.get("rejectedDiscussionCandidates", [])))
 
+    def test_coordination_chatter_is_not_promoted_as_action(self):
+        transcript = """Follow-up chat
+
+2 June 2026
+
+Claire:
+Send him on this recording after.
+
+Emma:
+Double down with the Upskilled team on adoption considerations next.
+"""
+
+        intermediate = collect_minilm_only_context(transcript)
+        output, diagnostics = build_minilm_only_output(transcript, intermediate, FakeMiniLMBackend())
+
+        self.assertIsNotNone(output)
+        actions_blob = " ".join(output.get("meetingActionPoint", [])).lower()
+        self.assertNotIn("send him on this recording after", actions_blob)
+        self.assertIn("double down with the upskilled team on adoption considerations", actions_blob)
+
+    def test_self_referential_fragment_is_rejected_from_discussion_output(self):
+        transcript = """Quick discussion
+
+2 June 2026
+
+Claire:
+And I'm easy right here...
+
+Emma:
+The complaints workflow still needs clearer triage rules before automation is scoped.
+"""
+
+        intermediate = collect_minilm_only_context(transcript)
+        output, diagnostics = build_minilm_only_output(transcript, intermediate, FakeMiniLMBackend())
+
+        self.assertIsNotNone(output)
+        discussion_blob = " ".join(output.get("discussionPoints", [])).lower()
+        self.assertNotIn("easy right here", discussion_blob)
+        self.assertIn("complaints", discussion_blob)
+        self.assertTrue(any(item.get("reason") == "self_referential_fragment" for item in diagnostics.get("rejectedDiscussionCandidates", [])))
+
     def test_rewrite_sanitiser_strips_chat_template_tokens(self):
         rewritten = _sanitize_rewritten_minutes_text(
             "Refine the webinar slides. <|user|> <|assistant|>",

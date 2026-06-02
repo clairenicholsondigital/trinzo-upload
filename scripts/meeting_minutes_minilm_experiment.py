@@ -1245,6 +1245,20 @@ WINDOW_AI_OPPORTUNITY_TERMS = {
     "filter", "filtering", "improvement", "improvements",
 }
 WINDOW_ACTION_SEMANTIC_FLOOR = 0.58
+LOW_INFORMATION_TOKENS = {
+    "a", "an", "and", "are", "as", "at", "be", "but", "by", "for", "from", "get", "got", "has",
+    "have", "he", "her", "here", "him", "i", "if", "im", "in", "into", "is", "it", "its", "just",
+    "me", "my", "of", "on", "or", "our", "right", "send", "she", "so", "that", "the", "their",
+    "them", "then", "there", "they", "this", "to", "up", "us", "we", "well", "will", "with",
+    "you", "your", "after", "before", "now",
+}
+COORDINATION_TOKENS = {
+    "after", "before", "call", "cc", "drop", "forward", "here", "him", "her", "it", "loop", "now",
+    "recording", "right", "send", "share", "that", "them", "there", "this",
+}
+SELF_REFERENTIAL_TOKENS = {
+    "easy", "fine", "good", "happy", "here", "im", "me", "myself", "right", "okay", "ok",
+}
 
 
 def embedding_similarity(left: list[float], right: list[float]) -> float:
@@ -1291,6 +1305,59 @@ def has_explicit_topic_terms(text: str) -> bool:
     return bool(set(tokenize(text)) & MINILM_TOPIC_TERMS)
 
 
+def business_signal_count(text: str) -> int:
+    tokens = set(tokenize(text))
+    return len(tokens & (MINILM_TOPIC_TERMS | WINDOW_PROCESS_TERMS | WINDOW_METHOD_TERMS | WINDOW_AI_OPPORTUNITY_TERMS))
+
+
+def canonicalize_tokens(tokens: list[str]) -> list[str]:
+    canonical = []
+    for token in tokens:
+        value = token.lower().replace("’", "'")
+        if value in {"i'm", "im"}:
+            canonical.append("im")
+        elif value in {"we're", "were"}:
+            canonical.append("we")
+        else:
+            canonical.append(value.replace("'", ""))
+    return canonical
+
+
+def substantive_token_count(text: str) -> int:
+    return sum(1 for token in canonicalize_tokens(tokenize(text)) if len(token) > 3 and token not in LOW_INFORMATION_TOKENS)
+
+
+def is_low_value_coordination_action(text: str) -> bool:
+    tokens = canonicalize_tokens(tokenize(text))
+    if len(tokens) < 4 or len(tokens) > 10:
+        return False
+    if business_signal_count(text) > 0:
+        return False
+    coordination_hits = sum(1 for token in tokens if token in COORDINATION_TOKENS)
+    if coordination_hits < 2:
+        return False
+    if substantive_token_count(text) > 2:
+        return False
+    return True
+
+
+def is_self_referential_conversational_fragment(text: str) -> bool:
+    tokens = canonicalize_tokens(tokenize(text))
+    if len(tokens) < 2 or len(tokens) > 10:
+        return False
+    if business_signal_count(text) > 0:
+        return False
+    first_person_hits = sum(1 for token in tokens if token in {"i", "im", "me", "my", "we", "our", "us"})
+    if first_person_hits < 1:
+        return False
+    self_ref_hits = sum(1 for token in tokens if token in SELF_REFERENTIAL_TOKENS)
+    if self_ref_hits < 2:
+        return False
+    if substantive_token_count(text) > 2:
+        return False
+    return True
+
+
 def is_context_dependent_fragment(text: str) -> bool:
     lowered = normalize_text_fragment(text).lower()
     if lowered in MINILM_FALLBACK_FILLERS:
@@ -1298,6 +1365,8 @@ def is_context_dependent_fragment(text: str) -> bool:
     if lowered in MINILM_NOISE_PHRASES:
         return True
     if any(phrase in lowered for phrase in MINILM_NOISE_PHRASES):
+        return True
+    if is_low_value_coordination_action(text) or is_self_referential_conversational_fragment(text):
         return True
     if any(lowered.startswith(prefix) for prefix in MINILM_CONTEXTUAL_OPENERS) and not has_meaningful_topic_terms(text):
         return True
@@ -1326,6 +1395,10 @@ def should_keep_discussion_candidate(candidate: dict[str, Any]) -> tuple[bool, s
     support_count = evidence_support_count(candidate)
     if not text:
         return False, "empty"
+    if is_self_referential_conversational_fragment(text):
+        return False, "self_referential_fragment"
+    if is_low_value_coordination_action(text):
+        return False, "coordination_fragment"
     if len(tokens) < 5:
         return False, "too_short"
     if contains_noise_or_banter(text):
@@ -1612,6 +1685,10 @@ def is_valid_discussion_point(text: str, support_count: int) -> tuple[bool, str]
         return False, "action_or_decision_like"
     if any(phrase in lowered for phrase in ("i think", "yeah", "okay", "you know", "go to the next one")):
         return False, "transcript_wording"
+    if is_self_referential_conversational_fragment(cleaned):
+        return False, "self_referential_fragment"
+    if is_low_value_coordination_action(cleaned):
+        return False, "coordination_fragment"
     if cleaned[:1].islower():
         return False, "not_sentence_cased"
     if len(tokenize(cleaned)) < 6:
@@ -1648,6 +1725,12 @@ def should_accept_action_candidate(candidate: dict[str, Any]) -> tuple[bool, str
         or semantic_source
     ):
         return False, "not_action_like"
+    if is_low_value_coordination_action(text):
+        return False, "coordination_chatter"
+    if is_self_referential_conversational_fragment(text):
+        return False, "self_referential_fragment"
+    if semantic_density(text) < 0.58 and business_signal_count(text) < 1 and evidence_support_count(candidate) < 2:
+        return False, "insufficient_business_context"
     if combined >= 0.4 and max(semantic, role_action) >= 0.18:
         return True, "combined_and_semantic_threshold"
     if role_action >= 0.55 and base >= 0.34:
