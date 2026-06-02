@@ -739,10 +739,6 @@ function buildTranscriptMinilmOnlyPage(config) {
             <td>${renderParticipantsTable(schemaOutput.participants || {})}</td>
           </tr>
           <tr>
-            <th>Item topic</th>
-            <td><input id="itemTopicInput" type="text" value="${escapeHtml(schemaOutput.itemTopic || '')}" placeholder="Item topic" /></td>
-          </tr>
-          <tr>
             <th>Discussion points</th>
             <td>${renderTextarea('discussionPointsInput', schemaOutput.discussionPoints, 'One discussion point per line')}</td>
           </tr>
@@ -773,7 +769,7 @@ function buildTranscriptMinilmOnlyPage(config) {
         client: parseLines(document.getElementById('participantsClientInput')?.value || ''),
         trinzo: parseLines(document.getElementById('participantsTrinzoInput')?.value || ''),
       },
-      itemTopic: document.getElementById('itemTopicInput')?.value.trim() || '',
+      itemTopic: state.schemaOutput?.itemTopic || state.payload?.result?.output?.itemTopic || state.payload?.result?.output?.meetingTitle || 'Meeting discussion',
       discussionPoints: parseLines(document.getElementById('discussionPointsInput')?.value || ''),
       meetingActionPoint: [],
       meetingActionPointOwner: [],
@@ -920,7 +916,7 @@ function buildTranscriptMinilmOnlyPage(config) {
         throw new Error(data.error || 'Final webhook call failed');
       }
 
-      setMessage('Approved meeting minutes sent successfully.', 'success');
+      setMessage('Successfully sent to SharePoint', 'success');
     } catch (err) {
       setMessage(`Final webhook call failed: ${err.message}`, 'error');
     }
