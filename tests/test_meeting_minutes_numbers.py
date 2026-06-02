@@ -498,6 +498,59 @@ Yes, I'll do that.
         index = result["meetingActionPoint"].index("Send the updated floor plan this afternoon.")
         self.assertEqual(result["meetingActionPointOwner"][index], "Nina")
 
+    def test_issue_language_needs_investigation_becomes_action(self):
+        transcript = """Operational review
+
+22 August 2026
+
+Claire:
+The routing workflow needs investigation.
+"""
+
+        result = analyse(transcript)
+
+        self.assertIn("Investigate the routing workflow.", result["meetingActionPoint"])
+
+    def test_agenda_request_and_acceptance_becomes_action(self):
+        transcript = """Planning meeting
+
+22 August 2026
+
+Claire:
+Can you put the supplier review on next week's agenda?
+
+Emma:
+Yes, I'll take that.
+"""
+
+        result = analyse(transcript)
+
+        self.assertIn("Put the supplier review on next week's agenda.", result["meetingActionPoint"])
+        index = result["meetingActionPoint"].index("Put the supplier review on next week's agenda.")
+        self.assertEqual(result["meetingActionPointOwner"][index], "Emma")
+
+    def test_yes_and_deadline_follow_up_attach_to_request_thread(self):
+        transcript = """Planning meeting
+
+22 August 2026
+
+Claire:
+Can you update the board pack?
+
+Emma:
+Yes.
+
+Emma:
+By Friday.
+"""
+
+        result = analyse(transcript)
+
+        self.assertIn("Update the board pack.", result["meetingActionPoint"])
+        index = result["meetingActionPoint"].index("Update the board pack.")
+        self.assertEqual(result["meetingActionPointOwner"][index], "Emma")
+        self.assertTrue(result["meetingActionPointDeadline"][index].startswith("By Friday"))
+
     def test_generic_commitment_can_resolve_longer_gap_strong_request_thread(self):
         transcript = """Delayed follow-up
 

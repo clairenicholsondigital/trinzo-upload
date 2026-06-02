@@ -158,6 +158,14 @@ NAMED_COMMITMENT_RE = re.compile(
 REQUEST_RE = re.compile(r"^(?:can|could|would|will)\s+you\s+(?P<task>.+)$", re.IGNORECASE)
 OWNERSHIP_RE = re.compile(r"^who is handling\s+(?P<task>.+)$", re.IGNORECASE)
 RESPONSIBILITY_RE = re.compile(r"^(?:we should|we need to|someone needs to)\s+(?P<task>.+)$", re.IGNORECASE)
+AGENDA_ACTION_RE = re.compile(
+    r"^(?:(?:please\s+)?(?:put|add|carry)\s+)(?P<task>.+?)\s+(?:on|to)\s+(?P<deadline>next week(?:'s)? agenda|the agenda|next agenda)\s*$",
+    re.IGNORECASE,
+)
+DEADLINE_ONLY_RE = re.compile(
+    r"^(?:by\s+|before\s+|once\s+|after\s+|when\s+|next\s+week|today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)",
+    re.IGNORECASE,
+)
 LOW_VALUE_ACTION_PATTERNS = (
     "hear me", "see me", "join the call", "on mute", "screen share", "screen-sharing",
     "screen sharing", "audio working", "video working", "work here", "he's hot",
@@ -1265,6 +1273,17 @@ def extract_deadline_text(text: str) -> str:
     return normalize_deadline_text(match.group(0))
 
 
+def is_deadline_only_follow_up(text: str) -> bool:
+    cleaned = normalize_text_fragment(text).rstrip(".!?")
+    if not cleaned:
+        return False
+    deadline = extract_deadline_text(cleaned)
+    if not deadline:
+        return False
+    lowered = cleaned.lower()
+    return lowered == deadline.lower() or lowered in {f"by {deadline.lower()}", f"before {deadline.lower()}"}
+
+
 def strip_ack_prefix(text: str) -> str:
     return ACK_PREFIX_RE.sub("", normalize_text_fragment(text)).strip()
 
@@ -1329,6 +1348,19 @@ def extract_action_context(text: str) -> dict[str, str] | None:
         return None
     if is_presentation_rehearsal_speech(cleaned):
         return None
+
+    agenda_match = AGENDA_ACTION_RE.match(cleaned)
+    if agenda_match:
+        task = normalize_text_fragment(agenda_match.group("task")).strip().rstrip("?")
+        if is_low_value_action_task(task):
+            return None
+        return {
+            "kind": "request",
+            "action": normalize_action_text(f"put {task} on next week's agenda"),
+            "owner": "Owner not specified",
+            "deadline": "Next week",
+            "source_text": cleaned,
+        }
 
     match = DIRECT_ASSIGNMENT_RE.match(cleaned)
     if match:
@@ -1416,18 +1448,34 @@ def extract_issue_action_context(text: str) -> dict[str, str] | None:
     subject = re.sub(r"\balso\b", "", subject, flags=re.IGNORECASE).strip()
     if subject.lower().startswith("the "):
         subject = subject[:1].lower() + subject[1:]
-    if additive_issue:
+    detail_lowered = detail.lower()
+    if re.match(r"^(?:investigation|investigating)\b", detail_lowered):
+        action_text = normalize_action_text(f"investigate {subject}".strip())
+        emit_unresolved = True
+    elif re.match(r"^(?:review|reviewing|further review)\b", detail_lowered):
+        action_text = normalize_action_text(f"review {subject}".strip())
+        emit_unresolved = True
+    elif re.match(r"^(?:validation|validating)\b", detail_lowered):
+        action_text = normalize_action_text(f"validate {subject}".strip())
+        emit_unresolved = True
+    elif re.match(r"^(?:follow[\s-]?up)\b", detail_lowered):
+        action_text = normalize_action_text(f"follow up {subject}".strip())
+        emit_unresolved = True
+    elif additive_issue:
         action_text = normalize_action_text(f"update {subject} with {detail}".strip())
+        emit_unresolved = False
     else:
         detail = re.sub(r"^(?:a|an)\s+", "", detail, flags=re.IGNORECASE)
         detail = re.sub(r"^(?:clearer|better|improved)\s+", "", detail, flags=re.IGNORECASE)
         action_text = normalize_action_text(f"improve {subject} {detail}".strip())
+        emit_unresolved = False
     return {
         "kind": "issue",
         "action": action_text,
         "owner": "Owner not specified",
         "deadline": extract_deadline_text(cleaned),
         "source_text": cleaned,
+        "emit_unresolved": emit_unresolved,
     }
 
 
@@ -1525,6 +1573,7 @@ def build_action_thread(context: dict[str, str], turn: dict[str, str], index: in
         "rejectionTurn": None,
         "closureTurn": None,
         "resolvedTurn": None,
+        "emit_unresolved": context.get("emit_unresolved", False),
     }
 
 
@@ -1829,10 +1878,15 @@ def extract_conversational_actions(turns: list[dict[str, str]]) -> tuple[
         if generic_commitment:
             inherited_thread = select_inherited_thread_for_generic_commitment(threads, index)
             if inherited_thread:
+                inherited_deadline = extract_deadline_text(turn["text"]) or inherited_thread["deadline"]
+                if not inherited_deadline and index + 1 < len(turns):
+                    next_turn = turns[index + 1]
+                    if next_turn["speaker"] == turn["speaker"] and is_deadline_only_follow_up(next_turn["text"]):
+                        inherited_deadline = extract_deadline_text(next_turn["text"])
                 explicit_commitment = (
                     inherited_thread["action"],
                     turn["speaker"],
-                    extract_deadline_text(turn["text"]) or inherited_thread["deadline"],
+                    inherited_deadline,
                 )
                 explicit_commitment = merge_commitment_with_request(
                     explicit_commitment,
@@ -1954,6 +2008,18 @@ def extract_conversational_actions(turns: list[dict[str, str]]) -> tuple[
             )
             thread["state"] = "emitted_unresolved_request"
             thread_events.append(action_thread_event(thread, "thread_emitted_as_unresolved_request"))
+        elif thread["kind"] == "issue" and thread["state"] == "open" and thread.get("emit_unresolved"):
+            actions.append(
+                (
+                    thread["action"],
+                    thread["owner"],
+                    thread["deadline"],
+                    0.71,
+                    [{"speaker": thread["requestTurn"]["speaker"], "timestamp": thread["requestTurn"]["timestamp"]}],
+                )
+            )
+            thread["state"] = "emitted_unresolved_issue"
+            thread_events.append(action_thread_event(thread, "thread_emitted_as_unresolved_issue"))
 
     return actions, suppressed, thread_events
 
