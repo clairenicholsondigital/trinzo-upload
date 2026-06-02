@@ -112,6 +112,7 @@ class MiniLMComparisonSmokeTest(unittest.TestCase):
     def tearDown(self):
         LocalMinutesRewriter._singleton = None
         os.environ.pop("MINUTES_LOCAL_REWRITER_URL", None)
+        os.environ.pop("MINUTES_MINILM_WORKER_URL", None)
 
     def test_comparison_script_exists(self):
         self.assertTrue(SCRIPT.exists(), f"Expected comparison script at {SCRIPT}")
@@ -340,6 +341,67 @@ I'll refine the webinar slides.
             self.assertEqual(rewriter.worker_url, f"http://127.0.0.1:{server.server_port}")
             self.assertEqual(rewritten, "Remote rewrite: Refine the webinar slides.")
             self.assertTrue(meta["rewritten"])
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_minilm_backend_can_use_remote_worker(self):
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, format, *args):
+                return
+
+            def do_GET(self):
+                if self.path != "/health":
+                    self.send_response(404)
+                    self.end_headers()
+                    return
+                payload = json.dumps(
+                    {
+                        "ok": True,
+                        "reason": "",
+                        "modelName": "fake-remote-minilm",
+                    }
+                ).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+
+            def do_POST(self):
+                if self.path != "/encode":
+                    self.send_response(404)
+                    self.end_headers()
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                body = json.dumps(
+                    {
+                        "ok": True,
+                        "embeddings": {text: [1.0, 0.0, 0.0] for text in payload["texts"]},
+                        "modelName": "fake-remote-minilm",
+                    }
+                ).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            os.environ["MINUTES_MINILM_WORKER_URL"] = f"http://127.0.0.1:{server.server_port}"
+            from scripts.meeting_minutes_minilm_experiment import MiniLMBackend
+
+            backend = MiniLMBackend.load(enabled=True)
+            embeddings = backend.encode_many(["alpha", "beta"])
+            self.assertTrue(backend.available)
+            self.assertEqual(backend.worker_url, f"http://127.0.0.1:{server.server_port}")
+            self.assertEqual(backend.model_name, "fake-remote-minilm")
+            self.assertEqual(embeddings["alpha"], [1.0, 0.0, 0.0])
+            self.assertEqual(round(backend.similarity("alpha", "beta"), 4), 1.0)
         finally:
             server.shutdown()
             server.server_close()

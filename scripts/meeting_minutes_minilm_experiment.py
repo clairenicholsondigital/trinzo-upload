@@ -80,11 +80,18 @@ class MiniLMBackend:
     model_name: str = MODEL_NAME
     model: Any | None = None
     _cache: dict[str, list[float]] | None = None
+    worker_url: str = ""
 
     @classmethod
-    def load(cls, enabled: bool = True) -> "MiniLMBackend":
+    def load(cls, enabled: bool = True, prefer_remote: bool = True) -> "MiniLMBackend":
         if not enabled:
             return cls(False, "MiniLM disabled for this run.")
+        worker_url = os.environ.get("MINUTES_MINILM_WORKER_URL", "").strip().rstrip("/")
+        if prefer_remote and worker_url:
+            health = cls._check_remote_worker(worker_url)
+            if health.get("ok"):
+                return cls(True, "", model_name=health.get("modelName", MODEL_NAME), _cache={}, worker_url=worker_url)
+            return cls(False, health.get("reason", f"Remote MiniLM worker unavailable at {worker_url}"))
         try:
             sentence_transformers = importlib.import_module("sentence_transformers")
         except ModuleNotFoundError:
@@ -95,8 +102,51 @@ class MiniLMBackend:
             return cls(False, f"Could not load {MODEL_NAME}: {exc}")
         return cls(True, "", model=model, _cache={})
 
+    @staticmethod
+    def _check_remote_worker(worker_url: str) -> dict[str, Any]:
+        try:
+            with urllib.request.urlopen(f"{worker_url}/health", timeout=5) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except Exception as exc:  # pragma: no cover - exercised in real envs
+            return {"ok": False, "reason": f"Remote MiniLM worker health check failed: {exc}"}
+        return payload if isinstance(payload, dict) else {"ok": False, "reason": "Remote MiniLM worker health response was invalid."}
+
+    def _encode_many_via_remote_worker(self, texts: list[str]) -> dict[str, list[float]]:
+        cleaned = [normalize_text_fragment(text) for text in texts if normalize_text_fragment(text)]
+        if not cleaned:
+            return {}
+        uncached = [text for text in cleaned if text not in self._cache]
+        if uncached:
+            payload = json.dumps({"texts": uncached}).encode("utf-8")
+            request = urllib.request.Request(
+                f"{self.worker_url}/encode",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=30) as response:
+                    result = json.loads(response.read().decode("utf-8"))
+            except Exception as exc:  # pragma: no cover - exercised in real envs
+                self.reason = f"Remote MiniLM encode failed: {exc}"
+                self.available = False
+                return {}
+            embeddings = result.get("embeddings", {})
+            if not isinstance(embeddings, dict):
+                self.reason = "Remote MiniLM encode returned an invalid embeddings payload."
+                self.available = False
+                return {}
+            for text, embedding in embeddings.items():
+                if isinstance(embedding, list):
+                    self._cache[text] = embedding
+        return {text: self._cache[text] for text in cleaned if text in self._cache}
+
     def encode_many(self, texts: list[str]) -> dict[str, list[float]]:
-        if not self.available or not self.model:
+        if not self.available:
+            return {}
+        if self.worker_url:
+            return self._encode_many_via_remote_worker(texts)
+        if not self.model:
             return {}
         cleaned = []
         for text in texts:
