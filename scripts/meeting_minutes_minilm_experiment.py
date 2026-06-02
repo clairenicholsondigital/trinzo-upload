@@ -340,6 +340,7 @@ class LocalMinutesRewriter:
             "Write like clean meeting minutes rather than chat. "
             "Use natural sentence variety and avoid repeating the same opening across items. "
             "Do not keep starting sentences with the same stem such as 'The team discussed' or 'The meeting was to'. "
+            "For objectives, write a concise intended meeting outcome, not a transcript quote. "
             "For discussion items, prefer concise topic-led wording. "
             "For decisions, prefer clear agreed-direction wording. "
             "For actions, prefer direct action wording with the commitment intact. "
@@ -353,11 +354,13 @@ class LocalMinutesRewriter:
             ]
         }
         return (
-            "<|system|>\n"
-            "You rewrite extracted meeting minutes into formal business wording.\n"
-            "<|user|>\n"
+            "<|im_start|>system\n"
+            "You rewrite extracted meeting minutes into formal business wording. Return only valid JSON.\n"
+            "<|im_end|>\n"
+            "<|im_start|>user\n"
             f"{instruction}\n\nInput JSON:\n{json.dumps(payload, ensure_ascii=False)}\n"
-            "<|assistant|>\n"
+            "<|im_end|>\n"
+            "<|im_start|>assistant\n"
         )
 
     def rewrite_items(self, items: list[dict[str, str]]) -> list[dict[str, Any]]:
@@ -421,7 +424,7 @@ class LocalMinutesRewriter:
         if isinstance(result, list) and result:
             generated = normalize_text_fragment(result[0].get("generated_text", ""))
         try:
-            decoded = json.loads(generated)
+            decoded = json.loads(extract_json_object_text(generated))
         except Exception:
             decoded = {}
         decoded_items = decoded.get("items", []) if isinstance(decoded, dict) else []
@@ -432,14 +435,16 @@ class LocalMinutesRewriter:
         for index, item in enumerate(cleaned_items):
             result_item = decoded_items[index] if index < len(decoded_items) and isinstance(decoded_items[index], dict) else {}
             rewritten = _sanitize_rewritten_minutes_text(result_item.get("rewritten", ""), item["text"])
+            parse_failed = not result_item
             outputs.append(
                 {
                     "rewritten": rewritten,
                     "meta": {
                         "category": item["category"],
                         "rewritten": normalize_text(rewritten) != normalize_text(item["text"]),
-                        "reason": "ok",
+                        "reason": "generation_json_parse_failed" if parse_failed else "ok",
                         "raw": result_item.get("rewritten", ""),
+                        "rawGenerated": generated[:1000],
                     },
                 }
             )
@@ -463,6 +468,21 @@ def normalize_text(value: Any) -> str:
 
 def normalize_text_fragment(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "").strip())
+
+
+def extract_json_object_text(value: str) -> str:
+    """Return the first JSON object-looking span from a model response."""
+    text = str(value or "").strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE).strip()
+        text = re.sub(r"\s*```$", "", text).strip()
+    if text.startswith("{") and text.endswith("}"):
+        return text
+    start = text.find("{")
+    end = text.rfind("}")
+    if start >= 0 and end > start:
+        return text[start : end + 1]
+    return text
 
 
 def normalized_list(values: list[Any]) -> list[str]:
@@ -1393,6 +1413,33 @@ def is_low_value_coordination_action(text: str) -> bool:
     return True
 
 
+CONCRETE_ACTION_VERBS = {
+    "add", "agree", "amend", "book", "build", "check", "circulate", "complete", "confirm", "create",
+    "develop", "double", "draft", "finalise", "follow", "prepare", "reduce", "refine", "review", "send",
+    "share", "simplify", "update", "validate",
+}
+
+
+def has_concrete_action_commitment(text: str, owner: str = "", deadline: str = "") -> bool:
+    """Return True for concrete next-step semantics rather than conversational availability."""
+    cleaned = normalize_text_fragment(text)
+    lowered = cleaned.lower()
+    tokens = canonicalize_tokens(tokenize(cleaned))
+    if not cleaned or cleaned.endswith("?"):
+        return False
+    if any(phrase in lowered for phrase in ("if you want", "i don't mind", "i do not mind", "i'm easy", "i am easy")):
+        return False
+    if any(token in CONCRETE_ACTION_VERBS for token in tokens):
+        return True
+    if re.search(r"\b(?:i|we|[A-Z][a-z]+)\s+(?:will|shall|need to|should|must|to)\s+[a-z]", cleaned):
+        return True
+    if normalize_text_fragment(owner) and normalize_text(owner) != "owner not specified" and business_signal_count(cleaned) >= 1:
+        return True
+    if normalize_text_fragment(deadline) and business_signal_count(cleaned) >= 1:
+        return True
+    return False
+
+
 def is_self_referential_conversational_fragment(text: str) -> bool:
     tokens = canonicalize_tokens(tokenize(text))
     if len(tokens) < 2 or len(tokens) > 10:
@@ -1670,6 +1717,8 @@ def rewrite_minutes_output_payload(
     rewrite_start = time.perf_counter()
 
     rewrite_plan = []
+    for index, point in enumerate(rewritten_output.get("meetingObjectives", [])):
+        rewrite_plan.append({"category": "objective", "text": point, "slot": ("meetingObjectives", index)})
     for index, point in enumerate(rewritten_output.get("discussionPoints", [])):
         rewrite_plan.append({"category": "discussion", "text": point, "slot": ("discussionPoints", index)})
     for index, point in enumerate(rewritten_output.get("decisions", [])):
@@ -1681,6 +1730,7 @@ def rewrite_minutes_output_payload(
         [{"category": item["category"], "text": item["text"]} for item in rewrite_plan]
     )
 
+    rewritten_objectives = list(rewritten_output.get("meetingObjectives", []))
     rewritten_discussion = list(rewritten_output.get("discussionPoints", []))
     rewritten_decisions = list(rewritten_output.get("decisions", []))
     rewritten_actions = list(rewritten_output.get("actions", []))
@@ -1698,7 +1748,9 @@ def rewrite_minutes_output_payload(
             diagnostics["rewriteEdits"].append({"category": category, "before": before, "after": rewritten, "failed": rewrite_failed, **rewrite_diag})
 
         slot_name, slot_index = plan_item["slot"]
-        if slot_name == "discussionPoints":
+        if slot_name == "meetingObjectives":
+            rewritten_objectives[slot_index] = rewritten
+        elif slot_name == "discussionPoints":
             rewritten_discussion[slot_index] = rewritten
             if slot_index < len(rewritten_output.get("discussionPointDetails", [])):
                 rewritten_output["discussionPointDetails"][slot_index]["rewrittenDiscussionPoint"] = rewritten
@@ -1709,9 +1761,18 @@ def rewrite_minutes_output_payload(
         elif slot_name == "actions":
             rewritten_actions[slot_index]["meetingActionPoint"] = rewritten
 
+    rewritten_output["meetingObjectives"] = dedupe_values(rewritten_objectives)
     rewritten_output["discussionPoints"] = dedupe_values(rewritten_discussion)
     rewritten_output["decisions"] = dedupe_values(rewritten_decisions)
-    rewritten_output["actions"] = rewritten_actions
+    rewritten_output["actions"] = [
+        action
+        for action in rewritten_actions
+        if has_concrete_action_commitment(
+            action.get("meetingActionPoint", ""),
+            action.get("meetingActionPointOwner", ""),
+            action.get("meetingActionPointDeadline", ""),
+        )
+    ]
     rewritten_output["actions"] = dedupe_action_objects(rewritten_output.get("actions", []))
     rewritten_output["meetingActionPoint"] = [item["meetingActionPoint"] for item in rewritten_output.get("actions", [])]
     rewritten_output["meetingActionPointOwner"] = [item["meetingActionPointOwner"] for item in rewritten_output.get("actions", [])]
@@ -1884,6 +1945,8 @@ def should_accept_action_candidate(candidate: dict[str, Any]) -> tuple[bool, str
         return False, "coordination_chatter"
     if is_self_referential_conversational_fragment(text):
         return False, "self_referential_fragment"
+    if not has_concrete_action_commitment(text, candidate.get("owner", ""), candidate.get("deadline", "")):
+        return False, "missing_concrete_action_commitment"
     if semantic_density(text) < 0.58 and business_signal_count(text) < 1 and evidence_support_count(candidate) < 2:
         return False, "insufficient_business_context"
     if combined >= 0.4 and max(semantic, role_action) >= 0.18:
