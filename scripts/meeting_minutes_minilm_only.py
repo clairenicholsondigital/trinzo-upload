@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 
 from meeting_minutes_minilm_experiment import (
+    LocalMinutesRewriter,
     MiniLMBackend,
     build_minilm_only_output,
     collect_experiment_context,
@@ -38,16 +39,20 @@ def main() -> int:
     context_runtime_ms = round((time.perf_counter() - context_start) * 1000, 2)
 
     backend = MiniLMBackend.load(enabled=True)
+    rewriter = LocalMinutesRewriter.load(enabled=True)
     diagnostics = {}
     output = None
     minilm_runtime_ms = 0.0
+    rewrite_runtime_ms = 0.0
 
     if backend.available:
         minilm_start = time.perf_counter()
-        output, diagnostics = build_minilm_only_output(transcript_text, intermediate, backend)
-        minilm_runtime_ms = round((time.perf_counter() - minilm_start) * 1000, 2)
+        output, diagnostics = build_minilm_only_output(transcript_text, intermediate, backend, rewriter=rewriter)
+        elapsed_ms = round((time.perf_counter() - minilm_start) * 1000, 2)
+        minilm_runtime_ms = elapsed_ms
+        rewrite_runtime_ms = round(float(diagnostics.get("rewriteRuntimeMs", 0.0)), 2)
     else:
-        _, diagnostics = build_minilm_only_output(transcript_text, intermediate, backend)
+        _, diagnostics = build_minilm_only_output(transcript_text, intermediate, backend, rewriter=rewriter)
 
     payload = {
         "mode": "minilm_only",
@@ -55,6 +60,10 @@ def main() -> int:
         "modelAvailable": backend.available,
         "modelName": backend.model_name,
         "modelReason": backend.reason,
+        "rewriterAvailable": rewriter.available,
+        "rewriterModelName": rewriter.model_name,
+        "rewriterModelPath": rewriter.model_path,
+        "rewriterReason": rewriter.reason,
         "output": output,
         "counts": build_counts(output or {}),
         "baselineReference": {
@@ -68,6 +77,7 @@ def main() -> int:
             "baseline": baseline_runtime_ms,
             "context": context_runtime_ms,
             "minilm": minilm_runtime_ms,
+            "rewrite": rewrite_runtime_ms,
             "total": round(baseline_runtime_ms + context_runtime_ms + minilm_runtime_ms, 2),
         },
     }

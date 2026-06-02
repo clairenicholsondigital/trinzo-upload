@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import json
 import math
+import os
 import re
 import time
 from collections import Counter
@@ -10,7 +11,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from difflib import get_close_matches
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 from python_meeting_minutes_numbers import (
     analyse,
@@ -34,6 +35,7 @@ from python_meeting_minutes_numbers import (
 )
 
 MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+DEFAULT_LOCAL_REWRITER_PATH = Path(__file__).resolve().parent.parent / "models" / "Qwen2.5-0.5B-Instruct"
 
 PROTOTYPE_TEXTS = {
     "action": [
@@ -126,6 +128,95 @@ class MiniLMBackend:
             max((self.similarity(text, prototype) for prototype in PROTOTYPE_TEXTS[prototype_group]), default=0.0),
             4,
         )
+
+
+@dataclass
+class LocalMinutesRewriter:
+    available: bool
+    reason: str
+    model_name: str = "Qwen/Qwen2.5-0.5B-Instruct"
+    model_path: str = ""
+    generator: Any | None = None
+
+    _singleton: ClassVar["LocalMinutesRewriter | None"] = None
+
+    @classmethod
+    def load(cls, enabled: bool = True) -> "LocalMinutesRewriter":
+        if cls._singleton is not None:
+            return cls._singleton
+        if not enabled:
+            cls._singleton = cls(False, "Local minutes rewriter disabled.")
+            return cls._singleton
+
+        configured_path = os.environ.get("MINUTES_LOCAL_LLM_PATH", "").strip()
+        model_path = Path(configured_path) if configured_path else DEFAULT_LOCAL_REWRITER_PATH
+        if not model_path.exists():
+            cls._singleton = cls(False, f"Local rewriter model path not found: {model_path}", model_path=str(model_path))
+            return cls._singleton
+
+        try:
+            transformers = importlib.import_module("transformers")
+            torch = importlib.import_module("torch")
+        except ModuleNotFoundError as exc:
+            cls._singleton = cls(False, f"Local rewriter dependency missing: {exc.name}", model_path=str(model_path))
+            return cls._singleton
+
+        try:
+            pipeline = transformers.pipeline(
+                "text-generation",
+                model=str(model_path),
+                tokenizer=str(model_path),
+                device_map="auto",
+                torch_dtype=getattr(torch, "float16", None) if torch.cuda.is_available() else getattr(torch, "float32", None),
+            )
+        except Exception as exc:  # pragma: no cover - exercised in real envs
+            cls._singleton = cls(False, f"Could not load local rewriter from {model_path}: {exc}", model_path=str(model_path))
+            return cls._singleton
+
+        cls._singleton = cls(True, "", model_path=str(model_path), generator=pipeline)
+        return cls._singleton
+
+    def rewrite_item(self, category: str, text: str) -> tuple[str, dict[str, Any]]:
+        cleaned = normalize_text_fragment(text)
+        if not self.available or not self.generator or not cleaned:
+            return cleaned, {"category": category, "rewritten": False, "reason": self.reason or "rewriter_unavailable"}
+
+        instruction = (
+            "Rewrite the following extracted meeting-minutes item into concise, formal UK business English. "
+            "Keep the meaning unchanged. Remove filler, transcript phrasing, and awkward wording. "
+            "Return one sentence only and no bullets or commentary."
+        )
+        if category == "action":
+            instruction += " Keep it as a clear action point."
+        elif category == "decision":
+            instruction += " Keep it as a clear meeting decision."
+        else:
+            instruction += " Keep it as a clear discussion point."
+
+        prompt = (
+            "<|system|>\n"
+            "You rewrite extracted meeting minutes into formal business wording.\n"
+            "<|user|>\n"
+            f"{instruction}\n\nItem: {cleaned}\n"
+            "<|assistant|>\n"
+        )
+        try:
+            result = self.generator(
+                prompt,
+                max_new_tokens=80,
+                do_sample=False,
+                temperature=0.0,
+                return_full_text=False,
+            )
+        except Exception as exc:  # pragma: no cover - exercised in real envs
+            return cleaned, {"category": category, "rewritten": False, "reason": f"generation_failed: {exc}"}
+
+        generated = ""
+        if isinstance(result, list) and result:
+            generated = normalize_text_fragment(result[0].get("generated_text", ""))
+        rewritten = _sanitize_rewritten_minutes_text(generated, cleaned)
+        changed = normalize_text(rewritten) != normalize_text(cleaned)
+        return rewritten, {"category": category, "rewritten": changed, "reason": "ok", "raw": generated}
 
 
 def normalize_text(value: Any) -> str:
@@ -439,7 +530,7 @@ def collect_minilm_only_context(transcript_text: str) -> dict[str, Any]:
     )
 
 
-def collect_action_candidates(intermediate: dict[str, Any]) -> list[dict[str, Any]]:
+def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBackend | None = None) -> list[dict[str, Any]]:
     outputs = []
     for event in intermediate.get("actionEvents", []):
         if event.get("eventType") != "action_candidate":
@@ -451,6 +542,7 @@ def collect_action_candidates(intermediate: dict[str, Any]) -> list[dict[str, An
                 "deadline": normalize_text_fragment(event.get("deadline", "")),
                 "baseScore": float(event.get("confidence", 0.0)),
                 "source": event.get("source", ""),
+                "roleScores": chunk_role_scores(backend, normalize_action_candidate_text(event.get("action", ""))) if backend else {},
             }
         )
     seen = {normalized_key(item["text"]) for item in outputs if item.get("text")}
@@ -480,13 +572,14 @@ def collect_action_candidates(intermediate: dict[str, Any]) -> list[dict[str, An
                 "deadline": "",
                 "baseScore": max(0.74 if lead_match else 0.34, float(record.get("scores", {}).get("action", 0.0)), float(record.get("scores", {}).get("discussion", 0.0)) * 0.75),
                 "source": source,
+                "roleScores": chunk_role_scores(backend, normalize_action_candidate_text(text)) if backend else {},
             }
         )
         seen.add(key)
     return outputs
 
 
-def collect_decision_candidates(intermediate: dict[str, Any]) -> list[dict[str, Any]]:
+def collect_decision_candidates(intermediate: dict[str, Any], backend: MiniLMBackend | None = None) -> list[dict[str, Any]]:
     outputs = []
     for item in intermediate.get("decisionDebug", {}).get("topDecisionCandidates", []):
         outputs.append(
@@ -494,6 +587,7 @@ def collect_decision_candidates(intermediate: dict[str, Any]) -> list[dict[str, 
                 "text": normalize_text_fragment(item.get("text", "")),
                 "baseScore": float(item.get("scores", {}).get("decision", 0.0)),
                 "source": "decision_candidate",
+                "roleScores": chunk_role_scores(backend, normalize_text_fragment(item.get("text", ""))) if backend else {},
             }
         )
     seen = {normalized_key(item["text"]) for item in outputs if item.get("text")}
@@ -527,13 +621,14 @@ def collect_decision_candidates(intermediate: dict[str, Any]) -> list[dict[str, 
                 "text": fallback_text,
                 "baseScore": max(0.24, float(record.get("scores", {}).get("decision", 0.0)), float(record.get("scores", {}).get("discussion", 0.0)) * 0.3),
                 "source": "record_decision_fallback",
+                "roleScores": chunk_role_scores(backend, fallback_text) if backend else {},
             }
         )
         seen.add(key)
     return outputs
 
 
-def collect_discussion_candidates(intermediate: dict[str, Any]) -> list[dict[str, Any]]:
+def collect_discussion_candidates(intermediate: dict[str, Any], backend: MiniLMBackend | None = None) -> list[dict[str, Any]]:
     outputs = []
     for point in intermediate.get("statusReviewPoints", []):
         outputs.append(
@@ -543,6 +638,7 @@ def collect_discussion_candidates(intermediate: dict[str, Any]) -> list[dict[str
                 "source": point.get("sourceType", "statusReviewPoint"),
                 "scores": {"discussion": 0.82, "specificity": 0.7, "low_content": 0.0, "navigation": 0.0},
                 "evidence": point.get("_evidence", []),
+                "roleScores": chunk_role_scores(backend, normalize_text_fragment(point.get("text", ""))) if backend else {},
             }
         )
     for candidate in sorted(intermediate.get("candidates", []), key=lambda item: item["scores"].get("discussion", 0.0), reverse=True)[:40]:
@@ -554,6 +650,7 @@ def collect_discussion_candidates(intermediate: dict[str, Any]) -> list[dict[str
                 "scores": dict(candidate.get("scores", {})),
                 "evidence": list(candidate.get("evidence", [])),
                 "timestamp": candidate.get("timestamp", ""),
+                "roleScores": chunk_role_scores(backend, normalize_text_fragment(candidate.get("text", ""))) if backend else {},
             }
         )
     deduped = []
@@ -712,6 +809,32 @@ def normalize_action_candidate_text(text: str) -> str:
     return cleaned[:1].upper() + cleaned[1:] if cleaned else cleaned
 
 
+def chunk_role_scores(backend: MiniLMBackend, text: str) -> dict[str, float]:
+    return {
+        "action": backend.score_against_prototypes(text, "action"),
+        "decision": backend.score_against_prototypes(text, "decision"),
+        "discussion": backend.score_against_prototypes(text, "discussion"),
+        "status": backend.score_against_prototypes(text, "status"),
+        "blocker": backend.score_against_prototypes(text, "blocker"),
+        "milestone": backend.score_against_prototypes(text, "milestone"),
+    }
+
+
+def _sanitize_rewritten_minutes_text(generated: str, fallback: str) -> str:
+    cleaned = normalize_text_fragment(generated)
+    if not cleaned:
+        cleaned = normalize_text_fragment(fallback)
+    cleaned = re.sub(r"^(?:item:|rewrite:|discussion point:|action:|decision:)\s*", "", cleaned, flags=re.I)
+    cleaned = cleaned.split("\n", 1)[0].strip().strip('"')
+    if len(cleaned) < 8:
+        cleaned = normalize_text_fragment(fallback)
+    if cleaned and cleaned[:1].islower():
+        cleaned = cleaned[:1].upper() + cleaned[1:]
+    if cleaned and not cleaned.endswith((".", "!", "?")):
+        cleaned += "."
+    return cleaned
+
+
 def cluster_theme_summary(texts: list[str], fallback: str) -> str:
     blob = " ".join(texts).lower()
     if ("intake workflow" in blob or "request funnel" in blob or "routing" in blob) and "routing" in blob:
@@ -797,13 +920,16 @@ def should_accept_action_candidate(candidate: dict[str, Any]) -> tuple[bool, str
     combined = float(candidate.get("combinedScore", candidate.get("baseScore", 0.0)))
     semantic = float(candidate.get("semanticScore", 0.0))
     base = float(candidate.get("baseScore", 0.0))
+    role_action = float(candidate.get("roleScores", {}).get("action", 0.0))
     text = normalize_text_fragment(candidate.get("text", ""))
     if not text:
         return False, "empty"
     if not (is_action_like_sentence(text) or re.match(r"^(review|confirm|draft|follow up|validate|prepare|update|share|send|complete|finalise|refine)\b", text, re.I)):
         return False, "not_action_like"
-    if combined >= 0.4 and semantic >= 0.18:
+    if combined >= 0.4 and max(semantic, role_action) >= 0.18:
         return True, "combined_and_semantic_threshold"
+    if role_action >= 0.55 and base >= 0.34:
+        return True, "minilm_role_classification"
     if base >= 0.7:
         return True, "high_base_score"
     return False, "below_threshold"
@@ -813,6 +939,7 @@ def should_accept_decision_candidate(candidate: dict[str, Any]) -> tuple[bool, s
     combined = float(candidate.get("combinedScore", candidate.get("baseScore", 0.0)))
     semantic = float(candidate.get("semanticScore", 0.0))
     base = float(candidate.get("baseScore", 0.0))
+    role_decision = float(candidate.get("roleScores", {}).get("decision", 0.0))
     text = normalize_text_fragment(candidate.get("text", ""))
     if not text:
         return False, "empty"
@@ -820,8 +947,10 @@ def should_accept_decision_candidate(candidate: dict[str, Any]) -> tuple[bool, s
         return False, "too_short"
     if is_context_dependent_fragment(text) or text.endswith("?"):
         return False, "context_dependent"
-    if combined >= 0.24 and semantic >= 0.18:
+    if combined >= 0.24 and max(semantic, role_decision) >= 0.18:
         return True, "combined_and_semantic_threshold"
+    if role_decision >= 0.55 and base >= 0.2:
+        return True, "minilm_role_classification"
     if base >= 0.22:
         return True, "high_base_score"
     return False, "below_threshold"
@@ -920,11 +1049,14 @@ def build_minilm_only_output(
     transcript_text: str,
     intermediate: dict[str, Any],
     backend: MiniLMBackend,
+    rewriter: LocalMinutesRewriter | None = None,
 ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
     diagnostics = {
         "mode": "minilm_only",
         "modelAvailable": backend.available,
         "modelReason": backend.reason,
+        "rewriterAvailable": bool(rewriter and rewriter.available),
+        "rewriterReason": "" if not rewriter else rewriter.reason,
         "actionCandidates": [],
         "actionSelections": [],
         "decisionCandidates": [],
@@ -935,6 +1067,8 @@ def build_minilm_only_output(
         "selectedActions": [],
         "selectedDecisions": [],
         "selectedDiscussionPoints": [],
+        "rewriteEdits": [],
+        "rewriteRuntimeMs": 0.0,
     }
     if not backend.available:
         return None, diagnostics
@@ -978,7 +1112,7 @@ def build_minilm_only_output(
     }
 
     action_candidates = []
-    for candidate in collect_action_candidates(intermediate):
+    for candidate in collect_action_candidates(intermediate, backend):
         semantic = backend.score_against_prototypes(candidate["text"], "action")
         combined = round(candidate["baseScore"] * 0.55 + semantic * 0.45, 4)
         candidate["semanticScore"] = semantic
@@ -1026,7 +1160,7 @@ def build_minilm_only_output(
             break
 
     decision_candidates = []
-    for candidate in collect_decision_candidates(intermediate):
+    for candidate in collect_decision_candidates(intermediate, backend):
         semantic = backend.score_against_prototypes(candidate["text"], "decision")
         combined = round(candidate["baseScore"] * 0.6 + semantic * 0.4, 4)
         candidate["semanticScore"] = semantic
@@ -1075,7 +1209,7 @@ def build_minilm_only_output(
 
     discussion_candidates = []
     filtered_discussion_candidates = []
-    for candidate in collect_discussion_candidates(intermediate):
+    for candidate in collect_discussion_candidates(intermediate, backend):
         semantic_discussion = backend.score_against_prototypes(candidate["text"], "discussion")
         semantic_status = max(
             backend.score_against_prototypes(candidate["text"], "status"),
@@ -1151,6 +1285,38 @@ def build_minilm_only_output(
     output["meetingActionPoint"] = [item["meetingActionPoint"] for item in output["actions"]]
     output["meetingActionPointOwner"] = [item["meetingActionPointOwner"] for item in output["actions"]]
     output["meetingActionPointDeadline"] = [item["meetingActionPointDeadline"] for item in output["actions"]]
+
+    if rewriter and rewriter.available:
+        rewrite_start = time.perf_counter()
+        rewritten_discussion = []
+        for index, point in enumerate(output["discussionPoints"]):
+            rewritten, rewrite_diag = rewriter.rewrite_item("discussion", point)
+            rewritten_discussion.append(rewritten)
+            diagnostics["rewriteEdits"].append({"category": "discussion", "before": point, "after": rewritten, **rewrite_diag})
+            if index < len(output["discussionPointDetails"]):
+                output["discussionPointDetails"][index]["rewrittenDiscussionPoint"] = rewritten
+        output["discussionPoints"] = dedupe_values(rewritten_discussion)
+
+        rewritten_decisions = []
+        for index, point in enumerate(output["decisions"]):
+            rewritten, rewrite_diag = rewriter.rewrite_item("decision", point)
+            rewritten_decisions.append(rewritten)
+            diagnostics["rewriteEdits"].append({"category": "decision", "before": point, "after": rewritten, **rewrite_diag})
+            if index < len(output["decisionDetails"]):
+                output["decisionDetails"][index]["rewrittenDecision"] = rewritten
+        output["decisions"] = dedupe_values(rewritten_decisions)
+
+        for action in output["actions"]:
+            before = action["meetingActionPoint"]
+            rewritten, rewrite_diag = rewriter.rewrite_item("action", before)
+            action["meetingActionPoint"] = rewritten
+            diagnostics["rewriteEdits"].append({"category": "action", "before": before, "after": rewritten, **rewrite_diag})
+        output["actions"] = dedupe_action_objects(output["actions"])
+        output["meetingActionPoint"] = [item["meetingActionPoint"] for item in output["actions"]]
+        output["meetingActionPointOwner"] = [item["meetingActionPointOwner"] for item in output["actions"]]
+        output["meetingActionPointDeadline"] = [item["meetingActionPointDeadline"] for item in output["actions"]]
+        diagnostics["rewriteRuntimeMs"] = round((time.perf_counter() - rewrite_start) * 1000, 2)
+
     return output, diagnostics
 
 
@@ -1186,7 +1352,7 @@ def build_minilm_variant(
     existing_discussion_keys: set[str] = set()
 
     action_candidates = []
-    for candidate in collect_action_candidates(intermediate):
+    for candidate in collect_action_candidates(intermediate, backend):
         semantic = backend.score_against_prototypes(candidate["text"], "action")
         combined = round(candidate["baseScore"] * 0.55 + semantic * 0.45, 4)
         candidate["semanticScore"] = semantic
@@ -1215,7 +1381,7 @@ def build_minilm_variant(
             break
 
     decision_candidates = []
-    for candidate in collect_decision_candidates(intermediate):
+    for candidate in collect_decision_candidates(intermediate, backend):
         semantic = backend.score_against_prototypes(candidate["text"], "decision")
         combined = round(candidate["baseScore"] * 0.6 + semantic * 0.4, 4)
         candidate["semanticScore"] = semantic
@@ -1240,7 +1406,7 @@ def build_minilm_variant(
 
     discussion_candidates = []
     filtered_discussion_candidates = []
-    for candidate in collect_discussion_candidates(intermediate):
+    for candidate in collect_discussion_candidates(intermediate, backend):
         semantic_discussion = backend.score_against_prototypes(candidate["text"], "discussion")
         semantic_status = max(
             backend.score_against_prototypes(candidate["text"], "status"),

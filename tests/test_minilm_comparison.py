@@ -85,6 +85,22 @@ class FakeMiniLMBackend:
         return 0.0
 
 
+class FakeLocalRewriter:
+    available = True
+    reason = ""
+    model_name = "fake-qwen"
+    model_path = "/fake/qwen"
+
+    def rewrite_item(self, category: str, text: str):
+        cleaned = normalize_text_fragment(text)
+        prefix = {
+            "discussion": "Formal discussion",
+            "action": "Formal action",
+            "decision": "Formal decision",
+        }[category]
+        return f"{prefix}: {cleaned}", {"category": category, "rewritten": True, "reason": "ok", "raw": cleaned}
+
+
 class MiniLMComparisonSmokeTest(unittest.TestCase):
     def test_comparison_script_exists(self):
         self.assertTrue(SCRIPT.exists(), f"Expected comparison script at {SCRIPT}")
@@ -229,6 +245,31 @@ I'll refine the webinar slides.
         self.assertEqual(output["meetingActionPointOwner"], ["Emma"])
         self.assertTrue(diagnostics["selectedDiscussionPoints"])
         self.assertEqual(diagnostics["mode"], "minilm_only")
+
+    def test_minilm_only_output_can_rewrite_with_local_llm_backend(self):
+        transcript = """Webinar rehearsal
+
+2 June 2026
+
+Claire:
+Can you refine the webinar slides?
+
+Emma:
+I'll refine the webinar slides.
+"""
+
+        intermediate = collect_minilm_only_context(transcript)
+        output, diagnostics = build_minilm_only_output(
+            transcript,
+            intermediate,
+            FakeMiniLMBackend(),
+            rewriter=FakeLocalRewriter(),
+        )
+
+        self.assertIsNotNone(output)
+        self.assertEqual(output["meetingActionPoint"], ["Formal action: Refine the webinar slides."])
+        self.assertTrue(any(item["category"] == "action" and item["rewritten"] for item in diagnostics["rewriteEdits"]))
+        self.assertGreaterEqual(diagnostics["rewriteRuntimeMs"], 0.0)
 
     def test_minilm_only_status_review_fixture_promotes_clusters_actions_and_decisions(self):
         transcript = (ROOT / "scripts" / "transcript-tests" / "001_status_review" / "transcript.txt").read_text(encoding="utf-8")
