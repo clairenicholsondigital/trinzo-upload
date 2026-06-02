@@ -37,6 +37,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help="Omit diagnostics payload fields from the final JSON response.",
     )
+    parser.add_argument(
+        "--skip-rewrite",
+        action="store_true",
+        help="Skip the Qwen rewrite pass and return raw MiniLM-selected output only.",
+    )
     return parser.parse_args(argv)
 
 
@@ -57,7 +62,7 @@ def main() -> int:
     context_runtime_ms = round((time.perf_counter() - context_start) * 1000, 2)
 
     backend = MiniLMBackend.load(enabled=True)
-    rewriter = LocalMinutesRewriter.load(enabled=True)
+    rewriter = LocalMinutesRewriter.load(enabled=not args.skip_rewrite)
     diagnostics = {}
     output = None
     minilm_runtime_ms = 0.0

@@ -283,51 +283,149 @@ class LocalMinutesRewriter:
         meta["rewritten"] = normalize_text(rewritten) != normalize_text(cleaned)
         return rewritten, meta
 
-    def rewrite_item(self, category: str, text: str) -> tuple[str, dict[str, Any]]:
-        cleaned = normalize_text_fragment(text)
-        if not self.available or not self.generator or not cleaned:
-            if self.available and self.worker_url and cleaned:
-                return self._rewrite_via_remote_worker(category, cleaned)
-            return cleaned, {"category": category, "rewritten": False, "reason": self.reason or "rewriter_unavailable"}
+    def _rewrite_batch_via_remote_worker(self, items: list[dict[str, str]]) -> list[dict[str, Any]]:
+        payload = json.dumps({"items": items}).encode("utf-8")
+        request = urllib.request.Request(
+            f"{self.worker_url}/rewrite-batch",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=60) as response:
+                result = json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:  # pragma: no cover - exercised in real envs
+            return [
+                {
+                    "rewritten": item.get("text", ""),
+                    "meta": {"category": item.get("category", "discussion"), "rewritten": False, "reason": f"remote_http_error: {exc.code}"},
+                }
+                for item in items
+            ]
+        except Exception as exc:  # pragma: no cover - exercised in real envs
+            return [
+                {
+                    "rewritten": item.get("text", ""),
+                    "meta": {"category": item.get("category", "discussion"), "rewritten": False, "reason": f"remote_request_failed: {exc}"},
+                }
+                for item in items
+            ]
 
+        result_items = result.get("items", [])
+        if not isinstance(result_items, list):
+            result_items = []
+        outputs = []
+        for index, item in enumerate(items):
+            fallback = normalize_text_fragment(item.get("text", ""))
+            result_item = result_items[index] if index < len(result_items) and isinstance(result_items[index], dict) else {}
+            rewritten = _sanitize_rewritten_minutes_text(result_item.get("rewritten", ""), fallback)
+            meta = result_item.get("meta", {})
+            if not isinstance(meta, dict):
+                meta = {}
+            meta.setdefault("category", item.get("category", "discussion"))
+            meta.setdefault("reason", "ok")
+            meta["rewritten"] = normalize_text(rewritten) != normalize_text(fallback)
+            outputs.append({"rewritten": rewritten, "meta": meta})
+        return outputs
+
+    def _batch_prompt(self, items: list[dict[str, str]]) -> str:
         instruction = (
-            "Rewrite the following extracted meeting-minutes item into concise, formal UK business English. "
+            "Rewrite each extracted meeting-minutes item into concise, formal UK business English. "
             "Keep the meaning unchanged. "
             "Do not invent, infer, or add any facts, names, dates, owners, deadlines, decisions, or context not present in the source item. "
             "Remove filler, transcript phrasing, awkward wording, any chat-template tokens, and any signature, footer, approval, or placeholder template text. "
-            "Return one sentence only and no bullets or commentary."
+            "Return valid JSON only in this exact schema: {\"items\":[{\"rewritten\":\"...\"}]}. "
+            "Return exactly one rewritten sentence per input item in the same order as provided."
         )
-        if category == "action":
-            instruction += " Keep it as a clear action point."
-        elif category == "decision":
-            instruction += " Keep it as a clear meeting decision."
-        else:
-            instruction += " Keep it as a clear discussion point."
-
-        prompt = (
+        payload = {
+            "items": [
+                {"category": str(item.get("category") or "discussion"), "text": normalize_text_fragment(item.get("text", ""))}
+                for item in items
+            ]
+        }
+        return (
             "<|system|>\n"
             "You rewrite extracted meeting minutes into formal business wording.\n"
             "<|user|>\n"
-            f"{instruction}\n\nItem: {cleaned}\n"
+            f"{instruction}\n\nInput JSON:\n{json.dumps(payload, ensure_ascii=False)}\n"
             "<|assistant|>\n"
         )
+
+    def rewrite_items(self, items: list[dict[str, str]]) -> list[dict[str, Any]]:
+        cleaned_items = [
+            {"category": str(item.get("category") or "discussion"), "text": normalize_text_fragment(item.get("text", ""))}
+            for item in items
+            if normalize_text_fragment(item.get("text", ""))
+        ]
+        if not cleaned_items:
+            return []
+
+        if self.available and self.worker_url:
+            return self._rewrite_batch_via_remote_worker(cleaned_items)
+
+        if not self.available or not self.generator:
+            return [
+                {
+                    "rewritten": item["text"],
+                    "meta": {"category": item["category"], "rewritten": False, "reason": self.reason or "rewriter_unavailable"},
+                }
+                for item in cleaned_items
+            ]
+
+        prompt = self._batch_prompt(cleaned_items)
         try:
             result = self.generator(
                 prompt,
-                max_new_tokens=80,
+                max_new_tokens=max(120, len(cleaned_items) * 96),
                 do_sample=False,
                 temperature=0.0,
                 return_full_text=False,
             )
         except Exception as exc:  # pragma: no cover - exercised in real envs
-            return cleaned, {"category": category, "rewritten": False, "reason": f"generation_failed: {exc}"}
+            return [
+                {
+                    "rewritten": item["text"],
+                    "meta": {"category": item["category"], "rewritten": False, "reason": f"generation_failed: {exc}"},
+                }
+                for item in cleaned_items
+            ]
 
         generated = ""
         if isinstance(result, list) and result:
             generated = normalize_text_fragment(result[0].get("generated_text", ""))
-        rewritten = _sanitize_rewritten_minutes_text(generated, cleaned)
-        changed = normalize_text(rewritten) != normalize_text(cleaned)
-        return rewritten, {"category": category, "rewritten": changed, "reason": "ok", "raw": generated}
+        try:
+            decoded = json.loads(generated)
+        except Exception:
+            decoded = {}
+        decoded_items = decoded.get("items", []) if isinstance(decoded, dict) else []
+        if not isinstance(decoded_items, list):
+            decoded_items = []
+
+        outputs = []
+        for index, item in enumerate(cleaned_items):
+            result_item = decoded_items[index] if index < len(decoded_items) and isinstance(decoded_items[index], dict) else {}
+            rewritten = _sanitize_rewritten_minutes_text(result_item.get("rewritten", ""), item["text"])
+            outputs.append(
+                {
+                    "rewritten": rewritten,
+                    "meta": {
+                        "category": item["category"],
+                        "rewritten": normalize_text(rewritten) != normalize_text(item["text"]),
+                        "reason": "ok",
+                        "raw": result_item.get("rewritten", ""),
+                    },
+                }
+            )
+        return outputs
+
+    def rewrite_item(self, category: str, text: str) -> tuple[str, dict[str, Any]]:
+        cleaned = normalize_text_fragment(text)
+        if not cleaned:
+            return cleaned, {"category": category, "rewritten": False, "reason": self.reason or "rewriter_unavailable"}
+        result = self.rewrite_items([{"category": category, "text": cleaned}])
+        if not result:
+            return cleaned, {"category": category, "rewritten": False, "reason": self.reason or "rewriter_unavailable"}
+        return result[0]["rewritten"], result[0]["meta"]
 
 
 def normalize_text(value: Any) -> str:
@@ -999,6 +1097,73 @@ def _sanitize_rewritten_minutes_text(generated: str, fallback: str) -> str:
     return cleaned
 
 
+def rewrite_minutes_output_payload(
+    output: dict[str, Any],
+    rewriter: LocalMinutesRewriter | None = None,
+    include_diagnostics: bool = True,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    rewritten_output = deepcopy(output or {})
+    diagnostics = {
+        "rewriterAvailable": bool(rewriter and rewriter.available),
+        "rewriterReason": "" if not rewriter else rewriter.reason,
+        "rewriteEdits": [],
+        "rewriteRuntimeMs": 0.0,
+    }
+
+    if not rewritten_output:
+        return rewritten_output, diagnostics
+    if not rewriter or not rewriter.available:
+        return rewritten_output, diagnostics
+
+    rewrite_start = time.perf_counter()
+
+    rewrite_plan = []
+    for index, point in enumerate(rewritten_output.get("discussionPoints", [])):
+        rewrite_plan.append({"category": "discussion", "text": point, "slot": ("discussionPoints", index)})
+    for index, point in enumerate(rewritten_output.get("decisions", [])):
+        rewrite_plan.append({"category": "decision", "text": point, "slot": ("decisions", index)})
+    for index, action in enumerate(rewritten_output.get("actions", [])):
+        rewrite_plan.append({"category": "action", "text": action.get("meetingActionPoint", ""), "slot": ("actions", index)})
+
+    rewrite_results = rewriter.rewrite_items(
+        [{"category": item["category"], "text": item["text"]} for item in rewrite_plan]
+    )
+
+    rewritten_discussion = list(rewritten_output.get("discussionPoints", []))
+    rewritten_decisions = list(rewritten_output.get("decisions", []))
+    rewritten_actions = list(rewritten_output.get("actions", []))
+
+    for plan_item, result_item in zip(rewrite_plan, rewrite_results):
+        category = plan_item["category"]
+        before = plan_item["text"]
+        rewritten = result_item.get("rewritten", before)
+        rewrite_diag = result_item.get("meta", {})
+        if include_diagnostics:
+            diagnostics["rewriteEdits"].append({"category": category, "before": before, "after": rewritten, **rewrite_diag})
+
+        slot_name, slot_index = plan_item["slot"]
+        if slot_name == "discussionPoints":
+            rewritten_discussion[slot_index] = rewritten
+            if slot_index < len(rewritten_output.get("discussionPointDetails", [])):
+                rewritten_output["discussionPointDetails"][slot_index]["rewrittenDiscussionPoint"] = rewritten
+        elif slot_name == "decisions":
+            rewritten_decisions[slot_index] = rewritten
+            if slot_index < len(rewritten_output.get("decisionDetails", [])):
+                rewritten_output["decisionDetails"][slot_index]["rewrittenDecision"] = rewritten
+        elif slot_name == "actions":
+            rewritten_actions[slot_index]["meetingActionPoint"] = rewritten
+
+    rewritten_output["discussionPoints"] = dedupe_values(rewritten_discussion)
+    rewritten_output["decisions"] = dedupe_values(rewritten_decisions)
+    rewritten_output["actions"] = rewritten_actions
+    rewritten_output["actions"] = dedupe_action_objects(rewritten_output.get("actions", []))
+    rewritten_output["meetingActionPoint"] = [item["meetingActionPoint"] for item in rewritten_output.get("actions", [])]
+    rewritten_output["meetingActionPointOwner"] = [item["meetingActionPointOwner"] for item in rewritten_output.get("actions", [])]
+    rewritten_output["meetingActionPointDeadline"] = [item["meetingActionPointDeadline"] for item in rewritten_output.get("actions", [])]
+    diagnostics["rewriteRuntimeMs"] = round((time.perf_counter() - rewrite_start) * 1000, 2)
+    return rewritten_output, diagnostics
+
+
 def cluster_theme_summary(texts: list[str], fallback: str) -> str:
     blob = " ".join(texts).lower()
     if ("intake workflow" in blob or "request funnel" in blob or "routing" in blob) and "routing" in blob:
@@ -1475,38 +1640,14 @@ def build_minilm_only_output(
     output["meetingActionPointDeadline"] = [item["meetingActionPointDeadline"] for item in output["actions"]]
 
     if rewriter and rewriter.available:
-        rewrite_start = time.perf_counter()
-        rewritten_discussion = []
-        for index, point in enumerate(output["discussionPoints"]):
-            rewritten, rewrite_diag = rewriter.rewrite_item("discussion", point)
-            rewritten_discussion.append(rewritten)
-            if include_diagnostics:
-                diagnostics["rewriteEdits"].append({"category": "discussion", "before": point, "after": rewritten, **rewrite_diag})
-            if index < len(output["discussionPointDetails"]):
-                output["discussionPointDetails"][index]["rewrittenDiscussionPoint"] = rewritten
-        output["discussionPoints"] = dedupe_values(rewritten_discussion)
-
-        rewritten_decisions = []
-        for index, point in enumerate(output["decisions"]):
-            rewritten, rewrite_diag = rewriter.rewrite_item("decision", point)
-            rewritten_decisions.append(rewritten)
-            if include_diagnostics:
-                diagnostics["rewriteEdits"].append({"category": "decision", "before": point, "after": rewritten, **rewrite_diag})
-            if index < len(output["decisionDetails"]):
-                output["decisionDetails"][index]["rewrittenDecision"] = rewritten
-        output["decisions"] = dedupe_values(rewritten_decisions)
-
-        for action in output["actions"]:
-            before = action["meetingActionPoint"]
-            rewritten, rewrite_diag = rewriter.rewrite_item("action", before)
-            action["meetingActionPoint"] = rewritten
-            if include_diagnostics:
-                diagnostics["rewriteEdits"].append({"category": "action", "before": before, "after": rewritten, **rewrite_diag})
-        output["actions"] = dedupe_action_objects(output["actions"])
-        output["meetingActionPoint"] = [item["meetingActionPoint"] for item in output["actions"]]
-        output["meetingActionPointOwner"] = [item["meetingActionPointOwner"] for item in output["actions"]]
-        output["meetingActionPointDeadline"] = [item["meetingActionPointDeadline"] for item in output["actions"]]
-        diagnostics["rewriteRuntimeMs"] = round((time.perf_counter() - rewrite_start) * 1000, 2)
+        output, rewrite_diagnostics = rewrite_minutes_output_payload(
+            output,
+            rewriter=rewriter,
+            include_diagnostics=include_diagnostics,
+        )
+        diagnostics["rewriteRuntimeMs"] = rewrite_diagnostics.get("rewriteRuntimeMs", 0.0)
+        if include_diagnostics:
+            diagnostics["rewriteEdits"] = rewrite_diagnostics.get("rewriteEdits", [])
 
     return output, diagnostics
 

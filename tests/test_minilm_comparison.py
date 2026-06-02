@@ -20,6 +20,7 @@ from scripts.meeting_minutes_minilm_experiment import (
     collect_experiment_context,
     collect_minilm_only_context,
     normalize_text_fragment,
+    rewrite_minutes_output_payload,
 )
 SCRIPT = ROOT / "scripts" / "run_minilm_comparison.py"
 MINILM_ONLY_SCRIPT = ROOT / "scripts" / "meeting_minutes_minilm_only.py"
@@ -96,14 +97,18 @@ class FakeLocalRewriter:
     model_name = "fake-qwen"
     model_path = "/fake/qwen"
 
+    def rewrite_items(self, items):
+        return [
+            {
+                "rewritten": f"{ {'discussion': 'Formal discussion', 'action': 'Formal action', 'decision': 'Formal decision'}[item['category']] }: {normalize_text_fragment(item['text'])}",
+                "meta": {"category": item["category"], "rewritten": True, "reason": "ok", "raw": normalize_text_fragment(item["text"])},
+            }
+            for item in items
+        ]
+
     def rewrite_item(self, category: str, text: str):
-        cleaned = normalize_text_fragment(text)
-        prefix = {
-            "discussion": "Formal discussion",
-            "action": "Formal action",
-            "decision": "Formal decision",
-        }[category]
-        return f"{prefix}: {cleaned}", {"category": category, "rewritten": True, "reason": "ok", "raw": cleaned}
+        item = self.rewrite_items([{"category": category, "text": text}])[0]
+        return item["rewritten"], item["meta"]
 
 
 class MiniLMComparisonSmokeTest(unittest.TestCase):
@@ -345,22 +350,38 @@ I'll refine the webinar slides.
                 self.wfile.write(payload)
 
             def do_POST(self):
-                if self.path != "/rewrite":
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                if self.path == "/rewrite":
+                    rewritten = f"Remote rewrite: {payload['text']}"
+                    body = json.dumps(
+                        {
+                            "ok": True,
+                            "rewritten": rewritten,
+                            "meta": {"category": payload["category"], "reason": "ok", "rewritten": True},
+                            "modelName": "fake-remote-qwen",
+                            "modelPath": "/tmp/fake-remote-qwen",
+                        }
+                    ).encode("utf-8")
+                elif self.path == "/rewrite-batch":
+                    body = json.dumps(
+                        {
+                            "ok": True,
+                            "items": [
+                                {
+                                    "rewritten": f"Remote batch rewrite: {item['text']}",
+                                    "meta": {"category": item["category"], "reason": "ok", "rewritten": True},
+                                }
+                                for item in payload["items"]
+                            ],
+                            "modelName": "fake-remote-qwen",
+                            "modelPath": "/tmp/fake-remote-qwen",
+                        }
+                    ).encode("utf-8")
+                else:
                     self.send_response(404)
                     self.end_headers()
                     return
-                length = int(self.headers.get("Content-Length", "0"))
-                payload = json.loads(self.rfile.read(length).decode("utf-8"))
-                rewritten = f"Remote rewrite: {payload['text']}"
-                body = json.dumps(
-                    {
-                        "ok": True,
-                        "rewritten": rewritten,
-                        "meta": {"category": payload["category"], "reason": "ok", "rewritten": True},
-                        "modelName": "fake-remote-qwen",
-                        "modelPath": "/tmp/fake-remote-qwen",
-                    }
-                ).encode("utf-8")
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(body)))
@@ -376,8 +397,16 @@ I'll refine the webinar slides.
             rewritten, meta = rewriter.rewrite_item("action", "Refine the webinar slides.")
             self.assertTrue(rewriter.available)
             self.assertEqual(rewriter.worker_url, f"http://127.0.0.1:{server.server_port}")
-            self.assertEqual(rewritten, "Remote rewrite: Refine the webinar slides.")
+            self.assertEqual(rewritten, "Remote batch rewrite: Refine the webinar slides.")
             self.assertTrue(meta["rewritten"])
+            batch = rewriter.rewrite_items(
+                [
+                    {"category": "discussion", "text": "Routing remains blocked."},
+                    {"category": "action", "text": "Validate the intake workflow routing."},
+                ]
+            )
+            self.assertEqual(batch[0]["rewritten"], "Remote batch rewrite: Routing remains blocked.")
+            self.assertEqual(batch[1]["rewritten"], "Remote batch rewrite: Validate the intake workflow routing.")
         finally:
             server.shutdown()
             server.server_close()
@@ -473,6 +502,37 @@ I'll refine the webinar slides.
         self.assertTrue(any(item["accepted"] for item in diagnostics["actionSelections"]))
         self.assertTrue(any(item["accepted"] for item in diagnostics["decisionSelections"]))
         self.assertGreaterEqual(len(output["meetingActionPoint"]), len(baseline.get("meetingActionPoint", [])))
+
+    def test_rewrite_minutes_output_payload_rewrites_existing_output_only(self):
+        output = {
+            "meetingTitle": "Daily AI Check In",
+            "meetingDate": "2 June 2026",
+            "meetingLocation": "Online",
+            "participants": {"client": [], "trinzo": ["Ciara Griffin"]},
+            "discussionPoints": ["intake workflow remains in progress due to routing issues."],
+            "discussionPointDetails": [{"discussionPoint": "intake workflow remains in progress due to routing issues."}],
+            "decisions": ["mark that complete."],
+            "decisionDetails": [{"decision": "mark that complete."}],
+            "actions": [
+                {
+                    "meetingActionPoint": "refine the webinar slides.",
+                    "meetingActionPointOwner": "Emma",
+                    "meetingActionPointDeadline": "7 June 2026",
+                }
+            ],
+            "meetingActionPoint": ["refine the webinar slides."],
+            "meetingActionPointOwner": ["Emma"],
+            "meetingActionPointDeadline": ["7 June 2026"],
+        }
+
+        rewritten, diagnostics = rewrite_minutes_output_payload(output, FakeLocalRewriter())
+
+        self.assertEqual(rewritten["discussionPoints"], ["Formal discussion: intake workflow remains in progress due to routing issues."])
+        self.assertEqual(rewritten["decisions"], ["Formal decision: mark that complete."])
+        self.assertEqual(rewritten["meetingActionPoint"], ["Formal action: refine the webinar slides."])
+        self.assertEqual(rewritten["actions"][0]["meetingActionPoint"], "Formal action: refine the webinar slides.")
+        self.assertGreaterEqual(len(diagnostics["rewriteEdits"]), 3)
+        self.assertGreaterEqual(diagnostics["rewriteRuntimeMs"], 0.0)
 
 
 if __name__ == "__main__":

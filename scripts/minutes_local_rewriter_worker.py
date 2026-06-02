@@ -43,7 +43,7 @@ class MinutesRewriterHandler(BaseHTTPRequestHandler):
         )
 
     def do_POST(self) -> None:  # pragma: no cover - exercised in real envs
-        if self.path != "/rewrite":
+        if self.path not in {"/rewrite", "/rewrite-batch"}:
             self._send_json({"ok": False, "reason": "Not found."}, status=404)
             return
         try:
@@ -55,6 +55,31 @@ class MinutesRewriterHandler(BaseHTTPRequestHandler):
             payload = json.loads(raw_body.decode("utf-8"))
         except Exception:
             self._send_json({"ok": False, "reason": "Invalid JSON body."}, status=400)
+            return
+
+        if self.path == "/rewrite-batch":
+            raw_items = payload.get("items", [])
+            if not isinstance(raw_items, list):
+                self._send_json({"ok": False, "reason": "Invalid items array."}, status=400)
+                return
+            items = [
+                {
+                    "category": str(item.get("category") or "discussion"),
+                    "text": str(item.get("text") or ""),
+                }
+                for item in raw_items
+                if isinstance(item, dict)
+            ]
+            results = REWRITER.rewrite_items(items)
+            self._send_json(
+                {
+                    "ok": REWRITER.available,
+                    "items": results,
+                    "modelName": REWRITER.model_name,
+                    "modelPath": REWRITER.model_path,
+                },
+                status=200 if REWRITER.available else 503,
+            )
             return
 
         category = str(payload.get("category") or "discussion")

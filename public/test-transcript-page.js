@@ -448,7 +448,8 @@ function buildTranscriptComparisonPage(config) {
 function buildTranscriptMinilmOnlyPage(config) {
   const state = {
     payload: null,
-    loading: false
+    loading: false,
+    improving: false
   };
 
   const root = document.getElementById('transcriptMinilmOnlyRoot');
@@ -468,6 +469,7 @@ function buildTranscriptMinilmOnlyPage(config) {
       </div>
       <div class="actions">
         <button id="minilmOnlyGoBtn" type="button">${config.buttonText}</button>
+        ${config.improveEndpoint ? '<button id="minilmOnlyImproveBtn" class="secondary" type="button" disabled>Improve minutes</button>' : ''}
         <button id="minilmOnlyClearBtn" class="secondary" type="button">Clear / reset</button>
       </div>
       <div id="minilmOnlyMessage" class="message hidden"></div>
@@ -517,6 +519,7 @@ function buildTranscriptMinilmOnlyPage(config) {
   const fileInput = document.getElementById('minilmOnlyTranscriptFile');
   const textInput = document.getElementById('minilmOnlyTranscriptText');
   const goBtn = document.getElementById('minilmOnlyGoBtn');
+  const improveBtn = document.getElementById('minilmOnlyImproveBtn');
   const clearBtn = document.getElementById('minilmOnlyClearBtn');
   const copyOutputBtn = document.getElementById('copyMinilmOnlyOutputBtn');
   const copyRawBtn = document.getElementById('copyMinilmOnlyRawBtn');
@@ -536,11 +539,26 @@ function buildTranscriptMinilmOnlyPage(config) {
 
   function setLoading(isLoading) {
     state.loading = isLoading;
-    goBtn.disabled = isLoading;
-    clearBtn.disabled = isLoading;
-    fileInput.disabled = isLoading;
-    textInput.disabled = isLoading;
+    goBtn.disabled = isLoading || state.improving;
+    clearBtn.disabled = isLoading || state.improving;
+    fileInput.disabled = isLoading || state.improving;
+    textInput.disabled = isLoading || state.improving;
+    if (improveBtn) {
+      improveBtn.disabled = isLoading || state.improving || !(state.payload && state.payload.result && state.payload.result.output);
+    }
     goBtn.textContent = isLoading ? 'Working...' : config.buttonText;
+  }
+
+  function setImproving(isImproving) {
+    state.improving = isImproving;
+    goBtn.disabled = isImproving || state.loading;
+    clearBtn.disabled = isImproving || state.loading;
+    fileInput.disabled = isImproving || state.loading;
+    textInput.disabled = isImproving || state.loading;
+    if (improveBtn) {
+      improveBtn.disabled = isImproving || state.loading || !(state.payload && state.payload.result && state.payload.result.output);
+      improveBtn.textContent = isImproving ? 'Improving...' : 'Improve minutes';
+    }
   }
 
   function escapeHtml(value) {
@@ -589,13 +607,19 @@ function buildTranscriptMinilmOnlyPage(config) {
   }
 
   function displayDetailsSummary(payload, result) {
+    const output = result.output || {};
+    const modelStatus = Object.prototype.hasOwnProperty.call(result, 'modelAvailable')
+      ? (result.modelAvailable ? 'available' : `unavailable: ${result.modelReason || 'unknown reason'}`)
+      : 'not rerun';
     const items = [
-      { label: 'Model status', value: result.modelAvailable ? 'available' : `unavailable: ${result.modelReason || 'unknown reason'}` },
+      { label: 'Model status', value: modelStatus },
+      { label: 'Rewrite status', value: Object.prototype.hasOwnProperty.call(result, 'rewriterAvailable') ? (result.rewriterAvailable ? 'available' : `unavailable: ${result.rewriterReason || 'unknown reason'}`) : 'not run' },
       { label: 'Discussion points', value: String((result.counts && result.counts.discussionPoints) || 0) },
       { label: 'Decisions', value: String((result.counts && result.counts.decisions) || 0) },
       { label: 'Actions', value: String((result.counts && result.counts.actions) || 0) },
       { label: 'Runtime ms', value: String((result.timingMs && result.timingMs.total) || 0) },
-      { label: 'Transcript chars', value: String(payload.transcriptLength || 0) }
+      { label: 'Transcript chars', value: String(payload.transcriptLength || 0) },
+      { label: 'Title', value: output.meetingTitle || '—' }
     ];
     summaryGrid.innerHTML = items.map((item) => `
       <div class="summary-item">
@@ -622,6 +646,7 @@ function buildTranscriptMinilmOnlyPage(config) {
     }, null, 2);
     outputPanel.classList.remove('hidden');
     diagnosticsPanel.classList.remove('hidden');
+    if (improveBtn) improveBtn.disabled = !(state.payload && state.payload.result && state.payload.result.output);
   }
 
   async function submitTranscript() {
@@ -667,6 +692,41 @@ function buildTranscriptMinilmOnlyPage(config) {
     }
   }
 
+  async function improveMinutes() {
+    if (!config.improveEndpoint || !state.payload || !state.payload.result || !state.payload.result.output) {
+      return;
+    }
+
+    setImproving(true);
+    setMessage('Improving extracted minutes with Qwen rewrite...', 'info');
+
+    try {
+      const response = await fetch(config.improveEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ output: state.payload.result.output })
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok || !payload || payload.ok === false) {
+        const detailText = payload && payload.details ? ` ${JSON.stringify(payload.details)}` : '';
+        throw new Error((payload && payload.error ? payload.error : `Request failed with status ${response.status}.`) + detailText);
+      }
+
+      const mergedPayload = {
+        ...state.payload,
+        result: payload.result
+      };
+      setMessage('Minutes improved with the Qwen rewrite layer.', 'success');
+      displayPayload(mergedPayload);
+    } catch (error) {
+      setMessage(error.message || 'Improving minutes failed.', 'error');
+    } finally {
+      setImproving(false);
+      setLoading(state.loading);
+    }
+  }
+
   function resetPage() {
     fileInput.value = '';
     textInput.value = '';
@@ -678,6 +738,7 @@ function buildTranscriptMinilmOnlyPage(config) {
     rawOutputNode.textContent = '';
     diagnosticsNode.textContent = '';
     summaryGrid.innerHTML = '';
+    if (improveBtn) improveBtn.disabled = true;
   }
 
   async function copyValue(value, label) {
@@ -687,6 +748,7 @@ function buildTranscriptMinilmOnlyPage(config) {
   }
 
   goBtn.addEventListener('click', submitTranscript);
+  if (improveBtn) improveBtn.addEventListener('click', improveMinutes);
   clearBtn.addEventListener('click', resetPage);
   copyOutputBtn.addEventListener('click', () => copyValue(outputNode.textContent, 'MiniLM-only schema output'));
   copyRawBtn.addEventListener('click', () => copyValue(rawOutputNode.textContent, 'MiniLM-only raw output'));

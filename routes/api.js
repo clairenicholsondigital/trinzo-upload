@@ -241,6 +241,71 @@ async function runPythonTranscriptScript(scriptName, transcriptText, scriptArgs 
   }
 }
 
+async function runPythonJsonScript(scriptName, payload, scriptArgs = []) {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'trinzo-json-'));
+  const tempPath = path.join(tempDir, 'payload.json');
+  const scriptPath = path.join(__dirname, '..', 'scripts', scriptName);
+
+  try {
+    await fs.writeFile(tempPath, JSON.stringify(payload), 'utf8');
+
+    const rawOutput = await new Promise((resolve, reject) => {
+      const child = spawn(process.env.PYTHON_BIN || 'python3', [scriptPath, tempPath, ...scriptArgs], {
+        cwd: path.join(__dirname, '..'),
+        env: process.env,
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+
+      let stdout = '';
+      let stderr = '';
+      let timedOut = false;
+
+      const timer = setTimeout(() => {
+        timedOut = true;
+        child.kill('SIGKILL');
+      }, PYTHON_TIMEOUT_MS);
+
+      child.stdout.on('data', (chunk) => {
+        stdout += chunk.toString('utf8');
+      });
+
+      child.stderr.on('data', (chunk) => {
+        stderr += chunk.toString('utf8');
+      });
+
+      child.on('error', (error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+
+      child.on('close', (code) => {
+        clearTimeout(timer);
+        if (timedOut) {
+          const error = new Error(`${scriptName} timed out after ${PYTHON_TIMEOUT_MS}ms.`);
+          error.statusCode = 504;
+          error.details = { stderr };
+          reject(error);
+          return;
+        }
+
+        if (code !== 0) {
+          const error = new Error(`${scriptName} failed with exit code ${code}.`);
+          error.statusCode = 502;
+          error.details = { stderr: stderr.slice(0, 4000), stdout: stdout.slice(0, 4000) };
+          reject(error);
+          return;
+        }
+
+        resolve(stdout);
+      });
+    });
+
+    return parsePythonJson(rawOutput, scriptName);
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  }
+}
+
 function sendTestError(res, error) {
   console.error('[Transcript test endpoint failed]', error);
   return res.status(error.statusCode || 500).json({
@@ -531,6 +596,48 @@ router.post('/meeting-minutes-minilm-only', withTestUpload(async (req, res) => {
     return sendTestError(res, error);
   }
 }));
+
+router.post('/meeting-minutes-final', withTestUpload(async (req, res) => {
+  try {
+    const transcript = await readTestTranscript(req);
+    validateTranscriptText(transcript.text);
+    const scriptArgs = ['--skip-rewrite'];
+
+    if (truthyFlag(req.query?.includeBaselineReference) || truthyFlag(req.body?.includeBaselineReference)) {
+      scriptArgs.push('--include-baseline-reference');
+    }
+
+    if (!truthyFlag(req.query?.includeDiagnostics) && !truthyFlag(req.body?.includeDiagnostics)) {
+      scriptArgs.push('--skip-diagnostics');
+    }
+
+    const result = await runPythonTranscriptScript('meeting_minutes_minilm_only.py', transcript.text, scriptArgs);
+    return res.json(buildTestTranscriptResponse(req, transcript, result));
+  } catch (error) {
+    return sendTestError(res, error);
+  }
+}));
+
+router.post('/meeting-minutes-final/improve', async (req, res) => {
+  try {
+    const output = req.body?.output;
+    if (!output || typeof output !== 'object' || Array.isArray(output)) {
+      const error = new Error('Provide an extracted meeting minutes output object to improve.');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const scriptArgs = [];
+    if (!truthyFlag(req.query?.includeDiagnostics) && !truthyFlag(req.body?.includeDiagnostics)) {
+      scriptArgs.push('--skip-diagnostics');
+    }
+
+    const result = await runPythonJsonScript('meeting_minutes_rewrite_output.py', output, scriptArgs);
+    return res.json({ ok: true, result });
+  } catch (error) {
+    return sendTestError(res, error);
+  }
+});
 
 router.post('/project-update-test', withTestUpload(async (req, res) => {
   try {
