@@ -401,7 +401,7 @@ function buildTranscriptComparisonPage(config) {
         options.body = formData;
       }
 
-      const endpoint = `${config.endpoint}?includeTranscriptMetadata=1`;
+      const endpoint = config.endpoint;
       const response = await fetch(endpoint, options);
       const payload = await response.json().catch(() => null);
 
