@@ -533,7 +533,32 @@ The workshop review is focused on understanding complaints handling gaps before 
         self.assertIsNotNone(output)
         discussion_blob = " ".join(output.get("discussionPoints", [])).lower()
         self.assertNotIn("work scheduled, underway and active", discussion_blob)
-        self.assertTrue(any(item.get("reason") in ("weak_parser_single_turn", "too_short", "malformed_progress_fragment") for item in diagnostics.get("rejectedDiscussionCandidates", [])))
+        self.assertTrue(any(item.get("reason") in ("weak_parser_single_turn", "too_short", "malformed_progress_fragment", "generic_status_like_discussion") for item in diagnostics.get("rejectedDiscussionCandidates", [])))
+
+    def test_generic_status_like_discussion_is_preferably_dropped_over_promoted(self):
+        transcript = """Delivery check
+
+2 June 2026
+
+Claire:
+The delivery workstream is active and underway.
+
+Emma:
+The delivery workstream review identified bottlenecks in complaint routing and where automation could help.
+
+Jack:
+That assessment also highlighted where the current process creates avoidable delays for the team.
+"""
+
+        intermediate = collect_minilm_only_context(transcript)
+        output, diagnostics = build_minilm_only_output(transcript, intermediate, FakeMiniLMBackend())
+
+        self.assertIsNotNone(output)
+        discussion_blob = " ".join(output.get("discussionPoints", [])).lower()
+        self.assertNotIn("active and underway", discussion_blob)
+        self.assertTrue(
+            any(item.get("reason") in ("generic_status_like_discussion", "too_short", "insufficient_substantive_turns") for item in diagnostics.get("rejectedDiscussionCandidates", []))
+        )
 
     def test_coordination_chatter_is_not_promoted_as_action(self):
         transcript = """Follow-up chat

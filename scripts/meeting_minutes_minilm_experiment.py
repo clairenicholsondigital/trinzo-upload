@@ -1284,6 +1284,15 @@ OBJECTIVE_CUE_TERMS = {
     "focus", "goal", "identify", "improve", "objective", "plan", "priorities", "priority", "process",
     "review", "scope", "strategy", "understand", "workflow", "workshop",
 }
+GENERIC_STATUS_TERMS = {
+    "active", "ongoing", "scheduled", "underway", "workstream", "progress", "inflight", "pipeline",
+}
+ANALYTICAL_DISCUSSION_TERMS = {
+    "analysis", "approach", "assessment", "because", "bottleneck", "challenge", "clarity", "complaints",
+    "culture", "decision", "frustration", "gaps", "gemba", "identify", "impact", "improvement",
+    "mapping", "opportunities", "opportunity", "process", "review", "risk", "root", "suitability",
+    "triage", "understand", "workflow",
+}
 
 
 def embedding_similarity(left: list[float], right: list[float]) -> float:
@@ -1414,6 +1423,20 @@ def is_objective_candidate_text(text: str) -> bool:
     return business_signal_count(cleaned) >= 2 and semantic_density(cleaned) >= 0.6
 
 
+def is_generic_status_like_discussion(text: str) -> bool:
+    cleaned = normalize_text_fragment(text)
+    tokens = set(canonicalize_tokens(tokenize(cleaned)))
+    if not tokens:
+        return False
+    if not (tokens & GENERIC_STATUS_TERMS):
+        return False
+    if tokens & ANALYTICAL_DISCUSSION_TERMS:
+        return False
+    if "because" in tokens:
+        return False
+    return business_signal_count(cleaned) <= 3
+
+
 def objective_candidate_priority(text: str, source_kind: str = "", support_count: int = 0, evidence_score: float = 0.0) -> float:
     cleaned = normalize_text_fragment(text)
     tokens = set(canonicalize_tokens(tokenize(cleaned)))
@@ -1496,6 +1519,8 @@ def should_keep_discussion_candidate(candidate: dict[str, Any]) -> tuple[bool, s
         return False, "decision_like_sentence"
     if is_bad_progress_fragment(text):
         return False, "malformed_progress_fragment"
+    if support_count < 2 and is_generic_status_like_discussion(text):
+        return False, "generic_status_like_discussion"
     if lowered.endswith("because") or lowered.endswith("because..."):
         return False, "trailing_because"
     if any(phrase in lowered for phrase in ("i think", "you know", "go to the next one")) and not has_meaningful_topic_terms(text):
@@ -1781,6 +1806,8 @@ def is_valid_discussion_point(text: str, support_count: int) -> tuple[bool, str]
         return False, "action_or_decision_like"
     if is_bad_progress_fragment(cleaned):
         return False, "malformed_progress_fragment"
+    if support_count < 2 and is_generic_status_like_discussion(cleaned):
+        return False, "generic_status_like_discussion"
     if any(phrase in lowered for phrase in ("i think", "yeah", "okay", "you know", "go to the next one")):
         return False, "transcript_wording"
     if is_self_referential_conversational_fragment(cleaned):
@@ -1950,7 +1977,25 @@ def build_cluster_discussion_candidate(cluster: list[dict[str, Any]], speaker_na
         return None
     valid, reason = is_valid_discussion_point(point_text, support_count)
     if not valid:
-        return None
+        window_candidates = [
+            candidate for candidate in cluster
+            if candidate.get("candidateType") == "window" and is_valid_discussion_point(candidate.get("text", ""), evidence_support_count(candidate))[0]
+        ]
+        if window_candidates:
+            fallback_window = max(
+                window_candidates,
+                key=lambda item: (
+                    item.get("combinedScore", item.get("baseScore", 0.0)),
+                    item.get("windowCoherence", 0.0),
+                    evidence_support_count(item),
+                ),
+            )
+            point_text = fallback_window["text"]
+            evidence = dedupe_evidence(fallback_window.get("evidence", []))[:4]
+            support_count = evidence_support_count(fallback_window)
+            valid, reason = is_valid_discussion_point(point_text, support_count)
+        if not valid:
+            return None
     avg_semantic = sum(candidate.get("semanticScore", 0.0) for candidate in cluster) / len(cluster)
     avg_combined = sum(candidate.get("combinedScore", candidate.get("baseScore", 0.0)) for candidate in cluster) / len(cluster)
     score = round(avg_combined * 0.55 + avg_semantic * 0.25 + min(0.2, support_count * 0.05), 4)
