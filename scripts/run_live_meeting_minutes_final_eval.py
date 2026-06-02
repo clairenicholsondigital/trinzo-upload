@@ -74,13 +74,26 @@ def flat_text(value: object) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
+def visible_minutes_payload(output: dict) -> dict:
+    """Return the user-visible minutes fields, excluding raw evidence/diagnostics."""
+    return {
+        "meetingObjectives": output.get("meetingObjectives") or [],
+        "discussionPoints": output.get("discussionPoints") or [],
+        "decisions": output.get("decisions") or [],
+        "meetingActionPoint": output.get("meetingActionPoint") or [],
+        "meetingActionPointOwner": output.get("meetingActionPointOwner") or [],
+        "meetingActionPointDeadline": output.get("meetingActionPointDeadline") or [],
+    }
+
+
 def word_count(text: str) -> int:
     return len(re.findall(r"[A-Za-z0-9']+", text or ""))
 
 
 def quality_failures(output: dict, *, require_rewrite_status: bool = False) -> list[str]:
     failures: list[str] = []
-    flat = flat_text(output).lower()
+    visible = visible_minutes_payload(output)
+    flat = flat_text(visible).lower()
     for pattern in FORBIDDEN_PATTERNS + RAW_CHUNK_HINTS:
         if pattern.lower() in flat:
             failures.append(f"forbidden raw/conversational text present: {pattern!r}")

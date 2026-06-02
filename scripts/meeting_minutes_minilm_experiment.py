@@ -491,6 +491,18 @@ def normalized_list(values: list[Any]) -> list[str]:
     return [normalize_text(value) for value in values if normalize_text(value)]
 
 
+def minutes_word_count(text: str) -> int:
+    return len(re.findall(r"[A-Za-z0-9']+", text or ""))
+
+
+def is_overlong_objective_text(text: str) -> bool:
+    cleaned = normalize_text_fragment(text)
+    lowered = cleaned.lower()
+    if minutes_word_count(cleaned) > 28:
+        return True
+    return any(marker in lowered for marker in (" we then ", " we would ", " because ")) or cleaned.endswith("?")
+
+
 def unique_normalized_list(values: list[Any]) -> list[str]:
     seen = set()
     result = []
@@ -1755,7 +1767,11 @@ def rewrite_minutes_output_payload(
         elif slot_name == "discussionPoints":
             rewritten_discussion[slot_index] = rewritten
             if slot_index < len(rewritten_output.get("discussionPointDetails", [])):
+                rewritten_output["discussionPointDetails"][slot_index]["discussionPoint"] = rewritten
                 rewritten_output["discussionPointDetails"][slot_index]["rewrittenDiscussionPoint"] = rewritten
+            internal_discussion = rewritten_output.get("internalEvidence", {}).get("discussionPoints", [])
+            if slot_index < len(internal_discussion):
+                internal_discussion[slot_index]["text"] = rewritten
         elif slot_name == "decisions":
             rewritten_decisions[slot_index] = rewritten
             if slot_index < len(rewritten_output.get("decisionDetails", [])):
@@ -1763,7 +1779,8 @@ def rewrite_minutes_output_payload(
         elif slot_name == "actions":
             rewritten_actions[slot_index]["meetingActionPoint"] = rewritten
 
-    rewritten_output["meetingObjectives"] = dedupe_values(rewritten_objectives)
+    concise_objectives = [objective for objective in rewritten_objectives if not is_overlong_objective_text(objective)]
+    rewritten_output["meetingObjectives"] = dedupe_values(concise_objectives or rewritten_objectives[:1])
     rewritten_output["discussionPoints"] = dedupe_values(rewritten_discussion)
     rewritten_output["decisions"] = dedupe_values(rewritten_decisions)
     rewritten_output["actions"] = [
