@@ -653,7 +653,7 @@ def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBacke
                 "deadline": normalize_text_fragment(event.get("deadline", "")),
                 "baseScore": float(event.get("confidence", 0.0)),
                 "source": event.get("source", ""),
-                "roleScores": chunk_role_scores(backend, normalize_action_candidate_text(event.get("action", ""))) if backend else {},
+                "roleScores": {},
             }
         )
     seen = {normalized_key(item["text"]) for item in outputs if item.get("text")}
@@ -683,7 +683,7 @@ def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBacke
                 "deadline": "",
                 "baseScore": max(0.74 if lead_match else 0.34, float(record.get("scores", {}).get("action", 0.0)), float(record.get("scores", {}).get("discussion", 0.0)) * 0.75),
                 "source": source,
-                "roleScores": chunk_role_scores(backend, normalize_action_candidate_text(text)) if backend else {},
+                "roleScores": {},
             }
         )
         seen.add(key)
@@ -698,7 +698,7 @@ def collect_decision_candidates(intermediate: dict[str, Any], backend: MiniLMBac
                 "text": normalize_text_fragment(item.get("text", "")),
                 "baseScore": float(item.get("scores", {}).get("decision", 0.0)),
                 "source": "decision_candidate",
-                "roleScores": chunk_role_scores(backend, normalize_text_fragment(item.get("text", ""))) if backend else {},
+                "roleScores": {},
             }
         )
     seen = {normalized_key(item["text"]) for item in outputs if item.get("text")}
@@ -732,7 +732,7 @@ def collect_decision_candidates(intermediate: dict[str, Any], backend: MiniLMBac
                 "text": fallback_text,
                 "baseScore": max(0.24, float(record.get("scores", {}).get("decision", 0.0)), float(record.get("scores", {}).get("discussion", 0.0)) * 0.3),
                 "source": "record_decision_fallback",
-                "roleScores": chunk_role_scores(backend, fallback_text) if backend else {},
+                "roleScores": {},
             }
         )
         seen.add(key)
@@ -749,7 +749,7 @@ def collect_discussion_candidates(intermediate: dict[str, Any], backend: MiniLMB
                 "source": point.get("sourceType", "statusReviewPoint"),
                 "scores": {"discussion": 0.82, "specificity": 0.7, "low_content": 0.0, "navigation": 0.0},
                 "evidence": point.get("_evidence", []),
-                "roleScores": chunk_role_scores(backend, normalize_text_fragment(point.get("text", ""))) if backend else {},
+                "roleScores": {},
             }
         )
     for candidate in sorted(intermediate.get("candidates", []), key=lambda item: item["scores"].get("discussion", 0.0), reverse=True)[:40]:
@@ -761,7 +761,7 @@ def collect_discussion_candidates(intermediate: dict[str, Any], backend: MiniLMB
                 "scores": dict(candidate.get("scores", {})),
                 "evidence": list(candidate.get("evidence", [])),
                 "timestamp": candidate.get("timestamp", ""),
-                "roleScores": chunk_role_scores(backend, normalize_text_fragment(candidate.get("text", ""))) if backend else {},
+                "roleScores": {},
             }
         )
     deduped = []
@@ -929,6 +929,27 @@ def chunk_role_scores(backend: MiniLMBackend, text: str) -> dict[str, float]:
         "blocker": backend.score_against_prototypes(text, "blocker"),
         "milestone": backend.score_against_prototypes(text, "milestone"),
     }
+
+
+def score_texts_against_prototypes(backend: MiniLMBackend, texts: list[str]) -> dict[str, dict[str, float]]:
+    cleaned_texts = []
+    seen = set()
+    for text in texts:
+        cleaned = normalize_text_fragment(text)
+        if cleaned and cleaned not in seen:
+            seen.add(cleaned)
+            cleaned_texts.append(cleaned)
+
+    if not cleaned_texts:
+        return {}
+
+    scores: dict[str, dict[str, float]] = {}
+    for text in cleaned_texts:
+        scores[text] = {
+            group: backend.score_against_prototypes(text, group)
+            for group in PROTOTYPE_TEXTS
+        }
+    return scores
 
 
 def _sanitize_rewritten_minutes_text(generated: str, fallback: str) -> str:
@@ -1227,14 +1248,25 @@ def build_minilm_only_output(
         "generator": "minilm_only",
     }
 
-    action_candidates = []
-    for candidate in collect_action_candidates(intermediate, backend):
-        semantic = backend.score_against_prototypes(candidate["text"], "action")
+    action_candidates = collect_action_candidates(intermediate, backend)
+    decision_candidates = collect_decision_candidates(intermediate, backend)
+    discussion_candidates = collect_discussion_candidates(intermediate, backend)
+
+    prototype_scores = score_texts_against_prototypes(
+        backend,
+        [candidate.get("text", "") for candidate in action_candidates + decision_candidates + discussion_candidates],
+    )
+
+    scored_action_candidates = []
+    for candidate in action_candidates:
+        role_scores = prototype_scores.get(normalize_text_fragment(candidate["text"]), {})
+        candidate["roleScores"] = role_scores
+        semantic = role_scores.get("action", 0.0)
         combined = round(candidate["baseScore"] * 0.55 + semantic * 0.45, 4)
         candidate["semanticScore"] = semantic
         candidate["combinedScore"] = combined
-        action_candidates.append(candidate)
-    action_candidates.sort(key=lambda item: item["combinedScore"], reverse=True)
+        scored_action_candidates.append(candidate)
+    action_candidates = sorted(scored_action_candidates, key=lambda item: item["combinedScore"], reverse=True)
     if include_diagnostics:
         diagnostics["actionCandidates"] = action_candidates[:8]
     seen_action_keys = set()
@@ -1279,14 +1311,16 @@ def build_minilm_only_output(
         if len(output["actions"]) >= 6:
             break
 
-    decision_candidates = []
-    for candidate in collect_decision_candidates(intermediate, backend):
-        semantic = backend.score_against_prototypes(candidate["text"], "decision")
+    scored_decision_candidates = []
+    for candidate in decision_candidates:
+        role_scores = prototype_scores.get(normalize_text_fragment(candidate["text"]), {})
+        candidate["roleScores"] = role_scores
+        semantic = role_scores.get("decision", 0.0)
         combined = round(candidate["baseScore"] * 0.6 + semantic * 0.4, 4)
         candidate["semanticScore"] = semantic
         candidate["combinedScore"] = combined
-        decision_candidates.append(candidate)
-    decision_candidates.sort(key=lambda item: item["combinedScore"], reverse=True)
+        scored_decision_candidates.append(candidate)
+    decision_candidates = sorted(scored_decision_candidates, key=lambda item: item["combinedScore"], reverse=True)
     if include_diagnostics:
         diagnostics["decisionCandidates"] = decision_candidates[:8]
     seen_decision_keys = set()
@@ -1331,19 +1365,17 @@ def build_minilm_only_output(
         if len(output["decisions"]) >= 4:
             break
 
-    discussion_candidates = []
+    scored_discussion_candidates = []
     filtered_discussion_candidates = []
-    for candidate in collect_discussion_candidates(intermediate, backend):
-        semantic_discussion = backend.score_against_prototypes(candidate["text"], "discussion")
-        semantic_status = max(
-            backend.score_against_prototypes(candidate["text"], "status"),
-            backend.score_against_prototypes(candidate["text"], "blocker"),
-            backend.score_against_prototypes(candidate["text"], "milestone"),
-        )
+    for candidate in discussion_candidates:
+        role_scores = prototype_scores.get(normalize_text_fragment(candidate["text"]), {})
+        candidate["roleScores"] = role_scores
+        semantic_discussion = role_scores.get("discussion", 0.0)
+        semantic_status = max(role_scores.get("status", 0.0), role_scores.get("blocker", 0.0), role_scores.get("milestone", 0.0))
         combined = round(candidate["baseScore"] * 0.45 + max(semantic_discussion, semantic_status) * 0.55, 4)
         candidate["semanticScore"] = max(semantic_discussion, semantic_status)
         candidate["combinedScore"] = combined
-        discussion_candidates.append(candidate)
+        scored_discussion_candidates.append(candidate)
         keep, reason = should_keep_discussion_candidate(candidate)
         if keep:
             filtered_discussion_candidates.append(candidate)
@@ -1357,7 +1389,7 @@ def build_minilm_only_output(
                     "reason": reason,
                 }
             )
-    discussion_candidates.sort(key=lambda item: item["combinedScore"], reverse=True)
+    discussion_candidates = sorted(scored_discussion_candidates, key=lambda item: item["combinedScore"], reverse=True)
     if include_diagnostics:
         diagnostics["discussionCandidates"] = discussion_candidates[:10]
 
