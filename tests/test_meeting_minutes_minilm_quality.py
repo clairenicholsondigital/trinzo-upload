@@ -33,6 +33,7 @@ class MeetingMinutesMiniLMQualityTest(unittest.TestCase):
     def test_clear_next_step_is_concrete_action(self):
         self.assertTrue(has_concrete_action_commitment("Refine the webinar opening slide before Friday."))
         self.assertTrue(has_concrete_action_commitment("Double down with the upskilled team on adoption considerations."))
+        self.assertTrue(has_concrete_action_commitment("Investigate the server restart by Friday."))
 
 
 if __name__ == "__main__":

@@ -813,22 +813,69 @@ def collect_minilm_only_context(transcript_text: str) -> dict[str, Any]:
 
 def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBackend | None = None) -> list[dict[str, Any]]:
     outputs = []
+    records = list(intermediate.get("records", []))
+
+    def infer_followup_owner_deadline(action_text: str, source_text: str = "") -> tuple[str, str]:
+        action_tokens = {token for token in canonicalize_tokens(tokenize(action_text)) if token not in GENERIC_STATUS_TERMS}
+        source_tokens = {token for token in canonicalize_tokens(tokenize(source_text)) if token not in GENERIC_STATUS_TERMS}
+        search_tokens = action_tokens | source_tokens
+        if not search_tokens:
+            return "", ""
+        anchor_index = -1
+        best_overlap = 0
+        for index, record in enumerate(records):
+            record_tokens = set(canonicalize_tokens(tokenize(record.get("text", ""))))
+            overlap = len(search_tokens & record_tokens)
+            if overlap > best_overlap:
+                best_overlap = overlap
+                anchor_index = index
+        if anchor_index < 0 or best_overlap < 2:
+            return "", ""
+        owner = ""
+        deadline = ""
+        for record in records[anchor_index + 1 : anchor_index + 7]:
+            text = normalize_text_fragment(record.get("text", ""))
+            lowered = text.lower()
+            speaker = normalize_text_fragment(record.get("speaker", ""))
+            if not owner and re.match(r"^(?:i['’]?ll|i will|i can)\s+(?:take|do|handle|own|pick up|look into)\b", lowered):
+                owner = speaker
+                continue
+            if owner and not deadline:
+                deadline_match = re.search(
+                    r"\b(?:today|tomorrow|friday|monday|tuesday|wednesday|thursday|saturday|sunday|next week|this week|by [A-Za-z]+|before [A-Za-z]+)\b",
+                    text,
+                    flags=re.I,
+                )
+                if deadline_match:
+                    deadline = deadline_match.group(0)[:1].upper() + deadline_match.group(0)[1:]
+                    break
+        return owner, deadline
+
     for event in intermediate.get("actionEvents", []):
         if event.get("eventType") != "action_candidate":
             continue
+        owner = normalize_text_fragment(event.get("owner", "Owner not specified"))
+        deadline = normalize_text_fragment(event.get("deadline", ""))
+        if not owner or owner == "Owner not specified" or not deadline:
+            source_text = " ".join(normalize_text_fragment(ref.get("text", "")) for ref in event.get("evidence", []) if isinstance(ref, dict))
+            inferred_owner, inferred_deadline = infer_followup_owner_deadline(event.get("action", ""), source_text)
+            if inferred_owner and (not owner or owner == "Owner not specified"):
+                owner = inferred_owner
+            if inferred_deadline and not deadline:
+                deadline = inferred_deadline
         outputs.append(
             {
                 "text": normalize_action_candidate_text(event.get("action", "")),
-                "owner": normalize_text_fragment(event.get("owner", "Owner not specified")),
-                "deadline": normalize_text_fragment(event.get("deadline", "")),
+                "owner": owner or "Owner not specified",
+                "deadline": deadline,
                 "baseScore": float(event.get("confidence", 0.0)),
                 "source": event.get("source", ""),
                 "roleScores": {},
             }
         )
     seen = {normalized_key(item["text"]) for item in outputs if item.get("text")}
-    action_lead_pattern = re.compile(r"^(review|confirm|draft|follow up|validate|prepare|update|share|send|complete|finalise|refine)\b", re.I)
-    for record in intermediate.get("records", []):
+    action_lead_pattern = re.compile(r"^(review|confirm|draft|follow up|investigate|validate|prepare|update|share|send|complete|finalise|refine)\b", re.I)
+    for record in records:
         text = normalize_text_fragment(record.get("text", ""))
         if not text:
             continue
@@ -1440,8 +1487,8 @@ def is_low_value_coordination_action(text: str) -> bool:
 
 CONCRETE_ACTION_VERBS = {
     "add", "agree", "amend", "book", "build", "check", "circulate", "complete", "confirm", "create",
-    "develop", "double", "draft", "finalise", "follow", "prepare", "reduce", "refine", "review", "send",
-    "share", "simplify", "update", "validate",
+    "develop", "double", "draft", "finalise", "follow", "investigate", "prepare", "reduce", "refine",
+    "review", "send", "share", "simplify", "update", "validate",
 }
 
 
@@ -1971,7 +2018,7 @@ def should_accept_action_candidate(candidate: dict[str, Any]) -> tuple[bool, str
     semantic_source = candidate.get("source") == "semantic_action_fallback"
     if not (
         is_action_like_sentence(text)
-        or re.match(r"^(review|confirm|draft|follow up|validate|prepare|update|share|send|complete|finalise|refine)\b", text, re.I)
+        or re.match(r"^(review|confirm|draft|follow up|investigate|validate|prepare|update|share|send|complete|finalise|refine)\b", text, re.I)
         or semantic_source
     ):
         return False, "not_action_like"
