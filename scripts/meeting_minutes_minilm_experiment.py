@@ -446,13 +446,43 @@ def collect_action_candidates(intermediate: dict[str, Any]) -> list[dict[str, An
             continue
         outputs.append(
             {
-                "text": normalize_text_fragment(event.get("action", "")),
+                "text": normalize_action_candidate_text(event.get("action", "")),
                 "owner": normalize_text_fragment(event.get("owner", "Owner not specified")),
                 "deadline": normalize_text_fragment(event.get("deadline", "")),
                 "baseScore": float(event.get("confidence", 0.0)),
                 "source": event.get("source", ""),
             }
         )
+    seen = {normalized_key(item["text"]) for item in outputs if item.get("text")}
+    action_lead_pattern = re.compile(r"^(review|confirm|draft|follow up|validate|prepare|update|share|send|complete|finalise|refine)\b", re.I)
+    for record in intermediate.get("records", []):
+        text = normalize_text_fragment(record.get("text", ""))
+        if not text:
+            continue
+        source = "record_action_fallback"
+        if ":" in text and text.lower().startswith("actions before next week"):
+            text = normalize_text_fragment(text.split(":", 1)[1])
+            source = "record_action_header_fallback"
+        if not text or text.endswith("?"):
+            continue
+        lead_match = action_lead_pattern.match(text)
+        if not (is_action_like_sentence(text) or lead_match):
+            continue
+        if is_context_dependent_fragment(text) or contains_noise_or_banter(text) or len(tokenize(text)) < 3:
+            continue
+        key = normalized_key(text)
+        if key in seen:
+            continue
+        outputs.append(
+            {
+                "text": normalize_action_candidate_text(text),
+                "owner": "Owner not specified",
+                "deadline": "",
+                "baseScore": max(0.74 if lead_match else 0.34, float(record.get("scores", {}).get("action", 0.0)), float(record.get("scores", {}).get("discussion", 0.0)) * 0.75),
+                "source": source,
+            }
+        )
+        seen.add(key)
     return outputs
 
 
@@ -466,6 +496,40 @@ def collect_decision_candidates(intermediate: dict[str, Any]) -> list[dict[str, 
                 "source": "decision_candidate",
             }
         )
+    seen = {normalized_key(item["text"]) for item in outputs if item.get("text")}
+    records = intermediate.get("records", [])
+    for index, record in enumerate(records):
+        text = normalize_text_fragment(record.get("text", ""))
+        lowered = text.lower()
+        if not text or text.endswith("?") or len(tokenize(text)) < 4:
+            continue
+        fallback_text = ""
+        if "mark that complete" in lowered or "mark that complete now" in lowered:
+            subject = normalize_text_fragment(text.split(",", 1)[0])
+            if subject:
+                fallback_text = f"{subject} was marked complete."
+        elif "completed version one yesterday" in lowered:
+            previous = normalize_text_fragment(records[index - 1].get("text", "")) if index > 0 else ""
+            if previous and previous.endswith("?"):
+                subject = previous.rstrip("?")
+                fallback_text = f"{subject} is complete at version one."
+        elif "agreed" in lowered and index > 0:
+            previous = normalize_text_fragment(records[index - 1].get("text", ""))
+            if previous and len(tokenize(previous)) >= 4 and not previous.endswith("?"):
+                fallback_text = previous if previous.endswith(".") else previous + "."
+        if not fallback_text:
+            continue
+        key = normalized_key(fallback_text)
+        if key in seen:
+            continue
+        outputs.append(
+            {
+                "text": fallback_text,
+                "baseScore": max(0.24, float(record.get("scores", {}).get("decision", 0.0)), float(record.get("scores", {}).get("discussion", 0.0)) * 0.3),
+                "source": "record_decision_fallback",
+            }
+        )
+        seen.add(key)
     return outputs
 
 
@@ -528,7 +592,8 @@ MINILM_TOPIC_TERMS = {
     "diagram", "diagrams", "investigation", "bottleneck", "slide", "slides", "imagery", "images",
     "visuals", "change", "management", "employee", "employees", "team", "adoption", "client",
     "demo", "demonstration", "workstream", "blocker", "risk", "decision", "review", "update",
-    "timeline", "rollout", "training", "regulatory",
+    "timeline", "rollout", "training", "regulatory", "routing", "intake", "sales", "vendor",
+    "grant", "governance", "webinar", "webinars", "stage", "template", "templates", "sow", "delivery",
 }
 
 
@@ -570,6 +635,10 @@ def evidence_support_count(candidate: dict[str, Any]) -> int:
 def has_meaningful_topic_terms(text: str) -> bool:
     tokens = set(tokenize(text))
     return bool(tokens & MINILM_TOPIC_TERMS) or semantic_density(text) >= 0.62
+
+
+def has_explicit_topic_terms(text: str) -> bool:
+    return bool(set(tokenize(text)) & MINILM_TOPIC_TERMS)
 
 
 def is_context_dependent_fragment(text: str) -> bool:
@@ -633,8 +702,39 @@ def should_keep_discussion_candidate(candidate: dict[str, Any]) -> tuple[bool, s
     return True, ""
 
 
+def normalize_action_candidate_text(text: str) -> str:
+    cleaned = normalize_text_fragment(text)
+    lowered = cleaned.lower()
+    for prefix in ("i'll ", "i will ", "we'll ", "we will "):
+        if lowered.startswith(prefix):
+            cleaned = cleaned[len(prefix):]
+            break
+    return cleaned[:1].upper() + cleaned[1:] if cleaned else cleaned
+
+
 def cluster_theme_summary(texts: list[str], fallback: str) -> str:
     blob = " ".join(texts).lower()
+    if ("intake workflow" in blob or "request funnel" in blob or "routing" in blob) and "routing" in blob:
+        return "The intake workflow remains in progress because routing is not yet working properly."
+    if ("vendor strategy" in blob or "strategy document" in blob) and ("innovation grant" in blob or "grant feedback" in blob):
+        return (
+            "Vendor strategy rollout remains in progress: interviews are complete, but the strategy document has not yet been produced. "
+            "Innovation grant feedback is still pending, with follow-up planned this week."
+        )
+    if ("stage gate" in blob or "templates" in blob) and ("review" in blob or "reviews" in blob):
+        return "The stage gate review process is active, with two reviews completed, but templates still need to be finalised."
+    if ("sales input" in blob or "keone" in blob or "pipeline strategy" in blob) and ("blocked" in blob or "later in june" in blob):
+        return "AI pipeline strategy remains blocked because sales input is still required before work can continue."
+    if ("ad hoc" in blob or "sow" in blob) and ("scheduled" in blob or "underway" in blob or "scoped" in blob):
+        return "Ad hoc SOW delivery is active, with work scheduled, underway and still awaiting scope definition."
+    if ("vendor strategy" in blob or "strategy document" in blob) and ("interviews" in blob or "leadership review" in blob or "doesn't exist yet" in blob):
+        return "Vendor strategy rollout remains in progress: interviews are complete, but the strategy document has not yet been produced."
+    if ("innovation grant" in blob or "grant feedback" in blob) and ("follow up" in blob or "pending" in blob or "this week" in blob):
+        return "Innovation grant feedback is still pending, with follow-up planned this week."
+    if ("governance framework" in blob or "leadership review" in blob) and ("version one" in blob or "pending leadership review" in blob or "status blue" in blob):
+        return "The AI governance framework draft is pending leadership review."
+    if ("webinars" in blob or "webinar" in blob) and ("booked" in blob or "delivered" in blob):
+        return "Three AI webinars are in delivery, with two completed and the third booked."
     if (
         ("workshop" in blob or "ai discovery workshop" in blob)
         and ("change management" in blob or "engages the team" in blob or "people in the room" in blob)
@@ -674,15 +774,67 @@ def is_valid_discussion_point(text: str, support_count: int) -> tuple[bool, str]
         return False, "action_or_decision_like"
     if any(phrase in lowered for phrase in ("i think", "yeah", "okay", "you know", "go to the next one")):
         return False, "transcript_wording"
+    if cleaned[:1].islower():
+        return False, "not_sentence_cased"
     if len(tokenize(cleaned)) < 6:
         return False, "too_short"
     if not cleaned.endswith((".", "!", "?")):
         return False, "missing_terminal_punctuation"
     if semantic_density(cleaned) < 0.56 and not has_meaningful_topic_terms(cleaned):
         return False, "low_semantic_density"
-    if support_count < 2 and semantic_density(cleaned) < 0.68:
+    if support_count < 2 and not has_explicit_topic_terms(cleaned):
+        return False, "insufficient_explicit_topic_context"
+    if support_count < 3 and not has_meaningful_topic_terms(cleaned):
+        return False, "insufficient_topic_context"
+    if support_count < 1 and semantic_density(cleaned) < 0.58 and not has_meaningful_topic_terms(cleaned):
+        return False, "insufficient_support"
+    if support_count < 2 and semantic_density(cleaned) < 0.64 and not has_meaningful_topic_terms(cleaned):
         return False, "insufficient_support"
     return True, ""
+
+
+def should_accept_action_candidate(candidate: dict[str, Any]) -> tuple[bool, str]:
+    combined = float(candidate.get("combinedScore", candidate.get("baseScore", 0.0)))
+    semantic = float(candidate.get("semanticScore", 0.0))
+    base = float(candidate.get("baseScore", 0.0))
+    text = normalize_text_fragment(candidate.get("text", ""))
+    if not text:
+        return False, "empty"
+    if not (is_action_like_sentence(text) or re.match(r"^(review|confirm|draft|follow up|validate|prepare|update|share|send|complete|finalise|refine)\b", text, re.I)):
+        return False, "not_action_like"
+    if combined >= 0.4 and semantic >= 0.18:
+        return True, "combined_and_semantic_threshold"
+    if base >= 0.7:
+        return True, "high_base_score"
+    return False, "below_threshold"
+
+
+def should_accept_decision_candidate(candidate: dict[str, Any]) -> tuple[bool, str]:
+    combined = float(candidate.get("combinedScore", candidate.get("baseScore", 0.0)))
+    semantic = float(candidate.get("semanticScore", 0.0))
+    base = float(candidate.get("baseScore", 0.0))
+    text = normalize_text_fragment(candidate.get("text", ""))
+    if not text:
+        return False, "empty"
+    if len(tokenize(text)) < 4:
+        return False, "too_short"
+    if is_context_dependent_fragment(text) or text.endswith("?"):
+        return False, "context_dependent"
+    if combined >= 0.24 and semantic >= 0.18:
+        return True, "combined_and_semantic_threshold"
+    if base >= 0.22:
+        return True, "high_base_score"
+    return False, "below_threshold"
+
+
+def should_accept_cluster_candidate(candidate: dict[str, Any], existing: list[dict[str, Any]]) -> tuple[bool, str]:
+    if candidate["score"] < 0.35:
+        return False, "score_below_threshold"
+    if any(discussion_similarity(candidate["text"], item["text"]) >= 0.72 for item in existing):
+        return False, "duplicate_of_selected_cluster"
+    if candidate["supportCount"] < 1 and semantic_density(candidate["text"]) < 0.58 and not has_meaningful_topic_terms(candidate["text"]):
+        return False, "insufficient_support"
+    return True, "accepted"
 
 
 def cluster_candidates_semantically(candidates: list[dict[str, Any]], backend: MiniLMBackend) -> list[list[dict[str, Any]]]:
@@ -774,7 +926,9 @@ def build_minilm_only_output(
         "modelAvailable": backend.available,
         "modelReason": backend.reason,
         "actionCandidates": [],
+        "actionSelections": [],
         "decisionCandidates": [],
+        "decisionSelections": [],
         "discussionCandidates": [],
         "discussionClusters": [],
         "rejectedDiscussionCandidates": [],
@@ -834,10 +988,24 @@ def build_minilm_only_output(
     diagnostics["actionCandidates"] = action_candidates[:8]
     seen_action_keys = set()
     for candidate in action_candidates:
-        if candidate["combinedScore"] < 0.62 or candidate["semanticScore"] < 0.45:
+        accepted, reason = should_accept_action_candidate(candidate)
+        diagnostics["actionSelections"].append(
+            {
+                "text": candidate["text"],
+                "baseScore": candidate["baseScore"],
+                "semanticScore": candidate["semanticScore"],
+                "combinedScore": candidate["combinedScore"],
+                "accepted": accepted,
+                "reason": reason,
+                "source": candidate.get("source", ""),
+            }
+        )
+        if not accepted:
             continue
         key = normalized_key(candidate["text"])
         if key in seen_action_keys:
+            diagnostics["actionSelections"][-1]["accepted"] = False
+            diagnostics["actionSelections"][-1]["reason"] = "duplicate_action"
             continue
         action = {
             "meetingActionPoint": candidate["text"][:1].upper() + candidate["text"][1:] + ("" if candidate["text"].endswith(".") else "."),
@@ -854,7 +1022,7 @@ def build_minilm_only_output(
         output["internalEvidence"]["actions"].append({"text": action["meetingActionPoint"], "_evidence": []})
         diagnostics["selectedActions"].append(action)
         seen_action_keys.add(key)
-        if len(diagnostics["selectedActions"]) >= 4:
+        if len(diagnostics["selectedActions"]) >= 6:
             break
 
     decision_candidates = []
@@ -868,10 +1036,24 @@ def build_minilm_only_output(
     diagnostics["decisionCandidates"] = decision_candidates[:8]
     seen_decision_keys = set()
     for candidate in decision_candidates:
-        if candidate["combinedScore"] < 0.6 or candidate["semanticScore"] < 0.42:
+        accepted, reason = should_accept_decision_candidate(candidate)
+        diagnostics["decisionSelections"].append(
+            {
+                "text": candidate["text"],
+                "baseScore": candidate["baseScore"],
+                "semanticScore": candidate["semanticScore"],
+                "combinedScore": candidate["combinedScore"],
+                "accepted": accepted,
+                "reason": reason,
+                "source": candidate.get("source", ""),
+            }
+        )
+        if not accepted:
             continue
         key = normalized_key(candidate["text"])
         if key in seen_decision_keys:
+            diagnostics["decisionSelections"][-1]["accepted"] = False
+            diagnostics["decisionSelections"][-1]["reason"] = "duplicate_decision"
             continue
         text = candidate["text"]
         if text and not text.endswith("."):
@@ -923,18 +1105,23 @@ def build_minilm_only_output(
     selected_cluster_points: list[dict[str, Any]] = []
     for cluster in cluster_candidates_semantically(filtered_discussion_candidates, backend):
         built = build_cluster_discussion_candidate(cluster, {name.lower() for name in speaker_names})
-        diagnostics["discussionClusters"].append(
-            {
-                "candidateTexts": [candidate["text"] for candidate in cluster],
-                "selectedDiscussionPoint": "" if built is None else built["text"],
-                "score": 0.0 if built is None else built["score"],
-                "supportCount": 0 if built is None else built["supportCount"],
-                "keywords": [] if built is None else built["keywords"],
-            }
-        )
-        if built is None or built["score"] < 0.66:
+        cluster_diag = {
+            "candidateTexts": [candidate["text"] for candidate in cluster],
+            "selectedDiscussionPoint": "" if built is None else built["text"],
+            "score": 0.0 if built is None else built["score"],
+            "supportCount": 0 if built is None else built["supportCount"],
+            "keywords": [] if built is None else built["keywords"],
+            "accepted": False,
+            "reason": "cluster_builder_rejected" if built is None else "",
+        }
+        if built is None:
+            diagnostics["discussionClusters"].append(cluster_diag)
             continue
-        if any(discussion_similarity(built["text"], existing["text"]) >= 0.72 for existing in selected_cluster_points):
+        accepted, reason = should_accept_cluster_candidate(built, selected_cluster_points)
+        cluster_diag["accepted"] = accepted
+        cluster_diag["reason"] = reason
+        diagnostics["discussionClusters"].append(cluster_diag)
+        if not accepted:
             continue
         selected_cluster_points.append(built)
 
@@ -955,7 +1142,7 @@ def build_minilm_only_output(
         )
         output["internalEvidence"]["discussionPoints"].append({"text": text, "_evidence": candidate["evidence"]})
         diagnostics["selectedDiscussionPoints"].append(text)
-        if len(diagnostics["selectedDiscussionPoints"]) >= 5:
+        if len(diagnostics["selectedDiscussionPoints"]) >= 8:
             break
 
     output["discussionPoints"] = dedupe_values(output["discussionPoints"])

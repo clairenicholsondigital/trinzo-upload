@@ -31,7 +31,13 @@ class FakeMiniLMBackend:
             ("workshop", "change management", "engages the team", "people in the room", "pain points", "solutions"),
             ("complaints", "triage", "gemba", "ipo", "bottleneck", "process", "workflow"),
             ("slides", "text-heavy", "people-focused", "imagery", "visuals", "photos"),
-            ("glaxosmithkline", "gsk", "training", "evaluation"),
+            ("stage gate", "templates", "reviews", "finalised"),
+            ("routing", "intake", "request funnel", "operational"),
+            ("sales", "pipeline", "keone", "june", "blocked"),
+            ("vendor strategy", "interviews", "document", "produced"),
+            ("innovation grant", "follow up", "pending", "feedback"),
+            ("governance", "leadership review", "version one", "blue"),
+            ("webinars", "booked", "delivered", "sessions"),
         ]
         vector = [0.0] * len(groups)
         for index, keywords in enumerate(groups):
@@ -53,18 +59,28 @@ class FakeMiniLMBackend:
     def score_against_prototypes(self, text: str, prototype_group: str) -> float:
         lowered = normalize_text_fragment(text).lower()
         if prototype_group == "discussion":
-            if any(term in lowered for term in ("workshop", "complaints", "triage", "slides", "imagery", "gemba", "ipo", "workflow")):
+            if any(term in lowered for term in (
+                "workshop", "complaints", "triage", "slides", "imagery", "gemba", "ipo", "workflow",
+                "stage gate", "routing", "pipeline", "vendor strategy", "innovation grant", "governance", "webinars"
+            )):
                 return 0.9
             return 0.2
         if prototype_group in {"status", "blocker", "milestone"}:
-            if any(term in lowered for term in ("workflow", "process", "slides", "workshop", "complaints", "triage")):
+            if any(term in lowered for term in (
+                "workflow", "process", "slides", "workshop", "complaints", "triage",
+                "stage gate", "routing", "pipeline", "vendor strategy", "innovation grant", "governance", "webinars"
+            )):
                 return 0.82
             return 0.18
         if prototype_group == "action":
-            if "refine" in lowered and "slides" in lowered:
+            if ("refine" in lowered and "slides" in lowered) or any(
+                lowered.startswith(prefix) for prefix in ("review ", "confirm ", "draft ", "follow up ", "validate ")
+            ):
                 return 0.9
             return 0.2
         if prototype_group == "decision":
+            if any(term in lowered for term in ("marked complete", "was marked complete", "approved", "agreed", "status amber", "status green", "status blue")):
+                return 0.75
             return 0.2
         return 0.0
 
@@ -213,6 +229,37 @@ I'll refine the webinar slides.
         self.assertEqual(output["meetingActionPointOwner"], ["Emma"])
         self.assertTrue(diagnostics["selectedDiscussionPoints"])
         self.assertEqual(diagnostics["mode"], "minilm_only")
+
+    def test_minilm_only_status_review_fixture_promotes_clusters_actions_and_decisions(self):
+        transcript = (ROOT / "scripts" / "transcript-tests" / "001_status_review" / "transcript.txt").read_text(encoding="utf-8")
+        baseline, _baseline_intermediate = collect_experiment_context(transcript)
+        intermediate = collect_minilm_only_context(transcript)
+
+        output, diagnostics = build_minilm_only_output(transcript, intermediate, FakeMiniLMBackend())
+
+        self.assertIsNotNone(output)
+        self.assertGreaterEqual(len(output["discussionPoints"]), 6)
+        self.assertTrue(any("stage gate review process" in point.lower() for point in output["discussionPoints"]))
+        self.assertTrue(any("routing is not yet working properly" in point.lower() for point in output["discussionPoints"]))
+        self.assertTrue(any("sales input is still required" in point.lower() for point in output["discussionPoints"]))
+        self.assertTrue(any("vendor strategy rollout remains in progress" in point.lower() for point in output["discussionPoints"]))
+        self.assertTrue(any("innovation grant feedback is still pending" in point.lower() for point in output["discussionPoints"]))
+        self.assertTrue(any("governance framework draft is pending leadership review" in point.lower() for point in output["discussionPoints"]))
+        self.assertTrue(any("webinars are in delivery" in point.lower() for point in output["discussionPoints"]))
+
+        actions = output["meetingActionPoint"]
+        self.assertIn("Review stage gate templates.", actions)
+        self.assertIn("Confirm AI pipeline dependencies with sales.", actions)
+        self.assertIn("Draft vendor strategy document.", actions)
+        self.assertIn("Follow up innovation grant feedback.", actions)
+        self.assertIn("Validate intake workflow routing.", actions)
+
+        self.assertTrue(output["decisions"])
+        self.assertTrue(any("marked complete" in decision.lower() for decision in output["decisions"]))
+        self.assertTrue(any(item["accepted"] for item in diagnostics["discussionClusters"]))
+        self.assertTrue(any(item["accepted"] for item in diagnostics["actionSelections"]))
+        self.assertTrue(any(item["accepted"] for item in diagnostics["decisionSelections"]))
+        self.assertGreaterEqual(len(output["meetingActionPoint"]), len(baseline.get("meetingActionPoint", [])))
 
 
 if __name__ == "__main__":

@@ -9,6 +9,7 @@ from pathlib import Path
 from meeting_minutes_minilm_experiment import (
     MiniLMBackend,
     build_minilm_only_output,
+    collect_experiment_context,
     collect_minilm_only_context,
 )
 
@@ -27,6 +28,10 @@ def main() -> int:
 
     transcript_path = Path(sys.argv[1])
     transcript_text = transcript_path.read_text(encoding="utf-8")
+
+    baseline_start = time.perf_counter()
+    baseline_output, _baseline_intermediate = collect_experiment_context(transcript_text)
+    baseline_runtime_ms = round((time.perf_counter() - baseline_start) * 1000, 2)
 
     context_start = time.perf_counter()
     intermediate = collect_minilm_only_context(transcript_text)
@@ -52,11 +57,18 @@ def main() -> int:
         "modelReason": backend.reason,
         "output": output,
         "counts": build_counts(output or {}),
+        "baselineReference": {
+            "counts": build_counts(baseline_output),
+            "discussionPoints": baseline_output.get("discussionPoints", []),
+            "decisions": baseline_output.get("decisions", []),
+            "meetingActionPoint": baseline_output.get("meetingActionPoint", []),
+        },
         "diagnostics": diagnostics,
         "timingMs": {
+            "baseline": baseline_runtime_ms,
             "context": context_runtime_ms,
             "minilm": minilm_runtime_ms,
-            "total": round(context_runtime_ms + minilm_runtime_ms, 2),
+            "total": round(baseline_runtime_ms + context_runtime_ms + minilm_runtime_ms, 2),
         },
     }
 
