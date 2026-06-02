@@ -1,0 +1,7 @@
+{
+  "expectedParticipants": ["Alex", "Priya", "Tom"],
+  "expectedDecisionCountMin": 1,
+  "mustContainDecisions": ["phased regional launch"],
+  "mustContainDiscussionTopics": [["legacy", "read-only"], ["support", "overloaded"]],
+  "expectedActionCount": 0
+}

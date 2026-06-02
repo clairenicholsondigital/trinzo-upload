@@ -1,0 +1,6 @@
+{
+  "expectedParticipants": ["Nadia", "Owen"],
+  "expectedActionCount": 0,
+  "expectedDecisionCount": 0,
+  "mustContainDiscussionTopics": [["travel", "policy"], ["mileage", "July"], ["guidance", "intranet"]]
+}

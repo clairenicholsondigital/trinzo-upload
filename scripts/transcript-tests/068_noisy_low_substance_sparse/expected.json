@@ -1,0 +1,5 @@
+{
+  "participants": {"client": ["Claire", "Bob"], "trinzo": []},
+  "expectedActionCount": 0,
+  "mustNotContain": ["red light", "webcam", "hear me", "Fine"]
+}

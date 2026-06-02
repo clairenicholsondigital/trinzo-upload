@@ -1,0 +1,10 @@
+{
+  "expectedParticipants": ["Maya", "Liam", "Noah"],
+  "expectedActionCountMin": 2,
+  "mustContainActions": [
+    {"text": "patch the mapper", "owner": "Liam", "deadline": "Today"},
+    {"text": "notify customer success", "owner": "Noah"}
+  ],
+  "mustContainDecisions": ["export disabled"],
+  "mustContainDiscussionTopics": [["payment", "export"], ["currency", "mapper"]]
+}

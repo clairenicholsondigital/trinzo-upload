@@ -1,0 +1,48 @@
+Meeting transcript: Project Banana Falcon
+Participants: Claire, Bob, Sarah, Mike
+
+---
+Claire: Right, shall we start? I think we're recording. Or maybe we're not recording. Either way, let's start.
+Bob: I can see the red light.
+Sarah: That's your microphone.
+Bob: Ah.
+Claire: Okay. Project Banana Falcon. First item is the dashboard.
+Mike: Which dashboard?
+Claire: Exactly.
+Sarah: We currently have three dashboards. One is live, one is almost live, and one is theoretically live.
+Bob: The theoretical one is my favourite.
+Claire: Action there, somebody needs to work out which dashboard we're actually talking about.
+Sarah: I can do that.
+Claire: Great.
+Mike: Before we move on, the server restarted itself on Thursday.
+Bob: Was that planned?
+Mike: No.
+Bob: Good.
+Sarah: Why is that good?
+Bob: Because if it was planned we'd have forgotten about it.
+Claire: Right. So server restart, needs investigation.
+Mike: I'll take that.
+Claire: Any deadline?
+Mike: Before it happens again.
+Sarah: That's not a date.
+Mike: Friday then.
+Claire: Fine.
+Bob: Speaking of servers, has anyone seen the test environment?
+Sarah: It exists.
+Bob: Where?
+Sarah: Spiritually.
+Claire: Okay moving on.
+Mike: We still haven't decided whether we're calling the new feature "Smart Search", "Intelligent Search" or "Dave".
+Bob: I vote Dave.
+Sarah: Customers won't know what Dave means.
+Bob: Exactly, they'll ask questions.
+Claire: Let's park that. Decision deferred.
+Mike: Also the API is returning 17 where it should return 12.
+Claire: Why?
+Mike: Unknown.
+Bob: Is 17 wrong?
+Mike: Definitely.
+Bob: Good, otherwise we'd have a problem.
+Sarah: We already have a problem.
+Bob: Fair.
+Claire: Action for Mike to investigate API numbers.

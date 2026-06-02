@@ -1,0 +1,9 @@
+Incident bridge - payment export bug
+Maya 09:00 The payment export failed for three customers after the overnight batch.
+Liam 09:01 The root cause looks like a missing currency code in the new mapper.
+Maya 09:02 We need to patch the mapper and replay the failed exports.
+Liam 09:03 I'll patch the mapper.
+Maya 09:04 When can it be done?
+Liam 09:05 Today.
+Noah 09:06 I will notify customer success once the replay completes.
+Maya 09:07 Decision confirmed: we will keep the export disabled until the patch is verified.

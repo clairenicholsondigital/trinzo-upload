@@ -1,0 +1,8 @@
+Agenda: Internal platform decisions
+Alex: We need to choose the rollout approach for the billing portal.
+Priya: Option A is a single launch, but support will be overloaded.
+Tom: Option B is a phased launch by region and lets us monitor errors.
+Alex: Agreed, let's use the phased regional launch.
+Priya: We should keep the legacy portal read-only for four weeks.
+Tom: Agreed, four weeks gives customer success enough cover.
+Alex: Decision confirmed: phased regional launch and legacy portal read-only for four weeks.

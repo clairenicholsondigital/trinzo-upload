@@ -877,7 +877,7 @@ The complaints workflow still needs clearer triage rules before automation is sc
         cases = {
             "001_status_review": {"discussion": True, "actions": True, "decisions": True},
             "004_contract_renewal": {"discussion": True, "actions": False, "decisions": True},
-            "025_incident_response": {"discussion": True, "actions": False, "decisions": True},
+            "025_incident_response": {"discussion": True, "actions": True, "decisions": True},
             "013_low_substance_fallback": {"discussion": False, "actions": False, "decisions": False},
             "064_analytics_review": {"discussion": False, "actions": False, "decisions": False},
         }
@@ -919,6 +919,11 @@ The complaints workflow still needs clearer triage rules before automation is sc
                 self.assertEqual(bool(output.get("discussionPoints")), expectations["discussion"])
                 self.assertEqual(bool(output.get("meetingActionPoint")), expectations["actions"])
                 self.assertEqual(bool(output.get("decisions")), expectations["decisions"])
+
+                if fixture_name == "025_incident_response":
+                    self.assertEqual(output.get("meetingActionPoint"), ["Pull the API logs by 6pm."])
+                    self.assertEqual(output.get("meetingActionPointOwner"), ["Noah"])
+                    self.assertEqual(output.get("meetingActionPointDeadline"), ["By 6pm"])
 
                 if not any(expectations.values()):
                     self.assertFalse(output.get("meetingObjectives"), "weak/noisy meetings should not force objectives")

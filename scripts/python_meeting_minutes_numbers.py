@@ -70,6 +70,17 @@ HYPHEN_TURN_RE = re.compile(rf"^(?P<speaker>{SPEAKER_NAME_RE}){SPEAKER_SUFFIX_RE
 SPEAKER_ONLY_RE = re.compile(rf"^(?P<speaker>{SPEAKER_NAME_RE}){SPEAKER_SUFFIX_RE}$")
 TIMESTAMP_ONLY_RE = re.compile(rf"^(?P<timestamp>{TIMESTAMP_TOKEN_RE})$")
 METADATA_SPEAKERS = {"Date", "Location", "Online"}
+SECTION_HEADING_SPEAKERS = {
+    "Agenda",
+    "Attendees",
+    "Participants",
+    "Transcript",
+    "Meeting Transcript",
+    "Meeting transcript",
+    "Notes",
+    "Summary",
+}
+STRUCTURAL_LINE_RE = re.compile(r"^(?:[-–—_*#=]{2,}|(?:meeting\s+)?(?:participants|attendees|agenda|transcript|notes|summary)\s*:?)$", re.IGNORECASE)
 METADATA_RE = re.compile(
     r"(?:-meeting transcript$)|(?:^\d{1,2}\s+\w+\s+\d{4}(?:,\s*\d{1,2}:\d{2}(?:am|pm))?$)|(?:^\d+m\s+\d+s$)|(?:started transcription\.?$)|(?:stopped transcription\.?$)",
     re.IGNORECASE,
@@ -84,6 +95,7 @@ DEADLINE_RE = re.compile(
     r"this week|next week|next month|next sprint|"
     r"end of day|end of week|end of month|end of quarter|"
     r"eod|cob|cop|close of play|when available|"
+    r"(?:by|before)\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)|"
     r"before the webinar|before [A-Z][a-z]+|by [A-Z][a-z]+|"
     r"(?:by|before)\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:\s+(?:morning|afternoon|evening|noon|eod|cob|cop))?|"
     r"(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:\s+(?:morning|afternoon|evening|noon|eod|cob|cop))?"
@@ -149,6 +161,7 @@ REQUEST_CLOSURE_CUES = (
 )
 ACK_PREFIX_RE = re.compile(r"^(?:yes|yeah|yep|sure|okay|ok|fine|perfect|agreed|right)\b[\s,.-]*", re.IGNORECASE)
 DIRECT_ASSIGNMENT_RE = re.compile(r"^(?P<owner>[A-Z][A-Za-z]+(?: [A-Z][A-Za-z]+){0,2})\s+to\s+(?P<task>.+)$")
+ACTION_FOR_ASSIGNMENT_RE = re.compile(r"^action\s+for\s+(?P<owner>[A-Z][A-Za-z]+(?: [A-Z][A-Za-z]+){0,2})\s+to\s+(?P<task>.+)$", re.IGNORECASE)
 SELF_COMMITMENT_RE = re.compile(r"^(?:i['’]?ll|i will|i can)\s+(?P<task>.+)$", re.IGNORECASE)
 NAMED_COMMITMENT_RE = re.compile(
     rf"(?P<owner>{SPEAKER_NAME_RE})\s+(?:will|can)\s+(?P<task>.+?)"
@@ -175,6 +188,9 @@ LOW_VALUE_DISCUSSION_PATTERNS = LOW_VALUE_ACTION_PATTERNS + (
     "talk french",
     "do not talk french",
     "try not to vape",
+    "red light",
+    "microphone",
+    "recording light",
 )
 MICRO_ACTION_VERBS = {
     "put", "bring", "move", "drop", "copy", "paste", "insert", "place",
@@ -207,12 +223,13 @@ ACTION_VERBS = {
     "send", "review", "update", "check", "confirm", "draft", "prepare", "handle", "negotiate",
     "speak", "coordinate", "follow", "validate", "improve", "clarify", "refine", "tighten", "run",
     "complete", "share", "finalise", "finalize", "fix", "request", "reproduce", "capture",
-    "publish", "split", "investigate", "look", "own",
+    "publish", "split", "investigate", "look", "own", "pull", "collect", "fetch", "extract",
 }
 DISCUSSION_TERMS = {
     "risk", "issue", "option", "cost", "scope", "quality", "timing", "owner", "dependency", "review",
     "status", "renewal", "contract", "supplier", "pricing", "problem", "blocked", "complete", "green",
     "amber", "red", "timeline", "registration", "attendee", "budget", "finance", "legal",
+    "policy", "briefing", "guidance", "mileage", "threshold", "support", "overloaded", "api", "mapper",
 }
 NON_TOPIC_TERMS = {
     "green", "amber", "red", "blue", "complete", "blocked", "active", "review", "progress",
@@ -314,6 +331,7 @@ DECISION_PROPOSAL_RE = re.compile(
     r"^(?:so\s+|actually,\s+|actually\s+)?(?:(?:we|the team)\s+(?:will|would|should)|we['’]ll|let['’]?s)\s+(?P<proposal>.+)$",
     re.IGNORECASE,
 )
+DECISION_CONFIRMED_RE = re.compile(r"^(?:decision\s+)?(?:confirmed|agreed|decided)\s*:\s*(?P<proposal>.+)$", re.IGNORECASE)
 DECISION_SUPPORT_RE = re.compile(
     r"\b(?:agreed?|agree|makes sense|sensible|better|that works|right choice|keep the scope manageable|safer option|confirmed|good idea)\b",
     re.IGNORECASE,
@@ -717,6 +735,10 @@ def parse_numeric_turns(text: str) -> list[dict[str, str]]:
             if current and current.get("text"):
                 current["text"] += "\n"
             continue
+        if STRUCTURAL_LINE_RE.match(line):
+            flush_current()
+            action_block = False
+            continue
         if ACTION_HEADER_RE.match(line):
             flush_current()
             action_block = True
@@ -748,13 +770,14 @@ def parse_numeric_turns(text: str) -> list[dict[str, str]]:
             }
             continue
         if colon_match and not action_block:
-            if colon_match.group("speaker").strip() in METADATA_SPEAKERS:
+            speaker_label = colon_match.group("speaker").strip()
+            if speaker_label in METADATA_SPEAKERS or speaker_label in SECTION_HEADING_SPEAKERS:
                 flush_current()
                 current = None
                 continue
             flush_current()
             current = {
-                "speaker": colon_match.group("speaker").strip(),
+                "speaker": speaker_label,
                 "timestamp": "",
                 "text": colon_match.group("tail").strip(),
             }
@@ -763,7 +786,7 @@ def parse_numeric_turns(text: str) -> list[dict[str, str]]:
             speaker_only_match
             and not action_block
             and line not in METADATA_SPEAKERS
-            and current is None
+            and line not in SECTION_HEADING_SPEAKERS
         ):
             speaker_candidate = speaker_only_match.group("speaker").strip()
             speaker_tokens = tokenize(speaker_candidate)
@@ -1281,7 +1304,21 @@ def is_deadline_only_follow_up(text: str) -> bool:
     if not deadline:
         return False
     lowered = cleaned.lower()
-    return lowered == deadline.lower() or lowered in {f"by {deadline.lower()}", f"before {deadline.lower()}"}
+    deadline_lower = deadline.lower()
+    return lowered == deadline_lower or lowered in {
+        f"by {deadline_lower}",
+        f"before {deadline_lower}",
+        f"{deadline_lower} then",
+        f"by {deadline_lower} then",
+        f"before {deadline_lower} then",
+    }
+
+
+def strip_action_leadin(text: str) -> str:
+    cleaned = normalize_text_fragment(text)
+    cleaned = re.sub(r"^action\s+(?:there|item)?\s*,?\s*", "", cleaned, flags=re.IGNORECASE).strip()
+    cleaned = re.sub(r"^(?:somebody|someone)\s+needs\s+to\s+", "", cleaned, flags=re.IGNORECASE).strip()
+    return cleaned
 
 
 def strip_ack_prefix(text: str) -> str:
@@ -1375,6 +1412,19 @@ def extract_action_context(text: str) -> dict[str, str] | None:
             "source_text": cleaned,
         }
 
+    match = ACTION_FOR_ASSIGNMENT_RE.match(cleaned)
+    if match:
+        task = match.group("task").strip()
+        if is_low_value_action_task(task):
+            return None
+        return {
+            "kind": "assignment",
+            "action": normalize_action_text(task),
+            "owner": match.group("owner").strip(),
+            "deadline": extract_deadline_text(task),
+            "source_text": cleaned,
+        }
+
     match = REQUEST_RE.match(cleaned)
     if match:
         task = match.group("task").strip().rstrip("?")
@@ -1405,7 +1455,7 @@ def extract_action_context(text: str) -> dict[str, str] | None:
 
     match = RESPONSIBILITY_RE.match(cleaned)
     if match:
-        task = match.group("task").strip().rstrip("?")
+        task = strip_action_leadin(match.group("task").strip().rstrip("?"))
         if is_low_value_action_task(task):
             return None
         return {
@@ -1438,10 +1488,22 @@ def extract_issue_action_context(text: str) -> dict[str, str] | None:
     if " needs " not in lowered:
         return None
     subject, detail = re.split(r"\bneeds\b", cleaned, maxsplit=1, flags=re.IGNORECASE)
-    subject = normalize_text_fragment(subject)
-    detail = normalize_text_fragment(detail)
+    subject = strip_action_leadin(subject).strip(" ,;:-")
+    detail = normalize_text_fragment(detail).strip(" ,;:-")
     if not subject or not detail or is_low_value_action_task(subject):
         return None
+    if subject.lower() in {"somebody", "someone", "the team"} and detail.lower().startswith("to "):
+        task = detail[3:].strip()
+        if is_low_value_action_task(task):
+            return None
+        return {
+            "kind": "responsibility",
+            "action": normalize_action_text(task),
+            "owner": "Owner not specified",
+            "deadline": extract_deadline_text(cleaned),
+            "source_text": cleaned,
+            "emit_unresolved": False,
+        }
     additive_issue = bool(re.search(r"\balso\b", subject, flags=re.IGNORECASE)) or detail.lower().startswith(
         ("the new ", "new ", "updated ", "revised ")
     )
@@ -1649,7 +1711,7 @@ def inherited_thread_priority(thread: dict[str, Any], index: int) -> tuple[float
         "request": 5.0,
         "ownership": 4.0,
         "responsibility": 3.0,
-        "issue": 2.0,
+        "issue": 3.6,
     }.get(thread["kind"], 0.0)
     gap = index - thread["openedAt"]
     score = kind_weight - gap * 0.18
@@ -1672,7 +1734,8 @@ def select_inherited_thread_for_generic_commitment(
     candidates = [
         thread
         for thread in threads
-        if thread["kind"] in {"request", "ownership", "responsibility"}
+        if thread["kind"] in {"request", "ownership", "responsibility", "issue"}
+        and (thread["kind"] != "issue" or thread.get("emit_unresolved"))
         and thread_can_accept_follow_up(thread, index)
         and index - thread["openedAt"] <= 4
     ]
@@ -1711,6 +1774,23 @@ def select_inherited_thread_for_generic_commitment(
     if best_score == second_score and best_opened_at > second_opened_at:
         return best_thread
     return None
+
+
+def find_nearby_deadline_follow_up(turns: list[dict[str, str]], index: int, speaker: str, max_gap: int = 4) -> str:
+    for next_turn in turns[index + 1 : index + 1 + max_gap]:
+        text = normalize_text_fragment(next_turn.get("text", ""))
+        if not text:
+            continue
+        if next_turn.get("speaker") == speaker and is_deadline_only_follow_up(text):
+            deadline = extract_deadline_text(text)
+            if deadline:
+                return deadline
+        lowered = text.lower().rstrip(".?!")
+        if lowered in LOW_CONTENT_PHRASES or lowered in {"any deadline", "when", "by when"}:
+            continue
+        if next_turn.get("speaker") != speaker:
+            continue
+    return ""
 
 
 def select_matching_action_thread(
@@ -1879,10 +1959,8 @@ def extract_conversational_actions(turns: list[dict[str, str]]) -> tuple[
             inherited_thread = select_inherited_thread_for_generic_commitment(threads, index)
             if inherited_thread:
                 inherited_deadline = extract_deadline_text(turn["text"]) or inherited_thread["deadline"]
-                if not inherited_deadline and index + 1 < len(turns):
-                    next_turn = turns[index + 1]
-                    if next_turn["speaker"] == turn["speaker"] and is_deadline_only_follow_up(next_turn["text"]):
-                        inherited_deadline = extract_deadline_text(next_turn["text"])
+                if not inherited_deadline:
+                    inherited_deadline = find_nearby_deadline_follow_up(turns, index, turn["speaker"])
                 explicit_commitment = (
                     inherited_thread["action"],
                     turn["speaker"],
@@ -2252,6 +2330,9 @@ def extract_decision_proposal(text: str) -> str | None:
         return None
     if is_meeting_navigation_proposal(cleaned) and not has_durable_decision_commitment(cleaned):
         return None
+    confirmed_match = DECISION_CONFIRMED_RE.match(cleaned)
+    if confirmed_match:
+        return normalize_text_fragment(confirmed_match.group("proposal")).rstrip(".!?")
     match = DECISION_PROPOSAL_RE.match(cleaned)
     proposal = normalize_text_fragment(match.group("proposal")).rstrip(".!?") if match else ""
     if not proposal:
@@ -2334,6 +2415,7 @@ def build_decision_candidates(turns: list[dict[str, str]]) -> list[dict[str, Any
         proposal = explicit_proposal or implicit_proposal
         if not proposal:
             continue
+        direct_confirmed = bool(DECISION_CONFIRMED_RE.match(strip_ack_prefix(turn["text"]).rstrip(".!?")))
         implicit_bonus = 0.1 if implicit_proposal else 0.0
         support_score, support_evidence = decision_support_score(turns, index, proposal)
         contradiction_score, contradiction_evidence = decision_contradiction_score(turns, index)
@@ -2345,7 +2427,7 @@ def build_decision_candidates(turns: list[dict[str, str]]) -> list[dict[str, Any
         comparison_score = round(min(1.0, 0.22 * len(DECISION_COMPARISON_RE.findall(proposal))), 2)
         proposal_score = round(min(1.0, 0.45 + 0.04 * len(tokenize(proposal))), 2)
         recency_score = round((index + 1) / total_turns * 0.18, 2)
-        if acceptance_score < 0.3 and support_score < (0.2 if implicit_proposal else 0.25):
+        if not direct_confirmed and acceptance_score < 0.3 and support_score < (0.2 if implicit_proposal else 0.25):
             continue
         final_score = round(
             proposal_score
@@ -2354,6 +2436,7 @@ def build_decision_candidates(turns: list[dict[str, str]]) -> list[dict[str, Any
             + comparison_score * 0.28
             + recency_score
             + implicit_bonus
+            + (0.22 if direct_confirmed else 0.0)
             - contradiction_score * 0.7,
             2,
         )
@@ -4661,6 +4744,95 @@ def append_unique_action(actions: list[dict[str, Any]], action: dict[str, Any]) 
         actions.append(action)
 
 
+def discussion_point_from_action(action_text: str) -> str:
+    cleaned = normalize_text_fragment(action_text).rstrip(".?!")
+    lowered = cleaned.lower()
+    if not cleaned or contains_noise_or_banter(cleaned) or is_generic_weak_action_text(cleaned):
+        return ""
+    if lowered.startswith("investigate "):
+        subject = cleaned[len("investigate ") :].strip()
+        return finalize_sentence(f"{subject[:1].upper() + subject[1:]} needs investigation")
+    if lowered.startswith("review "):
+        subject = cleaned[len("review ") :].strip()
+        return finalize_sentence(f"{subject[:1].upper() + subject[1:]} needs review")
+    if lowered.startswith("validate "):
+        subject = cleaned[len("validate ") :].strip()
+        return finalize_sentence(f"{subject[:1].upper() + subject[1:]} needs validation")
+    if lowered.startswith(("work out ", "clarify ")):
+        subject = re.sub(r"^(?:work out|clarify)\s+", "", cleaned, flags=re.IGNORECASE).strip()
+        if subject:
+            return finalize_sentence(f"The team needs to clarify {subject}")
+    return ""
+
+
+def reinforce_discussion_with_actions(discussion_points: list[str], structured_actions: list[dict[str, Any]]) -> list[str]:
+    final_points = list(discussion_points)
+    for action in structured_actions:
+        point = discussion_point_from_action(action.get("meetingActionPoint", ""))
+        if not point:
+            continue
+        if any(discussion_similarity(point, existing) >= 0.62 for existing in final_points):
+            continue
+        append_unique_text(final_points, point)
+    return final_points
+
+
+def reinforce_discussion_with_substantive_turns(turns: list[dict[str, str]], discussion_points: list[str], limit: int = 4) -> list[str]:
+    final_points = list(discussion_points)
+    markers = (
+        "at risk", "blocked", "overloaded", "failed", "missing", "pending", "issue", "problem",
+        "policy", "briefing", "guidance", "threshold", "mileage", "approval", "root cause",
+    )
+    for turn in turns:
+        for sentence in split_sentences(turn.get("text", "")):
+            cleaned = normalize_text_fragment(sentence).rstrip(".")
+            lowered = cleaned.lower()
+            if len(final_points) >= limit:
+                return final_points
+            if not cleaned or len(tokenize(cleaned)) < 5:
+                continue
+            if contains_noise_or_banter(cleaned) or is_action_like_sentence(cleaned) or QUESTION_RE.search(cleaned):
+                continue
+            if not any(marker in lowered for marker in markers):
+                continue
+            if any(discussion_similarity(cleaned, existing) >= 0.55 for existing in final_points):
+                continue
+            append_unique_text(final_points, finalize_sentence(cleaned))
+    return final_points
+
+
+def filter_visible_discussion_points(points: list[str]) -> list[str]:
+    final_points: list[str] = []
+    for point in points:
+        cleaned = normalize_text_fragment(point)
+        lowered = cleaned.lower()
+        if not cleaned:
+            continue
+        if contains_noise_or_banter(cleaned):
+            continue
+        if is_action_like_sentence(cleaned) and not is_decision_like_discussion(cleaned):
+            continue
+        if lowered.startswith(("action for ", "action there", "action item")):
+            continue
+        append_unique_text(final_points, finalize_sentence(cleaned.rstrip(".")))
+    return final_points
+
+
+def enrich_action_deadlines_from_followups(actions: list[dict[str, Any]], turns: list[dict[str, str]]) -> None:
+    for action in actions:
+        if normalize_text_fragment(action.get("meetingActionPointDeadline", "")):
+            continue
+        owner = normalize_text_fragment(action.get("meetingActionPointOwner", ""))
+        if not owner or owner == "Owner not specified":
+            continue
+        evidence = action.get("_evidence", []) or []
+        indices = [ref.get("turnIndex") for ref in evidence if isinstance(ref.get("turnIndex"), int)]
+        if not indices:
+            continue
+        deadline = find_nearby_deadline_follow_up(turns, max(indices), owner, max_gap=4)
+        if deadline:
+            action["meetingActionPointDeadline"] = deadline
+
 
 
 def normalize_public_status_discussion_points(points: list[str]) -> list[str]:
@@ -5215,6 +5387,7 @@ def analyse(text: str) -> dict[str, Any]:
         }
         for action, owner, deadline, confidence, evidence in deduped_actions.values()
     ]
+    enrich_action_deadlines_from_followups(structured_actions, turns)
     abstained_actions: list[dict[str, Any]] = []
     retained_actions: list[dict[str, Any]] = []
     for item in structured_actions:
@@ -5471,6 +5644,37 @@ def analyse(text: str) -> dict[str, Any]:
             decisions,
             structured_actions,
         )
+
+    reinforced_discussion_points = filter_visible_discussion_points(
+        reinforce_discussion_with_substantive_turns(
+            turns,
+            reinforce_discussion_with_actions(discussion_points, structured_actions),
+            limit=(10 if structured_status_review else 6),
+        )
+    )
+    if reinforced_discussion_points != discussion_points:
+        existing_debug_by_key = {normalize_discussion_key(item.get("discussionPoint", "")): item for item in final_discussion_debug}
+        rebuilt_debug: list[dict[str, Any]] = []
+        for point in reinforced_discussion_points:
+            key = normalize_discussion_key(point)
+            if key in existing_debug_by_key:
+                rebuilt_debug.append(existing_debug_by_key[key])
+                continue
+            rebuilt_debug.append(
+                {
+                    "discussionPoint": point,
+                    "sourceType": "actionContextSummary",
+                    "earliestSupportingTimestamp": None,
+                    "selectedReason": "action_context_reinforcement",
+                    "cleanedCandidateSentences": [],
+                    "representativeSentence": point,
+                    "sourceTurnIndices": [],
+                    "_evidence": [],
+                    "evidenceScore": 0.64,
+                }
+            )
+        discussion_points = reinforced_discussion_points
+        final_discussion_debug = rebuilt_debug
 
     if not discussion_points and not decisions and not structured_actions:
         executive_summary = "No substantive meeting content, decisions, or actions were identified."

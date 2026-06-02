@@ -815,6 +815,12 @@ def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBacke
     outputs = []
     records = list(intermediate.get("records", []))
 
+    def canonical_action_dedupe_key(text: str) -> str:
+        """Collapse owner-prefixed assignments onto the underlying task for duplicate checks."""
+        cleaned = normalize_action_candidate_text(text)
+        cleaned = re.sub(r"^[A-Z][A-Za-z]+(?: [A-Z][A-Za-z]+){0,2}\s+to\s+", "", cleaned)
+        return normalized_key(cleaned)
+
     def infer_followup_owner_deadline(action_text: str, source_text: str = "") -> tuple[str, str]:
         action_tokens = {token for token in canonicalize_tokens(tokenize(action_text)) if token not in GENERIC_STATUS_TERMS}
         source_tokens = {token for token in canonicalize_tokens(tokenize(source_text)) if token not in GENERIC_STATUS_TERMS}
@@ -873,8 +879,8 @@ def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBacke
                 "roleScores": {},
             }
         )
-    seen = {normalized_key(item["text"]) for item in outputs if item.get("text")}
-    action_lead_pattern = re.compile(r"^(review|confirm|draft|follow up|investigate|validate|prepare|update|share|send|complete|finalise|refine)\b", re.I)
+    seen = {canonical_action_dedupe_key(item["text"]) for item in outputs if item.get("text")}
+    action_lead_pattern = re.compile(r"^(review|confirm|draft|follow up|investigate|validate|prepare|update|share|send|complete|finalise|refine|pull|collect|fetch|extract)\b", re.I)
     for record in records:
         text = normalize_text_fragment(record.get("text", ""))
         if not text:
@@ -891,7 +897,7 @@ def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBacke
             continue
         if is_context_dependent_fragment(text) or contains_noise_or_banter(text) or len(tokenize(text)) < 3:
             continue
-        key = normalized_key(text)
+        key = canonical_action_dedupe_key(text)
         if key in seen:
             continue
         outputs.append(
@@ -1487,8 +1493,8 @@ def is_low_value_coordination_action(text: str) -> bool:
 
 CONCRETE_ACTION_VERBS = {
     "add", "agree", "amend", "book", "build", "check", "circulate", "complete", "confirm", "create",
-    "develop", "double", "draft", "finalise", "follow", "investigate", "prepare", "reduce", "refine",
-    "review", "send", "share", "simplify", "update", "validate",
+    "develop", "double", "draft", "finalise", "follow", "investigate", "prepare", "pull", "reduce", "refine",
+    "review", "send", "share", "simplify", "update", "validate", "collect", "fetch", "extract",
 }
 
 
@@ -2020,7 +2026,7 @@ def should_accept_action_candidate(candidate: dict[str, Any]) -> tuple[bool, str
     semantic_source = candidate.get("source") == "semantic_action_fallback"
     if not (
         is_action_like_sentence(text)
-        or re.match(r"^(review|confirm|draft|follow up|investigate|validate|prepare|update|share|send|complete|finalise|refine)\b", text, re.I)
+        or re.match(r"^(review|confirm|draft|follow up|investigate|validate|prepare|update|share|send|complete|finalise|refine|pull|collect|fetch|extract)\b", text, re.I)
         or semantic_source
     ):
         return False, "not_action_like"

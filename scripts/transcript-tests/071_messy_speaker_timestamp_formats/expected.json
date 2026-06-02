@@ -1,0 +1,7 @@
+{
+  "expectedParticipants": ["Claire", "Ravi", "Eleanor"],
+  "mustContainActions": [{"text": "request the insurance certificate", "owner": "Ravi", "deadline": "Friday"}],
+  "mustContainDecisions": ["finance approval"],
+  "mustContainDiscussionTopics": [["due diligence", "insurance"], ["finance", "pending"]],
+  "mustNotContain": ["Attendees"]
+}

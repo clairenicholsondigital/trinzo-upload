@@ -1,0 +1,16 @@
+{
+  "participants": {"client": ["Claire", "Bob", "Sarah", "Mike"], "trinzo": []},
+  "expectedActionCountMin": 3,
+  "mustContainActions": [
+    {"text": "work out which dashboard", "owner": "Sarah"},
+    {"text": "investigate server restart", "owner": "Mike", "deadline": "Friday"},
+    {"text": "investigate API numbers", "owner": "Mike"}
+  ],
+  "mustContainDiscussionTopics": [
+    ["dashboard"],
+    ["server", "restart"],
+    ["feature", "Smart Search"],
+    ["API", "17", "12"]
+  ],
+  "mustNotContain": ["Participants", "red light", "microphone", "Spiritually", "I vote Dave"]
+}
