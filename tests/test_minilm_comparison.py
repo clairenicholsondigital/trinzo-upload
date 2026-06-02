@@ -4,6 +4,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -863,6 +864,68 @@ The complaints workflow still needs clearer triage rules before automation is sc
         self.assertEqual(rewritten["actions"][0]["meetingActionPoint"], "Formal action: refine the webinar slides.")
         self.assertGreaterEqual(len(diagnostics["rewriteEdits"]), 3)
         self.assertGreaterEqual(diagnostics["rewriteRuntimeMs"], 0.0)
+
+    def test_varied_meeting_fixtures_prioritise_reliability_and_abstention(self):
+        """Guard against overfitting to one webinar transcript.
+
+        These cases cover status review, contract decision, incident response,
+        weak/noisy meeting text, and another unsupported format. The core rule is
+        that the extractor should return useful minutes when semantic evidence is
+        strong, and sparse/empty minutes rather than bad invented content when it
+        is weak.
+        """
+        cases = {
+            "001_status_review": {"discussion": True, "actions": True, "decisions": True},
+            "004_contract_renewal": {"discussion": True, "actions": False, "decisions": True},
+            "025_incident_response": {"discussion": True, "actions": False, "decisions": True},
+            "013_low_substance_fallback": {"discussion": False, "actions": False, "decisions": False},
+            "064_analytics_review": {"discussion": False, "actions": False, "decisions": False},
+        }
+        forbidden_fragments = (
+            "hey there",
+            "i don't mind",
+            "and i'm easy",
+            "so is it repetitive",
+            "go through this side",
+            "person who paid for it",
+        )
+
+        start = time.perf_counter()
+        for fixture_name, expectations in cases.items():
+            with self.subTest(fixture=fixture_name):
+                transcript = (ROOT / "scripts" / "transcript-tests" / fixture_name / "transcript.txt").read_text(encoding="utf-8")
+                intermediate = collect_minilm_only_context(transcript)
+                output, diagnostics = build_minilm_only_output(transcript, intermediate, FakeMiniLMBackend())
+
+                self.assertIsNotNone(output)
+                visible_blob = json.dumps(
+                    {
+                        "meetingObjectives": output.get("meetingObjectives", []),
+                        "discussionPoints": output.get("discussionPoints", []),
+                        "decisions": output.get("decisions", []),
+                        "meetingActionPoint": output.get("meetingActionPoint", []),
+                    },
+                    ensure_ascii=False,
+                ).lower()
+                for fragment in forbidden_fragments:
+                    self.assertNotIn(fragment, visible_blob)
+
+                self.assertLessEqual(len(output.get("discussionPoints", [])), 8)
+                self.assertLessEqual(len(output.get("meetingActionPoint", [])), 6)
+                self.assertLessEqual(len(output.get("meetingObjectives", [])), 2)
+                for objective in output.get("meetingObjectives", []):
+                    self.assertLessEqual(len(objective.split()), 28)
+
+                self.assertEqual(bool(output.get("discussionPoints")), expectations["discussion"])
+                self.assertEqual(bool(output.get("meetingActionPoint")), expectations["actions"])
+                self.assertEqual(bool(output.get("decisions")), expectations["decisions"])
+
+                if not any(expectations.values()):
+                    self.assertFalse(output.get("meetingObjectives"), "weak/noisy meetings should not force objectives")
+                    self.assertFalse(any(item.get("accepted") for item in diagnostics.get("discussionClusters", [])))
+
+        elapsed = time.perf_counter() - start
+        self.assertLess(elapsed, 5.0, "first-pass semantic selection should stay fast for small fixture batches")
 
 
 if __name__ == "__main__":

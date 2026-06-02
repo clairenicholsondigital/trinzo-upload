@@ -23,6 +23,15 @@ Open `http://localhost:3978`.
 4. Review/edit meeting minutes fields in UI.
 5. Finalise by sending approved JSON to your Power Automate webhook via `POST /api/agent/finalise`.
 
+## Meeting-minutes quality priorities
+For `/meeting-minutes-final/`, optimise in this order:
+
+1. **Versatility and reliability across meeting types/formats.** Prefer sparse or empty output when semantic evidence is weak; do not force objectives, actions, or discussion points from chatter, transcript noise, or unsupported meeting formats.
+2. **Speed.** Keep first-pass MiniLM candidate selection fast and aim for end-to-end generation under 30 seconds where practical.
+3. **Clean UK business English.** Use Qwen/local LLM rewriting for grammar and tone, while preserving only evidenced content.
+
+Regression coverage should use varied transcript fixtures rather than only the webinar rehearsal example, and should favour semantic confidence/abstention over transcript-specific phrase patches.
+
 ## Power Automate requirement
 The finalisation endpoint posts approved meeting minutes JSON directly to `POWER_AUTOMATE_WEBHOOK_URL` (HTTP trigger flow).
 
