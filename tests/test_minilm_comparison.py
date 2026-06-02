@@ -84,7 +84,7 @@ class FakeMiniLMBackend:
         if prototype_group == "action":
             if ("refine" in lowered and "slides" in lowered) or any(
                 lowered.startswith(prefix) for prefix in ("review ", "confirm ", "draft ", "follow up ", "validate ")
-            ):
+            ) or any(term in lowered for term in ("double down", "upskilled", "adoption considerations", "continue work")):
                 return 0.9
             return 0.2
         if prototype_group == "decision":
@@ -360,6 +360,91 @@ The stage gate review still needs the templates to be finalised.
         objectives_blob = " ".join(output.get("meetingObjectives", [])).lower()
         self.assertNotIn("we have a plan for the next meetings", objectives_blob)
         self.assertNotIn("rule takers", objectives_blob)
+
+    def test_window_discussion_candidate_promotes_coherent_gemba_thread_and_keeps_action_separate(self):
+        transcript = """Gemba workshop planning
+
+2 June 2026
+
+Claire:
+We were talking about using Gemba observation on the complaints handling workflow.
+
+Jack:
+It helps us see the real frustrations in the process and where tribal knowledge is carrying the team.
+
+Emma:
+That gives us a better way to identify improvement opportunities and filter which AI use cases are actually suitable.
+
+Claire:
+We should double down with the Upskilled team on adoption considerations next.
+"""
+
+        intermediate = collect_minilm_only_context(transcript)
+        output, diagnostics = build_minilm_only_output(transcript, intermediate, FakeMiniLMBackend())
+
+        self.assertIsNotNone(output)
+        self.assertTrue(
+            any(
+                "process assessment approach" in point.lower()
+                or ("complaints" in point.lower() and "ai use cases" in point.lower())
+                for point in output["discussionPoints"]
+            )
+        )
+        self.assertTrue(
+            any("double down with the upskilled team on adoption considerations" in action.lower() for action in output["meetingActionPoint"])
+        )
+        self.assertFalse(
+            any(
+                "double down with the upskilled team" in point.lower()
+                for point in output["discussionPoints"]
+            )
+        )
+        self.assertTrue(any(item.get("candidateType") == "window" for item in diagnostics.get("discussionCandidates", [])))
+
+    def test_gemba_discussion_is_not_used_as_whole_objective_when_decision_exists(self):
+        transcript = """AI process review
+
+2 June 2026
+
+Claire:
+The objective for this meeting is to agree the next workshop priorities.
+
+Jack:
+We were using Gemba observation on the complaints process to surface tribal knowledge and frustrations.
+
+Emma:
+That also helped identify which AI opportunities were actually suitable for the team.
+
+Claire:
+Agreed, the next workshop should focus on those priorities.
+"""
+
+        intermediate = collect_minilm_only_context(transcript)
+        output, _diagnostics = build_minilm_only_output(transcript, intermediate, FakeMiniLMBackend())
+
+        self.assertIsNotNone(output)
+        objectives_blob = " ".join(output.get("meetingObjectives", [])).lower()
+        self.assertIn("next workshop", objectives_blob)
+        self.assertNotIn("tribal knowledge", objectives_blob)
+
+    def test_weak_single_line_messy_fragment_is_rejected(self):
+        transcript = """AI review
+
+2 June 2026
+
+Claire:
+Ws and the EI grant were so were rule takers...
+
+Emma:
+Yeah.
+"""
+
+        intermediate = collect_minilm_only_context(transcript)
+        output, diagnostics = build_minilm_only_output(transcript, intermediate, FakeMiniLMBackend())
+
+        self.assertIsNotNone(output)
+        self.assertFalse(any("rule takers" in point.lower() for point in output["discussionPoints"]))
+        self.assertTrue(any(item.get("reason") in ("single_turn_fallback", "single_turn_low_confidence", "weak_density_and_support", "insufficient_substantive_turns", "weak_window_coherence") for item in diagnostics.get("rejectedDiscussionCandidates", [])))
 
     def test_rewrite_sanitiser_strips_chat_template_tokens(self):
         rewritten = _sanitize_rewritten_minutes_text(

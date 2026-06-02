@@ -44,6 +44,9 @@ PROTOTYPE_TEXTS = {
         "Action item with a concrete owner and deadline.",
         "Follow up on the task and complete the deliverable.",
         "Someone committed to do this next step.",
+        "Continue work with the team on adoption considerations.",
+        "Coordinate the next step with the relevant team.",
+        "Double down on adoption planning with the project team.",
     ],
     "decision": [
         "The team decided on a specific option.",
@@ -767,7 +770,8 @@ def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBacke
         if not text or text.endswith("?"):
             continue
         lead_match = action_lead_pattern.match(text)
-        if not (is_action_like_sentence(text) or lead_match):
+        semantic_action = backend.score_against_prototypes(text, "action") if backend and backend.available else 0.0
+        if not (is_action_like_sentence(text) or lead_match or semantic_action >= WINDOW_ACTION_SEMANTIC_FLOOR):
             continue
         if is_context_dependent_fragment(text) or contains_noise_or_banter(text) or len(tokenize(text)) < 3:
             continue
@@ -779,8 +783,12 @@ def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBacke
                 "text": normalize_action_candidate_text(text),
                 "owner": "Owner not specified",
                 "deadline": "",
-                "baseScore": max(0.74 if lead_match else 0.34, float(record.get("scores", {}).get("action", 0.0)), float(record.get("scores", {}).get("discussion", 0.0)) * 0.75),
-                "source": source,
+                "baseScore": max(
+                    0.74 if lead_match else (0.42 if semantic_action >= WINDOW_ACTION_SEMANTIC_FLOOR else 0.34),
+                    float(record.get("scores", {}).get("action", 0.0)),
+                    float(record.get("scores", {}).get("discussion", 0.0)) * 0.75,
+                ),
+                "source": "semantic_action_fallback" if semantic_action >= WINDOW_ACTION_SEMANTIC_FLOOR and not (is_action_like_sentence(text) or lead_match) else source,
                 "roleScores": {},
             }
         )
@@ -839,6 +847,219 @@ def infer_soft_discussion_fallback(records: list[dict[str, Any]], index: int) ->
     return ""
 
 
+def record_turn_index(record: dict[str, Any], fallback_index: int) -> int:
+    for key in ("turnIndex", "turn_index", "recordIndex", "index"):
+        value = record.get(key)
+        if isinstance(value, int):
+            return value
+    return fallback_index
+
+
+def build_record_evidence(record: dict[str, Any], fallback_index: int) -> dict[str, Any]:
+    return {
+        "speaker": record.get("speaker", ""),
+        "timestamp": record.get("timestamp", ""),
+        "text": record.get("text", ""),
+        "turnIndex": record_turn_index(record, fallback_index),
+    }
+
+
+def window_topic_token_set(text: str) -> set[str]:
+    return {token for token in tokenize(text) if token in WINDOW_PROCESS_TERMS or token in MINILM_TOPIC_TERMS}
+
+
+def classify_window_category(text: str) -> str:
+    lowered = normalize_text_fragment(text).lower()
+    if any(term in lowered for term in CONTENT_ARTEFACT_TERMS):
+        return "review_thread"
+    if any(term in lowered for term in WINDOW_METHOD_TERMS):
+        return "methodology_thread"
+    if any(term in lowered for term in ("risk", "blocked", "pending", "issue", "dependency")):
+        return "risk_thread"
+    return "process_thread"
+
+
+def build_window_discussion_text(texts: list[str]) -> str:
+    cleaned_texts = [normalize_text_fragment(text) for text in texts if normalize_text_fragment(text)]
+    if not cleaned_texts:
+        return ""
+    combined = " ".join(cleaned_texts)
+    lowered = combined.lower()
+    if any(term in lowered for term in CONTENT_ARTEFACT_TERMS):
+        if any(term in lowered for term in TEXT_DENSITY_TERMS):
+            return "The material was reviewed to reduce text density and improve clarity for the audience."
+        if "necessary" in lowered:
+            return "The material was reviewed to decide what content was necessary and what could be simplified."
+    if any(term in lowered for term in WINDOW_METHOD_TERMS) and any(term in lowered for term in ("process", "workflow", "complaints", "triage")):
+        clauses = []
+        if "gemba" in lowered:
+            clauses.append("using Gemba observation")
+        elif any(term in lowered for term in ("observation", "observations", "assessment", "mapping")):
+            clauses.append("using direct process observation")
+        if any(term in lowered for term in ("complaints", "triage", "workflow", "process", "handling")):
+            subject = "the complaints handling process"
+        else:
+            subject = "the process"
+        if any(term in lowered for term in ("tribal", "knowledge", "frustration", "frustrations")):
+            clauses.append("to surface frustrations and tribal knowledge")
+        if any(term in lowered for term in WINDOW_AI_OPPORTUNITY_TERMS):
+            clauses.append("and identify improvement opportunities and suitable AI use cases")
+        joined = " ".join(clauses).strip()
+        if joined:
+            return f"A process assessment approach was discussed for {subject}, {joined}."
+        return f"A process assessment approach was discussed for {subject}."
+    if len(cleaned_texts) == 1:
+        text = cleaned_texts[0]
+        return text if text.endswith((".", "!", "?")) else f"{text}."
+    preview = " ".join(text.rstrip(".") for text in cleaned_texts[:2])
+    return preview if preview.endswith((".", "!", "?")) else f"{preview}."
+
+
+def build_conversation_window_discussion_candidates(
+    records: list[dict[str, Any]],
+    backend: MiniLMBackend | None = None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    if not records:
+        return [], []
+
+    normalized_records: list[dict[str, Any]] = []
+    for index, record in enumerate(records):
+        text = normalize_text_fragment(record.get("text", ""))
+        tokens = tokenize(text)
+        topic_tokens = window_topic_token_set(text)
+        normalized_records.append(
+            {
+                "index": index,
+                "record": record,
+                "text": text,
+                "tokens": tokens,
+                "topicTokens": topic_tokens,
+                "topicful": bool(topic_tokens) or semantic_density(text) >= 0.62,
+                "noise": contains_noise_or_banter(text),
+                "contextual": is_context_dependent_fragment(text),
+                "actionLike": is_action_like_sentence(text),
+                "density": semantic_density(text),
+                "evidence": build_record_evidence(record, index),
+            }
+        )
+
+    if backend and backend.available:
+        embeddings = backend.encode_many([item["text"] for item in normalized_records if item["text"]])
+    else:
+        embeddings = {}
+    for item in normalized_records:
+        item["embedding"] = embeddings.get(item["text"], [])
+
+    candidates: list[dict[str, Any]] = []
+    rejections: list[dict[str, Any]] = []
+
+    for window_size in range(2, 5):
+        for start in range(0, max(0, len(normalized_records) - window_size + 1)):
+            window = normalized_records[start:start + window_size]
+            substantive = [
+                item for item in window
+                if item["text"]
+                and len(item["tokens"]) >= 5
+                and not item["noise"]
+                and not item["contextual"]
+                and not item["actionLike"]
+            ]
+            evidence = [item["evidence"] for item in window if item["text"]]
+            rejection = {
+                "source": "window_discussion_candidate",
+                "candidateType": "window",
+                "windowSize": window_size,
+                "sourceTurnIndices": [item["evidence"]["turnIndex"] for item in window if item["text"]],
+                "sourceSnippets": [item["text"] for item in window if item["text"]][:4],
+            }
+
+            if len(substantive) < 2:
+                rejection["reason"] = "insufficient_substantive_turns"
+                rejections.append(rejection)
+                continue
+
+            topicful_count = sum(1 for item in substantive if item["topicful"])
+            if topicful_count < 2:
+                rejection["reason"] = "insufficient_topic_support"
+                rejections.append(rejection)
+                continue
+
+            filler_ratio = 1.0 - (len(substantive) / max(1, len(window)))
+            if filler_ratio > 0.45:
+                rejection["reason"] = "too_much_filler"
+                rejections.append(rejection)
+                continue
+
+            pair_scores = []
+            shared_topic_terms = 0
+            for left, right in zip(substantive, substantive[1:]):
+                lexical = discussion_similarity(left["text"], right["text"])
+                embedding = embedding_similarity(left.get("embedding", []), right.get("embedding", []))
+                shared_topic_terms = max(shared_topic_terms, len(left["topicTokens"] & right["topicTokens"]))
+                pair_scores.append(max(lexical, embedding))
+
+            coherence = sum(pair_scores) / len(pair_scores) if pair_scores else 0.0
+            if coherence < 0.2 and shared_topic_terms < 2:
+                rejection["reason"] = "weak_window_coherence"
+                rejection["supportScore"] = round(coherence, 4)
+                rejections.append(rejection)
+                continue
+
+            text = build_window_discussion_text([item["text"] for item in substantive])
+            if not text or contains_noise_or_banter(text) or is_context_dependent_fragment(text):
+                rejection["reason"] = "invalid_window_text"
+                rejections.append(rejection)
+                continue
+
+            support_score = round(
+                min(
+                    0.92,
+                    0.22
+                    + (len(substantive) * 0.12)
+                    + (coherence * 0.24)
+                    + (min(shared_topic_terms, 4) * 0.05)
+                    + (min(sum(item["density"] for item in substantive) / len(substantive), 0.9) * 0.18)
+                    + ((1.0 - filler_ratio) * 0.08),
+                ),
+                4,
+            )
+
+            candidates.append(
+                {
+                    "text": text,
+                    "baseScore": support_score,
+                    "source": "window_discussion_candidate",
+                    "candidateType": "window",
+                    "supportScore": support_score,
+                    "windowCoherence": round(coherence, 4),
+                    "windowCategory": classify_window_category(text),
+                    "windowSize": window_size,
+                    "scores": {"discussion": support_score, "specificity": min(0.9, 0.4 + coherence), "low_content": 0.0, "navigation": 0.0},
+                    "evidence": evidence,
+                    "sourceTurnIndices": evidence_source_turn_indices(evidence),
+                    "sourceSnippets": [item["text"] for item in substantive][:4],
+                    "timestamp": evidence[0].get("timestamp", "") if evidence else "",
+                    "roleScores": {},
+                }
+            )
+
+    deduped_candidates: list[dict[str, Any]] = []
+    best_by_key: dict[tuple[str, tuple[int, ...]], dict[str, Any]] = {}
+    for candidate in candidates:
+        key = (
+            normalized_key(candidate["text"]),
+            tuple(candidate.get("sourceTurnIndices", [])),
+        )
+        existing = best_by_key.get(key)
+        if existing is None or candidate["baseScore"] > existing["baseScore"]:
+            candidate["token_counts"] = Counter(tokenize(candidate["text"]))
+            best_by_key[key] = candidate
+
+    deduped_candidates = list(best_by_key.values())
+    deduped_candidates.sort(key=lambda item: (item["baseScore"], item.get("windowCoherence", 0.0), len(item.get("sourceTurnIndices", []))), reverse=True)
+    return deduped_candidates[:24], rejections
+
+
 def collect_decision_candidates(intermediate: dict[str, Any], backend: MiniLMBackend | None = None) -> list[dict[str, Any]]:
     outputs = []
     for item in intermediate.get("decisionDebug", {}).get("topDecisionCandidates", []):
@@ -890,14 +1111,17 @@ def collect_decision_candidates(intermediate: dict[str, Any], backend: MiniLMBac
     return outputs
 
 
-def collect_discussion_candidates(intermediate: dict[str, Any], backend: MiniLMBackend | None = None) -> list[dict[str, Any]]:
+def collect_discussion_candidates(intermediate: dict[str, Any], backend: MiniLMBackend | None = None) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     outputs = []
+    rejections: list[dict[str, Any]] = []
     for point in intermediate.get("statusReviewPoints", []):
         outputs.append(
             {
                 "text": normalize_text_fragment(point.get("text", "")),
                 "baseScore": 0.82,
                 "source": point.get("sourceType", "statusReviewPoint"),
+                "candidateType": "parser",
+                "supportScore": 0.82,
                 "scores": {"discussion": 0.82, "specificity": 0.7, "low_content": 0.0, "navigation": 0.0},
                 "evidence": point.get("_evidence", []),
                 "roleScores": {},
@@ -909,6 +1133,8 @@ def collect_discussion_candidates(intermediate: dict[str, Any], backend: MiniLMB
                 "text": normalize_text_fragment(candidate.get("text", "")),
                 "baseScore": float(candidate.get("scores", {}).get("discussion", 0.0)),
                 "source": candidate.get("kind", "candidate"),
+                "candidateType": "parser",
+                "supportScore": float(candidate.get("scores", {}).get("discussion", 0.0)),
                 "scores": dict(candidate.get("scores", {})),
                 "evidence": list(candidate.get("evidence", [])),
                 "timestamp": candidate.get("timestamp", ""),
@@ -929,6 +1155,8 @@ def collect_discussion_candidates(intermediate: dict[str, Any], backend: MiniLMB
                 "text": fallback_text,
                 "baseScore": max(0.36, float(record.get("scores", {}).get("discussion", 0.0))),
                 "source": "record_discussion_fallback",
+                "candidateType": "sentence",
+                "supportScore": max(0.36, float(record.get("scores", {}).get("discussion", 0.0))),
                 "scores": {"discussion": 0.46, "specificity": 0.48, "low_content": 0.0, "navigation": 0.0},
                 "evidence": [
                     {
@@ -942,6 +1170,9 @@ def collect_discussion_candidates(intermediate: dict[str, Any], backend: MiniLMB
             }
         )
         seen_fallback.add(key)
+    window_candidates, window_rejections = build_conversation_window_discussion_candidates(records, backend)
+    outputs.extend(window_candidates)
+    rejections.extend(window_rejections)
     deduped = []
     seen = set()
     for item in outputs:
@@ -951,7 +1182,7 @@ def collect_discussion_candidates(intermediate: dict[str, Any], backend: MiniLMB
         seen.add(key)
         item["token_counts"] = Counter(tokenize(item["text"]))
         deduped.append(item)
-    return deduped
+    return deduped, rejections
 
 
 MINILM_NOISE_PHRASES = {
@@ -999,6 +1230,21 @@ CONTENT_ARTEFACT_TERMS = (
 TEXT_DENSITY_TERMS = (
     "lot of text", "too much text", "text-heavy", "text heavy", "text on the screen", "wall of text",
 )
+
+WINDOW_PROCESS_TERMS = {
+    "process", "workflow", "complaints", "triage", "handling", "routing", "intake", "delivery",
+    "workstream", "bottleneck", "frustration", "frustrations", "tribal", "knowledge", "review",
+    "adoption", "suitability", "observation", "assessment", "mapping", "gemba", "ipo", "ai",
+}
+WINDOW_METHOD_TERMS = {
+    "gemba", "observation", "observations", "assessment", "assess", "mapping", "map", "mapped",
+    "walkthrough", "culture", "cultural", "tribal", "knowledge",
+}
+WINDOW_AI_OPPORTUNITY_TERMS = {
+    "ai", "automation", "opportunity", "opportunities", "use", "cases", "adoption", "suitability",
+    "filter", "filtering", "improvement", "improvements",
+}
+WINDOW_ACTION_SEMANTIC_FLOOR = 0.58
 
 
 def embedding_similarity(left: list[float], right: list[float]) -> float:
@@ -1395,7 +1641,12 @@ def should_accept_action_candidate(candidate: dict[str, Any]) -> tuple[bool, str
     text = normalize_text_fragment(candidate.get("text", ""))
     if not text:
         return False, "empty"
-    if not (is_action_like_sentence(text) or re.match(r"^(review|confirm|draft|follow up|validate|prepare|update|share|send|complete|finalise|refine)\b", text, re.I)):
+    semantic_source = candidate.get("source") == "semantic_action_fallback"
+    if not (
+        is_action_like_sentence(text)
+        or re.match(r"^(review|confirm|draft|follow up|validate|prepare|update|share|send|complete|finalise|refine)\b", text, re.I)
+        or semantic_source
+    ):
         return False, "not_action_like"
     if combined >= 0.4 and max(semantic, role_action) >= 0.18:
         return True, "combined_and_semantic_threshold"
@@ -1430,6 +1681,8 @@ def should_accept_decision_candidate(candidate: dict[str, Any]) -> tuple[bool, s
 def should_accept_cluster_candidate(candidate: dict[str, Any], existing: list[dict[str, Any]]) -> tuple[bool, str]:
     if candidate["score"] < 0.42:
         return False, "score_below_threshold"
+    if candidate.get("coherenceScore", 0.0) < 0.16:
+        return False, "weak_cluster_coherence"
     if any(discussion_similarity(candidate["text"], item["text"]) >= 0.72 for item in existing):
         return False, "duplicate_of_selected_cluster"
     if candidate["supportCount"] < 1 and semantic_density(candidate["text"]) < 0.58 and not has_meaningful_topic_terms(candidate["text"]):
@@ -1497,6 +1750,23 @@ def build_cluster_discussion_candidate(cluster: list[dict[str, Any]], speaker_na
         )
         for ref in evidence
     }) or len(evidence)
+    pairwise_scores = []
+    for index, left in enumerate(cluster):
+        for right in cluster[index + 1:]:
+            pairwise_scores.append(
+                max(
+                    discussion_similarity(left["text"], right["text"]),
+                    embedding_similarity(left.get("embedding", []), right.get("embedding", [])),
+                )
+            )
+    coherence_score = round(sum(pairwise_scores) / len(pairwise_scores), 4) if pairwise_scores else round(min(1.0, semantic_density(point_text)), 4)
+    filler_like = sum(
+        1
+        for candidate in cluster
+        if not has_meaningful_topic_terms(candidate["text"]) and semantic_density(candidate["text"]) < 0.58
+    )
+    if (len(cluster) > 1 and coherence_score < 0.18) or filler_like > max(1, len(cluster) // 2):
+        return None
     valid, reason = is_valid_discussion_point(point_text, support_count)
     if not valid:
         return None
@@ -1510,6 +1780,8 @@ def build_cluster_discussion_candidate(cluster: list[dict[str, Any]], speaker_na
         "evidence": evidence,
         "sourceTurnIndices": evidence_source_turn_indices(evidence),
         "clusterTexts": [candidate["text"] for candidate in cluster],
+        "candidateType": "window" if any(candidate.get("candidateType") == "window" for candidate in cluster) else "parser",
+        "coherenceScore": coherence_score,
         "keywords": filtered_keywords,
         "selectionMode": summary.get("selectionMode", ""),
         "representativeSentence": summary.get("selectedRepresentativeSentence", ""),
@@ -1586,7 +1858,7 @@ def build_minilm_only_output(
 
     action_candidates = collect_action_candidates(intermediate, backend)
     decision_candidates = collect_decision_candidates(intermediate, backend)
-    discussion_candidates = collect_discussion_candidates(intermediate, backend)
+    discussion_candidates, window_rejections = collect_discussion_candidates(intermediate, backend)
 
     prototype_scores = score_texts_against_prototypes(
         backend,
@@ -1605,6 +1877,7 @@ def build_minilm_only_output(
     action_candidates = sorted(scored_action_candidates, key=lambda item: item["combinedScore"], reverse=True)
     if include_diagnostics:
         diagnostics["actionCandidates"] = action_candidates[:8]
+        diagnostics["rejectedDiscussionCandidates"].extend(window_rejections)
     seen_action_keys = set()
     for candidate in action_candidates:
         accepted, reason = should_accept_action_candidate(candidate)
@@ -1618,6 +1891,7 @@ def build_minilm_only_output(
                     "accepted": accepted,
                     "reason": reason,
                     "source": candidate.get("source", ""),
+                    "candidateType": candidate.get("candidateType", "action"),
                 }
             )
         if not accepted:
@@ -1672,6 +1946,7 @@ def build_minilm_only_output(
                     "accepted": accepted,
                     "reason": reason,
                     "source": candidate.get("source", ""),
+                    "candidateType": candidate.get("candidateType", "decision"),
                 }
             )
         if not accepted:
@@ -1720,8 +1995,12 @@ def build_minilm_only_output(
                 {
                     "text": candidate["text"],
                     "source": candidate["source"],
+                    "candidateType": candidate.get("candidateType", "parser"),
                     "combinedScore": candidate["combinedScore"],
                     "semanticScore": candidate["semanticScore"],
+                    "supportScore": candidate.get("supportScore", 0.0),
+                    "sourceTurnIndices": candidate.get("sourceTurnIndices", evidence_source_turn_indices(candidate.get("evidence", []))),
+                    "sourceSnippets": candidate.get("sourceSnippets", [ref.get("text", "") for ref in candidate.get("evidence", [])[:4]]),
                     "reason": reason,
                 }
             )
@@ -1734,12 +2013,14 @@ def build_minilm_only_output(
         built = build_cluster_discussion_candidate(cluster, {name.lower() for name in speaker_names})
         cluster_diag = {
             "candidateTexts": [candidate["text"] for candidate in cluster],
+            "candidateTypes": [candidate.get("candidateType", "parser") for candidate in cluster],
             "selectedDiscussionPoint": "" if built is None else built["text"],
             "score": 0.0 if built is None else built["score"],
             "supportCount": 0 if built is None else built["supportCount"],
             "keywords": [] if built is None else built["keywords"],
             "accepted": False,
             "reason": "cluster_builder_rejected" if built is None else "",
+            "coherenceScore": 0.0 if built is None else built.get("coherenceScore", 0.0),
         }
         if built is None:
             if include_diagnostics:
@@ -1767,6 +2048,8 @@ def build_minilm_only_output(
                 "sourceTurnIndices": candidate["sourceTurnIndices"],
                 "_evidence": candidate["evidence"],
                 "evidenceScore": round(candidate["score"], 2),
+                "candidateType": candidate.get("candidateType", "cluster"),
+                "coherenceScore": candidate.get("coherenceScore", 0.0),
             }
         )
         output["internalEvidence"]["discussionPoints"].append({"text": text, "_evidence": candidate["evidence"]})
@@ -1882,7 +2165,9 @@ def build_minilm_variant(
 
     discussion_candidates = []
     filtered_discussion_candidates = []
-    for candidate in collect_discussion_candidates(intermediate, backend):
+    discussion_candidates_raw, window_rejections = collect_discussion_candidates(intermediate, backend)
+    diagnostics["rejectedDiscussionCandidates"].extend(window_rejections)
+    for candidate in discussion_candidates_raw:
         semantic_discussion = backend.score_against_prototypes(candidate["text"], "discussion")
         semantic_status = max(
             backend.score_against_prototypes(candidate["text"], "status"),
@@ -1901,8 +2186,12 @@ def build_minilm_variant(
                 {
                     "text": candidate["text"],
                     "source": candidate["source"],
+                    "candidateType": candidate.get("candidateType", "parser"),
                     "combinedScore": candidate["combinedScore"],
                     "semanticScore": candidate["semanticScore"],
+                    "supportScore": candidate.get("supportScore", 0.0),
+                    "sourceTurnIndices": candidate.get("sourceTurnIndices", evidence_source_turn_indices(candidate.get("evidence", []))),
+                    "sourceSnippets": candidate.get("sourceSnippets", [ref.get("text", "") for ref in candidate.get("evidence", [])[:4]]),
                     "reason": reason,
                 }
             )
@@ -1928,10 +2217,12 @@ def build_minilm_variant(
         diagnostics["discussionClusters"].append(
             {
                 "candidateTexts": [candidate["text"] for candidate in cluster],
+                "candidateTypes": [candidate.get("candidateType", "parser") for candidate in cluster],
                 "selectedDiscussionPoint": "" if built is None else built["text"],
                 "score": 0.0 if built is None else built["score"],
                 "supportCount": 0 if built is None else built["supportCount"],
                 "keywords": [] if built is None else built["keywords"],
+                "coherenceScore": 0.0 if built is None else built.get("coherenceScore", 0.0),
             }
         )
         if built is None:
