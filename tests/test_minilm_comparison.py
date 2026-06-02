@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT))
 
 from scripts.meeting_minutes_minilm_experiment import (
     LocalMinutesRewriter,
+    _sanitize_rewritten_minutes_text,
     build_minilm_only_output,
     build_minilm_variant,
     collect_experiment_context,
@@ -282,6 +283,13 @@ I'll refine the webinar slides.
         self.assertEqual(output["meetingActionPoint"], ["Formal action: Refine the webinar slides."])
         self.assertTrue(any(item["category"] == "action" and item["rewritten"] for item in diagnostics["rewriteEdits"]))
         self.assertGreaterEqual(diagnostics["rewriteRuntimeMs"], 0.0)
+
+    def test_rewrite_sanitiser_strips_chat_template_tokens(self):
+        rewritten = _sanitize_rewritten_minutes_text(
+            "Refine the webinar slides. <|user|> <|assistant|>",
+            "Refine the webinar slides.",
+        )
+        self.assertEqual(rewritten, "Refine the webinar slides.")
 
     def test_local_rewriter_can_use_remote_worker(self):
         class Handler(BaseHTTPRequestHandler):

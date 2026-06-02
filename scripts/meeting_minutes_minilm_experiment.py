@@ -292,7 +292,9 @@ class LocalMinutesRewriter:
 
         instruction = (
             "Rewrite the following extracted meeting-minutes item into concise, formal UK business English. "
-            "Keep the meaning unchanged. Remove filler, transcript phrasing, and awkward wording. "
+            "Keep the meaning unchanged. "
+            "Do not invent, infer, or add any facts, names, dates, owners, deadlines, decisions, or context not present in the source item. "
+            "Remove filler, transcript phrasing, awkward wording, and any chat-template tokens. "
             "Return one sentence only and no bullets or commentary."
         )
         if category == "action":
@@ -933,8 +935,12 @@ def _sanitize_rewritten_minutes_text(generated: str, fallback: str) -> str:
     cleaned = normalize_text_fragment(generated)
     if not cleaned:
         cleaned = normalize_text_fragment(fallback)
+    cleaned = re.sub(r"<\|(?:system|user|assistant|endoftext)\|>", " ", cleaned, flags=re.I)
     cleaned = re.sub(r"^(?:item:|rewrite:|discussion point:|action:|decision:)\s*", "", cleaned, flags=re.I)
     cleaned = cleaned.split("\n", 1)[0].strip().strip('"')
+    cleaned = re.split(r"\s*<\|(?:system|user|assistant|endoftext)\|>\s*", cleaned, maxsplit=1, flags=re.I)[0]
+    cleaned = re.split(r"\s*(?:system|user|assistant)\s*:\s*", cleaned, maxsplit=1, flags=re.I)[0]
+    cleaned = re.sub(r"\s+", " ", cleaned).strip().strip('"')
     if len(cleaned) < 8:
         cleaned = normalize_text_fragment(fallback)
     if cleaned and cleaned[:1].islower():
