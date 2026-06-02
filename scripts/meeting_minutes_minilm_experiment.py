@@ -896,17 +896,24 @@ def build_window_discussion_text(texts: list[str]) -> str:
             clauses.append("using Gemba observation")
         elif any(term in lowered for term in ("observation", "observations", "assessment", "mapping")):
             clauses.append("using direct process observation")
+        if any(term in lowered for term in ("culture", "cultural", "understanding")):
+            clauses.append("and cultural understanding")
         if any(term in lowered for term in ("complaints", "triage", "workflow", "process", "handling")):
             subject = "the complaints handling process"
         else:
             subject = "the process"
+        outcomes = []
         if any(term in lowered for term in ("tribal", "knowledge", "frustration", "frustrations")):
-            clauses.append("to surface frustrations and tribal knowledge")
+            outcomes.append("surface frustrations and tribal knowledge")
         if any(term in lowered for term in WINDOW_AI_OPPORTUNITY_TERMS):
-            clauses.append("and identify improvement opportunities and suitable AI use cases")
+            outcomes.append("identify improvement opportunities and suitable AI use cases")
         joined = " ".join(clauses).strip()
+        if joined and outcomes:
+            return f"A process assessment approach was discussed for {subject}, {joined}, to {', and '.join(outcomes)}."
         if joined:
             return f"A process assessment approach was discussed for {subject}, {joined}."
+        if outcomes:
+            return f"A process assessment approach was discussed for {subject} to {', and '.join(outcomes)}."
         return f"A process assessment approach was discussed for {subject}."
     if len(cleaned_texts) == 1:
         text = cleaned_texts[0]
@@ -1259,6 +1266,18 @@ COORDINATION_TOKENS = {
 SELF_REFERENTIAL_TOKENS = {
     "easy", "fine", "good", "happy", "here", "im", "me", "myself", "right", "okay", "ok",
 }
+GREETING_TOKENS = {
+    "afternoon", "everybody", "everyone", "evening", "hello", "hey", "hi", "morning", "there",
+}
+STYLE_GUIDANCE_TERMS = {
+    "content", "copy", "language", "messaging", "narrative", "salesfocused", "salesy", "screen",
+    "slides", "style", "text", "tone", "visuals", "wording",
+}
+OBJECTIVE_CUE_TERMS = {
+    "adoption", "agree", "aim", "assess", "assessment", "decide", "define", "discovery", "explore",
+    "focus", "goal", "identify", "improve", "objective", "plan", "priorities", "priority", "process",
+    "review", "scope", "strategy", "understand", "workflow", "workshop",
+}
 
 
 def embedding_similarity(left: list[float], right: list[float]) -> float:
@@ -1358,6 +1377,37 @@ def is_self_referential_conversational_fragment(text: str) -> bool:
     return True
 
 
+def is_social_greeting_fragment(text: str) -> bool:
+    tokens = canonicalize_tokens(tokenize(text))
+    if not tokens or len(tokens) > 6:
+        return False
+    if business_signal_count(text) > 0:
+        return False
+    greeting_hits = sum(1 for token in tokens if token in GREETING_TOKENS)
+    if greeting_hits < 1:
+        return False
+    if substantive_token_count(text) > 1:
+        return False
+    return True
+
+
+def is_style_or_tone_guidance(text: str) -> bool:
+    tokens = set(canonicalize_tokens(tokenize(text)))
+    return bool(tokens & STYLE_GUIDANCE_TERMS)
+
+
+def is_objective_candidate_text(text: str) -> bool:
+    cleaned = normalize_text_fragment(text)
+    if not cleaned or contains_noise_or_banter(cleaned) or is_context_dependent_fragment(cleaned):
+        return False
+    if is_style_or_tone_guidance(cleaned):
+        return False
+    tokens = set(canonicalize_tokens(tokenize(cleaned)))
+    if tokens & OBJECTIVE_CUE_TERMS:
+        return True
+    return business_signal_count(cleaned) >= 2 and semantic_density(cleaned) >= 0.6
+
+
 def is_context_dependent_fragment(text: str) -> bool:
     lowered = normalize_text_fragment(text).lower()
     if lowered in MINILM_FALLBACK_FILLERS:
@@ -1366,7 +1416,7 @@ def is_context_dependent_fragment(text: str) -> bool:
         return True
     if any(phrase in lowered for phrase in MINILM_NOISE_PHRASES):
         return True
-    if is_low_value_coordination_action(text) or is_self_referential_conversational_fragment(text):
+    if is_low_value_coordination_action(text) or is_self_referential_conversational_fragment(text) or is_social_greeting_fragment(text):
         return True
     if any(lowered.startswith(prefix) for prefix in MINILM_CONTEXTUAL_OPENERS) and not has_meaningful_topic_terms(text):
         return True
@@ -1643,6 +1693,8 @@ def derive_meeting_objectives(output: dict[str, Any]) -> list[str]:
         if len(tokenize(cleaned)) < 4:
             return
         if contains_noise_or_banter(cleaned) or is_context_dependent_fragment(cleaned):
+            return
+        if not is_objective_candidate_text(cleaned):
             return
         seen.add(key)
         objectives.append(cleaned)

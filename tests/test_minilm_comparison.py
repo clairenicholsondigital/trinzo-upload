@@ -334,6 +334,7 @@ Is all the content here necessary?
         self.assertTrue(
             any(item.get("source") == "record_decision_fallback" for item in diagnostics.get("decisionCandidates", []))
         )
+        self.assertFalse(any("sales-focused tone" in objective.lower() for objective in output.get("meetingObjectives", [])))
 
     def test_minilm_only_output_avoids_repeated_generic_objectives_from_weak_discussion(self):
         transcript = """Programme review
@@ -360,6 +361,26 @@ The stage gate review still needs the templates to be finalised.
         objectives_blob = " ".join(output.get("meetingObjectives", [])).lower()
         self.assertNotIn("we have a plan for the next meetings", objectives_blob)
         self.assertNotIn("rule takers", objectives_blob)
+
+    def test_greeting_fragment_is_rejected_from_discussion_output(self):
+        transcript = """Team sync
+
+2 June 2026
+
+Claire:
+Hey there.
+
+Emma:
+The workflow review is focused on identifying routing gaps before automation.
+"""
+
+        intermediate = collect_minilm_only_context(transcript)
+        output, diagnostics = build_minilm_only_output(transcript, intermediate, FakeMiniLMBackend())
+
+        self.assertIsNotNone(output)
+        discussion_blob = " ".join(output.get("discussionPoints", [])).lower()
+        self.assertNotIn("hey there", discussion_blob)
+        self.assertTrue(any(item.get("reason") == "context_dependent_fragment" or item.get("reason") == "too_short" for item in diagnostics.get("rejectedDiscussionCandidates", [])))
 
     def test_window_discussion_candidate_promotes_coherent_gemba_thread_and_keeps_action_separate(self):
         transcript = """Gemba workshop planning
@@ -400,6 +421,30 @@ We should double down with the Upskilled team on adoption considerations next.
             )
         )
         self.assertTrue(any(item.get("candidateType") == "window" for item in diagnostics.get("discussionCandidates", [])))
+
+    def test_window_discussion_candidate_captures_cultural_understanding_and_ai_opportunities(self):
+        transcript = """Process discovery
+
+2 June 2026
+
+Claire:
+Through a structured two-part cultural understanding approach, we can observe how the complaints process really works.
+
+Jack:
+That helps uncover hidden frustrations and tribal knowledge that do not always show up in process mapping.
+
+Emma:
+It also gives us a better way to identify which AI opportunities are actually suitable for implementation.
+"""
+
+        intermediate = collect_minilm_only_context(transcript)
+        output, _diagnostics = build_minilm_only_output(transcript, intermediate, FakeMiniLMBackend())
+
+        self.assertIsNotNone(output)
+        discussion_blob = " ".join(output.get("discussionPoints", [])).lower()
+        self.assertIn("cultural understanding", discussion_blob)
+        self.assertIn("tribal knowledge", discussion_blob)
+        self.assertIn("ai use cases", discussion_blob)
 
     def test_gemba_discussion_is_not_used_as_whole_objective_when_decision_exists(self):
         transcript = """AI process review
