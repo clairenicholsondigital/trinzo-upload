@@ -842,7 +842,7 @@ def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBacke
                 continue
             if owner and not deadline:
                 deadline_match = re.search(
-                    r"\b(?:today|tomorrow|friday|monday|tuesday|wednesday|thursday|saturday|sunday|next week|this week|by [A-Za-z]+|before [A-Za-z]+)\b",
+                    r"\b(?:today|tomorrow|friday|monday|tuesday|wednesday|thursday|saturday|sunday|next week|this week|by [A-Za-z]+|before (?!it\b)[A-Za-z]+)\b",
                     text,
                     flags=re.I,
                 )
@@ -1686,6 +1686,8 @@ def normalize_action_candidate_text(text: str) -> str:
         if lowered.startswith(prefix):
             cleaned = cleaned[len(prefix):]
             break
+    cleaned = re.sub(r"\s*,\s*([.!?])$", r"\1", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return cleaned[:1].upper() + cleaned[1:] if cleaned else cleaned
 
 
