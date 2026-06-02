@@ -601,7 +601,7 @@ router.post('/meeting-minutes-final', withTestUpload(async (req, res) => {
   try {
     const transcript = await readTestTranscript(req);
     validateTranscriptText(transcript.text);
-    const scriptArgs = ['--skip-rewrite', '--rewrite-objectives-only'];
+    const scriptArgs = ['--skip-rewrite'];
 
     if (truthyFlag(req.query?.includeBaselineReference) || truthyFlag(req.body?.includeBaselineReference)) {
       scriptArgs.push('--include-baseline-reference');

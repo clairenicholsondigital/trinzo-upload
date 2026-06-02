@@ -73,6 +73,7 @@ def main() -> int:
     output = None
     minilm_runtime_ms = 0.0
     rewrite_runtime_ms = 0.0
+    objective_summary_runtime_ms = 0.0
 
     include_diagnostics = not args.skip_diagnostics
 
@@ -93,6 +94,7 @@ def main() -> int:
             objectives, objective_diag = summarize_objectives_for_output(output, rewriter=rewriter)
             output["meetingObjectives"] = objectives
             objective_runtime_ms = round((time.perf_counter() - objective_start) * 1000, 2)
+            objective_summary_runtime_ms = objective_runtime_ms
             diagnostics["objectiveSummary"] = objective_diag
             diagnostics["objectiveSummaryRuntimeMs"] = objective_runtime_ms
             rewrite_runtime_ms = round(rewrite_runtime_ms + objective_runtime_ms, 2)
@@ -122,7 +124,7 @@ def main() -> int:
             "context": context_runtime_ms,
             "minilm": minilm_runtime_ms,
             "rewrite": rewrite_runtime_ms,
-            "total": round(baseline_runtime_ms + context_runtime_ms + minilm_runtime_ms, 2),
+            "total": round(baseline_runtime_ms + context_runtime_ms + minilm_runtime_ms + objective_summary_runtime_ms, 2),
         },
     }
     if args.include_baseline_reference and baseline_output is not None:

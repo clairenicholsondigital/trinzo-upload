@@ -1077,6 +1077,7 @@ def should_keep_discussion_candidate(candidate: dict[str, Any]) -> tuple[bool, s
     text = normalize_text_fragment(candidate.get("text", ""))
     lowered = text.lower()
     tokens = tokenize(text)
+    support_count = evidence_support_count(candidate)
     if not text:
         return False, "empty"
     if len(tokens) < 5:
@@ -1101,8 +1102,12 @@ def should_keep_discussion_candidate(candidate: dict[str, Any]) -> tuple[bool, s
         return False, "low_content"
     if candidate.get("scores", {}).get("navigation", 0.0) >= 0.72:
         return False, "navigation"
-    if semantic_density(text) < 0.5 and evidence_support_count(candidate) < 2:
+    if candidate.get("source") == "record_discussion_fallback" and support_count < 2:
+        return False, "single_turn_fallback"
+    if semantic_density(text) < 0.5 and support_count < 2:
         return False, "weak_density_and_support"
+    if support_count < 2 and candidate.get("combinedScore", candidate.get("baseScore", 0.0)) < 0.58:
+        return False, "single_turn_low_confidence"
     return True, ""
 
 
@@ -1307,51 +1312,43 @@ def summarize_objectives_for_output(
     return objectives, diagnostics
 
 
-def cluster_theme_summary(texts: list[str], fallback: str) -> str:
-    blob = " ".join(texts).lower()
-    if ("intake workflow" in blob or "request funnel" in blob or "routing" in blob) and "routing" in blob:
-        return "The intake workflow remains in progress because routing is not yet working properly."
-    if ("vendor strategy" in blob or "strategy document" in blob) and ("innovation grant" in blob or "grant feedback" in blob):
-        return (
-            "Vendor strategy rollout remains in progress: interviews are complete, but the strategy document has not yet been produced. "
-            "Innovation grant feedback is still pending, with follow-up planned this week."
-        )
-    if ("stage gate" in blob or "templates" in blob) and ("review" in blob or "reviews" in blob):
-        return "The stage gate review process is active, with two reviews completed, but templates still need to be finalised."
-    if ("sales input" in blob or "keone" in blob or "pipeline strategy" in blob) and ("blocked" in blob or "later in june" in blob):
-        return "AI pipeline strategy remains blocked because sales input is still required before work can continue."
-    if ("ad hoc" in blob or "sow" in blob) and ("scheduled" in blob or "underway" in blob or "scoped" in blob):
-        return "Ad hoc SOW delivery is active, with work scheduled, underway and still awaiting scope definition."
-    if ("vendor strategy" in blob or "strategy document" in blob) and ("interviews" in blob or "leadership review" in blob or "doesn't exist yet" in blob):
-        return "Vendor strategy rollout remains in progress: interviews are complete, but the strategy document has not yet been produced."
-    if ("innovation grant" in blob or "grant feedback" in blob) and ("follow up" in blob or "pending" in blob or "this week" in blob):
-        return "Innovation grant feedback is still pending, with follow-up planned this week."
-    if ("governance framework" in blob or "leadership review" in blob) and ("version one" in blob or "pending leadership review" in blob or "status blue" in blob):
-        return "The AI governance framework draft is pending leadership review."
-    if ("webinars" in blob or "webinar" in blob) and ("booked" in blob or "delivered" in blob):
-        return "Three AI webinars are in delivery, with two completed and the third booked."
-    if (
-        ("workshop" in blob or "ai discovery workshop" in blob)
-        and ("change management" in blob or "engages the team" in blob or "people in the room" in blob)
-    ):
-        return (
-            "The AI discovery workshop approach was discussed as a change-management method that engages employees in "
-            "mapping processes, identifying pain points and shaping solutions."
-        )
-    if (
-        ("complaints" in blob or "triage" in blob)
-        and ("gemba" in blob or "ipo" in blob or "bottleneck" in blob or "process" in blob)
-    ):
-        return (
-            "The complaints-handling workflow was reviewed through process mapping, Gemba observation and triage analysis "
-            "to identify bottlenecks and AI improvement opportunities."
-        )
-    if (
-        ("slide" in blob or "slides" in blob)
-        and ("imagery" in blob or "images" in blob or "people-focused" in blob or "photos" in blob or "text-heavy" in blob)
-    ):
-        return "The webinar slides need less text and stronger people-focused workshop imagery to support delivery."
-    return fallback
+def derive_meeting_objectives(output: dict[str, Any]) -> list[str]:
+    seen = set()
+    objectives: list[str] = []
+
+    def add_candidate(text: str) -> None:
+        cleaned = normalize_text_fragment(text).rstrip(".")
+        key = normalized_key(cleaned)
+        if not cleaned or not key or key in seen:
+            return
+        if len(tokenize(cleaned)) < 4:
+            return
+        if contains_noise_or_banter(cleaned) or is_context_dependent_fragment(cleaned):
+            return
+        seen.add(key)
+        objectives.append(cleaned)
+
+    for decision in output.get("decisions", []):
+        add_candidate(decision)
+        if len(objectives) >= 2:
+            return objectives[:2]
+
+    details = output.get("discussionPointDetails", [])
+    for index, point in enumerate(output.get("discussionPoints", [])):
+        detail = details[index] if index < len(details) else {}
+        support_count = len(detail.get("sourceTurnIndices", []) or [])
+        evidence_score = float(detail.get("evidenceScore", 0.0) or 0.0)
+        if support_count >= 2 or evidence_score >= 0.64:
+            add_candidate(point)
+        if len(objectives) >= 2:
+            return objectives[:2]
+
+    for action in output.get("actions", []):
+        add_candidate(action.get("meetingActionPoint", ""))
+        if len(objectives) >= 2:
+            return objectives[:2]
+
+    return objectives[:2]
 
 
 def is_valid_discussion_point(text: str, support_count: int) -> tuple[bool, str]:
@@ -1377,6 +1374,8 @@ def is_valid_discussion_point(text: str, support_count: int) -> tuple[bool, str]
         return False, "missing_terminal_punctuation"
     if semantic_density(cleaned) < 0.56 and not has_meaningful_topic_terms(cleaned):
         return False, "low_semantic_density"
+    if support_count < 2 and semantic_density(cleaned) < 0.62:
+        return False, "single_turn_low_density"
     if support_count < 2 and not has_explicit_topic_terms(cleaned):
         return False, "insufficient_explicit_topic_context"
     if support_count < 3 and not has_meaningful_topic_terms(cleaned):
@@ -1429,12 +1428,14 @@ def should_accept_decision_candidate(candidate: dict[str, Any]) -> tuple[bool, s
 
 
 def should_accept_cluster_candidate(candidate: dict[str, Any], existing: list[dict[str, Any]]) -> tuple[bool, str]:
-    if candidate["score"] < 0.35:
+    if candidate["score"] < 0.42:
         return False, "score_below_threshold"
     if any(discussion_similarity(candidate["text"], item["text"]) >= 0.72 for item in existing):
         return False, "duplicate_of_selected_cluster"
     if candidate["supportCount"] < 1 and semantic_density(candidate["text"]) < 0.58 and not has_meaningful_topic_terms(candidate["text"]):
         return False, "insufficient_support"
+    if candidate["supportCount"] < 2 and candidate["score"] < 0.58:
+        return False, "weak_single_turn_cluster"
     return True, "accepted"
 
 
@@ -1471,7 +1472,7 @@ def cluster_candidates_semantically(candidates: list[dict[str, Any]], backend: M
             if score > best_score:
                 best_score = score
                 best_index = index
-        if best_index >= 0 and best_score >= 0.56:
+        if best_index >= 0 and best_score >= 0.6:
             clusters[best_index].append(candidate)
         else:
             clusters.append([candidate])
@@ -1485,8 +1486,7 @@ def build_cluster_discussion_candidate(cluster: list[dict[str, Any]], speaker_na
     raw_keywords = extract_raw_cluster_keywords(aggregate, speaker_names)
     filtered_keywords = extract_cluster_keywords(aggregate, speaker_names)
     summary = build_discussion_point_from_cluster(cluster, raw_keywords, filtered_keywords)
-    cleaned_sentences = summary.get("cleanedCandidateSentences", [])
-    point_text = cluster_theme_summary(cleaned_sentences or [candidate["text"] for candidate in cluster], summary["selectedDiscussionPoint"])
+    point_text = summary["selectedDiscussionPoint"]
     if point_text and not point_text.endswith("."):
         point_text += "."
     evidence = dedupe_evidence([ref for candidate in cluster for ref in candidate.get("evidence", [])])[:4]
@@ -1781,6 +1781,7 @@ def build_minilm_only_output(
     output["meetingActionPoint"] = [item["meetingActionPoint"] for item in output["actions"]]
     output["meetingActionPointOwner"] = [item["meetingActionPointOwner"] for item in output["actions"]]
     output["meetingActionPointDeadline"] = [item["meetingActionPointDeadline"] for item in output["actions"]]
+    output["meetingObjectives"] = derive_meeting_objectives(output)
 
     if rewriter and rewriter.available:
         output, rewrite_diagnostics = rewrite_minutes_output_payload(

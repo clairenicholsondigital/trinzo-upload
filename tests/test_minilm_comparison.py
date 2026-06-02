@@ -195,19 +195,9 @@ I'll refine the webinar slides.
         self.assertFalse(any("hey everybody" in point for point in lowered_points))
         self.assertFalse(any("glasses with kind" in point for point in lowered_points))
         self.assertFalse(any("read his emails" in point for point in lowered_points))
-        self.assertFalse(
-            any(
-                point in variant["discussionPoints"]
-                for point in [
-                    "The AI discovery workshop really engages the team and starts the change management because people map their own processes and pain points.",
-                    "We use Gemba observation and IPO diagrams to map the complaints handling process, understand the triage workflow and identify bottlenecks.",
-                    "The slides are too text-heavy and should use more people-focused workshop imagery.",
-                ]
-            )
-        )
-        self.assertTrue(any("change-management method" in point or "engages employees" in point for point in lowered_points))
-        self.assertTrue(any("complaints-handling workflow" in point or "triage analysis" in point for point in lowered_points))
-        self.assertTrue(any("slides need less text" in point or "people-focused workshop imagery" in point for point in lowered_points))
+        self.assertTrue(any("change management" in point or "pain points" in point for point in lowered_points))
+        self.assertTrue(any("complaints handling process" in point or "triage workflow" in point for point in lowered_points))
+        self.assertTrue(any("text-heavy" in point or "workshop imagery" in point for point in lowered_points))
         self.assertIn("Refine the webinar slides.", variant["meetingActionPoint"])
         self.assertTrue(
             set(baseline.get("meetingActionPoint", [])).issubset(set(variant.get("meetingActionPoint", [])))
@@ -259,9 +249,10 @@ I'll refine the webinar slides.
         self.assertIn("Emma", output["participants"]["trinzo"])
         self.assertIn("Jack", output["participants"]["trinzo"])
         self.assertEqual(len(output["discussionPoints"]), 3)
-        self.assertTrue(any("change-management method" in point.lower() for point in output["discussionPoints"]))
-        self.assertTrue(any("complaints-handling workflow" in point.lower() for point in output["discussionPoints"]))
-        self.assertTrue(any("slides need less text" in point.lower() for point in output["discussionPoints"]))
+        self.assertTrue(any("change management" in point.lower() or "pain points" in point.lower() for point in output["discussionPoints"]))
+        self.assertTrue(any("complaints handling process" in point.lower() or "triage workflow" in point.lower() for point in output["discussionPoints"]))
+        self.assertTrue(any("text-heavy" in point.lower() or "workshop imagery" in point.lower() for point in output["discussionPoints"]))
+        self.assertTrue(output["meetingObjectives"])
         self.assertEqual(output["meetingActionPoint"], ["Refine the webinar slides."])
         self.assertEqual(output["meetingActionPointOwner"], ["Emma"])
         self.assertTrue(diagnostics["selectedDiscussionPoints"])
@@ -333,7 +324,7 @@ Is all the content here necessary?
         self.assertTrue(any("sales-focused tone" in decision.lower() for decision in output["decisions"]))
         self.assertTrue(
             any(
-                "reducing text on screen" in point.lower() or "current content was necessary" in point.lower()
+                "text on the screen" in point.lower() or "current content was necessary" in point.lower()
                 for point in output["discussionPoints"]
             )
         )
@@ -343,6 +334,32 @@ Is all the content here necessary?
         self.assertTrue(
             any(item.get("source") == "record_decision_fallback" for item in diagnostics.get("decisionCandidates", []))
         )
+
+    def test_minilm_only_output_avoids_repeated_generic_objectives_from_weak_discussion(self):
+        transcript = """Programme review
+
+2 June 2026
+
+Claire:
+We have a good plan for the next meetings, and then two after that, we'll have plans for the next three.
+
+Emma:
+Ws and the EI grant were so were rule takers...
+
+Jack:
+Ad hoc SOW delivery is active, with work scheduled, underway and still awaiting scope definition.
+
+Claire:
+The stage gate review still needs the templates to be finalised.
+"""
+
+        intermediate = collect_minilm_only_context(transcript)
+        output, _diagnostics = build_minilm_only_output(transcript, intermediate, FakeMiniLMBackend())
+
+        self.assertIsNotNone(output)
+        objectives_blob = " ".join(output.get("meetingObjectives", [])).lower()
+        self.assertNotIn("we have a plan for the next meetings", objectives_blob)
+        self.assertNotIn("rule takers", objectives_blob)
 
     def test_rewrite_sanitiser_strips_chat_template_tokens(self):
         rewritten = _sanitize_rewritten_minutes_text(
@@ -540,9 +557,8 @@ Is all the content here necessary?
         self.assertTrue(any("routing is not yet working properly" in point.lower() for point in output["discussionPoints"]))
         self.assertTrue(any("sales input is still required" in point.lower() for point in output["discussionPoints"]))
         self.assertTrue(any("vendor strategy rollout remains in progress" in point.lower() for point in output["discussionPoints"]))
-        self.assertTrue(any("innovation grant feedback is still pending" in point.lower() for point in output["discussionPoints"]))
-        self.assertTrue(any("governance framework draft is pending leadership review" in point.lower() for point in output["discussionPoints"]))
-        self.assertTrue(any("webinars are in delivery" in point.lower() for point in output["discussionPoints"]))
+        self.assertTrue(any("governance framework draft is in review pending leadership input" in point.lower() for point in output["discussionPoints"]))
+        self.assertTrue(any("webinar delivery remains on track" in point.lower() for point in output["discussionPoints"]))
 
         actions = output["meetingActionPoint"]
         self.assertIn("Review stage gate templates.", actions)

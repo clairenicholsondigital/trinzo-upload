@@ -614,6 +614,8 @@ function buildTranscriptMinilmOnlyPage(config) {
   function deriveObjectives(output) {
     if (Array.isArray(output.objectives) && output.objectives.length) return output.objectives;
     if (Array.isArray(output.meetingObjectives) && output.meetingObjectives.length) return output.meetingObjectives;
+    const decisions = Array.isArray(output.decisions) ? output.decisions : [];
+    if (decisions.length) return decisions.slice(0, 2).map((point) => point.replace(/\.$/, ''));
     const points = Array.isArray(output.discussionPoints) ? output.discussionPoints : [];
     return points.slice(0, 2).map((point) => point.replace(/\.$/, ''));
   }
