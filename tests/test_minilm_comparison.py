@@ -539,6 +539,24 @@ The complaints workflow still needs clearer triage rules before automation is sc
         )
         self.assertEqual(rewritten, "Refine the webinar slides.")
 
+    def test_local_rewriter_prompt_requests_varied_minutes_style(self):
+        rewriter = LocalMinutesRewriter(
+            available=False,
+            reason="test",
+        )
+        prompt = rewriter._batch_prompt(
+            [
+                {"category": "discussion", "text": "The team discussed simplifying the complaints workflow."},
+                {"category": "decision", "text": "The content should avoid an overly sales-focused tone."},
+                {"category": "action", "text": "Refine the webinar slides."},
+            ]
+        )
+        self.assertIn("avoid repeating the same opening", prompt.lower())
+        self.assertIn("do not keep starting sentences with the same stem", prompt.lower())
+        self.assertIn("for discussion items, prefer concise topic-led wording", prompt.lower())
+        self.assertIn("for decisions, prefer clear agreed-direction wording", prompt.lower())
+        self.assertIn("for actions, prefer direct action wording", prompt.lower())
+
     def test_rewrite_sanitiser_strips_signature_placeholder_tail(self):
         rewritten = _sanitize_rewritten_minutes_text(
             "Refine the webinar slides. [Signature] [Date] [Name of approver] [Email]",

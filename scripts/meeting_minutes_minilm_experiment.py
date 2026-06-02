@@ -337,6 +337,12 @@ class LocalMinutesRewriter:
             "Keep the meaning unchanged. "
             "Do not invent, infer, or add any facts, names, dates, owners, deadlines, decisions, or context not present in the source item. "
             "Remove filler, transcript phrasing, awkward wording, any chat-template tokens, and any signature, footer, approval, or placeholder template text. "
+            "Write like clean meeting minutes rather than chat. "
+            "Use natural sentence variety and avoid repeating the same opening across items. "
+            "Do not keep starting sentences with the same stem such as 'The team discussed' or 'The meeting was to'. "
+            "For discussion items, prefer concise topic-led wording. "
+            "For decisions, prefer clear agreed-direction wording. "
+            "For actions, prefer direct action wording with the commitment intact. "
             "Return valid JSON only in this exact schema: {\"items\":[{\"rewritten\":\"...\"}]}. "
             "Return exactly one rewritten sentence per input item in the same order as provided."
         )
