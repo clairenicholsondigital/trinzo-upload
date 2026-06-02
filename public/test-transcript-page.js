@@ -237,3 +237,210 @@ function projectUpdateSummary(result) {
     { label: 'Changed', value: String(changedCount) }
   ];
 }
+
+function buildTranscriptComparisonPage(config) {
+  const state = {
+    payload: null,
+    loading: false
+  };
+
+  const root = document.getElementById('transcriptComparisonRoot');
+  root.innerHTML = `
+    <section class="panel">
+      <h1>${config.title}</h1>
+      <p class="intro">${config.intro}</p>
+      <div class="field">
+        <label for="comparisonTranscriptFile">Transcript file</label>
+        <input id="comparisonTranscriptFile" type="file" accept=".txt,.docx,.csv,text/plain,text/csv,application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+        <small>Supports pasted text and .txt uploads. .docx and .csv are accepted when extraction is available.</small>
+      </div>
+      <div class="field">
+        <label for="comparisonTranscriptText">Paste transcript text</label>
+        <textarea id="comparisonTranscriptText" placeholder="Paste transcript here..."></textarea>
+        <small>If both a file and pasted text are provided, pasted text takes priority.</small>
+      </div>
+      <div class="actions">
+        <button id="comparisonGoBtn" type="button">${config.buttonText}</button>
+        <button id="comparisonClearBtn" class="secondary" type="button">Clear / reset</button>
+      </div>
+      <div id="comparisonMessage" class="message hidden"></div>
+    </section>
+
+    <section id="comparisonSummaryPanel" class="panel hidden">
+      <h2>Summary</h2>
+      <div id="comparisonSummaryGrid" class="summary-grid"></div>
+    </section>
+
+    <section id="comparisonOutputsPanel" class="panel hidden">
+      <h2>Outputs</h2>
+      <p class="note">Baseline is the current numbers extractor. MiniLM is the experimental sidecar variant. The baseline remains the production-safe output.</p>
+      <div class="output-grid">
+        <div>
+          <div class="json-heading">
+            <h2>Baseline numbers output</h2>
+            <button id="copyBaselineBtn" class="secondary" type="button">Copy baseline</button>
+          </div>
+          <pre id="baselineOutput"></pre>
+        </div>
+        <div>
+          <div class="json-heading">
+            <h2>MiniLM variant output</h2>
+            <button id="copyMinilmBtn" class="secondary" type="button">Copy MiniLM</button>
+          </div>
+          <pre id="minilmOutput"></pre>
+        </div>
+      </div>
+    </section>
+
+    <section id="comparisonDiffPanel" class="panel hidden">
+      <div class="json-heading">
+        <h2>Diff and diagnostics</h2>
+        <button id="copyDiffBtn" class="secondary" type="button">Copy diff</button>
+      </div>
+      <pre id="diffOutput"></pre>
+    </section>
+  `;
+
+  const fileInput = document.getElementById('comparisonTranscriptFile');
+  const textInput = document.getElementById('comparisonTranscriptText');
+  const goBtn = document.getElementById('comparisonGoBtn');
+  const clearBtn = document.getElementById('comparisonClearBtn');
+  const copyBaselineBtn = document.getElementById('copyBaselineBtn');
+  const copyMinilmBtn = document.getElementById('copyMinilmBtn');
+  const copyDiffBtn = document.getElementById('copyDiffBtn');
+  const message = document.getElementById('comparisonMessage');
+  const summaryPanel = document.getElementById('comparisonSummaryPanel');
+  const summaryGrid = document.getElementById('comparisonSummaryGrid');
+  const outputsPanel = document.getElementById('comparisonOutputsPanel');
+  const diffPanel = document.getElementById('comparisonDiffPanel');
+  const baselineOutput = document.getElementById('baselineOutput');
+  const minilmOutput = document.getElementById('minilmOutput');
+  const diffOutput = document.getElementById('diffOutput');
+
+  function setMessage(text, type) {
+    message.textContent = text || '';
+    message.className = text ? `message ${type || ''}` : 'message hidden';
+  }
+
+  function setLoading(isLoading) {
+    state.loading = isLoading;
+    goBtn.disabled = isLoading;
+    clearBtn.disabled = isLoading;
+    fileInput.disabled = isLoading;
+    textInput.disabled = isLoading;
+    goBtn.textContent = isLoading ? 'Working...' : config.buttonText;
+  }
+
+  function comparisonSummaryItems(payload) {
+    const result = payload && payload.result ? payload.result : {};
+    const baseline = result.baseline || {};
+    const minilm = result.minilm || {};
+    const comparison = result.comparison || {};
+    const baselineCounts = comparison.baselineCounts || {};
+    const minilmCounts = comparison.minilmCounts || {};
+    const modelStatus = minilm.modelAvailable ? 'available' : `unavailable: ${minilm.modelReason || 'unknown reason'}`;
+    return [
+      { label: 'Baseline actions', value: String(baselineCounts.actions || 0) },
+      { label: 'MiniLM actions', value: String(minilmCounts.actions || 0) },
+      { label: 'Baseline decisions', value: String(baselineCounts.decisions || 0) },
+      { label: 'MiniLM decisions', value: String(minilmCounts.decisions || 0) },
+      { label: 'Baseline discussion', value: String(baselineCounts.discussionPoints || 0) },
+      { label: 'MiniLM discussion', value: String(minilmCounts.discussionPoints || 0) },
+      { label: 'Model status', value: modelStatus },
+      { label: 'Runtime ms', value: String((result.timingMs && result.timingMs.total) || 0) }
+    ];
+  }
+
+  function displayPayload(payload) {
+    state.payload = payload;
+    const items = comparisonSummaryItems(payload);
+    summaryGrid.innerHTML = items.map((item) => `
+      <div class="summary-item">
+        <div class="summary-label">${item.label}</div>
+        <div class="summary-value">${item.value}</div>
+      </div>
+    `).join('');
+    summaryPanel.classList.remove('hidden');
+
+    const result = payload.result || {};
+    baselineOutput.textContent = JSON.stringify(result.baseline || {}, null, 2);
+    minilmOutput.textContent = JSON.stringify(result.minilm || {}, null, 2);
+    diffOutput.textContent = JSON.stringify({
+      comparison: result.comparison || {},
+      timingMs: result.timingMs || {},
+      transcriptMetadata: payload.transcriptMetadata || null
+    }, null, 2);
+
+    outputsPanel.classList.remove('hidden');
+    diffPanel.classList.remove('hidden');
+  }
+
+  async function submitTranscript() {
+    const pastedText = textInput.value.trim();
+    const file = fileInput.files[0];
+
+    if (!pastedText && !file) {
+      setMessage('Paste transcript text or choose a transcript file first.', 'error');
+      return;
+    }
+
+    setLoading(true);
+    setMessage('Running baseline numbers output and MiniLM variant side by side...', 'info');
+    summaryPanel.classList.add('hidden');
+    outputsPanel.classList.add('hidden');
+    diffPanel.classList.add('hidden');
+
+    try {
+      const options = { method: 'POST' };
+      if (pastedText) {
+        options.headers = { 'Content-Type': 'application/json' };
+        options.body = JSON.stringify({ text: pastedText });
+      } else {
+        const formData = new FormData();
+        formData.append('file', file);
+        options.body = formData;
+      }
+
+      const endpoint = `${config.endpoint}?includeTranscriptMetadata=1`;
+      const response = await fetch(endpoint, options);
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok || !payload || payload.ok === false) {
+        const detailText = payload && payload.details ? ` ${JSON.stringify(payload.details)}` : '';
+        throw new Error((payload && payload.error ? payload.error : `Request failed with status ${response.status}.`) + detailText);
+      }
+
+      setMessage(`Done. Compared ${payload.transcriptLength || 0} characters from ${payload.source || 'transcript'}.`, 'success');
+      displayPayload(payload);
+    } catch (error) {
+      setMessage(error.message || 'Transcript comparison failed.', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function resetPage() {
+    fileInput.value = '';
+    textInput.value = '';
+    state.payload = null;
+    setMessage('', '');
+    summaryPanel.classList.add('hidden');
+    outputsPanel.classList.add('hidden');
+    diffPanel.classList.add('hidden');
+    baselineOutput.textContent = '';
+    minilmOutput.textContent = '';
+    diffOutput.textContent = '';
+  }
+
+  async function copyValue(value, label) {
+    if (!value) return;
+    await navigator.clipboard.writeText(value);
+    setMessage(`${label} copied to clipboard.`, 'success');
+  }
+
+  goBtn.addEventListener('click', submitTranscript);
+  clearBtn.addEventListener('click', resetPage);
+  copyBaselineBtn.addEventListener('click', () => copyValue(baselineOutput.textContent, 'Baseline output'));
+  copyMinilmBtn.addEventListener('click', () => copyValue(minilmOutput.textContent, 'MiniLM output'));
+  copyDiffBtn.addEventListener('click', () => copyValue(diffOutput.textContent, 'Diff output'));
+}
