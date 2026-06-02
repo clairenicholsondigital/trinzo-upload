@@ -1793,7 +1793,7 @@ def rewrite_minutes_output_payload(
             rewritten_actions[slot_index]["meetingActionPoint"] = rewritten
 
     concise_objectives = [objective for objective in rewritten_objectives if not is_overlong_objective_text(objective)]
-    rewritten_output["meetingObjectives"] = dedupe_values(concise_objectives or rewritten_objectives[:1])
+    rewritten_output["meetingObjectives"] = dedupe_values(concise_objectives)
     rewritten_output["discussionPoints"] = dedupe_values(rewritten_discussion)
     rewritten_output["decisions"] = dedupe_values(rewritten_decisions)
     rewritten_output["actions"] = [
@@ -2464,7 +2464,7 @@ def build_minilm_only_output(
     output["meetingActionPointDeadline"] = [item["meetingActionPointDeadline"] for item in output["actions"]]
     output["meetingObjectives"] = derive_meeting_objectives(output)
     concise_objectives = [objective for objective in output["meetingObjectives"] if not is_overlong_objective_text(objective)]
-    output["meetingObjectives"] = concise_objectives or output["meetingObjectives"][:1]
+    output["meetingObjectives"] = concise_objectives
 
     if rewriter and rewriter.available:
         output, rewrite_diagnostics = rewrite_minutes_output_payload(
