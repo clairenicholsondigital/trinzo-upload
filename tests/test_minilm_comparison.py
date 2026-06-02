@@ -291,6 +291,13 @@ I'll refine the webinar slides.
         )
         self.assertEqual(rewritten, "Refine the webinar slides.")
 
+    def test_rewrite_sanitiser_strips_signature_placeholder_tail(self):
+        rewritten = _sanitize_rewritten_minutes_text(
+            "Refine the webinar slides. [Signature] [Date] [Name of approver] [Email]",
+            "Refine the webinar slides.",
+        )
+        self.assertEqual(rewritten, "Refine the webinar slides.")
+
     def test_local_rewriter_can_use_remote_worker(self):
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, format, *args):
