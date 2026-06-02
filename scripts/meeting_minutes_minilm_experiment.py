@@ -503,6 +503,17 @@ def is_overlong_objective_text(text: str) -> bool:
     return any(marker in lowered for marker in (" we then ", " we would ", " because ")) or cleaned.endswith("?")
 
 
+def is_transcript_recount_text(text: str) -> bool:
+    """Detect long first-person/procedural transcript recounts rather than minutes topics."""
+    cleaned = normalize_text_fragment(text)
+    lowered = f" {cleaned.lower()} "
+    if minutes_word_count(cleaned) < 18:
+        return False
+    procedural_markers = sum(1 for marker in (" we would ", " we then ", " i would ", " i'll ", " i'm ", " you're ") if marker in lowered)
+    connective_markers = sum(1 for marker in (" and then ", " so ", " basically ", " just ") if marker in lowered)
+    return procedural_markers >= 1 and connective_markers >= 1
+
+
 def unique_normalized_list(values: list[Any]) -> list[str]:
     seen = set()
     result = []
@@ -1604,6 +1615,8 @@ def should_keep_discussion_candidate(candidate: dict[str, Any]) -> tuple[bool, s
         return False, "trailing_because"
     if any(phrase in lowered for phrase in ("i think", "you know", "go to the next one")) and not has_meaningful_topic_terms(text):
         return False, "filler_language"
+    if is_transcript_recount_text(text):
+        return False, "transcript_recount"
     if candidate.get("scores", {}).get("low_content", 0.0) >= 0.58:
         return False, "low_content"
     if candidate.get("scores", {}).get("navigation", 0.0) >= 0.72:
@@ -1920,6 +1933,8 @@ def is_valid_discussion_point(text: str, support_count: int) -> tuple[bool, str]
         return False, "generic_status_like_discussion"
     if any(phrase in lowered for phrase in ("i think", "yeah", "okay", "you know", "go to the next one")):
         return False, "transcript_wording"
+    if is_transcript_recount_text(cleaned):
+        return False, "transcript_recount"
     if is_self_referential_conversational_fragment(cleaned):
         return False, "self_referential_fragment"
     if is_low_value_coordination_action(cleaned):
@@ -2448,6 +2463,8 @@ def build_minilm_only_output(
     output["meetingActionPointOwner"] = [item["meetingActionPointOwner"] for item in output["actions"]]
     output["meetingActionPointDeadline"] = [item["meetingActionPointDeadline"] for item in output["actions"]]
     output["meetingObjectives"] = derive_meeting_objectives(output)
+    concise_objectives = [objective for objective in output["meetingObjectives"] if not is_overlong_objective_text(objective)]
+    output["meetingObjectives"] = concise_objectives or output["meetingObjectives"][:1]
 
     if rewriter and rewriter.available:
         output, rewrite_diagnostics = rewrite_minutes_output_payload(
