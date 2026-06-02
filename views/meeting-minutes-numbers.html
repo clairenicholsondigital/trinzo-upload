@@ -66,7 +66,7 @@ a { color:#67e8f9; }
 .minutes-table {
   width:100%;
   border-collapse:collapse;
-  min-width:900px;
+  min-width:760px;
 }
 
 .minutes-table th,
@@ -185,12 +185,9 @@ pre {
       <table class="minutes-table">
         <thead>
           <tr>
-            <th style="width:11%">Type</th>
-            <th style="width:10%">Time</th>
-            <th style="width:14%">Owner / speaker</th>
-            <th style="width:39%">Editable output</th>
-            <th style="width:16%">Evidence / notes</th>
-            <th style="width:10%">Confidence</th>
+            <th style="width:15%">Type</th>
+            <th style="width:20%">Owner / speaker</th>
+            <th style="width:65%">Editable output</th>
           </tr>
         </thead>
         <tbody id="editableMinutesTableBody"></tbody>
@@ -231,7 +228,10 @@ function firstDefined(...values) {
 
 function getEvidenceText(item) {
   const evidence = asArray(item.evidence || item._evidence);
-  if (!evidence.length) return cleanText(item.rawEvidenceText || item.representativeSentence || '');
+
+  if (!evidence.length) {
+    return cleanText(item.rawEvidenceText || item.representativeSentence || '');
+  }
 
   return evidence
     .slice(0, 3)
@@ -266,9 +266,9 @@ function addRowsFromArray(rows, source, type, textKeyCandidates) {
     rows.push({
       id: `${type}-${index}`,
       type,
-      time: firstDefined(item.timestampLabel, item.earliestSupportingTimestamp, item.timestamp, ''),
       owner: firstDefined(item.owner, item.speaker, getEvidenceSpeaker(item), ''),
       text,
+      time: firstDefined(item.timestampLabel, item.earliestSupportingTimestamp, item.timestamp, ''),
       evidence: getEvidenceText(item),
       confidence: firstDefined(item.evidenceScore, item.confidence, item.meetingActionPointConfidence, ''),
       source: item
@@ -287,13 +287,14 @@ function buildEditableRows(json) {
   );
 
   const actionPoints = asArray(json.meetingActionPoint);
+
   actionPoints.forEach((text, index) => {
     rows.push({
       id: `meeting-action-${index}`,
       type: 'Action',
-      time: '',
       owner: cleanText(asArray(json.meetingActionPointOwner)[index] || ''),
       text: cleanText(text),
+      time: '',
       evidence: '',
       confidence: cleanText(asArray(json.meetingActionPointConfidence)[index] || ''),
       source: {}
@@ -328,7 +329,7 @@ function dedupeRows(rows) {
   const seen = new Set();
 
   return rows.filter(row => {
-    const key = `${row.type}|${row.time}|${row.text}`.toLowerCase();
+    const key = `${row.type}|${row.text}`.toLowerCase();
 
     if (seen.has(key)) return false;
 
@@ -398,11 +399,21 @@ function renderEditableTable(json) {
           `).join('')}
         </select>
       </td>
-      <td><input data-field="time" data-index="${index}" value="${escapeAttribute(row.time)}" /></td>
-      <td><input data-field="owner" data-index="${index}" value="${escapeAttribute(row.owner)}" /></td>
-      <td><textarea data-field="text" data-index="${index}">${escapeHtml(row.text)}</textarea></td>
-      <td><textarea data-field="evidence" data-index="${index}">${escapeHtml(row.evidence)}</textarea></td>
-      <td><input data-field="confidence" data-index="${index}" value="${escapeAttribute(row.confidence)}" /></td>
+
+      <td>
+        <input
+          data-field="owner"
+          data-index="${index}"
+          value="${escapeAttribute(row.owner)}"
+        />
+      </td>
+
+      <td>
+        <textarea
+          data-field="text"
+          data-index="${index}"
+        >${escapeHtml(row.text)}</textarea>
+      </td>
     `;
 
     tbody.appendChild(tr);
@@ -482,7 +493,7 @@ document.getElementById('copyEditedJsonBtn').addEventListener('click', () => {
 
 document.getElementById('copyTableTextBtn').addEventListener('click', () => {
   const text = getEditedRowsFromDom()
-    .map(row => `${row.type} | ${row.time || '—'} | ${row.owner || '—'}\n${row.text}\nEvidence: ${row.evidence || '—'}\nConfidence: ${row.confidence || '—'}`)
+    .map(row => `${row.type} | ${row.owner || '—'}\n${row.text}`)
     .join('\n\n');
 
   copyText(text);
@@ -498,10 +509,6 @@ document.getElementById('clearEditedTableBtn').addEventListener('click', () => {
   latestEditableRows = [];
 });
 
-/*
-  This wraps the existing summary callback, so your existing test page can keep doing
-  whatever it already does, while this page also captures the JSON for the editable UI.
-*/
 const originalMeetingMinutesSummary = window.meetingMinutesSummary;
 
 window.meetingMinutesSummary = function meetingMinutesSummaryWithEditableTable(result) {
