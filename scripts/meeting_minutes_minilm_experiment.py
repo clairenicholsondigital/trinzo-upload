@@ -962,12 +962,16 @@ def _sanitize_rewritten_minutes_text(generated: str, fallback: str) -> str:
     cleaned = re.split(r"\s*<\|(?:system|user|assistant|endoftext)\|>\s*", cleaned, maxsplit=1, flags=re.I)[0]
     cleaned = re.split(r"\s*(?:system|user|assistant)\s*:\s*", cleaned, maxsplit=1, flags=re.I)[0]
     cleaned = re.split(
-        r"\s*(?:\[(?:signature|date|name of approver|email)\]|\b(?:signature|name of approver|approver|email)\b\s*:?)\s*",
+        r"\s*(?:\[(?:signature|date|name of approver|email|sign off|end of meeting)\]|\b(?:signature|name of approver|approver|email|sign off|end of meeting)\b\s*:?)\s*",
         cleaned,
         maxsplit=1,
         flags=re.I,
     )[0]
+    cleaned = cleaned.replace("|", " ")
     cleaned = re.sub(r"\s+", " ", cleaned).strip().strip('"')
+    first_sentence = re.match(r"^(.+?[.!?])(?:\s+|$)", cleaned)
+    if first_sentence:
+        cleaned = first_sentence.group(1).strip()
     if len(cleaned) < 8:
         cleaned = normalize_text_fragment(fallback)
     if cleaned and cleaned[:1].islower():

@@ -298,6 +298,20 @@ I'll refine the webinar slides.
         )
         self.assertEqual(rewritten, "Refine the webinar slides.")
 
+    def test_rewrite_sanitiser_keeps_only_first_sentence(self):
+        rewritten = _sanitize_rewritten_minutes_text(
+            "The stage gate review process is active. This update will ensure that all stakeholders have access to accurate information.",
+            "The stage gate review process is active.",
+        )
+        self.assertEqual(rewritten, "The stage gate review process is active.")
+
+    def test_rewrite_sanitiser_strips_signoff_tail(self):
+        rewritten = _sanitize_rewritten_minutes_text(
+            "Confirm AI pipeline dependencies with sales. [Sign off] [End of Meeting]",
+            "Confirm AI pipeline dependencies with sales.",
+        )
+        self.assertEqual(rewritten, "Confirm AI pipeline dependencies with sales.")
+
     def test_local_rewriter_can_use_remote_worker(self):
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, format, *args):
