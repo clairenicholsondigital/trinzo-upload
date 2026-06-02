@@ -535,7 +535,7 @@ The workshop review is focused on understanding complaints handling gaps before 
         self.assertNotIn("work scheduled, underway and active", discussion_blob)
         self.assertTrue(any(item.get("reason") in ("weak_parser_single_turn", "too_short", "malformed_progress_fragment", "generic_status_like_discussion") for item in diagnostics.get("rejectedDiscussionCandidates", [])))
 
-    def test_generic_status_like_discussion_is_preferably_dropped_over_promoted(self):
+    def test_generic_status_like_discussion_drops_out_of_mixed_cluster(self):
         transcript = """Delivery check
 
 2 June 2026
@@ -556,6 +556,7 @@ That assessment also highlighted where the current process creates avoidable del
         self.assertIsNotNone(output)
         discussion_blob = " ".join(output.get("discussionPoints", [])).lower()
         self.assertNotIn("active and underway", discussion_blob)
+        self.assertTrue("process assessment approach" in discussion_blob or "improvement opportunities" in discussion_blob)
         self.assertTrue(
             any(item.get("reason") in ("generic_status_like_discussion", "too_short", "insufficient_substantive_turns") for item in diagnostics.get("rejectedDiscussionCandidates", []))
         )

@@ -1940,17 +1940,44 @@ def cluster_candidates_semantically(candidates: list[dict[str, Any]], backend: M
     return clusters
 
 
+def _candidate_is_cluster_noise(candidate: dict[str, Any]) -> bool:
+    text = normalize_text_fragment(candidate.get("text", ""))
+    support_count = evidence_support_count(candidate)
+    if not text:
+        return True
+    if candidate.get("candidateType") == "parser" and support_count < 2:
+        if is_generic_status_like_discussion(text) or is_bad_progress_fragment(text):
+            return True
+    keep, _reason = should_keep_discussion_candidate(candidate)
+    return not keep and candidate.get("candidateType") != "window"
+
+
+def select_cluster_summary_candidates(cluster: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not cluster:
+        return []
+    window_candidates = [candidate for candidate in cluster if candidate.get("candidateType") == "window"]
+    if window_candidates:
+        filtered = [candidate for candidate in cluster if not _candidate_is_cluster_noise(candidate)]
+        if filtered:
+            return filtered
+        return window_candidates
+    return [candidate for candidate in cluster if not _candidate_is_cluster_noise(candidate)] or cluster
+
+
 def build_cluster_discussion_candidate(cluster: list[dict[str, Any]], speaker_names: set[str]) -> dict[str, Any] | None:
+    summary_cluster = select_cluster_summary_candidates(cluster)
+    if not summary_cluster:
+        return None
     aggregate = Counter()
-    for candidate in cluster:
+    for candidate in summary_cluster:
         aggregate.update(candidate.get("token_counts", Counter()))
     raw_keywords = extract_raw_cluster_keywords(aggregate, speaker_names)
     filtered_keywords = extract_cluster_keywords(aggregate, speaker_names)
-    summary = build_discussion_point_from_cluster(cluster, raw_keywords, filtered_keywords)
+    summary = build_discussion_point_from_cluster(summary_cluster, raw_keywords, filtered_keywords)
     point_text = summary["selectedDiscussionPoint"]
     if point_text and not point_text.endswith("."):
         point_text += "."
-    evidence = dedupe_evidence([ref for candidate in cluster for ref in candidate.get("evidence", [])])[:4]
+    evidence = dedupe_evidence([ref for candidate in summary_cluster for ref in candidate.get("evidence", [])])[:4]
     support_count = len({
         (
             normalize_text_fragment(ref.get("speaker", "")),
@@ -1959,8 +1986,8 @@ def build_cluster_discussion_candidate(cluster: list[dict[str, Any]], speaker_na
         for ref in evidence
     }) or len(evidence)
     pairwise_scores = []
-    for index, left in enumerate(cluster):
-        for right in cluster[index + 1:]:
+    for index, left in enumerate(summary_cluster):
+        for right in summary_cluster[index + 1:]:
             pairwise_scores.append(
                 max(
                     discussion_similarity(left["text"], right["text"]),
@@ -1970,15 +1997,15 @@ def build_cluster_discussion_candidate(cluster: list[dict[str, Any]], speaker_na
     coherence_score = round(sum(pairwise_scores) / len(pairwise_scores), 4) if pairwise_scores else round(min(1.0, semantic_density(point_text)), 4)
     filler_like = sum(
         1
-        for candidate in cluster
+        for candidate in summary_cluster
         if not has_meaningful_topic_terms(candidate["text"]) and semantic_density(candidate["text"]) < 0.58
     )
-    if (len(cluster) > 1 and coherence_score < 0.18) or filler_like > max(1, len(cluster) // 2):
+    if (len(summary_cluster) > 1 and coherence_score < 0.18) or filler_like > max(1, len(summary_cluster) // 2):
         return None
     valid, reason = is_valid_discussion_point(point_text, support_count)
     if not valid:
         window_candidates = [
-            candidate for candidate in cluster
+            candidate for candidate in summary_cluster
             if candidate.get("candidateType") == "window" and is_valid_discussion_point(candidate.get("text", ""), evidence_support_count(candidate))[0]
         ]
         if window_candidates:
@@ -1996,8 +2023,8 @@ def build_cluster_discussion_candidate(cluster: list[dict[str, Any]], speaker_na
             valid, reason = is_valid_discussion_point(point_text, support_count)
         if not valid:
             return None
-    avg_semantic = sum(candidate.get("semanticScore", 0.0) for candidate in cluster) / len(cluster)
-    avg_combined = sum(candidate.get("combinedScore", candidate.get("baseScore", 0.0)) for candidate in cluster) / len(cluster)
+    avg_semantic = sum(candidate.get("semanticScore", 0.0) for candidate in summary_cluster) / len(summary_cluster)
+    avg_combined = sum(candidate.get("combinedScore", candidate.get("baseScore", 0.0)) for candidate in summary_cluster) / len(summary_cluster)
     score = round(avg_combined * 0.55 + avg_semantic * 0.25 + min(0.2, support_count * 0.05), 4)
     return {
         "text": point_text,
@@ -2005,8 +2032,8 @@ def build_cluster_discussion_candidate(cluster: list[dict[str, Any]], speaker_na
         "supportCount": support_count,
         "evidence": evidence,
         "sourceTurnIndices": evidence_source_turn_indices(evidence),
-        "clusterTexts": [candidate["text"] for candidate in cluster],
-        "candidateType": "window" if any(candidate.get("candidateType") == "window" for candidate in cluster) else "parser",
+        "clusterTexts": [candidate["text"] for candidate in summary_cluster],
+        "candidateType": "window" if any(candidate.get("candidateType") == "window" for candidate in summary_cluster) else "parser",
         "coherenceScore": coherence_score,
         "keywords": filtered_keywords,
         "selectionMode": summary.get("selectionMode", ""),
