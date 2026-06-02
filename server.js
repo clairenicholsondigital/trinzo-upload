@@ -31,6 +31,10 @@ app.get('/meeting-minutes-numbers', (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'meeting-minutes-numbers.html'));
 });
 
+app.get('/meeting-minutes-comparison', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'meeting-minutes-comparison.html'));
+});
+
 app.get('/project-update-test', (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'project-update-test.html'));
 });
