@@ -788,6 +788,57 @@ def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBacke
     return outputs
 
 
+def surrounding_record_text(records: list[dict[str, Any]], index: int, window: int = 1) -> str:
+    parts = []
+    for offset in range(-window, window + 1):
+        target = index + offset
+        if target < 0 or target >= len(records):
+            continue
+        parts.append(normalize_text_fragment(records[target].get("text", "")))
+    return " ".join(part for part in parts if part)
+
+
+def infer_soft_decision_fallback(text: str) -> str:
+    cleaned = normalize_text_fragment(text)
+    lowered = cleaned.lower()
+    if not cleaned or len(tokenize(cleaned)) < 5:
+        return ""
+    if not any(cue in lowered for cue in ("make sure", "want", "should", "need", "avoid", "not ")):
+        return ""
+    style_match = re.search(r"\bnot\s+([a-z][a-z-]{2,})\b", lowered)
+    if not style_match:
+        return ""
+    descriptor = style_match.group(1)
+    if descriptor not in SOFT_STYLE_TERMS:
+        return ""
+    normalized = SOFT_STYLE_TERMS[descriptor]
+    subject = "The content"
+    if any(term in lowered for term in ("webinar", "presentation", "slide", "slides", "deck")):
+        subject = "The presentation"
+    elif any(term in lowered for term in ("message", "messaging", "language", "wording", "copy")):
+        subject = "The messaging"
+    return f"{subject} should avoid an overly {normalized} tone."
+
+
+def infer_soft_discussion_fallback(records: list[dict[str, Any]], index: int) -> str:
+    text = normalize_text_fragment(records[index].get("text", ""))
+    lowered = text.lower()
+    context = surrounding_record_text(records, index, window=1).lower()
+    combined = f"{lowered} {context}".strip()
+    has_content_context = any(term in combined for term in CONTENT_ARTEFACT_TERMS)
+
+    if any(term in combined for term in TEXT_DENSITY_TERMS):
+        return "The team discussed simplifying the material by reducing text on screen and making the content easier to follow."
+
+    if "necessary" in combined and has_content_context:
+        return "The team discussed whether all of the current content was necessary and what could be removed or simplified."
+
+    if any(phrase in combined for phrase in ("not absolutely necessary", "not really necessary")) and has_content_context:
+        return "The team discussed whether some of the current material was necessary or could be simplified."
+
+    return ""
+
+
 def collect_decision_candidates(intermediate: dict[str, Any], backend: MiniLMBackend | None = None) -> list[dict[str, Any]]:
     outputs = []
     for item in intermediate.get("decisionDebug", {}).get("topDecisionCandidates", []):
@@ -820,6 +871,8 @@ def collect_decision_candidates(intermediate: dict[str, Any], backend: MiniLMBac
             previous = normalize_text_fragment(records[index - 1].get("text", ""))
             if previous and len(tokenize(previous)) >= 4 and not previous.endswith("?"):
                 fallback_text = previous if previous.endswith(".") else previous + "."
+        else:
+            fallback_text = infer_soft_decision_fallback(text)
         if not fallback_text:
             continue
         key = normalized_key(fallback_text)
@@ -862,6 +915,33 @@ def collect_discussion_candidates(intermediate: dict[str, Any], backend: MiniLMB
                 "roleScores": {},
             }
         )
+    records = intermediate.get("records", [])
+    seen_fallback = {normalized_key(item["text"]) for item in outputs if item.get("text")}
+    for index, record in enumerate(records):
+        fallback_text = infer_soft_discussion_fallback(records, index)
+        if not fallback_text:
+            continue
+        key = normalized_key(fallback_text)
+        if not key or key in seen_fallback:
+            continue
+        outputs.append(
+            {
+                "text": fallback_text,
+                "baseScore": max(0.36, float(record.get("scores", {}).get("discussion", 0.0))),
+                "source": "record_discussion_fallback",
+                "scores": {"discussion": 0.46, "specificity": 0.48, "low_content": 0.0, "navigation": 0.0},
+                "evidence": [
+                    {
+                        "speaker": record.get("speaker", ""),
+                        "timestamp": record.get("timestamp", ""),
+                        "text": record.get("text", ""),
+                    }
+                ],
+                "timestamp": record.get("timestamp", ""),
+                "roleScores": {},
+            }
+        )
+        seen_fallback.add(key)
     deduped = []
     seen = set()
     for item in outputs:
@@ -900,7 +980,25 @@ MINILM_TOPIC_TERMS = {
     "demo", "demonstration", "workstream", "blocker", "risk", "decision", "review", "update",
     "timeline", "rollout", "training", "regulatory", "routing", "intake", "sales", "vendor",
     "grant", "governance", "webinar", "webinars", "stage", "template", "templates", "sow", "delivery",
+    "content", "screen", "wording", "messaging", "tone", "language", "design", "copy", "narrative",
 }
+
+SOFT_STYLE_TERMS = {
+    "salesy": "sales-focused",
+    "pushy": "pushy",
+    "wordy": "wordy",
+    "technical": "overly technical",
+    "corporate": "overly corporate",
+}
+
+CONTENT_ARTEFACT_TERMS = (
+    "content", "screen", "slide", "slides", "text", "imagery", "image", "images", "visual", "visuals",
+    "wording", "messaging", "language", "copy", "deck", "page", "pages",
+)
+
+TEXT_DENSITY_TERMS = (
+    "lot of text", "too much text", "text-heavy", "text heavy", "text on the screen", "wall of text",
+)
 
 
 def embedding_similarity(left: list[float], right: list[float]) -> float:

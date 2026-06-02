@@ -36,7 +36,7 @@ class FakeMiniLMBackend:
         groups = [
             ("workshop", "change management", "engages the team", "people in the room", "pain points", "solutions"),
             ("complaints", "triage", "gemba", "ipo", "bottleneck", "process", "workflow"),
-            ("slides", "text-heavy", "people-focused", "imagery", "visuals", "photos"),
+            ("slides", "text-heavy", "people-focused", "imagery", "visuals", "photos", "content", "screen", "messaging", "tone"),
             ("stage gate", "templates", "reviews", "finalised"),
             ("routing", "intake", "request funnel", "operational"),
             ("sales", "pipeline", "keone", "june", "blocked"),
@@ -67,14 +67,16 @@ class FakeMiniLMBackend:
         if prototype_group == "discussion":
             if any(term in lowered for term in (
                 "workshop", "complaints", "triage", "slides", "imagery", "gemba", "ipo", "workflow",
-                "stage gate", "routing", "pipeline", "vendor strategy", "innovation grant", "governance", "webinars"
+                "stage gate", "routing", "pipeline", "vendor strategy", "innovation grant", "governance", "webinars",
+                "content", "screen", "messaging", "tone"
             )):
                 return 0.9
             return 0.2
         if prototype_group in {"status", "blocker", "milestone"}:
             if any(term in lowered for term in (
                 "workflow", "process", "slides", "workshop", "complaints", "triage",
-                "stage gate", "routing", "pipeline", "vendor strategy", "innovation grant", "governance", "webinars"
+                "stage gate", "routing", "pipeline", "vendor strategy", "innovation grant", "governance", "webinars",
+                "content", "screen", "messaging", "tone"
             )):
                 return 0.82
             return 0.18
@@ -288,6 +290,42 @@ I'll refine the webinar slides.
         self.assertEqual(output["meetingActionPoint"], ["Formal action: Refine the webinar slides."])
         self.assertTrue(any(item["category"] == "action" and item["rewritten"] for item in diagnostics["rewriteEdits"]))
         self.assertGreaterEqual(diagnostics["rewriteRuntimeMs"], 0.0)
+
+    def test_minilm_only_output_promotes_soft_style_and_content_feedback(self):
+        transcript = """Webinar content review
+
+2 June 2026
+
+Claire:
+I think we just want to make sure that it's not salesy, like at all.
+
+Emma:
+What you're showing is here's a lot of text on the screen.
+
+Jack:
+It's not absolutely necessary, really.
+
+Claire:
+Is all the content here necessary?
+"""
+
+        intermediate = collect_minilm_only_context(transcript)
+        output, diagnostics = build_minilm_only_output(transcript, intermediate, FakeMiniLMBackend())
+
+        self.assertIsNotNone(output)
+        self.assertTrue(any("sales-focused tone" in decision.lower() for decision in output["decisions"]))
+        self.assertTrue(
+            any(
+                "reducing text on screen" in point.lower() or "current content was necessary" in point.lower()
+                for point in output["discussionPoints"]
+            )
+        )
+        self.assertTrue(
+            any(item.get("source") == "record_discussion_fallback" for item in diagnostics.get("discussionCandidates", []))
+        )
+        self.assertTrue(
+            any(item.get("source") == "record_decision_fallback" for item in diagnostics.get("decisionCandidates", []))
+        )
 
     def test_rewrite_sanitiser_strips_chat_template_tokens(self):
         rewritten = _sanitize_rewritten_minutes_text(

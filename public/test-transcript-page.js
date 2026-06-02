@@ -533,6 +533,10 @@ function buildTranscriptMinilmOnlyPage(config) {
   const rawOutputNode = document.getElementById('minilmOnlyRawOutput');
   const diagnosticsNode = document.getElementById('minilmOnlyDiagnostics');
 
+  function cloneJson(value) {
+    return JSON.parse(JSON.stringify(value));
+  }
+
   function setMessage(text, type) {
     message.textContent = text || '';
     message.className = text ? `message ${type || ''}` : 'message hidden';
@@ -624,22 +628,18 @@ function buildTranscriptMinilmOnlyPage(config) {
     `).join('');
   }
 
-  function renderSchemaList(items) {
-    if (!Array.isArray(items) || !items.length) {
-      return '<span class="schema-empty">—</span>';
-    }
-    return `<ul class="schema-list">${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
+  function renderTextarea(id, items, placeholder) {
+    const value = Array.isArray(items) ? items.join('\n') : (items || '');
+    return `<textarea id="${id}" placeholder="${escapeHtml(placeholder || '')}">${escapeHtml(value)}</textarea>`;
   }
 
   function renderActionTable(schemaOutput) {
     const actions = Array.isArray(schemaOutput.meetingActionPoint) ? schemaOutput.meetingActionPoint : [];
     const owners = Array.isArray(schemaOutput.meetingActionPointOwner) ? schemaOutput.meetingActionPointOwner : [];
     const deadlines = Array.isArray(schemaOutput.meetingActionPointDeadline) ? schemaOutput.meetingActionPointDeadline : [];
-    if (!actions.length) {
-      return '<span class="schema-empty">—</span>';
-    }
+    const rowCount = Math.max(actions.length, owners.length, deadlines.length, 1);
     return `
-      <table class="schema-subtable">
+      <table class="schema-subtable" id="actionsTable">
         <thead>
           <tr>
             <th>Action</th>
@@ -648,15 +648,18 @@ function buildTranscriptMinilmOnlyPage(config) {
           </tr>
         </thead>
         <tbody>
-          ${actions.map((action, index) => `
+          ${Array.from({ length: rowCount }).map((_, index) => `
             <tr>
-              <td>${escapeHtml(action)}</td>
-              <td>${escapeHtml(owners[index] || 'Owner not specified')}</td>
-              <td>${escapeHtml(deadlines[index] || '—')}</td>
+              <td><input type="text" data-action-field="action" value="${escapeHtml(actions[index] || '')}" placeholder="Action" /></td>
+              <td><input type="text" data-action-field="owner" value="${escapeHtml(owners[index] || '')}" placeholder="Owner" /></td>
+              <td><input type="text" data-action-field="deadline" value="${escapeHtml(deadlines[index] || '')}" placeholder="Deadline" /></td>
             </tr>
           `).join('')}
         </tbody>
       </table>
+      <div class="schema-inline-actions">
+        <button id="addActionRowBtn" class="secondary" type="button">Add action row</button>
+      </div>
     `;
   }
 
@@ -673,8 +676,8 @@ function buildTranscriptMinilmOnlyPage(config) {
         </thead>
         <tbody>
           <tr>
-            <td>${renderSchemaList(client)}</td>
-            <td>${renderSchemaList(trinzo)}</td>
+            <td>${renderTextarea('participantsClientInput', client, 'One client participant per line')}</td>
+            <td>${renderTextarea('participantsTrinzoInput', trinzo, 'One Trinzo participant per line')}</td>
           </tr>
         </tbody>
       </table>
@@ -687,19 +690,19 @@ function buildTranscriptMinilmOnlyPage(config) {
         <tbody>
           <tr>
             <th>Meeting title</th>
-            <td>${escapeHtml(schemaOutput.meetingTitle || '—')}</td>
+            <td><input id="meetingTitleInput" type="text" value="${escapeHtml(schemaOutput.meetingTitle || '')}" placeholder="Meeting title" /></td>
           </tr>
           <tr>
             <th>Meeting date</th>
-            <td>${escapeHtml(schemaOutput.meetingDate || '—')}</td>
+            <td><input id="meetingDateInput" type="text" value="${escapeHtml(schemaOutput.meetingDate || '')}" placeholder="Meeting date" /></td>
           </tr>
           <tr>
             <th>Meeting location</th>
-            <td>${escapeHtml(schemaOutput.meetingLocation || '—')}</td>
+            <td><input id="meetingLocationInput" type="text" value="${escapeHtml(schemaOutput.meetingLocation || '')}" placeholder="Meeting location" /></td>
           </tr>
           <tr>
             <th>Meeting objectives</th>
-            <td>${renderSchemaList(schemaOutput.meetingObjectives)}</td>
+            <td>${renderTextarea('meetingObjectivesInput', schemaOutput.meetingObjectives, 'One objective per line')}</td>
           </tr>
           <tr>
             <th>Participants</th>
@@ -707,11 +710,11 @@ function buildTranscriptMinilmOnlyPage(config) {
           </tr>
           <tr>
             <th>Item topic</th>
-            <td>${escapeHtml(schemaOutput.itemTopic || '—')}</td>
+            <td><input id="itemTopicInput" type="text" value="${escapeHtml(schemaOutput.itemTopic || '')}" placeholder="Item topic" /></td>
           </tr>
           <tr>
             <th>Discussion points</th>
-            <td>${renderSchemaList(schemaOutput.discussionPoints)}</td>
+            <td>${renderTextarea('discussionPointsInput', schemaOutput.discussionPoints, 'One discussion point per line')}</td>
           </tr>
           <tr>
             <th>Actions</th>
@@ -720,6 +723,94 @@ function buildTranscriptMinilmOnlyPage(config) {
         </tbody>
       </table>
     `;
+  }
+
+  function parseLines(value) {
+    return String(value || '')
+      .split('\n')
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  function collectEditedSchemaOutput() {
+    if (!state.schemaOutput) return null;
+    const schema = {
+      meetingTitle: document.getElementById('meetingTitleInput')?.value.trim() || '',
+      meetingDate: document.getElementById('meetingDateInput')?.value.trim() || '',
+      meetingLocation: document.getElementById('meetingLocationInput')?.value.trim() || '',
+      meetingObjectives: parseLines(document.getElementById('meetingObjectivesInput')?.value || ''),
+      participants: {
+        client: parseLines(document.getElementById('participantsClientInput')?.value || ''),
+        trinzo: parseLines(document.getElementById('participantsTrinzoInput')?.value || ''),
+      },
+      itemTopic: document.getElementById('itemTopicInput')?.value.trim() || '',
+      discussionPoints: parseLines(document.getElementById('discussionPointsInput')?.value || ''),
+      meetingActionPoint: [],
+      meetingActionPointOwner: [],
+      meetingActionPointDeadline: []
+    };
+
+    const actionRows = Array.from(outputNode.querySelectorAll('#actionsTable tbody tr'));
+    actionRows.forEach((row) => {
+      const action = row.querySelector('[data-action-field="action"]')?.value.trim() || '';
+      const owner = row.querySelector('[data-action-field="owner"]')?.value.trim() || '';
+      const deadline = row.querySelector('[data-action-field="deadline"]')?.value.trim() || '';
+      if (!action && !owner && !deadline) return;
+      schema.meetingActionPoint.push(action);
+      schema.meetingActionPointOwner.push(owner || 'Owner not specified');
+      schema.meetingActionPointDeadline.push(deadline);
+    });
+    return schema;
+  }
+
+  function buildEditableOutputFromSchema(schema) {
+    const output = cloneJson((state.payload && state.payload.result && state.payload.result.output) || {});
+    output.meetingTitle = schema.meetingTitle;
+    output.meetingDate = schema.meetingDate;
+    output.meetingLocation = schema.meetingLocation;
+    output.meetingObjectives = schema.meetingObjectives;
+    output.participants = {
+      client: schema.participants.client,
+      trinzo: schema.participants.trinzo,
+    };
+    output.itemTopic = schema.itemTopic;
+    output.discussionPoints = schema.discussionPoints;
+    output.meetingActionPoint = schema.meetingActionPoint;
+    output.meetingActionPointOwner = schema.meetingActionPointOwner;
+    output.meetingActionPointDeadline = schema.meetingActionPointDeadline;
+    output.actions = schema.meetingActionPoint.map((action, index) => ({
+      meetingActionPoint: action,
+      meetingActionPointOwner: schema.meetingActionPointOwner[index] || 'Owner not specified',
+      meetingActionPointDeadline: schema.meetingActionPointDeadline[index] || '',
+      actionConfidence: Array.isArray(output.actions) && output.actions[index] ? output.actions[index].actionConfidence || 0 : 0,
+      relatedMilestone: Array.isArray(output.actions) && output.actions[index] ? output.actions[index].relatedMilestone || 'minilm_only' : 'minilm_only',
+      _evidence: Array.isArray(output.actions) && output.actions[index] ? output.actions[index]._evidence || [] : [],
+    }));
+    if (output.internalEvidence && typeof output.internalEvidence === 'object') {
+      output.internalEvidence.actions = output.actions.map((item) => ({ text: item.meetingActionPoint, _evidence: item._evidence || [] }));
+      output.internalEvidence.discussionPoints = schema.discussionPoints.map((text, index) => {
+        const current = Array.isArray(output.internalEvidence.discussionPoints) ? output.internalEvidence.discussionPoints[index] : null;
+        return { text, _evidence: current && Array.isArray(current._evidence) ? current._evidence : [] };
+      });
+    }
+    return output;
+  }
+
+  function attachSchemaHandlers() {
+    const addActionRowBtn = document.getElementById('addActionRowBtn');
+    if (addActionRowBtn) {
+      addActionRowBtn.addEventListener('click', () => {
+        const tableBody = outputNode.querySelector('.schema-subtable tbody');
+        if (!tableBody) return;
+        tableBody.insertAdjacentHTML('beforeend', `
+          <tr>
+            <td><input type="text" data-action-field="action" value="" placeholder="Action" /></td>
+            <td><input type="text" data-action-field="owner" value="" placeholder="Owner" /></td>
+            <td><input type="text" data-action-field="deadline" value="" placeholder="Deadline" /></td>
+          </tr>
+        `);
+      });
+    }
   }
 
   function displayPayload(payload) {
@@ -731,6 +822,7 @@ function buildTranscriptMinilmOnlyPage(config) {
 
     displayDetailsSummary(payload, result);
     outputNode.innerHTML = renderSchemaTable(schemaOutput);
+    attachSchemaHandlers();
     rawOutputNode.textContent = JSON.stringify(output, null, 2);
     diagnosticsNode.textContent = JSON.stringify({
       mode: result.mode || 'minilm_only',
@@ -795,10 +887,12 @@ function buildTranscriptMinilmOnlyPage(config) {
     setMessage('Improving extracted minutes with Qwen rewrite...', 'info');
 
     try {
+      const editedSchema = collectEditedSchemaOutput();
+      const editedOutput = editedSchema ? buildEditableOutputFromSchema(editedSchema) : state.payload.result.output;
       const response = await fetch(config.improveEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ output: state.payload.result.output })
+        body: JSON.stringify({ output: editedOutput })
       });
       const payload = await response.json().catch(() => null);
 
@@ -845,7 +939,10 @@ function buildTranscriptMinilmOnlyPage(config) {
   goBtn.addEventListener('click', submitTranscript);
   if (improveBtn) improveBtn.addEventListener('click', improveMinutes);
   clearBtn.addEventListener('click', resetPage);
-  copyOutputBtn.addEventListener('click', () => copyValue(state.schemaOutput ? JSON.stringify(state.schemaOutput, null, 2) : '', 'MiniLM-only schema output'));
+  copyOutputBtn.addEventListener('click', () => {
+    const editedSchema = collectEditedSchemaOutput();
+    copyValue(editedSchema ? JSON.stringify(editedSchema, null, 2) : '', 'MiniLM-only schema output');
+  });
   copyRawBtn.addEventListener('click', () => copyValue(rawOutputNode.textContent, 'MiniLM-only raw output'));
   copyDiagnosticsBtn.addEventListener('click', () => copyValue(diagnosticsNode.textContent, 'MiniLM-only diagnostics'));
 }

@@ -39,6 +39,8 @@ button:disabled { opacity:.6; cursor:not-allowed; }
 .schema-table th, .schema-table td { border-bottom:1px solid var(--border); padding:.8rem; text-align:left; vertical-align:top; }
 .schema-table th { width:220px; color:var(--muted); font-size:.9rem; font-weight:700; background:#0b1530; }
 .schema-table tr:last-child th, .schema-table tr:last-child td { border-bottom:none; }
+.schema-table input[type=text], .schema-table textarea { width:100%; background:#091224; color:var(--text); border:1px solid var(--border); border-radius:8px; padding:.65rem; font:inherit; }
+.schema-table textarea { min-height:120px; resize:vertical; }
 .schema-list { margin:0; padding-left:1.1rem; }
 .schema-list li { margin:.15rem 0; }
 .schema-empty { color:var(--muted); }
@@ -46,6 +48,9 @@ button:disabled { opacity:.6; cursor:not-allowed; }
 .schema-subtable th, .schema-subtable td { border:1px solid var(--border); padding:.65rem; text-align:left; vertical-align:top; }
 .schema-subtable th { width:auto; background:#0b1530; color:var(--muted); font-size:.85rem; }
 .schema-subtable td { background:#091224; }
+.schema-subtable input[type=text] { width:100%; background:#071126; color:var(--text); border:1px solid var(--border); border-radius:8px; padding:.55rem; font:inherit; }
+.schema-inline-actions { display:flex; gap:.5rem; justify-content:flex-end; margin-top:.5rem; }
+.schema-inline-actions button { padding:.45rem .7rem; border-radius:8px; }
 pre { white-space:pre-wrap; overflow:auto; max-height:650px; background:#071126; border:1px solid var(--border); border-radius:10px; padding:1rem; }
 .accordion { margin-top:1rem; }
 .accordion details { background:#071126; border:1px solid var(--border); border-radius:10px; margin:.75rem 0; overflow:hidden; }
