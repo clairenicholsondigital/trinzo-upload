@@ -489,32 +489,38 @@ function buildTranscriptMinilmOnlyPage(config) {
     </section>
 
     <section id="minilmOnlyDiagnosticsPanel" class="panel hidden">
-      <h2>Details</h2>
       <div class="accordion">
         <details>
-          <summary>Summary</summary>
+          <summary>Details</summary>
           <div class="accordion-body">
-            <div id="minilmOnlySummaryGrid" class="summary-grid"></div>
-          </div>
-        </details>
-        <details>
-          <summary>Raw output</summary>
-          <div class="accordion-body">
-            <div class="json-heading">
-              <span class="note">Current raw MiniLM-only payload</span>
-              <button id="copyMinilmOnlyRawBtn" class="secondary" type="button">Copy raw output</button>
+            <div class="accordion">
+              <details>
+                <summary>Summary</summary>
+                <div class="accordion-body">
+                  <div id="minilmOnlySummaryGrid" class="summary-grid"></div>
+                </div>
+              </details>
+              <details>
+                <summary>Raw output</summary>
+                <div class="accordion-body">
+                  <div class="json-heading">
+                    <span class="note">Current raw MiniLM-only payload</span>
+                    <button id="copyMinilmOnlyRawBtn" class="secondary" type="button">Copy raw output</button>
+                  </div>
+                  <pre id="minilmOnlyRawOutput"></pre>
+                </div>
+              </details>
+              <details>
+                <summary>Diagnostics</summary>
+                <div class="accordion-body">
+                  <div class="json-heading">
+                    <span class="note">Current diagnostics, timings, and transcript metadata</span>
+                    <button id="copyMinilmOnlyDiagnosticsBtn" class="secondary" type="button">Copy diagnostics</button>
+                  </div>
+                  <pre id="minilmOnlyDiagnostics"></pre>
+                </div>
+              </details>
             </div>
-            <pre id="minilmOnlyRawOutput"></pre>
-          </div>
-        </details>
-        <details>
-          <summary>Diagnostics</summary>
-          <div class="accordion-body">
-            <div class="json-heading">
-              <span class="note">Current diagnostics, timings, and transcript metadata</span>
-              <button id="copyMinilmOnlyDiagnosticsBtn" class="secondary" type="button">Copy diagnostics</button>
-            </div>
-            <pre id="minilmOnlyDiagnostics"></pre>
           </div>
         </details>
       </div>

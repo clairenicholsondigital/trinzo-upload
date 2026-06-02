@@ -21,6 +21,7 @@ from scripts.meeting_minutes_minilm_experiment import (
     collect_minilm_only_context,
     normalize_text_fragment,
     rewrite_minutes_output_payload,
+    summarize_objectives_for_output,
 )
 SCRIPT = ROOT / "scripts" / "run_minilm_comparison.py"
 MINILM_ONLY_SCRIPT = ROOT / "scripts" / "meeting_minutes_minilm_only.py"
@@ -290,6 +291,22 @@ I'll refine the webinar slides.
         self.assertEqual(output["meetingActionPoint"], ["Formal action: Refine the webinar slides."])
         self.assertTrue(any(item["category"] == "action" and item["rewritten"] for item in diagnostics["rewriteEdits"]))
         self.assertGreaterEqual(diagnostics["rewriteRuntimeMs"], 0.0)
+
+    def test_objectives_can_be_summarised_separately_from_main_rewrite(self):
+        output = {
+            "discussionPoints": [
+                "The team discussed simplifying the material by reducing text on screen and making the content easier to follow.",
+                "The presentation should avoid an overly sales-focused tone.",
+                "The team discussed whether all of the current content was necessary and what could be removed or simplified.",
+            ]
+        }
+
+        objectives, diagnostics = summarize_objectives_for_output(output, rewriter=FakeLocalRewriter())
+
+        self.assertTrue(objectives)
+        self.assertLessEqual(len(objectives), 2)
+        self.assertTrue(diagnostics["objectiveSummaryApplied"])
+        self.assertGreaterEqual(diagnostics["objectiveSourceCount"], 2)
 
     def test_minilm_only_output_promotes_soft_style_and_content_feedback(self):
         transcript = """Webinar content review

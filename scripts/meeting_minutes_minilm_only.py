@@ -13,6 +13,7 @@ from meeting_minutes_minilm_experiment import (
     build_minilm_only_output,
     collect_experiment_context,
     collect_minilm_only_context,
+    summarize_objectives_for_output,
 )
 
 
@@ -42,6 +43,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help="Skip the Qwen rewrite pass and return raw MiniLM-selected output only.",
     )
+    parser.add_argument(
+        "--rewrite-objectives-only",
+        action="store_true",
+        help="Use Qwen only to summarise meeting objectives before returning the MiniLM-selected output.",
+    )
     return parser.parse_args(argv)
 
 
@@ -62,7 +68,7 @@ def main() -> int:
     context_runtime_ms = round((time.perf_counter() - context_start) * 1000, 2)
 
     backend = MiniLMBackend.load(enabled=True)
-    rewriter = LocalMinutesRewriter.load(enabled=not args.skip_rewrite)
+    rewriter = LocalMinutesRewriter.load(enabled=(not args.skip_rewrite) or args.rewrite_objectives_only)
     diagnostics = {}
     output = None
     minilm_runtime_ms = 0.0
@@ -82,6 +88,14 @@ def main() -> int:
         elapsed_ms = round((time.perf_counter() - minilm_start) * 1000, 2)
         minilm_runtime_ms = elapsed_ms
         rewrite_runtime_ms = round(float(diagnostics.get("rewriteRuntimeMs", 0.0)), 2)
+        if output is not None and args.rewrite_objectives_only:
+            objective_start = time.perf_counter()
+            objectives, objective_diag = summarize_objectives_for_output(output, rewriter=rewriter)
+            output["meetingObjectives"] = objectives
+            objective_runtime_ms = round((time.perf_counter() - objective_start) * 1000, 2)
+            diagnostics["objectiveSummary"] = objective_diag
+            diagnostics["objectiveSummaryRuntimeMs"] = objective_runtime_ms
+            rewrite_runtime_ms = round(rewrite_runtime_ms + objective_runtime_ms, 2)
     else:
         _, diagnostics = build_minilm_only_output(
             transcript_text,

@@ -1262,6 +1262,51 @@ def rewrite_minutes_output_payload(
     return rewritten_output, diagnostics
 
 
+def summarize_objectives_for_output(
+    output: dict[str, Any],
+    rewriter: LocalMinutesRewriter | None = None,
+) -> tuple[list[str], dict[str, Any]]:
+    diagnostics = {
+        "rewriterAvailable": bool(rewriter and rewriter.available),
+        "rewriterReason": "" if not rewriter else rewriter.reason,
+        "objectiveSummaryApplied": False,
+        "objectiveSourceCount": 0,
+    }
+
+    if not output:
+        return [], diagnostics
+
+    source_points = [
+        normalize_text_fragment(point).rstrip(".")
+        for point in output.get("discussionPoints", [])[:4]
+        if normalize_text_fragment(point)
+    ]
+    diagnostics["objectiveSourceCount"] = len(source_points)
+    if not source_points:
+        return [], diagnostics
+
+    fallback = source_points[:2]
+    if not rewriter or not rewriter.available:
+        return fallback, diagnostics
+
+    prompt_text = " ".join(source_points)
+    rewritten, meta = rewriter.rewrite_item("discussion", prompt_text)
+    cleaned = normalize_text_fragment(rewritten)
+    if not cleaned:
+        return fallback, diagnostics
+
+    sentences = re.findall(r"[^.!?]+[.!?]", cleaned)
+    if not sentences:
+        sentences = [cleaned if cleaned.endswith((".", "!", "?")) else f"{cleaned}."]
+    objectives = [normalize_text_fragment(sentence) for sentence in sentences[:2] if normalize_text_fragment(sentence)]
+    if not objectives:
+        return fallback, diagnostics
+
+    diagnostics["objectiveSummaryApplied"] = True
+    diagnostics["objectiveSummaryMeta"] = meta
+    return objectives, diagnostics
+
+
 def cluster_theme_summary(texts: list[str], fallback: str) -> str:
     blob = " ".join(texts).lower()
     if ("intake workflow" in blob or "request funnel" in blob or "routing" in blob) and "routing" in blob:
