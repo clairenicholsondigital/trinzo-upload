@@ -1159,6 +1159,7 @@ def build_minilm_only_output(
     intermediate: dict[str, Any],
     backend: MiniLMBackend,
     rewriter: LocalMinutesRewriter | None = None,
+    include_diagnostics: bool = True,
 ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
     diagnostics = {
         "mode": "minilm_only",
@@ -1228,27 +1229,30 @@ def build_minilm_only_output(
         candidate["combinedScore"] = combined
         action_candidates.append(candidate)
     action_candidates.sort(key=lambda item: item["combinedScore"], reverse=True)
-    diagnostics["actionCandidates"] = action_candidates[:8]
+    if include_diagnostics:
+        diagnostics["actionCandidates"] = action_candidates[:8]
     seen_action_keys = set()
     for candidate in action_candidates:
         accepted, reason = should_accept_action_candidate(candidate)
-        diagnostics["actionSelections"].append(
-            {
-                "text": candidate["text"],
-                "baseScore": candidate["baseScore"],
-                "semanticScore": candidate["semanticScore"],
-                "combinedScore": candidate["combinedScore"],
-                "accepted": accepted,
-                "reason": reason,
-                "source": candidate.get("source", ""),
-            }
-        )
+        if include_diagnostics:
+            diagnostics["actionSelections"].append(
+                {
+                    "text": candidate["text"],
+                    "baseScore": candidate["baseScore"],
+                    "semanticScore": candidate["semanticScore"],
+                    "combinedScore": candidate["combinedScore"],
+                    "accepted": accepted,
+                    "reason": reason,
+                    "source": candidate.get("source", ""),
+                }
+            )
         if not accepted:
             continue
         key = normalized_key(candidate["text"])
         if key in seen_action_keys:
-            diagnostics["actionSelections"][-1]["accepted"] = False
-            diagnostics["actionSelections"][-1]["reason"] = "duplicate_action"
+            if include_diagnostics:
+                diagnostics["actionSelections"][-1]["accepted"] = False
+                diagnostics["actionSelections"][-1]["reason"] = "duplicate_action"
             continue
         action = {
             "meetingActionPoint": candidate["text"][:1].upper() + candidate["text"][1:] + ("" if candidate["text"].endswith(".") else "."),
@@ -1263,9 +1267,10 @@ def build_minilm_only_output(
         output["meetingActionPointOwner"].append(action["meetingActionPointOwner"])
         output["meetingActionPointDeadline"].append(action["meetingActionPointDeadline"])
         output["internalEvidence"]["actions"].append({"text": action["meetingActionPoint"], "_evidence": []})
-        diagnostics["selectedActions"].append(action)
+        if include_diagnostics:
+            diagnostics["selectedActions"].append(action)
         seen_action_keys.add(key)
-        if len(diagnostics["selectedActions"]) >= 6:
+        if len(output["actions"]) >= 6:
             break
 
     decision_candidates = []
@@ -1276,27 +1281,30 @@ def build_minilm_only_output(
         candidate["combinedScore"] = combined
         decision_candidates.append(candidate)
     decision_candidates.sort(key=lambda item: item["combinedScore"], reverse=True)
-    diagnostics["decisionCandidates"] = decision_candidates[:8]
+    if include_diagnostics:
+        diagnostics["decisionCandidates"] = decision_candidates[:8]
     seen_decision_keys = set()
     for candidate in decision_candidates:
         accepted, reason = should_accept_decision_candidate(candidate)
-        diagnostics["decisionSelections"].append(
-            {
-                "text": candidate["text"],
-                "baseScore": candidate["baseScore"],
-                "semanticScore": candidate["semanticScore"],
-                "combinedScore": candidate["combinedScore"],
-                "accepted": accepted,
-                "reason": reason,
-                "source": candidate.get("source", ""),
-            }
-        )
+        if include_diagnostics:
+            diagnostics["decisionSelections"].append(
+                {
+                    "text": candidate["text"],
+                    "baseScore": candidate["baseScore"],
+                    "semanticScore": candidate["semanticScore"],
+                    "combinedScore": candidate["combinedScore"],
+                    "accepted": accepted,
+                    "reason": reason,
+                    "source": candidate.get("source", ""),
+                }
+            )
         if not accepted:
             continue
         key = normalized_key(candidate["text"])
         if key in seen_decision_keys:
-            diagnostics["decisionSelections"][-1]["accepted"] = False
-            diagnostics["decisionSelections"][-1]["reason"] = "duplicate_decision"
+            if include_diagnostics:
+                diagnostics["decisionSelections"][-1]["accepted"] = False
+                diagnostics["decisionSelections"][-1]["reason"] = "duplicate_decision"
             continue
         text = candidate["text"]
         if text and not text.endswith("."):
@@ -1311,9 +1319,10 @@ def build_minilm_only_output(
             }
         )
         output["internalEvidence"]["decisions"].append({"text": normalized, "_evidence": []})
-        diagnostics["selectedDecisions"].append(normalized)
+        if include_diagnostics:
+            diagnostics["selectedDecisions"].append(normalized)
         seen_decision_keys.add(key)
-        if len(diagnostics["selectedDecisions"]) >= 4:
+        if len(output["decisions"]) >= 4:
             break
 
     discussion_candidates = []
@@ -1332,7 +1341,7 @@ def build_minilm_only_output(
         keep, reason = should_keep_discussion_candidate(candidate)
         if keep:
             filtered_discussion_candidates.append(candidate)
-        else:
+        elif include_diagnostics:
             diagnostics["rejectedDiscussionCandidates"].append(
                 {
                     "text": candidate["text"],
@@ -1343,7 +1352,8 @@ def build_minilm_only_output(
                 }
             )
     discussion_candidates.sort(key=lambda item: item["combinedScore"], reverse=True)
-    diagnostics["discussionCandidates"] = discussion_candidates[:10]
+    if include_diagnostics:
+        diagnostics["discussionCandidates"] = discussion_candidates[:10]
 
     selected_cluster_points: list[dict[str, Any]] = []
     for cluster in cluster_candidates_semantically(filtered_discussion_candidates, backend):
@@ -1358,12 +1368,14 @@ def build_minilm_only_output(
             "reason": "cluster_builder_rejected" if built is None else "",
         }
         if built is None:
-            diagnostics["discussionClusters"].append(cluster_diag)
+            if include_diagnostics:
+                diagnostics["discussionClusters"].append(cluster_diag)
             continue
         accepted, reason = should_accept_cluster_candidate(built, selected_cluster_points)
         cluster_diag["accepted"] = accepted
         cluster_diag["reason"] = reason
-        diagnostics["discussionClusters"].append(cluster_diag)
+        if include_diagnostics:
+            diagnostics["discussionClusters"].append(cluster_diag)
         if not accepted:
             continue
         selected_cluster_points.append(built)
@@ -1384,8 +1396,9 @@ def build_minilm_only_output(
             }
         )
         output["internalEvidence"]["discussionPoints"].append({"text": text, "_evidence": candidate["evidence"]})
-        diagnostics["selectedDiscussionPoints"].append(text)
-        if len(diagnostics["selectedDiscussionPoints"]) >= 8:
+        if include_diagnostics:
+            diagnostics["selectedDiscussionPoints"].append(text)
+        if len(output["discussionPoints"]) >= 8:
             break
 
     output["discussionPoints"] = dedupe_values(output["discussionPoints"])
@@ -1401,7 +1414,8 @@ def build_minilm_only_output(
         for index, point in enumerate(output["discussionPoints"]):
             rewritten, rewrite_diag = rewriter.rewrite_item("discussion", point)
             rewritten_discussion.append(rewritten)
-            diagnostics["rewriteEdits"].append({"category": "discussion", "before": point, "after": rewritten, **rewrite_diag})
+            if include_diagnostics:
+                diagnostics["rewriteEdits"].append({"category": "discussion", "before": point, "after": rewritten, **rewrite_diag})
             if index < len(output["discussionPointDetails"]):
                 output["discussionPointDetails"][index]["rewrittenDiscussionPoint"] = rewritten
         output["discussionPoints"] = dedupe_values(rewritten_discussion)
@@ -1410,7 +1424,8 @@ def build_minilm_only_output(
         for index, point in enumerate(output["decisions"]):
             rewritten, rewrite_diag = rewriter.rewrite_item("decision", point)
             rewritten_decisions.append(rewritten)
-            diagnostics["rewriteEdits"].append({"category": "decision", "before": point, "after": rewritten, **rewrite_diag})
+            if include_diagnostics:
+                diagnostics["rewriteEdits"].append({"category": "decision", "before": point, "after": rewritten, **rewrite_diag})
             if index < len(output["decisionDetails"]):
                 output["decisionDetails"][index]["rewrittenDecision"] = rewritten
         output["decisions"] = dedupe_values(rewritten_decisions)
@@ -1419,7 +1434,8 @@ def build_minilm_only_output(
             before = action["meetingActionPoint"]
             rewritten, rewrite_diag = rewriter.rewrite_item("action", before)
             action["meetingActionPoint"] = rewritten
-            diagnostics["rewriteEdits"].append({"category": "action", "before": before, "after": rewritten, **rewrite_diag})
+            if include_diagnostics:
+                diagnostics["rewriteEdits"].append({"category": "action", "before": before, "after": rewritten, **rewrite_diag})
         output["actions"] = dedupe_action_objects(output["actions"])
         output["meetingActionPoint"] = [item["meetingActionPoint"] for item in output["actions"]]
         output["meetingActionPointOwner"] = [item["meetingActionPointOwner"] for item in output["actions"]]

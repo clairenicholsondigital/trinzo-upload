@@ -174,7 +174,7 @@ function parsePythonJson(rawOutput, scriptName) {
   }
 }
 
-async function runPythonTranscriptScript(scriptName, transcriptText) {
+async function runPythonTranscriptScript(scriptName, transcriptText, scriptArgs = []) {
   validateTranscriptText(transcriptText);
 
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'trinzo-transcript-'));
@@ -185,7 +185,7 @@ async function runPythonTranscriptScript(scriptName, transcriptText) {
     await fs.writeFile(tempPath, transcriptText, 'utf8');
 
     const rawOutput = await new Promise((resolve, reject) => {
-      const child = spawn(process.env.PYTHON_BIN || 'python3', [scriptPath, tempPath], {
+      const child = spawn(process.env.PYTHON_BIN || 'python3', [scriptPath, tempPath, ...scriptArgs], {
         cwd: path.join(__dirname, '..'),
         env: process.env,
         stdio: ['ignore', 'pipe', 'pipe']
@@ -512,7 +512,19 @@ router.post('/meeting-minutes-minilm-only', withTestUpload(async (req, res) => {
   try {
     const transcript = await readTestTranscript(req);
     validateTranscriptText(transcript.text);
-    const result = await runPythonTranscriptScript('meeting_minutes_minilm_only.py', transcript.text);
+    const scriptArgs = [];
+
+    if (!truthyFlag(req.query?.includeBaselineReference) && !truthyFlag(req.body?.includeBaselineReference)) {
+      // Baseline comparison is optional in the lab and should stay off by default on the web path.
+    } else {
+      scriptArgs.push('--include-baseline-reference');
+    }
+
+    if (!truthyFlag(req.query?.includeDiagnostics) && !truthyFlag(req.body?.includeDiagnostics)) {
+      scriptArgs.push('--skip-diagnostics');
+    }
+
+    const result = await runPythonTranscriptScript('meeting_minutes_minilm_only.py', transcript.text, scriptArgs);
 
     return res.json(buildTestTranscriptResponse(req, transcript, result));
   } catch (error) {

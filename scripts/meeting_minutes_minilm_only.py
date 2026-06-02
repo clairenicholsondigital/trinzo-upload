@@ -63,14 +63,28 @@ def main() -> int:
     minilm_runtime_ms = 0.0
     rewrite_runtime_ms = 0.0
 
+    include_diagnostics = not args.skip_diagnostics
+
     if backend.available:
         minilm_start = time.perf_counter()
-        output, diagnostics = build_minilm_only_output(transcript_text, intermediate, backend, rewriter=rewriter)
+        output, diagnostics = build_minilm_only_output(
+            transcript_text,
+            intermediate,
+            backend,
+            rewriter=rewriter,
+            include_diagnostics=include_diagnostics,
+        )
         elapsed_ms = round((time.perf_counter() - minilm_start) * 1000, 2)
         minilm_runtime_ms = elapsed_ms
         rewrite_runtime_ms = round(float(diagnostics.get("rewriteRuntimeMs", 0.0)), 2)
     else:
-        _, diagnostics = build_minilm_only_output(transcript_text, intermediate, backend, rewriter=rewriter)
+        _, diagnostics = build_minilm_only_output(
+            transcript_text,
+            intermediate,
+            backend,
+            rewriter=rewriter,
+            include_diagnostics=include_diagnostics,
+        )
 
     payload = {
         "mode": "minilm_only",
@@ -99,7 +113,7 @@ def main() -> int:
             "decisions": baseline_output.get("decisions", []),
             "meetingActionPoint": baseline_output.get("meetingActionPoint", []),
         }
-    if not args.skip_diagnostics:
+    if include_diagnostics:
         payload["diagnostics"] = diagnostics
 
     print(json.dumps(payload, ensure_ascii=False))
