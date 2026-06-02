@@ -1,8 +1,11 @@
 import json
+import os
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -10,6 +13,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT))
 
 from scripts.meeting_minutes_minilm_experiment import (
+    LocalMinutesRewriter,
     build_minilm_only_output,
     build_minilm_variant,
     collect_experiment_context,
@@ -102,6 +106,13 @@ class FakeLocalRewriter:
 
 
 class MiniLMComparisonSmokeTest(unittest.TestCase):
+    def setUp(self):
+        LocalMinutesRewriter._singleton = None
+
+    def tearDown(self):
+        LocalMinutesRewriter._singleton = None
+        os.environ.pop("MINUTES_LOCAL_REWRITER_URL", None)
+
     def test_comparison_script_exists(self):
         self.assertTrue(SCRIPT.exists(), f"Expected comparison script at {SCRIPT}")
 
@@ -270,6 +281,68 @@ I'll refine the webinar slides.
         self.assertEqual(output["meetingActionPoint"], ["Formal action: Refine the webinar slides."])
         self.assertTrue(any(item["category"] == "action" and item["rewritten"] for item in diagnostics["rewriteEdits"]))
         self.assertGreaterEqual(diagnostics["rewriteRuntimeMs"], 0.0)
+
+    def test_local_rewriter_can_use_remote_worker(self):
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, format, *args):
+                return
+
+            def do_GET(self):
+                if self.path != "/health":
+                    self.send_response(404)
+                    self.end_headers()
+                    return
+                payload = json.dumps(
+                    {
+                        "ok": True,
+                        "reason": "",
+                        "modelName": "fake-remote-qwen",
+                        "modelPath": "/tmp/fake-remote-qwen",
+                    }
+                ).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+
+            def do_POST(self):
+                if self.path != "/rewrite":
+                    self.send_response(404)
+                    self.end_headers()
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                rewritten = f"Remote rewrite: {payload['text']}"
+                body = json.dumps(
+                    {
+                        "ok": True,
+                        "rewritten": rewritten,
+                        "meta": {"category": payload["category"], "reason": "ok", "rewritten": True},
+                        "modelName": "fake-remote-qwen",
+                        "modelPath": "/tmp/fake-remote-qwen",
+                    }
+                ).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            os.environ["MINUTES_LOCAL_REWRITER_URL"] = f"http://127.0.0.1:{server.server_port}"
+            rewriter = LocalMinutesRewriter.load(enabled=True)
+            rewritten, meta = rewriter.rewrite_item("action", "Refine the webinar slides.")
+            self.assertTrue(rewriter.available)
+            self.assertEqual(rewriter.worker_url, f"http://127.0.0.1:{server.server_port}")
+            self.assertEqual(rewritten, "Remote rewrite: Refine the webinar slides.")
+            self.assertTrue(meta["rewritten"])
+        finally:
+            server.shutdown()
+            server.server_close()
 
     def test_minilm_only_status_review_fixture_promotes_clusters_actions_and_decisions(self):
         transcript = (ROOT / "scripts" / "transcript-tests" / "001_status_review" / "transcript.txt").read_text(encoding="utf-8")

@@ -6,6 +6,8 @@ import math
 import os
 import re
 import time
+import urllib.error
+import urllib.request
 from collections import Counter
 from copy import deepcopy
 from dataclasses import dataclass
@@ -137,15 +139,36 @@ class LocalMinutesRewriter:
     model_name: str = "Qwen/Qwen2.5-0.5B-Instruct"
     model_path: str = ""
     generator: Any | None = None
+    worker_url: str = ""
 
     _singleton: ClassVar["LocalMinutesRewriter | None"] = None
 
     @classmethod
-    def load(cls, enabled: bool = True) -> "LocalMinutesRewriter":
+    def load(cls, enabled: bool = True, prefer_remote: bool = True) -> "LocalMinutesRewriter":
         if cls._singleton is not None:
             return cls._singleton
         if not enabled:
             cls._singleton = cls(False, "Local minutes rewriter disabled.")
+            return cls._singleton
+
+        worker_url = os.environ.get("MINUTES_LOCAL_REWRITER_URL", "").strip().rstrip("/")
+        if prefer_remote and worker_url:
+            health = cls._check_remote_worker(worker_url)
+            if health.get("ok"):
+                cls._singleton = cls(
+                    True,
+                    "",
+                    model_name=health.get("modelName", "Qwen/Qwen2.5-0.5B-Instruct"),
+                    model_path=health.get("modelPath", ""),
+                    worker_url=worker_url,
+                )
+                return cls._singleton
+            cls._singleton = cls(
+                False,
+                health.get("reason", f"Remote rewriter unavailable at {worker_url}"),
+                model_path=health.get("modelPath", ""),
+                worker_url=worker_url,
+            )
             return cls._singleton
 
         configured_path = os.environ.get("MINUTES_LOCAL_LLM_PATH", "").strip()
@@ -176,9 +199,45 @@ class LocalMinutesRewriter:
         cls._singleton = cls(True, "", model_path=str(model_path), generator=pipeline)
         return cls._singleton
 
+    @staticmethod
+    def _check_remote_worker(worker_url: str) -> dict[str, Any]:
+        try:
+            with urllib.request.urlopen(f"{worker_url}/health", timeout=5) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except Exception as exc:  # pragma: no cover - exercised in real envs
+            return {"ok": False, "reason": f"Remote rewriter health check failed: {exc}"}
+        return payload if isinstance(payload, dict) else {"ok": False, "reason": "Remote rewriter health response was invalid."}
+
+    def _rewrite_via_remote_worker(self, category: str, cleaned: str) -> tuple[str, dict[str, Any]]:
+        payload = json.dumps({"category": category, "text": cleaned}).encode("utf-8")
+        request = urllib.request.Request(
+            f"{self.worker_url}/rewrite",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                result = json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:  # pragma: no cover - exercised in real envs
+            return cleaned, {"category": category, "rewritten": False, "reason": f"remote_http_error: {exc.code}"}
+        except Exception as exc:  # pragma: no cover - exercised in real envs
+            return cleaned, {"category": category, "rewritten": False, "reason": f"remote_request_failed: {exc}"}
+
+        rewritten = _sanitize_rewritten_minutes_text(result.get("rewritten", ""), cleaned)
+        meta = result.get("meta", {})
+        if not isinstance(meta, dict):
+            meta = {}
+        meta.setdefault("category", category)
+        meta.setdefault("reason", "ok")
+        meta["rewritten"] = normalize_text(rewritten) != normalize_text(cleaned)
+        return rewritten, meta
+
     def rewrite_item(self, category: str, text: str) -> tuple[str, dict[str, Any]]:
         cleaned = normalize_text_fragment(text)
         if not self.available or not self.generator or not cleaned:
+            if self.available and self.worker_url and cleaned:
+                return self._rewrite_via_remote_worker(category, cleaned)
             return cleaned, {"category": category, "rewritten": False, "reason": self.reason or "rewriter_unavailable"}
 
         instruction = (
