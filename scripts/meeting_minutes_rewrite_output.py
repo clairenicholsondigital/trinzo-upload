@@ -46,6 +46,8 @@ def main() -> int:
     payload = {
         "mode": "meeting_minutes_final_rewrite",
         "executed": diagnostics.get("rewriterAvailable", False),
+        "rewriteSucceeded": diagnostics.get("rewriteSucceeded", False),
+        "rewriteFailureCount": diagnostics.get("rewriteFailureCount", 0),
         "rewriterAvailable": rewriter.available,
         "rewriterModelName": rewriter.model_name,
         "rewriterModelPath": rewriter.model_path,

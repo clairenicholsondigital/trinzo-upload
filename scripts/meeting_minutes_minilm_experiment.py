@@ -370,7 +370,25 @@ class LocalMinutesRewriter:
             return []
 
         if self.available and self.worker_url:
-            return self._rewrite_batch_via_remote_worker(cleaned_items)
+            batch_size = max(1, int(os.environ.get("MINUTES_REMOTE_REWRITE_BATCH_SIZE", "2") or "2"))
+            outputs: list[dict[str, Any]] = []
+            for start in range(0, len(cleaned_items), batch_size):
+                batch = cleaned_items[start : start + batch_size]
+                batch_outputs = self._rewrite_batch_via_remote_worker(batch)
+                if len(batch_outputs) != len(batch):
+                    batch_outputs = [
+                        {
+                            "rewritten": item["text"],
+                            "meta": {
+                                "category": item["category"],
+                                "rewritten": False,
+                                "reason": "remote_batch_result_count_mismatch",
+                            },
+                        }
+                        for item in batch
+                    ]
+                outputs.extend(batch_outputs)
+            return outputs
 
         if not self.available or not self.generator:
             return [
@@ -1639,6 +1657,8 @@ def rewrite_minutes_output_payload(
         "rewriterAvailable": bool(rewriter and rewriter.available),
         "rewriterReason": "" if not rewriter else rewriter.reason,
         "rewriteEdits": [],
+        "rewriteFailureCount": 0,
+        "rewriteSucceeded": False,
         "rewriteRuntimeMs": 0.0,
     }
 
@@ -1670,8 +1690,12 @@ def rewrite_minutes_output_payload(
         before = plan_item["text"]
         rewritten = result_item.get("rewritten", before)
         rewrite_diag = result_item.get("meta", {})
+        reason = str(rewrite_diag.get("reason", ""))
+        rewrite_failed = reason and reason != "ok" and not rewrite_diag.get("rewritten", False)
+        if rewrite_failed:
+            diagnostics["rewriteFailureCount"] += 1
         if include_diagnostics:
-            diagnostics["rewriteEdits"].append({"category": category, "before": before, "after": rewritten, **rewrite_diag})
+            diagnostics["rewriteEdits"].append({"category": category, "before": before, "after": rewritten, "failed": rewrite_failed, **rewrite_diag})
 
         slot_name, slot_index = plan_item["slot"]
         if slot_name == "discussionPoints":
@@ -1693,6 +1717,12 @@ def rewrite_minutes_output_payload(
     rewritten_output["meetingActionPointOwner"] = [item["meetingActionPointOwner"] for item in rewritten_output.get("actions", [])]
     rewritten_output["meetingActionPointDeadline"] = [item["meetingActionPointDeadline"] for item in rewritten_output.get("actions", [])]
     diagnostics["rewriteRuntimeMs"] = round((time.perf_counter() - rewrite_start) * 1000, 2)
+    diagnostics["rewriteSucceeded"] = bool(rewrite_plan) and diagnostics["rewriteFailureCount"] == 0
+    rewritten_output["rewriteStatus"] = {
+        "succeeded": diagnostics["rewriteSucceeded"],
+        "failureCount": diagnostics["rewriteFailureCount"],
+        "runtimeMs": diagnostics["rewriteRuntimeMs"],
+    }
     return rewritten_output, diagnostics
 
 

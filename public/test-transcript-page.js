@@ -1026,7 +1026,12 @@ function buildTranscriptMinilmOnlyPage(config) {
         ...state.payload,
         result: payload.result
       };
-      setMessage('Minutes improved with the local LLM layer.', 'success');
+      if (payload.result && payload.result.rewriteSucceeded === false) {
+        const failureCount = payload.result.rewriteFailureCount || 0;
+        setMessage(`Local LLM improvement did not fully complete (${failureCount} rewrite item${failureCount === 1 ? '' : 's'} failed). Review diagnostics before using this output.`, 'error');
+      } else {
+        setMessage('Minutes improved with the local LLM layer.', 'success');
+      }
       displayPayload(mergedPayload);
     } catch (error) {
       setMessage(error.message || 'Improving minutes failed.', 'error');
