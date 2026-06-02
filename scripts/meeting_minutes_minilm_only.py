@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import sys
 import time
+import argparse
 from pathlib import Path
 
 from meeting_minutes_minilm_experiment import (
@@ -23,16 +24,33 @@ def build_counts(payload: dict) -> dict[str, int]:
     }
 
 
-def main() -> int:
-    if len(sys.argv) != 2:
-        raise SystemExit("Usage: python3 meeting_minutes_minilm_only.py <transcript_path>")
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run the MiniLM-only meeting minutes lab.")
+    parser.add_argument("transcript_path", help="Path to the transcript file.")
+    parser.add_argument(
+        "--include-baseline-reference",
+        action="store_true",
+        help="Also run the baseline extractor and include comparison counts.",
+    )
+    parser.add_argument(
+        "--skip-diagnostics",
+        action="store_true",
+        help="Omit diagnostics payload fields from the final JSON response.",
+    )
+    return parser.parse_args(argv)
 
-    transcript_path = Path(sys.argv[1])
+
+def main() -> int:
+    args = parse_args(sys.argv[1:])
+    transcript_path = Path(args.transcript_path)
     transcript_text = transcript_path.read_text(encoding="utf-8")
 
-    baseline_start = time.perf_counter()
-    baseline_output, _baseline_intermediate = collect_experiment_context(transcript_text)
-    baseline_runtime_ms = round((time.perf_counter() - baseline_start) * 1000, 2)
+    baseline_output = None
+    baseline_runtime_ms = 0.0
+    if args.include_baseline_reference:
+        baseline_start = time.perf_counter()
+        baseline_output, _baseline_intermediate = collect_experiment_context(transcript_text)
+        baseline_runtime_ms = round((time.perf_counter() - baseline_start) * 1000, 2)
 
     context_start = time.perf_counter()
     intermediate = collect_minilm_only_context(transcript_text)
@@ -66,13 +84,6 @@ def main() -> int:
         "rewriterReason": rewriter.reason,
         "output": output,
         "counts": build_counts(output or {}),
-        "baselineReference": {
-            "counts": build_counts(baseline_output),
-            "discussionPoints": baseline_output.get("discussionPoints", []),
-            "decisions": baseline_output.get("decisions", []),
-            "meetingActionPoint": baseline_output.get("meetingActionPoint", []),
-        },
-        "diagnostics": diagnostics,
         "timingMs": {
             "baseline": baseline_runtime_ms,
             "context": context_runtime_ms,
@@ -81,6 +92,15 @@ def main() -> int:
             "total": round(baseline_runtime_ms + context_runtime_ms + minilm_runtime_ms, 2),
         },
     }
+    if args.include_baseline_reference and baseline_output is not None:
+        payload["baselineReference"] = {
+            "counts": build_counts(baseline_output),
+            "discussionPoints": baseline_output.get("discussionPoints", []),
+            "decisions": baseline_output.get("decisions", []),
+            "meetingActionPoint": baseline_output.get("meetingActionPoint", []),
+        }
+    if not args.skip_diagnostics:
+        payload["diagnostics"] = diagnostics
 
     print(json.dumps(payload, ensure_ascii=False))
     return 0
