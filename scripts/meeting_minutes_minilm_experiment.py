@@ -344,6 +344,7 @@ class LocalMinutesRewriter:
             "For discussion items, prefer concise topic-led wording. "
             "For decisions, prefer clear agreed-direction wording. "
             "For actions, prefer direct action wording with the commitment intact. "
+            "Do not use markdown, headings, labels, bullets, or 'Meeting Minutes' wrapper text. "
             "Return valid JSON only in this exact schema: {\"items\":[{\"rewritten\":\"...\"}]}. "
             "Return exactly one rewritten sentence per input item in the same order as provided."
         )
@@ -373,7 +374,7 @@ class LocalMinutesRewriter:
             return []
 
         if self.available and self.worker_url:
-            batch_size = max(1, int(os.environ.get("MINUTES_REMOTE_REWRITE_BATCH_SIZE", "2") or "2"))
+            batch_size = max(1, int(os.environ.get("MINUTES_REMOTE_REWRITE_BATCH_SIZE", "1") or "1"))
             outputs: list[dict[str, Any]] = []
             for start in range(0, len(cleaned_items), batch_size):
                 batch = cleaned_items[start : start + batch_size]
@@ -434,8 +435,9 @@ class LocalMinutesRewriter:
         outputs = []
         for index, item in enumerate(cleaned_items):
             result_item = decoded_items[index] if index < len(decoded_items) and isinstance(decoded_items[index], dict) else {}
-            rewritten = _sanitize_rewritten_minutes_text(result_item.get("rewritten", ""), item["text"])
             parse_failed = not result_item
+            raw_rewrite = result_item.get("rewritten", "") if result_item else (generated if len(cleaned_items) == 1 else "")
+            rewritten = _sanitize_rewritten_minutes_text(raw_rewrite, item["text"])
             outputs.append(
                 {
                     "rewritten": rewritten,
@@ -1652,10 +1654,10 @@ def _sanitize_rewritten_minutes_text(generated: str, fallback: str) -> str:
     cleaned = normalize_text_fragment(generated)
     if not cleaned:
         cleaned = fallback_clean
-    cleaned = re.sub(r"<\|(?:system|user|assistant|endoftext)\|>", " ", cleaned, flags=re.I)
-    cleaned = re.sub(r"^(?:item:|rewrite:|discussion point:|action:|decision:)\s*", "", cleaned, flags=re.I)
+    cleaned = re.sub(r"<\|(?:im_start|im_end|system|user|assistant|endoftext)\|>", " ", cleaned, flags=re.I)
+    cleaned = re.sub(r"^(?:[-*]\s*)?(?:\*\*)?(?:item|rewrite|objective|discussion(?: item| point)?|action(?: item)?|decision)(?:\s+\d+)?(?:\*\*)?\s*[:\-]\s*", "", cleaned, flags=re.I)
     cleaned = cleaned.split("\n", 1)[0].strip().strip('"')
-    cleaned = re.split(r"\s*<\|(?:system|user|assistant|endoftext)\|>\s*", cleaned, maxsplit=1, flags=re.I)[0]
+    cleaned = re.split(r"\s*<\|(?:im_start|im_end|system|user|assistant|endoftext)\|>\s*", cleaned, maxsplit=1, flags=re.I)[0]
     cleaned = re.split(r"\s*(?:system|user|assistant)\s*:\s*", cleaned, maxsplit=1, flags=re.I)[0]
     cleaned = re.split(
         r"\s*(?:\[(?:signature|date|name of approver|email|sign off|end of meeting)\]|\b(?:signature|name of approver|approver|email|sign off|end of meeting)\b\s*:?)\s*",
