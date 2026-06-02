@@ -35,6 +35,10 @@ app.get('/meeting-minutes-comparison', (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'meeting-minutes-comparison.html'));
 });
 
+app.get('/meeting-minutes-minilm-only', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'meeting-minutes-minilm-only.html'));
+});
+
 app.get('/project-update-test', (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'project-update-test.html'));
 });

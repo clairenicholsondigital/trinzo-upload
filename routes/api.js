@@ -508,6 +508,18 @@ router.post('/meeting-minutes-comparison', withTestUpload(async (req, res) => {
   }
 }));
 
+router.post('/meeting-minutes-minilm-only', withTestUpload(async (req, res) => {
+  try {
+    const transcript = await readTestTranscript(req);
+    validateTranscriptText(transcript.text);
+    const result = await runPythonTranscriptScript('meeting_minutes_minilm_only.py', transcript.text);
+
+    return res.json(buildTestTranscriptResponse(req, transcript, result));
+  } catch (error) {
+    return sendTestError(res, error);
+  }
+}));
+
 router.post('/project-update-test', withTestUpload(async (req, res) => {
   try {
     const transcript = await readTestTranscript(req);

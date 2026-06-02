@@ -444,3 +444,179 @@ function buildTranscriptComparisonPage(config) {
   copyMinilmBtn.addEventListener('click', () => copyValue(minilmOutput.textContent, 'MiniLM output'));
   copyDiffBtn.addEventListener('click', () => copyValue(diffOutput.textContent, 'Diff output'));
 }
+
+function buildTranscriptMinilmOnlyPage(config) {
+  const state = {
+    payload: null,
+    loading: false
+  };
+
+  const root = document.getElementById('transcriptMinilmOnlyRoot');
+  root.innerHTML = `
+    <section class="panel">
+      <h1>${config.title}</h1>
+      <p class="intro">${config.intro}</p>
+      <div class="field">
+        <label for="minilmOnlyTranscriptFile">Transcript file</label>
+        <input id="minilmOnlyTranscriptFile" type="file" accept=".txt,.docx,.csv,text/plain,text/csv,application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+        <small>Supports pasted text and .txt uploads. .docx and .csv are accepted when extraction is available.</small>
+      </div>
+      <div class="field">
+        <label for="minilmOnlyTranscriptText">Paste transcript text</label>
+        <textarea id="minilmOnlyTranscriptText" placeholder="Paste transcript here..."></textarea>
+        <small>If both a file and pasted text are provided, pasted text takes priority.</small>
+      </div>
+      <div class="actions">
+        <button id="minilmOnlyGoBtn" type="button">${config.buttonText}</button>
+        <button id="minilmOnlyClearBtn" class="secondary" type="button">Clear / reset</button>
+      </div>
+      <div id="minilmOnlyMessage" class="message hidden"></div>
+    </section>
+
+    <section id="minilmOnlySummaryPanel" class="panel hidden">
+      <h2>Summary</h2>
+      <div id="minilmOnlySummaryGrid" class="summary-grid"></div>
+    </section>
+
+    <section id="minilmOnlyOutputPanel" class="panel hidden">
+      <div class="json-heading">
+        <h2>MiniLM-only output</h2>
+        <button id="copyMinilmOnlyOutputBtn" class="secondary" type="button">Copy output</button>
+      </div>
+      <pre id="minilmOnlyOutput"></pre>
+    </section>
+
+    <section id="minilmOnlyDiagnosticsPanel" class="panel hidden">
+      <div class="json-heading">
+        <h2>Diagnostics</h2>
+        <button id="copyMinilmOnlyDiagnosticsBtn" class="secondary" type="button">Copy diagnostics</button>
+      </div>
+      <pre id="minilmOnlyDiagnostics"></pre>
+    </section>
+  `;
+
+  const fileInput = document.getElementById('minilmOnlyTranscriptFile');
+  const textInput = document.getElementById('minilmOnlyTranscriptText');
+  const goBtn = document.getElementById('minilmOnlyGoBtn');
+  const clearBtn = document.getElementById('minilmOnlyClearBtn');
+  const copyOutputBtn = document.getElementById('copyMinilmOnlyOutputBtn');
+  const copyDiagnosticsBtn = document.getElementById('copyMinilmOnlyDiagnosticsBtn');
+  const message = document.getElementById('minilmOnlyMessage');
+  const summaryPanel = document.getElementById('minilmOnlySummaryPanel');
+  const summaryGrid = document.getElementById('minilmOnlySummaryGrid');
+  const outputPanel = document.getElementById('minilmOnlyOutputPanel');
+  const diagnosticsPanel = document.getElementById('minilmOnlyDiagnosticsPanel');
+  const outputNode = document.getElementById('minilmOnlyOutput');
+  const diagnosticsNode = document.getElementById('minilmOnlyDiagnostics');
+
+  function setMessage(text, type) {
+    message.textContent = text || '';
+    message.className = text ? `message ${type || ''}` : 'message hidden';
+  }
+
+  function setLoading(isLoading) {
+    state.loading = isLoading;
+    goBtn.disabled = isLoading;
+    clearBtn.disabled = isLoading;
+    fileInput.disabled = isLoading;
+    textInput.disabled = isLoading;
+    goBtn.textContent = isLoading ? 'Working...' : config.buttonText;
+  }
+
+  function displayPayload(payload) {
+    state.payload = payload;
+    const result = payload.result || {};
+    const items = [
+      { label: 'Model status', value: result.modelAvailable ? 'available' : `unavailable: ${result.modelReason || 'unknown reason'}` },
+      { label: 'Discussion points', value: String((result.counts && result.counts.discussionPoints) || 0) },
+      { label: 'Decisions', value: String((result.counts && result.counts.decisions) || 0) },
+      { label: 'Actions', value: String((result.counts && result.counts.actions) || 0) },
+      { label: 'Runtime ms', value: String((result.timingMs && result.timingMs.total) || 0) },
+      { label: 'Transcript chars', value: String(payload.transcriptLength || 0) }
+    ];
+    summaryGrid.innerHTML = items.map((item) => `
+      <div class="summary-item">
+        <div class="summary-label">${item.label}</div>
+        <div class="summary-value">${item.value}</div>
+      </div>
+    `).join('');
+    summaryPanel.classList.remove('hidden');
+
+    outputNode.textContent = JSON.stringify(result.output || {}, null, 2);
+    diagnosticsNode.textContent = JSON.stringify({
+      mode: result.mode || 'minilm_only',
+      diagnostics: result.diagnostics || {},
+      timingMs: result.timingMs || {},
+      transcriptMetadata: payload.transcriptMetadata || null
+    }, null, 2);
+    outputPanel.classList.remove('hidden');
+    diagnosticsPanel.classList.remove('hidden');
+  }
+
+  async function submitTranscript() {
+    const pastedText = textInput.value.trim();
+    const file = fileInput.files[0];
+
+    if (!pastedText && !file) {
+      setMessage('Paste transcript text or choose a transcript file first.', 'error');
+      return;
+    }
+
+    setLoading(true);
+    setMessage('Running MiniLM-only transcript extraction...', 'info');
+    summaryPanel.classList.add('hidden');
+    outputPanel.classList.add('hidden');
+    diagnosticsPanel.classList.add('hidden');
+
+    try {
+      const options = { method: 'POST' };
+      if (pastedText) {
+        options.headers = { 'Content-Type': 'application/json' };
+        options.body = JSON.stringify({ text: pastedText });
+      } else {
+        const formData = new FormData();
+        formData.append('file', file);
+        options.body = formData;
+      }
+
+      const endpoint = `${config.endpoint}?includeTranscriptMetadata=1`;
+      const response = await fetch(endpoint, options);
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok || !payload || payload.ok === false) {
+        const detailText = payload && payload.details ? ` ${JSON.stringify(payload.details)}` : '';
+        throw new Error((payload && payload.error ? payload.error : `Request failed with status ${response.status}.`) + detailText);
+      }
+
+      setMessage(`Done. Ran MiniLM-only extraction on ${payload.transcriptLength || 0} characters.`, 'success');
+      displayPayload(payload);
+    } catch (error) {
+      setMessage(error.message || 'MiniLM-only transcript analysis failed.', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function resetPage() {
+    fileInput.value = '';
+    textInput.value = '';
+    state.payload = null;
+    setMessage('', '');
+    summaryPanel.classList.add('hidden');
+    outputPanel.classList.add('hidden');
+    diagnosticsPanel.classList.add('hidden');
+    outputNode.textContent = '';
+    diagnosticsNode.textContent = '';
+  }
+
+  async function copyValue(value, label) {
+    if (!value) return;
+    await navigator.clipboard.writeText(value);
+    setMessage(`${label} copied to clipboard.`, 'success');
+  }
+
+  goBtn.addEventListener('click', submitTranscript);
+  clearBtn.addEventListener('click', resetPage);
+  copyOutputBtn.addEventListener('click', () => copyValue(outputNode.textContent, 'MiniLM-only output'));
+  copyDiagnosticsBtn.addEventListener('click', () => copyValue(diagnosticsNode.textContent, 'MiniLM-only diagnostics'));
+}

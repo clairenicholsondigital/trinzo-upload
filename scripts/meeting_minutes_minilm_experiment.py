@@ -399,6 +399,46 @@ def collect_experiment_context(transcript_text: str) -> tuple[dict[str, Any], di
     return baseline, intermediate
 
 
+def infer_minilm_meeting_title(transcript_text: str) -> str:
+    lines = [line.strip() for line in str(transcript_text or "").splitlines() if line.strip()]
+    if not lines:
+        return "MiniLM transcript review"
+    for line in lines[:8]:
+        if len(line) > 100:
+            continue
+        if re.search(r"\b\d{1,2}:\d{2}\b", line):
+            continue
+        if re.match(r"^[A-Z][^:]{0,60}:$", line):
+            continue
+        if re.search(r"\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december)\b", line, re.I):
+            continue
+        return line
+    return lines[0][:80]
+
+
+def infer_minilm_meeting_date(transcript_text: str) -> str:
+    lines = [line.strip() for line in str(transcript_text or "").splitlines() if line.strip()]
+    date_pattern = re.compile(
+        r"\b(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}[/-]\d{1,2}[/-]\d{1,2}|\d{1,2}\s+[A-Za-z]+\s+\d{4}|[A-Za-z]+\s+\d{1,2},?\s+\d{4})\b"
+    )
+    for line in lines[:10]:
+        match = date_pattern.search(line)
+        if match:
+            return match.group(0)
+    return ""
+
+
+def collect_minilm_only_context(transcript_text: str) -> dict[str, Any]:
+    turns = parse_numeric_turns(transcript_text)
+    records = build_turn_records(turns)
+    return build_intermediate_events(
+        clean_transcript_text(transcript_text),
+        turns,
+        records,
+        infer_minilm_meeting_title(transcript_text),
+    )
+
+
 def collect_action_candidates(intermediate: dict[str, Any]) -> list[dict[str, Any]]:
     outputs = []
     for event in intermediate.get("actionEvents", []):
@@ -722,6 +762,209 @@ def build_cluster_discussion_candidate(cluster: list[dict[str, Any]], speaker_na
         "representativeSentence": summary.get("selectedRepresentativeSentence", ""),
         "rejectionReason": reason,
     }
+
+
+def build_minilm_only_output(
+    transcript_text: str,
+    intermediate: dict[str, Any],
+    backend: MiniLMBackend,
+) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+    diagnostics = {
+        "mode": "minilm_only",
+        "modelAvailable": backend.available,
+        "modelReason": backend.reason,
+        "actionCandidates": [],
+        "decisionCandidates": [],
+        "discussionCandidates": [],
+        "discussionClusters": [],
+        "rejectedDiscussionCandidates": [],
+        "selectedActions": [],
+        "selectedDecisions": [],
+        "selectedDiscussionPoints": [],
+    }
+    if not backend.available:
+        return None, diagnostics
+
+    speaker_names = []
+    seen_speakers = set()
+    speaker_sources = list(intermediate.get("turns", [])) + list(intermediate.get("records", []))
+    for turn in speaker_sources:
+        speaker = normalize_text_fragment(turn.get("speaker", ""))
+        if not speaker:
+            continue
+        lowered = speaker.lower()
+        if lowered in seen_speakers:
+            continue
+        seen_speakers.add(lowered)
+        speaker_names.append(speaker)
+
+    output = {
+        "meetingTitle": infer_minilm_meeting_title(transcript_text),
+        "meetingDate": infer_minilm_meeting_date(transcript_text),
+        "meetingLocation": "",
+        "meetingType": "minilm_only_experiment",
+        "participants": {
+            "client": [],
+            "trinzo": speaker_names,
+        },
+        "discussionPoints": [],
+        "discussionPointDetails": [],
+        "decisions": [],
+        "decisionDetails": [],
+        "actions": [],
+        "meetingActionPoint": [],
+        "meetingActionPointOwner": [],
+        "meetingActionPointDeadline": [],
+        "internalEvidence": {
+            "discussionPoints": [],
+            "decisions": [],
+            "actions": [],
+        },
+        "generator": "minilm_only",
+    }
+
+    action_candidates = []
+    for candidate in collect_action_candidates(intermediate):
+        semantic = backend.score_against_prototypes(candidate["text"], "action")
+        combined = round(candidate["baseScore"] * 0.55 + semantic * 0.45, 4)
+        candidate["semanticScore"] = semantic
+        candidate["combinedScore"] = combined
+        action_candidates.append(candidate)
+    action_candidates.sort(key=lambda item: item["combinedScore"], reverse=True)
+    diagnostics["actionCandidates"] = action_candidates[:8]
+    seen_action_keys = set()
+    for candidate in action_candidates:
+        if candidate["combinedScore"] < 0.62 or candidate["semanticScore"] < 0.45:
+            continue
+        key = normalized_key(candidate["text"])
+        if key in seen_action_keys:
+            continue
+        action = {
+            "meetingActionPoint": candidate["text"][:1].upper() + candidate["text"][1:] + ("" if candidate["text"].endswith(".") else "."),
+            "meetingActionPointOwner": candidate["owner"] or "Owner not specified",
+            "meetingActionPointDeadline": candidate["deadline"],
+            "actionConfidence": round(candidate["combinedScore"], 2),
+            "relatedMilestone": "minilm_only",
+            "_evidence": [],
+        }
+        output["actions"].append(action)
+        output["meetingActionPoint"].append(action["meetingActionPoint"])
+        output["meetingActionPointOwner"].append(action["meetingActionPointOwner"])
+        output["meetingActionPointDeadline"].append(action["meetingActionPointDeadline"])
+        output["internalEvidence"]["actions"].append({"text": action["meetingActionPoint"], "_evidence": []})
+        diagnostics["selectedActions"].append(action)
+        seen_action_keys.add(key)
+        if len(diagnostics["selectedActions"]) >= 4:
+            break
+
+    decision_candidates = []
+    for candidate in collect_decision_candidates(intermediate):
+        semantic = backend.score_against_prototypes(candidate["text"], "decision")
+        combined = round(candidate["baseScore"] * 0.6 + semantic * 0.4, 4)
+        candidate["semanticScore"] = semantic
+        candidate["combinedScore"] = combined
+        decision_candidates.append(candidate)
+    decision_candidates.sort(key=lambda item: item["combinedScore"], reverse=True)
+    diagnostics["decisionCandidates"] = decision_candidates[:8]
+    seen_decision_keys = set()
+    for candidate in decision_candidates:
+        if candidate["combinedScore"] < 0.6 or candidate["semanticScore"] < 0.42:
+            continue
+        key = normalized_key(candidate["text"])
+        if key in seen_decision_keys:
+            continue
+        text = candidate["text"]
+        if text and not text.endswith("."):
+            text += "."
+        normalized = text[:1].upper() + text[1:] if text else text
+        output["decisions"].append(normalized)
+        output["decisionDetails"].append(
+            {
+                "decision": normalized,
+                "sourceType": "minilm_only_candidate",
+                "evidenceScore": round(candidate["combinedScore"], 2),
+            }
+        )
+        output["internalEvidence"]["decisions"].append({"text": normalized, "_evidence": []})
+        diagnostics["selectedDecisions"].append(normalized)
+        seen_decision_keys.add(key)
+        if len(diagnostics["selectedDecisions"]) >= 4:
+            break
+
+    discussion_candidates = []
+    filtered_discussion_candidates = []
+    for candidate in collect_discussion_candidates(intermediate):
+        semantic_discussion = backend.score_against_prototypes(candidate["text"], "discussion")
+        semantic_status = max(
+            backend.score_against_prototypes(candidate["text"], "status"),
+            backend.score_against_prototypes(candidate["text"], "blocker"),
+            backend.score_against_prototypes(candidate["text"], "milestone"),
+        )
+        combined = round(candidate["baseScore"] * 0.45 + max(semantic_discussion, semantic_status) * 0.55, 4)
+        candidate["semanticScore"] = max(semantic_discussion, semantic_status)
+        candidate["combinedScore"] = combined
+        discussion_candidates.append(candidate)
+        keep, reason = should_keep_discussion_candidate(candidate)
+        if keep:
+            filtered_discussion_candidates.append(candidate)
+        else:
+            diagnostics["rejectedDiscussionCandidates"].append(
+                {
+                    "text": candidate["text"],
+                    "source": candidate["source"],
+                    "combinedScore": candidate["combinedScore"],
+                    "semanticScore": candidate["semanticScore"],
+                    "reason": reason,
+                }
+            )
+    discussion_candidates.sort(key=lambda item: item["combinedScore"], reverse=True)
+    diagnostics["discussionCandidates"] = discussion_candidates[:10]
+
+    selected_cluster_points: list[dict[str, Any]] = []
+    for cluster in cluster_candidates_semantically(filtered_discussion_candidates, backend):
+        built = build_cluster_discussion_candidate(cluster, {name.lower() for name in speaker_names})
+        diagnostics["discussionClusters"].append(
+            {
+                "candidateTexts": [candidate["text"] for candidate in cluster],
+                "selectedDiscussionPoint": "" if built is None else built["text"],
+                "score": 0.0 if built is None else built["score"],
+                "supportCount": 0 if built is None else built["supportCount"],
+                "keywords": [] if built is None else built["keywords"],
+            }
+        )
+        if built is None or built["score"] < 0.66:
+            continue
+        if any(discussion_similarity(built["text"], existing["text"]) >= 0.72 for existing in selected_cluster_points):
+            continue
+        selected_cluster_points.append(built)
+
+    for candidate in sorted(selected_cluster_points, key=lambda item: item["score"], reverse=True):
+        text = candidate["text"]
+        output["discussionPoints"].append(text)
+        output["discussionPointDetails"].append(
+            {
+                "discussionPoint": text,
+                "sourceType": "minilm_only_cluster",
+                "selectedReason": "semantic_cluster_summary",
+                "cleanedCandidateSentences": candidate["clusterTexts"],
+                "representativeSentence": candidate["representativeSentence"],
+                "sourceTurnIndices": candidate["sourceTurnIndices"],
+                "_evidence": candidate["evidence"],
+                "evidenceScore": round(candidate["score"], 2),
+            }
+        )
+        output["internalEvidence"]["discussionPoints"].append({"text": text, "_evidence": candidate["evidence"]})
+        diagnostics["selectedDiscussionPoints"].append(text)
+        if len(diagnostics["selectedDiscussionPoints"]) >= 5:
+            break
+
+    output["discussionPoints"] = dedupe_values(output["discussionPoints"])
+    output["decisions"] = dedupe_values(output["decisions"])
+    output["actions"] = dedupe_action_objects(output["actions"])
+    output["meetingActionPoint"] = [item["meetingActionPoint"] for item in output["actions"]]
+    output["meetingActionPointOwner"] = [item["meetingActionPointOwner"] for item in output["actions"]]
+    output["meetingActionPointDeadline"] = [item["meetingActionPointDeadline"] for item in output["actions"]]
+    return output, diagnostics
 
 
 def build_minilm_variant(
