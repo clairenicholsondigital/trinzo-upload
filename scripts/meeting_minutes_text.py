@@ -3,6 +3,37 @@ from __future__ import annotations
 import re
 
 
+BRITISH_ENGLISH_DIRECT_SWAPS = {
+    "Analyze": "Analyse",
+    "analyze": "analyse",
+    "Analyzed": "Analysed",
+    "analyzed": "analysed",
+    "Analyzing": "Analysing",
+    "analyzing": "analysing",
+}
+
+
+BRITISH_ENGLISH_DIRECT_SWAP_RE = re.compile(
+    r"\b(" + "|".join(re.escape(source) for source in BRITISH_ENGLISH_DIRECT_SWAPS) + r")\b"
+)
+
+
+def apply_british_english_direct_swaps(text: str) -> str:
+    """Apply approved direct British-English spelling swaps only."""
+    return BRITISH_ENGLISH_DIRECT_SWAP_RE.sub(lambda match: BRITISH_ENGLISH_DIRECT_SWAPS[match.group(0)], text)
+
+
+def apply_british_english_to_payload(value):
+    """Recursively apply approved spelling swaps to strings in a JSON-like payload."""
+    if isinstance(value, str):
+        return apply_british_english_direct_swaps(value)
+    if isinstance(value, list):
+        return [apply_british_english_to_payload(item) for item in value]
+    if isinstance(value, dict):
+        return {key: apply_british_english_to_payload(item) for key, item in value.items()}
+    return value
+
+
 def speaker_owned_phrase(speaker: str) -> str:
     if not speaker:
         return "the speaker's item"

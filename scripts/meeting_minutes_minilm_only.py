@@ -15,6 +15,7 @@ from meeting_minutes_minilm_experiment import (
     collect_minilm_only_context,
     summarize_objectives_for_output,
 )
+from meeting_minutes_text import apply_british_english_to_payload
 
 
 def build_counts(payload: dict) -> dict[str, int]:
@@ -117,7 +118,7 @@ def main() -> int:
         "rewriterModelName": rewriter.model_name,
         "rewriterModelPath": rewriter.model_path,
         "rewriterReason": rewriter.reason,
-        "output": output,
+        "output": apply_british_english_to_payload(output),
         "counts": build_counts(output or {}),
         "timingMs": {
             "baseline": baseline_runtime_ms,
@@ -128,6 +129,7 @@ def main() -> int:
         },
     }
     if args.include_baseline_reference and baseline_output is not None:
+        baseline_output = apply_british_english_to_payload(baseline_output)
         payload["baselineReference"] = {
             "counts": build_counts(baseline_output),
             "discussionPoints": baseline_output.get("discussionPoints", []),

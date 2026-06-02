@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from meeting_minutes_minilm_experiment import LocalMinutesRewriter, rewrite_minutes_output_payload
+from meeting_minutes_text import apply_british_english_to_payload
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -40,6 +41,7 @@ def main() -> int:
         rewriter=rewriter,
         include_diagnostics=include_diagnostics,
     )
+    rewritten_output = apply_british_english_to_payload(rewritten_output)
 
     payload = {
         "mode": "meeting_minutes_final_rewrite",

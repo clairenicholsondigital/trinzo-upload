@@ -78,8 +78,8 @@ a { color:#67e8f9; }
 <script>
 buildTranscriptMinilmOnlyPage({
   title: 'Meeting minutes final',
-  intro: 'Upload or paste a transcript to run MiniLM extraction first. Then use Improve minutes to apply the Qwen rewrite layer separately so you can see the effect.',
-  buttonText: 'Run MiniLM extraction',
+  intro: 'Upload or paste a transcript to create draft meeting minutes first. Then use Improve minutes to apply the local language model refinement separately so you can review the difference.',
+  buttonText: 'Run meeting minutes',
   endpoint: '/api/meeting-minutes-final',
   improveEndpoint: '/api/meeting-minutes-final/improve'
 });

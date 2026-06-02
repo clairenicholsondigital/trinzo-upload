@@ -964,7 +964,7 @@ function buildTranscriptMinilmOnlyPage(config) {
     }
 
     setLoading(true);
-    setMessage('Running MiniLM-only transcript extraction...', 'info');
+    setMessage('Running meeting minutes extraction...', 'info');
     outputPanel.classList.add('hidden');
     diagnosticsPanel.classList.add('hidden');
 
@@ -990,10 +990,10 @@ function buildTranscriptMinilmOnlyPage(config) {
         throw new Error((payload && payload.error ? payload.error : `Request failed with status ${response.status}.`) + detailText);
       }
 
-      setMessage(`Done. Ran MiniLM-only extraction on ${payload.transcriptLength || 0} characters.`, 'success');
+      setMessage(`Done. Created draft meeting minutes from ${payload.transcriptLength || 0} characters.`, 'success');
       displayPayload(payload);
     } catch (error) {
-      setMessage(error.message || 'MiniLM-only transcript analysis failed.', 'error');
+      setMessage(error.message || 'Meeting minutes extraction failed.', 'error');
     } finally {
       setLoading(false);
     }
@@ -1005,7 +1005,7 @@ function buildTranscriptMinilmOnlyPage(config) {
     }
 
     setImproving(true);
-    setMessage('Improving extracted minutes with Qwen rewrite...', 'info');
+    setMessage('Improving extracted minutes with local LLM...', 'info');
 
     try {
       const editedSchema = collectEditedSchemaOutput();
@@ -1026,7 +1026,7 @@ function buildTranscriptMinilmOnlyPage(config) {
         ...state.payload,
         result: payload.result
       };
-      setMessage('Minutes improved with the Qwen rewrite layer.', 'success');
+      setMessage('Minutes improved with the local LLM layer.', 'success');
       displayPayload(mergedPayload);
     } catch (error) {
       setMessage(error.message || 'Improving minutes failed.', 'error');
