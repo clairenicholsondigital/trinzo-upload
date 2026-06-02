@@ -953,9 +953,10 @@ def score_texts_against_prototypes(backend: MiniLMBackend, texts: list[str]) -> 
 
 
 def _sanitize_rewritten_minutes_text(generated: str, fallback: str) -> str:
+    fallback_clean = normalize_text_fragment(fallback)
     cleaned = normalize_text_fragment(generated)
     if not cleaned:
-        cleaned = normalize_text_fragment(fallback)
+        cleaned = fallback_clean
     cleaned = re.sub(r"<\|(?:system|user|assistant|endoftext)\|>", " ", cleaned, flags=re.I)
     cleaned = re.sub(r"^(?:item:|rewrite:|discussion point:|action:|decision:)\s*", "", cleaned, flags=re.I)
     cleaned = cleaned.split("\n", 1)[0].strip().strip('"')
@@ -972,8 +973,25 @@ def _sanitize_rewritten_minutes_text(generated: str, fallback: str) -> str:
     first_sentence = re.match(r"^(.+?[.!?])(?:\s+|$)", cleaned)
     if first_sentence:
         cleaned = first_sentence.group(1).strip()
+    fallback_tokens = tokenize(fallback_clean)
+    cleaned_tokens = tokenize(cleaned)
+    if cleaned and (
+        len(cleaned_tokens) > max(len(fallback_tokens) + 6, int(len(fallback_tokens) * 1.6) or 0)
+        or any(
+            phrase in normalize_text(cleaned)
+            for phrase in (
+                "this meets the criteria",
+                "this update will",
+                "this ensures",
+                "please review",
+                "moving forward",
+                "stakeholders have access",
+            )
+        )
+    ):
+        cleaned = fallback_clean
     if len(cleaned) < 8:
-        cleaned = normalize_text_fragment(fallback)
+        cleaned = fallback_clean
     if cleaned and cleaned[:1].islower():
         cleaned = cleaned[:1].upper() + cleaned[1:]
     if cleaned and not cleaned.endswith((".", "!", "?")):

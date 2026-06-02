@@ -312,6 +312,14 @@ I'll refine the webinar slides.
         )
         self.assertEqual(rewritten, "Confirm AI pipeline dependencies with sales.")
 
+    def test_rewrite_sanitiser_falls_back_when_qwen_expands_into_commentary(self):
+        fallback = "Ad hoc SOW delivery is active, with work scheduled, underway, and still awaiting scope definition."
+        rewritten = _sanitize_rewritten_minutes_text(
+            "Ad hoc SOW delivery is active, with work scheduled, underway, and still awaiting scope definition. This meets the criteria of rewriting the extracted meeting-minute item into concise, formal UK business English while maintaining the original meaning without adding or removing any information.",
+            fallback,
+        )
+        self.assertEqual(rewritten, fallback)
+
     def test_local_rewriter_can_use_remote_worker(self):
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, format, *args):
