@@ -134,6 +134,16 @@ I'll refine the webinar slides.
         self.assertFalse(any("hey everybody" in point for point in lowered_points))
         self.assertFalse(any("glasses with kind" in point for point in lowered_points))
         self.assertFalse(any("read his emails" in point for point in lowered_points))
+        self.assertFalse(
+            any(
+                point in variant["discussionPoints"]
+                for point in [
+                    "The AI discovery workshop really engages the team and starts the change management because people map their own processes and pain points.",
+                    "We use Gemba observation and IPO diagrams to map the complaints handling process, understand the triage workflow and identify bottlenecks.",
+                    "The slides are too text-heavy and should use more people-focused workshop imagery.",
+                ]
+            )
+        )
         self.assertTrue(any("change-management method" in point or "engages employees" in point for point in lowered_points))
         self.assertTrue(any("complaints-handling workflow" in point or "triage analysis" in point for point in lowered_points))
         self.assertTrue(any("slides need less text" in point or "people-focused workshop imagery" in point for point in lowered_points))
@@ -141,6 +151,7 @@ I'll refine the webinar slides.
         self.assertTrue(
             set(baseline.get("meetingActionPoint", [])).issubset(set(variant.get("meetingActionPoint", [])))
         )
+        self.assertEqual(len(variant["discussionPoints"]), 3)
         self.assertTrue(_diagnostics["discussionClusters"])
         self.assertTrue(_diagnostics["rejectedDiscussionCandidates"])
 

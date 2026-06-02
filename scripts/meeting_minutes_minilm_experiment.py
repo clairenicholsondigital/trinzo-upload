@@ -745,9 +745,15 @@ def build_minilm_variant(
         return None, diagnostics
 
     variant = deepcopy(baseline)
+    diagnostics["baselineDiscussionPoints"] = list(baseline.get("discussionPoints", []))
     existing_action_keys = {normalized_key(item.get("meetingActionPoint", "")) for item in variant.get("actions", [])}
     existing_decision_keys = {normalized_key(item) for item in variant.get("decisions", [])}
-    existing_discussion_keys = {normalized_key(item) for item in variant.get("discussionPoints", [])}
+    variant["discussionPoints"] = []
+    variant["discussionPointDetails"] = []
+    if "internalEvidence" in variant:
+        variant.setdefault("internalEvidence", {})
+        variant["internalEvidence"]["discussionPoints"] = []
+    existing_discussion_keys: set[str] = set()
 
     action_candidates = []
     for candidate in collect_action_candidates(intermediate):
@@ -864,8 +870,8 @@ def build_minilm_variant(
             continue
         selected_cluster_points.append(built)
 
-    discussion_details = list(variant.get("discussionPointDetails", []))
-    internal_discussion_evidence = list(variant.get("internalEvidence", {}).get("discussionPoints", []))
+    discussion_details: list[dict[str, Any]] = []
+    internal_discussion_evidence: list[dict[str, Any]] = []
     for candidate in sorted(selected_cluster_points, key=lambda item: item["score"], reverse=True):
         if candidate["supportCount"] < 1:
             continue
