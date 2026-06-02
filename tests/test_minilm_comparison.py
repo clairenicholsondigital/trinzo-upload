@@ -362,6 +362,30 @@ The stage gate review still needs the templates to be finalised.
         self.assertNotIn("we have a plan for the next meetings", objectives_blob)
         self.assertNotIn("rule takers", objectives_blob)
 
+    def test_objectives_prefer_explicit_meeting_purpose_over_generic_status(self):
+        transcript = """Process planning
+
+2 June 2026
+
+Claire:
+The objective for this meeting is to agree the next workshop priorities and identify the right AI opportunities.
+
+Emma:
+Ad hoc SOW delivery is active, with work scheduled, underway and still awaiting scope definition.
+
+Jack:
+The complaints workflow review should help us understand where automation is actually suitable.
+"""
+
+        intermediate = collect_minilm_only_context(transcript)
+        output, _diagnostics = build_minilm_only_output(transcript, intermediate, FakeMiniLMBackend())
+
+        self.assertIsNotNone(output)
+        objectives_blob = " ".join(output.get("meetingObjectives", [])).lower()
+        self.assertIn("next workshop priorities", objectives_blob)
+        self.assertIn("ai opportunities", objectives_blob)
+        self.assertNotIn("sow delivery is active", objectives_blob)
+
     def test_greeting_fragment_is_rejected_from_discussion_output(self):
         transcript = """Team sync
 
@@ -489,7 +513,27 @@ Yeah.
 
         self.assertIsNotNone(output)
         self.assertFalse(any("rule takers" in point.lower() for point in output["discussionPoints"]))
-        self.assertTrue(any(item.get("reason") in ("single_turn_fallback", "single_turn_low_confidence", "weak_density_and_support", "insufficient_substantive_turns", "weak_window_coherence") for item in diagnostics.get("rejectedDiscussionCandidates", [])))
+        self.assertTrue(any(item.get("reason") in ("single_turn_fallback", "single_turn_low_confidence", "weak_density_and_support", "insufficient_substantive_turns", "weak_window_coherence", "weak_parser_single_turn") for item in diagnostics.get("rejectedDiscussionCandidates", [])))
+
+    def test_weak_single_turn_parser_status_line_is_rejected(self):
+        transcript = """Status check
+
+2 June 2026
+
+Claire:
+Work scheduled, underway and active.
+
+Emma:
+The workshop review is focused on understanding complaints handling gaps before automation decisions are made.
+"""
+
+        intermediate = collect_minilm_only_context(transcript)
+        output, diagnostics = build_minilm_only_output(transcript, intermediate, FakeMiniLMBackend())
+
+        self.assertIsNotNone(output)
+        discussion_blob = " ".join(output.get("discussionPoints", [])).lower()
+        self.assertNotIn("work scheduled, underway and active", discussion_blob)
+        self.assertTrue(any(item.get("reason") in ("weak_parser_single_turn", "too_short", "malformed_progress_fragment") for item in diagnostics.get("rejectedDiscussionCandidates", [])))
 
     def test_coordination_chatter_is_not_promoted_as_action(self):
         transcript = """Follow-up chat

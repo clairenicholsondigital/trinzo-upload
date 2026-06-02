@@ -1414,6 +1414,27 @@ def is_objective_candidate_text(text: str) -> bool:
     return business_signal_count(cleaned) >= 2 and semantic_density(cleaned) >= 0.6
 
 
+def objective_candidate_priority(text: str, source_kind: str = "", support_count: int = 0, evidence_score: float = 0.0) -> float:
+    cleaned = normalize_text_fragment(text)
+    tokens = set(canonicalize_tokens(tokenize(cleaned)))
+    score = 0.0
+    score += min(0.28, len(tokens & OBJECTIVE_CUE_TERMS) * 0.08)
+    score += min(0.18, business_signal_count(cleaned) * 0.04)
+    score += min(0.16, support_count * 0.05)
+    score += min(0.16, evidence_score * 0.2)
+    if "objective" in tokens or "goal" in tokens or "aim" in tokens:
+        score += 0.18
+    if source_kind == "decision":
+        score += 0.08
+    if source_kind == "discussion":
+        score += 0.04
+    if source_kind == "action":
+        score -= 0.06
+    if is_style_or_tone_guidance(cleaned):
+        score -= 0.4
+    return round(score, 4)
+
+
 def is_context_dependent_fragment(text: str) -> bool:
     lowered = normalize_text_fragment(text).lower()
     if lowered in MINILM_FALLBACK_FILLERS:
@@ -1433,9 +1454,15 @@ def is_context_dependent_fragment(text: str) -> bool:
 
 def is_bad_progress_fragment(text: str) -> bool:
     lowered = normalize_text_fragment(text).lower()
-    if "remains in progress because" not in lowered:
+    progress_markers = (
+        "remains in progress because",
+        "remains active because",
+        "remains underway because",
+    )
+    marker = next((value for value in progress_markers if value in lowered), "")
+    if not marker:
         return False
-    subject = lowered.split("remains in progress because", 1)[0].strip(" .,:;!?")
+    subject = lowered.split(marker, 1)[0].strip(" .,:;!?")
     subject_tokens = [token for token in tokenize(subject) if len(token) > 2]
     if len(subject_tokens) < 2:
         return True
@@ -1479,6 +1506,8 @@ def should_keep_discussion_candidate(candidate: dict[str, Any]) -> tuple[bool, s
         return False, "navigation"
     if candidate.get("source") == "record_discussion_fallback" and support_count < 2:
         return False, "single_turn_fallback"
+    if candidate.get("candidateType") == "parser" and support_count < 2 and business_signal_count(text) < 2 and substantive_token_count(text) < 5:
+        return False, "weak_parser_single_turn"
     if semantic_density(text) < 0.5 and support_count < 2:
         return False, "weak_density_and_support"
     if support_count < 2 and candidate.get("combinedScore", candidate.get("baseScore", 0.0)) < 0.58:
@@ -1689,9 +1718,9 @@ def summarize_objectives_for_output(
 
 def derive_meeting_objectives(output: dict[str, Any]) -> list[str]:
     seen = set()
-    objectives: list[str] = []
+    scored_candidates: list[tuple[float, str]] = []
 
-    def add_candidate(text: str) -> None:
+    def add_candidate(text: str, source_kind: str, support_count: int = 0, evidence_score: float = 0.0) -> None:
         cleaned = normalize_text_fragment(text).rstrip(".")
         key = normalized_key(cleaned)
         if not cleaned or not key or key in seen:
@@ -1703,12 +1732,24 @@ def derive_meeting_objectives(output: dict[str, Any]) -> list[str]:
         if not is_objective_candidate_text(cleaned):
             return
         seen.add(key)
-        objectives.append(cleaned)
+        scored_candidates.append(
+            (
+                objective_candidate_priority(cleaned, source_kind=source_kind, support_count=support_count, evidence_score=evidence_score),
+                cleaned,
+            )
+        )
+
+    for seed in output.get("objectiveSeedCandidates", []):
+        if isinstance(seed, dict):
+            add_candidate(
+                seed.get("text", ""),
+                "objective_seed",
+                support_count=int(seed.get("supportCount", 1) or 1),
+                evidence_score=float(seed.get("evidenceScore", 0.8) or 0.8),
+            )
 
     for decision in output.get("decisions", []):
-        add_candidate(decision)
-        if len(objectives) >= 2:
-            return objectives[:2]
+        add_candidate(decision, "decision", support_count=2, evidence_score=0.7)
 
     details = output.get("discussionPointDetails", [])
     for index, point in enumerate(output.get("discussionPoints", [])):
@@ -1716,16 +1757,13 @@ def derive_meeting_objectives(output: dict[str, Any]) -> list[str]:
         support_count = len(detail.get("sourceTurnIndices", []) or [])
         evidence_score = float(detail.get("evidenceScore", 0.0) or 0.0)
         if support_count >= 2 or evidence_score >= 0.64:
-            add_candidate(point)
-        if len(objectives) >= 2:
-            return objectives[:2]
+            add_candidate(point, "discussion", support_count=support_count, evidence_score=evidence_score)
 
     for action in output.get("actions", []):
-        add_candidate(action.get("meetingActionPoint", ""))
-        if len(objectives) >= 2:
-            return objectives[:2]
+        add_candidate(action.get("meetingActionPoint", ""), "action", support_count=1, evidence_score=float(action.get("actionConfidence", 0.0) or 0.0))
 
-    return objectives[:2]
+    scored_candidates.sort(key=lambda item: (item[0], len(tokenize(item[1]))), reverse=True)
+    return [text for _score, text in scored_candidates[:2]]
 
 
 def is_valid_discussion_point(text: str, support_count: int) -> tuple[bool, str]:
@@ -1741,6 +1779,8 @@ def is_valid_discussion_point(text: str, support_count: int) -> tuple[bool, str]
         return False, "question_fragment"
     if is_action_like_sentence(cleaned) or is_decision_like_discussion(cleaned):
         return False, "action_or_decision_like"
+    if is_bad_progress_fragment(cleaned):
+        return False, "malformed_progress_fragment"
     if any(phrase in lowered for phrase in ("i think", "yeah", "okay", "you know", "go to the next one")):
         return False, "transcript_wording"
     if is_self_referential_conversational_fragment(cleaned):
@@ -1996,6 +2036,24 @@ def build_minilm_only_output(
         },
         "generator": "minilm_only",
     }
+
+    objective_seed_candidates = []
+    for record in intermediate.get("records", []):
+        text = normalize_text_fragment(record.get("text", ""))
+        if not text or not is_objective_candidate_text(text):
+            continue
+        tokens = set(canonicalize_tokens(tokenize(text)))
+        if not (tokens & OBJECTIVE_CUE_TERMS):
+            continue
+        objective_seed_candidates.append(
+            {
+                "text": text,
+                "supportCount": 1,
+                "evidenceScore": max(0.76, semantic_density(text)),
+            }
+        )
+    if objective_seed_candidates:
+        output["objectiveSeedCandidates"] = objective_seed_candidates[:4]
 
     action_candidates = collect_action_candidates(intermediate, backend)
     decision_candidates = collect_decision_candidates(intermediate, backend)
