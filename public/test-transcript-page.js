@@ -473,25 +473,44 @@ function buildTranscriptMinilmOnlyPage(config) {
       <div id="minilmOnlyMessage" class="message hidden"></div>
     </section>
 
-    <section id="minilmOnlySummaryPanel" class="panel hidden">
-      <h2>Summary</h2>
-      <div id="minilmOnlySummaryGrid" class="summary-grid"></div>
-    </section>
-
     <section id="minilmOnlyOutputPanel" class="panel hidden">
       <div class="json-heading">
         <h2>MiniLM-only output</h2>
-        <button id="copyMinilmOnlyOutputBtn" class="secondary" type="button">Copy output</button>
+        <button id="copyMinilmOnlyOutputBtn" class="secondary" type="button">Copy schema output</button>
       </div>
       <pre id="minilmOnlyOutput"></pre>
     </section>
 
     <section id="minilmOnlyDiagnosticsPanel" class="panel hidden">
-      <div class="json-heading">
-        <h2>Diagnostics</h2>
-        <button id="copyMinilmOnlyDiagnosticsBtn" class="secondary" type="button">Copy diagnostics</button>
+      <h2>Details</h2>
+      <div class="accordion">
+        <details>
+          <summary>Summary</summary>
+          <div class="accordion-body">
+            <div id="minilmOnlySummaryGrid" class="summary-grid"></div>
+          </div>
+        </details>
+        <details>
+          <summary>Raw output</summary>
+          <div class="accordion-body">
+            <div class="json-heading">
+              <span class="note">Current raw MiniLM-only payload</span>
+              <button id="copyMinilmOnlyRawBtn" class="secondary" type="button">Copy raw output</button>
+            </div>
+            <pre id="minilmOnlyRawOutput"></pre>
+          </div>
+        </details>
+        <details>
+          <summary>Diagnostics</summary>
+          <div class="accordion-body">
+            <div class="json-heading">
+              <span class="note">Current diagnostics, timings, and transcript metadata</span>
+              <button id="copyMinilmOnlyDiagnosticsBtn" class="secondary" type="button">Copy diagnostics</button>
+            </div>
+            <pre id="minilmOnlyDiagnostics"></pre>
+          </div>
+        </details>
       </div>
-      <pre id="minilmOnlyDiagnostics"></pre>
     </section>
   `;
 
@@ -500,13 +519,14 @@ function buildTranscriptMinilmOnlyPage(config) {
   const goBtn = document.getElementById('minilmOnlyGoBtn');
   const clearBtn = document.getElementById('minilmOnlyClearBtn');
   const copyOutputBtn = document.getElementById('copyMinilmOnlyOutputBtn');
+  const copyRawBtn = document.getElementById('copyMinilmOnlyRawBtn');
   const copyDiagnosticsBtn = document.getElementById('copyMinilmOnlyDiagnosticsBtn');
   const message = document.getElementById('minilmOnlyMessage');
-  const summaryPanel = document.getElementById('minilmOnlySummaryPanel');
   const summaryGrid = document.getElementById('minilmOnlySummaryGrid');
   const outputPanel = document.getElementById('minilmOnlyOutputPanel');
   const diagnosticsPanel = document.getElementById('minilmOnlyDiagnosticsPanel');
   const outputNode = document.getElementById('minilmOnlyOutput');
+  const rawOutputNode = document.getElementById('minilmOnlyRawOutput');
   const diagnosticsNode = document.getElementById('minilmOnlyDiagnostics');
 
   function setMessage(text, type) {
@@ -523,9 +543,52 @@ function buildTranscriptMinilmOnlyPage(config) {
     goBtn.textContent = isLoading ? 'Working...' : config.buttonText;
   }
 
-  function displayPayload(payload) {
-    state.payload = payload;
-    const result = payload.result || {};
+  function escapeHtml(value) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function deriveObjectives(output) {
+    if (Array.isArray(output.objectives) && output.objectives.length) return output.objectives;
+    if (Array.isArray(output.meetingObjectives) && output.meetingObjectives.length) return output.meetingObjectives;
+    const points = Array.isArray(output.discussionPoints) ? output.discussionPoints : [];
+    return points.slice(0, 2).map((point) => point.replace(/\.$/, ''));
+  }
+
+  function buildStructuredMinutesSchema(output) {
+    const participants = output.participants || {};
+    const actionPoints = Array.isArray(output.meetingActionPoint) ? output.meetingActionPoint : [];
+    const actionOwners = Array.isArray(output.meetingActionPointOwner) ? output.meetingActionPointOwner : [];
+    const actionDeadlines = Array.isArray(output.meetingActionPointDeadline) ? output.meetingActionPointDeadline : [];
+    const discussionPoints = Array.isArray(output.discussionPoints) ? output.discussionPoints : [];
+    return {
+      overview: {
+        title: output.meetingTitle || '',
+        date: output.meetingDate || '',
+        location: output.meetingLocation || 'Online'
+      },
+      participants: {
+        client: Array.isArray(participants.client) ? participants.client : [],
+        trinzo: Array.isArray(participants.trinzo) ? participants.trinzo : []
+      },
+      objectives: deriveObjectives(output),
+      minutes: {
+        topic: output.meetingTitle || 'Meeting discussion',
+        discussionPoints
+      },
+      nextSteps: actionPoints.map((action, index) => ({
+        action,
+        owner: actionOwners[index] || 'Owner not specified',
+        deadline: actionDeadlines[index] || ''
+      }))
+    };
+  }
+
+  function displayDetailsSummary(payload, result) {
     const items = [
       { label: 'Model status', value: result.modelAvailable ? 'available' : `unavailable: ${result.modelReason || 'unknown reason'}` },
       { label: 'Discussion points', value: String((result.counts && result.counts.discussionPoints) || 0) },
@@ -536,13 +599,21 @@ function buildTranscriptMinilmOnlyPage(config) {
     ];
     summaryGrid.innerHTML = items.map((item) => `
       <div class="summary-item">
-        <div class="summary-label">${item.label}</div>
-        <div class="summary-value">${item.value}</div>
+        <div class="summary-label">${escapeHtml(item.label)}</div>
+        <div class="summary-value">${escapeHtml(item.value)}</div>
       </div>
     `).join('');
-    summaryPanel.classList.remove('hidden');
+  }
 
-    outputNode.textContent = JSON.stringify(result.output || {}, null, 2);
+  function displayPayload(payload) {
+    state.payload = payload;
+    const result = payload.result || {};
+    const output = result.output || {};
+    const schemaOutput = buildStructuredMinutesSchema(output);
+
+    displayDetailsSummary(payload, result);
+    outputNode.textContent = JSON.stringify(schemaOutput, null, 2);
+    rawOutputNode.textContent = JSON.stringify(output, null, 2);
     diagnosticsNode.textContent = JSON.stringify({
       mode: result.mode || 'minilm_only',
       diagnostics: result.diagnostics || {},
@@ -564,7 +635,6 @@ function buildTranscriptMinilmOnlyPage(config) {
 
     setLoading(true);
     setMessage('Running MiniLM-only transcript extraction...', 'info');
-    summaryPanel.classList.add('hidden');
     outputPanel.classList.add('hidden');
     diagnosticsPanel.classList.add('hidden');
 
@@ -602,11 +672,12 @@ function buildTranscriptMinilmOnlyPage(config) {
     textInput.value = '';
     state.payload = null;
     setMessage('', '');
-    summaryPanel.classList.add('hidden');
     outputPanel.classList.add('hidden');
     diagnosticsPanel.classList.add('hidden');
     outputNode.textContent = '';
+    rawOutputNode.textContent = '';
     diagnosticsNode.textContent = '';
+    summaryGrid.innerHTML = '';
   }
 
   async function copyValue(value, label) {
@@ -617,6 +688,7 @@ function buildTranscriptMinilmOnlyPage(config) {
 
   goBtn.addEventListener('click', submitTranscript);
   clearBtn.addEventListener('click', resetPage);
-  copyOutputBtn.addEventListener('click', () => copyValue(outputNode.textContent, 'MiniLM-only output'));
+  copyOutputBtn.addEventListener('click', () => copyValue(outputNode.textContent, 'MiniLM-only schema output'));
+  copyRawBtn.addEventListener('click', () => copyValue(rawOutputNode.textContent, 'MiniLM-only raw output'));
   copyDiagnosticsBtn.addEventListener('click', () => copyValue(diagnosticsNode.textContent, 'MiniLM-only diagnostics'));
 }

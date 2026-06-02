@@ -36,6 +36,11 @@ button:disabled { opacity:.6; cursor:not-allowed; }
 .summary-label { color:var(--muted); font-size:.85rem; }
 .summary-value { margin-top:.25rem; font-weight:700; overflow-wrap:anywhere; }
 pre { white-space:pre-wrap; overflow:auto; max-height:650px; background:#071126; border:1px solid var(--border); border-radius:10px; padding:1rem; }
+.accordion { margin-top:1rem; }
+.accordion details { background:#071126; border:1px solid var(--border); border-radius:10px; margin:.75rem 0; overflow:hidden; }
+.accordion summary { cursor:pointer; list-style:none; padding:.85rem 1rem; font-weight:700; }
+.accordion summary::-webkit-details-marker { display:none; }
+.accordion .accordion-body { padding:0 1rem 1rem; }
 .hidden { display:none; }
 a { color:#67e8f9; }
 </style>
