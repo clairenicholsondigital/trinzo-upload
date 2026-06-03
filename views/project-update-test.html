@@ -15,14 +15,14 @@
 :root { color-scheme: dark; --bg:#0b1020; --panel:#11192f; --panel2:#0f172a; --border:#2d3d60; --muted:#95a7cb; --text:#eef3ff; --accent:#17D0C4; --danger:#dc2626; --success:#16a34a; }
 * { box-sizing: border-box; }
 body { margin:0; padding:1rem; background:var(--bg); color:var(--text); font-family:Arial, Helvetica, sans-serif; }
-.container { max-width:1100px; margin:0 auto; }
+.container { max-width:1280px; margin:0 auto; }
 .panel { background:linear-gradient(145deg,var(--panel),var(--panel2)); border:1px solid var(--border); border-radius:14px; padding:1rem; margin-bottom:1rem; }
 h1 { margin:.2rem 0 .5rem; }
 h2 { margin:.1rem 0 .75rem; font-size:1.1rem; }
 .intro, small { color:var(--muted); }
 .field { margin:.9rem 0; }
 label { display:block; margin-bottom:.35rem; font-weight:700; }
-input[type=file], textarea { width:100%; background:#071126; color:var(--text); border:1px solid var(--border); border-radius:10px; padding:.7rem; font:inherit; }
+input[type=file], input[type=text], textarea { width:100%; background:#071126; color:var(--text); border:1px solid var(--border); border-radius:10px; padding:.7rem; font:inherit; }
 textarea { min-height:260px; resize:vertical; }
 button { background:linear-gradient(180deg,var(--accent),#0fb5ab); color:#02173B; border:none; border-radius:10px; padding:.65rem .95rem; font-weight:700; cursor:pointer; }
 button.secondary { background:#132847; color:#dbeafe; border:1px solid var(--border); }
@@ -38,6 +38,33 @@ button:disabled { opacity:.6; cursor:not-allowed; }
 pre { white-space:pre-wrap; overflow:auto; max-height:650px; background:#071126; border:1px solid var(--border); border-radius:10px; padding:1rem; }
 .hidden { display:none; }
 a { color:#67e8f9; }
+.project-tabs { display:flex; gap:.4rem; flex-wrap:wrap; border-bottom:1px solid var(--border); margin:.25rem 0 1rem; }
+.project-tab { background:transparent; color:#dbeafe; border:1px solid transparent; border-radius:8px 8px 0 0; padding:.55rem .75rem; }
+.project-tab.active { background:#071126; color:var(--accent); border-color:var(--border); border-bottom-color:#071126; }
+.project-tab-panel { min-height:260px; }
+.project-form-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.85rem; }
+.project-form-grid label { color:var(--muted); font-size:.86rem; }
+.project-form-grid label.wide { grid-column:1 / -1; }
+.project-form-grid input, .project-form-grid textarea { margin-top:.35rem; color:var(--text); font-weight:400; }
+.project-form-grid textarea { min-height:120px; }
+.project-meta-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:.75rem; margin-bottom:1rem; }
+.table-scroll { overflow:auto; border:1px solid var(--border); border-radius:10px; background:#071126; }
+.project-table { width:100%; border-collapse:separate; border-spacing:0; min-width:920px; }
+.project-table th, .project-table td { border-bottom:1px solid var(--border); border-right:1px solid var(--border); padding:.55rem; vertical-align:top; }
+.project-table thead th { color:#dbeafe; background:#132847; position:sticky; top:0; z-index:1; text-align:left; }
+.project-table tbody th { min-width:150px; color:#dbeafe; text-align:left; }
+.project-table tr:last-child th, .project-table tr:last-child td { border-bottom:0; }
+.project-table th:last-child, .project-table td:last-child { border-right:0; }
+.project-table input, .project-table textarea { border-radius:8px; padding:.55rem; }
+.project-table textarea { min-height:72px; }
+.project-table.dense { min-width:1180px; }
+.project-table.dense textarea { min-height:86px; }
+@media (max-width: 760px) {
+  body { padding:.7rem; }
+  .panel { padding:.85rem; border-radius:10px; }
+  .project-form-grid { grid-template-columns:1fr; }
+  .project-tab { flex:1 1 auto; }
+}
 </style>
 </head>
 <body>
@@ -52,6 +79,7 @@ buildTranscriptTestPage({
   intro: 'Upload or paste a project check-in transcript to extract milestone statuses and change-ready JSON.',
   buttonText: 'Generate project JSON',
   endpoint: '/api/project-update-test',
+  projectReportUi: true,
   summary: projectUpdateSummary
 });
 </script>

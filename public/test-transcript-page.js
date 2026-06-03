@@ -1,7 +1,8 @@
 function buildTranscriptTestPage(config) {
   const state = {
     result: null,
-    loading: false
+    loading: false,
+    projectReport: null
   };
 
   const root = document.getElementById('transcriptTestRoot');
@@ -31,6 +32,14 @@ function buildTranscriptTestPage(config) {
       <div id="summaryGrid" class="summary-grid"></div>
     </section>
 
+    <section id="projectReportPanel" class="panel hidden">
+      <div class="json-heading">
+        <h2>Project report</h2>
+        <button id="copyProjectReportBtn" class="secondary" type="button">Copy report JSON</button>
+      </div>
+      <div id="projectReportOutput"></div>
+    </section>
+
     <section id="debugPanel" class="panel hidden">
       <h2>Numbers experiment provenance</h2>
       <div id="debugSummary" class="summary-grid"></div>
@@ -54,6 +63,9 @@ function buildTranscriptTestPage(config) {
   const message = document.getElementById('message');
   const summaryPanel = document.getElementById('summaryPanel');
   const summaryGrid = document.getElementById('summaryGrid');
+  const projectReportPanel = document.getElementById('projectReportPanel');
+  const projectReportOutput = document.getElementById('projectReportOutput');
+  const copyProjectReportBtn = document.getElementById('copyProjectReportBtn');
   const jsonPanel = document.getElementById('jsonPanel');
   const jsonOutput = document.getElementById('jsonOutput');
   const debugPanel = document.getElementById('debugPanel');
@@ -74,12 +86,268 @@ function buildTranscriptTestPage(config) {
     goBtn.textContent = isLoading ? 'Working...' : config.buttonText;
   }
 
+  function escapeHtml(value) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function cloneJson(value) {
+    return JSON.parse(JSON.stringify(value || {}));
+  }
+
+  function titleize(value) {
+    return String(value || '')
+      .replace(/[_-]+/g, ' ')
+      .replace(/\b\w/g, (letter) => letter.toUpperCase());
+  }
+
+  function asArray(value) {
+    return Array.isArray(value) ? value : [];
+  }
+
+  function asLines(value) {
+    return asArray(value).map((item) => String(item || '').trim()).filter(Boolean);
+  }
+
+  function parseLines(value) {
+    return String(value || '').split('\n').map((item) => item.trim()).filter(Boolean);
+  }
+
+  function renderProjectCell(value, path, multiline = false, placeholder = '') {
+    const escapedPath = escapeHtml(path);
+    const escapedValue = escapeHtml(value ?? '');
+    if (multiline) {
+      return `<textarea data-project-path="${escapedPath}" placeholder="${escapeHtml(placeholder)}">${escapedValue}</textarea>`;
+    }
+    return `<input type="text" data-project-path="${escapedPath}" value="${escapedValue}" placeholder="${escapeHtml(placeholder)}" />`;
+  }
+
+  function setByPath(target, path, value) {
+    const parts = String(path || '').split('.');
+    let node = target;
+    parts.slice(0, -1).forEach((part) => {
+      const key = /^\d+$/.test(part) ? Number(part) : part;
+      if (node[key] == null) node[key] = {};
+      node = node[key];
+    });
+    const last = parts[parts.length - 1];
+    node[/^\d+$/.test(last) ? Number(last) : last] = value;
+  }
+
+  function collectEditedProjectReport() {
+    if (!state.projectReport) return null;
+    const report = cloneJson(state.projectReport);
+    projectReportOutput.querySelectorAll('[data-project-path]').forEach((field) => {
+      if (field.hasAttribute('readonly')) return;
+      const path = field.getAttribute('data-project-path');
+      const mode = field.getAttribute('data-project-mode');
+      const value = mode === 'lines' ? parseLines(field.value) : field.value.trim();
+      setByPath(report, path, value);
+    });
+    return report;
+  }
+
+  function refreshProjectReportState() {
+    const report = collectEditedProjectReport();
+    if (!report) return;
+    state.projectReport = report;
+    if (state.result && state.result.projectReport) {
+      state.result.projectReport = report;
+      jsonOutput.textContent = JSON.stringify(state.result, null, 2);
+    }
+  }
+
+  function renderReportSummaryTab(report) {
+    return `
+      <div class="project-form-grid">
+        <label>Report status ${renderProjectCell(report.reportStatus, 'reportStatus', false, 'draft')}</label>
+        <label>Overall health ${renderProjectCell(report.overallHealth, 'overallHealth', false, 'on_track')}</label>
+        <label>RAG colour ${renderProjectCell(report.overallHealthRag, 'overallHealthRag', false, 'amber')}</label>
+        <label class="wide">Executive summary ${renderProjectCell(report.summary, 'summary', true, 'Project summary')}</label>
+        <label class="wide">Key updates
+          <textarea data-project-path="keyUpdates" data-project-mode="lines" placeholder="One update per line">${escapeHtml(asLines(report.keyUpdates).join('\n'))}</textarea>
+        </label>
+      </div>
+    `;
+  }
+
+  function renderHealthTab(report) {
+    const areas = report.healthAreas && typeof report.healthAreas === 'object' ? report.healthAreas : {};
+    const keys = Object.keys(areas);
+    if (!keys.length) return '<p class="intro">No health areas were returned.</p>';
+    return `
+      <div class="table-scroll">
+        <table class="project-table">
+          <thead><tr><th>Area</th><th>Status</th><th>Trend</th><th>Evidence</th></tr></thead>
+          <tbody>
+            ${keys.map((key) => {
+              const area = areas[key] || {};
+              const evidence = asArray(area.evidence).map((item) => item.text || item.source || '').filter(Boolean).join('\n');
+              return `
+                <tr>
+                  <th>${escapeHtml(titleize(key))}</th>
+                  <td>${renderProjectCell(area.status, `healthAreas.${key}.status`)}</td>
+                  <td>${renderProjectCell(area.trend, `healthAreas.${key}.trend`)}</td>
+                  <td>${renderProjectCell(evidence, `healthAreas.${key}.evidenceNotes`, true, 'Evidence notes')}</td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function renderMilestonesTab(report) {
+    const milestones = asArray(report.milestones);
+    if (!milestones.length) return '<p class="intro">No milestones were returned.</p>';
+    return `
+      <div class="table-scroll">
+        <table class="project-table dense">
+          <thead>
+            <tr><th>Milestone</th><th>Delivery</th><th>Agreed RAG</th><th>Health</th><th>Summary</th><th>Blockers</th><th>Next steps</th></tr>
+          </thead>
+          <tbody>
+            ${milestones.map((item, index) => `
+              <tr>
+                <td>${renderProjectCell(item.milestone, `milestones.${index}.milestone`)}</td>
+                <td>${renderProjectCell(item.delivery_status || item.status, `milestones.${index}.delivery_status`)}</td>
+                <td>${renderProjectCell(item.agreed_rag_status || item.rag_status, `milestones.${index}.agreed_rag_status`)}</td>
+                <td>${renderProjectCell(item.health_assessment, `milestones.${index}.health_assessment`)}</td>
+                <td>${renderProjectCell(item.normalised_evidence_summary || item.excerpt, `milestones.${index}.normalised_evidence_summary`, true)}</td>
+                <td><textarea data-project-path="milestones.${index}.blocking_factors" data-project-mode="lines">${escapeHtml(asLines(item.blocking_factors).join('\n'))}</textarea></td>
+                <td><textarea data-project-path="milestones.${index}.next_steps" data-project-mode="lines">${escapeHtml(asLines(item.next_steps).join('\n'))}</textarea></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function renderRisksTab(report) {
+    const risks = asArray(report.risks);
+    return `
+      <div class="table-scroll">
+        <table class="project-table">
+          <thead><tr><th>Risk</th><th>Description</th><th>Mitigation</th><th>Milestone</th><th>Confidence</th></tr></thead>
+          <tbody>
+            ${(risks.length ? risks : [{}]).map((risk, index) => `
+              <tr>
+                <td>${renderProjectCell(risk.riskTitle, `risks.${index}.riskTitle`, true, 'Risk title')}</td>
+                <td>${renderProjectCell(risk.description, `risks.${index}.description`, true, 'Description')}</td>
+                <td>${renderProjectCell(risk.suggestedMitigation, `risks.${index}.suggestedMitigation`, true, 'Mitigation')}</td>
+                <td>${renderProjectCell(risk.relatedMilestone, `risks.${index}.relatedMilestone`)}</td>
+                <td>${renderProjectCell(risk.confidence, `risks.${index}.confidence`)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function renderActionsTab(report) {
+    const actions = asArray(report.actions);
+    return `
+      <div class="table-scroll">
+        <table class="project-table">
+          <thead><tr><th>Action</th><th>Owner</th><th>Deadline</th><th>Related milestone</th><th>Confidence</th></tr></thead>
+          <tbody>
+            ${(actions.length ? actions : [{}]).map((action, index) => `
+              <tr>
+                <td>${renderProjectCell(action.action || action.meetingActionPoint, `actions.${index}.action`, true, 'Action')}</td>
+                <td>${renderProjectCell(action.meetingActionPointOwner || action.owner, `actions.${index}.meetingActionPointOwner`, false, 'Owner')}</td>
+                <td>${renderProjectCell(action.deadline || action.meetingActionPointDeadline, `actions.${index}.deadline`, false, 'Deadline')}</td>
+                <td>${renderProjectCell(action.related_milestone || action.relatedMilestone, `actions.${index}.related_milestone`)}</td>
+                <td>${renderProjectCell(action.actionConfidence, `actions.${index}.actionConfidence`)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function renderSnapshotTab(report, result) {
+    const snapshot = report.comparisonSnapshot || {};
+    const persistence = result.projectReportPersistence || {};
+    return `
+      <div class="project-meta-grid">
+        <div class="summary-item"><div class="summary-label">Mode</div><div class="summary-value">${escapeHtml(result.mode || 'unknown')}</div></div>
+        <div class="summary-item"><div class="summary-label">Saved</div><div class="summary-value">${escapeHtml(persistence.saved === true ? 'yes' : 'no')}</div></div>
+        <div class="summary-item"><div class="summary-label">Report ID</div><div class="summary-value">${escapeHtml(persistence.reportId || '—')}</div></div>
+        <div class="summary-item"><div class="summary-label">Version ID</div><div class="summary-value">${escapeHtml(persistence.reportVersionId || '—')}</div></div>
+        <div class="summary-item"><div class="summary-label">Runtime ms</div><div class="summary-value">${escapeHtml(result.modelDiagnostics && result.modelDiagnostics.totalRuntimeMs || '—')}</div></div>
+      </div>
+      <div class="project-form-grid">
+        <label class="wide">Comparison snapshot
+          <textarea data-project-path="comparisonSnapshotJson" data-project-mode="json" readonly>${escapeHtml(JSON.stringify(snapshot, null, 2))}</textarea>
+        </label>
+        <label class="wide">Persistence metadata
+          <textarea readonly>${escapeHtml(JSON.stringify(persistence, null, 2))}</textarea>
+        </label>
+      </div>
+    `;
+  }
+
+  function renderProjectReport(report, result) {
+    const tabs = [
+      ['summary', 'Summary', renderReportSummaryTab(report)],
+      ['health', 'Health areas', renderHealthTab(report)],
+      ['milestones', 'Milestones', renderMilestonesTab(report)],
+      ['risks', 'Risks', renderRisksTab(report)],
+      ['actions', 'Actions', renderActionsTab(report)],
+      ['snapshot', 'Snapshot', renderSnapshotTab(report, result)]
+    ];
+    projectReportOutput.innerHTML = `
+      <div class="project-tabs" role="tablist">
+        ${tabs.map(([key, label], index) => `<button class="project-tab ${index === 0 ? 'active' : ''}" type="button" role="tab" aria-selected="${index === 0 ? 'true' : 'false'}" data-project-tab="${key}">${escapeHtml(label)}</button>`).join('')}
+      </div>
+      ${tabs.map(([key, , content], index) => `<div class="project-tab-panel ${index === 0 ? '' : 'hidden'}" data-project-panel="${key}">${content}</div>`).join('')}
+    `;
+    projectReportOutput.querySelectorAll('[data-project-tab]').forEach((tab) => {
+      tab.addEventListener('click', () => {
+        const key = tab.getAttribute('data-project-tab');
+        projectReportOutput.querySelectorAll('[data-project-tab]').forEach((node) => {
+          const active = node === tab;
+          node.classList.toggle('active', active);
+          node.setAttribute('aria-selected', active ? 'true' : 'false');
+        });
+        projectReportOutput.querySelectorAll('[data-project-panel]').forEach((panel) => {
+          panel.classList.toggle('hidden', panel.getAttribute('data-project-panel') !== key);
+        });
+      });
+    });
+    projectReportOutput.querySelectorAll('[data-project-path]').forEach((field) => {
+      if (field.hasAttribute('readonly')) return;
+      field.addEventListener('input', refreshProjectReportState);
+    });
+    projectReportPanel.classList.remove('hidden');
+  }
+
+  function displayProjectReport(result) {
+    if (!config.projectReportUi) return;
+    const report = result && result.projectReport ? cloneJson(result.projectReport) : null;
+    if (!report) {
+      projectReportPanel.classList.add('hidden');
+      projectReportOutput.innerHTML = '';
+      return;
+    }
+    state.projectReport = report;
+    renderProjectReport(report, result || {});
+  }
+
   function displaySummary(result) {
     const items = config.summary(result || {});
     summaryGrid.innerHTML = items.map((item) => `
       <div class="summary-item">
-        <div class="summary-label">${item.label}</div>
-        <div class="summary-value">${item.value}</div>
+        <div class="summary-label">${escapeHtml(item.label)}</div>
+        <div class="summary-value">${escapeHtml(item.value)}</div>
       </div>
     `).join('');
     summaryPanel.classList.remove('hidden');
@@ -138,6 +406,7 @@ function buildTranscriptTestPage(config) {
     setLoading(true);
     setMessage('Analysing transcript with local Python logic...', 'info');
     summaryPanel.classList.add('hidden');
+    projectReportPanel.classList.add('hidden');
     jsonPanel.classList.add('hidden');
     debugPanel.classList.add('hidden');
 
@@ -165,6 +434,7 @@ function buildTranscriptTestPage(config) {
 
       setMessage(`Done. Analysed ${payload.transcriptLength || 0} characters from ${payload.source || 'transcript'}.`, 'success');
       displaySummary(payload.result);
+      displayProjectReport(payload.result);
       displayDebugPanel(payload.result, payload);
       displayJson(payload.result);
     } catch (error) {
@@ -178,12 +448,15 @@ function buildTranscriptTestPage(config) {
     fileInput.value = '';
     textInput.value = '';
     state.result = null;
+    state.projectReport = null;
     setMessage('', '');
     summaryPanel.classList.add('hidden');
+    projectReportPanel.classList.add('hidden');
     jsonPanel.classList.add('hidden');
     debugPanel.classList.add('hidden');
     debugOutput.textContent = '';
     debugSummary.innerHTML = '';
+    projectReportOutput.innerHTML = '';
     jsonOutput.textContent = '';
   }
 
@@ -196,6 +469,12 @@ function buildTranscriptTestPage(config) {
   goBtn.addEventListener('click', submitTranscript);
   clearBtn.addEventListener('click', resetPage);
   copyBtn.addEventListener('click', copyJson);
+  copyProjectReportBtn.addEventListener('click', async () => {
+    refreshProjectReportState();
+    if (!state.projectReport) return;
+    await navigator.clipboard.writeText(JSON.stringify(state.projectReport, null, 2));
+    setMessage('Project report JSON copied to clipboard.', 'success');
+  });
 }
 
 function listValue(value) {
@@ -223,17 +502,22 @@ function meetingMinutesSummary(result) {
 
 function projectUpdateSummary(result) {
   const segments = Array.isArray(result.segments) ? result.segments : [];
+  const report = result.projectReport || {};
   const counts = segments.reduce((acc, segment) => {
-    const status = String(segment.rag_status || 'unknown').toLowerCase();
+    const status = String(segment.agreed_rag_status || segment.rag_status || 'unknown').toLowerCase();
     acc[status] = (acc[status] || 0) + 1;
     return acc;
   }, {});
   const changedCount = Array.isArray(result.changes) ? result.changes.length : Number(result.summary && result.summary.changed_count) || 0;
   return [
+    { label: 'Report status', value: report.reportStatus || '—' },
+    { label: 'Overall health', value: report.overallHealth || '—' },
     { label: 'Milestone count', value: String(segments.length) },
     { label: 'Green', value: String(counts.green || 0) },
     { label: 'Amber', value: String(counts.amber || 0) },
     { label: 'Red', value: String(counts.red || 0) },
+    { label: 'Risks', value: String(Array.isArray(report.risks) ? report.risks.length : 0) },
+    { label: 'Actions', value: String(Array.isArray(report.actions) ? report.actions.length : 0) },
     { label: 'Changed', value: String(changedCount) }
   ];
 }
