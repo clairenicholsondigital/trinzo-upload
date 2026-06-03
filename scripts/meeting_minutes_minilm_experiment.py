@@ -476,6 +476,21 @@ def normalize_text_fragment(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "").strip())
 
 
+PUBLIC_TIMESTAMP_TOKEN_RE = re.compile(
+    r"(?:\[\s*\d{1,2}[:.]\d{2}(?::\d{2})?\s*\]|\(\s*\d{1,2}[:.]\d{2}(?::\d{2})?\s*\))"
+)
+
+
+def strip_public_timestamp_tokens(value: Any) -> str:
+    cleaned = normalize_text_fragment(value)
+    if not cleaned:
+        return ""
+    cleaned = PUBLIC_TIMESTAMP_TOKEN_RE.sub(" ", cleaned)
+    cleaned = re.sub(r"^\s*\d{1,2}[:.]\d{2}(?::\d{2})?\s+", "", cleaned)
+    cleaned = re.sub(r"\s+\d{1,2}[:.]\d{2}(?::\d{2})?\s*$", "", cleaned)
+    return normalize_text_fragment(cleaned)
+
+
 def extract_json_object_text(value: str) -> str:
     """Return the first JSON object-looking span from a model response."""
     text = str(value or "").strip()
@@ -750,7 +765,7 @@ def dedupe_values(values: list[Any]) -> list[str]:
     seen = set()
     deduped = []
     for value in values:
-        cleaned = normalize_text_fragment(value)
+        cleaned = strip_public_timestamp_tokens(value)
         key = normalized_key(cleaned)
         if not key or key in seen:
             continue
@@ -792,13 +807,13 @@ def infer_minilm_meeting_title(transcript_text: str) -> str:
     original_first_line = next((line.strip() for line in str(transcript_text or "").splitlines() if line.strip()), "")
     header_match = re.match(r"^(?P<title>.+?)-Meeting Transcript\b", original_first_line, flags=re.I)
     if header_match:
-        title = normalize_text_fragment(header_match.group("title").replace("_", " ").replace("-", " "))
+        title = strip_public_timestamp_tokens(header_match.group("title").replace("_", " ").replace("-", " "))
         title = re.sub(r"\b\d{8}(?:\s+\d{6})?\b", "", title).strip()
         if title:
             return title
     for line in lines[:8]:
         if re.match(r"^[^\w]*(?:meeting\s+)?transcript\s*:\s*(.+)$", line, flags=re.I):
-            title = normalize_text_fragment(re.sub(r"^[^\w]*(?:meeting\s+)?transcript\s*:\s*", "", line, flags=re.I))
+            title = strip_public_timestamp_tokens(re.sub(r"^[^\w]*(?:meeting\s+)?transcript\s*:\s*", "", line, flags=re.I))
             title = re.sub(r"^[^\w]+", "", title).strip()
             if title:
                 return title
@@ -2029,8 +2044,8 @@ def score_texts_against_prototypes(backend: MiniLMBackend, texts: list[str]) -> 
 
 
 def _sanitize_rewritten_minutes_text(generated: str, fallback: str) -> str:
-    fallback_clean = normalize_text_fragment(fallback)
-    cleaned = normalize_text_fragment(generated)
+    fallback_clean = strip_public_timestamp_tokens(fallback)
+    cleaned = strip_public_timestamp_tokens(generated)
     if not cleaned:
         cleaned = fallback_clean
     cleaned = re.sub(r"<\|(?:im_start|im_end|system|user|assistant|endoftext)\|>", " ", cleaned, flags=re.I)
@@ -2045,7 +2060,7 @@ def _sanitize_rewritten_minutes_text(generated: str, fallback: str) -> str:
         flags=re.I,
     )[0]
     cleaned = cleaned.replace("|", " ")
-    cleaned = re.sub(r"\s+", " ", cleaned).strip().strip('"')
+    cleaned = strip_public_timestamp_tokens(cleaned).strip('"')
     cleaned = strip_conversational_preface(cleaned)
     cleaned = re.sub(r"^(?:also|and|but|then|again|ok|yes|no)[,;:\s]+", "", cleaned, flags=re.I)
     if is_conversational_transcript_fragment(fallback_clean) or is_conversational_transcript_fragment(cleaned):
@@ -2101,7 +2116,7 @@ def _sanitize_rewritten_minutes_text(generated: str, fallback: str) -> str:
 
 
 def normalize_rewritten_minutes_item(category: str, text: str) -> str:
-    cleaned = normalize_text_fragment(text)
+    cleaned = strip_public_timestamp_tokens(text)
     if category == "objective":
         cleaned = re.sub(r"^(?:the\s+)?teams?\s+should\s+", "The objective was to ", cleaned, flags=re.I)
         cleaned = re.sub(r"^the\s+meeting\s+was\s+to\s+", "The objective was to ", cleaned, flags=re.I)
@@ -2748,8 +2763,9 @@ def build_minilm_only_output(
                 diagnostics["actionSelections"][-1]["accepted"] = False
                 diagnostics["actionSelections"][-1]["reason"] = "duplicate_action"
             continue
+        action_text = strip_public_timestamp_tokens(candidate["text"])
         action = {
-            "meetingActionPoint": candidate["text"][:1].upper() + candidate["text"][1:] + ("" if candidate["text"].endswith(".") else "."),
+            "meetingActionPoint": action_text[:1].upper() + action_text[1:] + ("" if action_text.endswith(".") else "."),
             "meetingActionPointOwner": candidate["owner"] or "Owner not specified",
             "meetingActionPointDeadline": candidate["deadline"],
             "actionConfidence": round(candidate["combinedScore"], 2),
@@ -2804,6 +2820,7 @@ def build_minilm_only_output(
                 diagnostics["decisionSelections"][-1]["reason"] = "duplicate_decision"
             continue
         text = candidate["text"]
+        text = strip_public_timestamp_tokens(text)
         if text and not text.endswith("."):
             text += "."
         normalized = text[:1].upper() + text[1:] if text else text
@@ -2882,7 +2899,7 @@ def build_minilm_only_output(
         selected_cluster_points.append(built)
 
     for candidate in sorted(selected_cluster_points, key=lambda item: item["score"], reverse=True):
-        text = candidate["text"]
+        text = strip_public_timestamp_tokens(candidate["text"])
         output["discussionPoints"].append(text)
         output["discussionPointDetails"].append(
             {

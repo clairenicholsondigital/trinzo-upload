@@ -22,8 +22,10 @@ from scripts.meeting_minutes_minilm_experiment import (
     collect_minilm_only_context,
     normalize_text_fragment,
     rewrite_minutes_output_payload,
+    strip_public_timestamp_tokens,
     summarize_objectives_for_output,
 )
+from scripts.python_meeting_minutes_numbers import parse_numeric_turns
 SCRIPT = ROOT / "scripts" / "run_minilm_comparison.py"
 MINILM_ONLY_SCRIPT = ROOT / "scripts" / "meeting_minutes_minilm_only.py"
 
@@ -463,6 +465,87 @@ James: Let's review the guide next week.
             ),
             "The onboarding guide is still generating questions from new customers.",
         )
+
+    def test_public_timestamp_tokens_are_removed_from_minutes_text(self):
+        self.assertEqual(
+            strip_public_timestamp_tokens(
+                "Preventative changes: add an integration health dashboard. [06:20] We should also document the dependency chain."
+            ),
+            "Preventative changes: add an integration health dashboard. We should also document the dependency chain.",
+        )
+        self.assertEqual(
+            _sanitize_rewritten_minutes_text(
+                "Improve Checklist to be prominent. [05:35]",
+                "Improve Checklist to be prominent. [05:35]",
+            ),
+            "Improve Checklist to be prominent.",
+        )
+
+    def test_timestamp_only_lines_do_not_leak_into_first_layer_turn_text(self):
+        transcript = """Transcript: Incident Review - Website Form Submissions Not Syncing
+
+Date: 16 May 2026
+Participants:
+
+Claire (Owner)
+Jordan (Dev)
+Casey (Ops)
+
+[00:00]
+
+Claire:
+The issue: contact form submissions stopped appearing in the CRM, and we only noticed after a client said they'd had no reply.
+
+[06:20]
+
+Casey:
+We should also document the dependency chain. Right now it's in people's heads.
+"""
+
+        turns = parse_numeric_turns(transcript)
+
+        self.assertEqual([turn["speaker"] for turn in turns], ["Claire", "Casey"])
+        self.assertEqual([turn["timestamp"] for turn in turns], ["00:00", "06:20"])
+        self.assertFalse(any("[06:20]" in turn["text"] for turn in turns))
+
+    def test_participant_extraction_rejects_topic_fragments_as_speakers(self):
+        transcript = """Transcript: Product Design Review - HelixScribe Brief Builder
+
+Date: 2 May 2026
+Participants:
+
+Claire (Product / Research)
+Sam (Design)
+Taylor (Engineering)
+
+[00:00]
+
+Claire:
+Hey both -- thanks for making time.
+
+[00:45]
+
+Claire:
+Perfect. First: the "Audience + intent" step needs review.
+
+Sam:
+Next: the "Source materials" step needs clearer buckets.
+
+Claire:
+Agreed. Also: governance should be called out.
+
+Taylor:
+All good from me.
+"""
+
+        intermediate = collect_minilm_only_context(transcript)
+        output, _diagnostics = build_minilm_only_output(transcript, intermediate, FakeMiniLMBackend())
+
+        self.assertIsNotNone(output)
+        self.assertEqual(set(output["participants"]["trinzo"]), {"Claire", "Sam", "Taylor"})
+        self.assertNotIn("Perfect. First", output["participants"]["trinzo"])
+        self.assertNotIn("Next", output["participants"]["trinzo"])
+        self.assertNotIn("Agreed. Also", output["participants"]["trinzo"])
 
     def test_action_rewrite_falls_back_when_domain_terms_are_lost(self):
         output = {

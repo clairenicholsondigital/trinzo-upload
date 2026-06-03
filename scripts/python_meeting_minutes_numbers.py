@@ -63,12 +63,13 @@ NAME_TOKEN = r"[A-ZÀ-ÖØ-Þ][A-Za-zÀ-ÖØ-öø-ÿ'`.-]*"
 SPEAKER_NAME_RE = rf"{NAME_TOKEN}(?: {NAME_TOKEN}){{0,5}}"
 SPEAKER_SUFFIX_RE = r"(?:\s*(?:\([^)\n]{1,40}\)|\[[^\]\n]{1,40}\]))?"
 TIMESTAMP_TOKEN_RE = r"\d{1,2}(?::|\.)\d{2}(?::\d{2})?(?:\s?(?:am|pm))?"
+BRACKETED_TIMESTAMP_RE = rf"\[\s*(?P<timestamp>{TIMESTAMP_TOKEN_RE})\s*\]"
 
 TURN_RE = re.compile(rf"^(?P<speaker>{SPEAKER_NAME_RE}){SPEAKER_SUFFIX_RE}\s+(?P<timestamp>{TIMESTAMP_TOKEN_RE})\s*(?P<tail>.*)$")
 COLON_TURN_RE = re.compile(rf"^(?P<speaker>{SPEAKER_NAME_RE}){SPEAKER_SUFFIX_RE}\s*:\s*(?P<tail>.*)$")
 HYPHEN_TURN_RE = re.compile(rf"^(?P<speaker>{SPEAKER_NAME_RE}){SPEAKER_SUFFIX_RE}\s*[-–—]\s*(?P<timestamp>{TIMESTAMP_TOKEN_RE})\s*(?P<tail>.*)$")
 SPEAKER_ONLY_RE = re.compile(rf"^(?P<speaker>{SPEAKER_NAME_RE}){SPEAKER_SUFFIX_RE}$")
-TIMESTAMP_ONLY_RE = re.compile(rf"^(?P<timestamp>{TIMESTAMP_TOKEN_RE})$")
+TIMESTAMP_ONLY_RE = re.compile(rf"^(?:{BRACKETED_TIMESTAMP_RE}|(?P<plain_timestamp>{TIMESTAMP_TOKEN_RE}))$")
 INLINE_COLON_SPEAKER_RE = re.compile(rf"(?P<speaker>{SPEAKER_NAME_RE}){SPEAKER_SUFFIX_RE}\s*:")
 METADATA_SPEAKERS = {"Date", "Location", "Online"}
 SECTION_HEADING_SPEAKERS = {
@@ -80,6 +81,19 @@ SECTION_HEADING_SPEAKERS = {
     "Meeting transcript",
     "Notes",
     "Summary",
+}
+NON_SPEAKER_LABEL_WORDS = {
+    "agreed",
+    "also",
+    "first",
+    "next",
+    "perfect",
+    "preventative",
+    "immediate",
+    "root",
+    "the",
+    "that",
+    "this",
 }
 STRUCTURAL_LINE_RE = re.compile(r"^(?:[-–—_*#=]{2,}|(?:meeting\s+)?(?:participants|attendees|agenda|transcript|notes|summary)\s*:?)$", re.IGNORECASE)
 METADATA_RE = re.compile(
@@ -546,6 +560,27 @@ def normalize_timestamp_value(timestamp: str) -> str:
     return f"{core} {ampm}" if ampm else core
 
 
+def timestamp_match_value(match: re.Match[str]) -> str:
+    return normalize_timestamp_value(
+        (match.groupdict().get("timestamp") or match.groupdict().get("plain_timestamp") or "").strip()
+    )
+
+
+def looks_like_speaker_label(label: str) -> bool:
+    cleaned = normalize_text_fragment(label).strip()
+    if not cleaned:
+        return False
+    if "." in cleaned or "," in cleaned or cleaned.endswith((".", "!", "?")):
+        return False
+    words = cleaned.split()
+    if len(words) > 4:
+        return False
+    lowered_words = {word.strip("'’").lower() for word in words}
+    if lowered_words & NON_SPEAKER_LABEL_WORDS:
+        return False
+    return all(re.match(r"^[A-ZÀ-ÖØ-Þ][A-Za-zÀ-ÖØ-öø-ÿ'`-]*$", word) for word in words)
+
+
 def parse_turn_line(line: str) -> tuple[str, str, str] | None:
     for pattern in (TURN_RE, HYPHEN_TURN_RE):
         match = pattern.match(line)
@@ -858,12 +893,16 @@ def parse_numeric_turns(text: str) -> list[dict[str, str]]:
             action_block = False
             continue
         if pending_speaker and timestamp_only_match:
-            pending_timestamp = normalize_timestamp_value(timestamp_only_match.group("timestamp").strip())
+            pending_timestamp = timestamp_match_value(timestamp_only_match)
             current = {
                 "speaker": pending_speaker,
                 "timestamp": pending_timestamp,
                 "text": "",
             }
+            continue
+        if timestamp_only_match:
+            flush_current()
+            pending_timestamp = timestamp_match_value(timestamp_only_match)
             continue
         if colon_match and not action_block:
             speaker_label = colon_match.group("speaker").strip()
@@ -871,12 +910,18 @@ def parse_numeric_turns(text: str) -> list[dict[str, str]]:
                 flush_current()
                 current = None
                 continue
+            if not looks_like_speaker_label(speaker_label):
+                if current is not None:
+                    current["text"] = (current["text"] + " " + line).strip()
+                continue
+            next_timestamp = pending_timestamp
             flush_current()
             current = {
                 "speaker": speaker_label,
-                "timestamp": "",
+                "timestamp": next_timestamp,
                 "text": colon_match.group("tail").strip(),
             }
+            pending_timestamp = ""
             continue
         if (
             speaker_only_match
@@ -894,9 +939,10 @@ def parse_numeric_turns(text: str) -> list[dict[str, str]]:
                 if current is not None:
                     current["text"] = (current["text"] + " " + line).strip()
                 continue
+            next_timestamp = pending_timestamp
             flush_current()
             pending_speaker = speaker_candidate
-            pending_timestamp = ""
+            pending_timestamp = next_timestamp
             continue
         if action_block:
             continue
