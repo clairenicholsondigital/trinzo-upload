@@ -42,3 +42,4 @@ The finalisation endpoint posts approved meeting minutes JSON directly to `POWER
 
 ## SQL migration
 - Run `sql/migrations/20260506_add_meeting_minutes_schema.sql` to add tables for meetings, objectives, participants, minute items, next steps, and autosave transcript snapshots.
+- Run `node scripts/run_sql_migration.js sql/migrations/20260603_add_project_reporting_schema.sql` to add the project-reporting schema used by `/project-update-test` foundations. The runner uses the existing `.env`/Postgres configuration (`DATABASE_URL` or `PG*` variables).
