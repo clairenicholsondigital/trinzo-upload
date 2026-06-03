@@ -12,6 +12,7 @@ from meeting_minutes_minilm_experiment import (
     has_concrete_action_commitment,
     infer_minilm_meeting_title,
     should_accept_action_candidate,
+    strip_action_deadline_phrase,
     _sanitize_rewritten_minutes_text,
 )
 
@@ -46,6 +47,44 @@ class MeetingMinutesMiniLMQualityTest(unittest.TestCase):
         transcript = "📄 Transcript: AI Programme Weekly Check-In\n\nDate: 18 March 2026\n\nCiara:\nHello."
 
         self.assertEqual(infer_minilm_meeting_title(transcript), "AI Programme Weekly Check-In")
+
+    def test_generic_notion_transcript_heading_is_not_used_as_title(self):
+        transcript = """Transcript
+Transcript file: Project Phoenix transcript v3 🔥
+Claire: The meeting is the Phoenix delivery checkpoint.
+"""
+
+        self.assertEqual(infer_minilm_meeting_title(transcript), "Phoenix delivery checkpoint")
+
+    def test_explicit_meeting_title_instruction_overrides_export_header(self):
+        transcript = """Transcript
+Support metrics call transcript
+00:12 Maya: The meeting title should be Support Metrics Review, not AutoNote recording.
+00:35 Chris: Decision: keep abandonment rate as the lead metric for June.
+"""
+
+        self.assertEqual(infer_minilm_meeting_title(transcript), "Support Metrics Review")
+
+    def test_export_title_words_are_removed_from_plain_header(self):
+        transcript = """Transcript
+Risk review transcript
+Ibrahim: The purpose is to decide whether the integration risk is acceptable for pilot.
+"""
+
+        self.assertEqual(infer_minilm_meeting_title(transcript), "Risk review")
+
+    def test_matching_deadline_is_removed_from_action_text(self):
+        self.assertEqual(
+            strip_action_deadline_phrase(
+                "Update the risk register language by Friday so it no longer says immediate action required.",
+                "By Friday",
+            ),
+            "Update the risk register language so it no longer says immediate action required",
+        )
+        self.assertEqual(
+            strip_action_deadline_phrase("Draft the governance note by Monday.", "By Monday"),
+            "Draft the governance note",
+        )
 
     def test_conversational_discussion_fragments_are_formalized(self):
         self.assertEqual(

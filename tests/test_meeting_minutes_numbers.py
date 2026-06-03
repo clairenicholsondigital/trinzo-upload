@@ -117,6 +117,22 @@ Ciara Griffin stopped transcription.
         self.assertNotIn("stopped transcription", cleaned.lower())
         self.assertEqual([turn["speaker"] for turn in turns], ["Ciara Griffin", "Conor Flynn"])
 
+    def test_generic_transcript_heading_is_removed_before_turn_parsing(self):
+        transcript = """Transcript
+Support metrics call transcript
+00:00 Recording started by AutoNote
+00:12 Maya: We need to look at abandonment rate, first response time and repeat contact.
+00:35 Chris: Decision: keep abandonment rate as the lead metric for June.
+"""
+
+        cleaned = clean_transcript_text(transcript)
+        turns = parse_numeric_turns(transcript)
+
+        self.assertNotIn("\nTranscript\n", f"\n{cleaned}\n")
+        self.assertEqual([turn["speaker"] for turn in turns], ["Maya", "Chris"])
+        self.assertEqual(turns[0]["timestamp"], "00:12")
+        self.assertIn("abandonment rate", turns[0]["text"])
+
     def test_bracketed_role_labels_are_ignored_in_turn_parsing(self):
         transcript = """Weekly review
 

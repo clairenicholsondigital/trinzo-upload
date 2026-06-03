@@ -68,10 +68,11 @@ BRACKETED_TIMESTAMP_RE = rf"\[\s*(?P<timestamp>{TIMESTAMP_TOKEN_RE})\s*\]"
 TURN_RE = re.compile(rf"^(?P<speaker>{SPEAKER_NAME_RE}){SPEAKER_SUFFIX_RE}\s+(?P<timestamp>{TIMESTAMP_TOKEN_RE})\s*(?P<tail>.*)$")
 COLON_TURN_RE = re.compile(rf"^(?P<speaker>{SPEAKER_NAME_RE}){SPEAKER_SUFFIX_RE}\s*:\s*(?P<tail>.*)$")
 HYPHEN_TURN_RE = re.compile(rf"^(?P<speaker>{SPEAKER_NAME_RE}){SPEAKER_SUFFIX_RE}\s*[-–—]\s*(?P<timestamp>{TIMESTAMP_TOKEN_RE})\s*(?P<tail>.*)$")
+TIMESTAMP_PREFIX_COLON_TURN_RE = re.compile(rf"^(?P<timestamp>{TIMESTAMP_TOKEN_RE})\s+(?P<speaker>{SPEAKER_NAME_RE}){SPEAKER_SUFFIX_RE}\s*:\s*(?P<tail>.*)$")
 SPEAKER_ONLY_RE = re.compile(rf"^(?P<speaker>{SPEAKER_NAME_RE}){SPEAKER_SUFFIX_RE}$")
 TIMESTAMP_ONLY_RE = re.compile(rf"^(?:{BRACKETED_TIMESTAMP_RE}|(?P<plain_timestamp>{TIMESTAMP_TOKEN_RE}))$")
 INLINE_COLON_SPEAKER_RE = re.compile(rf"(?P<speaker>{SPEAKER_NAME_RE}){SPEAKER_SUFFIX_RE}\s*:")
-METADATA_SPEAKERS = {"Date", "Location", "Online"}
+METADATA_SPEAKERS = {"AutoNote", "Date", "Location", "Online"}
 SECTION_HEADING_SPEAKERS = {
     "Agenda",
     "Attendees",
@@ -97,7 +98,7 @@ NON_SPEAKER_LABEL_WORDS = {
 }
 STRUCTURAL_LINE_RE = re.compile(r"^(?:[-–—_*#=]{2,}|(?:meeting\s+)?(?:participants|attendees|agenda|transcript|notes|summary)\s*:?)$", re.IGNORECASE)
 METADATA_RE = re.compile(
-    r"(?:-meeting transcript$)|(?:^\d{1,2}\s+\w+\s+\d{4}(?:,\s*\d{1,2}:\d{2}(?:am|pm))?$)|(?:^\d+m\s+\d+s$)|(?:started transcription\.?$)|(?:stopped transcription\.?$)",
+    r"(?:-meeting transcript$)|(?:^\d{1,2}\s+\w+\s+\d{4}(?:,\s*\d{1,2}:\d{2}(?:am|pm))?$)|(?:^\d+m\s+\d+s$)|(?:recording started)|(?:transcript saved\.?$)|(?:started transcription\.?$)|(?:stopped transcription\.?$)",
     re.IGNORECASE,
 )
 ACTION_HEADER_RE = re.compile(r"^(?:actions?|next steps|follow ups?|action items)(?:\s+before\s+[^:]+)?:\s*$", re.IGNORECASE)
@@ -457,6 +458,8 @@ def clean_transcript_text(text: str) -> str:
         line = re.sub(r"\s+", " ", line).strip()
         if not line:
             continue
+        if STRUCTURAL_LINE_RE.match(line):
+            continue
         kept.extend(split_inline_speaker_turns(line))
     return "\n".join(kept)
 
@@ -582,6 +585,13 @@ def looks_like_speaker_label(label: str) -> bool:
 
 
 def parse_turn_line(line: str) -> tuple[str, str, str] | None:
+    timestamp_first_match = TIMESTAMP_PREFIX_COLON_TURN_RE.match(line)
+    if timestamp_first_match:
+        return (
+            timestamp_first_match.group("speaker").strip(),
+            normalize_timestamp_value(timestamp_first_match.group("timestamp").strip()),
+            timestamp_first_match.group("tail").strip(),
+        )
     for pattern in (TURN_RE, HYPHEN_TURN_RE):
         match = pattern.match(line)
         if match:
@@ -881,6 +891,10 @@ def parse_numeric_turns(text: str) -> list[dict[str, str]]:
         if parsed_turn:
             flush_current()
             speaker, timestamp, tail = parsed_turn
+            if speaker in METADATA_SPEAKERS or speaker in SECTION_HEADING_SPEAKERS:
+                current = None
+                action_block = False
+                continue
             if INLINE_ACTION_HEADER_RE.match(tail):
                 action_block = True
                 current = None

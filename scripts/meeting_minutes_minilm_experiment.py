@@ -37,6 +37,7 @@ from python_meeting_minutes_numbers import (
     semantic_density,
     SPEAKER_NAME_RE,
     SPEAKER_SUFFIX_RE,
+    STRUCTURAL_LINE_RE,
     tokenize,
 )
 
@@ -803,8 +804,10 @@ def clean_exported_meeting_title(title: str) -> str:
     cleaned = strip_public_timestamp_tokens(title)
     cleaned = re.sub(r"_+", " ", cleaned)
     cleaned = re.sub(r"[^\w\s/&+\-]", " ", cleaned, flags=re.UNICODE)
+    cleaned = re.sub(r"^\s*(?:meeting\s+notes\s+transcript|transcript\s+file|(?:meeting\s+)?transcript)\s*:\s*", " ", cleaned, flags=re.I)
     cleaned = re.sub(r"\b(?:meeting\s+)?transcripts?\b", " ", cleaned, flags=re.I)
-    cleaned = re.sub(r"\b(?:transcripts?\s+)?(?:final|export|recording|recorded|notes?)\b", " ", cleaned, flags=re.I)
+    cleaned = re.sub(r"\b(?:transcripts?\s+)?(?:file|final|export|recording|recorded|notes?)\b", " ", cleaned, flags=re.I)
+    cleaned = re.sub(r"\bv\d+\b", " ", cleaned, flags=re.I)
     cleaned = re.sub(r"\s+", " ", cleaned).strip(" -_:")
     if not cleaned:
         return ""
@@ -827,9 +830,28 @@ def infer_minilm_meeting_title(transcript_text: str) -> str:
         title = re.sub(r"\b\d{8}(?:\s+\d{6})?\b", "", title).strip()
         if title:
             return title
+    for line in lines[:12]:
+        content_line = re.sub(rf"^{SPEAKER_NAME_RE}{SPEAKER_SUFFIX_RE}\s*:\s*", "", line).strip()
+        explicit_match = re.search(
+            r"\bmeeting title should be\s+(?P<title>.+?)(?:,\s*not\b|[.!?]|$)",
+            content_line,
+            flags=re.I,
+        )
+        if not explicit_match:
+            explicit_match = re.search(
+                r"\bmeeting is\s+(?:the\s+)?(?P<title>.+?)(?:[.!?]|$)",
+                content_line,
+                flags=re.I,
+            )
+        if explicit_match:
+            title = clean_exported_meeting_title(explicit_match.group("title"))
+            if title:
+                return title
     for line in lines[:8]:
-        if re.match(r"^[^\w]*(?:meeting\s+)?transcript\s*:\s*(.+)$", line, flags=re.I):
-            title = clean_exported_meeting_title(re.sub(r"^[^\w]*(?:meeting\s+)?transcript\s*:\s*", "", line, flags=re.I))
+        if STRUCTURAL_LINE_RE.match(line):
+            continue
+        if re.match(r"^[^\w]*(?:meeting\s+notes\s+transcript|transcript\s+file|(?:meeting\s+)?transcript)\s*:\s*(.+)$", line, flags=re.I):
+            title = clean_exported_meeting_title(line)
             if title:
                 return title
         exported_title = clean_exported_meeting_title(line)
@@ -851,7 +873,8 @@ def infer_minilm_meeting_title(transcript_text: str) -> str:
             continue
         if len(line) > 120 or re.search(rf"^{SPEAKER_NAME_RE}\s*:", line):
             break
-        return line
+        title = clean_exported_meeting_title(line)
+        return title or line
     body = " ".join(lines[:12]).lower()
     if "support metrics" in body or ("response times" in body and "tickets" in body):
         return "Support metrics review"
@@ -2174,6 +2197,31 @@ def normalize_action_candidate_text(text: str) -> str:
     return cleaned[:1].upper() + cleaned[1:] if cleaned else cleaned
 
 
+def strip_action_deadline_phrase(action_text: str, deadline: str) -> str:
+    cleaned = normalize_text_fragment(action_text).rstrip(".")
+    deadline_cleaned = normalize_text_fragment(deadline).strip()
+    if not cleaned or not deadline_cleaned:
+        return cleaned
+
+    variants = {deadline_cleaned}
+    deadline_lower = deadline_cleaned.lower()
+    if deadline_lower.startswith(("by ", "before ")):
+        variants.add(re.sub(r"^(?:by|before)\s+", "", deadline_cleaned, flags=re.I).strip())
+    else:
+        variants.add(f"by {deadline_cleaned}")
+        variants.add(f"before {deadline_cleaned}")
+
+    for variant in sorted((item for item in variants if item), key=len, reverse=True):
+        cleaned = re.sub(
+            rf"\s*,?\s*\b{re.escape(variant)}\b(?=\s*(?:so\b|and\b|that\b|to\b|$))",
+            " ",
+            cleaned,
+            flags=re.I,
+        )
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" ,;:-")
+    return cleaned
+
+
 def chunk_role_scores(backend: MiniLMBackend, text: str) -> dict[str, float]:
     return {
         "action": backend.score_against_prototypes(text, "action"),
@@ -2964,6 +3012,7 @@ def build_minilm_only_output(
                 diagnostics["actionSelections"][-1]["reason"] = "duplicate_action"
             continue
         action_text = strip_public_timestamp_tokens(candidate["text"])
+        action_text = strip_action_deadline_phrase(action_text, candidate.get("deadline", ""))
         action = {
             "meetingActionPoint": action_text[:1].upper() + action_text[1:] + ("" if action_text.endswith(".") else "."),
             "meetingActionPointOwner": candidate["owner"] or "Owner not specified",

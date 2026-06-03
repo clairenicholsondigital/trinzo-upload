@@ -1077,11 +1077,11 @@ Objective for the meeting was to confirm the approval threshold and communicatio
         self.assertNotIn("please", actions_blob)
         self.assertNotIn("please", discussion_blob)
         self.assertNotIn("by wednesday. ben", actions_blob)
-        self.assertIn("Update the approval matrix by Wednesday.", output["meetingActionPoint"])
+        self.assertIn("Update the approval matrix.", output["meetingActionPoint"])
         self.assertIn("Brief regional managers after the matrix is updated, not before.", output["meetingActionPoint"])
         action_map = {action["meetingActionPoint"]: action for action in output["actions"]}
-        self.assertEqual(action_map["Update the approval matrix by Wednesday."]["meetingActionPointOwner"], "Cara")
-        self.assertEqual(action_map["Update the approval matrix by Wednesday."]["meetingActionPointDeadline"], "By Wednesday")
+        self.assertEqual(action_map["Update the approval matrix."]["meetingActionPointOwner"], "Cara")
+        self.assertEqual(action_map["Update the approval matrix."]["meetingActionPointDeadline"], "By Wednesday")
         self.assertEqual(action_map["Brief regional managers after the matrix is updated, not before."]["meetingActionPointOwner"], "Ben")
 
     def test_exported_pricing_title_objective_and_discussion_are_substantive(self):
@@ -1523,7 +1523,7 @@ Claire: Action for Mike to investigate API numbers.
                 self.assertEqual(bool(output.get("decisions")), expectations["decisions"])
 
                 if fixture_name == "025_incident_response":
-                    self.assertEqual(output.get("meetingActionPoint"), ["Pull the API logs by 6pm."])
+                    self.assertEqual(output.get("meetingActionPoint"), ["Pull the API logs."])
                     self.assertEqual(output.get("meetingActionPointOwner"), ["Noah"])
                     self.assertEqual(output.get("meetingActionPointDeadline"), ["By 6pm"])
 
