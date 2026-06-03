@@ -422,6 +422,28 @@ James: Let's review the guide next week.
         self.assertIn("follow-up investigation", actions)
         self.assertTrue(any(item["source"] == "followup_investigation_fallback" for item in diagnostics["actionCandidates"]))
 
+    def test_banana_falcon_dashboard_discussion_is_summarised_not_raw_status_quote(self):
+        transcript = """Meeting transcript: Project Banana Falcon
+Participants: Claire, Bob, Sarah, Mike
+
+---
+Claire: Okay. Project Banana Falcon. First item is the dashboard.
+Mike: Which dashboard?
+Claire: Exactly.
+Sarah: We currently have three dashboards. One is live, one is almost live, and one is theoretically live.
+Bob: The theoretical one is my favourite.
+Claire: Action there, somebody needs to work out which dashboard we're actually talking about.
+Sarah: I can do that.
+"""
+
+        intermediate = collect_minilm_only_context(transcript)
+        output, _diagnostics = build_minilm_only_output(transcript, intermediate, FakeMiniLMBackend())
+
+        self.assertIsNotNone(output)
+        points = " ".join(output["discussionPoints"]).lower()
+        self.assertIn("clarify which dashboard", points)
+        self.assertNotIn("one is live, one is almost live", points)
+
     def test_rewrite_layer_removes_awkward_teams_objective_wording(self):
         output = {
             "meetingObjectives": [
