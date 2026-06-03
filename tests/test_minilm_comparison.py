@@ -1043,7 +1043,9 @@ Objective for the meeting was to confirm the approval threshold and communicatio
 
         self.assertIsNotNone(output)
         actions_blob = " ".join(output.get("meetingActionPoint", [])).lower()
+        discussion_blob = " ".join(output.get("discussionPoints", [])).lower()
         self.assertNotIn("please", actions_blob)
+        self.assertNotIn("please", discussion_blob)
         self.assertNotIn("by wednesday. ben", actions_blob)
         self.assertIn("Update the approval matrix by Wednesday.", output["meetingActionPoint"])
         self.assertIn("Brief regional managers after the matrix is updated, not before.", output["meetingActionPoint"])

@@ -1979,6 +1979,17 @@ def is_context_dependent_fragment(text: str) -> bool:
     return False
 
 
+def is_addressed_action_directive(text: str) -> bool:
+    cleaned = normalize_text_fragment(text)
+    return bool(
+        re.match(
+            r"^[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2},\s*(?:please\s+)?(?:brief|update|review|confirm|draft|follow\s+up|investigate|validate|prepare|share|send|complete|finalise|refine|pull|collect|fetch|extract|obtain|estimate|capture|monitor|separate|set\s+up)\b",
+            cleaned,
+            flags=re.I,
+        )
+    )
+
+
 def is_bad_progress_fragment(text: str) -> bool:
     lowered = normalize_text_fragment(text).lower()
     progress_markers = (
@@ -2017,6 +2028,8 @@ def should_keep_discussion_candidate(candidate: dict[str, Any]) -> tuple[bool, s
         return False, "context_dependent_fragment"
     if is_request_or_question_fragment(text):
         return False, "request_or_question_fragment"
+    if is_addressed_action_directive(text):
+        return False, "addressed_action_directive"
     if lowered.startswith("action there"):
         return False, "action_context_statement"
     if re.search(r"\baction\s+(?:for|to)\s+[A-Z]?[a-z]+", text, flags=re.I):
@@ -2436,6 +2449,8 @@ def is_valid_discussion_point(text: str, support_count: int) -> tuple[bool, str]
         return False, "noise_or_banter"
     if is_request_or_question_fragment(cleaned):
         return False, "question_fragment"
+    if is_addressed_action_directive(cleaned):
+        return False, "addressed_action_directive"
     if lowered.startswith("action there"):
         return False, "action_context_statement"
     if re.search(r"\baction\s+(?:for|to)\s+[A-Z]?[a-z]+", cleaned, flags=re.I):
