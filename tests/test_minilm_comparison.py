@@ -1084,6 +1084,96 @@ Objective for the meeting was to confirm the approval threshold and communicatio
         self.assertEqual(action_map["Update the approval matrix by Wednesday."]["meetingActionPointDeadline"], "By Wednesday")
         self.assertEqual(action_map["Brief regional managers after the matrix is updated, not before."]["meetingActionPointOwner"], "Ben")
 
+    def test_exported_pricing_title_objective_and_discussion_are_substantive(self):
+        transcript = """Meeting transcript - pricing policy sync 😊 transcript final
+Aisha: The agenda is to settle the discount approval process. The document title says emergency pricing transcript, but that is just the Teams export name.
+Ben: Initially I thought we should let regional managers approve up to 20 percent.
+Cara: That would be too wide. Compliance pushed back yesterday.
+Aisha: So the final decision is regional managers can approve up to 10 percent, and anything above that goes to Finance.
+Ben: I can tell everyone to use 20 percent until Finance catches up.
+Aisha: No, that is explicitly rejected. Do not do that.
+Cara: I will update the approval matrix by Wednesday. Ben, please brief regional managers after the matrix is updated, not before.
+Aisha: Objective for the meeting was to confirm the approval threshold and communication sequence.
+"""
+
+        intermediate = collect_minilm_only_context(transcript)
+        output, _diagnostics = build_minilm_only_output(transcript, intermediate, FakeMiniLMBackend())
+
+        self.assertIsNotNone(output)
+        self.assertEqual(output["meetingTitle"], "Pricing policy sync")
+        self.assertNotIn("😊", output["meetingTitle"])
+        objectives_blob = " ".join(output.get("meetingObjectives", [])).lower()
+        discussion_blob = " ".join(output.get("discussionPoints", [])).lower()
+        self.assertIn("approval threshold", objectives_blob + " " + discussion_blob)
+        self.assertIn("communication sequence", objectives_blob + " " + discussion_blob)
+        self.assertIn("compliance", discussion_blob)
+        self.assertIn("finance", discussion_blob)
+        self.assertNotEqual(output.get("discussionPoints", []), ["The document title says emergency pricing transcript, but that is just the Teams export name."])
+        self.assertIn("Regional managers can approve up to 10 percent, and anything above that goes to Finance.", output["decisions"])
+
+    def test_first_person_write_commitment_is_neutral_action_with_owner(self):
+        transcript = """Transcript: Incident Review - Website Form Submissions Not Syncing
+
+Date: 16 May 2026
+Participants:
+
+Claire (Owner)
+Jordan (Dev)
+Casey (Ops)
+
+Claire:
+The issue: contact form submissions stopped appearing in the CRM, and we need to confirm impact, root cause, and prevention.
+
+Casey:
+We should also document the dependency chain. Right now it's in people's heads.
+
+Jordan:
+Yep. I’ll write a short runbook: what to check, where logs live, and how to backfill.
+"""
+
+        intermediate = collect_minilm_only_context(transcript)
+        output, _diagnostics = build_minilm_only_output(transcript, intermediate, FakeMiniLMBackend())
+
+        self.assertIsNotNone(output)
+        self.assertIn("Write a short runbook: what to check, where logs live, and how to backfill.", output["meetingActionPoint"])
+        self.assertNotIn("I’ll write", " ".join(output["meetingActionPoint"]))
+        action_map = {action["meetingActionPoint"]: action for action in output["actions"]}
+        self.assertEqual(
+            action_map["Write a short runbook: what to check, where logs live, and how to backfill."]["meetingActionPointOwner"],
+            "Jordan",
+        )
+
+    def test_explicit_multiline_action_list_is_extracted(self):
+        transcript = """Transcript: AI Programme Weekly Check-In
+
+Date: 18 March 2026
+Participants:
+
+Ciara (Programme Lead)
+Connor (Delivery / Strategy)
+
+Ciara:
+Alright, actions from this:
+
+enforce capacity sign-off before SOW approval
+accelerate cross-training and documentation
+assign clear owner for vendor governance
+explore leading indicators for delivery health
+
+Connor:
+That lines up.
+"""
+
+        intermediate = collect_minilm_only_context(transcript)
+        output, diagnostics = build_minilm_only_output(transcript, intermediate, FakeMiniLMBackend())
+
+        self.assertIsNotNone(output)
+        self.assertIn("Enforce capacity sign-off before SOW approval.", output["meetingActionPoint"])
+        self.assertIn("Accelerate cross-training and documentation.", output["meetingActionPoint"])
+        self.assertIn("Assign clear owner for vendor governance.", output["meetingActionPoint"])
+        self.assertIn("Explore leading indicators for delivery health.", output["meetingActionPoint"])
+        self.assertTrue(any(item["source"] == "explicit_action_list_fallback" and item["accepted"] for item in diagnostics["actionSelections"]))
+
     def test_banana_falcon_gets_meeting_level_objective_not_issue_snippet(self):
         transcript = """Meeting transcript: Project Banana Falcon
 Participants: Claire, Bob, Sarah, Mike

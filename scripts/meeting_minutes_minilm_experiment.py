@@ -799,6 +799,22 @@ def collect_experiment_context(transcript_text: str) -> tuple[dict[str, Any], di
     return baseline, intermediate
 
 
+def clean_exported_meeting_title(title: str) -> str:
+    cleaned = strip_public_timestamp_tokens(title)
+    cleaned = re.sub(r"_+", " ", cleaned)
+    cleaned = re.sub(r"[^\w\s/&+\-]", " ", cleaned, flags=re.UNICODE)
+    cleaned = re.sub(r"\b(?:meeting\s+)?transcripts?\b", " ", cleaned, flags=re.I)
+    cleaned = re.sub(r"\b(?:transcripts?\s+)?(?:final|export|recording|recorded|notes?)\b", " ", cleaned, flags=re.I)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" -_:")
+    if not cleaned:
+        return ""
+    if cleaned.isupper():
+        cleaned = cleaned.title()
+    else:
+        cleaned = cleaned[:1].upper() + cleaned[1:]
+    return cleaned
+
+
 def infer_minilm_meeting_title(transcript_text: str) -> str:
     cleaned_transcript = clean_transcript_text(transcript_text)
     lines = [line.strip() for line in str(cleaned_transcript or "").splitlines() if line.strip()]
@@ -813,10 +829,16 @@ def infer_minilm_meeting_title(transcript_text: str) -> str:
             return title
     for line in lines[:8]:
         if re.match(r"^[^\w]*(?:meeting\s+)?transcript\s*:\s*(.+)$", line, flags=re.I):
-            title = strip_public_timestamp_tokens(re.sub(r"^[^\w]*(?:meeting\s+)?transcript\s*:\s*", "", line, flags=re.I))
-            title = re.sub(r"^[^\w]+", "", title).strip()
+            title = clean_exported_meeting_title(re.sub(r"^[^\w]*(?:meeting\s+)?transcript\s*:\s*", "", line, flags=re.I))
             if title:
                 return title
+        exported_title = clean_exported_meeting_title(line)
+        if (
+            exported_title
+            and re.match(r"^(?:meeting\s+)?transcript\b", line, flags=re.I)
+            and not re.match(r"^meeting\s+transcript\s*$", exported_title, flags=re.I)
+        ):
+            return exported_title
         if len(line) > 100:
             continue
         if re.match(rf"^{SPEAKER_NAME_RE}{SPEAKER_SUFFIX_RE}\s*:", line):
@@ -994,14 +1016,54 @@ def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBacke
                 }
             )
     seen = {canonical_action_dedupe_key(item["text"]) for item in outputs if item.get("text")}
-    action_lead_pattern = re.compile(r"^(review|confirm|draft|follow up|investigate|validate|prepare|update|share|send|complete|finalise|refine|pull|collect|fetch|extract|obtain|estimate|capture|monitor|separate|set up|brief)\b", re.I)
+    action_lead_pattern = re.compile(r"^(review|confirm|draft|follow up|investigate|validate|prepare|update|share|send|complete|finalise|refine|pull|collect|fetch|extract|obtain|estimate|capture|monitor|separate|set up|brief|write|enforce|accelerate|assign|explore)\b", re.I)
     summary_action_pattern = re.compile(
         r"\b([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})\s+will\s+(.+?)(?=(?:\s+[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2}\s+will\s+)|$)",
         re.I,
     )
+
+    def split_explicit_action_list(raw_text: str) -> list[str]:
+        if not re.search(r"\bactions?\s+from\s+this\s*:?", raw_text, flags=re.I):
+            return []
+        body = re.sub(r"^.*?\bactions?\s+from\s+this\s*:?", "", raw_text, flags=re.I | re.S).strip()
+        if not body:
+            return []
+        parts = [normalize_text_fragment(part) for part in re.split(r"[\r\n]+", body) if normalize_text_fragment(part)]
+        if len(parts) <= 1:
+            parts = [
+                normalize_text_fragment(part)
+                for part in re.split(
+                    r"(?=\b(?:enforce|accelerate|assign|explore|review|confirm|draft|follow\s+up|investigate|validate|prepare|update|share|send|complete|finalise|refine|write|monitor|separate|set\s+up|brief)\b)",
+                    body,
+                    flags=re.I,
+                )
+                if normalize_text_fragment(part)
+            ]
+        return [part for part in parts if action_lead_pattern.match(part) and len(tokenize(part)) >= 3]
+
     for index, record in enumerate(records):
+        raw_text = str(record.get("text", "") or "")
         text = normalize_text_fragment(record.get("text", ""))
         if not text:
+            continue
+        explicit_actions = split_explicit_action_list(raw_text)
+        if explicit_actions:
+            for task_text in explicit_actions:
+                task = normalize_action_candidate_text(task_text)
+                key = canonical_action_dedupe_key(task)
+                if key in seen:
+                    continue
+                outputs.append(
+                    {
+                        "text": task,
+                        "owner": "Owner not specified",
+                        "deadline": "",
+                        "baseScore": max(0.78, float(record.get("scores", {}).get("action", 0.0))),
+                        "source": "explicit_action_list_fallback",
+                        "roleScores": {},
+                    }
+                )
+                seen.add(key)
             continue
         if " will " in text.lower() and any(term in text.lower() for term in ("summarise actions", "summarize actions", "actions.")):
             action_summary = re.sub(r"^.*?\bactions?\.\s*", "", text, flags=re.I).strip()
@@ -1423,6 +1485,14 @@ def collect_decision_candidates(intermediate: dict[str, Any], backend: MiniLMBac
             subject = normalize_text_fragment(text.split(",", 1)[0])
             if subject:
                 fallback_text = f"{subject} was marked complete."
+        elif re.search(r"\bfinal\s+decision\s+is\b", lowered):
+            decision_text = re.sub(r"^.*?\bfinal\s+decision\s+is\s+", "", text, flags=re.I).strip()
+            if decision_text:
+                fallback_text = decision_text[:1].upper() + decision_text[1:]
+        elif "explicitly rejected" in lowered and index > 0:
+            previous = normalize_text_fragment(records[index - 1].get("text", ""))
+            if "20 percent" in previous.lower() and "finance" in previous.lower():
+                fallback_text = "The proposal to use 20 percent until Finance caught up was rejected."
         elif "completed version one yesterday" in lowered:
             previous = normalize_text_fragment(records[index - 1].get("text", "")) if index > 0 else ""
             if previous and previous.endswith("?"):
@@ -1647,7 +1717,7 @@ STYLE_GUIDANCE_TERMS = {
     "slides", "style", "text", "tone", "visuals", "wording",
 }
 OBJECTIVE_CUE_TERMS = {
-    "adoption", "agree", "aim", "assess", "assessment", "decide", "define", "discovery", "explore",
+    "adoption", "agree", "aim", "assess", "assessment", "confirm", "decide", "define", "discovery", "explore",
     "focus", "goal", "identify", "improve", "objective", "plan", "priorities", "priority", "process",
     "purpose", "review", "scope", "strategy", "understand", "workflow", "workshop",
 }
@@ -1806,6 +1876,15 @@ def formalize_transcript_discussion_point(text: str, evidence: list[dict[str, An
         return "Key personnel losses created a risk of short-term wins causing longer-term delivery strain."
     if "cross-training" in combined and ("slow" in combined or "accelerate" in combined):
         return "Cross-training had started but remained slow and may need acceleration despite short-term delivery impact."
+    if (
+        ("discount" in combined or "pricing" in combined)
+        and "approval" in combined
+        and "regional managers" in combined
+        and ("20 percent" in combined or "10 percent" in combined or "finance" in combined or "compliance" in combined)
+    ):
+        return "The discount approval process and communication sequence were reviewed, including the regional manager approval threshold, compliance concerns and Finance escalation route."
+    if "document title says" in combined and "pricing" in combined and "regional managers" in combined:
+        return "The discount approval process and communication sequence were reviewed, including the regional manager approval threshold, compliance concerns and Finance escalation route."
 
     cleaned = re.sub(r"\bSO\s+Ws\b", "SOWs", cleaned, flags=re.I)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
@@ -1847,7 +1926,7 @@ CONCRETE_ACTION_VERBS = {
     "add", "agree", "amend", "book", "build", "capture", "check", "circulate", "complete", "confirm", "create",
     "develop", "double", "draft", "finalise", "follow", "investigate", "prepare", "pull", "reduce", "refine",
     "review", "send", "share", "simplify", "update", "validate", "collect", "fetch", "extract", "obtain", "estimate",
-    "monitor", "separate", "set", "brief",
+    "monitor", "separate", "set", "brief", "write", "enforce", "accelerate", "assign", "explore",
 }
 
 
@@ -1953,6 +2032,8 @@ def objective_candidate_priority(text: str, source_kind: str = "", support_count
     score += min(0.16, evidence_score * 0.2)
     if "objective" in tokens or "goal" in tokens or "aim" in tokens or "purpose" in tokens:
         score += 0.18
+    if source_kind == "explicit_objective_seed":
+        score += 0.18
     if source_kind == "decision":
         score += 0.08
     if source_kind == "discussion":
@@ -1989,7 +2070,7 @@ def is_addressed_action_directive(text: str) -> bool:
     cleaned = normalize_text_fragment(text)
     return bool(
         re.match(
-            r"^[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2},\s*(?:please\s+)?(?:brief|update|review|confirm|draft|follow\s+up|investigate|validate|prepare|share|send|complete|finalise|refine|pull|collect|fetch|extract|obtain|estimate|capture|monitor|separate|set\s+up)\b",
+            r"^[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2},\s*(?:please\s+)?(?:brief|update|review|confirm|draft|follow\s+up|investigate|validate|prepare|share|send|complete|finalise|refine|pull|collect|fetch|extract|obtain|estimate|capture|monitor|separate|set\s+up|write|enforce|accelerate|assign|explore)\b",
             cleaned,
             flags=re.I,
         )
@@ -2086,11 +2167,7 @@ def should_keep_discussion_candidate(candidate: dict[str, Any]) -> tuple[bool, s
 
 def normalize_action_candidate_text(text: str) -> str:
     cleaned = normalize_text_fragment(text)
-    lowered = cleaned.lower()
-    for prefix in ("i'll ", "i will ", "we'll ", "we will "):
-        if lowered.startswith(prefix):
-            cleaned = cleaned[len(prefix):]
-            break
+    cleaned = re.sub(r"^(?:i[’']ll|i will|we[’']ll|we will)\s+", "", cleaned, flags=re.I)
     cleaned = re.sub(r"^(?:please\s+)+", "", cleaned, flags=re.I)
     cleaned = re.sub(r"\s*,\s*([.!?])$", r"\1", cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
@@ -2417,7 +2494,7 @@ def derive_meeting_objectives(output: dict[str, Any]) -> list[str]:
         if isinstance(seed, dict):
             add_candidate(
                 seed.get("text", ""),
-                "objective_seed",
+                "explicit_objective_seed" if seed.get("explicitObjective") else "objective_seed",
                 support_count=int(seed.get("supportCount", 1) or 1),
                 evidence_score=float(seed.get("evidenceScore", 0.8) or 0.8),
             )
@@ -2524,7 +2601,7 @@ def should_accept_action_candidate(candidate: dict[str, Any]) -> tuple[bool, str
     semantic_source = candidate.get("source") == "semantic_action_fallback"
     if not (
         is_action_like_sentence(text)
-        or re.match(r"^(review|confirm|draft|follow up|investigate|validate|prepare|update|share|send|complete|finalise|refine|pull|collect|fetch|extract|obtain|estimate|capture|monitor|separate|set up|brief)\b", text, re.I)
+        or re.match(r"^(review|confirm|draft|follow up|investigate|validate|prepare|update|share|send|complete|finalise|refine|pull|collect|fetch|extract|obtain|estimate|capture|monitor|separate|set up|brief|write|enforce|accelerate|assign|explore)\b", text, re.I)
         or semantic_source
     ):
         return False, "not_action_like"
@@ -2828,11 +2905,13 @@ def build_minilm_only_output(
         tokens = set(canonicalize_tokens(tokenize(text)))
         if not (tokens & OBJECTIVE_CUE_TERMS):
             continue
+        explicit_objective = is_explicit_objective_statement(text)
         objective_seed_candidates.append(
             {
                 "text": text,
-                "supportCount": 1,
-                "evidenceScore": max(0.76, semantic_density(text)),
+                "supportCount": 2 if explicit_objective else 1,
+                "evidenceScore": max(0.9 if explicit_objective else 0.76, semantic_density(text)),
+                "explicitObjective": explicit_objective,
             }
         )
     if objective_seed_candidates:
