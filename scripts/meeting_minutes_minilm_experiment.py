@@ -376,7 +376,7 @@ class LocalMinutesRewriter:
             return []
 
         if self.available and self.worker_url:
-            batch_size = max(1, int(os.environ.get("MINUTES_REMOTE_REWRITE_BATCH_SIZE", "2") or "2"))
+            batch_size = max(1, int(os.environ.get("MINUTES_REMOTE_REWRITE_BATCH_SIZE", "1") or "1"))
             outputs: list[dict[str, Any]] = []
             for start in range(0, len(cleaned_items), batch_size):
                 batch = cleaned_items[start : start + batch_size]
@@ -409,7 +409,7 @@ class LocalMinutesRewriter:
         try:
             result = self.generator(
                 prompt,
-                max_new_tokens=max(120, len(cleaned_items) * 96),
+                max_new_tokens=max(48, len(cleaned_items) * 48),
                 do_sample=False,
                 temperature=0.0,
                 return_full_text=False,
