@@ -10,6 +10,14 @@ BRITISH_ENGLISH_DIRECT_SWAPS = {
     "analyzed": "analysed",
     "Analyzing": "Analysing",
     "analyzing": "analysing",
+    "Utilize": "Utilise",
+    "utilize": "utilise",
+    "Utilized": "Utilised",
+    "utilized": "utilised",
+    "Utilizing": "Utilising",
+    "utilizing": "utilising",
+    "Utilization": "Utilisation",
+    "utilization": "utilisation",
 }
 
 
