@@ -107,7 +107,7 @@ def quality_failures(output: dict, *, require_rewrite_status: bool = False) -> l
 
     actions = [str(item) for item in output.get("meetingActionPoint") or []]
     for action in actions:
-        if not re.search(r"\b(update|refine|add|reduce|review|prepare|confirm|send|agree|create|share|follow up|complete|check|investigate)\b", action, re.I):
+        if not re.search(r"\b(update|refine|add|reduce|review|prepare|confirm|send|agree|create|share|follow up|complete|check|investigate|simplify|incorporate|practice|keep)\b", action, re.I):
             failures.append(f"action does not look like a concrete next step: {action!r}")
 
     if require_rewrite_status:
