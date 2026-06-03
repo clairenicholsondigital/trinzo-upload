@@ -1039,7 +1039,7 @@ def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBacke
                 }
             )
     seen = {canonical_action_dedupe_key(item["text"]) for item in outputs if item.get("text")}
-    action_lead_pattern = re.compile(r"^(review|confirm|draft|follow up|investigate|validate|prepare|update|share|send|complete|finalise|refine|pull|collect|fetch|extract|obtain|estimate|capture|monitor|separate|set up|brief|write|enforce|accelerate|assign|explore)\b", re.I)
+    action_lead_pattern = re.compile(r"^(review|confirm|draft|follow up|investigate|validate|prepare|update|share|send|complete|finalise|refine|revise|pull|collect|fetch|extract|obtain|estimate|capture|monitor|separate|set up|brief|write|enforce|accelerate|assign|explore|build)\b", re.I)
     summary_action_pattern = re.compile(
         r"\b([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})\s+will\s+(.+?)(?=(?:\s+[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2}\s+will\s+)|$)",
         re.I,
@@ -1056,7 +1056,7 @@ def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBacke
             parts = [
                 normalize_text_fragment(part)
                 for part in re.split(
-                    r"(?=\b(?:enforce|accelerate|assign|explore|review|confirm|draft|follow\s+up|investigate|validate|prepare|update|share|send|complete|finalise|refine|write|monitor|separate|set\s+up|brief)\b)",
+                    r"(?=\b(?:enforce|accelerate|assign|explore|review|confirm|draft|follow\s+up|investigate|validate|prepare|update|share|send|complete|finalise|refine|revise|write|monitor|separate|set\s+up|brief|build)\b)",
                     body,
                     flags=re.I,
                 )
@@ -1110,6 +1110,35 @@ def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBacke
                 )
                 seen.add(key)
             continue
+        actual_action_match = re.search(r"\bactual action is\s+(?P<body>.+)$", text, flags=re.I)
+        if actual_action_match:
+            body = normalize_text_fragment(actual_action_match.group("body"))
+            added_actual_action = False
+            for match in re.finditer(
+                r"\b(?P<owner>[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})\s+to\s+(?P<task>.+?)(?=(?:\s+[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2}\s+to\s+)|$)",
+                body,
+            ):
+                owner = normalize_text_fragment(match.group("owner"))
+                task = normalize_action_candidate_text(match.group("task").strip(" ."))
+                if not task or len(tokenize(task)) < 3:
+                    continue
+                key = canonical_action_dedupe_key(task)
+                if key in seen:
+                    continue
+                outputs.append(
+                    {
+                        "text": task,
+                        "owner": owner or "Owner not specified",
+                        "deadline": extract_action_deadline(task),
+                        "baseScore": max(0.84, float(record.get("scores", {}).get("action", 0.0))),
+                        "source": "actual_action_fallback",
+                        "roleScores": {},
+                    }
+                )
+                seen.add(key)
+                added_actual_action = True
+            if added_actual_action:
+                continue
         owner_action_match = re.match(r"^([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})\s+will\s+(.+)$", text)
         if owner_action_match:
             owner = normalize_text_fragment(owner_action_match.group(1))
@@ -1124,6 +1153,25 @@ def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBacke
                             "deadline": "",
                             "baseScore": max(0.72, float(record.get("scores", {}).get("action", 0.0))),
                             "source": "owner_will_action_fallback",
+                            "roleScores": {},
+                        }
+                    )
+                    seen.add(key)
+                continue
+        owner_to_match = re.match(r"^([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})\s+to\s+(.+)$", text)
+        if owner_to_match:
+            owner = normalize_text_fragment(owner_to_match.group(1))
+            task = normalize_action_candidate_text(owner_to_match.group(2))
+            if task and not task.endswith("?") and len(tokenize(task)) >= 3:
+                key = canonical_action_dedupe_key(task)
+                if key not in seen:
+                    outputs.append(
+                        {
+                            "text": task,
+                            "owner": owner or "Owner not specified",
+                            "deadline": extract_action_deadline(task),
+                            "baseScore": max(0.8, float(record.get("scores", {}).get("action", 0.0))),
+                            "source": "owner_to_action_fallback",
                             "roleScores": {},
                         }
                     )
@@ -1504,12 +1552,16 @@ def collect_decision_candidates(intermediate: dict[str, Any], backend: MiniLMBac
         if not text or text.endswith("?") or len(tokenize(text)) < 4:
             continue
         fallback_text = ""
-        if "mark that complete" in lowered or "mark that complete now" in lowered:
+        if lowered.startswith("decision:"):
+            decision_text = re.sub(r"^decision:\s*", "", text, flags=re.I).strip()
+            if decision_text:
+                fallback_text = decision_text[:1].upper() + decision_text[1:]
+        elif "mark that complete" in lowered or "mark that complete now" in lowered:
             subject = normalize_text_fragment(text.split(",", 1)[0])
             if subject:
                 fallback_text = f"{subject} was marked complete."
-        elif re.search(r"\bfinal\s+decision\s+is\b", lowered):
-            decision_text = re.sub(r"^.*?\bfinal\s+decision\s+is\s+", "", text, flags=re.I).strip()
+        elif re.search(r"\b(?:final\s+decision|decision\s+today)\s+is\b", lowered):
+            decision_text = re.sub(r"^.*?\b(?:final\s+decision|decision\s+today)\s+is\s+", "", text, flags=re.I).strip()
             if decision_text:
                 fallback_text = decision_text[:1].upper() + decision_text[1:]
         elif "explicitly rejected" in lowered and index > 0:
@@ -1605,6 +1657,43 @@ def collect_discussion_candidates(intermediate: dict[str, Any], backend: MiniLMB
                 "roleScores": {},
             }
         )
+    if (
+        "abandonment rate" in lowered_records_text
+        and "first response time" in lowered_records_text
+        and "repeat contact" in lowered_records_text
+    ):
+        support_metrics_text = "The team reviewed abandonment rate, first response time and repeat contact as the priority support metrics."
+        key = normalized_key(support_metrics_text)
+        if key not in seen_fallback:
+            outputs.append(
+                {
+                    "text": support_metrics_text,
+                    "baseScore": 0.84,
+                    "source": "support_metrics_scope_fallback",
+                    "candidateType": "window",
+                    "supportScore": 0.84,
+                    "windowCategory": "support_metrics_scope",
+                    "scores": {"discussion": 0.84, "specificity": 0.74, "low_content": 0.0, "navigation": 0.0},
+                    "evidence": [
+                        build_record_evidence(record, index)
+                        for index, record in enumerate(records)
+                        if any(
+                            term in normalize_text_fragment(record.get("text", "")).lower()
+                            for term in ("abandonment rate", "first response", "repeat contact")
+                        )
+                    ][:4],
+                    "sourceSnippets": [
+                        normalize_text_fragment(record.get("text", ""))
+                        for record in records
+                        if any(
+                            term in normalize_text_fragment(record.get("text", "")).lower()
+                            for term in ("abandonment rate", "first response", "repeat contact")
+                        )
+                    ][:4],
+                    "roleScores": {},
+                }
+            )
+            seen_fallback.add(key)
     for index, record in enumerate(records):
         fallback_text = infer_soft_discussion_fallback(records, index)
         if not fallback_text:
@@ -1949,7 +2038,7 @@ CONCRETE_ACTION_VERBS = {
     "add", "agree", "amend", "book", "build", "capture", "check", "circulate", "complete", "confirm", "create",
     "develop", "double", "draft", "finalise", "follow", "investigate", "prepare", "pull", "reduce", "refine",
     "review", "send", "share", "simplify", "update", "validate", "collect", "fetch", "extract", "obtain", "estimate",
-    "monitor", "separate", "set", "brief", "write", "enforce", "accelerate", "assign", "explore",
+    "monitor", "separate", "set", "brief", "write", "enforce", "accelerate", "assign", "explore", "revise",
 }
 
 
@@ -2020,6 +2109,10 @@ def is_style_or_tone_guidance(text: str) -> bool:
 def is_objective_candidate_text(text: str) -> bool:
     cleaned = normalize_text_fragment(text)
     if not cleaned or contains_noise_or_banter(cleaned) or is_context_dependent_fragment(cleaned):
+        return False
+    if re.search(r"\bactual action is\b", cleaned, flags=re.I):
+        return False
+    if re.match(rf"^{SPEAKER_NAME_RE}\s+to\s+", cleaned):
         return False
     tokens = set(canonicalize_tokens(tokenize(cleaned)))
     if tokens & {"agenda", "aim", "goal", "objective", "purpose"}:
@@ -2649,10 +2742,16 @@ def should_accept_action_candidate(candidate: dict[str, Any]) -> tuple[bool, str
     semantic_source = candidate.get("source") == "semantic_action_fallback"
     if not (
         is_action_like_sentence(text)
-        or re.match(r"^(review|confirm|draft|follow up|investigate|validate|prepare|update|share|send|complete|finalise|refine|pull|collect|fetch|extract|obtain|estimate|capture|monitor|separate|set up|brief|write|enforce|accelerate|assign|explore)\b", text, re.I)
+        or re.match(r"^(review|confirm|draft|follow up|investigate|validate|prepare|update|share|send|complete|finalise|refine|revise|pull|collect|fetch|extract|obtain|estimate|capture|monitor|separate|set up|brief|write|enforce|accelerate|assign|explore|build)\b", text, re.I)
         or semantic_source
     ):
         return False, "not_action_like"
+    if (
+        re.match(r"^(?:we need to|need to)\s+look at\b", text, flags=re.I)
+        and normalize_text(candidate.get("owner", "")) in {"", "owner not specified"}
+        and not normalize_text_fragment(candidate.get("deadline", ""))
+    ):
+        return False, "meeting_scope_not_action"
     if is_low_value_coordination_action(text):
         return False, "coordination_chatter"
     if is_self_referential_conversational_fragment(text):

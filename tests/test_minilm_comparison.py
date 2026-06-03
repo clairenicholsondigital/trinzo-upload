@@ -1084,6 +1084,62 @@ Objective for the meeting was to confirm the approval threshold and communicatio
         self.assertEqual(action_map["Update the approval matrix."]["meetingActionPointDeadline"], "By Wednesday")
         self.assertEqual(action_map["Brief regional managers after the matrix is updated, not before."]["meetingActionPointOwner"], "Ben")
 
+    def test_timestamp_first_support_metrics_notion_transcript_extracts_minutes(self):
+        transcript = """Transcript
+Support metrics call transcript
+00:00 Recording started by AutoNote
+00:01 Maya: The meeting title should be Support Metrics Review, not AutoNote recording.
+00:12 Chris: We need to look at abandonment rate, first response time and repeat contact. Those are the three metrics for today.
+00:35 Maya: Decision: keep abandonment rate as the lead metric for June because it is most visible to clients.
+00:59 Priya: I will build a weekly dashboard for abandonment rate and repeat contact. Chris will validate the first response numbers by Thursday.
+01:21 AutoNote: Transcript saved.
+"""
+
+        intermediate = collect_minilm_only_context(transcript)
+        output, _diagnostics = build_minilm_only_output(transcript, intermediate, FakeMiniLMBackend())
+
+        self.assertEqual(output["meetingTitle"], "Support Metrics Review")
+        self.assertEqual(output["participants"]["trinzo"], ["Maya", "Chris", "Priya"])
+        self.assertIn(
+            "The team reviewed abandonment rate, first response time and repeat contact as the priority support metrics.",
+            output["discussionPoints"],
+        )
+        self.assertIn(
+            "Keep abandonment rate as the lead metric for June because it is most visible to clients.",
+            output["decisions"],
+        )
+        self.assertIn("Build a weekly dashboard for abandonment rate and repeat contact.", output["meetingActionPoint"])
+        self.assertIn("Validate the first response numbers.", output["meetingActionPoint"])
+        self.assertNotIn("We need to look at abandonment rate, first response time and repeat contact.", output["meetingActionPoint"])
+        action_map = {action["meetingActionPoint"]: action for action in output["actions"]}
+        self.assertEqual(action_map["Build a weekly dashboard for abandonment rate and repeat contact."]["meetingActionPointOwner"], "Priya")
+        self.assertEqual(action_map["Validate the first response numbers."]["meetingActionPointOwner"], "Chris")
+        self.assertEqual(action_map["Validate the first response numbers."]["meetingActionPointDeadline"], "By Thursday")
+
+    def test_actual_action_assignments_are_extracted_from_notion_transcript(self):
+        transcript = """Transcript
+Transcript file: Project Phoenix transcript v3 🔥
+Claire: The meeting is the Phoenix delivery checkpoint. The emoji is from the file name; it is not part of the meeting title.
+Omar: Status update first: design is green, development is amber, training is red because the materials are not signed off.
+Beth: The decision today is to keep the launch date, but split training into two sessions instead of one.
+Omar: I can maybe ask the vendor to rewrite everything.
+Claire: No, that is too broad. The actual action is Beth to revise the training plan by Tuesday. Omar to confirm developer capacity by Friday.
+Beth: Discussion point: the team needs a clearer view of what “ready” means for launch, especially around training completion.
+"""
+
+        intermediate = collect_minilm_only_context(transcript)
+        output, _diagnostics = build_minilm_only_output(transcript, intermediate, FakeMiniLMBackend())
+
+        self.assertEqual(output["meetingTitle"], "Phoenix delivery checkpoint")
+        self.assertIn("Revise the training plan.", output["meetingActionPoint"])
+        self.assertIn("Confirm developer capacity.", output["meetingActionPoint"])
+        action_map = {action["meetingActionPoint"]: action for action in output["actions"]}
+        self.assertEqual(action_map["Revise the training plan."]["meetingActionPointOwner"], "Beth")
+        self.assertEqual(action_map["Revise the training plan."]["meetingActionPointDeadline"], "By Tuesday")
+        self.assertEqual(action_map["Confirm developer capacity."]["meetingActionPointOwner"], "Omar")
+        self.assertEqual(action_map["Confirm developer capacity."]["meetingActionPointDeadline"], "By Friday")
+        self.assertFalse(any("rewrite everything" in action.lower() for action in output["meetingActionPoint"]))
+
     def test_exported_pricing_title_objective_and_discussion_are_substantive(self):
         transcript = """Meeting transcript - pricing policy sync 😊 transcript final
 Aisha: The agenda is to settle the discount approval process. The document title says emergency pricing transcript, but that is just the Teams export name.
