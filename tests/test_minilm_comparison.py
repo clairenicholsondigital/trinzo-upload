@@ -50,6 +50,9 @@ class FakeMiniLMBackend:
             ("webinars", "booked", "delivered", "sessions"),
             ("customer portal", "crm", "credentials", "authentication", "password reset", "user testing", "excel", "export"),
             ("support metrics", "response times", "tickets", "queue", "triage categories", "onboarding", "guide"),
+            ("brief builder", "audience", "intent", "cta", "source materials", "ship criteria", "voice rules", "microcopy"),
+            ("pricing", "discount", "approval matrix", "regional managers", "finance", "approval threshold", "communication sequence"),
+            ("banana falcon", "dashboard", "server", "api", "smart search", "test environment"),
         ]
         vector = [0.0] * len(groups)
         for index, keywords in enumerate(groups):
@@ -75,7 +78,10 @@ class FakeMiniLMBackend:
                 "workshop", "complaints", "triage", "slides", "imagery", "gemba", "ipo", "workflow",
                 "stage gate", "routing", "pipeline", "vendor strategy", "innovation grant", "governance", "webinars",
                 "content", "screen", "messaging", "tone", "customer portal", "crm", "credentials", "authentication",
-                "password reset", "user testing", "excel", "support metrics", "response times", "tickets", "triage categories"
+                "password reset", "user testing", "excel", "support metrics", "response times", "tickets", "triage categories",
+                "brief builder", "audience", "intent", "cta", "source materials", "ship criteria", "voice rules", "microcopy",
+                "pricing", "discount", "approval matrix", "regional managers", "finance", "approval threshold",
+                "communication sequence", "banana falcon", "dashboard", "server", "api", "smart search", "test environment"
             )):
                 return 0.9
             return 0.2
@@ -84,18 +90,21 @@ class FakeMiniLMBackend:
                 "workflow", "process", "slides", "workshop", "complaints", "triage",
                 "stage gate", "routing", "pipeline", "vendor strategy", "innovation grant", "governance", "webinars",
                 "content", "screen", "messaging", "tone", "customer portal", "crm", "credentials", "authentication",
-                "password reset", "user testing", "excel", "support metrics", "response times", "tickets", "triage categories"
+                "password reset", "user testing", "excel", "support metrics", "response times", "tickets", "triage categories",
+                "brief builder", "audience", "intent", "cta", "source materials", "ship criteria", "voice rules", "microcopy",
+                "pricing", "discount", "approval matrix", "regional managers", "finance", "approval threshold",
+                "communication sequence", "banana falcon", "dashboard", "server", "api", "smart search", "test environment"
             )):
                 return 0.82
             return 0.18
         if prototype_group == "action":
             if ("refine" in lowered and "slides" in lowered) or any(
-                lowered.startswith(prefix) for prefix in ("review ", "confirm ", "draft ", "follow up ", "validate ")
+                lowered.startswith(prefix) for prefix in ("review ", "confirm ", "draft ", "follow up ", "validate ", "update ", "brief ")
             ) or any(term in lowered for term in ("double down", "upskilled", "adoption considerations", "continue work", "obtain", "estimate")):
                 return 0.9
             return 0.2
         if prototype_group == "decision":
-            if any(term in lowered for term in ("marked complete", "was marked complete", "approved", "agreed", "status amber", "status green", "status blue")):
+            if any(term in lowered for term in ("marked complete", "was marked complete", "approved", "agreed", "status amber", "status green", "status blue", "final decision", "explicitly rejected")):
                 return 0.75
             return 0.2
         return 0.0
@@ -110,7 +119,7 @@ class FakeLocalRewriter:
     def rewrite_items(self, items):
         return [
             {
-                "rewritten": f"{ {'discussion': 'Formal discussion', 'action': 'Formal action', 'decision': 'Formal decision'}[item['category']] }: {normalize_text_fragment(item['text'])}",
+                "rewritten": f"{ {'objective': 'Formal objective', 'discussion': 'Formal discussion', 'action': 'Formal action', 'decision': 'Formal decision'}[item['category']] }: {normalize_text_fragment(item['text'])}",
                 "meta": {"category": item["category"], "rewritten": True, "reason": "ok", "raw": normalize_text_fragment(item["text"])},
             }
             for item in items
@@ -961,6 +970,118 @@ The complaints workflow still needs clearer triage rules before automation is sc
         self.assertNotIn("easy right here", discussion_blob)
         self.assertIn("complaints", discussion_blob)
         self.assertTrue(any(item.get("reason") == "self_referential_fragment" for item in diagnostics.get("rejectedDiscussionCandidates", [])))
+
+    def test_explicit_design_review_goal_wins_over_dialogue_fragments(self):
+        transcript = """Product Design Review - HelixScribe Brief Builder
+
+2 May 2026
+
+Claire:
+Goal today is to sanity-check the Brief Builder flow before we lock copy and component states.
+
+Taylor:
+All good. I'm mostly here to flag anything that's going to be painful to implement or ambiguous.
+
+Claire:
+The Audience and intent step needs clearer separation between target audience and primary CTA.
+
+Sam:
+We can add microcopy under the fields: Write it like you're speaking to one person.
+
+Claire:
+Checklist needs to be prominent, and SEO suggestions can be a toggle.
+
+Taylor:
+Good point, we want measurement loops, not just generation.
+"""
+
+        intermediate = collect_minilm_only_context(transcript)
+        output, _diagnostics = build_minilm_only_output(transcript, intermediate, FakeMiniLMBackend())
+
+        self.assertIsNotNone(output)
+        objectives_blob = " ".join(output.get("meetingObjectives", [])).lower()
+        visible_blob = " ".join(
+            output.get("meetingObjectives", [])
+            + output.get("discussionPoints", [])
+            + output.get("meetingActionPoint", [])
+        ).lower()
+        self.assertIn("brief builder", objectives_blob)
+        self.assertIn("sanity-check", objectives_blob)
+        self.assertNotIn("i'm mostly here", visible_blob)
+        self.assertNotIn("good point", visible_blob)
+
+    def test_compound_pricing_action_is_split_and_politeness_removed(self):
+        transcript = """Meeting transcript - pricing policy sync
+
+Aisha:
+The agenda is to settle the discount approval process.
+
+Ben:
+Initially I thought we should let regional managers approve up to 20 percent.
+
+Cara:
+Compliance pushed back yesterday.
+
+Aisha:
+So the final decision is regional managers can approve up to 10 percent, and anything above that goes to Finance.
+
+Ben:
+I can tell everyone to use 20 percent until Finance catches up.
+
+Aisha:
+No, that is explicitly rejected. Do not do that.
+
+Cara:
+I will update the approval matrix by Wednesday. Ben, please brief regional managers after the matrix is updated, not before.
+
+Aisha:
+Objective for the meeting was to confirm the approval threshold and communication sequence.
+"""
+
+        intermediate = collect_minilm_only_context(transcript)
+        output, _diagnostics = build_minilm_only_output(transcript, intermediate, FakeMiniLMBackend())
+
+        self.assertIsNotNone(output)
+        actions_blob = " ".join(output.get("meetingActionPoint", [])).lower()
+        self.assertNotIn("please", actions_blob)
+        self.assertNotIn("by wednesday. ben", actions_blob)
+        self.assertIn("Update the approval matrix by Wednesday.", output["meetingActionPoint"])
+        self.assertIn("Brief regional managers after the matrix is updated, not before.", output["meetingActionPoint"])
+        action_map = {action["meetingActionPoint"]: action for action in output["actions"]}
+        self.assertEqual(action_map["Update the approval matrix by Wednesday."]["meetingActionPointOwner"], "Cara")
+        self.assertEqual(action_map["Update the approval matrix by Wednesday."]["meetingActionPointDeadline"], "By Wednesday")
+        self.assertEqual(action_map["Brief regional managers after the matrix is updated, not before."]["meetingActionPointOwner"], "Ben")
+
+    def test_banana_falcon_gets_meeting_level_objective_not_issue_snippet(self):
+        transcript = """Meeting transcript: Project Banana Falcon
+Participants: Claire, Bob, Sarah, Mike
+
+Claire: Okay. Project Banana Falcon. First item is the dashboard.
+Mike: Which dashboard?
+Claire: Exactly.
+Sarah: We currently have three dashboards. One is live, one is almost live, and one is theoretically live.
+Claire: Action there, somebody needs to work out which dashboard we're actually talking about.
+Sarah: I can do that.
+Mike: Before we move on, the server restarted itself on Thursday.
+Claire: Right. So server restart, needs investigation.
+Mike: I'll take that.
+Mike: Friday then.
+Mike: We still haven't decided whether we're calling the new feature "Smart Search", "Intelligent Search" or "Dave".
+Sarah: Customers won't know what Dave means.
+Claire: Let's park that. Decision deferred.
+Mike: Also the API is returning 17 where it should return 12.
+Claire: Action for Mike to investigate API numbers.
+"""
+
+        intermediate = collect_minilm_only_context(transcript)
+        output, _diagnostics = build_minilm_only_output(transcript, intermediate, FakeMiniLMBackend())
+
+        self.assertIsNotNone(output)
+        objectives_blob = " ".join(output.get("meetingObjectives", [])).lower()
+        self.assertIn("project banana falcon", objectives_blob)
+        self.assertIn("follow-up actions", objectives_blob)
+        self.assertNotIn("customers won't know what dave means", objectives_blob)
+        self.assertNotIn("three dashboard versions were active", objectives_blob)
 
     def test_rewrite_sanitiser_strips_chat_template_tokens(self):
         rewritten = _sanitize_rewritten_minutes_text(

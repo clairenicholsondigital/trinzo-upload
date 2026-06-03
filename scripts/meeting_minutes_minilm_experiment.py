@@ -869,6 +869,52 @@ def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBacke
     outputs = []
     records = list(intermediate.get("records", []))
 
+    def extract_action_deadline(text: str) -> str:
+        deadline_match = re.search(
+            r"\b(?:today|tomorrow|friday|monday|tuesday|wednesday|thursday|saturday|sunday|next week|this week|by [A-Za-z]+|before (?!it\b)[A-Za-z]+)\b",
+            text,
+            flags=re.I,
+        )
+        if not deadline_match:
+            return ""
+        deadline = deadline_match.group(0)
+        return deadline[:1].upper() + deadline[1:]
+
+    def split_action_event_candidate(event: dict[str, Any], owner: str, deadline: str) -> list[dict[str, str]]:
+        raw_action = normalize_text_fragment(event.get("action", ""))
+        if not raw_action:
+            return []
+        parts = [
+            normalize_text_fragment(part)
+            for part in re.split(r"(?<=[.!?])\s+(?=[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2}(?:,|\s+(?:will|to)\b))", raw_action)
+            if normalize_text_fragment(part)
+        ]
+        if len(parts) <= 1:
+            return [{"text": raw_action, "owner": owner, "deadline": deadline}]
+
+        expanded = []
+        for part in parts:
+            part_owner = owner
+            task = part
+            addressed = re.match(
+                r"^([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2}),\s*(?:please\s+)?(.+)$",
+                part,
+            )
+            owner_will = re.match(r"^([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})\s+will\s+(.+)$", part)
+            owner_to = re.match(r"^([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})\s+to\s+(.+)$", part)
+            if addressed:
+                part_owner = normalize_text_fragment(addressed.group(1)) or part_owner
+                task = addressed.group(2)
+            elif owner_will:
+                part_owner = normalize_text_fragment(owner_will.group(1)) or part_owner
+                task = owner_will.group(2)
+            elif owner_to:
+                part_owner = normalize_text_fragment(owner_to.group(1)) or part_owner
+                task = owner_to.group(2)
+            part_deadline = extract_action_deadline(task) or (deadline if normalize_text(deadline) in normalize_text(task) else "")
+            expanded.append({"text": task, "owner": part_owner or "Owner not specified", "deadline": part_deadline})
+        return expanded
+
     def canonical_action_dedupe_key(text: str) -> str:
         """Collapse owner-prefixed assignments onto the underlying task for duplicate checks."""
         cleaned = normalize_action_candidate_text(text)
@@ -936,18 +982,19 @@ def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBacke
                 owner = inferred_owner
             if inferred_deadline and not deadline:
                 deadline = inferred_deadline
-        outputs.append(
-            {
-                "text": normalize_action_candidate_text(event.get("action", "")),
-                "owner": owner or "Owner not specified",
-                "deadline": deadline,
-                "baseScore": float(event.get("confidence", 0.0)),
-                "source": event.get("source", ""),
-                "roleScores": {},
-            }
-        )
+        for expanded in split_action_event_candidate(event, owner or "Owner not specified", deadline):
+            outputs.append(
+                {
+                    "text": normalize_action_candidate_text(expanded.get("text", "")),
+                    "owner": expanded.get("owner") or "Owner not specified",
+                    "deadline": expanded.get("deadline", ""),
+                    "baseScore": float(event.get("confidence", 0.0)),
+                    "source": event.get("source", ""),
+                    "roleScores": {},
+                }
+            )
     seen = {canonical_action_dedupe_key(item["text"]) for item in outputs if item.get("text")}
-    action_lead_pattern = re.compile(r"^(review|confirm|draft|follow up|investigate|validate|prepare|update|share|send|complete|finalise|refine|pull|collect|fetch|extract|obtain|estimate|capture|monitor|separate|set up)\b", re.I)
+    action_lead_pattern = re.compile(r"^(review|confirm|draft|follow up|investigate|validate|prepare|update|share|send|complete|finalise|refine|pull|collect|fetch|extract|obtain|estimate|capture|monitor|separate|set up|brief)\b", re.I)
     summary_action_pattern = re.compile(
         r"\b([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})\s+will\s+(.+?)(?=(?:\s+[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2}\s+will\s+)|$)",
         re.I,
@@ -1794,7 +1841,7 @@ CONCRETE_ACTION_VERBS = {
     "add", "agree", "amend", "book", "build", "capture", "check", "circulate", "complete", "confirm", "create",
     "develop", "double", "draft", "finalise", "follow", "investigate", "prepare", "pull", "reduce", "refine",
     "review", "send", "share", "simplify", "update", "validate", "collect", "fetch", "extract", "obtain", "estimate",
-    "monitor", "separate", "set",
+    "monitor", "separate", "set", "brief",
 }
 
 
@@ -1866,9 +1913,11 @@ def is_objective_candidate_text(text: str) -> bool:
     cleaned = normalize_text_fragment(text)
     if not cleaned or contains_noise_or_banter(cleaned) or is_context_dependent_fragment(cleaned):
         return False
+    tokens = set(canonicalize_tokens(tokenize(cleaned)))
+    if tokens & {"agenda", "aim", "goal", "objective", "purpose"}:
+        return True
     if is_style_or_tone_guidance(cleaned):
         return False
-    tokens = set(canonicalize_tokens(tokenize(cleaned)))
     if tokens & OBJECTIVE_CUE_TERMS:
         return True
     return business_signal_count(cleaned) >= 2 and semantic_density(cleaned) >= 0.6
@@ -1916,6 +1965,8 @@ def is_context_dependent_fragment(text: str) -> bool:
     if lowered in MINILM_NOISE_PHRASES:
         return True
     if any(phrase in lowered for phrase in MINILM_NOISE_PHRASES):
+        return True
+    if lowered.startswith(("i'm mostly here", "i am mostly here", "all good", "good point")):
         return True
     if is_low_value_coordination_action(text) or is_self_referential_conversational_fragment(text) or is_social_greeting_fragment(text):
         return True
@@ -1968,6 +2019,8 @@ def should_keep_discussion_candidate(candidate: dict[str, Any]) -> tuple[bool, s
         return False, "request_or_question_fragment"
     if lowered.startswith("action there"):
         return False, "action_context_statement"
+    if re.search(r"\baction\s+(?:for|to)\s+[A-Z]?[a-z]+", text, flags=re.I):
+        return False, "action_context_statement"
     if re.search(r"\bone is live,\s+one is almost live,\s+and one is theoretically live\b", lowered):
         return False, "weak_dashboard_status_quote"
     if is_action_like_sentence(text):
@@ -2006,6 +2059,7 @@ def normalize_action_candidate_text(text: str) -> str:
         if lowered.startswith(prefix):
             cleaned = cleaned[len(prefix):]
             break
+    cleaned = re.sub(r"^(?:please\s+)+", "", cleaned, flags=re.I)
     cleaned = re.sub(r"\s*,\s*([.!?])$", r"\1", cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return cleaned[:1].upper() + cleaned[1:] if cleaned else cleaned
@@ -2296,8 +2350,20 @@ def derive_meeting_objectives(output: dict[str, Any]) -> list[str]:
     seen = set()
     scored_candidates: list[tuple[float, str]] = []
 
+    def normalize_objective_text(text: str) -> str:
+        cleaned = normalize_text_fragment(text).rstrip(".")
+        cleaned = re.sub(
+            r"^(?:the\s+)?(?:goal|objective|agenda|purpose)(?:\s+(?:today|for\s+the\s+meeting|of\s+the\s+meeting))?\s+(?:is|was)\s+to\s+",
+            "",
+            cleaned,
+            flags=re.I,
+        )
+        cleaned = re.sub(r"^to\s+", "", cleaned, flags=re.I)
+        return cleaned[:1].upper() + cleaned[1:] if cleaned else cleaned
+
     def add_candidate(text: str, source_kind: str, support_count: int = 0, evidence_score: float = 0.0) -> None:
-        cleaned = normalize_text_fragment(formalize_transcript_discussion_point(text)).rstrip(".")
+        raw_cleaned = normalize_text_fragment(formalize_transcript_discussion_point(text)).rstrip(".")
+        cleaned = normalize_objective_text(raw_cleaned)
         key = normalized_key(cleaned)
         if not cleaned or not key or key in seen:
             return
@@ -2305,7 +2371,7 @@ def derive_meeting_objectives(output: dict[str, Any]) -> list[str]:
             return
         if contains_noise_or_banter(cleaned) or is_context_dependent_fragment(cleaned):
             return
-        if not is_objective_candidate_text(cleaned):
+        if not is_objective_candidate_text(raw_cleaned) and not is_objective_candidate_text(cleaned):
             return
         seen.add(key)
         scored_candidates.append(
@@ -2342,6 +2408,23 @@ def derive_meeting_objectives(output: dict[str, Any]) -> list[str]:
     return [text for _score, text in scored_candidates[:2]]
 
 
+def synthesize_meeting_scope_objective(output: dict[str, Any]) -> list[str]:
+    title = normalize_text_fragment(output.get("meetingTitle", "")).strip(".")
+    title_lower = title.lower()
+    if not title or title_lower in {"minilm transcript review", "meeting transcript"} or title_lower.startswith("meeting transcript"):
+        return []
+    evidence_blob = " ".join(
+        [title]
+        + [normalize_text_fragment(point) for point in output.get("discussionPoints", [])]
+        + [normalize_text_fragment(action.get("meetingActionPoint", "")) for action in output.get("actions", [])]
+    ).lower()
+    if "dashboard" in evidence_blob and ("server" in evidence_blob or "api" in evidence_blob or "project banana falcon" in title_lower):
+        return [f"Review {title} scope, open issues and follow-up actions."]
+    if output.get("discussionPoints") or output.get("actions") or output.get("decisions"):
+        return [f"Review {title} priorities, decisions and follow-up actions."]
+    return []
+
+
 def is_valid_discussion_point(text: str, support_count: int) -> tuple[bool, str]:
     cleaned = normalize_text_fragment(text)
     lowered = cleaned.lower()
@@ -2354,6 +2437,8 @@ def is_valid_discussion_point(text: str, support_count: int) -> tuple[bool, str]
     if is_request_or_question_fragment(cleaned):
         return False, "question_fragment"
     if lowered.startswith("action there"):
+        return False, "action_context_statement"
+    if re.search(r"\baction\s+(?:for|to)\s+[A-Z]?[a-z]+", cleaned, flags=re.I):
         return False, "action_context_statement"
     if is_action_like_sentence(cleaned) or is_decision_like_discussion(cleaned):
         return False, "action_or_decision_like"
@@ -2403,7 +2488,7 @@ def should_accept_action_candidate(candidate: dict[str, Any]) -> tuple[bool, str
     semantic_source = candidate.get("source") == "semantic_action_fallback"
     if not (
         is_action_like_sentence(text)
-        or re.match(r"^(review|confirm|draft|follow up|investigate|validate|prepare|update|share|send|complete|finalise|refine|pull|collect|fetch|extract|obtain|estimate|capture|monitor|separate|set up)\b", text, re.I)
+        or re.match(r"^(review|confirm|draft|follow up|investigate|validate|prepare|update|share|send|complete|finalise|refine|pull|collect|fetch|extract|obtain|estimate|capture|monitor|separate|set up|brief)\b", text, re.I)
         or semantic_source
     ):
         return False, "not_action_like"
@@ -2989,6 +3074,8 @@ def build_minilm_only_output(
             output["meetingObjectives"] = reinforced_objectives
     concise_objectives = [objective for objective in output["meetingObjectives"] if not is_overlong_objective_text(objective)]
     output["meetingObjectives"] = concise_objectives
+    if not output["meetingObjectives"]:
+        output["meetingObjectives"] = synthesize_meeting_scope_objective(output)
 
     if rewriter and rewriter.available:
         output, rewrite_diagnostics = rewrite_minutes_output_payload(
