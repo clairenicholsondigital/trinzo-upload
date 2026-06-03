@@ -408,6 +408,19 @@ James: Let's review the guide next week.
         self.assertNotIn("James: Before we start", output["meetingTitle"])
         self.assertEqual(set(output["participants"]["trinzo"]), {"James", "Rachel", "Mark"})
         self.assertTrue(any("response times" in point.lower() for point in output["discussionPoints"]))
+        self.assertFalse(any(point.lower().startswith("also,") for point in output["discussionPoints"]))
+        self.assertIn("Separate triage categories.", output["meetingActionPoint"])
+        self.assertIn("Monitor the results weekly.", output["meetingActionPoint"])
+        self.assertIn("Set up a dashboard.", output["meetingActionPoint"])
+
+    def test_rewrite_sanitizer_removes_conversational_connective_openings(self):
+        self.assertEqual(
+            _sanitize_rewritten_minutes_text(
+                "Also, the onboarding guide is still generating questions from new customers.",
+                "The onboarding guide is still generating questions from new customers.",
+            ),
+            "The onboarding guide is still generating questions from new customers.",
+        )
 
     def test_followup_investigation_action_is_captured_from_complaints_thread(self):
         transcript = "Ciara: One thing that came up during the workshop was complaints handling.Conor: Yeah, I thought that section generated the most discussion.Ciara: People understand the formal process, but they don't necessarily understand why certain complaints get escalated and others don't.Jack: A lot of that knowledge sits with experienced staff.Conor: That's the tribal knowledge problem.Ciara: Exactly.Jack: When somebody new joins, they learn those patterns by asking questions rather than through documentation.Conor: Which means responses aren't always consistent.Ciara: We heard several examples where people handled similar situations differently.Jack: That's where AI could potentially help.Conor: Not to make decisions for people.Jack: No, more as a guidance layer.Ciara: Almost like a recommendation engine.Conor: Yes. Somebody enters the complaint details and the system shows similar historical cases.Jack: Plus the reasoning behind previous outcomes.Ciara: That would make onboarding much easier.Conor: The important thing is filtering.Jack: What do you mean?Conor: Some complaints are straightforward. Others involve legal review, regulatory issues or unusual circumstances.Ciara: So we wouldn't want AI recommending unsuitable examples.Conor: Exactly.Jack: We'd need confidence scoring and suitability filtering.Ciara: That sounds like a separate workstream.Conor: Agreed.Jack: Should we capture that as a follow-up investigation?Ciara: Yes, let's do that."

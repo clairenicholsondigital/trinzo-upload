@@ -340,7 +340,7 @@ class LocalMinutesRewriter:
             "Rewrite each extracted meeting-minutes item into concise, formal UK business English. "
             "Keep the meaning unchanged. "
             "Do not invent, infer, or add any facts, names, dates, owners, deadlines, decisions, or context not present in the source item. "
-            "Remove filler, transcript phrasing, awkward wording, any chat-template tokens, and any signature, footer, approval, or placeholder template text. "
+            "Remove filler, transcript phrasing, conversational connective openings such as 'Also,' or 'And,' awkward wording, any chat-template tokens, and any signature, footer, approval, or placeholder template text. "
             "Write like clean meeting minutes rather than chat. "
             "Use natural sentence variety and avoid repeating the same opening across items. "
             "Do not keep starting sentences with the same stem such as 'The team discussed' or 'The meeting was to'. "
@@ -932,7 +932,7 @@ def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBacke
             }
         )
     seen = {canonical_action_dedupe_key(item["text"]) for item in outputs if item.get("text")}
-    action_lead_pattern = re.compile(r"^(review|confirm|draft|follow up|investigate|validate|prepare|update|share|send|complete|finalise|refine|pull|collect|fetch|extract|obtain|estimate|capture)\b", re.I)
+    action_lead_pattern = re.compile(r"^(review|confirm|draft|follow up|investigate|validate|prepare|update|share|send|complete|finalise|refine|pull|collect|fetch|extract|obtain|estimate|capture|monitor|separate|set up)\b", re.I)
     summary_action_pattern = re.compile(
         r"\b([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})\s+will\s+(.+?)(?=(?:\s+[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2}\s+will\s+)|$)",
         re.I,
@@ -1779,6 +1779,7 @@ CONCRETE_ACTION_VERBS = {
     "add", "agree", "amend", "book", "build", "capture", "check", "circulate", "complete", "confirm", "create",
     "develop", "double", "draft", "finalise", "follow", "investigate", "prepare", "pull", "reduce", "refine",
     "review", "send", "share", "simplify", "update", "validate", "collect", "fetch", "extract", "obtain", "estimate",
+    "monitor", "separate", "set",
 }
 
 
@@ -2046,6 +2047,7 @@ def _sanitize_rewritten_minutes_text(generated: str, fallback: str) -> str:
     cleaned = cleaned.replace("|", " ")
     cleaned = re.sub(r"\s+", " ", cleaned).strip().strip('"')
     cleaned = strip_conversational_preface(cleaned)
+    cleaned = re.sub(r"^(?:also|and|but|then|again|ok|yes|no)[,;:\s]+", "", cleaned, flags=re.I)
     if is_conversational_transcript_fragment(fallback_clean) or is_conversational_transcript_fragment(cleaned):
         cleaned = formalize_transcript_discussion_point(cleaned or fallback_clean)
     first_sentence = re.match(r"^(.+?[.!?])(?:\s+|$)", cleaned)
@@ -2360,7 +2362,7 @@ def should_accept_action_candidate(candidate: dict[str, Any]) -> tuple[bool, str
     semantic_source = candidate.get("source") == "semantic_action_fallback"
     if not (
         is_action_like_sentence(text)
-        or re.match(r"^(review|confirm|draft|follow up|investigate|validate|prepare|update|share|send|complete|finalise|refine|pull|collect|fetch|extract|obtain|estimate|capture)\b", text, re.I)
+        or re.match(r"^(review|confirm|draft|follow up|investigate|validate|prepare|update|share|send|complete|finalise|refine|pull|collect|fetch|extract|obtain|estimate|capture|monitor|separate|set up)\b", text, re.I)
         or semantic_source
     ):
         return False, "not_action_like"
