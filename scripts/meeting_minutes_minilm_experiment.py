@@ -2771,7 +2771,12 @@ def build_minilm_only_output(
             output["decisions"],
             output["actions"],
         )
-        output["discussionPoints"] = dedupe_values(output["discussionPoints"])[:11]
+        output["discussionPoints"] = [
+            point
+            for point in dedupe_values(output["discussionPoints"])
+            if not is_transcript_recount_text(point)
+            and not any(marker in point.lower() for marker in ("we've learned", "we have the team", "we now have the team"))
+        ][:11]
         output["decisions"] = dedupe_values(output["decisions"])
         output["actions"] = dedupe_action_objects(
             [
