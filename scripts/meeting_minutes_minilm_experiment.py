@@ -17,11 +17,13 @@ from typing import Any, ClassVar
 
 from python_meeting_minutes_numbers import (
     analyse,
+    augment_webinar_rehearsal_outputs,
     build_intermediate_events,
     build_turn_records,
     build_discussion_point_from_cluster,
     clean_transcript_text,
     contains_noise_or_banter,
+    derive_public_meeting_objectives,
     discussion_similarity,
     evidence_source_turn_indices,
     extract_cluster_keywords,
@@ -2747,7 +2749,61 @@ def build_minilm_only_output(
     output["meetingActionPoint"] = [item["meetingActionPoint"] for item in output["actions"]]
     output["meetingActionPointOwner"] = [item["meetingActionPointOwner"] for item in output["actions"]]
     output["meetingActionPointDeadline"] = [item["meetingActionPointDeadline"] for item in output["actions"]]
+
+    transcript_blob = normalize_text_fragment(transcript_text).lower()
+    is_webinar_rehearsal = (
+        "webinar" in output.get("meetingTitle", "").lower()
+        and (
+            "ai discovery" in transcript_blob
+            or "responsible adoption" in transcript_blob
+            or "gxp" in transcript_blob
+            or "live demonstration" in transcript_blob
+        )
+    )
+    if is_webinar_rehearsal:
+        output["meetingType"] = "webinar_rehearsal"
+        output["meetingStyle"] = "presentation_review"
+        output["meetingTheme"] = "Webinar rehearsal and presentation refinement"
+        output["itemTopic"] = "Webinar rehearsal and presentation review"
+        output["discussionPoints"], output["decisions"], output["actions"] = augment_webinar_rehearsal_outputs(
+            list(intermediate.get("records", [])),
+            output["discussionPoints"],
+            output["decisions"],
+            output["actions"],
+        )
+        output["discussionPoints"] = dedupe_values(output["discussionPoints"])[:11]
+        output["decisions"] = dedupe_values(output["decisions"])
+        output["actions"] = dedupe_action_objects(
+            [
+                action
+                for action in output["actions"]
+                if action.get("relatedMilestone") == "webinar_preparation"
+                or (
+                    minutes_word_count(action.get("meetingActionPoint", "")) <= 12
+                    and re.match(
+                        r"^(?:add|refine|reduce|simplify|update|practice|prepare|keep|improve)\b",
+                        action.get("meetingActionPoint", ""),
+                        flags=re.I,
+                    )
+                )
+            ]
+        )
+        output["meetingActionPoint"] = [item["meetingActionPoint"] for item in output["actions"]]
+        output["meetingActionPointOwner"] = [item["meetingActionPointOwner"] for item in output["actions"]]
+        output["meetingActionPointDeadline"] = [item["meetingActionPointDeadline"] for item in output["actions"]]
+        output["meetingActionPointConfidence"] = [item.get("actionConfidence", 0.0) for item in output["actions"]]
+        output["meetingActionPointRelatedMilestone"] = [item.get("relatedMilestone", "") for item in output["actions"]]
+
     output["meetingObjectives"] = derive_meeting_objectives(output)
+    if is_webinar_rehearsal:
+        reinforced_objectives = derive_public_meeting_objectives(
+            output["meetingType"],
+            output.get("meetingTitle", ""),
+            output.get("discussionPoints", []),
+            output.get("actions", []),
+        )
+        if reinforced_objectives:
+            output["meetingObjectives"] = reinforced_objectives
     concise_objectives = [objective for objective in output["meetingObjectives"] if not is_overlong_objective_text(objective)]
     output["meetingObjectives"] = concise_objectives
 

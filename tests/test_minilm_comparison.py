@@ -274,7 +274,7 @@ I'll refine the webinar slides.
 
         self.assertIsNotNone(output)
         self.assertEqual(output["generator"], "minilm_only")
-        self.assertEqual(output["meetingType"], "minilm_only_experiment")
+        self.assertEqual(output["meetingType"], "webinar_rehearsal")
         self.assertEqual(output["meetingTitle"], "Webinar rehearsal")
         self.assertEqual(output["meetingDate"], "2 June 2026")
         self.assertEqual(output["participants"]["client"], [])
