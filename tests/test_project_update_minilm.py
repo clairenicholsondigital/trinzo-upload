@@ -56,6 +56,15 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertIn("meeting_minutes_minilm_only.py", meeting_route)
         self.assertNotIn("project_update_minilm.py", meeting_route)
 
+    def test_project_update_page_enables_editable_report_ui(self):
+        page = (REPO_DIR / "views" / "project-update-test.html").read_text(encoding="utf-8")
+        shared_js = (REPO_DIR / "public" / "test-transcript-page.js").read_text(encoding="utf-8")
+
+        self.assertIn("projectReportUi: true", page)
+        self.assertIn(".project-tabs", page)
+        self.assertIn("renderProjectReport", shared_js)
+        self.assertIn("Copy report JSON", shared_js)
+
 
 if __name__ == "__main__":
     unittest.main()

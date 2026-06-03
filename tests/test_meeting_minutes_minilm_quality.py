@@ -140,6 +140,26 @@ Ibrahim: The purpose is to decide whether the integration risk is acceptable for
     def test_report_update_with_vague_points_is_not_concrete_action(self):
         self.assertFalse(has_concrete_action_commitment("I’ll update the next report with these points."))
 
+    def test_vague_recorded_assignment_fragment_is_not_action(self):
+        text = "Assign that properly."
+
+        self.assertFalse(has_concrete_action_commitment(text))
+        accepted, reason = should_accept_action_candidate(
+            {
+                "text": text,
+                "owner": "Owner not specified",
+                "deadline": "",
+                "baseScore": 0.9,
+                "combinedScore": 0.9,
+                "semanticScore": 0.7,
+                "roleScores": {"action": 0.8},
+                "source": "semantic_action_fallback",
+            }
+        )
+
+        self.assertFalse(accepted)
+        self.assertEqual(reason, "missing_concrete_action_commitment")
+
 
 if __name__ == "__main__":
     unittest.main()

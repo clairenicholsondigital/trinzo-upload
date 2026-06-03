@@ -2055,6 +2055,8 @@ def has_concrete_action_commitment(text: str, owner: str = "", deadline: str = "
         return False
     if re.search(r"\b(?:these|those|this|that)\s+(?:points?|items?|things?|stuff)\b", lowered):
         return False
+    if re.match(r"^(?:assign|update|review|fix|sort|handle|do)\s+(?:it|this|that|them)\b", lowered):
+        return False
     if re.match(r"^(?:send|share|forward)\s+(?:it|this|that|them)\b", lowered):
         return False
     if "i estimate" in lowered and normalize_text(owner) == "owner not specified":

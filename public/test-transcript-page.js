@@ -955,6 +955,19 @@ function buildTranscriptMinilmOnlyPage(config) {
     return `<textarea id="${id}" placeholder="${escapeHtml(placeholder || '')}">${escapeHtml(value)}</textarea>`;
   }
 
+  function toDateInputValue(value) {
+    const text = String(value || '').trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+    const match = text.match(/^(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]+)\s+(\d{4})$/);
+    if (!match) return '';
+    const monthIndex = [
+      'january', 'february', 'march', 'april', 'may', 'june',
+      'july', 'august', 'september', 'october', 'november', 'december'
+    ].indexOf(match[2].toLowerCase());
+    if (monthIndex < 0) return '';
+    return `${match[3]}-${String(monthIndex + 1).padStart(2, '0')}-${String(Number(match[1])).padStart(2, '0')}`;
+  }
+
   function renderActionTable(schemaOutput) {
     const actions = Array.isArray(schemaOutput.meetingActionPoint) ? schemaOutput.meetingActionPoint : [];
     const owners = Array.isArray(schemaOutput.meetingActionPointOwner) ? schemaOutput.meetingActionPointOwner : [];
@@ -1016,7 +1029,7 @@ function buildTranscriptMinilmOnlyPage(config) {
           </tr>
           <tr>
             <th>Meeting date</th>
-            <td><input id="meetingDateInput" type="text" value="${escapeHtml(schemaOutput.meetingDate || '')}" placeholder="Meeting date" /></td>
+            <td><input id="meetingDateInput" type="date" value="${escapeHtml(toDateInputValue(schemaOutput.meetingDate))}" /></td>
           </tr>
           <tr>
             <th>Meeting location</th>
