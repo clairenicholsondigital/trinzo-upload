@@ -1990,6 +1990,17 @@ def is_addressed_action_directive(text: str) -> bool:
     )
 
 
+def is_explicit_objective_statement(text: str) -> bool:
+    cleaned = normalize_text_fragment(text)
+    return bool(
+        re.match(
+            r"^(?:the\s+)?(?:agenda|aim|goal|objective|purpose)(?:\s+(?:today|for\s+the\s+meeting|of\s+the\s+meeting))?\s+(?:is|was)\s+to\s+",
+            cleaned,
+            flags=re.I,
+        )
+    )
+
+
 def is_bad_progress_fragment(text: str) -> bool:
     lowered = normalize_text_fragment(text).lower()
     progress_markers = (
@@ -2028,6 +2039,8 @@ def should_keep_discussion_candidate(candidate: dict[str, Any]) -> tuple[bool, s
         return False, "context_dependent_fragment"
     if is_request_or_question_fragment(text):
         return False, "request_or_question_fragment"
+    if is_explicit_objective_statement(text):
+        return False, "explicit_objective_statement"
     if is_addressed_action_directive(text):
         return False, "addressed_action_directive"
     if lowered.startswith("action there"):
@@ -2449,6 +2462,8 @@ def is_valid_discussion_point(text: str, support_count: int) -> tuple[bool, str]
         return False, "noise_or_banter"
     if is_request_or_question_fragment(cleaned):
         return False, "question_fragment"
+    if is_explicit_objective_statement(cleaned):
+        return False, "explicit_objective_statement"
     if is_addressed_action_directive(cleaned):
         return False, "addressed_action_directive"
     if lowered.startswith("action there"):

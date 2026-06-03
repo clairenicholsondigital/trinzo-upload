@@ -1000,6 +1000,7 @@ Good point, we want measurement loops, not just generation.
 
         self.assertIsNotNone(output)
         objectives_blob = " ".join(output.get("meetingObjectives", [])).lower()
+        discussion_blob = " ".join(output.get("discussionPoints", [])).lower()
         visible_blob = " ".join(
             output.get("meetingObjectives", [])
             + output.get("discussionPoints", [])
@@ -1007,6 +1008,7 @@ Good point, we want measurement loops, not just generation.
         ).lower()
         self.assertIn("brief builder", objectives_blob)
         self.assertIn("sanity-check", objectives_blob)
+        self.assertNotIn("goal today", discussion_blob)
         self.assertNotIn("i'm mostly here", visible_blob)
         self.assertNotIn("good point", visible_blob)
 
