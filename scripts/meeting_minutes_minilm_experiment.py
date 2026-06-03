@@ -1039,7 +1039,7 @@ def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBacke
                 }
             )
     seen = {canonical_action_dedupe_key(item["text"]) for item in outputs if item.get("text")}
-    action_lead_pattern = re.compile(r"^(review|confirm|draft|follow up|investigate|validate|prepare|update|share|send|complete|finalise|refine|revise|pull|collect|fetch|extract|obtain|estimate|capture|monitor|separate|set up|brief|write|enforce|accelerate|assign|explore|build)\b", re.I)
+    action_lead_pattern = re.compile(r"^(review|confirm|draft|follow up|investigate|validate|prepare|update|share|send|complete|finalise|refine|revise|pull|collect|fetch|extract|obtain|estimate|capture|monitor|separate|set up|brief|write|enforce|accelerate|assign|explore|build|schedule)\b", re.I)
     summary_action_pattern = re.compile(
         r"\b([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})\s+will\s+(.+?)(?=(?:\s+[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2}\s+will\s+)|$)",
         re.I,
@@ -1056,7 +1056,7 @@ def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBacke
             parts = [
                 normalize_text_fragment(part)
                 for part in re.split(
-                    r"(?=\b(?:enforce|accelerate|assign|explore|review|confirm|draft|follow\s+up|investigate|validate|prepare|update|share|send|complete|finalise|refine|revise|write|monitor|separate|set\s+up|brief|build)\b)",
+                    r"(?=\b(?:enforce|accelerate|assign|explore|review|confirm|draft|follow\s+up|investigate|validate|prepare|update|share|send|complete|finalise|refine|revise|write|monitor|separate|set\s+up|brief|build|schedule)\b)",
                     body,
                     flags=re.I,
                 )
@@ -2037,7 +2037,7 @@ def is_low_value_coordination_action(text: str) -> bool:
 CONCRETE_ACTION_VERBS = {
     "add", "agree", "amend", "book", "build", "capture", "check", "circulate", "complete", "confirm", "create",
     "develop", "double", "draft", "finalise", "follow", "investigate", "prepare", "pull", "reduce", "refine",
-    "review", "send", "share", "simplify", "update", "validate", "collect", "fetch", "extract", "obtain", "estimate",
+    "review", "schedule", "send", "share", "simplify", "update", "validate", "collect", "fetch", "extract", "obtain", "estimate",
     "monitor", "separate", "set", "brief", "write", "enforce", "accelerate", "assign", "explore", "revise",
 }
 
@@ -2109,6 +2109,10 @@ def is_style_or_tone_guidance(text: str) -> bool:
 def is_objective_candidate_text(text: str) -> bool:
     cleaned = normalize_text_fragment(text)
     if not cleaned or contains_noise_or_banter(cleaned) or is_context_dependent_fragment(cleaned):
+        return False
+    if re.search(r"\bmeeting title should be\b", cleaned, flags=re.I):
+        return False
+    if re.match(r"^(?:i[’']ll|i will|we[’']ll|we will)\s+", cleaned, flags=re.I):
         return False
     if re.search(r"\bactual action is\b", cleaned, flags=re.I):
         return False
@@ -2742,7 +2746,7 @@ def should_accept_action_candidate(candidate: dict[str, Any]) -> tuple[bool, str
     semantic_source = candidate.get("source") == "semantic_action_fallback"
     if not (
         is_action_like_sentence(text)
-        or re.match(r"^(review|confirm|draft|follow up|investigate|validate|prepare|update|share|send|complete|finalise|refine|revise|pull|collect|fetch|extract|obtain|estimate|capture|monitor|separate|set up|brief|write|enforce|accelerate|assign|explore|build)\b", text, re.I)
+        or re.match(r"^(review|confirm|draft|follow up|investigate|validate|prepare|update|share|send|complete|finalise|refine|revise|pull|collect|fetch|extract|obtain|estimate|capture|monitor|separate|set up|brief|write|enforce|accelerate|assign|explore|build|schedule)\b", text, re.I)
         or semantic_source
     ):
         return False, "not_action_like"

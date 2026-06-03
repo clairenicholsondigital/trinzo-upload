@@ -1116,6 +1116,28 @@ Support metrics call transcript
         self.assertEqual(action_map["Validate the first response numbers."]["meetingActionPointOwner"], "Chris")
         self.assertEqual(action_map["Validate the first response numbers."]["meetingActionPointDeadline"], "By Thursday")
 
+    def test_first_person_schedule_commitment_is_action_not_objective(self):
+        transcript = """Transcript
+Risk review transcript
+Ibrahim: The purpose is to decide whether the integration risk is acceptable for pilot.
+Sophia: The risk register says “action required immediately,” but that is copied from last month and is not accurate now.
+Grace: Agreed. We are not raising a new urgent action. The current mitigation is enough if monitoring continues.
+Ibrahim: Decision: proceed with the pilot, with weekly monitoring for the first month.
+Sophia: I will update the risk register language by Friday so it no longer says immediate action required.
+Grace: I will schedule the weekly monitoring review series.
+"""
+
+        intermediate = collect_minilm_only_context(transcript)
+        output, _diagnostics = build_minilm_only_output(transcript, intermediate, FakeMiniLMBackend())
+
+        objectives_blob = " ".join(output.get("meetingObjectives", [])).lower()
+        self.assertNotIn("i will", objectives_blob)
+        self.assertIn("Update the risk register language so it no longer says immediate action required.", output["meetingActionPoint"])
+        self.assertIn("Schedule the weekly monitoring review series.", output["meetingActionPoint"])
+        action_map = {action["meetingActionPoint"]: action for action in output["actions"]}
+        self.assertEqual(action_map["Update the risk register language so it no longer says immediate action required."]["meetingActionPointDeadline"], "By Friday")
+        self.assertEqual(action_map["Schedule the weekly monitoring review series."]["meetingActionPointOwner"], "Grace")
+
     def test_actual_action_assignments_are_extracted_from_notion_transcript(self):
         transcript = """Transcript
 Transcript file: Project Phoenix transcript v3 🔥
