@@ -119,6 +119,34 @@ class FakeLocalRewriter:
         return item["rewritten"], item["meta"]
 
 
+class TeamsObjectiveRewriter:
+    available = True
+    reason = ""
+    model_name = "fake-qwen"
+    model_path = "/fake/qwen"
+
+    def rewrite_items(self, items):
+        outputs = []
+        for item in items:
+            category = item["category"]
+            if category == "objective":
+                rewritten = "Teams should clearly define the formal process and explain why some complaints are escalated while others are not."
+            else:
+                rewritten = normalize_text_fragment(item["text"])
+            outputs.append(
+                {
+                    "rewritten": rewritten,
+                    "meta": {
+                        "category": category,
+                        "rewritten": True,
+                        "reason": "ok",
+                        "raw": normalize_text_fragment(item["text"]),
+                    },
+                }
+            )
+        return outputs
+
+
 class MiniLMComparisonSmokeTest(unittest.TestCase):
     def setUp(self):
         LocalMinutesRewriter._singleton = None
@@ -368,6 +396,50 @@ James: Let's review the guide next week.
         self.assertNotIn("let's review the guide next week", objectives)
         self.assertIn("response times", points)
         self.assertTrue("triage categories" in points or "complex cases" in points or "technical issues" in points or "general enquiries" in points)
+
+    def test_flattened_support_transcript_infers_topic_title_and_all_speakers(self):
+        transcript = "James: Before we start, did everyone see the support metrics from last month?Rachel: Yeah. Complaints are down but response times are actually worse.James: Exactly. We closed more tickets, but customers waited longer before getting an answer.Mark: I think that's because we're routing everything through the same queue.Rachel: The team keeps saying the same thing. Complex cases are sitting behind simple requests.James: Is there any evidence for that?Mark: I looked at twenty tickets yesterday. The pattern was pretty obvious.Rachel: We've also had three complaints specifically mentioning delays.James: Okay. So what's the fix?Mark: We need separate triage categories.Rachel: We discussed that six months ago.James: Why didn't it happen?Rachel: Nobody owned it.James: Right, that's on us.Mark: If we separate technical issues from general enquiries we'd probably see an improvement quickly.James: How much work is that?Mark: Maybe a day or two.James: Then let's do it.Rachel: We should probably monitor the results weekly as well.James: Good idea.Mark: I can set up a dashboard.James: Perfect.Rachel: Also, the onboarding guide is still generating questions from new customers.James: Again?Rachel: Same sections as before. Account setup and permissions.James: Let's review the guide next week."
+
+        intermediate = collect_minilm_only_context(transcript)
+        output, _diagnostics = build_minilm_only_output(transcript, intermediate, FakeMiniLMBackend())
+
+        self.assertIsNotNone(output)
+        self.assertEqual(output["meetingTitle"], "Support metrics review")
+        self.assertNotIn("James: Before we start", output["meetingTitle"])
+        self.assertEqual(set(output["participants"]["trinzo"]), {"James", "Rachel", "Mark"})
+        self.assertTrue(any("response times" in point.lower() for point in output["discussionPoints"]))
+
+    def test_followup_investigation_action_is_captured_from_complaints_thread(self):
+        transcript = "Ciara: One thing that came up during the workshop was complaints handling.Conor: Yeah, I thought that section generated the most discussion.Ciara: People understand the formal process, but they don't necessarily understand why certain complaints get escalated and others don't.Jack: A lot of that knowledge sits with experienced staff.Conor: That's the tribal knowledge problem.Ciara: Exactly.Jack: When somebody new joins, they learn those patterns by asking questions rather than through documentation.Conor: Which means responses aren't always consistent.Ciara: We heard several examples where people handled similar situations differently.Jack: That's where AI could potentially help.Conor: Not to make decisions for people.Jack: No, more as a guidance layer.Ciara: Almost like a recommendation engine.Conor: Yes. Somebody enters the complaint details and the system shows similar historical cases.Jack: Plus the reasoning behind previous outcomes.Ciara: That would make onboarding much easier.Conor: The important thing is filtering.Jack: What do you mean?Conor: Some complaints are straightforward. Others involve legal review, regulatory issues or unusual circumstances.Ciara: So we wouldn't want AI recommending unsuitable examples.Conor: Exactly.Jack: We'd need confidence scoring and suitability filtering.Ciara: That sounds like a separate workstream.Conor: Agreed.Jack: Should we capture that as a follow-up investigation?Ciara: Yes, let's do that."
+
+        intermediate = collect_minilm_only_context(transcript)
+        output, diagnostics = build_minilm_only_output(transcript, intermediate, FakeMiniLMBackend())
+
+        self.assertIsNotNone(output)
+        actions = " ".join(output["meetingActionPoint"]).lower()
+        self.assertIn("confidence scoring", actions)
+        self.assertIn("suitability filtering", actions)
+        self.assertIn("follow-up investigation", actions)
+        self.assertTrue(any(item["source"] == "followup_investigation_fallback" for item in diagnostics["actionCandidates"]))
+
+    def test_rewrite_layer_removes_awkward_teams_objective_wording(self):
+        output = {
+            "meetingObjectives": [
+                "Clearly define the formal process and explain why some complaints are escalated while others are not."
+            ],
+            "discussionPoints": [],
+            "decisions": [],
+            "actions": [],
+        }
+
+        rewritten, diagnostics = rewrite_minutes_output_payload(output, rewriter=TeamsObjectiveRewriter())
+
+        self.assertEqual(
+            rewritten["meetingObjectives"],
+            ["The objective was to clearly define the formal process and explain why some complaints are escalated while others are not."],
+        )
+        self.assertNotIn("teams should", " ".join(rewritten["meetingObjectives"]).lower())
+        self.assertTrue(diagnostics["rewriteSucceeded"])
 
     def test_objectives_can_be_summarised_separately_from_main_rewrite(self):
         output = {

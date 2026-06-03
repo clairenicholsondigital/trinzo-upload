@@ -69,6 +69,7 @@ COLON_TURN_RE = re.compile(rf"^(?P<speaker>{SPEAKER_NAME_RE}){SPEAKER_SUFFIX_RE}
 HYPHEN_TURN_RE = re.compile(rf"^(?P<speaker>{SPEAKER_NAME_RE}){SPEAKER_SUFFIX_RE}\s*[-–—]\s*(?P<timestamp>{TIMESTAMP_TOKEN_RE})\s*(?P<tail>.*)$")
 SPEAKER_ONLY_RE = re.compile(rf"^(?P<speaker>{SPEAKER_NAME_RE}){SPEAKER_SUFFIX_RE}$")
 TIMESTAMP_ONLY_RE = re.compile(rf"^(?P<timestamp>{TIMESTAMP_TOKEN_RE})$")
+INLINE_COLON_SPEAKER_RE = re.compile(rf"(?P<speaker>{SPEAKER_NAME_RE}){SPEAKER_SUFFIX_RE}\s*:")
 METADATA_SPEAKERS = {"Date", "Location", "Online"}
 SECTION_HEADING_SPEAKERS = {
     "Agenda",
@@ -398,6 +399,37 @@ def fuzzy_token_similarity(left_tokens: set[str], right_tokens: set[str]) -> flo
     return fuzzy_similarity(" ".join(sorted(left_tokens)), " ".join(sorted(right_tokens)))
 
 
+def split_inline_speaker_turns(line: str) -> list[str]:
+    """Split pasted transcripts where speaker turns have been flattened onto one line."""
+    line = re.sub(rf"(?<=[.!?])(?={SPEAKER_NAME_RE}{SPEAKER_SUFFIX_RE}\s*:)", "\n", line)
+    if "\n" in line:
+        parts = [part.strip() for part in line.splitlines() if part.strip()]
+        if len(parts) > 1:
+            return parts
+    matches = list(INLINE_COLON_SPEAKER_RE.finditer(line))
+    if len(matches) <= 1:
+        return [line]
+
+    starts = []
+    for match in matches:
+        start = match.start()
+        speaker = match.group("speaker").strip()
+        if speaker in METADATA_SPEAKERS or speaker in SECTION_HEADING_SPEAKERS:
+            continue
+        if start == 0 or line[start - 1] in ".!?":
+            starts.append(start)
+    if len(starts) <= 1:
+        return [line]
+
+    parts = []
+    for index, start in enumerate(starts):
+        end = starts[index + 1] if index + 1 < len(starts) else len(line)
+        part = line[start:end].strip()
+        if part:
+            parts.append(part)
+    return parts or [line]
+
+
 def clean_transcript_text(text: str) -> str:
     kept: list[str] = []
     for raw_line in text.splitlines():
@@ -411,7 +443,7 @@ def clean_transcript_text(text: str) -> str:
         line = re.sub(r"\s+", " ", line).strip()
         if not line:
             continue
-        kept.append(line)
+        kept.extend(split_inline_speaker_turns(line))
     return "\n".join(kept)
 
 
