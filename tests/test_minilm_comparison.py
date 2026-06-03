@@ -46,6 +46,8 @@ class FakeMiniLMBackend:
             ("innovation grant", "follow up", "pending", "feedback"),
             ("governance", "leadership review", "version one", "blue"),
             ("webinars", "booked", "delivered", "sessions"),
+            ("customer portal", "crm", "credentials", "authentication", "password reset", "user testing", "excel", "export"),
+            ("support metrics", "response times", "tickets", "queue", "triage categories", "onboarding", "guide"),
         ]
         vector = [0.0] * len(groups)
         for index, keywords in enumerate(groups):
@@ -70,7 +72,8 @@ class FakeMiniLMBackend:
             if any(term in lowered for term in (
                 "workshop", "complaints", "triage", "slides", "imagery", "gemba", "ipo", "workflow",
                 "stage gate", "routing", "pipeline", "vendor strategy", "innovation grant", "governance", "webinars",
-                "content", "screen", "messaging", "tone"
+                "content", "screen", "messaging", "tone", "customer portal", "crm", "credentials", "authentication",
+                "password reset", "user testing", "excel", "support metrics", "response times", "tickets", "triage categories"
             )):
                 return 0.9
             return 0.2
@@ -78,14 +81,15 @@ class FakeMiniLMBackend:
             if any(term in lowered for term in (
                 "workflow", "process", "slides", "workshop", "complaints", "triage",
                 "stage gate", "routing", "pipeline", "vendor strategy", "innovation grant", "governance", "webinars",
-                "content", "screen", "messaging", "tone"
+                "content", "screen", "messaging", "tone", "customer portal", "crm", "credentials", "authentication",
+                "password reset", "user testing", "excel", "support metrics", "response times", "tickets", "triage categories"
             )):
                 return 0.82
             return 0.18
         if prototype_group == "action":
             if ("refine" in lowered and "slides" in lowered) or any(
                 lowered.startswith(prefix) for prefix in ("review ", "confirm ", "draft ", "follow up ", "validate ")
-            ) or any(term in lowered for term in ("double down", "upskilled", "adoption considerations", "continue work")):
+            ) or any(term in lowered for term in ("double down", "upskilled", "adoption considerations", "continue work", "obtain", "estimate")):
                 return 0.9
             return 0.2
         if prototype_group == "decision":
@@ -283,6 +287,87 @@ I'll refine the webinar slides.
         self.assertEqual(output["meetingActionPoint"], ["Formal action: Refine the webinar slides."])
         self.assertTrue(any(item["category"] == "action" and item["rewritten"] for item in diagnostics["rewriteEdits"]))
         self.assertGreaterEqual(diagnostics["rewriteRuntimeMs"], 0.0)
+
+    def test_customer_portal_minutes_are_representative_not_empty_or_chatter(self):
+        transcript = """Customer portal project review
+
+Sarah: Thanks everyone. The purpose of today is to review progress on the customer portal project.
+Tom: Development is progressing well. User authentication has been completed and the password reset workflow is now live in the test environment.
+Sarah: Any blockers?
+Tom: The CRM integration is still delayed because we haven't received API credentials from the client.
+Emily: I've chased them twice already. They said the credentials should arrive by Friday.
+Sarah: Fine. Let's assume Friday for now.
+Tom: Once we have the credentials, I estimate three days of work to complete the integration.
+Emily: User testing is scheduled for next Wednesday. We currently have six participants confirmed.
+Sarah: Is the test script finalised?
+Emily: Not yet. I've drafted it but it still needs review.
+Sarah: Please send it over this afternoon.
+Tom: One other thing. The client requested export-to-Excel functionality. We haven't estimated that work yet.
+Sarah: Do we think it's essential for launch?
+Emily: Most users will expect it.
+Tom: Agreed.
+Sarah: Okay, let's include it in the first release.
+Emily: That will require additional testing.
+Sarah: That's fine.
+Sarah: Let's summarise actions. Emily will obtain the CRM credentials and send the user testing script. Tom will estimate the Excel export feature and complete CRM integration once credentials arrive. I'll update the client on the revised timeline.
+"""
+
+        intermediate = collect_minilm_only_context(transcript)
+        output, _diagnostics = build_minilm_only_output(transcript, intermediate, FakeMiniLMBackend())
+
+        self.assertIsNotNone(output)
+        points = " ".join(output["discussionPoints"]).lower()
+        self.assertIn("customer portal", " ".join(output.get("meetingObjectives", [])).lower())
+        self.assertIn("crm integration", points)
+        self.assertIn("api credentials", points)
+        self.assertTrue("authentication" in points or "password reset" in points)
+        self.assertTrue("excel" in points or any("first release" in decision.lower() for decision in output.get("decisions", [])))
+        self.assertNotIn("i've chased them twice already appears complete", points)
+        self.assertNotIn("review not yet", " ".join(output["meetingActionPoint"]).lower())
+        self.assertIn("Obtain the CRM credentials and send the user testing script.", output["meetingActionPoint"])
+        self.assertIn("Emily", output["meetingActionPointOwner"])
+
+    def test_support_metrics_objective_uses_evidenced_topic_not_next_week_chatter(self):
+        transcript = """Support metrics review
+
+James: Before we start, did everyone see the support metrics from last month?
+Rachel: Yeah. Complaints are down but response times are actually worse.
+James: Exactly. We closed more tickets, but customers waited longer before getting an answer.
+Mark: I think that's because we're routing everything through the same queue.
+Rachel: The team keeps saying the same thing. Complex cases are sitting behind simple requests.
+James: Is there any evidence for that?
+Mark: I looked at twenty tickets yesterday. The pattern was pretty obvious.
+Rachel: We've also had three complaints specifically mentioning delays.
+James: Okay. So what's the fix?
+Mark: We need separate triage categories.
+Rachel: We discussed that six months ago.
+James: Why didn't it happen?
+Rachel: Nobody owned it.
+James: Right, that's on us.
+Mark: If we separate technical issues from general enquiries we'd probably see an improvement quickly.
+James: How much work is that?
+Mark: Maybe a day or two.
+James: Then let's do it.
+Rachel: We should probably monitor the results weekly as well.
+James: Good idea.
+Mark: I can set up a dashboard.
+James: Perfect.
+Rachel: Also, the onboarding guide is still generating questions from new customers.
+James: Again?
+Rachel: Same sections as before. Account setup and permissions.
+James: Let's review the guide next week.
+"""
+
+        intermediate = collect_minilm_only_context(transcript)
+        output, _diagnostics = build_minilm_only_output(transcript, intermediate, FakeMiniLMBackend())
+
+        self.assertIsNotNone(output)
+        objectives = " ".join(output.get("meetingObjectives", [])).lower()
+        points = " ".join(output.get("discussionPoints", [])).lower()
+        self.assertTrue("support" in objectives or "response" in objectives or "triage" in objectives)
+        self.assertNotIn("let's review the guide next week", objectives)
+        self.assertIn("response times", points)
+        self.assertTrue("triage categories" in points or "complex cases" in points or "technical issues" in points or "general enquiries" in points)
 
     def test_objectives_can_be_summarised_separately_from_main_rewrite(self):
         output = {

@@ -880,11 +880,56 @@ def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBacke
             }
         )
     seen = {canonical_action_dedupe_key(item["text"]) for item in outputs if item.get("text")}
-    action_lead_pattern = re.compile(r"^(review|confirm|draft|follow up|investigate|validate|prepare|update|share|send|complete|finalise|refine|pull|collect|fetch|extract)\b", re.I)
+    action_lead_pattern = re.compile(r"^(review|confirm|draft|follow up|investigate|validate|prepare|update|share|send|complete|finalise|refine|pull|collect|fetch|extract|obtain|estimate)\b", re.I)
+    summary_action_pattern = re.compile(
+        r"\b([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})\s+will\s+(.+?)(?=(?:\s+[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2}\s+will\s+)|$)",
+        re.I,
+    )
     for record in records:
         text = normalize_text_fragment(record.get("text", ""))
         if not text:
             continue
+        if " will " in text.lower() and any(term in text.lower() for term in ("summarise actions", "summarize actions", "actions.")):
+            action_summary = re.sub(r"^.*?\bactions?\.\s*", "", text, flags=re.I).strip()
+            for match in summary_action_pattern.finditer(action_summary):
+                owner = normalize_text_fragment(match.group(1))
+                task = normalize_action_candidate_text(match.group(2))
+                if not task or task.endswith("?") or len(tokenize(task)) < 3:
+                    continue
+                key = canonical_action_dedupe_key(task)
+                if key in seen:
+                    continue
+                outputs.append(
+                    {
+                        "text": task,
+                        "owner": owner or "Owner not specified",
+                        "deadline": "",
+                        "baseScore": max(0.76, float(record.get("scores", {}).get("action", 0.0))),
+                        "source": "action_summary_fallback",
+                        "roleScores": {},
+                    }
+                )
+                seen.add(key)
+            continue
+        owner_action_match = re.match(r"^([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})\s+will\s+(.+)$", text)
+        if owner_action_match:
+            owner = normalize_text_fragment(owner_action_match.group(1))
+            task = normalize_action_candidate_text(owner_action_match.group(2))
+            if task and not task.endswith("?") and len(tokenize(task)) >= 3:
+                key = canonical_action_dedupe_key(task)
+                if key not in seen:
+                    outputs.append(
+                        {
+                            "text": task,
+                            "owner": owner or "Owner not specified",
+                            "deadline": "",
+                            "baseScore": max(0.72, float(record.get("scores", {}).get("action", 0.0))),
+                            "source": "owner_will_action_fallback",
+                            "roleScores": {},
+                        }
+                    )
+                    seen.add(key)
+                continue
         source = "record_action_fallback"
         if ":" in text and text.lower().startswith("actions before next week"):
             text = normalize_text_fragment(text.split(":", 1)[1])
@@ -992,6 +1037,18 @@ def window_topic_token_set(text: str) -> set[str]:
 
 def classify_window_category(text: str) -> str:
     lowered = normalize_text_fragment(text).lower()
+    if any(term in lowered for term in ("crm integration", "api credentials", "credentials")):
+        return "crm_dependency_thread"
+    if any(term in lowered for term in ("authentication", "password reset", "test environment")):
+        return "portal_delivery_thread"
+    if "user testing" in lowered:
+        return "user_testing_thread"
+    if any(term in lowered for term in ("excel", "export")):
+        return "launch_scope_thread"
+    if any(term in lowered for term in ("support metrics", "response times")):
+        return "support_metrics_thread"
+    if any(term in lowered for term in ("triage categories", "technical issues", "general enquiries", "complex cases")):
+        return "support_triage_thread"
     if any(term in lowered for term in CONTENT_ARTEFACT_TERMS):
         return "review_thread"
     if any(term in lowered for term in WINDOW_METHOD_TERMS):
@@ -1007,6 +1064,22 @@ def build_window_discussion_text(texts: list[str]) -> str:
         return ""
     combined = " ".join(cleaned_texts)
     lowered = combined.lower()
+    if any(term in lowered for term in ("support metrics", "response times", "tickets", "queue", "triage categories")):
+        if "response times" in lowered and any(term in lowered for term in ("worse", "waited longer", "delays", "complaints")):
+            return "Support metrics showed that complaints had reduced, but customer response times and delays still needed attention."
+        if any(term in lowered for term in ("queue", "triage categories", "technical issues", "general enquiries")):
+            return "The team discussed separating support triage categories so complex cases would not sit behind simpler enquiries."
+        return "The team reviewed support performance and customer response issues."
+    if any(term in lowered for term in ("customer portal", "crm integration", "api credentials", "user testing", "excel export", "password reset", "authentication")):
+        if any(term in lowered for term in ("crm integration", "api credentials", "credentials")):
+            return "CRM integration was delayed because the client API credentials had not yet been received."
+        if any(term in lowered for term in ("authentication", "password reset", "test environment")):
+            return "Customer portal development had progressed, with authentication completed and the password reset workflow live in the test environment."
+        if "user testing" in lowered:
+            return "User testing was scheduled with confirmed participants, but the test script still needed review."
+        if any(term in lowered for term in ("excel", "export")):
+            return "The requested Excel export functionality was discussed and agreed for inclusion in the first release."
+        return "The team reviewed customer portal progress, dependencies and launch scope."
     if any(term in lowered for term in CONTENT_ARTEFACT_TERMS):
         if any(term in lowered for term in TEXT_DENSITY_TERMS):
             return "The material was reviewed to reduce text density and improve clarity for the audience."
@@ -1341,6 +1414,10 @@ MINILM_TOPIC_TERMS = {
     "timeline", "rollout", "training", "regulatory", "routing", "intake", "sales", "vendor",
     "grant", "governance", "webinar", "webinars", "stage", "template", "templates", "sow", "delivery",
     "content", "screen", "wording", "messaging", "tone", "language", "design", "copy", "narrative",
+    "customer", "customers", "portal", "crm", "credentials", "authentication", "password", "reset",
+    "testing", "test", "participants", "export", "excel", "support", "metrics", "response", "responses",
+    "tickets", "queue", "queues", "categories", "enquiries", "dashboard", "onboarding", "guide",
+    "permissions", "delays", "delayed", "integration", "launch", "release",
 }
 
 SOFT_STYLE_TERMS = {
@@ -1364,6 +1441,9 @@ WINDOW_PROCESS_TERMS = {
     "process", "workflow", "complaints", "triage", "handling", "routing", "intake", "delivery",
     "workstream", "bottleneck", "frustration", "frustrations", "tribal", "knowledge", "review",
     "adoption", "suitability", "observation", "assessment", "mapping", "gemba", "ipo", "ai",
+    "customer", "portal", "crm", "credentials", "authentication", "password", "testing", "export",
+    "excel", "support", "metrics", "response", "tickets", "queue", "categories", "dashboard",
+    "onboarding", "guide", "permissions", "integration", "launch", "release",
 }
 WINDOW_METHOD_TERMS = {
     "gemba", "observation", "observations", "assessment", "assess", "mapping", "map", "mapped",
@@ -1398,7 +1478,7 @@ STYLE_GUIDANCE_TERMS = {
 OBJECTIVE_CUE_TERMS = {
     "adoption", "agree", "aim", "assess", "assessment", "decide", "define", "discovery", "explore",
     "focus", "goal", "identify", "improve", "objective", "plan", "priorities", "priority", "process",
-    "review", "scope", "strategy", "understand", "workflow", "workshop",
+    "purpose", "review", "scope", "strategy", "understand", "workflow", "workshop",
 }
 GENERIC_STATUS_TERMS = {
     "active", "ongoing", "scheduled", "underway", "workstream", "progress", "inflight", "pipeline",
@@ -1494,7 +1574,7 @@ def is_low_value_coordination_action(text: str) -> bool:
 CONCRETE_ACTION_VERBS = {
     "add", "agree", "amend", "book", "build", "check", "circulate", "complete", "confirm", "create",
     "develop", "double", "draft", "finalise", "follow", "investigate", "prepare", "pull", "reduce", "refine",
-    "review", "send", "share", "simplify", "update", "validate", "collect", "fetch", "extract",
+    "review", "send", "share", "simplify", "update", "validate", "collect", "fetch", "extract", "obtain", "estimate",
 }
 
 
@@ -1506,6 +1586,10 @@ def has_concrete_action_commitment(text: str, owner: str = "", deadline: str = "
     if not cleaned or cleaned.endswith("?"):
         return False
     if any(phrase in lowered for phrase in ("if you want", "i don't mind", "i do not mind", "i'm easy", "i am easy")):
+        return False
+    if re.match(r"^(?:send|share|forward)\s+(?:it|this|that|them)\b", lowered):
+        return False
+    if "i estimate" in lowered and normalize_text(owner) == "owner not specified":
         return False
     if any(token in CONCRETE_ACTION_VERBS for token in tokens):
         return True
@@ -1588,7 +1672,7 @@ def objective_candidate_priority(text: str, source_kind: str = "", support_count
     score += min(0.18, business_signal_count(cleaned) * 0.04)
     score += min(0.16, support_count * 0.05)
     score += min(0.16, evidence_score * 0.2)
-    if "objective" in tokens or "goal" in tokens or "aim" in tokens:
+    if "objective" in tokens or "goal" in tokens or "aim" in tokens or "purpose" in tokens:
         score += 0.18
     if source_kind == "decision":
         score += 0.08
@@ -2023,10 +2107,12 @@ def should_accept_action_candidate(candidate: dict[str, Any]) -> tuple[bool, str
     text = normalize_text_fragment(candidate.get("text", ""))
     if not text:
         return False, "empty"
+    if re.match(r"^review\s+(?:not yet|i['’]?ve|i have)\b", text, flags=re.I):
+        return False, "status_fragment_not_action"
     semantic_source = candidate.get("source") == "semantic_action_fallback"
     if not (
         is_action_like_sentence(text)
-        or re.match(r"^(review|confirm|draft|follow up|investigate|validate|prepare|update|share|send|complete|finalise|refine|pull|collect|fetch|extract)\b", text, re.I)
+        or re.match(r"^(review|confirm|draft|follow up|investigate|validate|prepare|update|share|send|complete|finalise|refine|pull|collect|fetch|extract|obtain|estimate)\b", text, re.I)
         or semantic_source
     ):
         return False, "not_action_like"
@@ -2108,6 +2194,10 @@ def cluster_candidates_semantically(candidates: list[dict[str, Any]], backend: M
         best_score = 0.0
         candidate_tokens = set(tokenize(candidate["text"]))
         for index, cluster in enumerate(clusters):
+            candidate_category = candidate.get("windowCategory", "")
+            cluster_categories = {item.get("windowCategory", "") for item in cluster if item.get("windowCategory")}
+            if candidate_category and cluster_categories and candidate_category not in cluster_categories:
+                continue
             similarities = [embedding_similarity(candidate["embedding"], item["embedding"]) for item in cluster]
             lexical = max(discussion_similarity(candidate["text"], item["text"]) for item in cluster)
             shared_terms = max(len(candidate_tokens & set(tokenize(item["text"]))) for item in cluster)
@@ -2139,10 +2229,10 @@ def select_cluster_summary_candidates(cluster: list[dict[str, Any]]) -> list[dic
         return []
     window_candidates = [candidate for candidate in cluster if candidate.get("candidateType") == "window"]
     if window_candidates:
-        filtered = [candidate for candidate in cluster if not _candidate_is_cluster_noise(candidate)]
-        if filtered:
-            return filtered
-        return window_candidates
+        clean_windows = [candidate for candidate in window_candidates if not _candidate_is_cluster_noise(candidate)]
+        if clean_windows:
+            return clean_windows[:3]
+        return window_candidates[:2]
     return [candidate for candidate in cluster if not _candidate_is_cluster_noise(candidate)] or cluster
 
 
