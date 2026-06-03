@@ -471,7 +471,6 @@ function buildTranscriptMinilmOnlyPage(config) {
       </div>
       <div class="actions">
         <button id="minilmOnlyGoBtn" type="button">${config.buttonText}</button>
-        ${config.improveEndpoint ? '<button id="minilmOnlyImproveBtn" class="secondary" type="button" disabled>Improve minutes</button>' : ''}
         <button id="minilmOnlyClearBtn" class="secondary" type="button">Clear / reset</button>
       </div>
       <div id="minilmOnlyMessage" class="message hidden"></div>
@@ -484,6 +483,7 @@ function buildTranscriptMinilmOnlyPage(config) {
       </div>
       <div id="minilmOnlyOutput"></div>
       <div class="panel-actions">
+        ${config.improveEndpoint ? '<button id="minilmOnlyImproveBtn" class="secondary" type="button" disabled>Improve minutes</button>' : ''}
         <button id="finaliseBtn" type="button" class="hidden">Confirm & Send to SharePoint</button>
       </div>
     </section>
@@ -688,7 +688,7 @@ function buildTranscriptMinilmOnlyPage(config) {
         <tbody>
           ${Array.from({ length: rowCount }).map((_, index) => `
             <tr>
-              <td><input type="text" data-action-field="action" value="${escapeHtml(actions[index] || '')}" placeholder="Action" /></td>
+              <td><textarea class="action-field" data-action-field="action" placeholder="Action">${escapeHtml(actions[index] || '')}</textarea></td>
               <td><input type="text" data-action-field="owner" value="${escapeHtml(owners[index] || '')}" placeholder="Owner" /></td>
               <td><input type="text" data-action-field="deadline" value="${escapeHtml(deadlines[index] || '')}" placeholder="Deadline" /></td>
             </tr>
@@ -869,7 +869,7 @@ function buildTranscriptMinilmOnlyPage(config) {
         if (!tableBody) return;
         tableBody.insertAdjacentHTML('beforeend', `
           <tr>
-            <td><input type="text" data-action-field="action" value="" placeholder="Action" /></td>
+            <td><textarea class="action-field" data-action-field="action" placeholder="Action"></textarea></td>
             <td><input type="text" data-action-field="owner" value="" placeholder="Owner" /></td>
             <td><input type="text" data-action-field="deadline" value="" placeholder="Deadline" /></td>
           </tr>
