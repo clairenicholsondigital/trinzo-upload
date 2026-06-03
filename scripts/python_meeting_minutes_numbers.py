@@ -447,14 +447,22 @@ def clean_transcript_text(text: str) -> str:
     return "\n".join(kept)
 
 
+def strip_transcript_title_label(raw_title: str) -> str:
+    cleaned = normalize_text_fragment(raw_title)
+    cleaned = re.sub(r"^[^\w]*(?:meeting\s+)?transcript\s*:\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"^[^\w]*transcript\s*[-–—]\s*", "", cleaned, flags=re.IGNORECASE)
+    return cleaned
+
+
 def normalize_inferred_title(raw_title: str) -> str:
+    raw_title = strip_transcript_title_label(raw_title)
     cleaned = normalize_text_fragment(raw_title)
     cleaned = re.sub(r"[_-]+", " ", cleaned)
     cleaned = re.sub(r"\b\d{8}(?: \d{6})?\b", "", cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned).strip(" -_")
     if not cleaned:
         return ""
-    return " ".join(token[:1].upper() + token[1:] if not token.isupper() else token for token in cleaned.split())
+    return cleaned[:1].upper() + cleaned[1:] if cleaned[:1].islower() else cleaned
 
 
 def infer_meeting_title_from_transcript(text: str, turns: list[dict[str, str]]) -> str:
@@ -464,6 +472,9 @@ def infer_meeting_title_from_transcript(text: str, turns: list[dict[str, str]]) 
     header_match = re.match(r"^(?P<title>.+?)-Meeting Transcript\b", first_line, flags=re.IGNORECASE)
     if header_match:
         return normalize_inferred_title(header_match.group("title"))
+    labelled_title = strip_transcript_title_label(first_line)
+    if labelled_title and labelled_title != normalize_text_fragment(first_line):
+        return normalize_inferred_title(labelled_title)
 
     lowered = cleaned_text.lower()
     if "support metrics" in lowered and ("response times" in lowered or "tickets" in lowered):
@@ -5492,9 +5503,9 @@ def derive_public_meeting_objectives(
     if meeting_type == "webinar_rehearsal":
         add_if(("webinar",), "Review webinar flow and presentation content.")
         add_if(("ai discovery", "adoption"), "Refine messaging around AI discovery workshops and adoption.")
-        add_if(("practice", "webinar"), "Prepare presenters for delivery and timing ahead of the webinar.")
+        add_if(("practice", "webinar"), "Review webinar preparation, delivery and timing.")
         if len(objectives) < 3 and ("presentation" in blob or "slides" in blob):
-            append_unique_text(objectives, "Prepare presenters for delivery and timing ahead of the webinar.")
+            append_unique_text(objectives, "Review webinar preparation, delivery and timing.")
         return objectives[:3]
 
     add_if(("support metrics",), "Review support metrics, response times and ticket routing issues.")
@@ -5506,6 +5517,7 @@ def analyse(text: str) -> dict[str, Any]:
     config = load_json(MINUTES_CONFIG)
     cleaned_text = clean_transcript_text(text)
     meeting_title, meeting_date, meeting_location = extract_header_fields(text, config)
+    meeting_title = normalize_inferred_title(meeting_title)
     turns = parse_numeric_turns(text)
     if title_needs_content_inference(meeting_title, turns):
         inferred_title = infer_meeting_title_from_transcript(text, turns)

@@ -58,6 +58,22 @@ Yeah.
         )
         self.assertTrue(turns[0].text.startswith("Okay, before we start"))
 
+    def test_transcript_label_is_removed_from_meeting_title(self):
+        transcript = """📄 Transcript: AI Programme Weekly Check-In
+
+Date: 18 March 2026
+
+Ciara:
+Let's run through status and risks.
+
+Connor:
+Sounds good.
+"""
+
+        result = analyse(transcript)
+
+        self.assertEqual(result["meetingTitle"], "AI Programme Weekly Check-In")
+
     def test_action_block_headings_are_not_treated_as_speakers(self):
         transcript = """Weekly Delivery Review
 

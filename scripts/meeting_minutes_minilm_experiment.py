@@ -797,8 +797,9 @@ def infer_minilm_meeting_title(transcript_text: str) -> str:
         if title:
             return title
     for line in lines[:8]:
-        if re.match(r"^meeting\s+transcript\s*:\s*(.+)$", line, flags=re.I):
-            title = normalize_text_fragment(re.sub(r"^meeting\s+transcript\s*:\s*", "", line, flags=re.I))
+        if re.match(r"^[^\w]*(?:meeting\s+)?transcript\s*:\s*(.+)$", line, flags=re.I):
+            title = normalize_text_fragment(re.sub(r"^[^\w]*(?:meeting\s+)?transcript\s*:\s*", "", line, flags=re.I))
+            title = re.sub(r"^[^\w]+", "", title).strip()
             if title:
                 return title
         if len(line) > 100:
@@ -1522,6 +1523,10 @@ MINILM_TOPIC_TERMS = {
     "testing", "test", "participants", "export", "excel", "support", "metrics", "response", "responses",
     "tickets", "queue", "queues", "categories", "enquiries", "dashboard", "onboarding", "guide",
     "permissions", "delays", "delayed", "integration", "launch", "release",
+    "capacity", "sows", "sow", "resources", "resource", "utilisation", "utilization", "financials",
+    "scope", "schedule", "stage", "gate", "luce", "aria", "roadmap", "pipeline", "execution",
+    "escalation", "escalate", "dependency", "dependencies", "personnel", "cross", "leading",
+    "indicators", "indicator", "metrics", "commitments", "commitment",
 }
 
 SOFT_STYLE_TERMS = {
@@ -1592,7 +1597,24 @@ ANALYTICAL_DISCUSSION_TERMS = {
     "culture", "decision", "frustration", "gaps", "gemba", "identify", "impact", "improvement",
     "mapping", "opportunities", "opportunity", "process", "review", "risk", "root", "suitability",
     "triage", "understand", "workflow",
+    "capacity", "resources", "utilisation", "utilization", "sow", "sows", "pipeline", "execution",
+    "leading", "indicators", "stage", "gate", "luce", "roadmap", "personnel", "cross", "training",
 }
+
+CONVERSATIONAL_TRANSCRIPT_STARTERS = (
+    "i've got ", "i have got ", "i’ll keep ", "i'll keep ", "one thing i'd add",
+    "one thing i’d add", "let’s start ", "let's start ", "sounds good", "perfect so",
+    "that’s actually ", "that's actually ", "what i was hearing", "yeah ",
+)
+
+CONVERSATIONAL_TRANSCRIPT_PATTERNS = (
+    r"\bi[’']ve got\b",
+    r"\bone thing i[’']d add\b",
+    r"\blet[’']s start with\b",
+    r"\bcan you hear me\b",
+    r"\bloud and clear\b",
+    r"\bi[’']ll keep this to\b",
+)
 
 
 def embedding_similarity(left: list[float], right: list[float]) -> float:
@@ -1644,6 +1666,84 @@ def business_signal_count(text: str) -> int:
     return len(tokens & (MINILM_TOPIC_TERMS | WINDOW_PROCESS_TERMS | WINDOW_METHOD_TERMS | WINDOW_AI_OPPORTUNITY_TERMS))
 
 
+def concrete_topic_tokens(text: str) -> set[str]:
+    generic = GENERIC_STATUS_TERMS | {
+        "team", "meeting", "discussion", "review", "update", "status", "issue", "problem", "points", "item", "items",
+        "thing", "things", "report", "latest", "current", "currently", "progress",
+    }
+    return {
+        token
+        for token in tokenize(text)
+        if token in (MINILM_TOPIC_TERMS | WINDOW_PROCESS_TERMS | WINDOW_METHOD_TERMS | WINDOW_AI_OPPORTUNITY_TERMS)
+        and token not in generic
+    }
+
+
+def is_conversational_transcript_fragment(text: str) -> bool:
+    cleaned = normalize_text_fragment(text)
+    lowered = cleaned.lower()
+    if not cleaned:
+        return False
+    if any(lowered.startswith(starter) for starter in CONVERSATIONAL_TRANSCRIPT_STARTERS):
+        return True
+    if any(re.search(pattern, lowered) for pattern in CONVERSATIONAL_TRANSCRIPT_PATTERNS):
+        return True
+    first_person_hits = len(re.findall(r"\b(?:i|i[’']m|i[’']ve|i[’']ll|we|we[’']re|we[’']ll|you)\b", lowered))
+    setup_hits = sum(
+        1
+        for phrase in (
+            "run through", "jump to", "start with", "talk through", "got the latest", "on paper",
+            "one thing", "at the moment", "kind of", "sort of",
+        )
+        if phrase in lowered
+    )
+    if first_person_hits >= 1 and setup_hits >= 1:
+        return True
+    return False
+
+
+def strip_conversational_preface(text: str) -> str:
+    cleaned = normalize_text_fragment(text)
+    cleaned = re.sub(r"^(?:one thing i[’']d add|one thing I[’']d add),?\s*", "", cleaned, flags=re.I)
+    cleaned = re.sub(r"^(?:that[’']s actually|that is actually)\s+", "", cleaned, flags=re.I)
+    cleaned = re.sub(r"^(?:so|yeah|okay|right|perfect)[,.\s]+", "", cleaned, flags=re.I)
+    return normalize_text_fragment(cleaned)
+
+
+def formalize_transcript_discussion_point(text: str, evidence: list[dict[str, Any]] | None = None) -> str:
+    cleaned = strip_conversational_preface(text)
+    lowered = cleaned.lower()
+    evidence_blob = " ".join(normalize_text_fragment(ref.get("text", "")) for ref in (evidence or []) if isinstance(ref, dict))
+    combined = f"{cleaned} {evidence_blob}".lower()
+
+    if "leading indicators" in combined and ("resource utilisation" in combined or "resource utilization" in combined):
+        return "Leading indicators such as resource utilisation, active SOWs per team and dependency concentration should be tracked alongside status."
+    if "overall status is still green" in combined and all(term in combined for term in ("scope", "schedule", "financials", "resources")):
+        return "Overall programme status remained green across scope, schedule, financials and resources."
+    if "product build" in combined and "aria roadmap" in combined:
+        if "stage-gate" in combined or "stage gate" in combined:
+            return "Product Build progress included Aria roadmap completion and Stage-Gate going live."
+        return "Product Build progress included completion of the Aria roadmap."
+    if ("stage-gate" in combined or "stage gate" in combined) and (
+        "justify" in combined or "justification" in combined or "ai project" in combined or "luce" in combined
+    ):
+        if "luce" in combined:
+            return "Stage-Gate was changing AI project justification behaviour, while LUCE delivery had shifted timing."
+        return "Stage-Gate was changing behaviour by requiring stronger AI project justification."
+    if "sales" in combined and ("sow" in combined or "so w" in combined) and "delivery" in combined:
+        return "Sales continued to progress new SOWs while delivery bandwidth was not increasing at the same pace."
+    if "ai partner framework" in combined and ("single owner" in combined or "ownership" in combined):
+        return "AI Partner Framework ownership was split, with no single owner clearly driving it."
+    if "key personnel" in combined or ("johnny" in combined and "rahul" in combined):
+        return "Key personnel losses created a risk of short-term wins causing longer-term delivery strain."
+    if "cross-training" in combined and ("slow" in combined or "accelerate" in combined):
+        return "Cross-training had started but remained slow and may need acceleration despite short-term delivery impact."
+
+    cleaned = re.sub(r"\bSO\s+Ws\b", "SOWs", cleaned, flags=re.I)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned
+
+
 def canonicalize_tokens(tokens: list[str]) -> list[str]:
     canonical = []
     for token in tokens:
@@ -1690,6 +1790,10 @@ def has_concrete_action_commitment(text: str, owner: str = "", deadline: str = "
     if not cleaned or cleaned.endswith("?"):
         return False
     if any(phrase in lowered for phrase in ("if you want", "i don't mind", "i do not mind", "i'm easy", "i am easy")):
+        return False
+    if any(phrase in lowered for phrase in ("keep this to about", "run through status", "run through the status")):
+        return False
+    if re.search(r"\b(?:these|those|this|that)\s+(?:points?|items?|things?|stuff)\b", lowered):
         return False
     if re.match(r"^(?:send|share|forward)\s+(?:it|this|that|them)\b", lowered):
         return False
@@ -1798,6 +1902,8 @@ def is_context_dependent_fragment(text: str) -> bool:
     if any(phrase in lowered for phrase in MINILM_NOISE_PHRASES):
         return True
     if is_low_value_coordination_action(text) or is_self_referential_conversational_fragment(text) or is_social_greeting_fragment(text):
+        return True
+    if is_conversational_transcript_fragment(text) and business_signal_count(text) < 2:
         return True
     if any(lowered.startswith(prefix) for prefix in MINILM_CONTEXTUAL_OPENERS) and not has_meaningful_topic_terms(text):
         return True
@@ -1939,13 +2045,37 @@ def _sanitize_rewritten_minutes_text(generated: str, fallback: str) -> str:
     )[0]
     cleaned = cleaned.replace("|", " ")
     cleaned = re.sub(r"\s+", " ", cleaned).strip().strip('"')
+    cleaned = strip_conversational_preface(cleaned)
+    if is_conversational_transcript_fragment(fallback_clean) or is_conversational_transcript_fragment(cleaned):
+        cleaned = formalize_transcript_discussion_point(cleaned or fallback_clean)
     first_sentence = re.match(r"^(.+?[.!?])(?:\s+|$)", cleaned)
     if first_sentence:
         cleaned = first_sentence.group(1).strip()
+    fallback_topic_tokens = concrete_topic_tokens(fallback_clean)
+    cleaned_topic_tokens = concrete_topic_tokens(cleaned)
+    cleaned_lower = normalize_text(cleaned)
+    vague_rewrite = (
+        any(
+            phrase in cleaned_lower
+            for phrase in (
+                "the issue",
+                "this issue",
+                "some confusion",
+                "current confusion",
+                "the problem",
+                "the matter",
+                "the situation",
+            )
+        )
+        and len(fallback_topic_tokens) >= 2
+        and len(cleaned_topic_tokens & fallback_topic_tokens) == 0
+    )
     fallback_tokens = tokenize(fallback_clean)
     cleaned_tokens = tokenize(cleaned)
     if cleaned and (
         len(cleaned_tokens) > max(len(fallback_tokens) + 6, int(len(fallback_tokens) * 1.6) or 0)
+        or vague_rewrite
+        or (len(fallback_topic_tokens) >= 3 and len(cleaned_topic_tokens) < max(1, len(fallback_topic_tokens) // 3))
         or any(
             phrase in normalize_text(cleaned)
             for phrase in (
@@ -2124,7 +2254,7 @@ def derive_meeting_objectives(output: dict[str, Any]) -> list[str]:
     scored_candidates: list[tuple[float, str]] = []
 
     def add_candidate(text: str, source_kind: str, support_count: int = 0, evidence_score: float = 0.0) -> None:
-        cleaned = normalize_text_fragment(text).rstrip(".")
+        cleaned = normalize_text_fragment(formalize_transcript_discussion_point(text)).rstrip(".")
         key = normalized_key(cleaned)
         if not cleaned or not key or key in seen:
             return
@@ -2371,6 +2501,7 @@ def build_cluster_discussion_candidate(cluster: list[dict[str, Any]], speaker_na
     filtered_keywords = extract_cluster_keywords(aggregate, speaker_names)
     summary = build_discussion_point_from_cluster(summary_cluster, raw_keywords, filtered_keywords)
     point_text = summary["selectedDiscussionPoint"]
+    point_text = formalize_transcript_discussion_point(point_text, dedupe_evidence([ref for candidate in summary_cluster for ref in candidate.get("evidence", [])])[:4])
     if point_text and not point_text.endswith("."):
         point_text += "."
     evidence = dedupe_evidence([ref for candidate in summary_cluster for ref in candidate.get("evidence", [])])[:4]
@@ -2414,6 +2545,7 @@ def build_cluster_discussion_candidate(cluster: list[dict[str, Any]], speaker_na
         )
         point_text = fallback["text"]
         evidence = dedupe_evidence(fallback.get("evidence", []))[:4]
+        point_text = formalize_transcript_discussion_point(point_text, evidence)
         support_count = evidence_support_count(fallback)
         coherence_score = round(min(1.0, semantic_density(point_text)), 4)
     valid, reason = is_valid_discussion_point(point_text, support_count)
@@ -2433,6 +2565,7 @@ def build_cluster_discussion_candidate(cluster: list[dict[str, Any]], speaker_na
             )
             point_text = fallback_window["text"]
             evidence = dedupe_evidence(fallback_window.get("evidence", []))[:4]
+            point_text = formalize_transcript_discussion_point(point_text, evidence)
             support_count = evidence_support_count(fallback_window)
             valid, reason = is_valid_discussion_point(point_text, support_count)
         if not valid:

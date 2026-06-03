@@ -174,6 +174,8 @@ def parse_args() -> argparse.Namespace:
 
 def normalize_title(raw_title: str) -> str:
     raw_title = raw_title.strip()
+    raw_title = re.sub(r"^[^\w]*(?:meeting\s+)?transcript\s*:\s*", "", raw_title, flags=re.IGNORECASE).strip()
+    raw_title = re.sub(r"^[^\w]*transcript\s*[-–—]\s*", "", raw_title, flags=re.IGNORECASE).strip()
     match = re.match(r"^(.*?)(?:-\d{8}_\d{6})?-Meeting Transcript$", raw_title)
     if match:
         return match.group(1).strip()
