@@ -53,6 +53,7 @@ class FakeMiniLMBackend:
             ("brief builder", "audience", "intent", "cta", "source materials", "ship criteria", "voice rules", "microcopy"),
             ("pricing", "discount", "approval matrix", "regional managers", "finance", "approval threshold", "communication sequence"),
             ("banana falcon", "dashboard", "server", "api", "smart search", "test environment"),
+            ("ai programme", "leading indicators", "resource utilisation", "active sows", "dependency concentration", "delivery bandwidth", "cross-training"),
         ]
         vector = [0.0] * len(groups)
         for index, keywords in enumerate(groups):
@@ -81,7 +82,9 @@ class FakeMiniLMBackend:
                 "password reset", "user testing", "excel", "support metrics", "response times", "tickets", "triage categories",
                 "brief builder", "audience", "intent", "cta", "source materials", "ship criteria", "voice rules", "microcopy",
                 "pricing", "discount", "approval matrix", "regional managers", "finance", "approval threshold",
-                "communication sequence", "banana falcon", "dashboard", "server", "api", "smart search", "test environment"
+                "communication sequence", "banana falcon", "dashboard", "server", "api", "smart search", "test environment",
+                "ai programme", "leading indicators", "resource utilisation", "active sows", "dependency concentration",
+                "delivery bandwidth", "cross-training"
             )):
                 return 0.9
             return 0.2
@@ -93,7 +96,9 @@ class FakeMiniLMBackend:
                 "password reset", "user testing", "excel", "support metrics", "response times", "tickets", "triage categories",
                 "brief builder", "audience", "intent", "cta", "source materials", "ship criteria", "voice rules", "microcopy",
                 "pricing", "discount", "approval matrix", "regional managers", "finance", "approval threshold",
-                "communication sequence", "banana falcon", "dashboard", "server", "api", "smart search", "test environment"
+                "communication sequence", "banana falcon", "dashboard", "server", "api", "smart search", "test environment",
+                "ai programme", "leading indicators", "resource utilisation", "active sows", "dependency concentration",
+                "delivery bandwidth", "cross-training"
             )):
                 return 0.82
             return 0.18
@@ -449,6 +454,29 @@ James: Let's review the guide next week.
         self.assertNotIn("let's review the guide next week", objectives)
         self.assertIn("response times", points)
         self.assertTrue("triage categories" in points or "complex cases" in points or "technical issues" in points or "general enquiries" in points)
+
+    def test_ai_programme_indicator_shorthand_is_formalised_not_copied(self):
+        transcript = """AI Programme Weekly Check-In
+
+Ciara: I’ll keep this to about twenty minutes, just want to run through status, risks, and anything we need to escalate.
+Connor: One thing I’d add, we might want to start tracking leading indicators, not just status.
+Connor: Things like resource utilisation, number of active SOWs per team, dependency concentration.
+Ciara: Sales are still progressing new SOWs, but delivery bandwidth is not growing at the same pace.
+Connor: Cross-training has started, but it is still slow.
+"""
+
+        intermediate = collect_minilm_only_context(transcript)
+        output, _diagnostics = build_minilm_only_output(transcript, intermediate, FakeMiniLMBackend())
+
+        self.assertIsNotNone(output)
+        visible_blob = " ".join(
+            output.get("meetingObjectives", [])
+            + output.get("discussionPoints", [])
+            + output.get("meetingActionPoint", [])
+        ).lower()
+        self.assertNotIn("things like", visible_blob)
+        self.assertNotIn("i’ll keep this to about twenty minutes", visible_blob)
+        self.assertTrue("leading indicators" in visible_blob or "cross-training" in visible_blob or "delivery bandwidth" in visible_blob)
 
     def test_flattened_support_transcript_infers_topic_title_and_all_speakers(self):
         transcript = "James: Before we start, did everyone see the support metrics from last month?Rachel: Yeah. Complaints are down but response times are actually worse.James: Exactly. We closed more tickets, but customers waited longer before getting an answer.Mark: I think that's because we're routing everything through the same queue.Rachel: The team keeps saying the same thing. Complex cases are sitting behind simple requests.James: Is there any evidence for that?Mark: I looked at twenty tickets yesterday. The pattern was pretty obvious.Rachel: We've also had three complaints specifically mentioning delays.James: Okay. So what's the fix?Mark: We need separate triage categories.Rachel: We discussed that six months ago.James: Why didn't it happen?Rachel: Nobody owned it.James: Right, that's on us.Mark: If we separate technical issues from general enquiries we'd probably see an improvement quickly.James: How much work is that?Mark: Maybe a day or two.James: Then let's do it.Rachel: We should probably monitor the results weekly as well.James: Good idea.Mark: I can set up a dashboard.James: Perfect.Rachel: Also, the onboarding guide is still generating questions from new customers.James: Again?Rachel: Same sections as before. Account setup and permissions.James: Let's review the guide next week."

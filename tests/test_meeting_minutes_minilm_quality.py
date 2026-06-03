@@ -7,6 +7,7 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 from meeting_minutes_minilm_experiment import (
+    derive_meeting_objectives,
     formalize_transcript_discussion_point,
     has_concrete_action_commitment,
     infer_minilm_meeting_title,
@@ -60,6 +61,34 @@ class MeetingMinutesMiniLMQualityTest(unittest.TestCase):
             ),
             "Overall programme status remained green across scope, schedule, financials and resources.",
         )
+        self.assertEqual(
+            formalize_transcript_discussion_point(
+                "Things like resource utilisation, number of active SOWs per team, dependency concentration."
+            ),
+            "Leading indicators such as resource utilisation, active SOWs per team and dependency concentration should be tracked alongside status.",
+        )
+
+    def test_resource_indicator_fragment_is_not_promoted_as_raw_objective(self):
+        output = {
+            "discussionPoints": [
+                "Leading indicators such as resource utilisation, active SOWs per team and dependency concentration should be tracked alongside status.",
+                "Things like resource utilisation, number of active SOWs per team, dependency concentration.",
+            ],
+            "discussionPointDetails": [
+                {"sourceTurnIndices": [1, 2], "evidenceScore": 0.8},
+                {"sourceTurnIndices": [2], "evidenceScore": 0.7},
+            ],
+            "decisions": [],
+            "actions": [],
+        }
+
+        objectives = derive_meeting_objectives(output)
+
+        self.assertIn(
+            "Leading indicators such as resource utilisation, active SOWs per team and dependency concentration should be tracked alongside status",
+            objectives,
+        )
+        self.assertFalse(any(objective.lower().startswith("things like") for objective in objectives))
 
     def test_vague_qwen_rewrite_falls_back_to_specific_source(self):
         source = "Sales continued to progress new SOWs while delivery bandwidth was not increasing at the same pace."

@@ -1666,7 +1666,7 @@ ANALYTICAL_DISCUSSION_TERMS = {
 CONVERSATIONAL_TRANSCRIPT_STARTERS = (
     "i've got ", "i have got ", "i’ll keep ", "i'll keep ", "one thing i'd add",
     "one thing i’d add", "let’s start ", "let's start ", "sounds good", "perfect so",
-    "that’s actually ", "that's actually ", "what i was hearing", "yeah ",
+    "that’s actually ", "that's actually ", "what i was hearing", "yeah ", "things like ",
 )
 
 CONVERSATIONAL_TRANSCRIPT_PATTERNS = (
@@ -1779,6 +1779,12 @@ def formalize_transcript_discussion_point(text: str, evidence: list[dict[str, An
     combined = f"{cleaned} {evidence_blob}".lower()
 
     if "leading indicators" in combined and ("resource utilisation" in combined or "resource utilization" in combined):
+        return "Leading indicators such as resource utilisation, active SOWs per team and dependency concentration should be tracked alongside status."
+    if (
+        ("resource utilisation" in combined or "resource utilization" in combined)
+        and ("active sows" in combined or "active so w" in combined or "active so." in combined)
+        and "dependency concentration" in combined
+    ):
         return "Leading indicators such as resource utilisation, active SOWs per team and dependency concentration should be tracked alongside status."
     if "overall status is still green" in combined and all(term in combined for term in ("scope", "schedule", "financials", "resources")):
         return "Overall programme status remained green across scope, schedule, financials and resources."
