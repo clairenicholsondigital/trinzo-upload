@@ -1,0 +1,61 @@
+import json
+import subprocess
+import sys
+import unittest
+from pathlib import Path
+
+from scripts.project_update_minilm import build_project_update_output
+
+
+REPO_DIR = Path(__file__).resolve().parents[1]
+FIXTURE = REPO_DIR / "tests" / "fixtures" / "project_update_june_2_2026.txt"
+
+
+class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
+    def test_builds_project_report_without_models(self):
+        transcript = FIXTURE.read_text(encoding="utf-8")
+        result = build_project_update_output(transcript, use_minilm=False, use_rewrite=False)
+
+        self.assertEqual(result["mode"], "project_update_minilm")
+        self.assertIn("segments", result)
+        self.assertIn("projectReport", result)
+        self.assertIn("modelDiagnostics", result)
+        self.assertFalse(result["modelDiagnostics"]["minilmAvailable"])
+        self.assertFalse(result["modelDiagnostics"]["rewriterAvailable"])
+        self.assertGreater(len(result["projectReport"]["milestones"]), 0)
+        self.assertEqual(result["projectReport"]["reportStatus"], "draft")
+        self.assertIn(result["projectReport"]["overallHealth"], {"on_track", "at_risk", "off_track", "completed", "unknown"})
+        self.assertGreaterEqual(len(result["projectReport"]["healthAreas"]), 5)
+        json.dumps(result)
+
+    def test_cli_outputs_json(self):
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(REPO_DIR / "scripts" / "project_update_minilm.py"),
+                str(FIXTURE),
+                "--skip-minilm",
+                "--skip-rewrite",
+            ],
+            cwd=REPO_DIR,
+            check=True,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        payload = json.loads(completed.stdout)
+        self.assertEqual(payload["mode"], "project_update_minilm")
+        self.assertIn("projectReport", payload)
+
+    def test_project_route_uses_project_script_and_meeting_final_stays_separate(self):
+        api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+        self.assertIn("runPythonTranscriptScript('project_update_minilm.py'", api)
+        self.assertIn("runPythonTranscriptScript('python_llm.py'", api)
+        self.assertIn("router.post('/meeting-minutes-final'", api)
+        meeting_route = api.split("router.post('/meeting-minutes-final'", 1)[1].split("router.post('/meeting-minutes-final/improve'", 1)[0]
+        self.assertIn("meeting_minutes_minilm_only.py", meeting_route)
+        self.assertNotIn("project_update_minilm.py", meeting_route)
+
+
+if __name__ == "__main__":
+    unittest.main()

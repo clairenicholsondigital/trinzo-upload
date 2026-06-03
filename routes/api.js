@@ -19,6 +19,7 @@ const { extractTextFromUpload } = require('../utils/transcript');
 
 const {
   saveMeetingMinutes,
+  saveProjectUpdateDraft,
   listMeetings,
   getMeetingById,
   deleteMeetingById,
@@ -174,7 +175,7 @@ function parsePythonJson(rawOutput, scriptName) {
   }
 }
 
-async function runPythonTranscriptScript(scriptName, transcriptText, scriptArgs = []) {
+async function runPythonTranscriptScript(scriptName, transcriptText, scriptArgs = [], options = {}) {
   validateTranscriptText(transcriptText);
 
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'trinzo-transcript-'));
@@ -195,10 +196,11 @@ async function runPythonTranscriptScript(scriptName, transcriptText, scriptArgs 
       let stderr = '';
       let timedOut = false;
 
+      const timeoutMs = Number(options.timeoutMs || PYTHON_TIMEOUT_MS);
       const timer = setTimeout(() => {
         timedOut = true;
         child.kill('SIGKILL');
-      }, PYTHON_TIMEOUT_MS);
+      }, timeoutMs);
 
       child.stdout.on('data', (chunk) => {
         stdout += chunk.toString('utf8');
@@ -216,7 +218,7 @@ async function runPythonTranscriptScript(scriptName, transcriptText, scriptArgs 
       child.on('close', (code) => {
         clearTimeout(timer);
         if (timedOut) {
-          const error = new Error(`${scriptName} timed out after ${PYTHON_TIMEOUT_MS}ms.`);
+          const error = new Error(`${scriptName} timed out after ${timeoutMs}ms.`);
           error.statusCode = 504;
           error.details = { stderr };
           reject(error);
@@ -643,7 +645,53 @@ router.post('/project-update-test', withTestUpload(async (req, res) => {
   try {
     const transcript = await readTestTranscript(req);
     validateTranscriptText(transcript.text);
-    const result = await runPythonTranscriptScript('python_llm.py', transcript.text);
+    const scriptArgs = [];
+    if (truthyFlag(req.query?.skipMiniLM) || truthyFlag(req.body?.skipMiniLM)) {
+      scriptArgs.push('--skip-minilm');
+    }
+    if (truthyFlag(req.query?.skipRewrite) || truthyFlag(req.body?.skipRewrite)) {
+      scriptArgs.push('--skip-rewrite');
+    }
+
+    const projectTimeoutMs = Number(process.env.PROJECT_UPDATE_TIMEOUT_MS || 180000);
+    let result;
+    try {
+      result = await runPythonTranscriptScript('project_update_minilm.py', transcript.text, scriptArgs, { timeoutMs: projectTimeoutMs });
+    } catch (primaryError) {
+      const fallback = await runPythonTranscriptScript('python_llm.py', transcript.text);
+      result = {
+        ...fallback,
+        mode: 'project_update_legacy_fallback',
+        projectWorkflowFallback: {
+          script: 'python_llm.py',
+          reason: primaryError.message,
+          details: primaryError.details || null
+        }
+      };
+    }
+
+    if (hasDatabaseConfig() && !truthyFlag(req.query?.skipSave) && !truthyFlag(req.body?.skipSave)) {
+      try {
+        result.projectReportPersistence = await saveProjectUpdateDraft({
+          projectName: req.body?.projectName || req.query?.projectName || process.env.PROJECT_UPDATE_DEFAULT_PROJECT || 'Project update test',
+          periodLabel: req.body?.periodLabel || req.query?.periodLabel || '',
+          fileName: transcript.fileName || null,
+          sourceType: transcript.source === 'file' ? 'txt' : 'text',
+          transcriptText: transcript.text,
+          result
+        });
+      } catch (saveError) {
+        result.projectReportPersistence = {
+          saved: false,
+          error: saveError.message
+        };
+      }
+    } else {
+      result.projectReportPersistence = {
+        saved: false,
+        reason: hasDatabaseConfig() ? 'skipSave requested' : getDatabaseConfigError()
+      };
+    }
 
     return res.json(buildTestTranscriptResponse(req, transcript, result));
   } catch (error) {

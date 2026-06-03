@@ -226,6 +226,188 @@ async function updateMeetingById(meetingId, payload) {
   return { meetingId: Number(meetingId) };
 }
 
+function currentQuarterLabel(date = new Date()) {
+  const month = date.getUTCMonth();
+  const quarter = Math.floor(month / 3) + 1;
+  return `Q${quarter} ${date.getUTCFullYear()}`;
+}
+
+function quarterStartDate(label) {
+  const match = String(label || '').match(/^Q([1-4])\s+(\d{4})$/i);
+  if (!match) return new Date().toISOString().slice(0, 10);
+  const quarter = Number(match[1]);
+  const year = Number(match[2]);
+  return `${year}-${String((quarter - 1) * 3 + 1).padStart(2, '0')}-01`;
+}
+
+function quarterEndDate(label) {
+  const match = String(label || '').match(/^Q([1-4])\s+(\d{4})$/i);
+  if (!match) return new Date().toISOString().slice(0, 10);
+  const quarter = Number(match[1]);
+  const year = Number(match[2]);
+  const endMonth = quarter * 3;
+  const endDay = new Date(Date.UTC(year, endMonth, 0)).getUTCDate();
+  return `${year}-${String(endMonth).padStart(2, '0')}-${String(endDay).padStart(2, '0')}`;
+}
+
+function toMilestoneAssessmentStatus(status) {
+  const value = String(status || '').toLowerCase();
+  if (value === 'complete') return 'completed';
+  if (['in_progress', 'scheduled', 'in_review'].includes(value)) return 'on_track';
+  if (value === 'awaiting_input') return 'at_risk';
+  if (value === 'delayed') return 'delayed';
+  if (value === 'blocked') return 'blocked';
+  if (value === 'not_started') return 'not_started';
+  return 'unknown';
+}
+
+function toHealthAreaStatus(rag) {
+  const value = String(rag || '').toLowerCase();
+  if (value === 'green') return 'on_track';
+  if (value === 'amber') return 'at_risk';
+  if (value === 'red') return 'off_track';
+  if (value === 'blue') return 'completed';
+  return 'unknown';
+}
+
+function clampConfidence(value, fallback = 0.5) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.max(0, Math.min(1, number));
+}
+
+async function saveProjectUpdateDraft({ projectName, periodLabel, fileName, sourceType, transcriptText, result }) {
+  const report = result?.projectReport || {};
+  const segments = Array.isArray(result?.segments) ? result.segments : [];
+  const risks = Array.isArray(report?.risks) ? report.risks : [];
+  const healthAreas = report?.healthAreas && typeof report.healthAreas === 'object' ? report.healthAreas : {};
+  const name = projectName || 'Project update test';
+  const label = periodLabel || currentQuarterLabel();
+  const source = ['text', 'docx', 'txt', 'csv'].includes(sourceType) ? sourceType : 'text';
+  const transcript = transcriptText || '';
+  const transcriptSha = require('crypto').createHash('sha256').update(transcript, 'utf8').digest('hex');
+
+  const healthValues = ['scope', 'schedule', 'financial', 'resources', 'other_issue_risk'].map((area) => {
+    const detail = healthAreas[area] || {};
+    return {
+      area,
+      status: detail.status || (area === 'schedule' ? toHealthAreaStatus(report.overallHealthRag) : 'unknown'),
+      trend: detail.trend || 'stable',
+      confidence: clampConfidence(detail.confidence, area === 'schedule' ? 0.7 : 0.45),
+      rationale: Array.isArray(detail.evidence) && detail.evidence[0] ? detail.evidence[0].text : ''
+    };
+  });
+
+  const parseOptionalId = (out) => {
+    const line = String(out || '').split('\n').find((item) => /^\d+$/.test(item));
+    const id = Number(line);
+    return Number.isFinite(id) && id > 0 ? id : null;
+  };
+  const parseId = (out, labelName) => {
+    const id = parseOptionalId(out);
+    if (!Number.isFinite(id) || id <= 0) {
+      throw new Error(`Could not save project update draft: missing ${labelName} id.`);
+    }
+    return id;
+  };
+
+  let projectId = parseOptionalId(
+    await runPsql(`SELECT id::text FROM projects WHERE project_name = ${q(name)} ORDER BY id LIMIT 1;`),
+  );
+  if (!projectId) {
+    projectId = parseId(
+      await runPsql(`INSERT INTO projects (project_name, description, status, updated_at)
+        VALUES (${q(name)}, 'Created from /project-update-test workflow.', 'active', NOW())
+        RETURNING id::text;`),
+      'project'
+    );
+  }
+
+  let reportingPeriodId = parseOptionalId(
+    await runPsql(`SELECT id::text FROM project_reporting_periods
+      WHERE project_id = ${projectId} AND period_type = 'quarter' AND period_label = ${q(label)}
+      ORDER BY id
+      LIMIT 1;`)
+  );
+  if (!reportingPeriodId) {
+    reportingPeriodId = parseId(
+      await runPsql(`INSERT INTO project_reporting_periods (project_id, period_type, period_label, start_date, end_date)
+        VALUES (${projectId}, 'quarter', ${q(label)}, ${q(quarterStartDate(label))}::date, ${q(quarterEndDate(label))}::date)
+        ON CONFLICT (project_id, period_type, period_label) DO UPDATE SET period_label = EXCLUDED.period_label
+        RETURNING id::text;`),
+      'reporting period'
+    );
+  }
+
+  const reportId = parseId(
+    await runPsql(`INSERT INTO project_reports (project_id, reporting_period_id, file_name, report_status, include_in_global_analysis, updated_at)
+      VALUES (${projectId}, ${reportingPeriodId}, ${q(fileName || '')}, 'draft', FALSE, NOW())
+      RETURNING id::text;`),
+    'report'
+  );
+  const reportVersionId = parseId(
+    await runPsql(`INSERT INTO project_report_versions (report_id, version_number, change_type, change_summary, saved_by, report_payload)
+      VALUES (${reportId}, 1, 'ai_generated', 'Initial AI-generated draft from /project-update-test.', 'OpenClaw', ${qJson(result)})
+      RETURNING id::text;`),
+    'report version'
+  );
+  await runPsql(`INSERT INTO project_report_sources (report_id, source_type, file_name, transcript_text, transcript_length, transcript_sha256)
+    VALUES (${reportId}, ${q(source)}, ${q(fileName || '')}, ${q(transcript)}, LENGTH(${q(transcript)}), ${q(transcriptSha)});`);
+
+  for (const item of healthValues) {
+    await runPsql(`INSERT INTO project_report_health (report_version_id, area, status, trend, confidence, rationale)
+      VALUES (${reportVersionId}, ${q(item.area)}, ${q(item.status)}, ${q(item.trend)}, ${clampConfidence(item.confidence)}, ${q(item.rationale)});`);
+  }
+
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index] || {};
+    const milestoneName = segment.milestone || `Milestone ${index + 1}`;
+    const milestoneOut = await runPsql(`
+WITH existing AS (
+  SELECT id FROM project_core_milestones
+  WHERE project_id = ${projectId} AND milestone_name = ${q(milestoneName)} AND is_active = TRUE
+  ORDER BY id
+  LIMIT 1
+), inserted AS (
+  INSERT INTO project_core_milestones (project_id, reporting_period_id, category, milestone_name, sort_order, is_active)
+  SELECT ${projectId}, ${reportingPeriodId}, 'Transcript', ${q(milestoneName)}, ${index}, TRUE
+  WHERE NOT EXISTS (SELECT 1 FROM existing)
+  RETURNING id
+)
+SELECT id::text FROM inserted
+UNION ALL
+SELECT id::text FROM existing
+LIMIT 1;`);
+    const milestoneId = Number(milestoneOut.split('\n').find((item) => /^\d+$/.test(item)));
+    await runPsql(`INSERT INTO project_report_milestone_assessments
+      (report_version_id, milestone_id, status, trend, confidence, summary)
+      VALUES (${reportVersionId}, ${milestoneId}, ${q(toMilestoneAssessmentStatus(segment.delivery_status))}, 'stable', ${clampConfidence(segment.delivery_status_confidence || segment.confidence)}, ${q(segment.normalised_evidence_summary || segment.excerpt || segment.status_resolution_note || '')});`);
+    const evidence = Array.isArray(segment.semantic_evidence) && segment.semantic_evidence.length
+      ? segment.semantic_evidence
+      : (segment.evidence || []).slice(0, 3).map((text) => ({ text, confidence: segment.confidence || 0.5 }));
+    for (const evidenceItem of evidence.slice(0, 3)) {
+      await runPsql(`INSERT INTO project_report_evidence
+        (report_version_id, linked_type, linked_id, evidence_text, speaker, turn_index, confidence)
+        VALUES (${reportVersionId}, 'milestone', ${milestoneId}, ${q(evidenceItem.text || '')}, ${q(evidenceItem.speaker || '')}, ${Number.isFinite(Number(evidenceItem.turnIndex)) ? Number(evidenceItem.turnIndex) : 'NULL'}, ${clampConfidence(evidenceItem.score || evidenceItem.confidence || segment.confidence)});`);
+    }
+  }
+
+  for (const risk of risks.slice(0, 10)) {
+    await runPsql(`INSERT INTO project_ai_risk_suggestions
+      (report_version_id, risk_title, description, suggested_mitigation, confidence, review_status)
+      VALUES (${reportVersionId}, ${q(risk.riskTitle || 'Project risk')}, ${q(risk.description || '')}, ${q(risk.suggestedMitigation || '')}, ${clampConfidence(risk.confidence)}, 'pending');`);
+  }
+
+  return {
+    saved: true,
+    projectId,
+    reportingPeriodId,
+    reportId,
+    reportVersionId,
+    periodLabel: label
+  };
+}
+
 
 
 async function markWebhookSuccess(jobId, meetingId, webhookResponse) {
@@ -291,6 +473,7 @@ module.exports = {
   updateMeetingById,
   saveUploadedJob,
   saveMeetingMinutes,
+  saveProjectUpdateDraft,
   getMeetingStatus,
   claimNextJob,
   markJobCompleted,
