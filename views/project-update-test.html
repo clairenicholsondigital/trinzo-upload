@@ -22,7 +22,7 @@ h2 { margin:.1rem 0 .75rem; font-size:1.1rem; }
 .intro, small { color:var(--muted); }
 .field { margin:.9rem 0; }
 label { display:block; margin-bottom:.35rem; font-weight:700; }
-input[type=file], input[type=text], textarea { width:100%; background:#071126; color:var(--text); border:1px solid var(--border); border-radius:10px; padding:.7rem; font:inherit; }
+input[type=file], input[type=text], input[type=date], textarea { width:100%; background:#071126; color:var(--text); border:1px solid var(--border); border-radius:10px; padding:.7rem; font:inherit; }
 textarea { min-height:260px; resize:vertical; }
 button { background:linear-gradient(180deg,var(--accent),#0fb5ab); color:#02173B; border:none; border-radius:10px; padding:.65rem .95rem; font-weight:700; cursor:pointer; }
 button.secondary { background:#132847; color:#dbeafe; border:1px solid var(--border); }
@@ -48,6 +48,9 @@ a { color:#67e8f9; }
 .project-form-grid input, .project-form-grid textarea { margin-top:.35rem; color:var(--text); font-weight:400; }
 .project-form-grid textarea { min-height:120px; }
 .project-meta-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:.75rem; margin-bottom:1rem; }
+.project-table-actions { display:flex; justify-content:flex-end; margin-bottom:.6rem; }
+.project-row-action { padding:.45rem .65rem; white-space:nowrap; }
+.autosave-status { display:block; color:var(--muted); margin-top:.65rem; }
 .table-scroll { overflow:auto; border:1px solid var(--border); border-radius:10px; background:#071126; }
 .project-table { width:100%; border-collapse:separate; border-spacing:0; min-width:920px; }
 .project-table th, .project-table td { border-bottom:1px solid var(--border); border-right:1px solid var(--border); padding:.55rem; vertical-align:top; }

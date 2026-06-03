@@ -64,6 +64,19 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertIn(".project-tabs", page)
         self.assertIn("renderProjectReport", shared_js)
         self.assertIn("Copy report JSON", shared_js)
+        self.assertIn('data-project-add="milestones"', shared_js)
+        self.assertIn('data-project-remove="milestones"', shared_js)
+        self.assertIn("baseline_finish_date", shared_js)
+        self.assertIn("forecast_finish_date", shared_js)
+        self.assertIn("queueProjectAutosave", shared_js)
+
+    def test_project_update_save_path_stores_milestone_deadlines(self):
+        db = (REPO_DIR / "utils" / "db.js").read_text(encoding="utf-8")
+
+        self.assertIn("function qDate", db)
+        self.assertIn("baseline_finish_date = COALESCE", db)
+        self.assertIn("project_report_milestone_assessments", db)
+        self.assertIn("forecast_finish_date)", db)
 
 
 if __name__ == "__main__":

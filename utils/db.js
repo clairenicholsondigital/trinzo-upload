@@ -39,6 +39,10 @@ async function testConnection() {
 
 function q(value) { return `'${String(value || '').replace(/'/g, "''")}'`; }
 function qJson(value) { return `'${JSON.stringify(value || {}).replace(/'/g, "''")}'::jsonb`; }
+function qDate(value) {
+  const text = String(value || '').trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? `${q(text)}::date` : 'NULL';
+}
 
 async function saveUploadedJob({ fileName, mimeType, transcriptText }) {
   const title = fileName || 'Uploaded transcript';
@@ -279,6 +283,7 @@ function clampConfidence(value, fallback = 0.5) {
 async function saveProjectUpdateDraft({ projectName, periodLabel, fileName, sourceType, transcriptText, result }) {
   const report = result?.projectReport || {};
   const segments = Array.isArray(result?.segments) ? result.segments : [];
+  const reportMilestones = Array.isArray(report?.milestones) ? report.milestones : [];
   const risks = Array.isArray(report?.risks) ? report.risks : [];
   const healthAreas = report?.healthAreas && typeof report.healthAreas === 'object' ? report.healthAreas : {};
   const name = projectName || 'Project update test';
@@ -309,6 +314,12 @@ async function saveProjectUpdateDraft({ projectName, periodLabel, fileName, sour
       throw new Error(`Could not save project update draft: missing ${labelName} id.`);
     }
     return id;
+  };
+  const milestoneDraftFor = (segment, index) => {
+    const segmentKey = String(segment?.comparison_key || segment?.milestone || '').toLowerCase();
+    return reportMilestones[index]
+      || reportMilestones.find((item) => String(item?.comparison_key || item?.milestone || '').toLowerCase() === segmentKey)
+      || {};
   };
 
   let projectId = parseOptionalId(
@@ -359,9 +370,16 @@ async function saveProjectUpdateDraft({ projectName, periodLabel, fileName, sour
       VALUES (${reportVersionId}, ${q(item.area)}, ${q(item.status)}, ${q(item.trend)}, ${clampConfidence(item.confidence)}, ${q(item.rationale)});`);
   }
 
-  for (let index = 0; index < segments.length; index += 1) {
+  const milestoneCount = Math.max(segments.length, reportMilestones.length);
+  for (let index = 0; index < milestoneCount; index += 1) {
     const segment = segments[index] || {};
-    const milestoneName = segment.milestone || `Milestone ${index + 1}`;
+    const milestoneDraft = milestoneDraftFor(segment, index);
+    const milestoneName = milestoneDraft.milestone || segment.milestone || `Milestone ${index + 1}`;
+    const baselineFinishDate = milestoneDraft.baseline_finish_date || milestoneDraft.baselineDeadline || milestoneDraft.deadline;
+    const forecastFinishDate = milestoneDraft.forecast_finish_date || milestoneDraft.forecastDeadline || milestoneDraft.deadline;
+    const deliveryStatus = segment.delivery_status || milestoneDraft.delivery_status || milestoneDraft.status;
+    const confidence = segment.delivery_status_confidence || milestoneDraft.delivery_status_confidence || segment.confidence || milestoneDraft.confidence;
+    const summary = segment.normalised_evidence_summary || milestoneDraft.normalised_evidence_summary || segment.excerpt || milestoneDraft.excerpt || segment.status_resolution_note || '';
     const milestoneOut = await runPsql(`
 WITH existing AS (
   SELECT id FROM project_core_milestones
@@ -369,19 +387,27 @@ WITH existing AS (
   ORDER BY id
   LIMIT 1
 ), inserted AS (
-  INSERT INTO project_core_milestones (project_id, reporting_period_id, category, milestone_name, sort_order, is_active)
-  SELECT ${projectId}, ${reportingPeriodId}, 'Transcript', ${q(milestoneName)}, ${index}, TRUE
+  INSERT INTO project_core_milestones (project_id, reporting_period_id, category, milestone_name, baseline_finish_date, forecast_finish_date, sort_order, is_active)
+  SELECT ${projectId}, ${reportingPeriodId}, 'Transcript', ${q(milestoneName)}, ${qDate(baselineFinishDate)}, ${qDate(forecastFinishDate)}, ${index}, TRUE
   WHERE NOT EXISTS (SELECT 1 FROM existing)
+  RETURNING id
+), updated AS (
+  UPDATE project_core_milestones
+  SET baseline_finish_date = COALESCE(${qDate(baselineFinishDate)}, baseline_finish_date),
+      forecast_finish_date = COALESCE(${qDate(forecastFinishDate)}, forecast_finish_date)
+  WHERE id IN (SELECT id FROM existing)
   RETURNING id
 )
 SELECT id::text FROM inserted
+UNION ALL
+SELECT id::text FROM updated
 UNION ALL
 SELECT id::text FROM existing
 LIMIT 1;`);
     const milestoneId = Number(milestoneOut.split('\n').find((item) => /^\d+$/.test(item)));
     await runPsql(`INSERT INTO project_report_milestone_assessments
-      (report_version_id, milestone_id, status, trend, confidence, summary)
-      VALUES (${reportVersionId}, ${milestoneId}, ${q(toMilestoneAssessmentStatus(segment.delivery_status))}, 'stable', ${clampConfidence(segment.delivery_status_confidence || segment.confidence)}, ${q(segment.normalised_evidence_summary || segment.excerpt || segment.status_resolution_note || '')});`);
+      (report_version_id, milestone_id, status, trend, confidence, summary, forecast_finish_date)
+      VALUES (${reportVersionId}, ${milestoneId}, ${q(toMilestoneAssessmentStatus(deliveryStatus))}, 'stable', ${clampConfidence(confidence)}, ${q(summary)}, ${qDate(forecastFinishDate)});`);
     const evidence = Array.isArray(segment.semantic_evidence) && segment.semantic_evidence.length
       ? segment.semantic_evidence
       : (segment.evidence || []).slice(0, 3).map((text) => ({ text, confidence: segment.confidence || 0.5 }));

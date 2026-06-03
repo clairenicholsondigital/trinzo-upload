@@ -2,7 +2,8 @@ function buildTranscriptTestPage(config) {
   const state = {
     result: null,
     loading: false,
-    projectReport: null
+    projectReport: null,
+    autosaveTimer: null
   };
 
   const root = document.getElementById('transcriptTestRoot');
@@ -24,6 +25,7 @@ function buildTranscriptTestPage(config) {
         <button id="goBtn" type="button">${config.buttonText}</button>
         <button id="clearBtn" class="secondary" type="button">Clear / reset</button>
       </div>
+      <small id="autosaveStatus" class="autosave-status hidden"></small>
       <div id="message" class="message hidden"></div>
     </section>
 
@@ -61,6 +63,7 @@ function buildTranscriptTestPage(config) {
   const clearBtn = document.getElementById('clearBtn');
   const copyBtn = document.getElementById('copyBtn');
   const message = document.getElementById('message');
+  const autosaveStatus = document.getElementById('autosaveStatus');
   const summaryPanel = document.getElementById('summaryPanel');
   const summaryGrid = document.getElementById('summaryGrid');
   const projectReportPanel = document.getElementById('projectReportPanel');
@@ -117,13 +120,70 @@ function buildTranscriptTestPage(config) {
     return String(value || '').split('\n').map((item) => item.trim()).filter(Boolean);
   }
 
-  function renderProjectCell(value, path, multiline = false, placeholder = '') {
+  function renderProjectCell(value, path, multiline = false, placeholder = '', type = 'text') {
     const escapedPath = escapeHtml(path);
     const escapedValue = escapeHtml(value ?? '');
     if (multiline) {
       return `<textarea data-project-path="${escapedPath}" placeholder="${escapeHtml(placeholder)}">${escapedValue}</textarea>`;
     }
-    return `<input type="text" data-project-path="${escapedPath}" value="${escapedValue}" placeholder="${escapeHtml(placeholder)}" />`;
+    return `<input type="${escapeHtml(type)}" data-project-path="${escapedPath}" value="${escapedValue}" placeholder="${escapeHtml(placeholder)}" />`;
+  }
+
+  function projectAutosaveKey() {
+    const endpoint = String(config.endpoint || 'default').replace(/[^a-z0-9_-]+/gi, '_');
+    return `transcriptTest:${endpoint}:autosave`;
+  }
+
+  function setAutosaveStatus(text) {
+    if (!config.projectReportUi) return;
+    autosaveStatus.textContent = text || '';
+    autosaveStatus.className = text ? 'autosave-status' : 'autosave-status hidden';
+  }
+
+  function readProjectAutosave() {
+    if (!config.projectReportUi) return null;
+    try {
+      return JSON.parse(localStorage.getItem(projectAutosaveKey()) || 'null');
+    } catch {
+      return null;
+    }
+  }
+
+  function writeProjectAutosave() {
+    if (!config.projectReportUi) return;
+    const payload = {
+      transcriptText: textInput.value,
+      result: state.result,
+      projectReport: state.projectReport,
+      savedAt: new Date().toISOString()
+    };
+    localStorage.setItem(projectAutosaveKey(), JSON.stringify(payload));
+    setAutosaveStatus(`Autosaved locally at ${new Date(payload.savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`);
+  }
+
+  function queueProjectAutosave() {
+    if (!config.projectReportUi) return;
+    clearTimeout(state.autosaveTimer);
+    state.autosaveTimer = setTimeout(writeProjectAutosave, 500);
+  }
+
+  function restoreProjectAutosave() {
+    const saved = readProjectAutosave();
+    if (!saved) return;
+    if (saved.transcriptText && !textInput.value) {
+      textInput.value = saved.transcriptText;
+    }
+    if (saved.result && saved.projectReport) {
+      state.result = saved.result;
+      state.projectReport = saved.projectReport;
+      state.result.projectReport = saved.projectReport;
+      displaySummary(state.result);
+      renderProjectReport(state.projectReport, state.result);
+      displayJson(state.result);
+    }
+    if (saved.savedAt) {
+      setAutosaveStatus(`Restored local autosave from ${new Date(saved.savedAt).toLocaleString()}.`);
+    }
   }
 
   function setByPath(target, path, value) {
@@ -159,6 +219,20 @@ function buildTranscriptTestPage(config) {
       state.result.projectReport = report;
       jsonOutput.textContent = JSON.stringify(state.result, null, 2);
     }
+    queueProjectAutosave();
+  }
+
+  function withEditedProjectReport(callback) {
+    const report = collectEditedProjectReport() || cloneJson(state.projectReport);
+    if (!report) return;
+    callback(report);
+    state.projectReport = report;
+    if (state.result) {
+      state.result.projectReport = report;
+    }
+    renderProjectReport(report, state.result || {});
+    displayJson(state.result || { projectReport: report });
+    queueProjectAutosave();
   }
 
   function renderReportSummaryTab(report) {
@@ -204,23 +278,28 @@ function buildTranscriptTestPage(config) {
 
   function renderMilestonesTab(report) {
     const milestones = asArray(report.milestones);
-    if (!milestones.length) return '<p class="intro">No milestones were returned.</p>';
     return `
+      <div class="project-table-actions">
+        <button class="secondary" type="button" data-project-add="milestones">Add milestone</button>
+      </div>
       <div class="table-scroll">
         <table class="project-table dense">
           <thead>
-            <tr><th>Milestone</th><th>Delivery</th><th>Agreed RAG</th><th>Health</th><th>Summary</th><th>Blockers</th><th>Next steps</th></tr>
+            <tr><th>Milestone</th><th>Baseline deadline</th><th>Forecast deadline</th><th>Delivery</th><th>Agreed RAG</th><th>Health</th><th>Summary</th><th>Blockers</th><th>Next steps</th><th></th></tr>
           </thead>
           <tbody>
-            ${milestones.map((item, index) => `
+            ${(milestones.length ? milestones : [{}]).map((item, index) => `
               <tr>
                 <td>${renderProjectCell(item.milestone, `milestones.${index}.milestone`)}</td>
+                <td>${renderProjectCell(item.baseline_finish_date || item.baselineDeadline || item.deadline, `milestones.${index}.baseline_finish_date`, false, 'Baseline', 'date')}</td>
+                <td>${renderProjectCell(item.forecast_finish_date || item.forecastDeadline || item.deadline, `milestones.${index}.forecast_finish_date`, false, 'Forecast', 'date')}</td>
                 <td>${renderProjectCell(item.delivery_status || item.status, `milestones.${index}.delivery_status`)}</td>
                 <td>${renderProjectCell(item.agreed_rag_status || item.rag_status, `milestones.${index}.agreed_rag_status`)}</td>
                 <td>${renderProjectCell(item.health_assessment, `milestones.${index}.health_assessment`)}</td>
                 <td>${renderProjectCell(item.normalised_evidence_summary || item.excerpt, `milestones.${index}.normalised_evidence_summary`, true)}</td>
                 <td><textarea data-project-path="milestones.${index}.blocking_factors" data-project-mode="lines">${escapeHtml(asLines(item.blocking_factors).join('\n'))}</textarea></td>
                 <td><textarea data-project-path="milestones.${index}.next_steps" data-project-mode="lines">${escapeHtml(asLines(item.next_steps).join('\n'))}</textarea></td>
+                <td><button class="secondary project-row-action" type="button" data-project-remove="milestones" data-project-index="${index}">Remove</button></td>
               </tr>
             `).join('')}
           </tbody>
@@ -326,6 +405,32 @@ function buildTranscriptTestPage(config) {
     projectReportOutput.querySelectorAll('[data-project-path]').forEach((field) => {
       if (field.hasAttribute('readonly')) return;
       field.addEventListener('input', refreshProjectReportState);
+    });
+    projectReportOutput.querySelectorAll('[data-project-add="milestones"]').forEach((button) => {
+      button.addEventListener('click', () => {
+        withEditedProjectReport((draft) => {
+          draft.milestones = asArray(draft.milestones);
+          draft.milestones.push({
+            milestone: '',
+            baseline_finish_date: '',
+            forecast_finish_date: '',
+            delivery_status: 'unknown',
+            agreed_rag_status: 'unknown',
+            health_assessment: 'unknown',
+            normalised_evidence_summary: '',
+            blocking_factors: [],
+            next_steps: []
+          });
+        });
+      });
+    });
+    projectReportOutput.querySelectorAll('[data-project-remove="milestones"]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const index = Number(button.getAttribute('data-project-index'));
+        withEditedProjectReport((draft) => {
+          draft.milestones = asArray(draft.milestones).filter((_, itemIndex) => itemIndex !== index);
+        });
+      });
     });
     projectReportPanel.classList.remove('hidden');
   }
@@ -437,6 +542,7 @@ function buildTranscriptTestPage(config) {
       displayProjectReport(payload.result);
       displayDebugPanel(payload.result, payload);
       displayJson(payload.result);
+      queueProjectAutosave();
     } catch (error) {
       setMessage(error.message || 'Transcript analysis failed.', 'error');
     } finally {
@@ -449,6 +555,9 @@ function buildTranscriptTestPage(config) {
     textInput.value = '';
     state.result = null;
     state.projectReport = null;
+    clearTimeout(state.autosaveTimer);
+    if (config.projectReportUi) localStorage.removeItem(projectAutosaveKey());
+    setAutosaveStatus('');
     setMessage('', '');
     summaryPanel.classList.add('hidden');
     projectReportPanel.classList.add('hidden');
@@ -468,6 +577,7 @@ function buildTranscriptTestPage(config) {
 
   goBtn.addEventListener('click', submitTranscript);
   clearBtn.addEventListener('click', resetPage);
+  textInput.addEventListener('input', queueProjectAutosave);
   copyBtn.addEventListener('click', copyJson);
   copyProjectReportBtn.addEventListener('click', async () => {
     refreshProjectReportState();
@@ -475,6 +585,7 @@ function buildTranscriptTestPage(config) {
     await navigator.clipboard.writeText(JSON.stringify(state.projectReport, null, 2));
     setMessage('Project report JSON copied to clipboard.', 'success');
   });
+  restoreProjectAutosave();
 }
 
 function listValue(value) {
