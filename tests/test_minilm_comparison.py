@@ -168,6 +168,27 @@ class DomainDriftActionRewriter:
         ]
 
 
+class FailedActionRewriter:
+    available = True
+    reason = ""
+    model_name = "fake-qwen"
+    model_path = "/fake/qwen"
+
+    def rewrite_items(self, items):
+        return [
+            {
+                "rewritten": "Define the scope of the dashboard and assign it to the relevant team members.",
+                "meta": {
+                    "category": item["category"],
+                    "rewritten": True,
+                    "reason": "generation_json_parse_failed",
+                    "raw": normalize_text_fragment(item["text"]),
+                },
+            }
+            for item in items
+        ]
+
+
 class MiniLMComparisonSmokeTest(unittest.TestCase):
     def setUp(self):
         LocalMinutesRewriter._singleton = None
@@ -462,6 +483,27 @@ James: Let's review the guide next week.
         self.assertEqual(rewritten["meetingActionPoint"], ["Separate triage categories."])
         self.assertTrue(diagnostics["rewriteSucceeded"])
         self.assertEqual(diagnostics["rewriteEdits"][0]["reason"], "source_terms_lost_fallback")
+
+    def test_action_rewrite_falls_back_when_generation_reports_failure(self):
+        output = {
+            "meetingObjectives": [],
+            "discussionPoints": [],
+            "decisions": [],
+            "actions": [
+                {
+                    "meetingActionPoint": "Set up a dashboard.",
+                    "meetingActionPointOwner": "Mark",
+                    "meetingActionPointDeadline": "",
+                }
+            ],
+        }
+
+        rewritten, diagnostics = rewrite_minutes_output_payload(output, rewriter=FailedActionRewriter())
+
+        self.assertEqual(rewritten["meetingActionPoint"], ["Set up a dashboard."])
+        self.assertEqual(diagnostics["rewriteEdits"][0]["reason"], "generation_json_parse_failed_action_fallback")
+        self.assertEqual(diagnostics["rewriteFailureCount"], 0)
+        self.assertTrue(diagnostics["rewriteSucceeded"])
 
     def test_followup_investigation_action_is_captured_from_complaints_thread(self):
         transcript = "Ciara: One thing that came up during the workshop was complaints handling.Conor: Yeah, I thought that section generated the most discussion.Ciara: People understand the formal process, but they don't necessarily understand why certain complaints get escalated and others don't.Jack: A lot of that knowledge sits with experienced staff.Conor: That's the tribal knowledge problem.Ciara: Exactly.Jack: When somebody new joins, they learn those patterns by asking questions rather than through documentation.Conor: Which means responses aren't always consistent.Ciara: We heard several examples where people handled similar situations differently.Jack: That's where AI could potentially help.Conor: Not to make decisions for people.Jack: No, more as a guidance layer.Ciara: Almost like a recommendation engine.Conor: Yes. Somebody enters the complaint details and the system shows similar historical cases.Jack: Plus the reasoning behind previous outcomes.Ciara: That would make onboarding much easier.Conor: The important thing is filtering.Jack: What do you mean?Conor: Some complaints are straightforward. Others involve legal review, regulatory issues or unusual circumstances.Ciara: So we wouldn't want AI recommending unsuitable examples.Conor: Exactly.Jack: We'd need confidence scoring and suitability filtering.Ciara: That sounds like a separate workstream.Conor: Agreed.Jack: Should we capture that as a follow-up investigation?Ciara: Yes, let's do that."
