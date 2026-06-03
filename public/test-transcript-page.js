@@ -49,11 +49,14 @@ function buildTranscriptTestPage(config) {
     </section>
 
     <section id="jsonPanel" class="panel hidden">
-      <div class="json-heading">
-        <h2>Raw JSON response</h2>
-        <button id="copyBtn" class="secondary" type="button">Copy JSON</button>
-      </div>
-      <pre id="jsonOutput"></pre>
+      <details class="raw-json">
+        <summary>Raw JSON response</summary>
+        <div class="json-heading">
+          <h2>Raw JSON response</h2>
+          <button id="copyBtn" class="secondary" type="button">Copy JSON</button>
+        </div>
+        <pre id="jsonOutput"></pre>
+      </details>
     </section>
   `;
 
@@ -240,7 +243,7 @@ function buildTranscriptTestPage(config) {
       <div class="project-form-grid">
         <label>Report status ${renderProjectCell(report.reportStatus, 'reportStatus', false, 'draft')}</label>
         <label>Overall health ${renderProjectCell(report.overallHealth, 'overallHealth', false, 'on_track')}</label>
-        <label>RAG colour ${renderProjectCell(report.overallHealthRag, 'overallHealthRag', false, 'amber')}</label>
+        <label>Colour ${renderProjectCell(report.overallHealthRag, 'overallHealthRag', false, 'amber')}</label>
         <label class="wide">Executive summary ${renderProjectCell(report.summary, 'summary', true, 'Project summary')}</label>
         <label class="wide">Key updates
           <textarea data-project-path="keyUpdates" data-project-mode="lines" placeholder="One update per line">${escapeHtml(asLines(report.keyUpdates).join('\n'))}</textarea>
@@ -285,7 +288,7 @@ function buildTranscriptTestPage(config) {
       <div class="table-scroll">
         <table class="project-table dense">
           <thead>
-            <tr><th>Milestone</th><th>Baseline deadline</th><th>Forecast deadline</th><th>Delivery</th><th>Agreed RAG</th><th>Health</th><th>Summary</th><th>Blockers</th><th>Next steps</th><th></th></tr>
+            <tr><th>Milestone</th><th>Baseline deadline</th><th>Forecast deadline</th><th>Delivery</th><th>Colour</th><th>Health</th><th>Summary</th><th>Blockers</th><th>Next steps</th><th></th></tr>
           </thead>
           <tbody>
             ${(milestones.length ? milestones : [{}]).map((item, index) => `

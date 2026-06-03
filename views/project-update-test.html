@@ -16,6 +16,7 @@
 * { box-sizing: border-box; }
 body { margin:0; padding:1rem; background:var(--bg); color:var(--text); font-family:Arial, Helvetica, sans-serif; }
 .container { max-width:1280px; margin:0 auto; }
+.project-nav { display:flex; gap:.75rem; flex-wrap:wrap; margin-bottom:1rem; }
 .panel { background:linear-gradient(145deg,var(--panel),var(--panel2)); border:1px solid var(--border); border-radius:14px; padding:1rem; margin-bottom:1rem; }
 h1 { margin:.2rem 0 .5rem; }
 h2 { margin:.1rem 0 .75rem; font-size:1.1rem; }
@@ -36,6 +37,8 @@ button:disabled { opacity:.6; cursor:not-allowed; }
 .summary-label { color:var(--muted); font-size:.85rem; }
 .summary-value { margin-top:.25rem; font-weight:700; overflow-wrap:anywhere; }
 pre { white-space:pre-wrap; overflow:auto; max-height:650px; background:#071126; border:1px solid var(--border); border-radius:10px; padding:1rem; }
+details.raw-json summary { cursor:pointer; color:#dbeafe; font-weight:700; }
+details.raw-json[open] summary { margin-bottom:.75rem; }
 .hidden { display:none; }
 a { color:#67e8f9; }
 .project-tabs { display:flex; gap:.4rem; flex-wrap:wrap; border-bottom:1px solid var(--border); margin:.25rem 0 1rem; }
@@ -72,7 +75,11 @@ a { color:#67e8f9; }
 </head>
 <body>
 <div class="container">
-  <p><a href="/">← Back to workflow</a></p>
+  <nav class="project-nav">
+    <a href="/">Back to workflow</a>
+    <a href="/project-update-test/reports">Reports</a>
+    <a href="/project-update-test/milestones">Milestones</a>
+  </nav>
   <main id="transcriptTestRoot"></main>
 </div>
 <script src="/static/test-transcript-page.js"></script>

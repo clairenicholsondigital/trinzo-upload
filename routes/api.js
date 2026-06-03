@@ -20,6 +20,10 @@ const { extractTextFromUpload } = require('../utils/transcript');
 const {
   saveMeetingMinutes,
   saveProjectUpdateDraft,
+  listProjectReports,
+  getProjectReportDetail,
+  listProjectMilestones,
+  getProjectMilestoneDetail,
   listMeetings,
   getMeetingById,
   deleteMeetingById,
@@ -698,6 +702,48 @@ router.post('/project-update-test', withTestUpload(async (req, res) => {
     return sendTestError(res, error);
   }
 }));
+
+router.get('/project-update-test/reports', async (req, res) => {
+  try {
+    const reports = await listProjectReports(req.query?.limit);
+    return res.json({ ok: true, reports });
+  } catch (error) {
+    return sendTestError(res, error);
+  }
+});
+
+router.get('/project-update-test/reports/:reportId', async (req, res) => {
+  try {
+    const report = await getProjectReportDetail(req.params.reportId);
+    if (!report) {
+      return res.status(404).json({ ok: false, error: 'Project report not found.' });
+    }
+    return res.json({ ok: true, report });
+  } catch (error) {
+    return sendTestError(res, error);
+  }
+});
+
+router.get('/project-update-test/milestones', async (req, res) => {
+  try {
+    const milestones = await listProjectMilestones(req.query?.limit);
+    return res.json({ ok: true, milestones });
+  } catch (error) {
+    return sendTestError(res, error);
+  }
+});
+
+router.get('/project-update-test/milestones/:milestoneId', async (req, res) => {
+  try {
+    const milestone = await getProjectMilestoneDetail(req.params.milestoneId);
+    if (!milestone) {
+      return res.status(404).json({ ok: false, error: 'Project milestone not found.' });
+    }
+    return res.json({ ok: true, milestone });
+  } catch (error) {
+    return sendTestError(res, error);
+  }
+});
 
 router.post('/extract-docx', upload.single('file'), async (req, res) => {
   try {

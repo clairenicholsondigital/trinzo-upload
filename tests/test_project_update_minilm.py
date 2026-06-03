@@ -64,11 +64,33 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertIn(".project-tabs", page)
         self.assertIn("renderProjectReport", shared_js)
         self.assertIn("Copy report JSON", shared_js)
+        self.assertIn('<details class="raw-json">', shared_js)
         self.assertIn('data-project-add="milestones"', shared_js)
         self.assertIn('data-project-remove="milestones"', shared_js)
         self.assertIn("baseline_finish_date", shared_js)
         self.assertIn("forecast_finish_date", shared_js)
         self.assertIn("queueProjectAutosave", shared_js)
+        self.assertNotIn("RAG colour", shared_js)
+
+    def test_project_update_browsing_routes_are_registered(self):
+        server = (REPO_DIR / "server.js").read_text(encoding="utf-8")
+        api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+        db = (REPO_DIR / "utils" / "db.js").read_text(encoding="utf-8")
+
+        self.assertIn("project-update-reports.html", server)
+        self.assertIn("project-update-milestones.html", server)
+        self.assertIn("sendView(res", server)
+        self.assertIn("router.get('/project-update-test/reports'", api)
+        self.assertIn("router.get('/project-update-test/milestones'", api)
+        self.assertIn("listProjectReports", db)
+        self.assertIn("getProjectMilestoneDetail", db)
+
+        reports_page = (REPO_DIR / "views" / "project-update-reports.html").read_text(encoding="utf-8")
+        milestones_page = (REPO_DIR / "views" / "project-update-milestones.html").read_text(encoding="utf-8")
+        self.assertIn("/api/project-update-test/reports", reports_page)
+        self.assertIn("/api/project-update-test/milestones", milestones_page)
+        self.assertIn("/project-update-test/milestones", reports_page)
+        self.assertIn("/project-update-test/reports", milestones_page)
 
     def test_project_update_save_path_stores_milestone_deadlines(self):
         db = (REPO_DIR / "utils" / "db.js").read_text(encoding="utf-8")

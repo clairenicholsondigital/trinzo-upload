@@ -44,6 +44,180 @@ function qDate(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(text) ? `${q(text)}::date` : 'NULL';
 }
 
+function parseJsonLines(out) {
+  return String(out || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+}
+
+async function listProjectReports(limit = 50) {
+  const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 100);
+  const out = await runPsql(`
+SELECT json_build_object(
+  'reportId', r.id,
+  'projectId', p.id,
+  'projectName', p.project_name,
+  'periodLabel', COALESCE(rp.period_label, ''),
+  'fileName', COALESCE(r.file_name, ''),
+  'reportStatus', r.report_status,
+  'createdAt', r.created_at,
+  'updatedAt', r.updated_at,
+  'latestVersionId', v.id,
+  'latestVersionNumber', v.version_number,
+  'overallHealth', COALESCE(v.report_payload->'projectReport'->>'overallHealth', ''),
+  'summary', COALESCE(v.report_payload->'projectReport'->>'summary', '')
+)::text
+FROM project_reports r
+JOIN projects p ON p.id = r.project_id
+LEFT JOIN project_reporting_periods rp ON rp.id = r.reporting_period_id
+LEFT JOIN LATERAL (
+  SELECT id, version_number, report_payload
+  FROM project_report_versions
+  WHERE report_id = r.id
+  ORDER BY version_number DESC, id DESC
+  LIMIT 1
+) v ON TRUE
+ORDER BY r.created_at DESC, r.id DESC
+LIMIT ${safeLimit};`);
+  return parseJsonLines(out);
+}
+
+async function getProjectReportDetail(reportId) {
+  const out = await runPsql(`
+SELECT json_build_object(
+  'reportId', r.id,
+  'projectId', p.id,
+  'projectName', p.project_name,
+  'periodLabel', COALESCE(rp.period_label, ''),
+  'fileName', COALESCE(r.file_name, ''),
+  'reportStatus', r.report_status,
+  'createdAt', r.created_at,
+  'updatedAt', r.updated_at,
+  'source', (
+    SELECT json_build_object(
+      'sourceType', source_type,
+      'fileName', COALESCE(file_name, ''),
+      'transcriptLength', transcript_length,
+      'transcriptSha256', COALESCE(transcript_sha256, '')
+    )
+    FROM project_report_sources
+    WHERE report_id = r.id
+    ORDER BY id DESC
+    LIMIT 1
+  ),
+  'versions', COALESCE((
+    SELECT json_agg(json_build_object(
+      'versionId', id,
+      'versionNumber', version_number,
+      'changeType', change_type,
+      'changeSummary', COALESCE(change_summary, ''),
+      'savedBy', COALESCE(saved_by, ''),
+      'createdAt', created_at,
+      'payload', report_payload
+    ) ORDER BY version_number DESC, id DESC)
+    FROM project_report_versions
+    WHERE report_id = r.id
+  ), '[]'::json)
+)::text
+FROM project_reports r
+JOIN projects p ON p.id = r.project_id
+LEFT JOIN project_reporting_periods rp ON rp.id = r.reporting_period_id
+WHERE r.id = ${Number(reportId)}
+LIMIT 1;`);
+  return parseJsonLines(out)[0] || null;
+}
+
+async function listProjectMilestones(limit = 100) {
+  const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 250);
+  const out = await runPsql(`
+SELECT json_build_object(
+  'milestoneId', m.id,
+  'projectId', p.id,
+  'projectName', p.project_name,
+  'periodLabel', COALESCE(rp.period_label, ''),
+  'category', m.category,
+  'milestoneName', m.milestone_name,
+  'baselineFinishDate', m.baseline_finish_date,
+  'forecastFinishDate', m.forecast_finish_date,
+  'sortOrder', m.sort_order,
+  'latestAssessment', latest.assessment
+)::text
+FROM project_core_milestones m
+JOIN projects p ON p.id = m.project_id
+LEFT JOIN project_reporting_periods rp ON rp.id = m.reporting_period_id
+LEFT JOIN LATERAL (
+  SELECT json_build_object(
+    'status', a.status,
+    'trend', a.trend,
+    'confidence', a.confidence,
+    'summary', COALESCE(a.summary, ''),
+    'forecastFinishDate', a.forecast_finish_date,
+    'reportVersionId', a.report_version_id,
+    'createdAt', v.created_at
+  ) AS assessment
+  FROM project_report_milestone_assessments a
+  JOIN project_report_versions v ON v.id = a.report_version_id
+  WHERE a.milestone_id = m.id
+  ORDER BY v.created_at DESC, a.id DESC
+  LIMIT 1
+) latest ON TRUE
+WHERE m.is_active = TRUE
+ORDER BY p.project_name, rp.start_date DESC NULLS LAST, m.sort_order, m.id
+LIMIT ${safeLimit};`);
+  return parseJsonLines(out);
+}
+
+async function getProjectMilestoneDetail(milestoneId) {
+  const out = await runPsql(`
+SELECT json_build_object(
+  'milestoneId', m.id,
+  'projectId', p.id,
+  'projectName', p.project_name,
+  'periodLabel', COALESCE(rp.period_label, ''),
+  'category', m.category,
+  'milestoneName', m.milestone_name,
+  'baselineFinishDate', m.baseline_finish_date,
+  'forecastFinishDate', m.forecast_finish_date,
+  'sortOrder', m.sort_order,
+  'assessments', COALESCE((
+    SELECT json_agg(json_build_object(
+      'assessmentId', a.id,
+      'reportVersionId', a.report_version_id,
+      'reportId', v.report_id,
+      'status', a.status,
+      'trend', a.trend,
+      'confidence', a.confidence,
+      'summary', COALESCE(a.summary, ''),
+      'forecastFinishDate', a.forecast_finish_date,
+      'createdAt', v.created_at,
+      'evidence', COALESCE((
+        SELECT json_agg(json_build_object(
+          'evidenceText', evidence_text,
+          'speaker', COALESCE(speaker, ''),
+          'turnIndex', turn_index,
+          'confidence', confidence
+        ) ORDER BY id)
+        FROM project_report_evidence
+        WHERE report_version_id = a.report_version_id
+          AND linked_type = 'milestone'
+          AND linked_id = m.id
+      ), '[]'::json)
+    ) ORDER BY v.created_at DESC, a.id DESC)
+    FROM project_report_milestone_assessments a
+    JOIN project_report_versions v ON v.id = a.report_version_id
+    WHERE a.milestone_id = m.id
+  ), '[]'::json)
+)::text
+FROM project_core_milestones m
+JOIN projects p ON p.id = m.project_id
+LEFT JOIN project_reporting_periods rp ON rp.id = m.reporting_period_id
+WHERE m.id = ${Number(milestoneId)} AND m.is_active = TRUE
+LIMIT 1;`);
+  return parseJsonLines(out)[0] || null;
+}
+
 async function saveUploadedJob({ fileName, mimeType, transcriptText }) {
   const title = fileName || 'Uploaded transcript';
   const description = 'Auto-created from uploaded transcript.';
@@ -500,6 +674,10 @@ module.exports = {
   saveUploadedJob,
   saveMeetingMinutes,
   saveProjectUpdateDraft,
+  listProjectReports,
+  getProjectReportDetail,
+  listProjectMilestones,
+  getProjectMilestoneDetail,
   getMeetingStatus,
   claimNextJob,
   markJobCompleted,
