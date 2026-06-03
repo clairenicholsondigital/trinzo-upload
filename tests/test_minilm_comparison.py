@@ -443,6 +443,7 @@ Sarah: I can do that.
         points = " ".join(output["discussionPoints"]).lower()
         self.assertIn("clarify which dashboard", points)
         self.assertNotIn("one is live, one is almost live", points)
+        self.assertNotIn("action there", points)
 
     def test_rewrite_layer_removes_awkward_teams_objective_wording(self):
         output = {

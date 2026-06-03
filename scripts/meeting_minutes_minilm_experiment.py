@@ -2158,6 +2158,8 @@ def is_valid_discussion_point(text: str, support_count: int) -> tuple[bool, str]
         return False, "noise_or_banter"
     if is_request_or_question_fragment(cleaned):
         return False, "question_fragment"
+    if lowered.startswith("action there"):
+        return False, "action_context_statement"
     if is_action_like_sentence(cleaned) or is_decision_like_discussion(cleaned):
         return False, "action_or_decision_like"
     if is_bad_progress_fragment(cleaned):
