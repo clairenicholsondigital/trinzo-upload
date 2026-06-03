@@ -2108,6 +2108,20 @@ def normalize_rewritten_minutes_item(category: str, text: str) -> str:
     return cleaned
 
 
+def rewrite_loses_required_source_terms(category: str, before: str, after: str) -> bool:
+    if category != "action":
+        return False
+    generic_action_terms = {
+        "category", "categories", "result", "results", "scope", "team", "teams", "member", "members",
+        "management", "weekly",
+    }
+    source_terms = concrete_topic_tokens(before) - generic_action_terms
+    if not source_terms:
+        return False
+    rewritten_terms = concrete_topic_tokens(after) - generic_action_terms
+    return not bool(source_terms & rewritten_terms)
+
+
 def rewrite_minutes_output_payload(
     output: dict[str, Any],
     rewriter: LocalMinutesRewriter | None = None,
@@ -2154,8 +2168,11 @@ def rewrite_minutes_output_payload(
         before = plan_item["text"]
         rewritten = result_item.get("rewritten", before)
         rewrite_diag = result_item.get("meta", {})
+        if rewrite_loses_required_source_terms(category, before, rewritten):
+            rewritten = before
+            rewrite_diag = {**rewrite_diag, "reason": "source_terms_lost_fallback", "rewritten": False}
         reason = str(rewrite_diag.get("reason", ""))
-        rewrite_failed = reason and reason != "ok" and not rewrite_diag.get("rewritten", False)
+        rewrite_failed = reason and reason not in {"ok", "source_terms_lost_fallback"} and not rewrite_diag.get("rewritten", False)
         if rewrite_failed:
             diagnostics["rewriteFailureCount"] += 1
         if include_diagnostics:
