@@ -1116,6 +1116,39 @@ Support metrics call transcript
         self.assertEqual(action_map["Validate the first response numbers."]["meetingActionPointOwner"], "Chris")
         self.assertEqual(action_map["Validate the first response numbers."]["meetingActionPointDeadline"], "By Thursday")
 
+    def test_structural_decision_and_action_headers_are_not_participants_or_discussion(self):
+        transcript = """Transcript
+Auto-generated recording export - Support Metrics Review transcript
+00:00 Recording: Started by AutoNote
+00:01 Maya: The meeting title should be Support Metrics Review, not the recording export name.
+00:12 Chris: We need to settle support metrics for June, especially abandonment rate and repeat contact.
+00:35 Decision: keep abandonment rate as the lead metric for June because it is most visible to clients.
+00:59 Actions — Priya to build a weekly dashboard for abandonment rate and repeat contact by Friday; Chris to validate first response numbers by Thursday.
+01:21 Recording: Transcript saved.
+"""
+
+        intermediate = collect_minilm_only_context(transcript)
+        output, _diagnostics = build_minilm_only_output(transcript, intermediate, FakeMiniLMBackend())
+
+        self.assertEqual(output["meetingTitle"], "Support Metrics Review")
+        self.assertEqual(output["participants"]["trinzo"], ["Maya", "Chris"])
+        self.assertNotIn("Decision", output["participants"]["trinzo"])
+        self.assertNotIn("Actions", output["participants"]["trinzo"])
+        self.assertIn(
+            "Keep abandonment rate as the lead metric for June because it is most visible to clients.",
+            output["decisions"],
+        )
+        self.assertIn("Build a weekly dashboard for abandonment rate and repeat contact.", output["meetingActionPoint"])
+        self.assertIn("Validate first response numbers.", output["meetingActionPoint"])
+        action_map = {action["meetingActionPoint"]: action for action in output["actions"]}
+        self.assertEqual(action_map["Build a weekly dashboard for abandonment rate and repeat contact."]["meetingActionPointOwner"], "Priya")
+        self.assertEqual(action_map["Build a weekly dashboard for abandonment rate and repeat contact."]["meetingActionPointDeadline"], "By Friday")
+        self.assertEqual(action_map["Validate first response numbers."]["meetingActionPointOwner"], "Chris")
+        self.assertEqual(action_map["Validate first response numbers."]["meetingActionPointDeadline"], "By Thursday")
+        visible_blob = " ".join(output.get("meetingObjectives", []) + output.get("discussionPoints", [])).lower()
+        self.assertNotIn("actions —", visible_blob)
+        self.assertNotIn("recording export", visible_blob)
+
     def test_first_person_schedule_commitment_is_action_not_objective(self):
         transcript = """Transcript
 Risk review transcript

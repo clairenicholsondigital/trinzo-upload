@@ -916,7 +916,7 @@ def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBacke
 
     def extract_action_deadline(text: str) -> str:
         deadline_match = re.search(
-            r"\b(?:today|tomorrow|friday|monday|tuesday|wednesday|thursday|saturday|sunday|next week|this week|by [A-Za-z]+|before (?!it\b)[A-Za-z]+)\b",
+            r"\b(?:today|tomorrow|friday|monday|tuesday|wednesday|thursday|saturday|sunday|next week|this week|by (?:end of )?(?:[A-Za-z]+|EOD|COP)|before (?!it\b)[A-Za-z]+)\b",
             text,
             flags=re.I,
         )
@@ -1045,6 +1045,44 @@ def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBacke
         re.I,
     )
 
+    def split_owner_assigned_actions(body: str, default_owner: str = "Owner not specified") -> list[dict[str, str]]:
+        cleaned = normalize_text_fragment(body).strip(" -:;")
+        if not cleaned:
+            return []
+        pieces = [
+            normalize_text_fragment(part)
+            for part in re.split(
+                r"(?:[;\n]+|(?=\b[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2}\s+(?:to|will)\s+)|(?=\b[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2}\s*:))",
+                cleaned,
+            )
+            if normalize_text_fragment(part)
+        ]
+        actions = []
+        for piece in pieces:
+            owner = default_owner
+            task = piece
+            colon_owner = re.match(r"^([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})\s*:\s*(.+)$", piece)
+            owner_to = re.match(r"^([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})\s+to\s+(.+)$", piece)
+            owner_will = re.match(r"^([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})\s+will\s+(.+)$", piece)
+            addressed = re.match(r"^([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2}),\s*(?:please\s+)?(.+)$", piece)
+            if colon_owner:
+                owner = normalize_text_fragment(colon_owner.group(1)) or owner
+                task = colon_owner.group(2)
+            elif owner_to:
+                owner = normalize_text_fragment(owner_to.group(1)) or owner
+                task = owner_to.group(2)
+            elif owner_will:
+                owner = normalize_text_fragment(owner_will.group(1)) or owner
+                task = owner_will.group(2)
+            elif addressed:
+                owner = normalize_text_fragment(addressed.group(1)) or owner
+                task = addressed.group(2)
+            task = normalize_action_candidate_text(task.strip(" ."))
+            if not task or task.endswith("?") or len(tokenize(task)) < 3:
+                continue
+            actions.append({"text": task, "owner": owner or "Owner not specified", "deadline": extract_action_deadline(task)})
+        return actions
+
     def split_explicit_action_list(raw_text: str) -> list[str]:
         if not re.search(r"\bactions?\s+from\s+this\s*:?", raw_text, flags=re.I):
             return []
@@ -1069,6 +1107,29 @@ def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBacke
         text = normalize_text_fragment(record.get("text", ""))
         if not text:
             continue
+        header_text = strip_public_timestamp_tokens(text)
+        explicit_action_header = re.search(r"(?:^|[.!?]\s+)(?:actions?|next\s+steps)\s*[-—:]\s*(?P<body>.+)$", header_text, flags=re.I)
+        if explicit_action_header:
+            added_explicit_header_action = False
+            for parsed in split_owner_assigned_actions(explicit_action_header.group("body")):
+                task = parsed["text"]
+                key = canonical_action_dedupe_key(task)
+                if key in seen:
+                    continue
+                outputs.append(
+                    {
+                        "text": task,
+                        "owner": parsed["owner"],
+                        "deadline": parsed["deadline"],
+                        "baseScore": max(0.86, float(record.get("scores", {}).get("action", 0.0))),
+                        "source": "explicit_action_header_fallback",
+                        "roleScores": {},
+                    }
+                )
+                seen.add(key)
+                added_explicit_header_action = True
+            if added_explicit_header_action:
+                continue
         explicit_actions = split_explicit_action_list(raw_text)
         if explicit_actions:
             for task_text in explicit_actions:
@@ -1114,22 +1175,16 @@ def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBacke
         if actual_action_match:
             body = normalize_text_fragment(actual_action_match.group("body"))
             added_actual_action = False
-            for match in re.finditer(
-                r"\b(?P<owner>[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})\s+to\s+(?P<task>.+?)(?=(?:\s+[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2}\s+to\s+)|$)",
-                body,
-            ):
-                owner = normalize_text_fragment(match.group("owner"))
-                task = normalize_action_candidate_text(match.group("task").strip(" ."))
-                if not task or len(tokenize(task)) < 3:
-                    continue
+            for parsed in split_owner_assigned_actions(body):
+                task = parsed["text"]
                 key = canonical_action_dedupe_key(task)
                 if key in seen:
                     continue
                 outputs.append(
                     {
                         "text": task,
-                        "owner": owner or "Owner not specified",
-                        "deadline": extract_action_deadline(task),
+                        "owner": parsed["owner"],
+                        "deadline": parsed["deadline"],
                         "baseScore": max(0.84, float(record.get("scores", {}).get("action", 0.0))),
                         "source": "actual_action_fallback",
                         "roleScores": {},
@@ -1552,7 +1607,15 @@ def collect_decision_candidates(intermediate: dict[str, Any], backend: MiniLMBac
         if not text or text.endswith("?") or len(tokenize(text)) < 4:
             continue
         fallback_text = ""
-        if lowered.startswith("decision:"):
+        speaker = normalize_text_fragment(record.get("speaker", ""))
+        if speaker.lower() in {"decision", "decisions"}:
+            decision_text = strip_public_timestamp_tokens(text)
+            if re.match(r"^(?:actions?|next\s+steps)\s*[-—:]\s+", decision_text, flags=re.I):
+                decision_text = ""
+            decision_text = re.split(r"\s+\d{1,2}:\d{2}(?::\d{2})?\s+(?:actions?|next\s+steps)\s*[-—:]\s*", decision_text, maxsplit=1, flags=re.I)[0].strip()
+            if decision_text:
+                fallback_text = decision_text[:1].upper() + decision_text[1:]
+        elif lowered.startswith("decision:"):
             decision_text = re.sub(r"^decision:\s*", "", text, flags=re.I).strip()
             if decision_text:
                 fallback_text = decision_text[:1].upper() + decision_text[1:]
@@ -2250,6 +2313,8 @@ def should_keep_discussion_candidate(candidate: dict[str, Any]) -> tuple[bool, s
         return False, "request_or_question_fragment"
     if is_explicit_objective_statement(text):
         return False, "explicit_objective_statement"
+    if re.search(r"(?:^|\b\d{1,2}:\d{2}(?::\d{2})?\s+)(?:actions?|next\s+steps|decisions?)\s*[-—:]\s+", text, flags=re.I):
+        return False, "explicit_structured_minutes_line"
     if is_addressed_action_directive(text):
         return False, "addressed_action_directive"
     if lowered.startswith("action there"):
@@ -2694,6 +2759,8 @@ def is_valid_discussion_point(text: str, support_count: int) -> tuple[bool, str]
         return False, "question_fragment"
     if is_explicit_objective_statement(cleaned):
         return False, "explicit_objective_statement"
+    if re.search(r"(?:^|\b\d{1,2}:\d{2}(?::\d{2})?\s+)(?:actions?|next\s+steps|decisions?)\s*[-—:]\s+", cleaned, flags=re.I):
+        return False, "explicit_structured_minutes_line"
     if is_addressed_action_directive(cleaned):
         return False, "addressed_action_directive"
     if lowered.startswith("action there"):
@@ -2753,7 +2820,7 @@ def should_accept_action_candidate(candidate: dict[str, Any]) -> tuple[bool, str
     ):
         return False, "not_action_like"
     if (
-        re.match(r"^(?:we need to|need to)\s+look at\b", text, flags=re.I)
+        re.match(r"^(?:we need to|need to)\s+(?:look at|settle|decide|confirm)\b", text, flags=re.I)
         and normalize_text(candidate.get("owner", "")) in {"", "owner not specified"}
         and not normalize_text_fragment(candidate.get("deadline", ""))
     ):
@@ -3014,12 +3081,24 @@ def build_minilm_only_output(
 
     speaker_names = []
     seen_speakers = set()
+    structural_speaker_names = {
+        "action",
+        "actions",
+        "decision",
+        "decisions",
+        "next step",
+        "next steps",
+        "recording",
+        "transcript",
+    }
     speaker_sources = list(intermediate.get("turns", [])) + list(intermediate.get("records", []))
     for turn in speaker_sources:
         speaker = normalize_text_fragment(turn.get("speaker", ""))
         if not speaker:
             continue
         lowered = speaker.lower()
+        if lowered in structural_speaker_names:
+            continue
         if lowered in seen_speakers:
             continue
         seen_speakers.add(lowered)
