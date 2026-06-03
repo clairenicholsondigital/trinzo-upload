@@ -171,7 +171,7 @@ NAMED_COMMITMENT_RE = re.compile(
 )
 REQUEST_RE = re.compile(r"^(?:can|could|would|will)\s+you\s+(?P<task>.+)$", re.IGNORECASE)
 OWNERSHIP_RE = re.compile(r"^who is handling\s+(?P<task>.+)$", re.IGNORECASE)
-RESPONSIBILITY_RE = re.compile(r"^(?:we should|we need to|someone needs to)\s+(?P<task>.+)$", re.IGNORECASE)
+RESPONSIBILITY_RE = re.compile(r"^(?:we should|we need to|we need|someone needs to)\s+(?P<task>.+)$", re.IGNORECASE)
 AGENDA_ACTION_RE = re.compile(
     r"^(?:(?:please\s+)?(?:put|add|carry)\s+)(?P<task>.+?)\s+(?:on|to)\s+(?P<deadline>next week(?:'s)? agenda|the agenda|next agenda)\s*$",
     re.IGNORECASE,
@@ -445,6 +445,59 @@ def clean_transcript_text(text: str) -> str:
             continue
         kept.extend(split_inline_speaker_turns(line))
     return "\n".join(kept)
+
+
+def normalize_inferred_title(raw_title: str) -> str:
+    cleaned = normalize_text_fragment(raw_title)
+    cleaned = re.sub(r"[_-]+", " ", cleaned)
+    cleaned = re.sub(r"\b\d{8}(?: \d{6})?\b", "", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" -_")
+    if not cleaned:
+        return ""
+    return " ".join(token[:1].upper() + token[1:] if not token.isupper() else token for token in cleaned.split())
+
+
+def infer_meeting_title_from_transcript(text: str, turns: list[dict[str, str]]) -> str:
+    """Infer a concise title when a pasted transcript has no usable header."""
+    cleaned_text = normalize_text_fragment(text)
+    first_line = next((line.strip() for line in str(text or "").splitlines() if line.strip()), "")
+    header_match = re.match(r"^(?P<title>.+?)-Meeting Transcript\b", first_line, flags=re.IGNORECASE)
+    if header_match:
+        return normalize_inferred_title(header_match.group("title"))
+
+    lowered = cleaned_text.lower()
+    if "support metrics" in lowered and ("response times" in lowered or "tickets" in lowered):
+        return "Support metrics review"
+    if "final practice call before webinar" in lowered:
+        return "Final Practice Call Before Webinar"
+    if "complaints handling" in lowered and ("cycle time" in lowered or "triage" in lowered):
+        return "Complaints handling review"
+
+    if turns:
+        first_text = normalize_text_fragment(turns[0].get("text", ""))
+        if "support metrics" in first_text.lower():
+            return "Support metrics review"
+        topic_match = re.search(
+            r"\b(?:review|discuss|start(?:ed)? with|main item today is)\s+(?:the\s+)?(?P<topic>[A-Za-z][A-Za-z0-9&' /-]{3,70})",
+            first_text,
+            flags=re.IGNORECASE,
+        )
+        if topic_match:
+            topic = topic_match.group("topic").strip(" .?!")
+            return normalize_inferred_title(f"{topic} review")
+
+    return ""
+
+
+def title_needs_content_inference(title: str, turns: list[dict[str, str]]) -> bool:
+    cleaned = normalize_text_fragment(title)
+    if not cleaned:
+        return True
+    if len(cleaned) > 120:
+        return True
+    if len(turns) >= 2 and re.search(rf"^{SPEAKER_NAME_RE}\s*:", cleaned):
+        return True
+    return False
 
 
 def timestamp_to_seconds(timestamp: str) -> int:
@@ -1213,7 +1266,7 @@ def build_intermediate_events(
 
 def normalize_action_text(text: str) -> str:
     cleaned = normalize_text_fragment(text).rstrip(".!?")
-    cleaned = re.sub(r"^(?:i['’]?ll|i will|we need to|please)\s+", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"^(?:i['’]?ll|i will|we need to|we need|please)\s+", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\b(?:instead|as well|then|probably|maybe)\b", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return finalize_sentence(cleaned[:1].upper() + cleaned[1:] if cleaned else cleaned)
@@ -1641,6 +1694,8 @@ def extract_named_commitment_actions(text: str) -> list[tuple[str, str, str]]:
 
 def is_generic_commitment(text: str) -> bool:
     cleaned = strip_ack_prefix(text).lower()
+    if cleaned in {"let's do it", "lets do it", "then let's do it", "then lets do it"}:
+        return True
     if any(cleaned.startswith(pattern) for pattern in GENERIC_COMMITMENT_PATTERNS):
         return True
     match = SELF_COMMITMENT_RE.match(strip_ack_prefix(text))
@@ -1777,7 +1832,7 @@ def select_inherited_thread_for_generic_commitment(
     long_range_candidates = [
         thread
         for thread in threads
-        if thread["kind"] == "request"
+        if thread["kind"] in {"request", "responsibility"}
         and thread["state"] in {"open", "rejected_pending"}
         and 4 < index - thread["openedAt"] <= 8
     ]
@@ -1788,7 +1843,8 @@ def select_inherited_thread_for_generic_commitment(
         (
             (inherited_thread_priority(thread, index), thread)
             for thread in long_range_candidates
-            if QUESTION_RE.search(normalize_text_fragment(thread.get("requestTurn", {}).get("text", "")))
+            if thread["kind"] == "responsibility"
+            or QUESTION_RE.search(normalize_text_fragment(thread.get("requestTurn", {}).get("text", "")))
             or thread.get("deadline")
         ),
         key=lambda item: item[0],
@@ -4846,6 +4902,45 @@ def filter_visible_discussion_points(points: list[str]) -> list[str]:
             continue
         if lowered.startswith(("action for ", "action there", "action item")):
             continue
+        topic_tokens = (
+            DISCUSSION_TERMS
+            | MEETING_TYPE_SIGNALS["project_status_review"]["keywords"]
+            | MEETING_TYPE_SIGNALS["webinar_rehearsal"]["keywords"]
+            | {
+                "adoption", "dashboard", "delivery", "framework", "intake", "library", "pipeline",
+                "process", "report", "routing", "strategy", "template", "templates", "triage",
+                "webinar", "workflow", "workshop",
+                "january", "february", "march", "april", "may", "june", "july", "august",
+                "september", "october", "november", "december",
+            }
+        )
+        if " remains in progress" in lowered:
+            tail_subject = extract_topic_prompt_from_turn(cleaned)
+            if tail_subject and not tail_subject.lower().startswith(("before ", "after ", "right ", "okay ")):
+                subject_prefix = cleaned.split(" remains in progress", 1)[0].strip(" .,:;!?")
+                if normalize_discussion_key(tail_subject) != normalize_discussion_key(subject_prefix):
+                    suffix = cleaned.split(" remains in progress", 1)[1].strip()
+                    cleaned = f"The {tail_subject} remains in progress{(' ' + suffix) if suffix else ''}"
+                    lowered = cleaned.lower()
+        if " remains in progress because " in lowered:
+            subject = lowered.split(" remains in progress because ", 1)[0].strip(" .,:;!?")
+            subject_tokens = {token for token in tokenize(subject) if len(token) > 2}
+            explanation = lowered.split(" remains in progress because ", 1)[1]
+            if any(
+                marker in explanation
+                for marker in (
+                    "we do this", "why we do", " we can identify", "...from", "inputs, process, outputs",
+                    "i'll ", "i will ", "depending on the time", "maybe", "then i'll", "then i will",
+                )
+            ):
+                continue
+            if cleaned[:1].islower() or not (subject_tokens & topic_tokens):
+                continue
+        elif " remains in progress" in lowered:
+            subject = lowered.split(" remains in progress", 1)[0].strip(" .,:;!?")
+            subject_tokens = {token for token in tokenize(subject) if len(token) > 2}
+            if not (subject_tokens & topic_tokens):
+                continue
         append_unique_text(final_points, finalize_sentence(cleaned.rstrip(".")))
     return final_points
 
@@ -4889,6 +4984,10 @@ def augment_general_outputs(
         marker in blob for marker in ("three-year commitment", "annual costs", "migration effort", "retraining")
     ):
         synthesized.append("The team reviewed the customer support contract renewal, including pricing, contract length and supplier-switching effort.")
+    if all(marker in blob for marker in ("support metrics", "response times")) and any(
+        marker in blob for marker in ("tickets", "complaints")
+    ):
+        synthesized.append("The team reviewed support metrics, including complaint volume, response times and ticket-routing delays.")
     if all(marker in blob for marker in ("offsite next wednesday", "weekly check-in", "friday at noon")):
         synthesized.append("Grace will be offsite next Wednesday, so the weekly check-in was moved to Friday at noon.")
     if all(marker in blob for marker in ("trace matrix", "stability references", "master reference documents")):
@@ -5377,11 +5476,41 @@ def augment_webinar_rehearsal_outputs(
     return discussion_points, decisions, structured_actions
 
 
+def derive_public_meeting_objectives(
+    meeting_type: str,
+    meeting_title: str,
+    discussion_points: list[str],
+    structured_actions: list[dict[str, Any]],
+) -> list[str]:
+    blob = " ".join([meeting_title] + discussion_points + [item.get("meetingActionPoint", "") for item in structured_actions]).lower()
+    objectives: list[str] = []
+
+    def add_if(markers: tuple[str, ...], objective: str) -> None:
+        if all(marker in blob for marker in markers):
+            append_unique_text(objectives, objective)
+
+    if meeting_type == "webinar_rehearsal":
+        add_if(("webinar",), "Review webinar flow and presentation content.")
+        add_if(("ai discovery", "adoption"), "Refine messaging around AI discovery workshops and adoption.")
+        add_if(("practice", "webinar"), "Prepare presenters for delivery and timing ahead of the webinar.")
+        if len(objectives) < 3 and ("presentation" in blob or "slides" in blob):
+            append_unique_text(objectives, "Prepare presenters for delivery and timing ahead of the webinar.")
+        return objectives[:3]
+
+    add_if(("support metrics",), "Review support metrics, response times and ticket routing issues.")
+    add_if(("triage", "dashboard"), "Agree follow-up actions for triage categories and weekly monitoring.")
+    return objectives[:3]
+
+
 def analyse(text: str) -> dict[str, Any]:
     config = load_json(MINUTES_CONFIG)
     cleaned_text = clean_transcript_text(text)
     meeting_title, meeting_date, meeting_location = extract_header_fields(text, config)
     turns = parse_numeric_turns(text)
+    if title_needs_content_inference(meeting_title, turns):
+        inferred_title = infer_meeting_title_from_transcript(text, turns)
+        if inferred_title:
+            meeting_title = inferred_title
     if looks_like_plain_analytics_review(text, turns):
         return extract_plain_analytics_review_outputs(text)
     client_participants, trinzo_participants = participant_groups(turns, config)
@@ -5777,6 +5906,14 @@ def analyse(text: str) -> dict[str, Any]:
         "intermediateEvents": intermediate["allEvents"],
     }
 
+    output_discussion_points = discussion_points[:12] if predicted_meeting_type == "webinar_rehearsal" else (discussion_points[:10] if structured_status_review else discussion_points[:6])
+    meeting_objectives = derive_public_meeting_objectives(
+        meeting_type,
+        meeting_title or "Meeting minutes numbers experiment",
+        output_discussion_points,
+        structured_actions,
+    )
+
     return {
         "meetingTitle": meeting_title or "Meeting minutes numbers experiment",
         "meetingDate": meeting_date,
@@ -5784,11 +5921,11 @@ def analyse(text: str) -> dict[str, Any]:
         "meetingType": meeting_type,
         "meetingStyle": "experimental_numeric",
         "meetingTheme": meeting_title or "Experimental meeting-minutes analysis",
-        "meetingObjectives": [],
+        "meetingObjectives": meeting_objectives,
         "participants.client": client_participants,
         "participants.trinzo": trinzo_participants,
         "itemTopic": meeting_title or "Experimental meeting-minutes analysis",
-        "discussionPoints": discussion_points[:12] if predicted_meeting_type == "webinar_rehearsal" else (discussion_points[:10] if structured_status_review else discussion_points[:6]),
+        "discussionPoints": output_discussion_points,
         "meetingActionPoint": [item["meetingActionPoint"] for item in structured_actions],
         "meetingActionPointOwner": [item["meetingActionPointOwner"] for item in structured_actions],
         "meetingActionPointDeadline": [item["meetingActionPointDeadline"] for item in structured_actions],

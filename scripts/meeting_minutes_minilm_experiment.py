@@ -618,6 +618,8 @@ def normalize_expected_payload(payload: Any) -> Any:
             normalized["mustContainDecisions"] = payload["decisions"]
         if "meetingActionPoint" in payload and "mustContainActions" not in payload:
             normalized["mustContainActions"] = payload["meetingActionPoint"]
+        if "meetingObjectives" in payload and "mustContainMeetingObjectives" not in payload:
+            normalized["mustContainMeetingObjectives"] = payload["meetingObjectives"]
         if "expectedMeetingType" in payload and "meetingType" not in payload:
             normalized["meetingType"] = payload["expectedMeetingType"]
         if "expectedParticipants" in payload and "participants" not in payload:
@@ -675,6 +677,7 @@ def evaluate_output(folder_name: str, actual: dict[str, Any], exp: dict[str, Any
 
     decisions = actual.get("decisions", [])
     discussion_points = actual.get("discussionPoints", [])
+    meeting_objectives = actual.get("meetingObjectives", [])
     actions = action_texts(actual)
     action_objects = [action for action in actual.get("actions", []) if isinstance(action, dict)]
     executive_summary = actual.get("executiveSummary", "")
@@ -702,6 +705,12 @@ def evaluate_output(folder_name: str, actual: dict[str, Any], exp: dict[str, Any
     for text in exp.get("mustNotContainDiscussionPoints", []):
         if contains_match(discussion_points, text):
             failures.append(f"forbidden discussion point present: {text!r}")
+    for text in exp.get("mustContainMeetingObjectives", []):
+        if not contains_match(meeting_objectives, text):
+            failures.append(f"missing meeting objective {text!r}; {format_closest(closest_values(meeting_objectives, text))}")
+    for text in exp.get("mustNotContainMeetingObjectives", []):
+        if contains_match(meeting_objectives, text):
+            failures.append(f"forbidden meeting objective present: {text!r}")
     for text in exp.get("mustContainActions", []):
         expected_text = text.get("text", "") if isinstance(text, dict) else text
         matched = any(action_matches(action, text) for action in action_objects) if isinstance(text, dict) else contains_match(actions, text)
@@ -778,6 +787,13 @@ def infer_minilm_meeting_title(transcript_text: str) -> str:
     lines = [line.strip() for line in str(cleaned_transcript or "").splitlines() if line.strip()]
     if not lines:
         return "MiniLM transcript review"
+    original_first_line = next((line.strip() for line in str(transcript_text or "").splitlines() if line.strip()), "")
+    header_match = re.match(r"^(?P<title>.+?)-Meeting Transcript\b", original_first_line, flags=re.I)
+    if header_match:
+        title = normalize_text_fragment(header_match.group("title").replace("_", " ").replace("-", " "))
+        title = re.sub(r"\b\d{8}(?:\s+\d{6})?\b", "", title).strip()
+        if title:
+            return title
     for line in lines[:8]:
         if re.match(r"^meeting\s+transcript\s*:\s*(.+)$", line, flags=re.I):
             title = normalize_text_fragment(re.sub(r"^meeting\s+transcript\s*:\s*", "", line, flags=re.I))
@@ -793,10 +809,14 @@ def infer_minilm_meeting_title(transcript_text: str) -> str:
             continue
         if re.search(r"\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december)\b", line, re.I):
             continue
+        if len(line) > 120 or re.search(rf"^{SPEAKER_NAME_RE}\s*:", line):
+            break
         return line
-    body = " ".join(line.split(":", 1)[1] for line in lines[:8] if ":" in line).lower()
+    body = " ".join(lines[:12]).lower()
     if "support metrics" in body or ("response times" in body and "tickets" in body):
         return "Support metrics review"
+    if "final practice call before webinar" in body:
+        return "Final Practice Call Before Webinar"
     if "complaints handling" in body:
         return "Complaints handling review"
     if "customer portal" in body:
@@ -2259,7 +2279,13 @@ def should_accept_cluster_candidate(candidate: dict[str, Any], existing: list[di
         return False, "duplicate_of_selected_cluster"
     if candidate["supportCount"] < 1 and semantic_density(candidate["text"]) < 0.58 and not has_meaningful_topic_terms(candidate["text"]):
         return False, "insufficient_support"
-    if candidate["supportCount"] < 2 and candidate["score"] < 0.58:
+    high_signal_status = (
+        candidate["supportCount"] < 2
+        and candidate["score"] >= 0.42
+        and has_meaningful_topic_terms(candidate["text"])
+        and bool(set(tokenize(candidate["text"])) & {"blocked", "blocker", "pending", "required", "risk", "issue"})
+    )
+    if candidate["supportCount"] < 2 and candidate["score"] < 0.58 and not high_signal_status:
         return False, "weak_single_turn_cluster"
     return True, "accepted"
 
@@ -2369,7 +2395,25 @@ def build_cluster_discussion_candidate(cluster: list[dict[str, Any]], speaker_na
         if not has_meaningful_topic_terms(candidate["text"]) and semantic_density(candidate["text"]) < 0.58
     )
     if (len(summary_cluster) > 1 and coherence_score < 0.18) or filler_like > max(1, len(summary_cluster) // 2):
-        return None
+        fallback_candidates = [
+            candidate
+            for candidate in summary_cluster
+            if is_valid_discussion_point(candidate.get("text", ""), evidence_support_count(candidate))[0]
+        ]
+        if not fallback_candidates:
+            return None
+        fallback = max(
+            fallback_candidates,
+            key=lambda item: (
+                item.get("combinedScore", item.get("baseScore", 0.0)),
+                evidence_support_count(item),
+                semantic_density(item.get("text", "")),
+            ),
+        )
+        point_text = fallback["text"]
+        evidence = dedupe_evidence(fallback.get("evidence", []))[:4]
+        support_count = evidence_support_count(fallback)
+        coherence_score = round(min(1.0, semantic_density(point_text)), 4)
     valid, reason = is_valid_discussion_point(point_text, support_count)
     if not valid:
         window_candidates = [

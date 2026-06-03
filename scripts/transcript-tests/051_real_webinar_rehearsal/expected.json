@@ -30,6 +30,11 @@
     "The presenters discussed timing management and presentation delivery ahead of the webinar.",
     "A potential engagement approach for GlaxoSmithKline was discussed, focused on process evaluation, AI discovery workshops and training."
   ],
+  "mustNotContainDiscussionPoints": [
+    "But through a structured two-part cultural understanding that we do, you will understand and you will unearth a lot of hidden opportunities",
+    "workshop really engages the team remains in progress",
+    "Yep, I like that. Find a way to clean that up"
+  ],
   "meetingActionPoint": [
     "Refine presentation wording to better explain why AI initiatives should begin with defined business problems.",
     "Reduce text-heavy slides and replace them with workshop and people-focused visuals.",

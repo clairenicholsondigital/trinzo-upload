@@ -1,0 +1,31 @@
+{
+  "meetingTitle": "Support metrics review",
+  "expectedActionCountMin": 3,
+  "expectedDiscussionCountMin": 2,
+  "mustContainDiscussionTopics": [
+    [
+      "support metrics"
+    ],
+    [
+      "complex cases",
+      "simple requests"
+    ],
+    [
+      "onboarding guide"
+    ]
+  ],
+  "mustContainActions": [
+    "Separate triage categories.",
+    "Monitor the results weekly.",
+    "Set up a dashboard."
+  ],
+  "mustContainMeetingObjectives": [
+    "Review support metrics, response times and ticket routing issues.",
+    "Agree follow-up actions for triage categories and weekly monitoring."
+  ],
+  "mustNotContain": [
+    "James:",
+    "Rachel:",
+    "Mark:"
+  ]
+}

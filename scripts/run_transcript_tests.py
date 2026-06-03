@@ -80,6 +80,8 @@ def normalize_expected_payload(payload):
             normalized["mustContainDecisions"] = payload["decisions"]
         if "meetingActionPoint" in payload and "mustContainActions" not in payload:
             normalized["mustContainActions"] = payload["meetingActionPoint"]
+        if "meetingObjectives" in payload and "mustContainMeetingObjectives" not in payload:
+            normalized["mustContainMeetingObjectives"] = payload["meetingObjectives"]
         if "expectedMeetingType" in payload and "meetingType" not in payload:
             normalized["meetingType"] = payload["expectedMeetingType"]
         if "expectedParticipants" in payload and "participants" not in payload:
@@ -384,6 +386,7 @@ for folder in test_folders:
 
     decisions = actual.get("decisions", [])
     discussion_points = actual.get("discussionPoints", [])
+    meeting_objectives = actual.get("meetingObjectives", [])
     actions = action_texts(actual)
     action_objects = [action for action in actual.get("actions", []) if isinstance(action, dict)]
     executive_summary = actual.get("executiveSummary", "")
@@ -430,6 +433,18 @@ for folder in test_folders:
     for text in exp.get("mustNotContainDiscussionPoints", []):
         if contains_match(discussion_points, text):
             add_failure(folder_failures, folder.name, f"forbidden discussion point present: {text!r}")
+
+    for text in exp.get("mustContainMeetingObjectives", []):
+        if not contains_match(meeting_objectives, text):
+            add_failure(
+                folder_failures,
+                folder.name,
+                f"missing meeting objective {text!r}; {format_closest(closest_values(meeting_objectives, text))}",
+            )
+
+    for text in exp.get("mustNotContainMeetingObjectives", []):
+        if contains_match(meeting_objectives, text):
+            add_failure(folder_failures, folder.name, f"forbidden meeting objective present: {text!r}")
 
     for text in exp.get("mustContainActions", []):
         expected_text = text.get("text", "") if isinstance(text, dict) else text
