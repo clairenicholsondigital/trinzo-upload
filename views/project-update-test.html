@@ -29,6 +29,8 @@ button { background:linear-gradient(180deg,var(--accent),#0fb5ab); color:#02173B
 button.secondary { background:#132847; color:#dbeafe; border:1px solid var(--border); }
 button:disabled { opacity:.6; cursor:not-allowed; }
 .actions, .json-heading { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; justify-content:space-between; }
+.project-report-brand { display:flex; gap:.75rem; align-items:center; }
+.project-report-logo { width:132px; height:auto; background:#fff; border-radius:6px; padding:.35rem; }
 .message { margin-top:1rem; padding:.75rem; border-radius:10px; background:#17233f; border:1px solid var(--border); white-space:pre-wrap; }
 .message.error { background:#3a1515; border-color:#7f1d1d; }
 .message.success { background:#0f2f29; border-color:#116149; }
@@ -77,6 +79,17 @@ a { color:#67e8f9; }
   .panel { padding:.85rem; border-radius:10px; }
   .project-form-grid { grid-template-columns:1fr; }
   .project-tab { flex:1 1 auto; }
+}
+@media print {
+  body { background:#fff; color:#111827; padding:0; }
+  .container { max-width:none; }
+  .project-nav, body > .container > main > .panel:first-child, #summaryPanel, #debugPanel, #jsonPanel, button, .project-tabs, .project-hidden-field { display:none !important; }
+  .panel, .table-scroll, .summary-item, .project-display-value, input, select, textarea { background:#fff !important; color:#111827 !important; border-color:#d1d5db !important; box-shadow:none !important; }
+  .panel { border-radius:0; margin:0 0 1rem; }
+  .project-tab-panel.hidden { display:block !important; }
+  .project-tab-panel { min-height:auto; page-break-inside:avoid; }
+  .project-report-logo { background:transparent; padding:0; }
+  a { color:#111827; }
 }
 </style>
 </head>

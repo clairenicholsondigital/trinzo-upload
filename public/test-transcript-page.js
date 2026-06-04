@@ -36,8 +36,14 @@ function buildTranscriptTestPage(config) {
 
     <section id="projectReportPanel" class="panel hidden">
       <div class="json-heading">
-        <h2>Project report</h2>
-        <button id="copyProjectReportBtn" class="secondary" type="button">Copy report JSON</button>
+        <div class="project-report-brand">
+          <img class="project-report-logo" src="/static/trinzo-logo.svg" alt="Trinzo logo" />
+          <h2>Project report</h2>
+        </div>
+        <div class="actions">
+          <button id="downloadProjectReportPdfBtn" class="secondary" type="button">Download branded PDF</button>
+          <button id="copyProjectReportBtn" class="secondary" type="button">Copy report JSON</button>
+        </div>
       </div>
       <div id="projectReportOutput"></div>
     </section>
@@ -72,6 +78,7 @@ function buildTranscriptTestPage(config) {
   const projectReportPanel = document.getElementById('projectReportPanel');
   const projectReportOutput = document.getElementById('projectReportOutput');
   const copyProjectReportBtn = document.getElementById('copyProjectReportBtn');
+  const downloadProjectReportPdfBtn = document.getElementById('downloadProjectReportPdfBtn');
   const jsonPanel = document.getElementById('jsonPanel');
   const jsonOutput = document.getElementById('jsonOutput');
   const debugPanel = document.getElementById('debugPanel');
@@ -151,8 +158,10 @@ function buildTranscriptTestPage(config) {
   }
 
   function renderDisplayField(value, path) {
+    const statusPath = /(^|\.)(status|delivery_status|health_assessment|trend)$/i.test(String(path || ''));
+    const displayValue = statusPath && String(value || '').trim().toLowerCase() === 'unknown' ? '' : value;
     return `
-      <span class="project-display-value">${escapeHtml(sentenceLabel(value) || '—')}</span>
+      <span class="project-display-value">${escapeHtml(sentenceLabel(displayValue) || '—')}</span>
       <input class="project-hidden-field" type="hidden" data-project-path="${escapeHtml(path)}" value="${escapeHtml(value ?? '')}" />
     `;
   }
@@ -679,6 +688,11 @@ function buildTranscriptTestPage(config) {
     if (!state.projectReport) return;
     await navigator.clipboard.writeText(JSON.stringify(state.projectReport, null, 2));
     setMessage('Project report JSON copied to clipboard.', 'success');
+  });
+  downloadProjectReportPdfBtn.addEventListener('click', () => {
+    refreshProjectReportState();
+    if (!state.projectReport) return;
+    window.print();
   });
   restoreProjectAutosave();
 }

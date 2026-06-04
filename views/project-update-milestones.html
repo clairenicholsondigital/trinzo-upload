@@ -76,8 +76,13 @@ th:last-child, td:last-child { border-right:0; }
   }
 
   function friendlyLabel(value) {
-    const label = String(value || '').replace(/[_-]+/g, ' ').trim().replace(/\b\w/g, (letter) => letter.toUpperCase());
-    return label ? label.charAt(0).toUpperCase() + label.slice(1).toLowerCase() : '-';
+    const words = String(value || '').replace(/[_-]+/g, ' ').trim().split(/\s+/).filter(Boolean);
+    if (!words.length) return '-';
+    return words.map((word) => {
+      const lower = word.toLowerCase();
+      if (['ai', 'rag', 'sow', 'ei'].includes(lower)) return lower.toUpperCase();
+      return lower.charAt(0).toUpperCase() + lower.slice(1);
+    }).join(' ');
   }
 
   function colourValue(value) {
@@ -147,7 +152,7 @@ th:last-child, td:last-child { border-right:0; }
                 const latest = milestone.latestAssessment || {};
                 return `
                   <tr>
-                    <td><a href="/project-update-test/milestones/${escapeHtml(milestone.milestoneId)}">${escapeHtml(milestone.milestoneName || '-')}</a></td>
+                    <td><a href="/project-update-test/milestones/${escapeHtml(milestone.milestoneId)}">${escapeHtml(friendlyLabel(milestone.milestoneName))}</a></td>
                     <td>${escapeHtml(milestone.projectName || '-')}</td>
                     <td>${escapeHtml(milestone.periodLabel || '-')}</td>
                     <td>${escapeHtml(dateOnly(milestone.baselineFinishDate))}</td>
@@ -199,7 +204,7 @@ th:last-child, td:last-child { border-right:0; }
     const assessments = Array.isArray(milestone.assessments) ? milestone.assessments : [];
     app.innerHTML = `
       <section class="panel">
-        <h1>${escapeHtml(milestone.milestoneName || 'Milestone')}</h1>
+        <h1>${escapeHtml(friendlyLabel(milestone.milestoneName) || 'Milestone')}</h1>
         <div class="grid">
           <div class="item"><div class="label">Project</div><div class="value">${escapeHtml(milestone.projectName || '-')}</div></div>
           <div class="item"><div class="label">Period</div><div class="value">${escapeHtml(milestone.periodLabel || '-')}</div></div>

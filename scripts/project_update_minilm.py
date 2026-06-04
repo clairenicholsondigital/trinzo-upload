@@ -218,6 +218,10 @@ def friendly_milestone_label(value: str) -> str:
     return " ".join(labels) or "Workstream"
 
 
+def blank_unknown_status(value: Any) -> Any:
+    return "" if str(value or "").strip().lower() == "unknown" else value
+
+
 def build_report_payload(result: dict[str, Any], enriched_segments: list[dict[str, Any]], diagnostics: dict[str, Any]) -> dict[str, Any]:
     summary = result.get("project_health_summary", {})
     overall = summary.get("overall_health", "unknown")
@@ -239,6 +243,13 @@ def build_report_payload(result: dict[str, Any], enriched_segments: list[dict[st
                 }
             )
 
+    report_milestones = []
+    for segment in enriched_segments:
+        item = dict(segment)
+        item["delivery_status"] = blank_unknown_status(item.get("delivery_status"))
+        item["health_assessment"] = blank_unknown_status(item.get("health_assessment"))
+        report_milestones.append(item)
+
     return {
         "reportStatus": "draft",
         "overallHealth": health_to_report_status(overall),
@@ -247,13 +258,13 @@ def build_report_payload(result: dict[str, Any], enriched_segments: list[dict[st
         "keyUpdates": [clean_text(item) for item in key_updates if clean_text(item)],
         "healthAreas": {
             area: {
-                "status": health_to_report_status(overall if area == "schedule" else "unknown"),
+                "status": blank_unknown_status(health_to_report_status(overall if area == "schedule" else "unknown")),
                 "trend": "stable",
                 "evidence": matches,
             }
             for area, matches in diagnostics.get("healthAreaMatches", {}).items()
         },
-        "milestones": enriched_segments,
+        "milestones": report_milestones,
         "risks": risk_suggestions,
         "actions": result.get("actions", []),
         "comparisonSnapshot": result.get("comparison_snapshot", {}),

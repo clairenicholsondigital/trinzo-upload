@@ -67,6 +67,11 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertIn("Copy report JSON", shared_js)
         self.assertIn("renderSelectField", shared_js)
         self.assertIn("['draft', 'in_review', 'approved', 'archived']", shared_js)
+        self.assertIn("Download branded PDF", shared_js)
+        self.assertIn("/static/trinzo-logo.svg", shared_js)
+        self.assertIn("window.print()", shared_js)
+        self.assertIn("@media print", page)
+        self.assertTrue((REPO_DIR / "public" / "trinzo-logo.svg").read_text(encoding="utf-8").startswith("<svg"))
         self.assertIn('<details class="raw-json">', shared_js)
         self.assertIn('data-project-add="milestones"', shared_js)
         self.assertIn('data-project-remove="milestones"', shared_js)
@@ -89,6 +94,14 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertGreater(len(risk_titles), 0)
         self.assertTrue(any("AI Pipeline Strategy needs attention" == title for title in risk_titles))
         self.assertFalse(any("_" in title for title in risk_titles))
+
+    def test_unknown_generated_statuses_are_blank_in_project_report(self):
+        transcript = FIXTURE.read_text(encoding="utf-8")
+        result = build_project_update_output(transcript, use_minilm=False, use_rewrite=False)
+        report = result["projectReport"]
+
+        self.assertFalse(any(area["status"] == "unknown" for area in report["healthAreas"].values()))
+        self.assertFalse(any(item.get("delivery_status") == "unknown" for item in report["milestones"]))
 
     def test_project_update_browsing_routes_are_registered(self):
         server = (REPO_DIR / "server.js").read_text(encoding="utf-8")
@@ -114,6 +127,8 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertIn('id="milestoneForm"', milestones_page)
         self.assertIn("Create milestone", milestones_page)
         self.assertIn("baselineFinishDate", milestones_page)
+        self.assertIn("friendlyLabel(milestone.milestoneName)", milestones_page)
+        self.assertIn("['ai', 'rag', 'sow', 'ei']", milestones_page)
 
     def test_project_update_save_path_stores_milestone_deadlines(self):
         db = (REPO_DIR / "utils" / "db.js").read_text(encoding="utf-8")
