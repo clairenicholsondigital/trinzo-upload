@@ -63,3 +63,5 @@ Run the same scoring pack against the deployed web-app API:
 ```bash
 python3 scripts/run_meeting_minutes_final_golden_eval.py --base-url https://trinzo.virtual-hub.online
 ```
+
+For the full repeatable process, interpretation guidance, and safe-change checklist, see `RUNBOOK.md`.
