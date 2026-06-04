@@ -32,12 +32,16 @@ CREATE TABLE IF NOT EXISTS project_core_milestones (
   reporting_period_id BIGINT REFERENCES project_reporting_periods(id) ON DELETE SET NULL,
   category TEXT NOT NULL,
   milestone_name TEXT NOT NULL,
+  description TEXT,
   baseline_finish_date DATE,
   forecast_finish_date DATE,
   sort_order INT NOT NULL DEFAULT 0,
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE project_core_milestones
+  ADD COLUMN IF NOT EXISTS description TEXT;
 
 CREATE TABLE IF NOT EXISTS project_core_risks (
   id BIGSERIAL PRIMARY KEY,

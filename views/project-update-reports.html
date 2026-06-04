@@ -4,10 +4,13 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Project update reports</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet" />
 <style>
 :root { color-scheme: dark; --bg:#0b1020; --panel:#11192f; --panel2:#0f172a; --border:#2d3d60; --muted:#95a7cb; --text:#eef3ff; --accent:#17D0C4; }
 * { box-sizing:border-box; }
-body { margin:0; padding:1rem; background:var(--bg); color:var(--text); font-family:Arial, Helvetica, sans-serif; }
+body { margin:0; padding:1rem; background:var(--bg); color:var(--text); font-family:Roboto, Arial, Helvetica, sans-serif; }
 .container { max-width:1280px; margin:0 auto; }
 .nav { display:flex; gap:.75rem; flex-wrap:wrap; margin-bottom:1rem; }
 a { color:#67e8f9; }
@@ -25,13 +28,34 @@ th, td { border-bottom:1px solid var(--border); border-right:1px solid var(--bor
 thead th { background:#132847; color:#dbeafe; position:sticky; top:0; }
 tr:last-child td { border-bottom:0; }
 th:last-child, td:last-child { border-right:0; }
-.button-link { display:inline-block; background:#132847; color:#dbeafe; border:1px solid var(--border); border-radius:8px; padding:.5rem .7rem; font-weight:700; text-decoration:none; white-space:nowrap; }
+.actions { display:flex; gap:.65rem; flex-wrap:wrap; align-items:center; }
+.brand { display:flex; gap:.75rem; align-items:center; margin-right:auto; }
+.brand img { width:132px; height:auto; background:#071126; border:1px solid var(--border); border-radius:6px; padding:.45rem; }
+.button-link, button { display:inline-block; background:#132847; color:#dbeafe; border:1px solid var(--border); border-radius:8px; padding:.5rem .7rem; font-weight:700; text-decoration:none; white-space:nowrap; cursor:pointer; font:inherit; }
+button.primary { background:linear-gradient(180deg,var(--accent),#0fb5ab); border-color:#0fb5ab; color:#02173B; }
+button:disabled { opacity:.6; cursor:not-allowed; }
+label { display:block; color:var(--muted); font-size:.86rem; font-weight:700; }
+select, textarea { width:100%; margin-top:.35rem; background:#071126; color:var(--text); border:1px solid var(--border); border-radius:10px; padding:.65rem; font:inherit; }
+textarea { min-height:7rem; resize:vertical; }
+.json-editor { min-height:36rem; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:.9rem; }
 pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126; border:1px solid var(--border); border-radius:10px; padding:1rem; }
 .status { margin:.75rem 0; color:var(--muted); }
+.status.error { color:#fecaca; }
+.status.success { color:#bbf7d0; }
 .summary { max-width:56rem; }
 .colour-field { display:flex; align-items:center; justify-content:center; min-height:1.6rem; }
 .colour-swatch { display:inline-block; width:1.35rem; height:1.35rem; border-radius:999px; border:2px solid rgba(238,243,255,.85); box-shadow:0 0 0 1px rgba(0,0,0,.45), inset 0 0 0 1px rgba(0,0,0,.25); }
 .colour-swatch.unknown { background:transparent; border-style:dashed; border-color:var(--muted); }
+@media print {
+  body { background:#fff; color:#111827; padding:0; }
+  .nav, .actions, .edit-panel, details { display:none !important; }
+  .panel { background:#fff; color:#111827; border-color:#d1d5db; break-inside:avoid; }
+  .print-footer { display:block !important; position:fixed; left:0; right:0; bottom:0; color:#6b7280; font-size:8px; border-top:1px solid #d1d5db; padding-top:2mm; }
+  .print-footer::after { content:"Page " counter(page); float:right; }
+  a { color:#111827; }
+  th { background:#f3f4f6; color:#111827; }
+  th, td, .table-scroll { border-color:#d1d5db; }
+}
 </style>
 </head>
 <body>
@@ -107,6 +131,35 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
     return versions[0] && versions[0].payload ? versions[0].payload : {};
   }
 
+  function parseEditedReport() {
+    const editor = document.getElementById('projectReportJsonEditor');
+    if (!editor) return null;
+    const parsed = JSON.parse(editor.value || '{}');
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('Project report JSON must be an object.');
+    }
+    return parsed;
+  }
+
+  function updateEditedReportField(path, value) {
+    const editor = document.getElementById('projectReportJsonEditor');
+    if (!editor) return;
+    let report;
+    try {
+      report = parseEditedReport();
+    } catch (error) {
+      return;
+    }
+    const parts = path.split('.');
+    let node = report;
+    parts.slice(0, -1).forEach((part) => {
+      if (!node[part] || typeof node[part] !== 'object') node[part] = {};
+      node = node[part];
+    });
+    node[parts[parts.length - 1]] = value;
+    editor.value = JSON.stringify(report, null, 2);
+  }
+
   function renderError(error) {
     app.innerHTML = `<section class="panel"><h1>Project update reports</h1><p class="status">${escapeHtml(error.message || 'Could not load reports.')}</p></section>`;
   }
@@ -148,10 +201,20 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
     const milestones = asArray(projectReport.milestones);
     const risks = asArray(projectReport.risks);
     const actions = asArray(projectReport.actions);
+    const statusOptions = ['draft', 'in_review', 'approved', 'archived'];
     app.innerHTML = `
       <section class="panel">
-        <h1>Report ${escapeHtml(report.reportId)}</h1>
+        <div class="actions">
+          <div class="brand">
+            <img src="/static/trinzo-logo.svg" alt="Trinzo logo" />
+            <h1>Report ${escapeHtml(report.reportId)}</h1>
+          </div>
+          <button id="exportReportPdfBtn" type="button">Export PDF</button>
+          <button id="saveReportBtn" class="primary" type="button">Save report</button>
+        </div>
         <p class="intro summary">${escapeHtml(projectReport.summary || 'No summary saved for this report.')}</p>
+        <div class="print-footer" style="display:none">Exported ${escapeHtml(new Date().toLocaleString())}</div>
+        <p id="reportSaveStatus" class="status"></p>
         <div class="grid">
           <div class="item"><div class="label">Project</div><div class="value">${escapeHtml(report.projectName || '-')}</div></div>
           <div class="item"><div class="label">Period</div><div class="value">${escapeHtml(report.periodLabel || '-')}</div></div>
@@ -159,6 +222,26 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
           <div class="item"><div class="label">Overall health</div><div class="value">${escapeHtml(friendlyLabel(projectReport.overallHealth))}</div></div>
           <div class="item"><div class="label">Overall colour</div><div class="value">${renderColour(projectReport.overallHealthRag)}</div></div>
         </div>
+      </section>
+      <section class="panel edit-panel">
+        <h2>Edit report</h2>
+        <div class="grid">
+          <label>Report status
+            <select id="reportStatusEditor">
+              ${statusOptions.map((status) => `<option value="${escapeHtml(status)}" ${status === (report.reportStatus || projectReport.reportStatus) ? 'selected' : ''}>${escapeHtml(friendlyLabel(status))}</option>`).join('')}
+            </select>
+          </label>
+          <label>Executive summary
+            <textarea id="reportSummaryEditor">${escapeHtml(projectReport.summary || '')}</textarea>
+          </label>
+        </div>
+        <label style="margin-top:.75rem">Project report JSON
+          <textarea id="projectReportJsonEditor" class="json-editor" spellcheck="false">${escapeHtml(JSON.stringify(projectReport, null, 2))}</textarea>
+        </label>
+        <details class="raw-json" style="margin-top:.75rem">
+          <summary>Transcript used for report</summary>
+          <pre>${escapeHtml(report.source && report.source.transcriptText ? report.source.transcriptText : 'Transcript text is not available for this report.')}</pre>
+        </details>
       </section>
       <section class="panel">
         <h2>Executive summary</h2>
@@ -237,6 +320,70 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
         </details>
       </section>
     `;
+    const saveButton = document.getElementById('saveReportBtn');
+    const exportButton = document.getElementById('exportReportPdfBtn');
+    const statusNode = document.getElementById('reportSaveStatus');
+    const statusEditor = document.getElementById('reportStatusEditor');
+    const summaryEditor = document.getElementById('reportSummaryEditor');
+    const jsonEditor = document.getElementById('projectReportJsonEditor');
+    let autosaveTimer = null;
+
+    function setSaveStatus(text, type) {
+      statusNode.textContent = text || '';
+      statusNode.className = type ? `status ${type}` : 'status';
+    }
+
+    async function saveReport(automatic) {
+      clearTimeout(autosaveTimer);
+      let editedReport;
+      try {
+        editedReport = parseEditedReport();
+      } catch (error) {
+        setSaveStatus(error.message || 'Project report JSON is invalid.', 'error');
+        return;
+      }
+      saveButton.disabled = true;
+      setSaveStatus(automatic ? 'Autosaving report...' : 'Saving report...');
+      try {
+        const response = await fetch(`/api/project-update-test/reports/${encodeURIComponent(report.reportId)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            reportStatus: statusEditor.value,
+            projectReport: editedReport,
+            changeSummary: automatic ? 'Autosaved from report detail page.' : 'Saved from report detail page.'
+          })
+        });
+        const result = await response.json().catch(() => null);
+        if (!response.ok || !result || result.ok === false) {
+          throw new Error(result && result.error ? result.error : `Request failed with status ${response.status}.`);
+        }
+        setSaveStatus(`${automatic ? 'Autosaved' : 'Saved'} at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`, 'success');
+        report = result.report;
+      } catch (error) {
+        setSaveStatus(error.message || 'Could not save report.', 'error');
+      } finally {
+        saveButton.disabled = false;
+      }
+    }
+
+    function queueAutosave() {
+      setSaveStatus('Unsaved changes...');
+      clearTimeout(autosaveTimer);
+      autosaveTimer = setTimeout(() => saveReport(true), 900);
+    }
+
+    summaryEditor.addEventListener('input', () => {
+      updateEditedReportField('summary', summaryEditor.value);
+      queueAutosave();
+    });
+    statusEditor.addEventListener('change', () => {
+      updateEditedReportField('reportStatus', statusEditor.value);
+      queueAutosave();
+    });
+    jsonEditor.addEventListener('input', queueAutosave);
+    saveButton.addEventListener('click', () => saveReport(false));
+    exportButton.addEventListener('click', () => window.print());
   }
 
   async function load() {

@@ -43,7 +43,6 @@ function buildTranscriptTestPage(config) {
         <div class="actions">
           <button id="downloadProjectReportPdfBtn" class="secondary" type="button">Download PDF</button>
           <button id="openProjectReportFullScreenBtn" class="secondary" type="button">Open in full screen</button>
-          <button id="copyProjectReportBtn" class="secondary" type="button">Copy report JSON</button>
         </div>
       </div>
       <div id="projectReportOutput"></div>
@@ -58,9 +57,9 @@ function buildTranscriptTestPage(config) {
 
     <section id="jsonPanel" class="panel hidden">
       <details class="raw-json">
-        <summary>Raw JSON response</summary>
+        <summary>Backend & Debug Information</summary>
         <div class="json-heading">
-          <h2>Raw JSON response</h2>
+          <h2>Backend & Debug Information</h2>
           <button id="copyBtn" class="secondary" type="button">Copy JSON</button>
         </div>
         <pre id="jsonOutput"></pre>
@@ -80,7 +79,6 @@ function buildTranscriptTestPage(config) {
   const projectReportPanel = document.getElementById('projectReportPanel');
   const projectReportOutput = document.getElementById('projectReportOutput');
   const projectReportPrintOutput = document.getElementById('projectReportPrintOutput');
-  const copyProjectReportBtn = document.getElementById('copyProjectReportBtn');
   const downloadProjectReportPdfBtn = document.getElementById('downloadProjectReportPdfBtn');
   const openProjectReportFullScreenBtn = document.getElementById('openProjectReportFullScreenBtn');
   const jsonPanel = document.getElementById('jsonPanel');
@@ -481,6 +479,7 @@ function buildTranscriptTestPage(config) {
 
     return `
       <div class="project-print-report">
+        <div class="project-print-footer">Exported ${escapeHtml(new Date().toLocaleString())}</div>
         <section>
           <h3>Summary</h3>
           <div class="project-print-summary">
@@ -554,7 +553,12 @@ function buildTranscriptTestPage(config) {
   function renderSnapshotTab(report, result) {
     const snapshot = report.comparisonSnapshot || {};
     const persistence = result.projectReportPersistence || {};
+    const backendPayload = result || {};
+    const transcript = textInput.value || '';
     return `
+      <div class="actions" style="justify-content:flex-start;margin-bottom:.75rem">
+        <button id="copyProjectReportBtn" class="secondary" type="button">Copy report JSON</button>
+      </div>
       <div class="project-meta-grid">
         <div class="summary-item"><div class="summary-label">Mode</div><div class="summary-value">${escapeHtml(result.mode || 'unknown')}</div></div>
         <div class="summary-item"><div class="summary-label">Saved</div><div class="summary-value">${escapeHtml(persistence.saved === true ? 'yes' : 'no')}</div></div>
@@ -569,6 +573,15 @@ function buildTranscriptTestPage(config) {
         <label class="wide">Persistence metadata
           <textarea readonly>${escapeHtml(JSON.stringify(persistence, null, 2))}</textarea>
         </label>
+        <label class="wide">Transcript used for report
+          <textarea readonly>${escapeHtml(transcript || 'Transcript text is not available in this browser session.')}</textarea>
+        </label>
+        <details class="raw-json wide">
+          <summary>Backend & Debug Information</summary>
+          <label class="wide">Backend JSON
+            <textarea readonly>${escapeHtml(JSON.stringify(backendPayload, null, 2))}</textarea>
+          </label>
+        </details>
       </div>
     `;
   }
@@ -647,6 +660,15 @@ function buildTranscriptTestPage(config) {
         });
       });
     });
+    const copyProjectReportBtn = document.getElementById('copyProjectReportBtn');
+    if (copyProjectReportBtn) {
+      copyProjectReportBtn.addEventListener('click', async () => {
+        refreshProjectReportState();
+        if (!state.projectReport) return;
+        await navigator.clipboard.writeText(JSON.stringify(state.projectReport, null, 2));
+        setMessage('Project report JSON copied to clipboard.', 'success');
+      });
+    }
     projectReportPanel.classList.remove('hidden');
   }
 
@@ -677,6 +699,7 @@ function buildTranscriptTestPage(config) {
   function displayJson(payload) {
     state.result = payload;
     jsonOutput.textContent = JSON.stringify(payload, null, 2);
+    if (config.projectReportUi) return;
     jsonPanel.classList.remove('hidden');
   }
 
@@ -803,12 +826,6 @@ function buildTranscriptTestPage(config) {
   clearBtn.addEventListener('click', confirmResetPage);
   textInput.addEventListener('input', queueProjectAutosave);
   copyBtn.addEventListener('click', copyJson);
-  copyProjectReportBtn.addEventListener('click', async () => {
-    refreshProjectReportState();
-    if (!state.projectReport) return;
-    await navigator.clipboard.writeText(JSON.stringify(state.projectReport, null, 2));
-    setMessage('Project report JSON copied to clipboard.', 'success');
-  });
   downloadProjectReportPdfBtn.addEventListener('click', () => {
     refreshProjectReportState();
     if (!state.projectReport) return;

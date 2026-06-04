@@ -105,6 +105,7 @@ SELECT json_build_object(
     SELECT json_build_object(
       'sourceType', source_type,
       'fileName', COALESCE(file_name, ''),
+      'transcriptText', COALESCE(transcript_text, ''),
       'transcriptLength', transcript_length,
       'transcriptSha256', COALESCE(transcript_sha256, '')
     )
@@ -135,6 +136,54 @@ LIMIT 1;`);
   return parseJsonLines(out)[0] || null;
 }
 
+async function saveProjectReportDetail(reportId, payload = {}) {
+  const id = Number(reportId);
+  if (!Number.isFinite(id) || id <= 0) {
+    const error = new Error('Valid report id is required.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const existing = await getProjectReportDetail(id);
+  if (!existing) return null;
+
+  const latest = Array.isArray(existing.versions) && existing.versions[0] ? existing.versions[0] : {};
+  const latestPayload = latest.payload && typeof latest.payload === 'object' ? latest.payload : {};
+  const projectReport = payload.projectReport && typeof payload.projectReport === 'object'
+    ? payload.projectReport
+    : latestPayload.projectReport;
+  if (!projectReport || typeof projectReport !== 'object') {
+    const error = new Error('Project report payload is required.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const allowedStatuses = new Set(['draft', 'in_review', 'approved', 'archived']);
+  const requestedStatus = String(payload.reportStatus || projectReport.reportStatus || existing.reportStatus || 'draft').trim();
+  const reportStatus = allowedStatuses.has(requestedStatus) ? requestedStatus : 'draft';
+  const nextVersion = Number(latest.versionNumber || 0) + 1;
+  const nextPayload = {
+    ...latestPayload,
+    projectReport: {
+      ...projectReport,
+      reportStatus,
+      updatedAt: new Date().toISOString()
+    }
+  };
+
+  await runPsql(`
+BEGIN;
+UPDATE project_reports
+SET report_status = ${q(reportStatus)},
+    updated_at = NOW()
+WHERE id = ${id};
+INSERT INTO project_report_versions (report_id, version_number, change_type, change_summary, saved_by, report_payload)
+VALUES (${id}, ${nextVersion}, 'user_edit', ${q(payload.changeSummary || 'Saved from report detail page.')}, ${q(payload.savedBy || 'OpenClaw')}, ${qJson(nextPayload)});
+COMMIT;`);
+
+  return getProjectReportDetail(id);
+}
+
 async function listProjectMilestones(limit = 100) {
   const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 250);
   const out = await runPsql(`
@@ -145,6 +194,7 @@ SELECT json_build_object(
   'periodLabel', COALESCE(rp.period_label, ''),
   'category', m.category,
   'milestoneName', m.milestone_name,
+  'description', COALESCE(m.description, ''),
   'baselineFinishDate', m.baseline_finish_date,
   'forecastFinishDate', m.forecast_finish_date,
   'sortOrder', m.sort_order,
@@ -184,6 +234,7 @@ SELECT json_build_object(
   'periodLabel', COALESCE(rp.period_label, ''),
   'category', m.category,
   'milestoneName', m.milestone_name,
+  'description', COALESCE(m.description, ''),
   'baselineFinishDate', m.baseline_finish_date,
   'forecastFinishDate', m.forecast_finish_date,
   'sortOrder', m.sort_order,
@@ -235,6 +286,7 @@ async function createProjectMilestone(payload = {}) {
   const projectName = String(payload.projectName || process.env.PROJECT_UPDATE_DEFAULT_PROJECT || 'Project update test').trim() || 'Project update test';
   const periodLabel = String(payload.periodLabel || currentQuarterLabel()).trim() || currentQuarterLabel();
   const category = String(payload.category || 'Manual').trim() || 'Manual';
+  const description = String(payload.description || '').trim();
   const baselineFinishDate = payload.baselineFinishDate || payload.baseline_finish_date || payload.deadline || '';
   const forecastFinishDate = payload.forecastFinishDate || payload.forecast_finish_date || payload.deadline || '';
 
@@ -274,8 +326,8 @@ WITH existing AS (
   ORDER BY id
   LIMIT 1
 ), inserted AS (
-  INSERT INTO project_core_milestones (project_id, reporting_period_id, category, milestone_name, baseline_finish_date, forecast_finish_date, sort_order, is_active)
-  SELECT ${projectId}, ${reportingPeriodId}, ${q(category)}, ${q(milestoneName)}, ${qDate(baselineFinishDate)}, ${qDate(forecastFinishDate)},
+  INSERT INTO project_core_milestones (project_id, reporting_period_id, category, milestone_name, description, baseline_finish_date, forecast_finish_date, sort_order, is_active)
+  SELECT ${projectId}, ${reportingPeriodId}, ${q(category)}, ${q(milestoneName)}, ${q(description)}, ${qDate(baselineFinishDate)}, ${qDate(forecastFinishDate)},
     COALESCE((SELECT MAX(sort_order) + 1 FROM project_core_milestones WHERE project_id = ${projectId}), 0), TRUE
   WHERE NOT EXISTS (SELECT 1 FROM existing)
   RETURNING id
@@ -283,6 +335,7 @@ WITH existing AS (
   UPDATE project_core_milestones
   SET reporting_period_id = ${reportingPeriodId},
       category = ${q(category)},
+      description = ${q(description)},
       baseline_finish_date = COALESCE(${qDate(baselineFinishDate)}, baseline_finish_date),
       forecast_finish_date = COALESCE(${qDate(forecastFinishDate)}, forecast_finish_date)
   WHERE id IN (SELECT id FROM existing)
@@ -303,7 +356,7 @@ FROM (
   return milestone ? { ...milestone, created: created === 't' || created === 'true' } : null;
 }
 
-async function updateProjectMilestoneDeadlines(milestoneId, payload = {}) {
+async function updateProjectMilestone(milestoneId, payload = {}) {
   const id = Number(milestoneId);
   if (!Number.isFinite(id) || id <= 0) {
     const error = new Error('Valid milestone id is required.');
@@ -311,12 +364,23 @@ async function updateProjectMilestoneDeadlines(milestoneId, payload = {}) {
     throw error;
   }
 
-  const baselineFinishDate = payload.baselineFinishDate || payload.baseline_finish_date || '';
-  const forecastFinishDate = payload.forecastFinishDate || payload.forecast_finish_date || '';
+  const existing = await getProjectMilestoneDetail(id);
+  if (!existing) return null;
+
+  const baselineFinishDate = Object.prototype.hasOwnProperty.call(payload, 'baselineFinishDate')
+    ? payload.baselineFinishDate
+    : (Object.prototype.hasOwnProperty.call(payload, 'baseline_finish_date') ? payload.baseline_finish_date : existing.baselineFinishDate);
+  const forecastFinishDate = Object.prototype.hasOwnProperty.call(payload, 'forecastFinishDate')
+    ? payload.forecastFinishDate
+    : (Object.prototype.hasOwnProperty.call(payload, 'forecast_finish_date') ? payload.forecast_finish_date : existing.forecastFinishDate);
+  const description = Object.prototype.hasOwnProperty.call(payload, 'description')
+    ? String(payload.description || '').trim()
+    : existing.description;
   await runPsql(`
 UPDATE project_core_milestones
 SET baseline_finish_date = ${qDate(baselineFinishDate)},
-    forecast_finish_date = ${qDate(forecastFinishDate)}
+    forecast_finish_date = ${qDate(forecastFinishDate)},
+    description = ${q(description)}
 WHERE id = ${id} AND is_active = TRUE;`);
 
   return getProjectMilestoneDetail(id);
@@ -780,10 +844,11 @@ module.exports = {
   saveProjectUpdateDraft,
   listProjectReports,
   getProjectReportDetail,
+  saveProjectReportDetail,
   listProjectMilestones,
   getProjectMilestoneDetail,
   createProjectMilestone,
-  updateProjectMilestoneDeadlines,
+  updateProjectMilestone,
   getMeetingStatus,
   claimNextJob,
   markJobCompleted,

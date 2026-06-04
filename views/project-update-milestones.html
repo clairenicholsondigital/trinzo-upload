@@ -4,10 +4,13 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Project update milestones</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet" />
 <style>
 :root { color-scheme: dark; --bg:#0b1020; --panel:#11192f; --panel2:#0f172a; --border:#2d3d60; --muted:#95a7cb; --text:#eef3ff; --accent:#17D0C4; --danger:#dc2626; --success:#16a34a; }
 * { box-sizing:border-box; }
-body { margin:0; padding:1rem; background:var(--bg); color:var(--text); font-family:Arial, Helvetica, sans-serif; }
+body { margin:0; padding:1rem; background:var(--bg); color:var(--text); font-family:Roboto, Arial, Helvetica, sans-serif; }
 .container { max-width:1280px; margin:0 auto; }
 .nav { display:flex; gap:.75rem; flex-wrap:wrap; margin-bottom:1rem; }
 a { color:#67e8f9; }
@@ -18,8 +21,10 @@ h2 { margin:.1rem 0 .75rem; font-size:1.1rem; }
 .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:.75rem; }
 .form-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.75rem; align-items:end; }
 .form-grid label { color:var(--muted); font-size:.86rem; font-weight:700; }
-.form-grid input { width:100%; margin-top:.35rem; background:#071126; color:var(--text); border:1px solid var(--border); border-radius:10px; padding:.65rem; font:inherit; }
+.form-grid input, .form-grid textarea { width:100%; margin-top:.35rem; background:#071126; color:var(--text); border:1px solid var(--border); border-radius:10px; padding:.65rem; font:inherit; }
+.form-grid textarea { min-height:5.5rem; resize:vertical; }
 .form-grid .wide { grid-column:span 2; }
+.form-grid .full { grid-column:1 / -1; }
 button { background:linear-gradient(180deg,var(--accent),#0fb5ab); color:#02173B; border:none; border-radius:10px; padding:.65rem .95rem; font-weight:700; cursor:pointer; }
 button:disabled { opacity:.6; cursor:not-allowed; }
 .item { background:#071126; border:1px solid var(--border); border-radius:10px; padding:.75rem; }
@@ -133,6 +138,9 @@ th:last-child, td:last-child { border-right:0; }
           <label>Category
             <input name="category" type="text" value="Manual" />
           </label>
+          <label class="full">Description
+            <textarea name="description" placeholder="Milestone description"></textarea>
+          </label>
           <label>Baseline deadline
             <input name="baselineFinishDate" type="date" />
           </label>
@@ -205,6 +213,7 @@ th:last-child, td:last-child { border-right:0; }
     app.innerHTML = `
       <section class="panel">
         <h1>${escapeHtml(friendlyLabel(milestone.milestoneName) || 'Milestone')}</h1>
+        <p class="intro">${escapeHtml(milestone.description || 'No description saved for this milestone.')}</p>
         <div class="grid">
           <div class="item"><div class="label">Project</div><div class="value">${escapeHtml(milestone.projectName || '-')}</div></div>
           <div class="item"><div class="label">Period</div><div class="value">${escapeHtml(milestone.periodLabel || '-')}</div></div>
@@ -213,15 +222,18 @@ th:last-child, td:last-child { border-right:0; }
         </div>
       </section>
       <section class="panel">
-        <h2>Edit deadlines</h2>
+        <h2>Edit milestone</h2>
         <form id="milestoneDeadlineForm" class="form-grid">
+          <label class="full">Description
+            <textarea name="description" placeholder="Milestone description">${escapeHtml(milestone.description || '')}</textarea>
+          </label>
           <label>Baseline deadline
             <input name="baselineFinishDate" type="date" value="${escapeHtml(dateOnly(milestone.baselineFinishDate) === '-' ? '' : dateOnly(milestone.baselineFinishDate))}" />
           </label>
           <label>Forecast deadline
             <input name="forecastFinishDate" type="date" value="${escapeHtml(dateOnly(milestone.forecastFinishDate) === '-' ? '' : dateOnly(milestone.forecastFinishDate))}" />
           </label>
-          <button type="submit">Save deadlines</button>
+          <button type="submit">Save milestone</button>
         </form>
         <p id="milestoneDeadlineStatus" class="status"></p>
       </section>
@@ -260,7 +272,7 @@ th:last-child, td:last-child { border-right:0; }
       const button = form.querySelector('button[type="submit"]');
       const formData = new FormData(form);
       formStatus.className = 'status';
-      formStatus.textContent = 'Saving deadlines...';
+      formStatus.textContent = 'Saving milestone...';
       button.disabled = true;
       try {
         const response = await fetch(`/api/project-update-test/milestones/${encodeURIComponent(milestone.milestoneId)}`, {
@@ -273,7 +285,7 @@ th:last-child, td:last-child { border-right:0; }
           throw new Error(result && result.error ? result.error : `Request failed with status ${response.status}.`);
         }
         formStatus.className = 'status success';
-        formStatus.textContent = 'Deadlines saved.';
+        formStatus.textContent = 'Milestone saved.';
         renderDetail(result.milestone);
       } catch (error) {
         formStatus.className = 'status error';
