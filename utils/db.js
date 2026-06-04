@@ -52,6 +52,12 @@ function parseJsonLines(out) {
     .map((line) => JSON.parse(line));
 }
 
+function parseOptionalId(out) {
+  const line = String(out || '').split('\n').find((item) => /^\d+$/.test(item));
+  const id = Number(line);
+  return Number.isFinite(id) && id > 0 ? id : null;
+}
+
 async function listProjectReports(limit = 50) {
   const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 100);
   const out = await runPsql(`
@@ -216,6 +222,85 @@ LEFT JOIN project_reporting_periods rp ON rp.id = m.reporting_period_id
 WHERE m.id = ${Number(milestoneId)} AND m.is_active = TRUE
 LIMIT 1;`);
   return parseJsonLines(out)[0] || null;
+}
+
+async function createProjectMilestone(payload = {}) {
+  const milestoneName = String(payload.milestoneName || '').trim();
+  if (!milestoneName) {
+    const error = new Error('Milestone name is required.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const projectName = String(payload.projectName || process.env.PROJECT_UPDATE_DEFAULT_PROJECT || 'Project update test').trim() || 'Project update test';
+  const periodLabel = String(payload.periodLabel || currentQuarterLabel()).trim() || currentQuarterLabel();
+  const category = String(payload.category || 'Manual').trim() || 'Manual';
+  const baselineFinishDate = payload.baselineFinishDate || payload.baseline_finish_date || payload.deadline || '';
+  const forecastFinishDate = payload.forecastFinishDate || payload.forecast_finish_date || payload.deadline || '';
+
+  let projectId = parseOptionalId(
+    await runPsql(`SELECT id::text FROM projects WHERE project_name = ${q(projectName)} ORDER BY id LIMIT 1;`)
+  );
+  if (!projectId) {
+    projectId = parseOptionalId(
+      await runPsql(`INSERT INTO projects (project_name, description, status, updated_at)
+        VALUES (${q(projectName)}, 'Created from /project-update-test milestones.', 'active', NOW())
+        RETURNING id::text;`)
+    );
+  }
+  if (!projectId) throw new Error('Could not create project milestone: missing project id.');
+
+  let reportingPeriodId = parseOptionalId(
+    await runPsql(`SELECT id::text FROM project_reporting_periods
+      WHERE project_id = ${projectId} AND period_type = 'quarter' AND period_label = ${q(periodLabel)}
+      ORDER BY id
+      LIMIT 1;`)
+  );
+  if (!reportingPeriodId) {
+    reportingPeriodId = parseOptionalId(
+      await runPsql(`INSERT INTO project_reporting_periods (project_id, period_type, period_label, start_date, end_date)
+        VALUES (${projectId}, 'quarter', ${q(periodLabel)}, ${q(quarterStartDate(periodLabel))}::date, ${q(quarterEndDate(periodLabel))}::date)
+        ON CONFLICT (project_id, period_type, period_label) DO UPDATE SET period_label = EXCLUDED.period_label
+        RETURNING id::text;`)
+    );
+  }
+  if (!reportingPeriodId) throw new Error('Could not create project milestone: missing reporting period id.');
+
+  const out = await runPsql(`
+WITH existing AS (
+  SELECT id
+  FROM project_core_milestones
+  WHERE project_id = ${projectId} AND milestone_name = ${q(milestoneName)} AND is_active = TRUE
+  ORDER BY id
+  LIMIT 1
+), inserted AS (
+  INSERT INTO project_core_milestones (project_id, reporting_period_id, category, milestone_name, baseline_finish_date, forecast_finish_date, sort_order, is_active)
+  SELECT ${projectId}, ${reportingPeriodId}, ${q(category)}, ${q(milestoneName)}, ${qDate(baselineFinishDate)}, ${qDate(forecastFinishDate)},
+    COALESCE((SELECT MAX(sort_order) + 1 FROM project_core_milestones WHERE project_id = ${projectId}), 0), TRUE
+  WHERE NOT EXISTS (SELECT 1 FROM existing)
+  RETURNING id
+), updated AS (
+  UPDATE project_core_milestones
+  SET reporting_period_id = ${reportingPeriodId},
+      category = ${q(category)},
+      baseline_finish_date = COALESCE(${qDate(baselineFinishDate)}, baseline_finish_date),
+      forecast_finish_date = COALESCE(${qDate(forecastFinishDate)}, forecast_finish_date)
+  WHERE id IN (SELECT id FROM existing)
+  RETURNING id
+)
+SELECT id::text || '|' || created::text
+FROM (
+  SELECT id, TRUE AS created FROM inserted
+  UNION ALL
+  SELECT id, FALSE AS created FROM updated
+  UNION ALL
+  SELECT id, FALSE AS created FROM existing
+  LIMIT 1
+) selected;`);
+
+  const [milestoneId, created] = (out.split('\n').find((line) => /^\d+\|/.test(line)) || '|').split('|');
+  const milestone = await getProjectMilestoneDetail(milestoneId);
+  return milestone ? { ...milestone, created: created === 't' || created === 'true' } : null;
 }
 
 async function saveUploadedJob({ fileName, mimeType, transcriptText }) {
@@ -678,6 +763,7 @@ module.exports = {
   getProjectReportDetail,
   listProjectMilestones,
   getProjectMilestoneDetail,
+  createProjectMilestone,
   getMeetingStatus,
   claimNextJob,
   markJobCompleted,

@@ -24,6 +24,7 @@ const {
   getProjectReportDetail,
   listProjectMilestones,
   getProjectMilestoneDetail,
+  createProjectMilestone,
   listMeetings,
   getMeetingById,
   deleteMeetingById,
@@ -728,6 +729,15 @@ router.get('/project-update-test/milestones', async (req, res) => {
   try {
     const milestones = await listProjectMilestones(req.query?.limit);
     return res.json({ ok: true, milestones });
+  } catch (error) {
+    return sendTestError(res, error);
+  }
+});
+
+router.post('/project-update-test/milestones', async (req, res) => {
+  try {
+    const milestone = await createProjectMilestone(req.body || {});
+    return res.status(milestone?.created ? 201 : 200).json({ ok: true, milestone });
   } catch (error) {
     return sendTestError(res, error);
   }

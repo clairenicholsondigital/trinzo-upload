@@ -23,7 +23,7 @@ h2 { margin:.1rem 0 .75rem; font-size:1.1rem; }
 .intro, small { color:var(--muted); }
 .field { margin:.9rem 0; }
 label { display:block; margin-bottom:.35rem; font-weight:700; }
-input[type=file], input[type=text], input[type=date], textarea { width:100%; background:#071126; color:var(--text); border:1px solid var(--border); border-radius:10px; padding:.7rem; font:inherit; }
+input[type=file], input[type=text], input[type=date], select, textarea { width:100%; background:#071126; color:var(--text); border:1px solid var(--border); border-radius:10px; padding:.7rem; font:inherit; }
 textarea { min-height:260px; resize:vertical; }
 button { background:linear-gradient(180deg,var(--accent),#0fb5ab); color:#02173B; border:none; border-radius:10px; padding:.65rem .95rem; font-weight:700; cursor:pointer; }
 button.secondary { background:#132847; color:#dbeafe; border:1px solid var(--border); }
@@ -48,7 +48,7 @@ a { color:#67e8f9; }
 .project-form-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.85rem; }
 .project-form-grid label { color:var(--muted); font-size:.86rem; }
 .project-form-grid label.wide { grid-column:1 / -1; }
-.project-form-grid input, .project-form-grid textarea { margin-top:.35rem; color:var(--text); font-weight:400; }
+.project-form-grid input, .project-form-grid select, .project-form-grid textarea { margin-top:.35rem; color:var(--text); font-weight:400; }
 .project-form-grid textarea { min-height:120px; }
 .project-meta-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:.75rem; margin-bottom:1rem; }
 .project-table-actions { display:flex; justify-content:flex-end; margin-bottom:.6rem; }
@@ -61,7 +61,7 @@ a { color:#67e8f9; }
 .project-table tbody th { min-width:150px; color:#dbeafe; text-align:left; }
 .project-table tr:last-child th, .project-table tr:last-child td { border-bottom:0; }
 .project-table th:last-child, .project-table td:last-child { border-right:0; }
-.project-table input, .project-table textarea { border-radius:8px; padding:.55rem; }
+.project-table input, .project-table select, .project-table textarea { border-radius:8px; padding:.55rem; }
 .project-table textarea { min-height:72px; }
 .project-table.dense { min-width:1180px; }
 .project-table.dense textarea { min-height:86px; }
@@ -94,7 +94,7 @@ a { color:#67e8f9; }
 buildTranscriptTestPage({
   title: 'Project update test',
   intro: 'Upload or paste a project check-in transcript to extract milestone statuses and change-ready JSON.',
-  buttonText: 'Generate project JSON',
+  buttonText: 'Process meeting',
   endpoint: '/api/project-update-test',
   projectReportUi: true,
   summary: projectUpdateSummary

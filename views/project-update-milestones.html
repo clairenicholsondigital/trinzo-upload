@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Project update milestones</title>
 <style>
-:root { color-scheme: dark; --bg:#0b1020; --panel:#11192f; --panel2:#0f172a; --border:#2d3d60; --muted:#95a7cb; --text:#eef3ff; --accent:#17D0C4; }
+:root { color-scheme: dark; --bg:#0b1020; --panel:#11192f; --panel2:#0f172a; --border:#2d3d60; --muted:#95a7cb; --text:#eef3ff; --accent:#17D0C4; --danger:#dc2626; --success:#16a34a; }
 * { box-sizing:border-box; }
 body { margin:0; padding:1rem; background:var(--bg); color:var(--text); font-family:Arial, Helvetica, sans-serif; }
 .container { max-width:1280px; margin:0 auto; }
@@ -16,6 +16,12 @@ h1 { margin:.2rem 0 .5rem; }
 h2 { margin:.1rem 0 .75rem; font-size:1.1rem; }
 .intro, .muted { color:var(--muted); }
 .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:.75rem; }
+.form-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.75rem; align-items:end; }
+.form-grid label { color:var(--muted); font-size:.86rem; font-weight:700; }
+.form-grid input { width:100%; margin-top:.35rem; background:#071126; color:var(--text); border:1px solid var(--border); border-radius:10px; padding:.65rem; font:inherit; }
+.form-grid .wide { grid-column:span 2; }
+button { background:linear-gradient(180deg,var(--accent),#0fb5ab); color:#02173B; border:none; border-radius:10px; padding:.65rem .95rem; font-weight:700; cursor:pointer; }
+button:disabled { opacity:.6; cursor:not-allowed; }
 .item { background:#071126; border:1px solid var(--border); border-radius:10px; padding:.75rem; }
 .label { color:var(--muted); font-size:.85rem; }
 .value { margin-top:.25rem; font-weight:700; overflow-wrap:anywhere; }
@@ -26,10 +32,16 @@ thead th { background:#132847; color:#dbeafe; position:sticky; top:0; }
 tr:last-child td { border-bottom:0; }
 th:last-child, td:last-child { border-right:0; }
 .status { margin:.75rem 0; color:var(--muted); }
+.status.error { color:#fecaca; }
+.status.success { color:#bbf7d0; }
 .evidence { margin:.5rem 0 0; padding-left:1.1rem; color:#dbeafe; }
 .colour-field { display:flex; align-items:center; justify-content:center; min-height:1.6rem; }
 .colour-swatch { display:inline-block; width:1.35rem; height:1.35rem; border-radius:999px; border:2px solid rgba(238,243,255,.85); box-shadow:0 0 0 1px rgba(0,0,0,.45), inset 0 0 0 1px rgba(0,0,0,.25); }
 .colour-swatch.unknown { background:transparent; border-style:dashed; border-color:var(--muted); }
+@media (max-width: 860px) {
+  .form-grid { grid-template-columns:1fr; }
+  .form-grid .wide { grid-column:auto; }
+}
 </style>
 </head>
 <body>
@@ -102,6 +114,31 @@ th:last-child, td:last-child { border-right:0; }
         <p class="intro">${milestones.length ? `${milestones.length} active milestone${milestones.length === 1 ? '' : 's'}.` : 'No saved milestones yet.'}</p>
       </section>
       <section class="panel">
+        <h2>Create milestone</h2>
+        <form id="milestoneForm" class="form-grid">
+          <label class="wide">Milestone
+            <input name="milestoneName" type="text" required placeholder="Milestone name" />
+          </label>
+          <label>Project
+            <input name="projectName" type="text" value="Project update test" />
+          </label>
+          <label>Period
+            <input name="periodLabel" type="text" placeholder="Q2 2026" />
+          </label>
+          <label>Category
+            <input name="category" type="text" value="Manual" />
+          </label>
+          <label>Baseline deadline
+            <input name="baselineFinishDate" type="date" />
+          </label>
+          <label>Forecast deadline
+            <input name="forecastFinishDate" type="date" />
+          </label>
+          <button type="submit">Create milestone</button>
+        </form>
+        <p id="milestoneFormStatus" class="status"></p>
+      </section>
+      <section class="panel">
         <div class="table-scroll">
           <table>
             <thead><tr><th>Milestone</th><th>Project</th><th>Period</th><th>Baseline</th><th>Forecast</th><th>Latest status</th><th>Trend</th></tr></thead>
@@ -125,6 +162,37 @@ th:last-child, td:last-child { border-right:0; }
         </div>
       </section>
     `;
+    const form = document.getElementById('milestoneForm');
+    const formStatus = document.getElementById('milestoneFormStatus');
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const button = form.querySelector('button[type="submit"]');
+      const formData = new FormData(form);
+      const payload = Object.fromEntries(formData.entries());
+      formStatus.className = 'status';
+      formStatus.textContent = 'Creating milestone...';
+      button.disabled = true;
+      try {
+        const response = await fetch('/api/project-update-test/milestones', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const result = await response.json().catch(() => null);
+        if (!response.ok || !result || result.ok === false) {
+          throw new Error(result && result.error ? result.error : `Request failed with status ${response.status}.`);
+        }
+        formStatus.className = 'status success';
+        formStatus.textContent = result.milestone && result.milestone.created ? 'Milestone created.' : 'Existing milestone updated.';
+        form.reset();
+        await load();
+      } catch (error) {
+        formStatus.className = 'status error';
+        formStatus.textContent = error.message || 'Could not create milestone.';
+      } finally {
+        button.disabled = false;
+      }
+    });
   }
 
   function renderDetail(milestone) {

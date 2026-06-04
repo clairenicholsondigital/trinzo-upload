@@ -157,6 +157,16 @@ function buildTranscriptTestPage(config) {
     `;
   }
 
+  function renderSelectField(value, path, options) {
+    const current = String(value ?? '');
+    const optionValues = options.includes(current) ? options : [current, ...options].filter(Boolean);
+    return `
+      <select data-project-path="${escapeHtml(path)}">
+        ${optionValues.map((option) => `<option value="${escapeHtml(option)}"${option === current ? ' selected' : ''}>${escapeHtml(sentenceLabel(option) || option)}</option>`).join('')}
+      </select>
+    `;
+  }
+
   function asArray(value) {
     return Array.isArray(value) ? value : [];
   }
@@ -172,6 +182,9 @@ function buildTranscriptTestPage(config) {
   function renderProjectCell(value, path, multiline = false, placeholder = '', type = 'text') {
     if (isColourPath(path)) {
       return renderColourField(value, path);
+    }
+    if (/(^|\.)reportStatus$/i.test(String(path || ''))) {
+      return renderSelectField(value, path, ['draft', 'in_review', 'approved', 'archived']);
     }
     if (/(^|\.)reportStatus$|(^|\.)overallHealth$|(^|\.)delivery_status$|(^|\.)health_assessment$|(^|\.)status$|(^|\.)trend$|(^|\.)related_milestone$|(^|\.)relatedMilestone$/i.test(String(path || ''))) {
       return renderDisplayField(value, path);
@@ -472,6 +485,7 @@ function buildTranscriptTestPage(config) {
     projectReportOutput.querySelectorAll('[data-project-path]').forEach((field) => {
       if (field.hasAttribute('readonly')) return;
       field.addEventListener('input', refreshProjectReportState);
+      field.addEventListener('change', refreshProjectReportState);
     });
     projectReportOutput.querySelectorAll('[data-project-milestone-name]').forEach((field) => {
       field.addEventListener('change', () => {

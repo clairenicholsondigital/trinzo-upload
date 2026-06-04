@@ -61,9 +61,12 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         shared_js = (REPO_DIR / "public" / "test-transcript-page.js").read_text(encoding="utf-8")
 
         self.assertIn("projectReportUi: true", page)
+        self.assertIn("buttonText: 'Process meeting'", page)
         self.assertIn(".project-tabs", page)
         self.assertIn("renderProjectReport", shared_js)
         self.assertIn("Copy report JSON", shared_js)
+        self.assertIn("renderSelectField", shared_js)
+        self.assertIn("['draft', 'in_review', 'approved', 'archived']", shared_js)
         self.assertIn('<details class="raw-json">', shared_js)
         self.assertIn('data-project-add="milestones"', shared_js)
         self.assertIn('data-project-remove="milestones"', shared_js)
@@ -78,6 +81,15 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertIn("data-project-baseline-deadline", shared_js)
         self.assertIn("data-project-forecast-deadline", shared_js)
 
+    def test_project_risk_titles_are_human_friendly(self):
+        transcript = FIXTURE.read_text(encoding="utf-8")
+        result = build_project_update_output(transcript, use_minilm=False, use_rewrite=False)
+        risk_titles = [risk["riskTitle"] for risk in result["projectReport"]["risks"]]
+
+        self.assertGreater(len(risk_titles), 0)
+        self.assertTrue(any("AI Pipeline Strategy needs attention" == title for title in risk_titles))
+        self.assertFalse(any("_" in title for title in risk_titles))
+
     def test_project_update_browsing_routes_are_registered(self):
         server = (REPO_DIR / "server.js").read_text(encoding="utf-8")
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
@@ -88,8 +100,10 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertIn("sendView(res", server)
         self.assertIn("router.get('/project-update-test/reports'", api)
         self.assertIn("router.get('/project-update-test/milestones'", api)
+        self.assertIn("router.post('/project-update-test/milestones'", api)
         self.assertIn("listProjectReports", db)
         self.assertIn("getProjectMilestoneDetail", db)
+        self.assertIn("createProjectMilestone", db)
 
         reports_page = (REPO_DIR / "views" / "project-update-reports.html").read_text(encoding="utf-8")
         milestones_page = (REPO_DIR / "views" / "project-update-milestones.html").read_text(encoding="utf-8")
@@ -97,6 +111,9 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertIn("/api/project-update-test/milestones", milestones_page)
         self.assertIn("/project-update-test/milestones", reports_page)
         self.assertIn("/project-update-test/reports", milestones_page)
+        self.assertIn('id="milestoneForm"', milestones_page)
+        self.assertIn("Create milestone", milestones_page)
+        self.assertIn("baselineFinishDate", milestones_page)
 
     def test_project_update_save_path_stores_milestone_deadlines(self):
         db = (REPO_DIR / "utils" / "db.js").read_text(encoding="utf-8")

@@ -13,6 +13,7 @@ import argparse
 from dataclasses import dataclass
 import json
 from pathlib import Path
+import re
 import sys
 import time
 from typing import Any
@@ -205,6 +206,18 @@ def health_to_report_status(value: str) -> str:
     return "unknown"
 
 
+def friendly_milestone_label(value: str) -> str:
+    words = re.sub(r"[_-]+", " ", str(value or "")).strip().split()
+    labels = []
+    for word in words:
+        lower = word.lower()
+        if lower in {"ai", "rag", "sow", "ei"}:
+            labels.append(lower.upper())
+        else:
+            labels.append(lower.capitalize())
+    return " ".join(labels) or "Workstream"
+
+
 def build_report_payload(result: dict[str, Any], enriched_segments: list[dict[str, Any]], diagnostics: dict[str, Any]) -> dict[str, Any]:
     summary = result.get("project_health_summary", {})
     overall = summary.get("overall_health", "unknown")
@@ -218,7 +231,7 @@ def build_report_payload(result: dict[str, Any], enriched_segments: list[dict[st
         if segment.get("delivery_status") in {"blocked", "awaiting_input", "delayed"} or segment.get("agreed_rag_status") in {"amber", "red"}:
             risk_suggestions.append(
                 {
-                    "riskTitle": f"{segment.get('milestone', 'Workstream')} needs attention",
+                    "riskTitle": f"{friendly_milestone_label(segment.get('milestone', 'Workstream'))} needs attention",
                     "description": segment.get("normalised_evidence_summary") or segment.get("status_resolution_note") or segment.get("excerpt", ""),
                     "suggestedMitigation": "; ".join(segment.get("next_steps", [])[:2]) or "Review owner, dependency, and next action.",
                     "confidence": segment.get("semantic_confidence") or segment.get("health_assessment_confidence") or 0.5,
