@@ -15,6 +15,34 @@ ROOT = Path(__file__).resolve().parent
 PACK_DIR = ROOT / "meeting-minutes-final-golden"
 EXTRACTOR = ROOT / "meeting_minutes_minilm_only.py"
 REQUIRED_CATEGORIES = ("decisions", "actions", "hallucinations", "abstention")
+CONVERSATIONAL_LEAKAGE = (
+    "good point",
+    "i don't mind",
+    "i do not mind",
+    "i'm mostly here",
+    "i am mostly here",
+    "what you did at the weekend",
+)
+BAD_PARTICIPANT_NAMES = {"participant", "participants", "speaker", "unknown", "transcript"}
+US_SPELLINGS = {
+    "summarize": "summarise",
+    "summarized": "summarised",
+    "organize": "organise",
+    "organized": "organised",
+    "prioritize": "prioritise",
+    "prioritized": "prioritised",
+    "finalize": "finalise",
+    "finalized": "finalised",
+}
+FIRST_PERSON_RE = re.compile(r"\b(?:i['’]?ll|i\s+will|i['’]?m|i\s+am|i\s+can|i\s+need|my|mine)\b", re.I)
+TIMECODE_RE = re.compile(r"\b(?:\d{1,2}:\d{2}(?::\d{2})?|\d{1,2}\.\d{2}\.\d{2})\b")
+EMOJI_RE = re.compile(r"[\U0001F300-\U0001FAFF]")
+DATE_IN_ACTION_RE = re.compile(
+    r"\b(?:by|before|due|on)\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|today|tomorrow|"
+    r"next\s+week|next\s+month|\d{1,2}(?:st|nd|rd|th)?|january|february|march|april|may|june|july|"
+    r"august|september|october|november|december)\b",
+    re.I,
+)
 
 
 def normalize_text(value: Any) -> str:
@@ -84,6 +112,58 @@ def visible_values(output: dict[str, Any]) -> list[Any]:
     for action in action_objects(output):
         values.extend(action.values())
     return values
+
+
+def words(value: Any) -> list[str]:
+    return re.findall(r"[A-Za-z0-9']+", str(value or ""))
+
+
+def universal_quality_failures(output: dict[str, Any]) -> list[str]:
+    """Checklist checks derived from the Notion meeting-minutes quality database."""
+    failures: list[str] = []
+    visible = [str(value) for value in visible_values(output)]
+    flat = "\n".join(visible)
+    normalized_flat = normalize_text(flat)
+
+    title = str(output.get("meetingTitle") or "")
+    if "transcript" in normalize_text(title):
+        failures.append("quality: meeting title contains 'Transcript'")
+
+    for participant in output.get("participants", []) or []:
+        normalized = normalize_text(participant)
+        if normalized in BAD_PARTICIPANT_NAMES:
+            failures.append(f"quality: invalid participant name {participant!r}")
+
+    if EMOJI_RE.search(flat):
+        failures.append("quality: visible output contains emoji")
+    if TIMECODE_RE.search(flat):
+        failures.append("quality: visible output contains timestamp/timecode")
+    if FIRST_PERSON_RE.search(flat):
+        failures.append("quality: visible output contains first-person wording")
+
+    for phrase in CONVERSATIONAL_LEAKAGE:
+        if phrase in normalized_flat:
+            failures.append(f"quality: conversational leakage present {phrase!r}")
+
+    for us_spelling, british_spelling in US_SPELLINGS.items():
+        if re.search(rf"\b{re.escape(us_spelling)}\b", flat, re.I):
+            failures.append(f"quality: use British English spelling {british_spelling!r} instead of {us_spelling!r}")
+
+    for action in action_objects(output):
+        action_text = str(action.get("meetingActionPoint") or "")
+        deadline = str(action.get("meetingActionPointDeadline") or "").strip()
+        if len(words(action_text)) > 18:
+            failures.append(f"quality: action item is too long/unclear {action_text!r}")
+        if deadline and normalize_text(deadline) in normalize_text(action_text):
+            failures.append(f"quality: action text repeats deadline column {action_text!r}")
+        if deadline and DATE_IN_ACTION_RE.search(action_text):
+            failures.append(f"quality: action text appears to include deadline wording {action_text!r}")
+
+    for objective in output.get("meetingObjectives", []) or []:
+        if len(words(objective)) > 28:
+            failures.append(f"quality: objective is too long/transcript-like {objective!r}")
+
+    return failures
 
 
 def count_for_category(output: dict[str, Any], category: str) -> int:
@@ -188,6 +268,7 @@ def evaluate_case(case_name: str, output: dict[str, Any], expected: dict[str, An
         total_weight += weight
     score = 0.0 if total_weight == 0 else round(weighted_score / total_weight, 4)
     failures = [failure for category in REQUIRED_CATEGORIES for failure in category_failures[category]]
+    failures.extend(universal_quality_failures(output))
     threshold = float(expected.get("passThreshold", 1.0))
     return {
         "case": case_name,

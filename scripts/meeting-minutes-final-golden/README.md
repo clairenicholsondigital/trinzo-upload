@@ -8,6 +8,14 @@ It focuses on semantic behaviour rather than transcript-specific wording:
 - hallucinated raw chatter and unsupported facts are penalised;
 - low-substance or action-free meetings should abstain from forced actions and decisions.
 
+The runner also applies universal quality checks drawn from Claire's Notion checklist for perfect meeting minutes:
+
+- clean meeting titles and participant names;
+- no first-person wording, emojis, timestamps, or conversational leakage;
+- action items must be concise, real follow-ups;
+- action deadlines should live in the deadline field, not inside the action text;
+- visible output should preserve British English spelling.
+
 Run a schema/fixture dry validation:
 
 ```bash
