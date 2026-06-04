@@ -1,0 +1,44 @@
+{
+  "description": "Project status review with several concrete follow-ups, pending leadership approval, and no supported decision.",
+  "coverage": {
+    "sourceFixture": "scripts/transcript-tests/048_status_review_pending_leadership",
+    "meetingTypes": ["project_status_review"],
+    "behaviours": ["action_heavy", "no_decisions", "pending_approval_filtering"]
+  },
+  "passThreshold": 0.85,
+  "criteria": {
+    "decisions": {
+      "weight": 0.2,
+      "maxCount": 0
+    },
+    "actions": {
+      "weight": 0.35,
+      "mustContain": [
+        "review stage gate templates",
+        "confirm AI pipeline dependencies with sales",
+        "draft vendor strategy document",
+        "follow up innovation grant feedback"
+      ],
+      "minCount": 4
+    },
+    "hallucinations": {
+      "weight": 0.25,
+      "mustNotContain": [
+        "procurement starts now",
+        "online remains in progress",
+        "leadership approved the vendor strategy"
+      ]
+    },
+    "abstention": {
+      "weight": 0.2,
+      "decisionMaxCount": 0,
+      "discussionMinCount": 2,
+      "requiredDiscussionTopics": [
+        ["leadership review"],
+        ["vendor strategy"]
+      ],
+      "reason": "Leadership approval is explicitly pending, so the status review should not invent a decision."
+    }
+  }
+}
+

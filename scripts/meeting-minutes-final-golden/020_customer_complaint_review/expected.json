@@ -1,0 +1,46 @@
+{
+  "description": "Customer complaint review with a refund decision and a named customer-call action.",
+  "coverage": {
+    "sourceFixture": "scripts/transcript-tests/027_customer_complaint_review",
+    "meetingTypes": ["customer_complaint_review", "client_status_review"],
+    "behaviours": ["supported_decision", "owner_action", "deadline_capture"]
+  },
+  "passThreshold": 0.85,
+  "criteria": {
+    "decisions": {
+      "weight": 0.3,
+      "mustContain": [
+        "refund the last invoice"
+      ],
+      "minCount": 1
+    },
+    "actions": {
+      "weight": 0.3,
+      "mustContain": [
+        {
+          "text": "call the customer",
+          "owner": "Dan",
+          "deadline": "Noon"
+        }
+      ],
+      "minCount": 1
+    },
+    "hallucinations": {
+      "weight": 0.25,
+      "mustNotContain": [
+        "complaint resolved",
+        "handover notes were complete",
+        "customer withdrew the complaint"
+      ]
+    },
+    "abstention": {
+      "weight": 0.15,
+      "discussionMinCount": 1,
+      "requiredDiscussionTopics": [
+        ["missed handover notes"],
+        ["slow follow-up"]
+      ],
+      "reason": "Client complaint facts, decision, and urgent follow-up owner are all explicitly supported."
+    }
+  }
+}

@@ -1,0 +1,16 @@
+Customer Onboarding Review
+
+Date: 15 October 2026
+Location: Online
+
+Mina 0:01
+Data mapping for finance is ready, but warehouse is still missing three required fields.
+
+Omar 0:11
+We will start onboarding with finance first and hold warehouse until the mapping is complete.
+
+Mina 0:20
+Agreed.
+
+Omar 0:24
+Mina to send the missing-field list today.

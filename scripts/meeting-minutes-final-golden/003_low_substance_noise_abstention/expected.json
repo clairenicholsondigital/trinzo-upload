@@ -1,5 +1,10 @@
 {
   "description": "Low-substance call where the extractor should abstain from creating decisions, actions, or business topics.",
+  "coverage": {
+    "sourceFixture": "scripts/transcript-tests/068_noisy_low_substance_sparse",
+    "meetingTypes": ["low_substance"],
+    "behaviours": ["sparse_transcript", "full_abstention", "noise_filtering"]
+  },
   "passThreshold": 1.0,
   "criteria": {
     "decisions": {
@@ -29,4 +34,3 @@
     }
   }
 }
-

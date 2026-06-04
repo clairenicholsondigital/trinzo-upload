@@ -1,0 +1,40 @@
+{
+  "description": "Document review with improvement suggestions but no agreed decision or owner action.",
+  "coverage": {
+    "sourceFixture": "scripts/transcript-tests/054_document_review_meeting",
+    "meetingTypes": ["document_review"],
+    "behaviours": ["discussion_only", "no_actions", "no_decisions", "suggestion_not_decision"]
+  },
+  "passThreshold": 0.9,
+  "criteria": {
+    "decisions": {
+      "weight": 0.2,
+      "maxCount": 0
+    },
+    "actions": {
+      "weight": 0.2,
+      "maxCount": 0
+    },
+    "hallucinations": {
+      "weight": 0.25,
+      "mustNotContain": [
+        "replace the trace matrix completely",
+        "master reference documents approved",
+        "Jack to update the stability references"
+      ]
+    },
+    "abstention": {
+      "weight": 0.35,
+      "decisionMaxCount": 0,
+      "actionMaxCount": 0,
+      "discussionMinCount": 2,
+      "requiredDiscussionTopics": [
+        ["trace matrix", "old risk documents"],
+        ["stability references", "outdated"],
+        ["master reference documents"]
+      ],
+      "reason": "Suggestions in a document review should stay as discussion unless the transcript confirms agreement or ownership."
+    }
+  }
+}
+

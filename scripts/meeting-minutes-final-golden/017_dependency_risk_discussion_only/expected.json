@@ -1,0 +1,39 @@
+{
+  "description": "Dependency risk check where timelines remain unaffected and no decision/action should be inferred.",
+  "coverage": {
+    "sourceFixture": "scripts/transcript-tests/055_dependency_risk_meeting",
+    "meetingTypes": ["risk_review", "project_status_update"],
+    "behaviours": ["discussion_only", "no_actions", "no_decisions", "risk_not_blocker"]
+  },
+  "passThreshold": 0.9,
+  "criteria": {
+    "decisions": {
+      "weight": 0.2,
+      "maxCount": 0
+    },
+    "actions": {
+      "weight": 0.2,
+      "maxCount": 0
+    },
+    "hallucinations": {
+      "weight": 0.25,
+      "mustNotContain": [
+        "the submission is blocked",
+        "timelines are delayed",
+        "filter documents received"
+      ]
+    },
+    "abstention": {
+      "weight": 0.35,
+      "decisionMaxCount": 0,
+      "actionMaxCount": 0,
+      "discussionMinCount": 1,
+      "requiredDiscussionTopics": [
+        ["pharma systems", "filter documents", "pending"],
+        ["timelines", "unaffected"]
+      ],
+      "reason": "The dependency is discussed but explicitly does not change timelines, so no blocker decision should be created."
+    }
+  }
+}
+

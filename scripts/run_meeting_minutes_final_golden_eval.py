@@ -63,6 +63,62 @@ def load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def string_list(value: Any) -> list[str]:
+    if isinstance(value, list):
+        return [str(item) for item in value if str(item).strip()]
+    if isinstance(value, str) and value.strip():
+        return [value]
+    return []
+
+
+def case_coverage(expected: dict[str, Any]) -> dict[str, Any]:
+    coverage = expected.get("coverage") or {}
+    return {
+        "sourceFixture": str(coverage.get("sourceFixture") or ""),
+        "meetingTypes": string_list(coverage.get("meetingTypes")),
+        "behaviours": string_list(coverage.get("behaviours")),
+    }
+
+
+def coverage_summary(case_reports: list[dict[str, Any]]) -> dict[str, Any]:
+    meeting_types: dict[str, int] = {}
+    behaviours: dict[str, int] = {}
+    source_fixtures: list[str] = []
+    for report in case_reports:
+        coverage = report.get("coverage") or {}
+        source_fixture = coverage.get("sourceFixture")
+        if source_fixture:
+            source_fixtures.append(str(source_fixture))
+        for tag in coverage.get("meetingTypes", []) or []:
+            meeting_types[str(tag)] = meeting_types.get(str(tag), 0) + 1
+        for tag in coverage.get("behaviours", []) or []:
+            behaviours[str(tag)] = behaviours.get(str(tag), 0) + 1
+    return {
+        "meetingTypes": dict(sorted(meeting_types.items())),
+        "behaviours": dict(sorted(behaviours.items())),
+        "sourceFixtures": sorted(source_fixtures),
+    }
+
+
+def validate_manifest(pack_dir: Path, summary: dict[str, Any]) -> list[str]:
+    manifest_path = pack_dir / "manifest.json"
+    if not manifest_path.exists():
+        return ["missing manifest.json"]
+    manifest = load_json(manifest_path)
+    failures: list[str] = []
+    if manifest.get("caseCount") != summary["totalCases"]:
+        failures.append(f"manifest caseCount={manifest.get('caseCount')} does not match cases={summary['totalCases']}")
+    required = manifest.get("coverageDimensions") or {}
+    coverage = summary["coverage"]
+    for key, label in (("meetingTypes", "meeting type"), ("behaviours", "behaviour")):
+        expected_tags = set(string_list(required.get(key)))
+        actual_tags = set(coverage.get(key, {}).keys())
+        missing = sorted(expected_tags - actual_tags)
+        if missing:
+            failures.append(f"manifest missing {label} coverage: {', '.join(missing)}")
+    return failures
+
+
 def find_cases(pack_dir: Path) -> list[Path]:
     return [
         folder
@@ -297,6 +353,13 @@ def validate_expected(case: Path, expected: dict[str, Any]) -> list[str]:
             failures.append(f"missing criteria.{category}.weight")
     if not isinstance(expected.get("passThreshold"), (int, float)):
         failures.append("missing numeric passThreshold")
+    coverage = case_coverage(expected)
+    if not coverage["sourceFixture"]:
+        failures.append("missing coverage.sourceFixture")
+    if not coverage["meetingTypes"]:
+        failures.append("missing coverage.meetingTypes")
+    if not coverage["behaviours"]:
+        failures.append("missing coverage.behaviours")
     transcript = (case / "transcript.txt").read_text(encoding="utf-8").strip()
     if len(transcript) < 80:
         failures.append("transcript fixture is too short to be useful")
@@ -390,6 +453,7 @@ def main(argv: list[str]) -> int:
         report: dict[str, Any] = {
             "case": case.name,
             "description": expected.get("description", ""),
+            "coverage": case_coverage(expected),
             "dryRunValidated": not schema_failures,
         }
         if not args.dry_run and not schema_failures:
@@ -420,7 +484,10 @@ def main(argv: list[str]) -> int:
         "executedCases": len(executed_reports),
         "passedCases": len(executed_reports) - len(failed_evals),
         "failedCases": len(failed_evals),
+        "coverage": coverage_summary(case_reports),
     }
+    if not args.cases:
+        validation_failures.extend(validate_manifest(pack_dir, summary))
     full_report = {"summary": summary, "cases": case_reports}
 
     if args.json:
@@ -431,6 +498,12 @@ def main(argv: list[str]) -> int:
             f"mode={summary['mode']}, cases={summary['totalCases']}, "
             f"schema_failures={len(validation_failures)}, executed={summary['executedCases']}, "
             f"passed={summary['passedCases']}, failed={summary['failedCases']}"
+        )
+        coverage = summary["coverage"]
+        print(
+            "Coverage: "
+            f"meeting_types={len(coverage['meetingTypes'])}, behaviours={len(coverage['behaviours'])}, "
+            f"source_fixtures={len(coverage['sourceFixtures'])}"
         )
         for failure in validation_failures:
             print(f"- schema: {failure}")

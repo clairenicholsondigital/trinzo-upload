@@ -1,0 +1,43 @@
+{
+  "description": "Operations review covering backlog ageing and rota fatigue with an internal-cover decision.",
+  "coverage": {
+    "sourceFixture": "scripts/transcript-tests/041_operations_review",
+    "meetingTypes": ["operations_review"],
+    "behaviours": ["supported_decision", "single_action", "rejected_alternative"]
+  },
+  "passThreshold": 0.85,
+  "criteria": {
+    "decisions": {
+      "weight": 0.3,
+      "mustContain": [
+        "keep weekend cover internal"
+      ],
+      "minCount": 1
+    },
+    "actions": {
+      "weight": 0.25,
+      "mustContain": [
+        "update the rota"
+      ],
+      "minCount": 1
+    },
+    "hallucinations": {
+      "weight": 0.25,
+      "mustNotContain": [
+        "hire temporary cover",
+        "temporary staff approved",
+        "external weekend cover"
+      ]
+    },
+    "abstention": {
+      "weight": 0.2,
+      "discussionMinCount": 1,
+      "requiredDiscussionTopics": [
+        ["backlog"],
+        ["rota fatigue"]
+      ],
+      "reason": "An explicit rejection of temporary cover should be preserved while the actual internal-cover decision is captured."
+    }
+  }
+}
+

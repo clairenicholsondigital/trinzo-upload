@@ -1,0 +1,41 @@
+{
+  "description": "Status update with useful discussion points but no decisions or actions.",
+  "coverage": {
+    "sourceFixture": "scripts/transcript-tests/052_status_update_meeting",
+    "meetingTypes": ["project_status_update"],
+    "behaviours": ["discussion_only", "no_actions", "no_decisions"]
+  },
+  "passThreshold": 0.9,
+  "criteria": {
+    "decisions": {
+      "weight": 0.2,
+      "maxCount": 0
+    },
+    "actions": {
+      "weight": 0.2,
+      "maxCount": 0
+    },
+    "hallucinations": {
+      "weight": 0.25,
+      "mustNotContain": [
+        "submit without the biocompatibility package",
+        "biocompatibility package has landed",
+        "SGS completed the review"
+      ]
+    },
+    "abstention": {
+      "weight": 0.35,
+      "decisionMaxCount": 0,
+      "actionMaxCount": 0,
+      "discussionMinCount": 2,
+      "requiredDiscussionTopics": [
+        ["supplier documents", "received"],
+        ["device description", "updated"],
+        ["biocompatibility", "pending"],
+        ["SGS", "review"]
+      ],
+      "reason": "The transcript is status-only: it should retain facts as discussion points while abstaining from decisions and actions."
+    }
+  }
+}
+

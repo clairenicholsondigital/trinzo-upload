@@ -1,5 +1,10 @@
 {
   "description": "Information-only briefing with valid discussion topics but explicit decision/action abstention.",
+  "coverage": {
+    "sourceFixture": "custom-derived-from scripts/transcript-tests/072_action_free_information_briefing",
+    "meetingTypes": ["policy_briefing"],
+    "behaviours": ["discussion_only", "no_actions", "no_decisions", "explicit_abstention"]
+  },
   "passThreshold": 0.9,
   "criteria": {
     "decisions": {
@@ -32,4 +37,3 @@
     }
   }
 }
-

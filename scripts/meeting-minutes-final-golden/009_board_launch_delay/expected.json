@@ -1,0 +1,47 @@
+{
+  "description": "Board update where a launch delay is agreed because partner paperwork is unfinished.",
+  "coverage": {
+    "sourceFixture": "scripts/transcript-tests/045_board_launch_delay",
+    "meetingTypes": ["board_update", "leadership_update"],
+    "behaviours": ["supported_decision", "owner_action", "rejected_alternative"]
+  },
+  "passThreshold": 0.85,
+  "criteria": {
+    "decisions": {
+      "weight": 0.3,
+      "mustContain": [
+        "move the Spain launch to September"
+      ],
+      "minCount": 1
+    },
+    "actions": {
+      "weight": 0.3,
+      "mustContain": [
+        {
+          "text": "update the board pack",
+          "owner": "Leah",
+          "deadline": "Tonight"
+        }
+      ],
+      "minCount": 1
+    },
+    "hallucinations": {
+      "weight": 0.25,
+      "mustNotContain": [
+        "announce the Spain launch in July",
+        "partner paperwork is finished",
+        "online the"
+      ]
+    },
+    "abstention": {
+      "weight": 0.15,
+      "discussionMinCount": 1,
+      "requiredDiscussionTopics": [
+        ["spain launch"],
+        ["partner paperwork"]
+      ],
+      "reason": "The old July plan is background context, not the final decision."
+    }
+  }
+}
+

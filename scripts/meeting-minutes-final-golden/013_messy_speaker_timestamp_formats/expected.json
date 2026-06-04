@@ -1,0 +1,48 @@
+{
+  "description": "Messy transcript with attendee lines, inconsistent speaker labels, timestamps, one owner action, and one conditional decision.",
+  "coverage": {
+    "sourceFixture": "scripts/transcript-tests/071_messy_speaker_timestamp_formats",
+    "meetingTypes": ["supplier_onboarding_review"],
+    "behaviours": ["messy_speaker_timestamp", "owner_action", "timestamp_filtering"]
+  },
+  "passThreshold": 0.85,
+  "criteria": {
+    "decisions": {
+      "weight": 0.3,
+      "mustContain": [
+        "onboard the supplier only after finance approval"
+      ],
+      "minCount": 1
+    },
+    "actions": {
+      "weight": 0.3,
+      "mustContain": [
+        {
+          "text": "request the insurance certificate",
+          "owner": "Ravi",
+          "deadline": "Friday"
+        }
+      ],
+      "minCount": 1
+    },
+    "hallucinations": {
+      "weight": 0.25,
+      "mustNotContain": [
+        "Attendees",
+        "09:00",
+        "Fine",
+        "finance approval is complete"
+      ]
+    },
+    "abstention": {
+      "weight": 0.15,
+      "discussionMinCount": 1,
+      "requiredDiscussionTopics": [
+        ["due diligence", "insurance"],
+        ["finance", "pending"]
+      ],
+      "reason": "Speaker and timestamp noise must be cleaned while preserving the substantive supplier-onboarding evidence."
+    }
+  }
+}
+

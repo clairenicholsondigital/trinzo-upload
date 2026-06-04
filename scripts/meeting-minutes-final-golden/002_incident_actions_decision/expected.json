@@ -1,5 +1,10 @@
 {
   "description": "Incident meeting with concrete actions, owner evidence, a deadline, and one supported decision.",
+  "coverage": {
+    "sourceFixture": "scripts/transcript-tests/070_incident_bug_triage",
+    "meetingTypes": ["incident_bug_triage"],
+    "behaviours": ["concrete_actions", "supported_decision", "deadline_capture"]
+  },
   "passThreshold": 0.85,
   "criteria": {
     "decisions": {
@@ -39,4 +44,3 @@
     }
   }
 }
-

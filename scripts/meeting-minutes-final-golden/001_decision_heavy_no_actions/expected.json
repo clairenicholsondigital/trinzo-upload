@@ -1,5 +1,10 @@
 {
   "description": "Decision-heavy internal meeting where no concrete owner/action should be invented.",
+  "coverage": {
+    "sourceFixture": "scripts/transcript-tests/069_decision_heavy_internal",
+    "meetingTypes": ["leadership_internal"],
+    "behaviours": ["decision_only", "no_actions", "unsupported_action_abstention"]
+  },
   "passThreshold": 0.9,
   "criteria": {
     "decisions": {
@@ -29,4 +34,3 @@
     }
   }
 }
-

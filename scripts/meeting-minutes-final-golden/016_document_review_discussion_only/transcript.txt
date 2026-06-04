@@ -1,0 +1,16 @@
+Document Review Meeting
+
+Date: 5 November 2026
+Location: Online
+
+Ciara Griffin 0:01
+The trace matrix still references the old risk documents.
+
+Jack Cunningham 0:09
+The stability references are outdated as well.
+
+Ciara Griffin 0:16
+We should align both sections to the latest approved versions.
+
+Jack Cunningham 0:24
+It may be cleaner to point them back to master reference documents instead.

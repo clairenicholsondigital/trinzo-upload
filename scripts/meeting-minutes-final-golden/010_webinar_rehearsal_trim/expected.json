@@ -1,0 +1,46 @@
+{
+  "description": "Webinar rehearsal with presentation-content discussion, a demo-duration decision, and a slide-trimming action.",
+  "coverage": {
+    "sourceFixture": "scripts/transcript-tests/030_webinar_rehearsal",
+    "meetingTypes": ["webinar_rehearsal"],
+    "behaviours": ["rehearsal", "supported_decision", "owner_action"]
+  },
+  "passThreshold": 0.85,
+  "criteria": {
+    "decisions": {
+      "weight": 0.3,
+      "mustContain": [
+        "keep the live demo to seven minutes"
+      ],
+      "minCount": 1
+    },
+    "actions": {
+      "weight": 0.25,
+      "mustContain": [
+        {
+          "text": "remove two bullets from the registration slide",
+          "owner": "Jack"
+        }
+      ],
+      "minCount": 1
+    },
+    "hallucinations": {
+      "weight": 0.25,
+      "mustNotContain": [
+        "like and subscribe",
+        "cancel the live demo",
+        "registration slide approved unchanged"
+      ]
+    },
+    "abstention": {
+      "weight": 0.2,
+      "discussionMinCount": 1,
+      "requiredDiscussionTopics": [
+        ["registration slide", "crowded"],
+        ["live demo", "seven minutes"]
+      ],
+      "reason": "Rehearsal banter should not leak into the minutes, but supported content changes should remain."
+    }
+  }
+}
+

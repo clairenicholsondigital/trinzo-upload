@@ -1,0 +1,47 @@
+{
+  "description": "Planning conversation where the final agreed option is embedded after rejected possibilities.",
+  "coverage": {
+    "sourceFixture": "scripts/transcript-tests/053_hidden_decision_meeting",
+    "meetingTypes": ["planning_check_in"],
+    "behaviours": ["hidden_decision", "owner_action", "rejected_alternative"]
+  },
+  "passThreshold": 0.85,
+  "criteria": {
+    "decisions": {
+      "weight": 0.3,
+      "mustContain": [
+        "move the weekly check-in to Friday at noon"
+      ],
+      "minCount": 1
+    },
+    "actions": {
+      "weight": 0.3,
+      "mustContain": [
+        {
+          "text": "reschedule the weekly check-in",
+          "owner": "David",
+          "deadline": "Today"
+        }
+      ],
+      "minCount": 1
+    },
+    "hallucinations": {
+      "weight": 0.25,
+      "mustNotContain": [
+        "cancel the weekly check-in",
+        "move the check-in to Wednesday",
+        "Grace will attend the usual check-in"
+      ]
+    },
+    "abstention": {
+      "weight": 0.15,
+      "discussionMinCount": 1,
+      "requiredDiscussionTopics": [
+        ["Grace", "offsite"],
+        ["Friday", "noon"]
+      ],
+      "reason": "The extractor should identify the final agreement rather than treating earlier scheduling options as decisions."
+    }
+  }
+}
+

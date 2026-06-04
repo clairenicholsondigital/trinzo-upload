@@ -1,0 +1,16 @@
+Status Update Meeting
+
+Date: 3 November 2026
+Location: Online
+
+Ciara Griffin 0:01
+The supplier documents have now been received.
+
+Jack Cunningham 0:08
+The device description has been updated in the latest pack.
+
+Ciara Griffin 0:16
+The biocompatibility package is still pending and it is unlikely to land before submission.
+
+Jack Cunningham 0:26
+SGS will review it afterwards once the package is available.

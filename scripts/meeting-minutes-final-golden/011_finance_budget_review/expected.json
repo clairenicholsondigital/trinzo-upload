@@ -1,0 +1,46 @@
+{
+  "description": "Finance budget review with a backfill deferral decision and a revised-forecast action.",
+  "coverage": {
+    "sourceFixture": "scripts/transcript-tests/023_finance_budget_review",
+    "meetingTypes": ["finance_budget_review"],
+    "behaviours": ["supported_decision", "deadline_capture", "budget_tradeoff"]
+  },
+  "passThreshold": 0.85,
+  "criteria": {
+    "decisions": {
+      "weight": 0.3,
+      "mustContain": [
+        "defer the support analyst backfill"
+      ],
+      "minCount": 1
+    },
+    "actions": {
+      "weight": 0.3,
+      "mustContain": [
+        {
+          "text": "send the revised forecast",
+          "owner": "Hannah",
+          "deadline": "Before lunch"
+        }
+      ],
+      "minCount": 1
+    },
+    "hallucinations": {
+      "weight": 0.25,
+      "mustNotContain": [
+        "contractor spend is below forecast",
+        "travel costs are above plan",
+        "hire the support analyst immediately"
+      ]
+    },
+    "abstention": {
+      "weight": 0.15,
+      "discussionMinCount": 1,
+      "requiredDiscussionTopics": [
+        ["contractor spend", "forecast"]
+      ],
+      "reason": "Budget trade-offs should be captured without reversing the spend facts."
+    }
+  }
+}
+
