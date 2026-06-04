@@ -203,18 +203,7 @@ async function deleteProjectReport(reportId) {
 
   await runPsql(`
 BEGIN;
-DELETE FROM project_report_evidence
-WHERE report_version_id IN (SELECT id FROM project_report_versions WHERE report_id = ${id});
-DELETE FROM project_report_ai_risk_suggestions
-WHERE report_version_id IN (SELECT id FROM project_report_versions WHERE report_id = ${id});
-DELETE FROM project_report_risk_assessments
-WHERE report_version_id IN (SELECT id FROM project_report_versions WHERE report_id = ${id});
-DELETE FROM project_report_milestone_assessments
-WHERE report_version_id IN (SELECT id FROM project_report_versions WHERE report_id = ${id});
-DELETE FROM project_report_health_assessments
-WHERE report_version_id IN (SELECT id FROM project_report_versions WHERE report_id = ${id});
-DELETE FROM project_report_sources WHERE report_id = ${id};
-DELETE FROM project_report_versions WHERE report_id = ${id};
+UPDATE project_reports SET approved_version_id = NULL WHERE id = ${id};
 DELETE FROM project_reports WHERE id = ${id};
 COMMIT;`);
 
