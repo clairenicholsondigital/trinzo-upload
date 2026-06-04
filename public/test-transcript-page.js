@@ -37,7 +37,7 @@ function buildTranscriptTestPage(config) {
     <section id="projectReportPanel" class="panel hidden">
       <div class="json-heading">
         <div class="project-report-brand">
-          <img class="project-report-logo" src="/static/trinzo-logo.svg" alt="Trinzo logo" />
+          <img class="project-report-logo print-only" src="/static/trinzo-logo.svg" alt="Trinzo logo" />
           <h2>Project report</h2>
         </div>
         <div class="actions">
@@ -339,7 +339,7 @@ function buildTranscriptTestPage(config) {
       <div class="project-form-grid">
         <label>Report status ${renderProjectCell(report.reportStatus, 'reportStatus', false, 'draft')}</label>
         <label>Overall health assessment ${renderProjectCell(report.overallHealth, 'overallHealth', false, 'on_track')}</label>
-        <label>Overall colour ${renderProjectCell(report.overallHealthRag, 'overallHealthRag', false, 'amber')}</label>
+        <label>Overall status ${renderProjectCell(report.overallHealthRag, 'overallHealthRag', false, 'amber')}</label>
         <label class="wide">Executive summary
           <span class="project-hint">Use this field for the executive summary and key updates.</span>
           ${renderProjectCell(report.summary, 'summary', true, 'Project summary and key updates')}
@@ -390,7 +390,7 @@ function buildTranscriptTestPage(config) {
       <div class="table-scroll">
         <table class="project-table dense">
           <thead>
-            <tr><th>Milestone</th><th>Baseline deadline</th><th>Forecast deadline</th><th>Delivery status</th><th>Status</th><th>AI health assessment</th><th>Summary</th><th>Blockers</th><th>Next steps</th><th></th></tr>
+            <tr><th>Milestone</th><th>Baseline deadline</th><th>Forecast deadline</th><th>Delivery status</th><th>Status</th><th>AI health assessment</th><th>Summary</th><th>Next steps</th><th></th></tr>
           </thead>
           <tbody>
             ${(milestones.length ? milestones : [{}]).map((item, index) => `
@@ -402,8 +402,7 @@ function buildTranscriptTestPage(config) {
                 <td>${renderProjectCell(item.agreed_rag_status || item.rag_status, `milestones.${index}.agreed_rag_status`)}</td>
                 <td>${renderProjectCell(item.health_assessment, `milestones.${index}.health_assessment`)}</td>
                 <td>${renderProjectCell(item.normalised_evidence_summary || item.excerpt, `milestones.${index}.normalised_evidence_summary`, true)}</td>
-                <td><textarea data-project-path="milestones.${index}.blocking_factors" data-project-mode="lines">${escapeHtml(asLines(item.blocking_factors).join('\n'))}</textarea></td>
-                <td><textarea data-project-path="milestones.${index}.next_steps" data-project-mode="lines">${escapeHtml(asLines(item.next_steps).join('\n'))}</textarea></td>
+                <td><textarea data-project-path="milestones.${index}.next_steps" data-project-mode="lines">${escapeHtml(combinedNextSteps(item).join('\n'))}</textarea></td>
                 <td><button class="secondary project-row-action" type="button" data-project-remove="milestones" data-project-index="${index}">Remove</button></td>
               </tr>
             `).join('')}
@@ -463,12 +462,23 @@ function buildTranscriptTestPage(config) {
   function renderStaticColour(value) {
     const rawValue = String(value ?? '').trim();
     const colour = colourValue(rawValue);
+    const title = sentenceLabel(rawValue) || 'No status set';
     return `
-      <span class="project-print-colour">
+      <span class="project-print-colour" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">
         <span class="project-colour-swatch ${colour ? '' : 'unknown'}" style="${colour ? `background:${escapeHtml(colour)}` : ''}"></span>
-        <span>${escapeHtml(sentenceLabel(rawValue) || '—')}</span>
       </span>
     `;
+  }
+
+  function combinedNextSteps(item) {
+    const seen = new Set();
+    return ['blocking_factors', 'next_steps'].flatMap((field) => asLines(item && item[field]))
+      .filter((value) => {
+        const key = value.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
   }
 
   function renderStaticProjectReport(report) {
@@ -485,7 +495,7 @@ function buildTranscriptTestPage(config) {
           <div class="project-print-summary">
             <div><strong>Report status</strong><span>${escapeHtml(staticText(report.reportStatus))}</span></div>
             <div><strong>Overall health</strong><span>${escapeHtml(staticText(report.overallHealth))}</span></div>
-            <div><strong>Overall colour</strong><span>${renderStaticColour(report.overallHealthRag)}</span></div>
+            <div><strong>Overall status</strong><span>${renderStaticColour(report.overallHealthRag)}</span></div>
           </div>
           <h4>Executive summary</h4>
           <p>${escapeHtml(report.summary || '')}</p>
@@ -508,7 +518,7 @@ function buildTranscriptTestPage(config) {
         <section>
           <h3>Milestones</h3>
           <table class="project-print-table project-print-milestones">
-            <thead><tr><th>Milestone</th><th>Baseline</th><th>Forecast</th><th>Status</th><th>Colour</th><th>Health</th><th>Summary</th><th>Blockers</th><th>Next steps</th></tr></thead>
+            <thead><tr><th>Milestone</th><th>Baseline</th><th>Forecast</th><th>Status</th><th>Overall status</th><th>Health</th><th>Summary</th><th>Next steps</th></tr></thead>
             <tbody>
               ${milestones.map((item) => `
                 <tr>
@@ -519,10 +529,9 @@ function buildTranscriptTestPage(config) {
                   <td>${renderStaticColour(item.agreed_rag_status || item.rag_status)}</td>
                   <td>${escapeHtml(staticText(item.health_assessment))}</td>
                   <td>${escapeHtml(staticText(item.normalised_evidence_summary || item.excerpt))}</td>
-                  <td>${escapeHtml(staticText(item.blocking_factors))}</td>
-                  <td>${escapeHtml(staticText(item.next_steps))}</td>
+                  <td>${escapeHtml(staticText(combinedNextSteps(item)))}</td>
                 </tr>
-              `).join('') || '<tr><td colspan="9">—</td></tr>'}
+              `).join('') || '<tr><td colspan="8">—</td></tr>'}
             </tbody>
           </table>
         </section>

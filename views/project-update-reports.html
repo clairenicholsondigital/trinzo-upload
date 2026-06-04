@@ -31,6 +31,9 @@ th:last-child, td:last-child { border-right:0; }
 .actions { display:flex; gap:.65rem; flex-wrap:wrap; align-items:center; }
 .brand { display:flex; gap:.75rem; align-items:center; margin-right:auto; }
 .brand img { width:132px; height:auto; background:#071126; border:1px solid var(--border); border-radius:6px; padding:.45rem; }
+.print-only { display:none; }
+.json-tools { display:flex; justify-content:flex-start; margin:.75rem 0 .5rem; }
+.json-tools button { opacity:.82; padding:.42rem .62rem; font-size:.9rem; }
 .button-link, button { display:inline-block; background:#132847; color:#dbeafe; border:1px solid var(--border); border-radius:8px; padding:.5rem .7rem; font-weight:700; text-decoration:none; white-space:nowrap; cursor:pointer; font:inherit; }
 button.primary { background:linear-gradient(180deg,var(--accent),#0fb5ab); border-color:#0fb5ab; color:#02173B; }
 button.danger { background:#7f1d1d; border-color:#dc2626; color:#fee2e2; }
@@ -50,6 +53,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
 @media print {
   body { background:#fff; color:#111827; padding:0; }
   .nav, .actions, .edit-panel, details { display:none !important; }
+  .print-only { display:inline-block; }
   .panel { background:#fff; color:#111827; border-color:#d1d5db; break-inside:avoid; }
   .print-footer { display:block !important; position:fixed; left:0; right:0; bottom:0; color:#6b7280; font-size:8px; border-top:1px solid #d1d5db; padding-top:2mm; }
   .print-footer::after { content:"Page " counter(page); float:right; }
@@ -125,6 +129,21 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
     const colour = colourValue(value);
     const label = friendlyLabel(value);
     return `<span class="colour-field" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}"><span class="colour-swatch ${colour ? '' : 'unknown'}" style="${colour ? `background:${escapeHtml(colour)}` : ''}"></span></span>`;
+  }
+
+  function combinedNextSteps(item) {
+    const seen = new Set();
+    return ['blocking_factors', 'next_steps'].flatMap((field) => {
+      const value = item && item[field];
+      if (Array.isArray(value)) return value.map((entry) => String(entry || '').trim()).filter(Boolean);
+      const text = String(value || '').trim();
+      return text ? [text] : [];
+    }).filter((value) => {
+      const key = value.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   }
 
   function latestPayload(report) {
@@ -229,7 +248,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
       <section class="panel">
         <div class="actions">
           <div class="brand">
-            <img src="/static/trinzo-logo.svg" alt="Trinzo logo" />
+            <img class="print-only" src="/static/trinzo-logo.svg" alt="Trinzo logo" />
             <h1>${escapeHtml(report.reportName || `Report ${report.reportId}`)}</h1>
           </div>
           <button id="exportReportPdfBtn" type="button">Export PDF</button>
@@ -243,7 +262,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
           <div class="item"><div class="label">Period</div><div class="value">${escapeHtml(report.periodLabel || '-')}</div></div>
           <div class="item"><div class="label">Status</div><div class="value">${escapeHtml(friendlyLabel(report.reportStatus))}</div></div>
           <div class="item"><div class="label">Overall health</div><div class="value">${escapeHtml(friendlyLabel(projectReport.overallHealth))}</div></div>
-          <div class="item"><div class="label">Overall colour</div><div class="value">${renderColour(projectReport.overallHealthRag)}</div></div>
+          <div class="item"><div class="label">Overall status</div><div class="value">${renderColour(projectReport.overallHealthRag)}</div></div>
         </div>
       </section>
       <section class="panel edit-panel">
@@ -262,6 +281,9 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
           </label>
         </div>
         <p class="muted">The report detail is table-first; raw JSON is tucked into Settings for advanced fixes only.</p>
+        <div class="json-tools">
+          <button id="copySavedProjectReportBtn" class="secondary" type="button">Copy report JSON</button>
+        </div>
         <details class="raw-json" style="margin-top:.75rem">
           <summary>Report Settings</summary>
           <label style="margin-top:.75rem">Project report JSON
@@ -296,9 +318,9 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
         <h2>Milestones</h2>
         <div class="table-scroll">
           <table>
-            <thead><tr><th>Milestone</th><th>Baseline</th><th>Forecast</th><th>Delivery status</th><th>Status</th><th>Health</th><th>Summary</th><th>Blockers</th><th>Next steps</th></tr></thead>
+            <thead><tr><th>Milestone</th><th>Baseline</th><th>Forecast</th><th>Delivery status</th><th>Status</th><th>Health</th><th>Summary</th><th>Next steps</th></tr></thead>
             <tbody>
-              ${milestones.map((item) => `<tr><td>${escapeHtml(titleLabel(item.milestone))}</td><td>${escapeHtml(staticText(item.baseline_finish_date || item.baselineDeadline || item.deadline))}</td><td>${escapeHtml(staticText(item.forecast_finish_date || item.forecastDeadline || item.deadline))}</td><td>${escapeHtml(friendlyLabel(item.delivery_status || item.status))}</td><td>${renderColour(item.agreed_rag_status || item.rag_status)}</td><td>${escapeHtml(friendlyLabel(item.health_assessment))}</td><td>${escapeHtml(staticText(item.normalised_evidence_summary || item.excerpt))}</td><td>${escapeHtml(staticText(item.blocking_factors))}</td><td>${escapeHtml(staticText(item.next_steps))}</td></tr>`).join('') || '<tr><td colspan="9">-</td></tr>'}
+              ${milestones.map((item) => `<tr><td>${escapeHtml(titleLabel(item.milestone))}</td><td>${escapeHtml(staticText(item.baseline_finish_date || item.baselineDeadline || item.deadline))}</td><td>${escapeHtml(staticText(item.forecast_finish_date || item.forecastDeadline || item.deadline))}</td><td>${escapeHtml(friendlyLabel(item.delivery_status || item.status))}</td><td>${renderColour(item.agreed_rag_status || item.rag_status)}</td><td>${escapeHtml(friendlyLabel(item.health_assessment))}</td><td>${escapeHtml(staticText(item.normalised_evidence_summary || item.excerpt))}</td><td>${escapeHtml(staticText(combinedNextSteps(item)))}</td></tr>`).join('') || '<tr><td colspan="8">-</td></tr>'}
             </tbody>
           </table>
         </div>
@@ -357,6 +379,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
     const statusEditor = document.getElementById('reportStatusEditor');
     const summaryEditor = document.getElementById('reportSummaryEditor');
     const jsonEditor = document.getElementById('projectReportJsonEditor');
+    const copySavedProjectReportBtn = document.getElementById('copySavedProjectReportBtn');
     let autosaveTimer = null;
 
     function setSaveStatus(text, type) {
@@ -415,6 +438,10 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
       queueAutosave();
     });
     jsonEditor.addEventListener('input', queueAutosave);
+    copySavedProjectReportBtn.addEventListener('click', async () => {
+      await navigator.clipboard.writeText(jsonEditor.value || '{}');
+      setSaveStatus('Project report JSON copied to clipboard.', 'success');
+    });
     saveButton.addEventListener('click', () => saveReport(false));
     exportButton.addEventListener('click', () => window.print());
   }

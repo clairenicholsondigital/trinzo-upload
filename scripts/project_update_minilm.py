@@ -222,6 +222,21 @@ def blank_unknown_status(value: Any) -> Any:
     return "" if str(value or "").strip().lower() == "unknown" else value
 
 
+def combine_blockers_and_next_steps(segment: dict[str, Any]) -> list[str]:
+    combined: list[str] = []
+    for field in ("blocking_factors", "next_steps"):
+        raw_items = segment.get(field, [])
+        if isinstance(raw_items, str):
+            raw_items = [raw_items]
+        if not isinstance(raw_items, list):
+            continue
+        for item in raw_items:
+            text = clean_text(item)
+            if text and text.lower() not in {existing.lower() for existing in combined}:
+                combined.append(text)
+    return combined
+
+
 def build_report_payload(result: dict[str, Any], enriched_segments: list[dict[str, Any]], diagnostics: dict[str, Any]) -> dict[str, Any]:
     summary = result.get("project_health_summary", {})
     overall = summary.get("overall_health", "unknown")
@@ -248,6 +263,8 @@ def build_report_payload(result: dict[str, Any], enriched_segments: list[dict[st
         item = dict(segment)
         item["delivery_status"] = blank_unknown_status(item.get("delivery_status"))
         item["health_assessment"] = blank_unknown_status(item.get("health_assessment"))
+        item["next_steps"] = combine_blockers_and_next_steps(item)
+        item["blocking_factors"] = []
         report_milestones.append(item)
 
     return {

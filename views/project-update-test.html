@@ -34,6 +34,7 @@ button:disabled { opacity:.6; cursor:not-allowed; }
 .actions, .json-heading { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; justify-content:space-between; }
 .project-report-brand { display:flex; gap:.75rem; align-items:center; }
 .project-report-logo { width:132px; height:auto; background:#071126; border:1px solid var(--border); border-radius:6px; padding:.45rem; }
+.print-only { display:none; }
 .message { margin-top:1rem; padding:.75rem; border-radius:10px; background:#17233f; border:1px solid var(--border); white-space:pre-wrap; }
 .message.error { background:#3a1515; border-color:#7f1d1d; }
 .message.success { background:#0f2f29; border-color:#116149; }
@@ -93,6 +94,7 @@ a { color:#67e8f9; }
   .panel { border:0; border-radius:0; margin:0; padding:0; }
   #projectReportPrintOutput { display:block; }
   .project-report-brand { margin-bottom:8mm; }
+  .print-only { display:inline-block; }
   .project-report-logo { width:120px; background:#071126; border:1px solid #d1d5db; padding:4px; print-color-adjust:exact; -webkit-print-color-adjust:exact; }
   .project-print-report { font-size:9px; line-height:1.25; }
   .project-print-report section { break-inside:auto; margin:0 0 6mm; }
