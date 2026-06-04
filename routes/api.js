@@ -25,6 +25,7 @@ const {
   listProjectMilestones,
   getProjectMilestoneDetail,
   createProjectMilestone,
+  updateProjectMilestoneDeadlines,
   listMeetings,
   getMeetingById,
   deleteMeetingById,
@@ -746,6 +747,18 @@ router.post('/project-update-test/milestones', async (req, res) => {
 router.get('/project-update-test/milestones/:milestoneId', async (req, res) => {
   try {
     const milestone = await getProjectMilestoneDetail(req.params.milestoneId);
+    if (!milestone) {
+      return res.status(404).json({ ok: false, error: 'Project milestone not found.' });
+    }
+    return res.json({ ok: true, milestone });
+  } catch (error) {
+    return sendTestError(res, error);
+  }
+});
+
+router.patch('/project-update-test/milestones/:milestoneId', async (req, res) => {
+  try {
+    const milestone = await updateProjectMilestoneDeadlines(req.params.milestoneId, req.body || {});
     if (!milestone) {
       return res.status(404).json({ ok: false, error: 'Project milestone not found.' });
     }

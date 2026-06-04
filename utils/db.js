@@ -303,6 +303,25 @@ FROM (
   return milestone ? { ...milestone, created: created === 't' || created === 'true' } : null;
 }
 
+async function updateProjectMilestoneDeadlines(milestoneId, payload = {}) {
+  const id = Number(milestoneId);
+  if (!Number.isFinite(id) || id <= 0) {
+    const error = new Error('Valid milestone id is required.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const baselineFinishDate = payload.baselineFinishDate || payload.baseline_finish_date || '';
+  const forecastFinishDate = payload.forecastFinishDate || payload.forecast_finish_date || '';
+  await runPsql(`
+UPDATE project_core_milestones
+SET baseline_finish_date = ${qDate(baselineFinishDate)},
+    forecast_finish_date = ${qDate(forecastFinishDate)}
+WHERE id = ${id} AND is_active = TRUE;`);
+
+  return getProjectMilestoneDetail(id);
+}
+
 async function saveUploadedJob({ fileName, mimeType, transcriptText }) {
   const title = fileName || 'Uploaded transcript';
   const description = 'Auto-created from uploaded transcript.';
@@ -764,6 +783,7 @@ module.exports = {
   listProjectMilestones,
   getProjectMilestoneDetail,
   createProjectMilestone,
+  updateProjectMilestoneDeadlines,
   getMeetingStatus,
   claimNextJob,
   markJobCompleted,

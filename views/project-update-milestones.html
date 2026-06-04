@@ -213,6 +213,19 @@ th:last-child, td:last-child { border-right:0; }
         </div>
       </section>
       <section class="panel">
+        <h2>Edit deadlines</h2>
+        <form id="milestoneDeadlineForm" class="form-grid">
+          <label>Baseline deadline
+            <input name="baselineFinishDate" type="date" value="${escapeHtml(dateOnly(milestone.baselineFinishDate) === '-' ? '' : dateOnly(milestone.baselineFinishDate))}" />
+          </label>
+          <label>Forecast deadline
+            <input name="forecastFinishDate" type="date" value="${escapeHtml(dateOnly(milestone.forecastFinishDate) === '-' ? '' : dateOnly(milestone.forecastFinishDate))}" />
+          </label>
+          <button type="submit">Save deadlines</button>
+        </form>
+        <p id="milestoneDeadlineStatus" class="status"></p>
+      </section>
+      <section class="panel">
         <h2>Assessment history</h2>
         <div class="table-scroll">
           <table>
@@ -240,6 +253,35 @@ th:last-child, td:last-child { border-right:0; }
         </div>
       </section>
     `;
+    const form = document.getElementById('milestoneDeadlineForm');
+    const formStatus = document.getElementById('milestoneDeadlineStatus');
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const button = form.querySelector('button[type="submit"]');
+      const formData = new FormData(form);
+      formStatus.className = 'status';
+      formStatus.textContent = 'Saving deadlines...';
+      button.disabled = true;
+      try {
+        const response = await fetch(`/api/project-update-test/milestones/${encodeURIComponent(milestone.milestoneId)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(Object.fromEntries(formData.entries()))
+        });
+        const result = await response.json().catch(() => null);
+        if (!response.ok || !result || result.ok === false) {
+          throw new Error(result && result.error ? result.error : `Request failed with status ${response.status}.`);
+        }
+        formStatus.className = 'status success';
+        formStatus.textContent = 'Deadlines saved.';
+        renderDetail(result.milestone);
+      } catch (error) {
+        formStatus.className = 'status error';
+        formStatus.textContent = error.message || 'Could not save deadlines.';
+      } finally {
+        button.disabled = false;
+      }
+    });
   }
 
   async function load() {
