@@ -1,0 +1,35 @@
+{
+  "description": "Information-only briefing with valid discussion topics but explicit decision/action abstention.",
+  "passThreshold": 0.9,
+  "criteria": {
+    "decisions": {
+      "weight": 0.2,
+      "maxCount": 0
+    },
+    "actions": {
+      "weight": 0.2,
+      "maxCount": 0
+    },
+    "hallucinations": {
+      "weight": 0.25,
+      "mustNotContain": [
+        "manager approval",
+        "expense audit",
+        "Nadia to update the intranet"
+      ]
+    },
+    "abstention": {
+      "weight": 0.35,
+      "decisionMaxCount": 0,
+      "actionMaxCount": 0,
+      "discussionMinCount": 1,
+      "requiredDiscussionTopics": [
+        ["travel", "policy"],
+        ["mileage", "July"],
+        ["guidance", "intranet"]
+      ],
+      "reason": "The meeting contains briefing topics but explicitly says there are no decisions or follow-up actions."
+    }
+  }
+}
+

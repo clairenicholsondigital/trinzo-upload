@@ -1,0 +1,32 @@
+{
+  "description": "Decision-heavy internal meeting where no concrete owner/action should be invented.",
+  "passThreshold": 0.9,
+  "criteria": {
+    "decisions": {
+      "weight": 0.3,
+      "mustContain": [
+        "phased regional launch",
+        "legacy portal read-only for four weeks"
+      ],
+      "minCount": 1
+    },
+    "actions": {
+      "weight": 0.2,
+      "maxCount": 0
+    },
+    "hallucinations": {
+      "weight": 0.25,
+      "mustNotContain": [
+        "single launch was approved",
+        "support team action",
+        "Tom to monitor errors"
+      ]
+    },
+    "abstention": {
+      "weight": 0.25,
+      "actionMaxCount": 0,
+      "reason": "The transcript makes decisions but assigns no concrete follow-up owner."
+    }
+  }
+}
+

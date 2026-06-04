@@ -32,6 +32,9 @@ For `/meeting-minutes-final/`, optimise in this order:
 
 Regression coverage should use varied transcript fixtures rather than only the webinar rehearsal example, and should favour semantic confidence/abstention over transcript-specific phrase patches.
 
+The fixed `/meeting-minutes-final` golden evaluation pack lives in `scripts/meeting-minutes-final-golden/`.
+Use `python3 scripts/run_meeting_minutes_final_golden_eval.py --dry-run` for fixture/scoring validation, run the same command without `--dry-run` when the local MiniLM runtime is installed, or add `--base-url https://trinzo.virtual-hub.online` to score the deployed API.
+
 ## Power Automate requirement
 The finalisation endpoint posts approved meeting minutes JSON directly to `POWER_AUTOMATE_WEBHOOK_URL` (HTTP trigger flow).
 

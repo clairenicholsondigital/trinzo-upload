@@ -1,0 +1,8 @@
+Participants: Claire, Bob
+Claire: Can everyone hear me?
+Bob: I can see the red light.
+Claire: That's your webcam.
+Bob: Great.
+Claire: We do not have a project update today. Let's stop there.
+Bob: Fine, no actions from me.
+

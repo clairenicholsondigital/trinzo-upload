@@ -1,0 +1,32 @@
+{
+  "description": "Low-substance call where the extractor should abstain from creating decisions, actions, or business topics.",
+  "passThreshold": 1.0,
+  "criteria": {
+    "decisions": {
+      "weight": 0.2,
+      "maxCount": 0
+    },
+    "actions": {
+      "weight": 0.2,
+      "maxCount": 0
+    },
+    "hallucinations": {
+      "weight": 0.3,
+      "mustNotContain": [
+        "red light",
+        "webcam",
+        "hear me",
+        "project update",
+        "Fine"
+      ]
+    },
+    "abstention": {
+      "weight": 0.3,
+      "decisionMaxCount": 0,
+      "actionMaxCount": 0,
+      "discussionMaxCount": 0,
+      "reason": "Transcript noise and explicit no-action language should produce sparse output."
+    }
+  }
+}
+

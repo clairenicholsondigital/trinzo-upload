@@ -1,0 +1,42 @@
+{
+  "description": "Incident meeting with concrete actions, owner evidence, a deadline, and one supported decision.",
+  "passThreshold": 0.85,
+  "criteria": {
+    "decisions": {
+      "weight": 0.25,
+      "mustContain": [
+        "export disabled until the patch is verified"
+      ],
+      "minCount": 1
+    },
+    "actions": {
+      "weight": 0.35,
+      "mustContain": [
+        {
+          "text": "patch the mapper",
+          "owner": "Liam",
+          "deadline": "Today"
+        },
+        {
+          "text": "notify customer success",
+          "owner": "Noah"
+        }
+      ],
+      "minCount": 2
+    },
+    "hallucinations": {
+      "weight": 0.25,
+      "mustNotContain": [
+        "refund",
+        "database migration",
+        "root cause confirmed by finance"
+      ]
+    },
+    "abstention": {
+      "weight": 0.15,
+      "discussionMinCount": 1,
+      "reason": "The transcript has enough concrete evidence to avoid sparse output."
+    }
+  }
+}
+
