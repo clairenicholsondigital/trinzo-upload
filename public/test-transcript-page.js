@@ -23,7 +23,7 @@ function buildTranscriptTestPage(config) {
       </div>
       <div class="actions">
         <button id="goBtn" type="button">${config.buttonText}</button>
-        <button id="clearBtn" class="secondary" type="button">Clear / reset</button>
+        <button id="clearBtn" class="secondary" type="button">${config.resetButtonText || 'Clear / reset'}</button>
       </div>
       <small id="autosaveStatus" class="autosave-status hidden"></small>
       <div id="message" class="message hidden"></div>
@@ -42,6 +42,7 @@ function buildTranscriptTestPage(config) {
         </div>
         <div class="actions">
           <button id="downloadProjectReportPdfBtn" class="secondary" type="button">Download PDF</button>
+          <button id="openProjectReportFullScreenBtn" class="secondary" type="button">Open in full screen</button>
           <button id="copyProjectReportBtn" class="secondary" type="button">Copy report JSON</button>
         </div>
       </div>
@@ -81,6 +82,7 @@ function buildTranscriptTestPage(config) {
   const projectReportPrintOutput = document.getElementById('projectReportPrintOutput');
   const copyProjectReportBtn = document.getElementById('copyProjectReportBtn');
   const downloadProjectReportPdfBtn = document.getElementById('downloadProjectReportPdfBtn');
+  const openProjectReportFullScreenBtn = document.getElementById('openProjectReportFullScreenBtn');
   const jsonPanel = document.getElementById('jsonPanel');
   const jsonOutput = document.getElementById('jsonOutput');
   const debugPanel = document.getElementById('debugPanel');
@@ -784,6 +786,13 @@ function buildTranscriptTestPage(config) {
     jsonOutput.textContent = '';
   }
 
+  function confirmResetPage() {
+    if (config.confirmReset && !window.confirm('Are you sure you want to reset the page and start again?')) {
+      return;
+    }
+    resetPage();
+  }
+
   async function copyJson() {
     if (!state.result) return;
     await navigator.clipboard.writeText(JSON.stringify(state.result, null, 2));
@@ -791,7 +800,7 @@ function buildTranscriptTestPage(config) {
   }
 
   goBtn.addEventListener('click', submitTranscript);
-  clearBtn.addEventListener('click', resetPage);
+  clearBtn.addEventListener('click', confirmResetPage);
   textInput.addEventListener('input', queueProjectAutosave);
   copyBtn.addEventListener('click', copyJson);
   copyProjectReportBtn.addEventListener('click', async () => {
@@ -805,6 +814,16 @@ function buildTranscriptTestPage(config) {
     if (!state.projectReport) return;
     projectReportPrintOutput.innerHTML = renderStaticProjectReport(state.projectReport);
     window.print();
+  });
+  openProjectReportFullScreenBtn.addEventListener('click', () => {
+    refreshProjectReportState();
+    const persistence = state.result && state.result.projectReportPersistence ? state.result.projectReportPersistence : {};
+    const reportId = persistence.reportId || persistence.report_id || '';
+    if (!reportId) {
+      setMessage('Process meeting with saving enabled before opening the report detail page.', 'error');
+      return;
+    }
+    window.open(`/project-update-test/reports/${encodeURIComponent(reportId)}`, '_blank', 'noopener');
   });
   restoreProjectAutosave();
 }

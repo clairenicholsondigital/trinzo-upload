@@ -122,9 +122,11 @@ a { color:#67e8f9; }
 <script src="/static/test-transcript-page.js"></script>
 <script>
 buildTranscriptTestPage({
-  title: 'Project update test',
+  title: 'Project Progress Reporting Tool',
   intro: 'Upload or paste a project check-in transcript to extract milestone statuses and change-ready JSON.',
   buttonText: 'Process meeting',
+  resetButtonText: 'Clear and restart',
+  confirmReset: true,
   endpoint: '/api/project-update-test',
   projectReportUi: true,
   summary: projectUpdateSummary
