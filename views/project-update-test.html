@@ -30,7 +30,7 @@ button.secondary { background:#132847; color:#dbeafe; border:1px solid var(--bor
 button:disabled { opacity:.6; cursor:not-allowed; }
 .actions, .json-heading { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; justify-content:space-between; }
 .project-report-brand { display:flex; gap:.75rem; align-items:center; }
-.project-report-logo { width:132px; height:auto; background:#fff; border-radius:6px; padding:.35rem; }
+.project-report-logo { width:132px; height:auto; background:#071126; border:1px solid var(--border); border-radius:6px; padding:.45rem; }
 .message { margin-top:1rem; padding:.75rem; border-radius:10px; background:#17233f; border:1px solid var(--border); white-space:pre-wrap; }
 .message.error { background:#3a1515; border-color:#7f1d1d; }
 .message.success { background:#0f2f29; border-color:#116149; }
@@ -74,6 +74,7 @@ a { color:#67e8f9; }
 .project-colour-swatch.unknown { background:transparent; border-style:dashed; border-color:var(--muted); }
 .project-hidden-field { position:absolute; opacity:0; pointer-events:none; width:1px; height:1px; }
 .project-hint { display:block; color:var(--muted); font-size:.78rem; font-weight:400; margin-top:.25rem; }
+#projectReportPrintOutput { display:none; }
 @media (max-width: 760px) {
   body { padding:.7rem; }
   .panel { padding:.85rem; border-radius:10px; }
@@ -81,14 +82,30 @@ a { color:#67e8f9; }
   .project-tab { flex:1 1 auto; }
 }
 @media print {
+  @page { size:A4 portrait; margin:10mm; }
   body { background:#fff; color:#111827; padding:0; }
   .container { max-width:none; }
-  .project-nav, body > .container > main > .panel:first-child, #summaryPanel, #debugPanel, #jsonPanel, button, .project-tabs, .project-hidden-field { display:none !important; }
+  .project-nav, body > .container > main > .panel:first-child, #summaryPanel, #debugPanel, #jsonPanel, button, .project-tabs, .project-hidden-field, #projectReportOutput { display:none !important; }
   .panel, .table-scroll, .summary-item, .project-display-value, input, select, textarea { background:#fff !important; color:#111827 !important; border-color:#d1d5db !important; box-shadow:none !important; }
-  .panel { border-radius:0; margin:0 0 1rem; }
-  .project-tab-panel.hidden { display:block !important; }
-  .project-tab-panel { min-height:auto; page-break-inside:avoid; }
-  .project-report-logo { background:transparent; padding:0; }
+  .panel { border:0; border-radius:0; margin:0; padding:0; }
+  #projectReportPrintOutput { display:block; }
+  .project-report-brand { margin-bottom:8mm; }
+  .project-report-logo { width:120px; background:#071126; border:1px solid #d1d5db; padding:4px; }
+  .project-print-report { font-size:9px; line-height:1.25; }
+  .project-print-report section { break-inside:auto; margin:0 0 6mm; }
+  .project-print-report h3 { font-size:14px; margin:0 0 2mm; }
+  .project-print-report h4 { font-size:11px; margin:3mm 0 1mm; }
+  .project-print-summary { display:grid; grid-template-columns:repeat(3, 1fr); gap:3mm; margin-bottom:3mm; }
+  .project-print-summary div { border:1px solid #d1d5db; padding:2mm; }
+  .project-print-summary strong { display:block; margin-bottom:1mm; }
+  .project-print-table { width:100%; border-collapse:collapse; table-layout:fixed; page-break-inside:auto; }
+  .project-print-table th, .project-print-table td { border:1px solid #d1d5db; padding:1.4mm; text-align:left; vertical-align:top; overflow-wrap:normal; word-break:normal; hyphens:none; white-space:pre-line; }
+  .project-print-table th { background:#f3f4f6; font-weight:700; }
+  .project-print-table tr { break-inside:avoid; page-break-inside:avoid; }
+  .project-print-milestones { font-size:7.2px; }
+  .project-print-milestones th, .project-print-milestones td { padding:1mm; }
+  .project-print-colour { display:inline-flex; gap:1mm; align-items:center; white-space:nowrap; }
+  .project-print-colour .project-colour-swatch { width:10px; height:10px; border-width:1px; }
   a { color:#111827; }
 }
 </style>

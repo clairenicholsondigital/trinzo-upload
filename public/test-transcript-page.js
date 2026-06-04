@@ -41,11 +41,12 @@ function buildTranscriptTestPage(config) {
           <h2>Project report</h2>
         </div>
         <div class="actions">
-          <button id="downloadProjectReportPdfBtn" class="secondary" type="button">Download branded PDF</button>
+          <button id="downloadProjectReportPdfBtn" class="secondary" type="button">Download PDF</button>
           <button id="copyProjectReportBtn" class="secondary" type="button">Copy report JSON</button>
         </div>
       </div>
       <div id="projectReportOutput"></div>
+      <div id="projectReportPrintOutput" aria-hidden="true"></div>
     </section>
 
     <section id="debugPanel" class="panel hidden">
@@ -77,6 +78,7 @@ function buildTranscriptTestPage(config) {
   const summaryGrid = document.getElementById('summaryGrid');
   const projectReportPanel = document.getElementById('projectReportPanel');
   const projectReportOutput = document.getElementById('projectReportOutput');
+  const projectReportPrintOutput = document.getElementById('projectReportPrintOutput');
   const copyProjectReportBtn = document.getElementById('copyProjectReportBtn');
   const downloadProjectReportPdfBtn = document.getElementById('downloadProjectReportPdfBtn');
   const jsonPanel = document.getElementById('jsonPanel');
@@ -441,6 +443,101 @@ function buildTranscriptTestPage(config) {
     `;
   }
 
+  function staticText(value) {
+    if (Array.isArray(value)) return value.map((item) => String(item || '').trim()).filter(Boolean).join('\n') || '—';
+    return sentenceLabel(value) || String(value || '').trim() || '—';
+  }
+
+  function renderStaticColour(value) {
+    const rawValue = String(value ?? '').trim();
+    const colour = colourValue(rawValue);
+    return `
+      <span class="project-print-colour">
+        <span class="project-colour-swatch ${colour ? '' : 'unknown'}" style="${colour ? `background:${escapeHtml(colour)}` : ''}"></span>
+        <span>${escapeHtml(sentenceLabel(rawValue) || '—')}</span>
+      </span>
+    `;
+  }
+
+  function renderStaticProjectReport(report) {
+    const areas = report.healthAreas && typeof report.healthAreas === 'object' ? report.healthAreas : {};
+    const milestones = asArray(report.milestones);
+    const risks = asArray(report.risks);
+    const actions = asArray(report.actions);
+
+    return `
+      <div class="project-print-report">
+        <section>
+          <h3>Summary</h3>
+          <div class="project-print-summary">
+            <div><strong>Report status</strong><span>${escapeHtml(staticText(report.reportStatus))}</span></div>
+            <div><strong>Overall health</strong><span>${escapeHtml(staticText(report.overallHealth))}</span></div>
+            <div><strong>Overall colour</strong><span>${renderStaticColour(report.overallHealthRag)}</span></div>
+          </div>
+          <p>${escapeHtml(report.summary || '')}</p>
+          <h4>Key updates</h4>
+          <ul>${asLines(report.keyUpdates).map((item) => `<li>${escapeHtml(item)}</li>`).join('') || '<li>—</li>'}</ul>
+        </section>
+
+        <section>
+          <h3>Overall summary</h3>
+          <table class="project-print-table">
+            <thead><tr><th>Area</th><th>Status</th><th>Trend</th><th>Evidence</th></tr></thead>
+            <tbody>
+              ${Object.keys(areas).map((key) => {
+                const area = areas[key] || {};
+                const evidence = asArray(area.evidence).map((item) => item.text || item.source || '').filter(Boolean).join('\n');
+                return `<tr><th>${escapeHtml(titleize(key))}</th><td>${escapeHtml(staticText(area.status))}</td><td>${escapeHtml(staticText(area.trend))}</td><td>${escapeHtml(evidence || area.evidenceNotes || '—')}</td></tr>`;
+              }).join('') || '<tr><td colspan="4">—</td></tr>'}
+            </tbody>
+          </table>
+        </section>
+
+        <section>
+          <h3>Milestones</h3>
+          <table class="project-print-table project-print-milestones">
+            <thead><tr><th>Milestone</th><th>Baseline</th><th>Forecast</th><th>Status</th><th>Colour</th><th>Health</th><th>Summary</th><th>Blockers</th><th>Next steps</th></tr></thead>
+            <tbody>
+              ${milestones.map((item) => `
+                <tr>
+                  <td>${escapeHtml(staticText(item.milestone))}</td>
+                  <td>${escapeHtml(staticText(item.baseline_finish_date || item.baselineDeadline || item.deadline))}</td>
+                  <td>${escapeHtml(staticText(item.forecast_finish_date || item.forecastDeadline || item.deadline))}</td>
+                  <td>${escapeHtml(staticText(item.delivery_status || item.status))}</td>
+                  <td>${renderStaticColour(item.agreed_rag_status || item.rag_status)}</td>
+                  <td>${escapeHtml(staticText(item.health_assessment))}</td>
+                  <td>${escapeHtml(staticText(item.normalised_evidence_summary || item.excerpt))}</td>
+                  <td>${escapeHtml(staticText(item.blocking_factors))}</td>
+                  <td>${escapeHtml(staticText(item.next_steps))}</td>
+                </tr>
+              `).join('') || '<tr><td colspan="9">—</td></tr>'}
+            </tbody>
+          </table>
+        </section>
+
+        <section>
+          <h3>Risks</h3>
+          <table class="project-print-table">
+            <thead><tr><th>Risk</th><th>Description</th><th>Mitigation</th><th>Milestone</th><th>Confidence</th></tr></thead>
+            <tbody>
+              ${risks.map((risk) => `<tr><td>${escapeHtml(staticText(risk.riskTitle))}</td><td>${escapeHtml(staticText(risk.description))}</td><td>${escapeHtml(staticText(risk.suggestedMitigation))}</td><td>${escapeHtml(staticText(risk.relatedMilestone))}</td><td>${escapeHtml(staticText(risk.confidence))}</td></tr>`).join('') || '<tr><td colspan="5">—</td></tr>'}
+            </tbody>
+          </table>
+        </section>
+
+        <section>
+          <h3>Actions</h3>
+          <table class="project-print-table">
+            <thead><tr><th>Action</th><th>Owner</th><th>Deadline</th><th>Milestone</th><th>Confidence</th></tr></thead>
+            <tbody>
+              ${actions.map((action) => `<tr><td>${escapeHtml(staticText(action.action || action.meetingActionPoint))}</td><td>${escapeHtml(staticText(action.meetingActionPointOwner || action.owner))}</td><td>${escapeHtml(staticText(action.deadline || action.meetingActionPointDeadline))}</td><td>${escapeHtml(staticText(action.related_milestone || action.relatedMilestone))}</td><td>${escapeHtml(staticText(action.actionConfidence))}</td></tr>`).join('') || '<tr><td colspan="5">—</td></tr>'}
+            </tbody>
+          </table>
+        </section>
+      </div>
+    `;
+  }
+
   function renderSnapshotTab(report, result) {
     const snapshot = report.comparisonSnapshot || {};
     const persistence = result.projectReportPersistence || {};
@@ -478,6 +575,7 @@ function buildTranscriptTestPage(config) {
       </div>
       ${tabs.map(([key, , content], index) => `<div class="project-tab-panel ${index === 0 ? '' : 'hidden'}" data-project-panel="${key}">${content}</div>`).join('')}
     `;
+    projectReportPrintOutput.innerHTML = renderStaticProjectReport(report);
     projectReportOutput.querySelectorAll('[data-project-tab]').forEach((tab) => {
       tab.addEventListener('click', () => {
         const key = tab.getAttribute('data-project-tab');
@@ -545,6 +643,7 @@ function buildTranscriptTestPage(config) {
     if (!report) {
       projectReportPanel.classList.add('hidden');
       projectReportOutput.innerHTML = '';
+      projectReportPrintOutput.innerHTML = '';
       return;
     }
     state.projectReport = report;
@@ -670,6 +769,7 @@ function buildTranscriptTestPage(config) {
     debugOutput.textContent = '';
     debugSummary.innerHTML = '';
     projectReportOutput.innerHTML = '';
+    projectReportPrintOutput.innerHTML = '';
     jsonOutput.textContent = '';
   }
 
@@ -692,6 +792,7 @@ function buildTranscriptTestPage(config) {
   downloadProjectReportPdfBtn.addEventListener('click', () => {
     refreshProjectReportState();
     if (!state.projectReport) return;
+    projectReportPrintOutput.innerHTML = renderStaticProjectReport(state.projectReport);
     window.print();
   });
   restoreProjectAutosave();
