@@ -67,6 +67,7 @@ SELECT json_build_object(
   'projectName', p.project_name,
   'periodLabel', COALESCE(rp.period_label, ''),
   'fileName', COALESCE(r.file_name, ''),
+  'reportName', COALESCE(NULLIF(r.file_name, ''), 'Report ' || r.id::text),
   'reportStatus', r.report_status,
   'createdAt', r.created_at,
   'updatedAt', r.updated_at,
@@ -98,6 +99,7 @@ SELECT json_build_object(
   'projectName', p.project_name,
   'periodLabel', COALESCE(rp.period_label, ''),
   'fileName', COALESCE(r.file_name, ''),
+  'reportName', COALESCE(NULLIF(r.file_name, ''), 'Report ' || r.id::text),
   'reportStatus', r.report_status,
   'createdAt', r.created_at,
   'updatedAt', r.updated_at,
@@ -161,6 +163,9 @@ async function saveProjectReportDetail(reportId, payload = {}) {
   const allowedStatuses = new Set(['draft', 'in_review', 'approved', 'archived']);
   const requestedStatus = String(payload.reportStatus || projectReport.reportStatus || existing.reportStatus || 'draft').trim();
   const reportStatus = allowedStatuses.has(requestedStatus) ? requestedStatus : 'draft';
+  const reportName = Object.prototype.hasOwnProperty.call(payload, 'reportName')
+    ? String(payload.reportName || '').trim()
+    : String(existing.reportName || existing.fileName || '').trim();
   const nextVersion = Number(latest.versionNumber || 0) + 1;
   const nextPayload = {
     ...latestPayload,
@@ -175,6 +180,7 @@ async function saveProjectReportDetail(reportId, payload = {}) {
 BEGIN;
 UPDATE project_reports
 SET report_status = ${q(reportStatus)},
+    file_name = ${q(reportName || `Report ${id}`)},
     updated_at = NOW()
 WHERE id = ${id};
 INSERT INTO project_report_versions (report_id, version_number, change_type, change_summary, saved_by, report_payload)
@@ -182,6 +188,37 @@ VALUES (${id}, ${nextVersion}, 'user_edit', ${q(payload.changeSummary || 'Saved 
 COMMIT;`);
 
   return getProjectReportDetail(id);
+}
+
+async function deleteProjectReport(reportId) {
+  const id = Number(reportId);
+  if (!Number.isFinite(id) || id <= 0) {
+    const error = new Error('Valid report id is required.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const existing = await getProjectReportDetail(id);
+  if (!existing) return null;
+
+  await runPsql(`
+BEGIN;
+DELETE FROM project_report_evidence
+WHERE report_version_id IN (SELECT id FROM project_report_versions WHERE report_id = ${id});
+DELETE FROM project_report_ai_risk_suggestions
+WHERE report_version_id IN (SELECT id FROM project_report_versions WHERE report_id = ${id});
+DELETE FROM project_report_risk_assessments
+WHERE report_version_id IN (SELECT id FROM project_report_versions WHERE report_id = ${id});
+DELETE FROM project_report_milestone_assessments
+WHERE report_version_id IN (SELECT id FROM project_report_versions WHERE report_id = ${id});
+DELETE FROM project_report_health_assessments
+WHERE report_version_id IN (SELECT id FROM project_report_versions WHERE report_id = ${id});
+DELETE FROM project_report_sources WHERE report_id = ${id};
+DELETE FROM project_report_versions WHERE report_id = ${id};
+DELETE FROM project_reports WHERE id = ${id};
+COMMIT;`);
+
+  return existing;
 }
 
 async function listProjectMilestones(limit = 100) {
@@ -384,6 +421,21 @@ SET baseline_finish_date = ${qDate(baselineFinishDate)},
 WHERE id = ${id} AND is_active = TRUE;`);
 
   return getProjectMilestoneDetail(id);
+}
+
+async function deleteProjectMilestone(milestoneId) {
+  const id = Number(milestoneId);
+  if (!Number.isFinite(id) || id <= 0) {
+    const error = new Error('Valid milestone id is required.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const existing = await getProjectMilestoneDetail(id);
+  if (!existing) return null;
+
+  await runPsql(`UPDATE project_core_milestones SET is_active = FALSE, updated_at = NOW() WHERE id = ${id} AND is_active = TRUE;`);
+  return existing;
 }
 
 async function saveUploadedJob({ fileName, mimeType, transcriptText }) {
@@ -845,10 +897,12 @@ module.exports = {
   listProjectReports,
   getProjectReportDetail,
   saveProjectReportDetail,
+  deleteProjectReport,
   listProjectMilestones,
   getProjectMilestoneDetail,
   createProjectMilestone,
   updateProjectMilestone,
+  deleteProjectMilestone,
   getMeetingStatus,
   claimNextJob,
   markJobCompleted,

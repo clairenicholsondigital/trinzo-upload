@@ -23,10 +23,12 @@ const {
   listProjectReports,
   getProjectReportDetail,
   saveProjectReportDetail,
+  deleteProjectReport,
   listProjectMilestones,
   getProjectMilestoneDetail,
   createProjectMilestone,
   updateProjectMilestone,
+  deleteProjectMilestone,
   listMeetings,
   getMeetingById,
   deleteMeetingById,
@@ -739,6 +741,18 @@ router.patch('/project-update-test/reports/:reportId', async (req, res) => {
   }
 });
 
+router.delete('/project-update-test/reports/:reportId', async (req, res) => {
+  try {
+    const report = await deleteProjectReport(req.params.reportId);
+    if (!report) {
+      return res.status(404).json({ ok: false, error: 'Project report not found.' });
+    }
+    return res.json({ ok: true, report });
+  } catch (error) {
+    return sendTestError(res, error);
+  }
+});
+
 router.get('/project-update-test/milestones', async (req, res) => {
   try {
     const milestones = await listProjectMilestones(req.query?.limit);
@@ -772,6 +786,18 @@ router.get('/project-update-test/milestones/:milestoneId', async (req, res) => {
 router.patch('/project-update-test/milestones/:milestoneId', async (req, res) => {
   try {
     const milestone = await updateProjectMilestone(req.params.milestoneId, req.body || {});
+    if (!milestone) {
+      return res.status(404).json({ ok: false, error: 'Project milestone not found.' });
+    }
+    return res.json({ ok: true, milestone });
+  } catch (error) {
+    return sendTestError(res, error);
+  }
+});
+
+router.delete('/project-update-test/milestones/:milestoneId', async (req, res) => {
+  try {
+    const milestone = await deleteProjectMilestone(req.params.milestoneId);
     if (!milestone) {
       return res.status(404).json({ ok: false, error: 'Project milestone not found.' });
     }

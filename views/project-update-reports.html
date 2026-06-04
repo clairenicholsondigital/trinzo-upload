@@ -33,9 +33,10 @@ th:last-child, td:last-child { border-right:0; }
 .brand img { width:132px; height:auto; background:#071126; border:1px solid var(--border); border-radius:6px; padding:.45rem; }
 .button-link, button { display:inline-block; background:#132847; color:#dbeafe; border:1px solid var(--border); border-radius:8px; padding:.5rem .7rem; font-weight:700; text-decoration:none; white-space:nowrap; cursor:pointer; font:inherit; }
 button.primary { background:linear-gradient(180deg,var(--accent),#0fb5ab); border-color:#0fb5ab; color:#02173B; }
+button.danger { background:#7f1d1d; border-color:#dc2626; color:#fee2e2; }
 button:disabled { opacity:.6; cursor:not-allowed; }
 label { display:block; color:var(--muted); font-size:.86rem; font-weight:700; }
-select, textarea { width:100%; margin-top:.35rem; background:#071126; color:var(--text); border:1px solid var(--border); border-radius:10px; padding:.65rem; font:inherit; }
+input, select, textarea { width:100%; margin-top:.35rem; background:#071126; color:var(--text); border:1px solid var(--border); border-radius:10px; padding:.65rem; font:inherit; }
 textarea { min-height:7rem; resize:vertical; }
 .json-editor { min-height:36rem; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:.9rem; }
 pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126; border:1px solid var(--border); border-radius:10px; padding:1rem; }
@@ -82,7 +83,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
   function dateValue(value) {
     if (!value) return '-';
     const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
+    return Number.isNaN(date.getTime()) ? String(value).replace(/T/g, ' ').replace(/Z$/i, '') : date.toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' });
   }
 
   function friendlyLabel(value) {
@@ -173,17 +174,20 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
       <section class="panel">
         <div class="table-scroll">
           <table>
-            <thead><tr><th>Report</th><th>Project</th><th>Period</th><th>Status</th><th>Overall health</th><th>Updated</th><th>Action</th></tr></thead>
+            <thead><tr><th>Report</th><th>Project</th><th>Period</th><th>Status</th><th>Overall health</th><th>Updated</th><th>Actions</th></tr></thead>
             <tbody>
               ${reports.map((report) => `
                 <tr>
-                  <td><a href="/project-update-test/reports/${escapeHtml(report.reportId)}">Report ${escapeHtml(report.reportId)}</a><div class="muted">${escapeHtml(report.fileName || '')}</div></td>
+                  <td><a href="/project-update-test/reports/${escapeHtml(report.reportId)}">${escapeHtml(report.reportName || `Report ${report.reportId}`)}</a><div class="muted">${escapeHtml(report.fileName || '')}</div></td>
                   <td>${escapeHtml(report.projectName || '-')}</td>
                   <td>${escapeHtml(report.periodLabel || '-')}</td>
                   <td>${escapeHtml(friendlyLabel(report.reportStatus))}</td>
                   <td>${escapeHtml(friendlyLabel(report.overallHealth))}</td>
                   <td>${escapeHtml(dateValue(report.updatedAt || report.createdAt))}</td>
-                  <td><a class="button-link" href="/project-update-test/reports/${escapeHtml(report.reportId)}">Edit Report</a></td>
+                  <td class="actions">
+                    <a class="button-link" href="/project-update-test/reports/${escapeHtml(report.reportId)}">Edit Report</a>
+                    <button class="danger" type="button" data-delete-report="${escapeHtml(report.reportId)}" data-report-name="${escapeHtml(report.reportName || `Report ${report.reportId}`)}">Delete</button>
+                  </td>
                 </tr>
               `).join('')}
             </tbody>
@@ -191,6 +195,25 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
         </div>
       </section>
     `;
+    app.querySelectorAll('[data-delete-report]').forEach((button) => {
+      button.addEventListener('click', async () => {
+        const id = button.getAttribute('data-delete-report');
+        const name = button.getAttribute('data-report-name') || `Report ${id}`;
+        if (!window.confirm(`Delete ${name}? This cannot be undone.`)) return;
+        button.disabled = true;
+        try {
+          const response = await fetch(`/api/project-update-test/reports/${encodeURIComponent(id)}`, { method: 'DELETE' });
+          const result = await response.json().catch(() => null);
+          if (!response.ok || !result || result.ok === false) {
+            throw new Error(result && result.error ? result.error : `Request failed with status ${response.status}.`);
+          }
+          await load();
+        } catch (error) {
+          window.alert(error.message || 'Could not delete report.');
+          button.disabled = false;
+        }
+      });
+    });
   }
 
   function renderDetail(report) {
@@ -207,7 +230,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
         <div class="actions">
           <div class="brand">
             <img src="/static/trinzo-logo.svg" alt="Trinzo logo" />
-            <h1>Report ${escapeHtml(report.reportId)}</h1>
+            <h1>${escapeHtml(report.reportName || `Report ${report.reportId}`)}</h1>
           </div>
           <button id="exportReportPdfBtn" type="button">Export PDF</button>
           <button id="saveReportBtn" class="primary" type="button">Save report</button>
@@ -226,6 +249,9 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
       <section class="panel edit-panel">
         <h2>Edit report</h2>
         <div class="grid">
+          <label>Report name
+            <input id="reportNameEditor" type="text" value="${escapeHtml(report.reportName || `Report ${report.reportId}`)}" />
+          </label>
           <label>Report status
             <select id="reportStatusEditor">
               ${statusOptions.map((status) => `<option value="${escapeHtml(status)}" ${status === (report.reportStatus || projectReport.reportStatus) ? 'selected' : ''}>${escapeHtml(friendlyLabel(status))}</option>`).join('')}
@@ -235,9 +261,13 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
             <textarea id="reportSummaryEditor">${escapeHtml(projectReport.summary || '')}</textarea>
           </label>
         </div>
-        <label style="margin-top:.75rem">Project report JSON
-          <textarea id="projectReportJsonEditor" class="json-editor" spellcheck="false">${escapeHtml(JSON.stringify(projectReport, null, 2))}</textarea>
-        </label>
+        <p class="muted">The report detail is table-first; raw JSON is tucked into Settings for advanced fixes only.</p>
+        <details class="raw-json" style="margin-top:.75rem">
+          <summary>Report Settings</summary>
+          <label style="margin-top:.75rem">Project report JSON
+            <textarea id="projectReportJsonEditor" class="json-editor" spellcheck="false">${escapeHtml(JSON.stringify(projectReport, null, 2))}</textarea>
+          </label>
+        </details>
         <details class="raw-json" style="margin-top:.75rem">
           <summary>Transcript used for report</summary>
           <pre>${escapeHtml(report.source && report.source.transcriptText ? report.source.transcriptText : 'Transcript text is not available for this report.')}</pre>
@@ -323,6 +353,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
     const saveButton = document.getElementById('saveReportBtn');
     const exportButton = document.getElementById('exportReportPdfBtn');
     const statusNode = document.getElementById('reportSaveStatus');
+    const nameEditor = document.getElementById('reportNameEditor');
     const statusEditor = document.getElementById('reportStatusEditor');
     const summaryEditor = document.getElementById('reportSummaryEditor');
     const jsonEditor = document.getElementById('projectReportJsonEditor');
@@ -349,6 +380,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            reportName: nameEditor.value,
             reportStatus: statusEditor.value,
             projectReport: editedReport,
             changeSummary: automatic ? 'Autosaved from report detail page.' : 'Saved from report detail page.'
@@ -373,6 +405,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
       autosaveTimer = setTimeout(() => saveReport(true), 900);
     }
 
+    nameEditor.addEventListener('input', queueAutosave);
     summaryEditor.addEventListener('input', () => {
       updateEditedReportField('summary', summaryEditor.value);
       queueAutosave();
