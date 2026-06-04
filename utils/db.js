@@ -434,7 +434,7 @@ async function deleteProjectMilestone(milestoneId) {
   const existing = await getProjectMilestoneDetail(id);
   if (!existing) return null;
 
-  await runPsql(`UPDATE project_core_milestones SET is_active = FALSE, updated_at = NOW() WHERE id = ${id} AND is_active = TRUE;`);
+  await runPsql(`UPDATE project_core_milestones SET is_active = FALSE WHERE id = ${id} AND is_active = TRUE;`);
   return existing;
 }
 
