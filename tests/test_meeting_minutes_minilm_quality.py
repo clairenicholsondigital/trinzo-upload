@@ -165,7 +165,8 @@ Ibrahim: The purpose is to decide whether the integration risk is acceptable for
     def test_public_output_sanitizer_removes_speaker_timestamps_and_rejected_context(self):
         output = {
             "discussionPoints": [
-                "09:00 Leah: The original plan was to announce the Spain launch in July. Partner paperwork was unfinished."
+                "09:00 Leah: The original plan was to announce the Spain launch in July. Partner paperwork was unfinished.",
+                "Nina: Maybe we stop pushing the healthcare prospect this quarter. Legal review is still blocking enterprise deals.",
             ],
             "discussionPointDetails": [
                 {
@@ -183,9 +184,13 @@ Ibrahim: The purpose is to decide whether the integration risk is acceptable for
             ],
         }
 
-        sanitize_public_output_items(output, {"Leah", "Jon", "Dan"})
+        sanitize_public_output_items(output, {"Leah", "Jon", "Dan", "Nina"})
 
-        self.assertEqual(output["discussionPoints"], ["Partner paperwork was unfinished."])
+        self.assertIn("Partner paperwork was unfinished.", output["discussionPoints"])
+        self.assertIn("Legal review is still blocking enterprise deals.", output["discussionPoints"])
+        self.assertTrue(
+            all("healthcare prospect this quarter" not in item.lower() for item in output["discussionPoints"])
+        )
         self.assertEqual(output["discussionPointDetails"][0]["discussionPoint"], "Partner paperwork was unfinished.")
         self.assertEqual(output["decisions"], ["Sign the one-year extension."])
         self.assertEqual(output["decisionDetails"][0]["decision"], "Sign the one-year extension.")

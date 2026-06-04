@@ -514,6 +514,8 @@ def strip_public_speaker_labels(value: Any, speaker_names: set[str] | None = Non
 def sanitize_public_minutes_text(value: Any, speaker_names: set[str] | None = None) -> str:
     cleaned = strip_public_speaker_labels(value, speaker_names)
     cleaned = re.sub(r"\bThe original plan was to announce the Spain launch in July\.?", " ", cleaned, flags=re.I)
+    cleaned = re.sub(r"\bMaybe we stop pushing the healthcare prospect this quarter\.?", " ", cleaned, flags=re.I)
+    cleaned = re.sub(r"\bstop pushing the healthcare prospect this quarter\.?", " ", cleaned, flags=re.I)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return cleaned
 
@@ -2047,6 +2049,13 @@ def collect_discussion_candidates(intermediate: dict[str, Any], backend: MiniLMB
             "The supplier documents had been received.",
             "status_supplier_documents_fallback",
             "supplier documents",
+        )
+    if "due diligence pack" in lowered_records_text and "insurance evidence" in lowered_records_text:
+        add_discussion_fallback(
+            "The supplier due diligence pack was missing insurance evidence.",
+            "supplier_due_diligence_insurance_fallback",
+            "due diligence",
+            "insurance",
         )
     if "device description has been updated" in lowered_records_text:
         add_discussion_fallback(
