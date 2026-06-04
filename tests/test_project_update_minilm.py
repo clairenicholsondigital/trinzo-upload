@@ -71,6 +71,12 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertIn("forecast_finish_date", shared_js)
         self.assertIn("queueProjectAutosave", shared_js)
         self.assertNotIn("RAG colour", shared_js)
+        self.assertIn("Overall summary", shared_js)
+        self.assertIn("Settings", shared_js)
+        self.assertIn("project-colour-swatch", page)
+        self.assertIn("renderColourField", shared_js)
+        self.assertIn("data-project-baseline-deadline", shared_js)
+        self.assertIn("data-project-forecast-deadline", shared_js)
 
     def test_project_update_browsing_routes_are_registered(self):
         server = (REPO_DIR / "server.js").read_text(encoding="utf-8")

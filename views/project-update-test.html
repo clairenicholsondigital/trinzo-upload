@@ -65,6 +65,13 @@ a { color:#67e8f9; }
 .project-table textarea { min-height:72px; }
 .project-table.dense { min-width:1180px; }
 .project-table.dense textarea { min-height:86px; }
+.project-display-value { display:block; margin-top:.35rem; padding:.65rem .7rem; min-height:2.45rem; background:#071126; border:1px solid var(--border); border-radius:10px; color:var(--text); font-weight:700; overflow-wrap:anywhere; }
+.project-table .project-display-value { margin-top:0; padding:.55rem; min-height:2.2rem; border-radius:8px; }
+.project-colour-field { display:flex; align-items:center; justify-content:center; min-width:4.25rem; min-height:2.2rem; }
+.project-colour-swatch { display:inline-block; width:1.55rem; height:1.55rem; border-radius:999px; border:2px solid rgba(238,243,255,.85); box-shadow:0 0 0 1px rgba(0,0,0,.45), inset 0 0 0 1px rgba(0,0,0,.25); }
+.project-colour-swatch.unknown { background:transparent; border-style:dashed; border-color:var(--muted); }
+.project-hidden-field { position:absolute; opacity:0; pointer-events:none; width:1px; height:1px; }
+.project-hint { display:block; color:var(--muted); font-size:.78rem; font-weight:400; margin-top:.25rem; }
 @media (max-width: 760px) {
   body { padding:.7rem; }
   .panel { padding:.85rem; border-radius:10px; }

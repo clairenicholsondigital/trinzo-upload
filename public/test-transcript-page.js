@@ -111,6 +111,52 @@ function buildTranscriptTestPage(config) {
       .replace(/\b\w/g, (letter) => letter.toUpperCase());
   }
 
+  function sentenceLabel(value) {
+    const label = titleize(value).trim();
+    return label ? label.charAt(0).toUpperCase() + label.slice(1).toLowerCase() : '';
+  }
+
+  function isColourPath(path) {
+    return /(^|\.)overallHealthRag$|(^|\.)agreed_rag_status$|(^|\.)rag_status$/i.test(String(path || ''));
+  }
+
+  function colourValue(value) {
+    const key = String(value || '').trim().toLowerCase().replace(/[^a-z]+/g, '_');
+    const colours = {
+      blue: '#2563eb',
+      green: '#16a34a',
+      amber: '#f59e0b',
+      yellow: '#facc15',
+      red: '#dc2626',
+      blocked: '#7f1d1d',
+      off_track: '#dc2626',
+      at_risk: '#f59e0b',
+      on_track: '#16a34a',
+      completed: '#2563eb'
+    };
+    return colours[key] || '';
+  }
+
+  function renderColourField(value, path) {
+    const escapedPath = escapeHtml(path);
+    const rawValue = String(value ?? '').trim();
+    const colour = colourValue(rawValue);
+    const title = rawValue ? sentenceLabel(rawValue) : 'No colour set';
+    return `
+      <span class="project-colour-field" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">
+        <input class="project-hidden-field" type="hidden" data-project-path="${escapedPath}" value="${escapeHtml(rawValue)}" />
+        <span class="project-colour-swatch ${colour ? '' : 'unknown'}" style="${colour ? `background:${escapeHtml(colour)}` : ''}"></span>
+      </span>
+    `;
+  }
+
+  function renderDisplayField(value, path) {
+    return `
+      <span class="project-display-value">${escapeHtml(sentenceLabel(value) || '—')}</span>
+      <input class="project-hidden-field" type="hidden" data-project-path="${escapeHtml(path)}" value="${escapeHtml(value ?? '')}" />
+    `;
+  }
+
   function asArray(value) {
     return Array.isArray(value) ? value : [];
   }
@@ -124,12 +170,24 @@ function buildTranscriptTestPage(config) {
   }
 
   function renderProjectCell(value, path, multiline = false, placeholder = '', type = 'text') {
+    if (isColourPath(path)) {
+      return renderColourField(value, path);
+    }
+    if (/(^|\.)reportStatus$|(^|\.)overallHealth$|(^|\.)delivery_status$|(^|\.)health_assessment$|(^|\.)status$|(^|\.)trend$|(^|\.)related_milestone$|(^|\.)relatedMilestone$/i.test(String(path || ''))) {
+      return renderDisplayField(value, path);
+    }
     const escapedPath = escapeHtml(path);
     const escapedValue = escapeHtml(value ?? '');
     if (multiline) {
       return `<textarea data-project-path="${escapedPath}" placeholder="${escapeHtml(placeholder)}">${escapedValue}</textarea>`;
     }
-    return `<input type="${escapeHtml(type)}" data-project-path="${escapedPath}" value="${escapedValue}" placeholder="${escapeHtml(placeholder)}" />`;
+    const milestoneMarker = /\.milestone$/i.test(String(path || '')) ? ' data-project-milestone-name="true" list="projectMilestoneOptions"' : '';
+    const deadlineMarker = /\.baseline_finish_date$/i.test(String(path || ''))
+      ? ' data-project-baseline-deadline="true"'
+      : /\.forecast_finish_date$/i.test(String(path || ''))
+        ? ' data-project-forecast-deadline="true"'
+        : '';
+    return `<input type="${escapeHtml(type)}" data-project-path="${escapedPath}" value="${escapedValue}" placeholder="${escapeHtml(placeholder)}"${milestoneMarker}${deadlineMarker} />`;
   }
 
   function projectAutosaveKey() {
@@ -242,8 +300,8 @@ function buildTranscriptTestPage(config) {
     return `
       <div class="project-form-grid">
         <label>Report status ${renderProjectCell(report.reportStatus, 'reportStatus', false, 'draft')}</label>
-        <label>Overall health ${renderProjectCell(report.overallHealth, 'overallHealth', false, 'on_track')}</label>
-        <label>Colour ${renderProjectCell(report.overallHealthRag, 'overallHealthRag', false, 'amber')}</label>
+        <label>Overall health assessment ${renderProjectCell(report.overallHealth, 'overallHealth', false, 'on_track')}</label>
+        <label>Overall colour ${renderProjectCell(report.overallHealthRag, 'overallHealthRag', false, 'amber')}</label>
         <label class="wide">Executive summary ${renderProjectCell(report.summary, 'summary', true, 'Project summary')}</label>
         <label class="wide">Key updates
           <textarea data-project-path="keyUpdates" data-project-mode="lines" placeholder="One update per line">${escapeHtml(asLines(report.keyUpdates).join('\n'))}</textarea>
@@ -281,14 +339,20 @@ function buildTranscriptTestPage(config) {
 
   function renderMilestonesTab(report) {
     const milestones = asArray(report.milestones);
+    const milestoneOptions = milestones
+      .map((item) => item && item.milestone)
+      .filter(Boolean)
+      .map((milestone) => `<option value="${escapeHtml(milestone)}"></option>`)
+      .join('');
     return `
+      <datalist id="projectMilestoneOptions">${milestoneOptions}</datalist>
       <div class="project-table-actions">
         <button class="secondary" type="button" data-project-add="milestones">Add milestone</button>
       </div>
       <div class="table-scroll">
         <table class="project-table dense">
           <thead>
-            <tr><th>Milestone</th><th>Baseline deadline</th><th>Forecast deadline</th><th>Delivery</th><th>Colour</th><th>Health</th><th>Summary</th><th>Blockers</th><th>Next steps</th><th></th></tr>
+            <tr><th>Milestone</th><th>Baseline deadline</th><th>Forecast deadline</th><th>Delivery status</th><th>Agreed colour</th><th>AI health assessment</th><th>Summary</th><th>Blockers</th><th>Next steps</th><th></th></tr>
           </thead>
           <tbody>
             ${(milestones.length ? milestones : [{}]).map((item, index) => `
@@ -380,11 +444,11 @@ function buildTranscriptTestPage(config) {
   function renderProjectReport(report, result) {
     const tabs = [
       ['summary', 'Summary', renderReportSummaryTab(report)],
-      ['health', 'Health areas', renderHealthTab(report)],
+      ['health', 'Overall summary', renderHealthTab(report)],
       ['milestones', 'Milestones', renderMilestonesTab(report)],
       ['risks', 'Risks', renderRisksTab(report)],
       ['actions', 'Actions', renderActionsTab(report)],
-      ['snapshot', 'Snapshot', renderSnapshotTab(report, result)]
+      ['snapshot', 'Settings', renderSnapshotTab(report, result)]
     ];
     projectReportOutput.innerHTML = `
       <div class="project-tabs" role="tablist">
@@ -408,6 +472,20 @@ function buildTranscriptTestPage(config) {
     projectReportOutput.querySelectorAll('[data-project-path]').forEach((field) => {
       if (field.hasAttribute('readonly')) return;
       field.addEventListener('input', refreshProjectReportState);
+    });
+    projectReportOutput.querySelectorAll('[data-project-milestone-name]').forEach((field) => {
+      field.addEventListener('change', () => {
+        const row = field.closest('tr');
+        if (!row) return;
+        const selected = asArray(state.projectReport && state.projectReport.milestones)
+          .find((item) => String(item.milestone || '').trim().toLowerCase() === field.value.trim().toLowerCase());
+        if (!selected) return;
+        const baselineField = row.querySelector('[data-project-baseline-deadline]');
+        const forecastField = row.querySelector('[data-project-forecast-deadline]');
+        if (baselineField) baselineField.value = selected.baseline_finish_date || selected.baselineDeadline || selected.deadline || '';
+        if (forecastField) forecastField.value = selected.forecast_finish_date || selected.forecastDeadline || selected.deadline || '';
+        refreshProjectReportState();
+      });
     });
     projectReportOutput.querySelectorAll('[data-project-add="milestones"]').forEach((button) => {
       button.addEventListener('click', () => {
@@ -624,8 +702,8 @@ function projectUpdateSummary(result) {
   }, {});
   const changedCount = Array.isArray(result.changes) ? result.changes.length : Number(result.summary && result.summary.changed_count) || 0;
   return [
-    { label: 'Report status', value: report.reportStatus || '—' },
-    { label: 'Overall health', value: report.overallHealth || '—' },
+    { label: 'Report status', value: report.reportStatus ? report.reportStatus.replace(/[_-]+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()).replace(/\B\w/g, (letter) => letter.toLowerCase()) : '—' },
+    { label: 'Overall health', value: report.overallHealth ? report.overallHealth.replace(/[_-]+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()).replace(/\B\w/g, (letter) => letter.toLowerCase()) : '—' },
     { label: 'Milestone count', value: String(segments.length) },
     { label: 'Green', value: String(counts.green || 0) },
     { label: 'Amber', value: String(counts.amber || 0) },

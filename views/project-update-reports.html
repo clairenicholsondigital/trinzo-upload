@@ -28,6 +28,9 @@ th:last-child, td:last-child { border-right:0; }
 pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126; border:1px solid var(--border); border-radius:10px; padding:1rem; }
 .status { margin:.75rem 0; color:var(--muted); }
 .summary { max-width:56rem; }
+.colour-field { display:flex; align-items:center; justify-content:center; min-height:1.6rem; }
+.colour-swatch { display:inline-block; width:1.35rem; height:1.35rem; border-radius:999px; border:2px solid rgba(238,243,255,.85); box-shadow:0 0 0 1px rgba(0,0,0,.45), inset 0 0 0 1px rgba(0,0,0,.25); }
+.colour-swatch.unknown { background:transparent; border-style:dashed; border-color:var(--muted); }
 </style>
 </head>
 <body>
@@ -57,6 +60,34 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
     return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
   }
 
+  function friendlyLabel(value) {
+    const label = String(value || '').replace(/[_-]+/g, ' ').trim().replace(/\b\w/g, (letter) => letter.toUpperCase());
+    return label ? label.charAt(0).toUpperCase() + label.slice(1).toLowerCase() : '-';
+  }
+
+  function colourValue(value) {
+    const key = String(value || '').trim().toLowerCase().replace(/[^a-z]+/g, '_');
+    const colours = {
+      blue: '#2563eb',
+      green: '#16a34a',
+      amber: '#f59e0b',
+      yellow: '#facc15',
+      red: '#dc2626',
+      blocked: '#7f1d1d',
+      off_track: '#dc2626',
+      at_risk: '#f59e0b',
+      on_track: '#16a34a',
+      completed: '#2563eb'
+    };
+    return colours[key] || '';
+  }
+
+  function renderColour(value) {
+    const colour = colourValue(value);
+    const label = friendlyLabel(value);
+    return `<span class="colour-field" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}"><span class="colour-swatch ${colour ? '' : 'unknown'}" style="${colour ? `background:${escapeHtml(colour)}` : ''}"></span></span>`;
+  }
+
   function latestPayload(report) {
     const versions = Array.isArray(report.versions) ? report.versions : [];
     return versions[0] && versions[0].payload ? versions[0].payload : {};
@@ -82,8 +113,8 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
                   <td><a href="/project-update-test/reports/${escapeHtml(report.reportId)}">Report ${escapeHtml(report.reportId)}</a><div class="muted">${escapeHtml(report.fileName || '')}</div></td>
                   <td>${escapeHtml(report.projectName || '-')}</td>
                   <td>${escapeHtml(report.periodLabel || '-')}</td>
-                  <td>${escapeHtml(report.reportStatus || '-')}</td>
-                  <td>${escapeHtml(report.overallHealth || '-')}</td>
+                  <td>${escapeHtml(friendlyLabel(report.reportStatus))}</td>
+                  <td>${escapeHtml(friendlyLabel(report.overallHealth))}</td>
                   <td>${escapeHtml(dateValue(report.updatedAt || report.createdAt))}</td>
                 </tr>
               `).join('')}
@@ -105,8 +136,9 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
         <div class="grid">
           <div class="item"><div class="label">Project</div><div class="value">${escapeHtml(report.projectName || '-')}</div></div>
           <div class="item"><div class="label">Period</div><div class="value">${escapeHtml(report.periodLabel || '-')}</div></div>
-          <div class="item"><div class="label">Status</div><div class="value">${escapeHtml(report.reportStatus || '-')}</div></div>
-          <div class="item"><div class="label">Overall health</div><div class="value">${escapeHtml(projectReport.overallHealth || '-')}</div></div>
+          <div class="item"><div class="label">Status</div><div class="value">${escapeHtml(friendlyLabel(report.reportStatus))}</div></div>
+          <div class="item"><div class="label">Overall health</div><div class="value">${escapeHtml(friendlyLabel(projectReport.overallHealth))}</div></div>
+          <div class="item"><div class="label">Overall colour</div><div class="value">${renderColour(projectReport.overallHealthRag)}</div></div>
         </div>
       </section>
       <section class="panel">

@@ -27,6 +27,9 @@ tr:last-child td { border-bottom:0; }
 th:last-child, td:last-child { border-right:0; }
 .status { margin:.75rem 0; color:var(--muted); }
 .evidence { margin:.5rem 0 0; padding-left:1.1rem; color:#dbeafe; }
+.colour-field { display:flex; align-items:center; justify-content:center; min-height:1.6rem; }
+.colour-swatch { display:inline-block; width:1.35rem; height:1.35rem; border-radius:999px; border:2px solid rgba(238,243,255,.85); box-shadow:0 0 0 1px rgba(0,0,0,.45), inset 0 0 0 1px rgba(0,0,0,.25); }
+.colour-swatch.unknown { background:transparent; border-style:dashed; border-color:var(--muted); }
 </style>
 </head>
 <body>
@@ -60,6 +63,34 @@ th:last-child, td:last-child { border-right:0; }
     return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
   }
 
+  function friendlyLabel(value) {
+    const label = String(value || '').replace(/[_-]+/g, ' ').trim().replace(/\b\w/g, (letter) => letter.toUpperCase());
+    return label ? label.charAt(0).toUpperCase() + label.slice(1).toLowerCase() : '-';
+  }
+
+  function colourValue(value) {
+    const key = String(value || '').trim().toLowerCase().replace(/[^a-z]+/g, '_');
+    const colours = {
+      blue: '#2563eb',
+      green: '#16a34a',
+      amber: '#f59e0b',
+      yellow: '#facc15',
+      red: '#dc2626',
+      blocked: '#7f1d1d',
+      off_track: '#dc2626',
+      at_risk: '#f59e0b',
+      on_track: '#16a34a',
+      completed: '#2563eb'
+    };
+    return colours[key] || '';
+  }
+
+  function renderColour(value) {
+    const colour = colourValue(value);
+    const label = friendlyLabel(value);
+    return `<span class="colour-field" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}"><span class="colour-swatch ${colour ? '' : 'unknown'}" style="${colour ? `background:${escapeHtml(colour)}` : ''}"></span></span>`;
+  }
+
   function renderError(error) {
     app.innerHTML = `<section class="panel"><h1>Project milestones</h1><p class="status">${escapeHtml(error.message || 'Could not load milestones.')}</p></section>`;
   }
@@ -84,8 +115,8 @@ th:last-child, td:last-child { border-right:0; }
                     <td>${escapeHtml(milestone.periodLabel || '-')}</td>
                     <td>${escapeHtml(dateOnly(milestone.baselineFinishDate))}</td>
                     <td>${escapeHtml(dateOnly(milestone.forecastFinishDate || latest.forecastFinishDate))}</td>
-                    <td>${escapeHtml(latest.status || '-')}</td>
-                    <td>${escapeHtml(latest.trend || '-')}</td>
+                    <td>${escapeHtml(friendlyLabel(latest.status))}</td>
+                    <td>${escapeHtml(friendlyLabel(latest.trend))}</td>
                   </tr>
                 `;
               }).join('')}
@@ -112,13 +143,14 @@ th:last-child, td:last-child { border-right:0; }
         <h2>Assessment history</h2>
         <div class="table-scroll">
           <table>
-            <thead><tr><th>Report</th><th>Status</th><th>Trend</th><th>Confidence</th><th>Forecast</th><th>Summary and evidence</th><th>Created</th></tr></thead>
+            <thead><tr><th>Report</th><th>Status</th><th>Colour</th><th>Trend</th><th>Confidence</th><th>Forecast</th><th>Summary and evidence</th><th>Created</th></tr></thead>
             <tbody>
               ${assessments.map((assessment) => `
                 <tr>
                   <td><a href="/project-update-test/reports/${escapeHtml(assessment.reportId)}">Report ${escapeHtml(assessment.reportId)}</a></td>
-                  <td>${escapeHtml(assessment.status || '-')}</td>
-                  <td>${escapeHtml(assessment.trend || '-')}</td>
+                  <td>${escapeHtml(friendlyLabel(assessment.status))}</td>
+                  <td>${renderColour(assessment.ragStatus || assessment.agreedRagStatus)}</td>
+                  <td>${escapeHtml(friendlyLabel(assessment.trend))}</td>
                   <td>${escapeHtml(assessment.confidence || '-')}</td>
                   <td>${escapeHtml(dateOnly(assessment.forecastFinishDate))}</td>
                   <td>
