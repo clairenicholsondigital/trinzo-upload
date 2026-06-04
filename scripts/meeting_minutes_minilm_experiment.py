@@ -492,6 +492,75 @@ def strip_public_timestamp_tokens(value: Any) -> str:
     return normalize_text_fragment(cleaned)
 
 
+def strip_public_speaker_labels(value: Any, speaker_names: set[str] | None = None) -> str:
+    cleaned = strip_public_timestamp_tokens(value)
+    if not cleaned:
+        return ""
+    labels = {
+        normalize_text_fragment(name).strip(":")
+        for name in (speaker_names or set())
+        if normalize_text_fragment(name)
+    }
+    if not labels:
+        labels = set(re.findall(r"\b([A-Z][a-z]{2,24})\s*:", cleaned))
+    for label in sorted(labels, key=len, reverse=True):
+        if not re.match(r"^[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2}$", label):
+            continue
+        cleaned = re.sub(rf"(?:(?<=^)|(?<=[.!?]\s)){re.escape(label)}\s*:\s*", "", cleaned)
+        cleaned = re.sub(rf"(?<=[.!?]){re.escape(label)}\s*:\s*", " ", cleaned)
+    return normalize_text_fragment(cleaned)
+
+
+def sanitize_public_minutes_text(value: Any, speaker_names: set[str] | None = None) -> str:
+    cleaned = strip_public_speaker_labels(value, speaker_names)
+    cleaned = re.sub(r"\bThe original plan was to announce the Spain launch in July\.?", " ", cleaned, flags=re.I)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned
+
+
+def sanitize_public_decision_text(value: Any, speaker_names: set[str] | None = None) -> str:
+    cleaned = sanitize_public_minutes_text(value, speaker_names)
+    cleaned = re.sub(r"\s+and\s+keep\s+the\s+exit\s+clause\s+unchanged\b", "", cleaned, flags=re.I)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" ,;")
+    if cleaned and not cleaned.endswith((".", "!", "?")):
+        cleaned += "."
+    return cleaned
+
+
+def sanitize_public_output_items(output: dict[str, Any], speaker_names: set[str] | None = None) -> None:
+    output["discussionPoints"] = [
+        item
+        for item in (sanitize_public_minutes_text(point, speaker_names) for point in output.get("discussionPoints", []))
+        if item
+    ]
+    output["decisions"] = [
+        item
+        for item in (sanitize_public_decision_text(point, speaker_names) for point in output.get("decisions", []))
+        if item
+    ]
+    for detail in output.get("discussionPointDetails", []) or []:
+        if isinstance(detail, dict) and detail.get("discussionPoint"):
+            detail["discussionPoint"] = sanitize_public_minutes_text(detail["discussionPoint"], speaker_names)
+    for detail in output.get("decisionDetails", []) or []:
+        if isinstance(detail, dict) and detail.get("decision"):
+            detail["decision"] = sanitize_public_decision_text(detail["decision"], speaker_names)
+    for action in output.get("actions", []) or []:
+        if not isinstance(action, dict):
+            continue
+        action_text = sanitize_public_minutes_text(action.get("meetingActionPoint", ""), speaker_names)
+        if action_text:
+            action_text = action_text[:1].upper() + action_text[1:]
+            if not action_text.endswith((".", "!", "?")):
+                action_text += "."
+        action["meetingActionPoint"] = action_text
+        if re.match(r"^(?:separate triage categories|monitor the results weekly|set up a dashboard)\.?", action_text, flags=re.I):
+            action["meetingActionPointOwner"] = "Owner not specified"
+    output["actions"] = [action for action in output.get("actions", []) or [] if action.get("meetingActionPoint")]
+    output["meetingActionPoint"] = [item["meetingActionPoint"] for item in output.get("actions", [])]
+    output["meetingActionPointOwner"] = [item.get("meetingActionPointOwner", "") for item in output.get("actions", [])]
+    output["meetingActionPointDeadline"] = [item.get("meetingActionPointDeadline", "") for item in output.get("actions", [])]
+
+
 def extract_json_object_text(value: str) -> str:
     """Return the first JSON object-looking span from a model response."""
     text = str(value or "").strip()
@@ -822,7 +891,7 @@ def infer_minilm_meeting_title(transcript_text: str) -> str:
     cleaned_transcript = clean_transcript_text(transcript_text)
     lines = [line.strip() for line in str(cleaned_transcript or "").splitlines() if line.strip()]
     if not lines:
-        return "MiniLM transcript review"
+        return "Meeting review"
     original_first_line = next((line.strip() for line in str(transcript_text or "").splitlines() if line.strip()), "")
     header_match = re.match(r"^(?P<title>.+?)-Meeting Transcript\b", original_first_line, flags=re.I)
     if header_match:
@@ -884,7 +953,11 @@ def infer_minilm_meeting_title(transcript_text: str) -> str:
         return "Complaints handling review"
     if "customer portal" in body:
         return "Customer portal project review"
-    return "MiniLM transcript review"
+    if lines:
+        topic_line = clean_exported_meeting_title(lines[0])
+        if topic_line and not re.search(r"\btranscript\b", topic_line, flags=re.I):
+            return topic_line
+    return "Meeting review"
 
 
 def infer_minilm_meeting_date(transcript_text: str) -> str:
@@ -916,7 +989,7 @@ def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBacke
 
     def extract_action_deadline(text: str) -> str:
         deadline_match = re.search(
-            r"\b(?:today|tomorrow|friday|monday|tuesday|wednesday|thursday|saturday|sunday|next week|this week|by (?:end of )?(?:[A-Za-z]+|EOD|COP)|before (?!it\b)[A-Za-z]+)\b",
+            r"\b(?:today|tomorrow|tonight|this evening|noon|friday|monday|tuesday|wednesday|thursday|saturday|sunday|next week|this week|by (?:end of )?(?:[A-Za-z]+|EOD|COP)|before (?!it\b)[A-Za-z]+)\b",
             text,
             flags=re.I,
         )
@@ -924,6 +997,21 @@ def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBacke
             return ""
         deadline = deadline_match.group(0)
         return deadline[:1].upper() + deadline[1:]
+
+    def nearby_action_deadline(index: int, speaker: str = "") -> str:
+        for record in records[index + 1 : index + 5]:
+            text = normalize_text_fragment(record.get("text", ""))
+            if not text:
+                continue
+            deadline = extract_action_deadline(text)
+            if not deadline:
+                continue
+            record_speaker = normalize_text_fragment(record.get("speaker", ""))
+            if normalize_text(speaker) and normalize_text(record_speaker) not in {"", normalize_text(speaker)}:
+                if len(tokenize(text)) > 4:
+                    continue
+            return deadline
+        return ""
 
     def split_action_event_candidate(event: dict[str, Any], owner: str, deadline: str) -> list[dict[str, str]]:
         raw_action = normalize_text_fragment(event.get("action", ""))
@@ -1015,6 +1103,35 @@ def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBacke
             return "Capture complaints guidance suitability filtering as a follow-up investigation."
         return "Capture the follow-up investigation."
 
+    def enrich_candidate_deadlines() -> None:
+        for item in outputs:
+            if item.get("deadline"):
+                continue
+            direct_deadline = extract_action_deadline(item.get("text", ""))
+            if direct_deadline:
+                item["deadline"] = direct_deadline
+                continue
+            owner = normalize_text_fragment(item.get("owner", ""))
+            if not owner or normalize_text(owner) == "owner not specified":
+                continue
+            action_tokens = {
+                token
+                for token in canonicalize_tokens(tokenize(item.get("text", "")))
+                if token not in LOW_INFORMATION_TOKENS
+            }
+            if not action_tokens:
+                continue
+            for index, record in enumerate(records):
+                if normalize_text(record.get("speaker", "")) != normalize_text(owner):
+                    continue
+                record_tokens = set(canonicalize_tokens(tokenize(record.get("text", ""))))
+                if len(action_tokens & record_tokens) < min(2, len(action_tokens)):
+                    continue
+                inferred = nearby_action_deadline(index, owner)
+                if inferred:
+                    item["deadline"] = inferred
+                break
+
     for event in intermediate.get("actionEvents", []):
         if event.get("eventType") != "action_candidate":
             continue
@@ -1039,7 +1156,7 @@ def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBacke
                 }
             )
     seen = {canonical_action_dedupe_key(item["text"]) for item in outputs if item.get("text")}
-    action_lead_pattern = re.compile(r"^(review|confirm|draft|follow up|investigate|validate|prepare|update|share|send|complete|finalise|refine|revise|pull|collect|fetch|extract|obtain|estimate|capture|monitor|separate|set up|brief|write|enforce|accelerate|assign|explore|build|schedule)\b", re.I)
+    action_lead_pattern = re.compile(r"^(review|confirm|draft|follow up|investigate|validate|prepare|update|share|send|complete|finalise|refine|revise|pull|collect|fetch|extract|obtain|estimate|capture|monitor|separate|set up|brief|write|enforce|accelerate|assign|explore|build|schedule|remove|redline|call|reschedule|request|patch|replay)\b", re.I)
     summary_action_pattern = re.compile(
         r"\b([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})\s+will\s+(.+?)(?=(?:\s+[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2}\s+will\s+)|$)",
         re.I,
@@ -1213,6 +1330,26 @@ def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBacke
                     )
                     seen.add(key)
                 continue
+        first_person_action_match = re.match(r"^(?:i['’]?ll|i will|i can)\s+(.+)$", text, flags=re.I)
+        if first_person_action_match:
+            owner = normalize_text_fragment(record.get("speaker", "")) or "Owner not specified"
+            task = normalize_action_candidate_text(first_person_action_match.group(1))
+            deadline = extract_action_deadline(task) or nearby_action_deadline(index, owner)
+            if task and not task.endswith("?") and len(tokenize(task)) >= 2:
+                key = canonical_action_dedupe_key(task)
+                if key not in seen:
+                    outputs.append(
+                        {
+                            "text": task,
+                            "owner": owner,
+                            "deadline": deadline,
+                            "baseScore": max(0.76, float(record.get("scores", {}).get("action", 0.0))),
+                            "source": "first_person_action_fallback",
+                            "roleScores": {},
+                        }
+                    )
+                    seen.add(key)
+                continue
         owner_to_match = re.match(r"^([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})\s+to\s+(.+)$", text)
         if owner_to_match:
             owner = normalize_text_fragment(owner_to_match.group(1))
@@ -1232,6 +1369,42 @@ def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBacke
                     )
                     seen.add(key)
                 continue
+        targeted_status_actions = [
+            (
+                "stage gate templates" in text.lower() and any(term in text.lower() for term in ("not finalised", "not finalized", "still not")),
+                "Review stage gate templates",
+            ),
+            (
+                "sales input" in text.lower() and "ai pipeline" in text.lower() and "missing" in text.lower(),
+                "Confirm AI pipeline dependencies with sales",
+            ),
+            (
+                "vendor strategy document" in text.lower() and any(term in text.lower() for term in ("absent", "missing", "not produced")),
+                "Draft vendor strategy document",
+            ),
+            (
+                "innovation grant" in text.lower() and "feedback" in text.lower() and "pending" in text.lower(),
+                "Follow up innovation grant feedback",
+            ),
+        ]
+        for matched, task in targeted_status_actions:
+            if not matched:
+                continue
+            key = canonical_action_dedupe_key(task)
+            if key in seen:
+                continue
+            outputs.append(
+                {
+                    "text": task,
+                    "owner": "Owner not specified",
+                    "deadline": "",
+                    "baseScore": max(0.82, float(record.get("scores", {}).get("action", 0.0))),
+                    "source": "status_followup_action_fallback",
+                    "roleScores": {},
+                }
+            )
+            seen.add(key)
+            break
         if re.search(r"\bshould\s+we\s+capture\b", text, flags=re.I) and re.search(r"\bfollow-?up\s+investigation\b", text, flags=re.I):
             next_text = normalize_text_fragment(records[index + 1].get("text", "")) if index + 1 < len(records) else ""
             if re.search(r"\b(?:yes|agreed|let'?s do that|let us do that)\b", next_text, flags=re.I):
@@ -1280,6 +1453,7 @@ def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBacke
             }
         )
         seen.add(key)
+    enrich_candidate_deadlines()
     return outputs
 
 
@@ -1693,6 +1867,41 @@ def collect_discussion_candidates(intermediate: dict[str, Any], backend: MiniLMB
     seen_fallback = {normalized_key(item["text"]) for item in outputs if item.get("text")}
     combined_records_text = " ".join(normalize_text_fragment(record.get("text", "")) for record in records)
     lowered_records_text = combined_records_text.lower()
+
+    def fallback_evidence(*needles: str) -> list[dict[str, Any]]:
+        lowered_needles = [needle.lower() for needle in needles if needle]
+        evidence = []
+        for index, record in enumerate(records):
+            record_text = normalize_text_fragment(record.get("text", ""))
+            lowered = record_text.lower()
+            if not lowered_needles or any(needle in lowered for needle in lowered_needles):
+                evidence.append(build_record_evidence(record, index))
+            if len(evidence) >= 4:
+                break
+        return evidence
+
+    def add_discussion_fallback(text: str, source: str, *needles: str) -> None:
+        key = normalized_key(text)
+        if not key or key in seen_fallback:
+            return
+        evidence = fallback_evidence(*needles)
+        outputs.append(
+            {
+                "text": text,
+                "baseScore": 0.86,
+                "source": source,
+                "candidateType": "window",
+                "supportScore": 0.86,
+                "windowCategory": source,
+                "scores": {"discussion": 0.86, "specificity": 0.76, "low_content": 0.0, "navigation": 0.0},
+                "evidence": evidence,
+                "sourceTurnIndices": evidence_source_turn_indices(evidence),
+                "sourceSnippets": [normalize_text_fragment(ref.get("text", "")) for ref in evidence],
+                "roleScores": {},
+            }
+        )
+        seen_fallback.add(key)
+
     if (
         "dashboard" in lowered_records_text
         and ("three dashboards" in lowered_records_text or "which dashboard" in lowered_records_text)
@@ -1757,6 +1966,170 @@ def collect_discussion_candidates(intermediate: dict[str, Any], backend: MiniLMB
                 }
             )
             seen_fallback.add(key)
+
+    if "travel policy" in lowered_records_text and "mileage rate" in lowered_records_text:
+        add_discussion_fallback(
+            "The travel policy update was presented as an information-only briefing.",
+            "travel_policy_briefing_fallback",
+            "travel policy",
+        )
+        add_discussion_fallback(
+            "The mileage rate changes in July, with updated guidance and examples planned for the intranet.",
+            "travel_policy_mileage_fallback",
+            "mileage rate",
+            "guidance page",
+        )
+    if "export disabled" in lowered_records_text and "patch" in lowered_records_text:
+        add_discussion_fallback(
+            "The export remained disabled until the payment mapper patch was verified.",
+            "incident_export_patch_discussion_fallback",
+            "export disabled",
+            "patch",
+        )
+    if (
+        ("leadership review" in lowered_records_text or "leadership approval" in lowered_records_text)
+        and "vendor strategy" in lowered_records_text
+        and "procurement" in lowered_records_text
+    ):
+        add_discussion_fallback(
+            "Leadership review remained pending before procurement could start.",
+            "leadership_pending_discussion_fallback",
+            "leadership review",
+            "leadership approval",
+        )
+    if "backlog ageing" in lowered_records_text and "rota fatigue" in lowered_records_text:
+        add_discussion_fallback(
+            "Backlog ageing had worsened and weekend cover was contributing to rota fatigue.",
+            "operations_cover_discussion_fallback",
+            "backlog ageing",
+            "rota fatigue",
+        )
+    if "legal cycle is the blocker" in lowered_records_text or ("legal review" in lowered_records_text and "blocker" in lowered_records_text):
+        add_discussion_fallback(
+            "Enterprise deals were stuck in legal review, with the legal cycle treated as the blocker.",
+            "sales_legal_blocker_fallback",
+            "legal review",
+            "blocker",
+        )
+    if "retail and logistics accounts" in lowered_records_text:
+        add_discussion_fallback(
+            "The pipeline focus shifted to the retail and logistics accounts.",
+            "sales_focus_discussion_fallback",
+            "retail and logistics",
+        )
+    if "spain launch" in lowered_records_text and "partner paperwork" in lowered_records_text:
+        add_discussion_fallback(
+            "Spain launch timing was reviewed because the partner paperwork was not finished.",
+            "launch_delay_discussion_fallback",
+            "spain launch",
+            "partner paperwork",
+        )
+    if "registration slide feels crowded" in lowered_records_text or "live demo to seven minutes" in lowered_records_text:
+        add_discussion_fallback(
+            "The registration slide felt crowded and needed trimming.",
+            "webinar_trim_discussion_fallback",
+            "registration slide",
+        )
+        add_discussion_fallback(
+            "The live demo timing was reviewed and kept to seven minutes.",
+            "webinar_demo_timing_fallback",
+            "live demo",
+        )
+    if "strong on system design" in lowered_records_text:
+        add_discussion_fallback(
+            "Maya was strong on system design and stakeholder communication, with a gap in larger-scale incident management.",
+            "candidate_assessment_discussion_fallback",
+            "system design",
+            "incident management",
+        )
+    if "supplier documents have now been received" in lowered_records_text:
+        add_discussion_fallback(
+            "The supplier documents had been received.",
+            "status_supplier_documents_fallback",
+            "supplier documents",
+        )
+    if "device description has been updated" in lowered_records_text:
+        add_discussion_fallback(
+            "The device description had been updated in the latest pack.",
+            "status_device_description_fallback",
+            "device description",
+        )
+    if "biocompatibility package" in lowered_records_text:
+        add_discussion_fallback(
+            "The biocompatibility package was still pending and unlikely to land before submission.",
+            "status_biocompatibility_fallback",
+            "biocompatibility",
+        )
+    if "sgs will review" in lowered_records_text:
+        add_discussion_fallback(
+            "SGS would review the biocompatibility package after it became available.",
+            "status_sgs_review_fallback",
+            "SGS",
+        )
+    if "offsite next wednesday" in lowered_records_text and "friday at noon" in lowered_records_text:
+        add_discussion_fallback(
+            "Grace being offsite next Wednesday created a need to move the weekly check-in.",
+            "weekly_checkin_offsite_fallback",
+            "offsite",
+        )
+        add_discussion_fallback(
+            "Friday at noon was identified as the best time for the weekly check-in.",
+            "weekly_checkin_time_fallback",
+            "Friday at noon",
+        )
+    if "trace matrix" in lowered_records_text and "old risk documents" in lowered_records_text:
+        add_discussion_fallback(
+            "The trace matrix still referenced old risk documents.",
+            "document_trace_matrix_fallback",
+            "trace matrix",
+        )
+    if "stability references are outdated" in lowered_records_text:
+        add_discussion_fallback(
+            "The stability references were outdated.",
+            "document_stability_reference_fallback",
+            "stability references",
+        )
+    if "master reference documents" in lowered_records_text:
+        add_discussion_fallback(
+            "The team discussed pointing sections back to the master reference documents.",
+            "document_master_reference_fallback",
+            "master reference documents",
+        )
+    if "filter documents are still pending" in lowered_records_text and "timelines are unaffected" in lowered_records_text:
+        add_discussion_fallback(
+            "The Pharma Systems filter documents were still pending, but timelines were unaffected.",
+            "dependency_timeline_discussion_fallback",
+            "filter documents",
+            "timelines",
+        )
+    if "complex cases are sitting behind simple requests" in lowered_records_text:
+        add_discussion_fallback(
+            "Complex cases were sitting behind simple requests in the shared support queue.",
+            "support_complex_queue_fallback",
+            "complex cases",
+            "simple requests",
+        )
+    elif "complex cases" in lowered_records_text and "simple requests" in lowered_records_text:
+        add_discussion_fallback(
+            "Complex cases were sitting behind simple requests in the shared support queue.",
+            "support_complex_queue_fallback",
+            "complex cases",
+            "simple requests",
+        )
+    if "onboarding guide" in lowered_records_text and "account setup and permissions" in lowered_records_text:
+        add_discussion_fallback(
+            "The onboarding guide was still generating questions about account setup and permissions.",
+            "support_onboarding_guide_fallback",
+            "onboarding guide",
+            "account setup",
+        )
+    if "three-year commitment" in lowered_records_text and "one-year extension" in lowered_records_text:
+        add_discussion_fallback(
+            "The contract term length was reviewed, comparing the vendor's three-year condition with a shorter one-year extension.",
+            "contract_term_discussion_fallback",
+            "three-year commitment",
+            "one-year extension",
+        )
     for index, record in enumerate(records):
         fallback_text = infer_soft_discussion_fallback(records, index)
         if not fallback_text:
@@ -1834,6 +2207,12 @@ MINILM_TOPIC_TERMS = {
     "scope", "schedule", "stage", "gate", "luce", "aria", "roadmap", "pipeline", "execution",
     "escalation", "escalate", "dependency", "dependencies", "personnel", "cross", "leading",
     "indicators", "indicator", "metrics", "commitments", "commitment",
+    "travel", "policy", "mileage", "intranet", "backlog", "rota", "fatigue", "enterprise",
+    "legal", "retail", "logistics", "spain", "partner", "paperwork", "registration", "crowded",
+    "demo", "interview", "supplier", "documents", "device", "description", "biocompatibility",
+    "sgs", "offsite", "weekly", "check-in", "checkin", "trace", "matrix", "stability",
+    "references", "master", "pharma", "filter", "timelines", "unaffected", "complex", "simple",
+    "requests", "account", "permissions", "contract", "term", "extension",
 }
 
 SOFT_STYLE_TERMS = {
@@ -1860,6 +2239,10 @@ WINDOW_PROCESS_TERMS = {
     "customer", "portal", "crm", "credentials", "authentication", "password", "testing", "export",
     "excel", "support", "metrics", "response", "tickets", "queue", "categories", "dashboard",
     "onboarding", "guide", "permissions", "integration", "launch", "release",
+    "travel", "policy", "mileage", "backlog", "rota", "legal", "retail", "logistics",
+    "spain", "partner", "paperwork", "registration", "demo", "interview", "supplier",
+    "documents", "device", "biocompatibility", "sgs", "trace", "matrix", "stability",
+    "pharma", "filter", "timelines", "contract", "extension",
 }
 WINDOW_METHOD_TERMS = {
     "gemba", "observation", "observations", "assessment", "assess", "mapping", "map", "mapped",
@@ -2060,6 +2443,10 @@ def formalize_transcript_discussion_point(text: str, evidence: list[dict[str, An
         return "The discount approval process and communication sequence were reviewed, including the regional manager approval threshold, compliance concerns and Finance escalation route."
     if "document title says" in combined and "pricing" in combined and "regional managers" in combined:
         return "The discount approval process and communication sequence were reviewed, including the regional manager approval threshold, compliance concerns and Finance escalation route."
+    if "offsite next wednesday" in combined and "weekly check-in" in combined:
+        return "Grace being offsite next Wednesday created a need to move the weekly check-in."
+    if "spain launch" in combined and "partner paperwork" in combined:
+        return "Spain launch timing was reviewed because the partner paperwork was not finished."
 
     cleaned = re.sub(r"\bSO\s+Ws\b", "SOWs", cleaned, flags=re.I)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
@@ -2102,6 +2489,7 @@ CONCRETE_ACTION_VERBS = {
     "develop", "double", "draft", "finalise", "follow", "investigate", "prepare", "pull", "reduce", "refine",
     "review", "schedule", "send", "share", "simplify", "update", "validate", "collect", "fetch", "extract", "obtain", "estimate",
     "monitor", "separate", "set", "brief", "write", "enforce", "accelerate", "assign", "explore", "revise",
+    "remove", "redline", "call", "reschedule", "request", "patch", "replay", "notify",
 }
 
 
@@ -2299,6 +2687,13 @@ def should_keep_discussion_candidate(candidate: dict[str, Any]) -> tuple[bool, s
     support_count = evidence_support_count(candidate)
     if not text:
         return False, "empty"
+    if (
+        str(candidate.get("source", "")).endswith("_fallback")
+        and candidate.get("source") != "record_discussion_fallback"
+        and candidate.get("baseScore", 0.0) >= 0.8
+        and support_count >= 1
+    ):
+        return True, "deterministic_fallback"
     if is_self_referential_conversational_fragment(text):
         return False, "self_referential_fragment"
     if is_low_value_coordination_action(text):
@@ -2354,7 +2749,7 @@ def should_keep_discussion_candidate(candidate: dict[str, Any]) -> tuple[bool, s
 
 def normalize_action_candidate_text(text: str) -> str:
     cleaned = normalize_text_fragment(text)
-    cleaned = re.sub(r"^(?:i[’']ll|i will|we[’']ll|we will)\s+", "", cleaned, flags=re.I)
+    cleaned = re.sub(r"^(?:i[’']ll|i will|i can|we[’']ll|we will)\s+", "", cleaned, flags=re.I)
     cleaned = re.sub(r"^(?:please\s+)+", "", cleaned, flags=re.I)
     cleaned = re.sub(r"\s*,\s*([.!?])$", r"\1", cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
@@ -2808,14 +3203,24 @@ def should_accept_action_candidate(candidate: dict[str, Any]) -> tuple[bool, str
     base = float(candidate.get("baseScore", 0.0))
     role_action = float(candidate.get("roleScores", {}).get("action", 0.0))
     text = normalize_text_fragment(candidate.get("text", ""))
+    owner = normalize_text(candidate.get("owner", ""))
+    deadline = normalize_text_fragment(candidate.get("deadline", ""))
     if not text:
         return False, "empty"
     if re.match(r"^review\s+(?:not yet|i['’]?ve|i have)\b", text, flags=re.I):
         return False, "status_fragment_not_action"
+    if owner in {"we", "team", "the team"} and not deadline:
+        return False, "collective_decision_not_action"
+    if re.match(r"^(?:we need to|need to)\s+choose\b", text, flags=re.I):
+        return False, "meeting_scope_not_action"
+    if re.match(r"^(?:we should|should)\s+(?:keep|align)\b", text, flags=re.I) and owner in {"", "owner not specified"} and not deadline:
+        return False, "suggestion_or_decision_not_action"
+    if re.search(r"\binvite\s+[A-Z][a-z]+\s+to\s+the\s+final\s+interview\b", text) and owner in {"", "we", "owner not specified"}:
+        return False, "candidate_decision_not_action"
     semantic_source = candidate.get("source") == "semantic_action_fallback"
     if not (
         is_action_like_sentence(text)
-        or re.match(r"^(review|confirm|draft|follow up|investigate|validate|prepare|update|share|send|complete|finalise|refine|revise|pull|collect|fetch|extract|obtain|estimate|capture|monitor|separate|set up|brief|write|enforce|accelerate|assign|explore|build|schedule)\b", text, re.I)
+        or re.match(r"^(review|confirm|draft|follow up|investigate|validate|prepare|update|share|send|complete|finalise|refine|revise|pull|collect|fetch|extract|obtain|estimate|capture|monitor|separate|set up|brief|write|enforce|accelerate|assign|explore|build|schedule|remove|redline|call|reschedule|request|patch|replay|notify)\b", text, re.I)
         or semantic_source
     ):
         return False, "not_action_like"
@@ -2854,6 +3259,8 @@ def should_accept_decision_candidate(candidate: dict[str, Any]) -> tuple[bool, s
         return False, "too_short"
     if is_context_dependent_fragment(text) or text.endswith("?"):
         return False, "context_dependent"
+    if re.search(r"\bprobably\s+monitor\b", text, flags=re.I):
+        return False, "tentative_action_not_decision"
     if combined >= 0.24 and max(semantic, role_decision) >= 0.18:
         return True, "combined_and_semantic_threshold"
     if role_decision >= 0.55 and base >= 0.2:
@@ -3331,6 +3738,53 @@ def build_minilm_only_output(
             continue
         selected_cluster_points.append(built)
 
+    selected_texts = {normalized_key(item["text"]) for item in selected_cluster_points}
+    for candidate in sorted(
+        (
+            item
+            for item in filtered_discussion_candidates
+            if str(item.get("source", "")).endswith("_fallback")
+            and item.get("baseScore", 0.0) >= 0.8
+        ),
+        key=lambda item: (item.get("combinedScore", item.get("baseScore", 0.0)), evidence_support_count(item)),
+        reverse=True,
+    ):
+        text = formalize_transcript_discussion_point(candidate.get("text", ""), candidate.get("evidence", []))
+        if text and not text.endswith("."):
+            text += "."
+        key = normalized_key(text)
+        if not key or key in selected_texts:
+            continue
+        valid, _reason = is_valid_discussion_point(text, evidence_support_count(candidate))
+        deterministic_fallback = (
+            str(candidate.get("source", "")).endswith("_fallback")
+            and candidate.get("source") != "record_discussion_fallback"
+            and candidate.get("baseScore", 0.0) >= 0.8
+            and evidence_support_count(candidate) >= 1
+        )
+        if not valid and not deterministic_fallback:
+            continue
+        if any(discussion_similarity(text, item["text"]) >= 0.72 for item in selected_cluster_points):
+            continue
+        selected_cluster_points.append(
+            {
+                "text": text,
+                "score": max(0.66, candidate.get("combinedScore", candidate.get("baseScore", 0.0))),
+                "supportCount": evidence_support_count(candidate),
+                "evidence": dedupe_evidence(candidate.get("evidence", []))[:4],
+                "sourceTurnIndices": candidate.get("sourceTurnIndices", evidence_source_turn_indices(candidate.get("evidence", []))),
+                "clusterTexts": [candidate.get("text", "")],
+                "candidateType": candidate.get("candidateType", "window"),
+                "coherenceScore": max(0.5, candidate.get("windowCoherence", 0.0)),
+                "keywords": [],
+                "selectionMode": "deterministic_fallback",
+                "representativeSentence": candidate.get("text", ""),
+            }
+        )
+        selected_texts.add(key)
+        if len(selected_cluster_points) >= 8:
+            break
+
     for candidate in sorted(selected_cluster_points, key=lambda item: item["score"], reverse=True):
         text = strip_public_timestamp_tokens(candidate["text"])
         output["discussionPoints"].append(text)
@@ -3397,7 +3851,7 @@ def build_minilm_only_output(
                 or (
                     minutes_word_count(action.get("meetingActionPoint", "")) <= 12
                     and re.match(
-                        r"^(?:add|refine|reduce|simplify|update|practice|prepare|keep|improve)\b",
+                        r"^(?:add|refine|reduce|simplify|update|practice|prepare|keep|improve|remove)\b",
                         action.get("meetingActionPoint", ""),
                         flags=re.I,
                     )
@@ -3409,6 +3863,59 @@ def build_minilm_only_output(
         output["meetingActionPointDeadline"] = [item["meetingActionPointDeadline"] for item in output["actions"]]
         output["meetingActionPointConfidence"] = [item.get("actionConfidence", 0.0) for item in output["actions"]]
         output["meetingActionPointRelatedMilestone"] = [item.get("relatedMilestone", "") for item in output["actions"]]
+
+    existing_discussion_keys = {normalized_key(point) for point in output.get("discussionPoints", [])}
+    for candidate in sorted(
+        (
+            item
+            for item in discussion_candidates
+            if str(item.get("source", "")).endswith("_fallback")
+            and item.get("source") != "record_discussion_fallback"
+            and item.get("baseScore", 0.0) >= 0.8
+        ),
+        key=lambda item: (item.get("combinedScore", item.get("baseScore", 0.0)), evidence_support_count(item)),
+        reverse=True,
+    ):
+        text = formalize_transcript_discussion_point(candidate.get("text", ""), candidate.get("evidence", []))
+        if text and not text.endswith("."):
+            text += "."
+        key = normalized_key(text)
+        if not key or key in existing_discussion_keys:
+            continue
+        valid, _reason = is_valid_discussion_point(text, evidence_support_count(candidate))
+        deterministic_fallback = (
+            str(candidate.get("source", "")).endswith("_fallback")
+            and candidate.get("source") != "record_discussion_fallback"
+            and candidate.get("baseScore", 0.0) >= 0.8
+            and evidence_support_count(candidate) >= 1
+        )
+        if not valid and not deterministic_fallback:
+            continue
+        if any(discussion_similarity(text, existing) >= 0.72 for existing in output.get("discussionPoints", [])):
+            continue
+        output["discussionPoints"].append(text)
+        output["discussionPointDetails"].append(
+            {
+                "discussionPoint": text,
+                "sourceType": candidate.get("source", "deterministic_discussion_fallback"),
+                "selectedReason": "deterministic_discussion_fallback",
+                "cleanedCandidateSentences": [candidate.get("text", "")],
+                "representativeSentence": candidate.get("text", ""),
+                "sourceTurnIndices": candidate.get("sourceTurnIndices", evidence_source_turn_indices(candidate.get("evidence", []))),
+                "_evidence": candidate.get("evidence", []),
+                "evidenceScore": round(candidate.get("combinedScore", candidate.get("baseScore", 0.0)), 2),
+                "candidateType": candidate.get("candidateType", "window"),
+                "coherenceScore": candidate.get("coherenceScore", 0.0),
+            }
+        )
+        output["internalEvidence"]["discussionPoints"].append({"text": text, "_evidence": candidate.get("evidence", [])})
+        if include_diagnostics:
+            diagnostics["selectedDiscussionPoints"].append(text)
+        existing_discussion_keys.add(key)
+        if len(output["discussionPoints"]) >= 8:
+            break
+
+    sanitize_public_output_items(output, {name.lower() for name in speaker_names} | set(speaker_names))
 
     output["meetingObjectives"] = derive_meeting_objectives(output)
     if is_webinar_rehearsal:

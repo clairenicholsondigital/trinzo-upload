@@ -7,10 +7,12 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 from meeting_minutes_minilm_experiment import (
+    collect_action_candidates,
     derive_meeting_objectives,
     formalize_transcript_discussion_point,
     has_concrete_action_commitment,
     infer_minilm_meeting_title,
+    sanitize_public_output_items,
     should_accept_action_candidate,
     strip_action_deadline_phrase,
     _sanitize_rewritten_minutes_text,
@@ -159,6 +161,59 @@ Ibrahim: The purpose is to decide whether the integration risk is acceptable for
 
         self.assertFalse(accepted)
         self.assertEqual(reason, "missing_concrete_action_commitment")
+
+    def test_public_output_sanitizer_removes_speaker_timestamps_and_rejected_context(self):
+        output = {
+            "discussionPoints": [
+                "09:00 Leah: The original plan was to announce the Spain launch in July. Partner paperwork was unfinished."
+            ],
+            "discussionPointDetails": [
+                {
+                    "discussionPoint": "09:00 Leah: The original plan was to announce the Spain launch in July. Partner paperwork was unfinished."
+                }
+            ],
+            "decisions": ["Jon: Sign the one-year extension and keep the exit clause unchanged"],
+            "decisionDetails": [{"decision": "Jon: Sign the one-year extension and keep the exit clause unchanged"}],
+            "actions": [
+                {
+                    "meetingActionPoint": "12:04 Dan: call the customer",
+                    "meetingActionPointOwner": "Dan",
+                    "meetingActionPointDeadline": "Noon",
+                }
+            ],
+        }
+
+        sanitize_public_output_items(output, {"Leah", "Jon", "Dan"})
+
+        self.assertEqual(output["discussionPoints"], ["Partner paperwork was unfinished."])
+        self.assertEqual(output["discussionPointDetails"][0]["discussionPoint"], "Partner paperwork was unfinished.")
+        self.assertEqual(output["decisions"], ["Sign the one-year extension."])
+        self.assertEqual(output["decisionDetails"][0]["decision"], "Sign the one-year extension.")
+        self.assertEqual(output["meetingActionPoint"], ["Call the customer."])
+        self.assertEqual(output["meetingActionPointOwner"], ["Dan"])
+        self.assertEqual(output["meetingActionPointDeadline"], ["Noon"])
+
+    def test_first_person_action_fallback_captures_speaker_and_nearby_deadline(self):
+        candidates = collect_action_candidates(
+            {
+                "records": [
+                    {"speaker": "Dan", "text": "I'll call the customer.", "scores": {"action": 0.2}},
+                    {"speaker": "Dan", "text": "Noon works for that.", "scores": {"action": 0.0}},
+                ],
+                "actionEvents": [],
+            },
+            backend=None,
+        )
+
+        self.assertTrue(
+            any(
+                candidate["text"] == "Call the customer."
+                and candidate["owner"] == "Dan"
+                and candidate["deadline"] == "Noon"
+                and candidate["source"] == "first_person_action_fallback"
+                for candidate in candidates
+            )
+        )
 
 
 if __name__ == "__main__":
