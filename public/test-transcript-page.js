@@ -125,6 +125,10 @@ function buildTranscriptTestPage(config) {
     return label ? label.charAt(0).toUpperCase() + label.slice(1).toLowerCase() : '';
   }
 
+  function friendlyMilestoneLabel(value) {
+    return titleize(value).trim() || String(value || '').trim();
+  }
+
   function isColourPath(path) {
     return /(^|\.)overallHealthRag$|(^|\.)agreed_rag_status$|(^|\.)rag_status$/i.test(String(path || ''));
   }
@@ -178,6 +182,15 @@ function buildTranscriptTestPage(config) {
     `;
   }
 
+  function statusOptionsForPath(path) {
+    const key = String(path || '');
+    if (/(^|\.)reportStatus$/i.test(key)) return ['draft', 'in_review', 'approved', 'archived'];
+    if (/(^|\.)trend$/i.test(key)) return ['improving', 'stable', 'deteriorating', 'new_update', 'new_risk', 'resolved', 'unknown'];
+    if (/(^|\.)health_assessment$|(^|\.)overallHealth$/i.test(key)) return ['on_track', 'at_risk', 'off_track', 'completed', 'unknown'];
+    if (/(^|\.)delivery_status$|(^|\.)status$/i.test(key)) return ['completed', 'on_track', 'at_risk', 'delayed', 'blocked', 'not_started', 'unknown'];
+    return null;
+  }
+
   function asArray(value) {
     return Array.isArray(value) ? value : [];
   }
@@ -194,10 +207,11 @@ function buildTranscriptTestPage(config) {
     if (isColourPath(path)) {
       return renderColourField(value, path);
     }
-    if (/(^|\.)reportStatus$/i.test(String(path || ''))) {
-      return renderSelectField(value, path, ['draft', 'in_review', 'approved', 'archived']);
+    const statusOptions = statusOptionsForPath(path);
+    if (statusOptions) {
+      return renderSelectField(value, path, statusOptions);
     }
-    if (/(^|\.)reportStatus$|(^|\.)overallHealth$|(^|\.)delivery_status$|(^|\.)health_assessment$|(^|\.)status$|(^|\.)trend$|(^|\.)related_milestone$|(^|\.)relatedMilestone$/i.test(String(path || ''))) {
+    if (/(^|\.)related_milestone$|(^|\.)relatedMilestone$/i.test(String(path || ''))) {
       return renderDisplayField(value, path);
     }
     const escapedPath = escapeHtml(path);
@@ -326,9 +340,9 @@ function buildTranscriptTestPage(config) {
         <label>Report status ${renderProjectCell(report.reportStatus, 'reportStatus', false, 'draft')}</label>
         <label>Overall health assessment ${renderProjectCell(report.overallHealth, 'overallHealth', false, 'on_track')}</label>
         <label>Overall colour ${renderProjectCell(report.overallHealthRag, 'overallHealthRag', false, 'amber')}</label>
-        <label class="wide">Executive summary ${renderProjectCell(report.summary, 'summary', true, 'Project summary')}</label>
-        <label class="wide">Key updates
-          <textarea data-project-path="keyUpdates" data-project-mode="lines" placeholder="One update per line">${escapeHtml(asLines(report.keyUpdates).join('\n'))}</textarea>
+        <label class="wide">Executive summary
+          <span class="project-hint">Use this field for the executive summary and key updates.</span>
+          ${renderProjectCell(report.summary, 'summary', true, 'Project summary and key updates')}
         </label>
       </div>
     `;
@@ -376,12 +390,12 @@ function buildTranscriptTestPage(config) {
       <div class="table-scroll">
         <table class="project-table dense">
           <thead>
-            <tr><th>Milestone</th><th>Baseline deadline</th><th>Forecast deadline</th><th>Delivery status</th><th>Agreed colour</th><th>AI health assessment</th><th>Summary</th><th>Blockers</th><th>Next steps</th><th></th></tr>
+            <tr><th>Milestone</th><th>Baseline deadline</th><th>Forecast deadline</th><th>Delivery status</th><th>Status</th><th>AI health assessment</th><th>Summary</th><th>Blockers</th><th>Next steps</th><th></th></tr>
           </thead>
           <tbody>
             ${(milestones.length ? milestones : [{}]).map((item, index) => `
               <tr>
-                <td>${renderProjectCell(item.milestone, `milestones.${index}.milestone`)}</td>
+                <td>${renderProjectCell(friendlyMilestoneLabel(item.milestone), `milestones.${index}.milestone`)}</td>
                 <td>${renderProjectCell(item.baseline_finish_date || item.baselineDeadline || item.deadline, `milestones.${index}.baseline_finish_date`, false, 'Baseline', 'date')}</td>
                 <td>${renderProjectCell(item.forecast_finish_date || item.forecastDeadline || item.deadline, `milestones.${index}.forecast_finish_date`, false, 'Forecast', 'date')}</td>
                 <td>${renderProjectCell(item.delivery_status || item.status, `milestones.${index}.delivery_status`)}</td>
@@ -404,7 +418,7 @@ function buildTranscriptTestPage(config) {
     return `
       <div class="table-scroll">
         <table class="project-table">
-          <thead><tr><th>Risk</th><th>Description</th><th>Mitigation</th><th>Milestone</th><th>Confidence</th></tr></thead>
+          <thead><tr><th>Risk</th><th>Description</th><th>Mitigation</th><th>Milestone</th></tr></thead>
           <tbody>
             ${(risks.length ? risks : [{}]).map((risk, index) => `
               <tr>
@@ -412,7 +426,6 @@ function buildTranscriptTestPage(config) {
                 <td>${renderProjectCell(risk.description, `risks.${index}.description`, true, 'Description')}</td>
                 <td>${renderProjectCell(risk.suggestedMitigation, `risks.${index}.suggestedMitigation`, true, 'Mitigation')}</td>
                 <td>${renderProjectCell(risk.relatedMilestone, `risks.${index}.relatedMilestone`)}</td>
-                <td>${renderProjectCell(risk.confidence, `risks.${index}.confidence`)}</td>
               </tr>
             `).join('')}
           </tbody>
@@ -426,7 +439,7 @@ function buildTranscriptTestPage(config) {
     return `
       <div class="table-scroll">
         <table class="project-table">
-          <thead><tr><th>Action</th><th>Owner</th><th>Deadline</th><th>Related milestone</th><th>Confidence</th></tr></thead>
+          <thead><tr><th>Action</th><th>Owner</th><th>Deadline</th><th>Related milestone</th></tr></thead>
           <tbody>
             ${(actions.length ? actions : [{}]).map((action, index) => `
               <tr>
@@ -434,7 +447,6 @@ function buildTranscriptTestPage(config) {
                 <td>${renderProjectCell(action.meetingActionPointOwner || action.owner, `actions.${index}.meetingActionPointOwner`, false, 'Owner')}</td>
                 <td>${renderProjectCell(action.deadline || action.meetingActionPointDeadline, `actions.${index}.deadline`, false, 'Deadline')}</td>
                 <td>${renderProjectCell(action.related_milestone || action.relatedMilestone, `actions.${index}.related_milestone`)}</td>
-                <td>${renderProjectCell(action.actionConfidence, `actions.${index}.actionConfidence`)}</td>
               </tr>
             `).join('')}
           </tbody>
@@ -474,9 +486,8 @@ function buildTranscriptTestPage(config) {
             <div><strong>Overall health</strong><span>${escapeHtml(staticText(report.overallHealth))}</span></div>
             <div><strong>Overall colour</strong><span>${renderStaticColour(report.overallHealthRag)}</span></div>
           </div>
+          <h4>Executive summary</h4>
           <p>${escapeHtml(report.summary || '')}</p>
-          <h4>Key updates</h4>
-          <ul>${asLines(report.keyUpdates).map((item) => `<li>${escapeHtml(item)}</li>`).join('') || '<li>—</li>'}</ul>
         </section>
 
         <section>
@@ -500,7 +511,7 @@ function buildTranscriptTestPage(config) {
             <tbody>
               ${milestones.map((item) => `
                 <tr>
-                  <td>${escapeHtml(staticText(item.milestone))}</td>
+                  <td>${escapeHtml(friendlyMilestoneLabel(item.milestone) || '—')}</td>
                   <td>${escapeHtml(staticText(item.baseline_finish_date || item.baselineDeadline || item.deadline))}</td>
                   <td>${escapeHtml(staticText(item.forecast_finish_date || item.forecastDeadline || item.deadline))}</td>
                   <td>${escapeHtml(staticText(item.delivery_status || item.status))}</td>
@@ -518,9 +529,9 @@ function buildTranscriptTestPage(config) {
         <section>
           <h3>Risks</h3>
           <table class="project-print-table">
-            <thead><tr><th>Risk</th><th>Description</th><th>Mitigation</th><th>Milestone</th><th>Confidence</th></tr></thead>
+            <thead><tr><th>Risk</th><th>Description</th><th>Mitigation</th><th>Milestone</th></tr></thead>
             <tbody>
-              ${risks.map((risk) => `<tr><td>${escapeHtml(staticText(risk.riskTitle))}</td><td>${escapeHtml(staticText(risk.description))}</td><td>${escapeHtml(staticText(risk.suggestedMitigation))}</td><td>${escapeHtml(staticText(risk.relatedMilestone))}</td><td>${escapeHtml(staticText(risk.confidence))}</td></tr>`).join('') || '<tr><td colspan="5">—</td></tr>'}
+              ${risks.map((risk) => `<tr><td>${escapeHtml(staticText(risk.riskTitle))}</td><td>${escapeHtml(staticText(risk.description))}</td><td>${escapeHtml(staticText(risk.suggestedMitigation))}</td><td>${escapeHtml(staticText(risk.relatedMilestone))}</td></tr>`).join('') || '<tr><td colspan="4">—</td></tr>'}
             </tbody>
           </table>
         </section>
@@ -528,9 +539,9 @@ function buildTranscriptTestPage(config) {
         <section>
           <h3>Actions</h3>
           <table class="project-print-table">
-            <thead><tr><th>Action</th><th>Owner</th><th>Deadline</th><th>Milestone</th><th>Confidence</th></tr></thead>
+            <thead><tr><th>Action</th><th>Owner</th><th>Deadline</th><th>Milestone</th></tr></thead>
             <tbody>
-              ${actions.map((action) => `<tr><td>${escapeHtml(staticText(action.action || action.meetingActionPoint))}</td><td>${escapeHtml(staticText(action.meetingActionPointOwner || action.owner))}</td><td>${escapeHtml(staticText(action.deadline || action.meetingActionPointDeadline))}</td><td>${escapeHtml(staticText(action.related_milestone || action.relatedMilestone))}</td><td>${escapeHtml(staticText(action.actionConfidence))}</td></tr>`).join('') || '<tr><td colspan="5">—</td></tr>'}
+              ${actions.map((action) => `<tr><td>${escapeHtml(staticText(action.action || action.meetingActionPoint))}</td><td>${escapeHtml(staticText(action.meetingActionPointOwner || action.owner))}</td><td>${escapeHtml(staticText(action.deadline || action.meetingActionPointDeadline))}</td><td>${escapeHtml(staticText(action.related_milestone || action.relatedMilestone))}</td></tr>`).join('') || '<tr><td colspan="4">—</td></tr>'}
             </tbody>
           </table>
         </section>

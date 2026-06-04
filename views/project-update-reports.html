@@ -25,6 +25,7 @@ th, td { border-bottom:1px solid var(--border); border-right:1px solid var(--bor
 thead th { background:#132847; color:#dbeafe; position:sticky; top:0; }
 tr:last-child td { border-bottom:0; }
 th:last-child, td:last-child { border-right:0; }
+.button-link { display:inline-block; background:#132847; color:#dbeafe; border:1px solid var(--border); border-radius:8px; padding:.5rem .7rem; font-weight:700; text-decoration:none; white-space:nowrap; }
 pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126; border:1px solid var(--border); border-radius:10px; padding:1rem; }
 .status { margin:.75rem 0; color:var(--muted); }
 .summary { max-width:56rem; }
@@ -63,6 +64,19 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
   function friendlyLabel(value) {
     const label = String(value || '').replace(/[_-]+/g, ' ').trim().replace(/\b\w/g, (letter) => letter.toUpperCase());
     return label ? label.charAt(0).toUpperCase() + label.slice(1).toLowerCase() : '-';
+  }
+
+  function titleLabel(value) {
+    return String(value || '').replace(/[_-]+/g, ' ').trim().replace(/\b\w/g, (letter) => letter.toUpperCase()) || '-';
+  }
+
+  function asArray(value) {
+    return Array.isArray(value) ? value : [];
+  }
+
+  function staticText(value) {
+    if (Array.isArray(value)) return value.map((item) => String(item || '').trim()).filter(Boolean).join('\n') || '-';
+    return String(value || '').trim() || '-';
   }
 
   function colourValue(value) {
@@ -106,7 +120,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
       <section class="panel">
         <div class="table-scroll">
           <table>
-            <thead><tr><th>Report</th><th>Project</th><th>Period</th><th>Status</th><th>Overall health</th><th>Updated</th></tr></thead>
+            <thead><tr><th>Report</th><th>Project</th><th>Period</th><th>Status</th><th>Overall health</th><th>Updated</th><th>Action</th></tr></thead>
             <tbody>
               ${reports.map((report) => `
                 <tr>
@@ -116,6 +130,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
                   <td>${escapeHtml(friendlyLabel(report.reportStatus))}</td>
                   <td>${escapeHtml(friendlyLabel(report.overallHealth))}</td>
                   <td>${escapeHtml(dateValue(report.updatedAt || report.createdAt))}</td>
+                  <td><a class="button-link" href="/project-update-test/reports/${escapeHtml(report.reportId)}">Edit Report</a></td>
                 </tr>
               `).join('')}
             </tbody>
@@ -129,6 +144,10 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
     const payload = latestPayload(report);
     const projectReport = payload.projectReport || {};
     const versions = Array.isArray(report.versions) ? report.versions : [];
+    const areas = projectReport.healthAreas && typeof projectReport.healthAreas === 'object' ? projectReport.healthAreas : {};
+    const milestones = asArray(projectReport.milestones);
+    const risks = asArray(projectReport.risks);
+    const actions = asArray(projectReport.actions);
     app.innerHTML = `
       <section class="panel">
         <h1>Report ${escapeHtml(report.reportId)}</h1>
@@ -139,6 +158,58 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
           <div class="item"><div class="label">Status</div><div class="value">${escapeHtml(friendlyLabel(report.reportStatus))}</div></div>
           <div class="item"><div class="label">Overall health</div><div class="value">${escapeHtml(friendlyLabel(projectReport.overallHealth))}</div></div>
           <div class="item"><div class="label">Overall colour</div><div class="value">${renderColour(projectReport.overallHealthRag)}</div></div>
+        </div>
+      </section>
+      <section class="panel">
+        <h2>Executive summary</h2>
+        <p class="summary">${escapeHtml(projectReport.summary || '-')}</p>
+      </section>
+      <section class="panel">
+        <h2>Overall summary</h2>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Area</th><th>Status</th><th>Trend</th><th>Evidence</th></tr></thead>
+            <tbody>
+              ${Object.keys(areas).map((key) => {
+                const area = areas[key] || {};
+                const evidence = asArray(area.evidence).map((item) => item.text || item.source || '').filter(Boolean).join('\n');
+                return `<tr><td>${escapeHtml(titleLabel(key))}</td><td>${escapeHtml(friendlyLabel(area.status))}</td><td>${escapeHtml(friendlyLabel(area.trend))}</td><td>${escapeHtml(evidence || area.evidenceNotes || '-')}</td></tr>`;
+              }).join('') || '<tr><td colspan="4">-</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section class="panel">
+        <h2>Milestones</h2>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Milestone</th><th>Baseline</th><th>Forecast</th><th>Delivery status</th><th>Status</th><th>Health</th><th>Summary</th><th>Blockers</th><th>Next steps</th></tr></thead>
+            <tbody>
+              ${milestones.map((item) => `<tr><td>${escapeHtml(titleLabel(item.milestone))}</td><td>${escapeHtml(staticText(item.baseline_finish_date || item.baselineDeadline || item.deadline))}</td><td>${escapeHtml(staticText(item.forecast_finish_date || item.forecastDeadline || item.deadline))}</td><td>${escapeHtml(friendlyLabel(item.delivery_status || item.status))}</td><td>${renderColour(item.agreed_rag_status || item.rag_status)}</td><td>${escapeHtml(friendlyLabel(item.health_assessment))}</td><td>${escapeHtml(staticText(item.normalised_evidence_summary || item.excerpt))}</td><td>${escapeHtml(staticText(item.blocking_factors))}</td><td>${escapeHtml(staticText(item.next_steps))}</td></tr>`).join('') || '<tr><td colspan="9">-</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section class="panel">
+        <h2>Risks</h2>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Risk</th><th>Description</th><th>Mitigation</th><th>Milestone</th></tr></thead>
+            <tbody>
+              ${risks.map((risk) => `<tr><td>${escapeHtml(staticText(risk.riskTitle))}</td><td>${escapeHtml(staticText(risk.description))}</td><td>${escapeHtml(staticText(risk.suggestedMitigation))}</td><td>${escapeHtml(staticText(risk.relatedMilestone))}</td></tr>`).join('') || '<tr><td colspan="4">-</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section class="panel">
+        <h2>Actions</h2>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Action</th><th>Owner</th><th>Deadline</th><th>Milestone</th></tr></thead>
+            <tbody>
+              ${actions.map((action) => `<tr><td>${escapeHtml(staticText(action.action || action.meetingActionPoint))}</td><td>${escapeHtml(staticText(action.meetingActionPointOwner || action.owner))}</td><td>${escapeHtml(staticText(action.deadline || action.meetingActionPointDeadline))}</td><td>${escapeHtml(staticText(action.related_milestone || action.relatedMilestone))}</td></tr>`).join('') || '<tr><td colspan="4">-</td></tr>'}
+            </tbody>
+          </table>
         </div>
       </section>
       <section class="panel">
@@ -160,8 +231,10 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
         </div>
       </section>
       <section class="panel">
-        <h2>Latest payload</h2>
-        <pre>${escapeHtml(JSON.stringify(payload, null, 2))}</pre>
+        <details>
+          <summary>Latest payload JSON</summary>
+          <pre>${escapeHtml(JSON.stringify(payload, null, 2))}</pre>
+        </details>
       </section>
     `;
   }
