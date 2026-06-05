@@ -672,6 +672,46 @@ All good from me.
         self.assertEqual(diagnostics["rewriteFailureCount"], 0)
         self.assertTrue(diagnostics["rewriteSucceeded"])
 
+    def test_failed_objective_rewrite_filters_asr_fragment_and_synthesizes_scope(self):
+        class FailedObjectiveRewriter:
+            available = True
+            reason = ""
+
+            def rewrite_items(self, items):
+                return [
+                    {
+                        "rewritten": "Invented rewrite that should not be trusted.",
+                        "meta": {"category": item["category"], "reason": "generation_json_parse_failed", "rewritten": True},
+                    }
+                    for item in items
+                ]
+
+        output = {
+            "meetingTitle": "Transcript Test",
+            "meetingObjectives": ["Taking the people that were in a research focus area first."],
+            "discussionPoints": [
+                "The feature-interaction graph should exclude session-related content so it shows which non-session platform features received engagement.",
+                "Poster hall engagement should be described as poster-hall interaction, not individual poster views.",
+                "For Tuesday masterclasses, 42 percent of session views came via the research hub, with the remaining 58 percent coming from other routes.",
+            ],
+            "discussionPointDetails": [
+                {"discussionPoint": "The feature-interaction graph should exclude session-related content so it shows which non-session platform features received engagement.", "sourceTurnIndices": [1, 2]},
+                {"discussionPoint": "Poster hall engagement should be described as poster-hall interaction, not individual poster views.", "sourceTurnIndices": [3, 4]},
+                {"discussionPoint": "For Tuesday masterclasses, 42 percent of session views came via the research hub, with the remaining 58 percent coming from other routes.", "sourceTurnIndices": [5, 6]},
+            ],
+            "decisions": [],
+            "actions": [],
+        }
+
+        rewritten, diagnostics = rewrite_minutes_output_payload(output, rewriter=FailedObjectiveRewriter())
+
+        objectives_blob = " ".join(rewritten["meetingObjectives"]).lower()
+        self.assertNotIn("taking the people", objectives_blob)
+        self.assertIn("platform feature engagement", objectives_blob)
+        self.assertEqual(diagnostics["rewriteEdits"][0]["reason"], "generation_json_parse_failed_fallback")
+        self.assertEqual(diagnostics["rewriteFailureCount"], 0)
+        self.assertTrue(diagnostics["rewriteSucceeded"])
+
     def test_followup_investigation_action_is_captured_from_complaints_thread(self):
         transcript = "Ciara: One thing that came up during the workshop was complaints handling.Conor: Yeah, I thought that section generated the most discussion.Ciara: People understand the formal process, but they don't necessarily understand why certain complaints get escalated and others don't.Jack: A lot of that knowledge sits with experienced staff.Conor: That's the tribal knowledge problem.Ciara: Exactly.Jack: When somebody new joins, they learn those patterns by asking questions rather than through documentation.Conor: Which means responses aren't always consistent.Ciara: We heard several examples where people handled similar situations differently.Jack: That's where AI could potentially help.Conor: Not to make decisions for people.Jack: No, more as a guidance layer.Ciara: Almost like a recommendation engine.Conor: Yes. Somebody enters the complaint details and the system shows similar historical cases.Jack: Plus the reasoning behind previous outcomes.Ciara: That would make onboarding much easier.Conor: The important thing is filtering.Jack: What do you mean?Conor: Some complaints are straightforward. Others involve legal review, regulatory issues or unusual circumstances.Ciara: So we wouldn't want AI recommending unsuitable examples.Conor: Exactly.Jack: We'd need confidence scoring and suitability filtering.Ciara: That sounds like a separate workstream.Conor: Agreed.Jack: Should we capture that as a follow-up investigation?Ciara: Yes, let's do that."
 

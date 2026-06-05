@@ -597,6 +597,25 @@ def is_overlong_objective_text(text: str) -> bool:
     return any(marker in lowered for marker in (" we then ", " we would ", " because ")) or cleaned.endswith("?")
 
 
+def is_low_quality_objective_text(text: str) -> bool:
+    cleaned = normalize_text_fragment(text)
+    lowered = cleaned.lower()
+    if not cleaned:
+        return True
+    if is_overlong_objective_text(cleaned):
+        return True
+    if contains_noise_or_banter(cleaned) or is_context_dependent_fragment(cleaned):
+        return True
+    if is_conversational_transcript_fragment(cleaned) or is_transcript_recount_text(cleaned):
+        return True
+    objective_cue = bool(re.search(r"\b(?:aim|goal|objective|purpose|review|agree|align|decide|confirm|assess|analyse|analyze)\b", lowered))
+    if not objective_cue and re.match(r"^(?:taking|clicking|fighting|looking|going|trying)\b", lowered):
+        return True
+    if re.match(r"^(?:taking|looking\s+at|clicking\s+on)\s+(?:the\s+)?(?:people|users|delegates|numbers?|graph)\b", lowered):
+        return True
+    return False
+
+
 def is_transcript_recount_text(text: str) -> bool:
     """Detect long first-person/procedural transcript recounts rather than minutes topics."""
     cleaned = normalize_text_fragment(text)
@@ -3155,7 +3174,9 @@ def rewrite_minutes_output_payload(
         elif slot_name == "actions":
             rewritten_actions[slot_index]["meetingActionPoint"] = rewritten
 
-    concise_objectives = [objective for objective in rewritten_objectives if not is_overlong_objective_text(objective)]
+    concise_objectives = [objective for objective in rewritten_objectives if not is_low_quality_objective_text(objective)]
+    if not concise_objectives:
+        concise_objectives = derive_meeting_objectives(rewritten_output) or synthesize_meeting_scope_objective(rewritten_output)
     rewritten_output["meetingObjectives"] = dedupe_values(concise_objectives)
     rewritten_output["discussionPoints"] = dedupe_values(rewritten_discussion)
     rewritten_output["decisions"] = dedupe_values(rewritten_decisions)
@@ -3299,6 +3320,11 @@ def synthesize_meeting_scope_objective(output: dict[str, Any]) -> list[str]:
         + [normalize_text_fragment(point) for point in output.get("discussionPoints", [])]
         + [normalize_text_fragment(action.get("meetingActionPoint", "")) for action in output.get("actions", [])]
     ).lower()
+    if (
+        ("feature-interaction" in evidence_blob or "platform feature" in evidence_blob or "research hub" in evidence_blob)
+        and ("poster" in evidence_blob or "session" in evidence_blob or "engagement" in evidence_blob)
+    ):
+        return ["Review platform feature engagement, attribution and reporting caveats."]
     if "dashboard" in evidence_blob and ("server" in evidence_blob or "api" in evidence_blob or "project banana falcon" in title_lower):
         return [f"Review {title} scope, open issues and follow-up actions."]
     if output.get("discussionPoints") or output.get("actions") or output.get("decisions"):
@@ -4094,7 +4120,7 @@ def build_minilm_only_output(
         )
         if reinforced_objectives:
             output["meetingObjectives"] = reinforced_objectives
-    concise_objectives = [objective for objective in output["meetingObjectives"] if not is_overlong_objective_text(objective)]
+    concise_objectives = [objective for objective in output["meetingObjectives"] if not is_low_quality_objective_text(objective)]
     output["meetingObjectives"] = concise_objectives
     if not output["meetingObjectives"]:
         output["meetingObjectives"] = synthesize_meeting_scope_objective(output)
