@@ -3118,9 +3118,10 @@ def rewrite_minutes_output_payload(
         rewritten = result_item.get("rewritten", before)
         rewrite_diag = result_item.get("meta", {})
         reason = str(rewrite_diag.get("reason", ""))
-        if category == "action" and reason and reason != "ok":
+        if reason and reason != "ok":
             rewritten = before
-            rewrite_diag = {**rewrite_diag, "reason": f"{reason}_action_fallback", "rewritten": False}
+            fallback_reason = f"{reason}_action_fallback" if category == "action" else f"{reason}_fallback"
+            rewrite_diag = {**rewrite_diag, "reason": fallback_reason, "rewritten": False}
         elif rewrite_loses_required_source_terms(category, before, rewritten):
             rewritten = before
             rewrite_diag = {**rewrite_diag, "reason": "source_terms_lost_fallback", "rewritten": False}
@@ -3128,7 +3129,7 @@ def rewrite_minutes_output_payload(
         rewrite_failed = (
             reason
             and reason not in {"ok", "source_terms_lost_fallback"}
-            and not reason.endswith("_action_fallback")
+            and not reason.endswith("_fallback")
             and not rewrite_diag.get("rewritten", False)
         )
         if rewrite_failed:

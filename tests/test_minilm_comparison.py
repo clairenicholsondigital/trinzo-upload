@@ -643,6 +643,35 @@ All good from me.
         self.assertEqual(diagnostics["rewriteFailureCount"], 0)
         self.assertTrue(diagnostics["rewriteSucceeded"])
 
+    def test_discussion_rewrite_falls_back_when_generation_reports_failure(self):
+        class FailedDiscussionRewriter:
+            available = True
+            reason = ""
+
+            def rewrite_items(self, items):
+                return [
+                    {
+                        "rewritten": "Invented context that was not in the source.",
+                        "meta": {"category": item["category"], "reason": "generation_json_parse_failed", "rewritten": True},
+                    }
+                    for item in items
+                ]
+
+        output = {
+            "meetingObjectives": [],
+            "discussionPoints": ["The heat maps should be described as click data, not view data."],
+            "discussionPointDetails": [{"discussionPoint": "The heat maps should be described as click data, not view data."}],
+            "decisions": [],
+            "actions": [],
+        }
+
+        rewritten, diagnostics = rewrite_minutes_output_payload(output, rewriter=FailedDiscussionRewriter())
+
+        self.assertEqual(rewritten["discussionPoints"], ["The heat maps should be described as click data, not view data."])
+        self.assertEqual(diagnostics["rewriteEdits"][0]["reason"], "generation_json_parse_failed_fallback")
+        self.assertEqual(diagnostics["rewriteFailureCount"], 0)
+        self.assertTrue(diagnostics["rewriteSucceeded"])
+
     def test_followup_investigation_action_is_captured_from_complaints_thread(self):
         transcript = "Ciara: One thing that came up during the workshop was complaints handling.Conor: Yeah, I thought that section generated the most discussion.Ciara: People understand the formal process, but they don't necessarily understand why certain complaints get escalated and others don't.Jack: A lot of that knowledge sits with experienced staff.Conor: That's the tribal knowledge problem.Ciara: Exactly.Jack: When somebody new joins, they learn those patterns by asking questions rather than through documentation.Conor: Which means responses aren't always consistent.Ciara: We heard several examples where people handled similar situations differently.Jack: That's where AI could potentially help.Conor: Not to make decisions for people.Jack: No, more as a guidance layer.Ciara: Almost like a recommendation engine.Conor: Yes. Somebody enters the complaint details and the system shows similar historical cases.Jack: Plus the reasoning behind previous outcomes.Ciara: That would make onboarding much easier.Conor: The important thing is filtering.Jack: What do you mean?Conor: Some complaints are straightforward. Others involve legal review, regulatory issues or unusual circumstances.Ciara: So we wouldn't want AI recommending unsuitable examples.Conor: Exactly.Jack: We'd need confidence scoring and suitability filtering.Ciara: That sounds like a separate workstream.Conor: Agreed.Jack: Should we capture that as a follow-up investigation?Ciara: Yes, let's do that."
 
