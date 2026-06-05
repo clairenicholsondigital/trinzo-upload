@@ -2447,11 +2447,66 @@ def strip_conversational_preface(text: str) -> str:
     return normalize_text_fragment(cleaned)
 
 
+def formalize_speakerless_analytics_discussion(combined: str) -> str:
+    if "poster hall" in combined and (
+        "views of posters" in combined
+        or "views of the poster hall" in combined
+        or "opened any of the posters" in combined
+    ):
+        return (
+            "Poster hall engagement should be described as poster-hall interaction, not individual poster views, "
+            "because the measure includes delegates clicking into poster halls even when they did not open specific posters."
+        )
+    if "session related content" in combined and "receiving the interaction" in combined:
+        return (
+            "The feature-interaction graph should exclude session-related content so it shows which non-session platform "
+            "features received engagement."
+        )
+    if "secret cinema" in combined and ("session related" in combined or "remove" in combined):
+        return "Secret Cinema should be removed from the non-session feature graph because it is session-related content."
+    if "research hub" in combined and ("percentage of users" in combined or "44%" in combined or "44 percent" in combined):
+        return "Converting feature usage to a percentage of users would strengthen the research hub usage story."
+    if "research hub" in combined and "search by research area" in combined and (
+        "414 delegates" in combined or "809 clicks" in combined or "4,758" in combined or "4758" in combined
+    ):
+        return (
+            "Search by research area and research hub usage should be reported separately, because the research hub had "
+            "much higher repeat interaction than the search-by-area feature."
+        )
+    if "research hub" in combined and "masterclass" in combined and ("42%" in combined or "42 percent" in combined):
+        return (
+            "For Tuesday masterclasses, 42 percent of session views came via the research hub, with the remaining "
+            "58 percent coming from other routes."
+        )
+    if "47" in combined and "tuesday" in combined and "views" in combined:
+        return "Around 47 percent of the relevant views occurred on Tuesday, but the wording should refer to views rather than delegates."
+    if "wednesday" in combined and "thursday" in combined and ("user journeys" in combined or "research hub" in combined):
+        return (
+            "Wednesday and Thursday journeys were more complex than Tuesday, making attribution from the research hub "
+            "to session views less clear."
+        )
+    if "heat maps" in combined and ("clicks" in combined or "views" in combined):
+        return "The heat maps should be described as click data, not view data."
+    if "platform loading speed" in combined or "fighting with the platform" in combined:
+        return "Platform loading speed may have affected click-based engagement behaviour and should be treated as a reporting caveat."
+    if "swag bag" in combined and ("small" in combined or "numbers" in combined):
+        return "Some feature counts, including swag bag figures, were small enough that comparisons should be treated cautiously."
+    if ("numbers seem really small" in combined or "30 people" in combined or "30 users" in combined) and (
+        "infer a difference" in combined or "gaps between them" in combined
+    ):
+        return "Small sample sizes in some platform areas limit how confidently differences between features can be interpreted."
+    return ""
+
+
 def formalize_transcript_discussion_point(text: str, evidence: list[dict[str, Any]] | None = None) -> str:
     cleaned = strip_conversational_preface(text)
     lowered = cleaned.lower()
     evidence_blob = " ".join(normalize_text_fragment(ref.get("text", "")) for ref in (evidence or []) if isinstance(ref, dict))
     combined = f"{cleaned} {evidence_blob}".lower()
+
+    speakerless_analytics = formalize_speakerless_analytics_discussion(combined)
+    if speakerless_analytics:
+        return speakerless_analytics
 
     if "leading indicators" in combined and ("resource utilisation" in combined or "resource utilization" in combined):
         return "Leading indicators such as resource utilisation, active SOWs per team and dependency concentration should be tracked alongside status."

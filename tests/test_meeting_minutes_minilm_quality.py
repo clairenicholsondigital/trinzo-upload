@@ -132,6 +132,35 @@ Ibrahim: The purpose is to decide whether the integration risk is acceptable for
             "Leading indicators such as resource utilisation, active SOWs per team and dependency concentration should be tracked alongside status.",
         )
 
+    def test_speakerless_analytics_fragments_are_formalized(self):
+        self.assertEqual(
+            formalize_transcript_discussion_point(
+                "Basically, process was looked at the 2025 graph and the non-session features were receiving the interaction.",
+                [{"text": "taking out all of the session related content"}],
+            ),
+            "The feature-interaction graph should exclude session-related content so it shows which non-session platform features received engagement.",
+        )
+        self.assertEqual(
+            formalize_transcript_discussion_point(
+                "For this particular measure it does include just views of the poster hall rather than only views of posters.",
+                [{"text": "people clicked clinical research posters but potentially not opened any of the posters"}],
+            ),
+            "Poster hall engagement should be described as poster-hall interaction, not individual poster views, because the measure includes delegates clicking into poster halls even when they did not open specific posters.",
+        )
+        self.assertEqual(
+            formalize_transcript_discussion_point(
+                "Some stupid, stupidly small number So about 47 and a few percent.",
+                [{"text": "47% of the views were on Tuesday, not 47% of delegates"}],
+            ),
+            "Around 47 percent of the relevant views occurred on Tuesday, but the wording should refer to views rather than delegates.",
+        )
+        self.assertEqual(
+            formalize_transcript_discussion_point(
+                "I'm not sure, has the number seen the numbers of the swag bag? For some parts of the platform, they're a bit small.",
+            ),
+            "Some feature counts, including swag bag figures, were small enough that comparisons should be treated cautiously.",
+        )
+
     def test_resource_indicator_fragment_is_not_promoted_as_raw_objective(self):
         output = {
             "discussionPoints": [
