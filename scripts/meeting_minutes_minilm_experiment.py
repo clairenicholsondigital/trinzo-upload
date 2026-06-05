@@ -28,6 +28,7 @@ from python_meeting_minutes_numbers import (
     evidence_source_turn_indices,
     extract_cluster_keywords,
     extract_raw_cluster_keywords,
+    infer_meeting_title_from_transcript,
     is_action_like_sentence,
     is_decision_like_discussion,
     is_malformed_discussion_point,
@@ -35,6 +36,7 @@ from python_meeting_minutes_numbers import (
     normalize_discussion_key,
     parse_numeric_turns,
     semantic_density,
+    LOW_CONTENT_PHRASES,
     SPEAKER_NAME_RE,
     SPEAKER_SUFFIX_RE,
     STRUCTURAL_LINE_RE,
@@ -889,6 +891,25 @@ def clean_exported_meeting_title(title: str) -> str:
     return cleaned
 
 
+def looks_like_noisy_export_title(line: str, title: str = "") -> bool:
+    cleaned = normalize_text_fragment(title or line).strip(".!?")
+    lowered = cleaned.lower()
+    tokens = tokenize(cleaned)
+    if not cleaned:
+        return True
+    if lowered in {"meeting transcript", "transcript", "recording", "transcript export", "recording export"}:
+        return True
+    if re.fullmatch(r"(?:meeting\s+)?(?:transcript|recording|export|file|notes?)(?:\s+(?:transcript|recording|export|file|notes?))*", lowered):
+        return True
+    if lowered in LOW_CONTENT_PHRASES:
+        return True
+    if len(tokens) <= 2 and line.rstrip().endswith((".", "!", "?")):
+        return True
+    if len(tokens) <= 1:
+        return True
+    return False
+
+
 def infer_minilm_meeting_title(transcript_text: str) -> str:
     cleaned_transcript = clean_transcript_text(transcript_text)
     lines = [line.strip() for line in str(cleaned_transcript or "").splitlines() if line.strip()]
@@ -945,7 +966,9 @@ def infer_minilm_meeting_title(transcript_text: str) -> str:
         if len(line) > 120 or re.search(rf"^{SPEAKER_NAME_RE}\s*:", line):
             break
         title = clean_exported_meeting_title(line)
-        return title or line
+        if not looks_like_noisy_export_title(line, title):
+            return title or line
+        break
     body = " ".join(lines[:12]).lower()
     if "support metrics" in body or ("response times" in body and "tickets" in body):
         return "Support metrics review"
@@ -955,9 +978,17 @@ def infer_minilm_meeting_title(transcript_text: str) -> str:
         return "Complaints handling review"
     if "customer portal" in body:
         return "Customer portal project review"
+    inferred_title = infer_meeting_title_from_transcript(cleaned_transcript, parse_numeric_turns(transcript_text))
+    if inferred_title and len(inferred_title) <= 120 and not looks_like_noisy_export_title(inferred_title):
+        return inferred_title
     if lines:
         topic_line = clean_exported_meeting_title(lines[0])
-        if topic_line and not re.search(r"\btranscript\b", topic_line, flags=re.I):
+        if (
+            topic_line
+            and len(topic_line) <= 120
+            and not re.search(r"\btranscript\b", topic_line, flags=re.I)
+            and not looks_like_noisy_export_title(lines[0], topic_line)
+        ):
             return topic_line
     return "Meeting review"
 
@@ -1434,6 +1465,13 @@ def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBacke
         lead_match = action_lead_pattern.match(text)
         semantic_action = backend.score_against_prototypes(text, "action") if backend and backend.available else 0.0
         if not (is_action_like_sentence(text) or lead_match or semantic_action >= WINDOW_ACTION_SEMANTIC_FLOOR):
+            continue
+        semantic_only_speakerless = (
+            semantic_action >= WINDOW_ACTION_SEMANTIC_FLOOR
+            and not (is_action_like_sentence(text) or lead_match)
+            and any("sourceLineStart" in ref for ref in record.get("evidence", []))
+        )
+        if semantic_only_speakerless and len(tokenize(text)) > 25:
             continue
         if is_context_dependent_fragment(text) or contains_noise_or_banter(text) or len(tokenize(text)) < 3:
             continue
@@ -3491,6 +3529,7 @@ def build_minilm_only_output(
         "selectedDiscussionPoints": [],
         "rewriteEdits": [],
         "rewriteRuntimeMs": 0.0,
+        "parserDiagnostics": intermediate.get("parserDiagnostics", {}),
     }
     if not backend.available:
         return None, diagnostics
@@ -3505,6 +3544,7 @@ def build_minilm_only_output(
         "next step",
         "next steps",
         "recording",
+        "speakerless transcript",
         "transcript",
     }
     speaker_sources = list(intermediate.get("turns", [])) + list(intermediate.get("records", []))
@@ -3950,6 +3990,18 @@ def build_minilm_only_output(
         diagnostics["rewriteRuntimeMs"] = rewrite_diagnostics.get("rewriteRuntimeMs", 0.0)
         if include_diagnostics:
             diagnostics["rewriteEdits"] = rewrite_diagnostics.get("rewriteEdits", [])
+
+    if include_diagnostics:
+        diagnostics["finalCounts"] = {
+            "discussionPoints": len(output.get("discussionPoints", [])),
+            "decisions": len(output.get("decisions", [])),
+            "actions": len(output.get("actions", [])),
+        }
+        if not any(diagnostics["finalCounts"].values()):
+            diagnostics["warnings"] = diagnostics.get("warnings", [])
+            diagnostics["warnings"].append(
+                "No reliable meeting-minutes candidates were selected from the parsed transcript."
+            )
 
     return output, diagnostics
 

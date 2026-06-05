@@ -494,6 +494,23 @@ Connor: Cross-training has started, but it is still slow.
         self.assertIn("Monitor the results weekly.", output["meetingActionPoint"])
         self.assertIn("Set up a dashboard.", output["meetingActionPoint"])
 
+    def test_speakerless_support_transcript_uses_parser_fallback_without_participant_leak(self):
+        transcript = """Transcript export
+June 5, 2026
+Today we need to review support metrics and response times. Complaints are down but response times are actually worse. We closed more tickets, but customers waited longer before getting an answer. The routing queue is causing delays for complex cases. We need separate triage categories. I will set up a dashboard by Friday.
+"""
+
+        intermediate = collect_minilm_only_context(transcript)
+        output, diagnostics = build_minilm_only_output(transcript, intermediate, FakeMiniLMBackend())
+
+        self.assertIsNotNone(output)
+        self.assertEqual(output["meetingTitle"], "Support metrics review")
+        self.assertEqual(output["participants"]["trinzo"], [])
+        self.assertTrue(diagnostics["parserDiagnostics"]["speakerlessFallbackUsed"])
+        self.assertGreaterEqual(diagnostics["parserDiagnostics"]["recordCount"], 5)
+        self.assertTrue(any("response times" in point.lower() for point in output["discussionPoints"]))
+        self.assertIn("Set up a dashboard.", output["meetingActionPoint"])
+
     def test_rewrite_sanitizer_removes_conversational_connective_openings(self):
         self.assertEqual(
             _sanitize_rewritten_minutes_text(

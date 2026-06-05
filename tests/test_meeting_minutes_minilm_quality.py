@@ -7,6 +7,7 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 from meeting_minutes_minilm_experiment import (
+    collect_minilm_only_context,
     collect_action_candidates,
     derive_meeting_objectives,
     formalize_transcript_discussion_point,
@@ -57,6 +58,28 @@ Claire: The meeting is the Phoenix delivery checkpoint.
 """
 
         self.assertEqual(infer_minilm_meeting_title(transcript), "Phoenix delivery checkpoint")
+
+    def test_noisy_speakerless_opening_is_not_used_as_title(self):
+        transcript = """All right.
+Yeah.
+The poster hall clicks and poster views are not the same measure, so the analytics review needs to separate click heatmaps from actual poster engagement.
+"""
+
+        self.assertEqual(infer_minilm_meeting_title(transcript), "Meeting review")
+
+    def test_speakerless_context_reports_parser_fallback(self):
+        transcript = """All right.
+Yeah.
+So the poster hall clicks and poster views are not the same measure. The heatmap is counting clicks into areas of the poster hall, while the poster view export is counting actual poster engagement. We need to explain that clearly because the delegate totals will look inconsistent otherwise.
+Thank you.
+The research hub numbers should be treated separately from search by research area. One report shows delegates using the hub itself, while the search counts represent repeated clicks and filter behaviour. The 414 delegates and 809 clicks figure should not be compared directly with the 1,009 and 4,758 search totals.
+"""
+
+        context = collect_minilm_only_context(transcript)
+
+        self.assertGreater(context["parserDiagnostics"]["parsedTurnCount"], 0)
+        self.assertGreater(context["parserDiagnostics"]["recordCount"], 0)
+        self.assertTrue(context["parserDiagnostics"]["speakerlessFallbackApplied"])
 
     def test_explicit_meeting_title_instruction_overrides_export_header(self):
         transcript = """Transcript

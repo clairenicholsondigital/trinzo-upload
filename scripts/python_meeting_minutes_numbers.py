@@ -72,6 +72,10 @@ TIMESTAMP_PREFIX_COLON_TURN_RE = re.compile(rf"^(?P<timestamp>{TIMESTAMP_TOKEN_R
 SPEAKER_ONLY_RE = re.compile(rf"^(?P<speaker>{SPEAKER_NAME_RE}){SPEAKER_SUFFIX_RE}$")
 TIMESTAMP_ONLY_RE = re.compile(rf"^(?:{BRACKETED_TIMESTAMP_RE}|(?P<plain_timestamp>{TIMESTAMP_TOKEN_RE}))$")
 INLINE_COLON_SPEAKER_RE = re.compile(rf"(?P<speaker>{SPEAKER_NAME_RE}){SPEAKER_SUFFIX_RE}\s*:")
+DATE_ONLY_RE = re.compile(
+    r"^(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}[/-]\d{1,2}[/-]\d{1,2}|\d{1,2}\s+[A-Za-z]+\s+\d{4}|[A-Za-z]+\s+\d{1,2},?\s+\d{4})$",
+    re.IGNORECASE,
+)
 METADATA_SPEAKERS = {"AutoNote", "Date", "Location", "Online"}
 SECTION_HEADING_SPEAKERS = {
     "Agenda",
@@ -851,7 +855,108 @@ def can_use_as_supporting_discussion(candidate: dict[str, Any], current_points: 
     return True
 
 
-def parse_numeric_turns(text: str) -> list[dict[str, str]]:
+def speakerless_line_substance_score(line: str) -> float:
+    cleaned = normalize_text_fragment(line)
+    lowered = cleaned.lower().strip(".!?")
+    tokens = tokenize(cleaned)
+    if not cleaned or lowered in LOW_CONTENT_PHRASES:
+        return 0.0
+    unique_ratio = len(set(tokens)) / max(1, len(tokens))
+    score = min(0.55, len(tokens) / 18) + min(0.25, len(set(tokens)) / 25) + unique_ratio * 0.2
+    if len(tokens) <= 2:
+        score -= 0.45
+    if contains_noise_or_banter(cleaned):
+        score -= 0.35
+    if re.search(r"[.!?]$", cleaned):
+        score += 0.08
+    return max(0.0, round(score, 3))
+
+
+def build_speakerless_pseudo_turns(
+    text: str,
+    *,
+    min_chunk_words: int = 35,
+    max_chunk_words: int = 90,
+    already_cleaned: bool = False,
+) -> list[dict[str, Any]]:
+    """Build generic pseudo-turns for raw ASR exports with no speaker/timestamp structure."""
+    cleaned = text if already_cleaned else clean_transcript_text(text)
+    source_lines = [(index, line.strip()) for index, line in enumerate(cleaned.splitlines(), start=1) if line.strip()]
+    if not source_lines:
+        return []
+    short_line_count = sum(1 for _line_number, line in source_lines if len(line.split()) <= 3)
+    if len(source_lines) >= 20 and short_line_count < max(8, int(len(source_lines) * 0.24)):
+        return []
+
+    substantive_lines: list[tuple[int, str]] = []
+    for source_index, (line_number, line) in enumerate(source_lines):
+        if STRUCTURAL_LINE_RE.match(line) or DATE_ONLY_RE.match(line) or TIMESTAMP_ONLY_RE.match(line):
+            continue
+        if source_index == 0 and len(line) <= 100 and not re.search(r"[.!?]$", line):
+            continue
+        if speakerless_line_substance_score(line) < 0.28:
+            continue
+        substantive_lines.append((line_number, line))
+    if not substantive_lines:
+        return []
+
+    total_words = sum(len(tokenize(line)) for _line_number, line in substantive_lines)
+    if total_words < 18:
+        return []
+
+    sentence_items: list[tuple[int, int, str]] = []
+    for line_number, line in substantive_lines:
+        sentences = [re.sub(r"\s+", " ", sentence).strip() for sentence in split_sentences(line) if sentence.strip()]
+        if not sentences:
+            sentences = [line]
+        for sentence in sentences:
+            sentence_items.append((line_number, line_number, sentence))
+
+    turns: list[dict[str, Any]] = []
+    chunk_sentences: list[str] = []
+    chunk_start = 0
+    chunk_end = 0
+    chunk_words = 0
+
+    def flush_chunk() -> None:
+        nonlocal chunk_sentences, chunk_start, chunk_end, chunk_words
+        text_value = re.sub(r"\s+", " ", " ".join(chunk_sentences)).strip()
+        if text_value and chunk_words >= 12:
+            turns.append(
+                {
+                    "speaker": "",
+                    "timestamp": "",
+                    "text": text_value,
+                    "sourceLineStart": chunk_start,
+                    "sourceLineEnd": chunk_end,
+                    "speakerless": True,
+                    "parserSource": "speakerless_window",
+                    "turnIndex": len(turns),
+                }
+            )
+        chunk_sentences = []
+        chunk_start = 0
+        chunk_end = 0
+        chunk_words = 0
+
+    for line_start, line_end, sentence in sentence_items:
+        words = max(1, len(tokenize(sentence)))
+        if chunk_sentences and chunk_words + words > max_chunk_words:
+            flush_chunk()
+        if not chunk_sentences:
+            chunk_start = line_start
+        chunk_sentences.append(sentence)
+        chunk_end = line_end
+        chunk_words += words
+        sentence_ends_chunk = sentence.rstrip().endswith((".", "?", "!"))
+        if chunk_words >= min_chunk_words and sentence_ends_chunk:
+            flush_chunk()
+    flush_chunk()
+
+    return turns
+
+
+def parse_numeric_turns(text: str) -> list[dict[str, Any]]:
     cleaned = clean_transcript_text(text)
     lines = cleaned.splitlines()
     turns: list[dict[str, str]] = []
@@ -972,7 +1077,9 @@ def parse_numeric_turns(text: str) -> list[dict[str, str]]:
         if current is not None:
             current["text"] = (current["text"] + " " + line).strip()
     flush_current()
-    return turns
+    if turns:
+        return turns
+    return build_speakerless_pseudo_turns(cleaned, already_cleaned=True)
 
 
 def evidence_from_turn(turn: dict[str, Any], role: str = "") -> dict[str, Any]:
@@ -983,6 +1090,10 @@ def evidence_from_turn(turn: dict[str, Any], role: str = "") -> dict[str, Any]:
     }
     if "turnIndex" in turn:
         evidence["turnIndex"] = turn.get("turnIndex")
+    if "sourceLineStart" in turn:
+        evidence["sourceLineStart"] = turn.get("sourceLineStart")
+    if "sourceLineEnd" in turn:
+        evidence["sourceLineEnd"] = turn.get("sourceLineEnd")
     if role:
         evidence["role"] = role
     return evidence
@@ -1193,7 +1304,7 @@ def build_window_candidates(records: list[dict[str, Any]]) -> list[dict[str, Any
 
 def build_intermediate_events(
     text: str,
-    turns: list[dict[str, str]],
+    turns: list[dict[str, Any]],
     records: list[dict[str, Any]],
     meeting_title: str,
 ) -> dict[str, Any]:
@@ -1316,10 +1427,21 @@ def build_intermediate_events(
             "usedStructuredStatusReviewBlocks": use_structured_status_review,
         }
     ]
+    parser_sources = Counter(turn.get("parserSource", "speaker_turn") for turn in turns)
 
     return {
+        "turns": turns,
         "records": records,
         "candidates": candidates,
+        "parserDiagnostics": {
+            "parsedTurnCount": len(turns),
+            "turnCount": len(turns),
+            "recordCount": len(records),
+            "speakerlessFallbackApplied": any(bool(turn.get("speakerless")) for turn in turns),
+            "speakerlessFallbackUsed": bool(turns) and set(parser_sources) == {"speakerless_window"},
+            "speakerlessTurnCount": sum(1 for turn in turns if turn.get("speakerless")),
+            "parserSources": dict(parser_sources),
+        },
         "actionEvents": action_events,
         "suppressedRejectedActions": suppressed_rejected_actions,
         "decisions": decisions,

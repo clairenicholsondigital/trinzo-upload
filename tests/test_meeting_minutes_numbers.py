@@ -7,6 +7,7 @@ from scripts.python_meeting_minutes_numbers import (
     actions_overlap,
     analyse,
     build_status_review_workstreams,
+    build_turn_records,
     clean_transcript_text,
     decision_topics_match,
     derive_status_review_actions_from_workstreams,
@@ -133,6 +134,23 @@ Support metrics call transcript
         self.assertEqual(turns[0]["timestamp"], "00:12")
         self.assertIn("abandonment rate", turns[0]["text"])
 
+    def test_speakerless_asr_transcript_gets_pseudo_turns_and_sentence_records(self):
+        transcript = """Transcript export
+June 5, 2026
+Today we need to review support metrics and response times. Complaints are down but response times are worse. We closed more tickets, but customers waited longer before getting an answer. The routing queue is causing delays for complex cases. We need separate triage categories. I will set up a dashboard by Friday.
+"""
+
+        turns = parse_numeric_turns(transcript)
+        records = build_turn_records(turns)
+
+        self.assertTrue(turns)
+        self.assertTrue(all(turn.get("speakerless") for turn in turns))
+        self.assertTrue(all(turn.get("speaker") == "" for turn in turns))
+        self.assertTrue(all(turn.get("parserSource") == "speakerless_window" for turn in turns))
+        self.assertGreaterEqual(len(records), 5)
+        self.assertFalse(any("June 5, 2026" in turn["text"] for turn in turns))
+        self.assertTrue(any(record["text"].startswith("Complaints are down") for record in records))
+
     def test_bracketed_role_labels_are_ignored_in_turn_parsing(self):
         transcript = """Weekly review
 
@@ -175,6 +193,22 @@ Meeting over.
         self.assertEqual(result["meetingActionPoint"], [])
         self.assertEqual(result["executiveSummary"], "No substantive meeting content, decisions, or actions were identified.")
         self.assertIn("numberExperimentDebug", result)
+
+    def test_speakerless_asr_transcript_builds_pseudo_turns(self):
+        transcript = """All right.
+Yeah.
+So the poster hall clicks and poster views are not the same measure. The heatmap is counting clicks into areas of the poster hall, while the poster view export is counting actual poster engagement. We need to explain that clearly because the delegate totals will look inconsistent otherwise.
+Thank you.
+The research hub numbers should be treated separately from search by research area. One report shows delegates using the hub itself, while the search counts represent repeated clicks and filter behaviour. The 414 delegates and 809 clicks figure should not be compared directly with the 1,009 and 4,758 search totals.
+"""
+
+        turns = parse_numeric_turns(transcript)
+
+        self.assertGreaterEqual(len(turns), 1)
+        self.assertTrue(all(turn.get("speakerless") for turn in turns))
+        self.assertEqual(turns[0]["parserSource"], "speakerless_window")
+        self.assertIn("poster hall clicks", turns[0]["text"])
+        self.assertIn("sourceLineStart", turns[0])
 
     def test_validation_specific_vs_broad_decision(self):
         transcript = """Validation webinar review
