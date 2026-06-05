@@ -3273,6 +3273,8 @@ def derive_meeting_objectives(output: dict[str, Any]) -> list[str]:
             return
         if contains_noise_or_banter(cleaned) or is_context_dependent_fragment(cleaned):
             return
+        if is_low_quality_objective_text(cleaned):
+            return
         if not is_objective_candidate_text(raw_cleaned) and not is_objective_candidate_text(cleaned):
             return
         seen.add(key)
