@@ -301,8 +301,9 @@ class LocalMinutesRewriter:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
+        timeout_seconds = max(5, int(os.environ.get("MINUTES_REMOTE_REWRITE_TIMEOUT_SECONDS", "20") or "20"))
         try:
-            with urllib.request.urlopen(request, timeout=60) as response:
+            with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
                 result = json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:  # pragma: no cover - exercised in real envs
             return [
@@ -3000,6 +3001,36 @@ def normalize_rewritten_minutes_item(category: str, text: str) -> str:
     return cleaned
 
 
+def should_attempt_remote_rewrite(category: str, text: str) -> bool:
+    cleaned = normalize_text_fragment(text)
+    lowered = cleaned.lower()
+    if not cleaned:
+        return False
+    if category == "objective":
+        return True
+    if is_conversational_transcript_fragment(cleaned) or is_overlong_objective_text(cleaned):
+        return True
+    awkward_markers = (
+        " so ",
+        " because ",
+        " kind of ",
+        " sort of ",
+        "i think",
+        "i guess",
+        "um ",
+        " yeah",
+        " okay",
+        "stuff",
+        "thing",
+        "things",
+    )
+    if any(marker in f" {lowered} " for marker in awkward_markers):
+        return True
+    if cleaned.startswith(("And ", "Also ", "But ")):
+        return True
+    return minutes_word_count(cleaned) > 32
+
+
 def rewrite_loses_required_source_terms(category: str, before: str, after: str) -> bool:
     if category != "action":
         return False
@@ -3045,6 +3076,32 @@ def rewrite_minutes_output_payload(
         rewrite_plan.append({"category": "decision", "text": point, "slot": ("decisions", index)})
     for index, action in enumerate(rewritten_output.get("actions", [])):
         rewrite_plan.append({"category": "action", "text": action.get("meetingActionPoint", ""), "slot": ("actions", index)})
+
+    if getattr(rewriter, "worker_url", ""):
+        skipped_plan = [item for item in rewrite_plan if not should_attempt_remote_rewrite(item["category"], item["text"])]
+        rewrite_plan = [item for item in rewrite_plan if should_attempt_remote_rewrite(item["category"], item["text"])]
+        if include_diagnostics:
+            for item in skipped_plan:
+                diagnostics["rewriteEdits"].append(
+                    {
+                        "category": item["category"],
+                        "before": item["text"],
+                        "after": item["text"],
+                        "failed": False,
+                        "rewritten": False,
+                        "reason": "remote_rewrite_skipped_already_clean",
+                    }
+                )
+
+    if not rewrite_plan:
+        diagnostics["rewriteRuntimeMs"] = round((time.perf_counter() - rewrite_start) * 1000, 2)
+        diagnostics["rewriteSucceeded"] = True
+        rewritten_output["rewriteStatus"] = {
+            "succeeded": True,
+            "failureCount": 0,
+            "runtimeMs": diagnostics["rewriteRuntimeMs"],
+        }
+        return rewritten_output, diagnostics
 
     rewrite_results = rewriter.rewrite_items(
         [{"category": item["category"], "text": item["text"]} for item in rewrite_plan]

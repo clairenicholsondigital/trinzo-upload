@@ -22,6 +22,7 @@ from scripts.meeting_minutes_minilm_experiment import (
     collect_minilm_only_context,
     normalize_text_fragment,
     rewrite_minutes_output_payload,
+    should_attempt_remote_rewrite,
     strip_public_timestamp_tokens,
     summarize_objectives_for_output,
 )
@@ -1472,6 +1473,44 @@ Claire: Action for Mike to investigate API numbers.
         finally:
             server.shutdown()
             server.server_close()
+
+    def test_remote_rewrite_skips_already_clean_minutes_items(self):
+        class ExplodingRemoteRewriter:
+            available = True
+            reason = ""
+            worker_url = "http://127.0.0.1:9999"
+
+            def rewrite_items(self, items):
+                raise AssertionError("clean discussion points should not be sent to remote Qwen")
+
+        output = {
+            "meetingObjectives": [],
+            "discussionPoints": [
+                "Poster hall engagement should be described as poster-hall interaction, not individual poster views.",
+                "Small sample sizes in some platform areas limit how confidently differences between features can be interpreted.",
+            ],
+            "discussionPointDetails": [{}, {}],
+            "decisions": [],
+            "actions": [],
+        }
+
+        rewritten, diagnostics = rewrite_minutes_output_payload(output, ExplodingRemoteRewriter())
+
+        self.assertEqual(rewritten["discussionPoints"], output["discussionPoints"])
+        self.assertTrue(diagnostics["rewriteSucceeded"])
+        self.assertTrue(
+            all(edit["reason"] == "remote_rewrite_skipped_already_clean" for edit in diagnostics["rewriteEdits"])
+        )
+
+    def test_remote_rewrite_still_targets_awkward_transcript_items(self):
+        self.assertTrue(should_attempt_remote_rewrite("objective", "Taking the people that were in a research focus area first"))
+        self.assertTrue(should_attempt_remote_rewrite("discussion", "I think this was sort of a finger in the air metric."))
+        self.assertFalse(
+            should_attempt_remote_rewrite(
+                "discussion",
+                "The heat maps should be described as click data, not view data.",
+            )
+        )
 
     def test_minilm_backend_can_use_remote_worker(self):
         class Handler(BaseHTTPRequestHandler):
