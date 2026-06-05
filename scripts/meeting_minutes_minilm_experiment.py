@@ -2480,6 +2480,8 @@ def formalize_speakerless_analytics_discussion(combined: str) -> str:
         )
     if "47" in combined and "tuesday" in combined and "views" in combined:
         return "Around 47 percent of the relevant views occurred on Tuesday, but the wording should refer to views rather than delegates."
+    if "47" in combined and "percentage" in combined:
+        return "A Tuesday-related percentage appears to be around 47 percent, but the wording should clarify whether it refers to views, clicks or delegates."
     if "wednesday" in combined and "thursday" in combined and ("user journeys" in combined or "research hub" in combined):
         return (
             "Wednesday and Thursday journeys were more complex than Tuesday, making attribution from the research hub "
@@ -2491,9 +2493,12 @@ def formalize_speakerless_analytics_discussion(combined: str) -> str:
         return "Platform loading speed may have affected click-based engagement behaviour and should be treated as a reporting caveat."
     if "swag bag" in combined and ("small" in combined or "numbers" in combined):
         return "Some feature counts, including swag bag figures, were small enough that comparisons should be treated cautiously."
-    if ("numbers seem really small" in combined or "30 people" in combined or "30 users" in combined) and (
-        "infer a difference" in combined or "gaps between them" in combined
-    ):
+    if (
+        "numbers seem really small" in combined
+        or "30 people" in combined
+        or "30 users" in combined
+        or "some parts of the platform" in combined
+    ) and ("small" in combined or "infer a difference" in combined or "gaps between them" in combined):
         return "Small sample sizes in some platform areas limit how confidently differences between features can be interpreted."
     return ""
 

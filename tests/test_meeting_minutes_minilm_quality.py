@@ -160,6 +160,19 @@ Ibrahim: The purpose is to decide whether the integration risk is acceptable for
             ),
             "Some feature counts, including swag bag figures, were small enough that comparisons should be treated cautiously.",
         )
+        self.assertEqual(
+            formalize_transcript_discussion_point(
+                "Some stupid, stupidly small number So about 47 and a few percent and a few little at a few decimal places of a percentage.",
+            ),
+            "A Tuesday-related percentage appears to be around 47 percent, but the wording should clarify whether it refers to views, clicks or delegates.",
+        )
+        self.assertEqual(
+            formalize_transcript_discussion_point(
+                "For some parts of the platform, they're a bit small They look really small to be honest at some parts.",
+                [{"text": "the numbers seem really small and in a few places we're talking about 30 people or 30 users"}],
+            ),
+            "Small sample sizes in some platform areas limit how confidently differences between features can be interpreted.",
+        )
 
     def test_resource_indicator_fragment_is_not_promoted_as_raw_objective(self):
         output = {
