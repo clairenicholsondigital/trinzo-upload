@@ -1608,6 +1608,24 @@ function buildTranscriptMinilmOnlyPage(config) {
     state.payload = payload;
     const result = payload.result || {};
     const output = result.output || {};
+    if (!result.output) {
+      state.schemaOutput = null;
+      displayDetailsSummary(payload, result);
+      outputNode.innerHTML = `<p class="note">No minutes output was produced. ${escapeHtml(result.modelReason || 'Check diagnostics for the extractor status.')}</p>`;
+      rawOutputNode.textContent = JSON.stringify(result, null, 2);
+      diagnosticsNode.textContent = JSON.stringify({
+        mode: result.mode || 'minilm_only',
+        diagnostics: result.diagnostics || {},
+        timingMs: result.timingMs || {},
+        transcriptMetadata: payload.transcriptMetadata || null
+      }, null, 2);
+      outputPanel.classList.remove('hidden');
+      diagnosticsPanel.classList.remove('hidden');
+      if (finaliseBtn) finaliseBtn.classList.add('hidden');
+      if (improveBtn) improveBtn.disabled = true;
+      setMessage(result.modelReason ? `Extractor did not run: ${result.modelReason}` : 'Extractor did not produce minutes output.', 'error');
+      return;
+    }
     const schemaOutput = buildStructuredMinutesSchema(output);
     state.schemaOutput = schemaOutput;
 

@@ -1703,6 +1703,30 @@ Claire: Action for Mike to investigate API numbers.
         self.assertGreaterEqual(len(diagnostics["rewriteEdits"]), 3)
         self.assertGreaterEqual(diagnostics["rewriteRuntimeMs"], 0.0)
 
+    def test_speakerless_website_review_returns_discussion_and_double_check_action(self):
+        transcript = """
+        We looked at the PowerPoint slides and the website page updates.
+        The red text should replace the existing text inside the box.
+        I think I updated those two.
+        I'll double check.
+        The video is massive, so the media needs resizing or compression before it goes on the site.
+        On the application page, the panels and content section need to be checked for the expected order.
+        The gallery grid has sparse images, so the row width and gallery layout need a sensible treatment.
+        The front end fix should be checked in the browser after refresh.
+        """
+
+        intermediate = collect_minilm_only_context(transcript)
+        output, diagnostics = build_minilm_only_output(transcript, intermediate, FakeMiniLMBackend())
+
+        self.assertEqual(output["meetingType"], "task_review")
+        self.assertEqual(output["meetingStyle"], "website_review")
+        self.assertIn("Double check the updated text replacements.", output["meetingActionPoint"])
+        visible_discussion = " ".join(output.get("discussionPoints", [])).lower()
+        self.assertIn("content replacement", visible_discussion)
+        self.assertIn("media assets", visible_discussion)
+        self.assertIn("gallery layout", visible_discussion)
+        self.assertTrue(diagnostics.get("speakerlessTaskReviewFallback", {}).get("applied"))
+
     def test_varied_meeting_fixtures_prioritise_reliability_and_abstention(self):
         """Guard against overfitting to one webinar transcript.
 

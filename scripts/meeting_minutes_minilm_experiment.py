@@ -54,6 +54,7 @@ PROTOTYPE_TEXTS = {
         "Continue work with the team on adoption considerations.",
         "Coordinate the next step with the relevant team.",
         "Double down on adoption planning with the project team.",
+        "Double check the implementation details before closing the item.",
     ],
     "decision": [
         "The team decided on a specific option.",
@@ -64,6 +65,7 @@ PROTOTYPE_TEXTS = {
         "A substantive project discussion point.",
         "A meaningful meeting topic that matters to the minutes.",
         "A real workstream update or issue discussion.",
+        "A website review covering page content, layout, media assets and implementation details.",
     ],
     "status": [
         "This workstream is on track or in progress.",
@@ -1107,6 +1109,23 @@ def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBacke
         cleaned = re.sub(r"^[A-Z][A-Za-z]+(?: [A-Z][A-Za-z]+){0,2}\s+to\s+", "", cleaned)
         return normalized_key(cleaned)
 
+    def contextualize_vague_action(task: str, index: int) -> str:
+        if not is_vague_double_check_action(task):
+            return task
+        context_records = records[max(0, index - 8): index + 4]
+        context_tokens = Counter()
+        for context_record in context_records:
+            context_tokens.update(canonicalize_tokens(tokenize(context_record.get("text", ""))))
+        if context_tokens["updated"] or context_tokens["update"]:
+            if context_tokens["text"] or context_tokens["replacement"] or context_tokens["replace"] or context_tokens["red"]:
+                return "Double check the updated text replacements"
+            if context_tokens["page"] or context_tokens["pages"] or context_tokens["frontend"] or context_tokens["front"]:
+                return "Double check the website updates"
+            return "Double check the updated items"
+        if context_tokens["page"] or context_tokens["pages"] or context_tokens["frontend"] or context_tokens["front"]:
+            return "Double check the website items"
+        return task
+
     def infer_followup_owner_deadline(action_text: str, source_text: str = "") -> tuple[str, str]:
         action_tokens = {token for token in canonicalize_tokens(tokenize(action_text)) if token not in GENERIC_STATUS_TERMS}
         source_tokens = {token for token in canonicalize_tokens(tokenize(source_text)) if token not in GENERIC_STATUS_TERMS}
@@ -1386,7 +1405,7 @@ def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBacke
         first_person_action_match = re.match(r"^(?:i['’]?ll|i will|i can)\s+(.+)$", text, flags=re.I)
         if first_person_action_match:
             owner = normalize_text_fragment(record.get("speaker", "")) or "Owner not specified"
-            task = normalize_action_candidate_text(first_person_action_match.group(1))
+            task = contextualize_vague_action(normalize_action_candidate_text(first_person_action_match.group(1)), index)
             deadline = extract_action_deadline(task) or nearby_action_deadline(index, owner)
             if task and not task.endswith("?") and len(tokenize(task)) >= 2:
                 key = canonical_action_dedupe_key(task)
@@ -2280,7 +2299,52 @@ MINILM_TOPIC_TERMS = {
     "sgs", "offsite", "weekly", "check-in", "checkin", "trace", "matrix", "stability",
     "references", "master", "pharma", "filter", "timelines", "unaffected", "complex", "simple",
     "requests", "account", "permissions", "contract", "term", "extension",
+    "website", "frontend", "front", "browser", "safari", "powerpoint", "sharepoint",
+    "file", "files", "video", "videos", "media", "gallery", "grid", "row", "rows",
+    "panel", "panels", "box", "boxes", "replacement", "replace", "resize", "compression",
+    "compress", "width", "navigation", "legend",
 }
+
+WEBSITE_REVIEW_TERMS = {
+    "website", "frontend", "front", "browser", "safari", "page", "pages", "slide", "slides",
+    "powerpoint", "sharepoint", "video", "videos", "media", "image", "images", "gallery",
+    "grid", "row", "rows", "panel", "panels", "box", "boxes", "text", "red", "replacement",
+    "replace", "resize", "compression", "compress", "width", "navigation", "legend",
+    "application", "applications", "layout", "content",
+}
+
+WEBSITE_REVIEW_TOPIC_GROUPS = (
+    (
+        "content_replacement",
+        {"red", "text", "replace", "replacement", "box", "boxes", "content"},
+        "Content replacement instructions were reviewed, including how marked-up text should replace existing box content.",
+    ),
+    (
+        "media_optimisation",
+        {"video", "videos", "media", "image", "images", "file", "files", "resize", "compression", "compress"},
+        "Large media assets were discussed, including resizing or compression before use on the site.",
+    ),
+    (
+        "page_layout",
+        {"page", "pages", "application", "applications", "panel", "panels", "layout", "section", "content"},
+        "Website page structure and application content placement were reviewed.",
+    ),
+    (
+        "gallery_layout",
+        {"gallery", "grid", "row", "rows", "width", "image", "images"},
+        "Gallery layout options were discussed, including image sizing and how sparse galleries should be handled.",
+    ),
+    (
+        "browser_frontend_check",
+        {"browser", "safari", "front", "frontend", "fixed", "refresh"},
+        "Front-end checks were discussed, including browser-specific behaviour and verifying fixes after refresh.",
+    ),
+    (
+        "figure_layout",
+        {"legend", "indent", "indented", "figure", "move", "moved"},
+        "Figure legend placement and indentation were reviewed.",
+    ),
+)
 
 SOFT_STYLE_TERMS = {
     "salesy": "sales-focused",
@@ -2648,6 +2712,25 @@ def has_concrete_action_commitment(text: str, owner: str = "", deadline: str = "
     if normalize_text_fragment(deadline) and business_signal_count(cleaned) >= 1:
         return True
     return False
+
+
+def action_starts_with_concrete_verb(text: str) -> bool:
+    tokens = canonicalize_tokens(tokenize(text))
+    if not tokens:
+        return False
+    if tokens[0] in CONCRETE_ACTION_VERBS:
+        return True
+    if len(tokens) >= 2 and tokens[0] in {"follow", "set", "double"} and tokens[1] in CONCRETE_ACTION_VERBS:
+        return True
+    return False
+
+
+def is_vague_double_check_action(text: str) -> bool:
+    tokens = canonicalize_tokens(tokenize(text))
+    if len(tokens) < 2 or tokens[0:2] != ["double", "check"]:
+        return False
+    topic_tokens = {token for token in tokens[2:] if token in MINILM_TOPIC_TERMS or token in WEBSITE_REVIEW_TERMS}
+    return len(topic_tokens) == 0
 
 
 def is_self_referential_conversational_fragment(text: str) -> bool:
@@ -3413,7 +3496,7 @@ def should_accept_action_candidate(candidate: dict[str, Any]) -> tuple[bool, str
     semantic_source = candidate.get("source") == "semantic_action_fallback"
     if not (
         is_action_like_sentence(text)
-        or re.match(r"^(review|confirm|draft|follow up|investigate|validate|prepare|update|share|send|complete|finalise|refine|revise|pull|collect|fetch|extract|obtain|estimate|capture|monitor|separate|set up|brief|write|enforce|accelerate|assign|explore|build|schedule|remove|redline|call|reschedule|request|patch|replay|notify)\b", text, re.I)
+        or action_starts_with_concrete_verb(text)
         or semantic_source
     ):
         return False, "not_action_like"
@@ -3648,6 +3731,94 @@ def build_cluster_discussion_candidate(cluster: list[dict[str, Any]], speaker_na
         "representativeSentence": summary.get("selectedRepresentativeSentence", ""),
         "rejectionReason": reason,
     }
+
+
+def supplement_speakerless_task_review_output(
+    output: dict[str, Any],
+    intermediate: dict[str, Any],
+    diagnostics: dict[str, Any],
+) -> None:
+    parser_diag = intermediate.get("parserDiagnostics", {})
+    if not parser_diag.get("speakerlessFallbackUsed"):
+        return
+    records = [record for record in intermediate.get("records", []) if normalize_text_fragment(record.get("text", ""))]
+    if not records:
+        return
+    transcript_tokens = Counter()
+    signal_record_count = 0
+    for record in records:
+        tokens = canonicalize_tokens(tokenize(record.get("text", "")))
+        token_set = set(tokens)
+        transcript_tokens.update(tokens)
+        if token_set & WEBSITE_REVIEW_TERMS:
+            signal_record_count += 1
+    distinct_signal_terms = set(transcript_tokens) & WEBSITE_REVIEW_TERMS
+    if signal_record_count < 6 or len(distinct_signal_terms) < 5:
+        return
+
+    existing_keys = {normalized_key(point) for point in output.get("discussionPoints", [])}
+    additions = []
+    for source_type, group_terms, summary in WEBSITE_REVIEW_TOPIC_GROUPS:
+        evidence = []
+        score = 0
+        for index, record in enumerate(records):
+            text = normalize_text_fragment(record.get("text", ""))
+            if not text or contains_noise_or_banter(text):
+                continue
+            tokens = set(canonicalize_tokens(tokenize(text)))
+            overlap = tokens & group_terms
+            if not overlap:
+                continue
+            score += len(overlap)
+            if len(overlap) >= 2 or business_signal_count(text) >= 1:
+                evidence.append(
+                    {
+                        "speaker": normalize_text_fragment(record.get("speaker", "")),
+                        "timestamp": normalize_text_fragment(record.get("timestamp", "")),
+                        "text": text,
+                        "turnIndex": record_turn_index(record, index),
+                    }
+                )
+        if score < 3 or not evidence:
+            continue
+        key = normalized_key(summary)
+        if not key or key in existing_keys:
+            continue
+        additions.append(
+            {
+                "discussionPoint": summary,
+                "sourceType": f"speakerless_task_review_{source_type}",
+                "selectedReason": "speakerless_task_review_topic_group",
+                "cleanedCandidateSentences": [item["text"] for item in evidence[:4]],
+                "representativeSentence": evidence[0]["text"],
+                "sourceTurnIndices": evidence_source_turn_indices(evidence[:4]),
+                "_evidence": evidence[:4],
+                "evidenceScore": round(min(0.86, 0.5 + score * 0.035), 2),
+                "candidateType": "speakerless_task_review",
+                "coherenceScore": round(min(0.9, 0.45 + len(evidence) * 0.04), 2),
+            }
+        )
+        existing_keys.add(key)
+
+    additions.sort(key=lambda item: (item["evidenceScore"], len(item["_evidence"])), reverse=True)
+    for item in additions[:4]:
+        point = item["discussionPoint"]
+        output["discussionPoints"].append(point)
+        output["discussionPointDetails"].append(item)
+        output["internalEvidence"]["discussionPoints"].append({"text": point, "_evidence": item["_evidence"]})
+        diagnostics["selectedDiscussionPoints"].append(point)
+
+    if additions:
+        output["meetingType"] = "task_review"
+        output["meetingStyle"] = "website_review"
+        output["meetingTheme"] = "Website update review"
+        output["itemTopic"] = "Website update review"
+        diagnostics["speakerlessTaskReviewFallback"] = {
+            "applied": True,
+            "signalRecordCount": signal_record_count,
+            "signalTerms": sorted(distinct_signal_terms)[:20],
+            "addedDiscussionPoints": [item["discussionPoint"] for item in additions[:4]],
+        }
 
 
 def build_minilm_only_output(
@@ -4110,6 +4281,7 @@ def build_minilm_only_output(
         if len(output["discussionPoints"]) >= 8:
             break
 
+    supplement_speakerless_task_review_output(output, intermediate, diagnostics)
     sanitize_public_output_items(output, {name.lower() for name in speaker_names} | set(speaker_names))
 
     output["meetingObjectives"] = derive_meeting_objectives(output)
