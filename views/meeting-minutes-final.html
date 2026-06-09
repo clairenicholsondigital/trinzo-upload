@@ -67,6 +67,7 @@ a { color:#67e8f9; }
 .feedback-trigger { position:fixed; right:1rem; bottom:1rem; width:3rem; height:3rem; display:inline-flex; align-items:center; justify-content:center; padding:0; border-radius:999px; box-shadow:0 12px 30px rgba(0,0,0,.38); z-index:20; font-size:1.25rem; }
 .feedback-trigger:focus-visible, .feedback-modal button:focus-visible, .feedback-modal input:focus-visible, .feedback-modal select:focus-visible, .feedback-modal textarea:focus-visible { outline:3px solid #67e8f9; outline-offset:2px; }
 .feedback-backdrop { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; padding:1rem; background:rgba(2,6,23,.72); z-index:30; }
+.feedback-backdrop.hidden { display:none; }
 .feedback-modal { width:min(94vw, 520px); background:linear-gradient(145deg,var(--panel),var(--panel2)); border:1px solid var(--border); border-radius:16px; padding:1rem; box-shadow:0 24px 80px rgba(0,0,0,.55); }
 .feedback-modal header { display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; margin-bottom:.75rem; }
 .feedback-modal h2 { margin:.15rem 0 .25rem; }
@@ -97,7 +98,7 @@ a { color:#67e8f9; }
     <header>
       <div>
         <h2 id="feedbackWidgetTitle">Send feedback</h2>
-        <p id="feedbackWidgetDescription">Tell us what worked, what broke, or what would make this page easier. Please don’t paste transcripts or sensitive meeting details here.</p>
+        <p id="feedbackWidgetDescription">Tell us what worked, what broke, or what would make this page easier.</p>
       </div>
       <button id="feedbackWidgetClose" class="close-button" type="button" aria-label="Close feedback form">✕</button>
     </header>
@@ -119,10 +120,6 @@ a { color:#67e8f9; }
       <div class="field">
         <label for="feedbackName">Name <small>(optional)</small></label>
         <input id="feedbackName" name="contactName" type="text" maxlength="120" autocomplete="name" />
-      </div>
-      <div class="field">
-        <label for="feedbackEmail">Email <small>(optional, for follow-up)</small></label>
-        <input id="feedbackEmail" name="contactEmail" type="email" maxlength="254" autocomplete="email" />
       </div>
       <div class="panel-actions">
         <button id="feedbackWidgetCancel" class="secondary" type="button">Cancel</button>
@@ -189,7 +186,7 @@ buildTranscriptMinilmOnlyPage({
       feedbackType: String(formData.get('feedbackType') || 'general'),
       message: String(formData.get('message') || '').trim(),
       contactName: String(formData.get('contactName') || '').trim(),
-      contactEmail: String(formData.get('contactEmail') || '').trim()
+      contactEmail: ''
     };
 
     if (payload.message.length < 10) {
