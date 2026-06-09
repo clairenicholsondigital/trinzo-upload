@@ -33,6 +33,7 @@ const {
   getMeetingById,
   deleteMeetingById,
   updateMeetingById,
+  saveMeetingMinutesFeedback,
   getMeetingStatus,
   claimNextJob,
   markJobCompleted,
@@ -645,6 +646,61 @@ router.post('/meeting-minutes-final/improve', async (req, res) => {
 
     const result = await runPythonJsonScript('meeting_minutes_rewrite_output.py', output, scriptArgs);
     return res.json({ ok: true, result });
+  } catch (error) {
+    return sendTestError(res, error);
+  }
+});
+
+router.post('/meeting-minutes-final/feedback', async (req, res) => {
+  try {
+    if (!hasDatabaseConfig()) {
+      const error = new Error(getDatabaseConfigError());
+      error.statusCode = 503;
+      throw error;
+    }
+
+    const feedbackType = String(req.body?.feedbackType || 'general').trim().toLowerCase();
+    const allowedTypes = new Set(['general', 'bug', 'idea', 'confusing', 'praise']);
+    const safeFeedbackType = allowedTypes.has(feedbackType) ? feedbackType : 'general';
+    const message = String(req.body?.message || '').trim();
+    const contactName = String(req.body?.contactName || '').trim();
+    const contactEmail = String(req.body?.contactEmail || '').trim();
+
+    if (message.length < 10) {
+      const error = new Error('Please add a little more detail before sending feedback.');
+      error.statusCode = 400;
+      throw error;
+    }
+    if (message.length > 2000) {
+      const error = new Error('Feedback must be 2,000 characters or fewer.');
+      error.statusCode = 400;
+      throw error;
+    }
+    if (contactName.length > 120) {
+      const error = new Error('Name must be 120 characters or fewer.');
+      error.statusCode = 400;
+      throw error;
+    }
+    if (contactEmail && (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail) || contactEmail.length > 254)) {
+      const error = new Error('Please enter a valid email address, or leave it blank.');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const result = await saveMeetingMinutesFeedback({
+      route: '/meeting-minutes-final',
+      feedbackType: safeFeedbackType,
+      message,
+      contactName,
+      contactEmail,
+      userAgent: req.get('user-agent') || '',
+      metadata: {
+        source: 'meeting-minutes-final-feedback-widget',
+        pathname: String(req.body?.route || '/meeting-minutes-final').slice(0, 255)
+      }
+    });
+
+    return res.status(201).json({ ok: true, feedbackId: result.feedbackId, createdAt: result.createdAt });
   } catch (error) {
     return sendTestError(res, error);
   }

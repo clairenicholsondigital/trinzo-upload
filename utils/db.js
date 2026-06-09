@@ -481,6 +481,38 @@ COMMIT;`;
   return { meetingId: Number(meetingId), jobId: Number(jobId), status: 'queued' };
 }
 
+async function saveMeetingMinutesFeedback(payload = {}) {
+  const route = String(payload.route || '/meeting-minutes-final').slice(0, 255);
+  const feedbackType = String(payload.feedbackType || 'general').slice(0, 50);
+  const message = String(payload.message || '').slice(0, 2000);
+  const contactName = payload.contactName ? String(payload.contactName).slice(0, 120) : '';
+  const contactEmail = payload.contactEmail ? String(payload.contactEmail).slice(0, 254) : '';
+  const userAgent = payload.userAgent ? String(payload.userAgent).slice(0, 500) : '';
+  const metadata = payload.metadata && typeof payload.metadata === 'object' ? payload.metadata : {};
+
+  const sql = `
+CREATE TABLE IF NOT EXISTS meeting_minutes_feedback (
+  id BIGSERIAL PRIMARY KEY,
+  route TEXT NOT NULL,
+  feedback_type TEXT NOT NULL DEFAULT 'general',
+  message TEXT NOT NULL,
+  contact_name TEXT,
+  contact_email TEXT,
+  user_agent TEXT,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_meeting_minutes_feedback_created_at ON meeting_minutes_feedback (created_at DESC);
+INSERT INTO meeting_minutes_feedback (route, feedback_type, message, contact_name, contact_email, user_agent, metadata)
+VALUES (${q(route)}, ${q(feedbackType)}, ${q(message)}, ${q(contactName)}, ${q(contactEmail)}, ${q(userAgent)}, ${qJson(metadata)})
+RETURNING id::text, created_at::text;`;
+
+  const out = await runPsql(sql);
+  const row = out.split('\n').find((line) => /^\d+\|/.test(line));
+  const [id, createdAt] = (row || '|').split('|');
+  return { feedbackId: Number(id), createdAt };
+}
+
 async function getMeetingStatus(meetingId) {
   const sql = `
 SELECT m.id::text, COALESCE(m.status,''), COALESCE(m.webhook_status,'not_sent'), COALESCE(m.last_error,''), COALESCE(m.last_activity_at::text,''),
@@ -882,6 +914,7 @@ module.exports = {
   updateMeetingById,
   saveUploadedJob,
   saveMeetingMinutes,
+  saveMeetingMinutesFeedback,
   saveProjectUpdateDraft,
   listProjectReports,
   getProjectReportDetail,

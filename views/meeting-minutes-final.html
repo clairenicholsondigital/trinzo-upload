@@ -64,6 +64,19 @@ pre { white-space:pre-wrap; overflow:auto; max-height:650px; background:#071126;
 .accordion .accordion-body { padding:0 1rem 1rem; }
 .hidden { display:none; }
 a { color:#67e8f9; }
+.feedback-trigger { position:fixed; right:1rem; bottom:1rem; width:3rem; height:3rem; display:inline-flex; align-items:center; justify-content:center; padding:0; border-radius:999px; box-shadow:0 12px 30px rgba(0,0,0,.38); z-index:20; font-size:1.25rem; }
+.feedback-trigger:focus-visible, .feedback-modal button:focus-visible, .feedback-modal input:focus-visible, .feedback-modal select:focus-visible, .feedback-modal textarea:focus-visible { outline:3px solid #67e8f9; outline-offset:2px; }
+.feedback-backdrop { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; padding:1rem; background:rgba(2,6,23,.72); z-index:30; }
+.feedback-modal { width:min(94vw, 520px); background:linear-gradient(145deg,var(--panel),var(--panel2)); border:1px solid var(--border); border-radius:16px; padding:1rem; box-shadow:0 24px 80px rgba(0,0,0,.55); }
+.feedback-modal header { display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; margin-bottom:.75rem; }
+.feedback-modal h2 { margin:.15rem 0 .25rem; }
+.feedback-modal p { margin:.25rem 0 .75rem; color:var(--muted); }
+.feedback-modal input, .feedback-modal select, .feedback-modal textarea { width:100%; background:#071126; color:var(--text); border:1px solid var(--border); border-radius:10px; padding:.7rem; font:inherit; }
+.feedback-modal textarea { min-height:120px; }
+.feedback-modal .close-button { background:transparent; color:#dbeafe; border:1px solid var(--border); padding:.45rem .65rem; }
+.feedback-status { margin-top:.75rem; min-height:1.3rem; color:var(--muted); }
+.feedback-status.error { color:#fecaca; }
+.feedback-status.success { color:#86efac; }
 @media (max-width: 760px) {
   .schema-table, .schema-table tbody, .schema-table tr, .schema-table th, .schema-table td { display:block; width:100%; }
   .schema-table tr { border-bottom:1px solid var(--border); }
@@ -78,6 +91,47 @@ a { color:#67e8f9; }
   <p><a href="/">← Back to workflow</a></p>
   <main id="transcriptMinilmOnlyRoot"></main>
 </div>
+<button id="feedbackWidgetButton" class="feedback-trigger" type="button" aria-label="Open feedback form" title="Send feedback about this page">💬</button>
+<div id="feedbackWidgetBackdrop" class="feedback-backdrop hidden" role="presentation">
+  <section class="feedback-modal" role="dialog" aria-modal="true" aria-labelledby="feedbackWidgetTitle" aria-describedby="feedbackWidgetDescription">
+    <header>
+      <div>
+        <h2 id="feedbackWidgetTitle">Send feedback</h2>
+        <p id="feedbackWidgetDescription">Tell us what worked, what broke, or what would make this page easier. Please don’t paste transcripts or sensitive meeting details here.</p>
+      </div>
+      <button id="feedbackWidgetClose" class="close-button" type="button" aria-label="Close feedback form">✕</button>
+    </header>
+    <form id="feedbackWidgetForm" novalidate>
+      <div class="field">
+        <label for="feedbackType">Feedback type</label>
+        <select id="feedbackType" name="feedbackType">
+          <option value="general">General feedback</option>
+          <option value="bug">Something is broken</option>
+          <option value="confusing">Something is confusing</option>
+          <option value="idea">Feature idea</option>
+          <option value="praise">This worked well</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="feedbackMessage">Feedback <small>(required)</small></label>
+        <textarea id="feedbackMessage" name="message" maxlength="2000" required placeholder="What should we know? Please avoid sharing transcript content or sensitive meeting data."></textarea>
+      </div>
+      <div class="field">
+        <label for="feedbackName">Name <small>(optional)</small></label>
+        <input id="feedbackName" name="contactName" type="text" maxlength="120" autocomplete="name" />
+      </div>
+      <div class="field">
+        <label for="feedbackEmail">Email <small>(optional, for follow-up)</small></label>
+        <input id="feedbackEmail" name="contactEmail" type="email" maxlength="254" autocomplete="email" />
+      </div>
+      <div class="panel-actions">
+        <button id="feedbackWidgetCancel" class="secondary" type="button">Cancel</button>
+        <button id="feedbackWidgetSubmit" type="submit">Send feedback</button>
+      </div>
+      <div id="feedbackWidgetStatus" class="feedback-status" role="status" aria-live="polite"></div>
+    </form>
+  </section>
+</div>
 <script src="/static/test-transcript-page.js"></script>
 <script>
 buildTranscriptMinilmOnlyPage({
@@ -87,6 +141,83 @@ buildTranscriptMinilmOnlyPage({
   endpoint: '/api/meeting-minutes-final',
   improveEndpoint: '/api/meeting-minutes-final/improve'
 });
+
+(function initialiseFeedbackWidget() {
+  const openButton = document.getElementById('feedbackWidgetButton');
+  const backdrop = document.getElementById('feedbackWidgetBackdrop');
+  const closeButton = document.getElementById('feedbackWidgetClose');
+  const cancelButton = document.getElementById('feedbackWidgetCancel');
+  const form = document.getElementById('feedbackWidgetForm');
+  const message = document.getElementById('feedbackMessage');
+  const submitButton = document.getElementById('feedbackWidgetSubmit');
+  const status = document.getElementById('feedbackWidgetStatus');
+  let lastFocusedElement = null;
+
+  function setStatus(text, className) {
+    status.textContent = text || '';
+    status.className = className ? `feedback-status ${className}` : 'feedback-status';
+  }
+
+  function openModal() {
+    lastFocusedElement = document.activeElement;
+    backdrop.classList.remove('hidden');
+    setStatus('', '');
+    window.setTimeout(() => message.focus(), 0);
+  }
+
+  function closeModal() {
+    backdrop.classList.add('hidden');
+    setStatus('', '');
+    if (lastFocusedElement && typeof lastFocusedElement.focus === 'function') lastFocusedElement.focus();
+  }
+
+  openButton.addEventListener('click', openModal);
+  closeButton.addEventListener('click', closeModal);
+  cancelButton.addEventListener('click', closeModal);
+  backdrop.addEventListener('click', (event) => {
+    if (event.target === backdrop) closeModal();
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !backdrop.classList.contains('hidden')) closeModal();
+  });
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const formData = new FormData(form);
+    const payload = {
+      route: window.location.pathname,
+      feedbackType: String(formData.get('feedbackType') || 'general'),
+      message: String(formData.get('message') || '').trim(),
+      contactName: String(formData.get('contactName') || '').trim(),
+      contactEmail: String(formData.get('contactEmail') || '').trim()
+    };
+
+    if (payload.message.length < 10) {
+      setStatus('Please add a little more detail before sending.', 'error');
+      message.focus();
+      return;
+    }
+
+    submitButton.disabled = true;
+    setStatus('Sending feedback…', '');
+    try {
+      const response = await fetch('/api/meeting-minutes-final/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.ok) throw new Error(data.error || 'Feedback could not be sent.');
+      form.reset();
+      setStatus('Thank you — feedback sent.', 'success');
+      window.setTimeout(closeModal, 1200);
+    } catch (error) {
+      setStatus(error.message || 'Feedback could not be sent. Please try again.', 'error');
+    } finally {
+      submitButton.disabled = false;
+    }
+  });
+}());
 </script>
 </body>
 </html>
