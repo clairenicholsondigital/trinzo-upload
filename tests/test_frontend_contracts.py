@@ -41,11 +41,13 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("event.key.toLowerCase() === 'f'", meeting_minutes_final)
         self.assertIn("Selected snippet for this feedback", meeting_minutes_final)
         self.assertIn("What should change about the selected snippet?", meeting_minutes_final)
+        self.assertIn("selectedSnippet: currentSnippet", meeting_minutes_final)
         self.assertNotIn("Feedback about selected snippet", meeting_minutes_final)
         self.assertIn("function getEditableSnippetSelection", shared_js)
         self.assertIn("Ctrl+Shift+M (Cmd+Shift+M on Mac)", shared_js)
         self.assertIn("selection.replace(improved)", shared_js)
         self.assertIn("router.post('/meeting-minutes-final/improve-snippet'", api)
+        self.assertIn("selectedSnippet: selectedSnippet || null", api)
         self.assertIn("meeting_minutes_rewrite_snippet.py", api)
 
 

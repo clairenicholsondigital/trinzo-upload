@@ -231,7 +231,8 @@ buildTranscriptMinilmOnlyPage({
       feedbackType: String(formData.get('feedbackType') || 'general'),
       message: String(formData.get('message') || '').trim(),
       contactName: String(formData.get('contactName') || '').trim(),
-      contactEmail: ''
+      contactEmail: '',
+      selectedSnippet: currentSnippet
     };
 
     if (payload.message.length < 10) {

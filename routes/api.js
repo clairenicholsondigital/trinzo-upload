@@ -688,6 +688,7 @@ router.post('/meeting-minutes-final/feedback', async (req, res) => {
     const message = String(req.body?.message || '').trim();
     const contactName = String(req.body?.contactName || '').trim();
     const contactEmail = String(req.body?.contactEmail || '').trim();
+    const selectedSnippet = String(req.body?.selectedSnippet || '').trim();
 
     if (message.length < 10) {
       const error = new Error('Please add a little more detail before sending feedback.');
@@ -709,6 +710,11 @@ router.post('/meeting-minutes-final/feedback', async (req, res) => {
       error.statusCode = 400;
       throw error;
     }
+    if (selectedSnippet.length > 4000) {
+      const error = new Error('Selected snippet must be 4,000 characters or fewer.');
+      error.statusCode = 400;
+      throw error;
+    }
 
     const result = await saveMeetingMinutesFeedback({
       route: '/meeting-minutes-final',
@@ -719,7 +725,8 @@ router.post('/meeting-minutes-final/feedback', async (req, res) => {
       userAgent: req.get('user-agent') || '',
       metadata: {
         source: 'meeting-minutes-final-feedback-widget',
-        pathname: String(req.body?.route || '/meeting-minutes-final').slice(0, 255)
+        pathname: String(req.body?.route || '/meeting-minutes-final').slice(0, 255),
+        selectedSnippet: selectedSnippet || null
       }
     });
 
