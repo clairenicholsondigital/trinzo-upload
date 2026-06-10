@@ -9,6 +9,7 @@ if str(SCRIPTS_DIR) not in sys.path:
 from meeting_minutes_minilm_experiment import (
     collect_minilm_only_context,
     collect_action_candidates,
+    build_minilm_only_output,
     derive_meeting_objectives,
     formalize_transcript_discussion_point,
     has_concrete_action_commitment,
@@ -24,6 +25,42 @@ from meeting_minutes_minilm_experiment import (
 )
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
+
+
+class DeterministicMiniLMBackend:
+    available = True
+    reason = "deterministic test backend"
+    model_name = "deterministic-test"
+
+    _dimensions = (
+        "ai", "pipeline", "sales", "liam", "webinar", "webinars", "vendor", "strategy",
+        "stage", "gate", "intake", "funnel", "sow", "sows", "grant", "commercial",
+        "impact", "report", "status", "blocked", "track", "complete",
+    )
+
+    def encode_many(self, texts):
+        lookup = {}
+        for text in texts:
+            cleaned = " ".join(str(text).split())
+            if not cleaned:
+                continue
+            tokens = set(cleaned.lower().replace(".", "").replace(",", "").split())
+            lookup[cleaned] = [1.0 if dimension in tokens else 0.0 for dimension in self._dimensions]
+        return lookup
+
+    def score_against_prototypes(self, text, prototype_group):
+        lowered = str(text).lower()
+        if prototype_group == "action":
+            return 0.72 if any(term in lowered for term in ("confirm", "follow up", "review", "validate", "draft")) else 0.08
+        if prototype_group == "status":
+            return 0.82 if any(term in lowered for term in ("blocked", "on track", "in progress", "complete", "scheduled", "green", "amber", "under pressure")) else 0.25
+        if prototype_group == "blocker":
+            return 0.82 if any(term in lowered for term in ("blocked", "risk", "under pressure", "sales input")) else 0.08
+        if prototype_group == "milestone":
+            return 0.72 if any(term in lowered for term in ("milestone", "pipeline", "webinar", "vendor", "stage", "sow", "grant", "intake")) else 0.15
+        if prototype_group == "discussion":
+            return 0.62 if len(lowered.split()) > 5 else 0.15
+        return 0.05
 
 
 class MeetingMinutesMiniLMQualityTest(unittest.TestCase):
@@ -63,6 +100,38 @@ class MeetingMinutesMiniLMQualityTest(unittest.TestCase):
         self.assertEqual(infer_minilm_meeting_title(transcript), "Daily AI Check In")
         self.assertNotIn("Conor Flynn", infer_minilm_meeting_title(transcript))
         self.assertNotIn("0 03", infer_minilm_meeting_title(transcript))
+
+    def test_teams_glued_status_review_recovers_useful_minutes(self):
+        transcript = (FIXTURES_DIR / "meeting_minutes_teams_glued_status_review.txt").read_text(encoding="utf-8")
+        output, diagnostics = build_minilm_only_output(
+            transcript,
+            collect_minilm_only_context(transcript),
+            DeterministicMiniLMBackend(),
+            rewriter=None,
+            include_diagnostics=True,
+        )
+
+        self.assertEqual(output["meetingTitle"], "Daily AI Check In")
+        discussion_blob = "\n".join(output["discussionPoints"]).lower()
+        action_blob = "\n".join(output["meetingActionPoint"]).lower()
+
+        self.assertGreaterEqual(len(output["discussionPoints"]), 3)
+        self.assertIn("ai pipeline strategy remains blocked because sales input is still required", discussion_blob)
+        self.assertIn("sales", discussion_blob + "\n" + action_blob)
+        self.assertIn("webinars remain on track", discussion_blob)
+        self.assertIn("stage gate and vendor strategy rollout remain in progress", discussion_blob)
+        self.assertIn("confirm ai pipeline dependencies with sales", action_blob)
+        self.assertTrue(diagnostics.get("statusReviewWorkstreamRecovery", {}).get("applied"))
+
+        public_blob = "\n".join(output["discussionPoints"] + output["meetingActionPoint"])
+        for forbidden in (
+            "Conor Flynn 0 03",
+            "Two one's time might make one do this.Me",
+            "That milestone, I suppose, is green. Nothing to deliver",
+            "good stuff, okay.go for it",
+            "Ws and the EI grant",
+        ):
+            self.assertNotIn(forbidden.lower(), public_blob.lower())
 
     def test_generic_notion_transcript_heading_is_not_used_as_title(self):
         transcript = """Transcript

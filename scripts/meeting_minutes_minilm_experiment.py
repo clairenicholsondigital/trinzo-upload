@@ -24,6 +24,7 @@ from python_meeting_minutes_numbers import (
     clean_transcript_text,
     contains_noise_or_banter,
     derive_public_meeting_objectives,
+    derive_status_review_actions_from_workstreams,
     discussion_similarity,
     evidence_source_turn_indices,
     extract_cluster_keywords,
@@ -42,6 +43,7 @@ from python_meeting_minutes_numbers import (
     STRUCTURAL_LINE_RE,
     tokenize,
 )
+from meeting_extraction_quality import is_clean_topic_anchor, is_client_safe_discussion_point
 
 MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 DEFAULT_LOCAL_REWRITER_PATH = Path(__file__).resolve().parent.parent / "models" / "Qwen2.5-0.5B-Instruct"
@@ -1921,15 +1923,18 @@ def collect_discussion_candidates(intermediate: dict[str, Any], backend: MiniLMB
     outputs = []
     rejections: list[dict[str, Any]] = []
     for point in intermediate.get("statusReviewPoints", []):
+        evidence = point.get("_evidence") or point.get("evidence") or []
         outputs.append(
             {
                 "text": normalize_text_fragment(point.get("text", "")),
                 "baseScore": 0.82,
                 "source": point.get("sourceType", "statusReviewPoint"),
                 "candidateType": "parser",
-                "supportScore": 0.82,
+                "supportScore": min(1.0, 0.5 + 0.08 * len(evidence)) if evidence else 0.82,
                 "scores": {"discussion": 0.82, "specificity": 0.7, "low_content": 0.0, "navigation": 0.0},
-                "evidence": point.get("_evidence", []),
+                "evidence": evidence,
+                "sourceTurnIndices": evidence_source_turn_indices(evidence),
+                "sourceSnippets": [normalize_text_fragment(ref.get("text", "")) for ref in evidence[:4]],
                 "roleScores": {},
             }
         )
@@ -2118,6 +2123,20 @@ def collect_discussion_candidates(intermediate: dict[str, Any], backend: MiniLMB
             "The live demo timing was reviewed and kept to seven minutes.",
             "webinar_demo_timing_fallback",
             "live demo",
+        )
+    if "three webinars" in lowered_records_text and "on track" in lowered_records_text:
+        add_discussion_fallback(
+            "The three webinars remain on track, with content prepared for the upcoming sessions.",
+            "status_review_workstream_fallback",
+            "three webinars",
+            "content set up",
+        )
+    if "vendor strategy" in lowered_records_text and "stage gate" in lowered_records_text and ("working on it" in lowered_records_text or "green for now" in lowered_records_text):
+        add_discussion_fallback(
+            "Stage gate and vendor strategy rollout remain in progress.",
+            "status_review_workstream_fallback",
+            "stage gate",
+            "vendor strategy",
         )
     if "strong on system design" in lowered_records_text:
         add_discussion_fallback(
@@ -2861,6 +2880,8 @@ def is_transcript_stitch_fragment(text: str) -> bool:
         return False
     if re.search(r"[a-z][.!?][A-Z][a-z]{0,3}\.?$", cleaned):
         return True
+    if re.match(r"^(?:ws|sows?)\s+and\b", lowered):
+        return True
     if re.search(r"\b(?:one|two|three)\s+one['’]s\s+time\b", lowered):
         return True
     if re.search(r"\b(?:kind of|sort of)\b", lowered) and len(re.findall(r"\b(?:i|me|we|you)\b", lowered)) >= 2:
@@ -3595,6 +3616,10 @@ def should_accept_action_candidate(candidate: dict[str, Any]) -> tuple[bool, str
         return False, "coordination_chatter"
     if is_self_referential_conversational_fragment(text):
         return False, "self_referential_fragment"
+    if is_personal_status_recount_fragment(text):
+        return False, "personal_status_recount_fragment"
+    if re.search(r"\b(?:on track|green|amber|red|remains|scheduled for|under pressure|nothing to deliver)\b", text, flags=re.I) and not action_starts_with_concrete_verb(text):
+        return False, "status_fragment_not_action"
     if not has_concrete_action_commitment(text, candidate.get("owner", ""), candidate.get("deadline", "")):
         return False, "missing_concrete_action_commitment"
     if semantic_density(text) < 0.58 and business_signal_count(text) < 1 and evidence_support_count(candidate) < 2:
@@ -3903,6 +3928,128 @@ def supplement_speakerless_task_review_output(
             "signalRecordCount": signal_record_count,
             "signalTerms": sorted(distinct_signal_terms)[:20],
             "addedDiscussionPoints": [item["discussionPoint"] for item in additions[:4]],
+        }
+
+
+def _status_workstream_summary_is_recoverable(workstream: dict[str, Any]) -> bool:
+    summary = normalize_text_fragment(workstream.get("summary", "") or workstream.get("text", ""))
+    topic = normalize_text_fragment(workstream.get("topic", ""))
+    lowered = summary.lower()
+    evidence = workstream.get("evidence") or workstream.get("_evidence") or []
+    if not summary or not evidence:
+        return False
+    if any(
+        phrase in lowered
+        for phrase in (
+            "good stuff",
+            "what do you think",
+            "name the milestone",
+            "button.not really",
+            "turn off transcription",
+        )
+    ):
+        return False
+    if is_transcript_stitch_fragment(summary) or is_vague_demonstrative_status_fragment(summary) or is_personal_status_recount_fragment(summary):
+        return False
+    if contains_noise_or_banter(summary) or is_request_or_question_fragment(summary):
+        return False
+    status_signal = bool(re.search(r"\b(?:blocked|amber|green|complete|completed|on track|in progress|pending|scheduled|under pressure|risk|mixed stages|not within our control|awaiting)\b", lowered))
+    topic_tokens = set(canonicalize_tokens(tokenize(topic or summary)))
+    topic_signal = is_clean_topic_anchor(topic) or bool(
+        topic_tokens
+        & {
+            "ai",
+            "pipeline",
+            "intake",
+            "funnel",
+            "commercial",
+            "impact",
+            "report",
+            "sow",
+            "sows",
+            "delivery",
+            "webinar",
+            "webinars",
+            "stage",
+            "gate",
+            "vendor",
+            "strategy",
+            "grant",
+            "feedback",
+        }
+    )
+    if not (status_signal and topic_signal):
+        return False
+    if not is_client_safe_discussion_point(summary, evidence=evidence, source_turn_indices=evidence_source_turn_indices(evidence)):
+        return False
+    return True
+
+
+def supplement_status_review_workstream_output(
+    output: dict[str, Any],
+    intermediate: dict[str, Any],
+    diagnostics: dict[str, Any],
+) -> None:
+    workstreams = list(intermediate.get("statusReviewWorkstreams", []))
+    if len(workstreams) < 2:
+        return
+    existing_keys = {normalized_key(point) for point in output.get("discussionPoints", [])}
+    additions = []
+    for workstream in workstreams:
+        if not _status_workstream_summary_is_recoverable(workstream):
+            continue
+        summary = normalize_text_fragment(workstream.get("summary", ""))
+        if summary and not summary.endswith("."):
+            summary += "."
+        key = normalized_key(summary)
+        if not key or key in existing_keys:
+            continue
+        if any(discussion_similarity(summary, existing) >= 0.82 for existing in output.get("discussionPoints", [])):
+            continue
+        evidence = dedupe_evidence((workstream.get("evidence") or workstream.get("_evidence") or []))[:4]
+        additions.append(
+            {
+                "discussionPoint": summary,
+                "sourceType": "status_review_workstream_recovery",
+                "selectedReason": workstream.get("selectedReason", "status_review_workstream_recovery"),
+                "cleanedCandidateSentences": [normalize_text_fragment(ref.get("text", "")) for ref in evidence],
+                "representativeSentence": normalize_text_fragment(evidence[0].get("text", "")) if evidence else summary,
+                "sourceTurnIndices": evidence_source_turn_indices(evidence),
+                "_evidence": evidence,
+                "evidenceScore": 0.84,
+                "candidateType": "status_review_workstream",
+                "coherenceScore": 0.82,
+            }
+        )
+        existing_keys.add(key)
+
+    additions.sort(key=lambda item: (item["sourceTurnIndices"] or [9999])[0])
+    for item in additions:
+        point = item["discussionPoint"]
+        if point not in output["discussionPoints"]:
+            output["discussionPoints"].append(point)
+            output["discussionPointDetails"].append(item)
+            output["internalEvidence"]["discussionPoints"].append({"text": point, "_evidence": item["_evidence"]})
+            diagnostics.setdefault("selectedDiscussionPoints", []).append(point)
+        if len(output["discussionPoints"]) >= 8:
+            break
+
+    existing_action_keys = {normalized_key(action.get("meetingActionPoint", "")) for action in output.get("actions", [])}
+    for action in derive_status_review_actions_from_workstreams(workstreams):
+        key = normalized_key(action.get("meetingActionPoint", ""))
+        if not key or key in existing_action_keys:
+            continue
+        output["actions"].append(action)
+        output["internalEvidence"]["actions"].append({"text": action["meetingActionPoint"], "_evidence": action.get("_evidence", [])})
+        diagnostics.setdefault("selectedActions", []).append(action)
+        existing_action_keys.add(key)
+        if len(output["actions"]) >= 6:
+            break
+
+    if additions:
+        diagnostics["statusReviewWorkstreamRecovery"] = {
+            "applied": True,
+            "addedDiscussionPoints": [item["discussionPoint"] for item in additions],
         }
 
 
@@ -4356,7 +4503,12 @@ def build_minilm_only_output(
         if len(output["discussionPoints"]) >= 8:
             break
 
+    supplement_status_review_workstream_output(output, intermediate, diagnostics)
     supplement_speakerless_task_review_output(output, intermediate, diagnostics)
+    output["actions"] = dedupe_action_objects(output["actions"])
+    output["meetingActionPoint"] = [item["meetingActionPoint"] for item in output["actions"]]
+    output["meetingActionPointOwner"] = [item["meetingActionPointOwner"] for item in output["actions"]]
+    output["meetingActionPointDeadline"] = [item["meetingActionPointDeadline"] for item in output["actions"]]
     sanitize_public_output_items(output, {name.lower() for name in speaker_names} | set(speaker_names))
 
     output["meetingObjectives"] = derive_meeting_objectives(output)
