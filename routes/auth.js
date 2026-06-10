@@ -87,6 +87,20 @@ router.get('/me', (req, res) => {
   return res.json({ success: true, user: { userId: session.userId, email: session.email, fullName: session.fullName } });
 });
 
+function requireAuth(req, res, next) {
+  const token = readCookie(req, 'auth_session');
+  const session = token ? sessions.get(token) : null;
+  if (!session || session.expiresAt < Date.now()) {
+    if (token) sessions.delete(token);
+    if (req.path.startsWith('/api/') || req.originalUrl.startsWith('/api/')) {
+      return res.status(401).json({ success: false, error: 'Not authenticated.' });
+    }
+    return res.redirect('/auth/login');
+  }
+  req.authUser = { userId: session.userId, email: session.email, fullName: session.fullName };
+  return next();
+}
+
 router.post('/forgot-password', async (req, res) => {
   try {
     const email = String(req.body?.email || '').trim().toLowerCase();
@@ -118,5 +132,7 @@ router.post('/reset-password', async (req, res) => {
     return res.status(500).json({ success: false, error: error.message });
   }
 });
+
+router.requireAuth = requireAuth;
 
 module.exports = router;

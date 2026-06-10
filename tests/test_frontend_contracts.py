@@ -50,6 +50,26 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("selectedSnippet: selectedSnippet || null", api)
         self.assertIn("meeting_minutes_rewrite_snippet.py", api)
 
+    def test_feedback_listing_is_authenticated_and_editable(self):
+        server = (REPO_DIR / "server.js").read_text(encoding="utf-8")
+        auth = (REPO_DIR / "routes" / "auth.js").read_text(encoding="utf-8")
+        api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+        db = (REPO_DIR / "utils" / "db.js").read_text(encoding="utf-8")
+        listing = (REPO_DIR / "views" / "meeting-minutes-feedback.html").read_text(encoding="utf-8")
+
+        self.assertIn("app.get('/meeting-minutes-feedback', authRoutes.requireAuth", server)
+        self.assertIn("router.requireAuth = requireAuth", auth)
+        self.assertIn("router.get('/meeting-minutes-final/feedback-submissions', requireAuth", api)
+        self.assertIn("router.patch('/meeting-minutes-final/feedback-submissions/:feedbackId', requireAuth", api)
+        self.assertIn("listMeetingMinutesFeedback", db)
+        self.assertIn("updateMeetingMinutesFeedback", db)
+        self.assertIn("selectedSnippet", db)
+        self.assertIn("claire_comments", db)
+        self.assertIn("fix_details", db)
+        self.assertIn("/api/meeting-minutes-final/feedback-submissions", listing)
+        self.assertIn("Comments from Claire", listing)
+        self.assertIn("Fix details", listing)
+
 
 if __name__ == "__main__":
     unittest.main()

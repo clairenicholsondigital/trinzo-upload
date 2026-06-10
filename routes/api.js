@@ -34,6 +34,9 @@ const {
   deleteMeetingById,
   updateMeetingById,
   saveMeetingMinutesFeedback,
+  listMeetingMinutesFeedback,
+  getMeetingMinutesFeedback,
+  updateMeetingMinutesFeedback,
   getMeetingStatus,
   claimNextJob,
   markJobCompleted,
@@ -44,6 +47,7 @@ const {
   hasDatabaseConfig,
   getDatabaseConfigError
 } = require('../utils/db');
+const { requireAuth } = require('./auth');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -731,6 +735,54 @@ router.post('/meeting-minutes-final/feedback', async (req, res) => {
     });
 
     return res.status(201).json({ ok: true, feedbackId: result.feedbackId, createdAt: result.createdAt });
+  } catch (error) {
+    return sendTestError(res, error);
+  }
+});
+
+router.get('/meeting-minutes-final/feedback-submissions', requireAuth, async (req, res) => {
+  try {
+    if (!hasDatabaseConfig()) {
+      const error = new Error(getDatabaseConfigError());
+      error.statusCode = 503;
+      throw error;
+    }
+    const feedback = await listMeetingMinutesFeedback(req.query?.limit || 100);
+    return res.json({ ok: true, feedback });
+  } catch (error) {
+    return sendTestError(res, error);
+  }
+});
+
+router.get('/meeting-minutes-final/feedback-submissions/:feedbackId', requireAuth, async (req, res) => {
+  try {
+    if (!hasDatabaseConfig()) {
+      const error = new Error(getDatabaseConfigError());
+      error.statusCode = 503;
+      throw error;
+    }
+    const feedback = await getMeetingMinutesFeedback(req.params.feedbackId);
+    if (!feedback) return res.status(404).json({ ok: false, error: 'Feedback not found.' });
+    return res.json({ ok: true, feedback });
+  } catch (error) {
+    return sendTestError(res, error);
+  }
+});
+
+router.patch('/meeting-minutes-final/feedback-submissions/:feedbackId', requireAuth, async (req, res) => {
+  try {
+    if (!hasDatabaseConfig()) {
+      const error = new Error(getDatabaseConfigError());
+      error.statusCode = 503;
+      throw error;
+    }
+    const feedback = await updateMeetingMinutesFeedback(req.params.feedbackId, {
+      status: req.body?.status,
+      claireComments: req.body?.claireComments,
+      fixDetails: req.body?.fixDetails
+    });
+    if (!feedback) return res.status(404).json({ ok: false, error: 'Feedback not found.' });
+    return res.json({ ok: true, feedback });
   } catch (error) {
     return sendTestError(res, error);
   }

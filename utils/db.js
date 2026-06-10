@@ -48,7 +48,7 @@ function parseJsonLines(out) {
   return String(out || '')
     .split('\n')
     .map((line) => line.trim())
-    .filter(Boolean)
+    .filter((line) => line.startsWith('{') || line.startsWith('['))
     .map((line) => JSON.parse(line));
 }
 
@@ -513,6 +513,100 @@ RETURNING id::text, created_at::text;`;
   return { feedbackId: Number(id), createdAt };
 }
 
+function meetingMinutesFeedbackSchemaSql() {
+  return `
+CREATE TABLE IF NOT EXISTS meeting_minutes_feedback (
+  id BIGSERIAL PRIMARY KEY,
+  route TEXT NOT NULL,
+  feedback_type TEXT NOT NULL DEFAULT 'general',
+  message TEXT NOT NULL,
+  contact_name TEXT,
+  contact_email TEXT,
+  user_agent TEXT,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_meeting_minutes_feedback_created_at ON meeting_minutes_feedback (created_at DESC);
+ALTER TABLE meeting_minutes_feedback ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'submitted';
+ALTER TABLE meeting_minutes_feedback ADD COLUMN IF NOT EXISTS claire_comments TEXT NOT NULL DEFAULT '';
+ALTER TABLE meeting_minutes_feedback ADD COLUMN IF NOT EXISTS fix_details TEXT NOT NULL DEFAULT '';
+ALTER TABLE meeting_minutes_feedback ADD COLUMN IF NOT EXISTS fixed_at TIMESTAMPTZ;
+ALTER TABLE meeting_minutes_feedback ADD COLUMN IF NOT EXISTS edited_at TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS idx_meeting_minutes_feedback_status ON meeting_minutes_feedback (status);`;
+}
+
+async function listMeetingMinutesFeedback(limit = 100) {
+  const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 250);
+  const out = await runPsql(`${meetingMinutesFeedbackSchemaSql()}
+SELECT json_build_object(
+  'id', id,
+  'route', route,
+  'feedbackType', feedback_type,
+  'message', message,
+  'contactName', COALESCE(contact_name, ''),
+  'status', COALESCE(status, 'submitted'),
+  'claireComments', COALESCE(claire_comments, ''),
+  'fixDetails', COALESCE(fix_details, ''),
+  'selectedSnippet', COALESCE(metadata->>'selectedSnippet', ''),
+  'createdAt', created_at,
+  'editedAt', edited_at,
+  'fixedAt', fixed_at
+)::text
+FROM meeting_minutes_feedback
+ORDER BY created_at DESC, id DESC
+LIMIT ${safeLimit};`);
+  return parseJsonLines(out);
+}
+
+async function getMeetingMinutesFeedback(feedbackId) {
+  const id = Number(feedbackId);
+  if (!Number.isFinite(id) || id <= 0) return null;
+  const out = await runPsql(`${meetingMinutesFeedbackSchemaSql()}
+SELECT json_build_object(
+  'id', id,
+  'route', route,
+  'feedbackType', feedback_type,
+  'message', message,
+  'contactName', COALESCE(contact_name, ''),
+  'contactEmail', COALESCE(contact_email, ''),
+  'userAgent', COALESCE(user_agent, ''),
+  'status', COALESCE(status, 'submitted'),
+  'claireComments', COALESCE(claire_comments, ''),
+  'fixDetails', COALESCE(fix_details, ''),
+  'metadata', metadata,
+  'selectedSnippet', COALESCE(metadata->>'selectedSnippet', ''),
+  'createdAt', created_at,
+  'editedAt', edited_at,
+  'fixedAt', fixed_at
+)::text
+FROM meeting_minutes_feedback
+WHERE id = ${id}
+LIMIT 1;`);
+  const rows = parseJsonLines(out);
+  return rows[0] || null;
+}
+
+async function updateMeetingMinutesFeedback(feedbackId, payload = {}) {
+  const id = Number(feedbackId);
+  if (!Number.isFinite(id) || id <= 0) return null;
+  const allowedStatuses = new Set(['submitted', 'working_on_it', 'resolved']);
+  const status = allowedStatuses.has(String(payload.status || '').trim()) ? String(payload.status).trim() : 'submitted';
+  const claireComments = String(payload.claireComments || '').slice(0, 4000);
+  const fixDetails = String(payload.fixDetails || '').slice(0, 4000);
+  const fixedAtSql = status === 'resolved' ? 'COALESCE(fixed_at, NOW())' : 'NULL';
+  const out = await runPsql(`${meetingMinutesFeedbackSchemaSql()}
+UPDATE meeting_minutes_feedback
+SET status = ${q(status)},
+    claire_comments = ${q(claireComments)},
+    fix_details = ${q(fixDetails)},
+    fixed_at = ${fixedAtSql},
+    edited_at = NOW()
+WHERE id = ${id}
+RETURNING id::text;`);
+  const updatedId = parseOptionalId(out);
+  return updatedId ? getMeetingMinutesFeedback(updatedId) : null;
+}
+
 async function getMeetingStatus(meetingId) {
   const sql = `
 SELECT m.id::text, COALESCE(m.status,''), COALESCE(m.webhook_status,'not_sent'), COALESCE(m.last_error,''), COALESCE(m.last_activity_at::text,''),
@@ -915,6 +1009,9 @@ module.exports = {
   saveUploadedJob,
   saveMeetingMinutes,
   saveMeetingMinutesFeedback,
+  listMeetingMinutesFeedback,
+  getMeetingMinutesFeedback,
+  updateMeetingMinutesFeedback,
   saveProjectUpdateDraft,
   listProjectReports,
   getProjectReportDetail,

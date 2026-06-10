@@ -16,3 +16,21 @@ CREATE TABLE IF NOT EXISTS meeting_minutes_feedback (
 
 CREATE INDEX IF NOT EXISTS idx_meeting_minutes_feedback_created_at
   ON meeting_minutes_feedback (created_at DESC);
+
+ALTER TABLE meeting_minutes_feedback
+  ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'submitted';
+
+ALTER TABLE meeting_minutes_feedback
+  ADD COLUMN IF NOT EXISTS claire_comments TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE meeting_minutes_feedback
+  ADD COLUMN IF NOT EXISTS fix_details TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE meeting_minutes_feedback
+  ADD COLUMN IF NOT EXISTS fixed_at TIMESTAMPTZ;
+
+ALTER TABLE meeting_minutes_feedback
+  ADD COLUMN IF NOT EXISTS edited_at TIMESTAMPTZ;
+
+CREATE INDEX IF NOT EXISTS idx_meeting_minutes_feedback_status
+  ON meeting_minutes_feedback (status);

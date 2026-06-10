@@ -49,6 +49,14 @@ app.get('/meeting-minutes-final', (req, res) => {
   sendView(res, 'meeting-minutes-final.html').catch((error) => res.status(404).send(error.message));
 });
 
+app.get('/meeting-minutes-feedback', authRoutes.requireAuth, (req, res) => {
+  sendView(res, 'meeting-minutes-feedback.html').catch((error) => res.status(404).send(error.message));
+});
+
+app.get('/meeting-minutes-feedback/:feedbackId', authRoutes.requireAuth, (req, res) => {
+  sendView(res, 'meeting-minutes-feedback.html').catch((error) => res.status(404).send(error.message));
+});
+
 app.get('/project-update-test', (req, res) => {
   sendView(res, 'project-update-test.html').catch((error) => res.status(404).send(error.message));
 });
