@@ -606,9 +606,13 @@ def is_low_quality_objective_text(text: str) -> bool:
         return True
     if is_overlong_objective_text(cleaned):
         return True
+    if re.match(r"^(?:um|uh|erm|yeah|okay|ok|right)\b", lowered):
+        return True
+    if re.match(r"^(?:stay|stays|stayed)\s+same\b", lowered):
+        return True
     if contains_noise_or_banter(cleaned) or is_context_dependent_fragment(cleaned):
         return True
-    if is_conversational_transcript_fragment(cleaned) or is_transcript_recount_text(cleaned):
+    if is_conversational_transcript_fragment(cleaned) or is_transcript_recount_text(cleaned) or is_personal_status_recount_fragment(cleaned):
         return True
     objective_cue = bool(re.search(r"\b(?:aim|goal|objective|purpose|review|agree|align|decide|confirm|assess|analyse|analyze)\b", lowered))
     if not objective_cue and re.match(r"^(?:taking|clicking|fighting|looking|going|trying)\b", lowered):
@@ -2867,6 +2871,21 @@ def is_transcript_stitch_fragment(text: str) -> bool:
     return False
 
 
+def is_personal_status_recount_fragment(text: str) -> bool:
+    cleaned = normalize_text_fragment(text)
+    lowered = cleaned.lower()
+    if not cleaned:
+        return False
+    if not re.match(
+        r"^(?:i|we)\s+(?:gave|told|explained|talked|spoke|nudged|emailed|called|messaged|mentioned|asked)\b",
+        lowered,
+    ):
+        return False
+    if business_signal_count(cleaned) <= 1:
+        return True
+    return bool(re.search(r"\b(?:one-to-one|1:1|meeting|call|email|message|chat|nudge)\b", lowered))
+
+
 def is_vague_demonstrative_status_fragment(text: str) -> bool:
     cleaned = normalize_text_fragment(text)
     lowered = cleaned.lower()
@@ -2890,7 +2909,7 @@ def is_safe_deterministic_discussion_fallback(candidate: dict[str, Any], text: s
         and support_count >= 1
     ):
         return False
-    if is_transcript_stitch_fragment(cleaned) or is_vague_demonstrative_status_fragment(cleaned):
+    if is_transcript_stitch_fragment(cleaned) or is_vague_demonstrative_status_fragment(cleaned) or is_personal_status_recount_fragment(cleaned):
         return False
     if is_context_dependent_fragment(cleaned) or is_request_or_question_fragment(cleaned):
         return False
@@ -2956,6 +2975,8 @@ def should_keep_discussion_candidate(candidate: dict[str, Any]) -> tuple[bool, s
             return False, "transcript_stitch_fragment"
         if is_vague_demonstrative_status_fragment(text):
             return False, "vague_demonstrative_status_fragment"
+        if is_personal_status_recount_fragment(text):
+            return False, "personal_status_recount_fragment"
     if is_self_referential_conversational_fragment(text):
         return False, "self_referential_fragment"
     if is_low_value_coordination_action(text):
@@ -2970,6 +2991,8 @@ def should_keep_discussion_candidate(candidate: dict[str, Any]) -> tuple[bool, s
         return False, "transcript_stitch_fragment"
     if is_vague_demonstrative_status_fragment(text):
         return False, "vague_demonstrative_status_fragment"
+    if is_personal_status_recount_fragment(text):
+        return False, "personal_status_recount_fragment"
     if is_request_or_question_fragment(text):
         return False, "request_or_question_fragment"
     if is_explicit_objective_statement(text):
@@ -3486,6 +3509,8 @@ def is_valid_discussion_point(text: str, support_count: int) -> tuple[bool, str]
         return False, "transcript_stitch_fragment"
     if is_vague_demonstrative_status_fragment(cleaned):
         return False, "vague_demonstrative_status_fragment"
+    if is_personal_status_recount_fragment(cleaned):
+        return False, "personal_status_recount_fragment"
     if is_request_or_question_fragment(cleaned):
         return False, "question_fragment"
     if is_explicit_objective_statement(cleaned):

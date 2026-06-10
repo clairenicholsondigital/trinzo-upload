@@ -15,6 +15,7 @@ from meeting_minutes_minilm_experiment import (
     infer_minilm_meeting_title,
     is_safe_deterministic_discussion_fallback,
     is_valid_discussion_point,
+    is_low_quality_objective_text,
     sanitize_public_output_items,
     should_keep_discussion_candidate,
     should_accept_action_candidate,
@@ -283,6 +284,31 @@ Ibrahim: The purpose is to decide whether the integration risk is acceptable for
         self.assertTrue(is_safe_deterministic_discussion_fallback(candidate))
         self.assertEqual(should_keep_discussion_candidate(candidate), (True, "deterministic_fallback"))
         self.assertEqual(is_valid_discussion_point(text, 1), (True, ""))
+
+    def test_personal_status_recount_is_not_discussion_point(self):
+        text = "I gave Liam, that's definitely Amber, I gave Liam another nudge in our one-to-one today."
+        candidate = {
+            "text": text,
+            "source": "parser",
+            "baseScore": 0.7,
+            "supportScore": 1.0,
+            "scores": {},
+            "evidence": [
+                {"speaker": "Ciara Griffin", "timestamp": "1:06", "text": "AI pipeline strategy defined"},
+                {"speaker": "Conor Flynn", "timestamp": "1:09", "text": text},
+            ],
+        }
+
+        self.assertEqual(should_keep_discussion_candidate(candidate), (False, "personal_status_recount_fragment"))
+        self.assertEqual(is_valid_discussion_point(text, 2), (False, "personal_status_recount_fragment"))
+
+    def test_filler_status_fragments_are_not_meeting_objectives(self):
+        self.assertTrue(is_low_quality_objective_text("Um, stage gate and vendor strategy roll out."))
+        self.assertTrue(
+            is_low_quality_objective_text(
+                "Stay same with the same stage gate internal review completed not to the end of the quarter, so it's on track for now."
+            )
+        )
 
     def test_public_output_sanitizer_removes_speaker_timestamps_and_rejected_context(self):
         output = {
