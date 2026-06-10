@@ -76,6 +76,33 @@ class FrontendContractTest(unittest.TestCase):
         self.assertNotIn("Create account", login)
         self.assertNotIn("/auth/register", login)
 
+    def test_dashboard_only_links_to_feedback_listing_and_matches_final_style(self):
+        dashboard = (REPO_DIR / "views" / "dashboard.html").read_text(encoding="utf-8")
+        meeting_minutes_final = (REPO_DIR / "views" / "meeting-minutes-final.html").read_text(encoding="utf-8")
+
+        shared_style_tokens = ["--bg:#0b1020", "--panel:#11192f", "--accent:#17D0C4", "linear-gradient(145deg,var(--panel),var(--panel2))"]
+        for token in shared_style_tokens:
+            self.assertIn(token, dashboard)
+            self.assertIn(token, meeting_minutes_final)
+
+        self.assertIn('href="/meeting-minutes-feedback"', dashboard)
+        self.assertIn("Open feedback listing", dashboard)
+        self.assertNotIn('href="/"', dashboard)
+        self.assertNotIn('href="/review"', dashboard)
+        self.assertNotIn('href="/meetings"', dashboard)
+        self.assertNotIn('href="/auth"', dashboard)
+        self.assertNotIn("Transcript workflow", dashboard)
+        self.assertNotIn("Review editor", dashboard)
+        self.assertNotIn("Meeting manager", dashboard)
+        self.assertNotIn("Auth center", dashboard)
+
+    def test_login_removes_forgot_password_and_secure_auth_copy(self):
+        login = (REPO_DIR / "views" / "auth-login.html").read_text(encoding="utf-8")
+
+        self.assertNotIn("Forgot password", login)
+        self.assertNotIn("/auth/forgot-password", login)
+        self.assertNotIn("Trinzo secure authentication", login)
+
 
 if __name__ == "__main__":
     unittest.main()
