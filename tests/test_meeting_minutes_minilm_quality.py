@@ -13,11 +13,16 @@ from meeting_minutes_minilm_experiment import (
     formalize_transcript_discussion_point,
     has_concrete_action_commitment,
     infer_minilm_meeting_title,
+    is_safe_deterministic_discussion_fallback,
+    is_valid_discussion_point,
     sanitize_public_output_items,
+    should_keep_discussion_candidate,
     should_accept_action_candidate,
     strip_action_deadline_phrase,
     _sanitize_rewritten_minutes_text,
 )
+
+FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 
 
 class MeetingMinutesMiniLMQualityTest(unittest.TestCase):
@@ -50,6 +55,13 @@ class MeetingMinutesMiniLMQualityTest(unittest.TestCase):
         transcript = "📄 Transcript: AI Programme Weekly Check-In\n\nDate: 18 March 2026\n\nCiara:\nHello."
 
         self.assertEqual(infer_minilm_meeting_title(transcript), "AI Programme Weekly Check-In")
+
+    def test_teams_export_title_after_generic_heading_is_used(self):
+        transcript = (FIXTURES_DIR / "meeting_minutes_teams_glued_status_review.txt").read_text(encoding="utf-8")
+
+        self.assertEqual(infer_minilm_meeting_title(transcript), "Daily AI Check In")
+        self.assertNotIn("Conor Flynn", infer_minilm_meeting_title(transcript))
+        self.assertNotIn("0 03", infer_minilm_meeting_title(transcript))
 
     def test_generic_notion_transcript_heading_is_not_used_as_title(self):
         transcript = """Transcript
@@ -226,6 +238,51 @@ Ibrahim: The purpose is to decide whether the integration risk is acceptable for
 
         self.assertFalse(accepted)
         self.assertEqual(reason, "missing_concrete_action_commitment")
+
+    def test_stitched_transcript_fragment_is_not_promoted_as_discussion(self):
+        text = "We have kind of a good plan for the next one. We come back and add what the milestones are. Two one's time might make one do this.Me."
+        candidate = {
+            "text": text,
+            "source": "semantic_discussion_fallback",
+            "baseScore": 0.92,
+            "supportScore": 0.82,
+            "scores": {},
+            "evidence": [{"speaker": "Ciara Griffin", "timestamp": "1:02", "text": text}],
+        }
+
+        self.assertFalse(is_safe_deterministic_discussion_fallback(candidate))
+        self.assertEqual(should_keep_discussion_candidate(candidate), (False, "transcript_stitch_fragment"))
+        self.assertEqual(is_valid_discussion_point(text, 1), (False, "transcript_stitch_fragment"))
+
+    def test_vague_demonstrative_status_fragment_is_not_discussion_point(self):
+        text = "That milestone, I suppose, is green. Nothing to deliver at the minute. Um, stage gate and vendor strategy roll out."
+        candidate = {
+            "text": text,
+            "source": "semantic_discussion_fallback",
+            "baseScore": 0.92,
+            "supportScore": 0.82,
+            "scores": {},
+            "evidence": [{"speaker": "Conor Flynn", "timestamp": "0:32", "text": text}],
+        }
+
+        self.assertFalse(is_safe_deterministic_discussion_fallback(candidate))
+        self.assertEqual(should_keep_discussion_candidate(candidate), (False, "vague_demonstrative_status_fragment"))
+        self.assertEqual(is_valid_discussion_point(text, 1), (False, "vague_demonstrative_status_fragment"))
+
+    def test_specific_status_review_discussion_remains_available(self):
+        text = "Vendor strategy rollout remains in progress because the latest status is green and there is nothing further to deliver at the minute."
+        candidate = {
+            "text": text,
+            "source": "semantic_discussion_fallback",
+            "baseScore": 0.92,
+            "supportScore": 0.82,
+            "scores": {},
+            "evidence": [{"speaker": "Ciara Griffin", "timestamp": "0:45", "text": text}],
+        }
+
+        self.assertTrue(is_safe_deterministic_discussion_fallback(candidate))
+        self.assertEqual(should_keep_discussion_candidate(candidate), (True, "deterministic_fallback"))
+        self.assertEqual(is_valid_discussion_point(text, 1), (True, ""))
 
     def test_public_output_sanitizer_removes_speaker_timestamps_and_rejected_context(self):
         output = {

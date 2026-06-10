@@ -937,13 +937,14 @@ def infer_minilm_meeting_title(transcript_text: str) -> str:
     lines = [line.strip() for line in str(cleaned_transcript or "").splitlines() if line.strip()]
     if not lines:
         return "Meeting review"
-    original_first_line = next((line.strip() for line in str(transcript_text or "").splitlines() if line.strip()), "")
-    header_match = re.match(r"^(?P<title>.+?)-Meeting Transcript\b", original_first_line, flags=re.I)
-    if header_match:
-        title = strip_public_timestamp_tokens(header_match.group("title").replace("_", " ").replace("-", " "))
-        title = re.sub(r"\b\d{8}(?:\s+\d{6})?\b", "", title).strip()
-        if title:
-            return title
+    original_header_lines = [line.strip() for line in str(transcript_text or "").splitlines() if line.strip()][:8]
+    for original_line in original_header_lines:
+        header_match = re.match(r"^(?P<title>.+?)-Meeting Transcript\b", original_line, flags=re.I)
+        if header_match:
+            title = strip_public_timestamp_tokens(header_match.group("title").replace("_", " ").replace("-", " "))
+            title = re.sub(r"\b\d{8}(?:\s+\d{6})?\b", "", title).strip()
+            if title and not looks_like_noisy_export_title(original_line, title):
+                return title
     for line in lines[:12]:
         content_line = re.sub(rf"^{SPEAKER_NAME_RE}{SPEAKER_SUFFIX_RE}\s*:\s*", "", line).strip()
         explicit_match = re.search(
@@ -2849,6 +2850,57 @@ def is_context_dependent_fragment(text: str) -> bool:
     return False
 
 
+def is_transcript_stitch_fragment(text: str) -> bool:
+    cleaned = normalize_text_fragment(text)
+    lowered = cleaned.lower()
+    if not cleaned:
+        return False
+    if re.search(r"[a-z][.!?][A-Z][a-z]{0,3}\.?$", cleaned):
+        return True
+    if re.search(r"\b(?:one|two|three)\s+one['’]s\s+time\b", lowered):
+        return True
+    if re.search(r"\b(?:kind of|sort of)\b", lowered) and len(re.findall(r"\b(?:i|me|we|you)\b", lowered)) >= 2:
+        return True
+    sentence_count = len(re.findall(r"[.!?](?:\s|$)", cleaned))
+    if sentence_count >= 3 and len(re.findall(r"\b(?:i|me|we|you|that|this)\b", lowered)) >= 3 and business_signal_count(cleaned) < 3:
+        return True
+    return False
+
+
+def is_vague_demonstrative_status_fragment(text: str) -> bool:
+    cleaned = normalize_text_fragment(text)
+    lowered = cleaned.lower()
+    if not cleaned:
+        return False
+    if not re.match(r"^(?:this|that|these|those)\s+(?:milestone|item|point|thing|workstream|one)\b", lowered):
+        return False
+    if re.search(r"\b(?:i suppose|kind of|sort of|um|uh|nothing to deliver|green|amber|red)\b", lowered):
+        return True
+    concrete = concrete_topic_tokens(cleaned)
+    return len(concrete) < 2
+
+
+def is_safe_deterministic_discussion_fallback(candidate: dict[str, Any], text: str | None = None) -> bool:
+    cleaned = normalize_text_fragment(text if text is not None else candidate.get("text", ""))
+    support_count = evidence_support_count(candidate)
+    if not (
+        str(candidate.get("source", "")).endswith("_fallback")
+        and candidate.get("source") != "record_discussion_fallback"
+        and candidate.get("baseScore", 0.0) >= 0.8
+        and support_count >= 1
+    ):
+        return False
+    if is_transcript_stitch_fragment(cleaned) or is_vague_demonstrative_status_fragment(cleaned):
+        return False
+    if is_context_dependent_fragment(cleaned) or is_request_or_question_fragment(cleaned):
+        return False
+    if is_conversational_transcript_fragment(cleaned) and support_count < 2:
+        return False
+    if not has_explicit_topic_terms(cleaned) and semantic_density(cleaned) < 0.62:
+        return False
+    return True
+
+
 def is_addressed_action_directive(text: str) -> bool:
     cleaned = normalize_text_fragment(text)
     return bool(
@@ -2897,13 +2949,13 @@ def should_keep_discussion_candidate(candidate: dict[str, Any]) -> tuple[bool, s
     support_count = evidence_support_count(candidate)
     if not text:
         return False, "empty"
-    if (
-        str(candidate.get("source", "")).endswith("_fallback")
-        and candidate.get("source") != "record_discussion_fallback"
-        and candidate.get("baseScore", 0.0) >= 0.8
-        and support_count >= 1
-    ):
+    if is_safe_deterministic_discussion_fallback(candidate, text):
         return True, "deterministic_fallback"
+    if str(candidate.get("source", "")).endswith("_fallback") and candidate.get("baseScore", 0.0) >= 0.8:
+        if is_transcript_stitch_fragment(text):
+            return False, "transcript_stitch_fragment"
+        if is_vague_demonstrative_status_fragment(text):
+            return False, "vague_demonstrative_status_fragment"
     if is_self_referential_conversational_fragment(text):
         return False, "self_referential_fragment"
     if is_low_value_coordination_action(text):
@@ -2914,6 +2966,10 @@ def should_keep_discussion_candidate(candidate: dict[str, Any]) -> tuple[bool, s
         return False, "noise_or_banter"
     if is_context_dependent_fragment(text):
         return False, "context_dependent_fragment"
+    if is_transcript_stitch_fragment(text):
+        return False, "transcript_stitch_fragment"
+    if is_vague_demonstrative_status_fragment(text):
+        return False, "vague_demonstrative_status_fragment"
     if is_request_or_question_fragment(text):
         return False, "request_or_question_fragment"
     if is_explicit_objective_statement(text):
@@ -3426,6 +3482,10 @@ def is_valid_discussion_point(text: str, support_count: int) -> tuple[bool, str]
         return False, "malformed_discussion_point"
     if contains_noise_or_banter(cleaned):
         return False, "noise_or_banter"
+    if is_transcript_stitch_fragment(cleaned):
+        return False, "transcript_stitch_fragment"
+    if is_vague_demonstrative_status_fragment(cleaned):
+        return False, "vague_demonstrative_status_fragment"
     if is_request_or_question_fragment(cleaned):
         return False, "question_fragment"
     if is_explicit_objective_statement(cleaned):
@@ -4122,12 +4182,7 @@ def build_minilm_only_output(
         if not key or key in selected_texts:
             continue
         valid, _reason = is_valid_discussion_point(text, evidence_support_count(candidate))
-        deterministic_fallback = (
-            str(candidate.get("source", "")).endswith("_fallback")
-            and candidate.get("source") != "record_discussion_fallback"
-            and candidate.get("baseScore", 0.0) >= 0.8
-            and evidence_support_count(candidate) >= 1
-        )
+        deterministic_fallback = is_safe_deterministic_discussion_fallback(candidate, text)
         if not valid and not deterministic_fallback:
             continue
         if any(discussion_similarity(text, item["text"]) >= 0.72 for item in selected_cluster_points):
@@ -4249,12 +4304,7 @@ def build_minilm_only_output(
         if not key or key in existing_discussion_keys:
             continue
         valid, _reason = is_valid_discussion_point(text, evidence_support_count(candidate))
-        deterministic_fallback = (
-            str(candidate.get("source", "")).endswith("_fallback")
-            and candidate.get("source") != "record_discussion_fallback"
-            and candidate.get("baseScore", 0.0) >= 0.8
-            and evidence_support_count(candidate) >= 1
-        )
+        deterministic_fallback = is_safe_deterministic_discussion_fallback(candidate, text)
         if not valid and not deterministic_fallback:
             continue
         if any(discussion_similarity(text, existing) >= 0.72 for existing in output.get("discussionPoints", [])):
