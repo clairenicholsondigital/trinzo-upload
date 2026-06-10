@@ -1111,6 +1111,7 @@ function buildTranscriptMinilmOnlyPage(config) {
     payload: null,
     loading: false,
     improving: false,
+    snippetImproving: false,
     schemaOutput: null,
     extractedText: ''
   };
@@ -1253,12 +1254,13 @@ function buildTranscriptMinilmOnlyPage(config) {
 
   function setImproving(isImproving) {
     state.improving = isImproving;
-    goBtn.disabled = isImproving || state.loading;
-    clearBtn.disabled = isImproving || state.loading;
-    fileInput.disabled = isImproving || state.loading;
-    textInput.disabled = isImproving || state.loading;
+    const busy = isImproving || state.snippetImproving;
+    goBtn.disabled = busy || state.loading;
+    clearBtn.disabled = busy || state.loading;
+    fileInput.disabled = busy || state.loading;
+    textInput.disabled = busy || state.loading;
     if (improveBtn) {
-      improveBtn.disabled = isImproving || state.loading || !(state.payload && state.payload.result && state.payload.result.output);
+      improveBtn.disabled = busy || state.loading || !(state.payload && state.payload.result && state.payload.result.output);
       improveBtn.textContent = isImproving ? 'Improving...' : 'Improve minutes';
     }
   }
@@ -1270,6 +1272,102 @@ function buildTranscriptMinilmOnlyPage(config) {
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
+  }
+
+  function nearestElement(node) {
+    return node && node.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement || null;
+  }
+
+  function deriveSnippetCategory(element) {
+    const field = element?.dataset?.actionField || '';
+    const id = element?.id || '';
+    if (field === 'action' || id.includes('Action')) return 'action';
+    if (id.includes('Objectives')) return 'objective';
+    if (id.includes('discussion') || id.includes('Discussion')) return 'discussion';
+    return 'discussion';
+  }
+
+  function getEditableSnippetSelection() {
+    if (!outputNode || outputPanel.classList.contains('hidden')) return null;
+    const active = document.activeElement;
+    if (active && outputNode.contains(active) && typeof active.selectionStart === 'number' && typeof active.selectionEnd === 'number') {
+      const start = active.selectionStart;
+      const end = active.selectionEnd;
+      const value = String(active.value || '');
+      const text = value.slice(start, end);
+      if (!text.trim()) return null;
+      return {
+        text,
+        category: deriveSnippetCategory(active),
+        replace(replacement) {
+          active.value = `${value.slice(0, start)}${replacement}${value.slice(end)}`;
+          active.focus();
+          const caretEnd = start + replacement.length;
+          active.setSelectionRange(start, caretEnd);
+          active.dispatchEvent(new Event('input', { bubbles: true }));
+          active.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      };
+    }
+
+    const selection = window.getSelection ? window.getSelection() : null;
+    if (!selection || selection.isCollapsed || !selection.rangeCount) return null;
+    if (!outputNode.contains(selection.anchorNode) || !outputNode.contains(selection.focusNode)) return null;
+    const range = selection.getRangeAt(0).cloneRange();
+    const text = selection.toString();
+    if (!text.trim()) return null;
+    return {
+      text,
+      category: deriveSnippetCategory(nearestElement(range.commonAncestorContainer)),
+      replace(replacement) {
+        range.deleteContents();
+        const inserted = document.createTextNode(replacement);
+        range.insertNode(inserted);
+        selection.removeAllRanges();
+        const nextRange = document.createRange();
+        nextRange.selectNodeContents(inserted);
+        selection.addRange(nextRange);
+      }
+    };
+  }
+
+  function setSnippetImproving(isImproving) {
+    state.snippetImproving = isImproving;
+    setImproving(state.improving);
+  }
+
+  async function improveSelectedSnippet() {
+    if (!config.snippetImproveEndpoint) return;
+    const selection = getEditableSnippetSelection();
+    if (!selection) {
+      setMessage('Select text inside the minutes table first, then press Ctrl+Shift+M (Cmd+Shift+M on Mac) to improve only that snippet.', 'error');
+      return;
+    }
+
+    setSnippetImproving(true);
+    setMessage(`Selected snippet sent to AI (${selection.text.trim().slice(0, 180)}${selection.text.trim().length > 180 ? '…' : ''})`, 'info');
+
+    try {
+      const response = await fetch(config.snippetImproveEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ snippet: selection.text, category: selection.category })
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload || payload.ok === false || !payload.result) {
+        const detailText = payload && payload.details ? ` ${JSON.stringify(payload.details)}` : '';
+        throw new Error((payload && payload.error ? payload.error : `Request failed with status ${response.status}.`) + detailText);
+      }
+      const improved = String(payload.result.rewritten || selection.text);
+      selection.replace(improved);
+      saveReviewDataToStorage(buildReviewDataFromSchema(collectEditedSchemaOutput()));
+      const statusPrefix = payload.result.rewriterAvailable ? 'AI returned an improved snippet' : 'AI rewriter unavailable; original snippet kept';
+      setMessage(`${statusPrefix}:\n${improved}`, payload.result.rewriterAvailable ? 'success' : 'error');
+    } catch (error) {
+      setMessage(error.message || 'Improving the selected snippet failed.', 'error');
+    } finally {
+      setSnippetImproving(false);
+    }
   }
 
   function deriveObjectives(output) {
@@ -1759,6 +1857,12 @@ function buildTranscriptMinilmOnlyPage(config) {
   goBtn.addEventListener('click', submitTranscript);
   if (improveBtn) improveBtn.addEventListener('click', improveMinutes);
   if (finaliseBtn) finaliseBtn.addEventListener('click', finaliseWithAgent);
+  document.addEventListener('keydown', (event) => {
+    if (!(event.ctrlKey || event.metaKey) || !event.shiftKey || event.key.toLowerCase() !== 'm') return;
+    if (!getEditableSnippetSelection()) return;
+    event.preventDefault();
+    improveSelectedSnippet();
+  });
   clearBtn.addEventListener('click', resetPage);
   copyOutputBtn.addEventListener('click', () => {
     const editedSchema = collectEditedSchemaOutput();

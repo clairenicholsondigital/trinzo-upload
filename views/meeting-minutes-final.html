@@ -78,6 +78,10 @@ a { color:#67e8f9; }
 .feedback-status { margin-top:.75rem; min-height:1.3rem; color:var(--muted); }
 .feedback-status.error { color:#fecaca; }
 .feedback-status.success { color:#86efac; }
+.snippet-feedback-context { margin:.5rem 0 .75rem; padding:.65rem; background:#071126; border:1px solid var(--border); border-radius:10px; }
+.snippet-feedback-context.hidden { display:none; }
+.snippet-feedback-context small { display:block; margin-bottom:.35rem; }
+.snippet-feedback-context blockquote { margin:0; max-height:9rem; overflow:auto; white-space:pre-wrap; color:#dbeafe; border-left:3px solid var(--accent); padding-left:.75rem; }
 @media (max-width: 760px) {
   .schema-table, .schema-table tbody, .schema-table tr, .schema-table th, .schema-table td { display:block; width:100%; }
   .schema-table tr { border-bottom:1px solid var(--border); }
@@ -113,6 +117,10 @@ a { color:#67e8f9; }
           <option value="praise">This worked well</option>
         </select>
       </div>
+      <div id="feedbackSnippetContext" class="snippet-feedback-context hidden" aria-live="polite">
+        <small>Selected snippet for this feedback</small>
+        <blockquote id="feedbackSnippetQuote"></blockquote>
+      </div>
       <div class="field">
         <label for="feedbackMessage">Feedback <small>(required)</small></label>
         <textarea id="feedbackMessage" name="message" maxlength="2000" required placeholder="What should we know? Please avoid sharing transcript content or sensitive meeting data."></textarea>
@@ -136,7 +144,8 @@ buildTranscriptMinilmOnlyPage({
   intro: 'Upload or paste a transcript to create draft meeting minutes first. Then use Improve minutes to apply the local language model refinement separately so you can review the difference.',
   buttonText: 'Run meeting minutes',
   endpoint: '/api/meeting-minutes-final',
-  improveEndpoint: '/api/meeting-minutes-final/improve'
+  improveEndpoint: '/api/meeting-minutes-final/improve',
+  snippetImproveEndpoint: '/api/meeting-minutes-final/improve-snippet'
 });
 
 (function initialiseFeedbackWidget() {
@@ -148,17 +157,44 @@ buildTranscriptMinilmOnlyPage({
   const message = document.getElementById('feedbackMessage');
   const submitButton = document.getElementById('feedbackWidgetSubmit');
   const status = document.getElementById('feedbackWidgetStatus');
+  const snippetContext = document.getElementById('feedbackSnippetContext');
+  const snippetQuote = document.getElementById('feedbackSnippetQuote');
   let lastFocusedElement = null;
+  let currentSnippet = '';
 
   function setStatus(text, className) {
     status.textContent = text || '';
     status.className = className ? `feedback-status ${className}` : 'feedback-status';
   }
 
-  function openModal() {
+  function getSelectedSnippetText() {
+    const outputRoot = document.getElementById('minilmOnlyOutput');
+    const active = document.activeElement;
+    if (outputRoot && active && outputRoot.contains(active) && typeof active.selectionStart === 'number' && typeof active.selectionEnd === 'number') {
+      const selected = String(active.value || '').slice(active.selectionStart, active.selectionEnd).trim();
+      if (selected) return selected;
+    }
+    const selection = window.getSelection ? window.getSelection() : null;
+    if (!selection || selection.isCollapsed) return '';
+    if (outputRoot && selection.anchorNode && selection.focusNode && outputRoot.contains(selection.anchorNode) && outputRoot.contains(selection.focusNode)) {
+      return selection.toString().trim();
+    }
+    return '';
+  }
+
+  function openModal(snippet) {
+    currentSnippet = String(snippet || '').trim();
     lastFocusedElement = document.activeElement;
     backdrop.classList.remove('hidden');
     setStatus('', '');
+    if (currentSnippet) {
+      snippetQuote.textContent = currentSnippet;
+      snippetContext.classList.remove('hidden');
+      message.value = `Feedback about selected snippet:\n"${currentSnippet}"\n\nSuggested change / issue:\n`;
+    } else {
+      snippetQuote.textContent = '';
+      snippetContext.classList.add('hidden');
+    }
     window.setTimeout(() => message.focus(), 0);
   }
 
@@ -168,7 +204,7 @@ buildTranscriptMinilmOnlyPage({
     if (lastFocusedElement && typeof lastFocusedElement.focus === 'function') lastFocusedElement.focus();
   }
 
-  openButton.addEventListener('click', openModal);
+  openButton.addEventListener('click', () => openModal());
   closeButton.addEventListener('click', closeModal);
   cancelButton.addEventListener('click', closeModal);
   backdrop.addEventListener('click', (event) => {
@@ -176,6 +212,13 @@ buildTranscriptMinilmOnlyPage({
   });
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && !backdrop.classList.contains('hidden')) closeModal();
+    if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'f') {
+      if (!backdrop.classList.contains('hidden')) return;
+      const snippet = getSelectedSnippetText();
+      if (!snippet) return;
+      event.preventDefault();
+      openModal(snippet);
+    }
   });
 
   form.addEventListener('submit', async (event) => {

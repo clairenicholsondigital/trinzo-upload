@@ -651,6 +651,29 @@ router.post('/meeting-minutes-final/improve', async (req, res) => {
   }
 });
 
+router.post('/meeting-minutes-final/improve-snippet', async (req, res) => {
+  try {
+    const snippet = String(req.body?.snippet || '').trim();
+    const category = String(req.body?.category || 'discussion').trim().toLowerCase() || 'discussion';
+
+    if (snippet.length < 3) {
+      const error = new Error('Select a longer snippet to improve.');
+      error.statusCode = 400;
+      throw error;
+    }
+    if (snippet.length > 4000) {
+      const error = new Error('Selected snippet must be 4,000 characters or fewer.');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const result = await runPythonJsonScript('meeting_minutes_rewrite_snippet.py', { snippet, category });
+    return res.json({ ok: true, result });
+  } catch (error) {
+    return sendTestError(res, error);
+  }
+});
+
 router.post('/meeting-minutes-final/feedback', async (req, res) => {
   try {
     if (!hasDatabaseConfig()) {
