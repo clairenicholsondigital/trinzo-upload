@@ -64,6 +64,7 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("router.patch('/meeting-minutes-final/feedback-submissions/:feedbackId', requireAuth", api)
         self.assertIn("listMeetingMinutesFeedback", db)
         self.assertIn("updateMeetingMinutesFeedback", db)
+        self.assertIn("isActive === 't' || isActive === 'true'", db)
         self.assertIn("selectedSnippet", db)
         self.assertIn("claire_comments", db)
         self.assertIn("fix_details", db)

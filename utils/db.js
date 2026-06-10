@@ -978,7 +978,7 @@ async function findAuthUserByEmail(email) {
   const line = out.split('\n').find(Boolean);
   if (!line) return null;
   const [id, userEmail, fullName, passwordSalt, passwordHash, isActive] = line.split('|');
-  return { id: Number(id), email: userEmail, fullName, passwordSalt, passwordHash, isActive: isActive === 't' };
+  return { id: Number(id), email: userEmail, fullName, passwordSalt, passwordHash, isActive: isActive === 't' || isActive === 'true' };
 }
 
 async function touchAuthLastLogin(userId) {
