@@ -56,6 +56,7 @@ class FrontendContractTest(unittest.TestCase):
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
         db = (REPO_DIR / "utils" / "db.js").read_text(encoding="utf-8")
         listing = (REPO_DIR / "views" / "meeting-minutes-feedback.html").read_text(encoding="utf-8")
+        login = (REPO_DIR / "views" / "auth-login.html").read_text(encoding="utf-8")
 
         self.assertIn("app.get('/meeting-minutes-feedback', authRoutes.requireAuth", server)
         self.assertIn("router.requireAuth = requireAuth", auth)
@@ -69,6 +70,10 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("/api/meeting-minutes-final/feedback-submissions", listing)
         self.assertIn("Comments from Claire", listing)
         self.assertIn("Fix details", listing)
+        self.assertIn("Self-registration is disabled", auth)
+        self.assertIn("res.redirect('/auth/login')", server)
+        self.assertNotIn("Create account", login)
+        self.assertNotIn("/auth/register", login)
 
 
 if __name__ == "__main__":

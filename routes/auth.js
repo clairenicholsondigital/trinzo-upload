@@ -33,23 +33,8 @@ function clearSessionCookie(res) {
   res.setHeader('Set-Cookie', 'auth_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
 }
 
-router.post('/register', async (req, res) => {
-  try {
-    const email = String(req.body?.email || '').trim().toLowerCase();
-    const password = String(req.body?.password || '');
-    const fullName = String(req.body?.fullName || '').trim();
-    if (!email || !password || password.length < 8) {
-      return res.status(400).json({ success: false, error: 'Email and a password with minimum 8 characters are required.' });
-    }
-    const existing = await findAuthUserByEmail(email);
-    if (existing) return res.status(409).json({ success: false, error: 'An account with this email already exists.' });
-
-    const { salt, hash } = hashPassword(password);
-    const user = await createAuthUser({ email, fullName, passwordSalt: salt, passwordHash: hash });
-    return res.json({ success: true, user: { id: user.id, email: user.email, fullName: user.fullName } });
-  } catch (error) {
-    return res.status(500).json({ success: false, error: error.message });
-  }
+router.post('/register', (req, res) => {
+  return res.status(404).json({ success: false, error: 'Self-registration is disabled.' });
 });
 
 router.post('/login', async (req, res) => {

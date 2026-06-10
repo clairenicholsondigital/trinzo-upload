@@ -90,11 +90,11 @@ app.get('/login', (req, res) => {
 });
 
 app.get('/auth/register', (req, res) => {
-  sendView(res, 'auth-register.html').catch((error) => res.status(404).send(error.message));
+  res.redirect('/auth/login');
 });
 
 app.get('/register-success', (req, res) => {
-  sendView(res, 'register-success.html').catch((error) => res.status(404).send(error.message));
+  res.redirect('/auth/login');
 });
 
 app.get('/dashboard', (req, res) => {
