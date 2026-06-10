@@ -37,6 +37,7 @@ const {
   listMeetingMinutesFeedback,
   getMeetingMinutesFeedback,
   updateMeetingMinutesFeedback,
+  deleteMeetingMinutesFeedback,
   getMeetingStatus,
   claimNextJob,
   markJobCompleted,
@@ -783,6 +784,21 @@ router.patch('/meeting-minutes-final/feedback-submissions/:feedbackId', requireA
     });
     if (!feedback) return res.status(404).json({ ok: false, error: 'Feedback not found.' });
     return res.json({ ok: true, feedback });
+  } catch (error) {
+    return sendTestError(res, error);
+  }
+});
+
+router.delete('/meeting-minutes-final/feedback-submissions/:feedbackId', requireAuth, async (req, res) => {
+  try {
+    if (!hasDatabaseConfig()) {
+      const error = new Error(getDatabaseConfigError());
+      error.statusCode = 503;
+      throw error;
+    }
+    const deleted = await deleteMeetingMinutesFeedback(req.params.feedbackId);
+    if (!deleted) return res.status(404).json({ ok: false, error: 'Feedback not found.' });
+    return res.json({ ok: true });
   } catch (error) {
     return sendTestError(res, error);
   }

@@ -607,6 +607,16 @@ RETURNING id::text;`);
   return updatedId ? getMeetingMinutesFeedback(updatedId) : null;
 }
 
+async function deleteMeetingMinutesFeedback(feedbackId) {
+  const id = Number(feedbackId);
+  if (!Number.isFinite(id) || id <= 0) return false;
+  const out = await runPsql(`${meetingMinutesFeedbackSchemaSql()}
+DELETE FROM meeting_minutes_feedback
+WHERE id = ${id}
+RETURNING id::text;`);
+  return Boolean(parseOptionalId(out));
+}
+
 async function getMeetingStatus(meetingId) {
   const sql = `
 SELECT m.id::text, COALESCE(m.status,''), COALESCE(m.webhook_status,'not_sent'), COALESCE(m.last_error,''), COALESCE(m.last_activity_at::text,''),
@@ -1012,6 +1022,7 @@ module.exports = {
   listMeetingMinutesFeedback,
   getMeetingMinutesFeedback,
   updateMeetingMinutesFeedback,
+  deleteMeetingMinutesFeedback,
   saveProjectUpdateDraft,
   listProjectReports,
   getProjectReportDetail,

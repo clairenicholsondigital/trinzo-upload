@@ -39,7 +39,11 @@ th:last-child, td:last-child { border-right:0; }
 pre { max-height:24rem; overflow:auto; }
 button, .button-link { display:inline-block; background:#132847; color:#dbeafe; border:1px solid var(--border); border-radius:8px; padding:.55rem .75rem; font-weight:700; text-decoration:none; cursor:pointer; font:inherit; }
 button.primary { background:linear-gradient(180deg,var(--accent),#0fb5ab); border-color:#0fb5ab; color:#02173B; }
+button.danger { background:#3f0f18; border-color:#b91c1c; color:#fecaca; padding:.35rem .55rem; }
+button.icon-button { min-width:2.15rem; text-align:center; }
 button:disabled { opacity:.6; cursor:not-allowed; }
+details.technical-context summary { cursor:pointer; color:#dbeafe; font-weight:700; }
+details.technical-context summary h2 { display:inline; margin-left:.35rem; }
 .form-grid { display:grid; grid-template-columns:minmax(170px, 240px) 1fr 1fr; gap:.75rem; }
 label { display:block; color:var(--muted); font-weight:700; font-size:.86rem; }
 select, textarea { width:100%; margin-top:.35rem; background:#071126; color:var(--text); border:1px solid var(--border); border-radius:10px; padding:.65rem; font:inherit; }
@@ -104,7 +108,7 @@ textarea { min-height:8rem; resize:vertical; }
 
   function renderList(items) {
     const rows = items.map((item) => `
-      <tr>
+      <tr data-feedback-id="${escapeHtml(item.id)}">
         <td><a href="/meeting-minutes-feedback/${escapeHtml(item.id)}">#${escapeHtml(item.id)}</a></td>
         <td>${escapeHtml(dateValue(item.createdAt))}</td>
         <td>${statusBadge(item.status)}</td>
@@ -113,6 +117,7 @@ textarea { min-height:8rem; resize:vertical; }
         <td>${escapeHtml(item.message || '-')}</td>
         <td>${escapeHtml(item.selectedSnippet ? item.selectedSnippet.slice(0, 220) : '-')}</td>
         <td>${escapeHtml(item.fixDetails || item.claireComments || '-')}</td>
+        <td><button class="danger icon-button delete-feedback" type="button" data-feedback-id="${escapeHtml(item.id)}" aria-label="Delete feedback #${escapeHtml(item.id)}" title="Delete feedback">🗑</button></td>
       </tr>`).join('');
     app.innerHTML = `
       <section class="panel">
@@ -121,8 +126,29 @@ textarea { min-height:8rem; resize:vertical; }
       </section>
       <section class="panel">
         <h2>Submitted feedback</h2>
-        ${items.length ? `<div class="table-scroll"><table><thead><tr><th>ID</th><th>Submitted</th><th>Status</th><th>Type</th><th>Name</th><th>Feedback</th><th>Selected snippet</th><th>Fix / comments</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="empty">No feedback has been submitted yet.</p>'}
+        ${items.length ? `<div class="table-scroll"><table><thead><tr><th>ID</th><th>Submitted</th><th>Status</th><th>Type</th><th>Name</th><th>Feedback</th><th>Selected snippet</th><th>Fix / comments</th><th>Delete</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="empty">No feedback has been submitted yet.</p>'}
       </section>`;
+    document.querySelectorAll('.delete-feedback').forEach((button) => {
+      button.addEventListener('click', () => deleteFeedback(button.dataset.feedbackId));
+    });
+  }
+
+  async function deleteFeedback(id) {
+    if (!id) return;
+    const confirmed = window.confirm('This action cannot be undone, are you sure you want to delete the feedback?');
+    if (!confirmed) return;
+    const button = document.querySelector(`.delete-feedback[data-feedback-id="${CSS.escape(String(id))}"]`);
+    if (button) button.disabled = true;
+    try {
+      await fetchJson(`/api/meeting-minutes-final/feedback-submissions/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      document.querySelector(`tr[data-feedback-id="${CSS.escape(String(id))}"]`)?.remove();
+      if (!document.querySelector('tbody tr')) {
+        await load();
+      }
+    } catch (error) {
+      alert(error.message);
+      if (button) button.disabled = false;
+    }
   }
 
   function renderDetail(item) {
@@ -167,9 +193,11 @@ textarea { min-height:8rem; resize:vertical; }
         <div class="actions"><button id="saveButton" class="primary" type="button">Save feedback status</button><span id="saveStatus" class="status"></span></div>
       </section>
       <section class="panel">
-        <h2>Technical context</h2>
-        <pre>${escapeHtml(JSON.stringify(item.metadata || {}, null, 2))}</pre>
-        <p class="muted"><small>User agent: ${escapeHtml(item.userAgent || '-')}</small></p>
+        <details class="technical-context">
+          <summary><h2>Technical context</h2></summary>
+          <pre>${escapeHtml(JSON.stringify(item.metadata || {}, null, 2))}</pre>
+          <p class="muted"><small>User agent: ${escapeHtml(item.userAgent || '-')}</small></p>
+        </details>
       </section>`;
     document.getElementById('statusField').value = item.status || 'submitted';
     document.getElementById('claireCommentsField').value = item.claireComments || '';
