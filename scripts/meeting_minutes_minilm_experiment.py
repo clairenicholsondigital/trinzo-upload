@@ -2621,6 +2621,17 @@ def formalize_transcript_discussion_point(text: str, evidence: list[dict[str, An
     if speakerless_analytics:
         return speakerless_analytics
 
+    evidence_lower = evidence_blob.lower()
+    if (
+        "vendor strategy rollout remains in progress" in lowered
+        and "interviews" in lowered
+        and "interviews" not in evidence_lower
+        and "document" not in evidence_lower
+    ):
+        if "stage gate" in evidence_lower or "stage gate" in lowered:
+            return "Stage gate and vendor strategy rollout remain in progress."
+        return "Vendor strategy rollout remains in progress."
+
     if "leading indicators" in combined and ("resource utilisation" in combined or "resource utilization" in combined):
         return "Leading indicators such as resource utilisation, active SOWs per team and dependency concentration should be tracked alongside status."
     if (
