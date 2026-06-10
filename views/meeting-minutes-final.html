@@ -10,7 +10,7 @@
 </script>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Meeting minutes final</title>
+<title>Meeting Transcript to Minutes Tool</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet" />
@@ -140,7 +140,7 @@ a { color:#67e8f9; }
 <script src="/static/test-transcript-page.js"></script>
 <script>
 buildTranscriptMinilmOnlyPage({
-  title: 'Meeting minutes final',
+  title: 'Meeting Transcript to Minutes Tool',
   intro: 'Upload or paste a transcript to create draft meeting minutes first. Then use Improve minutes to apply the local language model refinement separately so you can review the difference.',
   buttonText: 'Run meeting minutes',
   endpoint: '/api/meeting-minutes-final',
@@ -187,13 +187,15 @@ buildTranscriptMinilmOnlyPage({
     lastFocusedElement = document.activeElement;
     backdrop.classList.remove('hidden');
     setStatus('', '');
+    message.value = '';
     if (currentSnippet) {
       snippetQuote.textContent = currentSnippet;
       snippetContext.classList.remove('hidden');
-      message.value = `Feedback about selected snippet:\n"${currentSnippet}"\n\nSuggested change / issue:\n`;
+      message.placeholder = 'What should change about the selected snippet?';
     } else {
       snippetQuote.textContent = '';
       snippetContext.classList.add('hidden');
+      message.placeholder = 'What should we know? Please avoid sharing transcript content or sensitive meeting data.';
     }
     window.setTimeout(() => message.focus(), 0);
   }
