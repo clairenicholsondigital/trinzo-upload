@@ -62,6 +62,36 @@ RISK_PROTOTYPES = [
     "A workstream is delayed, blocked, or awaiting external input.",
 ]
 
+ACTION_START_VERBS = {
+    "accelerate",
+    "add",
+    "align",
+    "assign",
+    "book",
+    "check",
+    "clarify",
+    "complete",
+    "confirm",
+    "create",
+    "define",
+    "document",
+    "draft",
+    "enforce",
+    "escalate",
+    "explore",
+    "finalise",
+    "follow",
+    "identify",
+    "prepare",
+    "review",
+    "send",
+    "share",
+    "strengthen",
+    "validate",
+}
+
+DISCOURSE_OPENERS = {"alright", "okay", "ok", "so", "right"}
+
 
 @dataclass
 class EvidenceWindow:
@@ -79,6 +109,131 @@ def read_input(path: str | None) -> str:
 
 def clean_text(value: Any) -> str:
     return " ".join(str(value or "").split()).strip()
+
+
+def sentence_case(value: Any) -> str:
+    text = clean_text(value)
+    if not text:
+        return ""
+    chars = list(text)
+    for index, char in enumerate(chars):
+        if char.isalpha():
+            chars[index] = char.upper()
+            break
+    text = "".join(chars)
+    if text[-1] not in ".!?:;":
+        text += "."
+    return text
+
+
+def split_report_sentences(value: Any) -> list[str]:
+    text = clean_text(value)
+    if not text:
+        return []
+    parts = re.split(r"(?<=[.!?])\s+|[\n\r]+", text)
+    return [clean_text(part) for part in parts if clean_text(part)]
+
+
+def is_conversational_report_framing(value: Any) -> bool:
+    text = clean_text(value).lower()
+    if not text:
+        return True
+    words = re.findall(r"[a-z']+", text)
+    if not words:
+        return True
+    first_person = bool(re.search(r"\b(i|i'll|i’m|i'm|we|we'll|we’re|we're)\b", text))
+    facilitation = any(cue in text for cue in ["run through", "walk through", "talk through", "cover", "go through"])
+    planning = any(cue in text for cue in ["agenda", "today", "this call", "this meeting", "twenty minutes", "minutes"])
+    substance = any(cue in text for cue in ["delivered", "blocked", "complete", "risk", "escalate", "status"])
+    # Drop meeting facilitation/introduction lines, but keep actual status statements.
+    return first_person and facilitation and planning and not re.search(r"\b(is|are|was|were|remains|delivered|blocked|completed)\b", text)
+
+
+def filter_report_text(value: Any) -> str:
+    kept = [sentence_case(part) for part in split_report_sentences(value) if not is_conversational_report_framing(part)]
+    return " ".join(item for item in kept if item)
+
+
+def strip_action_preface(value: Any) -> str:
+    text = clean_text(value)
+    text = re.sub(rf"^({'|'.join(sorted(DISCOURSE_OPENERS))})[,.!?:;\s]+", "", text, flags=re.IGNORECASE)
+    # Remove generic spoken lead-ins before an action list without depending on one exact phrase.
+    text = re.sub(r"^(?:actions?|next steps?|follow[- ]?ups?)\s+(?:from|for|before|are|is|include|this|that|the)?\s*[^:]{0,80}:\s*", "", text, flags=re.IGNORECASE)
+    return clean_text(text)
+
+
+def split_action_candidates(value: Any) -> list[str]:
+    text = strip_action_preface(value)
+    if not text:
+        return []
+    verb_pattern = "|".join(sorted(ACTION_START_VERBS))
+    text = re.sub(rf"\s+(?=({verb_pattern})\b)", "\n", text, flags=re.IGNORECASE)
+    raw_parts = re.split(r"[\n\r;•]+|(?<=[.!?])\s+", text)
+    candidates = []
+    for part in raw_parts:
+        item = clean_text(part).strip(" -–—:;")
+        item = re.split(r"\b(?:first|second|third|next)\s+risk\b", item, maxsplit=1, flags=re.IGNORECASE)[0].strip(" -–—:;")
+        if not item:
+            continue
+        lowered = item.lower()
+        first_word = re.match(r"[a-z]+", lowered)
+        if not first_word or first_word.group(0) not in ACTION_START_VERBS:
+            continue
+        if lowered.startswith(("risk ", "first risk", "second risk")):
+            continue
+        candidates.append(sentence_case(item))
+    return candidates
+
+
+def infer_action_rows_from_report(report: dict[str, Any]) -> list[dict[str, Any]]:
+    existing = report.get("actions", [])
+    if isinstance(existing, list) and existing:
+        return existing
+    source_texts = [report.get("summary", ""), *report.get("keyUpdates", [])]
+    actions: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for text in source_texts:
+        for candidate in split_action_candidates(text):
+            key = candidate.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            actions.append(
+                {
+                    "action": candidate,
+                    "related_milestone": "unlinked",
+                    "meetingActionPointOwner": "Owner not specified",
+                    "actionConfidence": 0.55,
+                    "deadline": "",
+                }
+            )
+    return actions
+
+
+def normalise_report_payload(report: dict[str, Any]) -> dict[str, Any]:
+    normalised = {**report}
+    normalised["summary"] = filter_report_text(normalised.get("summary", "")) or "Project update analysed from transcript."
+    normalised["keyUpdates"] = [
+        item for item in (filter_report_text(update) for update in normalised.get("keyUpdates", [])) if item
+    ]
+    for milestone in normalised.get("milestones", []):
+        if isinstance(milestone, dict):
+            for field in ("normalised_evidence_summary", "excerpt", "status_resolution_note"):
+                if milestone.get(field):
+                    milestone[field] = filter_report_text(milestone[field]) or sentence_case(milestone[field])
+            milestone["next_steps"] = [sentence_case(item) for item in milestone.get("next_steps", []) if clean_text(item)]
+    for risk in normalised.get("risks", []):
+        if isinstance(risk, dict):
+            for field in ("description", "suggestedMitigation"):
+                if risk.get(field):
+                    risk[field] = filter_report_text(risk[field]) or sentence_case(risk[field])
+    normalised["actions"] = infer_action_rows_from_report(normalised)
+    normalised["actions"] = [
+        {**action, "action": sentence_case(action.get("action") or action.get("meetingActionPoint", ""))}
+        for action in normalised.get("actions", [])
+        if clean_text(action.get("action") or action.get("meetingActionPoint", ""))
+    ]
+    return normalised
 
 
 def cosine_from_lookup(lookup: dict[str, list[float]], left: str, right: str) -> float:
@@ -267,7 +422,7 @@ def build_report_payload(result: dict[str, Any], enriched_segments: list[dict[st
         item["blocking_factors"] = []
         report_milestones.append(item)
 
-    return {
+    return normalise_report_payload({
         "reportStatus": "draft",
         "overallHealth": health_to_report_status(overall),
         "overallHealthRag": overall,
@@ -285,7 +440,7 @@ def build_report_payload(result: dict[str, Any], enriched_segments: list[dict[st
         "risks": risk_suggestions,
         "actions": result.get("actions", []),
         "comparisonSnapshot": result.get("comparison_snapshot", {}),
-    }
+    })
 
 
 def rewrite_report_summary(report: dict[str, Any], rewriter: LocalMinutesRewriter) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -318,7 +473,7 @@ def rewrite_report_summary(report: dict[str, Any], rewriter: LocalMinutesRewrite
             rewritten["summary"] = after
         elif item["field"] == "keyUpdates":
             rewritten["keyUpdates"][item["index"]] = after
-    return rewritten, diagnostics
+    return normalise_report_payload(rewritten), diagnostics
 
 
 def build_project_update_output(transcript_text: str, use_minilm: bool = True, use_rewrite: bool = True) -> dict[str, Any]:

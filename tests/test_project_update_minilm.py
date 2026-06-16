@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 from scripts.project_update_minilm import build_project_update_output
+from scripts.project_update_minilm import normalise_report_payload
 
 
 REPO_DIR = Path(__file__).resolve().parents[1]
@@ -136,6 +137,33 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
 
         self.assertFalse(any(area["status"] == "unknown" for area in report["healthAreas"].values()))
         self.assertFalse(any(item.get("delivery_status") == "unknown" for item in report["milestones"]))
+
+    def test_project_report_post_processing_filters_openers_cases_sentences_and_backfills_actions(self):
+        report = normalise_report_payload(
+            {
+                "summary": "I'll keep this to about twenty minutes, just want to run through status, risks, and anything we need to escalate. delivered, but adoption is still variable.",
+                "keyUpdates": [
+                    "webinar delivered, conference presentation done.",
+                    "Alright, actions from this: enforce capacity sign-off before SOW approval accelerate cross-training and documentation assign clear owner for vendor governance explore leading indicators for delivery health First risk, delivery capacity versus SOW commitments.",
+                ],
+                "milestones": [],
+                "risks": [],
+                "actions": [],
+            }
+        )
+
+        self.assertNotIn("keep this to about twenty minutes", report["summary"].lower())
+        self.assertIn("Delivered, but adoption is still variable.", report["summary"])
+        self.assertIn("Webinar delivered, conference presentation done.", report["keyUpdates"])
+        self.assertGreaterEqual(len(report["actions"]), 4)
+        action_text = " ".join(action["action"] for action in report["actions"])
+        self.assertIn("Enforce capacity sign-off before SOW approval.", action_text)
+        self.assertIn("Accelerate cross-training and documentation.", action_text)
+        self.assertIn("Assign clear owner for vendor governance.", action_text)
+        self.assertIn("Explore leading indicators for delivery health.", action_text)
+        self.assertNotIn("First risk", action_text)
+        self.assertNotIn("Alright", action_text)
+        self.assertNotIn("actions from this", action_text.lower())
 
     def test_project_update_browsing_routes_are_registered(self):
         server = (REPO_DIR / "server.js").read_text(encoding="utf-8")
