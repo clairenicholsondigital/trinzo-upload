@@ -222,6 +222,7 @@ def split_action_candidates(value: Any) -> list[str]:
     for part in raw_parts:
         item = normalise_action_candidate(part)
         item = re.split(r"\b(?:first|second|third|next)\s+risk\b", item, maxsplit=1, flags=re.IGNORECASE)[0].strip(" -–—:;")
+        item = re.sub(r"\b(?:and|or)$", "", item, flags=re.IGNORECASE).strip(" -–—:;")
         if not item:
             continue
         lowered = item.lower()

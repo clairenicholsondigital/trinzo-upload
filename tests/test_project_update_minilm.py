@@ -241,6 +241,15 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
             ],
         )
 
+    def test_project_action_split_removes_trailing_conjunction_before_next_action(self):
+        self.assertEqual(
+            split_action_candidates("Actions from this: enforce capacity sign-off before SOW approval and start tracking leading indicators, not just status."),
+            [
+                "Enforce capacity sign-off before SOW approval.",
+                "Start tracking leading indicators, not just status.",
+            ],
+        )
+
     def test_project_update_browsing_routes_are_registered(self):
         server = (REPO_DIR / "server.js").read_text(encoding="utf-8")
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
