@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from scripts.project_update_minilm import build_project_update_output
-from scripts.project_update_minilm import normalise_report_payload
+from scripts.project_update_minilm import normalise_report_payload, split_action_candidates
 
 
 REPO_DIR = Path(__file__).resolve().parents[1]
@@ -182,6 +182,28 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertIn("Enforce capacity sign-off before SOW approval.", action_text)
         self.assertIn("Accelerate cross-training and documentation.", action_text)
         self.assertNotEqual([action["action"] for action in report["actions"]], ["Complete."])
+
+    def test_project_action_backfill_rejects_spoken_fragments_from_actions_table(self):
+        sample = " ".join(
+            [
+                "Delivered, but adoption is still variable.",
+                "Complete, which is good.",
+                "Accelerate, even if it impacts short-term delivery.",
+                "Assign that properly.",
+                "Add, we might want to start tracking leading indicators, not just status.",
+                "Add that as a.",
+                "Follow-up.",
+                "Enforce capacity sign-off before SOW approval.",
+            ]
+        )
+
+        self.assertEqual(
+            split_action_candidates(sample),
+            [
+                "Start tracking leading indicators, not just status.",
+                "Enforce capacity sign-off before SOW approval.",
+            ],
+        )
 
     def test_project_update_browsing_routes_are_registered(self):
         server = (REPO_DIR / "server.js").read_text(encoding="utf-8")

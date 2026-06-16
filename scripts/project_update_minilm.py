@@ -86,11 +86,21 @@ ACTION_START_VERBS = {
     "review",
     "send",
     "share",
+    "start",
     "strengthen",
     "validate",
 }
 
 DISCOURSE_OPENERS = {"alright", "okay", "ok", "so", "right"}
+VAGUE_ACTION_OBJECTS = {"that", "this", "it", "them", "something", "anything"}
+ACTION_COMMENTARY_MARKERS = {
+    "which is good",
+    "which is fine",
+    "if it impacts",
+    "even if",
+    "might want to",
+    "we might want",
+}
 
 
 @dataclass
@@ -162,6 +172,38 @@ def strip_action_preface(value: Any) -> str:
     return clean_text(text)
 
 
+def normalise_action_candidate(value: Any) -> str:
+    text = strip_action_preface(value).strip(" -–—:;")
+    text = re.sub(r"^(?:add|capture|note)\s*,?\s+(?:we\s+)?might\s+want\s+to\s+", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"^(?:we|i)\s+(?:might\s+want\s+to|should|need\s+to|will|can)\s+", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"^might\s+want\s+to\s+", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"^start\s+to\s+", "start ", text, flags=re.IGNORECASE)
+    return clean_text(text.strip(" -–—:;"))
+
+
+def is_actionable_candidate(value: Any) -> bool:
+    text = clean_text(value)
+    if not text:
+        return False
+    lowered = text.lower().strip(".")
+    words = re.findall(r"[a-z0-9']+", lowered)
+    if len(words) < 4:
+        return False
+    if any(marker in lowered for marker in ACTION_COMMENTARY_MARKERS):
+        return False
+    if re.search(r"\b(?:which|that|this)\s+(?:is|was|are|were)\b", lowered):
+        return False
+    if words[0] in {"complete", "completed"} and any(word in lowered for word in ["good", "fine", "done"]):
+        return False
+    if words[0] in {"follow", "follow-up", "followup"} and len(words) < 5:
+        return False
+    if len(words) >= 2 and words[1] in VAGUE_ACTION_OBJECTS:
+        return False
+    if re.search(r"\b(?:as a|as an|as the|to the|for the)$", lowered):
+        return False
+    return True
+
+
 def split_action_candidates(value: Any) -> list[str]:
     text = strip_action_preface(value)
     if not text:
@@ -171,7 +213,7 @@ def split_action_candidates(value: Any) -> list[str]:
     raw_parts = re.split(r"[\n\r;•]+|(?<=[.!?])\s+", text)
     candidates = []
     for part in raw_parts:
-        item = clean_text(part).strip(" -–—:;")
+        item = normalise_action_candidate(part)
         item = re.split(r"\b(?:first|second|third|next)\s+risk\b", item, maxsplit=1, flags=re.IGNORECASE)[0].strip(" -–—:;")
         if not item:
             continue
@@ -182,6 +224,8 @@ def split_action_candidates(value: Any) -> list[str]:
         if len(re.findall(r"\w+", item)) < 2:
             continue
         if lowered.startswith(("risk ", "first risk", "second risk")):
+            continue
+        if not is_actionable_candidate(item):
             continue
         candidates.append(sentence_case(item))
     return candidates
@@ -194,7 +238,7 @@ def infer_action_rows_from_report(report: dict[str, Any]) -> list[dict[str, Any]
         viable = []
         for action in existing:
             text = clean_text(action.get("action") or action.get("meetingActionPoint", "")) if isinstance(action, dict) else clean_text(action)
-            if len(re.findall(r"\w+", text)) > 1 and text.lower().strip(".") not in weak_actions:
+            if text.lower().strip(".") not in weak_actions and is_actionable_candidate(text):
                 viable.append(action)
         if viable:
             return viable
