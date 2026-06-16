@@ -62,6 +62,13 @@ RISK_PROTOTYPES = [
     "A workstream is delayed, blocked, or awaiting external input.",
 ]
 
+PROJECT_ACTION_PROTOTYPES = [
+    "A concrete next action is assigned or proposed for the project.",
+    "The team needs to do a specific follow-up task after this project update.",
+    "A project owner should complete, confirm, review, draft, validate, or enforce a specific action.",
+    "There is a clear action item with an object, deliverable, owner, dependency, or follow-up target.",
+]
+
 ACTION_START_VERBS = {
     "accelerate",
     "add",
@@ -311,6 +318,98 @@ def collect_action_source_texts(result: dict[str, Any], enriched_segments: list[
     return unique
 
 
+def collect_raw_transcript_windows(transcript_text: str) -> list[EvidenceWindow]:
+    windows: list[EvidenceWindow] = []
+    turn_re = re.compile(r"^(?P<speaker>.+?)\s+(?P<timestamp>\d+:\d{2})(?P<tail>.*)$")
+    colon_re = re.compile(r"^(?P<speaker>[A-Z][A-Za-z ]+):\s*(?P<tail>.*)$")
+    turn_index = 0
+    for raw_line in transcript_text.splitlines():
+        line = clean_text(raw_line)
+        if not line or "started transcription" in line.lower() or "stopped transcription" in line.lower():
+            continue
+        speaker = ""
+        text = line
+        match = turn_re.match(line)
+        if match:
+            speaker = clean_text(match.group("speaker"))
+            text = clean_text(match.group("tail"))
+        else:
+            colon_match = colon_re.match(line)
+            if colon_match:
+                speaker = clean_text(colon_match.group("speaker"))
+                text = clean_text(colon_match.group("tail"))
+        for sentence in split_report_sentences(text):
+            if sentence:
+                windows.append(EvidenceWindow(text=sentence, speaker=speaker, turn_index=turn_index, source="minilm_first.raw_transcript"))
+        turn_index += 1
+    return windows
+
+
+def build_minilm_first_context(transcript_text: str, backend: MiniLMBackend) -> dict[str, Any]:
+    windows = collect_raw_transcript_windows(transcript_text)
+    diagnostics: dict[str, Any] = {
+        "runsBeforeRules": True,
+        "windowCount": len(windows),
+        "actionPrototypeCount": len(PROJECT_ACTION_PROTOTYPES),
+        "selectedActionWindowCount": 0,
+        "selectedActionCount": 0,
+    }
+    actions: list[dict[str, Any]] = []
+    action_source_texts: list[str] = []
+    selected_windows: list[dict[str, Any]] = []
+    seen_actions: set[str] = set()
+
+    if backend.available and windows:
+        lookup = semantic_lookup(backend, windows, PROJECT_ACTION_PROTOTYPES)
+        scored = []
+        for window in windows:
+            score = max((cosine_from_lookup(lookup, window.text, prototype) for prototype in PROJECT_ACTION_PROTOTYPES), default=0.0)
+            candidates = split_action_candidates(window.text)
+            if score >= 0.28 or candidates:
+                scored.append((score, window, candidates))
+        scored.sort(key=lambda item: (item[0], bool(item[2])), reverse=True)
+        for score, window, candidates in scored[:18]:
+            if not candidates:
+                continue
+            selected_windows.append(
+                {
+                    "text": window.text,
+                    "speaker": window.speaker,
+                    "turnIndex": window.turn_index,
+                    "source": window.source,
+                    "score": round(score, 4),
+                }
+            )
+            action_source_texts.append(window.text)
+            for candidate in candidates:
+                key = candidate.lower()
+                if key in seen_actions:
+                    continue
+                seen_actions.add(key)
+                actions.append(
+                    {
+                        "action": candidate,
+                        "related_milestone": "unlinked",
+                        "meetingActionPointOwner": "Owner not specified",
+                        "actionConfidence": max(0.55, round(score, 2)),
+                        "deadline": "",
+                        "_source": "minilm_first",
+                    }
+                )
+    else:
+        for window in windows:
+            action_source_texts.append(window.text)
+
+    diagnostics["selectedActionWindowCount"] = len(selected_windows)
+    diagnostics["selectedActionCount"] = len(actions)
+    return {
+        "actions": actions,
+        "actionSourceTexts": action_source_texts,
+        "selectedActionWindows": selected_windows,
+        "diagnostics": diagnostics,
+    }
+
+
 def cosine_from_lookup(lookup: dict[str, list[float]], left: str, right: str) -> float:
     left_vec = lookup.get(clean_text(left))
     right_vec = lookup.get(clean_text(right))
@@ -467,7 +566,12 @@ def combine_blockers_and_next_steps(segment: dict[str, Any]) -> list[str]:
     return combined
 
 
-def build_report_payload(result: dict[str, Any], enriched_segments: list[dict[str, Any]], diagnostics: dict[str, Any]) -> dict[str, Any]:
+def build_report_payload(
+    result: dict[str, Any],
+    enriched_segments: list[dict[str, Any]],
+    diagnostics: dict[str, Any],
+    minilm_first_context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     summary = result.get("project_health_summary", {})
     overall = summary.get("overall_health", "unknown")
     key_updates = [
@@ -497,6 +601,10 @@ def build_report_payload(result: dict[str, Any], enriched_segments: list[dict[st
         item["blocking_factors"] = []
         report_milestones.append(item)
 
+    minilm_first_context = minilm_first_context or {}
+    minilm_actions = minilm_first_context.get("actions", []) if isinstance(minilm_first_context.get("actions", []), list) else []
+    minilm_action_sources = minilm_first_context.get("actionSourceTexts", []) if isinstance(minilm_first_context.get("actionSourceTexts", []), list) else []
+
     return normalise_report_payload({
         "reportStatus": "draft",
         "overallHealth": health_to_report_status(overall),
@@ -513,8 +621,8 @@ def build_report_payload(result: dict[str, Any], enriched_segments: list[dict[st
         },
         "milestones": report_milestones,
         "risks": risk_suggestions,
-        "actions": result.get("actions", []),
-        "_actionSourceTexts": collect_action_source_texts(result, enriched_segments),
+        "actions": minilm_actions or result.get("actions", []),
+        "_actionSourceTexts": [*minilm_action_sources, *collect_action_source_texts(result, enriched_segments)],
         "comparisonSnapshot": result.get("comparison_snapshot", {}),
     })
 
@@ -554,10 +662,11 @@ def rewrite_report_summary(report: dict[str, Any], rewriter: LocalMinutesRewrite
 
 def build_project_update_output(transcript_text: str, use_minilm: bool = True, use_rewrite: bool = True) -> dict[str, Any]:
     started = time.perf_counter()
-    baseline = analyse_project_update(transcript_text)
     backend = MiniLMBackend.load(enabled=use_minilm)
+    minilm_first_context = build_minilm_first_context(transcript_text, backend)
+    baseline = analyse_project_update(transcript_text)
     enriched_segments, semantic_diagnostics = enrich_segments(baseline, backend)
-    report = build_report_payload(baseline, enriched_segments, semantic_diagnostics)
+    report = build_report_payload(baseline, enriched_segments, semantic_diagnostics, minilm_first_context=minilm_first_context)
 
     rewriter = LocalMinutesRewriter.load(enabled=use_rewrite)
     report, rewrite_diagnostics = rewrite_report_summary(report, rewriter)
@@ -569,6 +678,8 @@ def build_project_update_output(transcript_text: str, use_minilm: bool = True, u
         "mode": "project_update_minilm",
         "projectReport": report,
         "modelDiagnostics": {
+            "pipelineOrder": ["minilm_first_context", "rules_structuring", "minilm_segment_enrichment", "qwen_rewrite"],
+            "minilmFirstContext": minilm_first_context.get("diagnostics", {}),
             **semantic_diagnostics,
             **rewrite_diagnostics,
             "totalRuntimeMs": timing_total,

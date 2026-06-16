@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from scripts.project_update_minilm import build_project_update_output
-from scripts.project_update_minilm import normalise_report_payload, split_action_candidates
+from scripts.project_update_minilm import build_minilm_first_context, normalise_report_payload, split_action_candidates
 
 
 REPO_DIR = Path(__file__).resolve().parents[1]
@@ -27,7 +27,43 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertEqual(result["projectReport"]["reportStatus"], "draft")
         self.assertIn(result["projectReport"]["overallHealth"], {"on_track", "at_risk", "off_track", "completed", "unknown"})
         self.assertGreaterEqual(len(result["projectReport"]["healthAreas"]), 5)
+        self.assertEqual(result["modelDiagnostics"]["pipelineOrder"][:2], ["minilm_first_context", "rules_structuring"])
+        self.assertTrue(result["modelDiagnostics"]["minilmFirstContext"]["runsBeforeRules"])
         json.dumps(result)
+
+    def test_build_project_update_loads_minilm_before_rules(self):
+        source = (REPO_DIR / "scripts" / "project_update_minilm.py").read_text(encoding="utf-8")
+        body = source.split("def build_project_update_output", 1)[1].split("def parse_args", 1)[0]
+
+        self.assertLess(body.index("MiniLMBackend.load"), body.index("analyse_project_update"))
+        self.assertLess(body.index("build_minilm_first_context"), body.index("analyse_project_update"))
+
+    def test_minilm_first_context_selects_actions_before_rule_structuring(self):
+        class FakeBackend:
+            available = True
+            model_name = "fake-minilm"
+            reason = ""
+
+            def encode_many(self, texts):
+                lookup = {}
+                for text in texts:
+                    cleaned = " ".join(str(text or "").split()).strip()
+                    if not cleaned:
+                        continue
+                    if "enforce capacity" in cleaned.lower() or "specific follow-up task" in cleaned.lower():
+                        lookup[cleaned] = [1.0, 0.0]
+                    else:
+                        lookup[cleaned] = [0.0, 1.0]
+                return lookup
+
+        context = build_minilm_first_context(
+            "Claire 0:01 Actions from this: enforce capacity sign-off before SOW approval.",
+            FakeBackend(),
+        )
+
+        self.assertTrue(context["diagnostics"]["runsBeforeRules"])
+        self.assertEqual(context["actions"][0]["action"], "Enforce capacity sign-off before SOW approval.")
+        self.assertEqual(context["actions"][0]["_source"], "minilm_first")
 
     def test_cli_outputs_json(self):
         completed = subprocess.run(
