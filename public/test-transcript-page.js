@@ -757,7 +757,7 @@ function buildTranscriptTestPage(config) {
     }
 
     setLoading(true);
-    setMessage('Analysing transcript with local Python logic...', 'info');
+    setMessage(config.loadingMessage || 'Analysing transcript with local Python logic...', 'info');
     summaryPanel.classList.add('hidden');
     projectReportPanel.classList.add('hidden');
     jsonPanel.classList.add('hidden');

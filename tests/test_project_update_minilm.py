@@ -65,6 +65,8 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertIn("buttonText: 'Process meeting'", page)
         self.assertIn("resetButtonText: 'Clear and restart'", page)
         self.assertIn("confirmReset: true", page)
+        self.assertIn("loadingMessage: 'Analysing transcript...'", page)
+        self.assertIn("config.loadingMessage || 'Analysing transcript with local Python logic...'", shared_js)
         self.assertIn(".project-tabs", page)
         self.assertIn("renderProjectReport", shared_js)
         self.assertIn("Open in full screen", shared_js)
