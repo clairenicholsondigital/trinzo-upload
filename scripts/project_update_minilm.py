@@ -179,6 +179,8 @@ def split_action_candidates(value: Any) -> list[str]:
         first_word = re.match(r"[a-z]+", lowered)
         if not first_word or first_word.group(0) not in ACTION_START_VERBS:
             continue
+        if len(re.findall(r"\w+", item)) < 2:
+            continue
         if lowered.startswith(("risk ", "first risk", "second risk")):
             continue
         candidates.append(sentence_case(item))
@@ -187,9 +189,16 @@ def split_action_candidates(value: Any) -> list[str]:
 
 def infer_action_rows_from_report(report: dict[str, Any]) -> list[dict[str, Any]]:
     existing = report.get("actions", [])
+    weak_actions = {"complete", "completed", "green", "amber", "red", "blue", "done"}
     if isinstance(existing, list) and existing:
-        return existing
-    source_texts = [report.get("summary", ""), *report.get("keyUpdates", [])]
+        viable = []
+        for action in existing:
+            text = clean_text(action.get("action") or action.get("meetingActionPoint", "")) if isinstance(action, dict) else clean_text(action)
+            if len(re.findall(r"\w+", text)) > 1 and text.lower().strip(".") not in weak_actions:
+                viable.append(action)
+        if viable:
+            return viable
+    source_texts = [report.get("summary", ""), *report.get("keyUpdates", []), *report.get("_actionSourceTexts", [])]
     actions: list[dict[str, Any]] = []
     seen: set[str] = set()
     for text in source_texts:
@@ -220,7 +229,9 @@ def normalise_report_payload(report: dict[str, Any]) -> dict[str, Any]:
         if isinstance(milestone, dict):
             for field in ("normalised_evidence_summary", "excerpt", "status_resolution_note"):
                 if milestone.get(field):
-                    milestone[field] = filter_report_text(milestone[field]) or sentence_case(milestone[field])
+                    milestone[field] = filter_report_text(milestone[field])
+            milestone["evidence"] = [filter_report_text(item) for item in milestone.get("evidence", []) if filter_report_text(item)]
+            milestone["conflicting_evidence"] = [filter_report_text(item) for item in milestone.get("conflicting_evidence", []) if filter_report_text(item)]
             milestone["next_steps"] = [sentence_case(item) for item in milestone.get("next_steps", []) if clean_text(item)]
     for risk in normalised.get("risks", []):
         if isinstance(risk, dict):
@@ -233,7 +244,27 @@ def normalise_report_payload(report: dict[str, Any]) -> dict[str, Any]:
         for action in normalised.get("actions", [])
         if clean_text(action.get("action") or action.get("meetingActionPoint", ""))
     ]
+    normalised.pop("_actionSourceTexts", None)
     return normalised
+
+
+def collect_action_source_texts(result: dict[str, Any], enriched_segments: list[dict[str, Any]]) -> list[str]:
+    texts: list[str] = []
+    for turn in result.get("cleaned_turns", []):
+        if isinstance(turn, dict):
+            texts.append(clean_text(turn.get("text", "")))
+            texts.extend(clean_text(sentence) for sentence in turn.get("sentences", []) if clean_text(sentence))
+    for segment in enriched_segments:
+        texts.extend(clean_text(item) for item in segment.get("evidence", []) if clean_text(item))
+        texts.extend(clean_text(item) for item in segment.get("next_steps", []) if clean_text(item))
+    seen: set[str] = set()
+    unique: list[str] = []
+    for text in texts:
+        key = text.lower()
+        if text and key not in seen:
+            seen.add(key)
+            unique.append(text)
+    return unique
 
 
 def cosine_from_lookup(lookup: dict[str, list[float]], left: str, right: str) -> float:
@@ -439,6 +470,7 @@ def build_report_payload(result: dict[str, Any], enriched_segments: list[dict[st
         "milestones": report_milestones,
         "risks": risk_suggestions,
         "actions": result.get("actions", []),
+        "_actionSourceTexts": collect_action_source_texts(result, enriched_segments),
         "comparisonSnapshot": result.get("comparison_snapshot", {}),
     })
 

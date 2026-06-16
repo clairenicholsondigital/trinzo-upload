@@ -165,6 +165,24 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertNotIn("Alright", action_text)
         self.assertNotIn("actions from this", action_text.lower())
 
+    def test_project_report_backfills_actions_from_transcript_when_baseline_actions_are_weak(self):
+        transcript = "\n".join(
+            [
+                "Claire 0:01 I'll keep this to about twenty minutes, just want to run through status, risks, and anything we need to escalate.",
+                "Claire 0:05 Repeatable AI use cases.",
+                "Conor 0:08 webinar delivered, conference presentation done.",
+                "Claire 0:12 Actions from this: enforce capacity sign-off before SOW approval accelerate cross-training and documentation assign clear owner for vendor governance explore leading indicators for delivery health First risk, delivery capacity versus SOW commitments.",
+            ]
+        )
+        report = build_project_update_output(transcript, use_minilm=False, use_rewrite=False)["projectReport"]
+        action_text = " ".join(action["action"] for action in report["actions"])
+
+        self.assertNotIn("keep this to about twenty minutes", json.dumps(report).lower())
+        self.assertIn("Webinar delivered, conference presentation done.", json.dumps(report))
+        self.assertIn("Enforce capacity sign-off before SOW approval.", action_text)
+        self.assertIn("Accelerate cross-training and documentation.", action_text)
+        self.assertNotEqual([action["action"] for action in report["actions"]], ["Complete."])
+
     def test_project_update_browsing_routes_are_registered(self):
         server = (REPO_DIR / "server.js").read_text(encoding="utf-8")
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
