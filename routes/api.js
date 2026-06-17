@@ -29,6 +29,9 @@ const {
   createProjectMilestone,
   updateProjectMilestone,
   deleteProjectMilestone,
+  getProjectContext,
+  createProjectContextSnapshot,
+  getProjectContextSnapshot,
   listMeetings,
   getMeetingById,
   deleteMeetingById,
@@ -956,6 +959,34 @@ router.delete('/project-update-test/milestones/:milestoneId', async (req, res) =
       return res.status(404).json({ ok: false, error: 'Project milestone not found.' });
     }
     return res.json({ ok: true, milestone });
+  } catch (error) {
+    return sendTestError(res, error);
+  }
+});
+
+router.get('/project-update-test/context', async (req, res) => {
+  try {
+    const context = await getProjectContext(req.query?.projectName, req.query?.limit);
+    return res.json({ ok: true, context });
+  } catch (error) {
+    return sendTestError(res, error);
+  }
+});
+
+router.post('/project-update-test/context/snapshots', async (req, res) => {
+  try {
+    const snapshot = await createProjectContextSnapshot(req.body?.projectName || req.query?.projectName, req.body || {});
+    return res.status(201).json({ ok: true, snapshot });
+  } catch (error) {
+    return sendTestError(res, error);
+  }
+});
+
+router.get('/project-update-test/context/snapshots/:snapshotId', async (req, res) => {
+  try {
+    const snapshot = await getProjectContextSnapshot(req.params.snapshotId);
+    if (!snapshot) return res.status(404).json({ ok: false, error: 'Project context snapshot not found.' });
+    return res.json({ ok: true, snapshot });
   } catch (error) {
     return sendTestError(res, error);
   }

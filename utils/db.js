@@ -427,6 +427,343 @@ async function deleteProjectMilestone(milestoneId) {
   return existing;
 }
 
+
+
+function normaliseProjectTrend(value) {
+  const trend = String(value || '').trim().toLowerCase();
+  return ['improving', 'stable', 'deteriorating', 'new_update', 'new_risk', 'resolved', 'unknown'].includes(trend)
+    ? trend
+    : 'unknown';
+}
+
+function projectContextItemKey(value, fallback = 'item') {
+  const key = String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  return key || fallback;
+}
+
+async function getProjectContext(projectName = '', limit = 5) {
+  const safeLimit = Math.min(Math.max(Number(limit) || 5, 1), 20);
+  const name = String(projectName || process.env.PROJECT_UPDATE_DEFAULT_PROJECT || 'Project update test').trim() || 'Project update test';
+  const projectOut = await runPsql(`
+SELECT json_build_object(
+  'projectId', id,
+  'projectName', project_name,
+  'clientName', COALESCE(client_name, ''),
+  'description', COALESCE(description, ''),
+  'status', status,
+  'createdAt', created_at,
+  'updatedAt', updated_at
+)::text
+FROM projects
+WHERE project_name = ${q(name)}
+ORDER BY id
+LIMIT 1;`);
+  const project = parseJsonLines(projectOut)[0] || null;
+  if (!project) {
+    return {
+      projectName: name,
+      found: false,
+      activeMilestones: [],
+      recentReports: [],
+      healthHistory: [],
+      milestoneHistory: [],
+      riskSuggestions: [],
+      latestSnapshot: null,
+      generatedAt: new Date().toISOString()
+    };
+  }
+  const projectId = Number(project.projectId);
+
+  const activeMilestones = parseJsonLines(await runPsql(`
+SELECT json_build_object(
+  'milestoneId', m.id,
+  'milestoneName', m.milestone_name,
+  'comparisonKey', regexp_replace(lower(m.milestone_name), '[^a-z0-9]+', '_', 'g'),
+  'category', m.category,
+  'description', COALESCE(m.description, ''),
+  'baselineFinishDate', m.baseline_finish_date,
+  'forecastFinishDate', m.forecast_finish_date,
+  'latestAssessment', latest.assessment,
+  'previousAssessment', previous.assessment
+)::text
+FROM project_core_milestones m
+LEFT JOIN LATERAL (
+  SELECT json_build_object(
+    'assessmentId', a.id,
+    'reportVersionId', a.report_version_id,
+    'reportId', v.report_id,
+    'status', a.status,
+    'trend', a.trend,
+    'confidence', a.confidence,
+    'summary', COALESCE(a.summary, ''),
+    'forecastFinishDate', a.forecast_finish_date,
+    'createdAt', v.created_at
+  ) AS assessment
+  FROM project_report_milestone_assessments a
+  JOIN project_report_versions v ON v.id = a.report_version_id
+  WHERE a.milestone_id = m.id
+  ORDER BY v.created_at DESC, a.id DESC
+  LIMIT 1
+) latest ON TRUE
+LEFT JOIN LATERAL (
+  SELECT json_build_object(
+    'assessmentId', a.id,
+    'reportVersionId', a.report_version_id,
+    'reportId', v.report_id,
+    'status', a.status,
+    'trend', a.trend,
+    'confidence', a.confidence,
+    'summary', COALESCE(a.summary, ''),
+    'forecastFinishDate', a.forecast_finish_date,
+    'createdAt', v.created_at
+  ) AS assessment
+  FROM project_report_milestone_assessments a
+  JOIN project_report_versions v ON v.id = a.report_version_id
+  WHERE a.milestone_id = m.id
+    AND (latest.assessment IS NULL OR a.id <> ((latest.assessment->>'assessmentId')::BIGINT))
+  ORDER BY v.created_at DESC, a.id DESC
+  LIMIT 1
+) previous ON TRUE
+WHERE m.project_id = ${projectId} AND m.is_active = TRUE
+ORDER BY m.sort_order, m.id;`));
+
+  const recentReports = parseJsonLines(await runPsql(`
+SELECT json_build_object(
+  'reportId', r.id,
+  'reportVersionId', v.id,
+  'versionNumber', v.version_number,
+  'periodLabel', COALESCE(rp.period_label, ''),
+  'fileName', COALESCE(r.file_name, ''),
+  'reportStatus', r.report_status,
+  'createdAt', r.created_at,
+  'updatedAt', r.updated_at,
+  'versionCreatedAt', v.created_at,
+  'overallHealth', COALESCE(v.report_payload->'projectReport'->>'overallHealth', ''),
+  'overallHealthRag', COALESCE(v.report_payload->'projectReport'->>'overallHealthRag', ''),
+  'summary', COALESCE(v.report_payload->'projectReport'->>'summary', ''),
+  'comparisonSnapshot', COALESCE(v.report_payload->'projectReport'->'comparisonSnapshot', '{}'::jsonb)
+)::text
+FROM project_reports r
+LEFT JOIN project_reporting_periods rp ON rp.id = r.reporting_period_id
+JOIN LATERAL (
+  SELECT id, version_number, report_payload, created_at
+  FROM project_report_versions
+  WHERE report_id = r.id
+  ORDER BY version_number DESC, id DESC
+  LIMIT 1
+) v ON TRUE
+WHERE r.project_id = ${projectId}
+ORDER BY v.created_at DESC, r.id DESC
+LIMIT ${safeLimit};`));
+
+  const healthHistory = parseJsonLines(await runPsql(`
+SELECT json_build_object(
+  'area', h.area,
+  'status', h.status,
+  'trend', h.trend,
+  'confidence', h.confidence,
+  'rationale', COALESCE(h.rationale, ''),
+  'reportVersionId', h.report_version_id,
+  'reportId', v.report_id,
+  'createdAt', v.created_at
+)::text
+FROM project_report_health h
+JOIN project_report_versions v ON v.id = h.report_version_id
+JOIN project_reports r ON r.id = v.report_id
+WHERE r.project_id = ${projectId}
+ORDER BY v.created_at DESC, h.area
+LIMIT ${safeLimit * 5};`));
+
+  const milestoneHistory = parseJsonLines(await runPsql(`
+SELECT json_build_object(
+  'milestoneId', m.id,
+  'milestoneName', m.milestone_name,
+  'comparisonKey', regexp_replace(lower(m.milestone_name), '[^a-z0-9]+', '_', 'g'),
+  'status', a.status,
+  'trend', a.trend,
+  'confidence', a.confidence,
+  'summary', COALESCE(a.summary, ''),
+  'forecastFinishDate', a.forecast_finish_date,
+  'reportVersionId', a.report_version_id,
+  'reportId', v.report_id,
+  'createdAt', v.created_at
+)::text
+FROM project_report_milestone_assessments a
+JOIN project_core_milestones m ON m.id = a.milestone_id
+JOIN project_report_versions v ON v.id = a.report_version_id
+JOIN project_reports r ON r.id = v.report_id
+WHERE r.project_id = ${projectId}
+ORDER BY v.created_at DESC, a.id DESC
+LIMIT ${safeLimit * 25};`));
+
+  const riskSuggestions = parseJsonLines(await runPsql(`
+SELECT json_build_object(
+  'riskSuggestionId', s.id,
+  'riskTitle', s.risk_title,
+  'description', COALESCE(s.description, ''),
+  'suggestedMitigation', COALESCE(s.suggested_mitigation, ''),
+  'confidence', s.confidence,
+  'reviewStatus', s.review_status,
+  'reportVersionId', s.report_version_id,
+  'reportId', v.report_id,
+  'createdAt', v.created_at
+)::text
+FROM project_ai_risk_suggestions s
+JOIN project_report_versions v ON v.id = s.report_version_id
+JOIN project_reports r ON r.id = v.report_id
+WHERE r.project_id = ${projectId}
+ORDER BY v.created_at DESC, s.id DESC
+LIMIT ${safeLimit * 10};`));
+
+  const latestSnapshot = parseJsonLines(await runPsql(`
+SELECT json_build_object(
+  'snapshotId', id,
+  'sourceReportVersionId', source_report_version_id,
+  'snapshotType', snapshot_type,
+  'summary', COALESCE(summary, ''),
+  'createdBy', COALESCE(created_by, ''),
+  'createdAt', created_at,
+  'contextPayload', context_payload
+)::text
+FROM project_context_snapshots
+WHERE project_id = ${projectId}
+ORDER BY created_at DESC, id DESC
+LIMIT 1;`))[0] || null;
+
+  return {
+    ...project,
+    found: true,
+    activeMilestones,
+    recentReports,
+    healthHistory,
+    milestoneHistory,
+    riskSuggestions,
+    latestSnapshot,
+    generatedAt: new Date().toISOString()
+  };
+}
+
+async function createProjectContextSnapshot(projectName = '', payload = {}) {
+  const context = await getProjectContext(projectName, payload.limit || 5);
+  if (!context.found) {
+    const error = new Error('Project not found for context snapshot.');
+    error.statusCode = 404;
+    throw error;
+  }
+  const sourceReportVersionId = Number(payload.sourceReportVersionId || context.recentReports?.[0]?.reportVersionId || 0);
+  const snapshotType = ['generated', 'manual', 'imported'].includes(String(payload.snapshotType || 'generated')) ? String(payload.snapshotType || 'generated') : 'generated';
+  const summary = String(payload.summary || `Context snapshot for ${context.projectName}`).trim();
+  const createdBy = String(payload.createdBy || 'OpenClaw').trim();
+  const contextPayload = payload.contextPayload && typeof payload.contextPayload === 'object'
+    ? payload.contextPayload
+    : context;
+
+  const out = await runPsql(`
+INSERT INTO project_context_snapshots (project_id, source_report_version_id, snapshot_type, context_payload, summary, created_by)
+VALUES (${Number(context.projectId)}, ${sourceReportVersionId > 0 ? sourceReportVersionId : 'NULL'}, ${q(snapshotType)}, ${qJson(contextPayload)}, ${q(summary)}, ${q(createdBy)})
+RETURNING id::text;`);
+  const snapshotId = parseOptionalId(out);
+  if (!snapshotId) throw new Error('Could not create project context snapshot.');
+
+  const items = [];
+  for (const milestone of context.activeMilestones || []) {
+    const latest = milestone.latestAssessment || {};
+    const previous = milestone.previousAssessment || {};
+    items.push({
+      itemType: 'milestone',
+      itemKey: milestone.comparisonKey || projectContextItemKey(milestone.milestoneName, `milestone_${milestone.milestoneId}`),
+      itemLabel: milestone.milestoneName,
+      status: latest.status || '',
+      previousStatus: previous.status || '',
+      trend: latest.trend || 'unknown',
+      confidence: latest.confidence,
+      evidence: latest.summary ? [{ text: latest.summary }] : [],
+      metadata: { milestoneId: milestone.milestoneId, forecastFinishDate: latest.forecastFinishDate || milestone.forecastFinishDate || null }
+    });
+  }
+  const latestHealthByArea = new Map();
+  for (const health of context.healthHistory || []) {
+    if (!latestHealthByArea.has(health.area)) latestHealthByArea.set(health.area, health);
+  }
+  for (const [area, health] of latestHealthByArea.entries()) {
+    items.push({
+      itemType: 'health_area',
+      itemKey: area,
+      itemLabel: area,
+      status: health.status || '',
+      previousStatus: '',
+      trend: health.trend || 'unknown',
+      confidence: health.confidence,
+      evidence: health.rationale ? [{ text: health.rationale }] : [],
+      metadata: { reportVersionId: health.reportVersionId, reportId: health.reportId }
+    });
+  }
+  for (const risk of (context.riskSuggestions || []).slice(0, 20)) {
+    items.push({
+      itemType: 'risk',
+      itemKey: projectContextItemKey(risk.riskTitle, `risk_${risk.riskSuggestionId}`),
+      itemLabel: risk.riskTitle,
+      status: risk.reviewStatus || '',
+      previousStatus: '',
+      trend: risk.reviewStatus === 'pending' ? 'new_risk' : 'stable',
+      confidence: risk.confidence,
+      evidence: risk.description ? [{ text: risk.description }] : [],
+      metadata: { riskSuggestionId: risk.riskSuggestionId, mitigation: risk.suggestedMitigation || '' }
+    });
+  }
+
+  for (const item of items) {
+    await runPsql(`INSERT INTO project_context_snapshot_items
+      (snapshot_id, item_type, item_key, item_label, status, previous_status, trend, confidence, evidence, metadata)
+      VALUES (${snapshotId}, ${q(item.itemType)}, ${q(item.itemKey)}, ${q(item.itemLabel)}, ${q(item.status)}, ${q(item.previousStatus)}, ${q(normaliseProjectTrend(item.trend))}, ${clampConfidence(item.confidence, 0.5)}, ${qJson(item.evidence)}, ${qJson(item.metadata)});`);
+  }
+
+  return getProjectContextSnapshot(snapshotId);
+}
+
+async function getProjectContextSnapshot(snapshotId) {
+  const id = Number(snapshotId);
+  if (!Number.isFinite(id) || id <= 0) {
+    const error = new Error('Valid snapshot id is required.');
+    error.statusCode = 400;
+    throw error;
+  }
+  const snapshot = parseJsonLines(await runPsql(`
+SELECT json_build_object(
+  'snapshotId', s.id,
+  'projectId', p.id,
+  'projectName', p.project_name,
+  'sourceReportVersionId', s.source_report_version_id,
+  'snapshotType', s.snapshot_type,
+  'summary', COALESCE(s.summary, ''),
+  'createdBy', COALESCE(s.created_by, ''),
+  'createdAt', s.created_at,
+  'contextPayload', s.context_payload,
+  'items', COALESCE((
+    SELECT json_agg(json_build_object(
+      'itemId', i.id,
+      'itemType', i.item_type,
+      'itemKey', i.item_key,
+      'itemLabel', COALESCE(i.item_label, ''),
+      'status', COALESCE(i.status, ''),
+      'previousStatus', COALESCE(i.previous_status, ''),
+      'trend', i.trend,
+      'confidence', i.confidence,
+      'evidence', i.evidence,
+      'metadata', i.metadata,
+      'createdAt', i.created_at
+    ) ORDER BY i.item_type, i.id)
+    FROM project_context_snapshot_items i
+    WHERE i.snapshot_id = s.id
+  ), '[]'::json)
+)::text
+FROM project_context_snapshots s
+JOIN projects p ON p.id = s.project_id
+WHERE s.id = ${id}
+LIMIT 1;`))[0] || null;
+  return snapshot;
+}
+
 async function saveUploadedJob({ fileName, mimeType, transcriptText }) {
   const title = fileName || 'Uploaded transcript';
   const description = 'Auto-created from uploaded transcript.';
@@ -1033,6 +1370,9 @@ module.exports = {
   createProjectMilestone,
   updateProjectMilestone,
   deleteProjectMilestone,
+  getProjectContextSnapshot,
+  createProjectContextSnapshot,
+  getProjectContext,
   getMeetingStatus,
   claimNextJob,
   markJobCompleted,

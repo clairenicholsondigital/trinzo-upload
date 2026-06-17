@@ -77,6 +77,14 @@ app.get('/project-update-test/milestones/:milestoneId', (req, res) => {
   sendView(res, 'project-update-milestones.html').catch((error) => res.status(404).send(error.message));
 });
 
+app.get('/project-update-test/context', (req, res) => {
+  sendView(res, 'project-update-context.html').catch((error) => res.status(404).send(error.message));
+});
+
+app.get('/project-update-test/context/snapshots/:snapshotId', (req, res) => {
+  sendView(res, 'project-update-context.html').catch((error) => res.status(404).send(error.message));
+});
+
 app.get('/auth', (req, res) => {
   sendView(res, 'auth.html').catch((error) => res.status(404).send(error.message));
 });
