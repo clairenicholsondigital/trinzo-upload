@@ -726,16 +726,18 @@ def annotate_report_with_project_context(report: dict[str, Any], project_context
             "previousReportVersionId": previous.get("reportVersionId"),
         }
 
-    previous_risks = latest_by_key(project_context.get("riskSuggestions", []), ["riskTitle"])
+    previous_risks = latest_by_key(project_context.get("activeRisks", []), ["riskTitle"])
+    previous_risks.update({key: value for key, value in latest_by_key(project_context.get("riskSuggestions", []), ["riskTitle"]).items() if key not in previous_risks})
     risk_snapshot: dict[str, Any] = {}
     for risk in risks:
         key = normalise_key(risk.get("riskTitle"))
         previous = previous_risks.get(key, {})
         if previous:
             diagnostics["riskTitlesCompared"] += 1
-            trend = "stable" if str(previous.get("reviewStatus", "")).lower() in {"pending", "accepted", "reviewed"} else "new_risk"
+            trend = "stable" if previous.get("riskId") or str(previous.get("reviewStatus", "")).lower() in {"pending", "accepted", "reviewed"} else "new_risk"
             risk["previous_review_status"] = previous.get("reviewStatus", "")
             risk["previous_report_id"] = previous.get("reportId")
+            risk["core_risk_id"] = previous.get("riskId")
         else:
             trend = "new_risk"
         risk["trend"] = trend
@@ -744,6 +746,7 @@ def annotate_report_with_project_context(report: dict[str, Any], project_context
             "trend": trend,
             "previousReviewStatus": previous.get("reviewStatus", ""),
             "previousReportId": previous.get("reportId"),
+            "coreRiskId": previous.get("riskId"),
         }
 
     existing_snapshot = report.get("comparisonSnapshot", {}) if isinstance(report.get("comparisonSnapshot"), dict) else {}

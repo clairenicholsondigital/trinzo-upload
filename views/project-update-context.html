@@ -91,6 +91,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:#071126;
     const milestones = asArray(context.activeMilestones);
     const recentReports = asArray(context.recentReports);
     const healthHistory = asArray(context.healthHistory);
+    const activeRisks = asArray(context.activeRisks);
     const risks = asArray(context.riskSuggestions);
     app.innerHTML = `
       <section class="panel">
@@ -110,6 +111,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:#071126;
           <div class="card"><div class="label">Name</div><div class="value">${escapeHtml(context.projectName || '-')}</div></div>
           <div class="card"><div class="label">Status</div><div class="value">${escapeHtml(friendlyLabel(context.status))}</div></div>
           <div class="card"><div class="label">Milestones</div><div class="value">${milestones.length}</div></div>
+          <div class="card"><div class="label">Active risks</div><div class="value">${activeRisks.length}</div></div>
           <div class="card"><div class="label">Recent reports</div><div class="value">${recentReports.length}</div></div>
           <div class="card"><div class="label">Latest snapshot</div><div class="value">${context.latestSnapshot ? `<a href="/project-update-test/context/snapshots/${escapeHtml(context.latestSnapshot.snapshotId)}">Snapshot ${escapeHtml(context.latestSnapshot.snapshotId)}</a>` : '-'}</div></div>
         </div>
@@ -134,6 +136,12 @@ pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:#071126;
         <h2>Health history</h2>
         <div class="table-scroll"><table><thead><tr><th>Area</th><th>Status</th><th>Trend</th><th>Confidence</th><th>Report</th><th>Rationale</th></tr></thead><tbody>
           ${healthHistory.map((item) => `<tr><td>${escapeHtml(friendlyLabel(item.area))}</td><td>${escapeHtml(friendlyLabel(item.status))}</td><td class="${escapeHtml(trendClass(item.trend))}">${escapeHtml(friendlyLabel(item.trend))}</td><td>${escapeHtml(item.confidence || '-')}</td><td><a href="/project-update-test/reports/${escapeHtml(item.reportId)}">Report ${escapeHtml(item.reportId)}</a></td><td>${escapeHtml(item.rationale || '-')}</td></tr>`).join('') || '<tr><td colspan="6">No health history yet.</td></tr>'}
+        </tbody></table></div>
+      </section>
+      <section class="panel">
+        <h2>Active core risks</h2>
+        <div class="table-scroll"><table><thead><tr><th>Risk</th><th>Category</th><th>Description</th><th>Mitigation</th></tr></thead><tbody>
+          ${activeRisks.map((risk) => `<tr><td>${escapeHtml(risk.riskTitle || '-')}</td><td>${escapeHtml(risk.category || '-')}</td><td>${escapeHtml(risk.description || '-')}</td><td>${escapeHtml(risk.mitigation || '-')}</td></tr>`).join('') || '<tr><td colspan="4">No active core risks yet.</td></tr>'}
         </tbody></table></div>
       </section>
       <section class="panel">

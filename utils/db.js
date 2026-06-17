@@ -465,6 +465,7 @@ LIMIT 1;`);
       found: false,
       activeMilestones: [],
       recentReports: [],
+      activeRisks: [],
       healthHistory: [],
       milestoneHistory: [],
       riskSuggestions: [],
@@ -526,6 +527,20 @@ LEFT JOIN LATERAL (
 ) previous ON TRUE
 WHERE m.project_id = ${projectId} AND m.is_active = TRUE
 ORDER BY m.sort_order, m.id;`));
+
+  const activeRisks = parseJsonLines(await runPsql(`
+SELECT json_build_object(
+  'riskId', id,
+  'projectId', project_id,
+  'category', category,
+  'riskTitle', risk_title,
+  'description', COALESCE(description, ''),
+  'mitigation', COALESCE(mitigation, ''),
+  'createdAt', created_at
+)::text
+FROM project_core_risks
+WHERE project_id = ${projectId} AND is_active = TRUE
+ORDER BY id;`));
 
   const recentReports = parseJsonLines(await runPsql(`
 SELECT json_build_object(
@@ -634,6 +649,7 @@ LIMIT 1;`))[0] || null;
     ...project,
     found: true,
     activeMilestones,
+    activeRisks,
     recentReports,
     healthHistory,
     milestoneHistory,
@@ -696,6 +712,19 @@ RETURNING id::text;`);
       confidence: health.confidence,
       evidence: health.rationale ? [{ text: health.rationale }] : [],
       metadata: { reportVersionId: health.reportVersionId, reportId: health.reportId }
+    });
+  }
+  for (const risk of (context.activeRisks || []).slice(0, 20)) {
+    items.push({
+      itemType: 'risk',
+      itemKey: projectContextItemKey(risk.riskTitle, `core_risk_${risk.riskId}`),
+      itemLabel: risk.riskTitle,
+      status: 'active',
+      previousStatus: '',
+      trend: 'stable',
+      confidence: 1,
+      evidence: risk.description ? [{ text: risk.description }] : [],
+      metadata: { riskId: risk.riskId, category: risk.category || '', mitigation: risk.mitigation || '', source: 'core_risk' }
     });
   }
   for (const risk of (context.riskSuggestions || []).slice(0, 20)) {

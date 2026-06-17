@@ -272,6 +272,8 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertIn("listProjectReports", db)
         self.assertIn("getProjectMilestoneDetail", db)
         self.assertIn("createProjectMilestone", db)
+        self.assertIn("activeRisks", db)
+        self.assertIn("project_core_risks", db)
 
         reports_page = (REPO_DIR / "views" / "project-update-reports.html").read_text(encoding="utf-8")
         milestones_page = (REPO_DIR / "views" / "project-update-milestones.html").read_text(encoding="utf-8")
@@ -312,6 +314,9 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertIn("['ai', 'rag', 'sow', 'ei']", milestones_page)
         self.assertIn("toLocaleString('en-GB'", reports_page)
         self.assertIn("toLocaleString('en-GB'", milestones_page)
+        context_page = (REPO_DIR / "views" / "project-update-context.html").read_text(encoding="utf-8")
+        self.assertIn("Active core risks", context_page)
+        self.assertIn("activeRisks", context_page)
 
     def test_project_context_updates_health_milestone_and_risk_trends(self):
         report = {
@@ -331,6 +336,7 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
                 }
             ],
             "healthHistory": [{"area": "schedule", "status": "at_risk", "reportId": 10, "reportVersionId": 20}],
+            "activeRisks": [],
             "riskSuggestions": [],
             "latestSnapshot": {"snapshotId": 3},
         }
@@ -362,6 +368,7 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
                 }
             ],
             "healthHistory": [],
+            "activeRisks": [],
             "riskSuggestions": [],
         }
 
@@ -370,6 +377,27 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertEqual(annotated["milestones"][0]["previous_status"], "completed")
         self.assertEqual(annotated["milestones"][0]["trend"], "replanned")
         self.assertEqual(diagnostics["milestonesCompared"], 1)
+
+    def test_active_core_risk_matches_as_stable_existing_risk(self):
+        report = {
+            "healthAreas": {},
+            "milestones": [],
+            "risks": [{"riskTitle": "Delivery Capacity vs SOW Commitments Risk", "description": "Capacity pressure remains."}],
+            "comparisonSnapshot": {},
+        }
+        context = {
+            "found": True,
+            "activeMilestones": [],
+            "activeRisks": [{"riskId": 7, "riskTitle": "Delivery Capacity vs SOW Commitments Risk", "description": "Baseline risk."}],
+            "healthHistory": [],
+            "riskSuggestions": [],
+        }
+
+        annotated, diagnostics = annotate_report_with_project_context(report, context)
+
+        self.assertEqual(annotated["risks"][0]["trend"], "stable")
+        self.assertEqual(annotated["risks"][0]["core_risk_id"], 7)
+        self.assertEqual(diagnostics["riskTitlesCompared"], 1)
 
     def test_project_update_save_path_stores_milestone_deadlines_and_trends(self):
         db = (REPO_DIR / "utils" / "db.js").read_text(encoding="utf-8")
