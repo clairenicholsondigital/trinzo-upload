@@ -96,6 +96,15 @@ PROJECT_SIGNAL_PROTOTYPES = {
     ],
 }
 
+PROJECT_SIGNAL_CATEGORY_PRIORITY = {
+    "delivery_pressure": 100,
+    "capability_risk": 95,
+    "governance_risk": 90,
+    "overall_status": 80,
+    "leading_indicators": 75,
+    "milestone_progress": 65,
+}
+
 ACTION_START_VERBS = {
     "accelerate",
     "add",
@@ -255,6 +264,49 @@ def is_project_signal_candidate(value: Any) -> bool:
     if is_conversational_report_framing(text):
         return False
     return True
+
+
+def project_signal_materiality(signal: dict[str, Any]) -> float:
+    text = clean_text(signal.get("text", ""))
+    lowered = text.lower()
+    category = clean_text(signal.get("category", ""))
+    score = float(signal.get("score") or 0)
+    priority = PROJECT_SIGNAL_CATEGORY_PRIORITY.get(category, 50)
+    material_terms = [
+        "risk", "capacity", "sow", "delivery", "execution", "bandwidth", "pressure",
+        "mismatch", "single point", "skills gap", "documentation", "cross-training",
+        "governance", "owner", "framework", "decision", "amber", "red", "green status",
+        "dashboard", "leading indicator", "resource utilisation", "dependency concentration",
+    ]
+    material_boost = 12 if any(term in lowered for term in material_terms) else 0
+    weak_context_penalty = 0
+    if "pipeline" in lowered and not any(term in lowered for term in ["delivery", "execution", "capacity", "sow", "bandwidth", "mismatch"]):
+        weak_context_penalty += 45
+    if category == "milestone_progress" and not any(term in lowered for term in ["complete", "delivered", "done", "live", "in progress", "stable"]):
+        weak_context_penalty += 15
+    return priority + material_boost + score - weak_context_penalty
+
+
+def ranked_project_signals(signals: list[dict[str, Any]], limit: int = 8, per_category: int = 2) -> list[dict[str, Any]]:
+    scored = [signal for signal in signals if isinstance(signal, dict) and clean_text(signal.get("text"))]
+    scored.sort(key=project_signal_materiality, reverse=True)
+    ranked: list[dict[str, Any]] = []
+    category_counts: dict[str, int] = {}
+    seen: set[str] = set()
+    for signal in scored:
+        text = clean_text(signal.get("text"))
+        key = text.lower()
+        category = clean_text(signal.get("category", "")) or "unknown"
+        if key in seen:
+            continue
+        if category_counts.get(category, 0) >= per_category:
+            continue
+        seen.add(key)
+        category_counts[category] = category_counts.get(category, 0) + 1
+        ranked.append(signal)
+        if len(ranked) >= limit:
+            break
+    return ranked
 
 
 def split_action_candidates(value: Any) -> list[str]:
@@ -476,11 +528,13 @@ def build_minilm_first_context(transcript_text: str, backend: MiniLMBackend) -> 
     diagnostics["selectedActionWindows"] = selected_windows[:10]
     diagnostics["selectedProjectSignalCount"] = len(project_signals)
     diagnostics["selectedProjectSignalWindows"] = project_signals[:12]
+    diagnostics["rankedProjectSignalWindows"] = ranked_project_signals(project_signals, limit=12, per_category=2)
     return {
         "actions": actions,
         "actionSourceTexts": action_source_texts,
         "selectedActionWindows": selected_windows,
         "projectSignals": project_signals,
+        "rankedProjectSignals": ranked_project_signals(project_signals, limit=12, per_category=2),
         "diagnostics": diagnostics,
     }
 
@@ -874,7 +928,10 @@ def build_report_payload(
     summary = result.get("project_health_summary", {})
     overall = summary.get("overall_health", "unknown")
     minilm_first_context = minilm_first_context or {}
-    minilm_project_signals = minilm_first_context.get("projectSignals", []) if isinstance(minilm_first_context.get("projectSignals", []), list) else []
+    minilm_project_signals = minilm_first_context.get("rankedProjectSignals", []) if isinstance(minilm_first_context.get("rankedProjectSignals", []), list) else []
+    if not minilm_project_signals:
+        raw_signals = minilm_first_context.get("projectSignals", []) if isinstance(minilm_first_context.get("projectSignals", []), list) else []
+        minilm_project_signals = ranked_project_signals(raw_signals, limit=8, per_category=2)
     minilm_signal_updates = [
         signal.get("text")
         for signal in minilm_project_signals

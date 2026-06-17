@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from scripts.project_update_minilm import build_project_update_output
-from scripts.project_update_minilm import annotate_report_with_project_context, build_minilm_first_context, normalise_report_payload, rewrite_report_summary, split_action_candidates
+from scripts.project_update_minilm import annotate_report_with_project_context, build_minilm_first_context, build_report_payload, normalise_report_payload, ranked_project_signals, rewrite_report_summary, split_action_candidates
 
 
 REPO_DIR = Path(__file__).resolve().parents[1]
@@ -185,6 +185,43 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertEqual(rewritten["summary"], "Is this a rewritten question?")
         self.assertEqual(rewritten["keyUpdates"], report["keyUpdates"])
         self.assertEqual([edit["field"] for edit in diagnostics["rewriteEdits"]], ["summary"])
+
+    def test_project_signal_ranking_prioritises_material_risk_over_soft_pipeline_context(self):
+        signals = [
+            {"category": "delivery_pressure", "score": 0.49, "text": "It’s more about converting that into pipeline now."},
+            {"category": "delivery_pressure", "score": 0.40, "text": "I think the nuance is in delivery pressure though."},
+            {"category": "delivery_pressure", "score": 0.74, "text": "So we’ve got a mismatch between pipeline and execution."},
+            {"category": "capability_risk", "score": 0.77, "text": "AI delivery and technical architecture."},
+            {"category": "governance_risk", "score": 0.68, "text": "Assign clear owner for vendor governance."},
+        ]
+
+        ranked = ranked_project_signals(signals, limit=5, per_category=2)
+        ranked_texts = [item["text"] for item in ranked]
+
+        self.assertIn("So we’ve got a mismatch between pipeline and execution.", ranked_texts)
+        self.assertIn("I think the nuance is in delivery pressure though.", ranked_texts)
+        self.assertIn("AI delivery and technical architecture.", ranked_texts)
+        self.assertNotIn("It’s more about converting that into pipeline now.", ranked_texts)
+
+    def test_report_key_updates_use_ranked_minilm_project_signals(self):
+        report = build_report_payload(
+            {"project_health_summary": {"overall_health": "green", "overall_health_reason": "Green, but pressure exists."}, "actions": [], "comparison_snapshot": {}},
+            [],
+            {"healthAreaMatches": {}},
+            minilm_first_context={
+                "rankedProjectSignals": ranked_project_signals([
+                    {"category": "delivery_pressure", "score": 0.49, "text": "It’s more about converting that into pipeline now."},
+                    {"category": "delivery_pressure", "score": 0.74, "text": "So we’ve got a mismatch between pipeline and execution."},
+                    {"category": "capability_risk", "score": 0.77, "text": "AI delivery and technical architecture."},
+                ], limit=3, per_category=2),
+                "actions": [],
+            },
+        )
+
+        self.assertEqual(report["keyUpdates"][:2], [
+            "So we’ve got a mismatch between pipeline and execution.",
+            "AI delivery and technical architecture.",
+        ])
 
     def test_cli_outputs_json(self):
         completed = subprocess.run(
