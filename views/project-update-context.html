@@ -100,7 +100,9 @@ pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:#071126;
         <div class="actions">
           <label>Project name <input id="projectNameInput" type="text" value="${escapeHtml(context.projectName || 'Project update test')}" /></label>
           <button id="loadContextBtn" type="button">Load context</button>
-          <button id="createSnapshotBtn" type="button" class="primary" ${context.found ? '' : 'disabled'}>Create context snapshot</button>
+          <button id="createSnapshotBtn" type="button" ${context.found ? '' : 'disabled'}>Create context snapshot</button>
+          <button id="markOfficialBtn" type="button" class="primary" ${context.found ? '' : 'disabled'}>Mark active context official</button>
+          <button id="cleanupTestsBtn" type="button" ${context.found ? '' : 'disabled'}>Clear test clutter</button>
         </div>
         <p id="contextStatus" class="status"></p>
         ${context.found ? '' : '<p class="status error">No saved project exists yet for this name. Create/save a project update report first.</p>'}
@@ -118,12 +120,12 @@ pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:#071126;
       </section>
       <section class="panel">
         <h2>Active milestones and latest assessment</h2>
-        <div class="table-scroll"><table><thead><tr><th>Milestone</th><th>Latest status</th><th>Previous status</th><th>Trend</th><th>Forecast</th><th>Summary</th></tr></thead><tbody>
+        <div class="table-scroll"><table><thead><tr><th>Milestone</th><th>Official</th><th>Latest status</th><th>Previous status</th><th>Trend</th><th>Forecast</th><th>Summary</th></tr></thead><tbody>
           ${milestones.map((milestone) => {
             const latest = milestone.latestAssessment || {};
             const previous = milestone.previousAssessment || {};
-            return `<tr><td>${escapeHtml(friendlyLabel(milestone.milestoneName))}</td><td>${escapeHtml(friendlyLabel(latest.status))}</td><td>${escapeHtml(friendlyLabel(previous.status))}</td><td class="${escapeHtml(trendClass(latest.trend))}">${escapeHtml(friendlyLabel(latest.trend))}</td><td>${escapeHtml(String(latest.forecastFinishDate || milestone.forecastFinishDate || '-').slice(0, 10))}</td><td>${escapeHtml(latest.summary || '-')}</td></tr>`;
-          }).join('') || '<tr><td colspan="6">No active milestones yet.</td></tr>'}
+            return `<tr><td>${escapeHtml(friendlyLabel(milestone.milestoneName))}</td><td>${milestone.isOfficial ? `✅ ${escapeHtml(milestone.officialLabel || 'Official')}` : '—'}</td><td>${escapeHtml(friendlyLabel(latest.status))}</td><td>${escapeHtml(friendlyLabel(previous.status))}</td><td class="${escapeHtml(trendClass(latest.trend))}">${escapeHtml(friendlyLabel(latest.trend))}</td><td>${escapeHtml(String(latest.forecastFinishDate || milestone.forecastFinishDate || '-').slice(0, 10))}</td><td>${escapeHtml(latest.summary || '-')}</td></tr>`;
+          }).join('') || '<tr><td colspan="7">No active milestones yet.</td></tr>'}
         </tbody></table></div>
       </section>
       <section class="panel">
@@ -140,8 +142,8 @@ pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:#071126;
       </section>
       <section class="panel">
         <h2>Active core risks</h2>
-        <div class="table-scroll"><table><thead><tr><th>Risk</th><th>Category</th><th>Description</th><th>Mitigation</th></tr></thead><tbody>
-          ${activeRisks.map((risk) => `<tr><td>${escapeHtml(risk.riskTitle || '-')}</td><td>${escapeHtml(risk.category || '-')}</td><td>${escapeHtml(risk.description || '-')}</td><td>${escapeHtml(risk.mitigation || '-')}</td></tr>`).join('') || '<tr><td colspan="4">No active core risks yet.</td></tr>'}
+        <div class="table-scroll"><table><thead><tr><th>Risk</th><th>Official</th><th>Category</th><th>Description</th><th>Mitigation</th></tr></thead><tbody>
+          ${activeRisks.map((risk) => `<tr><td>${escapeHtml(risk.riskTitle || '-')}</td><td>${risk.isOfficial ? `✅ ${escapeHtml(risk.officialLabel || 'Official')}` : '—'}</td><td>${escapeHtml(risk.category || '-')}</td><td>${escapeHtml(risk.description || '-')}</td><td>${escapeHtml(risk.mitigation || '-')}</td></tr>`).join('') || '<tr><td colspan="5">No active core risks yet.</td></tr>'}
         </tbody></table></div>
       </section>
       <section class="panel">
@@ -178,6 +180,57 @@ pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:#071126;
       } catch (error) {
         status.className = 'status error';
         status.textContent = error.message || 'Could not create snapshot.';
+      } finally {
+        button.disabled = false;
+      }
+    });
+    document.getElementById('markOfficialBtn').addEventListener('click', async () => {
+      const button = document.getElementById('markOfficialBtn');
+      const status = document.getElementById('contextStatus');
+      const officialLabel = window.prompt('Official label for this baseline?', 'AI Program Q2 official baseline');
+      if (!officialLabel) return;
+      button.disabled = true;
+      status.className = 'status';
+      status.textContent = 'Marking active milestones and risks as official...';
+      try {
+        const response = await fetch('/api/project-update-test/context/mark-official', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectName: document.getElementById('projectNameInput').value || context.projectName, officialLabel })
+        });
+        const result = await response.json().catch(() => null);
+        if (!response.ok || !result || result.ok === false) throw new Error(result && result.error ? result.error : `Request failed with status ${response.status}.`);
+        status.className = 'status success';
+        status.textContent = `Marked official: ${result.result.officialMilestones} milestones, ${result.result.officialRisks} risks. Reloading...`;
+        window.setTimeout(() => window.location.reload(), 700);
+      } catch (error) {
+        status.className = 'status error';
+        status.textContent = error.message || 'Could not mark context official.';
+      } finally {
+        button.disabled = false;
+      }
+    });
+    document.getElementById('cleanupTestsBtn').addEventListener('click', async () => {
+      const button = document.getElementById('cleanupTestsBtn');
+      const status = document.getElementById('contextStatus');
+      if (!window.confirm('Clear test clutter for this project? This archives draft reports, deactivates non-official milestones/risks, and removes non-official context snapshots. Official items stay active.')) return;
+      button.disabled = true;
+      status.className = 'status';
+      status.textContent = 'Clearing test clutter...';
+      try {
+        const response = await fetch('/api/project-update-test/context/cleanup-tests', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectName: document.getElementById('projectNameInput').value || context.projectName })
+        });
+        const result = await response.json().catch(() => null);
+        if (!response.ok || !result || result.ok === false) throw new Error(result && result.error ? result.error : `Request failed with status ${response.status}.`);
+        status.className = 'status success';
+        status.textContent = `Cleanup complete: archived ${result.result.archivedReports} reports, deactivated ${result.result.deactivatedMilestones} milestones and ${result.result.deactivatedRisks} risks, removed ${result.result.deletedSnapshots} snapshots. Reloading...`;
+        window.setTimeout(() => window.location.reload(), 900);
+      } catch (error) {
+        status.className = 'status error';
+        status.textContent = error.message || 'Could not clear test clutter.';
       } finally {
         button.disabled = false;
       }

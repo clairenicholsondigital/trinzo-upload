@@ -223,6 +223,9 @@ SELECT json_build_object(
   'description', COALESCE(m.description, ''),
   'baselineFinishDate', m.baseline_finish_date,
   'forecastFinishDate', m.forecast_finish_date,
+  'isOfficial', m.is_official,
+  'officialLabel', COALESCE(m.official_label, ''),
+  'officialAt', m.official_at,
   'sortOrder', m.sort_order,
   'latestAssessment', latest.assessment
 )::text
@@ -263,6 +266,9 @@ SELECT json_build_object(
   'description', COALESCE(m.description, ''),
   'baselineFinishDate', m.baseline_finish_date,
   'forecastFinishDate', m.forecast_finish_date,
+  'isOfficial', m.is_official,
+  'officialLabel', COALESCE(m.official_label, ''),
+  'officialAt', m.official_at,
   'sortOrder', m.sort_order,
   'assessments', COALESCE((
     SELECT json_agg(json_build_object(
@@ -441,6 +447,12 @@ function projectContextItemKey(value, fallback = 'item') {
   return key || fallback;
 }
 
+function truthy(value) {
+  if (Array.isArray(value)) return value.some((item) => truthy(item));
+  if (value == null) return false;
+  return ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase());
+}
+
 async function getProjectContext(projectName = '', limit = 5) {
   const safeLimit = Math.min(Math.max(Number(limit) || 5, 1), 20);
   const name = String(projectName || process.env.PROJECT_UPDATE_DEFAULT_PROJECT || 'Project update test').trim() || 'Project update test';
@@ -484,6 +496,9 @@ SELECT json_build_object(
   'description', COALESCE(m.description, ''),
   'baselineFinishDate', m.baseline_finish_date,
   'forecastFinishDate', m.forecast_finish_date,
+  'isOfficial', m.is_official,
+  'officialLabel', COALESCE(m.official_label, ''),
+  'officialAt', m.official_at,
   'latestAssessment', latest.assessment,
   'previousAssessment', previous.assessment
 )::text
@@ -536,6 +551,9 @@ SELECT json_build_object(
   'riskTitle', risk_title,
   'description', COALESCE(description, ''),
   'mitigation', COALESCE(mitigation, ''),
+  'isOfficial', is_official,
+  'officialLabel', COALESCE(official_label, ''),
+  'officialAt', official_at,
   'createdAt', created_at
 )::text
 FROM project_core_risks
@@ -635,6 +653,9 @@ SELECT json_build_object(
   'snapshotId', id,
   'sourceReportVersionId', source_report_version_id,
   'snapshotType', snapshot_type,
+  'isOfficial', is_official,
+  'officialLabel', COALESCE(official_label, ''),
+  'officialAt', official_at,
   'summary', COALESCE(summary, ''),
   'createdBy', COALESCE(created_by, ''),
   'createdAt', created_at,
@@ -675,8 +696,8 @@ async function createProjectContextSnapshot(projectName = '', payload = {}) {
     : context;
 
   const out = await runPsql(`
-INSERT INTO project_context_snapshots (project_id, source_report_version_id, snapshot_type, context_payload, summary, created_by)
-VALUES (${Number(context.projectId)}, ${sourceReportVersionId > 0 ? sourceReportVersionId : 'NULL'}, ${q(snapshotType)}, ${qJson(contextPayload)}, ${q(summary)}, ${q(createdBy)})
+INSERT INTO project_context_snapshots (project_id, source_report_version_id, snapshot_type, context_payload, summary, created_by, is_official, official_label, official_at)
+VALUES (${Number(context.projectId)}, ${sourceReportVersionId > 0 ? sourceReportVersionId : 'NULL'}, ${q(snapshotType)}, ${qJson(contextPayload)}, ${q(summary)}, ${q(createdBy)}, ${truthy(payload.isOfficial) ? 'TRUE' : 'FALSE'}, ${q(payload.officialLabel || '')}, ${truthy(payload.isOfficial) ? 'NOW()' : 'NULL'})
 RETURNING id::text;`);
   const snapshotId = parseOptionalId(out);
   if (!snapshotId) throw new Error('Could not create project context snapshot.');
@@ -1322,6 +1343,109 @@ LIMIT 1;`);
 
 
 
+async function markProjectContextOfficial(projectName = '', label = '') {
+  const name = String(projectName || process.env.PROJECT_UPDATE_DEFAULT_PROJECT || 'Project update test').trim() || 'Project update test';
+  const officialLabel = String(label || 'Official baseline').trim() || 'Official baseline';
+  const projectId = parseOptionalId(await runPsql(`SELECT id::text FROM projects WHERE project_name = ${q(name)} ORDER BY id LIMIT 1;`));
+  if (!projectId) {
+    const error = new Error('Project not found.');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const milestoneOut = await runPsql(`
+UPDATE project_core_milestones
+SET is_official = TRUE,
+    official_label = ${q(officialLabel)},
+    official_at = COALESCE(official_at, NOW()),
+    is_active = TRUE
+WHERE project_id = ${projectId} AND is_active = TRUE
+RETURNING id::text;`);
+  const riskOut = await runPsql(`
+UPDATE project_core_risks
+SET is_official = TRUE,
+    official_label = ${q(officialLabel)},
+    official_at = COALESCE(official_at, NOW()),
+    is_active = TRUE
+WHERE project_id = ${projectId} AND is_active = TRUE
+RETURNING id::text;`);
+
+  const snapshot = await createProjectContextSnapshot(name, {
+    snapshotType: 'manual',
+    summary: `${officialLabel} official context snapshot`,
+    createdBy: 'OpenClaw',
+    isOfficial: true,
+    officialLabel
+  });
+
+  return {
+    projectId,
+    projectName: name,
+    officialLabel,
+    officialMilestones: milestoneOut.split('\n').filter((line) => /^\d+$/.test(line)).length,
+    officialRisks: riskOut.split('\n').filter((line) => /^\d+$/.test(line)).length,
+    officialSnapshotId: snapshot?.snapshotId || null,
+    context: await getProjectContext(name, 5)
+  };
+}
+
+async function cleanupProjectUpdateTestContext(projectName = '', options = {}) {
+  const name = String(projectName || process.env.PROJECT_UPDATE_DEFAULT_PROJECT || 'Project update test').trim() || 'Project update test';
+  const deleteNonOfficialSnapshots = options.deleteNonOfficialSnapshots !== false;
+  const archiveReports = options.archiveReports !== false;
+  const projectId = parseOptionalId(await runPsql(`SELECT id::text FROM projects WHERE project_name = ${q(name)} ORDER BY id LIMIT 1;`));
+  if (!projectId) {
+    const error = new Error('Project not found.');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const milestoneOut = await runPsql(`
+UPDATE project_core_milestones
+SET is_active = FALSE
+WHERE project_id = ${projectId}
+  AND is_active = TRUE
+  AND COALESCE(is_official, FALSE) = FALSE
+RETURNING id::text;`);
+  const riskOut = await runPsql(`
+UPDATE project_core_risks
+SET is_active = FALSE
+WHERE project_id = ${projectId}
+  AND is_active = TRUE
+  AND COALESCE(is_official, FALSE) = FALSE
+RETURNING id::text;`);
+
+  let reportOut = '';
+  if (archiveReports) {
+    reportOut = await runPsql(`
+UPDATE project_reports
+SET report_status = 'archived', updated_at = NOW()
+WHERE project_id = ${projectId}
+  AND report_status <> 'archived'
+RETURNING id::text;`);
+  }
+
+  let snapshotOut = '';
+  if (deleteNonOfficialSnapshots) {
+    snapshotOut = await runPsql(`
+DELETE FROM project_context_snapshots
+WHERE project_id = ${projectId}
+  AND COALESCE(is_official, FALSE) = FALSE
+RETURNING id::text;`);
+  }
+
+  return {
+    projectId,
+    projectName: name,
+    deactivatedMilestones: milestoneOut.split('\n').filter((line) => /^\d+$/.test(line)).length,
+    deactivatedRisks: riskOut.split('\n').filter((line) => /^\d+$/.test(line)).length,
+    archivedReports: reportOut.split('\n').filter((line) => /^\d+$/.test(line)).length,
+    deletedSnapshots: snapshotOut.split('\n').filter((line) => /^\d+$/.test(line)).length,
+    context: await getProjectContext(name, 5)
+  };
+}
+
+
 async function markWebhookSuccess(jobId, meetingId, webhookResponse) {
   const sql = `BEGIN;
 UPDATE meeting_jobs SET status='completed', result_payload=${qJson(webhookResponse)}, error_message=NULL, locked_at=NULL, locked_by=NULL, updated_at=NOW() WHERE id=${Number(jobId)};
@@ -1403,6 +1527,8 @@ module.exports = {
   getProjectContextSnapshot,
   createProjectContextSnapshot,
   getProjectContext,
+  cleanupProjectUpdateTestContext,
+  markProjectContextOfficial,
   getMeetingStatus,
   claimNextJob,
   markJobCompleted,

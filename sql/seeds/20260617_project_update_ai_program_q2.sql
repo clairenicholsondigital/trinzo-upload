@@ -76,7 +76,10 @@ WITH project_upsert AS (
     baseline_finish_date,
     forecast_finish_date,
     sort_order,
-    is_active
+    is_active,
+    is_official,
+    official_label,
+    official_at
   )
   SELECT
     p.id,
@@ -86,7 +89,10 @@ WITH project_upsert AS (
     md.baseline_finish_date,
     md.forecast_finish_date,
     md.sort_order,
-    TRUE
+    TRUE,
+    TRUE,
+    'AI Program Q2 official baseline',
+    NOW()
   FROM milestone_data md
   CROSS JOIN project_row p
   CROSS JOIN period_row pr
@@ -112,8 +118,8 @@ WITH project_upsert AS (
       'Continue AI literacy training; leverage SMEs and contractors; partner with Insight Centre for specialist input.'
     )
 ), inserted_risks AS (
-  INSERT INTO project_core_risks (project_id, category, risk_title, description, mitigation, is_active)
-  SELECT p.id, rd.category, rd.risk_title, rd.description, rd.mitigation, TRUE
+  INSERT INTO project_core_risks (project_id, category, risk_title, description, mitigation, is_active, is_official, official_label, official_at)
+  SELECT p.id, rd.category, rd.risk_title, rd.description, rd.mitigation, TRUE, TRUE, 'AI Program Q2 official baseline', NOW()
   FROM risk_data rd
   CROSS JOIN project_row p
   RETURNING id

@@ -264,6 +264,8 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertIn("router.get('/project-update-test/milestones'", api)
         self.assertIn("router.post('/project-update-test/milestones'", api)
         self.assertIn("router.patch('/project-update-test/milestones/:milestoneId'", api)
+        self.assertIn("router.post('/project-update-test/context/mark-official'", api)
+        self.assertIn("router.post('/project-update-test/context/cleanup-tests'", api)
         self.assertIn("router.delete('/project-update-test/milestones/:milestoneId'", api)
         self.assertIn("saveProjectReportDetail", db)
         self.assertIn("deleteProjectReport", db)
@@ -274,6 +276,9 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertIn("createProjectMilestone", db)
         self.assertIn("activeRisks", db)
         self.assertIn("project_core_risks", db)
+        self.assertIn("markProjectContextOfficial", db)
+        self.assertIn("cleanupProjectUpdateTestContext", db)
+        self.assertIn("isOfficial", db)
 
         reports_page = (REPO_DIR / "views" / "project-update-reports.html").read_text(encoding="utf-8")
         milestones_page = (REPO_DIR / "views" / "project-update-milestones.html").read_text(encoding="utf-8")
@@ -317,6 +322,10 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         context_page = (REPO_DIR / "views" / "project-update-context.html").read_text(encoding="utf-8")
         self.assertIn("Active core risks", context_page)
         self.assertIn("activeRisks", context_page)
+        self.assertIn("Mark active context official", context_page)
+        self.assertIn("Clear test clutter", context_page)
+        self.assertIn("/api/project-update-test/context/mark-official", context_page)
+        self.assertIn("/api/project-update-test/context/cleanup-tests", context_page)
 
     def test_project_context_updates_health_milestone_and_risk_trends(self):
         report = {

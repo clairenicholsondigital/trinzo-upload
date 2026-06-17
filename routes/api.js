@@ -32,6 +32,8 @@ const {
   getProjectContext,
   createProjectContextSnapshot,
   getProjectContextSnapshot,
+  markProjectContextOfficial,
+  cleanupProjectUpdateTestContext,
   listMeetings,
   getMeetingById,
   deleteMeetingById,
@@ -1010,6 +1012,30 @@ router.get('/project-update-test/context/snapshots/:snapshotId', async (req, res
     const snapshot = await getProjectContextSnapshot(req.params.snapshotId);
     if (!snapshot) return res.status(404).json({ ok: false, error: 'Project context snapshot not found.' });
     return res.json({ ok: true, snapshot });
+  } catch (error) {
+    return sendTestError(res, error);
+  }
+});
+
+router.post('/project-update-test/context/mark-official', async (req, res) => {
+  try {
+    const result = await markProjectContextOfficial(
+      req.body?.projectName || req.query?.projectName,
+      req.body?.officialLabel || req.query?.officialLabel || 'Official baseline'
+    );
+    return res.json({ ok: true, result });
+  } catch (error) {
+    return sendTestError(res, error);
+  }
+});
+
+router.post('/project-update-test/context/cleanup-tests', async (req, res) => {
+  try {
+    const result = await cleanupProjectUpdateTestContext(req.body?.projectName || req.query?.projectName, {
+      archiveReports: !truthyFlag(req.body?.keepReports) && !truthyFlag(req.query?.keepReports),
+      deleteNonOfficialSnapshots: !truthyFlag(req.body?.keepSnapshots) && !truthyFlag(req.query?.keepSnapshots)
+    });
+    return res.json({ ok: true, result });
   } catch (error) {
     return sendTestError(res, error);
   }
