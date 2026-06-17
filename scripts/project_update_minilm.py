@@ -964,11 +964,9 @@ def rewrite_report_summary(report: dict[str, Any], rewriter: LocalMinutesRewrite
     if not rewriter.available:
         return report, diagnostics
 
+    # Keep key updates as extracted evidence bullets. Rewriting them can alter meaning
+    # or turn factual project signals into questions, which weakens the MiniLM-first layer.
     rewrite_plan = [{"field": "summary", "category": "discussion", "text": report.get("summary", "")}]
-    rewrite_plan.extend(
-        {"field": "keyUpdates", "index": index, "category": "discussion", "text": text}
-        for index, text in enumerate(report.get("keyUpdates", [])[:5])
-    )
     started = time.perf_counter()
     results = rewriter.rewrite_items([{"category": item["category"], "text": item["text"]} for item in rewrite_plan])
     diagnostics["rewriteRuntimeMs"] = round((time.perf_counter() - started) * 1000, 2)

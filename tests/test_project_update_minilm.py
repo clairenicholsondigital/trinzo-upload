@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from scripts.project_update_minilm import build_project_update_output
-from scripts.project_update_minilm import annotate_report_with_project_context, build_minilm_first_context, normalise_report_payload, split_action_candidates
+from scripts.project_update_minilm import annotate_report_with_project_context, build_minilm_first_context, normalise_report_payload, rewrite_report_summary, split_action_candidates
 
 
 REPO_DIR = Path(__file__).resolve().parents[1]
@@ -158,6 +158,33 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertTrue(any("delivery pressure" in text.lower() or "capacity" in text.lower() for text in signal_texts))
         self.assertFalse(any("hear me" in text.lower() or "loud and clear" in text.lower() for text in signal_texts))
         self.assertIn("selectedProjectSignalWindows", context["diagnostics"])
+
+    def test_rewrite_keeps_minilm_key_update_evidence_unchanged(self):
+        class FakeRewriter:
+            available = True
+            model_name = "fake-qwen"
+            model_path = "fake"
+            reason = ""
+
+            def rewrite_items(self, items):
+                return [{"rewritten": "Is this a rewritten question?", "meta": {}} for _ in items]
+
+        report = {
+            "summary": "No blocked workstreams were detected.",
+            "keyUpdates": [
+                "Yeah, it’s one of those where the dashboard looks calm, but the system underneath is working hard.",
+                "So overall status is still green across scope, schedule, financials, resources.",
+            ],
+            "healthAreas": {},
+            "milestones": [],
+            "risks": [],
+            "actions": [],
+        }
+        rewritten, diagnostics = rewrite_report_summary(report, FakeRewriter())
+
+        self.assertEqual(rewritten["summary"], "Is this a rewritten question?")
+        self.assertEqual(rewritten["keyUpdates"], report["keyUpdates"])
+        self.assertEqual([edit["field"] for edit in diagnostics["rewriteEdits"]], ["summary"])
 
     def test_cli_outputs_json(self):
         completed = subprocess.run(
