@@ -819,6 +819,24 @@ router.post('/project-update-test', withTestUpload(async (req, res) => {
       scriptArgs.push('--skip-rewrite');
     }
 
+    let contextTempDir = null;
+    const projectName = req.body?.projectName || req.query?.projectName || process.env.PROJECT_UPDATE_DEFAULT_PROJECT || 'Project update test';
+    if (hasDatabaseConfig() && !truthyFlag(req.query?.skipContext) && !truthyFlag(req.body?.skipContext)) {
+      try {
+        const projectContext = await getProjectContext(projectName, req.query?.contextLimit || req.body?.contextLimit || 8);
+        contextTempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'trinzo-project-context-'));
+        const contextPath = path.join(contextTempDir, 'context.json');
+        await fs.writeFile(contextPath, JSON.stringify({ context: projectContext }), 'utf8');
+        scriptArgs.push('--context-file', contextPath);
+      } catch (contextError) {
+        scriptArgs.push('--context-file');
+        contextTempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'trinzo-project-context-'));
+        const contextPath = path.join(contextTempDir, 'context-error.json');
+        await fs.writeFile(contextPath, JSON.stringify({ _contextLoadError: contextError.message }), 'utf8');
+        scriptArgs.push(contextPath);
+      }
+    }
+
     const projectTimeoutMs = Number(process.env.PROJECT_UPDATE_TIMEOUT_MS || 180000);
     let result;
     try {
@@ -834,12 +852,17 @@ router.post('/project-update-test', withTestUpload(async (req, res) => {
           details: primaryError.details || null
         }
       };
+    } finally {
+      if (contextTempDir) {
+        await fs.rm(contextTempDir, { recursive: true, force: true });
+        contextTempDir = null;
+      }
     }
 
     if (hasDatabaseConfig() && !truthyFlag(req.query?.skipSave) && !truthyFlag(req.body?.skipSave)) {
       try {
         result.projectReportPersistence = await saveProjectUpdateDraft({
-          projectName: req.body?.projectName || req.query?.projectName || process.env.PROJECT_UPDATE_DEFAULT_PROJECT || 'Project update test',
+          projectName,
           periodLabel: req.body?.periodLabel || req.query?.periodLabel || '',
           fileName: transcript.fileName || null,
           sourceType: transcript.source === 'file' ? 'txt' : 'text',

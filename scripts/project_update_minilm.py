@@ -552,6 +552,213 @@ def blank_unknown_status(value: Any) -> Any:
     return "" if str(value or "").strip().lower() == "unknown" else value
 
 
+def load_project_context(path: str | None) -> dict[str, Any]:
+    if not path:
+        return {}
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"_contextLoadError": f"Could not load project context from {path}."}
+    if isinstance(data, dict) and isinstance(data.get("context"), dict):
+        return data["context"]
+    return data if isinstance(data, dict) else {}
+
+
+def normalise_key(value: Any) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", str(value or "").strip().lower()).strip("_")
+
+
+def normalise_trend(value: Any) -> str:
+    trend = str(value or "").strip().lower()
+    return trend if trend in {"improving", "stable", "deteriorating", "new_update", "new_risk", "resolved", "unknown"} else "unknown"
+
+
+def assessment_status(value: Any) -> str:
+    status = str(value or "").strip().lower()
+    mapping = {
+        "complete": "completed",
+        "completed": "completed",
+        "green": "on_track",
+        "blue": "completed",
+        "amber": "at_risk",
+        "red": "off_track",
+        "in_progress": "on_track",
+        "scheduled": "on_track",
+        "in_review": "on_track",
+        "awaiting_input": "at_risk",
+        "delayed": "delayed",
+        "blocked": "blocked",
+        "not_started": "not_started",
+        "on_track": "on_track",
+        "at_risk": "at_risk",
+        "off_track": "off_track",
+    }
+    return mapping.get(status, "unknown")
+
+
+def status_severity(value: Any) -> int:
+    status = assessment_status(value)
+    return {
+        "completed": 0,
+        "on_track": 1,
+        "not_started": 2,
+        "at_risk": 3,
+        "delayed": 4,
+        "blocked": 5,
+        "off_track": 5,
+        "unknown": 2,
+    }.get(status, 2)
+
+
+def infer_trend(previous_status: Any, current_status: Any, *, existing: Any = None) -> str:
+    current = assessment_status(current_status)
+    previous = assessment_status(previous_status)
+    if current == "unknown":
+        return normalise_trend(existing) if normalise_trend(existing) != "unknown" else "unknown"
+    if previous == "unknown":
+        return "new_update"
+    if current in {"completed", "on_track"} and previous in {"blocked", "delayed", "off_track", "at_risk"}:
+        return "resolved" if current == "completed" else "improving"
+    previous_score = status_severity(previous)
+    current_score = status_severity(current)
+    if current_score > previous_score:
+        return "deteriorating"
+    if current_score < previous_score:
+        return "improving"
+    return "stable"
+
+
+def latest_by_key(items: list[Any], key_candidates: list[str]) -> dict[str, Any]:
+    output: dict[str, Any] = {}
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        for candidate in key_candidates:
+            key = normalise_key(item.get(candidate))
+            if key and key not in output:
+                output[key] = item
+    return output
+
+
+def annotate_report_with_project_context(report: dict[str, Any], project_context: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    diagnostics = {
+        "contextProvided": bool(project_context),
+        "contextFound": bool(project_context.get("found")),
+        "milestonesCompared": 0,
+        "healthAreasCompared": 0,
+        "riskTitlesCompared": 0,
+        "contextLoadError": project_context.get("_contextLoadError", ""),
+    }
+    if not project_context or project_context.get("_contextLoadError"):
+        return report, diagnostics
+
+    annotated = {**report}
+    milestones = [dict(item) for item in report.get("milestones", []) if isinstance(item, dict)]
+    health_areas = dict(report.get("healthAreas", {}) if isinstance(report.get("healthAreas"), dict) else {})
+    risks = [dict(item) for item in report.get("risks", []) if isinstance(item, dict)]
+
+    previous_milestones: dict[str, dict[str, Any]] = {}
+    for milestone in project_context.get("activeMilestones", []):
+        if not isinstance(milestone, dict):
+            continue
+        latest = milestone.get("latestAssessment") if isinstance(milestone.get("latestAssessment"), dict) else {}
+        previous = {
+            **milestone,
+            "status": latest.get("status") or milestone.get("status"),
+            "trend": latest.get("trend") or milestone.get("trend"),
+            "summary": latest.get("summary") or milestone.get("description"),
+            "createdAt": latest.get("createdAt"),
+        }
+        for key in {normalise_key(milestone.get("comparisonKey")), normalise_key(milestone.get("milestoneName"))}:
+            if key and key not in previous_milestones:
+                previous_milestones[key] = previous
+    for item in project_context.get("milestoneHistory", []):
+        if isinstance(item, dict):
+            for key in {normalise_key(item.get("comparisonKey")), normalise_key(item.get("milestoneName"))}:
+                if key and key not in previous_milestones:
+                    previous_milestones[key] = item
+
+    milestone_snapshot: dict[str, Any] = {}
+    for milestone in milestones:
+        key = normalise_key(milestone.get("comparison_key") or milestone.get("milestone"))
+        previous = previous_milestones.get(key, {})
+        current_status = assessment_status(milestone.get("delivery_status") or milestone.get("status"))
+        previous_status = assessment_status(previous.get("status"))
+        trend = infer_trend(previous_status, current_status, existing=milestone.get("trend") or previous.get("trend"))
+        milestone["previous_status"] = "" if previous_status == "unknown" else previous_status
+        milestone["trend"] = trend
+        if previous:
+            diagnostics["milestonesCompared"] += 1
+            milestone["previous_summary"] = clean_text(previous.get("summary", ""))
+            milestone["previous_report_id"] = previous.get("reportId")
+            milestone["previous_report_version_id"] = previous.get("reportVersionId")
+        milestone_snapshot[key or normalise_key(milestone.get("milestone"))] = {
+            "label": milestone.get("milestone", ""),
+            "previousStatus": "" if previous_status == "unknown" else previous_status,
+            "currentStatus": "" if current_status == "unknown" else current_status,
+            "trend": trend,
+            "previousReportId": previous.get("reportId"),
+            "previousReportVersionId": previous.get("reportVersionId"),
+        }
+
+    previous_health = latest_by_key(project_context.get("healthHistory", []), ["area"])
+    health_snapshot: dict[str, Any] = {}
+    for area, detail in health_areas.items():
+        if not isinstance(detail, dict):
+            continue
+        previous = previous_health.get(normalise_key(area), {})
+        current_status = assessment_status(detail.get("status"))
+        previous_status = assessment_status(previous.get("status"))
+        trend = infer_trend(previous_status, current_status, existing=detail.get("trend") or previous.get("trend"))
+        next_detail = {**detail, "trend": trend, "previousStatus": "" if previous_status == "unknown" else previous_status}
+        if previous:
+            diagnostics["healthAreasCompared"] += 1
+            next_detail["previousReportId"] = previous.get("reportId")
+            next_detail["previousReportVersionId"] = previous.get("reportVersionId")
+        health_areas[area] = next_detail
+        health_snapshot[area] = {
+            "previousStatus": "" if previous_status == "unknown" else previous_status,
+            "currentStatus": "" if current_status == "unknown" else current_status,
+            "trend": trend,
+            "previousReportId": previous.get("reportId"),
+            "previousReportVersionId": previous.get("reportVersionId"),
+        }
+
+    previous_risks = latest_by_key(project_context.get("riskSuggestions", []), ["riskTitle"])
+    risk_snapshot: dict[str, Any] = {}
+    for risk in risks:
+        key = normalise_key(risk.get("riskTitle"))
+        previous = previous_risks.get(key, {})
+        if previous:
+            diagnostics["riskTitlesCompared"] += 1
+            trend = "stable" if str(previous.get("reviewStatus", "")).lower() in {"pending", "accepted", "reviewed"} else "new_risk"
+            risk["previous_review_status"] = previous.get("reviewStatus", "")
+            risk["previous_report_id"] = previous.get("reportId")
+        else:
+            trend = "new_risk"
+        risk["trend"] = trend
+        risk_snapshot[key or normalise_key(risk.get("description"))] = {
+            "label": risk.get("riskTitle", ""),
+            "trend": trend,
+            "previousReviewStatus": previous.get("reviewStatus", ""),
+            "previousReportId": previous.get("reportId"),
+        }
+
+    existing_snapshot = report.get("comparisonSnapshot", {}) if isinstance(report.get("comparisonSnapshot"), dict) else {}
+    annotated["milestones"] = milestones
+    annotated["healthAreas"] = health_areas
+    annotated["risks"] = risks
+    annotated["comparisonSnapshot"] = {
+        **existing_snapshot,
+        "contextGeneratedAt": project_context.get("generatedAt", ""),
+        "latestContextSnapshotId": (project_context.get("latestSnapshot") or {}).get("snapshotId") if isinstance(project_context.get("latestSnapshot"), dict) else None,
+        "milestones": milestone_snapshot,
+        "healthAreas": health_snapshot,
+        "risks": risk_snapshot,
+    }
+    return annotated, diagnostics
+
+
 def combine_blockers_and_next_steps(segment: dict[str, Any]) -> list[str]:
     combined: list[str] = []
     for field in ("blocking_factors", "next_steps"):
@@ -572,6 +779,7 @@ def build_report_payload(
     enriched_segments: list[dict[str, Any]],
     diagnostics: dict[str, Any],
     minilm_first_context: dict[str, Any] | None = None,
+    project_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     summary = result.get("project_health_summary", {})
     overall = summary.get("overall_health", "unknown")
@@ -606,7 +814,7 @@ def build_report_payload(
     minilm_actions = minilm_first_context.get("actions", []) if isinstance(minilm_first_context.get("actions", []), list) else []
     minilm_action_sources = minilm_first_context.get("actionSourceTexts", []) if isinstance(minilm_first_context.get("actionSourceTexts", []), list) else []
 
-    return normalise_report_payload({
+    report = normalise_report_payload({
         "reportStatus": "draft",
         "overallHealth": health_to_report_status(overall),
         "overallHealthRag": overall,
@@ -626,6 +834,9 @@ def build_report_payload(
         "_actionSourceTexts": [*minilm_action_sources, *collect_action_source_texts(result, enriched_segments)],
         "comparisonSnapshot": result.get("comparison_snapshot", {}),
     })
+    report, context_diagnostics = annotate_report_with_project_context(report, project_context or {})
+    diagnostics["projectContext"] = context_diagnostics
+    return normalise_report_payload(report)
 
 
 def rewrite_report_summary(report: dict[str, Any], rewriter: LocalMinutesRewriter) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -661,13 +872,24 @@ def rewrite_report_summary(report: dict[str, Any], rewriter: LocalMinutesRewrite
     return normalise_report_payload(rewritten), diagnostics
 
 
-def build_project_update_output(transcript_text: str, use_minilm: bool = True, use_rewrite: bool = True) -> dict[str, Any]:
+def build_project_update_output(
+    transcript_text: str,
+    use_minilm: bool = True,
+    use_rewrite: bool = True,
+    project_context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     started = time.perf_counter()
     backend = MiniLMBackend.load(enabled=use_minilm)
     minilm_first_context = build_minilm_first_context(transcript_text, backend)
     baseline = analyse_project_update(transcript_text)
     enriched_segments, semantic_diagnostics = enrich_segments(baseline, backend)
-    report = build_report_payload(baseline, enriched_segments, semantic_diagnostics, minilm_first_context=minilm_first_context)
+    report = build_report_payload(
+        baseline,
+        enriched_segments,
+        semantic_diagnostics,
+        minilm_first_context=minilm_first_context,
+        project_context=project_context or {},
+    )
 
     rewriter = LocalMinutesRewriter.load(enabled=use_rewrite)
     report, rewrite_diagnostics = rewrite_report_summary(report, rewriter)
@@ -693,6 +915,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("path", nargs="?", help="Optional path to UTF-8 transcript text.")
     parser.add_argument("--skip-minilm", action="store_true", help="Run the project workflow without MiniLM enrichment.")
     parser.add_argument("--skip-rewrite", action="store_true", help="Skip the Qwen cleanup pass.")
+    parser.add_argument("--context-file", help="Optional JSON file containing saved project context/history for trend comparison.")
     parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
     return parser.parse_args(argv)
 
@@ -703,7 +926,8 @@ def main() -> int:
     if not text:
         print("No input text provided.", file=sys.stderr)
         return 1
-    output = build_project_update_output(text, use_minilm=not args.skip_minilm, use_rewrite=not args.skip_rewrite)
+    project_context = load_project_context(args.context_file)
+    output = build_project_update_output(text, use_minilm=not args.skip_minilm, use_rewrite=not args.skip_rewrite, project_context=project_context)
     print(json.dumps(output, indent=2 if args.pretty else None, ensure_ascii=False))
     return 0
 

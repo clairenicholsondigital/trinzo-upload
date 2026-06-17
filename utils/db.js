@@ -1234,6 +1234,7 @@ async function saveProjectUpdateDraft({ projectName, periodLabel, fileName, sour
     const baselineFinishDate = milestoneDraft.baseline_finish_date || milestoneDraft.baselineDeadline || milestoneDraft.deadline;
     const forecastFinishDate = milestoneDraft.forecast_finish_date || milestoneDraft.forecastDeadline || milestoneDraft.deadline;
     const deliveryStatus = segment.delivery_status || milestoneDraft.delivery_status || milestoneDraft.status;
+    const trend = normaliseProjectTrend(milestoneDraft.trend || segment.trend || 'stable');
     const confidence = segment.delivery_status_confidence || milestoneDraft.delivery_status_confidence || segment.confidence || milestoneDraft.confidence;
     const summary = segment.normalised_evidence_summary || milestoneDraft.normalised_evidence_summary || segment.excerpt || milestoneDraft.excerpt || segment.status_resolution_note || '';
     const milestoneOut = await runPsql(`
@@ -1263,7 +1264,7 @@ LIMIT 1;`);
     const milestoneId = Number(milestoneOut.split('\n').find((item) => /^\d+$/.test(item)));
     await runPsql(`INSERT INTO project_report_milestone_assessments
       (report_version_id, milestone_id, status, trend, confidence, summary, forecast_finish_date)
-      VALUES (${reportVersionId}, ${milestoneId}, ${q(toMilestoneAssessmentStatus(deliveryStatus))}, 'stable', ${clampConfidence(confidence)}, ${q(summary)}, ${qDate(forecastFinishDate)});`);
+      VALUES (${reportVersionId}, ${milestoneId}, ${q(toMilestoneAssessmentStatus(deliveryStatus))}, ${q(trend)}, ${clampConfidence(confidence)}, ${q(summary)}, ${qDate(forecastFinishDate)});`);
     const evidence = Array.isArray(segment.semantic_evidence) && segment.semantic_evidence.length
       ? segment.semantic_evidence
       : (segment.evidence || []).slice(0, 3).map((text) => ({ text, confidence: segment.confidence || 0.5 }));

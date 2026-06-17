@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from scripts.project_update_minilm import build_project_update_output
-from scripts.project_update_minilm import build_minilm_first_context, normalise_report_payload, split_action_candidates
+from scripts.project_update_minilm import annotate_report_with_project_context, build_minilm_first_context, normalise_report_payload, split_action_candidates
 
 
 REPO_DIR = Path(__file__).resolve().parents[1]
@@ -313,13 +313,46 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertIn("toLocaleString('en-GB'", reports_page)
         self.assertIn("toLocaleString('en-GB'", milestones_page)
 
-    def test_project_update_save_path_stores_milestone_deadlines(self):
+    def test_project_context_updates_health_milestone_and_risk_trends(self):
+        report = {
+            "healthAreas": {"schedule": {"status": "on_track", "trend": "stable", "evidence": []}},
+            "milestones": [{"milestone": "ai_pipeline_strategy", "delivery_status": "on_track", "trend": "stable"}],
+            "risks": [{"riskTitle": "Capacity needs attention", "description": "Capacity pressure remains.", "suggestedMitigation": "Review ownership."}],
+            "comparisonSnapshot": {},
+        }
+        context = {
+            "found": True,
+            "generatedAt": "2026-06-17T17:00:00Z",
+            "activeMilestones": [
+                {
+                    "milestoneName": "ai_pipeline_strategy",
+                    "comparisonKey": "ai_pipeline_strategy",
+                    "latestAssessment": {"status": "blocked", "summary": "Blocked by dependency.", "reportId": 10, "reportVersionId": 20},
+                }
+            ],
+            "healthHistory": [{"area": "schedule", "status": "at_risk", "reportId": 10, "reportVersionId": 20}],
+            "riskSuggestions": [],
+            "latestSnapshot": {"snapshotId": 3},
+        }
+
+        annotated, diagnostics = annotate_report_with_project_context(report, context)
+
+        self.assertEqual(annotated["milestones"][0]["trend"], "improving")
+        self.assertEqual(annotated["milestones"][0]["previous_status"], "blocked")
+        self.assertEqual(annotated["healthAreas"]["schedule"]["trend"], "improving")
+        self.assertEqual(annotated["risks"][0]["trend"], "new_risk")
+        self.assertEqual(annotated["comparisonSnapshot"]["latestContextSnapshotId"], 3)
+        self.assertEqual(diagnostics["milestonesCompared"], 1)
+        self.assertEqual(diagnostics["healthAreasCompared"], 1)
+
+    def test_project_update_save_path_stores_milestone_deadlines_and_trends(self):
         db = (REPO_DIR / "utils" / "db.js").read_text(encoding="utf-8")
 
         self.assertIn("function qDate", db)
         self.assertIn("baseline_finish_date = COALESCE", db)
         self.assertIn("project_report_milestone_assessments", db)
         self.assertIn("forecast_finish_date)", db)
+        self.assertIn("normaliseProjectTrend(milestoneDraft.trend || segment.trend || 'stable')", db)
 
 
 if __name__ == "__main__":
