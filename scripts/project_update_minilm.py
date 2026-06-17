@@ -69,6 +69,33 @@ PROJECT_ACTION_PROTOTYPES = [
     "There is a clear action item with an object, deliverable, owner, dependency, or follow-up target.",
 ]
 
+PROJECT_SIGNAL_PROTOTYPES = {
+    "overall_status": [
+        "overall project status or RAG position is stable, green, amber, red, on track, or changing",
+        "the dashboard status is calm but there is nuance under the surface",
+    ],
+    "delivery_pressure": [
+        "delivery pressure, compression, capacity strain, or execution bandwidth is affecting the project",
+        "pipeline demand and delivery execution are mismatched",
+    ],
+    "capability_risk": [
+        "key personnel attrition, single points of failure, skills gaps, documentation, or cross-training are risks",
+        "AI delivery and technical architecture capability or redundancy is weak",
+    ],
+    "governance_risk": [
+        "vendor governance, ownership, due diligence, partner framework, or decision authority is unclear",
+        "no single owner or formal framework creates project governance risk",
+    ],
+    "milestone_progress": [
+        "a milestone, deliverable, training, webinar, roadmap, framework, policy, or funding decision is complete or in progress",
+        "forecast dates, baseline dates, delivered work, or completed project outputs are discussed",
+    ],
+    "leading_indicators": [
+        "leading indicators, resource utilisation, active SOWs, dependency concentration, or early warning metrics should be tracked",
+        "the team wants earlier signals before status turns amber or red",
+    ],
+}
+
 ACTION_START_VERBS = {
     "accelerate",
     "add",
@@ -202,11 +229,30 @@ def is_actionable_candidate(value: Any) -> bool:
         return False
     if words[0] in {"complete", "completed"} and any(word in lowered for word in ["good", "fine", "done"]):
         return False
+    if lowered.startswith("start with "):
+        return False
     if words[0] in {"follow", "follow-up", "followup"} and len(words) < 5:
         return False
     if len(words) >= 2 and words[1] in VAGUE_ACTION_OBJECTS:
         return False
     if re.search(r"\b(?:as a|as an|as the|to the|for the)$", lowered):
+        return False
+    return True
+
+
+def is_project_signal_candidate(value: Any) -> bool:
+    text = clean_text(value)
+    if not text:
+        return False
+    lowered = text.lower().strip(" .!?")
+    words = re.findall(r"[a-z0-9']+", lowered)
+    if len(words) < 5:
+        return False
+    if "?" in text:
+        return False
+    if any(cue in lowered for cue in ["can you hear me", "loud and clear", "thanks", "thank you", "sounds good", "all good"]):
+        return False
+    if is_conversational_report_framing(text):
         return False
     return True
 
@@ -328,6 +374,13 @@ def collect_raw_transcript_windows(transcript_text: str) -> list[EvidenceWindow]
         line = clean_text(raw_line)
         if not line or "started transcription" in line.lower() or "stopped transcription" in line.lower():
             continue
+        lowered_line = line.lower().strip()
+        if lowered_line.startswith("📄 transcript:") or lowered_line in {"participants:", "participants"}:
+            continue
+        if re.match(r"^date\s*:", line, flags=re.IGNORECASE) or re.match(r"^\d{1,2}\s+[A-Za-z]+\s+\d{4}$", line):
+            continue
+        if re.match(r"^\[[0-9:.]+\]$", line) or re.match(r"^[A-Z][A-Za-z .'-]+\s+\([^)]+\)$", line):
+            continue
         speaker = ""
         text = line
         match = turn_re.match(line)
@@ -352,23 +405,27 @@ def build_minilm_first_context(transcript_text: str, backend: MiniLMBackend) -> 
         "runsBeforeRules": True,
         "windowCount": len(windows),
         "actionPrototypeCount": len(PROJECT_ACTION_PROTOTYPES),
+        "projectSignalPrototypeGroupCount": len(PROJECT_SIGNAL_PROTOTYPES),
         "selectedActionWindowCount": 0,
         "selectedActionCount": 0,
+        "selectedProjectSignalCount": 0,
     }
     actions: list[dict[str, Any]] = []
     action_source_texts: list[str] = []
     selected_windows: list[dict[str, Any]] = []
+    project_signals: list[dict[str, Any]] = []
     seen_actions: set[str] = set()
 
     if backend.available and windows:
-        lookup = semantic_lookup(backend, windows, PROJECT_ACTION_PROTOTYPES)
+        signal_targets = [prototype for prototypes in PROJECT_SIGNAL_PROTOTYPES.values() for prototype in prototypes]
+        lookup = semantic_lookup(backend, windows, PROJECT_ACTION_PROTOTYPES + signal_targets)
         scored = []
         for window in windows:
             score = max((cosine_from_lookup(lookup, window.text, prototype) for prototype in PROJECT_ACTION_PROTOTYPES), default=0.0)
             candidates = split_action_candidates(window.text)
             if score >= 0.28 or candidates:
                 scored.append((score, window, candidates))
-        scored.sort(key=lambda item: (item[0], bool(item[2])), reverse=True)
+        scored.sort(key=lambda item: (bool(item[2]), item[0]), reverse=True)
         for score, window, candidates in scored[:18]:
             if not candidates:
                 continue
@@ -397,16 +454,33 @@ def build_minilm_first_context(transcript_text: str, backend: MiniLMBackend) -> 
                         "_source": "minilm_first",
                     }
                 )
+        seen_signal_texts: set[str] = set()
+        for category, prototypes in PROJECT_SIGNAL_PROTOTYPES.items():
+            matches = top_matches(lookup, windows, prototypes, limit=3)
+            for match in matches:
+                if match["score"] < 0.28:
+                    continue
+                if not is_project_signal_candidate(match["text"]):
+                    continue
+                key = clean_text(match["text"]).lower()
+                if not key or key in seen_signal_texts:
+                    continue
+                seen_signal_texts.add(key)
+                project_signals.append({**match, "category": category})
     else:
         for window in windows:
             action_source_texts.append(window.text)
 
     diagnostics["selectedActionWindowCount"] = len(selected_windows)
     diagnostics["selectedActionCount"] = len(actions)
+    diagnostics["selectedActionWindows"] = selected_windows[:10]
+    diagnostics["selectedProjectSignalCount"] = len(project_signals)
+    diagnostics["selectedProjectSignalWindows"] = project_signals[:12]
     return {
         "actions": actions,
         "actionSourceTexts": action_source_texts,
         "selectedActionWindows": selected_windows,
+        "projectSignals": project_signals,
         "diagnostics": diagnostics,
     }
 
@@ -799,11 +873,33 @@ def build_report_payload(
 ) -> dict[str, Any]:
     summary = result.get("project_health_summary", {})
     overall = summary.get("overall_health", "unknown")
+    minilm_first_context = minilm_first_context or {}
+    minilm_project_signals = minilm_first_context.get("projectSignals", []) if isinstance(minilm_first_context.get("projectSignals", []), list) else []
+    minilm_signal_updates = [
+        signal.get("text")
+        for signal in minilm_project_signals
+        if isinstance(signal, dict) and clean_text(signal.get("text")) and float(signal.get("score") or 0) >= 0.28
+    ]
     key_updates = [
-        segment.get("normalised_evidence_summary") or segment.get("excerpt")
-        for segment in enriched_segments
-        if segment.get("normalised_evidence_summary") or segment.get("excerpt")
-    ][:8]
+        *minilm_signal_updates,
+        *[
+            segment.get("normalised_evidence_summary") or segment.get("excerpt")
+            for segment in enriched_segments
+            if segment.get("normalised_evidence_summary") or segment.get("excerpt")
+        ],
+    ]
+    deduped_key_updates: list[str] = []
+    seen_key_updates: set[str] = set()
+    for update in key_updates:
+        cleaned = clean_text(update)
+        if not cleaned:
+            continue
+        key = cleaned.lower()
+        if key in seen_key_updates:
+            continue
+        seen_key_updates.add(key)
+        deduped_key_updates.append(cleaned)
+    key_updates = deduped_key_updates[:8]
     risk_suggestions = []
     for segment in enriched_segments:
         if segment.get("delivery_status") in {"blocked", "awaiting_input", "delayed"} or segment.get("agreed_rag_status") in {"amber", "red"}:
@@ -828,7 +924,6 @@ def build_report_payload(
         item["blocking_factors"] = []
         report_milestones.append(item)
 
-    minilm_first_context = minilm_first_context or {}
     minilm_actions = minilm_first_context.get("actions", []) if isinstance(minilm_first_context.get("actions", []), list) else []
     minilm_action_sources = minilm_first_context.get("actionSourceTexts", []) if isinstance(minilm_first_context.get("actionSourceTexts", []), list) else []
 

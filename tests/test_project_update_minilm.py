@@ -80,6 +80,85 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertEqual(context["actions"][0]["action"], "Enforce capacity sign-off before SOW approval.")
         self.assertEqual(context["actions"][0]["_source"], "minilm_first")
 
+    def test_minilm_first_context_prioritises_explicit_action_list_over_chatter(self):
+        class FakeBackend:
+            available = True
+            model_name = "fake-minilm"
+            reason = ""
+
+            def encode_many(self, texts):
+                lookup = {}
+                for text in texts:
+                    cleaned = " ".join(str(text or "").split()).strip()
+                    if not cleaned:
+                        continue
+                    if "Product Build" in cleaned or "status" in cleaned:
+                        lookup[cleaned] = [1.0, 0.0]
+                    elif any(phrase in cleaned.lower() for phrase in ["enforce capacity", "accelerate cross-training", "assign clear owner", "explore leading"]):
+                        lookup[cleaned] = [0.0, 1.0]
+                    else:
+                        lookup[cleaned] = [0.2, 0.8]
+                return lookup
+
+        context = build_minilm_first_context(
+            """
+            Ciara: Let's start with Product Build.
+            Ciara: Alright, actions from this:
+            enforce capacity sign-off before SOW approval
+            accelerate cross-training and documentation
+            assign clear owner for vendor governance
+            explore leading indicators for delivery health
+            """,
+            FakeBackend(),
+        )
+        actions = [item["action"] for item in context["actions"]]
+
+        self.assertNotIn("Start with Product Build.", actions)
+        self.assertEqual(actions[:4], [
+            "Enforce capacity sign-off before SOW approval.",
+            "Accelerate cross-training and documentation.",
+            "Assign clear owner for vendor governance.",
+            "Explore leading indicators for delivery health.",
+        ])
+        self.assertGreaterEqual(context["diagnostics"]["selectedActionWindowCount"], 4)
+        self.assertIn("selectedActionWindows", context["diagnostics"])
+
+    def test_minilm_first_context_exposes_project_signal_windows(self):
+        class FakeBackend:
+            available = True
+            model_name = "fake-minilm"
+            reason = ""
+
+            def encode_many(self, texts):
+                lookup = {}
+                for text in texts:
+                    cleaned = " ".join(str(text or "").split()).strip()
+                    if not cleaned:
+                        continue
+                    if any(phrase in cleaned.lower() for phrase in ["delivery pressure", "capacity", "governance", "leading indicators"]):
+                        lookup[cleaned] = [1.0, 0.0]
+                    else:
+                        lookup[cleaned] = [0.0, 1.0]
+                return lookup
+
+        context = build_minilm_first_context(
+            """
+            Ciara: Hey Connor, can you hear me alright?
+            Connor: Yeah, loud and clear.
+            Ciara: The nuance is in delivery pressure though.
+            Connor: Delivery capacity versus SOW commitments is becoming more real.
+            Ciara: We need to assign a clear owner for vendor governance.
+            Connor: We should track leading indicators before things turn amber or red.
+            """,
+            FakeBackend(),
+        )
+        signal_texts = [item["text"] for item in context["projectSignals"]]
+
+        self.assertGreaterEqual(context["diagnostics"]["selectedProjectSignalCount"], 2)
+        self.assertTrue(any("delivery pressure" in text.lower() or "capacity" in text.lower() for text in signal_texts))
+        self.assertFalse(any("hear me" in text.lower() or "loud and clear" in text.lower() for text in signal_texts))
+        self.assertIn("selectedProjectSignalWindows", context["diagnostics"])
+
     def test_cli_outputs_json(self):
         completed = subprocess.run(
             [
