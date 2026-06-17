@@ -31,6 +31,21 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertTrue(result["modelDiagnostics"]["minilmFirstContext"]["runsBeforeRules"])
         json.dumps(result)
 
+    def test_unmatched_general_context_is_not_rendered_as_unclassified_milestone(self):
+        transcript = """
+        Ciara: Overall status is green across scope, schedule, financials and resources.
+        Connor: The nuance is delivery pressure. Capacity versus SOW commitments is becoming more real.
+        Ciara: Stage-Gate is now live and webinar delivered, conference presentation done.
+        Connor: Actions are enforce capacity sign-off and assign clear owner for vendor governance.
+        """
+        result = build_project_update_output(transcript, use_minilm=False, use_rewrite=False)
+        milestones = result["projectReport"]["milestones"]
+        keys = {(item.get("comparison_key") or item.get("milestone") or "").lower() for item in milestones}
+
+        self.assertNotIn("unclassified", keys)
+        self.assertNotIn("unknown", keys)
+        self.assertTrue(keys)
+
     def test_build_project_update_loads_minilm_before_rules(self):
         source = (REPO_DIR / "scripts" / "project_update_minilm.py").read_text(encoding="utf-8")
         body = source.split("def build_project_update_output", 1)[1].split("def parse_args", 1)[0]

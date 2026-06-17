@@ -779,6 +779,17 @@ def combine_blockers_and_next_steps(segment: dict[str, Any]) -> list[str]:
     return combined
 
 
+def is_unmatched_milestone_segment(segment: dict[str, Any]) -> bool:
+    key = normalise_key(segment.get("comparison_key") or segment.get("milestone"))
+    if key not in {"", "unknown", "unclassified", "none", "general"}:
+        return False
+    try:
+        match_confidence = float(segment.get("milestone_match_confidence") or 0)
+    except (TypeError, ValueError):
+        match_confidence = 0.0
+    return match_confidence <= 0.05
+
+
 def build_report_payload(
     result: dict[str, Any],
     enriched_segments: list[dict[str, Any]],
@@ -808,6 +819,8 @@ def build_report_payload(
 
     report_milestones = []
     for segment in enriched_segments:
+        if is_unmatched_milestone_segment(segment):
+            continue
         item = dict(segment)
         item["delivery_status"] = blank_unknown_status(item.get("delivery_status"))
         item["health_assessment"] = blank_unknown_status(item.get("health_assessment"))
