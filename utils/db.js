@@ -244,7 +244,9 @@ LEFT JOIN LATERAL (
   ) AS assessment
   FROM project_report_milestone_assessments a
   JOIN project_report_versions v ON v.id = a.report_version_id
+  JOIN project_reports r ON r.id = v.report_id
   WHERE a.milestone_id = m.id
+    AND r.report_status <> 'archived'
   ORDER BY v.created_at DESC, a.id DESC
   LIMIT 1
 ) latest ON TRUE
@@ -550,7 +552,9 @@ LEFT JOIN LATERAL (
   ) AS assessment
   FROM project_report_milestone_assessments a
   JOIN project_report_versions v ON v.id = a.report_version_id
+  JOIN project_reports r ON r.id = v.report_id
   WHERE a.milestone_id = m.id
+    AND r.report_status <> 'archived'
     AND (latest.assessment IS NULL OR a.id <> ((latest.assessment->>'assessmentId')::BIGINT))
   ORDER BY v.created_at DESC, a.id DESC
   LIMIT 1
@@ -601,6 +605,7 @@ JOIN LATERAL (
   LIMIT 1
 ) v ON TRUE
 WHERE r.project_id = ${projectId}
+  AND r.report_status <> 'archived'
 ORDER BY v.created_at DESC, r.id DESC
 LIMIT ${safeLimit};`));
 
@@ -619,6 +624,7 @@ FROM project_report_health h
 JOIN project_report_versions v ON v.id = h.report_version_id
 JOIN project_reports r ON r.id = v.report_id
 WHERE r.project_id = ${projectId}
+  AND r.report_status <> 'archived'
 ORDER BY v.created_at DESC, h.area
 LIMIT ${safeLimit * 5};`));
 
@@ -641,6 +647,7 @@ JOIN project_core_milestones m ON m.id = a.milestone_id
 JOIN project_report_versions v ON v.id = a.report_version_id
 JOIN project_reports r ON r.id = v.report_id
 WHERE r.project_id = ${projectId}
+  AND r.report_status <> 'archived'
 ORDER BY v.created_at DESC, a.id DESC
 LIMIT ${safeLimit * 25};`));
 
@@ -660,6 +667,7 @@ FROM project_ai_risk_suggestions s
 JOIN project_report_versions v ON v.id = s.report_version_id
 JOIN project_reports r ON r.id = v.report_id
 WHERE r.project_id = ${projectId}
+  AND r.report_status <> 'archived'
 ORDER BY v.created_at DESC, s.id DESC
 LIMIT ${safeLimit * 10};`));
 
