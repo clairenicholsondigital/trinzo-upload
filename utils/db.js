@@ -453,9 +453,25 @@ function truthy(value) {
   return ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase());
 }
 
+async function getProjectIdForContext(name) {
+  return parseOptionalId(await runPsql(`
+SELECT p.id::text
+FROM projects p
+WHERE p.project_name = ${q(name)}
+ORDER BY
+  (SELECT COUNT(*) FROM project_core_milestones m WHERE m.project_id = p.id AND m.is_active = TRUE) DESC,
+  (SELECT COUNT(*) FROM project_core_risks r WHERE r.project_id = p.id AND r.is_active = TRUE) DESC,
+  (SELECT COUNT(*) FROM project_reports pr WHERE pr.project_id = p.id) DESC,
+  p.updated_at DESC NULLS LAST,
+  p.created_at DESC NULLS LAST,
+  p.id
+LIMIT 1;`));
+}
+
 async function getProjectContext(projectName = '', limit = 5) {
   const safeLimit = Math.min(Math.max(Number(limit) || 5, 1), 20);
   const name = String(projectName || process.env.PROJECT_UPDATE_DEFAULT_PROJECT || 'Project update test').trim() || 'Project update test';
+  const selectedProjectId = await getProjectIdForContext(name);
   const projectOut = await runPsql(`
 SELECT json_build_object(
   'projectId', id,
@@ -467,8 +483,7 @@ SELECT json_build_object(
   'updatedAt', updated_at
 )::text
 FROM projects
-WHERE project_name = ${q(name)}
-ORDER BY id
+WHERE id = ${selectedProjectId || 'NULL'}
 LIMIT 1;`);
   const project = parseJsonLines(projectOut)[0] || null;
   if (!project) {
@@ -1346,7 +1361,7 @@ LIMIT 1;`);
 async function markProjectContextOfficial(projectName = '', label = '') {
   const name = String(projectName || process.env.PROJECT_UPDATE_DEFAULT_PROJECT || 'Project update test').trim() || 'Project update test';
   const officialLabel = String(label || 'Official baseline').trim() || 'Official baseline';
-  const projectId = parseOptionalId(await runPsql(`SELECT id::text FROM projects WHERE project_name = ${q(name)} ORDER BY id LIMIT 1;`));
+  const projectId = await getProjectIdForContext(name);
   if (!projectId) {
     const error = new Error('Project not found.');
     error.statusCode = 404;
@@ -1393,7 +1408,7 @@ async function cleanupProjectUpdateTestContext(projectName = '', options = {}) {
   const name = String(projectName || process.env.PROJECT_UPDATE_DEFAULT_PROJECT || 'Project update test').trim() || 'Project update test';
   const deleteNonOfficialSnapshots = options.deleteNonOfficialSnapshots !== false;
   const archiveReports = options.archiveReports !== false;
-  const projectId = parseOptionalId(await runPsql(`SELECT id::text FROM projects WHERE project_name = ${q(name)} ORDER BY id LIMIT 1;`));
+  const projectId = await getProjectIdForContext(name);
   if (!projectId) {
     const error = new Error('Project not found.');
     error.statusCode = 404;
