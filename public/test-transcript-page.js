@@ -185,7 +185,7 @@ function buildTranscriptTestPage(config) {
   function statusOptionsForPath(path) {
     const key = String(path || '');
     if (/(^|\.)reportStatus$/i.test(key)) return ['draft', 'in_review', 'approved', 'archived'];
-    if (/(^|\.)trend$/i.test(key)) return ['improving', 'stable', 'deteriorating', 'new_update', 'new_risk', 'resolved', 'unknown'];
+    if (/(^|\.)trend$/i.test(key)) return ['improving', 'stable', 'deteriorating', 'replanned', 'new_update', 'new_risk', 'resolved', 'unknown'];
     if (/(^|\.)health_assessment$|(^|\.)overallHealth$/i.test(key)) return ['on_track', 'at_risk', 'off_track', 'completed', 'unknown'];
     if (/(^|\.)delivery_status$|(^|\.)status$/i.test(key)) return ['completed', 'on_track', 'at_risk', 'delayed', 'blocked', 'not_started', 'unknown'];
     return null;

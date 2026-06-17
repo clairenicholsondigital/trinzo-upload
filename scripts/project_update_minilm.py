@@ -570,7 +570,7 @@ def normalise_key(value: Any) -> str:
 
 def normalise_trend(value: Any) -> str:
     trend = str(value or "").strip().lower()
-    return trend if trend in {"improving", "stable", "deteriorating", "new_update", "new_risk", "resolved", "unknown"} else "unknown"
+    return trend if trend in {"improving", "stable", "deteriorating", "replanned", "new_update", "new_risk", "resolved", "unknown"} else "unknown"
 
 
 def assessment_status(value: Any) -> str:
@@ -617,6 +617,8 @@ def infer_trend(previous_status: Any, current_status: Any, *, existing: Any = No
         return normalise_trend(existing) if normalise_trend(existing) != "unknown" else "unknown"
     if previous == "unknown":
         return "new_update"
+    if previous == "completed" and current in {"on_track", "not_started", "at_risk"}:
+        return "replanned"
     if current in {"completed", "on_track"} and previous in {"blocked", "delayed", "off_track", "at_risk"}:
         return "resolved" if current == "completed" else "improving"
     previous_score = status_severity(previous)

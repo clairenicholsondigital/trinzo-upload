@@ -431,7 +431,7 @@ async function deleteProjectMilestone(milestoneId) {
 
 function normaliseProjectTrend(value) {
   const trend = String(value || '').trim().toLowerCase();
-  return ['improving', 'stable', 'deteriorating', 'new_update', 'new_risk', 'resolved', 'unknown'].includes(trend)
+  return ['improving', 'stable', 'deteriorating', 'replanned', 'new_update', 'new_risk', 'resolved', 'unknown'].includes(trend)
     ? trend
     : 'unknown';
 }

@@ -115,7 +115,7 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertIn("renderSelectField", shared_js)
         self.assertIn("['draft', 'in_review', 'approved', 'archived']", shared_js)
         self.assertIn("statusOptionsForPath", shared_js)
-        self.assertIn("['improving', 'stable', 'deteriorating'", shared_js)
+        self.assertIn("['improving', 'stable', 'deteriorating', 'replanned'", shared_js)
         self.assertIn("Download PDF", shared_js)
         self.assertNotIn("Download branded PDF", shared_js)
         self.assertIn("/static/trinzo-logo.svg", shared_js)
@@ -344,6 +344,32 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertEqual(annotated["comparisonSnapshot"]["latestContextSnapshotId"], 3)
         self.assertEqual(diagnostics["milestonesCompared"], 1)
         self.assertEqual(diagnostics["healthAreasCompared"], 1)
+
+    def test_completed_to_active_again_is_replanned_not_deteriorating(self):
+        report = {
+            "healthAreas": {},
+            "milestones": [{"milestone": "webinars", "delivery_status": "in_progress", "trend": "stable"}],
+            "risks": [],
+            "comparisonSnapshot": {},
+        }
+        context = {
+            "found": True,
+            "activeMilestones": [
+                {
+                    "milestoneName": "webinars",
+                    "comparisonKey": "webinars",
+                    "latestAssessment": {"status": "completed", "summary": "Previously delivered.", "reportId": 10, "reportVersionId": 20},
+                }
+            ],
+            "healthHistory": [],
+            "riskSuggestions": [],
+        }
+
+        annotated, diagnostics = annotate_report_with_project_context(report, context)
+
+        self.assertEqual(annotated["milestones"][0]["previous_status"], "completed")
+        self.assertEqual(annotated["milestones"][0]["trend"], "replanned")
+        self.assertEqual(diagnostics["milestonesCompared"], 1)
 
     def test_project_update_save_path_stores_milestone_deadlines_and_trends(self):
         db = (REPO_DIR / "utils" / "db.js").read_text(encoding="utf-8")
