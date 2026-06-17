@@ -266,6 +266,46 @@ def is_project_signal_candidate(value: Any) -> bool:
     return True
 
 
+def is_valid_risk_mitigation_candidate(value: Any) -> bool:
+    text = clean_text(value)
+    if not text:
+        return False
+    lowered = text.lower().strip(" .;:!?-–—")
+    if re.match(r"^(yeah\s+)?(?:she|he|they|we|it|someone)\s+said\b", lowered):
+        return False
+    if re.match(r"^(?:she|he|they|someone)\s+(?:will|would|'d|is going to)\s+follow\s+up\b", lowered):
+        return False
+    if lowered in {"follow up", "follow-up", "follow up this week", "follow up next week", "no update", "nothing received"}:
+        return False
+    if re.search(r"\b(?:said|mentioned|noted)\s+(?:she|he|they|we)\b", lowered):
+        return False
+    if len(re.findall(r"[a-z0-9']+", lowered)) < 3:
+        return False
+    mitigation_terms = [
+        "mitigation", "enforce", "assign", "owner", "validate", "confirm", "review", "draft",
+        "document", "cross-training", "capacity", "sign-off", "track", "monitor", "escalate",
+        "follow up", "clarify", "resolve", "dependency", "approval", "routing", "framework",
+    ]
+    return any(term in lowered for term in mitigation_terms)
+
+
+def select_risk_mitigations(candidates: list[Any], fallback: str = "Review owner, dependency, and next action.") -> str:
+    selected: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        text = sentence_case(candidate)
+        if not text or not is_valid_risk_mitigation_candidate(text):
+            continue
+        key = text.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        selected.append(text)
+        if len(selected) >= 2:
+            break
+    return "; ".join(selected) if selected else fallback
+
+
 def project_signal_materiality(signal: dict[str, Any]) -> float:
     text = clean_text(signal.get("text", ""))
     lowered = text.lower()
@@ -964,7 +1004,7 @@ def build_report_payload(
                 {
                     "riskTitle": f"{friendly_milestone_label(segment.get('milestone', 'Workstream'))} needs attention",
                     "description": segment.get("normalised_evidence_summary") or segment.get("status_resolution_note") or segment.get("excerpt", ""),
-                    "suggestedMitigation": "; ".join(segment.get("next_steps", [])[:2]) or "Review owner, dependency, and next action.",
+                    "suggestedMitigation": select_risk_mitigations(segment.get("next_steps", [])),
                     "confidence": segment.get("semantic_confidence") or segment.get("health_assessment_confidence") or 0.5,
                     "relatedMilestone": segment.get("milestone", ""),
                 }
@@ -977,7 +1017,7 @@ def build_report_payload(
         item = dict(segment)
         item["delivery_status"] = blank_unknown_status(item.get("delivery_status"))
         item["health_assessment"] = blank_unknown_status(item.get("health_assessment"))
-        item["next_steps"] = combine_blockers_and_next_steps(item)
+        item["next_steps"] = [step for step in combine_blockers_and_next_steps(item) if is_valid_risk_mitigation_candidate(step)]
         item["blocking_factors"] = []
         report_milestones.append(item)
 

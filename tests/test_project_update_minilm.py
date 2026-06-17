@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from scripts.project_update_minilm import build_project_update_output
-from scripts.project_update_minilm import annotate_report_with_project_context, build_minilm_first_context, build_report_payload, normalise_report_payload, ranked_project_signals, rewrite_report_summary, split_action_candidates
+from scripts.project_update_minilm import annotate_report_with_project_context, build_minilm_first_context, build_report_payload, is_valid_risk_mitigation_candidate, normalise_report_payload, ranked_project_signals, rewrite_report_summary, select_risk_mitigations, split_action_candidates
 
 
 REPO_DIR = Path(__file__).resolve().parents[1]
@@ -398,6 +398,26 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
                 "Enforce capacity sign-off before SOW approval.",
             ],
         )
+
+    def test_project_risk_mitigation_rejects_reported_speech_evidence(self):
+        self.assertFalse(is_valid_risk_mitigation_candidate("She said she'd follow up this week."))
+        self.assertFalse(is_valid_risk_mitigation_candidate("Yeah she said she'd follow up this week."))
+        self.assertTrue(is_valid_risk_mitigation_candidate("Follow up innovation grant feedback."))
+
+        self.assertEqual(
+            select_risk_mitigations(["She said she'd follow up this week.", "Follow up innovation grant feedback."]),
+            "Follow up innovation grant feedback.",
+        )
+
+    def test_project_report_rejects_reported_speech_as_risk_mitigation(self):
+        transcript = FIXTURE.read_text(encoding="utf-8")
+        report = build_project_update_output(transcript, use_minilm=False, use_rewrite=False)["projectReport"]
+        mitigation_text = " ".join(risk.get("suggestedMitigation", "") for risk in report.get("risks", [])).lower()
+        milestone_next_steps = json.dumps([milestone.get("next_steps", []) for milestone in report.get("milestones", [])], ensure_ascii=False).lower()
+
+        self.assertNotIn("she said she'd follow up this week", mitigation_text)
+        self.assertIn("follow up innovation grant feedback", mitigation_text)
+        self.assertNotIn("she said she'd follow up this week", milestone_next_steps)
 
     def test_project_action_split_removes_trailing_conjunction_before_next_action(self):
         self.assertEqual(
