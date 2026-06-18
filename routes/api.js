@@ -30,6 +30,7 @@ const {
   createProjectMilestone,
   updateProjectMilestone,
   deleteProjectMilestone,
+  deactivateProjectMilestones,
   getProjectContext,
   createProjectContextSnapshot,
   getProjectContextSnapshot,
@@ -970,6 +971,15 @@ router.get('/project-update-test/milestones/:milestoneId', async (req, res) => {
       return res.status(404).json({ ok: false, error: 'Project milestone not found.' });
     }
     return res.json({ ok: true, milestone });
+  } catch (error) {
+    return sendTestError(res, error);
+  }
+});
+
+router.post('/project-update-test/milestones/bulk-inactivate', async (req, res) => {
+  try {
+    const result = await deactivateProjectMilestones(req.body?.milestoneIds || []);
+    return res.json({ ok: true, result });
   } catch (error) {
     return sendTestError(res, error);
   }

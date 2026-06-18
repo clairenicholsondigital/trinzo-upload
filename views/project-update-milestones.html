@@ -28,6 +28,10 @@ h2 { margin:.1rem 0 .75rem; font-size:1.1rem; }
 button { background:linear-gradient(180deg,var(--accent),#0fb5ab); color:#02173B; border:none; border-radius:10px; padding:.65rem .95rem; font-weight:700; cursor:pointer; }
 button.danger { background:#7f1d1d; border:1px solid #dc2626; color:#fee2e2; }
 button:disabled { opacity:.6; cursor:not-allowed; }
+.bulk-actions { display:flex; gap:.65rem; flex-wrap:wrap; align-items:center; justify-content:space-between; margin-bottom:.75rem; }
+.bulk-actions .status { margin:0; }
+.select-cell { width:3rem; text-align:center; }
+.select-cell input { width:auto; margin:0; }
 .item { background:#071126; border:1px solid var(--border); border-radius:10px; padding:.75rem; }
 .label { color:var(--muted); font-size:.85rem; }
 .value { margin-top:.25rem; font-weight:700; overflow-wrap:anywhere; }
@@ -154,15 +158,21 @@ th:last-child, td:last-child { border-right:0; }
         <p id="milestoneFormStatus" class="status"></p>
       </section>
       <section class="panel">
+        <div class="bulk-actions">
+          <p id="bulkMilestoneStatus" class="status">Select milestones to enable bulk actions.</p>
+          <button id="bulkInactivateMilestonesBtn" class="danger" type="button" disabled>Inactivate selected</button>
+        </div>
         <div class="table-scroll">
           <table>
-            <thead><tr><th>Milestone</th><th>Project</th><th>Period</th><th>Baseline</th><th>Forecast</th><th>Latest status</th><th>Trend</th></tr></thead>
+            <thead><tr><th class="select-cell"><input id="selectAllMilestones" type="checkbox" aria-label="Select all milestones" /></th><th>Milestone</th><th>Project</th><th>Period</th><th>Baseline</th><th>Forecast</th><th>Latest status</th><th>Trend</th></tr></thead>
             <tbody>
               ${milestones.map((milestone) => {
                 const latest = milestone.latestAssessment || {};
+                const milestoneName = friendlyLabel(milestone.milestoneName);
                 return `
                   <tr>
-                    <td><a href="/project-update-test/milestones/${escapeHtml(milestone.milestoneId)}">${escapeHtml(friendlyLabel(milestone.milestoneName))}</a></td>
+                    <td class="select-cell"><input type="checkbox" data-milestone-select="${escapeHtml(milestone.milestoneId)}" data-milestone-name="${escapeHtml(milestoneName)}" aria-label="Select ${escapeHtml(milestoneName)}" /></td>
+                    <td><a href="/project-update-test/milestones/${escapeHtml(milestone.milestoneId)}">${escapeHtml(milestoneName)}</a></td>
                     <td>${escapeHtml(milestone.projectName || '-')}</td>
                     <td>${escapeHtml(milestone.periodLabel || '-')}</td>
                     <td>${escapeHtml(dateOnly(milestone.baselineFinishDate))}</td>
@@ -208,6 +218,59 @@ th:last-child, td:last-child { border-right:0; }
         button.disabled = false;
       }
     });
+    const bulkStatus = document.getElementById('bulkMilestoneStatus');
+    const bulkInactivateButton = document.getElementById('bulkInactivateMilestonesBtn');
+    const selectAll = document.getElementById('selectAllMilestones');
+    const checkboxes = Array.from(app.querySelectorAll('[data-milestone-select]'));
+    function selectedMilestones() {
+      return checkboxes.filter((checkbox) => checkbox.checked).map((checkbox) => ({
+        id: checkbox.getAttribute('data-milestone-select'),
+        name: checkbox.getAttribute('data-milestone-name') || `Milestone ${checkbox.getAttribute('data-milestone-select')}`
+      }));
+    }
+    function updateBulkActions() {
+      const selected = selectedMilestones();
+      if (bulkInactivateButton) bulkInactivateButton.disabled = selected.length === 0;
+      if (bulkStatus) bulkStatus.textContent = selected.length ? `${selected.length} milestone${selected.length === 1 ? '' : 's'} selected.` : 'Select milestones to enable bulk actions.';
+      if (selectAll) {
+        selectAll.checked = checkboxes.length > 0 && selected.length === checkboxes.length;
+        selectAll.indeterminate = selected.length > 0 && selected.length < checkboxes.length;
+      }
+    }
+    if (selectAll) {
+      selectAll.addEventListener('change', () => {
+        checkboxes.forEach((checkbox) => { checkbox.checked = selectAll.checked; });
+        updateBulkActions();
+      });
+    }
+    checkboxes.forEach((checkbox) => checkbox.addEventListener('change', updateBulkActions));
+    if (bulkInactivateButton) {
+      bulkInactivateButton.addEventListener('click', async () => {
+        const selected = selectedMilestones();
+        if (!selected.length) return;
+        const preview = selected.slice(0, 8).map((milestone) => `• ${milestone.name}`).join('\n');
+        const suffix = selected.length > 8 ? `\n…and ${selected.length - 8} more.` : '';
+        if (!window.confirm(`Inactivate ${selected.length} selected milestone${selected.length === 1 ? '' : 's'}? They will be hidden from active milestone lists but history is preserved.\n\n${preview}${suffix}`)) return;
+        bulkInactivateButton.disabled = true;
+        if (bulkStatus) bulkStatus.textContent = `Inactivating ${selected.length} milestone${selected.length === 1 ? '' : 's'}...`;
+        try {
+          const response = await fetch('/api/project-update-test/milestones/bulk-inactivate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ milestoneIds: selected.map((milestone) => milestone.id) })
+          });
+          const result = await response.json().catch(() => null);
+          if (!response.ok || !result || result.ok === false) {
+            throw new Error(result && result.error ? result.error : `Request failed with status ${response.status}.`);
+          }
+          await load();
+        } catch (error) {
+          window.alert(error.message || 'Could not inactivate selected milestones.');
+          updateBulkActions();
+        }
+      });
+    }
+    updateBulkActions();
   }
 
   function renderDetail(milestone) {

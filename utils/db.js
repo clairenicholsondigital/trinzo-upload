@@ -487,6 +487,58 @@ async function deleteProjectMilestone(milestoneId) {
   return existing;
 }
 
+async function deactivateProjectMilestones(milestoneIds = []) {
+  const ids = Array.from(new Set((Array.isArray(milestoneIds) ? milestoneIds : [])
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value > 0)));
+  if (!ids.length) {
+    const error = new Error('At least one valid milestone id is required.');
+    error.statusCode = 400;
+    throw error;
+  }
+  if (ids.length > 100) {
+    const error = new Error('Bulk milestone inactivation is limited to 100 milestones at a time.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const idList = ids.join(',');
+  const out = await runPsql(`
+WITH selected AS (
+  SELECT json_build_object(
+    'milestoneId', m.id,
+    'projectId', p.id,
+    'projectName', p.project_name,
+    'periodLabel', COALESCE(rp.period_label, ''),
+    'category', m.category,
+    'milestoneName', m.milestone_name,
+    'description', COALESCE(m.description, ''),
+    'baselineFinishDate', m.baseline_finish_date,
+    'forecastFinishDate', m.forecast_finish_date,
+    'isOfficial', m.is_official,
+    'officialLabel', COALESCE(m.official_label, ''),
+    'officialAt', m.official_at,
+    'sortOrder', m.sort_order
+  ) AS milestone
+  FROM project_core_milestones m
+  JOIN projects p ON p.id = m.project_id
+  LEFT JOIN project_reporting_periods rp ON rp.id = m.reporting_period_id
+  WHERE m.id IN (${idList}) AND m.is_active = TRUE
+), updated AS (
+  UPDATE project_core_milestones
+  SET is_active = FALSE
+  WHERE id IN (${idList}) AND is_active = TRUE
+  RETURNING id
+)
+SELECT json_build_object(
+  'requestedIds', ARRAY[${idList}],
+  'deactivatedCount', (SELECT COUNT(*) FROM updated),
+  'milestones', COALESCE((SELECT json_agg(milestone ORDER BY (milestone->>'milestoneId')::int) FROM selected), '[]'::json)
+)::text;
+`);
+  return parseJsonLines(out)[0] || { requestedIds: ids, deactivatedCount: 0, milestones: [] };
+}
+
 
 
 function normaliseProjectTrend(value) {
@@ -1600,6 +1652,7 @@ module.exports = {
   createProjectMilestone,
   updateProjectMilestone,
   deleteProjectMilestone,
+  deactivateProjectMilestones,
   getProjectContextSnapshot,
   createProjectContextSnapshot,
   getProjectContext,
