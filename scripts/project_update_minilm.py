@@ -62,6 +62,8 @@ RISK_PROTOTYPES = [
     "A workstream is delayed, blocked, or awaiting external input.",
 ]
 
+FIXED_HEALTH_AREAS = ["scope", "schedule", "financial", "resources", "other_issue_risk"]
+
 PROJECT_ACTION_PROTOTYPES = [
     "A concrete next action is assigned or proposed for the project.",
     "The team needs to do a specific follow-up task after this project update.",
@@ -958,6 +960,146 @@ def is_unmatched_milestone_segment(segment: dict[str, Any]) -> bool:
     return match_confidence <= 0.05
 
 
+def context_milestone_row(milestone: dict[str, Any]) -> dict[str, Any]:
+    latest = milestone.get("latestAssessment") if isinstance(milestone.get("latestAssessment"), dict) else {}
+    previous = milestone.get("previousAssessment") if isinstance(milestone.get("previousAssessment"), dict) else {}
+    status = latest.get("status") or previous.get("status") or ""
+    summary = latest.get("summary") or previous.get("summary") or milestone.get("description") or "No new transcript update captured for this milestone."
+    return {
+        "milestoneId": milestone.get("milestoneId"),
+        "milestone": milestone.get("milestoneName") or milestone.get("milestone") or "Milestone",
+        "comparison_key": normalise_key(milestone.get("comparisonKey") or milestone.get("milestoneName") or milestone.get("milestone")),
+        "category": milestone.get("category", ""),
+        "baseline_finish_date": milestone.get("baselineFinishDate") or milestone.get("baseline_finish_date") or "",
+        "forecast_finish_date": latest.get("forecastFinishDate") or milestone.get("forecastFinishDate") or milestone.get("forecast_finish_date") or "",
+        "delivery_status": blank_unknown_status(status),
+        "health_assessment": blank_unknown_status(status),
+        "normalised_evidence_summary": summary,
+        "excerpt": summary,
+        "evidence": [],
+        "semantic_evidence": [],
+        "next_steps": [],
+        "blocking_factors": [],
+        "context_source": "active_milestone",
+        "transcript_update_status": "carried_forward",
+        "is_official": milestone.get("isOfficial"),
+        "official_label": milestone.get("officialLabel", ""),
+    }
+
+
+def merge_segment_into_milestone_row(row: dict[str, Any], segment: dict[str, Any]) -> dict[str, Any]:
+    merged = {**row}
+    for key, value in segment.items():
+        if key in {"milestoneId", "baseline_finish_date", "baselineDeadline"}:
+            continue
+        if value not in (None, "", [], {}):
+            merged[key] = value
+    merged["milestoneId"] = row.get("milestoneId") or segment.get("milestoneId")
+    merged["milestone"] = row.get("milestone") or segment.get("milestone")
+    merged["comparison_key"] = row.get("comparison_key") or normalise_key(segment.get("comparison_key") or segment.get("milestone"))
+    merged["baseline_finish_date"] = row.get("baseline_finish_date") or segment.get("baseline_finish_date") or segment.get("baselineDeadline") or segment.get("deadline") or ""
+    merged["forecast_finish_date"] = segment.get("forecast_finish_date") or segment.get("forecastDeadline") or segment.get("deadline") or row.get("forecast_finish_date") or ""
+    merged["delivery_status"] = blank_unknown_status(segment.get("delivery_status") or segment.get("status") or row.get("delivery_status"))
+    merged["health_assessment"] = blank_unknown_status(segment.get("health_assessment") or row.get("health_assessment"))
+    merged["next_steps"] = [step for step in combine_blockers_and_next_steps(segment) if is_valid_risk_mitigation_candidate(step)]
+    merged["blocking_factors"] = []
+    merged["context_source"] = row.get("context_source") or "transcript"
+    merged["transcript_update_status"] = "updated_from_transcript"
+    return merged
+
+
+def build_context_first_milestones(enriched_segments: list[dict[str, Any]], project_context: dict[str, Any] | None) -> list[dict[str, Any]]:
+    context = project_context or {}
+    active_milestones = [item for item in context.get("activeMilestones", []) if isinstance(item, dict)]
+    segment_rows: list[dict[str, Any]] = []
+    for segment in enriched_segments:
+        if is_unmatched_milestone_segment(segment):
+            continue
+        item = dict(segment)
+        item["delivery_status"] = blank_unknown_status(item.get("delivery_status"))
+        item["health_assessment"] = blank_unknown_status(item.get("health_assessment"))
+        item["next_steps"] = [step for step in combine_blockers_and_next_steps(item) if is_valid_risk_mitigation_candidate(step)]
+        item["blocking_factors"] = []
+        item["comparison_key"] = normalise_key(item.get("comparison_key") or item.get("milestone"))
+        item["context_source"] = "transcript"
+        item["transcript_update_status"] = "updated_from_transcript"
+        segment_rows.append(item)
+
+    segments_by_key = {normalise_key(item.get("comparison_key") or item.get("milestone")): item for item in segment_rows}
+    output: list[dict[str, Any]] = []
+    used_segment_keys: set[str] = set()
+    for milestone in active_milestones:
+        row = context_milestone_row(milestone)
+        key = normalise_key(row.get("comparison_key") or row.get("milestone"))
+        segment = segments_by_key.get(key)
+        if segment:
+            row = merge_segment_into_milestone_row(row, segment)
+            used_segment_keys.add(key)
+        output.append(row)
+
+    for row in segment_rows:
+        key = normalise_key(row.get("comparison_key") or row.get("milestone"))
+        if active_milestones and key in used_segment_keys:
+            continue
+        if active_milestones and key in {normalise_key(item.get("comparisonKey") or item.get("milestoneName")) for item in active_milestones}:
+            continue
+        output.append(row)
+    return output
+
+
+def build_fixed_health_areas(overall: str, diagnostics: dict[str, Any], project_context: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
+    matches_by_area = diagnostics.get("healthAreaMatches", {}) if isinstance(diagnostics.get("healthAreaMatches", {}), dict) else {}
+    previous_health = latest_by_key((project_context or {}).get("healthHistory", []), ["area"])
+    areas: dict[str, dict[str, Any]] = {}
+    for area in FIXED_HEALTH_AREAS:
+        previous = previous_health.get(area, {})
+        previous_status = previous.get("status")
+        fallback_status = health_to_report_status(overall if area == "schedule" else "unknown")
+        status = blank_unknown_status(fallback_status) or blank_unknown_status(previous_status) or ""
+        areas[area] = {
+            "status": status,
+            "trend": previous.get("trend") or "stable",
+            "evidence": matches_by_area.get(area, []),
+            "previousStatus": blank_unknown_status(previous_status),
+            "previousReportId": previous.get("reportId"),
+            "previousReportVersionId": previous.get("reportVersionId"),
+        }
+    return areas
+
+
+def build_context_first_risks(risk_suggestions: list[dict[str, Any]], project_context: dict[str, Any] | None) -> list[dict[str, Any]]:
+    context = project_context or {}
+    active_risks = [item for item in context.get("activeRisks", []) if isinstance(item, dict)]
+    suggestions_by_key = {normalise_key(item.get("riskTitle")): item for item in risk_suggestions if isinstance(item, dict)}
+    output: list[dict[str, Any]] = []
+    used: set[str] = set()
+    for risk in active_risks:
+        key = normalise_key(risk.get("riskTitle"))
+        suggestion = suggestions_by_key.get(key)
+        row = {
+            "riskId": risk.get("riskId"),
+            "riskTitle": risk.get("riskTitle") or "Project risk",
+            "description": risk.get("description", ""),
+            "suggestedMitigation": risk.get("mitigation", ""),
+            "confidence": 0.7,
+            "relatedMilestone": risk.get("relatedMilestone", ""),
+            "context_source": "active_risk",
+            "transcript_update_status": "carried_forward",
+        }
+        if suggestion:
+            row = {**row, **{k: v for k, v in suggestion.items() if v not in (None, "", [], {})}}
+            row["riskId"] = risk.get("riskId")
+            row["context_source"] = "active_risk"
+            row["transcript_update_status"] = "updated_from_transcript"
+            used.add(key)
+        output.append(row)
+    for risk in risk_suggestions:
+        key = normalise_key(risk.get("riskTitle"))
+        if key and key not in used and key not in {normalise_key(item.get("riskTitle")) for item in active_risks}:
+            output.append(risk)
+    return output
+
+
 def build_report_payload(
     result: dict[str, Any],
     enriched_segments: list[dict[str, Any]],
@@ -1010,16 +1152,7 @@ def build_report_payload(
                 }
             )
 
-    report_milestones = []
-    for segment in enriched_segments:
-        if is_unmatched_milestone_segment(segment):
-            continue
-        item = dict(segment)
-        item["delivery_status"] = blank_unknown_status(item.get("delivery_status"))
-        item["health_assessment"] = blank_unknown_status(item.get("health_assessment"))
-        item["next_steps"] = [step for step in combine_blockers_and_next_steps(item) if is_valid_risk_mitigation_candidate(step)]
-        item["blocking_factors"] = []
-        report_milestones.append(item)
+    report_milestones = build_context_first_milestones(enriched_segments, project_context)
 
     minilm_actions = minilm_first_context.get("actions", []) if isinstance(minilm_first_context.get("actions", []), list) else []
     minilm_action_sources = minilm_first_context.get("actionSourceTexts", []) if isinstance(minilm_first_context.get("actionSourceTexts", []), list) else []
@@ -1030,16 +1163,9 @@ def build_report_payload(
         "overallHealthRag": overall,
         "summary": summary.get("overall_health_reason", "Project update analysed from transcript."),
         "keyUpdates": [clean_text(item) for item in key_updates if clean_text(item)],
-        "healthAreas": {
-            area: {
-                "status": blank_unknown_status(health_to_report_status(overall if area == "schedule" else "unknown")),
-                "trend": "stable",
-                "evidence": matches,
-            }
-            for area, matches in diagnostics.get("healthAreaMatches", {}).items()
-        },
+        "healthAreas": build_fixed_health_areas(overall, diagnostics, project_context),
         "milestones": report_milestones,
-        "risks": risk_suggestions,
+        "risks": build_context_first_risks(risk_suggestions, project_context),
         "actions": minilm_actions or result.get("actions", []),
         "_actionSourceTexts": [*minilm_action_sources, *collect_action_source_texts(result, enriched_segments)],
         "comparisonSnapshot": result.get("comparison_snapshot", {}),

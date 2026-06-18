@@ -223,6 +223,63 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
             "AI delivery and technical architecture.",
         ])
 
+    def test_project_report_is_context_first_when_context_is_available(self):
+        context = {
+            "found": True,
+            "activeMilestones": [
+                {
+                    "milestoneId": 11,
+                    "milestoneName": "Stage Gate Vendor Strategy",
+                    "comparisonKey": "stage_gate_vendor_strategy",
+                    "baselineFinishDate": "2026-06-30",
+                    "forecastFinishDate": "2026-07-05",
+                    "description": "Vendor strategy baseline.",
+                    "latestAssessment": {"status": "at_risk", "summary": "Previously amber.", "reportId": 4, "reportVersionId": 8},
+                },
+                {
+                    "milestoneId": 12,
+                    "milestoneName": "Webinars",
+                    "comparisonKey": "webinars",
+                    "baselineFinishDate": "2026-06-20",
+                    "forecastFinishDate": "2026-06-20",
+                    "description": "Webinar delivery baseline.",
+                    "latestAssessment": {"status": "on_track", "summary": "On track previously.", "reportId": 4, "reportVersionId": 8},
+                },
+            ],
+            "activeRisks": [
+                {"riskId": 7, "riskTitle": "Delivery Capacity vs SOW Commitments Risk", "description": "Capacity risk baseline.", "mitigation": "Review capacity before SOW approval."}
+            ],
+            "healthHistory": [],
+            "riskSuggestions": [],
+        }
+        report = build_report_payload(
+            {"project_health_summary": {"overall_health": "green", "overall_health_reason": "Overall green."}, "actions": [], "comparison_snapshot": {}},
+            [
+                {
+                    "milestone": "stage_gate_vendor_strategy",
+                    "comparison_key": "stage_gate_vendor_strategy",
+                    "delivery_status": "blocked",
+                    "health_assessment": "blocked",
+                    "normalised_evidence_summary": "Vendor strategy is blocked pending ownership.",
+                    "excerpt": "Vendor strategy is blocked pending ownership.",
+                    "next_steps": ["Assign a clear owner for vendor governance."],
+                    "milestone_match_confidence": 0.9,
+                }
+            ],
+            {"healthAreaMatches": {}},
+            project_context=context,
+        )
+
+        self.assertEqual(list(report["healthAreas"].keys()), ["scope", "schedule", "financial", "resources", "other_issue_risk"])
+        self.assertEqual([item["milestone"] for item in report["milestones"][:2]], ["Stage Gate Vendor Strategy", "Webinars"])
+        self.assertEqual(report["milestones"][0]["baseline_finish_date"], "2026-06-30")
+        self.assertEqual(report["milestones"][0]["delivery_status"], "blocked")
+        self.assertEqual(report["milestones"][0]["transcript_update_status"], "updated_from_transcript")
+        self.assertEqual(report["milestones"][1]["baseline_finish_date"], "2026-06-20")
+        self.assertEqual(report["milestones"][1]["transcript_update_status"], "carried_forward")
+        self.assertEqual(report["risks"][0]["riskId"], 7)
+        self.assertEqual(report["risks"][0]["riskTitle"], "Delivery Capacity vs SOW Commitments Risk")
+
     def test_cli_outputs_json(self):
         completed = subprocess.run(
             [

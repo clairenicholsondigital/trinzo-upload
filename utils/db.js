@@ -1348,10 +1348,15 @@ async function saveProjectUpdateDraft({ projectName, periodLabel, fileName, sour
     }
     return id;
   };
+  const itemKey = (item) => String(item?.comparison_key || item?.milestone || item?.milestoneName || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  const segmentForDraft = (milestoneDraft, index) => {
+    const draftKey = itemKey(milestoneDraft);
+    return segments.find((item) => itemKey(item) === draftKey) || segments[index] || {};
+  };
   const milestoneDraftFor = (segment, index) => {
-    const segmentKey = String(segment?.comparison_key || segment?.milestone || '').toLowerCase();
+    const segmentKey = itemKey(segment);
     return reportMilestones[index]
-      || reportMilestones.find((item) => String(item?.comparison_key || item?.milestone || '').toLowerCase() === segmentKey)
+      || reportMilestones.find((item) => itemKey(item) === segmentKey)
       || {};
   };
 
@@ -1403,10 +1408,11 @@ async function saveProjectUpdateDraft({ projectName, periodLabel, fileName, sour
       VALUES (${reportVersionId}, ${q(item.area)}, ${q(item.status)}, ${q(item.trend)}, ${clampConfidence(item.confidence)}, ${q(item.rationale)});`);
   }
 
-  const milestoneCount = Math.max(segments.length, reportMilestones.length);
+  const milestoneRows = reportMilestones.length ? reportMilestones : segments;
+  const milestoneCount = milestoneRows.length;
   for (let index = 0; index < milestoneCount; index += 1) {
-    const segment = segments[index] || {};
-    const milestoneDraft = milestoneDraftFor(segment, index);
+    const milestoneDraft = reportMilestones.length ? (milestoneRows[index] || {}) : milestoneDraftFor(segments[index] || {}, index);
+    const segment = reportMilestones.length ? segmentForDraft(milestoneDraft, index) : (segments[index] || {});
     const milestoneName = milestoneDraft.milestone || segment.milestone || `Milestone ${index + 1}`;
     const baselineFinishDate = milestoneDraft.baseline_finish_date || milestoneDraft.baselineDeadline || milestoneDraft.deadline;
     const forecastFinishDate = milestoneDraft.forecast_finish_date || milestoneDraft.forecastDeadline || milestoneDraft.deadline;
