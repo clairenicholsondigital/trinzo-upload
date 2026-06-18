@@ -754,7 +754,7 @@ def milestone_match_score(left: Any, right: Any) -> float:
     if not left_tokens or not right_tokens:
         return 0.0
     overlap = len(left_tokens & right_tokens)
-    return overlap / max(1, min(len(left_tokens), len(right_tokens)))
+    return overlap / max(1, len(left_tokens | right_tokens))
 
 
 def normalise_trend(value: Any) -> str:
@@ -1058,7 +1058,7 @@ def build_context_first_milestones(enriched_segments: list[dict[str, Any]], proj
                 key=lambda candidate: milestone_match_score(row.get("comparison_key") or row.get("milestone"), candidate.get("comparison_key") or candidate.get("milestone")),
                 default=None,
             )
-            if segment and milestone_match_score(row.get("comparison_key") or row.get("milestone"), segment.get("comparison_key") or segment.get("milestone")) < 0.75:
+            if segment and milestone_match_score(row.get("comparison_key") or row.get("milestone"), segment.get("comparison_key") or segment.get("milestone")) < 0.6:
                 segment = None
         if segment:
             row = merge_segment_into_milestone_row(row, segment)
@@ -1071,7 +1071,7 @@ def build_context_first_milestones(enriched_segments: list[dict[str, Any]], proj
             continue
         if active_milestones and key in active_keys:
             continue
-        if active_milestones and any(milestone_match_score(item.get("comparisonKey") or item.get("milestoneName"), row.get("comparison_key") or row.get("milestone")) >= 0.75 for item in active_milestones):
+        if active_milestones and any(milestone_match_score(item.get("comparisonKey") or item.get("milestoneName"), row.get("comparison_key") or row.get("milestone")) >= 0.6 for item in active_milestones):
             continue
         output.append(row)
     return output
