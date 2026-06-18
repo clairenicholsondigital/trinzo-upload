@@ -29,6 +29,10 @@ thead th { background:#132847; color:#dbeafe; position:sticky; top:0; }
 tr:last-child td { border-bottom:0; }
 th:last-child, td:last-child { border-right:0; }
 .actions { display:flex; gap:.65rem; flex-wrap:wrap; align-items:center; }
+.bulk-actions { display:flex; gap:.65rem; flex-wrap:wrap; align-items:center; justify-content:space-between; margin-bottom:.75rem; }
+.bulk-actions .status { margin:0; }
+.select-cell { width:3rem; text-align:center; }
+.select-cell input { width:auto; margin:0; }
 .brand { display:flex; gap:.75rem; align-items:center; margin-right:auto; }
 .brand img { width:132px; height:auto; background:#071126; border:1px solid var(--border); border-radius:6px; padding:.45rem; }
 .print-only { display:none; }
@@ -204,12 +208,17 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
         <p class="intro">${reports.length ? `${reports.length} saved report${reports.length === 1 ? '' : 's'}.` : 'No saved reports yet.'}</p>
       </section>
       <section class="panel">
+        <div class="bulk-actions">
+          <p id="bulkReportStatus" class="status">Select reports to enable bulk actions.</p>
+          <button id="bulkDeleteReportsBtn" class="danger" type="button" disabled>Delete selected</button>
+        </div>
         <div class="table-scroll">
           <table>
-            <thead><tr><th>Report</th><th>Project</th><th>Period</th><th>Status</th><th>Overall health</th><th>Updated</th><th>Actions</th></tr></thead>
+            <thead><tr><th class="select-cell"><input id="selectAllReports" type="checkbox" aria-label="Select all reports" /></th><th>Report</th><th>Project</th><th>Period</th><th>Status</th><th>Overall health</th><th>Updated</th><th>Actions</th></tr></thead>
             <tbody>
               ${reports.map((report) => `
                 <tr>
+                  <td class="select-cell"><input type="checkbox" data-report-select="${escapeHtml(report.reportId)}" data-report-name="${escapeHtml(report.reportName || `Report ${report.reportId}`)}" aria-label="Select ${escapeHtml(report.reportName || `Report ${report.reportId}`)}" /></td>
                   <td><a href="/project-update-test/reports/${escapeHtml(report.reportId)}">${escapeHtml(report.reportName || `Report ${report.reportId}`)}</a><div class="muted">${escapeHtml(report.fileName || '')}</div></td>
                   <td>${escapeHtml(report.projectName || '-')}</td>
                   <td>${escapeHtml(report.periodLabel || '-')}</td>
@@ -246,6 +255,59 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
         }
       });
     });
+    const bulkStatus = document.getElementById('bulkReportStatus');
+    const bulkDeleteButton = document.getElementById('bulkDeleteReportsBtn');
+    const selectAll = document.getElementById('selectAllReports');
+    const checkboxes = Array.from(app.querySelectorAll('[data-report-select]'));
+    function selectedReports() {
+      return checkboxes.filter((checkbox) => checkbox.checked).map((checkbox) => ({
+        id: checkbox.getAttribute('data-report-select'),
+        name: checkbox.getAttribute('data-report-name') || `Report ${checkbox.getAttribute('data-report-select')}`
+      }));
+    }
+    function updateBulkActions() {
+      const selected = selectedReports();
+      if (bulkDeleteButton) bulkDeleteButton.disabled = selected.length === 0;
+      if (bulkStatus) bulkStatus.textContent = selected.length ? `${selected.length} report${selected.length === 1 ? '' : 's'} selected.` : 'Select reports to enable bulk actions.';
+      if (selectAll) {
+        selectAll.checked = checkboxes.length > 0 && selected.length === checkboxes.length;
+        selectAll.indeterminate = selected.length > 0 && selected.length < checkboxes.length;
+      }
+    }
+    if (selectAll) {
+      selectAll.addEventListener('change', () => {
+        checkboxes.forEach((checkbox) => { checkbox.checked = selectAll.checked; });
+        updateBulkActions();
+      });
+    }
+    checkboxes.forEach((checkbox) => checkbox.addEventListener('change', updateBulkActions));
+    if (bulkDeleteButton) {
+      bulkDeleteButton.addEventListener('click', async () => {
+        const selected = selectedReports();
+        if (!selected.length) return;
+        const preview = selected.slice(0, 8).map((report) => `• ${report.name}`).join('\n');
+        const suffix = selected.length > 8 ? `\n…and ${selected.length - 8} more.` : '';
+        if (!window.confirm(`Delete ${selected.length} selected report${selected.length === 1 ? '' : 's'}? This cannot be undone.\n\n${preview}${suffix}`)) return;
+        bulkDeleteButton.disabled = true;
+        if (bulkStatus) bulkStatus.textContent = `Deleting ${selected.length} report${selected.length === 1 ? '' : 's'}...`;
+        try {
+          const response = await fetch('/api/project-update-test/reports/bulk-delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reportIds: selected.map((report) => report.id) })
+          });
+          const result = await response.json().catch(() => null);
+          if (!response.ok || !result || result.ok === false) {
+            throw new Error(result && result.error ? result.error : `Request failed with status ${response.status}.`);
+          }
+          await load();
+        } catch (error) {
+          window.alert(error.message || 'Could not delete selected reports.');
+          updateBulkActions();
+        }
+      });
+    }
+    updateBulkActions();
   }
 
   function renderDetail(report) {

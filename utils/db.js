@@ -210,6 +210,58 @@ COMMIT;`);
   return existing;
 }
 
+async function deleteProjectReports(reportIds = []) {
+  const ids = Array.from(new Set((Array.isArray(reportIds) ? reportIds : [])
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value > 0)));
+  if (!ids.length) {
+    const error = new Error('At least one valid report id is required.');
+    error.statusCode = 400;
+    throw error;
+  }
+  if (ids.length > 100) {
+    const error = new Error('Bulk delete is limited to 100 reports at a time.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const idList = ids.join(',');
+  const out = await runPsql(`
+WITH selected AS (
+  SELECT json_build_object(
+    'reportId', r.id,
+    'projectId', p.id,
+    'projectName', p.project_name,
+    'periodLabel', COALESCE(rp.period_label, ''),
+    'fileName', COALESCE(r.file_name, ''),
+    'reportName', COALESCE(NULLIF(r.file_name, ''), 'Report ' || r.id::text),
+    'reportStatus', r.report_status,
+    'createdAt', r.created_at,
+    'updatedAt', r.updated_at
+  ) AS report
+  FROM project_reports r
+  JOIN projects p ON p.id = r.project_id
+  LEFT JOIN project_reporting_periods rp ON rp.id = r.reporting_period_id
+  WHERE r.id IN (${idList})
+), cleared AS (
+  UPDATE project_reports
+  SET approved_version_id = NULL
+  WHERE id IN (${idList})
+  RETURNING id
+), deleted AS (
+  DELETE FROM project_reports
+  WHERE id IN (${idList})
+  RETURNING id
+)
+SELECT json_build_object(
+  'requestedIds', ARRAY[${idList}],
+  'deletedCount', (SELECT COUNT(*) FROM deleted),
+  'reports', COALESCE((SELECT json_agg(report ORDER BY (report->>'reportId')::int) FROM selected), '[]'::json)
+)::text;
+`);
+  return parseJsonLines(out)[0] || { requestedIds: ids, deletedCount: 0, reports: [] };
+}
+
 async function listProjectMilestones(limit = 100) {
   const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 250);
   const out = await runPsql(`
@@ -1542,6 +1594,7 @@ module.exports = {
   getProjectReportDetail,
   saveProjectReportDetail,
   deleteProjectReport,
+  deleteProjectReports,
   listProjectMilestones,
   getProjectMilestoneDetail,
   createProjectMilestone,

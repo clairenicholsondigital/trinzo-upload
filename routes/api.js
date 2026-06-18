@@ -24,6 +24,7 @@ const {
   getProjectReportDetail,
   saveProjectReportDetail,
   deleteProjectReport,
+  deleteProjectReports,
   listProjectMilestones,
   getProjectMilestoneDetail,
   createProjectMilestone,
@@ -906,6 +907,15 @@ router.get('/project-update-test/reports/:reportId', async (req, res) => {
       return res.status(404).json({ ok: false, error: 'Project report not found.' });
     }
     return res.json({ ok: true, report });
+  } catch (error) {
+    return sendTestError(res, error);
+  }
+});
+
+router.post('/project-update-test/reports/bulk-delete', async (req, res) => {
+  try {
+    const result = await deleteProjectReports(req.body?.reportIds || []);
+    return res.json({ ok: true, result });
   } catch (error) {
     return sendTestError(res, error);
   }
