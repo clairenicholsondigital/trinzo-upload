@@ -738,6 +738,25 @@ def normalise_key(value: Any) -> str:
     return re.sub(r"[^a-z0-9]+", "_", str(value or "").strip().lower()).strip("_")
 
 
+def milestone_match_tokens(value: Any) -> set[str]:
+    key = normalise_key(value).replace("stagegate", "stage_gate")
+    stop_words = {
+        "a", "an", "and", "the", "of", "for", "to",
+        "completed", "complete", "delivered", "defined", "implemented", "rolled", "out",
+        "review", "reviewed", "internal", "forum", "plan", "set", "delivery",
+    }
+    return {token for token in key.split("_") if token and token not in stop_words}
+
+
+def milestone_match_score(left: Any, right: Any) -> float:
+    left_tokens = milestone_match_tokens(left)
+    right_tokens = milestone_match_tokens(right)
+    if not left_tokens or not right_tokens:
+        return 0.0
+    overlap = len(left_tokens & right_tokens)
+    return overlap / max(1, min(len(left_tokens), len(right_tokens)))
+
+
 def normalise_trend(value: Any) -> str:
     trend = str(value or "").strip().lower()
     return trend if trend in {"improving", "stable", "deteriorating", "replanned", "new_update", "new_risk", "resolved", "unknown"} else "unknown"
@@ -1028,20 +1047,31 @@ def build_context_first_milestones(enriched_segments: list[dict[str, Any]], proj
     segments_by_key = {normalise_key(item.get("comparison_key") or item.get("milestone")): item for item in segment_rows}
     output: list[dict[str, Any]] = []
     used_segment_keys: set[str] = set()
+    active_keys = {normalise_key(item.get("comparisonKey") or item.get("milestoneName")) for item in active_milestones}
     for milestone in active_milestones:
         row = context_milestone_row(milestone)
         key = normalise_key(row.get("comparison_key") or row.get("milestone"))
         segment = segments_by_key.get(key)
+        if not segment:
+            segment = max(
+                (candidate for candidate in segment_rows if normalise_key(candidate.get("comparison_key") or candidate.get("milestone")) not in used_segment_keys),
+                key=lambda candidate: milestone_match_score(row.get("comparison_key") or row.get("milestone"), candidate.get("comparison_key") or candidate.get("milestone")),
+                default=None,
+            )
+            if segment and milestone_match_score(row.get("comparison_key") or row.get("milestone"), segment.get("comparison_key") or segment.get("milestone")) < 0.75:
+                segment = None
         if segment:
             row = merge_segment_into_milestone_row(row, segment)
-            used_segment_keys.add(key)
+            used_segment_keys.add(normalise_key(segment.get("comparison_key") or segment.get("milestone")))
         output.append(row)
 
     for row in segment_rows:
         key = normalise_key(row.get("comparison_key") or row.get("milestone"))
         if active_milestones and key in used_segment_keys:
             continue
-        if active_milestones and key in {normalise_key(item.get("comparisonKey") or item.get("milestoneName")) for item in active_milestones}:
+        if active_milestones and key in active_keys:
+            continue
+        if active_milestones and any(milestone_match_score(item.get("comparisonKey") or item.get("milestoneName"), row.get("comparison_key") or row.get("milestone")) >= 0.75 for item in active_milestones):
             continue
         output.append(row)
     return output

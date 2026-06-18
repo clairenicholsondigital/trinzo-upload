@@ -229,8 +229,8 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
             "activeMilestones": [
                 {
                     "milestoneId": 11,
-                    "milestoneName": "Stage Gate Vendor Strategy",
-                    "comparisonKey": "stage_gate_vendor_strategy",
+                    "milestoneName": "StageGate & Vendor Strategy Rolled Out",
+                    "comparisonKey": "stagegate_vendor_strategy_rolled_out",
                     "baselineFinishDate": "2026-06-30",
                     "forecastFinishDate": "2026-07-05",
                     "description": "Vendor strategy baseline.",
@@ -271,7 +271,8 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         )
 
         self.assertEqual(list(report["healthAreas"].keys()), ["scope", "schedule", "financial", "resources", "other_issue_risk"])
-        self.assertEqual([item["milestone"] for item in report["milestones"][:2]], ["Stage Gate Vendor Strategy", "Webinars"])
+        self.assertEqual([item["milestone"] for item in report["milestones"][:2]], ["StageGate & Vendor Strategy Rolled Out", "Webinars"])
+        self.assertEqual(len(report["milestones"]), 2)
         self.assertEqual(report["milestones"][0]["baseline_finish_date"], "2026-06-30")
         self.assertEqual(report["milestones"][0]["delivery_status"], "blocked")
         self.assertEqual(report["milestones"][0]["transcript_update_status"], "updated_from_transcript")
