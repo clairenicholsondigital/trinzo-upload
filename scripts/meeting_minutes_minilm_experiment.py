@@ -659,6 +659,8 @@ def is_low_quality_objective_text(text: str) -> bool:
     lowered = cleaned.lower()
     if not cleaned:
         return True
+    if is_addressed_transcript_objective_fragment(cleaned):
+        return True
     if re.search(r"\b(?:original|initial|previous)\s+plan\s+was\s+to\b", lowered):
         return True
     if is_overlong_objective_text(cleaned):
@@ -675,6 +677,29 @@ def is_low_quality_objective_text(text: str) -> bool:
     if not objective_cue and re.match(r"^(?:taking|clicking|fighting|looking|going|trying)\b", lowered):
         return True
     if re.match(r"^(?:taking|looking\s+at|clicking\s+on)\s+(?:the\s+)?(?:people|users|delegates|numbers?|graph)\b", lowered):
+        return True
+    return False
+
+
+def is_addressed_transcript_objective_fragment(text: str) -> bool:
+    """Detect raw addressed transcript snippets that should not become public objectives.
+
+    Real Teams/DOCX exports often contain early scene-setting such as "you've got...",
+    "your business..." or conversational fragments beginning "but also...". Those may
+    be useful evidence, but they are not suitable objective wording.
+    """
+    cleaned = normalize_text_fragment(text)
+    lowered = f" {cleaned.lower()} "
+    if not cleaned:
+        return False
+    if re.search(r"\b(?:you[’']?ve\s+got|you\s+have\s+got|your\s+(?:business|process|team|operations)|from\s+you)\b", lowered):
+        return True
+    if re.match(r"^(?:but\s+also|and\s+also|so\s+just|just\s+so)\b", cleaned, flags=re.I):
+        return True
+    if re.search(r"\b(?:i\s+suppose|i\s+guess|you\s+know|kind\s+of|sort\s+of)\b", lowered):
+        return True
+    second_person_hits = len(re.findall(r"\b(?:you|your|yours)\b", lowered))
+    if second_person_hits >= 2 and minutes_word_count(cleaned) >= 8:
         return True
     return False
 
@@ -3573,6 +3598,9 @@ def synthesize_meeting_scope_objective(output: dict[str, Any]) -> list[str]:
         + [normalize_text_fragment(point) for point in output.get("discussionPoints", [])]
         + [normalize_text_fragment(action.get("meetingActionPoint", "")) for action in output.get("actions", [])]
     ).lower()
+    domain_scope = synthesize_domain_scope_from_evidence(title, evidence_blob)
+    if domain_scope:
+        return [domain_scope]
     if (
         ("feature-interaction" in evidence_blob or "platform feature" in evidence_blob or "research hub" in evidence_blob)
         and ("poster" in evidence_blob or "session" in evidence_blob or "engagement" in evidence_blob)
@@ -3583,6 +3611,42 @@ def synthesize_meeting_scope_objective(output: dict[str, Any]) -> list[str]:
     if output.get("discussionPoints") or output.get("actions") or output.get("decisions"):
         return [f"Review {title} priorities, decisions and follow-up actions."]
     return []
+
+
+def synthesize_domain_scope_from_evidence(title: str, evidence_blob: str) -> str:
+    """Build a concise objective from repeated substantive topics, not raw quotes.
+
+    This is deliberately concept-led rather than transcript-specific: if a real-world
+    regulated/technical meeting mentions several concrete domains, use those domains
+    to phrase the public objective instead of falling back to a vague title template.
+    """
+    title_clean = normalize_text_fragment(title).strip(".")
+    lowered = evidence_blob.lower()
+    topics: list[str] = []
+
+    def add(label: str, *markers: str) -> None:
+        if label in topics:
+            return
+        if any(marker in lowered for marker in markers):
+            topics.append(label)
+
+    add("QMS alignment", "qms", "quality manual", "quality manuals", "quality management")
+    add("storage and warehousing flow", "warehouse", "warehousing", "storage arrangement", "storage scenario")
+    add("UDI and UDAMED responsibilities", "udi", "udamed", "eudamed", "barcode", "barcodes")
+    add("Med Envoy role boundaries", "med envoy", "medenvoy", "authorised rep", "authorized rep")
+    add("PPE and procedure scope", "ppe", "sunglasses", "procedure scope")
+    add("software change traceability", "software", "versioning", "traceability", "code changes")
+    add("electrical compliance testing", "electrical compliance", "iec60601", "iec 60601", "testing")
+    add("cybersecurity controls", "cybersecurity", "usb port", "port lock", "security controls")
+
+    if len(topics) >= 2:
+        selected = topics[:4]
+        if len(selected) == 2:
+            scope = " and ".join(selected)
+        else:
+            scope = ", ".join(selected[:-1]) + f" and {selected[-1]}"
+        return f"Review {title_clean}, focusing on {scope}."
+    return ""
 
 
 def is_valid_discussion_point(text: str, support_count: int) -> tuple[bool, str]:

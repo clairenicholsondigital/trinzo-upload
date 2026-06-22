@@ -11,6 +11,7 @@ from meeting_minutes_minilm_experiment import (
     collect_action_candidates,
     build_minilm_only_output,
     derive_meeting_objectives,
+    synthesize_meeting_scope_objective,
     formalize_transcript_discussion_point,
     has_concrete_action_commitment,
     infer_minilm_meeting_title,
@@ -111,6 +112,38 @@ class MeetingMinutesMiniLMQualityTest(unittest.TestCase):
 
     def test_rejected_original_plan_is_not_a_valid_objective(self):
         self.assertTrue(is_low_quality_objective_text("The original plan was to announce the Spain launch in July"))
+
+    def test_second_person_transcript_leakage_is_not_a_valid_objective(self):
+        self.assertTrue(
+            is_low_quality_objective_text(
+                "You've got a really robust process which Disa understands and is bought into and can use and is lined up to the existing processes"
+            )
+        )
+        self.assertTrue(is_low_quality_objective_text("But also to understand the final resting place"))
+
+    def test_real_regulatory_transcript_objective_is_synthesised_from_topics(self):
+        output = {
+            "meetingTitle": "Client DITA T819 Importer Obligations review plan",
+            "meetingObjectives": [
+                "You've got a really robust process which Disa understands and is bought into and can use and is lined up to the existing processes",
+                "But also to understand the final resting place",
+            ],
+            "discussionPoints": [
+                "The QMS manual and importer obligations need to align with the existing business process.",
+                "The warehousing and storage flow covers fiscal clearance in the Netherlands and storage in Dublin.",
+                "UDI and UDAMED responsibilities need to be clear between the manufacturer, importer and authorised representative.",
+                "The Med Envoy project plan will help clarify role boundaries and follow-up actions.",
+            ],
+            "actions": [],
+        }
+
+        self.assertEqual(derive_meeting_objectives(output), [])
+        self.assertEqual(
+            synthesize_meeting_scope_objective(output),
+            [
+                "Review Client DITA T819 Importer Obligations review plan, focusing on QMS alignment, storage and warehousing flow, UDI and UDAMED responsibilities and Med Envoy role boundaries."
+            ],
+        )
 
     def test_conversational_availability_is_not_a_concrete_action(self):
         text = "And I'm easy right here, I can come back in here, or if you want to just continue with this, I don't mind."
