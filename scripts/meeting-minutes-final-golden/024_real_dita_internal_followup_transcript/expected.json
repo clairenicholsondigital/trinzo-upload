@@ -1,24 +1,28 @@
 {
-  "description": "Real internal DITA T819 follow-up transcript after a client call, covering procedure detail gaps, PPE/sunglasses scope, language obligations, and planned working sessions with the client.",
+  "description": "Real internal DITA T819 follow-up transcript after a client call, benchmarked against the human internal minutes PDF for objective, working-session plan, regulatory scope questions and concrete follow-up actions.",
   "coverage": {
-    "sourceFixture": "uploaded DOCX: Internal_DITA_T819_-_followup_and_review_from_client_call---e90bfcc0-cc50-4e65-8443-9bb2f3be4318.docx",
-    "meetingTypes": ["internal_followup_review", "importer_obligations_review", "real_client_transcript"],
-    "behaviours": ["real_docx_extraction", "raw_meeting_chatter_filtering", "hidden_decision", "concrete_actions", "working_session_planning", "internal_review"]
+    "sourceFixture": "uploaded PDF benchmark: T819_Dita_Eyewear_Importer_Obligations_Trinzo_Minutes_intern---ca1a2cfa-68ad-4d9d-8dca-3e4a97c9c6ce.pdf",
+    "meetingTypes": ["internal_followup_review", "importer_obligations_review", "real_client_transcript", "human_minutes_benchmark"],
+    "behaviours": ["real_docx_extraction", "raw_meeting_chatter_filtering", "hidden_decision", "concrete_actions", "working_session_planning", "internal_review", "question_clarification_capture", "human_minutes_coverage"]
   },
-  "passThreshold": 0.88,
+  "passThreshold": 0.9,
   "criteria": {
     "decisions": {
       "weight": 0.15,
-      "maxCount": 2,
+      "maxCount": 3,
       "mustContain": [
-        "PPE requirements should be covered"
+        "PPE and sunglasses requirements should be covered in the procedures",
+        "Working sessions should be scheduled for Wednesday, Thursday and Friday"
       ]
     },
     "actions": {
       "weight": 0.25,
-      "maxCount": 4,
+      "maxCount": 6,
       "mustContain": [
-        "set up working sessions"
+        "Set up working sessions with the client",
+        "Confirm the PPE and sunglasses procedure scope with the client",
+        "Follow up internally on declaration of conformity language requirements",
+        "Schedule a weekly client check-in call"
       ]
     },
     "hallucinations": {
@@ -28,21 +32,27 @@
         "1/2 an hour",
         "their risk. No, it's not ours",
         "PPE should be excluded",
-        "language requirements are fully resolved"
+        "language requirements are fully resolved",
+        "Do to do",
+        "Okay, I can take that as an action",
+        "Call they weren't too keen"
       ]
     },
     "abstention": {
       "weight": 0.35,
-      "decisionMaxCount": 2,
-      "actionMaxCount": 4,
-      "discussionMinCount": 3,
+      "decisionMaxCount": 3,
+      "actionMaxCount": 6,
+      "discussionMinCount": 6,
       "requiredDiscussionTopics": [
         ["working sessions", "business works"],
-        ["PPE", "procedures"],
-        ["languages", "markets"],
+        ["Wednesday", "Thursday", "Friday"],
+        ["PPE", "sunglasses", "procedures"],
+        ["declaration of conformity", "languages", "markets"],
+        ["MDR", "PPE", "declarations of conformity"],
+        ["site visit", "process works"],
         ["quality manuals", "generic"]
       ],
-      "reason": "Internal follow-up should capture the operational plan and scope clarification without leaking conversational fragments or overstating unresolved regulatory interpretation."
+      "reason": "Internal follow-up should capture the human-minutes coverage: objective/follow-up from the client call, working sessions, weekly client connect, questions/clarifications, site visit follow-up, PPE/sunglasses scope, MDR/PPE declaration context, and unresolved DoC language requirements without leaking raw chatter."
     }
   }
 }

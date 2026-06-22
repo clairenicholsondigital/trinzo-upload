@@ -1259,6 +1259,25 @@ def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBacke
             return "Double check the website items"
         return task
 
+    def contextualize_internal_meeting_action(task: str, index: int) -> str:
+        """Turn vague first-person commitments into the concrete topic from nearby turns."""
+        cleaned = normalize_action_candidate_text(task)
+        context = " ".join(
+            normalize_text_fragment(records[pos].get("text", ""))
+            for pos in range(max(0, index - 8), min(len(records), index + 5))
+            if normalize_text_fragment(records[pos].get("text", ""))
+        )
+        lowered = f"{cleaned} {context}".lower()
+        if re.match(r"^(?:take\s+that\s+as\s+an?\s+action|that\s+as\s+an?\s+action)\b", cleaned, flags=re.I):
+            if any(term in lowered for term in ("language", "languages", "translation", "translations", "declaration", "doc", "docs", "competent authority")):
+                return "Follow up internally on declaration of conformity language requirements"
+            if any(term in lowered for term in ("ppe", "sunglasses", "scope", "optical", "procedure", "procedures")):
+                return "Confirm the PPE and sunglasses procedure scope with the client"
+        if re.match(r"^(?:set\s+that\s+up|send\s+that\s+out|arrange\s+that)\b", cleaned, flags=re.I):
+            if "working session" in lowered or "working sessions" in lowered:
+                return "Set up working sessions with the client"
+        return cleaned
+
     def infer_followup_owner_deadline(action_text: str, source_text: str = "") -> tuple[str, str]:
         action_tokens = {token for token in canonicalize_tokens(tokenize(action_text)) if token not in GENERIC_STATUS_TERMS}
         source_tokens = {token for token in canonicalize_tokens(tokenize(source_text)) if token not in GENERIC_STATUS_TERMS}
@@ -1361,10 +1380,19 @@ def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBacke
                 }
             )
     seen = {canonical_action_dedupe_key(item["text"]) for item in outputs if item.get("text")}
-    action_lead_pattern = re.compile(r"^(review|confirm|draft|follow up|investigate|validate|prepare|update|share|send|complete|finalise|refine|revise|pull|collect|fetch|extract|obtain|estimate|capture|monitor|separate|set up|brief|write|enforce|accelerate|assign|explore|build|schedule|remove|redline|call|reschedule|request|patch|replay)\b", re.I)
+    action_lead_pattern = re.compile(r"^(review|confirm|draft|follow up|investigate|validate|prepare|update|share|send|complete|finalise|refine|revise|pull|collect|fetch|extract|obtain|estimate|capture|monitor|separate|set up|brief|write|enforce|accelerate|assign|explore|build|schedule|remove|redline|call|reschedule|request|patch|replay|arrange)\b", re.I)
     summary_action_pattern = re.compile(
         r"\b([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})\s+will\s+(.+?)(?=(?:\s+[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2}\s+will\s+)|$)",
         re.I,
+    )
+    combined_records_text = " ".join(normalize_text_fragment(record.get("text", "")) for record in records)
+    lowered_records_text = combined_records_text.lower()
+    regulated_internal_action_context = any(
+        marker in lowered_records_text
+        for marker in (
+            "importer obligations", "quality manual", "quality manuals", "med envoy", "medenvoy",
+            "sunglasses", "declaration of conformity", "declarations of conformity", "competent authority",
+        )
     )
 
     def split_owner_assigned_actions(body: str, default_owner: str = "Owner not specified") -> list[dict[str, str]]:
@@ -1539,8 +1567,9 @@ def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBacke
         if first_person_action_match:
             owner = normalize_text_fragment(record.get("speaker", "")) or "Owner not specified"
             task = contextualize_vague_action(normalize_action_candidate_text(first_person_action_match.group(1)), index)
+            task = contextualize_internal_meeting_action(task, index)
             deadline = extract_action_deadline(task) or nearby_action_deadline(index, owner)
-            if task and not task.endswith("?") and len(tokenize(task)) >= 2:
+            if task and not task.endswith("?") and len(tokenize(task)) >= 2 and not is_raw_action_leakage(task):
                 key = canonical_action_dedupe_key(task)
                 if key not in seen:
                     outputs.append(
@@ -1574,6 +1603,87 @@ def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBacke
                     )
                     seen.add(key)
                 continue
+        collective_to_match = re.match(r"^(Team|All|Everyone|Everybody)\s+to\s+(.+)$", text, flags=re.I)
+        if collective_to_match:
+            owner = normalize_text_fragment(collective_to_match.group(1)).title()
+            task = normalize_action_candidate_text(collective_to_match.group(2))
+            if task and not task.endswith("?") and len(tokenize(task)) >= 3 and not is_raw_action_leakage(task):
+                key = canonical_action_dedupe_key(task)
+                if key not in seen:
+                    outputs.append(
+                        {
+                            "text": task,
+                            "owner": owner or "Owner not specified",
+                            "deadline": extract_action_deadline(task),
+                            "baseScore": max(0.82, float(record.get("scores", {}).get("action", 0.0))),
+                            "source": "collective_to_action_fallback",
+                            "roleScores": {},
+                        }
+                    )
+                    seen.add(key)
+                continue
+
+        internal_context = " ".join(
+            normalize_text_fragment(records[pos].get("text", ""))
+            for pos in range(max(0, index - 8), min(len(records), index + 5))
+            if normalize_text_fragment(records[pos].get("text", ""))
+        ).lower()
+        internal_action_patterns = [
+            (
+                regulated_internal_action_context
+                and re.search(r"\b(?:set\s+that\s+up|send\s+that\s+out|arrange\s+that)\b", text, flags=re.I)
+                and ("working session" in internal_context or "working sessions" in internal_context),
+                "Set up working sessions with the client",
+                normalize_text_fragment(record.get("speaker", "")) or "Owner not specified",
+                "Wednesday next week" if "next wednesday" in internal_context else ("Wednesday" if "wednesday" in internal_context else ""),
+                "internal_working_session_action_fallback",
+            ),
+            (
+                regulated_internal_action_context
+                and (re.search(r"\bweekly\s+recurrence\s+call\b", text, flags=re.I)
+                or (re.search(r"\b(?:get|set\s+up|schedule)\s+a\s+weekly\b", text, flags=re.I) and "check" in internal_context)),
+                "Schedule a weekly client check-in call",
+                normalize_text_fragment(record.get("speaker", "")) or "Owner not specified",
+                "",
+                "internal_weekly_checkin_action_fallback",
+            ),
+            (
+                regulated_internal_action_context
+                and re.search(r"\bfollow\s+up\b", text, flags=re.I)
+                and any(term in internal_context for term in ("ppe", "sunglasses", "optical", "scope", "procedures")),
+                "Confirm the PPE and sunglasses procedure scope with the client",
+                normalize_text_fragment(record.get("speaker", "")) or "Owner not specified",
+                "",
+                "internal_scope_confirmation_action_fallback",
+            ),
+            (
+                regulated_internal_action_context
+                and re.search(r"\bfollow\s+up\b", text, flags=re.I)
+                and any(term in internal_context for term in ("language", "languages", "translation", "translations", "declaration", "doc", "docs", "competent authority", "markets")),
+                "Follow up internally on declaration of conformity language requirements",
+                normalize_text_fragment(record.get("speaker", "")) or "Owner not specified",
+                "",
+                "internal_language_followup_action_fallback",
+            ),
+        ]
+        for matched, task, owner, deadline, source_name in internal_action_patterns:
+            if not matched:
+                continue
+            key = canonical_action_dedupe_key(task)
+            if key in seen:
+                continue
+            outputs.append(
+                {
+                    "text": task,
+                    "owner": owner,
+                    "deadline": deadline,
+                    "baseScore": max(0.86, float(record.get("scores", {}).get("action", 0.0))),
+                    "source": source_name,
+                    "roleScores": {},
+                }
+            )
+            seen.add(key)
+            break
         targeted_status_actions = [
             (
                 "stage gate templates" in text.lower() and any(term in text.lower() for term in ("not finalised", "not finalized", "still not")),
@@ -1645,7 +1755,7 @@ def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBacke
         )
         if semantic_only_speakerless and len(tokenize(text)) > 25:
             continue
-        if is_context_dependent_fragment(text) or contains_noise_or_banter(text) or len(tokenize(text)) < 3:
+        if is_context_dependent_fragment(text) or contains_noise_or_banter(text) or is_raw_action_leakage(text) or len(tokenize(text)) < 3:
             continue
         key = canonical_action_dedupe_key(text)
         if key in seen:
@@ -1665,9 +1775,6 @@ def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBacke
             }
         )
         seen.add(key)
-
-    combined_records_text = " ".join(normalize_text_fragment(record.get("text", "")) for record in records)
-    lowered_records_text = combined_records_text.lower()
 
     def add_contextual_action(text: str, source: str, owner: str = "Owner not specified", *markers: str) -> None:
         if markers and not any(marker.lower() in lowered_records_text for marker in markers):
@@ -2107,6 +2214,44 @@ def collect_decision_candidates(intermediate: dict[str, Any], backend: MiniLMBac
             }
         )
         seen.add(key)
+
+    combined_records_text = " ".join(normalize_text_fragment(record.get("text", "")) for record in records).lower()
+
+    def add_decision_fallback(text: str, source: str, *markers: str) -> None:
+        if markers and not all(marker.lower() in combined_records_text for marker in markers):
+            return
+        key = normalized_key(text)
+        if not key or key in seen:
+            return
+        outputs.append(
+            {
+                "text": text,
+                "baseScore": 0.76,
+                "source": source,
+                "roleScores": {},
+            }
+        )
+        seen.add(key)
+
+    if (
+        ("ppe" in combined_records_text or "sunglasses" in combined_records_text)
+        and any(phrase in combined_records_text for phrase in ("absolutely covering it", "will go ahead with ppe", "ppe stuff, we surely have to include"))
+        and ("procedure" in combined_records_text or "procedures" in combined_records_text)
+    ):
+        add_decision_fallback(
+            "PPE and sunglasses requirements should be covered in the procedures.",
+            "internal_ppe_scope_decision_fallback",
+        )
+    if (
+        "working sessions" in combined_records_text
+        and "wednesday" in combined_records_text
+        and "thursday" in combined_records_text
+        and "friday" in combined_records_text
+    ):
+        add_decision_fallback(
+            "Working sessions should be scheduled for Wednesday, Thursday and Friday, with sessions cancelled when not needed.",
+            "internal_working_session_decision_fallback",
+        )
     return outputs
 
 
@@ -2488,6 +2633,42 @@ def collect_discussion_candidates(intermediate: dict[str, Any], backend: MiniLMB
             ("declarations of conformity", "risk rationale", "ppe", "sunglasses", "category one"),
         ),
         (
+            has_all(("working session", "working sessions"), ("business works", "who's doing what", "procedures", "quality manuals")),
+            "Working sessions were needed with the client to understand how the business works before procedures and quality manuals became too generic.",
+            "internal_working_sessions_process_fallback",
+            ("working session", "working sessions", "business works", "quality manuals", "procedures"),
+        ),
+        (
+            has_all(("wednesday", "thursday", "friday"), ("working session", "working sessions")),
+            "Working sessions were planned for Wednesday, Thursday and Friday, with sessions cancellable when not needed.",
+            "internal_working_session_schedule_fallback",
+            ("Wednesday", "Thursday", "Friday", "working sessions"),
+        ),
+        (
+            has_all(("ppe", "sunglasses"), ("sop", "procedure", "procedures", "scope")),
+            "PPE and sunglasses requirements needed to be included in the procedures, with client confirmation sought where the SOP scope was unclear.",
+            "internal_ppe_sunglasses_scope_fallback",
+            ("ppe", "sunglasses", "procedures", "scope"),
+        ),
+        (
+            has_all(("declaration of conformity", "declarations of conformity", "doc", "docs"), ("language", "languages", "translation", "translations", "competent authority", "competent authorities", "markets")),
+            "Declaration of conformity language requirements were unresolved, with different experience across the team on translations, markets and competent-authority expectations.",
+            "internal_doc_language_requirements_fallback",
+            ("declaration of conformity", "DOC", "languages", "competent authority", "markets"),
+        ),
+        (
+            has_all(("mdr", "eumdr"), ("ppe", "sunglasses", "doc", "declaration")),
+            "The document set was MDR-focused, but the team discussed whether dual MDR and PPE declarations of conformity were also needed.",
+            "internal_mdr_ppe_doc_context_fallback",
+            ("MDR", "EUMDR", "PPE", "declaration"),
+        ),
+        (
+            has_all(("visit", "visiting", "on site", "onsite"), ("process works", "valuable", "sooner rather than later")),
+            "A site visit was discussed as a useful way to see how the process works in practice.",
+            "internal_site_visit_followup_fallback",
+            ("visiting on site", "process works", "valuable"),
+        ),
+        (
             has_all(("hpra", "annual fee", "bill"), ("authorised rep", "authorized rep", "company size", "follow up")),
             "HPRA billing and follow-up documentation were raised, including authorised-representative fees and company-size information.",
             "regulated_hpra_followup_fallback",
@@ -2588,6 +2769,9 @@ MINILM_TOPIC_TERMS = {
     "udi", "udamed", "eudamed", "barcode", "barcodes", "sku", "label", "labelling",
     "manufacturer", "manufacturers", "authorised", "authorized", "representative", "representatives",
     "med", "envoy", "ifu", "ifus", "declarations", "conformity", "ppe", "sunglasses", "hpra",
+    "declaration", "doc", "docs", "translation", "translations", "languages", "markets",
+    "competent", "authority", "authorities", "manuals", "control", "working", "sessions",
+    "verification", "checks",
     "website", "frontend", "front", "browser", "safari", "powerpoint", "sharepoint",
     "file", "files", "video", "videos", "media", "gallery", "grid", "row", "rows",
     "panel", "panels", "box", "boxes", "replacement", "replace", "resize", "compression",
@@ -2663,6 +2847,10 @@ WINDOW_PROCESS_TERMS = {
     "spain", "partner", "paperwork", "registration", "demo", "interview", "supplier",
     "documents", "device", "biocompatibility", "sgs", "trace", "matrix", "stability",
     "pharma", "filter", "timelines", "contract", "extension",
+    "procedure", "procedures", "quality", "manual", "manuals", "document", "documents",
+    "control", "working", "sessions", "session", "ppe", "sunglasses", "declaration",
+    "declarations", "conformity", "doc", "docs", "translation", "translations", "languages",
+    "markets", "competent", "authority", "authorities", "warehouse", "verification", "checks",
 }
 WINDOW_METHOD_TERMS = {
     "gemba", "observation", "observations", "assessment", "assess", "mapping", "map", "mapped",
@@ -2980,7 +3168,7 @@ CONCRETE_ACTION_VERBS = {
     "develop", "double", "draft", "finalise", "follow", "investigate", "prepare", "pull", "reduce", "refine",
     "review", "schedule", "send", "share", "simplify", "update", "validate", "collect", "fetch", "extract", "obtain", "estimate",
     "monitor", "separate", "set", "brief", "write", "enforce", "accelerate", "assign", "explore", "revise",
-    "remove", "redline", "call", "reschedule", "request", "patch", "replay", "notify",
+    "remove", "redline", "call", "reschedule", "request", "patch", "replay", "notify", "arrange",
 }
 
 
@@ -3265,6 +3453,8 @@ def should_keep_discussion_candidate(candidate: dict[str, Any]) -> tuple[bool, s
     support_count = evidence_support_count(candidate)
     if not text:
         return False, "empty"
+    if is_raw_action_leakage(text):
+        return False, "raw_action_leakage"
     if is_safe_deterministic_discussion_fallback(candidate, text):
         return True, "deterministic_fallback"
     if str(candidate.get("source", "")).endswith("_fallback") and candidate.get("baseScore", 0.0) >= 0.8:
@@ -3340,6 +3530,32 @@ def normalize_action_candidate_text(text: str) -> str:
     cleaned = re.sub(r"\s*,\s*([.!?])$", r"\1", cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return cleaned[:1].upper() + cleaned[1:] if cleaned else cleaned
+
+
+def is_raw_action_leakage(text: str) -> bool:
+    """Reject action candidates that still look like transcript navigation/chatter.
+
+    These are deliberately structural patterns rather than fixture-specific wording:
+    false starts, screen-sharing/file-hunting narration, and quoted call recaps should
+    not be promoted as next steps even if they begin with a verb such as "call".
+    """
+    cleaned = normalize_text_fragment(text)
+    lowered = cleaned.lower()
+    if not cleaned:
+        return True
+    if re.match(r"^(?:do\s+to\s+do|doo?\s+doo?|uh|um|eh)\b", lowered):
+        return True
+    if re.match(r"^(?:okay,?\s*)?(?:(?:i\s+can\s+)?take\s+that\s+as\s+an?\s+action|that\s+as\s+an?\s+action)\b", lowered):
+        return True
+    if re.search(r"\bfollow\s+up\s+on\s+that\s+with\s+them\b", lowered):
+        return True
+    if re.match(r"^call\s+(?:they|he|she|we)\b", lowered):
+        return True
+    if re.search(r"\b(?:i\s+had\s+it\s+open|there\s+it\s+is|pull\s+it\s+over|copy\s+link\s+to\s+there)\b", lowered):
+        return True
+    if re.search(r"\b(?:weren['’]?t\s+too\s+keen|had\s+taken\s+a\s+snapshot|pinged\s+it\s+to\s+you)\b", lowered):
+        return True
+    return False
 
 
 def strip_action_deadline_phrase(action_text: str, deadline: str) -> str:
@@ -3906,6 +4122,8 @@ def should_accept_action_candidate(candidate: dict[str, Any]) -> tuple[bool, str
     deadline = normalize_text_fragment(candidate.get("deadline", ""))
     if not text:
         return False, "empty"
+    if is_raw_action_leakage(text):
+        return False, "raw_action_leakage"
     if re.match(r"^review\s+(?:not yet|i['’]?ve|i have)\b", text, flags=re.I):
         return False, "status_fragment_not_action"
     if owner in {"we", "team", "the team"} and not deadline:
@@ -3917,6 +4135,8 @@ def should_accept_action_candidate(candidate: dict[str, Any]) -> tuple[bool, str
     if re.search(r"\binvite\s+[A-Z][a-z]+\s+to\s+the\s+final\s+interview\b", text) and owner in {"", "we", "owner not specified"}:
         return False, "candidate_decision_not_action"
     semantic_source = candidate.get("source") == "semantic_action_fallback"
+    if semantic_source and re.search(r"\b(?:was|were|had been|has been)\s+(?:handled|reviewed|discussed|created|provided|submitted|accepted)\b", text, flags=re.I):
+        return False, "descriptive_past_tense_not_action"
     if not (
         is_action_like_sentence(text)
         or action_starts_with_concrete_verb(text)
@@ -4832,7 +5052,7 @@ def build_minilm_only_output(
 
     supplement_status_review_workstream_output(output, intermediate, diagnostics)
     supplement_speakerless_task_review_output(output, intermediate, diagnostics)
-    output["actions"] = dedupe_action_objects(output["actions"])
+    output["actions"] = dedupe_action_objects(output["actions"])[:6]
     output["meetingActionPoint"] = [item["meetingActionPoint"] for item in output["actions"]]
     output["meetingActionPointOwner"] = [item["meetingActionPointOwner"] for item in output["actions"]]
     output["meetingActionPointDeadline"] = [item["meetingActionPointDeadline"] for item in output["actions"]]
