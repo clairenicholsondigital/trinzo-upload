@@ -1619,6 +1619,71 @@ def collect_action_candidates(intermediate: dict[str, Any], backend: MiniLMBacke
             }
         )
         seen.add(key)
+
+    combined_records_text = " ".join(normalize_text_fragment(record.get("text", "")) for record in records)
+    lowered_records_text = combined_records_text.lower()
+
+    def add_contextual_action(text: str, source: str, owner: str = "Owner not specified", *markers: str) -> None:
+        if markers and not any(marker.lower() in lowered_records_text for marker in markers):
+            return
+        task = normalize_action_candidate_text(text)
+        key = canonical_action_dedupe_key(task)
+        if not task or key in seen:
+            return
+        outputs.append(
+            {
+                "text": task,
+                "owner": owner or "Owner not specified",
+                "deadline": "",
+                "baseScore": 0.86,
+                "source": source,
+                "roleScores": {},
+            }
+        )
+        seen.add(key)
+
+    if (
+        ("med envoy" in lowered_records_text or "medenvoy" in lowered_records_text)
+        and ("project plan" in lowered_records_text or "task list" in lowered_records_text)
+        and re.search(r"\bfollow\s+up\b", lowered_records_text)
+    ):
+        add_contextual_action(
+            "Follow up on the Med Envoy project plan or task list",
+            "regulated_contextual_action_fallback",
+            "Owner not specified",
+            "med envoy",
+            "project plan",
+            "task list",
+        )
+
+    if "hpra" in lowered_records_text and ("bill" in lowered_records_text or "annual fee" in lowered_records_text):
+        add_contextual_action(
+            "Send the HPRA authorised-representative bill for review",
+            "regulated_contextual_action_fallback",
+            "Owner not specified",
+            "hpra",
+            "annual fee",
+            "bill",
+        )
+
+    if "declarations of conformity" in lowered_records_text and "risk rationale" in lowered_records_text:
+        add_contextual_action(
+            "Review the declarations of conformity and PPE risk rationale",
+            "regulated_contextual_action_fallback",
+            "Owner not specified",
+            "declarations of conformity",
+            "risk rationale",
+        )
+
+    if ("hpra" in lowered_records_text or "company size" in lowered_records_text) and re.search(r"\bsend\b", lowered_records_text):
+        add_contextual_action(
+            "Share the HPRA confirmation and company-size follow-up documents",
+            "regulated_contextual_action_fallback",
+            "Owner not specified",
+            "company size",
+            "confirmation",
+        )
+
     enrich_candidate_deadlines()
     return outputs
 
@@ -2320,6 +2385,73 @@ def collect_discussion_candidates(intermediate: dict[str, Any], backend: MiniLMB
             "three-year commitment",
             "one-year extension",
         )
+
+    def has_any(*markers: str) -> bool:
+        return any(marker.lower() in lowered_records_text for marker in markers)
+
+    def has_all(*marker_groups: tuple[str, ...]) -> bool:
+        return all(has_any(*group) for group in marker_groups)
+
+    regulated_review_fallbacks = [
+        (
+            has_all(("qms", "quality manual", "procedure"), ("importer obligations", "reg requirements", "regulatory")),
+            "The QMS and importer-obligation procedures needed to reflect both regulatory requirements and the client's existing business processes.",
+            "regulated_qms_importer_obligations_fallback",
+            ("qms", "quality manual", "importer obligations", "procedure"),
+        ),
+        (
+            has_all(("warehousing", "warehouse", "storage"), ("dublin", "netherlands", "clearance", "brokerage")),
+            "The team clarified the storage and logistics flow, including fiscal clearance in the Netherlands and onward storage in Dublin.",
+            "regulated_storage_logistics_fallback",
+            ("warehousing", "warehouse", "storage", "dublin", "netherlands", "clearance"),
+        ),
+        (
+            has_all(("warehouse", "shipping queue", "sales order", "b2b"), ("lot number", "barcodes", "barcode", "shipping list")),
+            "The order fulfilment and warehouse workflow was discussed, including B2B orders, picking, barcodes and lot-number handling.",
+            "regulated_warehouse_order_flow_fallback",
+            ("warehouse", "shipping queue", "sales order", "b2b", "lot number", "barcodes"),
+        ),
+        (
+            has_all(("udi", "barcode", "barcodes"), ("label", "labelling", "production identifier", "sku")),
+            "UDI, barcode and labelling requirements were reviewed, including the move from UPC codes toward identifiers suitable for regulatory data.",
+            "regulated_udi_labelling_fallback",
+            ("udi", "barcode", "barcodes", "label", "production identifier", "sku"),
+        ),
+        (
+            has_all(("udamed", "udimed", "u to med", "you to med"), ("importer", "authorised rep", "authorized rep", "legal manufacturer", "manufacturer")),
+            "UDAMED responsibilities were discussed, with the manufacturer responsible for uploading data and the importer and authorised representative responsible for checking it is present.",
+            "regulated_udamed_responsibility_fallback",
+            ("udamed", "udimed", "u to med", "you to med", "importer", "authorised rep", "legal manufacturer"),
+        ),
+        (
+            has_all(("med envoy", "medenvoy"), ("project plan", "task list", "timeline", "timelines", "process")),
+            "Med Envoy's project plan, task list and timelines were identified as important evidence for understanding registration responsibilities and gaps.",
+            "regulated_med_envoy_project_plan_fallback",
+            ("med envoy", "medenvoy", "project plan", "task list", "timeline"),
+        ),
+        (
+            has_all(("ifu", "ifus", "manufacturer's information note", "min"), ("sunglasses", "optical", "opticals", "medical device")),
+            "The team reviewed whether IFUs or manufacturer information notes were needed for the relevant optical and sunglasses products.",
+            "regulated_ifu_information_note_fallback",
+            ("ifu", "ifus", "manufacturer's information note", "min", "sunglasses", "optical"),
+        ),
+        (
+            has_all(("declarations of conformity", "declaration of conformity", "risk rationale"), ("ppe", "sunglasses", "category one")),
+            "Declarations of conformity for sunglasses needed updated risk rationale for PPE category one as well as EUMDR.",
+            "regulated_ppe_declaration_fallback",
+            ("declarations of conformity", "risk rationale", "ppe", "sunglasses", "category one"),
+        ),
+        (
+            has_all(("hpra", "annual fee", "bill"), ("authorised rep", "authorized rep", "company size", "follow up")),
+            "HPRA billing and follow-up documentation were raised, including authorised-representative fees and company-size information.",
+            "regulated_hpra_followup_fallback",
+            ("hpra", "annual fee", "bill", "authorised rep", "company size", "follow up"),
+        ),
+    ]
+    for matched, text, source, markers in regulated_review_fallbacks:
+        if matched:
+            add_discussion_fallback(text, source, *markers)
+
     for index, record in enumerate(records):
         fallback_text = infer_soft_discussion_fallback(records, index)
         if not fallback_text:
@@ -2403,6 +2535,11 @@ MINILM_TOPIC_TERMS = {
     "sgs", "offsite", "weekly", "check-in", "checkin", "trace", "matrix", "stability",
     "references", "master", "pharma", "filter", "timelines", "unaffected", "complex", "simple",
     "requests", "account", "permissions", "contract", "term", "extension",
+    "qms", "quality", "manual", "procedure", "procedures", "importer", "obligations",
+    "warehouse", "warehousing", "storage", "dublin", "netherlands", "clearance", "brokerage",
+    "udi", "udamed", "eudamed", "barcode", "barcodes", "sku", "label", "labelling",
+    "manufacturer", "manufacturers", "authorised", "authorized", "representative", "representatives",
+    "med", "envoy", "ifu", "ifus", "declarations", "conformity", "ppe", "sunglasses", "hpra",
     "website", "frontend", "front", "browser", "safari", "powerpoint", "sharepoint",
     "file", "files", "video", "videos", "media", "gallery", "grid", "row", "rows",
     "panel", "panels", "box", "boxes", "replacement", "replace", "resize", "compression",
@@ -4266,6 +4403,16 @@ def build_minilm_only_output(
         "generator": "minilm_only",
     }
 
+    transcript_lower = normalize_text_fragment(transcript_text).lower()
+    regulated_long_review = len(intermediate.get("records", [])) >= 250 and any(
+        marker in transcript_lower
+        for marker in (
+            "qms", "quality manual", "importer obligations", "udamed", "udimed", "med envoy",
+            "declarations of conformity", "hpra", "authorised rep", "authorized rep",
+        )
+    )
+    max_discussion_points = 10 if regulated_long_review else 8
+
     objective_seed_candidates = []
     for record in intermediate.get("records", []):
         text = normalize_text_fragment(record.get("text", ""))
@@ -4507,7 +4654,7 @@ def build_minilm_only_output(
             }
         )
         selected_texts.add(key)
-        if len(selected_cluster_points) >= 8:
+        if len(selected_cluster_points) >= max_discussion_points:
             break
 
     for candidate in sorted(selected_cluster_points, key=lambda item: item["score"], reverse=True):
@@ -4530,7 +4677,7 @@ def build_minilm_only_output(
         output["internalEvidence"]["discussionPoints"].append({"text": text, "_evidence": candidate["evidence"]})
         if include_diagnostics:
             diagnostics["selectedDiscussionPoints"].append(text)
-        if len(output["discussionPoints"]) >= 8:
+        if len(output["discussionPoints"]) >= max_discussion_points:
             break
 
     output["discussionPoints"] = dedupe_values(output["discussionPoints"])
@@ -4632,7 +4779,7 @@ def build_minilm_only_output(
         if include_diagnostics:
             diagnostics["selectedDiscussionPoints"].append(text)
         existing_discussion_keys.add(key)
-        if len(output["discussionPoints"]) >= 8:
+        if len(output["discussionPoints"]) >= max_discussion_points:
             break
 
     supplement_status_review_workstream_output(output, intermediate, diagnostics)

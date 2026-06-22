@@ -9,6 +9,7 @@ if str(SCRIPTS_DIR) not in sys.path:
 from meeting_minutes_minilm_experiment import (
     collect_minilm_only_context,
     collect_action_candidates,
+    collect_discussion_candidates,
     build_minilm_only_output,
     derive_meeting_objectives,
     synthesize_meeting_scope_objective,
@@ -517,6 +518,42 @@ Ibrahim: The purpose is to decide whether the integration risk is acceptable for
                 for candidate in candidates
             )
         )
+
+    def test_real_t819_transcript_recovers_broader_regulated_discussion_topics(self):
+        transcript = (
+            Path(__file__).resolve().parents[1]
+            / "scripts/meeting-minutes-final-golden/021_real_dita_importer_obligations_transcript/transcript.txt"
+        ).read_text(encoding="utf-8")
+        context = collect_minilm_only_context(transcript)
+        candidates, _rejections = collect_discussion_candidates(context, backend=None)
+        discussion_blob = "\n".join(candidate["text"] for candidate in candidates).lower()
+
+        for expected in (
+            "qms and importer-obligation procedures",
+            "storage and logistics flow",
+            "order fulfilment and warehouse workflow",
+            "udi, barcode and labelling requirements",
+            "udamed responsibilities",
+            "med envoy's project plan",
+            "ifus or manufacturer information notes",
+            "declarations of conformity",
+            "hpra billing",
+        ):
+            self.assertIn(expected, discussion_blob)
+
+    def test_real_t819_transcript_recovers_contextual_actions(self):
+        transcript = (
+            Path(__file__).resolve().parents[1]
+            / "scripts/meeting-minutes-final-golden/021_real_dita_importer_obligations_transcript/transcript.txt"
+        ).read_text(encoding="utf-8")
+        context = collect_minilm_only_context(transcript)
+        candidates = collect_action_candidates(context, backend=None)
+        action_blob = "\n".join(candidate["text"] for candidate in candidates).lower()
+
+        self.assertIn("follow up on the med envoy project plan or task list", action_blob)
+        self.assertIn("send the hpra authorised-representative bill for review", action_blob)
+        self.assertIn("review the declarations of conformity and ppe risk rationale", action_blob)
+        self.assertIn("share the hpra confirmation and company-size follow-up documents", action_blob)
 
 
 if __name__ == "__main__":

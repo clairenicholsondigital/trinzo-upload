@@ -1,5 +1,5 @@
 {
-  "description": "Real Trinzo client Teams transcript covering DITA importer obligations, QMS alignment, storage flow, UDI/UDAMED responsibilities, and Med Envoy role boundaries. This case guards against raw transcript leakage seen in bad PDF output.",
+  "description": "Real Trinzo client Teams transcript covering DITA importer obligations, QMS alignment, storage/logistics flow, UDI/UDAMED responsibilities, Med Envoy role boundaries, IFU/MIN context, PPE declarations and HPRA follow-up. This case guards against raw transcript leakage while requiring enough substantive coverage from a long real discussion.",
   "coverage": {
     "sourceFixture": "uploaded DOCX/PDF: Client_DITA_T819_-_Importer_Obligations_-_Client_connect",
     "meetingTypes": [
@@ -11,7 +11,7 @@
     "behaviours": [
       "real_pdf_extraction",
       "raw_transcript_leakage_filtering",
-      "discussion_only",
+      "discussion_coverage",
       "concrete_actions",
       "timestamp_filtering",
       "speaker_label_filtering"
@@ -20,14 +20,16 @@
   "passThreshold": 0.9,
   "criteria": {
     "decisions": {
-      "weight": 0.15,
+      "weight": 0.1,
       "maxCount": 1
     },
     "actions": {
-      "weight": 0.2,
-      "maxCount": 3,
+      "weight": 0.25,
+      "maxCount": 6,
       "mustContain": [
-        "follow up on the Med Envoy project plan or task list"
+        "follow up on the Med Envoy project plan or task list",
+        "HPRA authorised-representative bill",
+        "declarations of conformity and PPE risk rationale"
       ]
     },
     "hallucinations": {
@@ -46,27 +48,47 @@
     "abstention": {
       "weight": 0.35,
       "decisionMaxCount": 1,
-      "actionMaxCount": 3,
-      "discussionMinCount": 3,
+      "actionMaxCount": 6,
+      "discussionMinCount": 6,
       "requiredDiscussionTopics": [
         [
-          "importer obligations",
-          "QMS"
+          "QMS",
+          "importer-obligation"
         ],
         [
-          "warehousing",
+          "storage",
           "Dublin"
         ],
         [
+          "warehouse",
+          "barcodes"
+        ],
+        [
           "UDI",
-          "UDAMED"
+          "labelling"
+        ],
+        [
+          "UDAMED",
+          "authorised representative"
         ],
         [
           "Med Envoy",
           "project plan"
+        ],
+        [
+          "IFUs",
+          "manufacturer information"
+        ],
+        [
+          "declarations of conformity",
+          "PPE"
+        ],
+        [
+          "HPRA",
+          "documentation"
         ]
       ],
-      "reason": "The transcript is a real client discussion with useful substance but substantial conversational noise; output should summarise grounded topics and only retain clear follow-up actions."
+      "reason": "The transcript is a long real client discussion with useful substance and substantial conversational noise; output should summarise multiple grounded topics and retain clear follow-up actions without raw transcript leakage."
     }
   }
 }
