@@ -1,0 +1,469 @@
+Internal DITA T819 - followup and review from client call-20260617_113414-Meeting Transcript
+17 June 2026, 10:34am
+22m 48s
+Jacqui Fox started transcription
+John-Paul Hughes   0:03
+No, go ahead.
+Mark Kelleher   0:03
+Sorry.
+Okay, just to kind of generally...
+John-Paul Hughes   0:04
+But.
+So, I just...
+Mark Kelleher   0:07
+Um...
+Jacqui Fox   0:10
+Sorry, go ahead, Mark.
+Colm O'Rourke   0:11
+Just go silent.
+Ha.
+Jenny Gough   0:13
+Mm.
+Mark Kelleher   0:13
+Sorry, guys, the.
+Yeah, I mean, some of the detail we got there, it was great to get, but kind of need to go up a level. I mean, we can, in terms of developing the procedures and so on, we can incorporate the reg requirements ourselves, just as team here, but we're very quickly going to run into difficulty in defining what actually happens on the grounds. I was trying to, I guess, explain that.
+Orla, we got it needs.
+More engagement from, I think, or someone on our team to explain to her, explain to us how their business works, who's doing what and where it's happening, because the procedures won't be meaningful, really. They'll just be too generic and high level. And we're already getting to that point, trying to write some of the quality manuals, for example, would be one of those, but the
+Jacqui Fox   0:52
+Mmh.
+Mark Kelleher   0:59
+even doing a kind of generic or general document control procedure, I still know how to do things, you know, is it all online, did it paper records, she mentioned scanners, she mentioned the ERPs, all that detail. So like, we'll need like working sessions that are almost like the, even the flows she mentioned there. Yeah, okay, that's fine.
+Jacqui Fox   1:11
+Okay.
+Absolutely, and that's fine. We can arrange that.
+Yeah. So with a working session of kind of maybe 1/2 an hour, an hour each day, bearing in mind the Monday, Tuesday thing. So like a Wednesday, Thursday, Friday column, obviously you won't necessarily be on all of them from your perspective. I can absolutely set that up if it's, if that'll help. And it may be a case that you don't necessarily all need to be honest.
+Mark Kelleher   1:38
+I think so, yeah, yeah.
+Jacqui Fox   1:41
+if there is a particular kind of key area that you need to be, that you're focused on, that's relevant to kind of your space as such, do you know what I mean?
+Jenny Gough   1:42
+Okay.
+Mark Kelleher   1:42
+Yeah.
+Yeah, yeah, yeah. Even just gone through this.
+Jacqui Fox   1:53
+Because what I don't like.
+Yeah, I suppose I'm just conscious of to get the working sessions in to get the information, but I don't want people kind of sitting on working session calls where the information, you're burning through hours, but the output from what you're getting from her is not necessarily meaningful to the work that you're working on as such. But now, that said, I certainly think for the first few of them,
+Mark Kelleher   1:56
+Right.
+No.
+Jacqui Fox   2:17
+The information is probably relevant to all of you.
+to help you understand. So, and then use your discretion, then at that point just kind of say, right, well, I kind of have enough of what I need, Jenny. I don't need, I know now know what I have, but Mark, you still have outstanding questions, so absolutely can set them up and
+Mark Kelleher   2:20
+Mm.
+Yeah.
+Jenny Gough   2:31
+Mhm.
+Mark Kelleher   2:32
+Yeah.
+Okay, yeah, yeah.
+Jacqui Fox   2:39
+cancel them as needed. If they're, you know, if it's a case that you need to just take a break and play on with doing the activity, we can do that as well. So, sorry, go ahead, Mark. You want to say something else to me?
+Mark Kelleher   2:40
+Okay.
+Okay.
+No, I'm good. Thanks, Jacqui. I just want to, I hope this Borla has that understanding that we're not going to go away for three or four weeks and come back and here's the procedures not to go. It'll be a lot of engagement from her. Yeah.
+Jenny Gough   2:55
+Mhm.
+Jacqui Fox   3:04
+Nope.
+Jenny Gough   3:04
+Mhm.
+Jacqui Fox   3:06
+And I don't think that she does because previously we would have had working sessions with her as well.
+Mark Kelleher   3:07
+It.
+OK, let's go.
+Okay, that's fine.
+Jenny Gough   3:12
+Mhm.
+Jacqui Fox   3:12
+Yeah, that would have been quite regular. Yeah. John Paul, sorry.
+Mark Kelleher   3:15
+Yeah.
+Jenny Gough   3:15
+Yeah, and it's easier to put the time in and then take it out than get time in at the last minute, isn't it?
+Mark Kelleher   3:19
+Mm.
+Yeah, very, yeah.
+Jacqui Fox   3:21
+Absolutely. And again, same, that was very similar to the approach that we took last time we had, we did have them in, we didn't necessarily use them. So, John Paul, you were going to say something there at the top.
+Jenny Gough   3:22
+Yeah, yeah.
+Yeah.
+Mhm.
+I think Vermont.
+Sorry.
+John-Paul Hughes   3:34
+Yeah, I just have to make sure that the PPE category, our information regulation is included in those procedures. Looking at them, it's all EUMDR kind of heavy. So if we are having one system and you know, a lot of their competitors will have that,
+Mark Kelleher   3:47
+Okay.
+John-Paul Hughes   3:54
+category or that PPE regulation on their declaration of conformity. So we have to make sure that then the procedures are aligned as well.
+Mark Kelleher   4:03
+Mm.
+Colm O'Rourke   4:07
+There was dual DOCs created in the last project, yeah, covering both. So like I would assume, I mean the PPE stuff, we surely have to include it in the procedures, but maybe Jacqui, that's something to get in right because it's not in the SOP. Should we get that in writing from Orla that?
+Jacqui Fox   4:10
+Yeah, there was.
+John-Paul Hughes   4:12
+Yeah.
+Colm O'Rourke   4:26
+Like, as we're developing big...
+Jacqui Fox   4:26
+we can do, but I've made the decision we are we are absolutely covering it because I think it's absolutely just just an administrative oversight because PPE was not considered for the first SOP. We literally went only on opticals and then they came back with that PPE as a kind of bolt on piece.
+Colm O'Rourke   4:31
+Yeah.
+Yeah, yeah.
+Jacqui Fox   4:45
+but the scope of this SOP would have been written off the back of SOW number one. So when we were in the midst of that before the bolt on happened, so I'd say, and they never changed the narrative around it.
+Mark Kelleher   4:51
+Yeah.
+Jacqui Fox   5:01
+when the PP, the sunglasses consideration came in. So I think it's completely in administrative oversight. I talked to Mark about this on Friday, what I don't, and I have talked to Kathryn about this, absolutely will go ahead with PPE because what I don't want to do is write all those procedures and then they come to a realization.
+Mark Kelleher   5:19
+And.
+Jacqui Fox   5:21
+that we didn't account for sunglasses and we end up having to do a rework because we didn't. But I absolutely will follow up with OReilly just to say this is the approach we're taking.
+Mark Kelleher   5:30
+Ohh.
+Jacqui Fox   5:31
+And, you know, if they want something different and they want us to focus on only obstacles, but then fine, but we do both as such.
+Colm O'Rourke   5:31
+Yeah.
+John-Paul Hughes   5:39
+Well, that's why it's also very important to connect with MedEnvoy and all of the information they're producing, because how they will see this overall product and how it's categorized, you know, we need to be in sync with them. So there's not a contradiction in what we provide and what
+They, uh, what their scope will be.
+Jacqui Fox   6:04
+Mhm.
+And.
+Colm O'Rourke   6:06
+The.
+Jacqui Fox   6:08
+Go ahead, sorry, Conor.
+Colm O'Rourke   6:09
+Just the languages. I was looking again at the translation because I have not come across before a manufacturer translating the DOC into all the European languages. And the wording of the MDR is a European language.
+or languages where they're sold. And my experience has been if the DOC is in English, unless a specific competent authority is requesting it in their language, that English is sufficient because it's a union language. Now, I don't know if anyone else has seen that, but that's just what I've seen before.
+Jenny Gough   6:40
+Okay.
+Yep.
+John-Paul Hughes   6:45
+No, my experience has been that they've provided all of the languages and especially now it's not as big a deal in a company like this, but for like say an orthopedic company that has or any company that medical device company, especially around implants that provide surgical techniques. So
+those surgical techniques are much more, how would you say, there's a lot more photographs and text and instructions compared to the actual IFU. And so like a lot of companies would have went through a separation of the surgical technique information and only having
+Colm O'Rourke   7:12
+T.
+John-Paul Hughes   7:24
+you know, what's mandated for an IFU in the medical device regulations. So to cut down the management of translations so that, you know, the IFU for like a class 3 implant, like an orthopedic joint, it's all text. There's no, you know, there's warnings and things like that.
+but it's the surgical technique, which is almost like a verification validation document. So that's how it's handled and managed through the quality management system. And so it's not required to be translated into every language. Obviously, that depends on
+how big a customer is, or the network that you're selling to, what their demands are. But from a regulatory point of view, all of the languages of the European Union were created in the IFU and they separated the surgical techniques. So that's my experience.
+Colm O'Rourke   8:21
+We're talking about the DOC though, the Declaration of Conformity.
+Jenny Gough   8:26
+Yeah, I mean, from I've worked sort of for a few.
+Colm O'Rourke   8:27
+Isn't it? Yeah.
+John-Paul Hughes   8:27
+R.
+Yeah, yeah, that declaration conformity was created in all 24 languages as well.
+Colm O'Rourke   8:34
+Okay, yeah, I hadn't.
+Jenny Gough   8:35
+So I've worked for a few large companies that have only done them in English and there's not been any pushback to them whatsoever, even from like when they've had notified bodies in doing audits. No, but the notified body hasn't picked up the fact that there's not been different language versions available.
+Mark Kelleher   8:45
+EE.
+Colm O'Rourke   8:47
+Mm.
+Yeah, I mean, I, if you for sure.
+John-Paul Hughes   8:52
+Who are the notified bodies?
+Jenny Gough   8:55
+Sorry?
+John-Paul Hughes   8:57
+Alright, who was the notified body?
+Jenny Gough   9:00
+BSI was one of them.
+John-Paul Hughes   9:02
+Kate.
+Jenny Gough   9:03
+And the other one was GMAT.
+Colm O'Rourke   9:07
+I know when I was at NSAI, they accepted English language DLCs only.
+Jenny Gough   9:11
+I mean, to be fair, the majority of products in these companies were class 1 and 2A. There was a couple of class 3 products, but not many.
+John-Paul Hughes   9:23
+So, when you're when you're submitting documentation for...
+Jacqui Fox   9:24
+And.
+John-Paul Hughes   9:30
+for a technical file to a notified body, you only generally submit in an agreed language as the English, even to TUV in Germany, we were submitted in English. So there was no copies of the language. The language requirements were requirements of the MDR. They were handled separate and that was something that was not necessarily reviewed.
+Mark Kelleher   9:33
+Oh.
+Jenny Gough   9:39
+Yeah.
+Mark Kelleher   9:41
+Mm.
+Jenny Gough   9:57
+Yeah.
+Yeah.
+Colm O'Rourke   10:07
+Mm.
+Mm.
+John-Paul Hughes   10:07
+In fact, what happened was there would be, so that you have the product or the catalog number, so they would have internal variants to handle, you know, say a product that was going to the Eastern European countries, so it would have all these European country
+translations on it. And then for maybe Western Europe, you'd have it split because like, that's a lot of, if you have to provide a paper IFU, that's a lot of, you know, bulk. And also it has an impact on sterilizations. So, you know, the weight of what's inside the box. So this is not relevant.
+to this product, but that's just coming from where I am coming from.
+Jenny Gough   10:52
+Yeah, and I mean, from the audit perspective, though, when BSI came in in particular, they did MDR audits, especially on Convertac, and they wanted to see the DOCs as part of that process, but they never once commented on
+Different language versions not being available, so...
+John-Paul Hughes   11:12
+But they are not handling, they are not handling the registrations in those countries. So what will happen is, especially with big countries, so like internally, all of the staff, quality people, the registered people are dealing with generally FDA and deliverables for FDA and BSI. And like that's all in English.
+but it's what happens when you come to like the C Mark, you're supposed to distribute like in this one European Union, but it's not so straightforward. All of these countries, especially for medical devices, have registrations, internal registrations, and most of the big companies will have internally, it's not done through a distributor or a third party. They'll have their own employees in different countries who
+Jenny Gough   11:38
+Mmh.
+John-Paul Hughes   11:57
+will make sure that the individual requirements. So because a lot of these company authorities will have their own databases, and so there will be information that needs to be submitted to health authorities. It's minimal in Europe, but like France has and Spain and Italy in particular have a database.
+So, Eastern Europe is a little bit more involved because of their history; they're only coming into new, so...
+I mean, I'm just working on projects at the minute where most countries have come back for a change that's been implemented in manufacturing and there's no impact. But there's a few in Europe have additional information and there's very few. But that's my point is that these requirements for languages often come through.
+Um, they, you know, your distribution.
+Again, these are sunglasses, so all of that may not even apply. So that's where that requirement comes from.
+Colm O'Rourke   13:02
+Mm.
+Jacqui Fox   13:06
+Okay, I can take that as an action just to as well follow up, I suppose, with them internally here as well, just because it sounds like...
+The experiences are different across the team, so just to kind of get some further clarification and see what we'll get back on that.
+Hey, guys, just sorry.
+John-Paul Hughes   13:25
+Yeah, I think, I think, sorry, to meet their own business requirements now would be the key thing. So, like in all of the places that were the languages that they're using is to meet that business need and then maybe worry about a possible, you know, dare I say it, I don't know what the implications of are getting.
+an audit finding from a competent authority in any of those countries, at sunglasses, they might just say, you know, you need to up to date and then you have an action item. I think meeting all of their current business requirements in terms of what they're translating is probably the goal rather than maybe trying to meet all of the requirements.
+Jacqui Fox   14:02
+Yeah.
+Colm O'Rourke   14:04
+Mm.
+John-Paul Hughes   14:04
+that might be deemed for translation by views in the medical device regulation. That's just a business decision.
+Jacqui Fox   14:14
+OK.
+Yeah, and we can, as I said, I'll follow up here as well and we can probably take that approach, John Paul, absolutely. And you'll be guided by them on, you know, what's necessary. And it sounds like even, yeah, no, absolutely. But it also said, to be fair, it sounds like they're
+John-Paul Hughes   14:31
+But that's their risk. No, it's not ours.
+Jacqui Fox   14:37
+they're even not completely clear internally, how many languages they have, all of the markets that they are currently selling into. And I say that, and I think from the previous work column, it sounds like they're even getting inquiries from other markets that
+Colm O'Rourke   14:44
+Yeah.
+EE.
+Jacqui Fox   14:58
+That are new to them, that uh, you know, bring in additional languages as well that they need to consider, so, um...
+We can absolutely address that, follow up on that with them. In terms of working sessions, guys, what's the best time to suit you, mornings or afternoons?
+Mark Kelleher   15:14
+Mm.
+For a meeting order.
+John-Paul Hughes   15:19
+Uhh...
+Jacqui Fox   15:20
+Yeah.
+John-Paul Hughes   15:20
+Yeah, afternoons, Thursday and Friday afternoon. Yes, I've already started block book out time on Thursday and Friday afternoons because that's my freest.
+Jacqui Fox   15:35
+Jenny.
+Is that OK with you or?
+Jenny Gough   15:39
+Yeah, I can fit in around here at the minute.
+Jacqui Fox   15:43
+Okay. And it's probably less you anyway, I would imagine just in term, it might be you front loaded. First while them and step off and Mark, does that work for you or?
+Jenny Gough   15:50
+Who?
+Mark Kelleher   15:55
+Oh yeah, yeah, anytime these three days this group is fine with me, so I can work around the rest of the team, yeah.
+Jenny Gough   16:00
+Mm.
+Jacqui Fox   16:02
+So if I put in a like a 1230 for every day.
+Well, not every day, but every third Wednesday, Thursday, and Friday, sorry.
+Jenny Gough   16:12
+Yeah, that should be good for me.
+Jacqui Fox   16:14
+Wednesday, Thursday, Fridays.
+Perfect. And I'll send that out now. What, sir?
+Mark Kelleher   16:19
+But let's, sorry, when will that start, Jacqui? Is it next week?
+Jacqui Fox   16:24
+Well, I'll probably from tomorrow, trying, or is that too soon?
+Mark Kelleher   16:30
+Ohh.
+Jacqui Fox   16:30
+Now I don't know whether she'd be able to accommodate this.
+Mark Kelleher   16:32
+Oh, that's right, yeah, yeah.
+Jenny Gough   16:33
+I, yeah, tomorrow I do have a meeting at 12.30.
+Jacqui Fox   16:39
+I could do it from next Wednesday then if that's preferable.
+Mark Kelleher   16:42
+I'm just not sure. I guess John Paul and Jenny, we've made some progress, I guess, but we need to trash out a few things. I don't want to waste all this time either, obviously, so we need to come prepared with a list of our discrete distinct questions for her.
+John-Paul Hughes   16:53
+Yeah, yeah.
+Jacqui Fox   16:55
+Okay, so why don't you guys meet sorted out in for the use the rest of this week to sort out what you need to sort out and I'll start with order from Wednesday next week.
+John-Paul Hughes   16:56
+SOP.
+Yeah.
+Mark Kelleher   16:59
+Yeah.
+Jenny Gough   17:03
+Yeah.
+Yeah.
+John-Paul Hughes   17:05
+Perfect.
+Mark Kelleher   17:06
+That's good, I think. Yeah, yeah, we can always send her stuff as well and ask her to review offline. I'll copy her this time.
+Jacqui Fox   17:06
+Perfect.
+OK.
+Absolutely. Absolutely.
+Colm O'Rourke   17:14
+Yeah.
+Jacqui Fox   17:16
+Mark, don't worry about it, I've done this, I've done this myself. Okay, so, and I'm just going to say it, cancel.
+Mark Kelleher   17:20
+I got.
+Jacqui Fox   17:29
+Option to cancel on days not needed, option to cancel on days not needed. Okay.
+Mark Kelleher   17:35
+Yeah, even just, yeah, set expectation that I guess and have the placeholders in there, yeah, yeah.
+John-Paul Hughes   17:40
+So the question is, though, does they have any kind of internal documentation for procedures themselves? Do they have anything written down?
+Jacqui Fox   17:41
+Absolutely.
+No.
+Colm O'Rourke   17:49
+I mean, she mentioned we do some checks, but not a lot of the product. So I mean, you'd assume that's written down somewhere, but who knows? But it's good to know it's their warehouse-like. So that's at the point at which they receive it in City West or Park West, wherever it is, that's where those verification checks will
+Mark Kelleher   17:54
+Yeah.
+John-Paul Hughes   17:59
+Yeah.
+Mark Kelleher   17:59
+Mmh.
+Colm O'Rourke   18:10
+Will start happening, but...
+Mark Kelleher   18:13
+Okay.
+Colm O'Rourke   18:14
+Who knows whether they have documentation?
+Jacqui Fox   18:19
+And to be fair...
+Mark Kelleher   18:19
+We had mentioned last week.
+Jacqui Fox   18:21
+Sorry, go ahead, Mark.
+Mark Kelleher   18:21
+I'm sorry, Jacqui, go ahead. No, that's fine, thank you. Just when Jacqui and I spoke last week, we had discussed possibly visiting on site just to see if ourselves how the process works. I think that'll be very valuable. Some stage, sooner rather than later, I'd say.
+Jacqui Fox   18:23
+No, no, go.
+Colm O'Rourke   18:28
+Yeah.
+Yeah.
+Mark Kelleher   18:38
+Yeah, we can see what that just keeps on.
+Jacqui Fox   18:39
+I can work around you, so you let me know, but and I haven't said it to her yet, because I know you were kind of saying probably not over the next two weeks, but maybe thereafter. So absolutely keep with me. And then on another side, Jenny, I pinged into MS Teams there earlier. Previously that label that they're talking about on the outer box on a previous
+Colm O'Rourke   18:40
+Yeah.
+Mark Kelleher   18:41
+Yeah, thank you, yeah, yeah.
+Yeah, yeah. Yes, I think we got it.
+Jacqui Fox   19:03
+call they weren't too keen to send them to to share them with us, but I had taken a snapshot of the label. I have pinged it to you in the Teams chat there as well. And actually I'll ping it into this chat as well just in case anybody else does need it. Where did I have it?
+Jenny Gough   19:10
+OK.
+Okay.
+Yeah.
+John-Paul Hughes   19:20
+Yeah, I'll have to review labels as well from a regulatory point of view.
+Jacqui Fox   19:25
+Do to do to do. I had it open a second ago. There it is. Sorry. I just need to pull it over.
+John-Paul Hughes   19:31
+And that's the other thing. If we decide to go with the IFU, I know you said they don't, but if they're already providing information to their customers and that's an expectation, then we have to, if we provide it under those, we have to tie up the label and any symbols on the label with a glossary in the IFU.
+Jacqui Fox   19:32
+Eh.
+John-Paul Hughes   19:53
+Or some kind of...
+Colm O'Rourke   19:53
+I think, yeah, yeah, a copy of that, that M.I.N. would be, or we have a Jacqui, do we? Copy and content, yeah.
+Jacqui Fox   19:59
+We do, yeah, yeah, yeah, yeah. It's there in the SharePoint there. I'll point you guys back to us. Hold on now.
+Uh, do.
+Colm O'Rourke   20:09
+That's the label for.
+No.
+Jacqui Fox   20:14
+Well, and it's a...
+Colm O'Rourke   20:14
+Although that might be the shipwreck character though, to be fair. I don't know.
+Jacqui Fox   20:18
+And what did I say on the snip of it? Snapshot of taken of label from product box or the shows on the 4th of March.
+So, and the MIN.
+Sure, my back to Client folder.
+812 client collateral.
+And MINs are here. Copy link to there.
+No, not us.
+Jenny Gough   20:47
+Okay.
+And I was just taking in.
+Jacqui Fox   20:49
+And that's the MIN.
+Colm O'Rourke   20:53
+Okay.
+Jacqui Fox   20:54
+Okay.
+Um, okay.
+Jenny Gough   21:20
+Right.
+Jacqui Fox   21:21
+To impress upon Cody that needs to to see my invoice plan, um, because of the the interdependency.
+As well.
+Mark Kelleher   21:33
+Yeah, I was going to stress meeting this afternoon, Jenny and Paul. I don't know what your schedules are like, but...
+Jacqui Fox   21:34
+OK.
+Mark Kelleher   21:40
+You've created.
+Jenny Gough   21:40
+I'm.
+I'm a bit snowed this afternoon. I've got a couple of meetings and I need to go and do my mum's shopping for her and deliver it and spend a bit of time with her because mum's housebound. So it's one of them that I need to be there for really. Wednesday is the day I do see to my mum. So, but
+Mark Kelleher   21:52
+Okay, absolutely, yeah.
+Hello.
+Jenny Gough   22:02
+Apart from a meeting at 12.30, which should last about an hour tomorrow, I'm free the rest of the day and again Friday, anytime I would say after half 11.
+Mark Kelleher   22:16
+Yeah.
+If you say 2 P.m. tomorrow, would that work for you, John Paul, as well?
+John-Paul Hughes   22:21
+Yeah, yeah, that'd be great.
+Jenny Gough   22:22
+Yeah, that's good with me. Okay, I'm going to have to drop off now because I need to get down the road.
+Mark Kelleher   22:24
+OK, thank you. Ground, I'll put that in.
+Jacqui Fox   22:26
+Ah.
+Jump. Cut.
+And I'll get a weekly recurrence call in with oral adjusting overall, aside from the working sessions, just to check in as well.
+Mark Kelleher   22:31
+Okay, thanks, Sinead.
+Jenny Gough   22:32
+Kate.
+Okay, okay, thank you. Yeah, okay, thank you. Bye-bye. Bye.
+Colm O'Rourke   22:38
+Lovely.
+Jacqui Fox   22:38
+I'll do it at the same time as earlier, okay?
+Colm O'Rourke   22:42
+Right, see you later, guys. Bye, bye, bye.
+Mark Kelleher   22:42
+Okay.
+Jacqui Fox   22:43
+Cheers, say bye, bye bye.
+Mark Kelleher   22:44
+Thanks for bye.
+Jacqui Fox stopped transcription

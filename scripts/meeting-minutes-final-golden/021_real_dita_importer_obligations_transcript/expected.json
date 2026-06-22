@@ -1,9 +1,21 @@
 {
   "description": "Real Trinzo client Teams transcript covering DITA importer obligations, QMS alignment, storage flow, UDI/UDAMED responsibilities, and Med Envoy role boundaries. This case guards against raw transcript leakage seen in bad PDF output.",
   "coverage": {
-    "sourceFixture": "uploaded PDF: Client_DITA_T819_-_Importer_Obligations_-_Client_connect---130238e8-f338-46bd-a47f-b9c42ff2eff3.pdf",
-    "meetingTypes": ["client_status_review", "document_review", "importer_obligations_review", "real_client_transcript"],
-    "behaviours": ["real_pdf_extraction", "raw_transcript_leakage_filtering", "discussion_only", "concrete_actions", "timestamp_filtering", "speaker_label_filtering"]
+    "sourceFixture": "uploaded DOCX/PDF: Client_DITA_T819_-_Importer_Obligations_-_Client_connect",
+    "meetingTypes": [
+      "client_status_review",
+      "document_review",
+      "importer_obligations_review",
+      "real_client_transcript"
+    ],
+    "behaviours": [
+      "real_pdf_extraction",
+      "raw_transcript_leakage_filtering",
+      "discussion_only",
+      "concrete_actions",
+      "timestamp_filtering",
+      "speaker_label_filtering"
+    ]
   },
   "passThreshold": 0.9,
   "criteria": {
@@ -37,10 +49,22 @@
       "actionMaxCount": 3,
       "discussionMinCount": 3,
       "requiredDiscussionTopics": [
-        ["importer obligations", "QMS"],
-        ["warehousing", "Dublin"],
-        ["UDI", "UDAMED"],
-        ["Med Envoy", "project plan"]
+        [
+          "importer obligations",
+          "QMS"
+        ],
+        [
+          "warehousing",
+          "Dublin"
+        ],
+        [
+          "UDI",
+          "UDAMED"
+        ],
+        [
+          "Med Envoy",
+          "project plan"
+        ]
       ],
       "reason": "The transcript is a real client discussion with useful substance but substantial conversational noise; output should summarise grounded topics and only retain clear follow-up actions."
     }

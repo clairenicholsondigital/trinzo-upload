@@ -1,1437 +1,792 @@
-Client DITA T819 - Importer Obligations - review plan-
-20260617_110032-Meeting Transcript 
-17 June 2026, 10:00am 
-32m 18s 
- 
-Jacqui Fox started transcription 
- 
-Jacqui Fox   0:03 
-I think it was Friday you sent it, Mark. I can't remember. Yeah, it was around the QMS 
-manual or that. And that's acting as the building block really to kind of build out the 
-necessary. 
- 
-Mark Kelleher   0:06 
-Yeah, that's right, yeah. 
- 
-Jacqui Fox   0:21 
-and required documents from a compliance point of view in relation to the importer 
-obligations. But certainly... 
-As the guys have kind of worked through that, they've probably come up with some 
-key questions that they... 
-that although I've probably given the background to those questions from my 
-perspective, haven't been working with you for a while, I suppose. 
-I'm coming at that from a layperson's point of view. And what might be nice to do is 
-just so those key questions that the clarity around those, the answers to those may 
-direct the approach in a way. So 
- 
-Mark Kelleher   0:52 
-Mm. 
- 
-Jacqui Fox   1:08 
-And... 
- 
-Orla Skally   1:09 
-Yeah. 
-
-
- 
-Jacqui Fox   1:10 
-Now, and I know the guys have listed them here, so I'm hi, John Paul. I'm happy to 
-kind of just go through those as well, but I think as we go through them, the guys 
-also might have some other questions and absolutely understood that we, you know, 
-we probably... 
- 
-Jenny Gough   1:14 
-Okay. 
- 
-Mark Kelleher   1:14 
-Yeah. 
-Mmh. 
- 
-Jacqui Fox   1:27 
-as a Trinzo perspective, maybe talked about these previously, but just so that they 
-hear from your standpoint as opposed to just my standpoint in terms of getting the 
-clarity around how the structure works. So, so no, nothing, nothing panicky, don't 
-worry. It's just, as I said, I've given kind of 
- 
-Orla Skally   1:40 
-Okay. 
- 
-Jacqui Fox   1:47 
-my understanding and my interpretation, haven't been working with you guys, but 
-just so there may be nuances to the questions that I can't necessarily feed over. So to 
-kind of kick off, I suppose initially it's around clarifying that third party. 
-Warehousing scenario, and I've talked to the guys through about how it product 
-comes in from your suppliers is. 
-lands in the Netherlands and is processed through Europe from a financial 
-perspective, the financial clearinghouse in the Netherlands, but the product, in my 
-understanding, doesn't necessarily stay in a warehouse in the Netherlands at any 
-point, and then it moves on to Ireland. But it's to understand that flow, 
-
-
- 
-Orla Skally   2:34 
-No. 
- 
-Jacqui Fox   2:36 
-but also to understand the final resting place. That makes it sound like they're dead. 
-The final storage arrangement for the opticals. Oh, you have the doggy in work today 
-again, I see. 
- 
-Colm O'Rourke   2:41 
-Haha. 
- 
-Orla Skally   2:43 
-Hmm. 
- 
-Mark Kelleher   2:50 
-Ohh. 
- 
-Orla Skally   2:51 
-Yeah, sorry. Yeah, she's scratching to get in. Sorry. 
- 
-Jenny Gough   2:52 
-Google, Google. 
-Yeah. 
- 
-Jacqui Fox   2:55 
-Not at all. You're with dog people here, so I'm not bothered. But yes, just to 
-understand kind of what's the final storage scenario for the devices, because that I 
-think will feed into some of the questions that the guys have around transportation, 
-but also warehousing. 
- 
-Colm O'Rourke   2:58 
-Mm. 
-
-
- 
-Mark Kelleher   2:58 
-Mm-hmm. 
- 
-Orla Skally   3:01 
-Mm. 
-Yeah. 
- 
-Jacqui Fox   3:16 
-And storage, storage arrangements, so... 
- 
-Orla Skally   3:19 
-Liam. 
- 
-Jacqui Fox   3:21 
-Have I addressed that right and is that the correct reflection of how it works? 
- 
-Orla Skally   3:27 
-Yeah, like I can come back to you with something maybe written formally, but like 
-verbally, I suppose, just high level, we have kind of a complicated intercompany 
-structure. So, you know, the goods are purchased by DD Inc. from directly from the 
-supplier in Japan, and there's a buy-sell. 
- 
-Mark Kelleher   3:43 
-Ah. 
- 
-Orla Skally   3:46 
-transaction that goes down and the goods are shipped from Japan via Netherlands 
-where they're fiscally cleared. So their first ports of arrival in Europe is in Netherlands, 
-whereby they're cleared by a third party. And then so they're literally held maybe for 
-one day in the airport. 
-the paperwork is sent for clearance, brokerage, and then it's released and the goods 
-then go on to Dublin, to Deta here in Dublin. So like storage, there is none really, 
-they're just kept aside while the goods are being cleared, maybe a day or two 
-depending actually. 
-
-
- 
-Mark Kelleher   4:28 
-No. 
- 
-Orla Skally   4:29 
-what's going on in the world, you know, sometimes there's backlogs. Yeah, and so 
-the goods are ultimately stored here in Dublin. 
- 
-Jacqui Fox   4:37 
-And is that warehousing facility in Park West? 
- 
-Colm O'Rourke   4:37 
-In your, ohh yeah, there you go. 
- 
-Orla Skally   4:41 
-Yes. 
- 
-Jacqui Fox   4:42 
-Yeah, Cycle. 
- 
-Colm O'Rourke   4:42 
-And that's your own operated one, or it's a third party? Yeah, it's yours. OK, yeah. 
- 
-Orla Skally   4:44 
-Yeah. 
- 
-Mark Kelleher   4:44 
-Mm. 
- 
-Orla Skally   4:45 
-Yeah, yeah, yeah. 
- 
-Jacqui Fox   4:48 
-Yeah. 
-
-
- 
-Mark Kelleher   4:48 
-Did I share the screen for a second? That be okay, people? Just to bring it up. Thank 
-you. Hopefully you can see that okay. 
- 
-Jacqui Fox   4:50 
-Absolutely, go for it. 
- 
-Colm O'Rourke   4:51 
-Yeah, go from it. 
- 
-Jenny Gough   4:53 
-Paula, can I just, sorry, can I just ask while Mark's sharing screen, is the warehouse 
-automated at all or is it a fully manual warehouse? 
- 
-Orla Skally   4:58 
-Yeah. 
-It's pretty manual. We have scanners for picking, but yeah, it's all human operators. 
-Yeah. 
- 
-Jenny Gough   5:12 
-Okay. 
-Yeah, OK. 
- 
-Mark Kelleher   5:16 
-Task. 
-Just wanted to check with Ciara. I found the image on the screen there. This is in the 
-draft quality manual is regulated, and I found this is in the from the previous phases. 
-So, is this what you were talking about a minute ago? Is this the flow of products? 
-OK, that's accurate. OK, that's good. Good. Yeah, yeah. So, I guess from our 
-perspective, the in terms of establishing QMS. 
- 
-Orla Skally   5:22 
-Yeah. 
-
-
-Mhm. 
-Yes, that's correct. Yeah. Yeah. 
- 
-Mark Kelleher   5:38 
-and providing deliverables. 
-There's 2 pieces to each any procedure until you put in place. Does the 
-understanding the applicable reg requirements, so MDR and so on, and making sure 
-that they're incorporated in the procedure, but also for it to be meaningful and 
-usable for DISA, we have to understand how the business works so that we fit in as 
-much as possible into your existing. 
- 
-Orla Skally   5:57 
-Yeah. 
- 
-Mark Kelleher   6:00 
-business processes and obviously make it as easy as possible for you to use. It's 
-minimal impact to the organization when these are rolled out and also to make a 
-sustainable for you sort of in terms of goes away at some point in the future. You've 
-got a really robust process which Disa understands and is bought into and can use 
-and is lined up to the existing processes. If that's not the case, then things will just 
-diverge and it won't be followed. That's just the way. 
- 
-Orla Skally   6:09 
-Mhm. 
-Liu. 
-Yeah. 
- 
-Mark Kelleher   6:24 
-It works, so. 
- 
-Orla Skally   6:26 
-Mm. 
- 
-Mark Kelleher   6:27 
-may be in trouble then obviously. So it's very important we have that input from you, 
-
-
-I guess, from the team there on how your business works again, just to make it 
-usable for you and to minimize the impact of your operations there. 
- 
-Orla Skally   6:29 
-Yeah, yeah. 
-Mhm. 
-Yeah, makes sense. 
- 
-Mark Kelleher   6:45 
-Cuckoo. 
- 
-Jacqui Fox   6:45 
-And order to the point of the document that Mark is sharing in the and this is the 
-kind of the QMS manual that he had sent through and Friday, do you have any 
-opportunity to read that yet or go through it at any high level or? 
- 
-Orla Skally   6:52 
-Mm. 
- 
-Mark Kelleher   6:53 
-Yeah. 
- 
-Orla Skally   6:54 
-I'm sorry you mentioned it, but I don't have any email from Mark. 
- 
-Jacqui Fox   6:58 
-Ohh. 
- 
-Orla Skally   7:00 
-So, sorry, I was going to... 
- 
-Jacqui Fox   7:01 
-Oh. 
-
-
- 
-Mark Kelleher   7:01 
-Oh. 
- 
-Orla Skally   7:03 
-Maybe I'm wrong. I'm looking under Mark Kelleher. I don't see anything. I saw an 
-email from you, Jacqui, five days ago. 
- 
-Jacqui Fox   7:05 
-But. 
- 
-Mark Kelleher   7:07 
-No. 
- 
-Orla Skally   7:11 
-About questions to Cody. 
- 
-Jacqui Fox   7:12 
-Okay. 
-That's bizarre. 
- 
-Orla Skally   7:15 
-Maybe on this. 
- 
-Colm O'Rourke   7:15 
-I'm looking at it now and OReilly, you're not in the addressee list. 
- 
-Jenny Gough   7:15 
-Oh. 
- 
-Orla Skally   7:19 
-Yeah, OK. 
- 
-Jacqui Fox   7:20 
-
-
-Oh. 
-I've just seen the same thing, sorry, to our bad. 
- 
-Orla Skally   7:24 
-Yeah. 
-That's okay, no problem. 
- 
-Jacqui Fox   7:26 
-I will, I will flick this over to Orla. 
- 
-Mark Kelleher   7:29 
-I'm so sorry, that's my mistake. 
- 
-Orla Skally   7:29 
-It's okay. It's not the first time I've been left out of the group. 
- 
-Jacqui Fox   7:29 
-Sorry. 
- 
-Colm O'Rourke   7:29 
-You can, you can speed read or not. 
- 
-Orla Skally   7:33 
-I'm used to it, put it that way. 
- 
-Mark Kelleher   7:34 
-That's my mistake, I apologize. Yeah. 
- 
-Colm O'Rourke   7:34 
-Thank you. 
- 
-Jenny Gough   7:36 
-Ohh. 
-
-
- 
-Orla Skally   7:37 
-Yeah. 
- 
-Mark Kelleher   7:38 
-My fault for Russian that, man. OK, policies around we. 
- 
-Jacqui Fox   7:38 
-Good. 
- 
-Orla Skally   7:41 
-Yeah, no problem. I'll take a look at us. Yeah. 
- 
-Mark Kelleher   7:44 
-Thank you. 
- 
-Orla Skally   7:46 
-This week. 
- 
-Jacqui Fox   7:47 
-OK, this is the QMS manual. 
- 
-Mark Kelleher   7:48 
-OK, thank you. 
- 
-Jacqui Fox   7:53 
-As discussed on the call, sorry. 
-I don't know how all of us missed us. 
- 
-Mark Kelleher   7:57 
-Yeah. 
- 
-Orla Skally   7:59 
-All right. 
-
-
- 
-Jacqui Fox   8:00 
-Okay. 
-Okay, and again, and you probably kind of cover this in that outline to just take us 
-through an order. So from 
- 
-Mark Kelleher   8:09 
-Ohh. 
- 
-Jacqui Fox   8:15 
-from a product perspective, but also from an information flow perspective. And guys, 
-if I haven't interpreted the question correctly, please feel free to elaborate so that 
-you get full clarity. 
-So, yeah, so if you could take us just through an order in terms of the product and 
-also that information flow, that would be helpful. 
- 
-Orla Skally   8:38 
-So, when you when you say an order, do you mean a purchase order from the 
-supplier or a sales order to our customer? 
- 
-Jacqui Fox   8:47 
-Guys, you can elaborate it to your query. 
- 
-Colm O'Rourke   8:50 
-I think it's probably the whole thing, guys, isn't it? We'd like to see. Well, you've given 
-us the front half, I suppose, there of how the product ends up in your warehouse. But 
-then if a customer, Specsavers or whoever places an order with you, what does that 
-look like? 
- 
-Mark Kelleher   8:53 
-Mm. 
- 
-Orla Skally   9:04 
-Yeah. 
-Okay, so customers are wholesale opticians here in Europe. They can order via a B2B 
-
-
-platform, or they can contact a sales rep within the region who places the order on 
-their behalf. Or they can directly contact customer service who will place the order 
-directly in our 
-or P system. But generally they place the order either through B2B, it's mainly 
-through our B2B platform and submits it and it goes into a pending approval queue 
-whereby our customer service team review the order and check any. 
- 
-Jenny Gough   10:08 
-Thank you. 
- 
-Orla Skally   10:09 
-Accounts, then a product allocates to the sales order, and it goes into a shipping 
-queue here in the warehouse, and we print a shipping list, which is a series of 
-barcodes which details the sales order number, the total number of units to be 
-picked, all the products. 
-When it comes in from Japan, you know, we do some checks, but it's not as thorough 
-as it should be, I'll be honest. And the product is sitting on the shelf in the original 
-packaging. So it's in a poly bag and within a white cardboard box. And they're 
-barcoded, all the product is barcoded from the factory. 
-into us. And so we use a, we have NetSuite, which is our ERP system, and we use RF 
-Smart, which is a barcoding picking add-on. And they have handheld devices. So we 
-take the label, once we print the sticker, it's applied to a shipping box. So if there's 10 
-units in the order, we pick a box. 
-big enough to hold 10 units, we apply it to the box and then the team will go around 
-and pick into that box using the handheld devices. Everything is stored by bin 
-number and then we, once it's picked, it goes to packing and that's where. 
- 
-Colm O'Rourke   11:20 
-You. 
- 
-Orla Skally   11:30 
-The goods are taken out of the poly bag and inserted into our branded case and 
-packaging. And it's where we put in the warranty booklet to or the manufacturer's 
-information note, but that only applies for sunglasses, I believe, anyway. And we then 
-apply the final label on the outer box. 
-
-
-which is the label the store sees. And that's the one that we're also working on to 
-update with all the additional information. And all the fully packed units are in a 
-shipping box. And then we ship and invoice the goods using DHL and insert a hard 
-copy of the invoice inside the box. 
-Yeah, and the goods are dispatched pretty much same day or next day, and we have 
-next day delivery in Europe, so, and delivered directly to the store. 
-It's very high level. Yeah. 
- 
-Jenny Gough   12:27 
-Yeah. 
- 
-Mark Kelleher   12:28 
-No. 
- 
-Jenny Gough   12:30 
-With the barcodes that they put on there, are they your actual UDI barcodes? 
- 
-Orla Skally   12:32 
-Yeah. 
-Yes, so we're not using UDI just yet. And so it's just our UPC code that we're using at 
-the moment, but we're changing. Yeah. 
- 
-Jenny Gough   12:42 
-But that, yeah, that the UPC code can be used, yeah, that will be used as part UDIDI, 
-but obviously then you need some sort of production identifier in there as well. 
- 
-Orla Skally   12:46 
-Yeah. 
-Yes, yeah. 
-Yeah, so we're working currently working on lot numbering right now. So we've 
-reached out to RF Smart, the handheld device program, and we're implementing, it's 
-called license placing. You probably know about us, but anyway, we're trying to 
-implement. 
- 
-Jenny Gough   12:55 
-
-
-Okay. 
-Okay. 
-Yeah. 
- 
-Orla Skally   13:13 
-A system where we can pick. 
-We have to pick by lot number and then store the product by lot number. So we're 
-just kicking that off this week. So we're hoping by early July we will have lot 
-numbering process. 
- 
-Jenny Gough   13:21 
-Yeah. 
- 
-Orla Skally   13:30 
-Figured out, yeah, and then have to implement. 
- 
-Jenny Gough   13:32 
-So will you be changing the barcodes at that time to like 2D data matrix barcode 
-including the lot number in there? Yeah, yeah. 
- 
-Orla Skally   13:34 
-Hmm. 
-Yes. 
-I believe so, but you know, I have a colleague in the US who's managing the barcode 
-design, and yeah, the label design, the barcode format. So there's a lot of stuff that is 
-outside of my control at the moment, and I do believe even the label is. 
- 
-Jenny Gough   13:46 
-T. 
-Yeah. 
-Yeah. 
-Yeah. 
- 
-Orla Skally   13:58 
-They're still trying to sign off the format. But yeah, that's the plan. Yeah. 
-
-
- 
-Jenny Gough   14:01 
-Yeah, I mean, yeah, I mean, that's something that I could have a look at the label if 
-you wanted and just make sure that it's right, because from an importer point of 
-view, you need to check that. So, yeah. The other thing then was the data side of 
-things. Obviously, for new products, they have to go into Udimed immediately. 
- 
-Orla Skally   14:07 
-Yeah. 
-Mhm. 
- 
-Mark Kelleher   14:10 
-Yeah. 
- 
-Orla Skally   14:12 
-Yeah, and I. 
- 
-Jenny Gough   14:23 
-now because we passed the 28th of May, but for all the other items, they need to be 
-in there by the 28th of November this year. 
-So they need to start putting the data in. I did check on Friday and there's no 
-product information in there yet. 
-The other thing is, I know what, as an importer, there should be a link between the 
-two. You should be sort of shown to be the importer for DITA Inc. In UDMed, there's 
-a link somewhere that you can do. So I couldn't see that link anywhere when I had a 
-look at it. 
- 
-Mark Kelleher   14:51 
-Ohh. 
- 
-Colm O'Rourke   15:01 
-Are Deta Inc. registered as a manufacturer in Udemed? 
- 
-Jacqui Fox   15:02 
-T. 
-
-
- 
-Jenny Gough   15:03 
-G. 
-Yes, they were, yes. 
- 
-John-Paul Hughes   15:06 
-Yes, yes. 
- 
-Orla Skally   15:06 
-They should be, yeah. 
- 
-Colm O'Rourke   15:07 
-There, okay, yeah. 
- 
-Jenny Gough   15:10 
-The other thing is, and I know we're looking at Europe, but I had a quick look at the 
-good idea, the US FDA good idea, and there's no products in there at all. And there 
-should be because the date was, I think it was 2019 was the final date on class one 
-products there. So you need, I just recommend that you look at that side of things as 
-well for distribution in the US. 
- 
-Orla Skally   15:31 
-And for the FT. 
- 
-Mark Kelleher   15:32 
-I was. 
- 
-Jenny Gough   15:33 
-Yeah. 
- 
-Orla Skally   15:34 
-I can, I can bring that to the US team. Sorry, just to go back, Jenny, when you were 
-saying there's no the new product is not in EU, registering product in EU, is that 
-registering all the SKUs? Sorry, I'm just not familiar. Like, what information? 
-
-
- 
-Jenny Gough   15:38 
-Yeah. 
- 
-Jacqui Fox   15:49 
-Sure. 
- 
-Jenny Gough   15:53 
-It's any, yeah, any new product launches you do, so any new frames that are coming 
-in, they have to go in immediately now, okay, before they're on the market. Yeah. 
- 
-Orla Skally   15:57 
-Yeah, yeah. 
-And is that by UPC? 
-Yeah, sorry, is that by UPC SKU? Like, you know, 'cause we have models, yeah. 
- 
-Jenny Gough   16:08 
-Yes, it's by UPC. Yeah. Yeah, it's by UPC. And you need to make those UPCs 14 digits, 
-which I think you've already done on the paperwork, because for healthcare, it's 14 
-digit. And you just add zeros at the beginning. That's not an issue. You can do it that 
-way. 
- 
-Orla Skally   16:12 
-Okay. 
-Yeah. 
- 
-Colm O'Rourke   16:28 
-Or, yeah, the authorized rep. Sorry, I'm blanking on the name again. Can you, what is 
-this? Who? I made an invite. Like, they they should be playing a part here as well in 
-terms of data entry to Udemed. 
- 
-Jenny Gough   16:28 
-Yeah, so... 
-
-
- 
-Jacqui Fox   16:30 
-Sorry, Colm. 
- 
-Jenny Gough   16:31 
-Yeah, Sinead. 
- 
-Jacqui Fox   16:34 
-Med Envoy. 
- 
-Orla Skally   16:35 
-Measured. 
- 
-Jenny Gough   16:37 
-Yeah. 
-But no, they shouldn't, they should just be checking it's in there. The legal 
-manufacturer, which is Data Inc. as far as Europe's concerned, they're responsible for 
-putting the data into Udemed and then the importer and the authorised rep have to 
-check it's there. 
- 
-Colm O'Rourke   16:47 
-Yeah. 
- 
-Mark Kelleher   16:55 
-Yeah. 
- 
-Jacqui Fox   16:59 
-And to that point, Jenny, as MedEnvoy or a representative or registered as the actor 
-for manufacturer, it is therefore with MedEnvoy working with T Inc to upload the 
-devices into Udimed. Is my understanding based on your regulation? 
- 
-Colm O'Rourke   16:59 
-Yeah, absolutely. It's not not their responsibility. 
- 
-Jenny Gough   17:01 
-
-
-And. 
-Yeah. 
-Yeah. 
-Okay. 
- 
-Orla Skally   17:17 
-Yeah. 
- 
-Colm O'Rourke   17:18 
-Yeah, I mean, like, who's legal? 
- 
-Jenny Gough   17:19 
-Okay, so you've got a contract, like a mandate in place to say that the authorized rep 
-will do it on behalf of the manufacturer. 
- 
-Colm O'Rourke   17:22 
-Yeah. 
-And this is DJ Inc.'s responsibility, Orla, not not T, like it's the legal manufacturer's 
-responsibility, and that med envoy, I most authorized reps have us like a side service 
-where they might upload the data for you if it's not their legal responsibility, but they 
-may or may not, like Cody might have already contracted them to upload it or not. 
- 
-Jenny Gough   17:28 
-Yeah. 
- 
-Orla Skally   17:29 
-Oh. 
-Yeah. 
- 
-Jenny Gough   17:32 
-Yeah. 
- 
-Orla Skally   17:46 
-Yeah. 
-
-
- 
-Colm O'Rourke   17:49 
-Don't know. 
- 
-Orla Skally   17:49 
-I think he has, so this is another maybe. 
- 
-Jenny Gough   17:49 
-We. 
- 
-Orla Skally   17:53 
-just challenge is that Cody's the one working with Met Envoy, not me. So he's having 
-side meetings and I'm really not up to date about what's going on on that side, on 
-that front. So I'm kind of stuck in the middle and trying to, so I can go back to Cody 
-of course and ask, but I wouldn't be up to date or in those meetings. 
- 
-Jacqui Fox   17:58 
-Absolutely. 
-I... 
- 
-Colm O'Rourke   18:06 
-Mm. 
- 
-Jenny Gough   18:08 
-Yeah. 
- 
-Colm O'Rourke   18:10 
-Mm. 
- 
-Orla Skally   18:13 
-But I do know he has engaged them to register the devices. Yeah. 
- 
-Jacqui Fox   18:13 
-And shoot up. 
-And to that point, Orla, I know when we did the kickoff for this particular scope, I did 
-
-
-reference and ask Cody to get an overview and did follow up with him last week, 
-which is the mail you refer to at start, a copy of that, either the project plan or the 
-task list from med envoy in relation to their activities, because that will help us 
-understand 
- 
-Orla Skally   18:23 
-Yeah. 
-Mm. 
-Mm. 
- 
-Jacqui Fox   18:38 
-How that fits in? 
-in the work that we're doing. So to the point that the devices need to be registered 
-within you to med and that lies with that med envoy if they're acting on behalf of the 
-manufacturer actor in relation to TD Inc. But because we've no oversight of when 
-that activity is happening, we're obviously 
- 
-Orla Skally   18:42 
-Yeah. 
-Yeah. 
-I know, yeah. 
-Yeah. 
- 
-Jacqui Fox   19:01 
-Call, you know, calling it out or trying to understand how that's happening to ensure, 
-I suppose, that it just doesn't get dropped or missed or forgotten or whatever it is, 
-because people think that somebody else is doing it. 
- 
-Orla Skally   19:03 
-Yeah. 
-Mm. 
-Yeah, or or we have. 
-Yeah, double like duplication, which is like the worst thing ever as well, you know, so, 
-yeah, so just I suppose, yeah. 
-
-
- 
-Jenny Gough   19:18 
-TD. 
- 
-Jacqui Fox   19:20 
-So if you're talking to Cody, could you just maybe mention it to him? So it really is 
-exactly for that reason to avoid duplication where possible. And without it, we 
-definitely may struggle to 
- 
-Orla Skally   19:25 
-Yeah. 
-Or gaps, yeah. 
-Yeah. 
-No. 
- 
-Jacqui Fox   19:37 
-ensure that we are all aligned really. 
- 
-Colm O'Rourke   19:40 
-And practically speaking, like it's data Ireland or deals responsibility, one of the 
-important responsibilities to check is the data in Udemed. And if it's not, you're not 
-supposed to place product in the market. 
- 
-Orla Skally   19:40 
-Mhm. 
- 
-Jacqui Fox   19:47 
-In there. 
- 
-Orla Skally   19:49 
-Mm. 
-Yeah, yeah, yeah. 
- 
-Jenny Gough   19:52 
-Yeah. 
-
-
- 
-Colm O'Rourke   19:54 
-Yeah. 
- 
-Orla Skally   19:56 
-Yeah, I think Jenny was very clear. Yeah, we're supposed to check. Yeah. Yeah. 
- 
-Jacqui Fox   19:56 
-So, I suppose, really. 
- 
-Colm O'Rourke   19:59 
-Yeah. 
- 
-Jacqui Fox   20:00 
-And I suppose why that's important to OReilly is in terms of dates with relation to 
-Udemed. 
- 
-Orla Skally   20:16 
-Yeah. 
- 
-Jacqui Fox   20:16 
-Go immediately into and any existing products. 
- 
-Orla Skally   20:21 
-You were saying November, is it Jenny? Or is it October? The old products. 
- 
-Jacqui Fox   20:21 
-Should also be. 
- 
-Jenny Gough   20:22 
-Yeah. 
-Sorry, November, end of November for current products. 
- 
-Orla Skally   20:27 
-Yeah, 28th of November. Okay. Yeah, because like we have a new collection. 
-
-
- 
-Jenny Gough   20:29 
-Yeah. 
-There's a lot to get in there, isn't there? 
- 
-Orla Skally   20:35 
-Yeah, there is, but yeah, and I just obviously it's a med envoy that's doing that, but I 
-don't know the process or what information they need and how long that takes. But I 
-do know, yeah. If it's by style, okay, we probably have, I don't know, over 100 models 
-or more. 
- 
-Jacqui Fox   20:36 
-The. 
- 
-Jenny Gough   20:42 
-Liu. 
-This A lot. 
- 
-Colm O'Rourke   20:55 
-The. 
- 
-Orla Skally   20:56 
-There's by SKU, you know, there's loads there, so... 
- 
-Jenny Gough   20:58 
-It is, it's by SKU. There's different levels and there will be, because you've got Master 
-UDI involved as well, basically what they do is they put the basic UDI in. So there'll be 
-the basic UDI numbers go in there and all of the characteristics that go across all of 
-the products are entered at that level. 
- 
-Orla Skally   21:06 
-Yeah. 
- 
-Jenny Gough   21:18 
-And then you put the next level in for the master UDI. And again, there's going to be 
-
-
-characteristics that go across all of the products in that group. And then beneath 
-that, you have the individual UDI. So by SKU, where you've got the individual details 
-and they go in there. It's not quite as long winded as class. 
- 
-Orla Skally   21:19 
-Mm. 
-Mm. 
-You. 
- 
-Jenny Gough   21:38 
-2B and three in that you don't have to wait for notified body approval. So once 
-you've got all the information in there and it gets to a certain stage, it just shows as 
-available. So there's a whole step that's missed out on class one and class 2A. So 
-that's a good thing. But yeah, they 
- 
-Orla Skally   21:49 
-Right. 
-Mm. 
-Yeah. 
-So can I ask you, I suppose, look, we don't have a date for the audit yet, but like, 
-obviously we're working on the registration right now, but what's the consequence 
-or risk if we don't have everything in when the audit? Yeah. 
- 
-Jenny Gough   22:03 
-Mm. 
-If I would say, I mean, if the audit's early enough, you, as long as you can show that 
-the preparation is being done. 
- 
-Orla Skally   22:20 
-Yeah. 
- 
-Jenny Gough   22:22 
-for entering the data into you to med, that should be sufficient. You've just got to 
-show that you've got everything's in place. You're in the process of collecting the 
-data or you have the data that you know how to put the information in, which it 
-
-
-obviously is down to med envoy. They would just need to be able to demonstrate 
-that they know what they're doing with it and there's a plan of action in place. 
- 
-Orla Skally   22:26 
-Okay. 
-Mhm. 
-Mhm. 
-Yeah. 
- 
-Jenny Gough   22:44 
-Yeah. 
- 
-Jacqui Fox   22:45 
-So I suppose from that perspective, OReilly, it probably impresses back to not only 
-should we have oversight of their timeline in relation to that, you do, given that the 
-responsibility of the importer is to ensure that devices are registered within Udemed. 
-So 
- 
-Orla Skally   22:45 
-OKOK. 
- 
-Jenny Gough   22:47 
-Two. 
- 
-Mark Kelleher   22:48 
-Ohh. 
- 
-Jenny Gough   22:56 
-Admin. 
- 
-Orla Skally   23:03 
-Yeah. 
- 
-Jacqui Fox   23:04 
-
-
-to the point if the audit did come up, you'd need to be able to show that you know 
-what the status of that is. 
- 
-Orla Skally   23:12 
-Right. Yeah. 
- 
-Jacqui Fox   23:13 
-as the justification, do you know what I mean? So it is a work in progress, but if you 
-don't know what the kind of timelines that Med Envoy are working to to get that up, 
-you know, it just might be a bit of gap for you as well. 
- 
-Orla Skally   23:15 
-Yeah. 
-Okay. 
-Mhm. 
-Yeah, no worries. So I do have a call with Cody this evening. So he also sent me like 
-this long list of stuff from that envoy that they're looking for. So I really need to talk 
-to him because I am just one person. So yeah, I'm trying to figure out what I can do 
-or like. 
- 
-Jacqui Fox   23:31 
-Yeah. 
-OK. 
- 
-Mark Kelleher   23:37 
-Ohh. 
- 
-Orla Skally   23:47 
-What Trinzo should be doing, or what invoice should be doing? So, yeah, OK, so I can 
-follow up. 
- 
-Jacqui Fox   23:54 
-Yeah, and I think that that plan will give you a better picture, maybe, or help us give 
-you a better picture as to what that crossover potentially is. Yeah. 
-
-
- 
-Orla Skally   23:54 
-Yeah. 
-Yeah. 
-Yeah. 
-Okay. 
-Yeah. 
- 
-Jacqui Fox   24:06 
-Okay. 
-Thing, I know there was some question around the labels, Jenny. Has that answered 
-your, the detail that Laura has just given, has that answered your question or have 
-you any further questions around labels? 
- 
-Jenny Gough   24:19 
-I think, yeah, my main question on the label was sort of around the production 
-information going into the barcode, but we've discussed that, so yes, that's fine. 
- 
-Orla Skally   24:28 
-Yeah, it's in motion at the moment. So, and I've reached out to all the factories, our 
-Japanese suppliers. So some of them are doing lot numbering already. Some have 
-actually shared their own labeling and packaging, which is super helpful. We've 1 
-supplier who got some EU experts to do it for, because they distribute directly into 
-Europe. So they're already doing it. 
- 
-Mark Kelleher   24:29 
-Mm. 
- 
-Jenny Gough   24:30 
-Yeah, yeah. 
-Yeah. 
- 
-Orla Skally   24:50 
-So yeah, I would like to think in the next two to three weeks, we'll have a proper kind 
-of system to implement lot numbering and adding it to the label. Yeah. 
-
-
- 
-Jenny Gough   24:56 
-Good. 
-Yeah. 
-Okay. 
- 
-Jacqui Fox   25:02 
-Okay. 
- 
-Orla Skally   25:03 
-Let's see, I won't hold my breath, but we'll try first, yeah. 
- 
-Jenny Gough   25:05 
-Yes. 
- 
-Jacqui Fox   25:07 
-And that kind of probably follows nicely into around the IFUs. And I know this again, 
-we probably talked about this in the first one. And my recollection is that you don't 
-currently have IFUs. The only documentation I think that's contained within it is the 
-MIN, which comes from the suppliers. So just in case I have interpreted 
- 
-Orla Skally   25:10 
-Yeah. 
-Mm. 
-No, sorry, that's not correct. Yeah, so we have the manufacturer's information notes 
-or what we internally call a warranty booklet. So it's like the warranty policy, but there 
-is like care instructions, the lights, sorry, the lens categories. 
- 
-Jacqui Fox   25:27 
-That, or I am communicating that wrong, OK? 
- 
-Orla Skally   25:45 
-and light transmission. So I think I've shared that before. And that is created by DITA, 
-not by the factories. And yeah, it was drafted by, I don't know, somebody in legal. 
-And that's what we should be searching for sunglasses. 
-
-
-but we have been actually inserting it for everything, even optical. Yeah, but that is 
-owned by DITA, not the factory. Yeah, the factory doesn't insert any paperwork. 
- 
-Jacqui Fox   26:08 
-But. 
- 
-Orla Skally   26:16 
-To the end consumer. 
- 
-Jacqui Fox   26:20 
-MIN. 
- 
-Colm O'Rourke   26:21 
-I mean, this is something that will probably come up with MedEnvoy and DT Inc. too, 
-but it's if like that, either is an IFU or it's not an IFU. And if it's an IFU, it has to meet 
-the MDR requirements for an IFU. But a class one doesn't have to have an IFU. You 
-can justify not having one, but that justification needs to be present somewhere. But 
-that's not your. 
- 
-Orla Skally   26:33 
-Yeah. 
-Right. 
- 
-Jenny Gough   26:37 
-Mm. 
- 
-Orla Skally   26:38 
-Mhm. 
- 
-Colm O'Rourke   26:41 
-problem as an importer, that's for the manufacturer. 
- 
-Mark Kelleher   26:42 
-Mm. 
-
-
- 
-Orla Skally   26:43 
-Yeah. 
- 
-Jenny Gough   26:44 
-To do. 
- 
-Orla Skally   26:47 
-Which is dating, yeah, yeah. 
- 
-Jenny Gough   26:47 
-And I think from point of view of an IFU on glasses, it's one of them. I know you can 
-get exemptions quite easily, especially for class one, but the fact that you should 
-know how to use a pair of glasses would mean you don't really need instructions for 
-how to use them. So, I mean, it's the same as to work with surgical gloves and it's 
-like, 
- 
-Colm O'Rourke   26:48 
-Yeah. 
- 
-Orla Skally   27:04 
-Yeah. 
-Yeah. 
- 
-Jenny Gough   27:07 
-you do not expect a surgeon to need any instructions for use on how to use a pair of 
-surgical gloves. So it's yeah, and that was a plus 2A and we got an exemption on it. 
-So yeah, it's easy enough to get. But 
- 
-Orla Skally   27:10 
-Actions. Right, right. Yeah. 
-Yeah. 
-And a lot of the time as well, Jenny, you know, like even the sunglass, you know, you 
-can put prescription in. It's in theory, the same frame. It's just one hesitant. So the 
-
-
-optician is the one really that's dispensing and giving instructions on use in theory. 
-So yeah, I don't think you need 
- 
-Jenny Gough   27:22 
-Yeah. 
-Yeah. 
-Yeah. 
-Yeah. 
- 
-Orla Skally   27:40 
-instructions for you. So maybe an exemption would be possible, but who knows 
-actually. So, but yeah, we do have the manufacturer's information notes, which is 
-different. Yeah. 
- 
-Jenny Gough   27:46 
-Yeah. 
-Well, they're actually, yeah, I mean, if an optic, right, if the optician's changing the 
-prescription lenses in, then they're changing the use of the device anyway, because it 
-then does become a medical device because it cracked in vision. So they would be, 
-they're changing the use, so they will become a reprocessor, which means they will 
-be responsible. 
- 
-Orla Skally   27:59 
-Yeah. 
-Right. 
-Yes, yes, yeah, yeah. 
- 
-Jenny Gough   28:12 
-Yeah. 
- 
-Orla Skally   28:14 
-Okay. 
-I do have a hard stop at 1130, Jacqui. Yes. 
- 
-Jacqui Fox   28:18 
-
-
-And... 
-Okay, very quick question. DOCs and translations. 
- 
-Jenny Gough   28:21 
-Okay. 
- 
-Orla Skally   28:25 
-Yeah. 
- 
-Jacqui Fox   28:26 
-So I know that there were some questions around, I think the guys that identified 
-about 24 languages and I just, I'm not, I don't recall this coming up previously. Your 
-current DOCs, do you do translations? 
- 
-Orla Skally   28:33 
-You. 
- 
-Mark Kelleher   28:36 
-Mm. 
- 
-Orla Skally   28:37 
-Mm. 
-Yeah, it's funny because Cody reached out recently about all those countries we ship 
-to and I think it's in relation to languages. So we do, we have. 
-Some translations, but again, I would need to check with Cody then. 
- 
-Jacqui Fox   28:56 
-And I suppose to that point, you probably probably could do with just a list of all of 
-the country, one list of all of the countries that you do ship to, from a language 
-perspective. Yeah. 
- 
-Orla Skally   28:56 
-Yeah. 
-Yeah, med envoy are asking the same thing. Yeah. 
-OK. 
-
-
- 
-Jacqui Fox   29:12 
-Guys, anything major that I've missed there that you need clarity on? 
- 
-Jenny Gough   29:19 
-No. 
- 
-Jacqui Fox   29:19 
-Nope. 
- 
-John-Paul Hughes   29:20 
-So on the declarations of conformity, if we're including the sunglasses, we just need 
-to update those, include the risk rationale on those. What I saw is that we had the 
-risk rationale for the EUMDR, but not for the PPE category one. We just stated it was 
-category one. So 
- 
-Mark Kelleher   29:21 
-Yeah. 
- 
-Orla Skally   29:38 
-Yeah. 
- 
-John-Paul Hughes   29:42 
-Uhh... 
- 
-Orla Skally   29:42 
-You. 
- 
-John-Paul Hughes   29:44 
-As long as we're sure that the declaration conformity needs to include both. I think 
-that's the approach. 
- 
-Orla Skally   29:49 
-Sorry, 2 seconds. 
-Yeah, I know Colby is also working on in registering sunglasses as well. He says it 
-
-
-would take three to four weeks or he had to update the declarations as well. So I 
-think that's in process at the moment. 
- 
-Mark Kelleher   30:06 
-Yeah. 
- 
-Orla Skally   30:10 
-Yeah. 
-Yeah. 
- 
-Jacqui Fox   30:20 
-can understand where there might be a crossover and we'll continue to build out 
-here and look at another call in the diary with you next week or if that's okay. 
- 
-Orla Skally   30:27 
-Okay. 
-Yeah, and I'll review that document as well. So I think that would be helpful. Maybe 
-I'll have some questions on that also. And Jacqui, just, yeah. 
- 
-Jacqui Fox   30:41 
-Absolutely, Al. 
-Wilford. 
- 
-Orla Skally   30:46 
-Sorry, just one question. The HPRA have sent me a bill. So yeah, for authorized rep, 
-let me just see. And they're saying annual fee authorized rep type 2 high mix. I can 
-send a copy. Quantity 4. 
- 
-Jacqui Fox   30:51 
-Stop. 
- 
-Colm O'Rourke   30:53 
-For what? 
-
-
- 
-Jacqui Fox   31:03 
-Okay. 
- 
-Orla Skally   31:05 
-So I think it's because we registered 4 suppliers previously. I don't, but I don't know, 
-should it be 4, but it's 6 1/2? 
- 
-Mark Kelleher   31:06 
-Yeah. 
- 
-Jacqui Fox   31:07 
-The 3, yeah, yeah, yeah, yeah. 
-Send it on to myself, Colm. We can have a look at it and talk to Liam here as well and 
-try and get some direction as to what that's about. Yep. And the other documents, 
-the other documents where you, they were looking for the information around the 
-company size, etc. The follow up to the SRN, and you've heard nothing since. 
- 
-Orla Skally   31:14 
-Yeah. 
- 
-Colm O'Rourke   31:14 
-Yeah, kind of. 
- 
-Orla Skally   31:15 
-Yeah, if you don't mind. 
-Yeah, I mean, just before we pay us, yeah. 
- 
-Jenny Gough   31:20 
-Thank you. 
- 
-Colm O'Rourke   31:21 
-Yeah. 
-
-
- 
-Jenny Gough   31:22 
-Liu. 
- 
-Orla Skally   31:27 
-Oh, I sent all of those. Yeah, and they sent, yeah, they sent me a confirmation saying 
-you're now registered on or whatever and just kind of general information. I can send 
-that email as well to you and Colm so you can both see that. Yeah, but yeah, I 
-appreciate your help on that scene as we pay them. 
- 
-Jacqui Fox   31:37 
-Okay. 
-Okay. 
- 
-Jenny Gough   31:39 
-Mhm. 
- 
-Jacqui Fox   31:40 
-Just for have for reference, because yep. 
- 
-Colm O'Rourke   31:41 
-Yeah, be good. 
- 
-Jacqui Fox   31:46 
-No problem. 
- 
-Orla Skally   31:46 
-Way too much money for the past 10 years for nothing. So I think we need to get it 
-right this time. So the invoice and the email. 
- 
-Colm O'Rourke   31:50 
-Yeah. 
- 
-Jacqui Fox   31:51 
-Who? 
-
-
- 
-John-Paul Hughes   31:52 
-Ha. 
- 
-Mark Kelleher   31:53 
-Yeah. 
- 
-Jacqui Fox   31:54 
-Gods love, God love them. They definitely love you anyway, that's for sure. 
- 
-Orla Skally   31:57 
-I know. 
-Stop us. I'm gonna, yeah, I need to book a holiday. 
- 
-Colm O'Rourke   32:00 
-Just another form of tax, that's all it is, yeah. 
- 
-Jacqui Fox   32:01 
-Mm. 
- 
-Orla Skally   32:03 
-Yeah, yeah. Okay, brilliant stuff. Thank you everyone. Yes, I'll speak to you next week. 
-Thanks a lot for your help. Bye. Bye bye. 
- 
-Jacqui Fox   32:04 
-Yeah. 
- 
-Jenny Gough   32:04 
-Mhm. 
- 
-Colm O'Rourke   32:04 
-Client. 
- 
-Jacqui Fox   32:06 
-Perfect. Okay, thank you. Talk to you. See you. Bye. Bye bye. 
-
-
- 
-Colm O'Rourke   32:06 
-All right. 
- 
-Jenny Gough   32:07 
-Okay. 
- 
-Colm O'Rourke   32:08 
-Hey, what up? Uh, bye. 
- 
-Jenny Gough   32:08 
-OK. OK, thank you. Bye. Bye. 
- 
-John-Paul Hughes   32:11 
-Bye. 
- 
-Jacqui Fox   32:11 
-Bye. 
- 
-Jacqui Fox stopped transcription 
+Client DITA T819 - Importer Obligations - review plan-20260617_110032-Meeting Transcript
+17 June 2026, 10:00am
+32m 18s
+Jacqui Fox started transcription
+Jacqui Fox   0:03
+I think it was Friday you sent it, Mark. I can't remember. Yeah, it was around the QMS manual or that. And that's acting as the building block really to kind of build out the necessary.
+Mark Kelleher   0:06
+Yeah, that's right, yeah.
+Jacqui Fox   0:21
+and required documents from a compliance point of view in relation to the importer obligations. But certainly...
+As the guys have kind of worked through that, they've probably come up with some key questions that they...
+that although I've probably given the background to those questions from my perspective, haven't been working with you for a while, I suppose.
+I'm coming at that from a layperson's point of view. And what might be nice to do is just so those key questions that the clarity around those, the answers to those may direct the approach in a way. So
+Mark Kelleher   0:52
+Mm.
+Jacqui Fox   1:08
+And...
+Orla Skally   1:09
+Yeah.
+Jacqui Fox   1:10
+Now, and I know the guys have listed them here, so I'm hi, John Paul. I'm happy to kind of just go through those as well, but I think as we go through them, the guys also might have some other questions and absolutely understood that we, you know, we probably...
+Jenny Gough   1:14
+Okay.
+Mark Kelleher   1:14
+Yeah.
+Mmh.
+Jacqui Fox   1:27
+as a Trinzo perspective, maybe talked about these previously, but just so that they hear from your standpoint as opposed to just my standpoint in terms of getting the clarity around how the structure works. So, so no, nothing, nothing panicky, don't worry. It's just, as I said, I've given kind of
+Orla Skally   1:40
+Okay.
+Jacqui Fox   1:47
+my understanding and my interpretation, haven't been working with you guys, but just so there may be nuances to the questions that I can't necessarily feed over. So to kind of kick off, I suppose initially it's around clarifying that third party.
+Warehousing scenario, and I've talked to the guys through about how it product comes in from your suppliers is.
+lands in the Netherlands and is processed through Europe from a financial perspective, the financial clearinghouse in the Netherlands, but the product, in my understanding, doesn't necessarily stay in a warehouse in the Netherlands at any point, and then it moves on to Ireland. But it's to understand that flow,
+Orla Skally   2:34
+No.
+Jacqui Fox   2:36
+but also to understand the final resting place. That makes it sound like they're dead. The final storage arrangement for the opticals. Oh, you have the doggy in work today again, I see.
+Colm O'Rourke   2:41
+Haha.
+Orla Skally   2:43
+Hmm.
+Mark Kelleher   2:50
+Ohh.
+Orla Skally   2:51
+Yeah, sorry. Yeah, she's scratching to get in. Sorry.
+Jenny Gough   2:52
+Google, Google.
+Yeah.
+Jacqui Fox   2:55
+Not at all. You're with dog people here, so I'm not bothered. But yes, just to understand kind of what's the final storage scenario for the devices, because that I think will feed into some of the questions that the guys have around transportation, but also warehousing.
+Colm O'Rourke   2:58
+Mm.
+Mark Kelleher   2:58
+Mm-hmm.
+Orla Skally   3:01
+Mm.
+Yeah.
+Jacqui Fox   3:16
+And storage, storage arrangements, so...
+Orla Skally   3:19
+Liam.
+Jacqui Fox   3:21
+Have I addressed that right and is that the correct reflection of how it works?
+Orla Skally   3:27
+Yeah, like I can come back to you with something maybe written formally, but like verbally, I suppose, just high level, we have kind of a complicated intercompany structure. So, you know, the goods are purchased by DD Inc. from directly from the supplier in Japan, and there's a buy-sell.
+Mark Kelleher   3:43
+Ah.
+Orla Skally   3:46
+transaction that goes down and the goods are shipped from Japan via Netherlands where they're fiscally cleared. So their first ports of arrival in Europe is in Netherlands, whereby they're cleared by a third party. And then so they're literally held maybe for one day in the airport.
+the paperwork is sent for clearance, brokerage, and then it's released and the goods then go on to Dublin, to Deta here in Dublin. So like storage, there is none really, they're just kept aside while the goods are being cleared, maybe a day or two depending actually.
+Mark Kelleher   4:28
+No.
+Orla Skally   4:29
+what's going on in the world, you know, sometimes there's backlogs. Yeah, and so the goods are ultimately stored here in Dublin.
+Jacqui Fox   4:37
+And is that warehousing facility in Park West?
+Colm O'Rourke   4:37
+In your, ohh yeah, there you go.
+Orla Skally   4:41
+Yes.
+Jacqui Fox   4:42
+Yeah, Cycle.
+Colm O'Rourke   4:42
+And that's your own operated one, or it's a third party? Yeah, it's yours. OK, yeah.
+Orla Skally   4:44
+Yeah.
+Mark Kelleher   4:44
+Mm.
+Orla Skally   4:45
+Yeah, yeah, yeah.
+Jacqui Fox   4:48
+Yeah.
+Mark Kelleher   4:48
+Did I share the screen for a second? That be okay, people? Just to bring it up. Thank you. Hopefully you can see that okay.
+Jacqui Fox   4:50
+Absolutely, go for it.
+Colm O'Rourke   4:51
+Yeah, go from it.
+Jenny Gough   4:53
+Paula, can I just, sorry, can I just ask while Mark's sharing screen, is the warehouse automated at all or is it a fully manual warehouse?
+Orla Skally   4:58
+Yeah.
+It's pretty manual. We have scanners for picking, but yeah, it's all human operators. Yeah.
+Jenny Gough   5:12
+Okay.
+Yeah, OK.
+Mark Kelleher   5:16
+Task.
+Just wanted to check with Ciara. I found the image on the screen there. This is in the draft quality manual is regulated, and I found this is in the from the previous phases. So, is this what you were talking about a minute ago? Is this the flow of products? OK, that's accurate. OK, that's good. Good. Yeah, yeah. So, I guess from our perspective, the in terms of establishing QMS.
+Orla Skally   5:22
+Yeah.
+Mhm.
+Yes, that's correct. Yeah. Yeah.
+Mark Kelleher   5:38
+and providing deliverables.
+There's 2 pieces to each any procedure until you put in place. Does the understanding the applicable reg requirements, so MDR and so on, and making sure that they're incorporated in the procedure, but also for it to be meaningful and usable for DISA, we have to understand how the business works so that we fit in as much as possible into your existing.
+Orla Skally   5:57
+Yeah.
+Mark Kelleher   6:00
+business processes and obviously make it as easy as possible for you to use. It's minimal impact to the organization when these are rolled out and also to make a sustainable for you sort of in terms of goes away at some point in the future. You've got a really robust process which Disa understands and is bought into and can use and is lined up to the existing processes. If that's not the case, then things will just diverge and it won't be followed. That's just the way.
+Orla Skally   6:09
+Mhm.
+Liu.
+Yeah.
+Mark Kelleher   6:24
+It works, so.
+Orla Skally   6:26
+Mm.
+Mark Kelleher   6:27
+may be in trouble then obviously. So it's very important we have that input from you, I guess, from the team there on how your business works again, just to make it usable for you and to minimize the impact of your operations there.
+Orla Skally   6:29
+Yeah, yeah.
+Mhm.
+Yeah, makes sense.
+Mark Kelleher   6:45
+Cuckoo.
+Jacqui Fox   6:45
+And order to the point of the document that Mark is sharing in the and this is the kind of the QMS manual that he had sent through and Friday, do you have any opportunity to read that yet or go through it at any high level or?
+Orla Skally   6:52
+Mm.
+Mark Kelleher   6:53
+Yeah.
+Orla Skally   6:54
+I'm sorry you mentioned it, but I don't have any email from Mark.
+Jacqui Fox   6:58
+Ohh.
+Orla Skally   7:00
+So, sorry, I was going to...
+Jacqui Fox   7:01
+Oh.
+Mark Kelleher   7:01
+Oh.
+Orla Skally   7:03
+Maybe I'm wrong. I'm looking under Mark Kelleher. I don't see anything. I saw an email from you, Jacqui, five days ago.
+Jacqui Fox   7:05
+But.
+Mark Kelleher   7:07
+No.
+Orla Skally   7:11
+About questions to Cody.
+Jacqui Fox   7:12
+Okay.
+That's bizarre.
+Orla Skally   7:15
+Maybe on this.
+Colm O'Rourke   7:15
+I'm looking at it now and OReilly, you're not in the addressee list.
+Jenny Gough   7:15
+Oh.
+Orla Skally   7:19
+Yeah, OK.
+Jacqui Fox   7:20
+Oh.
+I've just seen the same thing, sorry, to our bad.
+Orla Skally   7:24
+Yeah.
+That's okay, no problem.
+Jacqui Fox   7:26
+I will, I will flick this over to Orla.
+Mark Kelleher   7:29
+I'm so sorry, that's my mistake.
+Orla Skally   7:29
+It's okay. It's not the first time I've been left out of the group.
+Jacqui Fox   7:29
+Sorry.
+Colm O'Rourke   7:29
+You can, you can speed read or not.
+Orla Skally   7:33
+I'm used to it, put it that way.
+Mark Kelleher   7:34
+That's my mistake, I apologize. Yeah.
+Colm O'Rourke   7:34
+Thank you.
+Jenny Gough   7:36
+Ohh.
+Orla Skally   7:37
+Yeah.
+Mark Kelleher   7:38
+My fault for Russian that, man. OK, policies around we.
+Jacqui Fox   7:38
+Good.
+Orla Skally   7:41
+Yeah, no problem. I'll take a look at us. Yeah.
+Mark Kelleher   7:44
+Thank you.
+Orla Skally   7:46
+This week.
+Jacqui Fox   7:47
+OK, this is the QMS manual.
+Mark Kelleher   7:48
+OK, thank you.
+Jacqui Fox   7:53
+As discussed on the call, sorry.
+I don't know how all of us missed us.
+Mark Kelleher   7:57
+Yeah.
+Orla Skally   7:59
+All right.
+Jacqui Fox   8:00
+Okay.
+Okay, and again, and you probably kind of cover this in that outline to just take us through an order. So from
+Mark Kelleher   8:09
+Ohh.
+Jacqui Fox   8:15
+from a product perspective, but also from an information flow perspective. And guys, if I haven't interpreted the question correctly, please feel free to elaborate so that you get full clarity.
+So, yeah, so if you could take us just through an order in terms of the product and also that information flow, that would be helpful.
+Orla Skally   8:38
+So, when you when you say an order, do you mean a purchase order from the supplier or a sales order to our customer?
+Jacqui Fox   8:47
+Guys, you can elaborate it to your query.
+Colm O'Rourke   8:50
+I think it's probably the whole thing, guys, isn't it? We'd like to see. Well, you've given us the front half, I suppose, there of how the product ends up in your warehouse. But then if a customer, Specsavers or whoever places an order with you, what does that look like?
+Mark Kelleher   8:53
+Mm.
+Orla Skally   9:04
+Yeah.
+Okay, so customers are wholesale opticians here in Europe. They can order via a B2B platform, or they can contact a sales rep within the region who places the order on their behalf. Or they can directly contact customer service who will place the order directly in our
+or P system. But generally they place the order either through B2B, it's mainly through our B2B platform and submits it and it goes into a pending approval queue whereby our customer service team review the order and check any.
+Jenny Gough   10:08
+Thank you.
+Orla Skally   10:09
+Accounts, then a product allocates to the sales order, and it goes into a shipping queue here in the warehouse, and we print a shipping list, which is a series of barcodes which details the sales order number, the total number of units to be picked, all the products.
+When it comes in from Japan, you know, we do some checks, but it's not as thorough as it should be, I'll be honest. And the product is sitting on the shelf in the original packaging. So it's in a poly bag and within a white cardboard box. And they're barcoded, all the product is barcoded from the factory.
+into us. And so we use a, we have NetSuite, which is our ERP system, and we use RF Smart, which is a barcoding picking add-on. And they have handheld devices. So we take the label, once we print the sticker, it's applied to a shipping box. So if there's 10 units in the order, we pick a box.
+big enough to hold 10 units, we apply it to the box and then the team will go around and pick into that box using the handheld devices. Everything is stored by bin number and then we, once it's picked, it goes to packing and that's where.
+Colm O'Rourke   11:20
+You.
+Orla Skally   11:30
+The goods are taken out of the poly bag and inserted into our branded case and packaging. And it's where we put in the warranty booklet to or the manufacturer's information note, but that only applies for sunglasses, I believe, anyway. And we then apply the final label on the outer box.
+which is the label the store sees. And that's the one that we're also working on to update with all the additional information. And all the fully packed units are in a shipping box. And then we ship and invoice the goods using DHL and insert a hard copy of the invoice inside the box.
+Yeah, and the goods are dispatched pretty much same day or next day, and we have next day delivery in Europe, so, and delivered directly to the store.
+It's very high level. Yeah.
+Jenny Gough   12:27
+Yeah.
+Mark Kelleher   12:28
+No.
+Jenny Gough   12:30
+With the barcodes that they put on there, are they your actual UDI barcodes?
+Orla Skally   12:32
+Yeah.
+Yes, so we're not using UDI just yet. And so it's just our UPC code that we're using at the moment, but we're changing. Yeah.
+Jenny Gough   12:42
+But that, yeah, that the UPC code can be used, yeah, that will be used as part UDIDI, but obviously then you need some sort of production identifier in there as well.
+Orla Skally   12:46
+Yeah.
+Yes, yeah.
+Yeah, so we're working currently working on lot numbering right now. So we've reached out to RF Smart, the handheld device program, and we're implementing, it's called license placing. You probably know about us, but anyway, we're trying to implement.
+Jenny Gough   12:55
+Okay.
+Okay.
+Yeah.
+Orla Skally   13:13
+A system where we can pick.
+We have to pick by lot number and then store the product by lot number. So we're just kicking that off this week. So we're hoping by early July we will have lot numbering process.
+Jenny Gough   13:21
+Yeah.
+Orla Skally   13:30
+Figured out, yeah, and then have to implement.
+Jenny Gough   13:32
+So will you be changing the barcodes at that time to like 2D data matrix barcode including the lot number in there? Yeah, yeah.
+Orla Skally   13:34
+Hmm.
+Yes.
+I believe so, but you know, I have a colleague in the US who's managing the barcode design, and yeah, the label design, the barcode format. So there's a lot of stuff that is outside of my control at the moment, and I do believe even the label is.
+Jenny Gough   13:46
+T.
+Yeah.
+Yeah.
+Yeah.
+Orla Skally   13:58
+They're still trying to sign off the format. But yeah, that's the plan. Yeah.
+Jenny Gough   14:01
+Yeah, I mean, yeah, I mean, that's something that I could have a look at the label if you wanted and just make sure that it's right, because from an importer point of view, you need to check that. So, yeah. The other thing then was the data side of things. Obviously, for new products, they have to go into Udimed immediately.
+Orla Skally   14:07
+Yeah.
+Mhm.
+Mark Kelleher   14:10
+Yeah.
+Orla Skally   14:12
+Yeah, and I.
+Jenny Gough   14:23
+now because we passed the 28th of May, but for all the other items, they need to be in there by the 28th of November this year.
+So they need to start putting the data in. I did check on Friday and there's no product information in there yet.
+The other thing is, I know what, as an importer, there should be a link between the two. You should be sort of shown to be the importer for DITA Inc. In UDMed, there's a link somewhere that you can do. So I couldn't see that link anywhere when I had a look at it.
+Mark Kelleher   14:51
+Ohh.
+Colm O'Rourke   15:01
+Are Deta Inc. registered as a manufacturer in Udemed?
+Jacqui Fox   15:02
+T.
+Jenny Gough   15:03
+G.
+Yes, they were, yes.
+John-Paul Hughes   15:06
+Yes, yes.
+Orla Skally   15:06
+They should be, yeah.
+Colm O'Rourke   15:07
+There, okay, yeah.
+Jenny Gough   15:10
+The other thing is, and I know we're looking at Europe, but I had a quick look at the good idea, the US FDA good idea, and there's no products in there at all. And there should be because the date was, I think it was 2019 was the final date on class one products there. So you need, I just recommend that you look at that side of things as well for distribution in the US.
+Orla Skally   15:31
+And for the FT.
+Mark Kelleher   15:32
+I was.
+Jenny Gough   15:33
+Yeah.
+Orla Skally   15:34
+I can, I can bring that to the US team. Sorry, just to go back, Jenny, when you were saying there's no the new product is not in EU, registering product in EU, is that registering all the SKUs? Sorry, I'm just not familiar. Like, what information?
+Jenny Gough   15:38
+Yeah.
+Jacqui Fox   15:49
+Sure.
+Jenny Gough   15:53
+It's any, yeah, any new product launches you do, so any new frames that are coming in, they have to go in immediately now, okay, before they're on the market. Yeah.
+Orla Skally   15:57
+Yeah, yeah.
+And is that by UPC?
+Yeah, sorry, is that by UPC SKU? Like, you know, 'cause we have models, yeah.
+Jenny Gough   16:08
+Yes, it's by UPC. Yeah. Yeah, it's by UPC. And you need to make those UPCs 14 digits, which I think you've already done on the paperwork, because for healthcare, it's 14 digit. And you just add zeros at the beginning. That's not an issue. You can do it that way.
+Orla Skally   16:12
+Okay.
+Yeah.
+Colm O'Rourke   16:28
+Or, yeah, the authorized rep. Sorry, I'm blanking on the name again. Can you, what is this? Who? I made an invite. Like, they they should be playing a part here as well in terms of data entry to Udemed.
+Jenny Gough   16:28
+Yeah, so...
+Jacqui Fox   16:30
+Sorry, Colm.
+Jenny Gough   16:31
+Yeah, Sinead.
+Jacqui Fox   16:34
+Med Envoy.
+Orla Skally   16:35
+Measured.
+Jenny Gough   16:37
+Yeah.
+But no, they shouldn't, they should just be checking it's in there. The legal manufacturer, which is Data Inc. as far as Europe's concerned, they're responsible for putting the data into Udemed and then the importer and the authorised rep have to check it's there.
+Colm O'Rourke   16:47
+Yeah.
+Mark Kelleher   16:55
+Yeah.
+Jacqui Fox   16:59
+And to that point, Jenny, as MedEnvoy or a representative or registered as the actor for manufacturer, it is therefore with MedEnvoy working with T Inc to upload the devices into Udimed. Is my understanding based on your regulation?
+Colm O'Rourke   16:59
+Yeah, absolutely. It's not not their responsibility.
+Jenny Gough   17:01
+And.
+Yeah.
+Yeah.
+Okay.
+Orla Skally   17:17
+Yeah.
+Colm O'Rourke   17:18
+Yeah, I mean, like, who's legal?
+Jenny Gough   17:19
+Okay, so you've got a contract, like a mandate in place to say that the authorized rep will do it on behalf of the manufacturer.
+Colm O'Rourke   17:22
+Yeah.
+And this is DJ Inc.'s responsibility, Orla, not not T, like it's the legal manufacturer's responsibility, and that med envoy, I most authorized reps have us like a side service where they might upload the data for you if it's not their legal responsibility, but they may or may not, like Cody might have already contracted them to upload it or not.
+Jenny Gough   17:28
+Yeah.
+Orla Skally   17:29
+Oh.
+Yeah.
+Jenny Gough   17:32
+Yeah.
+Orla Skally   17:46
+Yeah.
+Colm O'Rourke   17:49
+Don't know.
+Orla Skally   17:49
+I think he has, so this is another maybe.
+Jenny Gough   17:49
+We.
+Orla Skally   17:53
+just challenge is that Cody's the one working with Met Envoy, not me. So he's having side meetings and I'm really not up to date about what's going on on that side, on that front. So I'm kind of stuck in the middle and trying to, so I can go back to Cody of course and ask, but I wouldn't be up to date or in those meetings.
+Jacqui Fox   17:58
+Absolutely.
+I...
+Colm O'Rourke   18:06
+Mm.
+Jenny Gough   18:08
+Yeah.
+Colm O'Rourke   18:10
+Mm.
+Orla Skally   18:13
+But I do know he has engaged them to register the devices. Yeah.
+Jacqui Fox   18:13
+And shoot up.
+And to that point, Orla, I know when we did the kickoff for this particular scope, I did reference and ask Cody to get an overview and did follow up with him last week, which is the mail you refer to at start, a copy of that, either the project plan or the task list from med envoy in relation to their activities, because that will help us understand
+Orla Skally   18:23
+Yeah.
+Mm.
+Mm.
+Jacqui Fox   18:38
+How that fits in?
+in the work that we're doing. So to the point that the devices need to be registered within you to med and that lies with that med envoy if they're acting on behalf of the manufacturer actor in relation to TD Inc. But because we've no oversight of when that activity is happening, we're obviously
+Orla Skally   18:42
+Yeah.
+Yeah.
+I know, yeah.
+Yeah.
+Jacqui Fox   19:01
+Call, you know, calling it out or trying to understand how that's happening to ensure, I suppose, that it just doesn't get dropped or missed or forgotten or whatever it is, because people think that somebody else is doing it.
+Orla Skally   19:03
+Yeah.
+Mm.
+Yeah, or or we have.
+Yeah, double like duplication, which is like the worst thing ever as well, you know, so, yeah, so just I suppose, yeah.
+Jenny Gough   19:18
+TD.
+Jacqui Fox   19:20
+So if you're talking to Cody, could you just maybe mention it to him? So it really is exactly for that reason to avoid duplication where possible. And without it, we definitely may struggle to
+Orla Skally   19:25
+Yeah.
+Or gaps, yeah.
+Yeah.
+No.
+Jacqui Fox   19:37
+ensure that we are all aligned really.
+Colm O'Rourke   19:40
+And practically speaking, like it's data Ireland or deals responsibility, one of the important responsibilities to check is the data in Udemed. And if it's not, you're not supposed to place product in the market.
+Orla Skally   19:40
+Mhm.
+Jacqui Fox   19:47
+In there.
+Orla Skally   19:49
+Mm.
+Yeah, yeah, yeah.
+Jenny Gough   19:52
+Yeah.
+Colm O'Rourke   19:54
+Yeah.
+Orla Skally   19:56
+Yeah, I think Jenny was very clear. Yeah, we're supposed to check. Yeah. Yeah.
+Jacqui Fox   19:56
+So, I suppose, really.
+Colm O'Rourke   19:59
+Yeah.
+Jacqui Fox   20:00
+And I suppose why that's important to OReilly is in terms of dates with relation to Udemed.
+Orla Skally   20:16
+Yeah.
+Jacqui Fox   20:16
+Go immediately into and any existing products.
+Orla Skally   20:21
+You were saying November, is it Jenny? Or is it October? The old products.
+Jacqui Fox   20:21
+Should also be.
+Jenny Gough   20:22
+Yeah.
+Sorry, November, end of November for current products.
+Orla Skally   20:27
+Yeah, 28th of November. Okay. Yeah, because like we have a new collection.
+Jenny Gough   20:29
+Yeah.
+There's a lot to get in there, isn't there?
+Orla Skally   20:35
+Yeah, there is, but yeah, and I just obviously it's a med envoy that's doing that, but I don't know the process or what information they need and how long that takes. But I do know, yeah. If it's by style, okay, we probably have, I don't know, over 100 models or more.
+Jacqui Fox   20:36
+The.
+Jenny Gough   20:42
+Liu.
+This A lot.
+Colm O'Rourke   20:55
+The.
+Orla Skally   20:56
+There's by SKU, you know, there's loads there, so...
+Jenny Gough   20:58
+It is, it's by SKU. There's different levels and there will be, because you've got Master UDI involved as well, basically what they do is they put the basic UDI in. So there'll be the basic UDI numbers go in there and all of the characteristics that go across all of the products are entered at that level.
+Orla Skally   21:06
+Yeah.
+Jenny Gough   21:18
+And then you put the next level in for the master UDI. And again, there's going to be characteristics that go across all of the products in that group. And then beneath that, you have the individual UDI. So by SKU, where you've got the individual details and they go in there. It's not quite as long winded as class.
+Orla Skally   21:19
+Mm.
+Mm.
+You.
+Jenny Gough   21:38
+2B and three in that you don't have to wait for notified body approval. So once you've got all the information in there and it gets to a certain stage, it just shows as available. So there's a whole step that's missed out on class one and class 2A. So that's a good thing. But yeah, they
+Orla Skally   21:49
+Right.
+Mm.
+Yeah.
+So can I ask you, I suppose, look, we don't have a date for the audit yet, but like, obviously we're working on the registration right now, but what's the consequence or risk if we don't have everything in when the audit? Yeah.
+Jenny Gough   22:03
+Mm.
+If I would say, I mean, if the audit's early enough, you, as long as you can show that the preparation is being done.
+Orla Skally   22:20
+Yeah.
+Jenny Gough   22:22
+for entering the data into you to med, that should be sufficient. You've just got to show that you've got everything's in place. You're in the process of collecting the data or you have the data that you know how to put the information in, which it obviously is down to med envoy. They would just need to be able to demonstrate that they know what they're doing with it and there's a plan of action in place.
+Orla Skally   22:26
+Okay.
+Mhm.
+Mhm.
+Yeah.
+Jenny Gough   22:44
+Yeah.
+Jacqui Fox   22:45
+So I suppose from that perspective, OReilly, it probably impresses back to not only should we have oversight of their timeline in relation to that, you do, given that the responsibility of the importer is to ensure that devices are registered within Udemed. So
+Orla Skally   22:45
+OKOK.
+Jenny Gough   22:47
+Two.
+Mark Kelleher   22:48
+Ohh.
+Jenny Gough   22:56
+Admin.
+Orla Skally   23:03
+Yeah.
+Jacqui Fox   23:04
+to the point if the audit did come up, you'd need to be able to show that you know what the status of that is.
+Orla Skally   23:12
+Right. Yeah.
+Jacqui Fox   23:13
+as the justification, do you know what I mean? So it is a work in progress, but if you don't know what the kind of timelines that Med Envoy are working to to get that up, you know, it just might be a bit of gap for you as well.
+Orla Skally   23:15
+Yeah.
+Okay.
+Mhm.
+Yeah, no worries. So I do have a call with Cody this evening. So he also sent me like this long list of stuff from that envoy that they're looking for. So I really need to talk to him because I am just one person. So yeah, I'm trying to figure out what I can do or like.
+Jacqui Fox   23:31
+Yeah.
+OK.
+Mark Kelleher   23:37
+Ohh.
+Orla Skally   23:47
+What Trinzo should be doing, or what invoice should be doing? So, yeah, OK, so I can follow up.
+Jacqui Fox   23:54
+Yeah, and I think that that plan will give you a better picture, maybe, or help us give you a better picture as to what that crossover potentially is. Yeah.
+Orla Skally   23:54
+Yeah.
+Yeah.
+Yeah.
+Okay.
+Yeah.
+Jacqui Fox   24:06
+Okay.
+Thing, I know there was some question around the labels, Jenny. Has that answered your, the detail that Laura has just given, has that answered your question or have you any further questions around labels?
+Jenny Gough   24:19
+I think, yeah, my main question on the label was sort of around the production information going into the barcode, but we've discussed that, so yes, that's fine.
+Orla Skally   24:28
+Yeah, it's in motion at the moment. So, and I've reached out to all the factories, our Japanese suppliers. So some of them are doing lot numbering already. Some have actually shared their own labeling and packaging, which is super helpful. We've 1 supplier who got some EU experts to do it for, because they distribute directly into Europe. So they're already doing it.
+Mark Kelleher   24:29
+Mm.
+Jenny Gough   24:30
+Yeah, yeah.
+Yeah.
+Orla Skally   24:50
+So yeah, I would like to think in the next two to three weeks, we'll have a proper kind of system to implement lot numbering and adding it to the label. Yeah.
+Jenny Gough   24:56
+Good.
+Yeah.
+Okay.
+Jacqui Fox   25:02
+Okay.
+Orla Skally   25:03
+Let's see, I won't hold my breath, but we'll try first, yeah.
+Jenny Gough   25:05
+Yes.
+Jacqui Fox   25:07
+And that kind of probably follows nicely into around the IFUs. And I know this again, we probably talked about this in the first one. And my recollection is that you don't currently have IFUs. The only documentation I think that's contained within it is the MIN, which comes from the suppliers. So just in case I have interpreted
+Orla Skally   25:10
+Yeah.
+Mm.
+No, sorry, that's not correct. Yeah, so we have the manufacturer's information notes or what we internally call a warranty booklet. So it's like the warranty policy, but there is like care instructions, the lights, sorry, the lens categories.
+Jacqui Fox   25:27
+That, or I am communicating that wrong, OK?
+Orla Skally   25:45
+and light transmission. So I think I've shared that before. And that is created by DITA, not by the factories. And yeah, it was drafted by, I don't know, somebody in legal. And that's what we should be searching for sunglasses.
+but we have been actually inserting it for everything, even optical. Yeah, but that is owned by DITA, not the factory. Yeah, the factory doesn't insert any paperwork.
+Jacqui Fox   26:08
+But.
+Orla Skally   26:16
+To the end consumer.
+Jacqui Fox   26:20
+MIN.
+Colm O'Rourke   26:21
+I mean, this is something that will probably come up with MedEnvoy and DT Inc. too, but it's if like that, either is an IFU or it's not an IFU. And if it's an IFU, it has to meet the MDR requirements for an IFU. But a class one doesn't have to have an IFU. You can justify not having one, but that justification needs to be present somewhere. But that's not your.
+Orla Skally   26:33
+Yeah.
+Right.
+Jenny Gough   26:37
+Mm.
+Orla Skally   26:38
+Mhm.
+Colm O'Rourke   26:41
+problem as an importer, that's for the manufacturer.
+Mark Kelleher   26:42
+Mm.
+Orla Skally   26:43
+Yeah.
+Jenny Gough   26:44
+To do.
+Orla Skally   26:47
+Which is dating, yeah, yeah.
+Jenny Gough   26:47
+And I think from point of view of an IFU on glasses, it's one of them. I know you can get exemptions quite easily, especially for class one, but the fact that you should know how to use a pair of glasses would mean you don't really need instructions for how to use them. So, I mean, it's the same as to work with surgical gloves and it's like,
+Colm O'Rourke   26:48
+Yeah.
+Orla Skally   27:04
+Yeah.
+Yeah.
+Jenny Gough   27:07
+you do not expect a surgeon to need any instructions for use on how to use a pair of surgical gloves. So it's yeah, and that was a plus 2A and we got an exemption on it. So yeah, it's easy enough to get. But
+Orla Skally   27:10
+Actions. Right, right. Yeah.
+Yeah.
+And a lot of the time as well, Jenny, you know, like even the sunglass, you know, you can put prescription in. It's in theory, the same frame. It's just one hesitant. So the optician is the one really that's dispensing and giving instructions on use in theory. So yeah, I don't think you need
+Jenny Gough   27:22
+Yeah.
+Yeah.
+Yeah.
+Yeah.
+Orla Skally   27:40
+instructions for you. So maybe an exemption would be possible, but who knows actually. So, but yeah, we do have the manufacturer's information notes, which is different. Yeah.
+Jenny Gough   27:46
+Yeah.
+Well, they're actually, yeah, I mean, if an optic, right, if the optician's changing the prescription lenses in, then they're changing the use of the device anyway, because it then does become a medical device because it cracked in vision. So they would be, they're changing the use, so they will become a reprocessor, which means they will be responsible.
+Orla Skally   27:59
+Yeah.
+Right.
+Yes, yes, yeah, yeah.
+Jenny Gough   28:12
+Yeah.
+Orla Skally   28:14
+Okay.
+I do have a hard stop at 1130, Jacqui. Yes.
+Jacqui Fox   28:18
+And...
+Okay, very quick question. DOCs and translations.
+Jenny Gough   28:21
+Okay.
+Orla Skally   28:25
+Yeah.
+Jacqui Fox   28:26
+So I know that there were some questions around, I think the guys that identified about 24 languages and I just, I'm not, I don't recall this coming up previously. Your current DOCs, do you do translations?
+Orla Skally   28:33
+You.
+Mark Kelleher   28:36
+Mm.
+Orla Skally   28:37
+Mm.
+Yeah, it's funny because Cody reached out recently about all those countries we ship to and I think it's in relation to languages. So we do, we have.
+Some translations, but again, I would need to check with Cody then.
+Jacqui Fox   28:56
+And I suppose to that point, you probably probably could do with just a list of all of the country, one list of all of the countries that you do ship to, from a language perspective. Yeah.
+Orla Skally   28:56
+Yeah.
+Yeah, med envoy are asking the same thing. Yeah.
+OK.
+Jacqui Fox   29:12
+Guys, anything major that I've missed there that you need clarity on?
+Jenny Gough   29:19
+No.
+Jacqui Fox   29:19
+Nope.
+John-Paul Hughes   29:20
+So on the declarations of conformity, if we're including the sunglasses, we just need to update those, include the risk rationale on those. What I saw is that we had the risk rationale for the EUMDR, but not for the PPE category one. We just stated it was category one. So
+Mark Kelleher   29:21
+Yeah.
+Orla Skally   29:38
+Yeah.
+John-Paul Hughes   29:42
+Uhh...
+Orla Skally   29:42
+You.
+John-Paul Hughes   29:44
+As long as we're sure that the declaration conformity needs to include both. I think that's the approach.
+Orla Skally   29:49
+Sorry, 2 seconds.
+Yeah, I know Colby is also working on in registering sunglasses as well. He says it would take three to four weeks or he had to update the declarations as well. So I think that's in process at the moment.
+Mark Kelleher   30:06
+Yeah.
+Orla Skally   30:10
+Yeah.
+Yeah.
+Jacqui Fox   30:20
+can understand where there might be a crossover and we'll continue to build out here and look at another call in the diary with you next week or if that's okay.
+Orla Skally   30:27
+Okay.
+Yeah, and I'll review that document as well. So I think that would be helpful. Maybe I'll have some questions on that also. And Jacqui, just, yeah.
+Jacqui Fox   30:41
+Absolutely, Al.
+Wilford.
+Orla Skally   30:46
+Sorry, just one question. The HPRA have sent me a bill. So yeah, for authorized rep, let me just see. And they're saying annual fee authorized rep type 2 high mix. I can send a copy. Quantity 4.
+Jacqui Fox   30:51
+Stop.
+Colm O'Rourke   30:53
+For what?
+Jacqui Fox   31:03
+Okay.
+Orla Skally   31:05
+So I think it's because we registered 4 suppliers previously. I don't, but I don't know, should it be 4, but it's 6 1/2?
+Mark Kelleher   31:06
+Yeah.
+Jacqui Fox   31:07
+The 3, yeah, yeah, yeah, yeah.
+Send it on to myself, Colm. We can have a look at it and talk to Liam here as well and try and get some direction as to what that's about. Yep. And the other documents, the other documents where you, they were looking for the information around the company size, etc. The follow up to the SRN, and you've heard nothing since.
+Orla Skally   31:14
+Yeah.
+Colm O'Rourke   31:14
+Yeah, kind of.
+Orla Skally   31:15
+Yeah, if you don't mind.
+Yeah, I mean, just before we pay us, yeah.
+Jenny Gough   31:20
+Thank you.
+Colm O'Rourke   31:21
+Yeah.
+Jenny Gough   31:22
+Liu.
+Orla Skally   31:27
+Oh, I sent all of those. Yeah, and they sent, yeah, they sent me a confirmation saying you're now registered on or whatever and just kind of general information. I can send that email as well to you and Colm so you can both see that. Yeah, but yeah, I appreciate your help on that scene as we pay them.
+Jacqui Fox   31:37
+Okay.
+Okay.
+Jenny Gough   31:39
+Mhm.
+Jacqui Fox   31:40
+Just for have for reference, because yep.
+Colm O'Rourke   31:41
+Yeah, be good.
+Jacqui Fox   31:46
+No problem.
+Orla Skally   31:46
+Way too much money for the past 10 years for nothing. So I think we need to get it right this time. So the invoice and the email.
+Colm O'Rourke   31:50
+Yeah.
+Jacqui Fox   31:51
+Who?
+John-Paul Hughes   31:52
+Ha.
+Mark Kelleher   31:53
+Yeah.
+Jacqui Fox   31:54
+Gods love, God love them. They definitely love you anyway, that's for sure.
+Orla Skally   31:57
+I know.
+Stop us. I'm gonna, yeah, I need to book a holiday.
+Colm O'Rourke   32:00
+Just another form of tax, that's all it is, yeah.
+Jacqui Fox   32:01
+Mm.
+Orla Skally   32:03
+Yeah, yeah. Okay, brilliant stuff. Thank you everyone. Yes, I'll speak to you next week. Thanks a lot for your help. Bye. Bye bye.
+Jacqui Fox   32:04
+Yeah.
+Jenny Gough   32:04
+Mhm.
+Colm O'Rourke   32:04
+Client.
+Jacqui Fox   32:06
+Perfect. Okay, thank you. Talk to you. See you. Bye. Bye bye.
+Colm O'Rourke   32:06
+All right.
+Jenny Gough   32:07
+Okay.
+Colm O'Rourke   32:08
+Hey, what up? Uh, bye.
+Jenny Gough   32:08
+OK. OK, thank you. Bye. Bye.
+John-Paul Hughes   32:11
+Bye.
+Jacqui Fox   32:11
+Bye.
+Jacqui Fox stopped transcription

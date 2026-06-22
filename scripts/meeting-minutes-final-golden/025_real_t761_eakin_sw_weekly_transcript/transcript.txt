@@ -1,0 +1,857 @@
+Client T761 Eakin SW - weekly checkin-20260615_150129-Meeting Transcript
+15 June 2026, 02:01pm
+35m 18s
+Jacqui Fox started transcription
+Jacqui Fox   0:03
+To Bob, how are you?
+Rebecca Cuckoo   0:05
+Very well.
+Jacqui Fox   0:06
+Let's see again.
+David Didsbury   0:09
+Okay.
+Rebecca Cuckoo   0:09
+I know I think we have a couple.
+Jacqui Fox   0:10
+It seems not like you at the moment.
+Rebecca Cuckoo   0:11
+I was going to say, at least a couple, three times a week.
+David Didsbury   0:13
+In.
+Jacqui Fox   0:13
+Yeah.
+Abby.
+David Didsbury   0:17
+I thought you were about to say a day.
+Jacqui Fox   0:17
+Anyway.
+Well, at this stage, at the moment, David, it is kind of maybe three times a day, to be fair.
+Rebecca Cuckoo   0:25
+I was going to say a couple of times a day already, anyway.
+Jacqui Fox   0:28
+Ohh.
+Oh yeah, yeah, absolutely. Okay, dudes, let's get into it. Let me, what am I doing? I'm sharing my actions last week. Perfect. Andrew, you were a busy man this week.
+Rebecca Cuckoo   0:48
+These gone just like that.
+Jacqui Fox   0:48
+All right, he scurries back.
+Andrew Kane   0:49
+Yep, sorry, I was turning up something there.
+David Didsbury   0:50
+Yeah.
+Rebecca Cuckoo   0:52
+See this name and just run.
+Andrew Kane   0:52
+Yeah.
+David Didsbury   0:53
+But.
+right.
+Jacqui Fox   0:56
+Yeah, you're a busy man this week, Andrew. You were a couple of things to do in relation to the sound. How are you getting on with the debug?
+Andrew Kane   1:01
+Yeah.
+Yeah, good. I think I have, I think I have an alarm software load here.
+Seems to be working. I'll just share my screen here if that's okay.
+Jacqui Fox   1:15
+Go for it, yep.
+Andrew Kane   1:17
+And, yes, I'm gonna try and include sound.
+See if that works.
+David Didsbury   1:22
+It.
+Andrew Kane   1:24
+So, see, I'll play this here. Can you see that alright?
+Jacqui Fox   1:27
+Yep.
+Rebecca Cuckoo   1:28
+Mhm.
+Andrew Kane   1:29
+So, can you hear this?
+Jacqui Fox   1:32
+Mmh.
+Rebecca Cuckoo   1:34
+Yep.
+Andrew Kane   1:35
+So that's our existing alarm, so every alarm is out signed. So I've got these three alarms now. I've tested them on the scope and they look, you know, I haven't got a test report or anything, but they look, they're a great thing. So play this one, see if you can hear it.
+That's just a single chirp for low priority stops.
+That's the medium priority.
+And then...
+Yeah.
+That's 10, that's the high priority. So those are all working.
+And...
+Rebecca Cuckoo   2:13
+That's fantastic.
+Andrew Kane   2:13
+Salads, it will.
+Turn that off.
+Rebecca Cuckoo   2:18
+That's just to emphasize the high priority that is FD140.
+Andrew Kane   2:23
+Sorry, he's all wrong. OK, I did change slide, right?
+David Didsbury   2:24
+But.
+But.
+Rebecca Cuckoo   2:26
+Yeah.
+David Didsbury   2:28
+Okay, send.
+Jacqui Fox   2:28
+So you did an amazing thing by linking them within the PowerPoint so they're able to play. No, you can't turn them off. Sorry, go ahead.
+Andrew Kane   2:33
+Yeah.
+David Didsbury   2:37
+I was about to say, compare the, okay, now we know you've got free sounds, compare the existing, what, medium, the existing alarm to the high priority alarm.
+Andrew Kane   2:48
+Yes, there's the existing one.
+Rebecca Cuckoo   2:53
+Sounds a lot like the medium one.
+Andrew Kane   2:57
+Man, this is the high priority.
+David Didsbury   3:03
+Definitely different, alright, OK.
+Rebecca Cuckoo   3:04
+Mm.
+Andrew Kane   3:05
+So that's chirps. So it comes in on the scope as chirps and you can measure the distance between them and stuff. So it's all lining up all right for those.
+Then, visually.
+So the existing alarm, there's the wrong priority. So I've put these different colors in. So there's now a standard, let's use cyan, blue, or yellow for low priority. So I figured it's the biggest contrast is if we do blue for the low priority, yellow for the medium priority, and red for the high priority.
+No, I've done the LEDs flashing. I've done the flashing a little bit.
+Definitely, I thought it's a lot easier to do it flashing from the LEDs, so the screen stays solid as the LEDs that flash. I think that should...
+Rebecca Cuckoo   3:52
+I'll time it.
+David Didsbury   3:56
+Yes, so which LEDs are you flashing then?
+Andrew Kane   4:00
+So, there's an alarm LED, say the alarm mute button.
+David Didsbury   4:04
+All right, okay. Yep.
+Rebecca Cuckoo   4:05
+He's still there a lot of 8.
+Andrew Kane   4:06
+So, it's solid. So, a low priority has a cyan blue screen and a solid LED, and the yellow and the medium is a yellow flashing 0.6 Hertz LED with a yellow screen that's a solid, and then the high priority is red screen, but it's...
+Rebecca Cuckoo   4:07
+Really.
+It is.
+And.
+Yes.
+Five Star.
+Very nice.
+Yeah.
+Yeah, I used to go all the time.
+Andrew Kane   4:26
+Flashing at 2 hertz, so twice a second, and so that that is working as well.
+David Didsbury   4:28
+OK, and the.
+Rebecca Cuckoo   4:30
+I said it, instead of Christmas.
+David Didsbury   4:35
+I thought when you pressed the mute button at the moment, right, to mute the alarm, the LED went solid, but you're going to leave that as flashing now, are we?
+Rebecca Cuckoo   4:36
+Yeah, I play it, no.
+David Didsbury   4:45
+Or I misinterpreted the software.
+Andrew Kane   4:48
+Um...
+Rebecca Cuckoo   4:49
+Yeah.
+Andrew Kane   4:49
+Yeah, I'm not, I'm not actually sure what it does at the minute. Um, I really looked at when you press the mute button.
+Rebecca Cuckoo   4:52
+Actions.
+Andrew Kane   4:57
+We could look at that.
+Rebecca Cuckoo   4:58
+Very straight, please.
+David Didsbury   5:02
+Hey.
+Jacqui Fox   5:03
+Look.
+Andrew Kane   5:03
+So, you're saying at the minute it's solid?
+And then you press the mute on it. All right, it's flashing, then you press the mute and it goes solid.
+Rebecca Cuckoo   5:08
+And now is another day that was like.
+David Didsbury   5:10
+I think it.
+Rebecca Cuckoo   5:11
+Can you have a look next time, because I don't know if that might, I think asks.
+David Didsbury   5:12
+I think it's flashing when you raise the alarm and then when it's triggered and then goes solid on someone sounding them on someone putting the mute on, but I might have misinterpreted the software. OK.
+Rebecca Cuckoo   5:19
+Do you have this to ask?
+Just like I know.
+Andrew Kane   5:24
+OK, I I haven't looked at the mute button, like how it like how the LED acts in that scenario, so that's probably something I need to look at.
+David Didsbury   5:29
+Okay.
+Jacqui Fox   5:31
+Yeah.
+Rebecca Cuckoo   5:32
+Hey, Johnny.
+Andrew Kane   5:34
+Colm.
+David Didsbury   5:35
+Yeah.
+Jacqui Fox   5:37
+So if I'm to interpret where we are, then that means that the sound...
+Andrew Kane   5:37
+Okay.
+David Didsbury   5:38
+Yeah.
+Rebecca Cuckoo   5:41
+Thank you.
+Are doing anymore?
+Jacqui Fox   5:44
+The color and the flash for each of the low, medium, and high code changes appear to have been made and are working successfully, and the only outstanding thing then to confirm is this: what happens when the mute?
+Rebecca Cuckoo   5:46
+Not of a group that is for the fake.
+That is.
+Jacqui Fox   6:03
+button is pressed in terms of the LED flash only.
+Andrew Kane   6:05
+Yeah.
+Jacqui Fox   6:10
+Okay. And then I have two questions off that. One of them was to do with a mini review with the clinicians around that audible sound as to whether that would be acceptable in the field. Did you guys manage to connect with
+David Didsbury   6:11
+Yeah.
+Rebecca Cuckoo   6:11
+No.
+Stop.
+Jacqui Fox   6:29
+Janine.
+Rebecca Cuckoo   6:30
+That's been pushed out until next week, because all our clinical nurses or clinical guys are out in the field at the minute or off on leave. So I suppose the ones that's obviously off on leave, spend pressure on the ones being out in the field. So it's been pushed out till next week.
+Andrew Kane   6:30
+No.
+Jacqui Fox   6:41
+OK.
+Rebecca Cuckoo   6:50
+But what I did say to Andrew was we can trudge on with the rest of the stuff that we've got, both my side and his, and then just look back around and close that, you know, action off then just when they come back rather than waiting. But yeah, if we, in the meantime, we can compute a firm on that mute aspect and then we can also run that past them then next week.
+Jacqui Fox   6:50
+OK.
+Okay. And then the other piece to that, further on from the clinicians as to whether there is an update needed from a usability perspective long term to check with the deal. So I presume that that is dependent on the feedback from the clinicians.
+Rebecca Cuckoo   7:32
+Yes, that will be. He's on that call as well. So we'll know get everybody at the same time.
+Jacqui Fox   7:33
+OK.
+Okay, perfect.
+Perfect. And then, Andrew, one of the other things that has come up, I met with David this morning, just to kind of review his actions and what he's been working on. And one of the things was around debug. And that David is documenting around the debug, but I know that David, you had some questions around what you were, what was
+Rebecca Cuckoo   7:56
+Yeah, she had a boy at all. They were in a group. She felt like it was like we're standing there at the group else like it's book group.
+Jacqui Fox   8:01
+from it within the software what the debug looked like and we were hoping that as a result of of Andrew doing debug on the first change he made to the sound that that would we'd be in a position to kind of fully understand what he's seeing because you can't physically access it to see.
+Rebecca Cuckoo   8:09
+My turn to say hello here and she ignored.
+Annual.
+Thank you.
+Jacqui Fox   8:22
+What's within the software?
+Am I interpreting that correctly?
+David Didsbury   8:28
+Yeah, well, I was the software modules say you can do various tests, right? I was curious to see if the...
+Rebecca Cuckoo   8:30
+OK.
+Yes.
+David Didsbury   8:37
+If the debug program that Andrew was running actually had those commands in, and he sent me a screenshot of the...
+Rebecca Cuckoo   8:40
+friends story.
+David Didsbury   8:46
+Of the.
+Rebecca Cuckoo   8:47
+And.
+David Didsbury   8:48
+One of the O2 sensors, didn't you this afternoon, Andrew?
+Ohh.
+Andrew Kane   8:53
+I sent you on a screenshot of the debug menu, yeah.
+Rebecca Cuckoo   8:54
+This is Australian.
+David Didsbury   8:57
+Yeah.
+Rebecca Cuckoo   8:57
+A lot of people.
+Andrew Kane   8:58
+So, there's...
+There's some, you were asking about like the audio menu, which I haven't actually been using for this test and I've just been using, I've just been simulating real faults and working off that. But the debug, the debug, the audio debug menu doesn't actually come up on the screen, but if you press.
+Rebecca Cuckoo   9:00
+You're like, you're like, you're like.
+The people's reminisce right things.
+David Didsbury   9:14
+Ohh.
+Rebecca Cuckoo   9:16
+They do that.
+Andrew Kane   9:19
+you know, C or capital C, which is what you're instructed to do in the test plan, then it does work. It's just, you don't see it.
+David Didsbury   9:28
+Right, okay. Okay, but you don't actually see it. So if I, so next, so when you get back from coming, when you next get back and you're back in front of the, your setup, right? I might give you some more letters to try, right? Okay, because the, because according to the software code, there's a,
+Andrew Kane   9:32
+Oh.
+Rebecca Cuckoo   9:32
+Right.
+I work in it.
+Andrew Kane   9:46
+Yeah.
+David Didsbury   9:48
+There's a few more different options, right, than just, you know, just little chirp, big chirp, you know, up and down in the volume, right? OK.
+Rebecca Cuckoo   9:51
+Play.
+Well.
+Ice cream.
+Andrew Kane   9:59
+Yeah.
+Rebecca Cuckoo   9:59
+Take a moment.
+Don't find my brother.
+David Didsbury   10:03
+Yep, OK.
+Andrew Kane   10:03
+Kate.
+Jacqui Fox   10:05
+So that's whereby there is a list of what the software says is available from a debug perspective and you just need to get confirmation based on that command what is physically seen on the screen. Is that correct?
+Rebecca Cuckoo   10:15
+It's correct.
+Yeah, thanks. I said that to you, but you're not allowed to say that with me.
+David Didsbury   10:20
+I want, I want to physically see it. If Andrew puts the letters in, right, then we should then he should get a result, right? OK, right. I don't want to commit to writing, you know, getting a test script written around testing certain features and then finding that actually what I found in the software code has been.
+Jacqui Fox   10:25
+What happens?
+Okay.
+Rebecca Cuckoo   10:35
+It should.
+I'm like wrong something.
+David Didsbury   10:40
+Rammed out somewhere else, right? OK.
+Rebecca Cuckoo   10:41
+And then she ended up getting the job.
+Jacqui Fox   10:43
+Okay. Okay.
+Rebecca Cuckoo   10:44
+Actions.
+The same thing.
+Jacqui Fox   10:45
+All right. And then, Andrew, I know that we had looked at starting to document that change within the on a change request form. Have you started on that yet?
+Rebecca Cuckoo   10:49
+Exactly.
+There.
+Perfect.
+Andrew Kane   10:57
+Yeah, so I submitted that last week, so I think they're going to discuss that in their meeting on Wednesday.
+So, I don't know, Rebecca, what the process is. Do I need to be at that meeting or no?
+Rebecca Cuckoo   11:04
+Excellent.
+Um...
+No, I think it's more Ciaran Ryan from my team will be at it. They'll just look at it, they overall approve it and then obviously as a change owner, you'll just take track of the actions. But if you want, we can set up meetings following on from that, make sure all those actions get tidied up nicely. But I think between you and a few couple of clinical guys,
+We're largely doing the bulk of the work, so this call and other intrinsic calls might be sufficient. But yeah, that'll get approved on Wednesday. And then it'll just be a matter of gathering the information and popping it into the folder to close out.
+Jacqui Fox   11:49
+Just from my perspective, that change request does it list all three of the changes, i.e. the alarm code changes, the language changes, and the retrospective from version 101 to 102. So it lists all three.
+Rebecca Cuckoo   11:49
+No.
+Andrew Kane   11:58
+Yeah.
+Jacqui Fox   12:02
+Okay. And again, for me to understand the output of that will be that there is a final version, a further version of the software released.
+Andrew Kane   12:02
+Yeah.
+Rebecca Cuckoo   12:09
+And that.
+Jacqui Fox   12:12
+Is that correct? Version 1.03. Okay.
+Rebecca Cuckoo   12:13
+Right.
+Andrew Kane   12:14
+Yeah.
+David Didsbury   12:16
+or whatever we call it.
+Jacqui Fox   12:17
+Yeah.
+Andrew Kane   12:17
+Yeah.
+David Didsbury   12:18
+Of...
+Jacqui Fox   12:19
+Absolutely. Okay.
+Rebecca Cuckoo   12:19
+Are we thinking of about calling it something different, or just out of curiosity?
+Jacqui Fox   12:22
+Haha.
+David Didsbury   12:22
+Well, you might want to put it, you might want to call it 1.1.5 or two or two.
+Andrew Kane   12:27
+2.0
+Rebecca Cuckoo   12:29
+2.0, I like 2.0, it always seems like it's like next grade, next level, 2.0.
+Jacqui Fox   12:32
+Yeah.
+David Didsbury   12:32
+Yeah, yeah, because a check we made, and once we have it documented, then someone, I presume in your regulatory team, will go through and confirm that it's a non-substantial change, will they?
+Jacqui Fox   12:34
+Oh.
+Rebecca Cuckoo   12:38
+Yeah.
+Yes, that's part of that form. It's that it's a non-significant change. Yeah.
+David Didsbury   12:51
+Okay, great.
+Yep.
+Jacqui Fox   12:55
+And just on that then, I know David, when we talked this morning that there was that gap assessment being done on that 17 changes that appeared for our communicated from Merturian to yourself via Andrew Barr that it's from version 1.01 to 1.02 is the 17 changes, but to understand where they are within the code or can they be
+David Didsbury   13:05
+Okay.
+Jacqui Fox   13:17
+Seen at within the code.
+Does how does completion of that feed into that change request or vice versa as the case may be?
+David Didsbury   13:30
+Well, it should confirm what the first change was, because the documentation that we have currently from going from, whether it's version one, which I think is what the software says, to 102.
+Rebecca Cuckoo   13:32
+Got it.
+I do.
+David Didsbury   13:45
+It gives it, but it gives it the degree of granularity that it needs for the MDR device file history. Now, is it in section 2? They, you know, they ask for the devices to the device, and we've changed the software versions and we don't really have, you know, the current documentation.
+Um, would just ask, would just lead an auditor to ask loads of questions.
+Rebecca Cuckoo   14:09
+in the bracket.
+David Didsbury   14:11
+It's not well-defined.
+Andrew Kane   14:13
+The group.
+Jacqui Fox   14:15
+And...
+David Didsbury   14:15
+But...
+Rebecca Cuckoo   14:16
+After you get back with everybody in the room.
+Jacqui Fox   14:17
+I know, again, when we also talked earlier on, David, that is that there is...
+An indicator, the hope that some or the vast majority of those changes potentially are to do with changes to the battery, but there are others that it may be. And
+Rebecca Cuckoo   14:24
+Thank you so much.
+Jacqui Fox   14:39
+So, so what I had said was that the...
+If changes are not all battery related to explanation documentation required for any unauthorized changes, worst case test data may need to be generated. So...
+Rebecca Cuckoo   14:52
+8.
+Goodnight.
+Jacqui Fox   14:56
+to that point is said that we at this point do not know if all 17 really all relate to battery or if they relate to others and
+Rebecca Cuckoo   14:59
+It will certain time.
+Jacqui Fox   15:08
+Oh, okay, no problem, Rebecca. And no problem. And if it does relate to others, we potentially may need to retrospectively generate test data to support or to from a traceability perspective as to what that change was.
+Rebecca Cuckoo   15:11
+Apologies.
+Jacqui Fox   15:29
+Is that right?
+David Didsbury   15:31
+Yes.
+Jacqui Fox   15:32
+Yeah, okay.
+So...
+Rebecca Cuckoo   15:34
+We've referenced the other changes in that change control.
+And then I'll just compile them all together as part of design changes or changes throughout the tech file in the summary report.
+David Didsbury   15:46
+Mhm.
+Jacqui Fox   15:47
+Okay, so you will take David's output and incorporate it into...
+David's output in terms of that review of the 17 changes and where they are visible within the code.
+Rebecca Cuckoo   15:54
+Hey.
+Yep.
+Jacqui Fox   16:00
+Yeah.
+Okay.
+Rebecca Cuckoo   16:01
+Just like a summary of...
+Jacqui Fox   16:03
+Perfect. Once it's covered off, that's all I'm worried about. And then from Rebecca, I got your update from a UL perspective. You're effectively taking all that electrical compliance testing in-house.
+Rebecca Cuckoo   16:07
+Of course.
+Oh, yes.
+David Didsbury   16:17
+The.
+Jacqui Fox   16:17
+Yeah, and based on the dates on that.
+It looks like the final, it's my interpretation of the final.
+piece of that testing will be the 23rd of July, I think you've said to me, which would tie in for the end of July. So to give David obviously that bandwidth to be able to review the output or the results of that testing and where that feeds into all his, I suppose, final documents.
+Rebecca Cuckoo   16:32
+Yes.
+Mm.
+Jacqui Fox   16:47
+And that's right, isn't it, from a time frame perspective?
+Rebecca Cuckoo   16:49
+Yeah, and that takes into account kind of worst case of those timelines. You know, best case is kind of like 4 weeks, so it could be slightly earlier, but I wanted to give Andrew a wee bit of grace period in case there was anything that kind of came from that kind of first action of like further testing and what information needs to then be fed through to Adil.
+Jacqui Fox   17:10
+Perfect, okay, no problem. So...
+You're all set up then to start that testing, Andrew. You have everything that you need to start that testing.
+Andrew Kane   17:23
+Yeah, yeah, I started going through the...
+First step was going through that, the big 60601-1 compliance document and went through that based off of the one we did for the MDD and just to find why we'd meet everything. So that's the big first bit that we'll see if.
+We have like gaps in testing that we need to address, but.
+Jacqui Fox   17:51
+Okay.
+Okay. And again, just will you let us know if there is any support that you need from David on that so I can just understand from a resource perspective how any impacts that that might have. And then in relation to it sounds like we are on the
+Andrew Kane   18:02
+Who?
+Jacqui Fox   18:12
+further side of the software changes in relation to all the alarm stuff and to look then at the languages as the next step. So likely that that will be next week.
+Rebecca Cuckoo   18:20
+Like.
+Andrew Kane   18:21
+Yeah.
+Rebecca Cuckoo   18:25
+Come on.
+Jacqui Fox   18:28
+We're still on track for that.
+Andrew Kane   18:30
+Yeah, well, I've started learning the languages.
+Rebecca Cuckoo   18:30
+Thanks, Michael.
+Okay.
+Andrew Kane   18:34
+I got, so I put 18 language files in there, and it's able to take 18 language files, but they don't have, you know, they don't have the latest translated, but those translations yet. I've kind of identified we might have a roadblock in terms of...
+Jacqui Fox   18:39
+Okay.
+Rebecca Cuckoo   18:47
+OK, get home.
+A market.
+Andrew Kane   18:54
+the symbols that are needed for some of those languages. So I don't think our drivers and stuff at the minute would have. So for example, Arabic has a lot of different symbols and stuff, but it wouldn't have. So there's three languages in particular might be a problem is Arabic, Vietnamese and Greek.
+Rebecca Cuckoo   19:00
+That itself is something.
+Did you get the mug?
+Jacqui Fox   19:07
+Okay.
+Rebecca Cuckoo   19:07
+Thank you.
+OK.
+Andrew Kane   19:15
+because they have all these different characters. So I don't know if we could look in and see, do we definitely need...
+Jacqui Fox   19:17
+Mhm.
+Rebecca Cuckoo   19:18
+Take over.
+Andrew Kane   19:21
+Those in there.
+David Didsbury   19:23
+Down in the down in one of the drivers, right, to do with the graphics display, you can add.
+Rebecca Cuckoo   19:25
+OK, so.
+Andrew Kane   19:29
+Yeah.
+David Didsbury   19:32
+You can add different.
+Rebecca Cuckoo   19:32
+Do consider.
+Single turn is even there.
+David Didsbury   19:35
+Different fonts.
+Right.
+So...
+We might be able to add a particular font for those countries, because at the moment, at the top of my head, I think it's all Arial or something, right? But
+Andrew Kane   19:44
+Mhm.
+Good.
+Rebecca Cuckoo   19:55
+But you see.
+Kate.
+Thank you.
+Exactly.
+Andrew Kane   20:06
+OK, you clicked to the super.
+David Didsbury   20:08
+Open up.
+Right.
+Jacqui Fox   20:11
+Okay, and sorry, Andrew, go ahead.
+Andrew Kane   20:11
+That would be the only roadblock for that one, because, like, I think the structure is there already.
+Rebecca Cuckoo   20:13
+I was even, they checked.
+There you go, lady.
+Thanks a couple.
+Jacqui Fox   20:20
+Okay, so what you've completed to date really is the replicated 12 languages to test the memory capacity to whether it takes 18. It's suggestive that that means it has and the memory capacity is there. So the next steps are twofold. One,
+Rebecca Cuckoo   20:25
+I know, but like...
+I assume they're all the same.
+Now, I can.
+Thank you.
+Jacqui Fox   20:39
+To look at the addition of any.
+specific language characters based on what David has said, but also then to load the fully translated.
+Rebecca Cuckoo   20:48
+Definitely.
+Jacqui Fox   20:51
+languages which I believe you've received from my recollection from last week.
+Rebecca Cuckoo   20:51
+30.
+Zero 9.
+Jacqui Fox   20:58
+Okay, so again, should be able to get that done next week, presumably.
+Rebecca Cuckoo   21:01
+Yes.
+Andrew Kane   21:06
+Mmh.
+Jacqui Fox   21:07
+Okay, perfect. Okay, and then lastly, I think the other thing that had come up last week was around the cybersecurity concern, in particular in relation to the USB port. And I know you guys were looking at potentially looking for a
+Rebecca Cuckoo   21:08
+Good morning.
+Yours.
+Jacqui Fox   21:26
+Port luck.
+to consider a port lock to be used. I don't know if you've managed to identify one in terms of...
+Where that's at, go for it.
+Rebecca Cuckoo   21:36
+I was.
+Andrew and I had had looked at a couple of options. I was in the middle of inputting it onto the risk management file, but we were talking about initial risks and kind of control measures.
+We're looking at for two elements, one port lock for the USB on the back of the device, you know, how you, I was gonna say, how you...
+stringent do you make that over the fact that the screen element can also be accessed? And if the attempt is to put any USB, you know, to overwrite the software in so much way that it becomes harmful, you know, likewise, there would be maybe some
+control needed on the screen to prevent somebody increasing, you know, oxygen concentration flows, flow rates or something passed and approved or for the matter of swapping from a neonatal to like an adult therapy, which would then cause harm. So we're like looking at building that out.
+We're not sure if...
+The focus should be on the lock, but I do get the point of that. But I think it should be overall around.
+I suppose unwarranted interference with the device is the way we were kind of looking at it.
+David Didsbury   22:56
+Yeah.
+Jacqui Fox   23:02
+And what do we need to do to progress that? Because it sounds like, as you said, there's a two-pronged approach. There's the hardware aspect of it, and then there's GUI aspect of it.
+Rebecca Cuckoo   23:08
+Yeah, I was.
+I said to just Andrew that I go away and see what, if anything, other devices have around kind of controlling that kind of element.
+But I'm in the middle of tidying up the risk management file sheet to share back to you guys to have a look at that and then I'll add those in. But I'll get that, I'm hoping done for Wednesday because I'm focusing on risk at the minute for our Wednesday meeting.
+Jacqui Fox   23:43
+And David, did you, I know obviously Rebecca had shared some of the competitor stuff previously, you didn't come across Anthony around that when you were reviewing.
+Rebecca Cuckoo   23:44
+Anyone has any ideas?
+Mhm.
+David Didsbury   23:55
+No, I didn't come across.
+Jacqui Fox   23:55
+No.
+David Didsbury   23:57
+Right, but it seems, but it seems to be particular to each company, right? How they get around this, and this, I think, I think you're right in terms of...
+Rebecca Cuckoo   23:57
+That is.
+Beauty.
+A different.
+Yeah.
+David Didsbury   24:11
+you know, looking for unwarranted, unintentional interference with the machine, right? So, yeah, cyber security is one of those avenues in, right?
+Rebecca Cuckoo   24:17
+Mhm.
+So we're back today.
+She said that a really shortfall.
+David Didsbury   24:26
+Yeah.
+Jacqui Fox   24:26
+Mm.
+And there's no recommendation that you would suggest based on...
+Rebecca Cuckoo   24:33
+Bigger doesn't.
+Jacqui Fox   24:34
+Maybe other.
+Rebecca Cuckoo   24:35
+in the picture.
+Jacqui Fox   24:37
+Software that you've come across in other aspects.
+David Didsbury   24:41
+I didn't say that. I was being polite. I'm not suggesting, but I mean, given Rebecca's example of someone going to, you know, someone going to the LED screen and it's currently in on a neonatal.
+Rebecca Cuckoo   24:45
+I got.
+Thank you.
+David Didsbury   25:00
+Setting, I mean, coming along and twiddling it right to...
+Rebecca Cuckoo   25:02
+Just you.
+David Didsbury   25:06
+Send it up to, you know, to a rate that could cause an issue for a neonate.
+Rebecca Cuckoo   25:09
+Even.
+David Didsbury   25:12
+Normally think, you know, you can either, you can either, do they select neonatal mode? Do they?
+Rebecca Cuckoo   25:13
+Thank you.
+Yeah, there's like, I think in the six options, there's like bubble CPAP, which is for neonatals. There's NCPAP for neonatals and then adult and yeah.
+David Didsbury   25:27
+Yeah.
+OK, right. And they should have high and low defined limits, right? OK, so assuming someone comes along and sets a, you know, tries to take it outside that limit, two things should happen. One on alarm should sound, right? OK, that would hopefully be enough to put someone off.
+Rebecca Cuckoo   25:32
+Hey.
+Yeah.
+Mhm.
+David Didsbury   25:49
+Right, and two, we could, you could in theory, lock it, lock it at the higher, you know, lock it at the higher limit, right, or say that any, you know, or any changes like that should be.
+Rebecca Cuckoo   25:58
+And talking.
+David Didsbury   26:03
+password protected.
+Rebecca Cuckoo   26:05
+Mm.
+Andrew Kane   26:06
+Yeah, so at the minute, the settings are hard to set, so you can't go above 70 litres per minute or something in that mode. So you'd have to change modes to go into Ireland.
+David Didsbury   26:06
+Right.
+Thank you.
+Rebecca Cuckoo   26:17
+And that's what I was meaning if somebody was unintentionally to stop like an NCPAP therapy and then put onto adult CPAP for a neonate, I get that the harm's less so to the adult if they were put on neonatal CPAP or even put to the extreme of that because then you have your overpressure valves and stuff that all kick in. But, and a similar thing for your NCPAP, you'll have the overpressure valves for NCPAP like pressure levels.
+Andrew Kane   26:18
+You could go out to see Bob bubble.
+Rebecca Cuckoo   26:41
+but will the overpressure valves kick in on the adult for a neonatal before it does damage is what I'm saying. Like if it was swapped, if one therapy was stopped and then was put in an adult therapy for a neonate. I'm just, I was just thinking of maybe ways that the machine could be messed with that.
+David Didsbury   26:57
+Yeah, yeah.
+Rebecca Cuckoo   27:01
+with intent to call harm, shall we say.
+I know we do have the, once you set the therapy, we do have the little lock that you have to press and go, do you want, and it brings up a setting to say, do you want to stop this therapy or something? You go, yes, but that's not.
+Jacqui Fox   27:06
+Mm.
+Mandatory.
+Rebecca Cuckoo   27:21
+Maybe that's around training, around being able to unlock the screen from that aspect. But if somebody was to watch a nurse do that, you know, it's not like you have to type in like a pin or anything like that, or you need like a fob to attach it. Do you know what I mean? It's just a case of hitting unlock and go stop therapy. It's quite instructive as well. It's quite intuitive. So anybody that is trying to cause harm might just go, oh, yeah, of course I want to stop therapy.
+David Didsbury   27:33
+Yeah, yeah.
+Rebecca Cuckoo   27:41
+You know, and...
+just trying to think like I don't know who would do this and to be honest it would be.
+David Didsbury   27:45
+Yeah, yeah, I mean, you know, at the end of the day, it all boils down to, you know, down to risk and looking at the clinical clinical settings, so...
+Rebecca Cuckoo   27:51
+Yeah.
+David Didsbury   27:56
+I suppose the worst, you know, the worst case scenario is you've got some kid who's coming to visit their brother and sister in hospital.
+Rebecca Cuckoo   28:04
+What was that to you?
+David Didsbury   28:05
+And he looks at this lovely thing and goes, oh, I'm great on an iPad. I can go, right? Exactly. So, but yeah, I don't know. Yeah.
+Andrew Kane   28:15
+Unless.
+Rebecca Cuckoo   28:19
+Oh.
+Jacqui Fox   28:19
+Click on site. Oh.
+Andrew Kane   28:19
+Very little scoring.
+David Didsbury   28:19
+Oh.
+The.
+Andrew Kane   28:21
+Can I not be a pretty loose score, because we've never seen that in the field out for all scores for aware, but...
+I don't know if we would say it.
+Rebecca Cuckoo   28:27
+I think from neonatal to adult, it'd be like a quite high severe severity rating, but a low occurrence. Whereas I think the severity would be new for the adult would be no more than your general, you know, baro trauma. There are issues that we've seen in line with the back to somber pressure valves. So again, I think it's just more around that neonatal.
+patient population where disparity would be higher. But as you say, Andrew, you could keep the occurrence quite low on the justified that we've not seen anyone interact or complain about interaction of third parties with these, you know, machines or whatever.
+Jacqui Fox   29:06
+Yeah.
+Rebecca Cuckoo   29:07
+But.
+Jacqui Fox   29:07
+To.
+Is there two things to do there? There's one to, obviously, as you say, Rebecca, you're updating the risk at the moment, so you're considering that.
+Rebecca Cuckoo   29:11
+Yeah.
+Jacqui Fox   29:19
+But when we come to a conclusion...
+Like, um...
+Rebecca Cuckoo   29:25
+And it's a week.
+Jacqui Fox   29:26
+Is there a possibility that the conclusion determines?
+Rebecca Cuckoo   29:29
+I have a psychological.
+Jacqui Fox   29:31
+That there is a change to the software to introduce some measure around.
+Rebecca Cuckoo   29:37
+Yeah, I think if the risk remains high after you put in your risk control measures, that's when you do your benefit risk analysis to say that, you know, the benefits outweigh the risk and the fact that it's unlikely going to happen, but there's nothing we can do to the machine that won't overcomplicate it or whatever, or introduce new risks or whatever.
+Jacqui Fox   29:38
+Mitigating that risk.
+Yep.
+Rebecca Cuckoo   30:14
+No.
+Jacqui Fox   30:16
+Let's hope it's not a password on the screen, because I would imagine that that's a software, another software change, isn't it?
+Rebecca Cuckoo   30:22
+Yeah, and also...
+And this way your benefit risk analysis, you can negate the need for a password by saying that a clinician may need to intervene quickly and therefore typing in a password.
+particularly on a touch screen, which if, you know, with calibration slightly off means you could be hitting the wrong buttons, I might not be able to stop the therapy as quickly as they'd like. So you can kind of risk adverse that by saying, no, we don't need that. So therefore, as we've had no incidences of anybody messing with the machines and the nurses are able to interfere quite swiftly with them, then
+We're happy with the overall benefit-risk.
+Jacqui Fox   30:59
+Okay. Okay.
+Rebecca Cuckoo   31:01
+Now he's got all those words down on paper.
+Jacqui Fox   31:02
+Okay.
+Rebecca Cuckoo   31:05
+Great when you say these things.
+Jacqui Fox   31:05
+Right, we're coming up on time. So I suppose really the key things moving forward are
+Rebecca Cuckoo   31:09
+This.
+Jacqui Fox   31:16
+I can't even remember that mini review that needs to happen from a clinician's point of view in relation to the three changes that have that have now been done within the coding and Andrew to just confirm in terms of the mute button button and what that what happens to the flash in relation to that.
+And then to continue the upgrade, or sorry, the update to the 12, the 12 additional languages.
+that needs still to be done and then the electrical compliance testing has started or will start shortly with a view to be within the 23rd of July dates. And
+You're continuing to review the USB port side of things and David did sent on today two documents, one in relation to the fan logic, Andrew, that he shared with you. So just for that need, that needs to probably be reviewed from your perspective and if that needs to be added to your Cognidocs perspective.
+just not sure if it does. I can see that the other ones updated, which is great. Perfect. Thank you. And then from a PMS perspective, David has reviewed that document as well. I've shared that over to Ciaran, whereas comments have been added and
+Any feedback, Rebecca, from you in terms of the updates that David has had put in last week to the risk management plan? Is there anything needed there from David?
+Rebecca Cuckoo   32:53
+No, I've responded to those two comments that David had put in and kind of was a bit more specific than in the plan around the kind of method that were taken for risk management. And I was just working through and tidying up that risk management.
+Jacqui Fox   33:05
+But.
+Rebecca Cuckoo   33:12
+matrix. I was wondering, I purchased 2 standards, 81001, which is I think the cyber security one.
+All digital time.
+David Didsbury   33:27
+Sorry, what did he say? Purchased intent.
+Rebecca Cuckoo   33:29
+And.
+Jacqui Fox   33:29
+She sits.
+Rebecca Cuckoo   33:30
+Sorry, I was going to sneeze there. So I purchased 2 standards, 81001-5-1, which was the health software and health IT system safety, effectiveness and security. So I think I've sent that on. If not, I'll send that on. And then the other was 27427 anaesthetic and respiratory equipment and nebulizing systems.
+Andrew Kane   33:42
+Yeah.
+Rebecca Cuckoo   33:49
+Opponents, I think Colm had mentioned about looking at that standard to see if it was applicable.
+With regards to the nebulizing port, so Andrew, I'll send that on and we can maybe just get an assessment of that.
+David Didsbury   34:01
+Yeah.
+Jacqui Fox   34:05
+Okay.
+Andrew Kane   34:06
+Yeah, and the cybersecurity one might give a bit of guidance about what we're talking about there.
+Rebecca Cuckoo   34:06
+It might be not applicable.
+Jacqui Fox   34:06
+And I can follow follow up with Colm as well.
+Rebecca Cuckoo   34:11
+Pardon?
+Jacqui Fox   34:13
+Carol.
+Andrew Kane   34:14
+The cyber security one might give a bit of guidance about what we've been talking about there. I don't know.
+Rebecca Cuckoo   34:19
+What we can, yeah.
+Jacqui Fox   34:23
+So I need to get Colm to review that as well. Yeah.
+Rebecca Cuckoo   34:27
+Yeah, I'll just, well, I'll go try and drop them into chat, but I don't think it's going to let me, so I'll send them over in an email then to you. And yeah, if we wouldn't mind having a look at them then just to see if we can do anything with them.
+or if we need to do anything.
+Jacqui Fox   34:42
+Okay.
+Okay, perfect. Andrew, you're out for the next couple of days. We're obviously at the tech call on Wednesday and we're okay to do our back to normal on Tuesday. And Rebecca, I'll add you to that as well. I don't think I have you added to that. I'd call myself to that as well. Okay, no problem.
+Rebecca Cuckoo   34:45
+Thank you.
+Andrew Kane   34:55
+Mmh.
+Rebecca Cuckoo   35:00
+That's OK. Thank you very much.
+Rebecca Cuckoo   35:03
+Perfect. Thank you. Take care. Yes, you too. Take care. Bye.
+Andrew Kane   35:04
+OK, thanks a good week.
+Jacqui Fox   35:04
+Have a good one. See you, bye.
+David Didsbury   35:05
+Bye. Bye.
+Andrew Kane   35:07
+What?
+Jacqui Fox stopped transcription

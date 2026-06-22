@@ -1,0 +1,182 @@
+Client Eakin T733 Tech File review weekly-20260617_100409-Meeting Transcript
+17 June 2026, 09:04am
+15m 42s
+Jacqui Fox started transcription
+Jacqui Fox   0:03
+He has accepted. Okay, wait and see. I haven't heard from this morning that there's any problem. Okay.
+Um...
+So I did a quick review this morning in terms of the status on the tracker. Things have moved again a little bit as well, so that's all positive. So just briefly, so the 20 to 39%, so we've gone from 13 to 10 and therefore we're starting to see that jump.
+come in here to a slightly higher percentage. So moving in the right direction, I would say. Okay, so that's that. And then if I just step down through from last week, I am on the wrong ones. I am on Andrew's one.
+Sorry, no. Am I on the right one here?
+Yes, I am on the right one now. My goodness. Too many sets of minutes out for you guys. I know what to do. Okay, so just if I step down through each of the core areas, I'll update that table for the new set of minutes. The focus still remains on risk and software. We
+Rebecca has joined the weekly call with Andrew and Steve to progress some of the software pieces of it and updating the risks. Our hazard analysis was done initially, but we've now kind of identified that that needs some additional updates in relation to
+Rebecca Gill   1:31
+Yes.
+Jacqui Fox   1:39
+some cybersecurity stuff as a result of the USB ports that's on the back of the CPAP machine and how we effectively deal with that.
+and any changes that may come as a consequence to ensure that you're, you know, you're mitigating off that risk. So Rebecca is kind of managing that through with Andrew. In terms of the
+Tech file summary document you are, Rebecca, we're also working on processing through feedback previously from Colm and Louise to just to close that out.
+Rebecca Gill   2:20
+I just, I think I sent through that just standard and that, that 27427, just to call him in a wee comment and there around that. So once we get that closed out, we should be relatively tidied up. I think the other kind of commenty wordy bits is all being tidied up, so that's good.
+Jacqui Fox   2:24
+Yep.
+Oh, excellent. Brilliant. Okay. And so, as I said, I've come back to risk. It's kind of focused really now on that cybersecurity update. And David, you obviously had reviewed their risk management plan. Rebecca, you've reviewed
+David feedback on that. I think that you, is there updates you need from us on one or two of those comments from conversation on Monday?
+Rebecca Gill   2:56
+Yes.
+Um...
+So there was, I think David had put in two comments. I can't remember the first one, but it was a quick amend. And then the second one, I just kind of put a bit more detail into the use of kind of FMEAs to, as a way of measuring risk across software, hardware and various different things. So I've kind of put the detail a wee bit more in there.
+I don't know, David, if you want to maybe have a pop in, have an RV look at that, just make sure I'm along the right lines. And then I'm working on the matrix at the moment.
+David Didsbury   3:31
+Okay.
+Jacqui Fox   3:37
+Okay, perfect. And then from the software perspective, there's Andrew who has been doing work on the changes, so of the identify changes that need to happen, one specifically around alarms and the other around languages. The alarm changes seem to have gone through successfully.
+Across the three parameters, which are sound, flash, and color, and...
+So there is one outstanding point, I suppose, really in terms of the mute button or the mute function or what happens in terms of the flash sequence that exists in your current setup. When you press the mute button, maybe now takes the same
+approach as one of the actual alarm signals. So he's just looking into that with a view as well to connecting with the clinical. So Janine, and I think Adil, you're involved in that as well next week, just to look at that from a clinician side point at those changes in terms of what
+that would look like in the field and any would it cause any issues and is that change acceptable and therefore kind of effectively boxed off from a change request perspective that's raised as well and I believe from talking to you guys on Monday that that's processing through the review team.
+the end of this week. So we'd hope to get that kind of signed off early next week, I think. And in terms of the languages, Andrew has been able to prove that the memory capacity within the firmware exists to accommodate those 12 additional languages.
+He said, now the next steps are, sorry, one glitch that might be identified is some.
+incompatibility in terms of the symbols for specific languages that are simple focus, i.e. specifically Arabic, Vietnamese, Greek. And David has kind of suggested A workaround to Andrew as to how we could maybe update that. Andrew is off at the moment, so we'll get the.
+Bottomed out by the end of the week, hopefully, and that the GUIs for the full translation files of those 12 languages are available, and so therefore, once the symbol issue is resolved, we should be in a position to fully upload the true translations into the software.
+So in effect, the two code changes that were needed should be completed in total by the end of next week. And what that will give you as a final output is a new version of the software. So that change request
+David Didsbury   6:16
+E.
+Jacqui Fox   6:30
+documents that new version of the software to also include the retrospective update that happened between your original version of version 1.01 to version 1.02 and that new what that new version will be including those changes and those two changes and that and that retrospective change.
+In relation to that retrospective change, David is working at the moment, just to the feedback from your third party vendor was that there were 17 changes that happened between the version 101 to 102. It's to trace through the actual software code to see exactly
+where within the code those changes are evident and to understand that we have test scenarios to support each of those changes and where there may be gaps that there may be retrospective test scenarios that will need to be generated to provide you with justification for the
+for the change from a traceability perspective. So a significant piece of work still going on from a software perspective. Then following on from that, the alarms feed into or were directly independent into the electrical compliance.
+testing that needs to happen. And again, Rebecca and Andrew did a review last week and determined that all of the required electrical compliance testing they can now do in house. So Andrew will be starting to work through that with a view to completing the bulk of that
+testing kind of this second last week of July, which would line up in time for your MDR submission dates. So the completion of that testing will then give David the opportunity to review the outputs of that testing and update any final documents that he needs to from his deliverable point standpoint to ensure
+that you're from your self or perspective, your compliance and from a tech file perspective. So that's that. I don't think there's anything needed at the moment, Rebecca, from a subcontractor point of view, but I do think you probably still need feedback on it. Christina is still off.
+Rebecca Gill   8:53
+Yes, Christina's still off. My guys have just finished the spreadsheet going through. Lauren has provided me the summary of everything that's kind of missing for each of them. And then what we'll try and do is just kind of fill those gaps with like justifications or if there's any kind of high risk areas that we can't fulfill with the justifications.
+or additional testing for that matter, then we'll look to take further actions on those, but I think largely
+We, we've got everything we need.
+Mostly.
+Jacqui Fox   9:27
+Okay, mostly.
+Rebecca Gill   9:31
+She says, I did have a quick click, there was no alarm bells for me, but in saying that somebody else looking at it might go, yeah, and but I then I might know something the day, but I don't, I don't know. Yeah, well, I'll discuss it with Louise and see what she says on a lot of it.
+Jacqui Fox   9:33
+Well...
+Okay.
+Um...
+Adil Kauim   10:02
+Mm.
+Jacqui Fox   10:03
+One thing I did want to follow up on just was around that date, Rebecca and Adil in relation to the formative studies and just to get that bottomed out in terms of dates and how that aligns with your actual MDR submission and does it feed into that kind of gap between the physical submission date and the review date by the NB?
+So I know in Rebecca, you kind of identified the 13th of August based on the kind of matrix that you'd give me, but from seeing emails from Colm, it was looking more like the discussion point between himself and Adil was more like September. So I just want to be clear what one.
+Rebecca Gill   10:44
+Yeah, I went, I...
+Jacqui Fox   10:44
+We're probably talking about in play.
+Rebecca Gill   10:46
+I went back to Colm yesterday. Sorry, I had it was I think I had in an earlier call. I presumed that the formative would be ready for submission and then to follow up with the summative. But I think maybe that slightly changed with what could be achieved between now and then and that this the formula would be ready to be just shortly after, but still prior to.
+Jacqui Fox   11:00
+Cuckoo.
+Rebecca Gill   11:07
+Um, the protect file being lifted.
+Jacqui Fox   11:09
+Okay, okay, so that's fine. Okay, that's what I kind of understood, but want to check. Perfect. And Adil, is there anything additional that you're needing from Colm? Or I presume you're probably scheduled a fair call over the next file?
+Rebecca Gill   11:09
+So, I'm happy with that.
+Adil Kauim   11:23
+Um...
+Yes, I'm doing all right. Yeah, so I've managed to get through the task analysis with Alan and Abby and Andrew yesterday, last week. So that's all pretty much done. Now it's kind of just thinking about how to execute the study. It's going to take a while to think about all of that, probably have a few meetings with Grace and Colm.
+Jacqui Fox   11:41
+Okay.
+Adil Kauim   11:46
+just kind of go through the whole thing, but other than that, all the documents are pretty much in a good place.
+Jacqui Fox   11:50
+Okay.
+Brilliant. Okay. And then from the process map perspective, I know Rebecca last week you kind of mentioned to Kevin rather that there had been some operational procedures for electromed medical devices that are still being finalized. Are they still ongoing or does he have them now and is he everything he needs?
+Rebecca Gill   12:16
+No, just waiting for Christina to come back to kind of like finalise those, but that should be quick. I think she's already had a review of them. So it's just a matter of review and approval for them to then be saved into the file and make sure there's no final changes needed to them. So I said to Kevin, we'll schedule a call for as soon as Christina's back.
+Jacqui Fox   12:18
+Okay.
+No.
+Rebecca Gill   12:34
+to walk through that and make sure that we're all aligned where that's at.
+Jacqui Fox   12:38
+Okay. And I know we haven't talked about it in a while, just in terms of the accelerated and the biocom testing, just conscious of like the accelerated testing due to finish week three in July. So we're kind of probably a month out. Is that still on track to your knowledge? Oh, good.
+Rebecca Gill   12:53
+Yep.
+Yeah, so I was speaking with Johnny, I think just over a week ago, and he said that that's still on track. There's been no delays that, you know, they haven't been making out of the chamber or anything for any reason. So yeah, we're still on track.
+Jacqui Fox   13:06
+Okay, perfect. Okay, and biocomp all fine. And then Ciaran, just in terms of PMS, I pinged you there, I think it was Monday, where David has just reviewed the PMS from a software perspective and added some comments to it.
+So, for you to just kind of check in on those, if did did you get that from me?
+Rebecca Gill   13:32
+Yeah, I seen the, didn't go carry on, right?
+Ciaran Ryan   13:32
+Yeah, I seen the, I seen them come through anyway, um, but I just want to say I think a lot some of the comments, David, are...
+Rebecca Gill   13:35
+Just wanna say, I think about some of the comments, David.
+Ciaran Ryan   13:40
+in relation to probably the summary document. So once they're all finalized, they can feed on through then the...
+Rebecca Gill   13:43
+summary documents, so once they are finalized, they...
+Ciaran Ryan   13:48
+That document, but I'm gonna...
+Rebecca Gill   13:49
+Okay, okay.
+Ciaran Ryan   13:51
+focus on TFO3 this week. Once that's done, then I can start. Because there's quite a lot of stuff that needs to go into the documents so that they're all in the same level as well.
+Jacqui Fox   13:55
+Okay.
+Ciaran Ryan   14:05
+Once I think next week, once I get that over with this week, I should have a lot more.
+Get caught up then, and hopefully you can see that in the tracker then, too.
+Rebecca Gill   14:10
+Colm.
+Jacqui Fox   14:11
+OK.
+Rebecca Gill   14:12
+See how much.
+Jacqui Fox   14:14
+Perfect. Grace. Excellent. And to that point, then, Ciaran, your submission is going in on Friday, isn't it? On track for Friday?
+Ciaran Ryan   14:25
+Yeah, well, hopefully I think Rebecca is potentially saying maybe it could be a Sunday night, Sunday night job.
+Rebecca Gill   14:25
+Emma.
+I.
+Yeah.
+Jacqui Fox   14:30
+Thursday, also London night, so you're right on the weekend then.
+Rebecca Gill   14:31
+Be like only my job.
+Ciaran Ryan   14:36
+Well, well, hopefully not.
+Adil Kauim   14:38
+Kate.
+Rebecca Gill   14:38
+No, I think.
+Do you have a follow-up call with Colm today, or was it yesterday?
+Ciaran Ryan   14:46
+Yesterday, yeah, so we're in good, so good place.
+Rebecca Gill   14:47
+Yesterday, yeah. We have a call today to walk kind of through that and make sure we've got everything where we need to be, especially the response to the cars. And then hopefully get everything just loaded on the call me docs for Grace to kind of review and approve.
+Jacqui Fox   15:02
+Okay.
+Rebecca Gill   15:06
+and then we'll download it and pop them in the tech file again and point the auditor in the direction of them. It's just a tidy up piece.
+Jacqui Fox   15:10
+Okay.
+Okay, perfect. Okay, yeah, so your main focus, I think, Rebecca, risk and electrical compliance and working through with David and Andrew. Okay. Okay.
+Rebecca Gill   15:16
+Okay.
+Yes.
+Mhm.
+Rebecca Gill   15:31
+Perfect. Thank you ever so much, folks. Appreciate that. Bye. Bye bye.
+Jacqui Fox   15:32
+Thank you guys. Cheers. See ya. Bye bye bye.
+David Didsbury   15:33
+Kate.
+Hey, bye.
+Adil Kauim   15:35
+Take care, bye.
+David Didsbury   15:37
+Yeah.
+Jacqui Fox stopped transcription

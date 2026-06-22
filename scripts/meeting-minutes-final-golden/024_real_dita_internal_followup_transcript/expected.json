@@ -1,0 +1,48 @@
+{
+  "description": "Real internal DITA T819 follow-up transcript after a client call, covering procedure detail gaps, PPE/sunglasses scope, language obligations, and planned working sessions with the client.",
+  "coverage": {
+    "sourceFixture": "uploaded DOCX: Internal_DITA_T819_-_followup_and_review_from_client_call---e90bfcc0-cc50-4e65-8443-9bb2f3be4318.docx",
+    "meetingTypes": ["internal_followup_review", "importer_obligations_review", "real_client_transcript"],
+    "behaviours": ["real_docx_extraction", "raw_meeting_chatter_filtering", "hidden_decision", "concrete_actions", "working_session_planning", "internal_review"]
+  },
+  "passThreshold": 0.88,
+  "criteria": {
+    "decisions": {
+      "weight": 0.15,
+      "maxCount": 2,
+      "mustContain": [
+        "PPE requirements should be covered"
+      ]
+    },
+    "actions": {
+      "weight": 0.25,
+      "maxCount": 4,
+      "mustContain": [
+        "set up working sessions"
+      ]
+    },
+    "hallucinations": {
+      "weight": 0.25,
+      "mustNotContain": [
+        "Just go silent",
+        "1/2 an hour",
+        "their risk. No, it's not ours",
+        "PPE should be excluded",
+        "language requirements are fully resolved"
+      ]
+    },
+    "abstention": {
+      "weight": 0.35,
+      "decisionMaxCount": 2,
+      "actionMaxCount": 4,
+      "discussionMinCount": 3,
+      "requiredDiscussionTopics": [
+        ["working sessions", "business works"],
+        ["PPE", "procedures"],
+        ["languages", "markets"],
+        ["quality manuals", "generic"]
+      ],
+      "reason": "Internal follow-up should capture the operational plan and scope clarification without leaking conversational fragments or overstating unresolved regulatory interpretation."
+    }
+  }
+}

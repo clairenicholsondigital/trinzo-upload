@@ -1,0 +1,50 @@
+{
+  "description": "Real T761 Eakin software weekly check-in transcript corresponding to the uploaded T761 minutes PDF, covering alarm code changes, clinical review timing, change request review, electrical compliance testing, and cybersecurity/USB controls.",
+  "coverage": {
+    "sourceFixture": "uploaded DOCX: Client_T761_Eakin_Tech_File_SW_-_Weekly_checkin---fb906d45-e67d-46b0-816c-9c8d264ef05e.docx",
+    "meetingTypes": ["client_status_review", "software_technical_file_review", "real_client_transcript"],
+    "behaviours": ["real_docx_extraction", "raw_meeting_chatter_filtering", "action_heavy", "owner_action", "deadline_capture", "technical_review"]
+  },
+  "passThreshold": 0.88,
+  "criteria": {
+    "decisions": {
+      "weight": 0.1,
+      "maxCount": 2
+    },
+    "actions": {
+      "weight": 0.3,
+      "minCount": 4,
+      "maxCount": 10,
+      "mustContain": [
+        "review the mute button",
+        "clinical review",
+        "electrical compliance testing",
+        "USB port"
+      ]
+    },
+    "hallucinations": {
+      "weight": 0.25,
+      "mustNotContain": [
+        "Okay dudes",
+        "a couple of times a day",
+        "Andrew was a busy man",
+        "UL testing is required",
+        "clinical review is complete",
+        "USB port controls were rejected"
+      ]
+    },
+    "abstention": {
+      "weight": 0.35,
+      "decisionMaxCount": 2,
+      "discussionMinCount": 4,
+      "requiredDiscussionTopics": [
+        ["alarm", "mute button"],
+        ["clinical", "review"],
+        ["change request", "Wednesday"],
+        ["electrical compliance", "23rd of July"],
+        ["cybersecurity", "USB port"]
+      ],
+      "reason": "The raw transcript contains the same substantive meeting as the minutes PDF but with far more meeting chatter; output should preserve technical actions and dates while filtering casual conversation."
+    }
+  }
+}

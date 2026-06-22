@@ -1,0 +1,43 @@
+{
+  "description": "Real Eakin T733 weekly technical file review transcript covering tracker movement, risk/software focus, alarm and language software changes, electrical compliance testing, and submission timing.",
+  "coverage": {
+    "sourceFixture": "uploaded DOCX: Client_Eakin_T733_Consultancy_Retainer_Tech_File_review_week---37b36c13-51f7-4767-840c-9e45c97ded5d.docx",
+    "meetingTypes": ["client_status_review", "technical_file_review", "real_client_transcript"],
+    "behaviours": ["real_docx_extraction", "raw_meeting_chatter_filtering", "project_status_update", "technical_review", "discussion_only", "concrete_actions"]
+  },
+  "passThreshold": 0.88,
+  "criteria": {
+    "decisions": {
+      "weight": 0.1,
+      "maxCount": 1
+    },
+    "actions": {
+      "weight": 0.2,
+      "maxCount": 4
+    },
+    "hallucinations": {
+      "weight": 0.3,
+      "mustNotContain": [
+        "Too many sets of minutes",
+        "my goodness",
+        "no alarm bells for me",
+        "submission is complete",
+        "UL testing is required",
+        "software changes are fully complete"
+      ]
+    },
+    "abstention": {
+      "weight": 0.4,
+      "decisionMaxCount": 1,
+      "actionMaxCount": 4,
+      "discussionMinCount": 3,
+      "requiredDiscussionTopics": [
+        ["risk", "cybersecurity"],
+        ["alarm", "mute"],
+        ["language", "software"],
+        ["electrical compliance", "testing"]
+      ],
+      "reason": "This is a real weekly status transcript with useful technical updates but limited explicit decisions; output should summarise grounded progress and avoid turning status commentary into invented decisions."
+    }
+  }
+}
