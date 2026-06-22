@@ -497,6 +497,38 @@ Ibrahim: The purpose is to decide whether the integration risk is acceptable for
         self.assertEqual(output["meetingActionPointOwner"], ["Dan"])
         self.assertEqual(output["meetingActionPointDeadline"], ["Noon"])
 
+    def test_public_output_sanitizer_removes_raw_discussion_transcript_leakage(self):
+        output = {
+            "discussionPoints": [
+                "I did check on Friday and there's no product information in there yet.",
+                "The other thing is, I know what, as an importer, there should be a link between the two.",
+                "And we then apply the final label on the outer box.which is the label the store sees.",
+                "may be in trouble then obviously remains in progress because it's very important we have that input from you, i guess, from the team there on how your business works again.",
+                "Us or manufacturer information notes were needed for the relevant optical and sunglasses products.",
+                "UDAMED responsibilities were discussed, with the manufacturer responsible for uploading data and the importer and authorised representative responsible for checking it is present.",
+            ],
+            "discussionPointDetails": [
+                {"discussionPoint": "I did check on Friday and there's no product information in there yet."},
+                {"discussionPoint": "Us or manufacturer information notes were needed for the relevant optical and sunglasses products."},
+                {"discussionPoint": "UDAMED responsibilities were discussed, with the manufacturer responsible for uploading data and the importer and authorised representative responsible for checking it is present."},
+            ],
+            "decisions": [],
+            "actions": [],
+        }
+
+        sanitize_public_output_items(output, set())
+
+        self.assertEqual(
+            output["discussionPoints"],
+            [
+                "IFUs or manufacturer information notes were needed for the relevant optical and sunglasses products.",
+                "UDAMED responsibilities were discussed, with the manufacturer responsible for uploading data and the importer and authorised representative responsible for checking it is present.",
+            ],
+        )
+        detail_blob = "\n".join(detail.get("discussionPoint", "") for detail in output["discussionPointDetails"])
+        self.assertNotIn("I did check", detail_blob)
+        self.assertIn("IFUs or manufacturer information notes", detail_blob)
+
     def test_first_person_action_fallback_captures_speaker_and_nearby_deadline(self):
         candidates = collect_action_candidates(
             {

@@ -534,9 +534,46 @@ def sanitize_public_minutes_text(value: Any, speaker_names: set[str] | None = No
     )
     cleaned = re.sub(r"\b(in|on|up)\s+(So\b)", r"\1. \2", cleaned)
     cleaned = re.sub(r"\b(complete|ready|blocked|pending|finished|approved|agreed)\s+(We|The|This|That|It|They)\b", r"\1. \2", cleaned)
+    cleaned = re.sub(r"(?<=[a-z0-9])\.([a-z])", lambda match: f". {match.group(1).upper()}", cleaned)
+    cleaned = re.sub(r"^Us\s+or\s+manufacturer\s+information\s+notes\b", "IFUs or manufacturer information notes", cleaned, flags=re.I)
     cleaned = re.sub(r"([.!?])\s+([a-z])", lambda match: f"{match.group(1)} {match.group(2).upper()}", cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return cleaned
+
+
+def is_public_discussion_leakage(text: str) -> bool:
+    """Reject raw transcript fragments after sanitising but before public output.
+
+    This deliberately looks for generic transcript-shape problems (first-person recounts,
+    contextual openers, lower-case starts, pronoun-heavy process narration), not specific
+    meeting topics or client names.
+    """
+    cleaned = normalize_text_fragment(text)
+    lowered = cleaned.lower()
+    if not cleaned:
+        return True
+    if cleaned[:1].islower():
+        return True
+    if re.match(r"^(?:i|i[’']m|i[’']ve|i[’']ll|we|we[’']re|we[’']ll|you|you[’']re|you[’']ve)\b", lowered):
+        return True
+    if re.match(r"^(?:and|but|so|also|then)\s+(?:i|we|you|they|it|there|this|that)\b", lowered):
+        return True
+    if re.match(r"^(?:the\s+other\s+thing\s+is|one\s+thing\s+i|just\s+to\s+|i\s+just\s+|i\s+did\s+|i\s+know\s+what)\b", lowered):
+        return True
+    if re.search(r"\b(?:i\s+guess|i\s+suppose|you\s+know|kind\s+of|sort\s+of|obviously)\b", lowered):
+        first_second_person = len(re.findall(r"\b(?:i|we|you|your|me|us)\b", lowered))
+        if first_second_person >= 1:
+            return True
+    valid, _reason = is_valid_discussion_point(cleaned, 2)
+    if valid:
+        return False
+    if is_context_dependent_fragment(cleaned) or is_transcript_recount_text(cleaned) or is_personal_status_recount_fragment(cleaned):
+        return True
+    # Allow deterministic public summaries that may be concise, but keep raw-looking
+    # fragments out of the client-facing list.
+    if has_explicit_topic_terms(cleaned) and semantic_density(cleaned) >= 0.62 and not is_conversational_transcript_fragment(cleaned):
+        return False
+    return True
 
 
 def apply_client_facing_minutes_schema(output: dict[str, Any]) -> None:
@@ -590,11 +627,13 @@ def sanitize_public_decision_text(value: Any, speaker_names: set[str] | None = N
 
 
 def sanitize_public_output_items(output: dict[str, Any], speaker_names: set[str] | None = None) -> None:
-    output["discussionPoints"] = [
-        item
-        for item in (sanitize_public_minutes_text(point, speaker_names) for point in output.get("discussionPoints", []))
-        if item
-    ]
+    sanitized_discussion_points = []
+    for point in output.get("discussionPoints", []):
+        item = sanitize_public_minutes_text(point, speaker_names)
+        if not item or is_public_discussion_leakage(item):
+            continue
+        sanitized_discussion_points.append(item)
+    output["discussionPoints"] = sanitized_discussion_points
     output["decisions"] = [
         item
         for item in (sanitize_public_decision_text(point, speaker_names) for point in output.get("decisions", []))
@@ -603,6 +642,13 @@ def sanitize_public_output_items(output: dict[str, Any], speaker_names: set[str]
     for detail in output.get("discussionPointDetails", []) or []:
         if isinstance(detail, dict) and detail.get("discussionPoint"):
             detail["discussionPoint"] = sanitize_public_minutes_text(detail["discussionPoint"], speaker_names)
+    allowed_discussion_keys = {normalized_key(point) for point in output.get("discussionPoints", [])}
+    output["discussionPointDetails"] = [
+        detail
+        for detail in output.get("discussionPointDetails", []) or []
+        if not isinstance(detail, dict)
+        or normalized_key(detail.get("discussionPoint", "")) in allowed_discussion_keys
+    ]
     for detail in output.get("decisionDetails", []) or []:
         if isinstance(detail, dict) and detail.get("decision"):
             detail["decision"] = sanitize_public_decision_text(detail["decision"], speaker_names)
@@ -2535,6 +2581,8 @@ MINILM_TOPIC_TERMS = {
     "sgs", "offsite", "weekly", "check-in", "checkin", "trace", "matrix", "stability",
     "references", "master", "pharma", "filter", "timelines", "unaffected", "complex", "simple",
     "requests", "account", "permissions", "contract", "term", "extension",
+    "approval", "approvals", "threshold", "thresholds", "compliance", "finance", "financial",
+    "escalation", "escalations", "communication", "sequence", "matrix", "policy", "pricing",
     "qms", "quality", "manual", "procedure", "procedures", "importer", "obligations",
     "warehouse", "warehousing", "storage", "dublin", "netherlands", "clearance", "brokerage",
     "udi", "udamed", "eudamed", "barcode", "barcodes", "sku", "label", "labelling",
