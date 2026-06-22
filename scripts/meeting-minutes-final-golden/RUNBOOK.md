@@ -127,15 +127,11 @@ Last recorded live API run on 2026-06-22:
 
 ```text
 20 cases executed
-19 passed
-1 failed
+20 passed
+0 failed
 ```
 
-This means the deployed tool is much closer to production-ready across the representative pack, but still needs final edge-case hardening before it should be described as fully production-ready.
-
-The remaining observed failure theme was:
-
-- one rejected launch alternative leaking into output: `announce the Spain launch in July`.
+This means the deployed tool is passing the current representative production-readiness pack. Continue treating the suite as a regression baseline rather than a guarantee that every real-world transcript will be perfect.
 
 ## Safe Change Process
 
