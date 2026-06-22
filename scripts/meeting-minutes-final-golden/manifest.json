@@ -1,6 +1,6 @@
 {
   "description": "Representative production-readiness coverage manifest for /meeting-minutes-final golden evaluation.",
-  "caseCount": 20,
+  "caseCount": 22,
   "coverageDimensions": {
     "meetingTypes": [
       "board_update",
@@ -12,6 +12,7 @@
       "document_review",
       "finance_budget_review",
       "hr_interview_debrief",
+      "importer_obligations_review",
       "incident_bug_triage",
       "leadership_internal",
       "leadership_update",
@@ -21,8 +22,11 @@
       "policy_briefing",
       "project_status_review",
       "project_status_update",
+      "real_client_minutes_pdf",
+      "real_client_transcript",
       "risk_review",
       "sales_pipeline_review",
+      "software_technical_file_review",
       "supplier_onboarding_review",
       "support_metrics_review",
       "webinar_rehearsal"
@@ -40,11 +44,15 @@
       "full_abstention",
       "hidden_decision",
       "messy_speaker_timestamp",
+      "minutes_pdf_input",
       "no_actions",
       "no_decisions",
       "noise_filtering",
       "owner_action",
+      "owner_deadline_table",
       "pending_approval_filtering",
+      "raw_transcript_leakage_filtering",
+      "real_pdf_extraction",
       "rehearsal",
       "rejected_alternative",
       "risk_not_blocker",
@@ -53,6 +61,7 @@
       "speaker_label_filtering",
       "suggestion_not_decision",
       "supported_decision",
+      "technical_review",
       "timestamp_filtering",
       "unsupported_action_abstention"
     ]

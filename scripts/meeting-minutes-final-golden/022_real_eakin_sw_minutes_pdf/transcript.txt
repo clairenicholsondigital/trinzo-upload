@@ -1,0 +1,137 @@
+ 
+ 
+Meeting Overview 
+Meeting Title T761 Eakin Healthcare Tech File SW review – SW coding changes 
+Meeting Date 15th June 2026 Meeting 
+Location 
+MS Teams 
+Objective & Participants 
+Objectives of the 
+meeting 
+• Alarm changes 
+• Language changes 
+• SW versioning changes 
+• Electrical Safety testing – Timeframe Dependency 
+• Cybersecurity 
+• Document Tracking 
+• SW Workstream timeline delay 
+Participants Trinzo: 
+Jacqui Fox 
+David Didsbury 
+Colm O’Rourke (absent) 
+Client: 
+Rebecca Cuckoo 
+Andrew Kane 
+ 
+ 
+ 
+Meeting Minutes 
+Alarm Code Change Audible Change 
+ 
+Andrew has completed the following 3 parameter changes in the SW code – No Issues noted: 
+• Sound – Low, Medium, High 
+• Screen Colour – Low (Cyan), Medium (Yellow), High (Red) 
+• Flash – Low (solid), Medium (0.6Hz), High (2hz) 
+ 
+Some uncertainty around the Alram Mute button LED. 
+David noted in the current setup - the flash goes from flash to solid when muted. 
+Andrew to review and investigate the mute button flash to ensure there is no issue between the 
+existing and new setup 
+ 
+Clinical review of code changes pushed out to next week, to include nursing and usability (Adil) 
+ 
+Code review 
+New alarm code should be completed by W/E  19th June - David is to review the code upon 
+completion 
+ 
+Debug 
+David queried the debug menu’s available commands. 
+Andrew advised the audio debug does not appear on the display screen. 
+Andrew and David to connect this week on the Debug test scripts to see what happens when 
+the Debug is given particular commands. 
+ 
+SW Versioning 
+David reviewing the code to identify the presence of the 17 listed changes from Marturion 
+within the code. 
+Purpose to confirm where they are visible/implemented in the code – provide traceability. 
+If changes cannot be clearly identified in the code then may need to retrospectively generate 
+test data. 
+ 
+Document Change request 
+Andrew has raised the change request for the 3 changes below: 
+1) 1 Change request form to document all 3 changes 
+Alarms 
+2) Languages 
+3) Retrospective v1.01 to v1.02 (comprising the 17 changes listed from Marturion 
+
+ 
+(Andrew Barr) on 20th May ’26) 
+ 
+Change Request for review internally this week – W/E 19th June 
+Language Changes Andrew has replicated 12 languages and upload – No issues with memory capacity. 
+ 
+Some concerns around driver and font limitations for certain languages symbols,  like Greek, 
+Arabic and Vietnamese. 
+ 
+David suggested the graphics display driver could be updated to include additional fonts. 
+Electrical Compliance 
+testing  
+Andrew/Rebecca have confirmed all Electrical Compliance testing will be completed in house, 
+no requirements for UL. 
+ 
+Testing is planned for completion by 23
+rd July. 
+ 
+David will use the  test reports to complete his deliverables. 
+ 
+Andrew is reviewing IEC60601-1 compliance documents and gap assessing against previous 
+MDD documentation to captured testing gaps. 
+Cybersecurity Rebecca and Andrew currently evaluating options for securing the USB port, including physical 
+port locks and software controls to prevent unauthorized access or harmful software 
+overwrites. 
+ 
+Rebecca explained that the risk management file was being updated to reflect both hardware 
+and software control measures, with a focus on preventing unwarranted interference with the 
+device. 
+ 
+David and Rebecca discussed scenarios where incorrect therapy settings could cause harm, 
+especially for neonatal patients, and considered the effectiveness of alarms, physical limits, 
+and the potential for password protection. 
+ 
+Rebecca clarified that if residual risk remains high after implementing controls, a benefit-risk 
+analysis would be conducted to justify not adding features like password protection, citing the 
+need for rapid clinical intervention and the lack of field incidents. 
+ 
+Rebecca purchased standards (81001-5-1 for cybersecurity and 27427 for respiratory 
+equipment) for further assessment, she will share. 
+Andrew and Colm to review their applicability. 
+ 
+ 
+Next steps 
+Actions Owner Deadline 
+Andrew to review the mute button flash sequence V the existing setup Andrew 19th June ‘26 
+Clinical review of code changes for sounds, colour and flash Rebecca 26th June ‘26 
+Change request sign off  Andrew/Rebecca 22nd June ‘26 
+Review the debug commands in the debug screen Andrew/David 22nd June ‘26 
+Andrew to review the graphics driver as possible solution for 
+uploading language symbols 
+Andrew 22nd June ‘26 
+Review IEC60601-1 standard compare to MDD documentation to 
+outline what testing needs to be completed for electrical compliance 
+testing 
+Andrew 26th June ‘26 
+Complete Electrical compliance testing Andrew 23rd July ‘26 
+Trace SW to identify the change in the SW between v1.01 and v1.02 – 
+Document 
+David 22nd June ‘26 
+
+ 
+IF SW change cannot be seem generate retrospective test data David/Andrew 30th June ‘26 
+Update Rsk Mgmt file addressing USB port lock and GUI security 
+controls – Review competitor controls 
+Rebecca 22nd June ‘26 
+Share standards for review 81001-5-1 and 27427 Rebecca 16th June ‘26 
+Review relevance of standards  Colm 22nd June ‘26 
+
+ 
+ 

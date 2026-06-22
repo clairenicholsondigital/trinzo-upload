@@ -1,0 +1,63 @@
+{
+  "description": "Real Trinzo minutes PDF text for an Eakin Healthcare technical file software review, used as a minutes-style input regression with owner/deadline-heavy next steps.",
+  "coverage": {
+    "sourceFixture": "uploaded PDF: T761_Eakin_Tech_File_SW_Trinzo_Minutes_SW_Weekly_Checkin_202---568af969-71b7-45e1-aca9-3a65a07f7ede.pdf",
+    "meetingTypes": ["client_status_review", "software_technical_file_review", "real_client_minutes_pdf"],
+    "behaviours": ["real_pdf_extraction", "minutes_pdf_input", "action_heavy", "owner_action", "deadline_capture", "technical_review", "owner_deadline_table"]
+  },
+  "passThreshold": 0.9,
+  "criteria": {
+    "decisions": {
+      "weight": 0.1,
+      "maxCount": 2
+    },
+    "actions": {
+      "weight": 0.4,
+      "minCount": 6,
+      "mustContain": [
+        {
+          "text": "review the mute button flash sequence",
+          "owner": "Andrew",
+          "deadline": "19th June"
+        },
+        {
+          "text": "Clinical review of code changes for sounds, colour and flash",
+          "owner": "Rebecca",
+          "deadline": "26th June"
+        },
+        {
+          "text": "Complete Electrical compliance testing",
+          "owner": "Andrew",
+          "deadline": "23rd July"
+        },
+        {
+          "text": "Update Risk Management file addressing USB port lock and GUI security controls",
+          "owner": "Rebecca",
+          "deadline": "22nd June"
+        }
+      ]
+    },
+    "hallucinations": {
+      "weight": 0.2,
+      "mustNotContain": [
+        "UL testing is required",
+        "Colm attended the meeting",
+        "alarm changes were blocked",
+        "cybersecurity controls were rejected",
+        "software workstream is complete"
+      ]
+    },
+    "abstention": {
+      "weight": 0.3,
+      "decisionMaxCount": 2,
+      "discussionMinCount": 4,
+      "requiredDiscussionTopics": [
+        ["alarm", "mute button"],
+        ["software versioning", "traceability"],
+        ["electrical compliance", "testing"],
+        ["cybersecurity", "USB port"]
+      ],
+      "reason": "The source is already a minutes-style PDF with a clear action table; the extractor should preserve concrete owner/deadline actions and technical discussion without inventing decisions."
+    }
+  }
+}

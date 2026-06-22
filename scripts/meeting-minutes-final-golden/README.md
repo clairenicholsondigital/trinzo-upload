@@ -1,7 +1,7 @@
 # Meeting Minutes Final Golden Evaluation Pack
 
 This pack is the fixed production-readiness suite for `/meeting-minutes-final`.
-It contains 20 representative transcript cases, mostly copied from `scripts/transcript-tests`, and focuses on semantic behaviour rather than transcript-specific wording:
+It contains 22 representative transcript/PDF-text cases, mostly copied from `scripts/transcript-tests`, and focuses on semantic behaviour rather than transcript-specific wording:
 
 - decisions are captured only when the transcript supports them;
 - actions require concrete ownership or commitment evidence;
@@ -22,12 +22,13 @@ Current meeting-type coverage:
 - `board_update`, `leadership_update`, `leadership_internal`
 - `client_onboarding`, `client_status_review`, `customer_complaint_review`
 - `contract_negotiation`, `client_vendor_review`
-- `document_review`, `planning_check_in`, `policy_briefing`
+- `document_review`, `planning_check_in`, `policy_briefing`, `importer_obligations_review`
 - `finance_budget_review`, `hr_interview_debrief`
 - `incident_bug_triage`, `operations_review`, `support_metrics_review`
 - `low_substance`
-- `project_status_review`, `project_status_update`, `risk_review`
+- `project_status_review`, `project_status_update`, `risk_review`, `software_technical_file_review`
 - `sales_pipeline_review`, `supplier_onboarding_review`, `webinar_rehearsal`
+- real client transcript and real client minutes-PDF text examples
 
 Current behaviour coverage:
 
@@ -35,8 +36,9 @@ Current behaviour coverage:
 - decision-only, hidden decisions, supported decisions, rejected alternatives
 - discussion-only/no-action/no-decision abstention
 - low-substance/sparse transcript abstention and noise filtering
-- messy speaker/timestamp, compressed transcript, and speaker-label filtering
+- messy speaker/timestamp, compressed transcript, real PDF extraction, and speaker-label filtering
 - pending approval, suggestion-not-decision, risk-not-blocker, budget trade-off, candidate assessment, rehearsal handling
+- raw transcript leakage filtering and owner/deadline table preservation
 
 The runner also applies universal quality checks drawn from Claire's Notion checklist for perfect meeting minutes:
 
