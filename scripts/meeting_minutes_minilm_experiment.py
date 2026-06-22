@@ -523,8 +523,59 @@ def sanitize_public_minutes_text(value: Any, speaker_names: set[str] | None = No
     cleaned = re.sub(r"\bThe original plan was to announce the Spain launch in July\.?", " ", cleaned, flags=re.I)
     cleaned = re.sub(r"\bMaybe we stop pushing the healthcare prospect this quarter\.?", " ", cleaned, flags=re.I)
     cleaned = re.sub(r"\bstop pushing the healthcare prospect this quarter\.?", " ", cleaned, flags=re.I)
+    # Cluster summaries are sometimes built by joining adjacent transcript turns after
+    # punctuation has already been stripped, e.g. "fields We will...". Repair only
+    # high-confidence sentence joins so client-facing minutes do not read like a raw
+    # transcript stitch.
+    cleaned = re.sub(
+        r"\b([a-z][a-z0-9]{2,})\s+((?:We|The|This|That|It|They|There)\b)",
+        r"\1. \2",
+        cleaned,
+    )
+    cleaned = re.sub(r"\b(complete|ready|blocked|pending|finished|approved|agreed)\s+(We|The|This|That|It|They)\b", r"\1. \2", cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return cleaned
+
+
+def apply_client_facing_minutes_schema(output: dict[str, Any]) -> None:
+    """Populate the PDF/review-style sections expected by the browser/export flow.
+
+    The legacy flat fields are kept for compatibility; this adds the structured
+    meetingMinutes/nextSteps shape so API consumers receive the same client-facing
+    structure that the frontend already builds before review/export.
+    """
+    if not isinstance(output, dict):
+        return
+
+    if not normalize_text_fragment(output.get("meetingLocation", "")):
+        output["meetingLocation"] = "Online"
+
+    topic = normalize_text_fragment(output.get("itemTopic", "")) or normalize_text_fragment(output.get("meetingTitle", "")) or "Meeting discussion"
+    output["itemTopic"] = topic
+
+    discussion_points = [point for point in output.get("discussionPoints", []) if normalize_text_fragment(point)]
+    output["meetingMinutes"] = [
+        {
+            "topic": topic,
+            "discussionPoints": discussion_points,
+        }
+    ]
+
+    actions = []
+    for action in output.get("actions", []) or []:
+        if not isinstance(action, dict):
+            continue
+        action_text = normalize_text_fragment(action.get("meetingActionPoint", ""))
+        if not action_text:
+            continue
+        actions.append(
+            {
+                "action": action_text,
+                "owner": normalize_text_fragment(action.get("meetingActionPointOwner", "")) or "Owner not specified",
+                "deadline": normalize_text_fragment(action.get("meetingActionPointDeadline", "")),
+            }
+        )
+    output["nextSteps"] = actions
 
 
 def sanitize_public_decision_text(value: Any, speaker_names: set[str] | None = None) -> str:
@@ -3309,6 +3360,7 @@ def rewrite_minutes_output_payload(
     if not rewrite_plan:
         diagnostics["rewriteRuntimeMs"] = round((time.perf_counter() - rewrite_start) * 1000, 2)
         diagnostics["rewriteSucceeded"] = True
+        apply_client_facing_minutes_schema(rewritten_output)
         rewritten_output["rewriteStatus"] = {
             "succeeded": True,
             "failureCount": 0,
@@ -3387,6 +3439,7 @@ def rewrite_minutes_output_payload(
     rewritten_output["meetingActionPoint"] = [item["meetingActionPoint"] for item in rewritten_output.get("actions", [])]
     rewritten_output["meetingActionPointOwner"] = [item["meetingActionPointOwner"] for item in rewritten_output.get("actions", [])]
     rewritten_output["meetingActionPointDeadline"] = [item["meetingActionPointDeadline"] for item in rewritten_output.get("actions", [])]
+    apply_client_facing_minutes_schema(rewritten_output)
     diagnostics["rewriteRuntimeMs"] = round((time.perf_counter() - rewrite_start) * 1000, 2)
     diagnostics["rewriteSucceeded"] = bool(rewrite_plan) and diagnostics["rewriteFailureCount"] == 0
     rewritten_output["rewriteStatus"] = {
@@ -4546,6 +4599,8 @@ def build_minilm_only_output(
         diagnostics["rewriteRuntimeMs"] = rewrite_diagnostics.get("rewriteRuntimeMs", 0.0)
         if include_diagnostics:
             diagnostics["rewriteEdits"] = rewrite_diagnostics.get("rewriteEdits", [])
+
+    apply_client_facing_minutes_schema(output)
 
     if include_diagnostics:
         diagnostics["finalCounts"] = {

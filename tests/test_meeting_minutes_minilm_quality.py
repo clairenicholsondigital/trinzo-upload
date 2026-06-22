@@ -14,6 +14,7 @@ from meeting_minutes_minilm_experiment import (
     formalize_transcript_discussion_point,
     has_concrete_action_commitment,
     infer_minilm_meeting_title,
+    apply_client_facing_minutes_schema,
     is_safe_deterministic_discussion_fallback,
     is_valid_discussion_point,
     is_low_quality_objective_text,
@@ -22,6 +23,7 @@ from meeting_minutes_minilm_experiment import (
     should_accept_action_candidate,
     strip_action_deadline_phrase,
     _sanitize_rewritten_minutes_text,
+    sanitize_public_minutes_text,
 )
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
@@ -64,6 +66,43 @@ class DeterministicMiniLMBackend:
 
 
 class MeetingMinutesMiniLMQualityTest(unittest.TestCase):
+    def test_public_minutes_repairs_stitched_sentence_boundaries(self):
+        self.assertEqual(
+            sanitize_public_minutes_text(
+                "Data mapping for finance is ready, but warehouse is still missing three required fields We will start onboarding with finance first."
+            ),
+            "Data mapping for finance is ready, but warehouse is still missing three required fields. We will start onboarding with finance first.",
+        )
+
+    def test_client_facing_schema_is_added_without_removing_legacy_fields(self):
+        output = {
+            "meetingTitle": "Customer Onboarding Review",
+            "meetingLocation": "",
+            "discussionPoints": ["Finance onboarding is ready."],
+            "actions": [
+                {
+                    "meetingActionPoint": "Send the missing-field list.",
+                    "meetingActionPointOwner": "Mina",
+                    "meetingActionPointDeadline": "Today",
+                }
+            ],
+            "meetingActionPoint": ["Send the missing-field list."],
+        }
+
+        apply_client_facing_minutes_schema(output)
+
+        self.assertEqual(output["meetingLocation"], "Online")
+        self.assertEqual(output["itemTopic"], "Customer Onboarding Review")
+        self.assertEqual(
+            output["meetingMinutes"],
+            [{"topic": "Customer Onboarding Review", "discussionPoints": ["Finance onboarding is ready."]}],
+        )
+        self.assertEqual(
+            output["nextSteps"],
+            [{"action": "Send the missing-field list.", "owner": "Mina", "deadline": "Today"}],
+        )
+        self.assertEqual(output["meetingActionPoint"], ["Send the missing-field list."])
+
     def test_conversational_availability_is_not_a_concrete_action(self):
         text = "And I'm easy right here, I can come back in here, or if you want to just continue with this, I don't mind."
 

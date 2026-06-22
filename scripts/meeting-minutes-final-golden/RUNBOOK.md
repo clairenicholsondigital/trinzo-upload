@@ -123,24 +123,19 @@ Important failure categories:
 
 ## Current Baseline
 
-Last recorded live API run after expanding the suite:
+Last recorded live API run on 2026-06-22:
 
 ```text
 20 cases executed
-2 passed
-18 failed
+19 passed
+1 failed
 ```
 
-This means the deployed tool is not yet production-ready across meeting types.
+This means the deployed tool is much closer to production-ready across the representative pack, but still needs final edge-case hardening before it should be described as fully production-ready.
 
-The main observed failure themes were:
+The remaining observed failure theme was:
 
-- missed action recall;
-- weak discussion capture;
-- rejected alternatives leaking into output;
-- titles containing `Transcript`;
-- some no-action/no-decision cases producing unsupported actions;
-- some valid discussion-only cases being too sparse.
+- one rejected launch alternative leaking into output: `announce the Spain launch in July`.
 
 ## Safe Change Process
 
