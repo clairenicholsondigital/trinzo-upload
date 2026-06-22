@@ -657,6 +657,8 @@ def is_low_quality_objective_text(text: str) -> bool:
     lowered = cleaned.lower()
     if not cleaned:
         return True
+    if re.search(r"\b(?:original|initial|previous)\s+plan\s+was\s+to\b", lowered):
+        return True
     if is_overlong_objective_text(cleaned):
         return True
     if re.match(r"^(?:um|uh|erm|yeah|okay|ok|right)\b", lowered):

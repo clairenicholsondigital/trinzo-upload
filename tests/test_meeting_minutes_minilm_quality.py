@@ -103,6 +103,9 @@ class MeetingMinutesMiniLMQualityTest(unittest.TestCase):
         )
         self.assertEqual(output["meetingActionPoint"], ["Send the missing-field list."])
 
+    def test_rejected_original_plan_is_not_a_valid_objective(self):
+        self.assertTrue(is_low_quality_objective_text("The original plan was to announce the Spain launch in July"))
+
     def test_conversational_availability_is_not_a_concrete_action(self):
         text = "And I'm easy right here, I can come back in here, or if you want to just continue with this, I don't mind."
 
