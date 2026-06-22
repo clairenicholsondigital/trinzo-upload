@@ -73,6 +73,12 @@ class MeetingMinutesMiniLMQualityTest(unittest.TestCase):
             ),
             "Data mapping for finance is ready, but warehouse is still missing three required fields. We will start onboarding with finance first.",
         )
+        self.assertEqual(
+            sanitize_public_minutes_text(
+                "The basic UDI numbers go in So all characteristics are entered at that level. may be in trouble."
+            ),
+            "The basic UDI numbers go in. So all characteristics are entered at that level. May be in trouble.",
+        )
 
     def test_client_facing_schema_is_added_without_removing_legacy_fields(self):
         output = {

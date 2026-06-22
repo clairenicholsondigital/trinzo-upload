@@ -16,12 +16,16 @@ PACK_DIR = ROOT / "meeting-minutes-final-golden"
 EXTRACTOR = ROOT / "meeting_minutes_minilm_only.py"
 REQUIRED_CATEGORIES = ("decisions", "actions", "hallucinations", "abstention")
 CONVERSATIONAL_LEAKAGE = (
+    "basically",
     "good point",
+    "i guess",
+    "i suppose",
     "i don't mind",
     "i do not mind",
     "i'm mostly here",
     "i am mostly here",
     "what you did at the weekend",
+    "you know",
 )
 BAD_PARTICIPANT_NAMES = {"participant", "participants", "speaker", "unknown", "transcript"}
 US_SPELLINGS = {
@@ -35,6 +39,7 @@ US_SPELLINGS = {
     "finalized": "finalised",
 }
 FIRST_PERSON_RE = re.compile(r"\b(?:i['’]?ll|i\s+will|i['’]?m|i\s+am|i\s+can|i\s+need|my|mine)\b", re.I)
+SECOND_PERSON_TRANSCRIPT_RE = re.compile(r"\b(?:you['’]?ve\s+got|you\s+have\s+got|your\s+business|you\s+know)\b", re.I)
 TIMECODE_RE = re.compile(r"\b(?:\d{1,2}:\d{2}(?::\d{2})?|\d{1,2}\.\d{2}\.\d{2})\b")
 EMOJI_RE = re.compile(r"[\U0001F300-\U0001FAFF]")
 DATE_IN_ACTION_RE = re.compile(
@@ -196,6 +201,8 @@ def universal_quality_failures(output: dict[str, Any]) -> list[str]:
         failures.append("quality: visible output contains timestamp/timecode")
     if FIRST_PERSON_RE.search(flat):
         failures.append("quality: visible output contains first-person wording")
+    if SECOND_PERSON_TRANSCRIPT_RE.search(flat):
+        failures.append("quality: visible output contains second-person transcript wording")
 
     for phrase in CONVERSATIONAL_LEAKAGE:
         if phrase in normalized_flat:

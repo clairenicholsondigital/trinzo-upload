@@ -528,11 +528,13 @@ def sanitize_public_minutes_text(value: Any, speaker_names: set[str] | None = No
     # high-confidence sentence joins so client-facing minutes do not read like a raw
     # transcript stitch.
     cleaned = re.sub(
-        r"\b([a-z][a-z0-9]{2,})\s+((?:We|The|This|That|It|They|There)\b)",
+        r"\b([a-z][a-z0-9]{2,})\s+((?:We|The|This|That|It|They|There|So)\b)",
         r"\1. \2",
         cleaned,
     )
+    cleaned = re.sub(r"\b(in|on|up)\s+(So\b)", r"\1. \2", cleaned)
     cleaned = re.sub(r"\b(complete|ready|blocked|pending|finished|approved|agreed)\s+(We|The|This|That|It|They)\b", r"\1. \2", cleaned)
+    cleaned = re.sub(r"([.!?])\s+([a-z])", lambda match: f"{match.group(1)} {match.group(2).upper()}", cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return cleaned
 
