@@ -593,47 +593,91 @@ def apply_client_facing_minutes_schema(output: dict[str, Any]) -> None:
     output["itemTopic"] = topic
 
     discussion_points = [point for point in output.get("discussionPoints", []) if normalize_text_fragment(point)]
-    discussion_details = [
-        detail
-        for detail in output.get("discussionPointDetails", []) or []
-        if isinstance(detail, dict) and normalize_text_fragment(detail.get("discussionPoint", ""))
-    ]
-    if discussion_details:
-        minutes = []
-        seen_minute_keys = set()
-        for detail in discussion_details:
-            main_point = normalize_text_fragment(detail.get("discussionPoint", ""))
-            if not main_point:
+    evidence_topics = [topic for topic in output.get("evidenceBackedTopics", []) or [] if isinstance(topic, dict) and normalize_text_fragment(topic.get("topicLabel", ""))]
+    if evidence_topics:
+        grouped_minutes: dict[str, dict[str, Any]] = {}
+        for item in evidence_topics:
+            item_points = []
+            seen_item_points = set()
+            for point in [item.get("topicLabel", "")] + list(item.get("attributedDetailPoints", []) or []):
+                cleaned = normalize_text_fragment(point)
+                key = normalized_key(cleaned)
+                if cleaned and key and key not in seen_item_points:
+                    item_points.append(cleaned)
+                    seen_item_points.add(key)
+            if not item_points:
                 continue
-            key = normalized_key(main_point)
-            if key in seen_minute_keys:
-                continue
-            seen_minute_keys.add(key)
-            supporting_context = [
-                item
-                for item in detail.get("supportingContext", []) or []
-                if normalize_text_fragment(item)
-            ]
-            minutes.append(
-                {
-                    "topic": detail.get("topic") or topic_label_from_discussion_point(main_point),
-                    "discussionPoints": [main_point] + supporting_context,
-                    "topicLabel": detail.get("topicLabel") or detail.get("topic") or topic_label_from_discussion_point(main_point),
-                    "directEvidence": detail.get("directEvidence", []),
-                    "supportingContext": supporting_context,
-                    "sourceTurnIndices": detail.get("sourceTurnIndices", []),
-                    "evidenceSupportCount": detail.get("evidenceSupportCount", 0),
-                    "detailLevel": detail.get("detailLevel", "standard"),
+            theme = item.get("themeLabel") or item.get("topicLabel") or topic
+            theme_key = normalized_key(theme)
+            if theme_key not in grouped_minutes:
+                grouped_minutes[theme_key] = {
+                    "topic": theme,
+                    "topicLabel": item.get("topicLabel") or topic,
+                    "discussionPoints": [],
+                    "directEvidence": [],
+                    "supportingContext": [],
+                    "sourceTurnIndices": [],
+                    "evidenceSupportCount": 0,
+                    "detailLevel": item.get("detailLevel", "standard"),
                 }
-            )
-        output["meetingMinutes"] = minutes or [{"topic": topic, "discussionPoints": discussion_points}]
+            group = grouped_minutes[theme_key]
+            existing_group_points = {normalized_key(point) for point in group["discussionPoints"]}
+            for point in item_points:
+                key = normalized_key(point)
+                if key and key not in existing_group_points:
+                    group["discussionPoints"].append(point)
+                    existing_group_points.add(key)
+            group["directEvidence"].extend(item.get("directEvidence", []) or [])
+            group["supportingContext"].extend(item.get("supportingContext", []) or [])
+            group["sourceTurnIndices"] = sorted(set(group.get("sourceTurnIndices", []) + list(item.get("sourceTurnIndices", []) or [])))
+            group["evidenceSupportCount"] = len(group.get("directEvidence", []) or [])
+        minutes = list(grouped_minutes.values())
+        if minutes:
+            output["meetingMinutes"] = minutes
+    if output.get("meetingMinutes"):
+        pass
     else:
-        output["meetingMinutes"] = [
-            {
-                "topic": topic,
-                "discussionPoints": discussion_points,
-            }
+        discussion_details = [
+            detail
+            for detail in output.get("discussionPointDetails", []) or []
+            if isinstance(detail, dict) and normalize_text_fragment(detail.get("discussionPoint", ""))
         ]
+        if discussion_details:
+            minutes = []
+            seen_minute_keys = set()
+            for detail in discussion_details:
+                main_point = normalize_text_fragment(detail.get("discussionPoint", ""))
+                if not main_point:
+                    continue
+                key = normalized_key(main_point)
+                if key in seen_minute_keys:
+                    continue
+                seen_minute_keys.add(key)
+                supporting_context = [
+                    item
+                    for item in detail.get("supportingContext", []) or []
+                    if normalize_text_fragment(item)
+                ]
+                minutes.append(
+                    {
+                        "topic": detail.get("topic") or topic_label_from_discussion_point(main_point),
+                        "discussionPoints": [main_point] + supporting_context,
+                        "topicLabel": detail.get("topicLabel") or detail.get("topic") or topic_label_from_discussion_point(main_point),
+                        "directEvidence": detail.get("directEvidence", []),
+                        "supportingContext": supporting_context,
+                        "sourceTurnIndices": detail.get("sourceTurnIndices", []),
+                        "evidenceSupportCount": detail.get("evidenceSupportCount", 0),
+                        "detailLevel": detail.get("detailLevel", "standard"),
+                    }
+                )
+            output["meetingMinutes"] = minutes or [{"topic": topic, "discussionPoints": discussion_points}]
+        else:
+            output["meetingMinutes"] = [
+                {
+                    "topic": topic,
+                    "discussionPoints": discussion_points,
+                }
+            ]
 
     actions = []
     for action in output.get("actions", []) or []:
@@ -773,7 +817,7 @@ PUBLIC_SENTENCE_VERB_RE = re.compile(
     r"\b(?:is|are|was|were|be|been|being|has|have|had|needs?|needed|includes?|included|covers?|covered|"
     r"requires?|required|shows?|showed|identif(?:y|ies|ied)|aligns?|aligned|remains?|remained|creates?|created|"
     r"raises?|raised|discuss(?:es|ed)|review(?:s|ed)|confirm(?:s|ed)|clarif(?:y|ies|ied)|checks?|checked|"
-    r"provid(?:e|es|ed)|missing|relates?|related)\b",
+    r"provid(?:e|es|ed)|missing|relates?|related|should|would|could|can|will)\b",
     re.I,
 )
 
@@ -815,7 +859,7 @@ def sentence_case_clause(text: str) -> str:
     if not cleaned:
         return ""
     first_word = re.match(r"[A-Za-z'’]+", cleaned)
-    if first_word and cleaned[:1].isupper() and first_word.group(0).lower().replace("’", "'") not in {"the", "a", "an", "this", "that", "these", "those", "it", "it's", "there", "as"}:
+    if first_word and cleaned[:1].isupper() and first_word.group(0).lower().replace("’", "'") not in {"the", "a", "an", "this", "that", "these", "those", "it", "it's", "there", "as", "we"}:
         return cleaned
     return cleaned[:1].lower() + cleaned[1:]
 
@@ -903,7 +947,8 @@ def public_attributed_sentence_from_evidence_item(ref: dict[str, Any], speaker_n
     if "basic udi" in lowered or "master udi" in lowered:
         return normalize_public_attributed_sentence(f"{speaker} mentioned that Master UDI and basic UDI were involved.")
 
-    if "?" in original or re.search(r"\b(?:is|are|does|do|can|could|would|whether)\b", lowered):
+    question_like = "?" in original or re.match(r"^(?:is|are|does|do|can|could|would|whether)\b", lowered)
+    if question_like:
         question_clause = cleaned.rstrip("?")
         question_clause = re.sub(r"^(?:is|are|does|do|can|could|would)\s+", "", question_clause, flags=re.I).strip()
         if is_context_dependent_meta_question(question_clause):
@@ -981,6 +1026,57 @@ def public_discussion_sentence_from_evidence(
         ranked.append((score, sentence))
     ranked.sort(key=lambda item: item[0], reverse=True)
     return ranked[0][1] if ranked else ""
+
+
+def attributed_detail_points_from_evidence(
+    evidence: list[dict[str, Any]],
+    context: list[dict[str, Any]] | None = None,
+    speaker_names: set[str] | None = None,
+    limit: int = 6,
+) -> list[str]:
+    points = []
+    seen = set()
+    combined_refs = list(evidence or []) + list(context or [])
+    for ref in combined_refs:
+        if not isinstance(ref, dict):
+            continue
+        sentence = public_attributed_sentence_from_evidence_item(ref, speaker_names)
+        if not sentence:
+            continue
+        support_refs = [ref]
+        if not public_sentence_supported_by_evidence(sentence, support_refs, speaker_names):
+            continue
+        if attribution_content_is_too_weak(re.sub(r"^[A-Z][A-Za-z'’.-]+\s+(?:said|mentioned|noted|explained|confirmed|clarified)\s+that\s+|^[A-Z][A-Za-z'’.-]+\s+asked\s+whether\s+", "", sentence).strip(" ."), "that"):
+            continue
+        key = normalized_key(sentence)
+        if not key or key in seen:
+            continue
+        if any(discussion_similarity(sentence, existing) >= 0.86 for existing in points):
+            continue
+        points.append(sentence)
+        seen.add(key)
+        if len(points) >= limit:
+            break
+    return points
+
+
+def infer_theme_label_from_evidence(texts: list[str]) -> str:
+    blob = " ".join(texts).lower()
+    themes = [
+        (("working session", "workshop", "client session", "check-in", "recurring"), "Working session approach"),
+        (("ppe", "sunglasses", "personal protective"), "PPE regulation inclusion"),
+        (("declaration of conformity", "doc", "language", "translation", "translate"), "Declaration of Conformity language requirements"),
+        (("label", "labelling", "ifu", "instructions for use", "symbol"), "Labelling and IFU considerations"),
+        (("med envoy", "medenvoy", "project plan", "task list"), "Alignment with MedEnvoy"),
+        (("site visit", "warehouse", "automated", "manual", "scanner", "erp"), "Operational process understanding"),
+        (("procedure", "qms", "quality management", "regulatory requirements", "mdr"), "Procedure and QMS alignment"),
+        (("question", "gap", "clarification", "outstanding"), "Preparation for client workshops"),
+        (("responsib", "importer", "authorised rep", "authorized rep", "manufacturer"), "Roles and responsibilities"),
+    ]
+    for markers, label in themes:
+        if any(marker in blob for marker in markers):
+            return label
+    return "Evidence-backed discussion"
 
 
 def public_sentence_supported_by_evidence(sentence: str, evidence: list[dict[str, Any]], speaker_names: set[str] | None = None) -> bool:
@@ -1266,6 +1362,7 @@ def build_evidence_backed_topics(
         documents = extract_mentions_from_texts(texts, DOCUMENT_MENTION_RE)
         responsibilities = extract_mentions_from_texts(texts, RESPONSIBILITY_MENTION_RE)
         questions = extract_open_questions(texts)
+        attributed_details = attributed_detail_points_from_evidence(evidence, context, speaker_names, limit=6)
         topic_label = public_discussion_sentence_from_text(detail.get("topicLabel", ""), speaker_names)
         if topic_label and not public_sentence_supported_by_evidence(topic_label, evidence + context, speaker_names):
             topic_label = ""
@@ -1286,6 +1383,7 @@ def build_evidence_backed_topics(
             )
             continue
         topic = {
+            "themeLabel": infer_theme_label_from_evidence(texts + attributed_details),
             "topicLabel": topic_label,
             "confidence": round(float(detail.get("evidenceScore", 0.0) or 0.0), 2),
             "sourceTurnIndices": evidence_source_turn_indices(evidence),
@@ -1295,6 +1393,7 @@ def build_evidence_backed_topics(
             "candidateResponsibilitiesMentioned": responsibilities,
             "candidateOpenQuestions": questions,
             "candidateActionsOnlyIfExplicitlyStated": [],
+            "attributedDetailPoints": attributed_details,
         }
         topic["detailLevel"] = topic_detail_level(topic)
         topics.append(topic)
@@ -1326,7 +1425,9 @@ def build_evidence_backed_topics(
         documents = extract_mentions_from_texts(texts, DOCUMENT_MENTION_RE)
         responsibilities = extract_mentions_from_texts(texts, RESPONSIBILITY_MENTION_RE)
         questions = extract_open_questions(texts)
+        attributed_details = attributed_detail_points_from_evidence(evidence, context, speaker_names, limit=4)
         topic = {
+            "themeLabel": infer_theme_label_from_evidence(texts + attributed_details),
             "topicLabel": topic_label,
             "confidence": round(min(0.82, 0.62 + semantic_density(evidence_text) * 0.2), 2),
             "sourceTurnIndices": evidence_source_turn_indices(evidence),
@@ -1336,6 +1437,7 @@ def build_evidence_backed_topics(
             "candidateResponsibilitiesMentioned": responsibilities,
             "candidateOpenQuestions": questions,
             "candidateActionsOnlyIfExplicitlyStated": [],
+            "attributedDetailPoints": attributed_details,
         }
         topic["detailLevel"] = topic_detail_level(topic)
         topics.append(topic)
@@ -1447,10 +1549,42 @@ def enforce_evidence_first_final_contract(output: dict[str, Any]) -> None:
             )
             continue
         topic["topicLabel"] = safe_label
+        safe_details = []
+        seen_detail_keys = set()
+        for detail_point in topic.get("attributedDetailPoints", []) or []:
+            safe_detail = public_discussion_sentence_from_text(detail_point)
+            if not safe_detail:
+                continue
+            if not ATTRIBUTION_VERBS_RE.search(safe_detail):
+                continue
+            key = normalized_key(safe_detail)
+            if not key or key in seen_detail_keys:
+                continue
+            if discussion_similarity(safe_detail, safe_label) >= 0.9:
+                continue
+            safe_details.append(safe_detail)
+            seen_detail_keys.add(key)
+        topic["attributedDetailPoints"] = safe_details
         safe_topics.append(topic)
     output["evidenceBackedTopics"] = safe_topics
     output["excludedWeakCandidates"] = excluded
-    output["discussionPoints"] = [topic.get("topicLabel", "") for topic in safe_topics if topic.get("topicLabel")]
+    expanded_discussion_points = []
+    expanded_keys = set()
+    for topic in safe_topics:
+        for point in [topic.get("topicLabel", "")] + list(topic.get("attributedDetailPoints", []) or []):
+            point = public_discussion_sentence_from_text(point)
+            key = normalized_key(point)
+            if not key or key in expanded_keys:
+                continue
+            if any(discussion_similarity(point, existing) >= 0.9 for existing in expanded_discussion_points):
+                continue
+            expanded_discussion_points.append(point)
+            expanded_keys.add(key)
+            if len(expanded_discussion_points) >= 30:
+                break
+        if len(expanded_discussion_points) >= 30:
+            break
+    output["discussionPoints"] = expanded_discussion_points
     output["discussionPointDetails"] = [
         detail for detail in output.get("discussionPointDetails", []) if detail.get("directEvidence")
     ]

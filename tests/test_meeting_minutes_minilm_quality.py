@@ -34,6 +34,7 @@ from meeting_minutes_minilm_experiment import (
     public_speaker_name,
     is_context_dependent_meta_question,
     normalize_public_attributed_sentence,
+    infer_theme_label_from_evidence,
     enforce_evidence_first_final_contract,
     strip_action_deadline_phrase,
     _sanitize_rewritten_minutes_text,
@@ -171,6 +172,36 @@ class MeetingMinutesMiniLMQualityTest(unittest.TestCase):
         self.assertEqual(public_speaker_name("Mark Kelleher"), "Mark")
         self.assertEqual(public_speaker_name("Jacqui O'Brien"), "Jacqui")
         self.assertEqual(public_speaker_name("Meeting"), "The speaker")
+
+    def test_evidence_backed_topics_expand_into_attributed_detail_points(self):
+        transcript = """Meeting: Client working session planning
+Mark: The applicable regulatory requirements can go into the procedure, but it only becomes meaningful if we understand how DISA actually works day to day.
+Jacqui: We should schedule recurring working sessions with the client next week so we can go through outstanding questions and information gaps.
+Jenny: The warehouse process matters because we need to understand scanners, ERP records and verification activities.
+John-Paul: The labels need a regulatory review, especially if an IFU is introduced, because the label symbols and IFU explanations need to be consistent.
+Jacqui: PPE requirements should be included for the sunglasses, and I will confirm that approach with the client.
+"""
+        output, _diagnostics = build_minilm_only_output(
+            transcript,
+            collect_minilm_only_context(transcript),
+            DeterministicMiniLMBackend(),
+            rewriter=None,
+            include_diagnostics=True,
+        )
+
+        discussion_points = output.get("discussionPoints", [])
+        self.assertGreaterEqual(len(discussion_points), 4)
+        self.assertTrue(all((" said that " in point or " mentioned that " in point or " asked whether " in point) for point in discussion_points))
+        self.assertTrue(any("working sessions" in point.lower() for point in discussion_points))
+        self.assertTrue(any("warehouse" in point.lower() for point in discussion_points))
+        self.assertTrue(any("labels" in point.lower() or "ifu" in point.lower() for point in discussion_points))
+        self.assertTrue(any(topic.get("attributedDetailPoints") for topic in output.get("evidenceBackedTopics", [])))
+        self.assertTrue(any(topic.get("themeLabel") for topic in output.get("evidenceBackedTopics", [])))
+
+    def test_theme_label_infers_chatgpt_style_groups_without_generation(self):
+        self.assertEqual(infer_theme_label_from_evidence(["recurring working sessions with the client next week"]), "Working session approach")
+        self.assertEqual(infer_theme_label_from_evidence(["Declarations of Conformity may need translation into all EU languages"]), "Declaration of Conformity language requirements")
+        self.assertEqual(infer_theme_label_from_evidence(["label symbols and IFU explanations must be consistent"]), "Labelling and IFU considerations")
 
     def test_broken_attribution_prefixes_are_repaired_or_rejected(self):
         self.assertEqual(
