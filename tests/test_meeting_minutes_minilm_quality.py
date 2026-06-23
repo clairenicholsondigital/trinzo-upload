@@ -33,6 +33,7 @@ from meeting_minutes_minilm_experiment import (
     public_attributed_sentence_from_evidence_item,
     public_speaker_name,
     is_context_dependent_meta_question,
+    normalize_public_attributed_sentence,
     enforce_evidence_first_final_contract,
     strip_action_deadline_phrase,
     _sanitize_rewritten_minutes_text,
@@ -170,6 +171,15 @@ class MeetingMinutesMiniLMQualityTest(unittest.TestCase):
         self.assertEqual(public_speaker_name("Mark Kelleher"), "Mark")
         self.assertEqual(public_speaker_name("Jacqui O'Brien"), "Jacqui")
         self.assertEqual(public_speaker_name("Meeting"), "The speaker")
+
+    def test_broken_attribution_prefixes_are_repaired_or_rejected(self):
+        self.assertEqual(
+            normalize_public_attributed_sentence("Mark said that. It's minimal impact to the organisation when these are rolled out."),
+            "Mark said that it's minimal impact to the organisation when these are rolled out.",
+        )
+        self.assertEqual(normalize_public_attributed_sentence("Jacqui said that and required documents from a compliance point of view."), "")
+        self.assertEqual(normalize_public_attributed_sentence("Jenny asked whether it is, it's by SKU."), "")
+        self.assertEqual(normalize_public_attributed_sentence("Jacqui said that it was around the QMS manual or that."), "")
 
     def test_context_dependent_meta_questions_are_not_discussion_points(self):
         evidence = {

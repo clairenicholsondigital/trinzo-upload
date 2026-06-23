@@ -716,6 +716,10 @@ RAW_TRANSCRIPT_LEAKAGE_RE = re.compile(
 )
 
 ATTRIBUTION_VERBS_RE = re.compile(r"\b(?:said|mentioned|noted|explained|asked|confirmed|clarified)\s+that\b|\basked\s+whether\b", re.I)
+ATTRIBUTED_SENTENCE_RE = re.compile(
+    r"^(?P<speaker>[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]*)\s+(?P<verb>said|mentioned|noted|explained|confirmed|clarified|asked)\s+(?P<link>that|whether)\b(?P<content>.*)$",
+    re.I,
+)
 
 META_CONTEXT_QUESTION_RE = re.compile(
     r"\b(?:this|that|it)\s+(?:is\s+|was\s+)?(?:what|the\s+thing|the\s+point)\s+(?:you|we|they)\s+(?:were\s+)?(?:talking|discussing|referring)\s+about\b|"
@@ -811,7 +815,7 @@ def sentence_case_clause(text: str) -> str:
     if not cleaned:
         return ""
     first_word = re.match(r"[A-Za-z'’]+", cleaned)
-    if first_word and cleaned[:1].isupper() and first_word.group(0).lower() not in {"the", "a", "an", "this", "that", "these", "those", "it", "there"}:
+    if first_word and cleaned[:1].isupper() and first_word.group(0).lower().replace("’", "'") not in {"the", "a", "an", "this", "that", "these", "those", "it", "it's", "there", "as"}:
         return cleaned
     return cleaned[:1].lower() + cleaned[1:]
 
@@ -834,6 +838,52 @@ def is_context_dependent_meta_question(text: str) -> bool:
     return bool({"this", "that", "what"} & set(tokenize(cleaned))) and len(tokens) <= 3 and "?" in text
 
 
+def attribution_content_is_too_weak(content: str, link: str) -> bool:
+    cleaned = normalize_text_fragment(content).strip(" .")
+    lowered = cleaned.lower()
+    if not cleaned:
+        return True
+    if re.match(r"^(?:and|or|but|so|that)\b", lowered):
+        return True
+    if re.match(r"^(?:it|this|that)\s+(?:is|was|has|had|will|would|could|should)\b", lowered):
+        if len(evidence_topic_tokens(cleaned)) <= 4 or re.search(r"\b(?:or\s+that|this|that|thing|stuff|it\s+is,?\s+it['’]?s)\b", lowered):
+            return True
+    if link.lower() == "whether" and re.match(r"^(?:it|this|that)\b", lowered):
+        return True
+    if is_context_dependent_meta_question(cleaned):
+        return True
+    if minutes_word_count(cleaned) < 5 and semantic_density(cleaned) < 0.62:
+        return True
+    return False
+
+
+def normalize_public_attributed_sentence(text: str) -> str:
+    cleaned = normalize_text_fragment(text)
+    if not cleaned:
+        return ""
+    # Repair empty attribution prefixes such as "Mark said that. The process..."
+    repaired = re.sub(
+        r"^([A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]*)\s+((?:said|mentioned|noted|explained|confirmed|clarified)\s+that|asked\s+whether)\.\s+(.+)$",
+        lambda match: f"{match.group(1)} {match.group(2)} {sentence_case_clause(match.group(3))}",
+        cleaned,
+        flags=re.I,
+    )
+    cleaned = normalize_text_fragment(repaired)
+    match = ATTRIBUTED_SENTENCE_RE.match(cleaned.rstrip(" .") + ".")
+    if not match:
+        return cleaned if cleaned.endswith((".", "!", "?")) else f"{cleaned}."
+    speaker = public_speaker_name(match.group("speaker"))
+    verb = match.group("verb").lower()
+    link = match.group("link").lower()
+    content = normalize_text_fragment(match.group("content") or "").strip(" .")
+    if attribution_content_is_too_weak(content, link):
+        return ""
+    if link == "whether" and verb != "asked":
+        verb = "asked"
+    normalized = f"{speaker} {verb} {link} {sentence_case_clause(content)}."
+    return re.sub(r"\s+", " ", normalized).replace("..", ".")
+
+
 def public_attributed_sentence_from_evidence_item(ref: dict[str, Any], speaker_names: set[str] | None = None) -> str:
     speaker = public_speaker_name(ref.get("speaker", ""))
     original = normalize_text_fragment(ref.get("text", ""))
@@ -843,13 +893,15 @@ def public_attributed_sentence_from_evidence_item(ref: dict[str, Any], speaker_n
         return ""
     if is_context_dependent_meta_question(cleaned):
         return ""
+    if ATTRIBUTION_VERBS_RE.search(cleaned) and ATTRIBUTED_SENTENCE_RE.match(cleaned.rstrip(" .") + "."):
+        return normalize_public_attributed_sentence(cleaned)
 
     warehouse_question = re.search(r"\b(?:is\s+)?the\s+warehouse\s+(?:automated\s+at\s+all\s+or\s+is\s+it\s+)?(?:a\s+)?(?:fully\s+)?manual\s+warehouse\b", lowered)
     if warehouse_question or ("warehouse" in lowered and "automated" in lowered and "manual" in lowered):
-        return f"{speaker} asked whether the warehouse was automated or fully manual."
+        return normalize_public_attributed_sentence(f"{speaker} asked whether the warehouse was automated or fully manual.")
 
     if "basic udi" in lowered or "master udi" in lowered:
-        return f"{speaker} mentioned that Master UDI and basic UDI were involved."
+        return normalize_public_attributed_sentence(f"{speaker} mentioned that Master UDI and basic UDI were involved.")
 
     if "?" in original or re.search(r"\b(?:is|are|does|do|can|could|would|whether)\b", lowered):
         question_clause = cleaned.rstrip("?")
@@ -857,18 +909,18 @@ def public_attributed_sentence_from_evidence_item(ref: dict[str, Any], speaker_n
         if is_context_dependent_meta_question(question_clause):
             return ""
         if question_clause and minutes_word_count(question_clause) <= 28:
-            return f"{speaker} asked whether {sentence_case_clause(question_clause)}."
+            return normalize_public_attributed_sentence(f"{speaker} asked whether {sentence_case_clause(question_clause)}.")
 
     if "project plan" in lowered and "task list" in lowered and "med envoy" in lowered:
-        return f"{speaker} said that the project plan or task list from Med Envoy would help the team understand Med Envoy's activities."
+        return normalize_public_attributed_sentence(f"{speaker} said that the project plan or task list from Med Envoy would help the team understand Med Envoy's activities.")
 
     if ("mdr" in lowered or "reg requirements" in lowered or "regulatory" in lowered) and "procedure" in lowered:
         organisation = "DISA" if re.search(r"\bDISA\b", cleaned) else "the business"
-        return f"{speaker} said that the applicable regulatory requirements needed to be incorporated into the procedure and aligned with how {organisation} works."
+        return normalize_public_attributed_sentence(f"{speaker} said that the applicable regulatory requirements needed to be incorporated into the procedure and aligned with how {organisation} works.")
 
     if ("udimed" in lowered or "udamed" in lowered) and "new products" in lowered:
         system = "Udimed" if "udimed" in lowered else "UDAMED"
-        return f"{speaker} said that new products have to go into {system} immediately."
+        return normalize_public_attributed_sentence(f"{speaker} said that new products have to go into {system} immediately.")
 
     # Prefer one concise sentence/clause rather than a pasted paragraph.
     clauses = [part.strip(" .") for part in re.split(r"(?<=[.!?])\s+|\s*(?:;|,\s+but\s+|,\s+because\s+)\s*", cleaned) if part.strip(" .")]
@@ -878,7 +930,7 @@ def public_attributed_sentence_from_evidence_item(ref: dict[str, Any], speaker_n
     clause = sentence_case_clause(clauses[0])
     if not clause or is_keyword_soup_sentence(clause):
         return ""
-    return f"{speaker} said that {clause}."
+    return normalize_public_attributed_sentence(f"{speaker} said that {clause}.")
 
 
 def public_discussion_sentence_from_text(text: str, speaker_names: set[str] | None = None) -> str:
@@ -889,6 +941,10 @@ def public_discussion_sentence_from_text(text: str, speaker_names: set[str] | No
         cleaned += "."
     if is_keyword_soup_sentence(cleaned):
         return ""
+    if ATTRIBUTION_VERBS_RE.search(cleaned):
+        cleaned = normalize_public_attributed_sentence(cleaned)
+        if not cleaned:
+            return ""
     if RAW_TRANSCRIPT_LEAKAGE_RE.search(cleaned) or minutes_word_count(cleaned) > 34:
         return ""
     if not ATTRIBUTION_VERBS_RE.search(cleaned) and re.search(r"\b(?:I|we|you|your|us|our)\b", cleaned):
