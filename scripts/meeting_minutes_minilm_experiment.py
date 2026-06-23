@@ -717,6 +717,13 @@ RAW_TRANSCRIPT_LEAKAGE_RE = re.compile(
 
 ATTRIBUTION_VERBS_RE = re.compile(r"\b(?:said|mentioned|noted|explained|asked|confirmed|clarified)\s+that\b|\basked\s+whether\b", re.I)
 
+META_CONTEXT_QUESTION_RE = re.compile(
+    r"\b(?:this|that|it)\s+(?:is\s+|was\s+)?(?:what|the\s+thing|the\s+point)\s+(?:you|we|they)\s+(?:were\s+)?(?:talking|discussing|referring)\s+about\b|"
+    r"\b(?:a\s+minute\s+ago|earlier|before|just\s+now|previously)\b|"
+    r"\b(?:what\s+you\s+(?:meant|said)|what\s+we\s+(?:said|discussed))\b",
+    re.I,
+)
+
 
 def public_evidence_item(ref: dict[str, Any]) -> dict[str, Any]:
     return {
@@ -809,14 +816,32 @@ def sentence_case_clause(text: str) -> str:
     return cleaned[:1].lower() + cleaned[1:]
 
 
+def public_speaker_name(raw_name: str) -> str:
+    cleaned = normalize_text_fragment(raw_name)
+    if not cleaned or normalize_text(cleaned) in {"meeting", "transcript", "recording"}:
+        return "The speaker"
+    parts = re.findall(r"[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'’.-]*", cleaned)
+    return parts[0] if parts else cleaned
+
+
+def is_context_dependent_meta_question(text: str) -> bool:
+    cleaned = normalize_text_fragment(text).lower()
+    if not cleaned:
+        return False
+    if META_CONTEXT_QUESTION_RE.search(cleaned):
+        return True
+    tokens = set(evidence_topic_tokens(cleaned))
+    return bool({"this", "that", "what"} & set(tokenize(cleaned))) and len(tokens) <= 3 and "?" in text
+
+
 def public_attributed_sentence_from_evidence_item(ref: dict[str, Any], speaker_names: set[str] | None = None) -> str:
-    speaker = normalize_text_fragment(ref.get("speaker", "")) or "The speaker"
-    if normalize_text(speaker) in {"meeting", "transcript", "recording"}:
-        speaker = "The speaker"
+    speaker = public_speaker_name(ref.get("speaker", ""))
     original = normalize_text_fragment(ref.get("text", ""))
     cleaned = clean_clause_for_attribution(original)
     lowered = cleaned.lower()
     if not cleaned or is_keyword_soup_sentence(cleaned):
+        return ""
+    if is_context_dependent_meta_question(cleaned):
         return ""
 
     warehouse_question = re.search(r"\b(?:is\s+)?the\s+warehouse\s+(?:automated\s+at\s+all\s+or\s+is\s+it\s+)?(?:a\s+)?(?:fully\s+)?manual\s+warehouse\b", lowered)
@@ -829,6 +854,8 @@ def public_attributed_sentence_from_evidence_item(ref: dict[str, Any], speaker_n
     if "?" in original or re.search(r"\b(?:is|are|does|do|can|could|would|whether)\b", lowered):
         question_clause = cleaned.rstrip("?")
         question_clause = re.sub(r"^(?:is|are|does|do|can|could|would)\s+", "", question_clause, flags=re.I).strip()
+        if is_context_dependent_meta_question(question_clause):
+            return ""
         if question_clause and minutes_word_count(question_clause) <= 28:
             return f"{speaker} asked whether {sentence_case_clause(question_clause)}."
 

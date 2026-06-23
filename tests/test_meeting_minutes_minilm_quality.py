@@ -31,6 +31,8 @@ from meeting_minutes_minilm_experiment import (
     public_discussion_sentence_from_evidence,
     public_sentence_supported_by_evidence,
     public_attributed_sentence_from_evidence_item,
+    public_speaker_name,
+    is_context_dependent_meta_question,
     enforce_evidence_first_final_contract,
     strip_action_deadline_phrase,
     _sanitize_rewritten_minutes_text,
@@ -163,6 +165,21 @@ class MeetingMinutesMiniLMQualityTest(unittest.TestCase):
         self.assertEqual(dense_budget["level"], "detailed")
         self.assertGreater(dense_budget["discussionPoints"], short_budget["discussionPoints"])
         self.assertGreater(dense_budget["supportingContext"], short_budget["supportingContext"])
+
+    def test_public_speaker_name_uses_first_name_only(self):
+        self.assertEqual(public_speaker_name("Mark Kelleher"), "Mark")
+        self.assertEqual(public_speaker_name("Jacqui O'Brien"), "Jacqui")
+        self.assertEqual(public_speaker_name("Meeting"), "The speaker")
+
+    def test_context_dependent_meta_questions_are_not_discussion_points(self):
+        evidence = {
+            "speaker": "Mark Kelleher",
+            "text": "Is this what you were talking about a minute ago?",
+            "turnIndex": 9,
+        }
+
+        self.assertTrue(is_context_dependent_meta_question(evidence["text"]))
+        self.assertEqual(public_attributed_sentence_from_evidence_item(evidence), "")
 
     def test_raw_transcript_chunks_become_attributed_discussion_sentences(self):
         samples = [
