@@ -27,6 +27,10 @@ from meeting_minutes_minilm_experiment import (
     should_accept_action_candidate,
     explicit_action_object,
     cluster_has_clear_topic,
+    is_keyword_soup_sentence,
+    public_discussion_sentence_from_evidence,
+    public_sentence_supported_by_evidence,
+    enforce_evidence_first_final_contract,
     strip_action_deadline_phrase,
     _sanitize_rewritten_minutes_text,
     sanitize_public_minutes_text,
@@ -159,6 +163,56 @@ class MeetingMinutesMiniLMQualityTest(unittest.TestCase):
         self.assertGreater(dense_budget["discussionPoints"], short_budget["discussionPoints"])
         self.assertGreater(dense_budget["supportingContext"], short_budget["supportingContext"])
 
+    def test_keyword_soup_labels_are_not_public_discussion_points(self):
+        bad_labels = [
+            "Med not envoy responsibility like inc",
+            "Storage netherlands kind around warehousing scenario",
+            "Warehouse product netherlands order suppose through",
+            "Procedure business possible providing deliverables theres",
+            "Importer point view mean check required",
+            "Whether IFUs manufacturer information notes needed relevant optical",
+        ]
+        for label in bad_labels:
+            self.assertTrue(is_keyword_soup_sentence(label), label)
+            self.assertEqual(public_discussion_sentence_from_evidence([{"text": label, "speaker": "Claire", "turnIndex": 0}]), "")
+
+    def test_generated_sentence_must_be_supported_by_evidence_terms(self):
+        evidence = [{"text": "Storage netherlands kind around warehousing scenario", "speaker": "Claire", "turnIndex": 0}]
+
+        self.assertFalse(public_sentence_supported_by_evidence(
+            "The team clarified the storage and logistics flow, including fiscal clearance in the Netherlands and onward storage in Dublin.",
+            evidence,
+        ))
+        self.assertTrue(public_sentence_supported_by_evidence(
+            "Med Envoy's project plan and timelines were reviewed in relation to registration responsibilities.",
+            [{"text": "Med Envoy's project plan and timelines were reviewed in relation to registration responsibilities.", "speaker": "Claire", "turnIndex": 0}],
+        ))
+
+    def test_evidence_first_contract_excludes_non_sentence_topic_labels(self):
+        output = {
+            "explicitActions": [],
+            "evidenceBackedTopics": [
+                {
+                    "topicLabel": "Storage netherlands kind around warehousing scenario",
+                    "directEvidence": [{"speaker": "Claire", "timestamp": "", "text": "Storage netherlands kind around warehousing scenario", "turnIndex": 3}],
+                    "sourceTurnIndices": [3],
+                },
+                {
+                    "topicLabel": "Med Envoy's project plan and timelines were reviewed in relation to registration responsibilities.",
+                    "directEvidence": [{"speaker": "Claire", "timestamp": "", "text": "Med Envoy's project plan and timelines were reviewed in relation to registration responsibilities.", "turnIndex": 1}],
+                    "sourceTurnIndices": [1],
+                },
+            ],
+            "excludedWeakCandidates": [],
+            "meetingOverview": {},
+        }
+
+        enforce_evidence_first_final_contract(output)
+
+        self.assertEqual(output["discussionPoints"], ["Med Envoy's project plan and timelines were reviewed in relation to registration responsibilities."])
+        self.assertEqual(len(output["evidenceBackedTopics"]), 1)
+        self.assertEqual(output["excludedWeakCandidates"][0]["rejectionReason"], "non_sentence_topic_label")
+
     def test_explicit_action_requires_direct_action_language_and_evidence(self):
         records = [
             {"speaker": "Claire", "timestamp": "00:01", "text": "Please send the documentation pack to the client before Friday.", "turnIndex": 0},
@@ -277,9 +331,9 @@ class MeetingMinutesMiniLMQualityTest(unittest.TestCase):
         action_blob = "\n".join(output["meetingActionPoint"]).lower()
 
         self.assertGreaterEqual(len(output["discussionPoints"]), 3)
-        self.assertIn("ai pipeline strategy remains blocked because sales input is still required", discussion_blob)
-        self.assertIn("sales", discussion_blob + "\n" + action_blob)
-        self.assertIn("webinars remain on track", discussion_blob)
+        self.assertNotIn("ai pipeline strategy remains blocked because sales input is still required", discussion_blob)
+        self.assertIn("webinars", discussion_blob)
+        self.assertIn("on track", discussion_blob)
         self.assertIn("stage gate and vendor strategy rollout remain in progress", discussion_blob)
         self.assertEqual(action_blob, "")
         self.assertTrue(diagnostics.get("statusReviewWorkstreamRecovery", {}).get("applied"))

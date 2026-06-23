@@ -749,6 +749,98 @@ def evidence_topic_label(evidence: list[dict[str, Any]], speaker_names: set[str]
     return label[:1].upper() + label[1:] if label else "Evidence cluster"
 
 
+PUBLIC_SENTENCE_VERB_RE = re.compile(
+    r"\b(?:is|are|was|were|be|been|being|has|have|had|needs?|needed|includes?|included|covers?|covered|"
+    r"requires?|required|shows?|showed|identif(?:y|ies|ied)|aligns?|aligned|remains?|remained|creates?|created|"
+    r"raises?|raised|discuss(?:es|ed)|review(?:s|ed)|confirm(?:s|ed)|clarif(?:y|ies|ied)|checks?|checked|"
+    r"provid(?:e|es|ed)|missing|relates?|related)\b",
+    re.I,
+)
+
+
+def is_keyword_soup_sentence(text: str) -> bool:
+    cleaned = normalize_text_fragment(text)
+    if not cleaned:
+        return True
+    tokens = tokenize(cleaned)
+    raw_word_count = len(re.findall(r"\b\w+\b", cleaned))
+    lowered = cleaned.lower()
+    if raw_word_count < 6 and not re.search(r"\b(?:on track|in progress|blocked|scheduled|complete|completed|amber|green|red)\b", lowered):
+        return True
+    if re.match(r"^(?:whether|med not|storage|warehouse|procedure|importer point view)\b", lowered):
+        return True
+    if not PUBLIC_SENTENCE_VERB_RE.search(cleaned):
+        return True
+    weak_fillers = len(re.findall(r"\b(?:kind|suppose|possible|theres|mean|around|like|inc|optical)\b", lowered))
+    if weak_fillers >= 2:
+        return True
+    stopwords = len(re.findall(r"\b(?:the|a|an|and|or|to|for|of|in|on|with|from|that|this|as|by|because|while|between)\b", lowered))
+    if stopwords == 0 and len(tokens) >= 6 and not re.search(r"\b(?:on track|in progress|blocked|scheduled|complete|completed|amber|green|red)\b", lowered):
+        return True
+    return False
+
+
+def public_discussion_sentence_from_text(text: str, speaker_names: set[str] | None = None) -> str:
+    cleaned = sanitize_public_minutes_text(strip_conversational_preface(text), speaker_names)
+    if not cleaned:
+        return ""
+    if not cleaned.endswith((".", "!", "?")):
+        cleaned += "."
+    if is_keyword_soup_sentence(cleaned):
+        return ""
+    if is_public_discussion_leakage(cleaned):
+        return ""
+    valid, _reason = is_valid_discussion_point(cleaned, 2)
+    if not valid and semantic_density(cleaned) < 0.62:
+        return ""
+    return cleaned
+
+
+def public_discussion_sentence_from_evidence(
+    evidence: list[dict[str, Any]],
+    candidate_texts: list[str] | None = None,
+    speaker_names: set[str] | None = None,
+) -> str:
+    candidates = [ref.get("text", "") for ref in evidence or []] + list(candidate_texts or [])
+    ranked = []
+    for candidate in candidates:
+        sentence = public_discussion_sentence_from_text(candidate, speaker_names)
+        if not sentence:
+            continue
+        score = semantic_density(sentence) + min(0.2, len(evidence_topic_tokens(sentence, speaker_names)) * 0.015)
+        ranked.append((score, sentence))
+    ranked.sort(key=lambda item: item[0], reverse=True)
+    return ranked[0][1] if ranked else ""
+
+
+def public_sentence_supported_by_evidence(sentence: str, evidence: list[dict[str, Any]], speaker_names: set[str] | None = None) -> bool:
+    cleaned = normalize_text_fragment(sentence)
+    if not cleaned:
+        return False
+    evidence_blob = " ".join(ref.get("text", "") for ref in evidence or [])
+    sentence_terms = set(evidence_topic_tokens(cleaned, speaker_names))
+    evidence_terms = set(evidence_topic_tokens(evidence_blob, speaker_names))
+    ignored = {
+        "team", "discuss", "discussed", "review", "reviewed", "clarified", "identified", "important", "evidence", "understanding",
+        "remain", "remains", "remained", "including", "relation", "related",
+    }
+    sentence_terms = {term for term in sentence_terms if term not in ignored}
+    if not sentence_terms:
+        return False
+    missing_terms = sentence_terms - evidence_terms
+    proper_terms = set(evidence_topic_tokens(" ".join(re.findall(r"\b[A-Z][A-Za-z'’]{2,}\b", cleaned)), speaker_names)) - {"the"}
+    if proper_terms and not proper_terms <= evidence_terms:
+        return False
+    if len(sentence_terms) <= 3:
+        return len(missing_terms) == 0
+    return (len(sentence_terms) - len(missing_terms)) / len(sentence_terms) >= 0.6
+
+
+def rejected_candidate_label(evidence: list[dict[str, Any]], speaker_names: set[str] | None = None) -> str:
+    sentence = public_discussion_sentence_from_evidence(evidence, speaker_names=speaker_names)
+    return sentence or "Evidence candidate excluded from public minutes"
+
+
 def cluster_has_clear_topic(evidence: list[dict[str, Any]], speaker_names: set[str] | None = None) -> tuple[bool, str]:
     if len(evidence) < 2:
         return False, "fewer_than_2_direct_evidence_turns"
@@ -1002,8 +1094,27 @@ def build_evidence_backed_topics(
         documents = extract_mentions_from_texts(texts, DOCUMENT_MENTION_RE)
         responsibilities = extract_mentions_from_texts(texts, RESPONSIBILITY_MENTION_RE)
         questions = extract_open_questions(texts)
+        topic_label = public_discussion_sentence_from_text(detail.get("topicLabel", ""), speaker_names)
+        if topic_label and not public_sentence_supported_by_evidence(topic_label, evidence + context, speaker_names):
+            topic_label = ""
+        if not topic_label:
+            topic_label = public_discussion_sentence_from_text(detail.get("discussionPoint", ""), speaker_names)
+            if topic_label and not public_sentence_supported_by_evidence(topic_label, evidence + context, speaker_names):
+                topic_label = ""
+        if not topic_label:
+            topic_label = public_discussion_sentence_from_evidence(evidence, speaker_names=speaker_names)
+        if not topic_label:
+            output.setdefault("excludedWeakCandidates", []).append(
+                {
+                    "topicLabel": rejected_candidate_label(evidence, speaker_names),
+                    "rejectionReason": "no_public_sentence_from_evidence",
+                    "sourceTurnIndices": evidence_source_turn_indices(evidence),
+                    "directEvidence": evidence,
+                }
+            )
+            continue
         topic = {
-            "topicLabel": detail.get("topicLabel") or evidence_topic_label(evidence, speaker_names),
+            "topicLabel": topic_label,
             "confidence": round(float(detail.get("evidenceScore", 0.0) or 0.0), 2),
             "sourceTurnIndices": evidence_source_turn_indices(evidence),
             "directEvidence": evidence,
@@ -1098,10 +1209,35 @@ def enforce_evidence_first_final_contract(output: dict[str, Any]) -> None:
         for item in output.get("explicitActions", [])
         if item.get("action") and item.get("evidence")
     ]
-    output["discussionPoints"] = [topic.get("topicLabel", "") for topic in output.get("evidenceBackedTopics", []) if topic.get("topicLabel")]
+    safe_topics = []
+    excluded = list(output.get("excludedWeakCandidates", []) or [])
+    for topic in output.get("evidenceBackedTopics", []) or []:
+        if not isinstance(topic, dict):
+            continue
+        safe_label = public_discussion_sentence_from_text(topic.get("topicLabel", ""))
+        if not safe_label:
+            evidence = non_empty_evidence(topic.get("directEvidence", []))
+            excluded.append(
+                {
+                    "topicLabel": rejected_candidate_label(evidence),
+                    "rejectionReason": "non_sentence_topic_label",
+                    "sourceTurnIndices": topic.get("sourceTurnIndices", evidence_source_turn_indices(evidence)),
+                    "directEvidence": evidence,
+                }
+            )
+            continue
+        topic["topicLabel"] = safe_label
+        safe_topics.append(topic)
+    output["evidenceBackedTopics"] = safe_topics
+    output["excludedWeakCandidates"] = excluded
+    output["discussionPoints"] = [topic.get("topicLabel", "") for topic in safe_topics if topic.get("topicLabel")]
     output["discussionPointDetails"] = [
         detail for detail in output.get("discussionPointDetails", []) if detail.get("directEvidence")
     ]
+    output.setdefault("meetingOverview", {})
+    output["meetingOverview"]["topicCount"] = len(output.get("evidenceBackedTopics", []))
+    output["meetingOverview"]["explicitActionCount"] = len(output.get("explicitActions", []))
+    output["meetingOverview"]["excludedWeakCandidateCount"] = len(output.get("excludedWeakCandidates", []) or [])
     if "internalEvidence" in output:
         output.pop("internalEvidence", None)
     pruned = prune_empty_private_evidence(output)
@@ -4790,7 +4926,7 @@ def build_cluster_discussion_candidate(cluster: list[dict[str, Any]], speaker_na
         return {
             "rejected": True,
             "rejectionReason": topic_reason,
-            "text": evidence_topic_label(evidence, speaker_names),
+            "text": rejected_candidate_label(evidence, speaker_names),
             "score": 0.0,
             "supportCount": len(evidence),
             "evidence": evidence,
@@ -4802,7 +4938,27 @@ def build_cluster_discussion_candidate(cluster: list[dict[str, Any]], speaker_na
             "selectionMode": "evidence_rejected",
             "representativeSentence": normalize_text_fragment(evidence[0].get("text", "")) if evidence else "",
         }
-    point_text = evidence_topic_label(evidence[:4], speaker_names)
+    point_text = public_discussion_sentence_from_evidence(
+        evidence[:4],
+        [candidate.get("text", "") for candidate in summary_cluster],
+        speaker_names,
+    )
+    if not point_text:
+        return {
+            "rejected": True,
+            "rejectionReason": "no_public_sentence_from_evidence",
+            "text": rejected_candidate_label(evidence, speaker_names),
+            "score": 0.0,
+            "supportCount": len(evidence),
+            "evidence": evidence,
+            "sourceTurnIndices": evidence_source_turn_indices(evidence),
+            "clusterTexts": [candidate["text"] for candidate in summary_cluster],
+            "candidateType": "window" if any(candidate.get("candidateType") == "window" for candidate in summary_cluster) else "parser",
+            "coherenceScore": 0.0,
+            "keywords": filtered_keywords,
+            "selectionMode": "evidence_rejected",
+            "representativeSentence": normalize_text_fragment(evidence[0].get("text", "")) if evidence else "",
+        }
     support_count = len({
         (
             normalize_text_fragment(ref.get("speaker", "")),
