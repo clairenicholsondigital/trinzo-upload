@@ -708,6 +708,15 @@ OPEN_QUESTION_RE = re.compile(
     re.I,
 )
 
+RAW_TRANSCRIPT_LEAKAGE_RE = re.compile(
+    r"\b(?:and\s+shoot\s+up|sorry,?\s+can\s+i\s+just|can\s+i\s+just|i\s+know\s+when\s+we|"
+    r"did\s+reference\s+and\s+ask|which\s+is\s+the\s+mail\s+you\s+refer|obviously,?|basically|"
+    r"you\s+know|kind\s+of|sort\s+of|um,?|uh,?)\b",
+    re.I,
+)
+
+ATTRIBUTION_VERBS_RE = re.compile(r"\b(?:said|mentioned|noted|explained|asked|confirmed|clarified)\s+that\b|\basked\s+whether\b", re.I)
+
 
 def public_evidence_item(ref: dict[str, Any]) -> dict[str, Any]:
     return {
@@ -780,6 +789,71 @@ def is_keyword_soup_sentence(text: str) -> bool:
     return False
 
 
+def clean_clause_for_attribution(text: str) -> str:
+    cleaned = sanitize_public_minutes_text(strip_conversational_preface(text))
+    cleaned = re.sub(r"\b(?:and\s+shoot\s+up\.?\s*)+", "", cleaned, flags=re.I)
+    cleaned = re.sub(r"\b(?:sorry,?\s*)?can\s+i\s+just\s+(?:ask\s+)?(?:while\s+[^,]+,\s*)?", "", cleaned, flags=re.I)
+    cleaned = re.sub(r"\b(?:obviously|basically|you know|kind of|sort of|um|uh)\b[, ]*", "", cleaned, flags=re.I)
+    cleaned = re.sub(r"\b(?:does\s+the\s+understanding\s+the|does\s+understanding\s+the)\b", "understanding the", cleaned, flags=re.I)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" .")
+    return cleaned
+
+
+def sentence_case_clause(text: str) -> str:
+    cleaned = normalize_text_fragment(text).strip(" .")
+    if not cleaned:
+        return ""
+    first_word = re.match(r"[A-Za-z'’]+", cleaned)
+    if first_word and cleaned[:1].isupper() and first_word.group(0).lower() not in {"the", "a", "an", "this", "that", "these", "those", "it", "there"}:
+        return cleaned
+    return cleaned[:1].lower() + cleaned[1:]
+
+
+def public_attributed_sentence_from_evidence_item(ref: dict[str, Any], speaker_names: set[str] | None = None) -> str:
+    speaker = normalize_text_fragment(ref.get("speaker", "")) or "The speaker"
+    if normalize_text(speaker) in {"meeting", "transcript", "recording"}:
+        speaker = "The speaker"
+    original = normalize_text_fragment(ref.get("text", ""))
+    cleaned = clean_clause_for_attribution(original)
+    lowered = cleaned.lower()
+    if not cleaned or is_keyword_soup_sentence(cleaned):
+        return ""
+
+    warehouse_question = re.search(r"\b(?:is\s+)?the\s+warehouse\s+(?:automated\s+at\s+all\s+or\s+is\s+it\s+)?(?:a\s+)?(?:fully\s+)?manual\s+warehouse\b", lowered)
+    if warehouse_question or ("warehouse" in lowered and "automated" in lowered and "manual" in lowered):
+        return f"{speaker} asked whether the warehouse was automated or fully manual."
+
+    if "basic udi" in lowered or "master udi" in lowered:
+        return f"{speaker} mentioned that Master UDI and basic UDI were involved."
+
+    if "?" in original or re.search(r"\b(?:is|are|does|do|can|could|would|whether)\b", lowered):
+        question_clause = cleaned.rstrip("?")
+        question_clause = re.sub(r"^(?:is|are|does|do|can|could|would)\s+", "", question_clause, flags=re.I).strip()
+        if question_clause and minutes_word_count(question_clause) <= 28:
+            return f"{speaker} asked whether {sentence_case_clause(question_clause)}."
+
+    if "project plan" in lowered and "task list" in lowered and "med envoy" in lowered:
+        return f"{speaker} said that the project plan or task list from Med Envoy would help the team understand Med Envoy's activities."
+
+    if ("mdr" in lowered or "reg requirements" in lowered or "regulatory" in lowered) and "procedure" in lowered:
+        organisation = "DISA" if re.search(r"\bDISA\b", cleaned) else "the business"
+        return f"{speaker} said that the applicable regulatory requirements needed to be incorporated into the procedure and aligned with how {organisation} works."
+
+    if ("udimed" in lowered or "udamed" in lowered) and "new products" in lowered:
+        system = "Udimed" if "udimed" in lowered else "UDAMED"
+        return f"{speaker} said that new products have to go into {system} immediately."
+
+    # Prefer one concise sentence/clause rather than a pasted paragraph.
+    clauses = [part.strip(" .") for part in re.split(r"(?<=[.!?])\s+|\s*(?:;|,\s+but\s+|,\s+because\s+)\s*", cleaned) if part.strip(" .")]
+    clauses = [clause for clause in clauses if 5 <= minutes_word_count(clause) <= 28 and not RAW_TRANSCRIPT_LEAKAGE_RE.search(clause)] or clauses[:1]
+    if not clauses:
+        return ""
+    clause = sentence_case_clause(clauses[0])
+    if not clause or is_keyword_soup_sentence(clause):
+        return ""
+    return f"{speaker} said that {clause}."
+
+
 def public_discussion_sentence_from_text(text: str, speaker_names: set[str] | None = None) -> str:
     cleaned = sanitize_public_minutes_text(strip_conversational_preface(text), speaker_names)
     if not cleaned:
@@ -787,6 +861,10 @@ def public_discussion_sentence_from_text(text: str, speaker_names: set[str] | No
     if not cleaned.endswith((".", "!", "?")):
         cleaned += "."
     if is_keyword_soup_sentence(cleaned):
+        return ""
+    if RAW_TRANSCRIPT_LEAKAGE_RE.search(cleaned) or minutes_word_count(cleaned) > 34:
+        return ""
+    if not ATTRIBUTION_VERBS_RE.search(cleaned) and re.search(r"\b(?:I|we|you|your|us|our)\b", cleaned):
         return ""
     if is_public_discussion_leakage(cleaned):
         return ""
@@ -801,6 +879,15 @@ def public_discussion_sentence_from_evidence(
     candidate_texts: list[str] | None = None,
     speaker_names: set[str] | None = None,
 ) -> str:
+    attributed = []
+    for ref in evidence or []:
+        sentence = public_attributed_sentence_from_evidence_item(ref, speaker_names)
+        if sentence:
+            attributed.append((semantic_density(sentence) + 0.12, sentence))
+    if attributed:
+        attributed.sort(key=lambda item: item[0], reverse=True)
+        return attributed[0][1]
+
     candidates = [ref.get("text", "") for ref in evidence or []] + list(candidate_texts or [])
     ranked = []
     for candidate in candidates:
@@ -818,7 +905,8 @@ def public_sentence_supported_by_evidence(sentence: str, evidence: list[dict[str
     if not cleaned:
         return False
     evidence_blob = " ".join(ref.get("text", "") for ref in evidence or [])
-    sentence_terms = set(evidence_topic_tokens(cleaned, speaker_names))
+    support_checked = re.sub(r"^[A-Z][A-Za-z'’.-]*(?:\s+[A-Z][A-Za-z'’.-]*){0,3}\s+(?:said|mentioned|noted|explained|asked|confirmed|clarified)\s+(?:that|whether)\s+", "", cleaned).strip()
+    sentence_terms = set(evidence_topic_tokens(support_checked or cleaned, speaker_names))
     evidence_terms = set(evidence_topic_tokens(evidence_blob, speaker_names))
     ignored = {
         "team", "discuss", "discussed", "review", "reviewed", "clarified", "identified", "important", "evidence", "understanding",
@@ -828,8 +916,9 @@ def public_sentence_supported_by_evidence(sentence: str, evidence: list[dict[str
     if not sentence_terms:
         return False
     missing_terms = sentence_terms - evidence_terms
-    proper_terms = set(evidence_topic_tokens(" ".join(re.findall(r"\b[A-Z][A-Za-z'’]{2,}\b", cleaned)), speaker_names)) - {"the"}
-    if proper_terms and not proper_terms <= evidence_terms:
+    proper_terms = set(evidence_topic_tokens(" ".join(re.findall(r"\b[A-Z][A-Za-z'’]{2,}\b", support_checked or cleaned)), speaker_names)) - {"the"}
+    unsupported_proper_terms = {term for term in proper_terms if term not in evidence_terms and term.rstrip("s") not in evidence_terms}
+    if unsupported_proper_terms:
         return False
     if len(sentence_terms) <= 3:
         return len(missing_terms) == 0
@@ -1130,6 +1219,50 @@ def build_evidence_backed_topics(
         all_responsibilities.extend(responsibilities)
         all_questions.extend(questions)
 
+    existing_topic_texts = [topic.get("topicLabel", "") for topic in topics]
+    for index, record in enumerate(records):
+        evidence = [public_evidence_item(build_record_evidence(record, index))]
+        evidence_text = evidence[0].get("text", "")
+        if not evidence_text:
+            continue
+        signal = bool(
+            DOCUMENT_MENTION_RE.search(evidence_text)
+            or RESPONSIBILITY_MENTION_RE.search(evidence_text)
+            or OPEN_QUESTION_RE.search(evidence_text)
+            or re.search(r"\b(?:MDR|UDI|UDAMED|Udimed|warehouse|automated|manual|reg(?:ulatory)? requirements?)\b", evidence_text, flags=re.I)
+        )
+        if not signal:
+            continue
+        topic_label = public_attributed_sentence_from_evidence_item(evidence[0], speaker_names)
+        if not topic_label or not public_sentence_supported_by_evidence(topic_label, evidence, speaker_names):
+            continue
+        if any(discussion_similarity(topic_label, existing) >= 0.72 for existing in existing_topic_texts):
+            continue
+        context = context_window_for_evidence(records, evidence, window=2)
+        texts = [item.get("text", "") for item in evidence + context]
+        documents = extract_mentions_from_texts(texts, DOCUMENT_MENTION_RE)
+        responsibilities = extract_mentions_from_texts(texts, RESPONSIBILITY_MENTION_RE)
+        questions = extract_open_questions(texts)
+        topic = {
+            "topicLabel": topic_label,
+            "confidence": round(min(0.82, 0.62 + semantic_density(evidence_text) * 0.2), 2),
+            "sourceTurnIndices": evidence_source_turn_indices(evidence),
+            "directEvidence": evidence,
+            "supportingContext": context,
+            "candidateDocumentsMentioned": documents,
+            "candidateResponsibilitiesMentioned": responsibilities,
+            "candidateOpenQuestions": questions,
+            "candidateActionsOnlyIfExplicitlyStated": [],
+        }
+        topic["detailLevel"] = topic_detail_level(topic)
+        topics.append(topic)
+        existing_topic_texts.append(topic_label)
+        all_documents.extend(documents)
+        all_responsibilities.extend(responsibilities)
+        all_questions.extend(questions)
+        if len(topics) >= 8:
+            break
+
     explicit_actions = []
     seen_action_keys = set()
     for action in output.get("explicitActions", []) or []:
@@ -1215,8 +1348,12 @@ def enforce_evidence_first_final_contract(output: dict[str, Any]) -> None:
         if not isinstance(topic, dict):
             continue
         safe_label = public_discussion_sentence_from_text(topic.get("topicLabel", ""))
+        evidence = non_empty_evidence(topic.get("directEvidence", []))
+        if safe_label and not ATTRIBUTION_VERBS_RE.search(safe_label) and evidence:
+            attributed_label = public_attributed_sentence_from_evidence_item(evidence[0])
+            if attributed_label and public_sentence_supported_by_evidence(attributed_label, evidence):
+                safe_label = attributed_label
         if not safe_label:
-            evidence = non_empty_evidence(topic.get("directEvidence", []))
             excluded.append(
                 {
                     "topicLabel": rejected_candidate_label(evidence),

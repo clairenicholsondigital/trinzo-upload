@@ -30,6 +30,7 @@ from meeting_minutes_minilm_experiment import (
     is_keyword_soup_sentence,
     public_discussion_sentence_from_evidence,
     public_sentence_supported_by_evidence,
+    public_attributed_sentence_from_evidence_item,
     enforce_evidence_first_final_contract,
     strip_action_deadline_phrase,
     _sanitize_rewritten_minutes_text,
@@ -163,6 +164,45 @@ class MeetingMinutesMiniLMQualityTest(unittest.TestCase):
         self.assertGreater(dense_budget["discussionPoints"], short_budget["discussionPoints"])
         self.assertGreater(dense_budget["supportingContext"], short_budget["supportingContext"])
 
+    def test_raw_transcript_chunks_become_attributed_discussion_sentences(self):
+        samples = [
+            (
+                {
+                    "speaker": "Orla",
+                    "text": "And shoot up.And to that point, Orla, I know when we did the kickoff for this particular scope, I did reference and ask Cody to get an overview and did follow up with him last week, which is the mail you refer to at start, a copy of that, either the project plan or the task list from med envoy in relation to their activities, because that will help us understand.",
+                    "turnIndex": 1,
+                },
+                "Orla said that the project plan or task list from Med Envoy would help the team understand Med Envoy's activities.",
+            ),
+            (
+                {
+                    "speaker": "Paula",
+                    "text": "Paula, can I just, sorry, can I just ask while Mark's sharing screen, is the warehouse automated at all or is it a fully manual warehouse?",
+                    "turnIndex": 2,
+                },
+                "Paula asked whether the warehouse was automated or fully manual.",
+            ),
+            (
+                {
+                    "speaker": "Mark",
+                    "text": "Does the understanding the applicable reg requirements, so MDR and so on, and making sure that they're incorporated in the procedure, but also for it to be meaningful and usable for DISA, we have to understand how the business works so that we fit in as much as possible into your existing.",
+                    "turnIndex": 3,
+                },
+                "Mark said that the applicable regulatory requirements needed to be incorporated into the procedure and aligned with how DISA works.",
+            ),
+            (
+                {"speaker": "Paula", "text": "Obviously, for new products, they have to go into Udimed immediately.", "turnIndex": 4},
+                "Paula said that new products have to go into Udimed immediately.",
+            ),
+            (
+                {"speaker": "Mark", "text": "There's different levels and there will be, because you've got Master UDI involved as well, basically what they do is they put the basic UDI in.", "turnIndex": 5},
+                "Mark mentioned that Master UDI and basic UDI were involved.",
+            ),
+        ]
+
+        for evidence, expected in samples:
+            self.assertEqual(public_attributed_sentence_from_evidence_item(evidence), expected)
+
     def test_keyword_soup_labels_are_not_public_discussion_points(self):
         bad_labels = [
             "Med not envoy responsibility like inc",
@@ -209,7 +249,7 @@ class MeetingMinutesMiniLMQualityTest(unittest.TestCase):
 
         enforce_evidence_first_final_contract(output)
 
-        self.assertEqual(output["discussionPoints"], ["Med Envoy's project plan and timelines were reviewed in relation to registration responsibilities."])
+        self.assertEqual(output["discussionPoints"], ["Claire said that Med Envoy's project plan and timelines were reviewed in relation to registration responsibilities."])
         self.assertEqual(len(output["evidenceBackedTopics"]), 1)
         self.assertEqual(output["excludedWeakCandidates"][0]["rejectionReason"], "non_sentence_topic_label")
 
