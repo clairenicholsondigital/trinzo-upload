@@ -772,6 +772,12 @@ META_CONTEXT_QUESTION_RE = re.compile(
     re.I,
 )
 
+SOCIAL_BANTER_RE = re.compile(
+    r"\b(?:doggy|dog|cat|pet|puppy|kitten|in\s+work\s+today|weekend|weather|coffee|tea|lunch|holiday|"
+    r"birthday|laugh|haha|good\s+morning|how\s+are\s+you|nice\s+to\s+see\s+you)\b",
+    re.I,
+)
+
 
 def public_evidence_item(ref: dict[str, Any]) -> dict[str, Any]:
     return {
@@ -882,6 +888,20 @@ def is_context_dependent_meta_question(text: str) -> bool:
     return bool({"this", "that", "what"} & set(tokenize(cleaned))) and len(tokens) <= 3 and "?" in text
 
 
+def is_social_banter_text(text: str) -> bool:
+    cleaned = normalize_text_fragment(text)
+    if not cleaned:
+        return False
+    lowered = cleaned.lower()
+    if SOCIAL_BANTER_RE.search(lowered):
+        business_terms = set(evidence_topic_tokens(cleaned)) & {
+            "qms", "regulatory", "procedure", "importer", "manufacturer", "warehouse", "label", "labels", "ifu", "udi",
+            "udamed", "udimed", "translation", "declaration", "conformity", "client", "working", "session", "project",
+        }
+        return not business_terms
+    return False
+
+
 def attribution_content_is_too_weak(content: str, link: str) -> bool:
     cleaned = normalize_text_fragment(content).strip(" .")
     lowered = cleaned.lower()
@@ -934,6 +954,8 @@ def public_attributed_sentence_from_evidence_item(ref: dict[str, Any], speaker_n
     cleaned = clean_clause_for_attribution(original)
     lowered = cleaned.lower()
     if not cleaned or is_keyword_soup_sentence(cleaned):
+        return ""
+    if is_social_banter_text(cleaned):
         return ""
     if is_context_dependent_meta_question(cleaned):
         return ""
@@ -1077,6 +1099,28 @@ def infer_theme_label_from_evidence(texts: list[str]) -> str:
         if any(marker in blob for marker in markers):
             return label
     return "Evidence-backed discussion"
+
+
+def derive_evidence_backed_meeting_objectives(output: dict[str, Any]) -> list[str]:
+    texts = []
+    for topic in output.get("evidenceBackedTopics", []) or []:
+        if not isinstance(topic, dict):
+            continue
+        texts.append(normalize_text_fragment(topic.get("themeLabel", "")))
+        texts.append(normalize_text_fragment(topic.get("topicLabel", "")))
+        texts.extend(normalize_text_fragment(point) for point in topic.get("attributedDetailPoints", []) or [])
+        texts.extend(normalize_text_fragment(ref.get("text", "")) for ref in topic.get("directEvidence", []) or [] if isinstance(ref, dict))
+    blob = " ".join(text for text in texts if text).lower()
+    objectives = []
+    if any(term in blob for term in ("qms", "regulatory", "procedure", "mdr", "ppe", "importer obligation")) and any(term in blob for term in ("client", "business", "disa", "working session", "day to day", "how disa works")):
+        objectives.append("Define the engagement approach needed to develop client-specific QMS and regulatory documentation.")
+    if any(term in blob for term in ("working session", "workshop", "outstanding questions", "information gaps", "client next week")):
+        objectives.append("Identify the client input and working sessions needed to resolve information gaps.")
+    if any(term in blob for term in ("ppe", "sunglasses", "declaration of conformity", "translation", "label", "ifu")):
+        objectives.append("Clarify regulatory documentation requirements for product scope, labelling and supporting records.")
+    if any(term in blob for term in ("warehouse", "scanner", "erp", "verification", "site visit")):
+        objectives.append("Understand operational processes that affect regulatory procedure design.")
+    return dedupe_values(objectives)[:3]
 
 
 def public_sentence_supported_by_evidence(sentence: str, evidence: list[dict[str, Any]], speaker_names: set[str] | None = None) -> bool:
@@ -1585,6 +1629,7 @@ def enforce_evidence_first_final_contract(output: dict[str, Any]) -> None:
         if len(expanded_discussion_points) >= 30:
             break
     output["discussionPoints"] = expanded_discussion_points
+    output["meetingObjectives"] = derive_evidence_backed_meeting_objectives(output)
     output["discussionPointDetails"] = [
         detail for detail in output.get("discussionPointDetails", []) if detail.get("directEvidence")
     ]

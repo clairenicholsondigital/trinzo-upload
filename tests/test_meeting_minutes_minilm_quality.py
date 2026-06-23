@@ -35,6 +35,8 @@ from meeting_minutes_minilm_experiment import (
     is_context_dependent_meta_question,
     normalize_public_attributed_sentence,
     infer_theme_label_from_evidence,
+    is_social_banter_text,
+    derive_evidence_backed_meeting_objectives,
     enforce_evidence_first_final_contract,
     strip_action_deadline_phrase,
     _sanitize_rewritten_minutes_text,
@@ -173,6 +175,12 @@ class MeetingMinutesMiniLMQualityTest(unittest.TestCase):
         self.assertEqual(public_speaker_name("Jacqui O'Brien"), "Jacqui")
         self.assertEqual(public_speaker_name("Meeting"), "The speaker")
 
+    def test_social_banter_is_not_attributed_as_discussion_detail(self):
+        evidence = {"speaker": "Jacqui", "text": "Oh, you have the doggy in work today again, I see.", "turnIndex": 12}
+
+        self.assertTrue(is_social_banter_text(evidence["text"]))
+        self.assertEqual(public_attributed_sentence_from_evidence_item(evidence), "")
+
     def test_evidence_backed_topics_expand_into_attributed_detail_points(self):
         transcript = """Meeting: Client working session planning
 Mark: The applicable regulatory requirements can go into the procedure, but it only becomes meaningful if we understand how DISA actually works day to day.
@@ -197,6 +205,24 @@ Jacqui: PPE requirements should be included for the sunglasses, and I will confi
         self.assertTrue(any("labels" in point.lower() or "ifu" in point.lower() for point in discussion_points))
         self.assertTrue(any(topic.get("attributedDetailPoints") for topic in output.get("evidenceBackedTopics", [])))
         self.assertTrue(any(topic.get("themeLabel") for topic in output.get("evidenceBackedTopics", [])))
+        self.assertIn("Define the engagement approach needed to develop client-specific QMS and regulatory documentation.", output.get("meetingObjectives", []))
+
+    def test_evidence_backed_objectives_are_derived_from_meeting_themes(self):
+        output = {
+            "evidenceBackedTopics": [
+                {
+                    "themeLabel": "Working session approach",
+                    "topicLabel": "Mark said that the applicable regulatory requirements needed to be incorporated into the procedure and aligned with how DISA works.",
+                    "attributedDetailPoints": ["Jacqui said that we should schedule recurring working sessions with the client next week."],
+                    "directEvidence": [{"text": "QMS regulatory procedure client working sessions DISA business process"}],
+                }
+            ]
+        }
+
+        self.assertEqual(
+            derive_evidence_backed_meeting_objectives(output)[0],
+            "Define the engagement approach needed to develop client-specific QMS and regulatory documentation.",
+        )
 
     def test_theme_label_infers_chatgpt_style_groups_without_generation(self):
         self.assertEqual(infer_theme_label_from_evidence(["recurring working sessions with the client next week"]), "Working session approach")
