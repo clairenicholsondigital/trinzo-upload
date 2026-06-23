@@ -618,7 +618,8 @@ def apply_client_facing_minutes_schema(output: dict[str, Any]) -> None:
                 {
                     "topic": detail.get("topic") or topic_label_from_discussion_point(main_point),
                     "discussionPoints": [main_point] + supporting_context,
-                    "summary": main_point,
+                    "topicLabel": detail.get("topicLabel") or detail.get("topic") or topic_label_from_discussion_point(main_point),
+                    "directEvidence": detail.get("directEvidence", []),
                     "supportingContext": supporting_context,
                     "sourceTurnIndices": detail.get("sourceTurnIndices", []),
                     "evidenceSupportCount": detail.get("evidenceSupportCount", 0),
@@ -670,6 +671,218 @@ def topic_label_from_discussion_point(point: Any) -> str:
     return label[:1].upper() + label[1:] if label else "Meeting discussion"
 
 
+VAGUE_EVIDENCE_PHRASES = (
+    "this",
+    "that",
+    "send a copy",
+    "what you said",
+    "as discussed",
+    "what we discussed",
+    "the thing",
+    "the stuff",
+)
+
+EXPLICIT_ACTION_LANGUAGE_RE = re.compile(
+    r"\b(?:i['’]?ll|i\s+will|i\s+can|can\s+you|could\s+you|we\s+need\s+to|we\s+will|"
+    r"please\s+(?:send|share|confirm|review|follow\s+up|provide|update)|follow\s+up|share|confirm|review|send|"
+    r"provide|update|prepare|draft|schedule|arrange)\b",
+    re.I,
+)
+
+DOCUMENT_MENTION_RE = re.compile(
+    r"\b(?:QMS|quality manual|project plan|task list|timeline|timelines|declaration(?:s)? of conformity|"
+    r"IFU(?:s)?|manufacturer information|technical file|procedure(?:s)?|SOP(?:s)?|evidence pack|documentation pack|"
+    r"risk assessment|test report|minutes|spreadsheet|template|matrix|certificate|certificates|report)\b",
+    re.I,
+)
+
+RESPONSIBILITY_MENTION_RE = re.compile(
+    r"\b(?:responsib(?:le|ility|ilities)|owner|owns|accountable|importer|manufacturer|authorised representative|"
+    r"authorized representative|Med Envoy|client|supplier|vendor|Trinzo|Dita|DITA|team)\b",
+    re.I,
+)
+
+OPEN_QUESTION_RE = re.compile(
+    r"(?:\?|\b(?:clarify|unclear|unknown|not clear|open question|question is|need to know|whether|who owns|who is responsible|"
+    r"where does|what happens|which party|which document)\b)",
+    re.I,
+)
+
+
+def public_evidence_item(ref: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "speaker": normalize_text_fragment(ref.get("speaker", "")),
+        "timestamp": normalize_text_fragment(ref.get("timestamp", "")),
+        "text": normalize_text_fragment(ref.get("text", "")),
+        "turnIndex": ref.get("turnIndex"),
+    }
+
+
+def non_empty_evidence(evidence: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [public_evidence_item(ref) for ref in dedupe_evidence(evidence or []) if normalize_text_fragment(ref.get("text", ""))]
+
+
+def evidence_topic_tokens(text: str, speaker_names: set[str] | None = None) -> list[str]:
+    speaker_tokens = set()
+    for name in speaker_names or set():
+        speaker_tokens.update(tokenize(name))
+    ignored = set(LOW_INFORMATION_TOKENS) | set(GENERIC_STATUS_TERMS) | speaker_tokens | {
+        "this", "that", "there", "thing", "things", "said", "copy", "send", "sent", "discussed",
+        "meeting", "today", "yeah", "okay", "right", "just", "really", "also", "would", "could",
+    }
+    tokens = []
+    for token in canonicalize_tokens(tokenize(text)):
+        if token in ignored or len(token) < 3:
+            continue
+        tokens.append(token)
+    return tokens
+
+
+def evidence_topic_label(evidence: list[dict[str, Any]], speaker_names: set[str] | None = None) -> str:
+    counter = Counter()
+    for ref in evidence:
+        counter.update(evidence_topic_tokens(ref.get("text", ""), speaker_names))
+    if not counter:
+        return "Evidence cluster"
+    terms = [term for term, _count in counter.most_common(6)]
+    label = " ".join(terms).replace("qms", "QMS").replace("udamed", "UDAMED").replace("udi", "UDI")
+    return label[:1].upper() + label[1:] if label else "Evidence cluster"
+
+
+def cluster_has_clear_topic(evidence: list[dict[str, Any]], speaker_names: set[str] | None = None) -> tuple[bool, str]:
+    if len(evidence) < 2:
+        return False, "fewer_than_2_direct_evidence_turns"
+    token_sets = [set(evidence_topic_tokens(ref.get("text", ""), speaker_names)) for ref in evidence if normalize_text_fragment(ref.get("text", ""))]
+    token_sets = [tokens for tokens in token_sets if tokens]
+    if len(token_sets) < 2:
+        return False, "no_clear_topic_tokens"
+    shared = set.intersection(*token_sets[:2]) if len(token_sets) == 2 else set()
+    if len(token_sets) > 2:
+        counts = Counter(token for tokens in token_sets for token in tokens)
+        shared = {token for token, count in counts.items() if count >= 2}
+    if not shared:
+        return False, "top_evidence_turns_do_not_share_clear_topic"
+    combined = " ".join(ref.get("text", "") for ref in evidence).lower()
+    useful_terms = [term for term in shared if term not in {"copy", "said", "discussed", "meeting"}]
+    if not useful_terms and all(any(phrase in normalize_text_fragment(ref.get("text", "")).lower() for phrase in VAGUE_EVIDENCE_PHRASES) for ref in evidence[:2]):
+        return False, "vague_evidence_only"
+    if not useful_terms and any(phrase in combined for phrase in VAGUE_EVIDENCE_PHRASES):
+        return False, "vague_evidence_only"
+    return True, "accepted"
+
+
+def context_window_for_evidence(records: list[dict[str, Any]], evidence: list[dict[str, Any]], window: int = 2) -> list[dict[str, Any]]:
+    context = []
+    seen = set()
+    for ref in evidence:
+        turn_index = ref.get("turnIndex")
+        if not isinstance(turn_index, int):
+            continue
+        for pos in range(max(0, turn_index - window), min(len(records), turn_index + window + 1)):
+            record = records[pos]
+            item = public_evidence_item(build_record_evidence(record, pos))
+            key = (item.get("turnIndex"), item.get("speaker"), item.get("timestamp"), item.get("text"))
+            if key in seen or not item.get("text"):
+                continue
+            seen.add(key)
+            context.append(item)
+    return context
+
+
+def extract_mentions_from_texts(texts: list[str], pattern: re.Pattern[str]) -> list[str]:
+    mentions = []
+    seen = set()
+    for text in texts:
+        for match in pattern.finditer(text or ""):
+            value = normalize_text_fragment(match.group(0))
+            key = normalize_text(value)
+            if value and key not in seen:
+                mentions.append(value)
+                seen.add(key)
+    return mentions
+
+
+def extract_open_questions(texts: list[str]) -> list[str]:
+    questions = []
+    seen = set()
+    for text in texts:
+        cleaned = normalize_text_fragment(text)
+        if not cleaned or not OPEN_QUESTION_RE.search(cleaned):
+            continue
+        if len(tokenize(cleaned)) > 32:
+            continue
+        key = normalized_key(cleaned.rstrip(".!?"))
+        if key and key not in seen:
+            questions.append(cleaned if cleaned.endswith(("?", ".")) else f"{cleaned}.")
+            seen.add(key)
+    return questions
+
+
+def explicit_action_evidence_for_candidate(candidate: dict[str, Any], records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    evidence = non_empty_evidence(candidate.get("evidence", []) or candidate.get("_evidence", []))
+    if evidence:
+        return evidence[:2]
+    action_text = normalize_text_fragment(candidate.get("text", ""))
+    action_tokens = set(evidence_topic_tokens(action_text))
+    best = []
+    for index, record in enumerate(records):
+        text = normalize_text_fragment(record.get("text", ""))
+        if not text or not EXPLICIT_ACTION_LANGUAGE_RE.search(text):
+            continue
+        record_tokens = set(evidence_topic_tokens(text))
+        overlap = len(action_tokens & record_tokens)
+        if overlap >= max(1, min(2, len(action_tokens))):
+            best.append((overlap, build_record_evidence(record, index)))
+    best.sort(key=lambda item: item[0], reverse=True)
+    return non_empty_evidence([item[1] for item in best[:2]])
+
+
+def explicit_action_object(candidate: dict[str, Any], records: list[dict[str, Any]]) -> dict[str, Any] | None:
+    text = sanitize_public_minutes_text(candidate.get("text", ""))
+    evidence = explicit_action_evidence_for_candidate(candidate, records)
+    evidence_text = " ".join(ref.get("text", "") for ref in evidence)
+    if not text or not evidence or not EXPLICIT_ACTION_LANGUAGE_RE.search(evidence_text):
+        return None
+    if all(normalize_text(ref.get("speaker", "")) in {"meeting", "transcript", "recording"} for ref in evidence):
+        return None
+    if not has_concrete_action_commitment(text, candidate.get("owner", ""), candidate.get("deadline", "")):
+        return None
+    if re.search(r"\b(?:stay|stays|stayed|same|on track|green|amber|red|completed|complete|in progress|for now|nothing to deliver)\b", text, flags=re.I) and not re.match(r"^(?:please|can you|could you|review|confirm|send|share|follow up|update|prepare|draft|schedule|arrange)\b", text, flags=re.I):
+        return None
+    combined = f"{text} {evidence_text}".lower()
+    if re.search(r"\bsend\s+(?:a\s+)?copy\b", combined) and len(evidence_topic_tokens(combined)) < 3:
+        return None
+    return {
+        "action": text[:1].upper() + text[1:] + ("" if text.endswith((".", "!", "?")) else "."),
+        "owner": normalize_text_fragment(candidate.get("owner", "")) if normalize_text(candidate.get("owner", "")) not in {"", "owner not specified"} else "Not stated",
+        "deadline": normalize_text_fragment(candidate.get("deadline", "")) or "Not stated",
+        "confidence": round(float(candidate.get("combinedScore", candidate.get("baseScore", 0.0))), 2),
+        "evidence": evidence,
+        "sourceTurnIndices": evidence_source_turn_indices(evidence),
+    }
+
+
+def topic_detail_level(topic: dict[str, Any]) -> str:
+    evidence = topic.get("directEvidence", []) or []
+    context = topic.get("supportingContext", []) or []
+    docs = topic.get("candidateDocumentsMentioned", []) or []
+    responsibilities = topic.get("candidateResponsibilitiesMentioned", []) or []
+    questions = topic.get("candidateOpenQuestions", []) or []
+    actions = topic.get("candidateActionsOnlyIfExplicitlyStated", []) or []
+    evidence_blob = " ".join(item.get("text", "") for item in evidence + context)
+    specific_facts = len(evidence_topic_tokens(evidence_blob)) >= 8
+    has_names = bool(re.search(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\b", evidence_blob))
+    if evidence and not context and not responsibilities:
+        return "evidence_only"
+    if evidence and context and responsibilities and specific_facts and (docs or questions or actions) and has_names:
+        return "detailed"
+    if evidence and context and responsibilities:
+        return "moderate"
+    if evidence:
+        return "basic"
+    return "evidence_only"
+
+
 def detail_budget_for_meeting(intermediate: dict[str, Any], transcript_text: str = "") -> dict[str, int | str]:
     records = [record for record in intermediate.get("records", []) if normalize_text_fragment(record.get("text", ""))]
     transcript_lower = normalize_text_fragment(transcript_text).lower()
@@ -683,8 +896,8 @@ def detail_budget_for_meeting(intermediate: dict[str, Any], transcript_text: str
     if len(records) >= 250 or regulated_or_dense:
         return {"level": "detailed", "discussionPoints": 10, "supportingContext": 3}
     if len(records) >= 90:
-        return {"level": "standard", "discussionPoints": 8, "supportingContext": 2}
-    return {"level": "concise", "discussionPoints": 6, "supportingContext": 1}
+        return {"level": "moderate", "discussionPoints": 8, "supportingContext": 2}
+    return {"level": "basic", "discussionPoints": 6, "supportingContext": 1}
 
 
 def supporting_context_from_evidence(
@@ -743,7 +956,7 @@ def enrich_discussion_point_details(
         point = sanitize_public_minutes_text(detail.get("discussionPoint", ""), speaker_names)
         if not point:
             continue
-        evidence = dedupe_evidence(detail.get("_evidence", []) or detail.get("evidence", []))
+        evidence = non_empty_evidence(detail.get("directEvidence", []) or detail.get("_evidence", []) or detail.get("evidence", []))
         cluster_texts = [
             normalize_text_fragment(value)
             for value in detail.get("cleanedCandidateSentences", []) or []
@@ -758,12 +971,142 @@ def enrich_discussion_point_details(
         )
         enriched = dict(detail)
         enriched["discussionPoint"] = point
-        enriched["topic"] = topic_label_from_discussion_point(point)
+        enriched["topicLabel"] = detail.get("topicLabel") or topic_label_from_discussion_point(point)
+        enriched["topic"] = enriched["topicLabel"]
+        enriched["directEvidence"] = evidence
         enriched["supportingContext"] = supporting_context
         enriched["evidenceSupportCount"] = evidence_support_count({"evidence": evidence})
         enriched["detailLevel"] = detail_level
         enriched_details.append(enriched)
     output["discussionPointDetails"] = enriched_details
+
+
+def build_evidence_backed_topics(
+    output: dict[str, Any],
+    intermediate: dict[str, Any],
+    speaker_names: set[str] | None = None,
+) -> None:
+    records = list(intermediate.get("records", []))
+    topics = []
+    all_documents = []
+    all_responsibilities = []
+    all_questions = []
+    for detail in output.get("discussionPointDetails", []) or []:
+        if not isinstance(detail, dict):
+            continue
+        evidence = non_empty_evidence(detail.get("directEvidence", []) or detail.get("evidence", []) or detail.get("_evidence", []))
+        if not evidence:
+            continue
+        context = context_window_for_evidence(records, evidence, window=2)
+        texts = [item.get("text", "") for item in evidence + context]
+        documents = extract_mentions_from_texts(texts, DOCUMENT_MENTION_RE)
+        responsibilities = extract_mentions_from_texts(texts, RESPONSIBILITY_MENTION_RE)
+        questions = extract_open_questions(texts)
+        topic = {
+            "topicLabel": detail.get("topicLabel") or evidence_topic_label(evidence, speaker_names),
+            "confidence": round(float(detail.get("evidenceScore", 0.0) or 0.0), 2),
+            "sourceTurnIndices": evidence_source_turn_indices(evidence),
+            "directEvidence": evidence,
+            "supportingContext": context,
+            "candidateDocumentsMentioned": documents,
+            "candidateResponsibilitiesMentioned": responsibilities,
+            "candidateOpenQuestions": questions,
+            "candidateActionsOnlyIfExplicitlyStated": [],
+        }
+        topic["detailLevel"] = topic_detail_level(topic)
+        topics.append(topic)
+        all_documents.extend(documents)
+        all_responsibilities.extend(responsibilities)
+        all_questions.extend(questions)
+
+    explicit_actions = []
+    seen_action_keys = set()
+    for action in output.get("explicitActions", []) or []:
+        if not isinstance(action, dict) or not action.get("evidence"):
+            continue
+        key = normalized_key(action.get("action", ""))
+        if not key or key in seen_action_keys:
+            continue
+        explicit_actions.append(action)
+        seen_action_keys.add(key)
+
+    for topic in topics:
+        topic_terms = set(evidence_topic_tokens(" ".join(item.get("text", "") for item in topic.get("directEvidence", []))))
+        for action in explicit_actions:
+            action_terms = set(evidence_topic_tokens(action.get("action", "") + " " + " ".join(ref.get("text", "") for ref in action.get("evidence", []))))
+            if topic_terms and action_terms and len(topic_terms & action_terms) >= 1:
+                topic["candidateActionsOnlyIfExplicitlyStated"].append(action)
+        topic["detailLevel"] = topic_detail_level(topic)
+
+    def unique(values: list[str]) -> list[str]:
+        seen = set()
+        result = []
+        for value in values:
+            key = normalize_text(value)
+            if value and key not in seen:
+                result.append(value)
+                seen.add(key)
+        return result
+
+    output["evidenceBackedTopics"] = topics
+    output["explicitActions"] = explicit_actions
+    output["openQuestions"] = unique(all_questions)
+    output["documentsMentioned"] = unique(all_documents)
+    output["responsibilitiesMentioned"] = unique(all_responsibilities)
+    output["meetingOverview"] = {
+        "title": output.get("meetingTitle", ""),
+        "date": output.get("meetingDate", ""),
+        "location": output.get("meetingLocation", "") or "Online",
+        "topicCount": len(topics),
+        "explicitActionCount": len(explicit_actions),
+        "excludedWeakCandidateCount": len(output.get("excludedWeakCandidates", []) or []),
+        "generator": "MiniLM evidence retrieval only",
+    }
+
+
+def prune_empty_private_evidence(value: Any) -> Any:
+    if isinstance(value, list):
+        return [prune_empty_private_evidence(item) for item in value]
+    if isinstance(value, dict):
+        cleaned = {}
+        for key, item in value.items():
+            if key == "_evidence":
+                if item:
+                    cleaned["evidence"] = prune_empty_private_evidence(item)
+                continue
+            cleaned[key] = prune_empty_private_evidence(item)
+        return cleaned
+    return value
+
+
+def enforce_evidence_first_final_contract(output: dict[str, Any]) -> None:
+    """Keep final MiniLM output auditable: labels/evidence, not unsupported conclusions."""
+    output["decisions"] = []
+    output["decisionDetails"] = []
+    output["meetingActionPoint"] = [item.get("action", "") for item in output.get("explicitActions", [])]
+    output["meetingActionPointOwner"] = [item.get("owner", "Not stated") for item in output.get("explicitActions", [])]
+    output["meetingActionPointDeadline"] = [item.get("deadline", "Not stated") for item in output.get("explicitActions", [])]
+    output["actions"] = [
+        {
+            "meetingActionPoint": item.get("action", ""),
+            "meetingActionPointOwner": item.get("owner", "Not stated"),
+            "meetingActionPointDeadline": item.get("deadline", "Not stated"),
+            "actionConfidence": item.get("confidence", 0.0),
+            "evidence": item.get("evidence", []),
+            "sourceTurnIndices": item.get("sourceTurnIndices", []),
+        }
+        for item in output.get("explicitActions", [])
+        if item.get("action") and item.get("evidence")
+    ]
+    output["discussionPoints"] = [topic.get("topicLabel", "") for topic in output.get("evidenceBackedTopics", []) if topic.get("topicLabel")]
+    output["discussionPointDetails"] = [
+        detail for detail in output.get("discussionPointDetails", []) if detail.get("directEvidence")
+    ]
+    if "internalEvidence" in output:
+        output.pop("internalEvidence", None)
+    pruned = prune_empty_private_evidence(output)
+    output.clear()
+    output.update(pruned)
 
 
 def sanitize_public_decision_text(value: Any, speaker_names: set[str] | None = None) -> str:
@@ -4343,6 +4686,8 @@ def should_accept_decision_candidate(candidate: dict[str, Any]) -> tuple[bool, s
 
 
 def should_accept_cluster_candidate(candidate: dict[str, Any], existing: list[dict[str, Any]]) -> tuple[bool, str]:
+    if candidate.get("rejected"):
+        return False, candidate.get("rejectionReason", "evidence_rejected")
     if candidate["score"] < 0.42:
         return False, "score_below_threshold"
     if candidate.get("coherenceScore", 0.0) < 0.16:
@@ -4439,12 +4784,25 @@ def build_cluster_discussion_candidate(cluster: list[dict[str, Any]], speaker_na
         aggregate.update(candidate.get("token_counts", Counter()))
     raw_keywords = extract_raw_cluster_keywords(aggregate, speaker_names)
     filtered_keywords = extract_cluster_keywords(aggregate, speaker_names)
-    summary = build_discussion_point_from_cluster(summary_cluster, raw_keywords, filtered_keywords)
-    point_text = summary["selectedDiscussionPoint"]
-    point_text = formalize_transcript_discussion_point(point_text, dedupe_evidence([ref for candidate in summary_cluster for ref in candidate.get("evidence", [])])[:4])
-    if point_text and not point_text.endswith("."):
-        point_text += "."
-    evidence = dedupe_evidence([ref for candidate in summary_cluster for ref in candidate.get("evidence", [])])[:4]
+    evidence = non_empty_evidence([ref for candidate in summary_cluster for ref in candidate.get("evidence", [])])[:5]
+    topic_ok, topic_reason = cluster_has_clear_topic(evidence[:4], speaker_names)
+    if not topic_ok:
+        return {
+            "rejected": True,
+            "rejectionReason": topic_reason,
+            "text": evidence_topic_label(evidence, speaker_names),
+            "score": 0.0,
+            "supportCount": len(evidence),
+            "evidence": evidence,
+            "sourceTurnIndices": evidence_source_turn_indices(evidence),
+            "clusterTexts": [candidate["text"] for candidate in summary_cluster],
+            "candidateType": "window" if any(candidate.get("candidateType") == "window" for candidate in summary_cluster) else "parser",
+            "coherenceScore": 0.0,
+            "keywords": filtered_keywords,
+            "selectionMode": "evidence_rejected",
+            "representativeSentence": normalize_text_fragment(evidence[0].get("text", "")) if evidence else "",
+        }
+    point_text = evidence_topic_label(evidence[:4], speaker_names)
     support_count = len({
         (
             normalize_text_fragment(ref.get("speaker", "")),
@@ -4461,60 +4819,34 @@ def build_cluster_discussion_candidate(cluster: list[dict[str, Any]], speaker_na
                     embedding_similarity(left.get("embedding", []), right.get("embedding", [])),
                 )
             )
-    coherence_score = round(sum(pairwise_scores) / len(pairwise_scores), 4) if pairwise_scores else round(min(1.0, semantic_density(point_text)), 4)
+    coherence_score = round(sum(pairwise_scores) / len(pairwise_scores), 4) if pairwise_scores else round(min(1.0, semantic_density(" ".join(ref.get("text", "") for ref in evidence))), 4)
     filler_like = sum(
         1
         for candidate in summary_cluster
         if not has_meaningful_topic_terms(candidate["text"]) and semantic_density(candidate["text"]) < 0.58
     )
     if (len(summary_cluster) > 1 and coherence_score < 0.18) or filler_like > max(1, len(summary_cluster) // 2):
-        fallback_candidates = [
-            candidate
-            for candidate in summary_cluster
-            if is_valid_discussion_point(candidate.get("text", ""), evidence_support_count(candidate))[0]
-        ]
-        if not fallback_candidates:
-            return None
-        fallback = max(
-            fallback_candidates,
-            key=lambda item: (
-                item.get("combinedScore", item.get("baseScore", 0.0)),
-                evidence_support_count(item),
-                semantic_density(item.get("text", "")),
-            ),
-        )
-        point_text = fallback["text"]
-        evidence = dedupe_evidence(fallback.get("evidence", []))[:4]
-        point_text = formalize_transcript_discussion_point(point_text, evidence)
-        support_count = evidence_support_count(fallback)
-        coherence_score = round(min(1.0, semantic_density(point_text)), 4)
-    valid, reason = is_valid_discussion_point(point_text, support_count)
-    if not valid:
-        window_candidates = [
-            candidate for candidate in summary_cluster
-            if candidate.get("candidateType") == "window" and is_valid_discussion_point(candidate.get("text", ""), evidence_support_count(candidate))[0]
-        ]
-        if window_candidates:
-            fallback_window = max(
-                window_candidates,
-                key=lambda item: (
-                    item.get("combinedScore", item.get("baseScore", 0.0)),
-                    item.get("windowCoherence", 0.0),
-                    evidence_support_count(item),
-                ),
-            )
-            point_text = fallback_window["text"]
-            evidence = dedupe_evidence(fallback_window.get("evidence", []))[:4]
-            point_text = formalize_transcript_discussion_point(point_text, evidence)
-            support_count = evidence_support_count(fallback_window)
-            valid, reason = is_valid_discussion_point(point_text, support_count)
-        if not valid:
-            return None
+        return {
+            "rejected": True,
+            "rejectionReason": "weak_cluster_coherence",
+            "text": point_text,
+            "score": 0.0,
+            "supportCount": support_count,
+            "evidence": evidence,
+            "sourceTurnIndices": evidence_source_turn_indices(evidence),
+            "clusterTexts": [candidate["text"] for candidate in summary_cluster],
+            "candidateType": "window" if any(candidate.get("candidateType") == "window" for candidate in summary_cluster) else "parser",
+            "coherenceScore": coherence_score,
+            "keywords": filtered_keywords,
+            "selectionMode": "evidence_rejected",
+            "representativeSentence": normalize_text_fragment(evidence[0].get("text", "")) if evidence else "",
+        }
     avg_semantic = sum(candidate.get("semanticScore", 0.0) for candidate in summary_cluster) / len(summary_cluster)
     avg_combined = sum(candidate.get("combinedScore", candidate.get("baseScore", 0.0)) for candidate in summary_cluster) / len(summary_cluster)
     score = round(avg_combined * 0.55 + avg_semantic * 0.25 + min(0.2, support_count * 0.05), 4)
     return {
         "text": point_text,
+        "topicLabel": point_text,
         "score": score,
         "supportCount": support_count,
         "evidence": evidence,
@@ -4523,9 +4855,9 @@ def build_cluster_discussion_candidate(cluster: list[dict[str, Any]], speaker_na
         "candidateType": "window" if any(candidate.get("candidateType") == "window" for candidate in summary_cluster) else "parser",
         "coherenceScore": coherence_score,
         "keywords": filtered_keywords,
-        "selectionMode": summary.get("selectionMode", ""),
-        "representativeSentence": summary.get("selectedRepresentativeSentence", ""),
-        "rejectionReason": reason,
+        "selectionMode": "evidence_cluster_label",
+        "representativeSentence": normalize_text_fragment(evidence[0].get("text", "")) if evidence else "",
+        "rejectionReason": "",
     }
 
 
@@ -4817,6 +5149,13 @@ def build_minilm_only_output(
             "decisions": [],
             "actions": [],
         },
+        "meetingOverview": {},
+        "evidenceBackedTopics": [],
+        "explicitActions": [],
+        "openQuestions": [],
+        "documentsMentioned": [],
+        "responsibilitiesMentioned": [],
+        "excludedWeakCandidates": [],
         "generator": "minilm_only",
     }
 
@@ -4867,7 +5206,15 @@ def build_minilm_only_output(
         diagnostics["actionCandidates"] = action_candidates[:8]
         diagnostics["rejectedDiscussionCandidates"].extend(window_rejections)
     seen_action_keys = set()
+    seen_explicit_action_keys = set()
     for candidate in action_candidates:
+        candidate["evidence"] = explicit_action_evidence_for_candidate(candidate, list(intermediate.get("records", [])))
+        explicit_action = explicit_action_object(candidate, list(intermediate.get("records", [])))
+        if explicit_action:
+            explicit_key = normalized_key(explicit_action.get("action", ""))
+            if explicit_key and explicit_key not in seen_explicit_action_keys:
+                output["explicitActions"].append(explicit_action)
+                seen_explicit_action_keys.add(explicit_key)
         accepted, reason = should_accept_action_candidate(candidate)
         if include_diagnostics:
             diagnostics["actionSelections"].append(
@@ -4892,19 +5239,21 @@ def build_minilm_only_output(
             continue
         action_text = strip_public_timestamp_tokens(candidate["text"])
         action_text = strip_action_deadline_phrase(action_text, candidate.get("deadline", ""))
+        action_evidence = explicit_action_evidence_for_candidate(candidate, list(intermediate.get("records", [])))
         action = {
             "meetingActionPoint": action_text[:1].upper() + action_text[1:] + ("" if action_text.endswith(".") else "."),
-            "meetingActionPointOwner": candidate["owner"] or "Owner not specified",
-            "meetingActionPointDeadline": candidate["deadline"],
+            "meetingActionPointOwner": candidate["owner"] if normalize_text(candidate.get("owner", "")) not in {"", "owner not specified"} else "Not stated",
+            "meetingActionPointDeadline": candidate["deadline"] or "Not stated",
             "actionConfidence": round(candidate["combinedScore"], 2),
             "relatedMilestone": "minilm_only",
-            "_evidence": [],
+            "evidence": action_evidence,
+            "sourceTurnIndices": evidence_source_turn_indices(action_evidence),
         }
         output["actions"].append(action)
         output["meetingActionPoint"].append(action["meetingActionPoint"])
         output["meetingActionPointOwner"].append(action["meetingActionPointOwner"])
         output["meetingActionPointDeadline"].append(action["meetingActionPointDeadline"])
-        output["internalEvidence"]["actions"].append({"text": action["meetingActionPoint"], "_evidence": []})
+        output["internalEvidence"]["actions"].append({"text": action["meetingActionPoint"], "evidence": action_evidence})
         if include_diagnostics:
             diagnostics["selectedActions"].append(action)
         seen_action_keys.add(key)
@@ -5017,6 +5366,15 @@ def build_minilm_only_output(
             if include_diagnostics:
                 diagnostics["discussionClusters"].append(cluster_diag)
             continue
+        if built.get("rejected"):
+            output["excludedWeakCandidates"].append(
+                {
+                    "topicLabel": built.get("topicLabel") or built.get("text", "Evidence cluster"),
+                    "rejectionReason": built.get("rejectionReason", "evidence_rejected"),
+                    "sourceTurnIndices": built.get("sourceTurnIndices", []),
+                    "directEvidence": built.get("evidence", []),
+                }
+            )
         accepted, reason = should_accept_cluster_candidate(built, selected_cluster_points)
         cluster_diag["accepted"] = accepted
         cluster_diag["reason"] = reason
@@ -5074,18 +5432,19 @@ def build_minilm_only_output(
         output["discussionPointDetails"].append(
             {
                 "discussionPoint": text,
+                "topicLabel": candidate.get("topicLabel", text),
                 "sourceType": "minilm_only_cluster",
-                "selectedReason": "semantic_cluster_summary",
+                "selectedReason": "semantic_evidence_cluster",
                 "cleanedCandidateSentences": candidate["clusterTexts"],
                 "representativeSentence": candidate["representativeSentence"],
                 "sourceTurnIndices": candidate["sourceTurnIndices"],
-                "_evidence": candidate["evidence"],
+                "directEvidence": candidate["evidence"],
                 "evidenceScore": round(candidate["score"], 2),
                 "candidateType": candidate.get("candidateType", "cluster"),
                 "coherenceScore": candidate.get("coherenceScore", 0.0),
             }
         )
-        output["internalEvidence"]["discussionPoints"].append({"text": text, "_evidence": candidate["evidence"]})
+        output["internalEvidence"]["discussionPoints"].append({"text": text, "evidence": candidate["evidence"]})
         if include_diagnostics:
             diagnostics["selectedDiscussionPoints"].append(text)
         if len(output["discussionPoints"]) >= max_discussion_points:
@@ -5202,32 +5561,14 @@ def build_minilm_only_output(
     public_speaker_names = {name.lower() for name in speaker_names} | set(speaker_names)
     sanitize_public_output_items(output, public_speaker_names)
     enrich_discussion_point_details(output, detail_budget, public_speaker_names)
+    build_evidence_backed_topics(output, intermediate, public_speaker_names)
 
-    output["meetingObjectives"] = derive_meeting_objectives(output)
-    if is_webinar_rehearsal:
-        reinforced_objectives = derive_public_meeting_objectives(
-            output["meetingType"],
-            output.get("meetingTitle", ""),
-            output.get("discussionPoints", []),
-            output.get("actions", []),
-        )
-        if reinforced_objectives:
-            output["meetingObjectives"] = reinforced_objectives
-    concise_objectives = [objective for objective in output["meetingObjectives"] if not is_low_quality_objective_text(objective)]
-    output["meetingObjectives"] = concise_objectives
-    if not output["meetingObjectives"]:
-        output["meetingObjectives"] = synthesize_meeting_scope_objective(output)
+    output["meetingObjectives"] = []
 
-    if rewriter and rewriter.available:
-        output, rewrite_diagnostics = rewrite_minutes_output_payload(
-            output,
-            rewriter=rewriter,
-            include_diagnostics=include_diagnostics,
-        )
-        diagnostics["rewriteRuntimeMs"] = rewrite_diagnostics.get("rewriteRuntimeMs", 0.0)
-        if include_diagnostics:
-            diagnostics["rewriteEdits"] = rewrite_diagnostics.get("rewriteEdits", [])
+    if rewriter and rewriter.available and include_diagnostics:
+        diagnostics["rewriteSkipped"] = "MiniLM evidence-first output keeps exact transcript evidence and does not run a final rewrite/summarisation pass."
 
+    enforce_evidence_first_final_contract(output)
     apply_client_facing_minutes_schema(output)
 
     if include_diagnostics:

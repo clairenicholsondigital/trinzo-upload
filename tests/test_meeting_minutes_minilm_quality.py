@@ -25,6 +25,8 @@ from meeting_minutes_minilm_experiment import (
     sanitize_public_output_items,
     should_keep_discussion_candidate,
     should_accept_action_candidate,
+    explicit_action_object,
+    cluster_has_clear_topic,
     strip_action_deadline_phrase,
     _sanitize_rewritten_minutes_text,
     sanitize_public_minutes_text,
@@ -141,7 +143,8 @@ class MeetingMinutesMiniLMQualityTest(unittest.TestCase):
         self.assertEqual(len(output["meetingMinutes"]), 1)
         minute = output["meetingMinutes"][0]
         self.assertEqual(minute["detailLevel"], "detailed")
-        self.assertEqual(minute["summary"], "The importer obligations review covered QMS alignment and documentation gaps.")
+        self.assertNotIn("summary", minute)
+        self.assertEqual(minute["topicLabel"], "The importer obligations review covered QMS alignment and documentation gaps")
         self.assertIn("The quality manual needs to align with the importer responsibilities.", minute["supportingContext"])
         self.assertIn("The documentation pack is missing evidence for some role boundaries.", minute["supportingContext"])
         self.assertEqual(minute["evidenceSupportCount"], 2)
@@ -150,11 +153,42 @@ class MeetingMinutesMiniLMQualityTest(unittest.TestCase):
         short_budget = detail_budget_for_meeting({"records": [{"text": "Short update."}] * 20}, "Short update")
         dense_budget = detail_budget_for_meeting({"records": [{"text": "Detailed update."}] * 260}, "QMS importer obligations review")
 
-        self.assertEqual(short_budget["level"], "concise")
+        self.assertEqual(short_budget["level"], "basic")
         self.assertEqual(short_budget["supportingContext"], 1)
         self.assertEqual(dense_budget["level"], "detailed")
         self.assertGreater(dense_budget["discussionPoints"], short_budget["discussionPoints"])
         self.assertGreater(dense_budget["supportingContext"], short_budget["supportingContext"])
+
+    def test_explicit_action_requires_direct_action_language_and_evidence(self):
+        records = [
+            {"speaker": "Claire", "timestamp": "00:01", "text": "Please send the documentation pack to the client before Friday.", "turnIndex": 0},
+        ]
+        action = explicit_action_object(
+            {"text": "send the documentation pack to the client", "owner": "Claire", "deadline": "Friday", "baseScore": 0.9},
+            records,
+        )
+
+        self.assertIsNotNone(action)
+        self.assertEqual(action["owner"], "Claire")
+        self.assertEqual(action["deadline"], "Friday")
+        self.assertEqual(action["sourceTurnIndices"], [0])
+        self.assertEqual(action["evidence"][0]["text"], "Please send the documentation pack to the client before Friday.")
+
+    def test_vague_send_copy_is_not_promoted_without_object_context(self):
+        records = [
+            {"speaker": "Claire", "timestamp": "00:01", "text": "Please send a copy.", "turnIndex": 0},
+        ]
+
+        self.assertIsNone(explicit_action_object({"text": "send a copy", "owner": "", "deadline": "", "baseScore": 0.9}, records))
+
+    def test_weak_cluster_rejected_without_two_clear_related_evidence_turns(self):
+        ok, reason = cluster_has_clear_topic([
+            {"speaker": "A", "timestamp": "00:01", "text": "Send a copy.", "turnIndex": 0},
+            {"speaker": "B", "timestamp": "00:02", "text": "As discussed, that sounds fine.", "turnIndex": 1},
+        ])
+
+        self.assertFalse(ok)
+        self.assertIn(reason, {"vague_evidence_only", "top_evidence_turns_do_not_share_clear_topic", "no_clear_topic_tokens"})
 
     def test_rejected_original_plan_is_not_a_valid_objective(self):
         self.assertTrue(is_low_quality_objective_text("The original plan was to announce the Spain launch in July"))
@@ -247,8 +281,10 @@ class MeetingMinutesMiniLMQualityTest(unittest.TestCase):
         self.assertIn("sales", discussion_blob + "\n" + action_blob)
         self.assertIn("webinars remain on track", discussion_blob)
         self.assertIn("stage gate and vendor strategy rollout remain in progress", discussion_blob)
-        self.assertIn("confirm ai pipeline dependencies with sales", action_blob)
+        self.assertEqual(action_blob, "")
         self.assertTrue(diagnostics.get("statusReviewWorkstreamRecovery", {}).get("applied"))
+        self.assertIn("evidenceBackedTopics", output)
+        self.assertIn("excludedWeakCandidates", output)
 
         public_blob = "\n".join(output["discussionPoints"] + output["meetingActionPoint"])
         for forbidden in (
