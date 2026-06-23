@@ -778,6 +778,20 @@ SOCIAL_BANTER_RE = re.compile(
     re.I,
 )
 
+FACILITATION_SELF_CHECK_RE = re.compile(
+    r"\b(?:have\s+i\s+addressed|did\s+i\s+address|have\s+we\s+covered|did\s+we\s+cover|"
+    r"correct\s+reflection|right\s+reflection|does\s+that\s+reflect|is\s+that\s+(?:right|correct)|"
+    r"does\s+that\s+make\s+sense|are\s+we\s+aligned)\b",
+    re.I,
+)
+
+CONTEXT_DEPENDENT_OPENING_RE = re.compile(
+    r"^(?:if\s+(?:that|this|it|those|these)\b|that\s+(?:means|would|will|could|should)\b|"
+    r"this\s+(?:means|would|will|could|should)\b|it\s+(?:means|would|will|could|should)\b|"
+    r"otherwise\b|in\s+that\s+case\b)",
+    re.I,
+)
+
 
 def public_evidence_item(ref: dict[str, Any]) -> dict[str, Any]:
     return {
@@ -865,7 +879,10 @@ def sentence_case_clause(text: str) -> str:
     if not cleaned:
         return ""
     first_word = re.match(r"[A-Za-z'’]+", cleaned)
-    if first_word and cleaned[:1].isupper() and first_word.group(0).lower().replace("’", "'") not in {"the", "a", "an", "this", "that", "these", "those", "it", "it's", "there", "as", "we"}:
+    if first_word and cleaned[:1].isupper() and first_word.group(0).lower().replace("’", "'") not in {
+        "the", "a", "an", "this", "that", "these", "those", "it", "it's", "there", "as", "we", "i", "if",
+        "is", "are", "was", "were", "do", "does", "did", "have", "has", "had", "can", "could", "would", "should", "will",
+    }:
         return cleaned
     return cleaned[:1].lower() + cleaned[1:]
 
@@ -902,6 +919,41 @@ def is_social_banter_text(text: str) -> bool:
     return False
 
 
+def is_facilitation_self_check_text(text: str) -> bool:
+    cleaned = normalize_text_fragment(text)
+    if not cleaned:
+        return False
+    return bool(FACILITATION_SELF_CHECK_RE.search(cleaned))
+
+
+def is_context_dependent_opening(text: str) -> bool:
+    cleaned = normalize_text_fragment(text).strip(" .")
+    if not cleaned:
+        return False
+    return bool(CONTEXT_DEPENDENT_OPENING_RE.search(cleaned))
+
+
+def normalize_question_clause_for_whether(text: str) -> str:
+    cleaned = normalize_text_fragment(text).strip(" ?.")
+    if not cleaned:
+        return ""
+    aux_match = re.match(r"^(is|are|was|were|do|does|did|can|could|would|should|will|have|has|had)\s+(.+)$", cleaned, flags=re.I)
+    if aux_match:
+        aux = aux_match.group(1).lower()
+        rest = normalize_text_fragment(aux_match.group(2)).strip(" ?.")
+        if is_facilitation_self_check_text(rest) or is_context_dependent_meta_question(rest):
+            return ""
+        subject_match = re.match(r"((?:the|a|an|these|those|this|that)\s+\S+|\S+)\s+(.+)$", rest, flags=re.I)
+        if subject_match and aux in {"is", "are", "was", "were", "do", "does", "did", "can", "could", "would", "should", "will", "have", "has", "had"}:
+            subject = subject_match.group(1).strip()
+            predicate = subject_match.group(2).strip()
+            if subject.lower() in {"i", "we", "you"} and is_facilitation_self_check_text(cleaned):
+                return ""
+            return f"{subject} {aux} {predicate}".strip()
+    return cleaned
+
+
+
 def attribution_content_is_too_weak(content: str, link: str) -> bool:
     cleaned = normalize_text_fragment(content).strip(" .")
     lowered = cleaned.lower()
@@ -915,6 +967,8 @@ def attribution_content_is_too_weak(content: str, link: str) -> bool:
     if link.lower() == "whether" and re.match(r"^(?:it|this|that)\b", lowered):
         return True
     if is_context_dependent_meta_question(cleaned):
+        return True
+    if is_facilitation_self_check_text(cleaned) or is_context_dependent_opening(cleaned):
         return True
     if minutes_word_count(cleaned) < 5 and semantic_density(cleaned) < 0.62:
         return True
@@ -955,7 +1009,7 @@ def public_attributed_sentence_from_evidence_item(ref: dict[str, Any], speaker_n
     lowered = cleaned.lower()
     if not cleaned or is_keyword_soup_sentence(cleaned):
         return ""
-    if is_social_banter_text(cleaned):
+    if is_social_banter_text(cleaned) or is_facilitation_self_check_text(cleaned) or is_context_dependent_opening(cleaned):
         return ""
     if is_context_dependent_meta_question(cleaned):
         return ""
@@ -969,10 +1023,9 @@ def public_attributed_sentence_from_evidence_item(ref: dict[str, Any], speaker_n
     if "basic udi" in lowered or "master udi" in lowered:
         return normalize_public_attributed_sentence(f"{speaker} mentioned that Master UDI and basic UDI were involved.")
 
-    question_like = "?" in original or re.match(r"^(?:is|are|does|do|can|could|would|whether)\b", lowered)
+    question_like = "?" in original or re.match(r"^(?:is|are|was|were|does|do|did|can|could|would|should|will|have|has|had|whether)\b", lowered)
     if question_like:
-        question_clause = cleaned.rstrip("?")
-        question_clause = re.sub(r"^(?:is|are|does|do|can|could|would)\s+", "", question_clause, flags=re.I).strip()
+        question_clause = normalize_question_clause_for_whether(cleaned)
         if is_context_dependent_meta_question(question_clause):
             return ""
         if question_clause and minutes_word_count(question_clause) <= 28:

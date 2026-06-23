@@ -33,6 +33,8 @@ from meeting_minutes_minilm_experiment import (
     public_attributed_sentence_from_evidence_item,
     public_speaker_name,
     is_context_dependent_meta_question,
+    is_facilitation_self_check_text,
+    is_context_dependent_opening,
     normalize_public_attributed_sentence,
     infer_theme_label_from_evidence,
     is_social_banter_text,
@@ -247,6 +249,34 @@ Jacqui: PPE requirements should be included for the sunglasses, and I will confi
 
         self.assertTrue(is_context_dependent_meta_question(evidence["text"]))
         self.assertEqual(public_attributed_sentence_from_evidence_item(evidence), "")
+
+    def test_facilitation_self_checks_are_not_discussion_points(self):
+        evidence = {
+            "speaker": "Jacqui",
+            "text": "Have I addressed that right and is that the correct reflection of how it works?",
+            "turnIndex": 18,
+        }
+
+        self.assertTrue(is_facilitation_self_check_text(evidence["text"]))
+        self.assertEqual(public_attributed_sentence_from_evidence_item(evidence), "")
+        self.assertEqual(normalize_public_attributed_sentence("Jacqui asked whether Have I addressed that right and is that the correct reflection of how it works."), "")
+
+    def test_context_dependent_conditional_fragments_are_not_standalone_points(self):
+        evidence = {
+            "speaker": "Mark",
+            "text": "If that's not the case, then things will just diverge and it won't be followed.",
+            "turnIndex": 22,
+        }
+
+        self.assertTrue(is_context_dependent_opening(evidence["text"]))
+        self.assertEqual(public_attributed_sentence_from_evidence_item(evidence), "")
+        self.assertEqual(normalize_public_attributed_sentence("Mark said that If that's not the case, then things will just diverge and it won't be followed."), "")
+
+    def test_attributed_question_auxiliaries_are_lowercased_when_valid(self):
+        self.assertEqual(
+            public_attributed_sentence_from_evidence_item({"speaker": "Paula", "text": "Have the labels been reviewed for IFU consistency?"}),
+            "Paula asked whether the labels have been reviewed for IFU consistency.",
+        )
 
     def test_raw_transcript_chunks_become_attributed_discussion_sentences(self):
         samples = [
