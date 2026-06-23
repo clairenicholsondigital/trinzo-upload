@@ -953,6 +953,89 @@ def normalize_question_clause_for_whether(text: str) -> str:
     return cleaned
 
 
+def third_person_clause_for_speaker(text: str, speaker: str) -> str:
+    """Convert obvious first-person transcript phrasing into attributed minutes phrasing."""
+    cleaned = normalize_text_fragment(text).strip(" .")
+    if not cleaned or not speaker or speaker == "The speaker":
+        return cleaned
+    replacements = [
+        (r"\bI\s+(will|shall|would|could|should|can|did|do|checked|check|confirmed|confirm|think|know|understand)\b", rf"{speaker} \1"),
+        (r"\bI'm\b", f"{speaker} is"),
+        (r"\bI\s+am\b", f"{speaker} is"),
+        (r"\bI've\b", f"{speaker} has"),
+        (r"\bI\s+have\b", f"{speaker} has"),
+    ]
+    for pattern, replacement in replacements:
+        cleaned = re.sub(pattern, replacement, cleaned, flags=re.I)
+    past_tense_verbs = {
+        "check": "checked",
+        "confirm": "confirmed",
+        "review": "reviewed",
+        "send": "sent",
+        "share": "shared",
+        "follow up": "followed up",
+        "ask": "asked",
+    }
+    for base, past in past_tense_verbs.items():
+        cleaned = re.sub(rf"\b{re.escape(speaker)}\s+did\s+{re.escape(base)}\b", f"{speaker} {past}", cleaned, flags=re.I)
+    cleaned = re.sub(r"\bthere['’]s\b", "there is", cleaned, flags=re.I)
+    return normalize_text_fragment(cleaned)
+
+
+def first_sentence_or_clause(text: str) -> str:
+    cleaned = normalize_text_fragment(text).strip(" .")
+    if not cleaned:
+        return ""
+    repaired = re.sub(r"(?<=[a-z0-9])\.(?=[A-Z])", ". ", cleaned)
+    parts = [part.strip(" .") for part in re.split(r"(?<=[.!?])\s+", repaired) if part.strip(" .")]
+    return parts[0] if parts else cleaned
+
+
+def minutes_clause_quality_issues(content: str, link: str = "that") -> list[str]:
+    cleaned = normalize_text_fragment(content).strip(" .")
+    lowered = cleaned.lower()
+    issues = []
+    if not cleaned:
+        return ["empty"]
+    words = re.findall(r"[A-Za-zÀ-ÖØ-öø-ÿ'’.-]+", cleaned)
+    if len(words) < 5:
+        issues.append("too_short")
+    first = words[0].lower().replace("’", "'") if words else ""
+    if link.lower() == "whether" and first in {"what", "who", "where", "when", "why", "how"}:
+        issues.append("wh_question_after_whether")
+    if re.search(r"\b(?:somebody|someone|anybody|anything|something|else|other thing|that thing)\b", lowered) and len(evidence_topic_tokens(cleaned)) <= 5:
+        issues.append("unresolved_reference")
+    has_status_signal = bool(re.search(r"\b(?:on track|in progress|blocked|scheduled|complete|completed|delivered|booked|green|amber|red)\b", lowered))
+    if not has_status_signal and re.search(r"\b(?:this|that|it|they|them|those|these)\b", lowered) and len(evidence_topic_tokens(cleaned)) <= 2:
+        issues.append("pronoun_heavy")
+    if re.search(r"\b(?:you|your|you['’]?ve|you['’]?re|you'll)\b", lowered):
+        issues.append("second_person_perspective")
+    if re.search(r"\b(?:i|me|my|mine)\b", lowered):
+        issues.append("first_person_perspective")
+    if re.match(r"^(?:their|our|your)\b", lowered):
+        issues.append("ambiguous_possessive_start")
+    if re.match(r"^[a-z][a-z'’.-]+\s+that\b", cleaned) and first not in {"something", "anything", "everything"}:
+        issues.append("missing_determiner_subject")
+    if re.match(r"^as\s+far\s+as\b", lowered) and re.search(r"\b(?:they|them|their|it|there)\b", lowered):
+        issues.append("context_dependent_intro")
+    if re.match(r"^(?:my|our|your)\s+(?:understanding|interpretation|view|sense)\b", lowered):
+        issues.append("speaker_process_fragment")
+    if re.match(r"^(?:the\s+)?(?:other\s+thing|data\s+side|thing)\b", lowered):
+        issues.append("topic_fragment")
+    if re.search(r"\bwhich\s+is\s+[A-Z][A-Za-z0-9& .'-]{1,40}$", cleaned) and not re.search(r"\b(?:confirmed|identified|clarified|reviewed|discussed|noted|explained|understood)\b", lowered):
+        issues.append("appositive_fragment")
+    if re.search(r"\b(?:to\s+make\s+a\s+\w+|a\s+sustainable\s+for|make\s+sustainable\s+for)\b", lowered):
+        issues.append("ungrammatical_clause")
+    if re.search(r"\b(?:haven't|hasn't|hadn't|isn't|aren't|wasn't|weren't)\s+been\s+\w+ing\s+with\b", lowered) and len(evidence_topic_tokens(cleaned)) <= 6:
+        issues.append("dangling_negative_clause")
+    return issues
+
+
+def is_standalone_minutes_clause(content: str, link: str = "that") -> bool:
+    if attribution_content_is_too_weak(content, link):
+        return False
+    return not minutes_clause_quality_issues(content, link)
+
 
 def attribution_content_is_too_weak(content: str, link: str) -> bool:
     cleaned = normalize_text_fragment(content).strip(" .")
@@ -994,7 +1077,10 @@ def normalize_public_attributed_sentence(text: str) -> str:
     verb = match.group("verb").lower()
     link = match.group("link").lower()
     content = normalize_text_fragment(match.group("content") or "").strip(" .")
+    content = first_sentence_or_clause(third_person_clause_for_speaker(content, speaker))
     if attribution_content_is_too_weak(content, link):
+        return ""
+    if minutes_clause_quality_issues(content, link):
         return ""
     if link == "whether" and verb != "asked":
         verb = "asked"
@@ -1028,7 +1114,7 @@ def public_attributed_sentence_from_evidence_item(ref: dict[str, Any], speaker_n
         question_clause = normalize_question_clause_for_whether(cleaned)
         if is_context_dependent_meta_question(question_clause):
             return ""
-        if question_clause and minutes_word_count(question_clause) <= 28:
+        if question_clause and minutes_word_count(question_clause) <= 28 and is_standalone_minutes_clause(question_clause, "whether"):
             return normalize_public_attributed_sentence(f"{speaker} asked whether {sentence_case_clause(question_clause)}.")
 
     if "project plan" in lowered and "task list" in lowered and "med envoy" in lowered:
@@ -1047,8 +1133,9 @@ def public_attributed_sentence_from_evidence_item(ref: dict[str, Any], speaker_n
     clauses = [clause for clause in clauses if 5 <= minutes_word_count(clause) <= 28 and not RAW_TRANSCRIPT_LEAKAGE_RE.search(clause)] or clauses[:1]
     if not clauses:
         return ""
-    clause = sentence_case_clause(clauses[0])
-    if not clause or is_keyword_soup_sentence(clause):
+    clause = third_person_clause_for_speaker(clauses[0], speaker)
+    clause = sentence_case_clause(clause)
+    if not clause or is_keyword_soup_sentence(clause) or not is_standalone_minutes_clause(clause, "that"):
         return ""
     return normalize_public_attributed_sentence(f"{speaker} said that {clause}.")
 

@@ -35,6 +35,7 @@ from meeting_minutes_minilm_experiment import (
     is_context_dependent_meta_question,
     is_facilitation_self_check_text,
     is_context_dependent_opening,
+    minutes_clause_quality_issues,
     normalize_public_attributed_sentence,
     infer_theme_label_from_evidence,
     is_social_banter_text,
@@ -277,6 +278,37 @@ Jacqui: PPE requirements should be included for the sunglasses, and I will confi
             public_attributed_sentence_from_evidence_item({"speaker": "Paula", "text": "Have the labels been reviewed for IFU consistency?"}),
             "Paula asked whether the labels have been reviewed for IFU consistency.",
         )
+
+    def test_malformed_or_non_standalone_attributions_are_rejected_generically(self):
+        bad_samples = [
+            "Mark said that it's minimal impact to the organization when these are rolled out and also to make a sustainable for you in terms of goes away at some point in the future.",
+            "Mark said that If that's not the case, then things will just diverge and it won't be followed.",
+            "Mark said that You've got a really robust process which Disa understands and is bought into and can use and is lined up to the existing processes.",
+            "Orla said that transaction that goes down and the goods are shipped from Japan via Netherlands where they're fiscally cleared.",
+            "Jacqui said that people think that somebody else is doing it.",
+            "Orla said that their first ports of arrival in Europe is in Netherlands, whereby they're cleared by a third party.",
+            "Jacqui said that my understanding and my interpretation, haven't been working with you guys.",
+            "Jenny said that as far as Europe's concerned, they're responsible for putting the data into Udemed and then the importer and the authorised rep have to check it's there.",
+            "Orla said that the HPRA have sent me a bill.",
+            "Orla asked whether What Trinzo should be doing, or what invoice should be doing.",
+            "Jenny said that the legal manufacturer, which is Data Inc.",
+            "Jenny said that the other thing then was the data side of things.",
+            "Jenny said that You should be shown to be the importer for DITA Inc.",
+        ]
+
+        for sample in bad_samples:
+            self.assertEqual(normalize_public_attributed_sentence(sample), "", sample)
+
+    def test_first_person_content_can_be_converted_when_the_clause_is_otherwise_clear(self):
+        self.assertEqual(
+            public_attributed_sentence_from_evidence_item({"speaker": "Jenny", "text": "I did check on Friday and there's no product information in there yet."}),
+            "Jenny said that Jenny checked on Friday and there is no product information in there yet.",
+        )
+
+    def test_quality_issues_are_generic_not_phrase_specific(self):
+        self.assertIn("wh_question_after_whether", minutes_clause_quality_issues("What the importer should be doing", "whether"))
+        self.assertIn("unresolved_reference", minutes_clause_quality_issues("people think that somebody else is doing it", "that"))
+        self.assertIn("appositive_fragment", minutes_clause_quality_issues("the legal manufacturer, which is Data Inc", "that"))
 
     def test_raw_transcript_chunks_become_attributed_discussion_sentences(self):
         samples = [
