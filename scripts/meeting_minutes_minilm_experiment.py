@@ -837,7 +837,7 @@ PUBLIC_SENTENCE_VERB_RE = re.compile(
     r"\b(?:is|are|was|were|be|been|being|has|have|had|needs?|needed|includes?|included|covers?|covered|"
     r"requires?|required|shows?|showed|identif(?:y|ies|ied)|aligns?|aligned|remains?|remained|creates?|created|"
     r"raises?|raised|discuss(?:es|ed)|review(?:s|ed)|confirm(?:s|ed)|clarif(?:y|ies|ied)|checks?|checked|"
-    r"provid(?:e|es|ed)|missing|relates?|related|should|would|could|can|will)\b",
+    r"provid(?:e|es|ed)|missing|relates?|related|go(?:es|ing)?|went|should|would|could|can|will)\b",
     re.I,
 )
 
@@ -880,7 +880,7 @@ def sentence_case_clause(text: str) -> str:
         return ""
     first_word = re.match(r"[A-Za-z'’]+", cleaned)
     if first_word and cleaned[:1].isupper() and first_word.group(0).lower().replace("’", "'") not in {
-        "the", "a", "an", "this", "that", "these", "those", "it", "it's", "there", "as", "we", "i", "if",
+        "the", "a", "an", "this", "that", "these", "those", "it", "it's", "there", "as", "we", "i", "if", "everything",
         "is", "are", "was", "were", "do", "does", "did", "have", "has", "had", "can", "could", "would", "should", "will",
     }:
         return cleaned
@@ -964,6 +964,12 @@ def third_person_clause_for_speaker(text: str, speaker: str) -> str:
         (r"\bI\s+am\b", f"{speaker} is"),
         (r"\bI've\b", f"{speaker} has"),
         (r"\bI\s+have\b", f"{speaker} has"),
+        (r"\bwe\s+(will|shall|would|could|should|can|did|do|checked|check|confirmed|confirm|think|know|understand|pick|picked|store|stored|ship|shipped|clear|cleared|pack|packed)\b", r"the team \1"),
+        (r"\bwe're\b", "the team is"),
+        (r"\bwe\s+are\b", "the team is"),
+        (r"\bwe've\b", "the team has"),
+        (r"\bwe\s+have\b", "the team has"),
+        (r"\bour\b", "their"),
     ]
     for pattern, replacement in replacements:
         cleaned = re.sub(pattern, replacement, cleaned, flags=re.I)
@@ -979,6 +985,11 @@ def third_person_clause_for_speaker(text: str, speaker: str) -> str:
     for base, past in past_tense_verbs.items():
         cleaned = re.sub(rf"\b{re.escape(speaker)}\s+did\s+{re.escape(base)}\b", f"{speaker} {past}", cleaned, flags=re.I)
     cleaned = re.sub(r"\bthere['’]s\b", "there is", cleaned, flags=re.I)
+    team_past = {"check": "checked", "confirm": "confirmed", "review": "reviewed", "send": "sent", "share": "shared", "ask": "asked"}
+    cleaned = re.sub(r"\bthe team\s+did\s+(check|confirm|review|send|share|ask)\b", lambda m: f"the team {team_past[m.group(1).lower()]}", cleaned, flags=re.I)
+    cleaned = re.sub(r"\bthe team\s+pick\b", "the team picks", cleaned, flags=re.I)
+    cleaned = re.sub(r"\bonce\s+it['’]?s\s+picked,?\s+it\s+goes\b", "once picked, it goes", cleaned, flags=re.I)
+    cleaned = re.sub(r"\bwe,\s+once\s+picked,?\s+it\s+goes\b", "once picked, it goes", cleaned, flags=re.I)
     return normalize_text_fragment(cleaned)
 
 
@@ -991,6 +1002,30 @@ def first_sentence_or_clause(text: str) -> str:
     return parts[0] if parts else cleaned
 
 
+def candidate_detail_clauses(text: str) -> list[str]:
+    cleaned = clean_clause_for_attribution(text)
+    if not cleaned:
+        return []
+    repaired = re.sub(r"(?<=[a-z0-9])\.(?=[A-Z])", ". ", cleaned)
+    pieces: list[str] = []
+    for sentence in re.split(r"(?<=[.!?])\s+", repaired):
+        sentence = sentence.strip(" .")
+        if not sentence:
+            continue
+        for part in re.split(r"\s*(?:;|\band\s+then\b|\band\s+also\b|\band\s+that['’]?s\s+where\b|\bthe\s+other\s+thing\s+is\b)\s*", sentence, flags=re.I):
+            part = normalize_text_fragment(part).strip(" .")
+            if part:
+                pieces.append(part)
+    clauses = []
+    for piece in pieces:
+        if minutes_word_count(piece) > 34:
+            subparts = [part.strip(" .") for part in re.split(r"\s*,\s+(?:but|because|whereby|while)\s+", piece, flags=re.I) if part.strip(" .")]
+            clauses.extend(subparts or [piece])
+        else:
+            clauses.append(piece)
+    return [clause for clause in clauses if 5 <= minutes_word_count(clause) <= 34 and not RAW_TRANSCRIPT_LEAKAGE_RE.search(clause)]
+
+
 def minutes_clause_quality_issues(content: str, link: str = "that") -> list[str]:
     cleaned = normalize_text_fragment(content).strip(" .")
     lowered = cleaned.lower()
@@ -1001,7 +1036,7 @@ def minutes_clause_quality_issues(content: str, link: str = "that") -> list[str]
     if len(words) < 5:
         issues.append("too_short")
     first = words[0].lower().replace("’", "'") if words else ""
-    if link.lower() == "whether" and first in {"what", "who", "where", "when", "why", "how"}:
+    if link.lower() == "whether" and (first in {"what", "who", "where", "when", "why", "how"} or re.search(r"\b(?:what|who|where|when|why|how)\b", lowered)):
         issues.append("wh_question_after_whether")
     if re.search(r"\b(?:somebody|someone|anybody|anything|something|else|other thing|that thing)\b", lowered) and len(evidence_topic_tokens(cleaned)) <= 5:
         issues.append("unresolved_reference")
@@ -1129,8 +1164,7 @@ def public_attributed_sentence_from_evidence_item(ref: dict[str, Any], speaker_n
         return normalize_public_attributed_sentence(f"{speaker} said that new products have to go into {system} immediately.")
 
     # Prefer one concise sentence/clause rather than a pasted paragraph.
-    clauses = [part.strip(" .") for part in re.split(r"(?<=[.!?])\s+|\s*(?:;|,\s+but\s+|,\s+because\s+)\s*", cleaned) if part.strip(" .")]
-    clauses = [clause for clause in clauses if 5 <= minutes_word_count(clause) <= 28 and not RAW_TRANSCRIPT_LEAKAGE_RE.search(clause)] or clauses[:1]
+    clauses = candidate_detail_clauses(original)
     if not clauses:
         return ""
     clause = third_person_clause_for_speaker(clauses[0], speaker)
@@ -1138,6 +1172,48 @@ def public_attributed_sentence_from_evidence_item(ref: dict[str, Any], speaker_n
     if not clause or is_keyword_soup_sentence(clause) or not is_standalone_minutes_clause(clause, "that"):
         return ""
     return normalize_public_attributed_sentence(f"{speaker} said that {clause}.")
+
+
+def public_attributed_sentences_from_evidence_item(
+    ref: dict[str, Any],
+    speaker_names: set[str] | None = None,
+    limit: int = 4,
+) -> list[str]:
+    """Return multiple standalone attributed details from one evidence turn."""
+    primary = public_attributed_sentence_from_evidence_item(ref, speaker_names)
+    speaker = public_speaker_name(ref.get("speaker", ""))
+    original = normalize_text_fragment(ref.get("text", ""))
+    points: list[str] = []
+    seen: set[str] = set()
+    if primary:
+        points.append(primary)
+        seen.add(normalized_key(primary))
+    if not original or is_social_banter_text(original) or is_facilitation_self_check_text(original):
+        return points[:limit]
+    for raw_clause in candidate_detail_clauses(original):
+        lowered = raw_clause.lower()
+        if is_context_dependent_meta_question(raw_clause) or is_context_dependent_opening(raw_clause):
+            continue
+        if "?" in raw_clause or re.match(r"^(?:is|are|was|were|does|do|did|can|could|would|should|will|have|has|had|whether)\b", lowered):
+            question_clause = normalize_question_clause_for_whether(raw_clause)
+            if not question_clause or not is_standalone_minutes_clause(question_clause, "whether"):
+                continue
+            sentence = normalize_public_attributed_sentence(f"{speaker} asked whether {sentence_case_clause(question_clause)}.")
+        else:
+            clause = sentence_case_clause(third_person_clause_for_speaker(raw_clause, speaker))
+            if not clause or is_keyword_soup_sentence(clause) or not is_standalone_minutes_clause(clause, "that"):
+                continue
+            sentence = normalize_public_attributed_sentence(f"{speaker} said that {clause}.")
+        key = normalized_key(sentence)
+        if not sentence or not key or key in seen:
+            continue
+        if any(discussion_similarity(sentence, existing) >= 0.86 or is_redundant_public_point(sentence, existing, speaker_names) for existing in points):
+            continue
+        points.append(sentence)
+        seen.add(key)
+        if len(points) >= limit:
+            break
+    return points[:limit]
 
 
 def public_discussion_sentence_from_text(text: str, speaker_names: set[str] | None = None) -> str:
@@ -1198,25 +1274,35 @@ def attributed_detail_points_from_evidence(
 ) -> list[str]:
     points = []
     seen = set()
-    combined_refs = list(evidence or []) + list(context or [])
+    evidence_refs = list(evidence or [])
+    evidence_speakers = {normalize_text(ref.get("speaker", "")) for ref in evidence_refs if isinstance(ref, dict)}
+    same_speaker_context = [
+        ref for ref in list(context or [])
+        if isinstance(ref, dict) and normalize_text(ref.get("speaker", "")) in evidence_speakers
+    ]
+    other_context = [
+        ref for ref in list(context or [])
+        if isinstance(ref, dict) and normalize_text(ref.get("speaker", "")) not in evidence_speakers
+    ]
+    combined_refs = evidence_refs + same_speaker_context + other_context
     for ref in combined_refs:
         if not isinstance(ref, dict):
             continue
-        sentence = public_attributed_sentence_from_evidence_item(ref, speaker_names)
-        if not sentence:
-            continue
-        support_refs = [ref]
-        if not public_sentence_supported_by_evidence(sentence, support_refs, speaker_names):
-            continue
-        if attribution_content_is_too_weak(re.sub(r"^[A-Z][A-Za-z'’.-]+\s+(?:said|mentioned|noted|explained|confirmed|clarified)\s+that\s+|^[A-Z][A-Za-z'’.-]+\s+asked\s+whether\s+", "", sentence).strip(" ."), "that"):
-            continue
-        key = normalized_key(sentence)
-        if not key or key in seen:
-            continue
-        if any(discussion_similarity(sentence, existing) >= 0.86 for existing in points):
-            continue
-        points.append(sentence)
-        seen.add(key)
+        for sentence in public_attributed_sentences_from_evidence_item(ref, speaker_names, limit=4):
+            support_refs = [ref]
+            if not public_sentence_supported_by_evidence(sentence, support_refs, speaker_names):
+                continue
+            if attribution_content_is_too_weak(re.sub(r"^[A-Z][A-Za-z'’.-]+\s+(?:said|mentioned|noted|explained|confirmed|clarified)\s+that\s+|^[A-Z][A-Za-z'’.-]+\s+asked\s+whether\s+", "", sentence).strip(" ."), "that"):
+                continue
+            key = normalized_key(sentence)
+            if not key or key in seen:
+                continue
+            if any(discussion_similarity(sentence, existing) >= 0.86 or is_redundant_public_point(sentence, existing, speaker_names) for existing in points):
+                continue
+            points.append(sentence)
+            seen.add(key)
+            if len(points) >= limit:
+                break
         if len(points) >= limit:
             break
     return points
@@ -1230,7 +1316,7 @@ def infer_theme_label_from_evidence(texts: list[str]) -> str:
         (("declaration of conformity", "doc", "language", "translation", "translate"), "Declaration of Conformity language requirements"),
         (("label", "labelling", "ifu", "instructions for use", "symbol"), "Labelling and IFU considerations"),
         (("med envoy", "medenvoy", "project plan", "task list"), "Alignment with MedEnvoy"),
-        (("site visit", "warehouse", "automated", "manual", "scanner", "erp"), "Operational process understanding"),
+        (("site visit", "warehouse", "automated", "manual", "scanner", "erp", "order", "bin number", "packing", "packaging", "goods", "poly bag"), "Operational process understanding"),
         (("procedure", "qms", "quality management", "regulatory requirements", "mdr"), "Procedure and QMS alignment"),
         (("question", "gap", "clarification", "outstanding"), "Preparation for client workshops"),
         (("responsib", "importer", "authorised rep", "authorized rep", "manufacturer"), "Roles and responsibilities"),
@@ -1286,6 +1372,22 @@ def public_sentence_supported_by_evidence(sentence: str, evidence: list[dict[str
     if len(sentence_terms) <= 3:
         return len(missing_terms) == 0
     return (len(sentence_terms) - len(missing_terms)) / len(sentence_terms) >= 0.6
+
+
+def is_redundant_public_point(candidate: str, existing: str, speaker_names: set[str] | None = None) -> bool:
+    candidate_key = normalized_key(candidate)
+    existing_key = normalized_key(existing)
+    if not candidate_key or not existing_key:
+        return False
+    if candidate_key in existing_key or existing_key in candidate_key:
+        return True
+    candidate_terms = set(evidence_topic_tokens(candidate, speaker_names))
+    existing_terms = set(evidence_topic_tokens(existing, speaker_names))
+    if not candidate_terms or not existing_terms:
+        return False
+    overlap = len(candidate_terms & existing_terms)
+    smaller = min(len(candidate_terms), len(existing_terms))
+    return smaller >= 3 and overlap / smaller >= 0.86
 
 
 def rejected_candidate_label(evidence: list[dict[str, Any]], speaker_names: set[str] | None = None) -> str:
@@ -1595,11 +1697,12 @@ def build_evidence_backed_topics(
             DOCUMENT_MENTION_RE.search(evidence_text)
             or RESPONSIBILITY_MENTION_RE.search(evidence_text)
             or OPEN_QUESTION_RE.search(evidence_text)
-            or re.search(r"\b(?:MDR|UDI|UDAMED|Udimed|warehouse|automated|manual|reg(?:ulatory)? requirements?)\b", evidence_text, flags=re.I)
+            or re.search(r"\b(?:MDR|UDI|UDAMED|Udimed|warehouse|automated|manual|reg(?:ulatory)? requirements?|order|orders|bin\s+number|packing|packaging|goods|shipment|shipped|clearance|cleared|poly\s+bag)\b", evidence_text, flags=re.I)
         )
         if not signal:
             continue
-        topic_label = public_attributed_sentence_from_evidence_item(evidence[0], speaker_names)
+        attributed_details = attributed_detail_points_from_evidence(evidence, context_window_for_evidence(records, evidence, window=1), speaker_names, limit=5)
+        topic_label = attributed_details[0] if attributed_details else public_attributed_sentence_from_evidence_item(evidence[0], speaker_names)
         if not topic_label or not public_sentence_supported_by_evidence(topic_label, evidence, speaker_names):
             continue
         if any(discussion_similarity(topic_label, existing) >= 0.72 for existing in existing_topic_texts):
@@ -1609,7 +1712,7 @@ def build_evidence_backed_topics(
         documents = extract_mentions_from_texts(texts, DOCUMENT_MENTION_RE)
         responsibilities = extract_mentions_from_texts(texts, RESPONSIBILITY_MENTION_RE)
         questions = extract_open_questions(texts)
-        attributed_details = attributed_detail_points_from_evidence(evidence, context, speaker_names, limit=4)
+        attributed_details = attributed_detail_points_from_evidence(evidence, context, speaker_names, limit=6)
         topic = {
             "themeLabel": infer_theme_label_from_evidence(texts + attributed_details),
             "topicLabel": topic_label,
@@ -1621,7 +1724,7 @@ def build_evidence_backed_topics(
             "candidateResponsibilitiesMentioned": responsibilities,
             "candidateOpenQuestions": questions,
             "candidateActionsOnlyIfExplicitlyStated": [],
-            "attributedDetailPoints": attributed_details,
+            "attributedDetailPoints": [point for point in attributed_details if normalized_key(point) != normalized_key(topic_label)],
         }
         topic["detailLevel"] = topic_detail_level(topic)
         topics.append(topic)
@@ -1629,7 +1732,7 @@ def build_evidence_backed_topics(
         all_documents.extend(documents)
         all_responsibilities.extend(responsibilities)
         all_questions.extend(questions)
-        if len(topics) >= 8:
+        if len(topics) >= 16:
             break
 
     explicit_actions = []
@@ -1744,7 +1847,7 @@ def enforce_evidence_first_final_contract(output: dict[str, Any]) -> None:
             key = normalized_key(safe_detail)
             if not key or key in seen_detail_keys:
                 continue
-            if discussion_similarity(safe_detail, safe_label) >= 0.9:
+            if discussion_similarity(safe_detail, safe_label) >= 0.9 or is_redundant_public_point(safe_detail, safe_label):
                 continue
             safe_details.append(safe_detail)
             seen_detail_keys.add(key)
@@ -1760,7 +1863,7 @@ def enforce_evidence_first_final_contract(output: dict[str, Any]) -> None:
             key = normalized_key(point)
             if not key or key in expanded_keys:
                 continue
-            if any(discussion_similarity(point, existing) >= 0.9 for existing in expanded_discussion_points):
+            if any(discussion_similarity(point, existing) >= 0.9 or is_redundant_public_point(point, existing) for existing in expanded_discussion_points):
                 continue
             expanded_discussion_points.append(point)
             expanded_keys.add(key)

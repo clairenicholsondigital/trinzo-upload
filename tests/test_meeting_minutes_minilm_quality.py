@@ -31,6 +31,8 @@ from meeting_minutes_minilm_experiment import (
     public_discussion_sentence_from_evidence,
     public_sentence_supported_by_evidence,
     public_attributed_sentence_from_evidence_item,
+    public_attributed_sentences_from_evidence_item,
+    attributed_detail_points_from_evidence,
     public_speaker_name,
     is_context_dependent_meta_question,
     is_facilitation_self_check_text,
@@ -309,6 +311,35 @@ Jacqui: PPE requirements should be included for the sunglasses, and I will confi
         self.assertIn("wh_question_after_whether", minutes_clause_quality_issues("What the importer should be doing", "whether"))
         self.assertIn("unresolved_reference", minutes_clause_quality_issues("people think that somebody else is doing it", "that"))
         self.assertIn("appositive_fragment", minutes_clause_quality_issues("the legal manufacturer, which is Data Inc", "that"))
+
+    def test_one_evidence_turn_can_yield_multiple_safe_attributed_details(self):
+        evidence = {
+            "speaker": "Orla",
+            "text": "If there is 10 units in the order, we pick a box. Everything is stored by bin number and then we, once it's picked, it goes to packing and that's where the goods are taken out of the poly bag and inserted into our branded case and packaging.",
+            "turnIndex": 30,
+        }
+
+        points = public_attributed_sentences_from_evidence_item(evidence, limit=5)
+
+        self.assertGreaterEqual(len(points), 3)
+        self.assertTrue(any("10 units" in point for point in points))
+        self.assertTrue(any("bin number" in point.lower() for point in points))
+        self.assertTrue(any("poly bag" in point.lower() or "branded case" in point.lower() for point in points))
+        self.assertTrue(all(point.startswith("Orla said that ") for point in points))
+
+    def test_topic_detail_extraction_uses_multiple_details_from_same_turn(self):
+        evidence = [{
+            "speaker": "Orla",
+            "text": "If there is 10 units in the order, we pick a box. Everything is stored by bin number and then we, once it's picked, it goes to packing and that's where the goods are taken out of the poly bag and inserted into our branded case and packaging.",
+            "turnIndex": 30,
+        }]
+
+        points = attributed_detail_points_from_evidence(evidence, [], limit=5)
+
+        self.assertGreaterEqual(len(points), 3)
+        self.assertTrue(any("10 units" in point for point in points))
+        self.assertTrue(any("bin number" in point.lower() for point in points))
+        self.assertTrue(any("poly bag" in point.lower() or "branded case" in point.lower() for point in points))
 
     def test_raw_transcript_chunks_become_attributed_discussion_sentences(self):
         samples = [
