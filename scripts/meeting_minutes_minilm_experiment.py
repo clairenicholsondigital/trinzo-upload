@@ -593,12 +593,46 @@ def apply_client_facing_minutes_schema(output: dict[str, Any]) -> None:
     output["itemTopic"] = topic
 
     discussion_points = [point for point in output.get("discussionPoints", []) if normalize_text_fragment(point)]
-    output["meetingMinutes"] = [
-        {
-            "topic": topic,
-            "discussionPoints": discussion_points,
-        }
+    discussion_details = [
+        detail
+        for detail in output.get("discussionPointDetails", []) or []
+        if isinstance(detail, dict) and normalize_text_fragment(detail.get("discussionPoint", ""))
     ]
+    if discussion_details:
+        minutes = []
+        seen_minute_keys = set()
+        for detail in discussion_details:
+            main_point = normalize_text_fragment(detail.get("discussionPoint", ""))
+            if not main_point:
+                continue
+            key = normalized_key(main_point)
+            if key in seen_minute_keys:
+                continue
+            seen_minute_keys.add(key)
+            supporting_context = [
+                item
+                for item in detail.get("supportingContext", []) or []
+                if normalize_text_fragment(item)
+            ]
+            minutes.append(
+                {
+                    "topic": detail.get("topic") or topic_label_from_discussion_point(main_point),
+                    "discussionPoints": [main_point] + supporting_context,
+                    "summary": main_point,
+                    "supportingContext": supporting_context,
+                    "sourceTurnIndices": detail.get("sourceTurnIndices", []),
+                    "evidenceSupportCount": detail.get("evidenceSupportCount", 0),
+                    "detailLevel": detail.get("detailLevel", "standard"),
+                }
+            )
+        output["meetingMinutes"] = minutes or [{"topic": topic, "discussionPoints": discussion_points}]
+    else:
+        output["meetingMinutes"] = [
+            {
+                "topic": topic,
+                "discussionPoints": discussion_points,
+            }
+        ]
 
     actions = []
     for action in output.get("actions", []) or []:
@@ -615,6 +649,121 @@ def apply_client_facing_minutes_schema(output: dict[str, Any]) -> None:
             }
         )
     output["nextSteps"] = actions
+
+
+def topic_label_from_discussion_point(point: Any) -> str:
+    cleaned = normalize_text_fragment(point).rstrip(" .")
+    if not cleaned:
+        return "Meeting discussion"
+    first_sentence = re.split(r"(?<=[.!?])\s+", cleaned)[0].strip(" .")
+    if first_sentence and minutes_word_count(first_sentence) <= 12:
+        return first_sentence
+    words = re.findall(r"[A-Za-z0-9][A-Za-z0-9'/-]*", first_sentence or cleaned)
+    stop_words = {
+        "the", "a", "an", "and", "or", "but", "with", "without", "for", "from", "into", "onto",
+        "about", "around", "over", "under", "this", "that", "these", "those", "team", "meeting",
+        "discussed", "reviewed", "remains", "remain", "was", "were", "is", "are", "has", "have",
+    }
+    topic_words = [word for word in words if word.lower() not in stop_words]
+    label_words = topic_words[:8] or words[:8]
+    label = " ".join(label_words).strip(" .")
+    return label[:1].upper() + label[1:] if label else "Meeting discussion"
+
+
+def detail_budget_for_meeting(intermediate: dict[str, Any], transcript_text: str = "") -> dict[str, int | str]:
+    records = [record for record in intermediate.get("records", []) if normalize_text_fragment(record.get("text", ""))]
+    transcript_lower = normalize_text_fragment(transcript_text).lower()
+    regulated_or_dense = any(
+        marker in transcript_lower
+        for marker in (
+            "qms", "quality manual", "importer obligations", "udamed", "udimed", "declarations of conformity",
+            "authorised representative", "authorized representative", "risk", "dependency", "workstream",
+        )
+    )
+    if len(records) >= 250 or regulated_or_dense:
+        return {"level": "detailed", "discussionPoints": 10, "supportingContext": 3}
+    if len(records) >= 90:
+        return {"level": "standard", "discussionPoints": 8, "supportingContext": 2}
+    return {"level": "concise", "discussionPoints": 6, "supportingContext": 1}
+
+
+def supporting_context_from_evidence(
+    main_point: Any,
+    evidence: list[dict[str, Any]],
+    candidate_texts: list[Any],
+    limit: int,
+    speaker_names: set[str] | None = None,
+) -> list[str]:
+    if limit <= 0:
+        return []
+    main = sanitize_public_minutes_text(main_point, speaker_names)
+    main_key = normalized_key(main)
+    candidates: list[str] = []
+    for value in candidate_texts:
+        candidates.append(normalize_text_fragment(value))
+    for ref in evidence or []:
+        if isinstance(ref, dict):
+            candidates.append(normalize_text_fragment(ref.get("text", "")))
+
+    selected: list[str] = []
+    selected_keys: set[str] = set()
+    for candidate in candidates:
+        cleaned = sanitize_public_minutes_text(candidate, speaker_names)
+        if not cleaned:
+            continue
+        if not cleaned.endswith((".", "!", "?")):
+            cleaned += "."
+        key = normalized_key(cleaned)
+        if not key or key == main_key or key in selected_keys:
+            continue
+        if discussion_similarity(cleaned, main) >= 0.86:
+            continue
+        if minutes_word_count(cleaned) < 6 or minutes_word_count(cleaned) > 34:
+            continue
+        if is_public_discussion_leakage(cleaned):
+            continue
+        selected.append(cleaned)
+        selected_keys.add(key)
+        if len(selected) >= limit:
+            break
+    return selected
+
+
+def enrich_discussion_point_details(
+    output: dict[str, Any],
+    detail_budget: dict[str, int | str],
+    speaker_names: set[str] | None = None,
+) -> None:
+    support_limit = int(detail_budget.get("supportingContext", 1) or 1)
+    detail_level = str(detail_budget.get("level", "standard") or "standard")
+    enriched_details = []
+    for detail in output.get("discussionPointDetails", []) or []:
+        if not isinstance(detail, dict):
+            continue
+        point = sanitize_public_minutes_text(detail.get("discussionPoint", ""), speaker_names)
+        if not point:
+            continue
+        evidence = dedupe_evidence(detail.get("_evidence", []) or detail.get("evidence", []))
+        cluster_texts = [
+            normalize_text_fragment(value)
+            for value in detail.get("cleanedCandidateSentences", []) or []
+            if normalize_text_fragment(value)
+        ]
+        supporting_context = supporting_context_from_evidence(
+            point,
+            evidence,
+            cluster_texts,
+            support_limit,
+            speaker_names=speaker_names,
+        )
+        enriched = dict(detail)
+        enriched["discussionPoint"] = point
+        enriched["topic"] = topic_label_from_discussion_point(point)
+        enriched["supportingContext"] = supporting_context
+        enriched["evidenceSupportCount"] = evidence_support_count({"evidence": evidence})
+        enriched["detailLevel"] = detail_level
+        enriched_details.append(enriched)
+    output["discussionPointDetails"] = enriched_details
 
 
 def sanitize_public_decision_text(value: Any, speaker_names: set[str] | None = None) -> str:
@@ -4672,14 +4821,8 @@ def build_minilm_only_output(
     }
 
     transcript_lower = normalize_text_fragment(transcript_text).lower()
-    regulated_long_review = len(intermediate.get("records", [])) >= 250 and any(
-        marker in transcript_lower
-        for marker in (
-            "qms", "quality manual", "importer obligations", "udamed", "udimed", "med envoy",
-            "declarations of conformity", "hpra", "authorised rep", "authorized rep",
-        )
-    )
-    max_discussion_points = 10 if regulated_long_review else 8
+    detail_budget = detail_budget_for_meeting(intermediate, transcript_text)
+    max_discussion_points = int(detail_budget.get("discussionPoints", 8) or 8)
 
     objective_seed_candidates = []
     for record in intermediate.get("records", []):
@@ -5056,7 +5199,9 @@ def build_minilm_only_output(
     output["meetingActionPoint"] = [item["meetingActionPoint"] for item in output["actions"]]
     output["meetingActionPointOwner"] = [item["meetingActionPointOwner"] for item in output["actions"]]
     output["meetingActionPointDeadline"] = [item["meetingActionPointDeadline"] for item in output["actions"]]
-    sanitize_public_output_items(output, {name.lower() for name in speaker_names} | set(speaker_names))
+    public_speaker_names = {name.lower() for name in speaker_names} | set(speaker_names)
+    sanitize_public_output_items(output, public_speaker_names)
+    enrich_discussion_point_details(output, detail_budget, public_speaker_names)
 
     output["meetingObjectives"] = derive_meeting_objectives(output)
     if is_webinar_rehearsal:

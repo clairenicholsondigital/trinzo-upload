@@ -17,6 +17,8 @@ from meeting_minutes_minilm_experiment import (
     has_concrete_action_commitment,
     infer_minilm_meeting_title,
     apply_client_facing_minutes_schema,
+    detail_budget_for_meeting,
+    enrich_discussion_point_details,
     is_safe_deterministic_discussion_fallback,
     is_valid_discussion_point,
     is_low_quality_objective_text,
@@ -110,6 +112,49 @@ class MeetingMinutesMiniLMQualityTest(unittest.TestCase):
             [{"action": "Send the missing-field list.", "owner": "Mina", "deadline": "Today"}],
         )
         self.assertEqual(output["meetingActionPoint"], ["Send the missing-field list."])
+
+    def test_client_facing_schema_uses_evidence_backed_detail_sections_when_available(self):
+        output = {
+            "meetingTitle": "Importer Obligations Review",
+            "meetingLocation": "",
+            "discussionPoints": ["The importer obligations review covered QMS alignment and documentation gaps."],
+            "discussionPointDetails": [
+                {
+                    "discussionPoint": "The importer obligations review covered QMS alignment and documentation gaps.",
+                    "cleanedCandidateSentences": [
+                        "The quality manual needs to align with the importer responsibilities.",
+                        "The documentation pack is missing evidence for some role boundaries.",
+                    ],
+                    "_evidence": [
+                        {"speaker": "A", "timestamp": "00:01", "text": "The quality manual needs to align with the importer responsibilities.", "turnIndex": 1},
+                        {"speaker": "B", "timestamp": "00:02", "text": "The documentation pack is missing evidence for some role boundaries.", "turnIndex": 2},
+                    ],
+                    "sourceTurnIndices": [1, 2],
+                }
+            ],
+            "actions": [],
+        }
+
+        enrich_discussion_point_details(output, {"level": "detailed", "supportingContext": 2})
+        apply_client_facing_minutes_schema(output)
+
+        self.assertEqual(len(output["meetingMinutes"]), 1)
+        minute = output["meetingMinutes"][0]
+        self.assertEqual(minute["detailLevel"], "detailed")
+        self.assertEqual(minute["summary"], "The importer obligations review covered QMS alignment and documentation gaps.")
+        self.assertIn("The quality manual needs to align with the importer responsibilities.", minute["supportingContext"])
+        self.assertIn("The documentation pack is missing evidence for some role boundaries.", minute["supportingContext"])
+        self.assertEqual(minute["evidenceSupportCount"], 2)
+
+    def test_detail_budget_adapts_to_transcript_density_without_content_hardcoding(self):
+        short_budget = detail_budget_for_meeting({"records": [{"text": "Short update."}] * 20}, "Short update")
+        dense_budget = detail_budget_for_meeting({"records": [{"text": "Detailed update."}] * 260}, "QMS importer obligations review")
+
+        self.assertEqual(short_budget["level"], "concise")
+        self.assertEqual(short_budget["supportingContext"], 1)
+        self.assertEqual(dense_budget["level"], "detailed")
+        self.assertGreater(dense_budget["discussionPoints"], short_budget["discussionPoints"])
+        self.assertGreater(dense_budget["supportingContext"], short_budget["supportingContext"])
 
     def test_rejected_original_plan_is_not_a_valid_objective(self):
         self.assertTrue(is_low_quality_objective_text("The original plan was to announce the Spain launch in July"))
