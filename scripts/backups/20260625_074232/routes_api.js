@@ -24,27 +24,15 @@ const {
   getProjectReportDetail,
   saveProjectReportDetail,
   deleteProjectReport,
-  deleteProjectReports,
   listProjectMilestones,
   getProjectMilestoneDetail,
   createProjectMilestone,
   updateProjectMilestone,
   deleteProjectMilestone,
-  deactivateProjectMilestones,
-  getProjectContext,
-  createProjectContextSnapshot,
-  getProjectContextSnapshot,
-  markProjectContextOfficial,
-  cleanupProjectUpdateTestContext,
   listMeetings,
   getMeetingById,
   deleteMeetingById,
   updateMeetingById,
-  saveMeetingMinutesFeedback,
-  listMeetingMinutesFeedback,
-  getMeetingMinutesFeedback,
-  updateMeetingMinutesFeedback,
-  deleteMeetingMinutesFeedback,
   getMeetingStatus,
   claimNextJob,
   markJobCompleted,
@@ -55,7 +43,6 @@ const {
   hasDatabaseConfig,
   getDatabaseConfigError
 } = require('../utils/db');
-const { requireAuth } = require('./auth');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -635,7 +622,7 @@ router.post('/meeting-minutes-final', withTestUpload(async (req, res) => {
       scriptArgs.push('--skip-diagnostics');
     }
 
-    const result = await runPythonTranscriptScript('meeting_minutes_final_colab.py', transcript.text, scriptArgs);
+    const result = await runPythonTranscriptScript('meeting_minutes_minilm_only.py', transcript.text, scriptArgs);
     return res.json(buildTestTranscriptResponse(req, transcript, result));
   } catch (error) {
     return sendTestError(res, error);
@@ -663,154 +650,6 @@ router.post('/meeting-minutes-final/improve', async (req, res) => {
   }
 });
 
-router.post('/meeting-minutes-final/improve-snippet', async (req, res) => {
-  try {
-    const snippet = String(req.body?.snippet || '').trim();
-    const category = String(req.body?.category || 'discussion').trim().toLowerCase() || 'discussion';
-
-    if (snippet.length < 3) {
-      const error = new Error('Select a longer snippet to improve.');
-      error.statusCode = 400;
-      throw error;
-    }
-    if (snippet.length > 4000) {
-      const error = new Error('Selected snippet must be 4,000 characters or fewer.');
-      error.statusCode = 400;
-      throw error;
-    }
-
-    const result = await runPythonJsonScript('meeting_minutes_rewrite_snippet.py', { snippet, category });
-    return res.json({ ok: true, result });
-  } catch (error) {
-    return sendTestError(res, error);
-  }
-});
-
-router.post('/meeting-minutes-final/feedback', async (req, res) => {
-  try {
-    if (!hasDatabaseConfig()) {
-      const error = new Error(getDatabaseConfigError());
-      error.statusCode = 503;
-      throw error;
-    }
-
-    const feedbackType = String(req.body?.feedbackType || 'general').trim().toLowerCase();
-    const allowedTypes = new Set(['general', 'bug', 'idea', 'confusing', 'praise']);
-    const safeFeedbackType = allowedTypes.has(feedbackType) ? feedbackType : 'general';
-    const message = String(req.body?.message || '').trim();
-    const contactName = String(req.body?.contactName || '').trim();
-    const contactEmail = String(req.body?.contactEmail || '').trim();
-    const selectedSnippet = String(req.body?.selectedSnippet || '').trim();
-
-    if (message.length < 10) {
-      const error = new Error('Please add a little more detail before sending feedback.');
-      error.statusCode = 400;
-      throw error;
-    }
-    if (message.length > 2000) {
-      const error = new Error('Feedback must be 2,000 characters or fewer.');
-      error.statusCode = 400;
-      throw error;
-    }
-    if (contactName.length > 120) {
-      const error = new Error('Name must be 120 characters or fewer.');
-      error.statusCode = 400;
-      throw error;
-    }
-    if (contactEmail && (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail) || contactEmail.length > 254)) {
-      const error = new Error('Please enter a valid email address, or leave it blank.');
-      error.statusCode = 400;
-      throw error;
-    }
-    if (selectedSnippet.length > 4000) {
-      const error = new Error('Selected snippet must be 4,000 characters or fewer.');
-      error.statusCode = 400;
-      throw error;
-    }
-
-    const result = await saveMeetingMinutesFeedback({
-      route: '/meeting-minutes-final',
-      feedbackType: safeFeedbackType,
-      message,
-      contactName,
-      contactEmail,
-      userAgent: req.get('user-agent') || '',
-      metadata: {
-        source: 'meeting-minutes-final-feedback-widget',
-        pathname: String(req.body?.route || '/meeting-minutes-final').slice(0, 255),
-        selectedSnippet: selectedSnippet || null
-      }
-    });
-
-    return res.status(201).json({ ok: true, feedbackId: result.feedbackId, createdAt: result.createdAt });
-  } catch (error) {
-    return sendTestError(res, error);
-  }
-});
-
-router.get('/meeting-minutes-final/feedback-submissions', requireAuth, async (req, res) => {
-  try {
-    if (!hasDatabaseConfig()) {
-      const error = new Error(getDatabaseConfigError());
-      error.statusCode = 503;
-      throw error;
-    }
-    const feedback = await listMeetingMinutesFeedback(req.query?.limit || 100);
-    return res.json({ ok: true, feedback });
-  } catch (error) {
-    return sendTestError(res, error);
-  }
-});
-
-router.get('/meeting-minutes-final/feedback-submissions/:feedbackId', requireAuth, async (req, res) => {
-  try {
-    if (!hasDatabaseConfig()) {
-      const error = new Error(getDatabaseConfigError());
-      error.statusCode = 503;
-      throw error;
-    }
-    const feedback = await getMeetingMinutesFeedback(req.params.feedbackId);
-    if (!feedback) return res.status(404).json({ ok: false, error: 'Feedback not found.' });
-    return res.json({ ok: true, feedback });
-  } catch (error) {
-    return sendTestError(res, error);
-  }
-});
-
-router.patch('/meeting-minutes-final/feedback-submissions/:feedbackId', requireAuth, async (req, res) => {
-  try {
-    if (!hasDatabaseConfig()) {
-      const error = new Error(getDatabaseConfigError());
-      error.statusCode = 503;
-      throw error;
-    }
-    const feedback = await updateMeetingMinutesFeedback(req.params.feedbackId, {
-      status: req.body?.status,
-      claireComments: req.body?.claireComments,
-      fixDetails: req.body?.fixDetails
-    });
-    if (!feedback) return res.status(404).json({ ok: false, error: 'Feedback not found.' });
-    return res.json({ ok: true, feedback });
-  } catch (error) {
-    return sendTestError(res, error);
-  }
-});
-
-router.delete('/meeting-minutes-final/feedback-submissions/:feedbackId', requireAuth, async (req, res) => {
-  try {
-    if (!hasDatabaseConfig()) {
-      const error = new Error(getDatabaseConfigError());
-      error.statusCode = 503;
-      throw error;
-    }
-    const deleted = await deleteMeetingMinutesFeedback(req.params.feedbackId);
-    if (!deleted) return res.status(404).json({ ok: false, error: 'Feedback not found.' });
-    return res.json({ ok: true });
-  } catch (error) {
-    return sendTestError(res, error);
-  }
-});
-
 router.post('/project-update-test', withTestUpload(async (req, res) => {
   try {
     const transcript = await readTestTranscript(req);
@@ -821,24 +660,6 @@ router.post('/project-update-test', withTestUpload(async (req, res) => {
     }
     if (truthyFlag(req.query?.skipRewrite) || truthyFlag(req.body?.skipRewrite)) {
       scriptArgs.push('--skip-rewrite');
-    }
-
-    let contextTempDir = null;
-    const projectName = req.body?.projectName || req.query?.projectName || process.env.PROJECT_UPDATE_DEFAULT_PROJECT || 'Project update test';
-    if (hasDatabaseConfig() && !truthyFlag(req.query?.skipContext) && !truthyFlag(req.body?.skipContext)) {
-      try {
-        const projectContext = await getProjectContext(projectName, req.query?.contextLimit || req.body?.contextLimit || 8);
-        contextTempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'trinzo-project-context-'));
-        const contextPath = path.join(contextTempDir, 'context.json');
-        await fs.writeFile(contextPath, JSON.stringify({ context: projectContext }), 'utf8');
-        scriptArgs.push('--context-file', contextPath);
-      } catch (contextError) {
-        scriptArgs.push('--context-file');
-        contextTempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'trinzo-project-context-'));
-        const contextPath = path.join(contextTempDir, 'context-error.json');
-        await fs.writeFile(contextPath, JSON.stringify({ _contextLoadError: contextError.message }), 'utf8');
-        scriptArgs.push(contextPath);
-      }
     }
 
     const projectTimeoutMs = Number(process.env.PROJECT_UPDATE_TIMEOUT_MS || 180000);
@@ -856,17 +677,12 @@ router.post('/project-update-test', withTestUpload(async (req, res) => {
           details: primaryError.details || null
         }
       };
-    } finally {
-      if (contextTempDir) {
-        await fs.rm(contextTempDir, { recursive: true, force: true });
-        contextTempDir = null;
-      }
     }
 
     if (hasDatabaseConfig() && !truthyFlag(req.query?.skipSave) && !truthyFlag(req.body?.skipSave)) {
       try {
         result.projectReportPersistence = await saveProjectUpdateDraft({
-          projectName,
+          projectName: req.body?.projectName || req.query?.projectName || process.env.PROJECT_UPDATE_DEFAULT_PROJECT || 'Project update test',
           periodLabel: req.body?.periodLabel || req.query?.periodLabel || '',
           fileName: transcript.fileName || null,
           sourceType: transcript.source === 'file' ? 'txt' : 'text',
@@ -908,15 +724,6 @@ router.get('/project-update-test/reports/:reportId', async (req, res) => {
       return res.status(404).json({ ok: false, error: 'Project report not found.' });
     }
     return res.json({ ok: true, report });
-  } catch (error) {
-    return sendTestError(res, error);
-  }
-});
-
-router.post('/project-update-test/reports/bulk-delete', async (req, res) => {
-  try {
-    const result = await deleteProjectReports(req.body?.reportIds || []);
-    return res.json({ ok: true, result });
   } catch (error) {
     return sendTestError(res, error);
   }
@@ -976,15 +783,6 @@ router.get('/project-update-test/milestones/:milestoneId', async (req, res) => {
   }
 });
 
-router.post('/project-update-test/milestones/bulk-inactivate', async (req, res) => {
-  try {
-    const result = await deactivateProjectMilestones(req.body?.milestoneIds || []);
-    return res.json({ ok: true, result });
-  } catch (error) {
-    return sendTestError(res, error);
-  }
-});
-
 router.patch('/project-update-test/milestones/:milestoneId', async (req, res) => {
   try {
     const milestone = await updateProjectMilestone(req.params.milestoneId, req.body || {});
@@ -1004,58 +802,6 @@ router.delete('/project-update-test/milestones/:milestoneId', async (req, res) =
       return res.status(404).json({ ok: false, error: 'Project milestone not found.' });
     }
     return res.json({ ok: true, milestone });
-  } catch (error) {
-    return sendTestError(res, error);
-  }
-});
-
-router.get('/project-update-test/context', async (req, res) => {
-  try {
-    const context = await getProjectContext(req.query?.projectName, req.query?.limit);
-    return res.json({ ok: true, context });
-  } catch (error) {
-    return sendTestError(res, error);
-  }
-});
-
-router.post('/project-update-test/context/snapshots', async (req, res) => {
-  try {
-    const snapshot = await createProjectContextSnapshot(req.body?.projectName || req.query?.projectName, req.body || {});
-    return res.status(201).json({ ok: true, snapshot });
-  } catch (error) {
-    return sendTestError(res, error);
-  }
-});
-
-router.get('/project-update-test/context/snapshots/:snapshotId', async (req, res) => {
-  try {
-    const snapshot = await getProjectContextSnapshot(req.params.snapshotId);
-    if (!snapshot) return res.status(404).json({ ok: false, error: 'Project context snapshot not found.' });
-    return res.json({ ok: true, snapshot });
-  } catch (error) {
-    return sendTestError(res, error);
-  }
-});
-
-router.post('/project-update-test/context/mark-official', async (req, res) => {
-  try {
-    const result = await markProjectContextOfficial(
-      req.body?.projectName || req.query?.projectName,
-      req.body?.officialLabel || req.query?.officialLabel || 'Official baseline'
-    );
-    return res.json({ ok: true, result });
-  } catch (error) {
-    return sendTestError(res, error);
-  }
-});
-
-router.post('/project-update-test/context/cleanup-tests', async (req, res) => {
-  try {
-    const result = await cleanupProjectUpdateTestContext(req.body?.projectName || req.query?.projectName, {
-      archiveReports: !truthyFlag(req.body?.keepReports) && !truthyFlag(req.query?.keepReports),
-      deleteNonOfficialSnapshots: !truthyFlag(req.body?.keepSnapshots) && !truthyFlag(req.query?.keepSnapshots)
-    });
-    return res.json({ ok: true, result });
   } catch (error) {
     return sendTestError(res, error);
   }
