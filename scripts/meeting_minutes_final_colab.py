@@ -75,6 +75,9 @@ def parse_colab_minutes(markdown: str) -> dict[str, Any]:
         for row in rows
         if row.get("action")
     ]
+    meeting_action_points = [action["meetingActionPoint"] for action in actions]
+    meeting_action_owners = [action["meetingActionPointOwner"] for action in actions]
+    meeting_action_deadlines = [action["meetingActionPointDeadline"] for action in actions]
     return {
         "meetingTitle": "",
         "meetingDate": "",
@@ -85,6 +88,9 @@ def parse_colab_minutes(markdown: str) -> dict[str, Any]:
         "executiveSummary": " ".join(summary),
         "discussionPoints": discussion + follow_up,
         "decisions": decisions,
+        "meetingActionPoint": meeting_action_points,
+        "meetingActionPointOwner": meeting_action_owners,
+        "meetingActionPointDeadline": meeting_action_deadlines,
         "actions": actions,
         "meetingMinutes": [{"topic": "Discussion", "discussionPoints": discussion + follow_up}],
         "nextSteps": [
