@@ -1,0 +1,51 @@
+{
+  "description": "Real QIP assessment tool case-study interview transcript, covering a site quality assessment/improvement-planning tool, quality-system and quality-culture maturity, radar-chart scoring, site interviews/audit/gemba evidence, previous West/Korza examples, and content follow-up actions.",
+  "coverage": {
+    "sourceFixture": "uploaded DOCX: QIP_Assessment_Tool_Case_Study_Transcript_Nov_2024.docx",
+    "meetingTypes": ["quality_assessment_case_study", "real_client_transcript"],
+    "behaviours": ["real_docx_extraction", "generic_topic_filtering", "conditional_chatter_filtering", "raw_meeting_chatter_filtering", "unsupported_action_abstention"]
+  },
+  "passThreshold": 0.85,
+  "criteria": {
+    "decisions": {
+      "weight": 0.1,
+      "maxCount": 1
+    },
+    "actions": {
+      "weight": 0.25,
+      "minCount": 1,
+      "maxCount": 4,
+      "mustContain": [
+        "Review referenced reports",
+        "Draft content and send it for review"
+      ]
+    },
+    "hallucinations": {
+      "weight": 0.25,
+      "mustNotContain": [
+        "intended structure, running order",
+        "demo, example workflow",
+        "and, the, you, then",
+        "weekend plans",
+        "favourite",
+        "beer",
+        "wine"
+      ]
+    },
+    "abstention": {
+      "weight": 0.4,
+      "decisionMaxCount": 1,
+      "discussionMinCount": 4,
+      "discussionMaxCount": 16,
+      "requiredDiscussionTopics": [
+        ["assessment tool", "improvement plan", "site"],
+        ["quality-system", "quality-culture"],
+        ["radar-chart", "prioritise"],
+        ["interviews", "audit", "gemba"],
+        ["Kappa", "validation"],
+        ["follow-up", "site assessment"]
+      ],
+      "reason": "The transcript is a real case-study interview with useful QIP details and social/chattery tail content; output should preserve the quality-assessment themes while avoiding generic webinar/demo profiles and false actions."
+    }
+  }
+}

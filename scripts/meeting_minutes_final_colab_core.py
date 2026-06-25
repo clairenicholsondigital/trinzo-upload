@@ -656,6 +656,17 @@ def _source_candidates(
     return [item for _, _, _, item in scored[:limit]]
 
 
+def _matched_profile_terms(sources: list[dict[str, Any]], terms: list[str]) -> set[str]:
+    matched: set[str] = set()
+    lowered_terms = [term.lower() for term in terms]
+    for source in sources:
+        lowered = source["text"].lower()
+        for term in lowered_terms:
+            if _term_matches(lowered, term):
+                matched.add(term)
+    return matched
+
+
 def _term_matches(lowered_text: str, lowered_term: str) -> bool:
     if not lowered_term:
         return False
@@ -973,9 +984,14 @@ def _profile_topic_entry(
     buckets: list[str],
     terms: list[str],
     limit: int = 4,
+    min_distinct_terms: int = 1,
+    ignored_distinct_terms: set[str] | None = None,
 ) -> dict[str, Any] | None:
     sources = _source_candidates(report, buckets, terms, limit)
     if not sources:
+        return None
+    meaningful_terms = _matched_profile_terms(sources, terms) - (ignored_distinct_terms or set())
+    if len(meaningful_terms) < min_distinct_terms:
         return None
     return {
         "text": text,
@@ -992,8 +1008,18 @@ def _add_profile_section(
     buckets: list[str],
     terms: list[str],
     limit: int = 4,
+    min_distinct_terms: int = 1,
+    ignored_distinct_terms: set[str] | None = None,
 ) -> None:
-    entry = _profile_topic_entry(text, report, buckets, terms, limit)
+    entry = _profile_topic_entry(
+        text,
+        report,
+        buckets,
+        terms,
+        limit,
+        min_distinct_terms=min_distinct_terms,
+        ignored_distinct_terms=ignored_distinct_terms,
+    )
     if entry is not None:
         topic["sections"].setdefault(section, []).append(entry)
 
@@ -1450,6 +1476,52 @@ ACTION_PROFILES: list[dict[str, Any]] = [
 
 TOPIC_PROFILES: list[dict[str, Any]] = [
     {
+        "topic": "Quality assessment and improvement planning",
+        "summary": "The discussion covered using a quality assessment tool alongside an improvement plan for a site.",
+        "responsibility": "The assessment should help site leadership understand maturity levels and prioritise improvement areas.",
+        "evidence": "Quality-system, quality-culture, scoring and radar-chart outputs are supporting evidence.",
+        "risk": "Without clear assessment outputs, sites may focus on mature areas instead of the gaps that need improvement.",
+        "questions": "Open questions remain around which maturity areas should be prioritised and how the outputs should be used.",
+        "terms": [
+            "assessment tool",
+            "improvement plan",
+            "site",
+            "quality system",
+            "quality culture",
+            "maturity",
+            "1 to 5",
+            "radar chart",
+            "prioritise",
+            "prioritize",
+            "improvement areas",
+        ],
+        "required_any": ["assessment tool", "improvement plan", "quality culture", "radar chart"],
+    },
+    {
+        "topic": "Site assessment evidence and follow-up",
+        "summary": "The discussion covered interviews, audit evidence, gemba observation and follow-up as part of site assessment work.",
+        "responsibility": "Follow-up should connect assessment findings to practical quality-system and quality-culture improvements.",
+        "evidence": "Operator interviews, senior-management input, Kappa, validation, gemba checks and site examples are supporting evidence.",
+        "risk": "If follow-up is weak, assessment findings may not translate into sustained site improvement.",
+        "questions": "Open questions remain around available reports, examples and follow-up evidence from previous site assessments.",
+        "terms": [
+            "interviews",
+            "operators",
+            "senior management",
+            "audit",
+            "kappa",
+            "capa",
+            "validation",
+            "root cause",
+            "gemba",
+            "gamba",
+            "patients",
+            "product",
+            "follow up",
+        ],
+        "required_any": ["operators", "kappa", "capa", "validation", "gemba", "gamba", "follow up"],
+    },
+    {
         "topic": "QMS, procedures and business process alignment",
         "summary": "The discussion covered how procedures and quality-system documents need to align with existing business processes.",
         "responsibility": "Procedures need to reflect both regulatory requirements and the way the business actually operates.",
@@ -1591,6 +1663,7 @@ GENERIC_TOPIC_PROFILES: list[dict[str, Any]] = [
         "risk": "If the structure is unclear, the session may feel rushed or difficult to follow.",
         "questions": "Open questions remain around flow, handovers or what should be covered in each part.",
         "terms": ["agenda", "welcome", "kick off", "flow", "wrap", "session", "webinar", "presentation", "handover", "start"],
+        "required_any": ["agenda", "webinar", "presentation", "handover", "wrap"],
     },
     {
         "topic": "Slides, visuals and supporting material",
@@ -1600,6 +1673,7 @@ GENERIC_TOPIC_PROFILES: list[dict[str, Any]] = [
         "risk": "Dense or mismatched visuals may weaken the message or distract from the presenter.",
         "questions": "Open questions remain around which image, layout or level of slide detail should be used.",
         "terms": ["slide", "slides", "picture", "image", "visual", "photo", "gamma", "content", "text", "screen", "layout"],
+        "required_any": ["slide", "slides", "picture", "image", "visual", "photo", "gamma", "layout"],
     },
     {
         "topic": "Demo, example workflow and practical use case",
@@ -1609,6 +1683,7 @@ GENERIC_TOPIC_PROFILES: list[dict[str, Any]] = [
         "risk": "If the demo is not framed, the audience may miss why it matters or how it connects to the process.",
         "questions": "Open questions remain around what the demo should show and how much context it needs.",
         "terms": ["demo", "demonstration", "example", "workflow", "use case", "complaints", "triage", "tool", "copilot", "email"],
+        "required_any": ["demo", "demonstration", "complaints", "triage", "copilot"],
     },
     {
         "topic": "AI adoption, change management and process improvement",
@@ -1618,6 +1693,7 @@ GENERIC_TOPIC_PROFILES: list[dict[str, Any]] = [
         "risk": "AI work may fail to land if it is built on top of poor workflows or does not solve a real problem.",
         "questions": "Open questions remain around opportunity fit, adoption barriers or how the process should change.",
         "terms": ["ai", "adoption", "process", "improvement", "opportunity", "roadmap", "responsible", "gxp", "workflow", "change", "problem"],
+        "required_any": ["ai", "adoption", "roadmap", "responsible", "gxp"],
     },
     {
         "topic": "Timing, rehearsal and delivery readiness",
@@ -1627,6 +1703,7 @@ GENERIC_TOPIC_PROFILES: list[dict[str, Any]] = [
         "risk": "Without rehearsal, sections may run too long, finish too quickly or lose clarity.",
         "questions": "Open questions remain around section lengths, practice needs or delivery order.",
         "terms": ["practice", "practise", "minutes", "time", "timing", "tomorrow", "presenting", "bullet points", "rehearsal", "ready"],
+        "required_any": ["practice", "practise", "timing", "presenting", "bullet points", "rehearsal"],
     },
     {
         "topic": "Client scope, staffing and follow-up work",
@@ -1636,6 +1713,7 @@ GENERIC_TOPIC_PROFILES: list[dict[str, Any]] = [
         "risk": "Unclear scope or staffing may make follow-up work difficult to plan.",
         "questions": "Open questions remain around client needs, staffing availability or what should happen next.",
         "terms": ["client", "scope", "engineers", "site", "onsite", "on-site", "galway", "gsk", "glaxosmithkline", "next week", "staff"],
+        "required_any": ["client", "scope", "engineers", "onsite", "on-site", "galway", "gsk", "glaxosmithkline", "staff"],
     },
 ]
 
@@ -1646,14 +1724,34 @@ TOPIC_STOPWORDS = {
     "little", "maybe", "mean", "need", "okay", "really", "right", "should", "some", "something",
     "stuff", "that's", "that", "their", "there", "these", "they", "thing", "think", "this",
     "those", "through", "want", "we're", "were", "what", "when", "where", "which", "with",
-    "would", "yeah", "your",
+    "would", "yeah", "your", "and", "are", "back", "but", "can", "come", "different",
+    "fine", "for", "got", "had", "has", "help", "how", "look", "problem", "then",
+    "the", "them", "was", "you", "not", "don't", "all", "follow", "good", "i'll", "it's", "level",
+    "talked", "team", "why", "you're",
     # Speaker names are useful as owners, but they should not become topic
     # labels when compressed transcripts leak labels into classifier buckets.
     "adil", "andrew", "ciara", "colm", "conor", "dan", "david", "ella", "emma",
     "grace", "helen", "ibrahim", "jack", "jacqui", "james", "jen", "joel", "jon",
     "kevin", "leah", "liam", "louise", "mark", "maya", "megan", "miles", "mina",
     "omar", "orla", "owen", "priya", "rachel", "rebecca", "rhea", "ruth", "sara",
-    "tom",
+    "hannah", "martin", "quinn", "steve", "tom",
+}
+
+
+BROAD_GENERIC_PROFILE_TERMS = {
+    "client",
+    "content",
+    "email",
+    "example",
+    "flow",
+    "improvement",
+    "process",
+    "session",
+    "site",
+    "start",
+    "tool",
+    "use case",
+    "workflow",
 }
 
 
@@ -1707,6 +1805,8 @@ def _dynamic_topic_from_remaining_sources(
     terms = _topic_terms_from_sources(candidate_sources)
     if not terms:
         return None
+    if len([term for term in terms if term not in BROAD_GENERIC_PROFILE_TERMS]) < 2:
+        return None
     sources = _source_candidates(
         report,
         ["action", "responsibility", "evidence_request", "question", "risk", "process_flow"],
@@ -1735,7 +1835,7 @@ def _profile_topic(
     report: dict[str, Any],
     generic: bool = False,
 ) -> dict[str, Any] | None:
-    if not generic and profile.get("required_any"):
+    if profile.get("required_any"):
         searchable = " ".join(
             source["text"].lower()
             for source in _all_indexed_sources(report, ["responsibility", "evidence_request", "evidence_artifact", "process_flow", "question", "risk", "action"])
@@ -1745,6 +1845,8 @@ def _profile_topic(
 
     topic = {"topic": profile["topic"], "sections": {}}
     terms = profile["terms"]
+    ignored_terms = BROAD_GENERIC_PROFILE_TERMS if generic else set()
+    min_distinct_terms = int(profile.get("min_distinct_terms", 2 if generic else 1))
     summary_buckets = ["responsibility", "evidence_request", "evidence_artifact", "process_flow", "question", "risk", "action"]
     _add_profile_section(
         topic,
@@ -1753,6 +1855,8 @@ def _profile_topic(
         report,
         summary_buckets,
         terms,
+        min_distinct_terms=min_distinct_terms,
+        ignored_distinct_terms=ignored_terms,
     )
     _add_profile_section(
         topic,
@@ -1761,6 +1865,8 @@ def _profile_topic(
         report,
         ["responsibility", "action"],
         terms,
+        min_distinct_terms=min_distinct_terms,
+        ignored_distinct_terms=ignored_terms,
     )
     _add_profile_section(
         topic,
@@ -1769,6 +1875,8 @@ def _profile_topic(
         report,
         ["evidence_artifact", "evidence_request", "responsibility", "action"],
         terms,
+        min_distinct_terms=min_distinct_terms,
+        ignored_distinct_terms=ignored_terms,
     )
     _add_profile_section(
         topic,
@@ -1778,6 +1886,8 @@ def _profile_topic(
         ["risk", "responsibility", "evidence_request", "action"],
         terms,
         limit=3,
+        min_distinct_terms=min_distinct_terms,
+        ignored_distinct_terms=ignored_terms,
     )
     _add_profile_section(
         topic,
@@ -1787,6 +1897,8 @@ def _profile_topic(
         ["question", "evidence_request", "action"],
         terms,
         limit=3,
+        min_distinct_terms=min_distinct_terms,
+        ignored_distinct_terms=ignored_terms,
     )
     unique_topic_anchors = {
         anchor
@@ -1843,7 +1955,25 @@ def _is_useful_generic_action(text: str) -> bool:
     action_start = re.match(r"^(?:patch|notify|replay|review|confirm|draft|follow up|validate|send|share|update|publish|rerun|call|prepare|pull|request|rewrite|schedule|reschedule|split|separate|monitor|set up|add|remove|reduce|refine|simplify|incorporate|redline|practice|practise|reproduce|capture|tighten|circulate|handle|investigate|verify|work out|figure out|keep)\b", lowered)
     if len(text.split()) < (2 if action_start else 6):
         return False
+    if len(text.split()) > 22 and not re.match(r"^(?:review|draft|confirm|follow up|prepare|share|send|update|schedule|set up)\b", lowered):
+        return False
     if lowered.endswith("?"):
+        return False
+    if re.search(r"\b(?:you know|i was hoping|i'd love to know|if you need|let me know|i don't know|i think|i mean|sort of|kind of)\b", lowered):
+        return False
+    if re.match(r"^(?:yeah|okay|ok|right|then|and|but|so|like)\b", lowered):
+        return False
+    if re.search(r"\bwe\s+can\s+have\s+another\s+call\b|\bweekend\s+plans\b", lowered):
+        return False
+    if re.search(r"\b(?:will|would)\s+think\s+they['’]?re\s+perfect\b|\bwe\s+wrote\s+this\b", lowered):
+        return False
+    if re.search(r"\bwe\s+need\s+to\s+bring\s+somebody\s+in\b", lowered):
+        return False
+    if re.search(r"\b(?:we|you)\s+can\s+prioriti[sz]e\b", lowered):
+        return False
+    if re.search(r"\b(?:it|this|that)\s+(?:helps|allows|gives|provides)\b", lowered) and not action_start:
+        return False
+    if re.search(r"\b(?:i|we)\s+(?:was|were|am|are|have been|haven't been|had been)\b", lowered) and not action_start:
         return False
     weak_fragments = [
         "i don't know",
@@ -1867,6 +1997,7 @@ def _is_useful_generic_action(text: str) -> bool:
         "do not have a project update",
         "information briefing",
         "just awareness",
+        "send it to me",
         "offsite",
         "annual leave",
         "holiday",
@@ -2275,6 +2406,15 @@ def _raw_action_entries(
     stable_status_context = bool(re.search(r"\b(?:nothing\s+so\s+far\s+changes\s+the\s+timelines|timelines\s+are\s+unaffected|timelines\s+remain\s+unaffected|not\s+expected\s+to\s+have\s+(?:any\s+)?major\s+impact\s+on\s+the\s+timelines)\b", transcript, flags=re.IGNORECASE))
     if not explicit_only:
         for turn in _parse_raw_transcript_turns(transcript):
+            turn_lowered = turn["text"].lower()
+            if re.search(r"\bi['’]?ll\b", turn_lowered) and re.search(r"\bdraft\b|\bdraught\b", turn_lowered) and re.search(r"\breview\b|get\s+your\s+eyes\b|send\s+it\b", turn_lowered):
+                candidates.append(
+                    {
+                        "speaker": turn["speaker"],
+                        "owner": turn["speaker"],
+                        "text": "Draft the content and send it for review.",
+                    }
+                )
             for sentence in _split_raw_sentences(turn["text"]):
                 lowered = sentence.lower()
                 gap_action = _status_gap_action(sentence)
@@ -2287,6 +2427,48 @@ def _raw_action_entries(
                 action_prompt = _question_to_action_prompt(sentence)
                 if action_prompt:
                     pending_question = {"speaker": turn["speaker"], "text": action_prompt}
+                    continue
+                if re.search(r"\burge\s+you\s+to\s+do\b.*\btake\s+a\s+look\s+at\b", lowered):
+                    review_parts: list[str] = []
+                    if re.search(r"\breports?\b", lowered):
+                        review_parts.append("reports")
+                    if re.search(r"\bexcel\s+spreadsheets?\b|\bspreadsheets?\b", lowered):
+                        review_parts.append("spreadsheets")
+                    if re.search(r"\bclosing\s+presentation\b|\bpresentation\b", lowered):
+                        review_parts.append("closing presentation")
+                    if review_parts:
+                        candidates.append(
+                            {
+                                "speaker": turn["speaker"],
+                                "owner": "Owner not specified",
+                                "text": f"Review the referenced {', '.join(review_parts[:-1]) + (' and ' if len(review_parts) > 1 else '') + review_parts[-1]}.",
+                            }
+                        )
+                        continue
+                if re.search(r"\btake\s+a\s+look\s+at\b", lowered) and re.search(r"\breports?\b|\bspreadsheets?\b|\bpresentation\b|\bradar\s+charts?\b", lowered):
+                    review_parts = []
+                    if re.search(r"\breports?\b", lowered):
+                        review_parts.append("reports")
+                    if re.search(r"\bexcel\s+spreadsheets?\b|\bspreadsheets?\b", lowered):
+                        review_parts.append("spreadsheets")
+                    if re.search(r"\bpresentation\b|\bradar\s+charts?\b", lowered):
+                        review_parts.append("closing output")
+                    candidates.append(
+                        {
+                            "speaker": turn["speaker"],
+                            "owner": "Owner not specified",
+                            "text": f"Review the referenced {', '.join(review_parts[:-1]) + (' and ' if len(review_parts) > 1 else '') + review_parts[-1]}.",
+                        }
+                    )
+                    continue
+                if re.search(r"\bi['’]?ll\b", lowered) and re.search(r"\bdraft\b|\bdraught\b", lowered) and re.search(r"\breview\b|get\s+your\s+eyes\b|send\s+it\b", lowered):
+                    candidates.append(
+                        {
+                            "speaker": turn["speaker"],
+                            "owner": turn["speaker"],
+                            "text": "Draft the content and send it for review.",
+                        }
+                    )
                     continue
                 if pending_question and re.search(r"\b(?:i['’]?ll|i\s+will|yes|yeah|sure|i\s+can|i\s+can\s+take\s+that|i['’]?ll\s+do\s+that|i['’]?ll\s+look\s+into\s+that)\b", lowered):
                     candidates.append({"speaker": turn["speaker"], "text": pending_question["text"]})
@@ -2356,12 +2538,13 @@ def _raw_action_entries(
             continue
         source = _raw_source(anchor, candidate["speaker"], text, "raw_action")
         recap_context = _infer_recap_action_context(transcript, text, candidate["speaker"]) if candidate.get("deadline_context") else {}
-        owner = recap_context.get("owner", "Owner not specified")
-        if owner == "Owner not specified":
+        owner = candidate.get("owner") or recap_context.get("owner", "Owner not specified")
+        fixed_owner = "owner" in candidate
+        if owner == "Owner not specified" and not fixed_owner:
             owner = _infer_action_owner(original_text, {})
-        if owner == "Owner not specified":
+        if owner == "Owner not specified" and not fixed_owner:
             owner = _infer_action_owner(f"{candidate['speaker']} {original_text}", {})
-        if owner == "Owner not specified" and _looks_like_person_label(candidate["speaker"]):
+        if owner == "Owner not specified" and not fixed_owner and _looks_like_person_label(candidate["speaker"]):
             owner = candidate["speaker"]
         deadline_context = candidate.get("deadline_context") or ""
         deadline = recap_context.get("deadline", "Not specified")
@@ -2486,6 +2669,10 @@ def _is_decision_sentence(text: str) -> bool:
     if re.search(r"\b(?:maybe|may be|might|could|it may be|probably)\b", lowered):
         return False
     if re.search(r"\b(?:run through the agenda|like and subscribe|take your top off|talk french|vape)\b", lowered):
+        return False
+    if re.search(r"\b(?:for the most part|i didn['’]?t talk about|self[- ]assess|wake up call|you know)\b", lowered):
+        return False
+    if re.match(r"^(?:make|keep|use)\s+(?:it|this|that)\b", lowered):
         return False
     if re.search(r"\bonly\s+if\s+we\s+accept\b", lowered):
         return False
@@ -2691,10 +2878,12 @@ def _apply_raw_transcript_fallback(topic_groups: dict[str, Any], report: dict[st
         for anchor in entry["source_anchors"]
     }
     existing_discussion_count = sum(
-        len(topic["sections"].get("Discussion points", []))
+        sum(len(entries) for entries in topic["sections"].values())
         for topic in topic_groups["topics"]
     )
     raw_limit = 14 if len(topic_groups["topics"]) < 2 else max(0, 12 - existing_discussion_count)
+    if len(topic_groups["topics"]) >= 2 and existing_discussion_count >= 8:
+        raw_limit = 0
     if re.search(r"\bactions?\s+before\s+next\s+week\s*:", transcript, flags=re.IGNORECASE):
         raw_limit = max(raw_limit, 22)
     if raw_limit and not _is_explicitly_low_substance_transcript(transcript):
@@ -2809,7 +2998,12 @@ def _polished_minutes_topic_groups(report: dict[str, Any], transcript: str | Non
             topics.append(topic)
             seen_topic_anchors.update(unique_topic_anchors)
 
-    dynamic_topic = _dynamic_topic_from_remaining_sources(report, seen_topic_anchors) if len(topics) < 3 else None
+    topic_section_count = sum(sum(len(entries) for entries in topic["sections"].values()) for topic in topics)
+    dynamic_topic = (
+        _dynamic_topic_from_remaining_sources(report, seen_topic_anchors)
+        if len(topics) < 2 or topic_section_count < 6
+        else None
+    )
     if dynamic_topic is not None:
         topics.append(dynamic_topic)
 

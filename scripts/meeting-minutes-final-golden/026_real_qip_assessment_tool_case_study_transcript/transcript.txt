@@ -1,0 +1,177 @@
+Transcript
+
+November 8, 2024, 12:00PM
+
+Hannah Quinn   0:03So for the.
+
+Steve Martin   0:03We need to and the the commas in the wrong place, or it's a combination of an assessment tool and an improvement plan for a site. So it's really two things.
+
+Hannah Quinn   0:13Assessment and an improvement.
+
+Steve Martin   0:15Yeah, for a site in the areas of quality system, quality culture operating. So yeah, that's that sounds about right. Qips performed a determinatory level of a specific site created from 1:00 to 5:00, allowing leadership team to understand what areas need improvement and should be incorporated into the site's improvements, right. Yeah, exactly. I remember sort of putting that together. Yep.
+
+Hannah Quinn   0:16OK.Mm hmm.Yeah.OK, perfect.
+
+Steve Martin   0:38Benefits. Yeah, it is objective. It's a quantitative tool. Yeah, which is really helpful.ID of problems areas. Yep.Good source of input? Yeah. And the other one I'd put is benefits is it helps a site.Prioritise areas to improve because you can't improve everything at once, right? So this will really help you provides a you know, a visual.That is easy to understand. That will help a site prioritise where they want to focus their improvement activities.Looking at this radar chart here, yeah, there's obviously there's that one. And then there's the other, which is the quality culture one.
+
+Hannah Quinn   1:24Yeah.Mm hmm.Yeah. Yeah, let me see.There's a different tool altogether. Do you mean or? No, it's part of this.
+
+Steve Martin   1:49No, it's it. There's two. There's two. Yeah, there's two Excel spreadsheets and the output from those answering those questions, you get a rating from 1:00 to 5:00, and then the output would be what you see there. That kind of radar chart and say supplier developments of five. You'd have a point there say.
+
+Hannah Quinn   2:01Mm hmm.
+
+Steve Martin   2:13I don't know.Problem handling is A1. You'd have a point there and then you connect the dots and you can see which of the five, which are the ones which are in between two or three.And so if you were to get this exercise done, you saw a bunch of fives, you'd say, OK, we're in good shape there. We don't need to worry about those. We're going to worry about the ones that are maybe 123.
+
+Hannah Quinn   2:30OK.
+
+Steve Martin   2:36And we can prioritise improvement in those areas rather than you know focusing on a four or five say and there's two radar charts, there's one associated with.
+
+Hannah Quinn   2:44Yeah.
+
+Steve Martin   2:49Culture and there's one associated with, you know, quality system maturity.
+
+Hannah Quinn   2:55OK, perfect. And then like, would you use this on a lot of different projects like why, why, why would you whip this out over something else?
+
+Steve Martin   3:03Yeah. So, sure. So we it's a great tool. So a a lot of times culture is a forgotten part of a site's focus. They focus on building a very mature quality system. Let me give you a specific example. We did a bunch of these at West, right and they had a good quality system for the most part.
+
+Hannah Quinn   3:18Mm hmm.
+
+Steve Martin   3:30Was pretty mature. It was compliant with all the regulations.But they had forgotten the culture part of it, so they were having a hard time winning hearts and minds of operators, you know, so there was no connection from the operators to the product to the patient. And so this tends to this tool really is a way to bring that up, highlight it and then you get.
+
+Hannah Quinn   3:49Yeah.
+
+Steve Martin   3:59Companies that will focus in that area. Good example. Again W they saw this and since we did them.They have a quality week. They really focus on patient and products and they get all of that information out to the operators because then it it it gives buy in for everybody at a particular site that we're not just making, I don't know coffee mug, right, or plastic cup, we're making something that can help save lives, sustain lives or the opposite. If there's a problem, we could, you know, potentially unfortunately, cause a real safety issue.
+
+Hannah Quinn   4:35Yeah.
+
+Steve Martin   4:35With with patients.So it's to create that connection, but at the same time, we're also assessing the quality system. A good example I was down in Korza earlier this year.It was may, I guess, and we found significant deficiencies not only in the cultural part of it, but also the quality system. They were poor in several areas there. And so it's really helped Koza say, OK, we've got to make our Kappa procedure or our validation procedure process.Much more robust, much more compliant, much more compliant with the current expectations of what a good validation or a capital looks like, but at the same time too, there are also gaps in the culture, so it's really that two pronged thing frankly, we tend to find more issues in the cultural part of it and I think more of some of well it depends on the company.Kor's the immature quality system, immature quality culture. They're sort of an exception West and some of the others we've done having.More mature quality system, less mature quality culture. So it gives us an opportunity to try to raise the bar with them and it it's a it's a obviously it's a it's a weak, it's pretty intense right a week long thing we've got 2 Excel spreadsheets. There's about 100 questions between the two they're available and you know they go into depth for example in capital.
+
+Hannah Quinn   5:52And.
+
+Steve Martin   6:07And they'll say, OK, do you have Kappa metrics review some kappas? Are they sufficient? Do they have a backlog of kappas?You know, and then we'll grade depending on what the question is and we'll give them a grade and then we'll come up with OK, CAP is in pretty good shape or not validation's not that type of thing. So really it gets down to a level of detail granular level of detail so that you can really look at each one of these areas.And really understand where they're at from a maturity perspective and also not just, you know, you can write the best procedure in the world, but if you're not, if you don't have the culture to follow it.To make sure you're compliant with it, then you got a problem. I've been in several sites. Good example.Korza they had pretty good procedures in certain areas, say validation, but they weren't doing them appropriately. Same thing with Kappa. They had just rewritten the Kappa procedure. It looked pretty good, but then when you looked at the actual performance and the metrics they had late kappas, they had poor root cause analysis, so they were not executing the procedure and the process.To the appropriate standard and level.
+
+Hannah Quinn   7:23And like, did they know?
+
+Steve Martin   7:23Like, did they know?
+
+Hannah Quinn   7:27What the problem was I like. Did they understand? Oh, I think. I think it's our culture, but we don't know or nothing.
+
+Steve Martin   7:27What the problem was and it is.No, and see that this is it, right? You just hit on a really important point. A lot of times they will think they're perfect.Everything's great in Koris's case, we wrote this. We just wrote this great procedure. It's fantastic. And then you look at how they're executing, it's poor. So 2, two things it brings to light, things that they typically don't realise and it educates them. In most cases, the education comes from, you know, you really need to make a better, you need to have.A connection with the product with the patient, so more posters, more video training, more town halls with actually patients. There are videos about the products that you're making there. So make that connection and a lot of people just don't understand that a lot of senior management, they just want to go into a plant, produce product, produce it quick, get it in korza was a good example.They keep bringing in new products and the culture.Just didn't keep up with it. They went from, say, making ten products to making 100 right and hired a bunch of people in, in a lot of cases, these operators, they don't have experience in the medical device field. When I went to West, couple of the sites, they were literally hiring people from McDonald's, bringing them in a week worth of intense training, which you know how that goes, you forget probably 70% of it. And then they're out on the production line.
+
+Hannah Quinn   8:39Oh.
+
+Steve Martin   9:00So.
+
+Hannah Quinn   9:01They're not connected to the.
+
+Steve Martin   9:02Not good. So it identifies problems they either don't know they have or they don't have the expertise in house to really determine that they need help. Right? And the other good thing is it's an independent view because a lot of these times these plans are going to the quality people may know what they want, what they need. But the head of the site or the operations folks.
+
+Hannah Quinn   9:16Yeah.
+
+Steve Martin   9:30They, you know, they sort of discount that.But when you come in as an independent person and provided they've been told, you know, you need to listen to this person like at West, they were when we brought these things up, they all nodded their head and the people that didn't, some of them had to leave because they were, you know, change a verse, I'd say. But it really brings things up independently. And we try to do it, you know, non emotionally and.Just give them. We frame it as this is an improved.Movement exercise here. Right, let's try to help you come up with your strategic plan of improvement for the next 12 to 24 months. And this is really a good tool to do that.
+
+Hannah Quinn   10:18And what does the site look like? Like what? What are the alarm bells for them to be like? Hey, we need to bring somebody in. Is it like kappas?
+
+Steve Martin   10:26Yeah, sure. Yeah, sure. W the alarm bells were they got a new leader of quality. He wanted to kick the tyres and he was just, you know, worried. Some other sites may be having compliance problems.They probably would have had a bad inspection. FDA notified body. So they bring us in or that hasn't even happened. But people have a funny feeling that, you know.We've grown like in Corrs case rapidly. Let's kick the tyres and let's see where we're at from a quality system. Maturity is the quality system as it's designed able. Is it robust enough to hold up with this increased volume, increased number of products, increased people and then the other part of it is, hey, we've got a lot of new people here or do they get what we want here from a a company perspective, right. Do they get the culture?
+
+Hannah Quinn   11:14Mm hmm.
+
+Steve Martin   11:23And so there's a lot of different reasons.The best times are like with West and Coors, and when there's not a burning platform, but they really sense the need to improve or they might need help. They're like, hey, we're trying to develop our quality strategy for the next, you know, zero to five years. This is a tool that can help do that. At Korza we had some people there that had used this tool before because we used to work with them and they were like, hey, yeah, if we're trying to gauge where.We're at, we're at. We should have trinzo come in and and run this because I was running this back a long time ago with Mallinckrodt and then Mallinckrodt got bought by Tyco Healthcare. That's where Liam was. So we've been running this thing for a long time and seen the benefits. I'm a real proponent of it. I love doing them because it's, it's a it's and it's not just an audit. We actually run round tables with randomly selected operators.To try to get their view of things right, so you're getting management's view and then you're also getting.The operators view and it's amazing how sometimes senior management thinks we're doing a great job and then the operators are like we don't know anything about the product. We forgot our training. We are very unhappy because we don't feel supported. I mean that's what happened in a couple of the sites at West and it's like.We had people sitting in and they were there. They couldn't believe what they were hearing. It's amazing what you can find when you, you know, try to find out what the real deal is.
+
+Hannah Quinn   13:00Yeah. If you look under the hood, yeah.
+
+Steve Martin   13:02It's funny, that's yeah, 100%.
+
+Hannah Quinn   13:05Yeah.So it's trinzo going in, conducting interviews and things like that, really talking to people, and then trinzo do the assessment. So like we'd be filling it out. We'd just be speaking to them and maybe getting their feedback about what's what.
+
+Steve Martin   13:21And that's key to get their feedback. So what we would it's kind of split up. We have interviews you know would say operators, senior management, HR, we're trying to get all of that information put together in everybody's view and at the same time, we're running an audit, right. And we ask for data show me your Kappa key performance indicators, how many kappas you have greater than 60 days, 90 days, what's your goal?Show me your validation master plan.Is it up to date? Let's review a few of the kappas and make sure the root causes are done well, let's look at your validations to make sure they're done properly so there's an audit part of it, and then there's that gathering of information from the personnel at the site as well as we're looking around. First thing I go in when I look around, are there posters on the wall about the products, about the patients.Do can you tell right away you're in a medical device site?Right. Or just, you know, is it planned? And you could be making anything in there?Are people proud of what they are doing? Is do the operators know what to do and why? Right? It's not just what, but it's the why that gets you. Why do you need to do it this way? Why? So you're looking at the training aspect of it as well as just the procedure of it. A lot of time is spent out on the manufacturing floor where we're asking operators. We're looking around looking at site cleanliness.Looking at how well how neat the site is.Are there products thrown all over the place? I was just in Olympus. In Japan, we had products that were being recalled, products on hold and products released and product with dirt and dust all over it in the same area. Now what is that? Right, right away. So this is just, it's not that difficult. You don't you almost don't need.A lot of the questions at that point when you're talking about housekeeping and cleanliness, because you're seeing it first hand. So it's a combination of a lot of gumbas, a Japanese term, Hannah, that talks about that's the workplace. So we spend a lot of time out in the Gamba.And that's where we need to be to look and see what's actually happening, happening, not just, you know, in a procedure.And then look at the procedures and we look at the data associated with it and then we're also doing interviews. It's really an eye opening thing, yeah.
+
+Hannah Quinn   15:51Yeah, and this.
+
+Steve Martin   15:54And this.
+
+Hannah Quinn   15:57So you do the qrp assessment tool and then like, how do you measure the success of that? Like what? What does it mean to you when it's when it goes well?
+
+Steve Martin   15:57So he didn't care to care.So.Yeah. So we what we do is then we put it together. We come up with an A closing presentation. There's several you could look at that are in the SharePoint, right. You can look at the caresal one, that's the most recent one as well as the West ones that are older, but it's still relevant and we will give them opportunities, areas where they should improve. We'll show them the final radar chart, which is sort of that I love pictorial things, right, 'cause I don't want to read a bunch of stuff and senior management, they just want to look at something, say Oh yeah.That's an area this area, so there's that. And they'll and then they'll get a list of what we think are the areas to improve. Now we will at the next to the last day of this thing, we will have already given our feedback and try to have a calibration test session. So there's no surprises, right. We don't want to go in and say something's A1 and they're like, oh, no, it's a 5, right.
+
+Hannah Quinn   16:59Home.
+
+Steve Martin   17:03So we've already agreed for the most part, 90.Five to 100% of the time that where things are at one of the big things I didn't talk about was before we get in there, we ask them to self assess given with the same questions and this is a powerful thing. So they go through the all the questions, it's time consuming but that's self-assessment can be a wake up call and it allows people to understand. It's like, oh ****, we've got.You aren't as good as we thought here and then we will go in and either validate it or maybe, you know, critique and come up and come up with a different.Number and a different you know different thoughts around that. And then we have that calibration session. So that when we come in with our final radar chart for the most part, they're in agreement, they've had their session with us where they kind of put their heads down and agree that they might not be as good as they think and then we will verbally list areas where we think they need to improve and how they need to do it. So, OK, I like to be, I'm a practical guy. I'm not one of these.Custom Consulting PwC guys you want and that's the good thing about this is we try to be really practical and give them.Specific examples where they can improve. You'd be surprised a lot of them are pretty easy to improve, right? So when we do that and I sense they've bought in, then I feel good about it. And then when I follow up with like West and I hear what they've been doing and it's still going on, they still have a quality week. They still have town halls and talk about products and patients and patients.Fantastic, right? Really good. And so that's the positive thing with kurza. We went in there, did this. I was hoping that we would have more follow up. But frankly I think they're so overwhelmed that it hasn't happened yet. But we did leave them with a number of things frankly was the worst QIP I've I've done in a long time.
+
+Hannah Quinn   19:09Oh wow.
+
+Steve Martin   19:09Those the one of the there's a lot there to do so.
+
+Hannah Quinn   19:13Yeah.
+
+Steve Martin   19:14I was hoping we would, you know, look, this isn't just about trying to improve or obviously the sales above. If we could have got some more business from that, that would have been great too. They appreciated it. They took it to heart, but I'd love to know what they've done because that makes that gives me a little. That's why I'm still doing this right. I should. Yeah, that's it. Fine. I'm not doing this for the cash.
+
+Hannah Quinn   19:42So like you would follow up with them regularly, then you know like like the for the months after.
+
+Steve Martin   19:48Yeah, yeah, I mean, and Jim's trying to follow up with korza and we're trying to see do they need help. I know they need help because I saw what they, what they're doing there and they definitely need help. If you when we were doing this with say, you know Medtronic or.Mallinckrodt or you know internally right with Covidian and all we would have teams go in and do this at all sites and then we were raiding our plants internally or you're a goal level civil level bronze level level and then we could monitor their OK what's yours based on the data what's your strategic plan? Where are your priorities of what we told you and then we would go in and then at the next year.Have you worked on them? Have you raised about the bar in those areas or not? And we would be reporting back to senior management. It's great if you do this internally.And, but being a consulting company, obviously we don't always have that ability like W they stopped it. They said we don't want to spend any more money or spend enough. And so we didn't get to finish the last couple of sites and they were going to do it themselves. And we haven't been in to do any kind of follow up. Same thing with corza, but that would be where you could really make a difference if you could execute and get.
+
+Hannah Quinn   20:43Mm hmm.
+
+Steve Martin   21:10A another follow up.Number one, from a sales perspective perspective, great, but then it keeps the momentum going right as you want that improvement culture to see into all levels of the organisation. And the other thing you know Hannah, this will do is really in a lot of cases.
+
+Hannah Quinn   21:18Yeah.
+
+Steve Martin   21:31I've seen seeing a management just didn't have a clue about some of these things and didn't have a clue that they really need to be talking about patients, products and.Being in the gamba on a regular basis and really trying to during town halls.Communicate the importance of what we're doing here at each of these sites. So in a lot of cases, senior management has not provided the opportunity to really improve in those areas. I think a lot of the quality people get it, typically a lot of the site OPS people and all they're like man, we've got product to make, right. This is sort of warm and fuzzy stuff that they're not typically into. So you really need that senior manager, I am right.
+
+Hannah Quinn   22:14Yeah.
+
+Steve Martin   22:17And you know, when I talk about operators and not connecting to the patients and the products, that's not their fault. They just weren't given the information, weren't given the, weren't told how important it is at things like town hall meetings or when people are walking around and doing gumbo walks. Some constructive feedback on a regular basis, not just when you're getting ready for an audit the week before an audit, right.
+
+Hannah Quinn   22:24Yeah.I know, yeah, yeah, exactly. Make it part of the everyday.
+
+Steve Martin   22:45Yeah, exactly.
+
+Hannah Quinn   22:46Yeah. No, that that's really good.Do you know do we have any like testimonials or anything like that? Like I don't know. I know companies can be hesitant to to.
+
+Steve Martin   22:58If we've got, we've got one from maybe from we might from Owen Pender when he was with Wes about it.
+
+Hannah Quinn   23:07Oh yeah.
+
+Steve Martin   23:08So there might be that.And then there there could be. I just need to. I don't know where the problem is. I don't know where they're at.
+
+Hannah Quinn   23:18No. Yeah, if you if you think that they're there, though, I can try find them.
+
+Steve Martin   23:19But.Yeah. And what I would urge you to do is to take a look at some of the West QIP assessment reports. Take a look at the corza one recently.You an idea of how we do it and just breeze through the Excel spreadsheets that are there as part of it. You don't have to read every question, just read a few of them and you get the gist of what we're after in all of them, right? You look at the quality system, one quality culture one and you'll kinda get what we're after there and then look at the finished output with the finished radar charts.
+
+Hannah Quinn   23:44Yeah.
+
+Steve Martin   23:57And the finished, you know that closing presentation is pretty good.Just goes through and it verbalises areas and things like that so.
+
+Hannah Quinn   24:06Yeah, perfect. I'll. I'll have a read around. No, that's so helpful. Thank you so much. It's great to to hear about it.
+
+Steve Martin   24:12Yeah, if you need, you know if you need a follow up, if you're putting something together, just let me know. Kate might be able to get to some of these things. I'm hopeless on SharePoint, right. I'll be honest. I mean, I. But if you look on the West QIP and Korza, you should be able to find them there.
+
+Hannah Quinn   24:20Pick up.Yeah.OK, perfect. I'll have a look. Yeah. So I might like draught something over the next. Like, couple of weeks and maybe get your eyes on it then.
+
+Steve Martin   24:39Yeah. And then yes, send it to me. I'll review it and then we can have another call and we can go from there. Does that sound good? You got weekend plans?
+
+Hannah Quinn   24:45Perfect. That sounds great. Thank you so much. Not really no plans, except taking it easy and having a drink tonight.
+
+Steve Martin   24:57Yeah, that sounds like that. That's a that's a good plan. Exactly. What's your favourite you like? Wine. Beer. What do you all?
+
+Hannah Quinn   24:57That's all I want to do. How about you?Yeah, yeah. But I love beer. But I'm drinking more wine these days because beer is just too much liquid. Like, I just can't. I I can't keep it up. Yeah. So, yeah. Glass of wine later.
+
+Steve Martin   25:14Yeah, I know. I get it.Yeah. Good. Enjoy.
+
+Hannah Quinn   25:17What about you? Are you doing anything nice?
+
+Steve Martin   25:20Nothing. You know, it's been so busy. I've been going crazy in London all over the place. I think it's gonna be a lot of cooking. The weather is kind of gloomy. So a bunch of stuff we're gonna cook for tomorrow. Have some folks over. And then Sunday, I got another meal we're planning with some other people. So I think we're going to be cooking up a storm here. But, you know, put some music on. Open some wine, a couple of cocktails.
+
+Hannah Quinn   25:29Nice, yeah.This is good, yeah.Oh, what's the dream?
+
+Steve Martin   25:46I forget about the damn election, so.
+
+Hannah Quinn   25:48Yeah, yeah, definitely. OK, well, I hope you enjoyed the weekend.
+
+Steve Martin   25:50That's.You too. Thanks. Bye.
+
+Hannah Quinn   25:53OK. Thank you, Steve. I'll talk to you soon. Bye.
+
+Steve Martin   25:56Bye.
+
+Hannah Quinn stopped transcription
