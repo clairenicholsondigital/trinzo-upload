@@ -1724,16 +1724,16 @@ TOPIC_STOPWORDS = {
     "little", "maybe", "mean", "need", "okay", "really", "right", "should", "some", "something",
     "stuff", "that's", "that", "their", "there", "these", "they", "thing", "think", "this",
     "those", "through", "want", "we're", "were", "what", "when", "where", "which", "with",
-    "would", "yeah", "your", "and", "are", "back", "but", "can", "come", "different",
+    "would", "yeah", "your", "and", "are", "attendees", "back", "but", "can", "come", "different",
     "fine", "for", "got", "had", "has", "help", "how", "look", "problem", "then",
     "the", "them", "was", "you", "not", "don't", "all", "follow", "good", "i'll", "it's", "level",
     "talked", "team", "why", "you're",
     # Speaker names are useful as owners, but they should not become topic
     # labels when compressed transcripts leak labels into classifier buckets.
-    "adil", "andrew", "ciara", "colm", "conor", "dan", "david", "ella", "emma",
+    "adil", "andrew", "ciara", "claire", "colm", "conor", "dan", "david", "eleanor", "ella", "emma",
     "grace", "helen", "ibrahim", "jack", "jacqui", "james", "jen", "joel", "jon",
     "kevin", "leah", "liam", "louise", "mark", "maya", "megan", "miles", "mina",
-    "omar", "orla", "owen", "priya", "rachel", "rebecca", "rhea", "ruth", "sara",
+    "omar", "orla", "owen", "priya", "rachel", "ravi", "rebecca", "rhea", "ruth", "sara",
     "hannah", "martin", "quinn", "steve", "tom",
 }
 
