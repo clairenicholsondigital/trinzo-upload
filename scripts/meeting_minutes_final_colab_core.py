@@ -2631,8 +2631,8 @@ def _enrich_actions_from_transcript(actions: list[dict[str, Any]], transcript: s
 
 def _normalise_decision_text(text: str) -> str:
     text = _clean_source_text(text)
-    text = re.sub(r"^[A-Z][A-Za-z'’.-]+(?:\s+[A-Z][A-Za-z'’.-]+){0,3}\s+\d{1,2}:\d{2}(?::\d{2})?\s+", "", text)
-    text = re.sub(r"^[A-Z][A-Za-z'’.-]+(?:\s+[A-Z][A-Za-z'’.-]+){0,3}\s*:\s*", "", text)
+    text = re.sub(r"^[A-Z][A-Za-z'’.,-]+(?:\s+[A-Z][A-Za-z'’.,-]+){0,4}\s+\d{1,2}:\d{2}(?::\d{2})?\s*", "", text)
+    text = re.sub(r"^[A-Z][A-Za-z'’.,-]+(?:\s+[A-Z][A-Za-z'’.,-]+){0,4}\s*:\s*", "", text)
     text = re.sub(r"^(?:that is|that's)\s+the\s+decision\s+then\s*:\s*", "", text, flags=re.IGNORECASE)
     text = re.sub(r"^decision\s+confirmed\s*:\s*", "", text, flags=re.IGNORECASE)
     text = re.sub(r"^decision\s+is\s+to\s+", "", text, flags=re.IGNORECASE)
@@ -2658,9 +2658,51 @@ def _is_weak_decision_text(text: str) -> bool:
     return lowered in {"agreed", "agree", "yes", "yeah", "yeah, agreed", "okay", "ok", "confirmed", "sounds good", "that works", "good point"}
 
 
+def _is_admin_logistics_decision_text(text: str) -> bool:
+    lowered = f" {_clean_source_text(text).lower()} "
+    if not lowered.strip():
+        return False
+    logistics_markers = (
+        " external access ",
+        " sharepoint ",
+        " get you access ",
+        " give you access ",
+        " access to the ",
+        " hotel ",
+        " reservation ",
+        " calendar invite ",
+        " teams invite ",
+        " meeting invite ",
+        " dial in ",
+        " dial-in ",
+        " before we start ",
+        " before the monday ",
+    )
+    return any(marker in lowered for marker in logistics_markers)
+
+
+def _is_low_quality_public_decision_text(text: str) -> bool:
+    lowered = f" {_clean_source_text(text).lower()} "
+    if not lowered.strip():
+        return True
+    if re.search(r"\b\d{1,2}:\d{2}(?::\d{2})?(?:yes|no|yep|yeah)?[. ]", lowered):
+        return True
+    if re.search(r"\b(?:i[’']ll|i will)\s+share\b", lowered):
+        return True
+    if " frees us up " in lowered:
+        return True
+    if re.search(r"^\s*(?:and\s+)?it\s+also\s+means\b", lowered.strip()):
+        return True
+    return False
+
+
 def _is_decision_sentence(text: str) -> bool:
     lowered = text.lower()
     if lowered.strip().endswith("?"):
+        return False
+    if _is_admin_logistics_decision_text(text):
+        return False
+    if _is_low_quality_public_decision_text(text):
         return False
     if re.match(r"\s*if\s+", lowered):
         return False
@@ -2761,6 +2803,8 @@ def _decision_entries(
         if (
             not text
             or _is_weak_decision_text(text)
+            or _is_admin_logistics_decision_text(text)
+            or _is_low_quality_public_decision_text(text)
             or _is_negative_decision_context(text)
             or not _is_decision_sentence(text)
             or re.search(r"\b(?:move|use|keep|defer|delay|include|exclude|approve|reject|sign|focus)\s+it\b", text, flags=re.IGNORECASE)
@@ -2845,6 +2889,8 @@ def _decision_entries(
             if (
                 not text
                 or _is_weak_decision_text(text)
+                or _is_admin_logistics_decision_text(text)
+                or _is_low_quality_public_decision_text(text)
                 or key in seen
                 or (overlaps_existing(text) and not explicit_confirmation and len(_split_compound_decision_text(text)) == 1)
             ):

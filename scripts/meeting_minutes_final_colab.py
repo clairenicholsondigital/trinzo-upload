@@ -15,6 +15,7 @@ from google_ai_studio_minutes import (
     run_minilm_quality_control,
 )
 from meeting_minutes_final_colab_core import generate_polished_minutes_pass
+from meeting_minutes_minilm_experiment import infer_minilm_meeting_title, synthesize_meeting_scope_objective
 from meeting_minutes_text import apply_british_english_to_payload
 
 
@@ -117,6 +118,19 @@ def build_counts(payload: dict[str, Any]) -> dict[str, int]:
     }
 
 
+def enrich_fallback_meeting_fields(output: dict[str, Any], transcript_text: str) -> dict[str, Any]:
+    enriched = dict(output)
+    if not clean_line(enriched.get("meetingTitle", "")):
+        enriched["meetingTitle"] = infer_minilm_meeting_title(transcript_text)
+    if not enriched.get("meetingObjectives"):
+        enriched["meetingObjectives"] = synthesize_meeting_scope_objective(enriched)
+    if not clean_line(enriched.get("meetingDescription", "")):
+        objectives = enriched.get("meetingObjectives") or []
+        if objectives:
+            enriched["meetingDescription"] = objectives[0]
+    return enriched
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the Colab-style meeting-minutes-final extractor.")
     parser.add_argument("transcript_path", help="Path to the transcript file.")
@@ -133,7 +147,7 @@ def main() -> int:
     start = time.perf_counter()
     result = generate_polished_minutes_pass(transcript_text=transcript_text)
     minilm_runtime_ms = round((time.perf_counter() - start) * 1000, 2)
-    fallback_output = apply_british_english_to_payload(parse_colab_minutes(result["minutes"]))
+    fallback_output = apply_british_english_to_payload(enrich_fallback_meeting_fields(parse_colab_minutes(result["minutes"]), transcript_text))
 
     rewrite_start = time.perf_counter()
     evidence_pack = build_google_minutes_evidence_pack(result.get("sections", {}), fallback_output)

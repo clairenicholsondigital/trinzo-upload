@@ -7,8 +7,9 @@ SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
-from meeting_minutes_final_colab import parse_colab_minutes
+from meeting_minutes_final_colab import enrich_fallback_meeting_fields, parse_colab_minutes
 from meeting_minutes_final_colab_core import (
+    _decision_entries,
     _dynamic_topic_from_remaining_sources,
     _is_useful_generic_action,
     generate_polished_minutes_pass,
@@ -17,6 +18,7 @@ from google_ai_studio_minutes import (
     build_google_minutes_evidence_pack,
     generate_minutes_with_google_ai_studio,
     run_minilm_quality_control,
+    _normalise_minutes_output,
 )
 from run_meeting_minutes_final_golden_eval import evaluate_case, load_json
 
@@ -74,6 +76,52 @@ class MeetingMinutesFinalColabCoreTests(unittest.TestCase):
         self.assertFalse(diagnostics["available"])
         self.assertIn("GOOGLE_AI_STUDIO_API_KEY", diagnostics["error"])
 
+    def test_google_normalisation_preserves_fallback_title_and_filters_admin_objectives(self):
+        output = _normalise_minutes_output(
+            {
+                "meetingTitle": "",
+                "meetingObjectives": [
+                    "Get external access to the SharePoint before the audit starts on Monday.",
+                ],
+                "decisions": [
+                    "Get external access to the SharePoint before the audit starts on Monday.",
+                    "Smith, Stuart M 20:27Yes.Yes, so I'll share with you the tracker that we use that transmits.",
+                    "And it also means it frees us up to use specialist expertise.",
+                ],
+                "executiveSummary": "The audit kick-off covered scope and preparation.",
+            },
+            {
+                "meetingTitle": "Client Abbott T796 Audit kick off Sylmar",
+                "meetingObjectives": ["Review the audit kick-off scope, preparation priorities and follow-up actions."],
+                "discussionPoints": [],
+                "decisions": [],
+                "actions": [],
+            },
+        )
+
+        self.assertEqual(output["meetingTitle"], "Client Abbott T796 Audit kick off Sylmar")
+        self.assertEqual(output["meetingObjectives"], ["Review the audit kick-off scope, preparation priorities and follow-up actions."])
+        self.assertEqual(output["decisions"], [])
+
+    def test_fallback_output_gets_title_and_objective_from_transcript(self):
+        transcript = "Client Abbott T796 - Audit kick off Sylmar-20260622_113805-Meeting Transcript\n\nJacqui Fox 0:03 We need to review audit scope, software risks and cybersecurity controls."
+        output = enrich_fallback_meeting_fields(
+            {
+                "meetingTitle": "",
+                "meetingObjectives": [],
+                "discussionPoints": [
+                    "The discussion covered software changes, alarm behaviour and version traceability.",
+                    "The discussion covered cybersecurity, risk management updates and USB access controls.",
+                ],
+                "actions": [],
+            },
+            transcript,
+        )
+
+        self.assertEqual(output["meetingTitle"], "Client Abbott T796 Audit kick off Sylmar")
+        self.assertTrue(output["meetingObjectives"])
+        self.assertNotIn("SharePoint", output["meetingObjectives"][0])
+
     def test_minilm_quality_control_flags_unsupported_public_items(self):
         evidence_pack = {
             "topics": [
@@ -114,6 +162,21 @@ class MeetingMinutesFinalColabCoreTests(unittest.TestCase):
         for text in rejected:
             with self.subTest(text=text):
                 self.assertFalse(_is_useful_generic_action(text))
+
+    def test_sharepoint_access_setup_is_not_a_decision(self):
+        report = {
+            "scorecard": {},
+            "buckets": {
+                "decision": [
+                    {
+                        "speaker": "Jacqui Fox",
+                        "text": "And we'll have to get you external access to the SharePoint that we use during the audit before we start on the Monday.",
+                    }
+                ]
+            },
+        }
+
+        self.assertEqual(_decision_entries(report, ""), [])
 
     def test_dynamic_topic_rejects_low_information_terms(self):
         report = {

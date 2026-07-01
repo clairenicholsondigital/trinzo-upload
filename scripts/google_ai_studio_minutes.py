@@ -29,6 +29,59 @@ def _string_list(values: Any, limit: int = 12) -> list[str]:
     return result
 
 
+def _is_admin_logistics_text(text: str) -> bool:
+    lowered = f" {_clean_text(text).lower()} "
+    if not lowered.strip():
+        return False
+    admin_markers = (
+        " external access ",
+        " sharepoint ",
+        " access to the ",
+        " get you access ",
+        " give you access ",
+        " hotel ",
+        " reservation ",
+        " calendar invite ",
+        " teams invite ",
+        " meeting invite ",
+        " dial in ",
+        " dial-in ",
+        " before we start ",
+        " before the monday ",
+    )
+    return any(marker in lowered for marker in admin_markers)
+
+
+def _is_low_quality_decision_text(text: str) -> bool:
+    lowered = f" {_clean_text(text).lower()} "
+    if not lowered.strip():
+        return True
+    if re.search(r"\b\d{1,2}:\d{2}(?::\d{2})?(?:yes|no|yep|yeah)?[. ]", lowered):
+        return True
+    if re.search(r"\b(?:i[’']ll|i will)\s+share\b", lowered):
+        return True
+    if " frees us up " in lowered:
+        return True
+    if re.search(r"^\s*(?:and\s+)?it\s+also\s+means\b", lowered.strip()):
+        return True
+    return False
+
+
+def _public_objectives(values: Any, fallback_values: Any) -> list[str]:
+    objectives = [
+        value
+        for value in _string_list(values, limit=8)
+        if not _is_admin_logistics_text(value)
+    ]
+    if objectives:
+        return objectives
+    return [
+        value
+        for value in _string_list(fallback_values, limit=8)
+        if not _is_admin_logistics_text(value)
+    ]
+
+
 def _source_snippets(item: dict[str, Any], limit: int = 3) -> list[str]:
     snippets = []
     for source in item.get("sources", []) or []:
@@ -89,6 +142,8 @@ def build_google_minutes_evidence_pack(sections: dict[str, Any], fallback_output
         "actions": _evidence_items(sections.get("actions"), limit=10),
         "decisions": _evidence_items(sections.get("decisions"), limit=8),
         "fallbackOutput": {
+            "meetingTitle": _clean_text(fallback_output.get("meetingTitle", "")),
+            "meetingObjectives": _string_list(fallback_output.get("meetingObjectives"), limit=6),
             "executiveSummary": _clean_text(fallback_output.get("executiveSummary", "")),
             "discussionPoints": _string_list(fallback_output.get("discussionPoints"), limit=12),
             "decisions": _string_list(fallback_output.get("decisions"), limit=8),
@@ -115,6 +170,7 @@ def _prompt_for_evidence_pack(evidence_pack: dict[str, Any]) -> str:
             "- Keep British English spelling.",
             "- Do not mention MiniLM, Gemini, evidence packs, prompts, or source snippets in the public output.",
             "- Actions must be real commitments only; do not turn vague discussion into actions.",
+            "- The meeting title and objectives should describe the actual meeting purpose. Do not use admin logistics such as SharePoint access, hotel arrangements, calendar invites, or meeting setup as the overview, objectives, or decisions.",
             "- Return JSON only with this shape:",
             '{"meetingTitle":"","meetingDate":"","meetingLocation":"","meetingDescription":"","meetingObjectives":[],"participants":{"client":[],"trinzo":[]},"executiveSummary":"","discussionPoints":[],"decisions":[],"meetingActionPoint":[],"meetingActionPointOwner":[],"meetingActionPointDeadline":[],"actions":[{"meetingActionPoint":"","meetingActionPointOwner":"Not stated","meetingActionPointDeadline":"Not stated"}],"meetingMinutes":[{"topic":"","discussionPoints":[]}],"nextSteps":[{"action":"","owner":"Not stated","deadline":"Not stated"}],"openQuestions":[]}',
             "",
@@ -147,17 +203,37 @@ def _normalise_minutes_output(output: dict[str, Any], fallback_output: dict[str,
     if not isinstance(output, dict):
         return normalised
 
+    meeting_title = _clean_text(output.get("meetingTitle", "")) or _clean_text(fallback_output.get("meetingTitle", ""))
+    meeting_date = _clean_text(output.get("meetingDate", "")) or _clean_text(fallback_output.get("meetingDate", ""))
+    meeting_location = _clean_text(output.get("meetingLocation", "")) or _clean_text(fallback_output.get("meetingLocation", ""))
+    meeting_description = _clean_text(output.get("meetingDescription", "")) or _clean_text(fallback_output.get("meetingDescription", ""))
+    executive_summary = _clean_text(output.get("executiveSummary", "")) or _clean_text(fallback_output.get("executiveSummary", ""))
+
+    discussion_points = _string_list(output.get("discussionPoints"), limit=14) or _string_list(fallback_output.get("discussionPoints"), limit=14)
+    decisions = [
+        value
+        for value in _string_list(output.get("decisions"), limit=8)
+        if not _is_admin_logistics_text(value) and not _is_low_quality_decision_text(value)
+    ]
+    if not decisions:
+        decisions = [
+            value
+            for value in _string_list(fallback_output.get("decisions"), limit=8)
+            if not _is_admin_logistics_text(value) and not _is_low_quality_decision_text(value)
+        ]
+    open_questions = _string_list(output.get("openQuestions"), limit=8) or _string_list(fallback_output.get("openQuestions"), limit=8)
+
     normalised.update(
         {
-            "meetingTitle": _clean_text(output.get("meetingTitle", "")),
-            "meetingDate": _clean_text(output.get("meetingDate", "")),
-            "meetingLocation": _clean_text(output.get("meetingLocation", "")),
-            "meetingDescription": _clean_text(output.get("meetingDescription", "")),
-            "meetingObjectives": _string_list(output.get("meetingObjectives"), limit=8),
-            "executiveSummary": _clean_text(output.get("executiveSummary", "")),
-            "discussionPoints": _string_list(output.get("discussionPoints"), limit=14),
-            "decisions": _string_list(output.get("decisions"), limit=8),
-            "openQuestions": _string_list(output.get("openQuestions"), limit=8),
+            "meetingTitle": meeting_title,
+            "meetingDate": meeting_date,
+            "meetingLocation": meeting_location,
+            "meetingDescription": meeting_description,
+            "meetingObjectives": _public_objectives(output.get("meetingObjectives"), fallback_output.get("meetingObjectives")),
+            "executiveSummary": executive_summary,
+            "discussionPoints": discussion_points,
+            "decisions": decisions,
+            "openQuestions": open_questions,
         }
     )
 
@@ -232,7 +308,7 @@ def generate_minutes_with_google_ai_studio(
         "generationConfig": {
             "temperature": 0.1,
             "topP": 0.8,
-            "maxOutputTokens": 4096,
+            "maxOutputTokens": 8192,
             "responseMimeType": "application/json",
         },
     }
@@ -264,13 +340,13 @@ def generate_minutes_with_google_ai_studio(
     if candidates:
         parts = candidates[0].get("content", {}).get("parts", [])
         text = "\n".join(str(part.get("text", "")) for part in parts if isinstance(part, dict))
+        diagnostics["finishReason"] = candidates[0].get("finishReason", "")
     parsed = _extract_json_object(text)
     if not parsed:
         diagnostics["error"] = "Google AI Studio returned no parseable JSON."
         return None, diagnostics
 
     diagnostics["used"] = True
-    diagnostics["finishReason"] = candidates[0].get("finishReason", "") if candidates else ""
     return _normalise_minutes_output(parsed, fallback_output), diagnostics
 
 
