@@ -13,6 +13,11 @@ from meeting_minutes_final_colab_core import (
     _is_useful_generic_action,
     generate_polished_minutes_pass,
 )
+from google_ai_studio_minutes import (
+    build_google_minutes_evidence_pack,
+    generate_minutes_with_google_ai_studio,
+    run_minilm_quality_control,
+)
 from run_meeting_minutes_final_golden_eval import evaluate_case, load_json
 
 
@@ -20,6 +25,85 @@ GOLDEN_DIR = SCRIPTS_DIR / "meeting-minutes-final-golden"
 
 
 class MeetingMinutesFinalColabCoreTests(unittest.TestCase):
+    def test_google_ai_studio_pack_uses_minilm_evidence_not_raw_prompt_context(self):
+        sections = {
+            "topics": [
+                {
+                    "topic": "Supplier readiness",
+                    "sections": {
+                        "Discussion points": [
+                            {
+                                "text": "The team reviewed supplier readiness for launch.",
+                                "sources": [{"text": "We need to check supplier readiness before the launch date."}],
+                            }
+                        ],
+                        "Open questions": [
+                            {
+                                "text": "The launch date still needs confirmation.",
+                                "sources": [{"text": "I do not think the launch date is confirmed yet."}],
+                            }
+                        ],
+                    },
+                }
+            ],
+            "actions": [
+                {
+                    "text": "Confirm supplier launch readiness.",
+                    "owner": "Maya",
+                    "deadline": "Friday",
+                    "sources": [{"text": "Maya will confirm whether the supplier is ready by Friday."}],
+                }
+            ],
+            "decisions": [],
+        }
+        pack = build_google_minutes_evidence_pack(sections, {"executiveSummary": "Fallback summary"})
+
+        self.assertEqual(pack["topics"][0]["topic"], "Supplier readiness")
+        self.assertEqual(pack["topics"][0]["discussionPoints"][0]["text"], "The team reviewed supplier readiness for launch.")
+        self.assertEqual(pack["actions"][0]["owner"], "Maya")
+        self.assertIn("supplier is ready", pack["actions"][0]["evidence"][0])
+
+    def test_google_ai_studio_falls_back_when_key_is_missing(self):
+        output, diagnostics = generate_minutes_with_google_ai_studio(
+            {"topics": [], "actions": [], "decisions": []},
+            {"discussionPoints": ["Existing MiniLM point."]},
+            api_key="",
+        )
+
+        self.assertIsNone(output)
+        self.assertFalse(diagnostics["available"])
+        self.assertIn("GOOGLE_AI_STUDIO_API_KEY", diagnostics["error"])
+
+    def test_minilm_quality_control_flags_unsupported_public_items(self):
+        evidence_pack = {
+            "topics": [
+                {
+                    "topic": "Supplier readiness",
+                    "discussionPoints": [{"text": "The team reviewed supplier readiness for launch."}],
+                    "responsibilities": [],
+                    "evidenceRequired": [],
+                    "risks": [],
+                    "openQuestions": [],
+                }
+            ],
+            "actions": [],
+            "decisions": [],
+        }
+        diagnostics = run_minilm_quality_control(
+            {
+                "discussionPoints": [
+                    "The team reviewed supplier readiness for launch.",
+                    "The board approved a new budget increase.",
+                ],
+                "actions": [],
+                "decisions": [],
+            },
+            evidence_pack,
+        )
+
+        self.assertEqual(diagnostics["checkedItems"], 2)
+        self.assertTrue(any("budget increase" in item["text"] for item in diagnostics["unsupportedItems"]))
+
     def test_conversational_fragments_are_not_useful_actions(self):
         rejected = [
             "I was hoping that we would have more follow up.",

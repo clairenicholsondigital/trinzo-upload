@@ -9,6 +9,11 @@ import time
 from pathlib import Path
 from typing import Any
 
+from google_ai_studio_minutes import (
+    build_google_minutes_evidence_pack,
+    generate_minutes_with_google_ai_studio,
+    run_minilm_quality_control,
+)
 from meeting_minutes_final_colab_core import generate_polished_minutes_pass
 from meeting_minutes_text import apply_british_english_to_payload
 
@@ -127,26 +132,38 @@ def main() -> int:
 
     start = time.perf_counter()
     result = generate_polished_minutes_pass(transcript_text=transcript_text)
-    runtime_ms = round((time.perf_counter() - start) * 1000, 2)
-    output = apply_british_english_to_payload(parse_colab_minutes(result["minutes"]))
+    minilm_runtime_ms = round((time.perf_counter() - start) * 1000, 2)
+    fallback_output = apply_british_english_to_payload(parse_colab_minutes(result["minutes"]))
+
+    rewrite_start = time.perf_counter()
+    evidence_pack = build_google_minutes_evidence_pack(result.get("sections", {}), fallback_output)
+    google_output, google_diagnostics = generate_minutes_with_google_ai_studio(evidence_pack, fallback_output)
+    rewrite_runtime_ms = round((time.perf_counter() - rewrite_start) * 1000, 2)
+
+    output = apply_british_english_to_payload(google_output or fallback_output)
+    qc_start = time.perf_counter()
+    qc_diagnostics = run_minilm_quality_control(output, evidence_pack)
+    qc_runtime_ms = round((time.perf_counter() - qc_start) * 1000, 2)
+    runtime_ms = round(minilm_runtime_ms + rewrite_runtime_ms + qc_runtime_ms, 2)
 
     payload: dict[str, Any] = {
-        "mode": "meeting_minutes_final_colab",
+        "mode": "meeting_minutes_final_hybrid",
         "executed": True,
         "modelAvailable": True,
-        "modelName": "MiniLM evidence graph / Colab runner",
-        "modelReason": "local_colab_runner",
-        "rewriterAvailable": False,
-        "rewriterModelName": None,
+        "modelName": "MiniLM evidence graph + Google AI Studio writing pass",
+        "modelReason": "minilm_topics_google_first_pass_minilm_qc",
+        "rewriterAvailable": bool(google_diagnostics.get("available")),
+        "rewriterModelName": google_diagnostics.get("model"),
         "rewriterModelPath": None,
-        "rewriterReason": "rewrite skipped for Colab runner",
+        "rewriterReason": "Google AI Studio used." if google_diagnostics.get("used") else google_diagnostics.get("error", "Google AI Studio not used."),
         "output": output,
         "counts": build_counts(output),
         "timingMs": {
             "baseline": 0.0,
             "context": 0.0,
-            "minilm": runtime_ms,
-            "rewrite": 0.0,
+            "minilm": minilm_runtime_ms,
+            "rewrite": rewrite_runtime_ms,
+            "qualityControl": qc_runtime_ms,
             "total": runtime_ms,
         },
     }
@@ -156,6 +173,8 @@ def main() -> int:
             "scorecard": result.get("scorecard", {}),
             "evaluation": result.get("evaluation", {}),
             "markdownMinutes": result.get("minutes", ""),
+            "googleAiStudio": google_diagnostics,
+            "minilmQualityControl": qc_diagnostics,
         }
 
     print(json.dumps(payload, ensure_ascii=False))

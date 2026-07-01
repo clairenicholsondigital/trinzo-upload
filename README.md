@@ -7,6 +7,8 @@ Create a `.env` file using existing pattern:
 - `DIRECTLINE_SECRET` (required, Copilot Studio Direct Line secret)
 - `POWER_AUTOMATE_WEBHOOK_URL` (required for finalisation step; HTTP trigger URL from your Power Automate flow)
 - `DATABASE_URL` (optional; Postgres connection string) or `PGHOST`/`PGPORT`/`PGDATABASE`/`PGUSER`/`PGPASSWORD`
+- `GOOGLE_AI_STUDIO_API_KEY` (optional for `/meeting-minutes-final`; enables the Google AI Studio/Gemini writing pass)
+- `GOOGLE_AI_STUDIO_MODEL` (optional, default `gemini-2.5-flash`)
 
 ## Run locally
 ```bash
@@ -28,7 +30,7 @@ For `/meeting-minutes-final/`, optimise in this order:
 
 1. **Versatility and reliability across meeting types/formats.** Prefer sparse or empty output when semantic evidence is weak; do not force objectives, actions, or discussion points from chatter, transcript noise, or unsupported meeting formats.
 2. **Speed.** Keep first-pass MiniLM candidate selection fast and aim for end-to-end generation under 30 seconds where practical.
-3. **Clean UK business English.** Use Qwen/local LLM rewriting for grammar and tone, while preserving only evidenced content.
+3. **Clean UK business English.** `/meeting-minutes-final` now keeps MiniLM as the evidence/topic extraction layer, optionally sends that evidence pack to Google AI Studio/Gemini for a constrained first-pass write-up, then runs an evidence comparison quality-control pass before returning the final JSON. If Google AI Studio is missing, rate-limited, or unavailable, the endpoint falls back to the existing MiniLM output rather than failing the upload.
 
 Regression coverage should use varied transcript fixtures rather than only the webinar rehearsal example, and should favour semantic confidence/abstention over transcript-specific phrase patches.
 
