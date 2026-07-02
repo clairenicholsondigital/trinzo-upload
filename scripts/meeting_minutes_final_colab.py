@@ -15,8 +15,19 @@ from google_ai_studio_minutes import (
     run_minilm_quality_control,
 )
 from meeting_minutes_final_colab_core import generate_polished_minutes_pass
-from meeting_minutes_minilm_experiment import infer_minilm_meeting_title, synthesize_meeting_scope_objective
+from meeting_minutes_minilm_experiment import (
+    infer_minilm_meeting_date,
+    infer_minilm_meeting_title,
+    parse_numeric_turns,
+    synthesize_meeting_scope_objective,
+)
 from meeting_minutes_text import apply_british_english_to_payload
+
+_TRANSCRIPTION_HOST_RE = re.compile(r"^(?P<name>.+?)\s+started transcription\b", re.IGNORECASE | re.MULTILINE)
+_NON_PARTICIPANT_SPEAKER_NAMES = {
+    "unknown", "speaker", "participant", "participants", "recording",
+    "transcript", "action", "actions", "decision", "decisions",
+}
 
 
 def section(markdown: str, heading: str) -> str:
@@ -118,10 +129,52 @@ def build_counts(payload: dict[str, Any]) -> dict[str, int]:
     }
 
 
+def _detect_participants(transcript_text: str) -> dict[str, list[str]]:
+    """Best-effort speaker list for the fallback path, split into a host/team
+    bucket (Trinzo) and everyone else (client).
+
+    The Teams export names whoever started the recording, which in every
+    sample transcript we have seen is the Trinzo facilitator running the
+    call, so that speaker is used as the one reliable signal for the split.
+    Everyone else is bucketed as "client" -- correct for the common case of
+    an external client meeting, but a purely internal call will need the
+    split corrected by whoever reviews the draft in the editable minutes UI.
+    """
+
+    host_match = _TRANSCRIPTION_HOST_RE.search(transcript_text)
+    host_name = host_match.group("name").strip() if host_match else ""
+
+    seen: set[str] = set()
+    ordered_names: list[str] = []
+    for turn in parse_numeric_turns(transcript_text):
+        name = str(turn.get("speaker") or "").strip()
+        key = name.lower()
+        if not name or key in _NON_PARTICIPANT_SPEAKER_NAMES or key in seen:
+            continue
+        seen.add(key)
+        ordered_names.append(name)
+
+    if not ordered_names:
+        return {"client": [], "trinzo": []}
+
+    trinzo = [name for name in ordered_names if host_name and name.lower() == host_name.lower()]
+    client = [name for name in ordered_names if name not in trinzo]
+    if not trinzo:
+        trinzo, client = client[:1], client[1:]
+    return {"client": client, "trinzo": trinzo}
+
+
 def enrich_fallback_meeting_fields(output: dict[str, Any], transcript_text: str) -> dict[str, Any]:
     enriched = dict(output)
     if not clean_line(enriched.get("meetingTitle", "")):
         enriched["meetingTitle"] = infer_minilm_meeting_title(transcript_text)
+    if not clean_line(enriched.get("meetingDate", "")):
+        enriched["meetingDate"] = infer_minilm_meeting_date(transcript_text)
+    if not clean_line(enriched.get("meetingLocation", "")):
+        enriched["meetingLocation"] = "Online"
+    participants = enriched.get("participants")
+    if not isinstance(participants, dict) or not (participants.get("client") or participants.get("trinzo")):
+        enriched["participants"] = _detect_participants(transcript_text)
     if not enriched.get("meetingObjectives"):
         enriched["meetingObjectives"] = synthesize_meeting_scope_objective(enriched)
     if not clean_line(enriched.get("meetingDescription", "")):

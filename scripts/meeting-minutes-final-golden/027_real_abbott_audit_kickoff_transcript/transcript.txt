@@ -1,0 +1,553 @@
+Client Abbott T796 - Audit kick off Sylmar-20260622_113805-Meeting Transcript
+
+22 June 2026, 10:38am
+
+28m 42s
+
+Jacqui Fox started transcription
+
+Jacqui Fox   0:03Perfect and I will quickly share so we can just go through some key points if that's okay. So just in terms of, sorry, to the points on the hotel.
+
+Smith, Stuart M   0:08Yep.And.
+
+Jacqui Fox   0:18And.Liv, I've shared over in Stuart has done the reservation. It's under his name. So when you get there, you will just need to reference that that it's his name because it's for from Abbott Rate's point of view, but it aligns with the dates that you've booked your hotel for as well. There is another person is also staying in the hotel that would be a part of the audit, which is Karen.and I'm not going to even attempt to say her surname, who's also joining and since she's from Costa Rica based in the US. So don't believe that Jane is actually on this. I think it was a reject. It's now Karen. Perfect. And then just in terms of the key dates,
+
+Smith, Stuart M   0:49Yes.
+
+Jacqui Fox   1:02with the training and prep work due to start as of kind of next Monday. So, Stuart, that kind of aligns with the work that you're doing right now in terms of scope over the next few days. So that will, that scope and what you build out will
+
+Smith, Stuart M   1:13Yep.
+
+Jacqui Fox   1:21help Niamh understand kind of what key areas she's to focus in. So kind of from next week in the week and the following week is that kind of prep and training work to be done. So then obviously just being on site on the 20th and that's the five days on site in summer and then obviously the report writingTo follow up.post a return to Ireland on the 27th through to the 7th of August. So I just wanted to kick on some key points. I'm actually going to go down here. So sure, you're the lead with Karen as well, obviously, Niamh. In terms of the audit training around reviewing standards for the attestation,
+
+Smith, Stuart M   1:56Yes.
+
+Jacqui Fox   2:04Presumably, once your scope is determined, that will form that list of standards.
+
+Smith, Stuart M   2:09Yes, it will. So that will form the list of standards. I'll also give you the classifications need and an overall view of the products themselves. So there's like a transmitter. So they make pacemakers just to give you some information that's got embedded software inside of them.And then there's also data controllers and transmitters, which have the bedside monitoring of the values themselves. So that's Merlin product. So it's literally a bedside transmitter. So there are transmitters between the two systems. It's got automated monitoring, transmissions and data.privacy. Now, I'm starting to go through the risk analysis, but I'll share that with you once I've got some more information because I've identified some risks in terms of transmission, software, rollout, versions, cybersecurity, various bits and pieces.And then once I've got that, then that will give me the regulations that go with it. But you'll probably know they'll be the standard.
+
+Jacqui Fox   3:09Okay.
+
+Smith, Stuart M   3:16MDR. There'll probably be some, I think there's, there'll be China in there definitely. I'll try and reduce them down so it's not like a world and his wife sort of scenario of every regulation under the sun. But you'll have the ISO ones, you'll have the 21 CFRs, Meds app, that sort of thing.Yeah.
+
+Niamh Lynch   3:36Brilliant, brilliant. And no AI, no?
+
+Jacqui Fox   3:37Perfect.
+
+Smith, Stuart M   3:40No, no AI on this one, as far as I know. But that's one of those ones that you probably won't find out until you get there. There's no claim for AI on this one. It just seems to be a transmitter that shows information rather than... So we interpret information, but it's based on data. So
+
+Jacqui Fox   3:43The.
+
+Niamh Lynch   3:44Okay.
+
+Smith, Stuart M   4:00It shouldn't be an AI one, it should be just a direct program interpretation and then a visual display.
+
+Niamh Lynch   4:00Kane.OK, OK. Yes, IMD. Great and.
+
+Jacqui Fox   4:07Okay.
+
+Niamh Lynch   4:12Is it a normal audit, not like the assessment audit that I was on last week or the week before? Normal.
+
+Smith, Stuart M   4:16No, it's a normal one, so you, so it's findings, full-on findings and rating and all of that. It isn't one where you just...
+
+Niamh Lynch   4:20Yeah.Hey.
+
+Smith, Stuart M   4:24give them assessment. It's this is full compliance to 21 CFRs, Medsap, MDR.
+
+Niamh Lynch   4:29Okay, and is it routine orders or is it for cause or surveillance? Yeah.
+
+Smith, Stuart M   4:34surveillance. So it's routine audit. I know when I was there last time, I had concerns around their software development process at a fundamental QS level.
+
+Niamh Lynch   4:50And therefore, if you did it last time, you'll have the audit report and yeah, yeah, right. So you have a good idea what you're going after.
+
+Smith, Stuart M   4:54Yes.
+
+Jacqui Fox   4:55Mhm.
+
+Smith, Stuart M   4:56Yeah, yeah.
+
+Jacqui Fox   4:58M.
+
+Smith, Stuart M   4:59I know what I'm going after because I've been there twice now and I've been around their facility. So I know, I know how they make it. I've been to the other facilities in around the rest of the world. So I know the interrelationships because they ultimately own the design and the legal manufacturer for all the devices made in.
+
+Jacqui Fox   5:01Yes.
+
+Niamh Lynch   5:04Wow.
+
+Smith, Stuart M   5:18I think Malaysia and a couple of other countries. And I do have follow-ups from those countries which led back here in terms of purchasing and risk management.
+
+Niamh Lynch   5:21Ohh, good.Grace.Thank you.Super, super. Okay, and in terms of...The value add, what are you hoping to get best value from me given that you already have a, is it an independent oversight? Is it, what are you hoping for from me?
+
+Smith, Stuart M   5:50So it's a deep dive into their software management system. Ultimately, if I just put it succinctly like that, it's just because we're looking at it, but I think your expertise looking at the specifics associated with software and the dedicated time were enabled us to get into a deep dive and thenKaren and I will handle all the other stuff that goes separate to that. But we'll look at field actions and any complaints. And if there's anything from those, then we can link them into you the second week so you can pull them up and have a look for us.
+
+Niamh Lynch   6:24Super, super.
+
+Smith, Stuart M   6:24Does that sound like a... that's a rough plan that I've got in my head?
+
+Niamh Lynch   6:26Yeah.Yeah, absolutely. So you guys are on site the first week because it is, I do recall it was a two-week audit. Yeah, super. And
+
+Smith, Stuart M   6:34Yes.So we'll do the production process control, purchasing, all of those ones, and we'll do device development. But when it comes to software, then we'll probably do software development, validation, purchasing controls associated with those. We'll probably pick those up.
+
+Niamh Lynch   6:41M.
+
+Smith, Stuart M   6:56But then we're looking at things like is there software unknown provenance or anything on there, the software bill of materials, we can get those ready for you in the first week so you can see them.
+
+Niamh Lynch   7:06Fabulous.
+
+Smith, Stuart M   7:07And then the other one is roll out of new versions as a result of any complaints or field actions to see did they actually get rid of the issue or did or are they just...
+
+Niamh Lynch   7:18Grace.
+
+Smith, Stuart M   7:19performing some inactions and there's no change.
+
+Niamh Lynch   7:22And will there be, you just said there, you'll be able to get like things like the S-BOM.for the week before when you're in there. So will I have access to the folders so that I can see those documents? So will I be able to do a bit of a desktop audit before I get in to make best use of my time or what are you expecting?
+
+Smith, Stuart M   7:31Yes.I think we'll have to, I don't know at the moment and that's an honest answer. I think they may end up not wanting to share it until you get there, but I'm going to have to. Yeah. Limit, yeah. I think at the moment I've got a meeting with them Wednesday, so I'll know some more information then in terms of
+
+Niamh Lynch   7:45Yeah.Limit the risk for them, yeah, okay.
+
+Smith, Stuart M   8:00those items. But if need be, we can probably upload them because you're not on the Abbott network, then we'll just have to work out a way of securely transmitting information to you. And we'll have to get you external access to the SharePoint that we use during the audit. Yeah.
+
+Niamh Lynch   8:11Yeah.Yeah, that's right. Yeah.Brilliant.
+
+Smith, Stuart M   8:20which is always a bit painful.
+
+Niamh Lynch   8:23Well, look, it wasn't last time.
+
+Smith, Stuart M   8:25No, it doesn't tend to be painful, it just tends to be slow and it just making sure someone actually is doing it. That's half the battle.
+
+Niamh Lynch   8:31Yeah.Yeah, yeah.
+
+Jacqui Fox   8:34Oh, God. And from the sound of that, that will kind of Stuart determine kind of a calendar of activity over the next two weeks in terms of that training and prep stuff.
+
+Niamh Lynch   8:36Yeah.
+
+Smith, Stuart M   8:47Yes, yeah.
+
+Jacqui Fox   8:48Okay, I suppose I'm just conscious that obviously, because it's 20 hours and 20 hours, Niamh is obviously all the stuff that she's working on so that it's, that she's able to kind of plan out her time to be able to support the prep for it is really where we're going with that. And so, and I guess then from what you've just said,
+
+Smith, Stuart M   9:04Yeah.
+
+Jacqui Fox   9:08I know for the previous audit we needed the audit process for the internal quality audits and the AQR Global Compliance and Audit Program guidance. Is that that's not necessary for review on this audit based on the type of audit that you're doing being it surveillance? Or is it?
+
+Smith, Stuart M   9:23You will still need to, you'll still need to sign those as a standard. You'll need to sign both of those as a training, even though you've read them before, Niamh, you'll still have to sign them.
+
+Jacqui Fox   9:26Need to sign both of those, okay.S.
+
+Niamh Lynch   9:32Absolutely, I understand they have to be done for every audit. Yeah, yeah, it's like a pack for...
+
+Smith, Stuart M   9:35Yes.
+
+Jacqui Fox   9:36Okay. Interesting. I've never seen that pack before.
+
+Smith, Stuart M   9:38It's a pack and it's got to be standalone, which means it will have some various standards. But what I'll try and do is limit your stream so that you don't end up getting things like clean room standards that aren't applicable to you and sterilization standards that probably is not going to be value added because you're never going to touch those.
+
+Niamh Lynch   9:54Nice, yeah.Yeah.
+
+Smith, Stuart M   9:59In terms of those items.
+
+Niamh Lynch   10:01Yeah.
+
+Smith, Stuart M   10:10Yep, I will send you. Yep.
+
+Jacqui Fox   10:13Any issues with site access? I assume it's kind of the normal, she'd probably connect to him, sorry, not she, Niamh will connect with you on the 1st morning that she's there and kind of traveling with you guys. That's normally how you guys do it, but just, yeah.
+
+Smith, Stuart M   10:26Yeah, so we'll be there the weekend before. So when you arrive, Niamh on the Saturday afternoon, then we'll be there the Sunday already. So we can just connect and then we'll all travel in together in one car, which will make it a lot easier because the traffic is horrific there.
+
+Jacqui Fox   10:31Saturday, yeah.Perfect.
+
+Niamh Lynch   10:40Grace.
+
+Jacqui Fox   10:40Great.
+
+Niamh Lynch   10:42Yeah, I like that. I just sit back and arrive. I love that.
+
+Jacqui Fox   10:43Lovely.
+
+Smith, Stuart M   10:47Yeah.
+
+Jacqui Fox   10:49Dietary requirements, I'm not aware that you have any, but I will always ask the question.
+
+Niamh Lynch   10:54I don't.
+
+Jacqui Fox   10:55No. Cool. And then just in terms of start and end time, Stuart, is it kind of like, I presume, 8 AM start, 8.30?
+
+Smith, Stuart M   11:038.30 start till 5 P.m. finished. That's what I'm proposing, but they can always veto that and provide something different.
+
+Jacqui Fox   11:11Okay, perfect. Just at least you have some guide rails on it. And the other scope is fine. Site walkthrough, is that necessary or is that covered off on you doing it before or?
+
+Smith, Stuart M   11:22I would say, I would say when it comes to the actual device, it might be worth you going down and having a look to see the point of programming of putting the software on the device itself, because the other one is a remote unit that's built. They also do servicing as well. So they will do servicing ofParticular machines that have software on them.
+
+Niamh Lynch   11:46And is this the site that owns, do you recall it? You may not recall, I don't know if you're aware, but when I was in Penang, it was for pacemakers, but it was the manufacturing site.
+
+Smith, Stuart M   11:57Yes, yeah, I was in Penang. I follow, I did the second, I did the follow up audit in Penang after you and Teresa were there and I did that audit. So I, you know, they are the legal manufacturer of the stuff that's made in Penang.
+
+Jacqui Fox   12:03Disaster.
+
+Niamh Lynch   12:05Fantastic.I thought so. And I wanted because I do recall letting Elaine know that there's only so much you can find out. There isn't much you can find out really without going to the software developer or the design owner. So this is the design owner. Super.
+
+Smith, Stuart M   12:23Yeah, because.So what I found in Penang, and you found the same thing, is they were installing the software on it, but it was just literally a file transmitted to them and they were just copying it on there. But ultimately this site is the one that creates that file and then tests it. Because last time I was there, I also had issues with testing against iOS and Android versions in claims.
+
+Jacqui Fox   12:37Creates the file.
+
+Niamh Lynch   12:40Yeah.Yes, yes, yeah. And I mean, some of the main, there were concerns on that site, but nothing that you could really, without being the design owner, you couldn't follow it through fully. Do you know, you couldn't, you know, the risk management files, all of it, it was a manufacturing.
+
+Smith, Stuart M   12:48So, there is.Yeah.
+
+Niamh Lynch   13:06I remember when they were putting additional glue in for ingress, you know, so clearly there was an issue there. But yeah, all of it happened. I did say we need the design site in order to really assess this. Yeah.
+
+Smith, Stuart M   13:21Yeah, and this is the design site.
+
+Niamh Lynch   13:23Okay, that's super.
+
+Jacqui Fox   13:24Perfect.
+
+Smith, Stuart M   13:25So that will probably give you some background to what you saw in Penang as well, because these ones, Penang made the Gallant device, which is the ICD, which is the ICD. These ones here make other things as well that are more the next gen.
+
+Jacqui Fox   13:26Perfect.
+
+Niamh Lynch   13:30Yeah.That sounds familiar. Yes. Yes.Cool, cool.
+
+Smith, Stuart M   13:44stuff.
+
+Niamh Lynch   13:46So, it'll be interesting.
+
+Jacqui Fox   13:47It's great.It's great when you have a background that allows you to kind of connect. So I would imagine it makes for a motor audit because you kind of have a background to what you're doing. So.
+
+Niamh Lynch   13:58Yeah.
+
+Smith, Stuart M   13:58Yeah, and because both Niamh and I have been to Penang, we know exactly what's going on at that site. So
+
+Jacqui Fox   14:00Yes.
+
+Niamh Lynch   14:03Yeah.
+
+Jacqui Fox   14:03Absolutely brilliant. And then, so to the point on the order document tracker and the query log, that will be off the basis of access shirt that you're working on. And obviously, how long is a piece of string? We know that that's, we'll get it when we get it. And then just in terms of those,
+
+Niamh Lynch   14:06Yeah.
+
+Smith, Stuart M   14:11Yes.Yep, yep.
+
+Jacqui Fox   14:22the training attestation, the codes of conduct and stuff like that. Normally what I've heard is after the audit planning meeting is probably the more accurate time to sign those that line up with your.
+
+Smith, Stuart M   14:34The training attest, so the track, so you will need to do the code of conduct first before I share anything with you. I know you've got your own confidentiality agreement, but there's the code of conduct that will go first. Then you will have the training attestation, which I will need before the audit formally starts. So that will have to be ready.
+
+Jacqui Fox   14:41Yep.Yeah.Yeah.Yeah.
+
+Smith, Stuart M   14:53by the whatever date it is.
+
+Jacqui Fox   14:57The 20th, so by the 17th then.
+
+Smith, Stuart M   14:57The.
+
+Niamh Lynch   14:58Before.
+
+Smith, Stuart M   14:5920th.Seventeenth, I would say.
+
+Jacqui Fox   15:04Yeah, yeah.Since which is the last day of the training prep anyway. OK, perfect. That might that lines up. Do do do do do. And then in terms of our site, obviously site are aware and it provides documents that can be reviewed, which is what Niamh discussed at the start. So you're going to figure out a way if either get her access or sharing whatever.
+
+Smith, Stuart M   15:08Yeah.Yes.Sharing, yeah.
+
+Jacqui Fox   15:27The planning or the planning leasing that I presume is scheduled. I know we don't normally attend, sometimes we do, but...
+
+Smith, Stuart M   15:32So that's scheduled for Wednesday as the first version. So that's where we'll go through the audit plan. And then audit preparation meeting. We will have to meet Niamh before I go for the first week just to go through information and because I'll be there from the
+
+Jacqui Fox   15:35Wednesday, that's OK.Perfect.
+
+Smith, Stuart M   15:5214th onwards. So I know you've got it in the plan for the 17th, but I won't be available because I'll be mid audit at that point. So you might want to have a look at just the timeline for that, Jacqui, in terms of...
+
+Niamh Lynch   15:55Mm.
+
+Jacqui Fox   15:57Mhm.
+
+Smith, Stuart M   16:06Catch up.
+
+Jacqui Fox   16:08Okay, so I'd say, Niamh, we probably need to plan through that then because...It is Normic. Yep.
+
+Smith, Stuart M   16:15Because just remember, so just remember I won't be around between the 14th and the...
+
+Jacqui Fox   16:21So.
+
+Niamh Lynch   16:2317th.
+
+Smith, Stuart M   16:2414th and the 14th and the 17th.
+
+Jacqui Fox   16:2517th, yeah. So I'm just going to pop that in there.
+
+Smith, Stuart M   16:30Because I will be physically in California, so...
+
+Jacqui Fox   16:30Search.
+
+Niamh Lynch   16:32Yeah.
+
+Jacqui Fox   16:34Okay.Of.
+
+Niamh Lynch   16:36I imagine, though, that I imagine, though, that we would need a catch-up meeting.
+
+Smith, Stuart M   16:37Sorry.
+
+Niamh Lynch   16:43before we start on the Monday. So will that be at the weekend when I arrive? Yeah. Yeah. Yeah.
+
+Smith, Stuart M   16:44Yeah.So, we can do, we can...That will be at the weekend at the hotel, which is I prefer to do it face to face if we can. That's probably the easiest way.
+
+Niamh Lynch   16:54Much, yeah, absolutely.
+
+Jacqui Fox   16:56Okay.
+
+Smith, Stuart M   16:56and it saves you having to dial into a call, but then I'll just have to make sure that there's stuff in place before I head out for California.
+
+Niamh Lynch   17:04Yeah, yeah.
+
+Jacqui Fox   17:06And just on that, Stuart, that training attestation, if she waits till the 17th to give it to you, will that, will you be able to access that or is there a problem with that that she needs to give it to you before you go?
+
+Smith, Stuart M   17:18As long as it's, I would say ideally it would be good before I leave for it, but if need be, if it's midweek and you're only involved in the second week, then I can probably justify it based on the audit plan in terms of those requirements. I think ideally it might be worth thinking about instead of going to the 17th as the hard stop, it might be worth thinking about it the week before because then I can talk to Niamh direct. Otherwise,
+
+Jacqui Fox   17:23Mmh.Yep.
+
+Smith, Stuart M   17:42we're just going to lose, it's just going to fall, it's not going to fall through the crack, but the risk is that we don't realise something is missing or you need to do something and I'm not there to help.
+
+Niamh Lynch   17:50M.Yeah, no, I will front end everything for the first week as much as possible. If I have access and all the stuff, I will aim to front end everything so that, because I did clear the two weeks. Apologies, Stuart, go ahead.
+
+Smith, Stuart M   17:56Yeah.
+
+Jacqui Fox   17:57Perfect.
+
+Smith, Stuart M   18:01Yeah.And I would say, if we aim for that, then it might be easier.I would say if we aim for that, that would be good. If not, then we do have that second week up to the 17th as contingency, just in case. Yeah.
+
+Niamh Lynch   18:08Yeah.Yeah, as catch up. Yeah. Yeah.
+
+Jacqui Fox   18:15And I think that probably lines up with my last point there in terms of the planning is, is there a deadline for that risk assessment or focus area plan? It's really to try and do it.
+
+Smith, Stuart M   18:25So my risk assessment, so my risk assessment forms an input into the audit plan, so they go sequentially. So I've got to do the risk assessment to develop the audit plan and the audit plan I'm trying to, I'm getting ready for Wednesday. Now I may not share it before Wednesday because we need to run it through the site in advance to make sure they're in alignment with it.And any other requirements, but I think that's the plan.
+
+Niamh Lynch   18:50And Jacqui, to that question, I think because other audits, I would usually do the risk analysis and then give it to the co-auditor. But in this case, Stuart and Karen are going to be there the week before, so they need to have it done anyway, you know.
+
+Jacqui Fox   18:51Yep.Yeah, yeah, yeah.
+
+Smith, Stuart M   19:06Yeah, yeah. And we'll share the risk analysis with you before you arrive so you can see the information, but just remember that will be under strict and confidential requirements, which is why I need the confidentiality and I need the code of conduct in place before I share that. I trust you, Niamh, but I still got to follow my process.
+
+Niamh Lynch   19:15Of.
+
+Jacqui Fox   19:19Jack.
+
+Niamh Lynch   19:20Of course, yeah.
+
+Jacqui Fox   19:21Yep.
+
+Niamh Lynch   19:25Absolutely understood, Stuart. No bother at all.
+
+Smith, Stuart M   19:27Yeah.And then there will also be data as well, as well, data as well that I can share for complaints, Kappa, deviations, that sort of thing that we've got in advance.
+
+Jacqui Fox   19:29Perfect.
+
+Niamh Lynch   19:38Grace.
+
+Smith, Stuart M   19:39Yeah.
+
+Jacqui Fox   19:40Perfect, perfect.
+
+Niamh Lynch   19:41It'll be, it'll be a challenging audit for them, I imagine, with the different skill sets.
+
+Smith, Stuart M   19:47Yes.
+
+Niamh Lynch   19:47Well, yeah, with the combined skill set is more of what I meant.
+
+Smith, Stuart M   19:52Yeah, I think it will. Yeah, it will be it will be challenging.
+
+Niamh Lynch   19:53Yeah.Yeah.
+
+Jacqui Fox   19:57And just in terms then of the details of the audit execution of it, just around the audit tools, the checklists and I suppose where the record sampling and the findings, they're all in logs and just from a perspective of who owns that and I think that'sprobably to your point, Niamh, given that Stuart and Karen are there already, that you're Stuart nearly owning that audit findings tracker and coordinating kind of the feedback from corporate that's coming in on that in terms of queries as a result of findings that are being added to it.
+
+Smith, Stuart M   20:27Yes.Yes, so I'll share with you the tracker that we use that transmits. Are you, did you use it in the assessment?
+
+Jacqui Fox   20:37Yep.I think she did.
+
+Smith, Stuart M   20:45where they transmit directly. That's the same process that I'll use. We don't use any checklists. We're not checklist auditors. We just go and look. I don't believe in checklist auditing, but there you go. And guidance documents, there will be some job aids in terms of requirements that you might need.
+
+Niamh Lynch   20:51No.No.Just the tracker, yeah.
+
+Jacqui Fox   20:56Yeah.
+
+Niamh Lynch   20:59Yeah.
+
+Jacqui Fox   21:01Okay.
+
+Smith, Stuart M   21:06to if you want to have a look at but those ones are my primarily right based around.standard quality systems for by device type and sorry, by product type rather than process. So there'll be like cybersecurity risks and things like that in there, but then they're aligned to the ISOs anyway, so they'll be pretty much standard, industry standard.
+
+Niamh Lynch   21:26Yeah.OKOK.Will you be searching up, you know, when you have the SBOM, will you guys be looking up the SV, the CVEs for the various versions that they're using, or is that part of your prep?
+
+Smith, Stuart M   21:44I think.We won't get the S-BOM until we turn up on site.
+
+Niamh Lynch   21:49Okay, yeah.
+
+Smith, Stuart M   21:50So we may get, we may or may not get a chance to look at it, but I think what we'll probably end up doing is looking at the suppliers of that information and seeing what they are and whether they're black box, whether they're out of the shelf or whether they're configurable, customizable. Until we know that, it's a bit difficult. You know what it's like with an SBOM, you get it and you try and work out, well, this is Adobe, we can't do much with that.
+
+Niamh Lynch   21:59The.Kane.
+
+Smith, Stuart M   22:12Whereas this one's got a configuration management to it, which means it can be shifted. So until we physically see the SBOM, it's quite difficult to say.
+
+Niamh Lynch   22:23And given that I won't be knee deep in the risk analysis, I would say, because you will have the majority of that done, if not all. If you do need me to do something like that on the week prior when you're there, you know, like look up CVs, the, you know, the latest threats for a certain part.
+
+Smith, Stuart M   22:43Yes.
+
+Niamh Lynch   22:43You know, if you need activities like that, do let me know.
+
+Smith, Stuart M   22:47Yeah, I will. But I think ultimately all the threat modelling comes out of corporate anyway. So that's all handled at top level out of Chicago in terms of that. They look for the threats in terms of the ongoing threats to the market and things like that in term. So if you've got like Adobe or something, they'll monitor those to look for those and then feed them down. So they're not done at a site level.
+
+Niamh Lynch   23:10Okay, right. Okay. So as long as those versions match what head office have, you're covered. Okay.
+
+Smith, Stuart M   23:17Yes, yeah.
+
+Jacqui Fox   23:19Okay.
+
+Niamh Lynch   23:20And you would assume that they would have the up-to-date SBOM, provided the SBOM is correct, because that requires maintaining. Yeah, okay, gotcha.
+
+Smith, Stuart M   23:24Well, I'd hope so.Yes.Yeah, I know. Been there, done that, he should find express bombs.
+
+Jacqui Fox   23:32Yeah.
+
+Niamh Lynch   23:33Yeah, yeah, exactly.
+
+Jacqui Fox   23:36And then just in terms of end of day connections, that was kind of like finish on site and then connect after the hotel.
+
+Smith, Stuart M   23:44And then we chatted the chatted the car on the way back to the hotel.
+
+Jacqui Fox   23:48And Stuart, I know from previous ones that you kind of been using AI and prompts within AI to help you build out that report. I assumes same same for the course. OK.
+
+Smith, Stuart M   23:57Yes, yep.Yeah, we still do those and I developed some of those as well. So that's part of our process now is to help us to try and speed stuff up for us, especially to looking for standards and things because sometimes you're looking through a stand and you're trying to find one particular clause and you can't see it because you're blind, which I've done before and you know it's there, you just can't see.
+
+Jacqui Fox   24:08And standardized, yeah.
+
+Niamh Lynch   24:15M.Yeah.
+
+Smith, Stuart M   24:20You just can't say it.
+
+Niamh Lynch   24:20Yeah, yeah. Because, yeah, your eyes start going a bit skewish, don't they, between the evening and the, yeah, it can get challenging, yeah.
+
+Jacqui Fox   24:22But...
+
+Smith, Stuart M   24:29Yeah.
+
+Jacqui Fox   24:30Ohh.
+
+Smith, Stuart M   24:30Like I've had it and I'm sat there and I'm looking at Stanley going, I know it's in here. I've seen it. I just can't find it.
+
+Niamh Lynch   24:35Yeah.Yeah, yeah.
+
+Jacqui Fox   24:40Okay, I think that covers off most of my points. Neves, anything else that you need to clarify on?
+
+Niamh Lynch   24:48No, no, all good.
+
+Jacqui Fox   24:50All good.
+
+Niamh Lynch   24:51I reckon I'll be hiring a car and then just relying on you guys once I get there for over and back to the water, so...
+
+Smith, Stuart M   24:59Yeah.Because the other thing, we'll probably have to work it out or there's always an Uber as well if need be, but it depends on the cost because don't forget, it's the back end of the World Cup.
+
+Niamh Lynch   25:10Yes, exactly, exactly. Yeah, when the final is on, right?
+
+Smith, Stuart M   25:12So there may be.Yeah, so there may be a slightly less transportation available at one particular point. And I can guarantee if the US gets the final, then there won't be an audit happening. But
+
+Niamh Lynch   25:20Yeah.
+
+Jacqui Fox   25:27Ha ha ha!
+
+Smith, Stuart M   25:28They'll probably have the afternoon off or something.
+
+Jacqui Fox   25:30Well, at the rate they're going, that's quite a possibility, I would think.
+
+Niamh Lynch   25:35Wow.
+
+Smith, Stuart M   25:36Well, we'll wait and see.
+
+Jacqui Fox   25:37Yep, nope.
+
+Niamh Lynch   25:38Yeah, so we'll have to plan for that, right, Stuart?
+
+Jacqui Fox   25:41Yeah.
+
+Smith, Stuart M   25:41Well, wait and see. I'm not a football person, so I'm not particularly bothered. You can always go shopping, Niamh, if you need.
+
+Jacqui Fox   25:44There's always a risk, so you always have to plan for it.
+
+Niamh Lynch   25:44Yeah.
+
+Jacqui Fox   25:48The.
+
+Niamh Lynch   25:48Well, I hope to God they don't win. God forgive me, so...
+
+Jacqui Fox   25:52Well, no offense, I think they'd be insufferable if they do, anyway.
+
+Niamh Lynch   25:56Ohh, well, it's they could, they could win.
+
+Smith, Stuart M   25:57Oh, God, yeah.
+
+Jacqui Fox   25:59It'll be the best win, the best win they've ever had in any sport, so...
+
+Smith, Stuart M   26:05Yeah, obviously.
+
+Niamh Lynch   26:07We didn't talk, given that there'd be three people there on the third week. Are you going to have 3 tracks? Is it going to be support each other? How is that working?
+
+Smith, Stuart M   26:16That's what I'm trying to work out at the moment in terms of logistics. At the moment, I'm thinking having you in a separate track, which will probably be easier because then it's more focused, but I've just got to work through the logistics and look at the risk analysis to see is there anything there, but we'll talk to each other constantly anyway.
+
+Niamh Lynch   26:23Yeah.E.
+
+Smith, Stuart M   26:35So even if you're on a separate track, it just gives us, it gives you the freedom to go and look at.
+
+Niamh Lynch   26:35Okay.Wherever.
+
+Smith, Stuart M   26:42look at stuff wherever you need to. And it also means it frees us up to do, rather than trying to do software and do everything under the sun in one go, then we use you for your expertise in a particular area.
+
+Niamh Lynch   26:44Yeah.Yeah.Yeah, yeah, that makes sense.That'd be an important understanding, I suppose, but as long as you have it planned out, which obviously you're on top of, yeah, I have no concern. Yeah, lovely.
+
+Smith, Stuart M   27:08Yeah, yeah, because I'm just writing up my one report I've just finished and trying to plan for this one as well at the same time.
+
+Niamh Lynch   27:16Yeah, yeah, I know that's a challenge, isn't it?
+
+Smith, Stuart M   27:19Yeah, because your headspace is like, I'm thinking to that one back there and I'm trying to write for one here and this one's farmer and this one's device and just at the cake which Rex is it.
+
+Niamh Lynch   27:27Yeah, yeah, yeah, yeah, I know. I know. I'm in the fortunate position at least. But when I came back from that, from where was I? I was in Munich doing another audit, that audit, the last audit, and then came back and was doing another client's work.
+
+Jacqui Fox   27:38Yeah.
+
+Niamh Lynch   27:45and they were so similar, I really did have to go and give myself a break and just go, they're different. Because the information starts to go blue.
+
+Smith, Stuart M   27:53Yeah, it's what it's.You're wondering, you remember, I remember wandering around one site and I was going, right, I'm sure they made that product here and then realized that they didn't. It was like a completely different one that I'd seen the week before.
+
+Niamh Lynch   28:03Yeah.S.
+
+Jacqui Fox   28:09Oh God, yeah, I think you need a break is what you need, Stuart.
+
+Niamh Lynch   28:09Ohh yeah, yeah.
+
+Smith, Stuart M   28:11Yeah, that was the that was I convinced myself that was they made that product there, but no, they didn't. It was a different one.
+
+Niamh Lynch   28:12Yeah, yeah.Yeah, the brain needs time to process; it's the downtime is as equally important as the uptime, yeah.
+
+Jacqui Fox   28:24Yes.
+
+Smith, Stuart M   28:24Yeah, yeah.
+
+Niamh Lynch   28:26Yeah.
+
+Jacqui Fox   28:27Right, guys, thank you very much. If you need anything else, let me know, and I have that code of conduct, so I'll get that over to you today as well, Niamh.
+
+Niamh Lynch   28:28Grace.
+
+Smith, Stuart M   28:29Right.
+
+Niamh Lynch   28:29Thanks.
+
+Smith, Stuart M   28:35Okay.
+
+Niamh Lynch   28:36Lovely. Thanks a million and lovely to see you, Stuart. Bye bye. Thanks, Jacqui. Bye.
+
+Jacqui Fox   28:36Perfect. Cheers.
+
+Smith, Stuart M   28:37Thank you.YouTube.
+
+Jacqui Fox   28:39Thanks, bye. Bye.
+
+Smith, Stuart M   28:41Bye.
+
+Jacqui Fox stopped transcription

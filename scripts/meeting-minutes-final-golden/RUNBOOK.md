@@ -13,7 +13,7 @@ Use this pack to answer:
 - Does it abstain when the transcript does not support decisions or actions?
 - Does it avoid obvious meeting-minutes quality issues, such as raw transcript leakage, bad titles, first-person wording, timestamps, emojis, or deadline text inside action text?
 
-The suite currently contains 20 golden transcript cases under `scripts/meeting-minutes-final-golden/`.
+The suite currently contains 27 golden transcript cases under `scripts/meeting-minutes-final-golden/`.
 
 Each case has:
 
@@ -44,8 +44,8 @@ python3 scripts/run_meeting_minutes_final_golden_eval.py --dry-run
 Expected healthy shape:
 
 ```text
-Meeting-minutes-final golden eval: mode=dry-run, cases=20, schema_failures=0, executed=0, passed=0, failed=0
-Coverage: meeting_types=23, behaviours=27, source_fixtures=20
+Meeting-minutes-final golden eval: mode=dry-run, cases=27, schema_failures=0, executed=0, passed=0, failed=0
+Coverage: meeting_types=32, behaviours=44, source_fixtures=27
 ```
 
 This confirms:
@@ -78,7 +78,10 @@ Only use this when the local MiniLM runtime and dependencies are installed:
 python3 scripts/run_meeting_minutes_final_golden_eval.py
 ```
 
-This calls `scripts/meeting_minutes_minilm_only.py` with `--skip-rewrite` and evaluates the extracted output against the golden criteria.
+This calls `scripts/meeting_minutes_final_colab.py` -- the same script `/api/meeting-minutes-final`
+runs in production (see `routes/api.js`) -- and evaluates the extracted output against the golden
+criteria. Pass `--extractor meeting_minutes_minilm_only.py` to score its unused predecessor instead
+(kept only for comparison; nothing calls it from the live route).
 
 If MiniLM is unavailable locally, use the live API mode instead.
 
@@ -123,15 +126,32 @@ Important failure categories:
 
 ## Current Baseline
 
-Last recorded live API run on 2026-06-22:
+Last recorded local-extractor run (2026-07-02, against `meeting_minutes_final_colab.py`, the script the live
+route actually runs -- this baseline was not previously measured against that script; see below):
 
 ```text
-20 cases executed
-20 passed
-0 failed
+27 cases executed
+21 passed
+6 failed
 ```
 
-This means the deployed tool is passing the current representative production-readiness pack. Continue treating the suite as a regression baseline rather than a guarantee that every real-world transcript will be perfect.
+The 6 known-failing cases are all "real client transcript" cases (021, 022, 023, 024, 025) plus one synthetic
+case (018) with a pre-existing minor `Mark:` speaker-label leak. They fail primarily on `abstention`/`actions`
+count mismatches against `expected.json` thresholds that were set before a July 2026 pass fixed a critical bug:
+the transcript parser did not handle the message-glued-to-timestamp layout mammoth's raw-text extraction
+produces for real `.docx` Teams exports (`Jacqui Fox   0:03Perfect and...` with no space), which meant every
+real transcript case previously collapsed to a single "Unknown speaker" turn and was scored against a much
+weaker extraction than what real users see. Now that parsing is fixed, several of these cases extract
+genuinely more (and more specific) content than their `expected.json` thresholds allow for, so the current
+failures are mostly stale expectations rather than new defects -- but they have not yet been re-baselined, so
+treat them as a known gap rather than a false "all green" signal. Do not close this gap by loosening
+`expected.json` counts without checking the actual output is not also introducing new noise.
+
+Before this pass, the suite defaulted to scoring `meeting_minutes_minilm_only.py`, an older sibling script the
+live route (`meeting_minutes_final_colab.py`) does not use, so the same parser bug was previously invisible to
+this whole suite. Continue treating the suite as a regression baseline rather than a guarantee that every
+real-world transcript will be perfect, and re-run live API mode (`--base-url`) before claiming production
+readiness, since it is the only mode that reflects the deployed `GOOGLE_AI_STUDIO_API_KEY` rewrite pass.
 
 ## Safe Change Process
 

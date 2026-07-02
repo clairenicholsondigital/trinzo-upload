@@ -13,7 +13,12 @@ from uuid import uuid4
 
 ROOT = Path(__file__).resolve().parent
 PACK_DIR = ROOT / "meeting-minutes-final-golden"
-EXTRACTOR = ROOT / "meeting_minutes_minilm_only.py"
+# The production /api/meeting-minutes-final route runs meeting_minutes_final_colab.py
+# (see routes/api.js). This must stay the default extractor so the golden pack tests
+# what is actually deployed; meeting_minutes_minilm_only.py is the predecessor used by
+# the separate /meeting-minutes-minilm-only tool and is kept only for comparison.
+DEFAULT_EXTRACTOR_NAME = "meeting_minutes_final_colab.py"
+EXTRACTOR = ROOT / DEFAULT_EXTRACTOR_NAME
 REQUIRED_CATEGORIES = ("decisions", "actions", "hallucinations", "abstention")
 CONVERSATIONAL_LEAKAGE = (
     "basically",
@@ -373,11 +378,11 @@ def validate_expected(case: Path, expected: dict[str, Any]) -> list[str]:
     return failures
 
 
-def run_extractor(case: Path, timeout: int) -> dict[str, Any]:
+def run_extractor(case: Path, timeout: int, extractor: Path) -> dict[str, Any]:
     result = subprocess.run(
         [
             sys.executable,
-            str(EXTRACTOR),
+            str(extractor),
             str(case / "transcript.txt"),
             "--skip-rewrite",
             "--skip-diagnostics",
@@ -434,6 +439,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--cases", nargs="+", help="Specific case folder names to run.")
     parser.add_argument("--dry-run", action="store_true", help="Validate fixture/schema/scoring criteria without loading MiniLM.")
     parser.add_argument("--base-url", help="Score the deployed web-app /api/meeting-minutes-final endpoint instead of the local extractor.")
+    parser.add_argument(
+        "--extractor",
+        default=DEFAULT_EXTRACTOR_NAME,
+        help="Extractor script under scripts/ to run locally (defaults to the production meeting_minutes_final_colab.py).",
+    )
     parser.add_argument("--timeout", type=int, default=180)
     parser.add_argument("--json", action="store_true", help="Print the full report as JSON.")
     return parser.parse_args(argv)
@@ -442,6 +452,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
     pack_dir = Path(args.pack_dir)
+    extractor = Path(args.extractor)
+    if not extractor.is_absolute():
+        extractor = ROOT / extractor
     cases = find_cases(pack_dir)
     if args.cases:
         wanted = set(args.cases)
@@ -468,7 +481,7 @@ def main(argv: list[str]) -> int:
                 if args.base_url:
                     output = run_live_endpoint(args.base_url, case, args.timeout)
                 else:
-                    output = run_extractor(case, args.timeout)
+                    output = run_extractor(case, args.timeout, extractor)
                 report["evaluation"] = evaluate_case(case.name, output, expected)
             except Exception as exc:
                 report["evaluation"] = {
@@ -485,6 +498,7 @@ def main(argv: list[str]) -> int:
     summary = {
         "packDir": str(pack_dir),
         "mode": "dry-run" if args.dry_run else ("live-api" if args.base_url else "extractor"),
+        "extractor": None if (args.dry_run or args.base_url) else extractor.name,
         "baseUrl": args.base_url,
         "totalCases": len(cases),
         "schemaFailures": validation_failures,

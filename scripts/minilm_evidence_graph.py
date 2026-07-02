@@ -332,23 +332,59 @@ def classify_sentence(sentence: str) -> str:
     return "discussion"
 
 
-def parse_turns(transcript: str) -> list[tuple[str, str]]:
-    """Parse Teams-style speaker turns from a transcript."""
+_SPEAKER_LINE_RE = re.compile(
+    r"^([A-Z][A-Za-z'’.,-]*(?:\s+[A-Za-z'’.,-]+){0,4})\s+(\d{1,2}:\d{2}(?::\d{2})?)\s*(.*)$"
+)
 
-    speaker_line = re.compile(r"^(.+?)\s+(\d{1,2}:\d{2})\s*$")
+_NON_SPEAKER_START_WORDS = {
+    "the", "and", "but", "so", "right", "yes", "no", "okay", "ok", "well",
+    "because", "then", "also", "if", "when", "sorry", "yeah", "yep", "perfect",
+    "great", "cool", "super", "absolutely", "brilliant", "thanks", "thank",
+    "alright", "all", "now", "just", "actually", "basically", "here", "there",
+    "what", "who", "which", "why", "how", "this", "that", "these", "those",
+    "i", "we", "you", "he", "she", "it", "they", "for", "in", "on", "at",
+    "or", "nope", "mm", "mhm", "hmm", "ohh", "oh", "ah", "please", "date",
+    "location", "meeting", "transcript",
+}
+
+
+def _looks_like_speaker_name(name: str) -> bool:
+    candidate = name.strip().rstrip(",")
+    if not candidate or len(candidate) > 40:
+        return False
+    first_word = re.split(r"[\s,]+", candidate)[0].lower().strip(".")
+    if not first_word or first_word in _NON_SPEAKER_START_WORDS:
+        return False
+    return True
+
+
+def parse_turns(transcript: str) -> list[tuple[str, str]]:
+    """Parse Teams-style speaker turns from a transcript.
+
+    Handles both the classic export layout, where a "Speaker  H:MM" line is
+    followed by the message on later lines, and the layout produced by
+    mammoth's raw-text extraction of real Teams .docx transcripts, where the
+    message is glued directly onto the same line immediately after the
+    timestamp with no separating whitespace (e.g. "Jacqui Fox   0:03Perfect...").
+    """
+
     turns: list[tuple[str, str]] = []
     current_speaker = "Unknown"
     current_lines: list[str] = []
 
     for raw_line in transcript.splitlines():
         line = raw_line.strip()
-        match = speaker_line.match(line)
-        if match:
+        if not line:
+            continue
+        match = _SPEAKER_LINE_RE.match(line)
+        speaker_candidate = match.group(1).strip() if match else ""
+        if match and _looks_like_speaker_name(speaker_candidate):
             if current_lines:
                 turns.append((current_speaker, normalise(" ".join(current_lines))))
-            current_speaker = match.group(1).strip()
-            current_lines = []
-        elif line:
+            current_speaker = speaker_candidate
+            trailing = match.group(3).strip()
+            current_lines = [trailing] if trailing else []
+        else:
             current_lines.append(line)
 
     if current_lines:

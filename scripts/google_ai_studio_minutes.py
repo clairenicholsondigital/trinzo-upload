@@ -127,26 +127,32 @@ def build_google_minutes_evidence_pack(sections: dict[str, Any], fallback_output
         topics.append(
             {
                 "topic": _clean_text(topic.get("topic", "Discussion")),
-                "discussionPoints": _evidence_items(topic_sections.get("Discussion points"), limit=5),
-                "responsibilities": _evidence_items(topic_sections.get("Responsibilities"), limit=4),
-                "evidenceRequired": _evidence_items(topic_sections.get("Evidence required"), limit=4),
-                "risks": _evidence_items(topic_sections.get("Risks"), limit=4),
-                "openQuestions": _evidence_items(topic_sections.get("Open questions"), limit=4),
+                "discussionPoints": _evidence_items(topic_sections.get("Discussion points"), limit=8),
+                "responsibilities": _evidence_items(topic_sections.get("Responsibilities"), limit=6),
+                "evidenceRequired": _evidence_items(topic_sections.get("Evidence required"), limit=6),
+                "risks": _evidence_items(topic_sections.get("Risks"), limit=6),
+                "openQuestions": _evidence_items(topic_sections.get("Open questions"), limit=6),
             }
         )
-        if len(topics) >= 8:
+        if len(topics) >= 10:
             break
 
     return {
         "topics": topics,
-        "actions": _evidence_items(sections.get("actions"), limit=10),
-        "decisions": _evidence_items(sections.get("decisions"), limit=8),
+        "actions": _evidence_items(sections.get("actions"), limit=14),
+        "decisions": _evidence_items(sections.get("decisions"), limit=10),
         "fallbackOutput": {
             "meetingTitle": _clean_text(fallback_output.get("meetingTitle", "")),
+            "meetingDate": _clean_text(fallback_output.get("meetingDate", "")),
+            "meetingLocation": _clean_text(fallback_output.get("meetingLocation", "")),
+            "participants": {
+                "client": _string_list((fallback_output.get("participants") or {}).get("client"), limit=12),
+                "trinzo": _string_list((fallback_output.get("participants") or {}).get("trinzo"), limit=12),
+            },
             "meetingObjectives": _string_list(fallback_output.get("meetingObjectives"), limit=6),
             "executiveSummary": _clean_text(fallback_output.get("executiveSummary", "")),
-            "discussionPoints": _string_list(fallback_output.get("discussionPoints"), limit=12),
-            "decisions": _string_list(fallback_output.get("decisions"), limit=8),
+            "discussionPoints": _string_list(fallback_output.get("discussionPoints"), limit=16),
+            "decisions": _string_list(fallback_output.get("decisions"), limit=10),
             "actions": [
                 {
                     "meetingActionPoint": _clean_text(action.get("meetingActionPoint", "")),
@@ -155,7 +161,7 @@ def build_google_minutes_evidence_pack(sections: dict[str, Any], fallback_output
                 }
                 for action in fallback_output.get("actions", []) or []
                 if isinstance(action, dict) and _clean_text(action.get("meetingActionPoint", ""))
-            ][:10],
+            ][:14],
         },
     }
 
@@ -163,14 +169,33 @@ def build_google_minutes_evidence_pack(sections: dict[str, Any], fallback_output
 def _prompt_for_evidence_pack(evidence_pack: dict[str, Any]) -> str:
     return "\n".join(
         [
-            "Write concise, client-ready meeting minutes from this MiniLM evidence pack.",
+            "Write thorough, specific, client-ready meeting minutes from this MiniLM evidence pack.",
+            "Each topic below carries a generic 'text' label plus real quoted transcript evidence in its",
+            "'evidence' array (and per-item source snippets). The label is only a category name for you to",
+            "orient by -- treat it as a heading, never as a sentence to copy into the output. Every discussion",
+            "point, risk, and open question you write must be built from the concrete facts in the quoted",
+            "evidence: names, numbers, dates, versions, standard/regulation codes, product or system names,",
+            "quantities, colours, thresholds, and specific commitments. If a topic's evidence contains several",
+            "distinct facts, write a separate discussion point for each one rather than one blended sentence.",
             "Rules:",
             "- Use only the evidence supplied. Do not invent dates, attendees, owners, deadlines, decisions, or claims.",
             "- If a detail is not explicitly supported, use an empty string, an empty list, or 'Not stated'.",
+            "- Never write generic meta-commentary such as 'the discussion covered X, Y and Z' or 'open questions",
+            "  remain around X' -- state the actual fact, risk, or question itself.",
+            "- Do not merge several unrelated facts from one topic into a single vague sentence; split them out.",
+            "- Write every discussion point, decision, and open question as a complete, self-contained sentence a",
+            "  reader could understand without having read the transcript -- never a fragment, and never dependent",
+            "  on a category label next to it for meaning.",
             "- Keep British English spelling.",
             "- Do not mention MiniLM, Gemini, evidence packs, prompts, or source snippets in the public output.",
             "- Actions must be real commitments only; do not turn vague discussion into actions.",
             "- The meeting title and objectives should describe the actual meeting purpose. Do not use admin logistics such as SharePoint access, hotel arrangements, calendar invites, or meeting setup as the overview, objectives, or decisions.",
+            "- fallbackOutput.meetingDate, meetingLocation and participants were extracted heuristically from the",
+            "  transcript header and speaker list. Reuse them unless the evidence clearly contradicts or refines",
+            "  them (for example, moving a name between participants.client and participants.trinzo based on",
+            "  context in the discussion, such as someone being referred to as part of the client's team or as",
+            "  Trinzo/the audit or project team). Do not blank a field just because you are unsure -- keep the",
+            "  fallback value in that case.",
             "- Return JSON only with this shape:",
             '{"meetingTitle":"","meetingDate":"","meetingLocation":"","meetingDescription":"","meetingObjectives":[],"participants":{"client":[],"trinzo":[]},"executiveSummary":"","discussionPoints":[],"decisions":[],"meetingActionPoint":[],"meetingActionPointOwner":[],"meetingActionPointDeadline":[],"actions":[{"meetingActionPoint":"","meetingActionPointOwner":"Not stated","meetingActionPointDeadline":"Not stated"}],"meetingMinutes":[{"topic":"","discussionPoints":[]}],"nextSteps":[{"action":"","owner":"Not stated","deadline":"Not stated"}],"openQuestions":[]}',
             "",
@@ -209,19 +234,19 @@ def _normalise_minutes_output(output: dict[str, Any], fallback_output: dict[str,
     meeting_description = _clean_text(output.get("meetingDescription", "")) or _clean_text(fallback_output.get("meetingDescription", ""))
     executive_summary = _clean_text(output.get("executiveSummary", "")) or _clean_text(fallback_output.get("executiveSummary", ""))
 
-    discussion_points = _string_list(output.get("discussionPoints"), limit=14) or _string_list(fallback_output.get("discussionPoints"), limit=14)
+    discussion_points = _string_list(output.get("discussionPoints"), limit=18) or _string_list(fallback_output.get("discussionPoints"), limit=18)
     decisions = [
         value
-        for value in _string_list(output.get("decisions"), limit=8)
+        for value in _string_list(output.get("decisions"), limit=10)
         if not _is_admin_logistics_text(value) and not _is_low_quality_decision_text(value)
     ]
     if not decisions:
         decisions = [
             value
-            for value in _string_list(fallback_output.get("decisions"), limit=8)
+            for value in _string_list(fallback_output.get("decisions"), limit=10)
             if not _is_admin_logistics_text(value) and not _is_low_quality_decision_text(value)
         ]
-    open_questions = _string_list(output.get("openQuestions"), limit=8) or _string_list(fallback_output.get("openQuestions"), limit=8)
+    open_questions = _string_list(output.get("openQuestions"), limit=10) or _string_list(fallback_output.get("openQuestions"), limit=10)
 
     normalised.update(
         {
@@ -238,10 +263,13 @@ def _normalise_minutes_output(output: dict[str, Any], fallback_output: dict[str,
     )
 
     participants = output.get("participants") if isinstance(output.get("participants"), dict) else {}
-    normalised["participants"] = {
-        "client": _string_list(participants.get("client"), limit=12),
-        "trinzo": _string_list(participants.get("trinzo"), limit=12),
-    }
+    client_participants = _string_list(participants.get("client"), limit=12)
+    trinzo_participants = _string_list(participants.get("trinzo"), limit=12)
+    if not client_participants and not trinzo_participants:
+        fallback_participants = fallback_output.get("participants") if isinstance(fallback_output.get("participants"), dict) else {}
+        client_participants = _string_list(fallback_participants.get("client"), limit=12)
+        trinzo_participants = _string_list(fallback_participants.get("trinzo"), limit=12)
+    normalised["participants"] = {"client": client_participants, "trinzo": trinzo_participants}
 
     actions = []
     for action in output.get("actions", []) or []:
@@ -257,7 +285,7 @@ def _normalise_minutes_output(output: dict[str, Any], fallback_output: dict[str,
                 "meetingActionPointDeadline": _clean_text(action.get("meetingActionPointDeadline") or action.get("deadline")) or "Not stated",
             }
         )
-    normalised["actions"] = actions[:10]
+    normalised["actions"] = actions[:14]
     normalised["meetingActionPoint"] = [action["meetingActionPoint"] for action in normalised["actions"]]
     normalised["meetingActionPointOwner"] = [action["meetingActionPointOwner"] for action in normalised["actions"]]
     normalised["meetingActionPointDeadline"] = [action["meetingActionPointDeadline"] for action in normalised["actions"]]
@@ -308,7 +336,7 @@ def generate_minutes_with_google_ai_studio(
         "generationConfig": {
             "temperature": 0.1,
             "topP": 0.8,
-            "maxOutputTokens": 8192,
+            "maxOutputTokens": 12288,
             "responseMimeType": "application/json",
         },
     }

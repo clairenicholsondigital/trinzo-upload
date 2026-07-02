@@ -321,14 +321,33 @@ def _apply_options(classifier: Any, options: dict[str, Any]) -> None:
         classifier.EVIDENCE_WORDS = _merge_unique(request_words, artifact_words)
 
 
+def normalise_transcript_layout(transcript: str) -> str:
+    """Insert the space mammoth's raw-text extraction of real Teams .docx
+    transcripts omits between a turn's timestamp and its message
+    (e.g. "Jacqui Fox   0:03Perfect and I will..." ->
+    "Jacqui Fox   0:03 Perfect and I will..."), and between sentence-ending
+    punctuation and the next sentence when no space follows
+    (e.g. "Mm-hmm.Okay." -> "Mm-hmm. Okay.").
+
+    Every downstream parser in this module (speaker/turn splitting, sentence
+    splitting, action/decision text cleanup) assumes that separating space
+    exists, so normalising the glued layout once here -- rather than teaching
+    each regex to tolerate it -- is the reliable fix.
+    """
+
+    normalised = re.sub(r"(\d{1,2}:\d{2}(?::\d{2})?)(?=[A-Za-z])", r"\1 ", transcript)
+    normalised = re.sub(r"(?<=[.!?])(?=[A-Z])", " ", normalised)
+    return normalised
+
+
 def _read_transcript(transcript_text: str | None, transcript_path: str | None) -> str:
     if transcript_text:
-        return transcript_text
+        return normalise_transcript_layout(transcript_text)
 
     candidates = [Path(transcript_path)] if transcript_path else DEFAULT_TRANSCRIPT_CANDIDATES
     for path in candidates:
         if path.exists():
-            return path.read_text(encoding="utf-8", errors="replace")
+            return normalise_transcript_layout(path.read_text(encoding="utf-8", errors="replace"))
 
     tried = ", ".join(str(path) for path in candidates)
     raise FileNotFoundError(f"No transcript found. Tried: {tried}")
@@ -978,6 +997,25 @@ def _add_topic_entry(
         topic["sections"].setdefault(section, []).append(entry)
 
 
+_HARD_FACT_TOKEN_RE = re.compile(r"\b\d[\d-]{1,9}\d\b|\b\d{2,6}\b")
+
+
+def _canned_text_is_grounded(canned_text: str, sources: list[dict[str, Any]]) -> bool:
+    """Guard against a catalogue entry's hardcoded specifics (standard or
+    regulation codes, version numbers) firing on a transcript that merely
+    matched its generic keywords. The catalogue text is a hand-authored label
+    written for one specific transcript; any number/code it names has to be
+    traceable to the matched evidence, or publishing it on an unrelated
+    transcript would be a fabricated fact, not a summary.
+    """
+
+    tokens = set(_HARD_FACT_TOKEN_RE.findall(canned_text))
+    if not tokens:
+        return True
+    combined_source_text = " ".join(source.get("text", "") for source in sources)
+    return all(token in combined_source_text for token in tokens)
+
+
 def _profile_topic_entry(
     text: str,
     report: dict[str, Any],
@@ -992,6 +1030,8 @@ def _profile_topic_entry(
         return None
     meaningful_terms = _matched_profile_terms(sources, terms) - (ignored_distinct_terms or set())
     if len(meaningful_terms) < min_distinct_terms:
+        return None
+    if not _canned_text_is_grounded(text, sources):
         return None
     return {
         "text": text,
@@ -1022,6 +1062,28 @@ def _add_profile_section(
     )
     if entry is not None:
         topic["sections"].setdefault(section, []).append(entry)
+
+
+_GENERIC_OWNER_LABELS = {"all", "team", "owner not specified"}
+
+
+def _owner_name_is_grounded(owner: str, full_report_text_lowered: str) -> bool:
+    """A catalogue action's hardcoded owner (e.g. "Rebecca") was written for
+    the one transcript that entry was authored from. On an unrelated
+    transcript that never mentions that person, assigning them the action
+    would be a fabricated name, so require at least one of the (possibly
+    slash-separated) candidate names to actually appear in this transcript.
+    """
+
+    candidates = [name.strip() for name in owner.split("/") if name.strip()]
+    if not candidates:
+        return True
+    for name in candidates:
+        if name.lower() in _GENERIC_OWNER_LABELS:
+            return True
+        if re.search(rf"\b{re.escape(name.lower())}\b", full_report_text_lowered):
+            return True
+    return False
 
 
 def _generic_action_entries(
@@ -1056,6 +1118,9 @@ def _generic_action_entries(
             for source in entry["sources"]
         )
         lowered_source_text = combined_source_text.lower()
+        hardcoded_owner = action.get("owner")
+        if hardcoded_owner and not _owner_name_is_grounded(hardcoded_owner, lowered_source_text):
+            continue
         required_any_terms = action.get("required_any_terms", [])
         if required_any_terms and not any(
             _term_matches(lowered_source_text, term.lower()) for term in required_any_terms
@@ -1633,11 +1698,11 @@ TOPIC_PROFILES: list[dict[str, Any]] = [
     },
     {
         "topic": "Cybersecurity, risk management and access controls",
-        "summary": "The discussion covered cybersecurity, risk management updates, USB access and control options.",
-        "responsibility": "Risk management needs to address cybersecurity controls and residual-risk decisions.",
-        "evidence": "Risk-management updates, standards, competitor-control reviews and benefit-risk rationale are supporting evidence.",
-        "risk": "Uncontrolled access or unresolved residual risk may require further controls or benefit-risk justification.",
-        "questions": "Open questions remain around control effectiveness, password protection, port locks or standard applicability.",
+        "summary": "The discussion covered cybersecurity and risk-management considerations relevant to the device or system.",
+        "responsibility": "Risk management needs to address the cybersecurity risks identified and any residual-risk decisions.",
+        "evidence": "Risk assessments, applicable cybersecurity standards and supporting rationale are relevant evidence for this topic.",
+        "risk": "Unresolved cybersecurity or residual risk may require further mitigation, controls or justification.",
+        "questions": "Open questions remain around the applicable cybersecurity controls, standards or mitigation approach.",
         "terms": ["cybersecurity", "usb", "port", "password", "risk management", "benefit-risk", "controls", "81001", "27427", "unauthorized"],
         "required_any": ["cybersecurity", "usb", "port lock", "password", "81001", "27427", "unauthorized"],
     },
@@ -1915,6 +1980,8 @@ def _profile_topic(
 def _normalise_action_text(text: str) -> str:
     text = _clean_source_text(text)
     text = re.sub(r"^.*?\b(?:actions?|next steps?|to dos?)(?:\s+before\s+[^:]+)?\s*:\s*", "", text, flags=re.IGNORECASE)
+    # "Surname, Firstname M" style speaker labels (e.g. "Smith, Stuart M").
+    text = re.sub(r"^[A-Z][A-Za-z'’-]+,\s*[A-Z][A-Za-z'’.\s-]+?\s+\d{1,2}:\d{2}(?::\d{2})?\s+", "", text)
     text = re.sub(r"^[A-Z][A-Za-z'’.-]+(?:\s+[A-Z][A-Za-z'’.-]+){0,3}\s+\d{1,2}:\d{2}(?::\d{2})?\s+", "", text)
     text = re.sub(r"^\d{1,2}:\d{2}(?::\d{2})?\s+", "", text)
     text = re.sub(r"^[A-Z][A-Za-z'’.-]+(?:\s+[A-Z][A-Za-z'’.-]+){0,3}\s*:\s*", "", text)
@@ -2006,6 +2073,12 @@ def _is_useful_generic_action(text: str) -> bool:
         "take your top off",
         "talk french",
         "vape",
+        "i understand they have to be done",
+        "there isn't much you can",
+        "there is not much you can",
+        "figure out a way",
+        "look at stuff wherever",
+        "wherever you need to",
     ]
     if any(fragment in lowered for fragment in weak_fragments):
         return False
@@ -2145,7 +2218,11 @@ def _split_raw_sentences(text: str) -> list[str]:
     text = re.sub(r"\s+", " ", text).strip()
     if not text:
         return []
-    parts = re.split(r"(?<=[.!?])\s+|(?:\s+-\s+)", text)
+    # Mammoth's raw-text extraction of Teams transcripts often glues short
+    # reactive utterances together with no space after the sentence-ending
+    # punctuation (e.g. "Mm-hmm.Okay." or "Right.So, what have you..."), so
+    # split on that boundary too, not just on punctuation followed by whitespace.
+    parts = re.split(r"(?<=[.!?])\s+|(?<=[.!?])(?=[A-Z])|(?:\s+-\s+)", text)
     if len(parts) == 1:
         parts = re.split(r"\s{2,}", text)
     return [part.strip(" -") for part in parts if len(part.strip(" -").split()) >= 2]
@@ -2207,30 +2284,77 @@ def _discussion_sentence_text(sentence: str, speaker: str) -> str:
     return text
 
 
+_SMALL_TALK_PATTERNS = re.compile(
+    r"^(?:"
+    r"how are you|how['’]s it going|how are things|"
+    r"i know i think we have|it seems not like you|i was going to say|"
+    r"very well[.,]?$|good thanks|not too bad|"
+    r"can you see (?:my|the) screen|is that ok(?:ay)?\??$|can you hear me"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def _is_public_safe_evidence_sentence(sentence: str) -> bool:
+    """Reject transcript sentences that are too thin, first-person, small-talk,
+    or already decision-shaped to publish as a discussion point without
+    further rewriting.
+
+    Used by the raw-fallback discussion topic builder so that widening its
+    output budget does not let greetings/banter leak into published minutes.
+    """
+
+    lowered = sentence.lower().strip()
+    if _is_low_substance_sentence(sentence):
+        return False
+    if len(lowered.split()) < 6:
+        return False
+    if _is_admin_logistics_decision_text(sentence):
+        return False
+    if _SMALL_TALK_PATTERNS.search(lowered):
+        return False
+    if re.search(r"\b\d{1,2}:\d{2}(?::\d{2})?\b|\b\d{1,2}\.\d{2}\.\d{2}\b", lowered):
+        return False
+    if re.search(r"\b(?:you['’]?ve\s+got|you\s+have\s+got|your\s+business|you\s+know)\b", lowered):
+        return False
+    if re.search(r"\b(?:basically|good point|i\s+guess|i\s+suppose|i\s+don't\s+mind|i\s+do\s+not\s+mind)\b", lowered):
+        return False
+    if re.fullmatch(r"\d{1,2}\s+[a-z]+\s+\d{4}(?:\s+online)?", lowered):
+        return False
+    if lowered.endswith("?") and not re.search(r"\b(?:metrics|risk|issue|blocker|evidence|status|external|cer|review|sign-off|slides|friday|strategy|vendor|sales|leadership|validation|broad)\b", lowered):
+        return False
+    if re.search(r"\b(?:maybe|may be|might|could|original plan|old plan|not this month|instead of cancelling|only if we accept|no project update|webcam|hear me|fine,? no actions?)\b", lowered) and not re.search(r"\b(?:reference documents?|document sections?|supporting documents?)\b", lowered):
+        return False
+    if (
+        re.search(r"\b(i|we|you|he|she|they)\s+(?:will|can|should|need|needs|have to|has to)\b|\bi['’]?ll\b", lowered)
+        and not lowered.endswith("?")
+        and not re.search(r"\b(?:offsite|away|out of office|annual leave|holiday|miss the usual|miss the meeting)\b", lowered)
+        and not re.search(r"\bwe\s+need\b.+\b(?:do\s+not|don't)\s+have\b", lowered)
+    ):
+        return False
+    if re.search(r"\b(?:decided|decision|agreed|rejected|go with|proceed with)\b", lowered):
+        return False
+    return True
+
+
+_RESIDUAL_FIRST_PERSON_RE = re.compile(r"\b(?:i['’]?ll|i\s+will|i['’]?m|i\s+am|i\s+can|i\s+need|my|mine)\b", re.IGNORECASE)
+
+
 def _raw_discussion_entries(transcript: str, used_anchors: set[str], limit: int = 6) -> list[dict[str, Any]]:
     entries: list[dict[str, Any]] = []
     seen: set[str] = set()
     raw_index = 1
     for turn in _parse_raw_transcript_turns(transcript):
         for sentence in _split_raw_sentences(turn["text"]):
+            if not _is_public_safe_evidence_sentence(sentence):
+                continue
+            cleaned_text = _discussion_sentence_text(sentence, turn["speaker"])
+            # _discussion_sentence_text only rewrites a few sentence-initial
+            # first-person patterns; anything it did not catch (e.g. "I'm",
+            # "my", mid-sentence "I am") is not safe to publish as-is.
+            if _RESIDUAL_FIRST_PERSON_RE.search(cleaned_text):
+                continue
             lowered = sentence.lower()
-            if _is_low_substance_sentence(sentence):
-                continue
-            if re.fullmatch(r"\d{1,2}\s+[a-z]+\s+\d{4}(?:\s+online)?", lowered):
-                continue
-            if lowered.endswith("?") and not re.search(r"\b(?:metrics|risk|issue|blocker|evidence|status|external|cer|review|sign-off|slides|friday|strategy|vendor|sales|leadership|validation|broad)\b", lowered):
-                continue
-            if re.search(r"\b(?:maybe|may be|might|could|original plan|old plan|not this month|instead of cancelling|only if we accept|no project update|webcam|hear me|fine,? no actions?)\b", lowered) and not re.search(r"\b(?:reference documents?|document sections?|supporting documents?)\b", lowered):
-                continue
-            if (
-                re.search(r"\b(i|we|you|he|she|they)\s+(?:will|can|should|need|needs|have to|has to)\b|\bi['’]?ll\b", lowered)
-                and not lowered.endswith("?")
-                and not re.search(r"\b(?:offsite|away|out of office|annual leave|holiday|miss the usual|miss the meeting)\b", lowered)
-                and not re.search(r"\bwe\s+need\b.+\b(?:do\s+not|don't)\s+have\b", lowered)
-            ):
-                continue
-            if re.search(r"\b(?:decided|decision|agreed|rejected|go with|proceed with)\b", lowered):
-                continue
             key = norm_key = re.sub(r"[^a-z0-9]+", " ", lowered).strip()
             if not key or norm_key in seen:
                 continue
@@ -2241,7 +2365,7 @@ def _raw_discussion_entries(transcript: str, used_anchors: set[str], limit: int 
                 continue
             entries.append(
                 {
-                    "text": _discussion_sentence_text(sentence, turn["speaker"]),
+                    "text": cleaned_text,
                     "sources": [_raw_source(anchor, turn["speaker"], sentence)],
                     "source_anchors": [anchor],
                 }
@@ -2533,6 +2657,12 @@ def _raw_action_entries(
             continue
         if re.search(r"\b(?:we will keep|we will run|we will sign|we will submit|we will use|decision|decided|agreed)\b", key):
             continue
+        # _normalise_action_text only strips a leading "I'll/I will/..."; residual
+        # first-person or hotel/travel/logistics chatter elsewhere in the sentence
+        # (e.g. "Perfect and I will quickly share...", "Dietary requirements, I'm
+        # not aware...") is not a real, publishable action commitment.
+        if _RESIDUAL_FIRST_PERSON_RE.search(text) or _is_admin_logistics_decision_text(text):
+            continue
         anchor = f"raw_action#{index}"
         if anchor in blocked or anchor in seen_sources:
             continue
@@ -2659,7 +2789,14 @@ def _is_weak_decision_text(text: str) -> bool:
 
 
 def _is_admin_logistics_decision_text(text: str) -> bool:
-    lowered = f" {_clean_source_text(text).lower()} "
+    # Strip only punctuation trailing the whole sentence, so a trigger word
+    # right before the final full stop (e.g. "...points on the hotel.") still
+    # matches the space-delimited markers below. Internal punctuation is left
+    # alone so a marker used as a conversational preamble before a
+    # substantive point (e.g. "Before we start, did everyone see the support
+    # metrics...") is not mistaken for logistics chatter.
+    stripped = re.sub(r"[.,!?;:]+$", "", _clean_source_text(text).lower()).strip()
+    lowered = f" {stripped} "
     if not lowered.strip():
         return False
     logistics_markers = (
@@ -2717,6 +2854,20 @@ def _is_decision_sentence(text: str) -> bool:
     if re.match(r"^(?:make|keep|use)\s+(?:it|this|that)\b", lowered):
         return False
     if re.search(r"\bonly\s+if\s+we\s+accept\b", lowered):
+        return False
+    # "move on to X" is agenda navigation, not a decision, even though it
+    # matches the "we move" decision-verb pattern below.
+    if re.search(r"\bmove\s+on\s+to\b", lowered):
+        return False
+    # Short reactive confirmations ("It's approved, yeah, it was approved for
+    # Wednesday.") echo a decision word but are conversational filler, not a
+    # standalone decision statement fit to publish in minutes.
+    if re.match(r"^(?:it['’]s|it\s+was|yeah,?\s+it['’]s|yeah,?\s+it\s+was)\b", lowered.strip()):
+        return False
+    # Filler-led references to a decision made elsewhere/earlier ("So, and
+    # that's like, that's the agreed path...") describe a pre-existing plan
+    # rather than record a decision taken in this meeting.
+    if re.match(r"^(?:so,?\s+and\s+that['’]s|and\s+that['’]s\s+like|that['’]s\s+like,?\s+that['’]s)\b", lowered.strip()):
         return False
     return bool(
         re.search(r"\bdecision\s+(?:confirmed|is|was|then|:)\b", lowered)
@@ -2927,9 +3078,10 @@ def _apply_raw_transcript_fallback(topic_groups: dict[str, Any], report: dict[st
         sum(len(entries) for entries in topic["sections"].values())
         for topic in topic_groups["topics"]
     )
-    raw_limit = 14 if len(topic_groups["topics"]) < 2 else max(0, 12 - existing_discussion_count)
-    if len(topic_groups["topics"]) >= 2 and existing_discussion_count >= 8:
-        raw_limit = 0
+    # Keep a healthy floor on genuinely transcript-specific discussion points even
+    # once several generic topic profiles have matched, so dense meetings do not
+    # end up dominated by templated topic summaries with no concrete detail.
+    raw_limit = 14 if len(topic_groups["topics"]) < 2 else max(4, 14 - existing_discussion_count)
     if re.search(r"\bactions?\s+before\s+next\s+week\s*:", transcript, flags=re.IGNORECASE):
         raw_limit = max(raw_limit, 22)
     if raw_limit and not _is_explicitly_low_substance_transcript(transcript):

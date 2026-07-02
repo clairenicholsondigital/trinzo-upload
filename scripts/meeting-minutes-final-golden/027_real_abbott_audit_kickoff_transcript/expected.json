@@ -1,0 +1,60 @@
+{
+  "description": "Real Trinzo audit-kickoff Teams transcript (Abbott T796, Sylmar site) covering audit scope/type, standards to be assessed, site logistics (hotel, travel, site access), training attestation/code of conduct timing, risk-analysis and SBOM handling, and how a two-person audit team will split coverage. This case guards against catalogue topic/action profiles written for a different (software technical-file) transcript firing on an unrelated meeting type, and against hotel/travel logistics chatter leaking into published discussion points.",
+  "coverage": {
+    "sourceFixture": "uploaded DOCX: Client_Abbott_T796_-_Audit_kick_off_Sylmar_NEW.docx",
+    "meetingTypes": [
+      "audit_kickoff",
+      "real_client_transcript"
+    ],
+    "behaviours": [
+      "real_docx_extraction",
+      "admin_logistics_filtering",
+      "generic_topic_filtering",
+      "raw_meeting_chatter_filtering",
+      "cross_transcript_hallucination_guard"
+    ]
+  },
+  "passThreshold": 0.85,
+  "criteria": {
+    "decisions": {
+      "weight": 0.1,
+      "maxCount": 1
+    },
+    "actions": {
+      "weight": 0.2,
+      "maxCount": 6
+    },
+    "hallucinations": {
+      "weight": 0.35,
+      "mustNotContain": [
+        "81001-5-1",
+        "27427",
+        "USB port lock",
+        "GUI security controls",
+        "competitor-control review",
+        "points on the hotel",
+        "done the reservation"
+      ]
+    },
+    "abstention": {
+      "weight": 0.35,
+      "decisionMaxCount": 1,
+      "discussionMinCount": 10,
+      "requiredDiscussionTopics": [
+        [
+          "gemba",
+          "audit evidence"
+        ],
+        [
+          "procedures",
+          "business processes"
+        ],
+        [
+          "cybersecurity",
+          "risk management"
+        ]
+      ],
+      "reason": "This is a logistics-heavy audit-kickoff call for a device the software/cybersecurity technical-file catalogue was not written for. Output should keep genuinely relevant topic coverage while dropping hardcoded specifics (standard numbers, named owners, product features) that belong to a different transcript, and should not surface hotel/reservation chatter as a discussion point."
+    }
+  }
+}
