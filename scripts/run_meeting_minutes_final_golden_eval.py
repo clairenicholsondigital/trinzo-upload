@@ -126,6 +126,9 @@ def validate_manifest(pack_dir: Path, summary: dict[str, Any]) -> list[str]:
         missing = sorted(expected_tags - actual_tags)
         if missing:
             failures.append(f"manifest missing {label} coverage: {', '.join(missing)}")
+        undocumented = sorted(actual_tags - expected_tags)
+        if undocumented:
+            failures.append(f"expected.json uses undocumented {label} coverage: {', '.join(undocumented)}")
     return failures
 
 
