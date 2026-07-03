@@ -5,6 +5,7 @@ const fs = require('fs/promises');
 const express = require('express');
 const apiRoutes = require('./routes/api');
 const authRoutes = require('./routes/auth');
+const { startProjectKnowledgeEmbedInterval } = require('./utils/knowledge');
 
 const app = express();
 const PORT = process.env.PORT || 3978;
@@ -118,4 +119,8 @@ app.use('/api/auth', authRoutes);
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log('Agent listening on port ' + PORT);
+  const knowledgeInterval = startProjectKnowledgeEmbedInterval();
+  if (knowledgeInterval.started) {
+    console.log(JSON.stringify({ event: 'project_knowledge_embed_interval_started', intervalMs: knowledgeInterval.intervalMs }));
+  }
 });

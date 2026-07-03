@@ -1594,6 +1594,50 @@ async function listProjectKnowledgeItems(filters = {}) {
   return result.rows.map(cameliseKnowledgeItem);
 }
 
+
+async function getProjectKnowledgeStatus(filters = {}) {
+  const projectId = Number(filters.projectId || 0);
+  const params = [];
+  const where = [];
+  if (Number.isFinite(projectId) && projectId > 0) {
+    params.push(projectId);
+    where.push(`c.project_id = $${params.length}`);
+  }
+  const result = await query(
+    `SELECT c.embedding_status,
+            COUNT(*)::int AS count,
+            MIN(c.embedding_enqueued_at) AS oldest_enqueued_at,
+            MAX(c.embedding_processed_at) AS latest_processed_at
+     FROM project_knowledge_chunks c
+     ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+     GROUP BY c.embedding_status`,
+    params
+  );
+  const counts = { queued: 0, processing: 0, embedded: 0, failed: 0, skipped_empty: 0 };
+  let oldestQueuedAt = null;
+  let latestProcessedAt = null;
+  for (const row of result.rows) {
+    counts[row.embedding_status] = Number(row.count || 0);
+    if (row.embedding_status === 'queued' && row.oldest_enqueued_at) oldestQueuedAt = row.oldest_enqueued_at;
+    if (row.latest_processed_at && (!latestProcessedAt || new Date(row.latest_processed_at) > new Date(latestProcessedAt))) latestProcessedAt = row.latest_processed_at;
+  }
+  const oldestQueuedAgeSeconds = oldestQueuedAt ? Math.max(0, Math.round((Date.now() - new Date(oldestQueuedAt).getTime()) / 1000)) : 0;
+  const itemResult = await query(
+    `SELECT COUNT(*)::int AS active_items
+     FROM project_knowledge_items i
+     ${Number.isFinite(projectId) && projectId > 0 ? 'WHERE i.project_id = $1 AND i.status = \'active\'' : "WHERE i.status = 'active'"}`,
+    Number.isFinite(projectId) && projectId > 0 ? [projectId] : []
+  );
+  return {
+    projectId: Number.isFinite(projectId) && projectId > 0 ? projectId : null,
+    activeItems: Number(itemResult.rows[0]?.active_items || 0),
+    embeddingCounts: counts,
+    oldestQueuedAt,
+    oldestQueuedAgeSeconds,
+    latestProcessedAt
+  };
+}
+
 async function updateProjectKnowledgeItem(itemId, patch = {}) {
   const id = Number(itemId);
   if (!Number.isFinite(id) || id <= 0) {
@@ -2122,6 +2166,7 @@ module.exports = {
   listProjectKnowledgeItems,
   updateProjectKnowledgeItem,
   archiveProjectKnowledgeItem,
+  getProjectKnowledgeStatus,
   ingestApprovedProjectReportVersion,
   chunkKnowledgeText,
   listProjectOptions,

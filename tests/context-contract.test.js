@@ -8,6 +8,9 @@ const fixture = JSON.parse(fs.readFileSync(path.join(repoDir, 'tests/fixtures/pr
 const dbSource = fs.readFileSync(path.join(repoDir, 'utils/db.js'), 'utf8');
 const apiSource = fs.readFileSync(path.join(repoDir, 'routes/api.js'), 'utf8');
 const migrationSource = fs.readFileSync(path.join(repoDir, 'sql/migrations/20260703_add_project_knowledge_schema.sql'), 'utf8');
+const serverSource = fs.readFileSync(path.join(repoDir, 'server.js'), 'utf8');
+const knowledgeSource = fs.readFileSync(path.join(repoDir, 'utils/knowledge.js'), 'utf8');
+const backfillSource = fs.readFileSync(path.join(repoDir, 'scripts/backfill_project_knowledge.js'), 'utf8');
 
 test('canonical project context fixture contains the Node/Python boundary keys', () => {
   for (const key of [
@@ -53,4 +56,8 @@ test('project knowledge phase 1 surfaces schema and protected endpoints', () => 
   assert.ok(migrationSource.includes('VECTOR(384)'));
   assert.ok(apiSource.includes("router.post('/project-update-test/knowledge/items', requireAuth"));
   assert.ok(apiSource.includes("router.post('/project-update-test/knowledge/embeddings/process', requireAuth"));
+  assert.ok(apiSource.includes("router.get('/project-update-test/knowledge/status', requireAuth"));
+  assert.ok(serverSource.includes('startProjectKnowledgeEmbedInterval'));
+  assert.ok(knowledgeSource.includes('runProjectKnowledgeRetrieval'));
+  assert.ok(backfillSource.includes('ingestApprovedProjectReportVersion'));
 });

@@ -7,6 +7,7 @@ const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 const crypto = require('crypto');
+const { spawnProjectKnowledgeEmbedWorker, runProjectKnowledgeRetrieval } = require('../utils/knowledge');
 
 const {
   generateToken,
@@ -41,6 +42,7 @@ const {
   listProjectKnowledgeItems,
   updateProjectKnowledgeItem,
   archiveProjectKnowledgeItem,
+  getProjectKnowledgeStatus,
   listMeetings,
   getMeetingById,
   deleteMeetingById,
@@ -997,6 +999,16 @@ router.delete('/project-update-test/knowledge/items/:itemId', requireAuth, async
     const item = await archiveProjectKnowledgeItem(req.params.itemId, { hard: truthyFlag(req.query.hard) });
     if (!item) return sendJson(res, 404, { ok: false, error: 'Knowledge item not found.' });
     res.json({ ok: true, item });
+  } catch (error) {
+    sendJson(res, error.statusCode || 500, { ok: false, error: error.message });
+  }
+});
+
+router.get('/project-update-test/knowledge/status', requireAuth, async (req, res) => {
+  try {
+    if (!hasDatabaseConfig()) throw new Error(getDatabaseConfigError());
+    const status = await getProjectKnowledgeStatus({ projectId: req.query.projectId });
+    res.json({ ok: true, status });
   } catch (error) {
     sendJson(res, error.statusCode || 500, { ok: false, error: error.message });
   }
