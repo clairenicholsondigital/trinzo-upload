@@ -5,6 +5,7 @@
   "main": "server.js",
   "scripts": {
     "test": "python3 -m unittest discover -s tests -p 'test_*.py' && node --test tests/*.test.js",
+    "test:project-update-golden": "python3 scripts/run_project_update_golden_eval.py --mode synthetic",
     "start": "node server.js"
   },
   "keywords": [],

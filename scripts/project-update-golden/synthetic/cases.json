@@ -1,0 +1,937 @@
+{
+  "synthetic_cases": [
+    {
+      "case_id": "synthetic_001",
+      "case_name": "First report with no saved context",
+      "source": "ai_generated_synthetic",
+      "purpose": "To test how the system handles an initial project meeting where no prior historical data or context exists in the database.",
+      "transcript": "Ciara: Thanks for joining everyone. This is our kick-off and initial status alignment for Project Apollo. Let's align on the immediate milestones. Connor, where are we with the cloud infrastructure setup?\nConnor: We've initiated the environment provisioning. The initial landing zone is built, and we are tracking fine to hit our target completion by next fortnight. I'd mark the trend as stable.\nMaya: Excellent. From the data migration side, Lewis and I have started mapping the legacy schemas. It's a bit messy, so there is a minor risk that the profiling phase takes a week longer than planned if we hit more corrupt records, but right now we are managing it.\nLewis: Agreed. We should list that data profiling bottleneck as a potential risk. Otherwise, the milestone for 'Schema Mapping Sign-off' is safely underway.\nCiara: Perfect. Let's ensure we track the infrastructure setup and schema mapping as our active milestones. Health looks green for now as we've just started.",
+      "context": {
+        "found": false,
+        "projectId": 101,
+        "projectName": "Project Apollo",
+        "activeMilestones": [],
+        "activeRisks": [],
+        "riskSuggestions": [],
+        "healthHistory": [],
+        "recentReports": [],
+        "milestoneHistory": [],
+        "latestSnapshot": null,
+        "generatedAt": "2026-07-03T12:00:00Z",
+        "retrievedKnowledge": {
+          "retrievalMode": "none",
+          "chunks": []
+        }
+      },
+      "expected": {
+        "overallHealthIn": [
+          "on_track"
+        ],
+        "milestoneChecks": [
+          {
+            "labelContains": "Infrastructure Setup",
+            "expectedTrend": "stable",
+            "expectedMatchedByIn": [
+              "none"
+            ],
+            "shouldBeCarriedForward": false
+          },
+          {
+            "labelContains": "Schema Mapping",
+            "expectedTrend": "stable",
+            "expectedMatchedByIn": [
+              "none"
+            ],
+            "shouldBeCarriedForward": false
+          }
+        ],
+        "riskChecks": [
+          {
+            "labelContains": "Data profiling bottleneck",
+            "expectedTrend": "new_risk",
+            "expectedMatchedByIn": [
+              "none"
+            ]
+          }
+        ],
+        "expectedRetrievalModeIn": [
+          "none"
+        ],
+        "mustNotUseRetrievedKnowledgeAsTranscriptEvidence": true,
+        "shouldGenerateSparseOutput": false,
+        "shouldGracefullyDegrade": false
+      },
+      "notes": "Validates that when 'found' is false, the system correctly initialises new milestones and risks with no matching logic applied, defaulting trends to stable/new."
+    },
+    {
+      "case_id": "synthetic_002",
+      "case_name": "Exact milestone-name matches",
+      "source": "ai_generated_synthetic",
+      "purpose": "To verify that milestones dictated in the transcript with names matching previous context are linked via exact keys.",
+      "transcript": "Ciara: Let's do the weekly review for Project Beacon. Connor, updates on 'Phase 1 Environment Provisioning'?\nConnor: It's fully complete as of yesterday. No blockers. Trend peaked nicely.\nMaya: For 'API Gateway Integration', Lewis and I ran into some certificate issues with the third-party provider. It's slipping behind schedule, so the trend is definitely declining.\nLewis: Yes, that API gateway issue is a real roadblock. It's putting our overall health at risk this week.",
+      "context": {
+        "found": true,
+        "projectId": 102,
+        "projectName": "Project Beacon",
+        "activeMilestones": [
+          {
+            "milestoneId": "m-01",
+            "milestoneName": "Phase 1 Environment Provisioning",
+            "comparisonKey": "phase_1_environment_provisioning",
+            "description": "",
+            "latestAssessment": {
+              "status": "on_track",
+              "trend": "stable",
+              "summary": "Phase 1 Environment Provisioning was previously on_track.",
+              "reportId": 901,
+              "reportVersionId": 1901
+            },
+            "previousAssessment": null
+          },
+          {
+            "milestoneId": "m-02",
+            "milestoneName": "API Gateway Integration",
+            "comparisonKey": "api_gateway_integration",
+            "description": "",
+            "latestAssessment": {
+              "status": "on_track",
+              "trend": "stable",
+              "summary": "API Gateway Integration was previously on_track.",
+              "reportId": 902,
+              "reportVersionId": 1902
+            },
+            "previousAssessment": null
+          }
+        ],
+        "activeRisks": [],
+        "riskSuggestions": [],
+        "healthHistory": [
+          {
+            "area": "overall",
+            "status": "on_track",
+            "trend": "stable",
+            "reportId": 701,
+            "reportVersionId": 1701
+          }
+        ],
+        "recentReports": [],
+        "milestoneHistory": [],
+        "latestSnapshot": null,
+        "generatedAt": "2026-07-03T12:00:00Z",
+        "retrievedKnowledge": {
+          "retrievalMode": "none",
+          "chunks": []
+        }
+      },
+      "expected": {
+        "overallHealthIn": [
+          "at_risk"
+        ],
+        "milestoneChecks": [
+          {
+            "labelContains": "Phase 1 Environment Provisioning",
+            "expectedTrend": "completed",
+            "expectedMatchedByIn": [
+              "exact_key"
+            ],
+            "shouldBeCarriedForward": false,
+            "expectedTrendIn": [
+              "resolved",
+              "completed",
+              "improving"
+            ]
+          },
+          {
+            "labelContains": "API Gateway Integration",
+            "expectedTrend": "deteriorating",
+            "expectedMatchedByIn": [
+              "exact_key"
+            ],
+            "shouldBeCarriedForward": false
+          }
+        ],
+        "riskChecks": [
+          {
+            "labelContains": "Certificate issues",
+            "expectedTrend": "new_risk",
+            "expectedMatchedByIn": [
+              "none"
+            ]
+          }
+        ],
+        "expectedRetrievalModeIn": [
+          "none"
+        ],
+        "mustNotUseRetrievedKnowledgeAsTranscriptEvidence": true,
+        "shouldGenerateSparseOutput": false,
+        "shouldGracefullyDegrade": false
+      },
+      "notes": "Checks standard exact-string matching capabilities for existing active milestones and tracks state progression (completed, declining)."
+    },
+    {
+      "case_id": "synthetic_003",
+      "case_name": "Renamed milestone semantic match",
+      "source": "ai_generated_synthetic",
+      "purpose": "Tests whether a milestone referred to by a slightly reworded name maps semantically to the active milestone in context.",
+      "transcript": "Maya: Hi team, regarding Project Celestial. Let's look at the UI designs.\nLewis: Right, the item listed as 'Frontend UI UX Layout Design' is moving along brilliantly. We've finished the main wireframes and interactive prototypes ahead of time. The trend is strongly improving.\nConnor: Great news Lewis. That means the core front-end presentation work is essentially secured.",
+      "context": {
+        "found": true,
+        "projectId": 103,
+        "projectName": "Project Celestial",
+        "activeMilestones": [
+          {
+            "milestoneId": "m-03",
+            "milestoneName": "UI/UX Front-End Design Wireframing",
+            "comparisonKey": "ui_ux_front_end_design_wireframing",
+            "description": "",
+            "latestAssessment": {
+              "status": "on_track",
+              "trend": "stable",
+              "summary": "UI/UX Front-End Design Wireframing was previously on_track.",
+              "reportId": 901,
+              "reportVersionId": 1901
+            },
+            "previousAssessment": null
+          }
+        ],
+        "activeRisks": [],
+        "riskSuggestions": [],
+        "healthHistory": [
+          {
+            "area": "overall",
+            "status": "on_track",
+            "trend": "stable",
+            "reportId": 701,
+            "reportVersionId": 1701
+          }
+        ],
+        "recentReports": [],
+        "milestoneHistory": [],
+        "latestSnapshot": null,
+        "generatedAt": "2026-07-03T12:00:00Z",
+        "retrievedKnowledge": {
+          "retrievalMode": "none",
+          "chunks": []
+        }
+      },
+      "expected": {
+        "overallHealthIn": [
+          "on_track"
+        ],
+        "milestoneChecks": [
+          {
+            "labelContains": "UI/UX Front-End Design Wireframing",
+            "expectedTrend": "improving",
+            "expectedMatchedByIn": [
+              "semantic"
+            ],
+            "shouldBeCarriedForward": false
+          }
+        ],
+        "riskChecks": [],
+        "expectedRetrievalModeIn": [
+          "none"
+        ],
+        "mustNotUseRetrievedKnowledgeAsTranscriptEvidence": true,
+        "shouldGenerateSparseOutput": false,
+        "shouldGracefullyDegrade": false
+      },
+      "notes": "Assesses semantic similarity logic. 'Frontend UI UX Layout Design' must map back to 'UI/UX Front-End Design Wireframing' without generating a duplicate milestone."
+    },
+    {
+      "case_id": "synthetic_004",
+      "case_name": "Similar looking but new milestone",
+      "source": "ai_generated_synthetic",
+      "purpose": "Ensures the analyser does not accidentally merge a genuinely new phase/milestone with an old one just due to token overlap.",
+      "transcript": "Ciara: Let's discuss Project Daedalus. Connor, I know we finished Phase 1 of the Data Warehouse setup last month. Are we moving onto Phase 2?\nConnor: Yes, 'Data Warehouse Setup - Phase 2' is officially kicked off this week. It involves ingestion of streaming pipelines. It's a completely different architecture, currently stable as we initiate setups.\nMaya: Perfect, I'll flag that Phase 2 ingestion is underway. It's a fresh piece of work.",
+      "context": {
+        "found": true,
+        "projectId": 104,
+        "projectName": "Project Daedalus",
+        "activeMilestones": [
+          {
+            "milestoneId": "m-04",
+            "milestoneName": "Data Warehouse Setup - Phase 1",
+            "comparisonKey": "data_warehouse_setup_phase_1",
+            "description": "",
+            "latestAssessment": {
+              "status": "completed",
+              "trend": "stable",
+              "summary": "Data Warehouse Setup - Phase 1 was previously completed.",
+              "reportId": 901,
+              "reportVersionId": 1901
+            },
+            "previousAssessment": null
+          }
+        ],
+        "activeRisks": [],
+        "riskSuggestions": [],
+        "healthHistory": [
+          {
+            "area": "overall",
+            "status": "on_track",
+            "trend": "stable",
+            "reportId": 701,
+            "reportVersionId": 1701
+          }
+        ],
+        "recentReports": [],
+        "milestoneHistory": [],
+        "latestSnapshot": null,
+        "generatedAt": "2026-07-03T12:00:00Z",
+        "retrievedKnowledge": {
+          "retrievalMode": "none",
+          "chunks": []
+        }
+      },
+      "expected": {
+        "overallHealthIn": [
+          "on_track"
+        ],
+        "milestoneChecks": [
+          {
+            "labelContains": "Phase 2",
+            "expectedTrend": "stable",
+            "expectedMatchedByIn": [
+              "none"
+            ],
+            "shouldBeCarriedForward": false
+          }
+        ],
+        "riskChecks": [],
+        "expectedRetrievalModeIn": [
+          "none"
+        ],
+        "mustNotUseRetrievedKnowledgeAsTranscriptEvidence": true,
+        "shouldGenerateSparseOutput": false,
+        "shouldGracefullyDegrade": false
+      },
+      "notes": "Verifies that token overlap (Data Warehouse Setup) doesn't force an incorrect semantic match when the transcript explicitly points out a distinct subsequent phase (Phase 2 vs Phase 1)."
+    },
+    {
+      "case_id": "synthetic_005",
+      "case_name": "Previously completed milestone reopened",
+      "source": "ai_generated_synthetic",
+      "purpose": "Tests handling of a milestone that was historic/completed but has to be reopened due to scope changes or regressions.",
+      "transcript": "Lewis: On Project Eos, we have a major regression. The 'Security Compliance Sign-off' that we completed last quarter has been revoked by the audit team because of the new data residency guidelines.\nMaya: Oh wow. So we have to reopen 'Security Compliance Sign-off' and replan the remediation activities. It's currently in a declining trend because it completely blocks our release window.",
+      "context": {
+        "found": true,
+        "projectId": 105,
+        "projectName": "Project Eos",
+        "activeMilestones": [],
+        "activeRisks": [],
+        "riskSuggestions": [],
+        "healthHistory": [
+          {
+            "area": "overall",
+            "status": "on_track",
+            "trend": "stable",
+            "reportId": 701,
+            "reportVersionId": 1701
+          }
+        ],
+        "recentReports": [],
+        "milestoneHistory": [
+          {
+            "milestoneId": "m-05",
+            "milestoneName": "Security Compliance Sign-off",
+            "comparisonKey": "security_compliance_sign_off",
+            "status": "completed",
+            "trend": "stable",
+            "summary": "Security Compliance Sign-off was previously completed.",
+            "reportId": 801,
+            "reportVersionId": 1801
+          }
+        ],
+        "latestSnapshot": null,
+        "generatedAt": "2026-07-03T12:00:00Z",
+        "retrievedKnowledge": {
+          "retrievalMode": "none",
+          "chunks": []
+        }
+      },
+      "expected": {
+        "overallHealthIn": [
+          "off_track"
+        ],
+        "milestoneChecks": [
+          {
+            "labelContains": "Security Compliance Sign-off",
+            "expectedTrend": "deteriorating",
+            "expectedMatchedByIn": [
+              "exact_key",
+              "semantic"
+            ],
+            "shouldBeCarriedForward": false
+          }
+        ],
+        "riskChecks": [
+          {
+            "labelContains": "Data residency guidelines",
+            "expectedTrend": "new_risk",
+            "expectedMatchedByIn": [
+              "none"
+            ]
+          }
+        ],
+        "expectedRetrievalModeIn": [
+          "none"
+        ],
+        "mustNotUseRetrievedKnowledgeAsTranscriptEvidence": true,
+        "shouldGenerateSparseOutput": false,
+        "shouldGracefullyDegrade": false
+      },
+      "notes": "Ensures the system looks into historical or completed milestones to reactivate them when a transcript notes a regression or replan."
+    },
+    {
+      "case_id": "synthetic_006",
+      "case_name": "Reworded risk semantic match",
+      "source": "ai_generated_synthetic",
+      "purpose": "Verifies that an existing risk mentioned with alternative wording matches semantically rather than triggering a new risk.",
+      "transcript": "Ciara: Let's check the risk register for Project Falcon. Connor, how are we managing the vendor resourcing issue?\nConnor: The problem with the external contractor availability is still biting us. We haven't been able to secure the senior engineers we needed from the third party. The situation is stable but still high risk.\nMaya: Yes, that third-party staffing crunch is really keeping our delivery on edge.",
+      "context": {
+        "found": true,
+        "projectId": 106,
+        "projectName": "Project Falcon",
+        "activeMilestones": [],
+        "activeRisks": [
+          {
+            "riskId": "r-01",
+            "riskTitle": "Vendor Resourcing Shortages and Contractor Availability Constraints",
+            "description": "Vendor Resourcing Shortages and Contractor Availability Constraints",
+            "mitigation": "",
+            "status": "active"
+          }
+        ],
+        "riskSuggestions": [],
+        "healthHistory": [
+          {
+            "area": "overall",
+            "status": "at_risk",
+            "trend": "stable",
+            "reportId": 701,
+            "reportVersionId": 1701
+          }
+        ],
+        "recentReports": [],
+        "milestoneHistory": [],
+        "latestSnapshot": null,
+        "generatedAt": "2026-07-03T12:00:00Z",
+        "retrievedKnowledge": {
+          "retrievalMode": "none",
+          "chunks": []
+        }
+      },
+      "expected": {
+        "overallHealthIn": [
+          "at_risk"
+        ],
+        "milestoneChecks": [],
+        "riskChecks": [
+          {
+            "labelContains": "Vendor Resourcing Shortages",
+            "expectedTrend": "stable",
+            "expectedMatchedByIn": [
+              "semantic"
+            ]
+          }
+        ],
+        "expectedRetrievalModeIn": [
+          "none"
+        ],
+        "mustNotUseRetrievedKnowledgeAsTranscriptEvidence": true,
+        "shouldGenerateSparseOutput": false,
+        "shouldGracefullyDegrade": false
+      },
+      "notes": "Validates risk deduplication. 'External contractor availability' or 'third-party staffing crunch' must map semantically to 'Vendor Resourcing Shortages'."
+    },
+    {
+      "case_id": "synthetic_007",
+      "case_name": "Genuinely new risk",
+      "source": "ai_generated_synthetic",
+      "purpose": "Ensures that a risk that does not resemble existing active risks is correctly parsed and isolated as a brand new risk.",
+      "transcript": "Lewis: On Project Helios, everything looks fine technically, but we just got an update from the legal division. The new EU regulatory framework changes require us to completely refactor how we handle user consensus.\nMaya: Wow, that is a completely unexpected compliance hurdle. We haven't tracked any legal risks up to this point. Let's make sure this goes in as a new major risk item.\nConnor: Agreed, that's completely separate from our technical debt tasks.",
+      "context": {
+        "found": true,
+        "projectId": 107,
+        "projectName": "Project Helios",
+        "activeMilestones": [],
+        "activeRisks": [
+          {
+            "riskId": "r-02",
+            "riskTitle": "Database scaling limitations during peak utilization hours",
+            "description": "Database scaling limitations during peak utilization hours",
+            "mitigation": "",
+            "status": "active"
+          }
+        ],
+        "riskSuggestions": [],
+        "healthHistory": [
+          {
+            "area": "overall",
+            "status": "on_track",
+            "trend": "stable",
+            "reportId": 701,
+            "reportVersionId": 1701
+          }
+        ],
+        "recentReports": [],
+        "milestoneHistory": [],
+        "latestSnapshot": null,
+        "generatedAt": "2026-07-03T12:00:00Z",
+        "retrievedKnowledge": {
+          "retrievalMode": "none",
+          "chunks": []
+        }
+      },
+      "expected": {
+        "overallHealthIn": [
+          "at_risk"
+        ],
+        "milestoneChecks": [],
+        "riskChecks": [
+          {
+            "labelContains": "EU regulatory framework changes",
+            "expectedTrend": "new_risk",
+            "expectedMatchedByIn": [
+              "none"
+            ]
+          }
+        ],
+        "expectedRetrievalModeIn": [
+          "none"
+        ],
+        "mustNotUseRetrievedKnowledgeAsTranscriptEvidence": true,
+        "shouldGenerateSparseOutput": false,
+        "shouldGracefullyDegrade": false
+      },
+      "notes": "Confirms that the system doesn't try to over-map a novel risk topic (Legal/Compliance) to an existing distinct risk (Database Scaling)."
+    },
+    {
+      "case_id": "synthetic_008",
+      "case_name": "Retrieved knowledge background constraint",
+      "source": "ai_generated_synthetic",
+      "purpose": "Tests that RAG-retrieved document data provides background architectural/SoW context but isn't hallucinatorily flagged as an issue raised during the discussion.",
+      "transcript": "Ciara: Welcome back. Let's discuss Project Janus. Lewis, how are we progressing with the core microservices delivery?\nLewis: The team has successfully deployed the payment routing cluster. We are seeing great response times and everything is fully functional. No active risks emerged during this sprint.\nConnor: Brilliant, so microservices are fully stable and on schedule.",
+      "context": {
+        "found": true,
+        "projectId": 108,
+        "projectName": "Project Janus",
+        "activeMilestones": [
+          {
+            "milestoneId": "m-08",
+            "milestoneName": "Microservices Cluster Deployment",
+            "comparisonKey": "microservices_cluster_deployment",
+            "description": "",
+            "latestAssessment": {
+              "status": "on_track",
+              "trend": "stable",
+              "summary": "Microservices Cluster Deployment was previously on_track.",
+              "reportId": 901,
+              "reportVersionId": 1901
+            },
+            "previousAssessment": null
+          }
+        ],
+        "activeRisks": [],
+        "riskSuggestions": [],
+        "healthHistory": [
+          {
+            "area": "overall",
+            "status": "on_track",
+            "trend": "stable",
+            "reportId": 701,
+            "reportVersionId": 1701
+          }
+        ],
+        "recentReports": [],
+        "milestoneHistory": [],
+        "latestSnapshot": null,
+        "generatedAt": "2026-07-03T12:00:00Z",
+        "retrievedKnowledge": {
+          "retrievalMode": "semantic",
+          "chunks": [
+            {
+              "chunk_id": "c-99",
+              "item_id": 1,
+              "title": "Synthetic retrieved knowledge",
+              "item_type": "background_doc",
+              "chunk_text": "Statement of Work Constraint: Project Janus must strictly use AWS London region deployments to adhere to financial compliance rules.",
+              "score": 0.9,
+              "metadata": {}
+            }
+          ]
+        }
+      },
+      "expected": {
+        "overallHealthIn": [
+          "on_track"
+        ],
+        "milestoneChecks": [
+          {
+            "labelContains": "Microservices Cluster Deployment",
+            "expectedTrend": "stable",
+            "expectedMatchedByIn": [
+              "exact_key",
+              "semantic"
+            ],
+            "shouldBeCarriedForward": false
+          }
+        ],
+        "riskChecks": [],
+        "expectedRetrievalModeIn": [
+          "semantic"
+        ],
+        "mustNotUseRetrievedKnowledgeAsTranscriptEvidence": true,
+        "shouldGenerateSparseOutput": false,
+        "shouldGracefullyDegrade": false
+      },
+      "notes": "Crucial test for RAG boundary enforcement. The system must NOT report 'AWS London region compliance' as an active risk or milestone trend discussed in the transcript, but may use it silently to validate background project context soundness."
+    },
+    {
+      "case_id": "synthetic_009",
+      "case_name": "Omitted milestones carried forward",
+      "source": "ai_generated_synthetic",
+      "purpose": "Validates that active milestones omitted from conversation are carried forward with their previous state, rather than being dropped or deleted.",
+      "transcript": "Ciara: Let's focus entirely on the 'Customer Portal UI Release' for Project Kestrel today. Maya, what's the update?\nMaya: It's running on track. We've done the core user validation tests and we're looking stable for delivery next week. That's all from me.\nConnor: Sounds good, no other updates needed for this quick huddle.",
+      "context": {
+        "found": true,
+        "projectId": 109,
+        "projectName": "Project Kestrel",
+        "activeMilestones": [
+          {
+            "milestoneId": "m-091",
+            "milestoneName": "Customer Portal UI Release",
+            "comparisonKey": "customer_portal_ui_release",
+            "description": "",
+            "latestAssessment": {
+              "status": "on_track",
+              "trend": "stable",
+              "summary": "Customer Portal UI Release was previously on_track.",
+              "reportId": 901,
+              "reportVersionId": 1901
+            },
+            "previousAssessment": null
+          },
+          {
+            "milestoneId": "m-092",
+            "milestoneName": "Backend API Security Hardening",
+            "comparisonKey": "backend_api_security_hardening",
+            "description": "",
+            "latestAssessment": {
+              "status": "on_track",
+              "trend": "stable",
+              "summary": "Backend API Security Hardening was previously on_track.",
+              "reportId": 902,
+              "reportVersionId": 1902
+            },
+            "previousAssessment": null
+          },
+          {
+            "milestoneId": "m-093",
+            "milestoneName": "Data Analytics Reporting Pipeline",
+            "comparisonKey": "data_analytics_reporting_pipeline",
+            "description": "",
+            "latestAssessment": {
+              "status": "on_track",
+              "trend": "stable",
+              "summary": "Data Analytics Reporting Pipeline was previously on_track.",
+              "reportId": 903,
+              "reportVersionId": 1903
+            },
+            "previousAssessment": null
+          }
+        ],
+        "activeRisks": [],
+        "riskSuggestions": [],
+        "healthHistory": [
+          {
+            "area": "overall",
+            "status": "on_track",
+            "trend": "stable",
+            "reportId": 701,
+            "reportVersionId": 1701
+          }
+        ],
+        "recentReports": [],
+        "milestoneHistory": [],
+        "latestSnapshot": null,
+        "generatedAt": "2026-07-03T12:00:00Z",
+        "retrievedKnowledge": {
+          "retrievalMode": "none",
+          "chunks": []
+        }
+      },
+      "expected": {
+        "overallHealthIn": [
+          "on_track"
+        ],
+        "milestoneChecks": [
+          {
+            "labelContains": "Customer Portal UI Release",
+            "expectedTrend": "stable",
+            "expectedMatchedByIn": [
+              "exact_key"
+            ],
+            "shouldBeCarriedForward": false
+          },
+          {
+            "labelContains": "Backend API Security Hardening",
+            "expectedTrend": "stable",
+            "expectedMatchedByIn": [
+              "none"
+            ],
+            "shouldBeCarriedForward": true
+          },
+          {
+            "labelContains": "Data Analytics Reporting Pipeline",
+            "expectedTrend": "stable",
+            "expectedMatchedByIn": [
+              "none"
+            ],
+            "shouldBeCarriedForward": true
+          }
+        ],
+        "riskChecks": [],
+        "expectedRetrievalModeIn": [
+          "none"
+        ],
+        "mustNotUseRetrievedKnowledgeAsTranscriptEvidence": true,
+        "shouldGenerateSparseOutput": false,
+        "shouldGracefullyDegrade": false
+      },
+      "notes": "Ensures the system retains 'Backend API Security Hardening' and 'Data Analytics Reporting Pipeline' as open/active via the 'shouldBeCarriedForward' mechanism instead of completely losing them."
+    },
+    {
+      "case_id": "synthetic_010",
+      "case_name": "Database/Retrieval unavailable degradation",
+      "source": "ai_generated_synthetic",
+      "purpose": "Verifies that when DB/retrieval subsystems throw errors, the analyzer still provides structural transcript analysis while gracefully downgrading diagnostic features.",
+      "transcript": "Lewis: On Project Lumen, we are evaluating our current sprint progress. The 'Mobile App Push Notifications' setup is fully completed. It went smoothly and trended up.\nMaya: Great, but we are facing an active obstacle around 'App Store Account Credentials'. We can't publish without it, so that's an urgent risk.",
+      "context": {
+        "found": false,
+        "projectId": 110,
+        "projectName": "Unknown Project Lumen",
+        "activeMilestones": [],
+        "activeRisks": [],
+        "riskSuggestions": [],
+        "healthHistory": [],
+        "recentReports": [],
+        "milestoneHistory": [],
+        "latestSnapshot": null,
+        "generatedAt": "2026-07-03T12:00:00Z",
+        "retrievedKnowledge": {
+          "retrievalMode": "error",
+          "chunks": []
+        }
+      },
+      "expected": {
+        "overallHealthIn": [
+          "unknown",
+          "at_risk"
+        ],
+        "milestoneChecks": [
+          {
+            "labelContains": "Mobile App Push Notifications",
+            "expectedTrend": "completed",
+            "expectedMatchedByIn": [
+              "none"
+            ],
+            "shouldBeCarriedForward": false,
+            "expectedTrendIn": [
+              "resolved",
+              "completed",
+              "improving"
+            ]
+          }
+        ],
+        "riskChecks": [
+          {
+            "labelContains": "App Store Account Credentials",
+            "expectedTrend": "new_risk",
+            "expectedMatchedByIn": [
+              "none"
+            ]
+          }
+        ],
+        "expectedRetrievalModeIn": [
+          "error"
+        ],
+        "mustNotUseRetrievedKnowledgeAsTranscriptEvidence": true,
+        "shouldGenerateSparseOutput": false,
+        "shouldGracefullyDegrade": true
+      },
+      "notes": "Tests the fault-tolerance of the application. Even if the knowledge vector store fails (retrievalMode: error), the parser must extract findings from the raw transcript text safely."
+    },
+    {
+      "case_id": "synthetic_011",
+      "case_name": "Duplicate transcript re-upload",
+      "source": "ai_generated_synthetic",
+      "purpose": "Checks the system response when a transcript that exactly matches the prior week's discussion is uploaded again, resulting in unchanged trends.",
+      "transcript": "Ciara: Welcome back to Project Mirage review. Connor, update on the 'Core Database Sharding'?\nConnor: It's progressing at a steady rate. No changes from last week, trend is stable.\nMaya: And the 'OAuth Integration' risk?\nMaya: Still tracking normally, no escalation.",
+      "context": {
+        "found": true,
+        "projectId": 111,
+        "projectName": "Project Mirage",
+        "activeMilestones": [
+          {
+            "milestoneId": "m-11",
+            "milestoneName": "Core Database Sharding",
+            "comparisonKey": "core_database_sharding",
+            "description": "",
+            "latestAssessment": {
+              "status": "on_track",
+              "trend": "stable",
+              "summary": "Core Database Sharding was previously on_track.",
+              "reportId": 901,
+              "reportVersionId": 1901
+            },
+            "previousAssessment": null
+          }
+        ],
+        "activeRisks": [
+          {
+            "riskId": "r-11",
+            "riskTitle": "OAuth Integration authentication latency concerns",
+            "description": "OAuth Integration authentication latency concerns",
+            "mitigation": "",
+            "status": "active"
+          }
+        ],
+        "riskSuggestions": [],
+        "healthHistory": [
+          {
+            "area": "overall",
+            "status": "on_track",
+            "trend": "stable",
+            "reportId": 701,
+            "reportVersionId": 1701
+          }
+        ],
+        "recentReports": [
+          {
+            "reportId": "rep-990",
+            "summary": "Core Database Sharding is stable. OAuth Integration tracking normally."
+          }
+        ],
+        "milestoneHistory": [],
+        "latestSnapshot": null,
+        "generatedAt": "2026-07-03T12:00:00Z",
+        "retrievedKnowledge": {
+          "retrievalMode": "none",
+          "chunks": []
+        }
+      },
+      "expected": {
+        "overallHealthIn": [
+          "on_track"
+        ],
+        "milestoneChecks": [
+          {
+            "labelContains": "Core Database Sharding",
+            "expectedTrend": "stable",
+            "expectedMatchedByIn": [
+              "exact_key"
+            ],
+            "shouldBeCarriedForward": false
+          }
+        ],
+        "riskChecks": [
+          {
+            "labelContains": "OAuth Integration",
+            "expectedTrend": "stable",
+            "expectedMatchedByIn": [
+              "exact_title",
+              "semantic"
+            ]
+          }
+        ],
+        "expectedRetrievalModeIn": [
+          "none"
+        ],
+        "mustNotUseRetrievedKnowledgeAsTranscriptEvidence": true,
+        "shouldGenerateSparseOutput": false,
+        "shouldGracefullyDegrade": false
+      },
+      "notes": "Verifies that submitting identical tracking updates matches accurately to existing states without spawning repeated entities or altering trends erratically."
+    },
+    {
+      "case_id": "synthetic_012",
+      "case_name": "Messy garbage transcript scenario",
+      "source": "ai_generated_synthetic",
+      "purpose": "Ensures that unstructured, noisy audio chatter or irrelevant text results in an abstained or sparse structured output rather than hallucinated updates.",
+      "transcript": "Lewis: Hello? Can you hear me? I think my microphone is broken.\nConnor: Yeah, it sounds super echoey. Let's try reconnecting.\nMaya: Did anyone watch the football match yesterday? The penalty shootout was absolutely insane.\nCiara: Completely wild! Anyway, let's reschedule this project review call for tomorrow when everyone's internet connection is sorted out. Talk later bye.",
+      "context": {
+        "found": true,
+        "projectId": 112,
+        "projectName": "Project Nova",
+        "activeMilestones": [
+          {
+            "milestoneId": "m-12",
+            "milestoneName": "Critical Core Engine Cutover",
+            "comparisonKey": "critical_core_engine_cutover",
+            "description": "",
+            "latestAssessment": {
+              "status": "on_track",
+              "trend": "stable",
+              "summary": "Critical Core Engine Cutover was previously on_track.",
+              "reportId": 901,
+              "reportVersionId": 1901
+            },
+            "previousAssessment": null
+          }
+        ],
+        "activeRisks": [
+          {
+            "riskId": "r-12",
+            "riskTitle": "Legacy environment deprecation delays",
+            "description": "Legacy environment deprecation delays",
+            "mitigation": "",
+            "status": "active"
+          }
+        ],
+        "riskSuggestions": [],
+        "healthHistory": [
+          {
+            "area": "overall",
+            "status": "on_track",
+            "trend": "stable",
+            "reportId": 701,
+            "reportVersionId": 1701
+          }
+        ],
+        "recentReports": [],
+        "milestoneHistory": [],
+        "latestSnapshot": null,
+        "generatedAt": "2026-07-03T12:00:00Z",
+        "retrievedKnowledge": {
+          "retrievalMode": "none",
+          "chunks": []
+        }
+      },
+      "expected": {
+        "overallHealthIn": [
+          "unknown"
+        ],
+        "milestoneChecks": [
+          {
+            "labelContains": "Critical Core Engine Cutover",
+            "expectedTrend": "stable",
+            "expectedMatchedByIn": [
+              "none"
+            ],
+            "shouldBeCarriedForward": true
+          }
+        ],
+        "riskChecks": [],
+        "expectedRetrievalModeIn": [
+          "none"
+        ],
+        "mustNotUseRetrievedKnowledgeAsTranscriptEvidence": true,
+        "shouldGenerateSparseOutput": true,
+        "shouldGracefullyDegrade": false
+      },
+      "notes": "Confirms the LLM safely abstains from fabricating updates (shouldGenerateSparseOutput: true) and carries forward everything when the transcript has zero project management substance."
+    }
+  ]
+}
