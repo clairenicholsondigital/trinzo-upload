@@ -833,20 +833,30 @@ router.post('/project-update-test', withTestUpload(async (req, res) => {
         await fs.writeFile(contextPath, JSON.stringify({ context: projectContext }), 'utf8');
         scriptArgs.push('--context-file', contextPath);
       } catch (contextError) {
-        scriptArgs.push('--context-file');
         contextTempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'trinzo-project-context-'));
         const contextPath = path.join(contextTempDir, 'context-error.json');
         await fs.writeFile(contextPath, JSON.stringify({ _contextLoadError: contextError.message }), 'utf8');
-        scriptArgs.push(contextPath);
+        scriptArgs.push('--context-file', contextPath);
       }
     }
 
     const projectTimeoutMs = Number(process.env.PROJECT_UPDATE_TIMEOUT_MS || 180000);
+    console.info(JSON.stringify({
+      event: 'project_update_test_upload_started',
+      source: transcript.source,
+      fileName: transcript.fileName || null,
+      transcriptLength: transcript.text.length,
+      projectName,
+      skipMiniLM: truthyFlag(req.query?.skipMiniLM) || truthyFlag(req.body?.skipMiniLM),
+      skipRewrite: truthyFlag(req.query?.skipRewrite) || truthyFlag(req.body?.skipRewrite),
+      skipSave: truthyFlag(req.query?.skipSave) || truthyFlag(req.body?.skipSave),
+      skipContext: truthyFlag(req.query?.skipContext) || truthyFlag(req.body?.skipContext)
+    }));
     let result;
     try {
       result = await runPythonTranscriptScript('project_update_minilm.py', transcript.text, scriptArgs, { timeoutMs: projectTimeoutMs });
     } catch (primaryError) {
-      const fallback = await runPythonTranscriptScript('python_llm.py', transcript.text);
+      const fallback = await runPythonTranscriptScript('python_llm.py', transcript.text, [], { timeoutMs: projectTimeoutMs });
       result = {
         ...fallback,
         mode: 'project_update_legacy_fallback',
@@ -913,7 +923,7 @@ router.get('/project-update-test/reports/:reportId', async (req, res) => {
   }
 });
 
-router.post('/project-update-test/reports/bulk-delete', async (req, res) => {
+router.post('/project-update-test/reports/bulk-delete', requireAuth, async (req, res) => {
   try {
     const result = await deleteProjectReports(req.body?.reportIds || []);
     return res.json({ ok: true, result });
@@ -922,7 +932,7 @@ router.post('/project-update-test/reports/bulk-delete', async (req, res) => {
   }
 });
 
-router.patch('/project-update-test/reports/:reportId', async (req, res) => {
+router.patch('/project-update-test/reports/:reportId', requireAuth, async (req, res) => {
   try {
     const report = await saveProjectReportDetail(req.params.reportId, req.body || {});
     if (!report) {
@@ -934,7 +944,7 @@ router.patch('/project-update-test/reports/:reportId', async (req, res) => {
   }
 });
 
-router.delete('/project-update-test/reports/:reportId', async (req, res) => {
+router.delete('/project-update-test/reports/:reportId', requireAuth, async (req, res) => {
   try {
     const report = await deleteProjectReport(req.params.reportId);
     if (!report) {
@@ -955,7 +965,7 @@ router.get('/project-update-test/milestones', async (req, res) => {
   }
 });
 
-router.post('/project-update-test/milestones', async (req, res) => {
+router.post('/project-update-test/milestones', requireAuth, async (req, res) => {
   try {
     const milestone = await createProjectMilestone(req.body || {});
     return res.status(milestone?.created ? 201 : 200).json({ ok: true, milestone });
@@ -976,7 +986,7 @@ router.get('/project-update-test/milestones/:milestoneId', async (req, res) => {
   }
 });
 
-router.post('/project-update-test/milestones/bulk-inactivate', async (req, res) => {
+router.post('/project-update-test/milestones/bulk-inactivate', requireAuth, async (req, res) => {
   try {
     const result = await deactivateProjectMilestones(req.body?.milestoneIds || []);
     return res.json({ ok: true, result });
@@ -985,7 +995,7 @@ router.post('/project-update-test/milestones/bulk-inactivate', async (req, res) 
   }
 });
 
-router.patch('/project-update-test/milestones/:milestoneId', async (req, res) => {
+router.patch('/project-update-test/milestones/:milestoneId', requireAuth, async (req, res) => {
   try {
     const milestone = await updateProjectMilestone(req.params.milestoneId, req.body || {});
     if (!milestone) {
@@ -997,7 +1007,7 @@ router.patch('/project-update-test/milestones/:milestoneId', async (req, res) =>
   }
 });
 
-router.delete('/project-update-test/milestones/:milestoneId', async (req, res) => {
+router.delete('/project-update-test/milestones/:milestoneId', requireAuth, async (req, res) => {
   try {
     const milestone = await deleteProjectMilestone(req.params.milestoneId);
     if (!milestone) {
@@ -1018,7 +1028,7 @@ router.get('/project-update-test/context', async (req, res) => {
   }
 });
 
-router.post('/project-update-test/context/snapshots', async (req, res) => {
+router.post('/project-update-test/context/snapshots', requireAuth, async (req, res) => {
   try {
     const snapshot = await createProjectContextSnapshot(req.body?.projectName || req.query?.projectName, req.body || {});
     return res.status(201).json({ ok: true, snapshot });
@@ -1037,7 +1047,7 @@ router.get('/project-update-test/context/snapshots/:snapshotId', async (req, res
   }
 });
 
-router.post('/project-update-test/context/mark-official', async (req, res) => {
+router.post('/project-update-test/context/mark-official', requireAuth, async (req, res) => {
   try {
     const result = await markProjectContextOfficial(
       req.body?.projectName || req.query?.projectName,
@@ -1049,7 +1059,7 @@ router.post('/project-update-test/context/mark-official', async (req, res) => {
   }
 });
 
-router.post('/project-update-test/context/cleanup-tests', async (req, res) => {
+router.post('/project-update-test/context/cleanup-tests', requireAuth, async (req, res) => {
   try {
     const result = await cleanupProjectUpdateTestContext(req.body?.projectName || req.query?.projectName, {
       archiveReports: !truthyFlag(req.body?.keepReports) && !truthyFlag(req.query?.keepReports),

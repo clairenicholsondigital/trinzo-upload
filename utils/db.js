@@ -553,6 +553,12 @@ function projectContextItemKey(value, fallback = 'item') {
   return key || fallback;
 }
 
+function projectContextScopedItemKey(value, fallback = 'item') {
+  const key = projectContextItemKey(value, fallback);
+  const suffix = projectContextItemKey(fallback, 'item');
+  return suffix && key !== suffix ? `${key}_${suffix}` : key;
+}
+
 function truthy(value) {
   if (Array.isArray(value)) return value.some((item) => truthy(item));
   if (value == null) return false;
@@ -835,7 +841,7 @@ RETURNING id::text;`);
     const previous = milestone.previousAssessment || {};
     items.push({
       itemType: 'milestone',
-      itemKey: milestone.comparisonKey || projectContextItemKey(milestone.milestoneName, `milestone_${milestone.milestoneId}`),
+      itemKey: milestone.comparisonKey || projectContextScopedItemKey(milestone.milestoneName, `milestone_${milestone.milestoneId}`),
       itemLabel: milestone.milestoneName,
       status: latest.status || '',
       previousStatus: previous.status || '',
@@ -865,7 +871,7 @@ RETURNING id::text;`);
   for (const risk of (context.activeRisks || []).slice(0, 20)) {
     items.push({
       itemType: 'risk',
-      itemKey: projectContextItemKey(risk.riskTitle, `core_risk_${risk.riskId}`),
+      itemKey: projectContextScopedItemKey(risk.riskTitle, `core_risk_${risk.riskId}`),
       itemLabel: risk.riskTitle,
       status: 'active',
       previousStatus: '',
@@ -878,7 +884,7 @@ RETURNING id::text;`);
   for (const risk of (context.riskSuggestions || []).slice(0, 20)) {
     items.push({
       itemType: 'risk',
-      itemKey: projectContextItemKey(risk.riskTitle, `risk_${risk.riskSuggestionId}`),
+      itemKey: projectContextScopedItemKey(risk.riskTitle, `risk_${risk.riskSuggestionId}`),
       itemLabel: risk.riskTitle,
       status: risk.reviewStatus || '',
       previousStatus: '',

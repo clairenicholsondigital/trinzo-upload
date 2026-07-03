@@ -500,9 +500,12 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertIn("router.get('/project-update-test/milestones'", api)
         self.assertIn("router.post('/project-update-test/milestones'", api)
         self.assertIn("router.patch('/project-update-test/milestones/:milestoneId'", api)
-        self.assertIn("router.post('/project-update-test/context/mark-official'", api)
-        self.assertIn("router.post('/project-update-test/context/cleanup-tests'", api)
-        self.assertIn("router.delete('/project-update-test/milestones/:milestoneId'", api)
+        self.assertIn("router.post('/project-update-test/context/mark-official', requireAuth", api)
+        self.assertIn("router.post('/project-update-test/context/cleanup-tests', requireAuth", api)
+        self.assertIn("router.delete('/project-update-test/milestones/:milestoneId', requireAuth", api)
+        self.assertIn("router.patch('/project-update-test/reports/:reportId', requireAuth", api)
+        self.assertIn("router.post('/project-update-test/reports/bulk-delete', requireAuth", api)
+        self.assertIn("router.post('/project-update-test/milestones', requireAuth", api)
         self.assertIn("saveProjectReportDetail", db)
         self.assertIn("deleteProjectReport", db)
         self.assertIn("updateProjectMilestone", db)
@@ -515,6 +518,7 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertIn("markProjectContextOfficial", db)
         self.assertIn("cleanupProjectUpdateTestContext", db)
         self.assertIn("isOfficial", db)
+        self.assertIn("projectContextScopedItemKey", db)
 
         reports_page = (REPO_DIR / "views" / "project-update-reports.html").read_text(encoding="utf-8")
         milestones_page = (REPO_DIR / "views" / "project-update-milestones.html").read_text(encoding="utf-8")
@@ -562,6 +566,15 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertIn("Clear test clutter", context_page)
         self.assertIn("/api/project-update-test/context/mark-official", context_page)
         self.assertIn("/api/project-update-test/context/cleanup-tests", context_page)
+
+    def test_project_update_route_hardening_is_fail_safe(self):
+        api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+        project_route = api.split("router.post('/project-update-test'", 1)[1].split("router.get('/project-update-test/reports'", 1)[0]
+
+        self.assertIn("scriptArgs.push('--context-file', contextPath);", project_route)
+        self.assertNotIn("scriptArgs.push('--context-file');", project_route)
+        self.assertIn("runPythonTranscriptScript('python_llm.py', transcript.text, [], { timeoutMs: projectTimeoutMs })", project_route)
+        self.assertIn("project_update_test_upload_started", project_route)
 
     def test_project_context_updates_health_milestone_and_risk_trends(self):
         report = {
