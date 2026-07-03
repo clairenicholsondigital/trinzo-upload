@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from scripts.project_update_minilm import build_project_update_output
-from scripts.project_update_minilm import annotate_report_with_project_context, build_context_first_milestones, build_minilm_first_context, build_report_payload, is_valid_risk_mitigation_candidate, normalise_report_payload, ranked_project_signals, rewrite_report_summary, select_risk_mitigations, split_action_candidates
+from scripts.project_update_minilm import annotate_report_with_project_context, build_context_first_milestones, build_context_first_risks, build_minilm_first_context, build_report_payload, is_valid_risk_mitigation_candidate, normalise_report_payload, ranked_project_signals, rewrite_report_summary, select_risk_mitigations, split_action_candidates
 
 
 REPO_DIR = Path(__file__).resolve().parents[1]
@@ -722,6 +722,112 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertTrue(annotated["risks"][0]["knowledge_context_match"])
         self.assertEqual(diagnostics["knowledgeUsed"]["retrievalMode"], "semantic")
         self.assertFalse(diagnostics["knowledgeUsed"]["usedAsTranscriptEvidence"])
+
+    def test_semantic_risk_matching_maps_reworded_active_risk(self):
+        class FakeBackend:
+            available = True
+            reason = ""
+            model_name = "fake"
+
+            def encode_many(self, texts):
+                lookup = {}
+                for text in texts:
+                    cleaned = " ".join(str(text or "").split()).strip()
+                    if any(phrase in cleaned.lower() for phrase in ["delivery capacity", "sow commitments", "resourcing pressure", "contracted scope"]):
+                        lookup[cleaned] = [1.0, 0.0]
+                    else:
+                        lookup[cleaned] = [0.0, 1.0]
+                return lookup
+
+        report = {
+            "healthAreas": {},
+            "milestones": [],
+            "risks": [{"riskTitle": "Resourcing pressure against contracted scope", "description": "Team capacity may not cover the agreed scope."}],
+            "comparisonSnapshot": {},
+        }
+        context = {
+            "found": True,
+            "activeMilestones": [],
+            "activeRisks": [{"riskId": 7, "riskTitle": "Delivery capacity vs SOW commitments", "description": "Capacity pressure remains."}],
+            "healthHistory": [],
+            "riskSuggestions": [],
+        }
+
+        annotated, diagnostics = annotate_report_with_project_context(report, context, backend=FakeBackend())
+
+        self.assertEqual(annotated["risks"][0]["trend"], "stable")
+        self.assertEqual(annotated["risks"][0]["core_risk_id"], 7)
+        self.assertEqual(annotated["risks"][0]["risk_match_provenance"]["matchedBy"], "semantic")
+        self.assertEqual(diagnostics["semanticRiskMatches"], 1)
+
+    def test_semantic_risk_matching_abstains_on_distinct_new_risk(self):
+        class FakeBackend:
+            available = True
+            reason = ""
+            model_name = "fake"
+
+            def encode_many(self, texts):
+                lookup = {}
+                for text in texts:
+                    cleaned = " ".join(str(text or "").split()).strip()
+                    if "delivery capacity" in cleaned.lower():
+                        lookup[cleaned] = [1.0, 0.0]
+                    elif "vendor governance" in cleaned.lower():
+                        lookup[cleaned] = [0.0, 1.0]
+                    else:
+                        lookup[cleaned] = [0.2, 0.2]
+                return lookup
+
+        report = {
+            "healthAreas": {},
+            "milestones": [],
+            "risks": [{"riskTitle": "Vendor governance risk", "description": "Supplier ownership is unclear."}],
+            "comparisonSnapshot": {},
+        }
+        context = {
+            "found": True,
+            "activeMilestones": [],
+            "activeRisks": [{"riskId": 7, "riskTitle": "Delivery capacity vs SOW commitments", "description": "Capacity pressure remains."}],
+            "healthHistory": [],
+            "riskSuggestions": [],
+        }
+
+        annotated, diagnostics = annotate_report_with_project_context(report, context, backend=FakeBackend())
+
+        self.assertEqual(annotated["risks"][0]["trend"], "new_risk")
+        self.assertIsNone(annotated["risks"][0].get("core_risk_id"))
+        self.assertEqual(annotated["risks"][0]["risk_match_provenance"]["matchedBy"], "none")
+        self.assertEqual(diagnostics["semanticRiskMatches"], 0)
+
+    def test_context_first_risks_updates_active_risk_from_semantic_suggestion(self):
+        class FakeBackend:
+            available = True
+            reason = ""
+            model_name = "fake"
+
+            def encode_many(self, texts):
+                lookup = {}
+                for text in texts:
+                    cleaned = " ".join(str(text or "").split()).strip()
+                    if any(phrase in cleaned.lower() for phrase in ["delivery capacity", "resourcing pressure", "contracted scope"]):
+                        lookup[cleaned] = [1.0, 0.0]
+                    else:
+                        lookup[cleaned] = [0.0, 1.0]
+                return lookup
+
+        diagnostics = {}
+        rows = build_context_first_risks(
+            [{"riskTitle": "Resourcing pressure against contracted scope", "description": "Capacity could delay delivery.", "suggestedMitigation": "Review scope."}],
+            {"activeRisks": [{"riskId": 7, "riskTitle": "Delivery capacity vs SOW commitments", "description": "Capacity pressure remains.", "mitigation": "Track utilisation."}]},
+            backend=FakeBackend(),
+            diagnostics=diagnostics,
+        )
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["riskId"], 7)
+        self.assertEqual(rows[0]["transcript_update_status"], "updated_from_transcript")
+        self.assertEqual(rows[0]["risk_match_provenance"]["matchedBy"], "semantic")
+        self.assertEqual(diagnostics["semanticRiskMatches"], 1)
 
     def test_project_update_save_path_stores_milestone_deadlines_and_trends(self):
         db = (REPO_DIR / "utils" / "db.js").read_text(encoding="utf-8")

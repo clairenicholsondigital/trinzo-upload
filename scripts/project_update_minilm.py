@@ -779,9 +779,16 @@ def normalise_risk_context_tokens(tokens: set[str]) -> set[str]:
     return {aliases.get(token, token) for token in tokens}
 
 
+def risk_match_text(risk: dict[str, Any]) -> str:
+    return clean_text(" ".join(str(risk.get(field) or "") for field in ("riskTitle", "title", "description", "suggestedMitigation", "mitigation", "relatedMilestone")))
+
+
+def risk_match_key(risk: dict[str, Any]) -> str:
+    return normalise_key(risk.get("riskTitle") or risk.get("title") or risk.get("description"))
+
+
 def knowledge_mentions_risk(risk: dict[str, Any], project_context: dict[str, Any] | None) -> bool:
-    risk_text = " ".join(str(risk.get(field) or "") for field in ("riskTitle", "description", "suggestedMitigation", "mitigation"))
-    risk_tokens = normalise_risk_context_tokens(milestone_match_tokens(risk_text))
+    risk_tokens = normalise_risk_context_tokens(milestone_match_tokens(risk_match_text(risk)))
     if not risk_tokens:
         return False
     for chunk in retrieved_knowledge_payload(project_context).get("chunks", []):
@@ -822,6 +829,36 @@ def semantic_match_lookup(backend: MiniLMBackend | None, left_items: list[dict[s
         used_left.add(left_index)
         used_right.add(right_index)
     return output
+
+
+def semantic_risk_matches(backend: MiniLMBackend | None, previous_risks: list[dict[str, Any]], current_risks: list[dict[str, Any]], diagnostics: dict[str, Any] | None = None) -> dict[int, tuple[int, float]]:
+    matches = semantic_match_lookup(
+        backend,
+        previous_risks,
+        current_risks,
+        left_text=risk_match_text,
+        right_text=risk_match_text,
+        threshold=float(os.getenv("PROJECT_UPDATE_RISK_SEMANTIC_MATCH_THRESHOLD", "0.6")),
+    )
+    if diagnostics is not None:
+        diagnostics["semanticRiskMatches"] = len(matches)
+    return matches
+
+
+def token_risk_match(previous_risks: list[dict[str, Any]], current_risk: dict[str, Any], used_previous_indexes: set[int]) -> tuple[int | None, float]:
+    best_index: int | None = None
+    best_score = 0.0
+    current_text = risk_match_text(current_risk)
+    for index, previous in enumerate(previous_risks):
+        if index in used_previous_indexes:
+            continue
+        score = milestone_match_score(current_text, risk_match_text(previous))
+        if score > best_score:
+            best_index = index
+            best_score = score
+    if best_index is not None and best_score >= float(os.getenv("PROJECT_UPDATE_RISK_TOKEN_MATCH_THRESHOLD", "0.38")):
+        return best_index, best_score
+    return None, 0.0
 
 def normalise_key(value: Any) -> str:
     return re.sub(r"[^a-z0-9]+", "_", str(value or "").strip().lower()).strip("_")
@@ -920,13 +957,16 @@ def latest_by_key(items: list[Any], key_candidates: list[str]) -> dict[str, Any]
     return output
 
 
-def annotate_report_with_project_context(report: dict[str, Any], project_context: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+def annotate_report_with_project_context(report: dict[str, Any], project_context: dict[str, Any], backend: MiniLMBackend | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
     diagnostics = {
         "contextProvided": bool(project_context),
         "contextFound": bool(project_context.get("found")),
         "milestonesCompared": 0,
         "healthAreasCompared": 0,
         "riskTitlesCompared": 0,
+        "semanticRiskMatches": 0,
+        "tokenRiskMatches": 0,
+        "riskMatchProvenance": {},
         "contextLoadError": project_context.get("_contextLoadError", ""),
         "knowledgeUsed": knowledge_diagnostics(project_context),
     }
@@ -1005,29 +1045,75 @@ def annotate_report_with_project_context(report: dict[str, Any], project_context
             "previousReportVersionId": previous.get("reportVersionId"),
         }
 
-    previous_risks = latest_by_key(project_context.get("activeRisks", []), ["riskTitle"])
-    previous_risks.update({key: value for key, value in latest_by_key(project_context.get("riskSuggestions", []), ["riskTitle"]).items() if key not in previous_risks})
+    previous_risk_items: list[dict[str, Any]] = []
+    seen_previous_keys: set[str] = set()
+    for source_name, source_items in (("active_risk", project_context.get("activeRisks", [])), ("risk_suggestion", project_context.get("riskSuggestions", []))):
+        for item in source_items:
+            if not isinstance(item, dict):
+                continue
+            key = risk_match_key(item)
+            if key and key in seen_previous_keys:
+                continue
+            previous_risk_items.append({**item, "_contextRiskSource": source_name})
+            if key:
+                seen_previous_keys.add(key)
+    previous_risks = {risk_match_key(item): item for item in previous_risk_items if risk_match_key(item)}
+    semantic_matches = semantic_risk_matches(backend, previous_risk_items, risks, diagnostics)
+    used_previous_indexes: set[int] = set()
     risk_snapshot: dict[str, Any] = {}
-    for risk in risks:
-        key = normalise_key(risk.get("riskTitle"))
+    for risk_index, risk in enumerate(risks):
+        key = risk_match_key(risk)
         previous = previous_risks.get(key, {})
+        matched_by = "exact_title" if previous else "none"
+        match_score: float | None = 1.0 if previous else None
+        previous_index: int | None = None
+        if previous:
+            try:
+                previous_index = previous_risk_items.index(previous)
+            except ValueError:
+                previous_index = None
+        if not previous and risk_index in semantic_matches:
+            candidate_index, score = semantic_matches[risk_index]
+            if candidate_index not in used_previous_indexes:
+                previous = previous_risk_items[candidate_index]
+                previous_index = candidate_index
+                matched_by = "semantic"
+                match_score = float(score)
+        if not previous:
+            candidate_index, score = token_risk_match(previous_risk_items, risk, used_previous_indexes)
+            if candidate_index is not None:
+                previous = previous_risk_items[candidate_index]
+                previous_index = candidate_index
+                matched_by = "token_overlap"
+                match_score = float(score)
+                diagnostics["tokenRiskMatches"] += 1
+        if previous_index is not None:
+            used_previous_indexes.add(previous_index)
         if previous:
             diagnostics["riskTitlesCompared"] += 1
             trend = "stable" if previous.get("riskId") or str(previous.get("reviewStatus", "")).lower() in {"pending", "accepted", "reviewed"} else "new_risk"
             risk["previous_review_status"] = previous.get("reviewStatus", "")
             risk["previous_report_id"] = previous.get("reportId")
             risk["core_risk_id"] = previous.get("riskId")
+            risk["risk_match_provenance"] = {"matchedBy": matched_by, "score": round(match_score or 0.0, 4), "source": previous.get("_contextRiskSource", "")}
         else:
             trend = "known_background_risk" if knowledge_mentions_risk(risk, project_context) else "new_risk"
             if trend == "known_background_risk":
                 risk["knowledge_context_match"] = True
+                matched_by = "knowledge_background"
+                match_score = None
+            risk["risk_match_provenance"] = {"matchedBy": matched_by, "score": round(match_score or 0.0, 4) if match_score is not None else None}
         risk["trend"] = trend
-        risk_snapshot[key or normalise_key(risk.get("description"))] = {
+        snapshot_key = key or normalise_key(risk.get("description"))
+        diagnostics["riskMatchProvenance"][snapshot_key or f"risk_{risk_index}"] = risk.get("risk_match_provenance", {})
+        risk_snapshot[snapshot_key] = {
             "label": risk.get("riskTitle", ""),
             "trend": trend,
-            "previousReviewStatus": previous.get("reviewStatus", ""),
-            "previousReportId": previous.get("reportId"),
-            "coreRiskId": previous.get("riskId"),
+            "previousReviewStatus": previous.get("reviewStatus", "") if previous else "",
+            "previousReportId": previous.get("reportId") if previous else None,
+            "coreRiskId": previous.get("riskId") if previous else None,
+            "matchedBy": matched_by,
+            "matchScore": round(match_score or 0.0, 4) if match_score is not None else None,
         }
 
     existing_snapshot = report.get("comparisonSnapshot", {}) if isinstance(report.get("comparisonSnapshot"), dict) else {}
@@ -1210,15 +1296,28 @@ def build_fixed_health_areas(overall: str, diagnostics: dict[str, Any], project_
     return areas
 
 
-def build_context_first_risks(risk_suggestions: list[dict[str, Any]], project_context: dict[str, Any] | None) -> list[dict[str, Any]]:
+def build_context_first_risks(risk_suggestions: list[dict[str, Any]], project_context: dict[str, Any] | None, backend: MiniLMBackend | None = None, diagnostics: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     context = project_context or {}
     active_risks = [item for item in context.get("activeRisks", []) if isinstance(item, dict)]
-    suggestions_by_key = {normalise_key(item.get("riskTitle")): item for item in risk_suggestions if isinstance(item, dict)}
+    suggestions_by_key = {risk_match_key(item): item for item in risk_suggestions if isinstance(item, dict)}
+    semantic_suggestions = semantic_risk_matches(backend, active_risks, [item for item in risk_suggestions if isinstance(item, dict)], diagnostics)
     output: list[dict[str, Any]] = []
     used: set[str] = set()
-    for risk in active_risks:
-        key = normalise_key(risk.get("riskTitle"))
+    used_suggestion_indexes: set[int] = set()
+    suggestion_rows = [item for item in risk_suggestions if isinstance(item, dict)]
+    for risk_index, risk in enumerate(active_risks):
+        key = risk_match_key(risk)
         suggestion = suggestions_by_key.get(key)
+        matched_by = "exact_title" if suggestion else "none"
+        match_score = 1.0 if suggestion else None
+        if not suggestion:
+            for suggestion_index, (candidate_risk_index, score) in semantic_suggestions.items():
+                if candidate_risk_index == risk_index and suggestion_index not in used_suggestion_indexes:
+                    suggestion = suggestion_rows[suggestion_index]
+                    used_suggestion_indexes.add(suggestion_index)
+                    matched_by = "semantic"
+                    match_score = float(score)
+                    break
         row = {
             "riskId": risk.get("riskId"),
             "riskTitle": risk.get("riskTitle") or "Project risk",
@@ -1234,11 +1333,15 @@ def build_context_first_risks(risk_suggestions: list[dict[str, Any]], project_co
             row["riskId"] = risk.get("riskId")
             row["context_source"] = "active_risk"
             row["transcript_update_status"] = "updated_from_transcript"
-            used.add(key)
+            row["risk_match_provenance"] = {"matchedBy": matched_by, "score": round(match_score or 0.0, 4)}
+            used.add(risk_match_key(suggestion) or key)
         output.append(row)
-    for risk in risk_suggestions:
-        key = normalise_key(risk.get("riskTitle"))
-        if key and key not in used and key not in {normalise_key(item.get("riskTitle")) for item in active_risks}:
+    active_keys = {risk_match_key(item) for item in active_risks}
+    for suggestion_index, risk in enumerate(risk_suggestions):
+        key = risk_match_key(risk)
+        if suggestion_index in used_suggestion_indexes:
+            continue
+        if key and key not in used and key not in active_keys:
             output.append(risk)
     return output
 
@@ -1309,13 +1412,13 @@ def build_report_payload(
         "keyUpdates": [clean_text(item) for item in key_updates if clean_text(item)],
         "healthAreas": build_fixed_health_areas(overall, diagnostics, project_context),
         "milestones": report_milestones,
-        "risks": build_context_first_risks(risk_suggestions, project_context),
+        "risks": build_context_first_risks(risk_suggestions, project_context, backend=backend, diagnostics=diagnostics),
         "actions": minilm_actions or result.get("actions", []),
         "_actionSourceTexts": [*minilm_action_sources, *collect_action_source_texts(result, enriched_segments)],
         "comparisonSnapshot": result.get("comparison_snapshot", {}),
         "retrievedKnowledge": knowledge_diagnostics(project_context),
     })
-    report, context_diagnostics = annotate_report_with_project_context(report, project_context or {})
+    report, context_diagnostics = annotate_report_with_project_context(report, project_context or {}, backend=backend)
     diagnostics["projectContext"] = context_diagnostics
     diagnostics["projectKnowledge"] = context_diagnostics.get("knowledgeUsed", knowledge_diagnostics(project_context))
     return normalise_report_payload(report)
