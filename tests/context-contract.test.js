@@ -59,5 +59,8 @@ test('project knowledge phase 1 surfaces schema and protected endpoints', () => 
   assert.ok(apiSource.includes("router.get('/project-update-test/knowledge/status', requireAuth"));
   assert.ok(serverSource.includes('startProjectKnowledgeEmbedInterval'));
   assert.ok(knowledgeSource.includes('runProjectKnowledgeRetrieval'));
+  assert.ok(apiSource.includes('runProjectKnowledgeRetrieval'));
+  assert.ok(apiSource.includes('skipKnowledge'));
+  assert.ok(apiSource.includes('projectContext.retrievedKnowledge'));
   assert.ok(backfillSource.includes('ingestApprovedProjectReportVersion'));
 });

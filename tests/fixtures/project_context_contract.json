@@ -10,7 +10,9 @@
     "candidates": 1,
     "projectId": 101,
     "ambiguous": false,
-    "candidateProjectIds": [101]
+    "candidateProjectIds": [
+      101
+    ]
   },
   "activeMilestones": [
     {
@@ -155,5 +157,18 @@
     "createdAt": "2026-06-20T10:00:00Z",
     "contextPayload": {}
   },
-  "generatedAt": "2026-07-03T14:40:00Z"
+  "generatedAt": "2026-07-03T14:40:00Z",
+  "retrievedKnowledge": {
+    "retrievalMode": "semantic",
+    "chunks": [
+      {
+        "chunk_id": 901,
+        "item_id": 801,
+        "title": "Migration background",
+        "item_type": "background_doc",
+        "chunk_text": "Migration ownership needs a single accountable owner before training starts.",
+        "score": 0.81
+      }
+    ]
+  }
 }

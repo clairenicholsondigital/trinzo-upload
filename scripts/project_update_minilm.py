@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 import json
+import os
 from pathlib import Path
 import re
 import sys
@@ -23,10 +24,10 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 try:
-    from meeting_minutes_minilm_experiment import LocalMinutesRewriter, MiniLMBackend
+    from meeting_minutes_minilm_experiment import LocalMinutesRewriter, MiniLMBackend, embedding_similarity
     from python_llm import analyse as analyse_project_update
 except ModuleNotFoundError:  # pragma: no cover - defensive fallback for unusual import paths
-    from scripts.meeting_minutes_minilm_experiment import LocalMinutesRewriter, MiniLMBackend  # type: ignore
+    from scripts.meeting_minutes_minilm_experiment import LocalMinutesRewriter, MiniLMBackend, embedding_similarity  # type: ignore
     from scripts.python_llm import analyse as analyse_project_update  # type: ignore
 
 
@@ -734,6 +735,94 @@ def load_project_context(path: str | None) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+
+def retrieved_knowledge_payload(project_context: dict[str, Any] | None) -> dict[str, Any]:
+    raw = (project_context or {}).get("retrievedKnowledge")
+    if not isinstance(raw, dict):
+        return {"retrievalMode": "none", "chunks": []}
+    chunks = raw.get("chunks") if isinstance(raw.get("chunks"), list) else []
+    return {
+        "retrievalMode": raw.get("retrievalMode") or raw.get("retrieval_mode") or "none",
+        "chunks": [chunk for chunk in chunks if isinstance(chunk, dict)],
+        "error": raw.get("error", ""),
+    }
+
+
+def knowledge_text_for_chunk(chunk: dict[str, Any]) -> str:
+    return clean_text(" ".join(str(chunk.get(field) or "") for field in ("title", "item_type", "chunk_text")))
+
+
+def knowledge_diagnostics(project_context: dict[str, Any] | None) -> dict[str, Any]:
+    payload = retrieved_knowledge_payload(project_context)
+    chunks = payload.get("chunks", [])
+    return {
+        "retrievalMode": payload.get("retrievalMode", "none"),
+        "chunksConsidered": len(chunks),
+        "chunkIds": [chunk.get("chunk_id") or chunk.get("chunkId") for chunk in chunks[:8]],
+        "error": payload.get("error", ""),
+        "usedAsTranscriptEvidence": False,
+    }
+
+
+def normalise_risk_context_tokens(tokens: set[str]) -> set[str]:
+    aliases = {
+        "owns": "owner",
+        "owned": "owner",
+        "ownership": "owner",
+        "accountable": "owner",
+        "accountability": "owner",
+        "delayed": "delay",
+        "delays": "delay",
+        "blocked": "block",
+        "blocking": "block",
+    }
+    return {aliases.get(token, token) for token in tokens}
+
+
+def knowledge_mentions_risk(risk: dict[str, Any], project_context: dict[str, Any] | None) -> bool:
+    risk_text = " ".join(str(risk.get(field) or "") for field in ("riskTitle", "description", "suggestedMitigation", "mitigation"))
+    risk_tokens = normalise_risk_context_tokens(milestone_match_tokens(risk_text))
+    if not risk_tokens:
+        return False
+    for chunk in retrieved_knowledge_payload(project_context).get("chunks", []):
+        text_tokens = normalise_risk_context_tokens(milestone_match_tokens(knowledge_text_for_chunk(chunk)))
+        if not text_tokens:
+            continue
+        overlap = len(risk_tokens & text_tokens) / max(1, min(len(risk_tokens), len(text_tokens)))
+        if len(risk_tokens & text_tokens) >= 2 and overlap >= 0.12:
+            return True
+    return False
+
+
+def semantic_match_lookup(backend: MiniLMBackend | None, left_items: list[dict[str, Any]], right_items: list[dict[str, Any]], *, left_text, right_text, threshold: float = 0.58) -> dict[int, tuple[int, float]]:
+    if not backend or not getattr(backend, "available", False) or not left_items or not right_items:
+        return {}
+    left_texts = [clean_text(left_text(item)) for item in left_items]
+    right_texts = [clean_text(right_text(item)) for item in right_items]
+    embeddings = backend.encode_many([*left_texts, *right_texts])
+    candidates: list[tuple[float, int, int]] = []
+    for left_index, left in enumerate(left_texts):
+        left_embedding = embeddings.get(left)
+        if not left_embedding:
+            continue
+        for right_index, right in enumerate(right_texts):
+            right_embedding = embeddings.get(right)
+            if not right_embedding:
+                continue
+            score = embedding_similarity(left_embedding, right_embedding)
+            if score >= threshold:
+                candidates.append((score, left_index, right_index))
+    output: dict[int, tuple[int, float]] = {}
+    used_left: set[int] = set()
+    used_right: set[int] = set()
+    for score, left_index, right_index in sorted(candidates, reverse=True):
+        if left_index in used_left or right_index in used_right:
+            continue
+        output[right_index] = (left_index, score)
+        used_left.add(left_index)
+        used_right.add(right_index)
+    return output
+
 def normalise_key(value: Any) -> str:
     return re.sub(r"[^a-z0-9]+", "_", str(value or "").strip().lower()).strip("_")
 
@@ -839,6 +928,7 @@ def annotate_report_with_project_context(report: dict[str, Any], project_context
         "healthAreasCompared": 0,
         "riskTitlesCompared": 0,
         "contextLoadError": project_context.get("_contextLoadError", ""),
+        "knowledgeUsed": knowledge_diagnostics(project_context),
     }
     if not project_context or project_context.get("_contextLoadError"):
         return report, diagnostics
@@ -928,7 +1018,9 @@ def annotate_report_with_project_context(report: dict[str, Any], project_context
             risk["previous_report_id"] = previous.get("reportId")
             risk["core_risk_id"] = previous.get("riskId")
         else:
-            trend = "new_risk"
+            trend = "known_background_risk" if knowledge_mentions_risk(risk, project_context) else "new_risk"
+            if trend == "known_background_risk":
+                risk["knowledge_context_match"] = True
         risk["trend"] = trend
         risk_snapshot[key or normalise_key(risk.get("description"))] = {
             "label": risk.get("riskTitle", ""),
@@ -1027,7 +1119,7 @@ def merge_segment_into_milestone_row(row: dict[str, Any], segment: dict[str, Any
     return merged
 
 
-def build_context_first_milestones(enriched_segments: list[dict[str, Any]], project_context: dict[str, Any] | None) -> list[dict[str, Any]]:
+def build_context_first_milestones(enriched_segments: list[dict[str, Any]], project_context: dict[str, Any] | None, backend: MiniLMBackend | None = None, diagnostics: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     context = project_context or {}
     active_milestones = [item for item in context.get("activeMilestones", []) if isinstance(item, dict)]
     segment_rows: list[dict[str, Any]] = []
@@ -1045,6 +1137,16 @@ def build_context_first_milestones(enriched_segments: list[dict[str, Any]], proj
         segment_rows.append(item)
 
     segments_by_key = {normalise_key(item.get("comparison_key") or item.get("milestone")): item for item in segment_rows}
+    semantic_matches = semantic_match_lookup(
+        backend,
+        active_milestones,
+        segment_rows,
+        left_text=lambda item: f"{item.get('milestoneName') or item.get('comparisonKey') or ''} {item.get('description') or ''}",
+        right_text=lambda item: f"{item.get('milestone') or item.get('comparison_key') or ''} {item.get('normalised_evidence_summary') or item.get('excerpt') or ''}",
+        threshold=float(os.getenv("PROJECT_UPDATE_SEMANTIC_MATCH_THRESHOLD", "0.58")),
+    )
+    if diagnostics is not None:
+        diagnostics["semanticMilestoneMatches"] = len(semantic_matches)
     output: list[dict[str, Any]] = []
     used_segment_keys: set[str] = set()
     active_keys = {normalise_key(item.get("comparisonKey") or item.get("milestoneName")) for item in active_milestones}
@@ -1052,6 +1154,14 @@ def build_context_first_milestones(enriched_segments: list[dict[str, Any]], proj
         row = context_milestone_row(milestone)
         key = normalise_key(row.get("comparison_key") or row.get("milestone"))
         segment = segments_by_key.get(key)
+        if segment:
+            segment["matchedBy"] = segment.get("matchedBy") or "exact_key"
+            segment["matchScore"] = segment.get("matchScore") or 1.0
+        if not segment and len(output) in semantic_matches:
+            semantic_index, semantic_score = semantic_matches[len(output)]
+            segment = segment_rows[semantic_index]
+            segment["matchedBy"] = "semantic"
+            segment["matchScore"] = round(float(semantic_score), 4)
         if not segment:
             segment = max(
                 (candidate for candidate in segment_rows if normalise_key(candidate.get("comparison_key") or candidate.get("milestone")) not in used_segment_keys),
@@ -1060,6 +1170,9 @@ def build_context_first_milestones(enriched_segments: list[dict[str, Any]], proj
             )
             if segment and milestone_match_score(row.get("comparison_key") or row.get("milestone"), segment.get("comparison_key") or segment.get("milestone")) < 0.6:
                 segment = None
+            elif segment:
+                segment["matchedBy"] = segment.get("matchedBy") or "token_overlap"
+                segment["matchScore"] = round(milestone_match_score(row.get("comparison_key") or row.get("milestone"), segment.get("comparison_key") or segment.get("milestone")), 4)
         if segment:
             row = merge_segment_into_milestone_row(row, segment)
             used_segment_keys.add(normalise_key(segment.get("comparison_key") or segment.get("milestone")))
@@ -1136,6 +1249,7 @@ def build_report_payload(
     diagnostics: dict[str, Any],
     minilm_first_context: dict[str, Any] | None = None,
     project_context: dict[str, Any] | None = None,
+    backend: MiniLMBackend | None = None,
 ) -> dict[str, Any]:
     summary = result.get("project_health_summary", {})
     overall = summary.get("overall_health", "unknown")
@@ -1182,7 +1296,7 @@ def build_report_payload(
                 }
             )
 
-    report_milestones = build_context_first_milestones(enriched_segments, project_context)
+    report_milestones = build_context_first_milestones(enriched_segments, project_context, backend=backend, diagnostics=diagnostics)
 
     minilm_actions = minilm_first_context.get("actions", []) if isinstance(minilm_first_context.get("actions", []), list) else []
     minilm_action_sources = minilm_first_context.get("actionSourceTexts", []) if isinstance(minilm_first_context.get("actionSourceTexts", []), list) else []
@@ -1199,9 +1313,11 @@ def build_report_payload(
         "actions": minilm_actions or result.get("actions", []),
         "_actionSourceTexts": [*minilm_action_sources, *collect_action_source_texts(result, enriched_segments)],
         "comparisonSnapshot": result.get("comparison_snapshot", {}),
+        "retrievedKnowledge": knowledge_diagnostics(project_context),
     })
     report, context_diagnostics = annotate_report_with_project_context(report, project_context or {})
     diagnostics["projectContext"] = context_diagnostics
+    diagnostics["projectKnowledge"] = context_diagnostics.get("knowledgeUsed", knowledge_diagnostics(project_context))
     return normalise_report_payload(report)
 
 
@@ -1253,6 +1369,7 @@ def build_project_update_output(
         semantic_diagnostics,
         minilm_first_context=minilm_first_context,
         project_context=project_context or {},
+        backend=backend,
     )
 
     rewriter = LocalMinutesRewriter.load(enabled=use_rewrite)

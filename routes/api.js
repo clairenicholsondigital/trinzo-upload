@@ -146,6 +146,13 @@ function truthyFlag(value) {
   return ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase());
 }
 
+function buildProjectKnowledgeQuery(transcriptText, projectContext = {}) {
+  const milestoneNames = Array.isArray(projectContext.activeMilestones)
+    ? projectContext.activeMilestones.map((item) => item && (item.milestoneName || item.comparisonKey)).filter(Boolean).slice(0, 12)
+    : [];
+  return [String(transcriptText || '').slice(0, 2000), ...milestoneNames].join('\n');
+}
+
 function shouldIncludeTranscriptMetadata(req) {
   return truthyFlag(req.query?.includeTranscriptMetadata)
     || truthyFlag(req.query?.includeTranscriptDigest)
@@ -827,6 +834,7 @@ router.post('/project-update-test', withTestUpload(async (req, res) => {
   let contextFound = false;
   let resolvedProjectId = null;
   let saveOk = false;
+  let retrievedKnowledge = { retrievalMode: 'none', chunks: [] };
   try {
     const transcript = await readTestTranscript(req);
     validateTranscriptText(transcript.text);
@@ -847,6 +855,28 @@ router.post('/project-update-test', withTestUpload(async (req, res) => {
         const projectContext = await getProjectContext(projectRef, req.query?.contextLimit || req.body?.contextLimit || 8);
         contextFound = Boolean(projectContext?.found);
         resolvedProjectId = projectContext?.projectId || projectContext?.projectResolution?.projectId || projectId || null;
+        if (!truthyFlag(req.query?.skipKnowledge) && !truthyFlag(req.body?.skipKnowledge) && resolvedProjectId) {
+          try {
+            const retrieval = await runProjectKnowledgeRetrieval({
+              projectId: resolvedProjectId,
+              query: buildProjectKnowledgeQuery(transcript.text, projectContext),
+              topK: Number(req.query?.knowledgeTopK || req.body?.knowledgeTopK || 8),
+              itemTypes: ['background_doc', 'decision', 'report_summary', 'risk']
+            });
+            retrievedKnowledge = {
+              retrievalMode: retrieval.retrieval_mode || retrieval.retrievalMode || 'none',
+              chunks: Array.isArray(retrieval.chunks) ? retrieval.chunks : [],
+              diagnostics: retrieval.diagnostics || {},
+              error: retrieval.error || ''
+            };
+          } catch (knowledgeError) {
+            retrievedKnowledge = { retrievalMode: 'error', chunks: [], error: knowledgeError.message };
+          }
+          projectContext.retrievedKnowledge = retrievedKnowledge;
+        } else if (truthyFlag(req.query?.skipKnowledge) || truthyFlag(req.body?.skipKnowledge)) {
+          retrievedKnowledge = { retrievalMode: 'skipped', chunks: [] };
+          projectContext.retrievedKnowledge = retrievedKnowledge;
+        }
         contextTempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'trinzo-project-context-'));
         const contextPath = path.join(contextTempDir, 'context.json');
         await fs.writeFile(contextPath, JSON.stringify({ context: projectContext }), 'utf8');
@@ -854,7 +884,8 @@ router.post('/project-update-test', withTestUpload(async (req, res) => {
       } catch (contextError) {
         contextTempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'trinzo-project-context-'));
         const contextPath = path.join(contextTempDir, 'context-error.json');
-        await fs.writeFile(contextPath, JSON.stringify({ _contextLoadError: contextError.message }), 'utf8');
+        retrievedKnowledge = { retrievalMode: 'error', chunks: [], error: contextError.message };
+        await fs.writeFile(contextPath, JSON.stringify({ _contextLoadError: contextError.message, retrievedKnowledge }), 'utf8');
         scriptArgs.push('--context-file', contextPath);
       }
     }
@@ -910,6 +941,7 @@ router.post('/project-update-test', withTestUpload(async (req, res) => {
     }
 
     if (result?.projectReport && typeof result.projectReport === 'object') {
+      result.projectReport.retrievedKnowledge = result.projectReport.retrievedKnowledge || { retrievalMode: retrievedKnowledge.retrievalMode || 'none', chunkCount: Array.isArray(retrievedKnowledge.chunks) ? retrievedKnowledge.chunks.length : 0 };
       result.projectReport.projectResolution = result.projectReport.projectResolution || {
         requestedProjectId: projectId,
         projectId: resolvedProjectId,
@@ -930,11 +962,14 @@ router.post('/project-update-test', withTestUpload(async (req, res) => {
       scriptUsed,
       fallbackUsed,
       saveOk,
+      retrievalMode: retrievedKnowledge.retrievalMode || 'none',
+      retrievedKnowledgeChunks: Array.isArray(retrievedKnowledge.chunks) ? retrievedKnowledge.chunks.length : 0,
       durationMs: Date.now() - startedAt,
       skipMiniLM: truthyFlag(req.query?.skipMiniLM) || truthyFlag(req.body?.skipMiniLM),
       skipRewrite: truthyFlag(req.query?.skipRewrite) || truthyFlag(req.body?.skipRewrite),
       skipSave: truthyFlag(req.query?.skipSave) || truthyFlag(req.body?.skipSave),
-      skipContext: truthyFlag(req.query?.skipContext) || truthyFlag(req.body?.skipContext)
+      skipContext: truthyFlag(req.query?.skipContext) || truthyFlag(req.body?.skipContext),
+      skipKnowledge: truthyFlag(req.query?.skipKnowledge) || truthyFlag(req.body?.skipKnowledge)
     }));
 
     return res.json(buildTestTranscriptResponse(req, transcript, result));

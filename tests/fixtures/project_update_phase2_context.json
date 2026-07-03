@@ -1,0 +1,35 @@
+{
+  "found": true,
+  "projectId": 101,
+  "projectName": "Project update test",
+  "activeMilestones": [
+    {
+      "milestoneId": 201,
+      "milestoneName": "Data migration phase 1",
+      "comparisonKey": "data_migration_phase_1",
+      "description": "Move the first data set.",
+      "latestAssessment": {
+        "status": "on_track",
+        "summary": "Migration was previously on track.",
+        "reportId": 501,
+        "reportVersionId": 401
+      }
+    }
+  ],
+  "activeRisks": [],
+  "riskSuggestions": [],
+  "healthHistory": [],
+  "retrievedKnowledge": {
+    "retrievalMode": "semantic",
+    "chunks": [
+      {
+        "chunk_id": 901,
+        "item_id": 801,
+        "title": "Migration background",
+        "item_type": "background_doc",
+        "chunk_text": "Migration ownership risk was already identified in the SoW and should be monitored before training starts.",
+        "score": 0.81
+      }
+    ]
+  }
+}

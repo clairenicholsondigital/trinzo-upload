@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from scripts.project_update_minilm import build_project_update_output
-from scripts.project_update_minilm import annotate_report_with_project_context, build_minilm_first_context, build_report_payload, is_valid_risk_mitigation_candidate, normalise_report_payload, ranked_project_signals, rewrite_report_summary, select_risk_mitigations, split_action_candidates
+from scripts.project_update_minilm import annotate_report_with_project_context, build_context_first_milestones, build_minilm_first_context, build_report_payload, is_valid_risk_mitigation_candidate, normalise_report_payload, ranked_project_signals, rewrite_report_summary, select_risk_mitigations, split_action_candidates
 
 
 REPO_DIR = Path(__file__).resolve().parents[1]
@@ -663,6 +663,65 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertEqual(annotated["risks"][0]["trend"], "stable")
         self.assertEqual(annotated["risks"][0]["core_risk_id"], 7)
         self.assertEqual(diagnostics["riskTitlesCompared"], 1)
+
+    def test_semantic_milestone_matching_bridges_renamed_milestones(self):
+        class FakeBackend:
+            available = True
+            reason = ""
+            model_name = "fake"
+
+            def encode_many(self, texts):
+                lookup = {}
+                for text in texts:
+                    cleaned = " ".join(str(text or "").split()).strip()
+                    if "data migration" in cleaned.lower() or "phase 1 data cutover" in cleaned.lower():
+                        lookup[cleaned] = [1.0, 0.0]
+                    else:
+                        lookup[cleaned] = [0.0, 1.0]
+                return lookup
+
+        context = {
+            "found": True,
+            "activeMilestones": [
+                {"milestoneId": 42, "milestoneName": "Data migration phase 1", "comparisonKey": "data_migration_phase_1", "description": "Move the first data set."}
+            ],
+        }
+        diagnostics = {}
+        rows = build_context_first_milestones(
+            [{"milestone": "Phase 1 data cutover", "comparison_key": "phase_1_data_cutover", "delivery_status": "blocked", "normalised_evidence_summary": "Phase 1 data cutover is blocked."}],
+            context,
+            backend=FakeBackend(),
+            diagnostics=diagnostics,
+        )
+
+        self.assertEqual(rows[0]["milestoneId"], 42)
+        self.assertEqual(rows[0]["matchedBy"], "semantic")
+        self.assertGreater(diagnostics["semanticMilestoneMatches"], 0)
+
+    def test_retrieved_knowledge_marks_background_risk_without_evidence_leakage(self):
+        report = {
+            "healthAreas": {},
+            "milestones": [],
+            "risks": [{"riskTitle": "Migration ownership risk", "description": "Ownership is unclear."}],
+            "comparisonSnapshot": {},
+        }
+        context = {
+            "found": True,
+            "activeMilestones": [],
+            "activeRisks": [],
+            "riskSuggestions": [],
+            "retrievedKnowledge": {
+                "retrievalMode": "semantic",
+                "chunks": [{"chunk_id": 9, "title": "SoW", "chunk_text": "Migration ownership must be confirmed before training starts."}],
+            },
+        }
+
+        annotated, diagnostics = annotate_report_with_project_context(report, context)
+
+        self.assertEqual(annotated["risks"][0]["trend"], "known_background_risk")
+        self.assertTrue(annotated["risks"][0]["knowledge_context_match"])
+        self.assertEqual(diagnostics["knowledgeUsed"]["retrievalMode"], "semantic")
+        self.assertFalse(diagnostics["knowledgeUsed"]["usedAsTranscriptEvidence"])
 
     def test_project_update_save_path_stores_milestone_deadlines_and_trends(self):
         db = (REPO_DIR / "utils" / "db.js").read_text(encoding="utf-8")
