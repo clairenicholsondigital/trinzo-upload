@@ -12,6 +12,7 @@ const serverSource = fs.readFileSync(path.join(repoDir, 'server.js'), 'utf8');
 const knowledgeSource = fs.readFileSync(path.join(repoDir, 'utils/knowledge.js'), 'utf8');
 const backfillSource = fs.readFileSync(path.join(repoDir, 'scripts/backfill_project_knowledge.js'), 'utf8');
 const contextPageSource = fs.readFileSync(path.join(repoDir, 'views/project-update-context.html'), 'utf8');
+const roadmapPageSource = fs.readFileSync(path.join(repoDir, 'views/project-update-roadmap.html'), 'utf8');
 
 test('canonical project context fixture contains the Node/Python boundary keys', () => {
   for (const key of [
@@ -70,4 +71,13 @@ test('project knowledge phase 1 surfaces schema and protected endpoints', () => 
   assert.ok(knowledgeSource.includes('answerMode: \'retrieval_only\''));
   assert.ok(contextPageSource.includes('Ask this project'));
   assert.ok(contextPageSource.includes('/api/project-update-test/knowledge/ask'));
+});
+
+test('project update roadmap page keeps deferred lifecycle ideas visible', () => {
+  const serverSource = fs.readFileSync(path.join(repoDir, 'server.js'), 'utf8');
+  assert.ok(serverSource.includes("app.get('/project-update-test/roadmap'"));
+  assert.ok(roadmapPageSource.includes('Project update roadmap'));
+  assert.ok(roadmapPageSource.includes('Auto-compaction and retention policy'));
+  assert.ok(roadmapPageSource.includes('Never auto-archive official/manual background docs'));
+  assert.ok(contextPageSource.includes('/project-update-test/roadmap'));
 });

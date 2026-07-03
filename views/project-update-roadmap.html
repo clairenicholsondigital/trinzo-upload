@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Project update roadmap</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+:root { color-scheme: dark; --bg:#0b1020; --panel:#11192f; --panel2:#0f172a; --border:#2d3d60; --muted:#95a7cb; --text:#eef3ff; --accent:#17D0C4; --green:#22c55e; --amber:#facc15; --blue:#60a5fa; --purple:#c084fc; }
+* { box-sizing:border-box; }
+body { margin:0; padding:1rem; background:var(--bg); color:var(--text); font-family:Roboto, Arial, Helvetica, sans-serif; line-height:1.5; }
+.container { max-width:1180px; margin:0 auto; }
+.nav, .pill-row { display:flex; gap:.75rem; flex-wrap:wrap; align-items:center; margin-bottom:1rem; }
+a { color:#67e8f9; }
+.panel { background:linear-gradient(145deg,var(--panel),var(--panel2)); border:1px solid var(--border); border-radius:16px; padding:1rem; margin-bottom:1rem; }
+h1 { margin:.2rem 0 .5rem; font-size:clamp(1.7rem,4vw,2.4rem); }
+h2 { margin:.1rem 0 .7rem; font-size:1.1rem; }
+h3 { margin:.2rem 0 .4rem; font-size:1rem; }
+.intro, .muted { color:var(--muted); }
+.hero { border-color:rgba(23,208,196,.45); box-shadow:0 16px 48px rgba(0,0,0,.22); }
+.grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:.8rem; }
+.card { background:#071126; border:1px solid var(--border); border-radius:14px; padding:.85rem; }
+.pill { display:inline-flex; align-items:center; gap:.35rem; border:1px solid var(--border); border-radius:999px; padding:.32rem .6rem; background:#071126; color:#dbeafe; font-size:.86rem; font-weight:700; }
+.pill.done { border-color:rgba(34,197,94,.45); color:#bbf7d0; background:rgba(22,163,74,.12); }
+.pill.next { border-color:rgba(96,165,250,.45); color:#bfdbfe; background:rgba(37,99,235,.13); }
+.pill.later { border-color:rgba(250,204,21,.45); color:#fde68a; background:rgba(202,138,4,.12); }
+.pill.idea { border-color:rgba(192,132,252,.45); color:#e9d5ff; background:rgba(126,34,206,.13); }
+ul { margin:.5rem 0 0; padding-left:1.2rem; }
+li { margin:.28rem 0; }
+.timeline { display:grid; gap:.75rem; }
+.item { display:grid; grid-template-columns:120px 1fr; gap:.85rem; background:#071126; border:1px solid var(--border); border-radius:14px; padding:.85rem; }
+.item .stage { color:#dbeafe; font-weight:700; }
+.callout { border-left:4px solid var(--accent); background:rgba(23,208,196,.08); }
+@media (max-width: 720px) { .item { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<div class="container">
+  <nav class="nav">
+    <a href="/project-update-test">Project update test</a>
+    <a href="/project-update-test/reports">Reports</a>
+    <a href="/project-update-test/milestones">Milestones</a>
+    <a href="/project-update-test/context">Context</a>
+    <a href="/project-update-test/roadmap">Roadmap</a>
+  </nav>
+
+  <section class="panel hero">
+    <div class="pill-row">
+      <span class="pill done">Stable foundation deployed</span>
+      <span class="pill next">Next: evaluation confidence</span>
+      <span class="pill idea">Ideas parked deliberately</span>
+    </div>
+    <h1>Project update roadmap</h1>
+    <p class="intro">A lightweight product/engineering map for the /project-update-test workflow. The aim is to keep useful future ideas visible without pretending they are all urgent.</p>
+  </section>
+
+  <section class="panel">
+    <h2>What is already in place</h2>
+    <div class="grid">
+      <article class="card"><h3>Context and trend baseline</h3><p class="muted">Saved project context, milestones, health history, risk lineage, official snapshots, and deterministic project selection.</p></article>
+      <article class="card"><h3>Project knowledge layer</h3><p class="muted">Manual/background knowledge, approved-report ingestion hooks, MiniLM embeddings, semantic/keyword retrieval, queue status, and backfill tooling.</p></article>
+      <article class="card"><h3>Report pipeline integration</h3><p class="muted">Retrieved knowledge is available to the analyser as supplemental context, never as transcript evidence. Semantic milestone and risk matching are now in place.</p></article>
+      <article class="card"><h3>Ask project memory</h3><p class="muted">A scoped Ask endpoint and UI can retrieve relevant project memory, with retrieval-only fallback when generation is unavailable.</p></article>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Roadmap</h2>
+    <div class="timeline">
+      <article class="item">
+        <div class="stage"><span class="pill next">Next</span></div>
+        <div>
+          <h3>Golden evaluation pack</h3>
+          <p class="muted">Build a small set of repeatable project-update cases so we can measure quality instead of relying on one-off smoke tests.</p>
+          <ul>
+            <li>Renamed milestones and reworded risks.</li>
+            <li>No context / first report.</li>
+            <li>Background-doc retrieval.</li>
+            <li>DB unavailable / graceful degradation.</li>
+            <li>Duplicate transcript handling.</li>
+          </ul>
+        </div>
+      </article>
+      <article class="item">
+        <div class="stage"><span class="pill next">Next</span></div>
+        <div>
+          <h3>Docs and ops notes</h3>
+          <p class="muted">Document the moving parts so the system is easier to run and safer to change later.</p>
+          <ul>
+            <li>Embedding worker and queue status.</li>
+            <li>Ask endpoint and generated/retrieval-only modes.</li>
+            <li>Venv dependency note for psycopg2.</li>
+            <li>Backfill script usage, but do not run historical backfill until real approved reports exist.</li>
+          </ul>
+        </div>
+      </article>
+      <article class="item">
+        <div class="stage"><span class="pill later">Later</span></div>
+        <div>
+          <h3>Generated Ask answer validation</h3>
+          <p class="muted">The generated mode exists, but live validation should use disposable fake memory first so real project memory is not sent externally just for testing.</p>
+        </div>
+      </article>
+      <article class="item callout">
+        <div class="stage"><span class="pill idea">Idea / parked</span></div>
+        <div>
+          <h3>Auto-compaction and retention policy</h3>
+          <p class="muted">Not needed yet. Keep official/manual/background knowledge indefinitely, keep real approved-report memory for now, and clean up test junk aggressively. Revisit auto-compaction only if retrieval becomes noisy or the knowledge store grows enough to need lifecycle management.</p>
+          <ul>
+            <li>Possible future rule: keep latest 10–20 approved-report chunks.</li>
+            <li>Summarise older reports into a single historical memory item before archiving raw chunks.</li>
+            <li>Never auto-archive official/manual background docs.</li>
+          </ul>
+        </div>
+      </article>
+    </div>
+  </section>
+</div>
+</body>
+</html>
