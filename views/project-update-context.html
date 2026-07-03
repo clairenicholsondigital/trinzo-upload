@@ -177,6 +177,16 @@ pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:#071126;
         <div id="knowledgeList" class="table-scroll"><table><tbody><tr><td>Loading knowledge items...</td></tr></tbody></table></div>
       </section>
       <section class="panel">
+        <h2>Ask this project</h2>
+        <p class="intro">Ask a question against stored project memory. Answers are grounded in retrieved chunks; if generation is unavailable, you still get the matching snippets.</p>
+        <label>Question <textarea id="knowledgeAskQuestion" placeholder="What risks or decisions should I remember before the next update?"></textarea></label>
+        <div class="actions" style="margin-top:.75rem">
+          <button id="askKnowledgeBtn" type="button" class="primary" ${context.projectId ? '' : 'disabled'}>Ask project memory</button>
+        </div>
+        <p id="knowledgeAskStatus" class="status"></p>
+        <div id="knowledgeAskResult"></div>
+      </section>
+      <section class="panel">
         <details><summary>Raw context JSON</summary>${renderJson(context)}</details>
       </section>
     `;
@@ -304,6 +314,36 @@ pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:#071126;
       } catch (error) {
         status.className = 'status error';
         status.textContent = error.message || 'Could not save knowledge item.';
+      }
+    });
+
+    function renderAskResult(result) {
+      const chunks = asArray(result.retrievedChunks);
+      const answer = result.answer ? `<div class="card"><div class="label">Answer</div><div class="value">${escapeHtml(result.answer)}</div></div>` : '';
+      const snippets = chunks.map((chunk) => `<tr><td>${escapeHtml(chunk.chunk_id || chunk.chunkId || '-')}</td><td>${escapeHtml(chunk.title || '-')}</td><td>${escapeHtml(friendlyLabel(chunk.item_type || chunk.itemType))}</td><td>${escapeHtml((chunk.chunk_text || chunk.chunkText || '').slice(0, 600))}</td></tr>`).join('') || '<tr><td colspan="4">No matching project memory was found.</td></tr>';
+      return `${answer}<div class="grid" style="margin:.75rem 0"><div class="card"><div class="label">Answer mode</div><div class="value">${escapeHtml(friendlyLabel(result.answerMode))}</div></div><div class="card"><div class="label">Retrieval mode</div><div class="value">${escapeHtml(friendlyLabel(result.retrievalMode))}</div></div><div class="card"><div class="label">Chunks</div><div class="value">${chunks.length}</div></div></div><div class="table-scroll"><table><thead><tr><th>Chunk</th><th>Title</th><th>Type</th><th>Snippet</th></tr></thead><tbody>${snippets}</tbody></table></div>`;
+    }
+
+    document.getElementById('askKnowledgeBtn').addEventListener('click', async () => {
+      const status = document.getElementById('knowledgeAskStatus');
+      const resultBox = document.getElementById('knowledgeAskResult');
+      status.className = 'status';
+      status.textContent = 'Asking project memory...';
+      resultBox.innerHTML = '';
+      try {
+        const response = await authedFetch('/api/project-update-test/knowledge/ask', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectId: context.projectId, question: document.getElementById('knowledgeAskQuestion').value, topK: 8 })
+        });
+        const result = await response.json().catch(() => null);
+        if (!response.ok || !result || result.ok === false) throw new Error(response.status === 401 ? authMessage() : (result && result.error ? result.error : `Request failed with status ${response.status}.`));
+        status.className = result.answerMode === 'no_context' ? 'status' : 'status success';
+        status.textContent = result.answerMode === 'generated' ? 'Generated from project memory.' : result.answerMode === 'retrieval_only' ? 'Showing retrieved memory snippets; generation was unavailable.' : 'No matching project memory found.';
+        resultBox.innerHTML = renderAskResult(result);
+      } catch (error) {
+        status.className = 'status error';
+        status.textContent = error.message || 'Could not ask project memory.';
       }
     });
 

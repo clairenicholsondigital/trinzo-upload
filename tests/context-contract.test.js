@@ -11,6 +11,7 @@ const migrationSource = fs.readFileSync(path.join(repoDir, 'sql/migrations/20260
 const serverSource = fs.readFileSync(path.join(repoDir, 'server.js'), 'utf8');
 const knowledgeSource = fs.readFileSync(path.join(repoDir, 'utils/knowledge.js'), 'utf8');
 const backfillSource = fs.readFileSync(path.join(repoDir, 'scripts/backfill_project_knowledge.js'), 'utf8');
+const contextPageSource = fs.readFileSync(path.join(repoDir, 'views/project-update-context.html'), 'utf8');
 
 test('canonical project context fixture contains the Node/Python boundary keys', () => {
   for (const key of [
@@ -63,4 +64,10 @@ test('project knowledge phase 1 surfaces schema and protected endpoints', () => 
   assert.ok(apiSource.includes('skipKnowledge'));
   assert.ok(apiSource.includes('projectContext.retrievedKnowledge'));
   assert.ok(backfillSource.includes('ingestApprovedProjectReportVersion'));
+  assert.ok(apiSource.includes("router.post('/project-update-test/knowledge/ask', requireAuth"));
+  assert.ok(knowledgeSource.includes('answerProjectKnowledge'));
+  assert.ok(knowledgeSource.includes('Cite chunk ids explicitly'));
+  assert.ok(knowledgeSource.includes('answerMode: \'retrieval_only\''));
+  assert.ok(contextPageSource.includes('Ask this project'));
+  assert.ok(contextPageSource.includes('/api/project-update-test/knowledge/ask'));
 });
