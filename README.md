@@ -49,6 +49,10 @@ Stored project context is covered by a shared contract fixture at `tests/fixture
 
 Project-update persistence now uses the pooled `pg` client rather than spawning `psql`. `runPsql` remains as a compatibility wrapper for existing functions and the SQL migration runner, but it no longer shells out to the `psql` binary.
 
+Phase 1 project knowledge uses `sql/migrations/20260703_add_project_knowledge_schema.sql`. Production supports `pgvector`, so MiniLM chunks use `vector(384)`. Manual standing knowledge is managed on `/project-update-test/context`; approved reports are ingested idempotently into `project_knowledge_items`/`project_knowledge_chunks`. Writes enqueue chunks and spawn `scripts/project_knowledge_embed_worker.py` in the background; uploads/approvals do not wait for embeddings. Use `POST /api/project-update-test/knowledge/embeddings/process` or run `python3 scripts/project_knowledge_embed_worker.py --project-id <id>` to kick the queue manually.
+
+Retrieval helper: `python3 scripts/project_knowledge_retrieval.py --project-id <id> --query "..."`. It reports `retrieval_mode` as `semantic`, `keyword_fallback`, or `none` so callers can distinguish real semantic matches from fallback/no-knowledge states. Retrieved knowledge is supplemental context only and must not be presented as transcript evidence.
+
 ## Power Automate requirement
 The finalisation endpoint posts approved meeting minutes JSON directly to `POWER_AUTOMATE_WEBHOOK_URL` (HTTP trigger flow).
 

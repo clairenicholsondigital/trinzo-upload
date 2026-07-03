@@ -37,6 +37,10 @@ const {
   getProjectContextSnapshot,
   markProjectContextOfficial,
   cleanupProjectUpdateTestContext,
+  createProjectKnowledgeItem,
+  listProjectKnowledgeItems,
+  updateProjectKnowledgeItem,
+  archiveProjectKnowledgeItem,
   listMeetings,
   getMeetingById,
   deleteMeetingById,
@@ -936,6 +940,78 @@ router.post('/project-update-test', withTestUpload(async (req, res) => {
     return sendTestError(res, error);
   }
 }));
+
+
+router.post('/project-update-test/knowledge/items', requireAuth, async (req, res) => {
+  try {
+    if (!hasDatabaseConfig()) throw new Error(getDatabaseConfigError());
+    const body = req.body || {};
+    const projectId = Number(body.projectId || 0);
+    const item = await createProjectKnowledgeItem({
+      projectId,
+      title: body.title,
+      content: body.content,
+      itemType: body.itemType || 'background_doc',
+      isOfficial: body.isOfficial !== false,
+      metadata: body.metadata || { source: 'manual' }
+    });
+    const embeddingWorker = spawnProjectKnowledgeEmbedWorker(['--project-id', String(projectId)]);
+    res.json({ ok: true, item, embeddingWorker });
+  } catch (error) {
+    sendJson(res, error.statusCode || 500, { ok: false, error: error.message });
+  }
+});
+
+router.get('/project-update-test/knowledge/items', requireAuth, async (req, res) => {
+  try {
+    if (!hasDatabaseConfig()) throw new Error(getDatabaseConfigError());
+    const items = await listProjectKnowledgeItems({
+      projectId: req.query.projectId,
+      itemType: req.query.itemType,
+      status: req.query.status || 'active',
+      limit: req.query.limit
+    });
+    res.json({ ok: true, items });
+  } catch (error) {
+    sendJson(res, error.statusCode || 500, { ok: false, error: error.message });
+  }
+});
+
+router.patch('/project-update-test/knowledge/items/:itemId', requireAuth, async (req, res) => {
+  try {
+    if (!hasDatabaseConfig()) throw new Error(getDatabaseConfigError());
+    const item = await updateProjectKnowledgeItem(req.params.itemId, req.body || {});
+    if (!item) return sendJson(res, 404, { ok: false, error: 'Knowledge item not found.' });
+    const embeddingWorker = Object.prototype.hasOwnProperty.call(req.body || {}, 'content')
+      ? spawnProjectKnowledgeEmbedWorker(['--item-id', String(req.params.itemId)])
+      : { spawned: false, reason: 'content unchanged' };
+    res.json({ ok: true, item, embeddingWorker });
+  } catch (error) {
+    sendJson(res, error.statusCode || 500, { ok: false, error: error.message });
+  }
+});
+
+router.delete('/project-update-test/knowledge/items/:itemId', requireAuth, async (req, res) => {
+  try {
+    if (!hasDatabaseConfig()) throw new Error(getDatabaseConfigError());
+    const item = await archiveProjectKnowledgeItem(req.params.itemId, { hard: truthyFlag(req.query.hard) });
+    if (!item) return sendJson(res, 404, { ok: false, error: 'Knowledge item not found.' });
+    res.json({ ok: true, item });
+  } catch (error) {
+    sendJson(res, error.statusCode || 500, { ok: false, error: error.message });
+  }
+});
+
+router.post('/project-update-test/knowledge/embeddings/process', requireAuth, async (req, res) => {
+  try {
+    const projectId = req.body?.projectId || req.query?.projectId;
+    const args = projectId ? ['--project-id', String(projectId)] : [];
+    const embeddingWorker = spawnProjectKnowledgeEmbedWorker(args);
+    res.json({ ok: true, embeddingWorker });
+  } catch (error) {
+    sendJson(res, error.statusCode || 500, { ok: false, error: error.message });
+  }
+});
 
 router.get('/project-update-test/reports', async (req, res) => {
   try {

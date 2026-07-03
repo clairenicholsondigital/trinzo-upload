@@ -30,7 +30,8 @@ th:last-child, td:last-child { border-right:0; }
 button, .button-link { display:inline-block; background:#132847; color:#dbeafe; border:1px solid var(--border); border-radius:8px; padding:.55rem .75rem; font-weight:700; text-decoration:none; white-space:nowrap; cursor:pointer; font:inherit; }
 button.primary { background:linear-gradient(180deg,var(--accent),#0fb5ab); border-color:#0fb5ab; color:#02173B; }
 button:disabled { opacity:.6; cursor:not-allowed; }
-input { background:#071126; color:var(--text); border:1px solid var(--border); border-radius:10px; padding:.65rem; font:inherit; }
+input, select, textarea { background:#071126; color:var(--text); border:1px solid var(--border); border-radius:10px; padding:.65rem; font:inherit; }
+textarea { min-height:120px; resize:vertical; width:100%; }
 label { display:grid; gap:.35rem; color:var(--muted); font-weight:700; }
 .status { margin:.75rem 0; color:var(--muted); }
 .status.error { color:#fecaca; }
@@ -161,6 +162,21 @@ pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:#071126;
         </tbody></table></div>
       </section>
       <section class="panel">
+        <h2>Project knowledge</h2>
+        <p class="intro">Paste standing context such as SoW notes, background decisions, or client constraints. This is supplemental knowledge for future retrieval, not transcript evidence.</p>
+        <div class="grid">
+          <label>Title <input id="knowledgeTitle" type="text" placeholder="Statement of work / background note" /></label>
+          <label>Type <select id="knowledgeType"><option value="background_doc">Background doc</option><option value="decision">Decision</option><option value="note">Note</option><option value="risk">Risk</option></select></label>
+        </div>
+        <label>Content <textarea id="knowledgeContent" placeholder="Paste project background here..."></textarea></label>
+        <div class="actions" style="margin-top:.75rem">
+          <button id="saveKnowledgeBtn" type="button" class="primary" ${context.projectId ? '' : 'disabled'}>Save knowledge</button>
+          <button id="processKnowledgeBtn" type="button" ${context.projectId ? '' : 'disabled'}>Process embedding queue</button>
+        </div>
+        <p id="knowledgeStatus" class="status"></p>
+        <div id="knowledgeList" class="table-scroll"><table><tbody><tr><td>Loading knowledge items...</td></tr></tbody></table></div>
+      </section>
+      <section class="panel">
         <details><summary>Raw context JSON</summary>${renderJson(context)}</details>
       </section>
     `;
@@ -235,7 +251,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:#071126;
         const result = await response.json().catch(() => null);
         if (!response.ok || !result || result.ok === false) throw new Error(response.status === 401 ? authMessage() : (result && result.error ? result.error : `Request failed with status ${response.status}.`));
         status.className = 'status success';
-        status.textContent = `Cleanup complete: archived ${result.result.archivedReports} reports, deactivated ${result.result.deactivatedMilestones} milestones and ${result.result.deactivatedRisks} risks, removed ${result.result.deletedSnapshots} snapshots. Reloading...`;
+        status.textContent = `Cleanup complete: archived ${result.result.archivedReports} reports and ${result.result.archivedKnowledgeItems || 0} knowledge items, deactivated ${result.result.deactivatedMilestones} milestones and ${result.result.deactivatedRisks} risks, removed ${result.result.deletedSnapshots} snapshots. Reloading...`;
         window.setTimeout(() => window.location.reload(), 900);
       } catch (error) {
         status.className = 'status error';
@@ -243,6 +259,75 @@ pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:#071126;
       } finally {
         button.disabled = false;
       }
+    });
+
+    async function loadKnowledgeItems() {
+      const list = document.getElementById('knowledgeList');
+      if (!context.projectId) {
+        list.innerHTML = '<table><tbody><tr><td>No project selected.</td></tr></tbody></table>';
+        return;
+      }
+      const response = await authedFetch(`/api/project-update-test/knowledge/items?projectId=${encodeURIComponent(context.projectId)}&status=active`);
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result || result.ok === false) throw new Error(response.status === 401 ? authMessage() : (result && result.error ? result.error : `Request failed with status ${response.status}.`));
+      const items = asArray(result.items);
+      list.innerHTML = `<table><thead><tr><th>Title</th><th>Type</th><th>Official</th><th>Chunks</th><th>Embeddings</th><th>Updated</th><th>Action</th></tr></thead><tbody>${items.map((item) => {
+        const counts = item.embeddingCounts || {};
+        return `<tr><td>${escapeHtml(item.title)}</td><td>${escapeHtml(friendlyLabel(item.itemType))}</td><td>${item.isOfficial ? '✅' : '—'}</td><td>${escapeHtml(item.chunkCount || 0)}</td><td>queued ${escapeHtml(counts.queued || 0)} · embedded ${escapeHtml(counts.embedded || 0)} · failed ${escapeHtml(counts.failed || 0)}</td><td>${escapeHtml(dateValue(item.updatedAt))}</td><td><button type="button" data-archive-knowledge="${escapeHtml(item.itemId)}">Archive</button></td></tr>`;
+      }).join('') || '<tr><td colspan="7">No knowledge items yet.</td></tr>'}</tbody></table>`;
+      list.querySelectorAll('[data-archive-knowledge]').forEach((button) => {
+        button.addEventListener('click', async () => {
+          const itemId = button.getAttribute('data-archive-knowledge');
+          await authedFetch(`/api/project-update-test/knowledge/items/${encodeURIComponent(itemId)}`, { method: 'DELETE' });
+          await loadKnowledgeItems();
+        });
+      });
+    }
+
+    document.getElementById('saveKnowledgeBtn').addEventListener('click', async () => {
+      const status = document.getElementById('knowledgeStatus');
+      status.className = 'status';
+      status.textContent = 'Saving knowledge item...';
+      try {
+        const response = await authedFetch('/api/project-update-test/knowledge/items', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectId: context.projectId, title: document.getElementById('knowledgeTitle').value, content: document.getElementById('knowledgeContent').value, itemType: document.getElementById('knowledgeType').value, isOfficial: true, metadata: { source: 'manual_context_page' } })
+        });
+        const result = await response.json().catch(() => null);
+        if (!response.ok || !result || result.ok === false) throw new Error(response.status === 401 ? authMessage() : (result && result.error ? result.error : `Request failed with status ${response.status}.`));
+        status.className = 'status success';
+        status.textContent = `Saved ${result.item.chunkCount || 0} chunks. Embedding worker ${result.embeddingWorker?.spawned ? 'started' : 'not started'}.`;
+        document.getElementById('knowledgeTitle').value = '';
+        document.getElementById('knowledgeContent').value = '';
+        await loadKnowledgeItems();
+      } catch (error) {
+        status.className = 'status error';
+        status.textContent = error.message || 'Could not save knowledge item.';
+      }
+    });
+
+    document.getElementById('processKnowledgeBtn').addEventListener('click', async () => {
+      const status = document.getElementById('knowledgeStatus');
+      status.className = 'status';
+      status.textContent = 'Starting embedding worker...';
+      try {
+        const response = await authedFetch('/api/project-update-test/knowledge/embeddings/process', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId: context.projectId }) });
+        const result = await response.json().catch(() => null);
+        if (!response.ok || !result || result.ok === false) throw new Error(response.status === 401 ? authMessage() : (result && result.error ? result.error : `Request failed with status ${response.status}.`));
+        status.className = 'status success';
+        status.textContent = result.embeddingWorker?.spawned ? 'Embedding worker started.' : 'Embedding worker was not started.';
+        window.setTimeout(loadKnowledgeItems, 1500);
+      } catch (error) {
+        status.className = 'status error';
+        status.textContent = error.message || 'Could not process embeddings.';
+      }
+    });
+
+    loadKnowledgeItems().catch((error) => {
+      const status = document.getElementById('knowledgeStatus');
+      status.className = 'status error';
+      status.textContent = error.message || 'Could not load knowledge items.';
     });
   }
 

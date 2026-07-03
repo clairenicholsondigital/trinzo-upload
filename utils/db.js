@@ -201,18 +201,39 @@ async function saveProjectReportDetail(reportId, payload = {}) {
     }
   };
 
-  await runPsql(`
+  const versionOut = await runPsql(`
 BEGIN;
 UPDATE project_reports
 SET report_status = ${q(reportStatus)},
     file_name = ${q(reportName || `Report ${id}`)},
+    approved_at = CASE WHEN ${q(reportStatus)} = 'approved' THEN COALESCE(approved_at, NOW()) ELSE approved_at END,
+    approved_by = CASE WHEN ${q(reportStatus)} = 'approved' THEN ${q(payload.savedBy || 'OpenClaw')} ELSE approved_by END,
     updated_at = NOW()
 WHERE id = ${id};
-INSERT INTO project_report_versions (report_id, version_number, change_type, change_summary, saved_by, report_payload)
-VALUES (${id}, ${nextVersion}, 'user_edit', ${q(payload.changeSummary || 'Saved from report detail page.')}, ${q(payload.savedBy || 'OpenClaw')}, ${qJson(nextPayload)});
+WITH inserted_version AS (
+  INSERT INTO project_report_versions (report_id, version_number, change_type, change_summary, saved_by, report_payload)
+  VALUES (${id}, ${nextVersion}, CASE WHEN ${q(reportStatus)} = 'approved' THEN 'approved' ELSE 'user_edit' END, ${q(payload.changeSummary || 'Saved from report detail page.')}, ${q(payload.savedBy || 'OpenClaw')}, ${qJson(nextPayload)})
+  RETURNING id
+)
+UPDATE project_reports
+SET approved_version_id = CASE WHEN ${q(reportStatus)} = 'approved' THEN (SELECT id FROM inserted_version) ELSE approved_version_id END
+WHERE id = ${id}
+RETURNING COALESCE(approved_version_id, (SELECT id FROM inserted_version))::text;
 COMMIT;`);
 
-  return getProjectReportDetail(id);
+  const saved = await getProjectReportDetail(id);
+  if (reportStatus === 'approved') {
+    const versionId = parseOptionalId(versionOut) || Number(saved?.versions?.[0]?.versionId || 0);
+    saved.knowledgeIngestion = await ingestApprovedProjectReportVersion({
+      projectId: saved.projectId,
+      reportId: saved.reportId,
+      reportVersionId: versionId,
+      periodLabel: saved.periodLabel,
+      payload: nextPayload,
+      createdAt: saved.updatedAt || saved.createdAt
+    });
+  }
+  return saved;
 }
 
 async function deleteProjectReport(reportId) {
@@ -1415,6 +1436,294 @@ function clampConfidence(value, fallback = 0.5) {
   return Math.max(0, Math.min(1, number));
 }
 
+const PROJECT_KNOWLEDGE_ITEM_TYPES = new Set(['note', 'report_summary', 'key_update', 'milestone_summary', 'risk', 'evidence', 'decision', 'background_doc']);
+
+function normaliseKnowledgeItemType(value, fallback = 'note') {
+  const itemType = String(value || fallback).trim();
+  return PROJECT_KNOWLEDGE_ITEM_TYPES.has(itemType) ? itemType : fallback;
+}
+
+function chunkKnowledgeText(text, options = {}) {
+  const cleaned = String(text || '').replace(/\r\n/g, '\n').replace(/[ \t]+/g, ' ').trim();
+  if (!cleaned) return [];
+  const chunkSize = Math.max(Number(options.chunkSize || 1200), 400);
+  const overlap = Math.min(Math.max(Number(options.overlap || 150), 0), Math.floor(chunkSize / 2));
+  if (cleaned.length <= chunkSize) return [cleaned];
+
+  const chunks = [];
+  let start = 0;
+  while (start < cleaned.length) {
+    let end = Math.min(start + chunkSize, cleaned.length);
+    if (end < cleaned.length) {
+      const window = cleaned.slice(start, end);
+      const paragraphBreak = Math.max(window.lastIndexOf('\n\n'), window.lastIndexOf('\n'));
+      const sentenceBreak = Math.max(window.lastIndexOf('. '), window.lastIndexOf('? '), window.lastIndexOf('! '));
+      const boundary = paragraphBreak > chunkSize * 0.55 ? paragraphBreak + 1 : (sentenceBreak > chunkSize * 0.55 ? sentenceBreak + 1 : -1);
+      if (boundary > 0) end = start + boundary;
+    }
+    const chunk = cleaned.slice(start, end).trim();
+    if (chunk) chunks.push(chunk);
+    if (end >= cleaned.length) break;
+    start = Math.max(end - overlap, start + 1);
+  }
+  return chunks;
+}
+
+async function replaceKnowledgeChunks(client, itemId, projectId, content, metadata = {}) {
+  const chunks = chunkKnowledgeText(content);
+  await client.query('DELETE FROM project_knowledge_chunks WHERE item_id = $1', [itemId]);
+  for (let index = 0; index < chunks.length; index += 1) {
+    await client.query(
+      `INSERT INTO project_knowledge_chunks (item_id, project_id, chunk_index, chunk_text, embedding_status, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
+      [itemId, projectId, index, chunks[index], chunks[index].trim() ? 'queued' : 'skipped_empty', JSON.stringify(metadata || {})]
+    );
+  }
+  if (!chunks.length) {
+    await client.query(
+      `INSERT INTO project_knowledge_chunks (item_id, project_id, chunk_index, chunk_text, embedding_status, metadata)
+       VALUES ($1, $2, 0, '', 'skipped_empty', $3::jsonb)`,
+      [itemId, projectId, JSON.stringify(metadata || {})]
+    );
+  }
+  return chunks.length;
+}
+
+async function createProjectKnowledgeItem(input = {}) {
+  const projectId = Number(input.projectId || 0);
+  if (!Number.isFinite(projectId) || projectId <= 0) {
+    const error = new Error('Valid projectId is required.');
+    error.statusCode = 400;
+    throw error;
+  }
+  const title = String(input.title || '').trim();
+  const content = String(input.content || '').trim();
+  if (!title || !content) {
+    const error = new Error('Knowledge title and content are required.');
+    error.statusCode = 400;
+    throw error;
+  }
+  const maxChars = Number(process.env.PROJECT_KNOWLEDGE_MAX_CONTENT_CHARS || 200 * 1024);
+  if (content.length > maxChars) {
+    const error = new Error(`Knowledge content is too large. Maximum length is ${maxChars} characters.`);
+    error.statusCode = 413;
+    throw error;
+  }
+  const itemType = normaliseKnowledgeItemType(input.itemType || input.item_type, 'background_doc');
+  const metadata = input.metadata && typeof input.metadata === 'object' ? input.metadata : {};
+  const isOfficial = input.isOfficial !== false;
+  const client = await getPgPool().connect();
+  try {
+    await client.query('BEGIN');
+    const itemRes = await client.query(
+      `INSERT INTO project_knowledge_items
+       (project_id, title, content, summary, item_type, source_report_id, source_report_version_id, status, is_official, metadata)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)
+       RETURNING id, project_id, title, item_type, status, is_official, created_at, updated_at`,
+      [projectId, title, content, String(input.summary || ''), itemType, input.sourceReportId || null, input.sourceReportVersionId || null, input.status || 'active', isOfficial, JSON.stringify(metadata)]
+    );
+    const item = itemRes.rows[0];
+    const chunkCount = await replaceKnowledgeChunks(client, item.id, projectId, content, metadata);
+    await client.query('COMMIT');
+    return { ...cameliseKnowledgeItem(item), chunkCount };
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+function cameliseKnowledgeItem(row = {}) {
+  return {
+    itemId: row.id,
+    projectId: row.project_id,
+    title: row.title,
+    itemType: row.item_type,
+    status: row.status,
+    isOfficial: row.is_official,
+    sourceReportId: row.source_report_id || null,
+    sourceReportVersionId: row.source_report_version_id || null,
+    metadata: row.metadata || {},
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    embeddingCounts: row.embedding_counts || row.embeddingCounts || { queued: 0, processing: 0, embedded: 0, failed: 0, skipped_empty: 0 },
+    chunkCount: Number(row.chunk_count || row.chunkCount || 0)
+  };
+}
+
+async function listProjectKnowledgeItems(filters = {}) {
+  const projectId = Number(filters.projectId || 0);
+  const conditions = [];
+  const params = [];
+  if (Number.isFinite(projectId) && projectId > 0) {
+    params.push(projectId);
+    conditions.push(`i.project_id = $${params.length}`);
+  }
+  if (filters.itemType) {
+    params.push(normaliseKnowledgeItemType(filters.itemType, 'note'));
+    conditions.push(`i.item_type = $${params.length}`);
+  }
+  if (filters.status) {
+    params.push(String(filters.status));
+    conditions.push(`i.status = $${params.length}`);
+  } else {
+    conditions.push(`i.status = 'active'`);
+  }
+  const limit = Math.min(Math.max(Number(filters.limit || 50), 1), 100);
+  params.push(limit);
+  const result = await query(
+    `SELECT i.id, i.project_id, i.title, i.item_type, i.status, i.is_official,
+            i.source_report_id, i.source_report_version_id, i.metadata, i.created_at, i.updated_at,
+            COUNT(c.id)::int AS chunk_count,
+            jsonb_build_object(
+              'queued', COUNT(*) FILTER (WHERE c.embedding_status = 'queued'),
+              'processing', COUNT(*) FILTER (WHERE c.embedding_status = 'processing'),
+              'embedded', COUNT(*) FILTER (WHERE c.embedding_status = 'embedded'),
+              'failed', COUNT(*) FILTER (WHERE c.embedding_status = 'failed'),
+              'skipped_empty', COUNT(*) FILTER (WHERE c.embedding_status = 'skipped_empty')
+            ) AS embedding_counts
+     FROM project_knowledge_items i
+     LEFT JOIN project_knowledge_chunks c ON c.item_id = i.id
+     ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''}
+     GROUP BY i.id
+     ORDER BY i.is_official DESC, i.updated_at DESC, i.id DESC
+     LIMIT $${params.length}`,
+    params
+  );
+  return result.rows.map(cameliseKnowledgeItem);
+}
+
+async function updateProjectKnowledgeItem(itemId, patch = {}) {
+  const id = Number(itemId);
+  if (!Number.isFinite(id) || id <= 0) {
+    const error = new Error('Valid knowledge item id is required.');
+    error.statusCode = 400;
+    throw error;
+  }
+  const existing = await query('SELECT * FROM project_knowledge_items WHERE id = $1 LIMIT 1', [id]);
+  if (!existing.rows[0]) return null;
+  const current = existing.rows[0];
+  const title = Object.prototype.hasOwnProperty.call(patch, 'title') ? String(patch.title || '').trim() : current.title;
+  const contentChanged = Object.prototype.hasOwnProperty.call(patch, 'content');
+  const content = contentChanged ? String(patch.content || '').trim() : current.content;
+  const status = Object.prototype.hasOwnProperty.call(patch, 'status') ? String(patch.status || 'active') : current.status;
+  const itemType = Object.prototype.hasOwnProperty.call(patch, 'itemType') ? normaliseKnowledgeItemType(patch.itemType, current.item_type) : current.item_type;
+  const metadata = patch.metadata && typeof patch.metadata === 'object' ? patch.metadata : current.metadata;
+  const client = await getPgPool().connect();
+  try {
+    await client.query('BEGIN');
+    const updated = await client.query(
+      `UPDATE project_knowledge_items
+       SET title = $2, content = $3, status = $4, item_type = $5, metadata = $6::jsonb, updated_at = NOW()
+       WHERE id = $1
+       RETURNING *`,
+      [id, title, content, status, itemType, JSON.stringify(metadata || {})]
+    );
+    let chunkCount = 0;
+    if (contentChanged) {
+      chunkCount = await replaceKnowledgeChunks(client, id, current.project_id, content, metadata);
+    }
+    await client.query('COMMIT');
+    return { ...cameliseKnowledgeItem(updated.rows[0]), chunkCount };
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function archiveProjectKnowledgeItem(itemId, options = {}) {
+  const id = Number(itemId);
+  if (!Number.isFinite(id) || id <= 0) return null;
+  if (options.hard) {
+    const deleted = await query('DELETE FROM project_knowledge_items WHERE id = $1 RETURNING id', [id]);
+    return deleted.rows[0] || null;
+  }
+  const updated = await query(
+    `UPDATE project_knowledge_items SET status = 'archived', updated_at = NOW() WHERE id = $1 RETURNING *`,
+    [id]
+  );
+  return updated.rows[0] ? cameliseKnowledgeItem(updated.rows[0]) : null;
+}
+
+function collectKnowledgeItemsFromReport(report = {}, source = {}) {
+  const items = [];
+  const metadataBase = {
+    periodLabel: source.periodLabel || '',
+    overallHealth: report.overallHealth || '',
+    event_date: source.eventDate || source.createdAt || new Date().toISOString()
+  };
+  if (report.summary) {
+    items.push({ itemType: 'report_summary', title: `Report summary - ${metadataBase.periodLabel || source.reportVersionId}`, content: String(report.summary), metadata: metadataBase });
+  }
+  for (const [index, update] of (Array.isArray(report.keyUpdates) ? report.keyUpdates : []).entries()) {
+    const text = typeof update === 'string' ? update : (update?.text || update?.summary || '');
+    if (text) items.push({ itemType: 'key_update', title: `Key update ${index + 1} - ${metadataBase.periodLabel || source.reportVersionId}`, content: String(text), metadata: { ...metadataBase, index } });
+  }
+  for (const milestone of (Array.isArray(report.milestones) ? report.milestones : [])) {
+    if (milestone?.transcript_update_status && milestone.transcript_update_status !== 'updated_from_transcript') continue;
+    const title = milestone?.milestone || milestone?.milestoneName || 'Milestone update';
+    const content = [milestone?.delivery_status || milestone?.status, milestone?.summary || milestone?.normalised_evidence_summary, ...(Array.isArray(milestone?.next_steps) ? milestone.next_steps : [])].filter(Boolean).join('\n');
+    if (content) items.push({ itemType: 'milestone_summary', title, content, metadata: { ...metadataBase, comparisonKey: milestone?.comparison_key || milestone?.comparisonKey || '' } });
+  }
+  for (const risk of (Array.isArray(report.risks) ? report.risks : [])) {
+    const title = risk?.riskTitle || risk?.title || 'Project risk';
+    const content = [risk?.description, risk?.suggestedMitigation || risk?.mitigation].filter(Boolean).join('\nMitigation: ');
+    if (content) items.push({ itemType: 'risk', title, content, metadata: metadataBase });
+  }
+  const evidence = [];
+  for (const area of Object.values(report.healthAreas || {})) {
+    if (Array.isArray(area?.evidence)) evidence.push(...area.evidence);
+  }
+  for (const milestone of (Array.isArray(report.milestones) ? report.milestones : [])) {
+    if (milestone?.excerpt) evidence.push({ text: milestone.excerpt, confidence: milestone.confidence || milestone.milestone_match_confidence });
+  }
+  evidence
+    .filter((item) => item?.text)
+    .sort((a, b) => Number(b.confidence || 0) - Number(a.confidence || 0))
+    .slice(0, Number(process.env.PROJECT_KNOWLEDGE_EVIDENCE_CAP || 10))
+    .forEach((item, index) => items.push({ itemType: 'evidence', title: `Evidence ${index + 1} - ${metadataBase.periodLabel || source.reportVersionId}`, content: String(item.text), metadata: { ...metadataBase, confidence: item.confidence || null, speaker: item.speaker || '', turnIndex: item.turn_index || item.turnIndex || null } }));
+  return items;
+}
+
+async function ingestApprovedProjectReportVersion({ projectId, reportId, reportVersionId, periodLabel, payload, createdAt }) {
+  const report = payload?.projectReport || payload || {};
+  const versionId = Number(reportVersionId || 0);
+  if (!Number.isFinite(versionId) || versionId <= 0 || !Number(projectId)) {
+    return { ok: false, itemsCreated: 0, error: 'Missing project/report version id.' };
+  }
+  const candidates = collectKnowledgeItemsFromReport(report, { reportVersionId: versionId, periodLabel, createdAt });
+  const client = await getPgPool().connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('UPDATE project_knowledge_items SET status = $2, updated_at = NOW() WHERE source_report_version_id = $1', [versionId, 'archived']);
+    let itemsCreated = 0;
+    let chunksCreated = 0;
+    for (const item of candidates) {
+      const insert = await client.query(
+        `INSERT INTO project_knowledge_items
+         (project_id, title, content, summary, item_type, source_report_id, source_report_version_id, status, is_official, metadata)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'active',FALSE,$8::jsonb)
+         ON CONFLICT (source_report_version_id, item_type, title) WHERE source_report_version_id IS NOT NULL
+         DO UPDATE SET content = EXCLUDED.content, summary = EXCLUDED.summary, status = 'active', metadata = EXCLUDED.metadata, updated_at = NOW()
+         RETURNING id`,
+        [projectId, item.title, item.content, '', item.itemType, reportId || null, versionId, JSON.stringify(item.metadata || {})]
+      );
+      chunksCreated += await replaceKnowledgeChunks(client, insert.rows[0].id, projectId, item.content, item.metadata || {});
+      itemsCreated += 1;
+    }
+    await client.query('COMMIT');
+    return { ok: true, itemsCreated, chunksCreated };
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    return { ok: false, itemsCreated: 0, error: error.message };
+  } finally {
+    client.release();
+  }
+}
+
 async function saveProjectUpdateDraft({ projectId: requestedProjectId, projectName, periodLabel, fileName, sourceType, transcriptText, result }) {
   const report = result?.projectReport || {};
   const segments = Array.isArray(result?.segments) ? result.segments : [];
@@ -1700,6 +2009,14 @@ WHERE project_id = ${projectId}
   AND COALESCE(is_official, FALSE) = FALSE
 RETURNING id::text;`);
 
+  const knowledgeOut = await runPsql(`
+UPDATE project_knowledge_items
+SET status = 'archived', updated_at = NOW()
+WHERE project_id = ${projectId}
+  AND status <> 'archived'
+  AND COALESCE(is_official, FALSE) = FALSE
+RETURNING id::text;`);
+
   let reportOut = '';
   if (archiveReports) {
     reportOut = await runPsql(`
@@ -1725,6 +2042,7 @@ RETURNING id::text;`);
     deactivatedMilestones: milestoneOut.split('\n').filter((line) => /^\d+$/.test(line)).length,
     deactivatedRisks: riskOut.split('\n').filter((line) => /^\d+$/.test(line)).length,
     archivedReports: reportOut.split('\n').filter((line) => /^\d+$/.test(line)).length,
+    archivedKnowledgeItems: knowledgeOut.split('\n').filter((line) => /^\d+$/.test(line)).length,
     deletedSnapshots: snapshotOut.split('\n').filter((line) => /^\d+$/.test(line)).length,
     context: await getProjectContext(ref.projectId ? { projectId, projectName: name } : name, 5)
   };
@@ -1800,6 +2118,12 @@ module.exports = {
   updateMeetingMinutesFeedback,
   deleteMeetingMinutesFeedback,
   saveProjectUpdateDraft,
+  createProjectKnowledgeItem,
+  listProjectKnowledgeItems,
+  updateProjectKnowledgeItem,
+  archiveProjectKnowledgeItem,
+  ingestApprovedProjectReportVersion,
+  chunkKnowledgeText,
   listProjectOptions,
   listProjectReports,
   getProjectReportDetail,
