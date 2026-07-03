@@ -19,32 +19,44 @@ async function sendView(res, fileName) {
 }
 
 app.get('/', (req, res) => {
-  sendView(res, 'index.html').catch((error) => res.status(404).send(error.message));
+  sendView(res, 'dashboard.html').catch((error) => res.status(404).send(error.message));
 });
 
-app.get('/meetings', (req, res) => {
-  sendView(res, 'meetings.html').catch((error) => res.status(404).send(error.message));
+app.get('/dashboard', (req, res) => {
+  sendView(res, 'dashboard.html').catch((error) => res.status(404).send(error.message));
 });
 
-app.get('/review', (req, res) => {
-  sendView(res, 'review.html').catch((error) => res.status(404).send(error.message));
+app.get('/archive', (req, res) => {
+  sendView(res, 'archive.html').catch((error) => res.status(404).send(error.message));
 });
 
-app.get('/meeting-minutes-test', (req, res) => {
-  sendView(res, 'meeting-minutes-test.html').catch((error) => res.status(404).send(error.message));
-});
-
-app.get('/meeting-minutes-numbers', (req, res) => {
-  sendView(res, 'meeting-minutes-numbers.html').catch((error) => res.status(404).send(error.message));
-});
-
-app.get('/meeting-minutes-comparison', (req, res) => {
-  sendView(res, 'meeting-minutes-comparison.html').catch((error) => res.status(404).send(error.message));
-});
-
-app.get('/meeting-minutes-minilm-only', (req, res) => {
-  sendView(res, 'meeting-minutes-minilm-only.html').catch((error) => res.status(404).send(error.message));
-});
+// Legacy/archive routes. These are kept for reference but intentionally removed
+// from the main dashboard navigation.
+const legacyViews = {
+  '/archive/legacy-transcript-workflow': 'index.html',
+  '/archive/meetings': 'meetings.html',
+  '/archive/review': 'review.html',
+  '/archive/meeting-minutes-test': 'meeting-minutes-test.html',
+  '/archive/meeting-minutes-numbers': 'meeting-minutes-numbers.html',
+  '/archive/meeting-minutes-comparison': 'meeting-minutes-comparison.html',
+  '/archive/meeting-minutes-minilm-only': 'meeting-minutes-minilm-only.html'
+};
+for (const [route, fileName] of Object.entries(legacyViews)) {
+  app.get(route, (req, res) => {
+    sendView(res, fileName).catch((error) => res.status(404).send(error.message));
+  });
+}
+const legacyRedirects = {
+  '/meetings': '/archive/meetings',
+  '/review': '/archive/review',
+  '/meeting-minutes-test': '/archive/meeting-minutes-test',
+  '/meeting-minutes-numbers': '/archive/meeting-minutes-numbers',
+  '/meeting-minutes-comparison': '/archive/meeting-minutes-comparison',
+  '/meeting-minutes-minilm-only': '/archive/meeting-minutes-minilm-only'
+};
+for (const [route, target] of Object.entries(legacyRedirects)) {
+  app.get(route, (req, res) => res.redirect(302, target));
+}
 
 app.get('/meeting-minutes-final', (req, res) => {
   sendView(res, 'meeting-minutes-final.html').catch((error) => res.status(404).send(error.message));
@@ -108,10 +120,6 @@ app.get('/auth/register', (req, res) => {
 
 app.get('/register-success', (req, res) => {
   res.redirect('/auth/login');
-});
-
-app.get('/dashboard', (req, res) => {
-  sendView(res, 'dashboard.html').catch((error) => res.status(404).send(error.message));
 });
 
 app.get('/auth/forgot-password', (req, res) => {

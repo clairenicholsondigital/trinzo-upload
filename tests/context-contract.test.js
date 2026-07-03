@@ -13,6 +13,8 @@ const knowledgeSource = fs.readFileSync(path.join(repoDir, 'utils/knowledge.js')
 const backfillSource = fs.readFileSync(path.join(repoDir, 'scripts/backfill_project_knowledge.js'), 'utf8');
 const contextPageSource = fs.readFileSync(path.join(repoDir, 'views/project-update-context.html'), 'utf8');
 const roadmapPageSource = fs.readFileSync(path.join(repoDir, 'views/project-update-roadmap.html'), 'utf8');
+const dashboardPageSource = fs.readFileSync(path.join(repoDir, 'views/dashboard.html'), 'utf8');
+const archivePageSource = fs.readFileSync(path.join(repoDir, 'views/archive.html'), 'utf8');
 
 test('canonical project context fixture contains the Node/Python boundary keys', () => {
   for (const key of [
@@ -71,6 +73,19 @@ test('project knowledge phase 1 surfaces schema and protected endpoints', () => 
   assert.ok(knowledgeSource.includes('answerMode: \'retrieval_only\''));
   assert.ok(contextPageSource.includes('Ask this project'));
   assert.ok(contextPageSource.includes('/api/project-update-test/knowledge/ask'));
+});
+
+test('dashboard and archive keep the active tool infrastructure organised', () => {
+  const serverSource = fs.readFileSync(path.join(repoDir, 'server.js'), 'utf8');
+  assert.ok(serverSource.includes("sendView(res, 'dashboard.html')"));
+  assert.ok(serverSource.includes("app.get('/archive'"));
+  assert.ok(serverSource.includes("'/archive/legacy-transcript-workflow': 'index.html'"));
+  assert.ok(serverSource.includes("'/meeting-minutes-test': '/archive/meeting-minutes-test'"));
+  assert.ok(dashboardPageSource.includes('Meeting transcript to minutes'));
+  assert.ok(dashboardPageSource.includes('Project update tool'));
+  assert.ok(dashboardPageSource.includes('Older labs and prototypes'));
+  assert.ok(archivePageSource.includes('Legacy / archived'));
+  assert.ok(archivePageSource.includes('/archive/meeting-minutes-minilm-only'));
 });
 
 test('project update roadmap page keeps deferred lifecycle ideas visible', () => {
