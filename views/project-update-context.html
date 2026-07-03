@@ -41,6 +41,25 @@ pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:#071126;
 .trend-deteriorating, .trend-new_risk { color:#fecaca; }
 .trend-new_update, .trend-replanned { color:#bfdbfe; }
 .trend-stable { color:#fde68a; }
+.ask-panel { border-color:rgba(23,208,196,.55); box-shadow:0 14px 42px rgba(0,0,0,.18); }
+.ask-layout { display:grid; grid-template-columns:minmax(280px, 1fr) minmax(260px, .8fr); gap:1rem; align-items:start; }
+.ask-help { background:rgba(23,208,196,.08); border:1px solid rgba(23,208,196,.25); color:#c9fffb; border-radius:12px; padding:.85rem; }
+.ask-help ul { margin:.45rem 0 0; padding-left:1.1rem; }
+.badges { display:flex; flex-wrap:wrap; gap:.5rem; margin:.7rem 0; }
+.badge { display:inline-flex; align-items:center; gap:.35rem; border:1px solid var(--border); border-radius:999px; padding:.3rem .55rem; background:#071126; color:#dbeafe; font-size:.86rem; font-weight:700; }
+.badge.success { border-color:rgba(34,197,94,.45); color:#bbf7d0; background:rgba(22,163,74,.12); }
+.badge.warn { border-color:rgba(250,204,21,.45); color:#fde68a; background:rgba(202,138,4,.12); }
+.badge.muted { color:var(--muted); }
+.ask-answer { background:#071126; border:1px solid rgba(23,208,196,.35); border-radius:14px; padding:1rem; margin:.75rem 0; }
+.ask-answer h3 { margin:0 0 .4rem; font-size:1rem; color:#c9fffb; }
+.ask-answer p { margin:.35rem 0 0; }
+.citation-list { display:flex; flex-wrap:wrap; gap:.4rem; margin-top:.6rem; }
+.chunk-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:.75rem; margin-top:.75rem; }
+.chunk-card { background:#071126; border:1px solid var(--border); border-radius:12px; padding:.75rem; }
+.chunk-meta { display:flex; gap:.4rem; flex-wrap:wrap; margin:.45rem 0; }
+.chunk-text { color:#dbeafe; font-size:.94rem; }
+.empty-state { border:1px dashed var(--border); border-radius:12px; padding:1rem; color:var(--muted); background:rgba(7,17,38,.55); }
+@media (max-width: 760px) { .ask-layout { grid-template-columns:1fr; } }
 </style>
 </head>
 <body>
@@ -176,15 +195,27 @@ pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:#071126;
         <p id="knowledgeStatus" class="status"></p>
         <div id="knowledgeList" class="table-scroll"><table><tbody><tr><td>Loading knowledge items...</td></tr></tbody></table></div>
       </section>
-      <section class="panel">
+      <section class="panel ask-panel">
         <h2>Ask this project</h2>
-        <p class="intro">Ask a question against stored project memory. Answers are grounded in retrieved chunks; if generation is unavailable, you still get the matching snippets.</p>
-        <label>Question <textarea id="knowledgeAskQuestion" placeholder="What risks or decisions should I remember before the next update?"></textarea></label>
-        <div class="actions" style="margin-top:.75rem">
-          <button id="askKnowledgeBtn" type="button" class="primary" ${context.projectId ? '' : 'disabled'}>Ask project memory</button>
+        <div class="ask-layout">
+          <div>
+            <p class="intro">Ask stored project memory before a report, review, or client call. The answer is grounded in retrieved chunks; if generation is unavailable, the matching snippets still appear.</p>
+            <label>Question <textarea id="knowledgeAskQuestion" placeholder="What risks, decisions, or constraints should I remember before the next update?"></textarea></label>
+            <div class="actions" style="margin-top:.75rem">
+              <button id="askKnowledgeBtn" type="button" class="primary" ${context.projectId ? '' : 'disabled'}>Ask project memory</button>
+            </div>
+            <p id="knowledgeAskStatus" class="status"></p>
+          </div>
+          <aside class="ask-help">
+            <strong>Good questions</strong>
+            <ul>
+              <li>What risks should we watch this week?</li>
+              <li>What decisions have already been made?</li>
+              <li>What constraints from the SoW matter here?</li>
+            </ul>
+          </aside>
         </div>
-        <p id="knowledgeAskStatus" class="status"></p>
-        <div id="knowledgeAskResult"></div>
+        <div id="knowledgeAskResult" class="empty-state">Ask a question to retrieve relevant project memory.</div>
       </section>
       <section class="panel">
         <details><summary>Raw context JSON</summary>${renderJson(context)}</details>
@@ -317,19 +348,45 @@ pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:#071126;
       }
     });
 
+    function modeBadgeClass(value) {
+      const mode = String(value || '').toLowerCase();
+      if (['generated', 'semantic'].includes(mode)) return 'success';
+      if (['retrieval_only', 'keyword_fallback'].includes(mode)) return 'warn';
+      return 'muted';
+    }
+
     function renderAskResult(result) {
       const chunks = asArray(result.retrievedChunks);
-      const answer = result.answer ? `<div class="card"><div class="label">Answer</div><div class="value">${escapeHtml(result.answer)}</div></div>` : '';
-      const snippets = chunks.map((chunk) => `<tr><td>${escapeHtml(chunk.chunk_id || chunk.chunkId || '-')}</td><td>${escapeHtml(chunk.title || '-')}</td><td>${escapeHtml(friendlyLabel(chunk.item_type || chunk.itemType))}</td><td>${escapeHtml((chunk.chunk_text || chunk.chunkText || '').slice(0, 600))}</td></tr>`).join('') || '<tr><td colspan="4">No matching project memory was found.</td></tr>';
-      return `${answer}<div class="grid" style="margin:.75rem 0"><div class="card"><div class="label">Answer mode</div><div class="value">${escapeHtml(friendlyLabel(result.answerMode))}</div></div><div class="card"><div class="label">Retrieval mode</div><div class="value">${escapeHtml(friendlyLabel(result.retrievalMode))}</div></div><div class="card"><div class="label">Chunks</div><div class="value">${chunks.length}</div></div></div><div class="table-scroll"><table><thead><tr><th>Chunk</th><th>Title</th><th>Type</th><th>Snippet</th></tr></thead><tbody>${snippets}</tbody></table></div>`;
+      const citations = asArray(result.citations);
+      const answerMode = friendlyLabel(result.answerMode);
+      const retrievalMode = friendlyLabel(result.retrievalMode);
+      const citationHtml = citations.length
+        ? `<div class="citation-list">${citations.map((citation) => `<span class="badge muted">chunk ${escapeHtml(citation.chunkId || citation.chunk_id || '-')}</span>`).join('')}</div>`
+        : '';
+      const answer = result.answer
+        ? `<div class="ask-answer"><h3>Answer from project memory</h3><p>${escapeHtml(result.answer)}</p>${citationHtml}</div>`
+        : result.answerMode === 'retrieval_only'
+          ? '<div class="empty-state"><strong>Generation unavailable.</strong><br />Showing the most relevant project-memory snippets instead.</div>'
+          : '';
+      const chunksHtml = chunks.length
+        ? `<h3 style="margin:.9rem 0 .2rem">Retrieved memory</h3><div class="chunk-grid">${chunks.map((chunk) => {
+            const chunkId = chunk.chunk_id || chunk.chunkId || '-';
+            const score = Number(chunk.score || 0);
+            return `<article class="chunk-card"><strong>${escapeHtml(chunk.title || 'Project memory')}</strong><div class="chunk-meta"><span class="badge muted">chunk ${escapeHtml(chunkId)}</span><span class="badge muted">${escapeHtml(friendlyLabel(chunk.item_type || chunk.itemType))}</span>${score ? `<span class="badge muted">score ${escapeHtml(score.toFixed(2))}</span>` : ''}</div><div class="chunk-text">${escapeHtml((chunk.chunk_text || chunk.chunkText || '').slice(0, 700))}</div></article>`;
+          }).join('')}</div>`
+        : '<div class="empty-state"><strong>No matching project memory found.</strong><br />Try adding background notes, decisions, risks, or an SoW excerpt to Project knowledge first.</div>';
+      return `<div class="badges"><span class="badge ${escapeHtml(modeBadgeClass(result.answerMode))}">Answer: ${escapeHtml(answerMode)}</span><span class="badge ${escapeHtml(modeBadgeClass(result.retrievalMode))}">Retrieval: ${escapeHtml(retrievalMode)}</span><span class="badge muted">${chunks.length} chunk${chunks.length === 1 ? '' : 's'}</span>${result.confidence ? `<span class="badge muted">Confidence: ${escapeHtml(friendlyLabel(result.confidence))}</span>` : ''}</div>${answer}${chunksHtml}`;
     }
 
     document.getElementById('askKnowledgeBtn').addEventListener('click', async () => {
       const status = document.getElementById('knowledgeAskStatus');
       const resultBox = document.getElementById('knowledgeAskResult');
+      const button = document.getElementById('askKnowledgeBtn');
       status.className = 'status';
       status.textContent = 'Asking project memory...';
-      resultBox.innerHTML = '';
+      resultBox.className = 'empty-state';
+      resultBox.innerHTML = 'Searching stored project memory...';
+      button.disabled = true;
       try {
         const response = await authedFetch('/api/project-update-test/knowledge/ask', {
           method: 'POST',
@@ -340,10 +397,15 @@ pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:#071126;
         if (!response.ok || !result || result.ok === false) throw new Error(response.status === 401 ? authMessage() : (result && result.error ? result.error : `Request failed with status ${response.status}.`));
         status.className = result.answerMode === 'no_context' ? 'status' : 'status success';
         status.textContent = result.answerMode === 'generated' ? 'Generated from project memory.' : result.answerMode === 'retrieval_only' ? 'Showing retrieved memory snippets; generation was unavailable.' : 'No matching project memory found.';
+        resultBox.className = '';
         resultBox.innerHTML = renderAskResult(result);
       } catch (error) {
         status.className = 'status error';
         status.textContent = error.message || 'Could not ask project memory.';
+        resultBox.className = 'empty-state';
+        resultBox.innerHTML = 'The project memory search could not complete. Check you are logged in, then try again.';
+      } finally {
+        button.disabled = false;
       }
     });
 
