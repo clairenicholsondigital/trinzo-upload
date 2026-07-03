@@ -52,6 +52,8 @@ def chunk_text(text: str, chunk_size: int = 1200, overlap: int = 150) -> list[st
 
 def load_backend() -> MiniLMBackend:
     prefer_remote = os.getenv("PROJECT_KNOWLEDGE_MINILM_PREFER_REMOTE", "1") != "0"
+    if prefer_remote and not os.getenv("MINUTES_MINILM_WORKER_URL"):
+        os.environ["MINUTES_MINILM_WORKER_URL"] = os.getenv("PROJECT_KNOWLEDGE_MINILM_WORKER_URL", "http://127.0.0.1:8767")
     return MiniLMBackend.load(enabled=True, prefer_remote=prefer_remote)
 
 
