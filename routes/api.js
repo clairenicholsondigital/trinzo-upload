@@ -31,6 +31,7 @@ const {
   updateProjectMilestone,
   deleteProjectMilestone,
   deactivateProjectMilestones,
+  listProjectOptions,
   getProjectContext,
   createProjectContextSnapshot,
   getProjectContextSnapshot,
@@ -811,7 +812,15 @@ router.delete('/meeting-minutes-final/feedback-submissions/:feedbackId', require
   }
 });
 
+// Upload/read endpoints intentionally remain open while /project-update-test is a test workflow.
+// Destructive/admin project-update endpoints below use requireAuth.
 router.post('/project-update-test', withTestUpload(async (req, res) => {
+  const startedAt = Date.now();
+  let scriptUsed = 'project_update_minilm.py';
+  let fallbackUsed = false;
+  let contextFound = false;
+  let resolvedProjectId = null;
+  let saveOk = false;
   try {
     const transcript = await readTestTranscript(req);
     validateTranscriptText(transcript.text);
@@ -825,9 +834,13 @@ router.post('/project-update-test', withTestUpload(async (req, res) => {
 
     let contextTempDir = null;
     const projectName = req.body?.projectName || req.query?.projectName || process.env.PROJECT_UPDATE_DEFAULT_PROJECT || 'Project update test';
+    const projectId = Number(req.body?.projectId || req.query?.projectId || 0) || null;
+    const projectRef = projectId ? { projectId, projectName } : { projectName };
     if (hasDatabaseConfig() && !truthyFlag(req.query?.skipContext) && !truthyFlag(req.body?.skipContext)) {
       try {
-        const projectContext = await getProjectContext(projectName, req.query?.contextLimit || req.body?.contextLimit || 8);
+        const projectContext = await getProjectContext(projectRef, req.query?.contextLimit || req.body?.contextLimit || 8);
+        contextFound = Boolean(projectContext?.found);
+        resolvedProjectId = projectContext?.projectId || projectContext?.projectResolution?.projectId || projectId || null;
         contextTempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'trinzo-project-context-'));
         const contextPath = path.join(contextTempDir, 'context.json');
         await fs.writeFile(contextPath, JSON.stringify({ context: projectContext }), 'utf8');
@@ -841,21 +854,12 @@ router.post('/project-update-test', withTestUpload(async (req, res) => {
     }
 
     const projectTimeoutMs = Number(process.env.PROJECT_UPDATE_TIMEOUT_MS || 180000);
-    console.info(JSON.stringify({
-      event: 'project_update_test_upload_started',
-      source: transcript.source,
-      fileName: transcript.fileName || null,
-      transcriptLength: transcript.text.length,
-      projectName,
-      skipMiniLM: truthyFlag(req.query?.skipMiniLM) || truthyFlag(req.body?.skipMiniLM),
-      skipRewrite: truthyFlag(req.query?.skipRewrite) || truthyFlag(req.body?.skipRewrite),
-      skipSave: truthyFlag(req.query?.skipSave) || truthyFlag(req.body?.skipSave),
-      skipContext: truthyFlag(req.query?.skipContext) || truthyFlag(req.body?.skipContext)
-    }));
     let result;
     try {
       result = await runPythonTranscriptScript('project_update_minilm.py', transcript.text, scriptArgs, { timeoutMs: projectTimeoutMs });
     } catch (primaryError) {
+      scriptUsed = 'python_llm.py';
+      fallbackUsed = true;
       const fallback = await runPythonTranscriptScript('python_llm.py', transcript.text, [], { timeoutMs: projectTimeoutMs });
       result = {
         ...fallback,
@@ -876,6 +880,7 @@ router.post('/project-update-test', withTestUpload(async (req, res) => {
     if (hasDatabaseConfig() && !truthyFlag(req.query?.skipSave) && !truthyFlag(req.body?.skipSave)) {
       try {
         result.projectReportPersistence = await saveProjectUpdateDraft({
+          projectId,
           projectName,
           periodLabel: req.body?.periodLabel || req.query?.periodLabel || '',
           fileName: transcript.fileName || null,
@@ -883,6 +888,8 @@ router.post('/project-update-test', withTestUpload(async (req, res) => {
           transcriptText: transcript.text,
           result
         });
+        saveOk = Boolean(result.projectReportPersistence?.saved);
+        resolvedProjectId = result.projectReportPersistence?.projectId || resolvedProjectId;
       } catch (saveError) {
         result.projectReportPersistence = {
           saved: false,
@@ -896,6 +903,34 @@ router.post('/project-update-test', withTestUpload(async (req, res) => {
       };
     }
 
+    if (result?.projectReport && typeof result.projectReport === 'object') {
+      result.projectReport.projectResolution = result.projectReport.projectResolution || {
+        requestedProjectId: projectId,
+        projectId: resolvedProjectId,
+        projectName,
+        contextFound
+      };
+    }
+
+    console.info(JSON.stringify({
+      event: 'project_update_test_upload_completed',
+      source: transcript.source,
+      fileName: transcript.fileName || null,
+      transcriptLength: transcript.text.length,
+      transcriptSha256: crypto.createHash('sha256').update(transcript.text, 'utf8').digest('hex').slice(0, 16),
+      projectName,
+      projectId: resolvedProjectId || projectId || null,
+      contextFound,
+      scriptUsed,
+      fallbackUsed,
+      saveOk,
+      durationMs: Date.now() - startedAt,
+      skipMiniLM: truthyFlag(req.query?.skipMiniLM) || truthyFlag(req.body?.skipMiniLM),
+      skipRewrite: truthyFlag(req.query?.skipRewrite) || truthyFlag(req.body?.skipRewrite),
+      skipSave: truthyFlag(req.query?.skipSave) || truthyFlag(req.body?.skipSave),
+      skipContext: truthyFlag(req.query?.skipContext) || truthyFlag(req.body?.skipContext)
+    }));
+
     return res.json(buildTestTranscriptResponse(req, transcript, result));
   } catch (error) {
     return sendTestError(res, error);
@@ -904,8 +939,17 @@ router.post('/project-update-test', withTestUpload(async (req, res) => {
 
 router.get('/project-update-test/reports', async (req, res) => {
   try {
-    const reports = await listProjectReports(req.query?.limit);
+    const reports = await listProjectReports(req.query?.limit, { projectId: req.query?.projectId });
     return res.json({ ok: true, reports });
+  } catch (error) {
+    return sendTestError(res, error);
+  }
+});
+
+router.get('/project-update-test/projects', async (req, res) => {
+  try {
+    const projects = await listProjectOptions(req.query?.limit);
+    return res.json({ ok: true, projects });
   } catch (error) {
     return sendTestError(res, error);
   }
@@ -958,7 +1002,7 @@ router.delete('/project-update-test/reports/:reportId', requireAuth, async (req,
 
 router.get('/project-update-test/milestones', async (req, res) => {
   try {
-    const milestones = await listProjectMilestones(req.query?.limit);
+    const milestones = await listProjectMilestones(req.query?.limit, { projectId: req.query?.projectId });
     return res.json({ ok: true, milestones });
   } catch (error) {
     return sendTestError(res, error);
@@ -1021,7 +1065,7 @@ router.delete('/project-update-test/milestones/:milestoneId', requireAuth, async
 
 router.get('/project-update-test/context', async (req, res) => {
   try {
-    const context = await getProjectContext(req.query?.projectName, req.query?.limit);
+    const context = await getProjectContext({ projectId: req.query?.projectId, projectName: req.query?.projectName }, req.query?.limit);
     return res.json({ ok: true, context });
   } catch (error) {
     return sendTestError(res, error);
@@ -1030,7 +1074,7 @@ router.get('/project-update-test/context', async (req, res) => {
 
 router.post('/project-update-test/context/snapshots', requireAuth, async (req, res) => {
   try {
-    const snapshot = await createProjectContextSnapshot(req.body?.projectName || req.query?.projectName, req.body || {});
+    const snapshot = await createProjectContextSnapshot({ projectId: req.body?.projectId || req.query?.projectId, projectName: req.body?.projectName || req.query?.projectName }, req.body || {});
     return res.status(201).json({ ok: true, snapshot });
   } catch (error) {
     return sendTestError(res, error);
@@ -1050,7 +1094,7 @@ router.get('/project-update-test/context/snapshots/:snapshotId', async (req, res
 router.post('/project-update-test/context/mark-official', requireAuth, async (req, res) => {
   try {
     const result = await markProjectContextOfficial(
-      req.body?.projectName || req.query?.projectName,
+      { projectId: req.body?.projectId || req.query?.projectId, projectName: req.body?.projectName || req.query?.projectName },
       req.body?.officialLabel || req.query?.officialLabel || 'Official baseline'
     );
     return res.json({ ok: true, result });
@@ -1061,7 +1105,7 @@ router.post('/project-update-test/context/mark-official', requireAuth, async (re
 
 router.post('/project-update-test/context/cleanup-tests', requireAuth, async (req, res) => {
   try {
-    const result = await cleanupProjectUpdateTestContext(req.body?.projectName || req.query?.projectName, {
+    const result = await cleanupProjectUpdateTestContext({ projectId: req.body?.projectId || req.query?.projectId, projectName: req.body?.projectName || req.query?.projectName }, {
       archiveReports: !truthyFlag(req.body?.keepReports) && !truthyFlag(req.query?.keepReports),
       deleteNonOfficialSnapshots: !truthyFlag(req.body?.keepSnapshots) && !truthyFlag(req.query?.keepSnapshots)
     });

@@ -69,6 +69,14 @@ th:last-child, td:last-child { border-right:0; }
 <script>
 (function () {
   const app = document.getElementById('app');
+
+  function authedFetch(url, options = {}) {
+    return fetch(url, { credentials: 'same-origin', ...options });
+  }
+
+  function authMessage() {
+    return 'You need to log in before changing project update data. Open /auth/login, then retry this action.';
+  }
   const milestoneMatch = location.pathname.match(/\/project-update-test\/milestones\/(\d+)$/);
   const milestoneId = milestoneMatch ? milestoneMatch[1] : '';
 
@@ -198,14 +206,14 @@ th:last-child, td:last-child { border-right:0; }
       formStatus.textContent = 'Creating milestone...';
       button.disabled = true;
       try {
-        const response = await fetch('/api/project-update-test/milestones', {
+        const response = await authedFetch('/api/project-update-test/milestones', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
         const result = await response.json().catch(() => null);
         if (!response.ok || !result || result.ok === false) {
-          throw new Error(result && result.error ? result.error : `Request failed with status ${response.status}.`);
+          throw new Error(response.status === 401 ? authMessage() : (result && result.error ? result.error : `Request failed with status ${response.status}.`));
         }
         formStatus.className = 'status success';
         formStatus.textContent = result.milestone && result.milestone.created ? 'Milestone created.' : 'Existing milestone updated.';
@@ -254,14 +262,14 @@ th:last-child, td:last-child { border-right:0; }
         bulkInactivateButton.disabled = true;
         if (bulkStatus) bulkStatus.textContent = `Inactivating ${selected.length} milestone${selected.length === 1 ? '' : 's'}...`;
         try {
-          const response = await fetch('/api/project-update-test/milestones/bulk-inactivate', {
+          const response = await authedFetch('/api/project-update-test/milestones/bulk-inactivate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ milestoneIds: selected.map((milestone) => milestone.id) })
           });
           const result = await response.json().catch(() => null);
           if (!response.ok || !result || result.ok === false) {
-            throw new Error(result && result.error ? result.error : `Request failed with status ${response.status}.`);
+            throw new Error(response.status === 401 ? authMessage() : (result && result.error ? result.error : `Request failed with status ${response.status}.`));
           }
           await load();
         } catch (error) {
@@ -341,10 +349,10 @@ th:last-child, td:last-child { border-right:0; }
       if (!window.confirm(`Delete ${name}? It will be removed from active milestone lists.`)) return;
       deleteButton.disabled = true;
       try {
-        const response = await fetch(`/api/project-update-test/milestones/${encodeURIComponent(milestone.milestoneId)}`, { method: 'DELETE' });
+        const response = await authedFetch(`/api/project-update-test/milestones/${encodeURIComponent(milestone.milestoneId)}`, { method: 'DELETE' });
         const result = await response.json().catch(() => null);
         if (!response.ok || !result || result.ok === false) {
-          throw new Error(result && result.error ? result.error : `Request failed with status ${response.status}.`);
+          throw new Error(response.status === 401 ? authMessage() : (result && result.error ? result.error : `Request failed with status ${response.status}.`));
         }
         window.location.href = '/project-update-test/milestones';
       } catch (error) {
@@ -361,14 +369,14 @@ th:last-child, td:last-child { border-right:0; }
       formStatus.textContent = 'Saving milestone...';
       button.disabled = true;
       try {
-        const response = await fetch(`/api/project-update-test/milestones/${encodeURIComponent(milestone.milestoneId)}`, {
+        const response = await authedFetch(`/api/project-update-test/milestones/${encodeURIComponent(milestone.milestoneId)}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(Object.fromEntries(formData.entries()))
         });
         const result = await response.json().catch(() => null);
         if (!response.ok || !result || result.ok === false) {
-          throw new Error(result && result.error ? result.error : `Request failed with status ${response.status}.`);
+          throw new Error(response.status === 401 ? authMessage() : (result && result.error ? result.error : `Request failed with status ${response.status}.`));
         }
         formStatus.className = 'status success';
         formStatus.textContent = 'Milestone saved.';
@@ -383,10 +391,10 @@ th:last-child, td:last-child { border-right:0; }
   }
 
   async function load() {
-    const response = await fetch(milestoneId ? `/api/project-update-test/milestones/${milestoneId}` : '/api/project-update-test/milestones');
+    const response = await authedFetch(milestoneId ? `/api/project-update-test/milestones/${milestoneId}` : '/api/project-update-test/milestones');
     const payload = await response.json().catch(() => null);
     if (!response.ok || !payload || payload.ok === false) {
-      throw new Error(payload && payload.error ? payload.error : `Request failed with status ${response.status}.`);
+      throw new Error(response.status === 401 ? authMessage() : (payload && payload.error ? payload.error : `Request failed with status ${response.status}.`));
     }
     if (milestoneId) renderDetail(payload.milestone);
     else renderList(payload.milestones || []);

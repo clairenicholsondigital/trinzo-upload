@@ -495,6 +495,7 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertIn("project-update-milestones.html", server)
         self.assertIn("sendView(res", server)
         self.assertIn("router.get('/project-update-test/reports'", api)
+        self.assertIn("router.get('/project-update-test/projects'", api)
         self.assertIn("router.patch('/project-update-test/reports/:reportId'", api)
         self.assertIn("router.delete('/project-update-test/reports/:reportId'", api)
         self.assertIn("router.get('/project-update-test/milestones'", api)
@@ -519,6 +520,9 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertIn("cleanupProjectUpdateTestContext", db)
         self.assertIn("isOfficial", db)
         self.assertIn("projectContextScopedItemKey", db)
+        self.assertIn("const { Pool } = require('pg')", db)
+        self.assertNotIn("execFile('psql'", db)
+        self.assertIn("listProjectOptions", db)
 
         reports_page = (REPO_DIR / "views" / "project-update-reports.html").read_text(encoding="utf-8")
         milestones_page = (REPO_DIR / "views" / "project-update-milestones.html").read_text(encoding="utf-8")
@@ -574,7 +578,10 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertIn("scriptArgs.push('--context-file', contextPath);", project_route)
         self.assertNotIn("scriptArgs.push('--context-file');", project_route)
         self.assertIn("runPythonTranscriptScript('python_llm.py', transcript.text, [], { timeoutMs: projectTimeoutMs })", project_route)
-        self.assertIn("project_update_test_upload_started", project_route)
+        self.assertIn("project_update_test_upload_completed", project_route)
+        self.assertIn("durationMs", project_route)
+        self.assertIn("saveOk", project_route)
+        self.assertIn("projectId", project_route)
 
     def test_project_context_updates_health_milestone_and_risk_trends(self):
         report = {

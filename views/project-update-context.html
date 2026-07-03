@@ -57,6 +57,14 @@ pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:#071126;
 <script>
 (function () {
   const app = document.getElementById('app');
+
+  function authedFetch(url, options = {}) {
+    return fetch(url, { credentials: 'same-origin', ...options });
+  }
+
+  function authMessage() {
+    return 'You need to log in before changing project update data. Open /auth/login, then retry this action.';
+  }
   const snapshotMatch = location.pathname.match(/\/project-update-test\/context\/snapshots\/(\d+)$/);
   const snapshotId = snapshotMatch ? snapshotMatch[1] : '';
 
@@ -159,7 +167,8 @@ pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:#071126;
 
     document.getElementById('loadContextBtn').addEventListener('click', () => {
       const name = document.getElementById('projectNameInput').value || 'Project update test';
-      location.href = `/project-update-test/context?projectName=${encodeURIComponent(name)}`;
+      const projectId = new URLSearchParams(location.search).get('projectId') || '';
+      location.href = `/project-update-test/context?projectName=${encodeURIComponent(name)}${projectId ? `&projectId=${encodeURIComponent(projectId)}` : ''}`;
     });
     document.getElementById('createSnapshotBtn').addEventListener('click', async () => {
       const button = document.getElementById('createSnapshotBtn');
@@ -168,13 +177,13 @@ pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:#071126;
       status.className = 'status';
       status.textContent = 'Creating context snapshot...';
       try {
-        const response = await fetch('/api/project-update-test/context/snapshots', {
+        const response = await authedFetch('/api/project-update-test/context/snapshots', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ projectName: document.getElementById('projectNameInput').value || context.projectName })
+          body: JSON.stringify({ projectId: context.projectId, projectName: document.getElementById('projectNameInput').value || context.projectName })
         });
         const result = await response.json().catch(() => null);
-        if (!response.ok || !result || result.ok === false) throw new Error(result && result.error ? result.error : `Request failed with status ${response.status}.`);
+        if (!response.ok || !result || result.ok === false) throw new Error(response.status === 401 ? authMessage() : (result && result.error ? result.error : `Request failed with status ${response.status}.`));
         status.className = 'status success';
         status.innerHTML = `Snapshot created: <a href="/project-update-test/context/snapshots/${escapeHtml(result.snapshot.snapshotId)}">Snapshot ${escapeHtml(result.snapshot.snapshotId)}</a>`;
       } catch (error) {
@@ -193,13 +202,13 @@ pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:#071126;
       status.className = 'status';
       status.textContent = 'Marking active milestones and risks as official...';
       try {
-        const response = await fetch('/api/project-update-test/context/mark-official', {
+        const response = await authedFetch('/api/project-update-test/context/mark-official', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ projectName: document.getElementById('projectNameInput').value || context.projectName, officialLabel })
+          body: JSON.stringify({ projectId: context.projectId, projectName: document.getElementById('projectNameInput').value || context.projectName, officialLabel })
         });
         const result = await response.json().catch(() => null);
-        if (!response.ok || !result || result.ok === false) throw new Error(result && result.error ? result.error : `Request failed with status ${response.status}.`);
+        if (!response.ok || !result || result.ok === false) throw new Error(response.status === 401 ? authMessage() : (result && result.error ? result.error : `Request failed with status ${response.status}.`));
         status.className = 'status success';
         status.textContent = `Marked official: ${result.result.officialMilestones} milestones, ${result.result.officialRisks} risks. Reloading...`;
         window.setTimeout(() => window.location.reload(), 700);
@@ -218,13 +227,13 @@ pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:#071126;
       status.className = 'status';
       status.textContent = 'Clearing test clutter...';
       try {
-        const response = await fetch('/api/project-update-test/context/cleanup-tests', {
+        const response = await authedFetch('/api/project-update-test/context/cleanup-tests', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ projectName: document.getElementById('projectNameInput').value || context.projectName })
+          body: JSON.stringify({ projectId: context.projectId, projectName: document.getElementById('projectNameInput').value || context.projectName })
         });
         const result = await response.json().catch(() => null);
-        if (!response.ok || !result || result.ok === false) throw new Error(result && result.error ? result.error : `Request failed with status ${response.status}.`);
+        if (!response.ok || !result || result.ok === false) throw new Error(response.status === 401 ? authMessage() : (result && result.error ? result.error : `Request failed with status ${response.status}.`));
         status.className = 'status success';
         status.textContent = `Cleanup complete: archived ${result.result.archivedReports} reports, deactivated ${result.result.deactivatedMilestones} milestones and ${result.result.deactivatedRisks} risks, removed ${result.result.deletedSnapshots} snapshots. Reloading...`;
         window.setTimeout(() => window.location.reload(), 900);
@@ -262,17 +271,18 @@ pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:#071126;
 
   async function load() {
     if (snapshotId) {
-      const response = await fetch(`/api/project-update-test/context/snapshots/${encodeURIComponent(snapshotId)}`);
+      const response = await authedFetch(`/api/project-update-test/context/snapshots/${encodeURIComponent(snapshotId)}`);
       const result = await response.json().catch(() => null);
-      if (!response.ok || !result || result.ok === false) throw new Error(result && result.error ? result.error : `Request failed with status ${response.status}.`);
+      if (!response.ok || !result || result.ok === false) throw new Error(response.status === 401 ? authMessage() : (result && result.error ? result.error : `Request failed with status ${response.status}.`));
       renderSnapshot(result.snapshot);
       return;
     }
     const params = new URLSearchParams(location.search);
     const projectName = params.get('projectName') || 'Project update test';
-    const response = await fetch(`/api/project-update-test/context?projectName=${encodeURIComponent(projectName)}&limit=8`);
+    const projectId = params.get('projectId') || '';
+    const response = await authedFetch(`/api/project-update-test/context?projectName=${encodeURIComponent(projectName)}${projectId ? `&projectId=${encodeURIComponent(projectId)}` : ''}&limit=8`);
     const result = await response.json().catch(() => null);
-    if (!response.ok || !result || result.ok === false) throw new Error(result && result.error ? result.error : `Request failed with status ${response.status}.`);
+    if (!response.ok || !result || result.ok === false) throw new Error(response.status === 401 ? authMessage() : (result && result.error ? result.error : `Request failed with status ${response.status}.`));
     renderContext(result.context);
   }
 

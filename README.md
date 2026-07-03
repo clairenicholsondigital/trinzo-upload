@@ -7,6 +7,7 @@ Create a `.env` file using existing pattern:
 - `DIRECTLINE_SECRET` (required, Copilot Studio Direct Line secret)
 - `POWER_AUTOMATE_WEBHOOK_URL` (required for finalisation step; HTTP trigger URL from your Power Automate flow)
 - `DATABASE_URL` (optional; Postgres connection string) or `PGHOST`/`PGPORT`/`PGDATABASE`/`PGUSER`/`PGPASSWORD`
+- `PGPOOL_MAX` (optional, default `5`) and `PGCONNECT_TIMEOUT_MS` (optional, default `5000`) for the pooled Postgres client used by persistence and migrations.
 - `GOOGLE_AI_STUDIO_API_KEY` (optional for `/meeting-minutes-final`; enables the Google AI Studio/Gemini writing pass)
 - `GOOGLE_AI_STUDIO_MODEL` (optional, default `gemini-2.5-flash`)
 
@@ -37,6 +38,16 @@ Regression coverage should use varied transcript fixtures rather than only the w
 The fixed `/meeting-minutes-final` golden evaluation pack lives in `scripts/meeting-minutes-final-golden/`.
 Use `python3 scripts/run_meeting_minutes_final_golden_eval.py --dry-run` for fixture/scoring validation, run the same command without `--dry-run` when the local MiniLM runtime is installed, or add `--base-url https://trinzo.virtual-hub.online` to score the deployed API.
 The pack contains 20 representative cases tagged by meeting type and behaviour, and the runner reports coverage counts in dry-run, local extractor, live API, and JSON modes. It includes universal checklist checks for clean titles/participants, no conversational or first-person leakage, real concise actions, separated deadlines, no emojis/timecodes, and British English spelling.
+
+## Project update test robustness
+
+`/project-update-test` keeps upload and read endpoints open while the page is still a test workflow. Destructive/admin API endpoints require the existing `auth_session` cookie via `requireAuth`; the admin pages use same-origin credentials and show a login prompt on `401`.
+
+Use `projectId` wherever possible. The upload endpoint, report/milestone lists, and context endpoints accept `projectId` as body/query input; this bypasses the older project-name heuristic. The upload page includes a project picker backed by `GET /api/project-update-test/projects` and persists the selected project in `localStorage`.
+
+Stored project context is covered by a shared contract fixture at `tests/fixtures/project_context_contract.json`. Python tests assert the context still drives trend comparison and carried-forward milestone rows; Node tests assert the producer/route boundary still exposes deterministic project-resolution fields.
+
+Project-update persistence now uses the pooled `pg` client rather than spawning `psql`. `runPsql` remains as a compatibility wrapper for existing functions and the SQL migration runner, but it no longer shells out to the `psql` binary.
 
 ## Power Automate requirement
 The finalisation endpoint posts approved meeting minutes JSON directly to `POWER_AUTOMATE_WEBHOOK_URL` (HTTP trigger flow).

@@ -1,0 +1,159 @@
+{
+  "projectId": 101,
+  "projectName": "Project update test",
+  "clientName": "Trinzo",
+  "description": "Canonical contract fixture for project-update context.",
+  "status": "active",
+  "found": true,
+  "projectResolution": {
+    "matchedBy": "id",
+    "candidates": 1,
+    "projectId": 101,
+    "ambiguous": false,
+    "candidateProjectIds": [101]
+  },
+  "activeMilestones": [
+    {
+      "milestoneId": 201,
+      "milestoneName": "Data migration phase 1",
+      "comparisonKey": "data_migration_phase_1",
+      "category": "Delivery",
+      "description": "Migrate the first data set.",
+      "baselineFinishDate": "2026-06-30",
+      "forecastFinishDate": "2026-07-05",
+      "isOfficial": true,
+      "officialLabel": "Official baseline",
+      "officialAt": "2026-06-01T09:00:00Z",
+      "latestAssessment": {
+        "assessmentId": 301,
+        "reportVersionId": 401,
+        "reportId": 501,
+        "status": "blocked",
+        "trend": "deteriorating",
+        "confidence": 0.82,
+        "summary": "Migration is blocked by missing ownership.",
+        "forecastFinishDate": "2026-07-05",
+        "createdAt": "2026-06-20T10:00:00Z"
+      },
+      "previousAssessment": {
+        "assessmentId": 300,
+        "reportVersionId": 400,
+        "reportId": 500,
+        "status": "on_track",
+        "trend": "stable",
+        "confidence": 0.78,
+        "summary": "Migration was on track.",
+        "forecastFinishDate": "2026-06-30",
+        "createdAt": "2026-06-10T10:00:00Z"
+      }
+    },
+    {
+      "milestoneId": 202,
+      "milestoneName": "Training plan",
+      "comparisonKey": "training_plan",
+      "category": "Adoption",
+      "description": "Prepare the training plan.",
+      "baselineFinishDate": "2026-07-15",
+      "forecastFinishDate": "2026-07-15",
+      "isOfficial": true,
+      "officialLabel": "Official baseline",
+      "officialAt": "2026-06-01T09:00:00Z",
+      "latestAssessment": {
+        "assessmentId": 302,
+        "reportVersionId": 401,
+        "reportId": 501,
+        "status": "on_track",
+        "trend": "stable",
+        "confidence": 0.7,
+        "summary": "Training remains on track.",
+        "forecastFinishDate": "2026-07-15",
+        "createdAt": "2026-06-20T10:00:00Z"
+      },
+      "previousAssessment": null
+    }
+  ],
+  "activeRisks": [
+    {
+      "riskId": 601,
+      "projectId": 101,
+      "category": "Delivery",
+      "riskTitle": "Ownership gap risk",
+      "description": "Missing ownership could delay migration.",
+      "mitigation": "Assign a single owner.",
+      "isOfficial": true,
+      "officialLabel": "Official baseline",
+      "officialAt": "2026-06-01T09:00:00Z",
+      "createdAt": "2026-06-01T09:00:00Z"
+    }
+  ],
+  "recentReports": [
+    {
+      "reportId": 501,
+      "reportVersionId": 401,
+      "versionNumber": 1,
+      "periodLabel": "Q2 2026",
+      "fileName": "project-update.txt",
+      "reportStatus": "approved",
+      "createdAt": "2026-06-20T10:00:00Z",
+      "updatedAt": "2026-06-20T10:00:00Z",
+      "versionCreatedAt": "2026-06-20T10:00:00Z",
+      "overallHealth": "Amber",
+      "overallHealthRag": "amber",
+      "summary": "Migration needs ownership attention.",
+      "comparisonSnapshot": {}
+    }
+  ],
+  "healthHistory": [
+    {
+      "area": "schedule",
+      "status": "at_risk",
+      "trend": "deteriorating",
+      "confidence": 0.8,
+      "rationale": "Migration ownership is unresolved.",
+      "reportVersionId": 401,
+      "reportId": 501,
+      "createdAt": "2026-06-20T10:00:00Z"
+    }
+  ],
+  "milestoneHistory": [
+    {
+      "milestoneId": 201,
+      "milestoneName": "Data migration phase 1",
+      "comparisonKey": "data_migration_phase_1",
+      "status": "blocked",
+      "trend": "deteriorating",
+      "confidence": 0.82,
+      "summary": "Migration is blocked by missing ownership.",
+      "forecastFinishDate": "2026-07-05",
+      "reportVersionId": 401,
+      "reportId": 501,
+      "createdAt": "2026-06-20T10:00:00Z"
+    }
+  ],
+  "riskSuggestions": [
+    {
+      "riskSuggestionId": 701,
+      "riskTitle": "Ownership gap risk",
+      "description": "Migration ownership is unclear.",
+      "suggestedMitigation": "Assign a single accountable owner.",
+      "confidence": 0.76,
+      "reviewStatus": "pending",
+      "reportVersionId": 401,
+      "reportId": 501,
+      "createdAt": "2026-06-20T10:00:00Z"
+    }
+  ],
+  "latestSnapshot": {
+    "snapshotId": 801,
+    "sourceReportVersionId": 401,
+    "snapshotType": "manual",
+    "isOfficial": true,
+    "officialLabel": "Official baseline",
+    "officialAt": "2026-06-20T10:00:00Z",
+    "summary": "Official baseline snapshot",
+    "createdBy": "OpenClaw",
+    "createdAt": "2026-06-20T10:00:00Z",
+    "contextPayload": {}
+  },
+  "generatedAt": "2026-07-03T14:40:00Z"
+}

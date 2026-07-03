@@ -11,6 +11,13 @@ function buildTranscriptTestPage(config) {
     <section class="panel">
       <h1>${config.title}</h1>
       <p class="intro">${config.intro}</p>
+      ${config.projectReportUi ? `
+      <div class="field">
+        <label for="projectPicker">Project context</label>
+        <select id="projectPicker"><option value="">Loading projects…</option></select>
+        <small>Choose an explicit project so stored context and report saves do not rely on name matching.</small>
+      </div>
+      ` : ''}
       <div class="field">
         <label for="transcriptFile">Transcript file</label>
         <input id="transcriptFile" type="file" accept=".txt,.docx,.csv,text/plain,text/csv,application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
@@ -69,6 +76,7 @@ function buildTranscriptTestPage(config) {
 
   const fileInput = document.getElementById('transcriptFile');
   const textInput = document.getElementById('transcriptText');
+  const projectPicker = document.getElementById('projectPicker');
   const goBtn = document.getElementById('goBtn');
   const clearBtn = document.getElementById('clearBtn');
   const copyBtn = document.getElementById('copyBtn');
@@ -764,13 +772,15 @@ function buildTranscriptTestPage(config) {
     debugPanel.classList.add('hidden');
 
     try {
-      const options = { method: 'POST' };
+      const options = { method: 'POST', credentials: 'same-origin' };
+      const projectPayload = selectedProjectPayload();
       if (pastedText) {
         options.headers = { 'Content-Type': 'application/json' };
-        options.body = JSON.stringify({ text: pastedText });
+        options.body = JSON.stringify({ text: pastedText, ...projectPayload });
       } else {
         const formData = new FormData();
         formData.append('file', file);
+        if (projectPayload.projectId) formData.append('projectId', String(projectPayload.projectId));
         options.body = formData;
       }
 
@@ -834,6 +844,10 @@ function buildTranscriptTestPage(config) {
   goBtn.addEventListener('click', submitTranscript);
   clearBtn.addEventListener('click', confirmResetPage);
   textInput.addEventListener('input', queueProjectAutosave);
+  if (projectPicker) projectPicker.addEventListener('change', () => {
+    if (projectPicker.value) localStorage.setItem(PROJECT_SELECTION_KEY, projectPicker.value);
+    else localStorage.removeItem(PROJECT_SELECTION_KEY);
+  });
   copyBtn.addEventListener('click', copyJson);
   downloadProjectReportPdfBtn.addEventListener('click', () => {
     refreshProjectReportState();
@@ -852,6 +866,7 @@ function buildTranscriptTestPage(config) {
     window.open(`/project-update-test/reports/${encodeURIComponent(reportId)}`, '_blank', 'noopener');
   });
   restoreProjectAutosave();
+  loadProjectPicker();
 }
 
 function listValue(value) {
@@ -1272,6 +1287,33 @@ function buildTranscriptMinilmOnlyPage(config) {
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
+  }
+
+  const PROJECT_SELECTION_KEY = 'trinzoProjectUpdateSelectedProjectId';
+
+  async function loadProjectPicker() {
+    if (!projectPicker) return;
+    try {
+      const response = await fetch('/api/project-update-test/projects', { credentials: 'same-origin' });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload || payload.ok === false) throw new Error(payload?.error || 'Could not load projects.');
+      const selected = localStorage.getItem(PROJECT_SELECTION_KEY) || '';
+      const projects = Array.isArray(payload.projects) ? payload.projects : [];
+      projectPicker.innerHTML = [
+        '<option value="">Project update test / default</option>',
+        ...projects.map((project) => `<option value="${escapeHtml(project.projectId)}">${escapeHtml(project.projectName || `Project ${project.projectId}`)} (${project.reportCount || 0} reports, ${project.activeMilestoneCount || 0} milestones)</option>`)
+      ].join('');
+      if (selected && projects.some((project) => String(project.projectId) === selected)) projectPicker.value = selected;
+    } catch (error) {
+      projectPicker.innerHTML = '<option value="">Project update test / default</option>';
+      setMessage(`Project list unavailable; uploads will use the default project name. ${error.message || ''}`.trim(), 'error');
+    }
+  }
+
+  function selectedProjectPayload() {
+    if (!projectPicker || !projectPicker.value) return {};
+    localStorage.setItem(PROJECT_SELECTION_KEY, projectPicker.value);
+    return { projectId: Number(projectPicker.value) };
   }
 
   function nearestElement(node) {

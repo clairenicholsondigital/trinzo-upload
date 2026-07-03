@@ -1,4 +1,23 @@
-const { execFile } = require('node:child_process');
+const { Pool } = require('pg');
+
+let pgPool = null;
+
+function getPgPool() {
+  if (!pgPool) {
+    pgPool = new Pool({
+      connectionString: process.env.DATABASE_URL || undefined,
+      host: process.env.DATABASE_URL ? undefined : process.env.PGHOST,
+      port: process.env.DATABASE_URL ? undefined : Number(process.env.PGPORT || 5432),
+      database: process.env.DATABASE_URL ? undefined : process.env.PGDATABASE,
+      user: process.env.DATABASE_URL ? undefined : process.env.PGUSER,
+      password: process.env.DATABASE_URL ? undefined : process.env.PGPASSWORD,
+      max: Number(process.env.PGPOOL_MAX || 5),
+      connectionTimeoutMillis: Number(process.env.PGCONNECT_TIMEOUT_MS || 5000),
+      idleTimeoutMillis: Number(process.env.PGIDLE_TIMEOUT_MS || 30000)
+    });
+  }
+  return pgPool;
+}
 
 function hasDatabaseConfig() {
   return Boolean(
@@ -11,25 +30,28 @@ function getDatabaseConfigError() {
   return 'Database configuration missing. Set DATABASE_URL or PGHOST, PGPORT, PGDATABASE, PGUSER, and PGPASSWORD.';
 }
 
-function runPsql(sql) {
-  return new Promise((resolve, reject) => {
-    if (!hasDatabaseConfig()) {
-      reject(new Error(getDatabaseConfigError()));
-      return;
-    }
+async function query(sql, params = []) {
+  if (!hasDatabaseConfig()) {
+    throw new Error(getDatabaseConfigError());
+  }
+  return getPgPool().query(sql, params);
+}
 
-    const args = process.env.DATABASE_URL
-      ? [process.env.DATABASE_URL, '-At', '-F', '|', '-c', sql]
-      : ['-d', process.env.PGDATABASE || 'postgres', '-At', '-F', '|', '-c', sql];
+function formatPgValue(value) {
+  if (value == null) return '';
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+}
 
-    execFile('psql', args, { env: process.env }, (error, stdout, stderr) => {
-      if (error) {
-        reject(new Error((stderr || error.message).trim()));
-        return;
-      }
-      resolve((stdout || '').trim());
-    });
-  });
+async function runPsql(sql) {
+  const result = await query(sql);
+  const results = Array.isArray(result) ? result : [result];
+  return results
+    .flatMap((item) => item.rows || [])
+    .map((row) => Object.values(row).map(formatPgValue).join('|'))
+    .join('\n')
+    .trim();
 }
 
 async function testConnection() {
@@ -58,8 +80,10 @@ function parseOptionalId(out) {
   return Number.isFinite(id) && id > 0 ? id : null;
 }
 
-async function listProjectReports(limit = 50) {
+async function listProjectReports(limit = 50, filters = {}) {
   const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 100);
+  const projectId = Number(filters.projectId || 0);
+  const projectFilter = Number.isFinite(projectId) && projectId > 0 ? `WHERE r.project_id = ${projectId}` : '';
   const out = await runPsql(`
 SELECT json_build_object(
   'reportId', r.id,
@@ -86,6 +110,7 @@ LEFT JOIN LATERAL (
   ORDER BY version_number DESC, id DESC
   LIMIT 1
 ) v ON TRUE
+${projectFilter}
 ORDER BY r.created_at DESC, r.id DESC
 LIMIT ${safeLimit};`);
   return parseJsonLines(out);
@@ -262,8 +287,10 @@ SELECT json_build_object(
   return parseJsonLines(out)[0] || { requestedIds: ids, deletedCount: 0, reports: [] };
 }
 
-async function listProjectMilestones(limit = 100) {
+async function listProjectMilestones(limit = 100, filters = {}) {
   const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 250);
+  const projectId = Number(filters.projectId || 0);
+  const projectFilter = Number.isFinite(projectId) && projectId > 0 ? `AND m.project_id = ${projectId}` : '';
   const out = await runPsql(`
 SELECT json_build_object(
   'milestoneId', m.id,
@@ -303,6 +330,7 @@ LEFT JOIN LATERAL (
   LIMIT 1
 ) latest ON TRUE
 WHERE m.is_active = TRUE
+${projectFilter}
 ORDER BY p.project_name, rp.start_date DESC NULLS LAST, m.sort_order, m.id
 LIMIT ${safeLimit};`);
   return parseJsonLines(out);
@@ -565,26 +593,42 @@ function truthy(value) {
   return ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase());
 }
 
-async function getProjectIdForContext(name) {
-  return parseOptionalId(await runPsql(`
-SELECT p.id::text
-FROM projects p
-WHERE p.project_name = ${q(name)}
-ORDER BY
-  (SELECT COUNT(*) FROM project_core_milestones m WHERE m.project_id = p.id AND m.is_active = TRUE) DESC,
-  (SELECT COUNT(*) FROM project_core_risks r WHERE r.project_id = p.id AND r.is_active = TRUE) DESC,
-  (SELECT COUNT(*) FROM project_reports pr WHERE pr.project_id = p.id) DESC,
-  p.updated_at DESC NULLS LAST,
-  p.created_at DESC NULLS LAST,
-  p.id
-LIMIT 1;`));
+function normaliseProjectRef(projectRef = '') {
+  if (projectRef && typeof projectRef === 'object') {
+    return {
+      projectId: Number(projectRef.projectId || 0),
+      projectName: String(projectRef.projectName || projectRef.name || '').trim()
+    };
+  }
+  return { projectId: 0, projectName: String(projectRef || '').trim() };
 }
 
-async function getProjectContext(projectName = '', limit = 5) {
-  const safeLimit = Math.min(Math.max(Number(limit) || 5, 1), 20);
-  const name = String(projectName || process.env.PROJECT_UPDATE_DEFAULT_PROJECT || 'Project update test').trim() || 'Project update test';
-  const selectedProjectId = await getProjectIdForContext(name);
-  const projectOut = await runPsql(`
+async function listProjectOptions(limit = 100) {
+  const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 500);
+  const out = await runPsql(`
+SELECT json_build_object(
+  'projectId', p.id,
+  'projectName', p.project_name,
+  'status', p.status,
+  'updatedAt', p.updated_at,
+  'createdAt', p.created_at,
+  'activeMilestoneCount', (SELECT COUNT(*) FROM project_core_milestones m WHERE m.project_id = p.id AND m.is_active = TRUE),
+  'activeRiskCount', (SELECT COUNT(*) FROM project_core_risks r WHERE r.project_id = p.id AND r.is_active = TRUE),
+  'reportCount', (SELECT COUNT(*) FROM project_reports pr WHERE pr.project_id = p.id)
+)::text
+FROM projects p
+ORDER BY p.updated_at DESC NULLS LAST, p.created_at DESC NULLS LAST, p.project_name, p.id
+LIMIT ${safeLimit};`);
+  return parseJsonLines(out);
+}
+
+async function resolveProjectForContext(projectRef = '') {
+  const ref = normaliseProjectRef(projectRef);
+  const fallbackName = process.env.PROJECT_UPDATE_DEFAULT_PROJECT || 'Project update test';
+  const name = ref.projectName || fallbackName;
+
+  if (Number.isFinite(ref.projectId) && ref.projectId > 0) {
+    const project = parseJsonLines(await runPsql(`
 SELECT json_build_object(
   'projectId', id,
   'projectName', project_name,
@@ -595,13 +639,64 @@ SELECT json_build_object(
   'updatedAt', updated_at
 )::text
 FROM projects
-WHERE id = ${selectedProjectId || 'NULL'}
-LIMIT 1;`);
-  const project = parseJsonLines(projectOut)[0] || null;
+WHERE id = ${Number(ref.projectId)}
+LIMIT 1;`))[0] || null;
+    return {
+      project,
+      projectName: project?.projectName || name,
+      projectResolution: { matchedBy: project ? 'id' : 'id_not_found', candidates: project ? 1 : 0, projectId: project?.projectId || ref.projectId }
+    };
+  }
+
+  const candidates = parseJsonLines(await runPsql(`
+SELECT json_build_object(
+  'projectId', p.id,
+  'projectName', p.project_name,
+  'clientName', COALESCE(p.client_name, ''),
+  'description', COALESCE(p.description, ''),
+  'status', p.status,
+  'createdAt', p.created_at,
+  'updatedAt', p.updated_at,
+  'activeMilestoneCount', (SELECT COUNT(*) FROM project_core_milestones m WHERE m.project_id = p.id AND m.is_active = TRUE),
+  'activeRiskCount', (SELECT COUNT(*) FROM project_core_risks r WHERE r.project_id = p.id AND r.is_active = TRUE),
+  'reportCount', (SELECT COUNT(*) FROM project_reports pr WHERE pr.project_id = p.id)
+)::text
+FROM projects p
+WHERE p.project_name = ${q(name)}
+ORDER BY
+  (SELECT COUNT(*) FROM project_core_milestones m WHERE m.project_id = p.id AND m.is_active = TRUE) DESC,
+  (SELECT COUNT(*) FROM project_core_risks r WHERE r.project_id = p.id AND r.is_active = TRUE) DESC,
+  (SELECT COUNT(*) FROM project_reports pr WHERE pr.project_id = p.id) DESC,
+  p.updated_at DESC NULLS LAST,
+  p.created_at DESC NULLS LAST,
+  p.id;`));
+  const project = candidates[0] || null;
+  return {
+    project,
+    projectName: name,
+    projectResolution: {
+      matchedBy: project ? 'name' : 'none',
+      candidates: candidates.length,
+      projectId: project?.projectId || null,
+      ambiguous: candidates.length > 1,
+      candidateProjectIds: candidates.slice(0, 10).map((item) => item.projectId)
+    }
+  };
+}
+
+async function getProjectIdForContext(projectRef) {
+  const resolved = await resolveProjectForContext(projectRef);
+  return Number(resolved.project?.projectId || 0) || null;
+}
+
+async function getProjectContext(projectName = '', limit = 5) {
+  const safeLimit = Math.min(Math.max(Number(limit) || 5, 1), 20);
+  const { project, projectName: name, projectResolution } = await resolveProjectForContext(projectName);
   if (!project) {
     return {
       projectName: name,
       found: false,
+      projectResolution,
       activeMilestones: [],
       recentReports: [],
       activeRisks: [],
@@ -802,6 +897,7 @@ LIMIT 1;`))[0] || null;
   return {
     ...project,
     found: true,
+    projectResolution,
     activeMilestones,
     activeRisks,
     recentReports,
@@ -1319,7 +1415,7 @@ function clampConfidence(value, fallback = 0.5) {
   return Math.max(0, Math.min(1, number));
 }
 
-async function saveProjectUpdateDraft({ projectName, periodLabel, fileName, sourceType, transcriptText, result }) {
+async function saveProjectUpdateDraft({ projectId: requestedProjectId, projectName, periodLabel, fileName, sourceType, transcriptText, result }) {
   const report = result?.projectReport || {};
   const segments = Array.isArray(result?.segments) ? result.segments : [];
   const reportMilestones = Array.isArray(report?.milestones) ? report.milestones : [];
@@ -1329,6 +1425,12 @@ async function saveProjectUpdateDraft({ projectName, periodLabel, fileName, sour
   const label = periodLabel || currentQuarterLabel();
   const source = ['text', 'docx', 'txt', 'csv'].includes(sourceType) ? sourceType : 'text';
   const transcript = transcriptText || '';
+  const maxPersistedTranscriptChars = Number(process.env.PROJECT_UPDATE_MAX_PERSISTED_TRANSCRIPT_CHARS || 2 * 1024 * 1024);
+  if (transcript.length > maxPersistedTranscriptChars) {
+    const error = new Error(`Transcript is too large to persist. Maximum persisted text length is ${maxPersistedTranscriptChars} characters.`);
+    error.statusCode = 413;
+    throw error;
+  }
   const transcriptSha = require('crypto').createHash('sha256').update(transcript, 'utf8').digest('hex');
 
   const healthValues = ['scope', 'schedule', 'financial', 'resources', 'other_issue_risk'].map((area) => {
@@ -1366,9 +1468,20 @@ async function saveProjectUpdateDraft({ projectName, periodLabel, fileName, sour
       || {};
   };
 
-  let projectId = parseOptionalId(
-    await runPsql(`SELECT id::text FROM projects WHERE project_name = ${q(name)} ORDER BY id LIMIT 1;`),
-  );
+  let projectId = Number(requestedProjectId || 0);
+  if (Number.isFinite(projectId) && projectId > 0) {
+    const existingById = parseOptionalId(await runPsql(`SELECT id::text FROM projects WHERE id = ${projectId} LIMIT 1;`));
+    if (!existingById) {
+      const error = new Error('Selected project was not found.');
+      error.statusCode = 404;
+      throw error;
+    }
+    projectId = existingById;
+  } else {
+    projectId = parseOptionalId(
+      await runPsql(`SELECT id::text FROM projects WHERE project_name = ${q(name)} ORDER BY id LIMIT 1;`),
+    );
+  }
   if (!projectId) {
     projectId = parseId(
       await runPsql(`INSERT INTO projects (project_name, description, status, updated_at)
@@ -1392,6 +1505,37 @@ async function saveProjectUpdateDraft({ projectName, periodLabel, fileName, sour
         RETURNING id::text;`),
       'reporting period'
     );
+  }
+
+  const duplicateSource = parseJsonLines(await runPsql(`
+SELECT json_build_object(
+  'reportId', r.id,
+  'reportVersionId', v.id,
+  'transcriptSha256', s.transcript_sha256
+)::text
+FROM project_report_sources s
+JOIN project_reports r ON r.id = s.report_id
+LEFT JOIN LATERAL (
+  SELECT id FROM project_report_versions WHERE report_id = r.id ORDER BY version_number DESC, id DESC LIMIT 1
+) v ON TRUE
+WHERE r.project_id = ${projectId}
+  AND r.reporting_period_id = ${reportingPeriodId}
+  AND s.transcript_sha256 = ${q(transcriptSha)}
+  AND r.report_status <> 'archived'
+ORDER BY s.id DESC
+LIMIT 1;`))[0] || null;
+  if (duplicateSource) {
+    return {
+      saved: false,
+      reason: 'duplicate transcript already saved for this project and period',
+      duplicate: true,
+      projectId,
+      reportingPeriodId,
+      reportId: duplicateSource.reportId,
+      reportVersionId: duplicateSource.reportVersionId,
+      periodLabel: label,
+      transcriptSha256: transcriptSha
+    };
   }
 
   const reportId = parseId(
@@ -1483,9 +1627,10 @@ LIMIT 1;`);
 
 
 async function markProjectContextOfficial(projectName = '', label = '') {
-  const name = String(projectName || process.env.PROJECT_UPDATE_DEFAULT_PROJECT || 'Project update test').trim() || 'Project update test';
+  const ref = normaliseProjectRef(projectName);
+  const name = ref.projectName || process.env.PROJECT_UPDATE_DEFAULT_PROJECT || 'Project update test';
   const officialLabel = String(label || 'Official baseline').trim() || 'Official baseline';
-  const projectId = await getProjectIdForContext(name);
+  const projectId = await getProjectIdForContext(ref.projectId ? ref : name);
   if (!projectId) {
     const error = new Error('Project not found.');
     error.statusCode = 404;
@@ -1509,7 +1654,7 @@ SET is_official = TRUE,
 WHERE project_id = ${projectId} AND is_active = TRUE
 RETURNING id::text;`);
 
-  const snapshot = await createProjectContextSnapshot(name, {
+  const snapshot = await createProjectContextSnapshot(ref.projectId ? { projectId, projectName: name } : name, {
     snapshotType: 'manual',
     summary: `${officialLabel} official context snapshot`,
     createdBy: 'OpenClaw',
@@ -1524,15 +1669,16 @@ RETURNING id::text;`);
     officialMilestones: milestoneOut.split('\n').filter((line) => /^\d+$/.test(line)).length,
     officialRisks: riskOut.split('\n').filter((line) => /^\d+$/.test(line)).length,
     officialSnapshotId: snapshot?.snapshotId || null,
-    context: await getProjectContext(name, 5)
+    context: await getProjectContext(ref.projectId ? { projectId, projectName: name } : name, 5)
   };
 }
 
 async function cleanupProjectUpdateTestContext(projectName = '', options = {}) {
-  const name = String(projectName || process.env.PROJECT_UPDATE_DEFAULT_PROJECT || 'Project update test').trim() || 'Project update test';
+  const ref = normaliseProjectRef(projectName);
+  const name = ref.projectName || process.env.PROJECT_UPDATE_DEFAULT_PROJECT || 'Project update test';
   const deleteNonOfficialSnapshots = options.deleteNonOfficialSnapshots !== false;
   const archiveReports = options.archiveReports !== false;
-  const projectId = await getProjectIdForContext(name);
+  const projectId = await getProjectIdForContext(ref.projectId ? ref : name);
   if (!projectId) {
     const error = new Error('Project not found.');
     error.statusCode = 404;
@@ -1580,7 +1726,7 @@ RETURNING id::text;`);
     deactivatedRisks: riskOut.split('\n').filter((line) => /^\d+$/.test(line)).length,
     archivedReports: reportOut.split('\n').filter((line) => /^\d+$/.test(line)).length,
     deletedSnapshots: snapshotOut.split('\n').filter((line) => /^\d+$/.test(line)).length,
-    context: await getProjectContext(name, 5)
+    context: await getProjectContext(ref.projectId ? { projectId, projectName: name } : name, 5)
   };
 }
 
@@ -1654,6 +1800,7 @@ module.exports = {
   updateMeetingMinutesFeedback,
   deleteMeetingMinutesFeedback,
   saveProjectUpdateDraft,
+  listProjectOptions,
   listProjectReports,
   getProjectReportDetail,
   saveProjectReportDetail,
@@ -1679,6 +1826,7 @@ module.exports = {
   markWebhookFailure,
   hasDatabaseConfig,
   getDatabaseConfigError,
+  query,
   runPsql,
   createAuthUser,
   findAuthUserByEmail,
