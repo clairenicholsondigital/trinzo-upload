@@ -639,7 +639,11 @@ router.post('/meeting-minutes-final', withTestUpload(async (req, res) => {
   try {
     const transcript = await readTestTranscript(req);
     validateTranscriptText(transcript.text);
-    const scriptArgs = ['--skip-rewrite'];
+    const scriptArgs = [];
+
+    if (truthyFlag(req.query?.skipRewrite) || truthyFlag(req.body?.skipRewrite)) {
+      scriptArgs.push('--skip-rewrite');
+    }
 
     if (truthyFlag(req.query?.includeBaselineReference) || truthyFlag(req.body?.includeBaselineReference)) {
       scriptArgs.push('--include-baseline-reference');

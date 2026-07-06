@@ -204,7 +204,16 @@ def main() -> int:
 
     rewrite_start = time.perf_counter()
     evidence_pack = build_google_minutes_evidence_pack(result.get("sections", {}), fallback_output)
-    google_output, google_diagnostics = generate_minutes_with_google_ai_studio(evidence_pack, fallback_output)
+    if args.skip_rewrite:
+        google_output, google_diagnostics = None, {
+            "provider": "google_ai_studio",
+            "model": None,
+            "available": False,
+            "used": False,
+            "error": "Skipped via --skip-rewrite.",
+        }
+    else:
+        google_output, google_diagnostics = generate_minutes_with_google_ai_studio(evidence_pack, fallback_output)
     rewrite_runtime_ms = round((time.perf_counter() - rewrite_start) * 1000, 2)
 
     output = apply_british_english_to_payload(google_output or fallback_output)

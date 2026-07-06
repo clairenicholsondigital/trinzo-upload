@@ -2017,6 +2017,35 @@ def _normalise_action_text(text: str) -> str:
     return text
 
 
+_NAME_TOKEN_RE = re.compile(r"[A-Z][a-zA-Z'-]+")
+_NON_NAME_CAPITALISED_WORDS = {
+    "i", "the", "and", "but", "so", "well", "ok", "okay", "yes", "no", "if",
+    "when", "because", "then", "also", "actually", "basically", "right",
+    "great", "perfect", "sure", "thanks", "please", "now", "here", "there",
+    "this", "that", "these", "those", "monday", "tuesday", "wednesday",
+    "thursday", "friday", "saturday", "sunday", "january", "february",
+    "march", "april", "may", "june", "july", "august", "september",
+    "october", "november", "december", "team", "all",
+}
+
+
+def _sentence_subject_names(text: str) -> list[str]:
+    """Capitalised words in the sentence that plausibly name a person.
+
+    Used instead of a fixed list of known speakers so action-commitment
+    detection below generalises to any attendee in any transcript, not just
+    the names it happened to be tuned against.
+    """
+
+    names = []
+    for match in _NAME_TOKEN_RE.finditer(text):
+        word = match.group(0)
+        if word.lower() in _NON_NAME_CAPITALISED_WORDS:
+            continue
+        names.append(word.lower())
+    return names
+
+
 def _is_useful_generic_action(text: str) -> bool:
     lowered = text.lower()
     action_start = re.match(r"^(?:patch|notify|replay|review|confirm|draft|follow up|validate|send|share|update|publish|rerun|call|prepare|pull|request|rewrite|schedule|reschedule|split|separate|monitor|set up|add|remove|reduce|refine|simplify|incorporate|redline|practice|practise|reproduce|capture|tighten|circulate|handle|investigate|verify|work out|figure out|keep)\b", lowered)
@@ -2096,9 +2125,13 @@ def _is_useful_generic_action(text: str) -> bool:
         return False
     if re.search(r"\b(?:could|might|may)\s+(?:keep|include|defer|delay|start|use|go with|proceed)\b", lowered):
         return False
+    subjects = dict.fromkeys(
+        ["i", "we", "you", "he", "she", "they", "team", "somebody", "someone", *_sentence_subject_names(text)]
+    )
+    subject_pattern = "|".join(re.escape(name) for name in subjects)
     return bool(
         re.search(
-            r"\b(i|we|you|he|she|they|team|somebody|someone|jack|ciara|conor|colm|orla|jacqui|andrew|rebecca|david|kevin|mark|mike|sarah|lewis|priya)\s+(?:can|will|should|need|needs|have to|has to|going to|want to|could)\b",
+            rf"\b({subject_pattern})\s+(?:can|will|should|need|needs|have to|has to|going to|want to|could)\b",
             lowered,
         )
         or re.search(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\s+to\s+\w+", text)

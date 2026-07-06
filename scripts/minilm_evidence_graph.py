@@ -264,6 +264,26 @@ def is_noise(sentence: str) -> bool:
     return len(lowered.split()) <= 2 and all(word in NOISE_WORDS for word in lowered.split())
 
 
+_NAME_TOKEN_RE = re.compile(r"[A-Z][a-zA-Z'-]+")
+
+
+def _sentence_subject_names(sentence: str) -> list[str]:
+    """Capitalised words in the sentence that plausibly name a person.
+
+    Used instead of a fixed list of known speakers so the action-commitment
+    check below generalises to any attendee in any transcript, not just the
+    names it happened to be tuned against.
+    """
+
+    names = []
+    for match in _NAME_TOKEN_RE.finditer(sentence):
+        word = match.group(0)
+        if word.lower() in _NON_SPEAKER_START_WORDS:
+            continue
+        names.append(word.lower())
+    return names
+
+
 def is_actionable(sentence: str, text: str) -> bool:
     if text in {"task", "tasks", "action", "actions", "to do"}:
         return False
@@ -281,10 +301,14 @@ def is_actionable(sentence: str, text: str) -> bool:
     if has_any(text, PROCESS_FLOW_WORDS):
         return False
     # Avoid treating loose conversational mentions such as "get clarity" or
-    # "feel free to elaborate" as concrete actions.
+    # "feel free to elaborate" as concrete actions. The subject can be a
+    # pronoun or any named attendee detected in this sentence, not a fixed
+    # list of names, so this generalises across transcripts/clients.
+    subjects = dict.fromkeys(["i", "we", "you", "they", *_sentence_subject_names(sentence)])
+    subject_pattern = "|".join(re.escape(name) for name in subjects)
     return bool(
         re.search(
-            r"\b(i|we|you|they|orla|jacqui|mark|jenny|colm)\b.{0,40}\b"
+            rf"\b({subject_pattern})\b.{{0,40}}\b"
             r"(send|share|provide|obtain|request|review|update|confirm|prepare|collect|upload|submit|follow up|come back)\b",
             text,
         )
