@@ -639,12 +639,14 @@ router.post('/meeting-minutes-minilm-only', withTestUpload(async (req, res) => {
 }));
 
 router.post('/meeting-minutes-final', requireAuth, withTestUpload(async (req, res) => {
+  const startedAt = Date.now();
   try {
     const transcript = await readTestTranscript(req);
     validateTranscriptText(transcript.text);
     const scriptArgs = [];
+    const skipRewrite = truthyFlag(req.query?.skipRewrite) || truthyFlag(req.body?.skipRewrite);
 
-    if (truthyFlag(req.query?.skipRewrite) || truthyFlag(req.body?.skipRewrite)) {
+    if (skipRewrite) {
       scriptArgs.push('--skip-rewrite');
     }
 
@@ -657,6 +659,20 @@ router.post('/meeting-minutes-final', requireAuth, withTestUpload(async (req, re
     }
 
     const result = await runPythonTranscriptScript('meeting_minutes_final_colab.py', transcript.text, scriptArgs, { timeoutMs: MEETING_MINUTES_FINAL_TIMEOUT_MS });
+
+    console.info(JSON.stringify({
+      event: 'meeting_minutes_final_completed',
+      source: transcript.source,
+      fileName: transcript.fileName || null,
+      transcriptLength: transcript.text.length,
+      skipRewrite,
+      rewriterAvailable: result?.rewriterAvailable ?? null,
+      rewriterUsed: result?.rewriterReason === 'Google AI Studio used.',
+      rewriterReason: result?.rewriterReason ?? null,
+      rewriterTokenUsage: result?.rewriterTokenUsage ?? null,
+      durationMs: Date.now() - startedAt
+    }));
+
     return res.json(buildTestTranscriptResponse(req, transcript, result));
   } catch (error) {
     return sendTestError(res, error);

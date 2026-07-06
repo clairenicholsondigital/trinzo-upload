@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 import urllib.error
 import urllib.request
 from copy import deepcopy
@@ -10,6 +11,10 @@ from typing import Any
 
 DEFAULT_GOOGLE_AI_STUDIO_MODEL = "gemini-2.5-flash"
 GOOGLE_AI_STUDIO_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+# Transient statuses worth one quick retry -- 429 (rate limit) clears fast on
+# its own, and 5xx is usually a momentary backend hiccup. 4xx config errors
+# (401/403/etc) are not retried since a retry can't fix a bad key or model name.
+RETRYABLE_HTTP_STATUSES = {429, 500, 502, 503, 504}
 
 
 def _clean_text(value: Any) -> str:
@@ -328,6 +333,8 @@ def generate_minutes_with_google_ai_studio(
     api_key: str | None = None,
     model: str | None = None,
     timeout_seconds: int = 45,
+    max_retries: int = 1,
+    retry_delay_seconds: float = 3.0,
 ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
     resolved_key = (api_key or os.environ.get("GOOGLE_AI_STUDIO_API_KEY") or os.environ.get("GEMINI_API_KEY") or "").strip()
     resolved_model = (model or os.environ.get("GOOGLE_AI_STUDIO_MODEL") or DEFAULT_GOOGLE_AI_STUDIO_MODEL).strip()
@@ -358,21 +365,28 @@ def generate_minutes_with_google_ai_studio(
         headers={"Content-Type": "application/json", "x-goog-api-key": resolved_key},
         method="POST",
     )
-    try:
-        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
-            response_payload = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        detail = ""
+    attempt = 0
+    while True:
         try:
-            error_payload = json.loads(exc.read().decode("utf-8"))
-            detail = _clean_text(error_payload.get("error", {}).get("message", ""))[:240]
-        except Exception:
+            with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+                response_payload = json.loads(response.read().decode("utf-8"))
+            break
+        except urllib.error.HTTPError as exc:
             detail = ""
-        diagnostics["error"] = f"Google AI Studio HTTP {exc.code}" + (f": {detail}" if detail else "")
-        return None, diagnostics
-    except Exception as exc:
-        diagnostics["error"] = f"Google AI Studio request failed: {exc}"
-        return None, diagnostics
+            try:
+                error_payload = json.loads(exc.read().decode("utf-8"))
+                detail = _clean_text(error_payload.get("error", {}).get("message", ""))[:240]
+            except Exception:
+                detail = ""
+            if exc.code in RETRYABLE_HTTP_STATUSES and attempt < max_retries:
+                attempt += 1
+                time.sleep(retry_delay_seconds)
+                continue
+            diagnostics["error"] = f"Google AI Studio HTTP {exc.code}" + (f": {detail}" if detail else "")
+            return None, diagnostics
+        except Exception as exc:
+            diagnostics["error"] = f"Google AI Studio request failed: {exc}"
+            return None, diagnostics
 
     text = ""
     candidates = response_payload.get("candidates", [])
@@ -380,6 +394,7 @@ def generate_minutes_with_google_ai_studio(
         parts = candidates[0].get("content", {}).get("parts", [])
         text = "\n".join(str(part.get("text", "")) for part in parts if isinstance(part, dict))
         diagnostics["finishReason"] = candidates[0].get("finishReason", "")
+    diagnostics["usageMetadata"] = response_payload.get("usageMetadata") or {}
     parsed = _extract_json_object(text)
     if not parsed:
         diagnostics["error"] = "Google AI Studio returned no parseable JSON."
