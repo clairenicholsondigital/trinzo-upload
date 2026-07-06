@@ -1443,15 +1443,13 @@ def rewrite_report_summary(report: dict[str, Any], rewriter: LocalMinutesRewrite
     results = rewriter.rewrite_items([{"category": item["category"], "text": item["text"]} for item in rewrite_plan])
     diagnostics["rewriteRuntimeMs"] = round((time.perf_counter() - started) * 1000, 2)
 
-    rewritten = {**report, "keyUpdates": list(report.get("keyUpdates", []))}
+    rewritten = {**report}
     for item, result_item in zip(rewrite_plan, results):
         after = clean_text(result_item.get("rewritten", "")) or item["text"]
         meta = result_item.get("meta", {})
         diagnostics["rewriteEdits"].append({"field": item["field"], "before": item["text"], "after": after, **meta})
         if item["field"] == "summary":
             rewritten["summary"] = after
-        elif item["field"] == "keyUpdates":
-            rewritten["keyUpdates"][item["index"]] = after
     return normalise_report_payload(rewritten), diagnostics
 
 

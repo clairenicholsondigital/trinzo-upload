@@ -10,7 +10,10 @@ const { startProjectKnowledgeEmbedInterval } = require('./utils/knowledge');
 const app = express();
 const PORT = process.env.PORT || 3978;
 
-app.use(express.json({ limit: '25mb' }));
+// 4mb comfortably covers the largest legitimate JSON payload today (a ~2MB-char
+// transcript plus review-data structure); previously 25mb, which let a client
+// buffer a much larger body in memory before any app-level size check ran.
+app.use(express.json({ limit: '4mb' }));
 app.use('/static', express.static(path.join(__dirname, 'public')));
 
 async function sendView(res, fileName) {
@@ -58,7 +61,7 @@ for (const [route, target] of Object.entries(legacyRedirects)) {
   app.get(route, (req, res) => res.redirect(302, target));
 }
 
-app.get('/meeting-minutes-final', (req, res) => {
+app.get('/meeting-minutes-final', authRoutes.requireAuth, (req, res) => {
   sendView(res, 'meeting-minutes-final.html').catch((error) => res.status(404).send(error.message));
 });
 
@@ -70,7 +73,7 @@ app.get('/meeting-minutes-feedback/:feedbackId', authRoutes.requireAuth, (req, r
   sendView(res, 'meeting-minutes-feedback.html').catch((error) => res.status(404).send(error.message));
 });
 
-app.get('/project-update-test', (req, res) => {
+app.get('/project-update-test', authRoutes.requireAuth, (req, res) => {
   sendView(res, 'project-update-test.html').catch((error) => res.status(404).send(error.message));
 });
 

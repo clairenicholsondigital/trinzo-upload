@@ -1,0 +1,100 @@
+{
+  "cases": [
+    {
+      "case_id": "real_001",
+      "case_name": "Messy fresh-context status call, no prior stored context",
+      "source": "realistic_synthetic",
+      "purpose": "Mimics the informal, interruption-heavy phrasing of a real status call (false starts, filler words, cross-talk, a dependency risk raised conversationally rather than as a formal risk statement) for a project with no stored context yet. Verifies the pipeline still produces a sane baseline report and never fabricates retrieval evidence when none exists.",
+      "transcript": "Dev: OK so, sorry, can everyone hear me? Great. Right, let's do a quick run through, I know we're all a bit pressed for time today.\nSana: Yeah go ahead, go ahead.\nDev: So on the server migration, the -- sorry, the lift-and-shift piece, that's basically done, we cut over the staging environment last Tuesday and it's held up fine since.\nSana: Nice one. And production?\nDev: Production is, um, it's scheduled, we're targeting the weekend of the 14th, but I want to flag, the network team still haven't confirmed the firewall rule changes, so that could push us back a week if it doesn't land in time.\nSana: Right. So that's a dependency risk then really.\nDev: Yeah I'd call it a risk, honestly. It's not blocked yet but if we don't hear from them by Friday we're stuck.\nSana: OK, noted. What about the database replication testing?\nDev: That one's actually gone really well, we ran the failover drill twice this week, both times it recovered inside the target window, so I'm happy calling that complete.\nSana: Great, good to hear something's straightforward.\nDev: Ha, yeah. One more thing, the cost report the client asked for, I haven't started that yet, I've been heads down on the migration, I'll try get to it next week.\nSana: OK, let's keep an eye on that one, don't want it slipping too far.",
+      "context": {
+        "found": false,
+        "projectId": 501,
+        "projectName": "Acme Cloud Migration",
+        "activeMilestones": [],
+        "activeRisks": [],
+        "riskSuggestions": [],
+        "healthHistory": [],
+        "recentReports": [],
+        "milestoneHistory": [],
+        "latestSnapshot": null,
+        "generatedAt": "2026-07-01T09:00:00Z",
+        "retrievedKnowledge": { "retrievalMode": "none", "chunks": [] }
+      },
+      "expected": {
+        "overallHealthIn": ["on_track"],
+        "milestoneChecks": [],
+        "riskChecks": [
+          {
+            "labelContains": "firewall rule",
+            "expectedTrend": "new_risk",
+            "expectedMatchedByIn": ["none"]
+          }
+        ],
+        "expectedRetrievalModeIn": ["none"],
+        "mustNotUseRetrievedKnowledgeAsTranscriptEvidence": true
+      }
+    },
+    {
+      "case_id": "real_002",
+      "case_name": "Existing stored milestone silently carried forward while a new risk surfaces",
+      "source": "realistic_synthetic",
+      "purpose": "A previously-tracked milestone (regional training rollout) gets no mention at all this week because the team is firefighting an unrelated support-ticket backlog -- exactly the realistic case where a milestone must be carried forward from stored context rather than silently dropped just because this week's transcript didn't touch it.",
+      "transcript": "Priya: Right, thanks everyone for jumping on, I know it's a Friday afternoon so I'll keep this tight.\nOwen: No worries, go for it.\nPriya: So the main thing this week is the vendor contract renewal, that one's now signed, finally, after going back and forth on the liability clause for about three weeks.\nOwen: Oh good, that's been dragging.\nPriya: It has. Anyway that's done. The bigger concern honestly is the support ticket backlog, it's crept up again, we're at, I think, forty-something open tickets now versus the usual fifteen to twenty.\nOwen: Is that a staffing thing or is it just volume?\nPriya: Bit of both if I'm honest. We lost Marcus to the other team and we haven't backfilled yet, so yeah, I'd flag that as a risk, we could start missing our response time SLA if it keeps climbing like this.\nOwen: Agreed, let's get that visible. Anything on the training rollout?\nPriya: Nothing to report there this week, we didn't touch it, too busy firefighting the tickets.",
+      "context": {
+        "found": true,
+        "projectId": 777,
+        "projectName": "Northwind Support Services",
+        "activeMilestones": [
+          {
+            "milestoneId": 9001,
+            "milestoneName": "Regional training rollout",
+            "comparisonKey": "regional_training_rollout",
+            "category": "Delivery",
+            "description": "Roll out the new support playbook training to all regional teams.",
+            "baselineFinishDate": "2026-08-01",
+            "forecastFinishDate": "2026-08-01",
+            "isOfficial": false,
+            "officialLabel": "",
+            "officialAt": null,
+            "latestAssessment": {
+              "assessmentId": 1,
+              "status": "in_progress",
+              "trend": "stable",
+              "confidence": 0.7,
+              "summary": "Training modules for two of four regions have been delivered.",
+              "forecastFinishDate": "2026-08-01"
+            },
+            "previousAssessment": null
+          }
+        ],
+        "activeRisks": [],
+        "riskSuggestions": [],
+        "healthHistory": [],
+        "recentReports": [{ "reportId": 1, "periodLabel": "Q2 2026", "overallHealth": "on_track" }],
+        "milestoneHistory": [],
+        "latestSnapshot": null,
+        "generatedAt": "2026-07-03T09:00:00Z",
+        "retrievedKnowledge": { "retrievalMode": "none", "chunks": [] }
+      },
+      "expected": {
+        "overallHealthIn": ["on_track"],
+        "milestoneChecks": [
+          {
+            "labelContains": "Regional training rollout",
+            "expectedTrend": "stable",
+            "shouldBeCarriedForward": true
+          }
+        ],
+        "riskChecks": [
+          {
+            "labelContains": "support ticket backlog",
+            "expectedTrend": "new_risk",
+            "expectedMatchedByIn": ["none"]
+          }
+        ],
+        "expectedRetrievalModeIn": ["none"],
+        "mustNotUseRetrievedKnowledgeAsTranscriptEvidence": true
+      }
+    }
+  ]
+}

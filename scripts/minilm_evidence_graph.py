@@ -264,6 +264,26 @@ def is_noise(sentence: str) -> bool:
     return len(lowered.split()) <= 2 and all(word in NOISE_WORDS for word in lowered.split())
 
 
+_NAME_TOKEN_RE = re.compile(r"[A-Z][a-zA-Z'-]+")
+
+
+def _sentence_subject_names(sentence: str) -> list[str]:
+    """Capitalised words in the sentence that plausibly name a person.
+
+    Used instead of a fixed list of known speakers so the action-commitment
+    check below generalises to any attendee in any transcript, not just the
+    names it happened to be tuned against.
+    """
+
+    names = []
+    for match in _NAME_TOKEN_RE.finditer(sentence):
+        word = match.group(0)
+        if word.lower() in _NON_SPEAKER_START_WORDS:
+            continue
+        names.append(word.lower())
+    return names
+
+
 def is_actionable(sentence: str, text: str) -> bool:
     if text in {"task", "tasks", "action", "actions", "to do"}:
         return False
@@ -281,10 +301,14 @@ def is_actionable(sentence: str, text: str) -> bool:
     if has_any(text, PROCESS_FLOW_WORDS):
         return False
     # Avoid treating loose conversational mentions such as "get clarity" or
-    # "feel free to elaborate" as concrete actions.
+    # "feel free to elaborate" as concrete actions. The subject can be a
+    # pronoun or any named attendee detected in this sentence, not a fixed
+    # list of names, so this generalises across transcripts/clients.
+    subjects = dict.fromkeys(["i", "we", "you", "they", *_sentence_subject_names(sentence)])
+    subject_pattern = "|".join(re.escape(name) for name in subjects)
     return bool(
         re.search(
-            r"\b(i|we|you|they|orla|jacqui|mark|jenny|colm)\b.{0,40}\b"
+            rf"\b({subject_pattern})\b.{{0,40}}\b"
             r"(send|share|provide|obtain|request|review|update|confirm|prepare|collect|upload|submit|follow up|come back)\b",
             text,
         )
@@ -358,14 +382,44 @@ def _looks_like_speaker_name(name: str) -> bool:
     return True
 
 
-def parse_turns(transcript: str) -> list[tuple[str, str]]:
-    """Parse Teams-style speaker turns from a transcript.
+_INLINE_COLON_SPEAKER_RE = re.compile(r"([A-Z][A-Za-z'’-]*(?:\s+[A-Z][A-Za-z'’-]*){0,2}):\s+")
 
-    Handles both the classic export layout, where a "Speaker  H:MM" line is
-    followed by the message on later lines, and the layout produced by
-    mammoth's raw-text extraction of real Teams .docx transcripts, where the
-    message is glued directly onto the same line immediately after the
-    timestamp with no separating whitespace (e.g. "Jacqui Fox   0:03Perfect...").
+
+def _split_inline_colon_turns(line: str) -> list[tuple[str, str]]:
+    """Split a "Name: text" transcript with no timestamps at all.
+
+    Some exports have no "Speaker  H:MM" markers -- every turn is written as
+    "Name: message" with no separating whitespace between turns (e.g.
+    "James: Hi.Rachel: Hi back."), often collapsed onto a single line. This
+    never matches _SPEAKER_LINE_RE (there's no timestamp), so without this
+    fallback the whole transcript becomes one "Unknown" turn and the literal
+    "Name:" labels leak into the visible output as text.
+    """
+
+    matches = [m for m in _INLINE_COLON_SPEAKER_RE.finditer(line) if _looks_like_speaker_name(m.group(1))]
+    if len({m.group(1).strip() for m in matches}) < 2:
+        return []
+    turns: list[tuple[str, str]] = []
+    for index, match in enumerate(matches):
+        speaker = match.group(1).strip()
+        start = match.end()
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(line)
+        text = normalise(line[start:end])
+        if text:
+            turns.append((speaker, text))
+    return turns
+
+
+def parse_turns(transcript: str) -> list[tuple[str, str]]:
+    """Parse speaker turns from a transcript.
+
+    Handles the classic Teams-export layout, where a "Speaker  H:MM" line is
+    followed by the message on later lines; the layout produced by mammoth's
+    raw-text extraction of real Teams .docx transcripts, where the message is
+    glued directly onto the same line immediately after the timestamp with no
+    separating whitespace (e.g. "Jacqui Fox   0:03Perfect..."); and a
+    timestamp-free "Name: message" layout, including one where every turn is
+    glued onto a single line (see _split_inline_colon_turns).
     """
 
     turns: list[tuple[str, str]] = []
@@ -384,8 +438,16 @@ def parse_turns(transcript: str) -> list[tuple[str, str]]:
             current_speaker = speaker_candidate
             trailing = match.group(3).strip()
             current_lines = [trailing] if trailing else []
-        else:
-            current_lines.append(line)
+            continue
+        inline_turns = _split_inline_colon_turns(line)
+        if inline_turns:
+            if current_lines:
+                turns.append((current_speaker, normalise(" ".join(current_lines))))
+            turns.extend(inline_turns[:-1])
+            current_speaker, last_text = inline_turns[-1]
+            current_lines = [last_text] if last_text else []
+            continue
+        current_lines.append(line)
 
     if current_lines:
         turns.append((current_speaker, normalise(" ".join(current_lines))))
@@ -403,6 +465,12 @@ def extract_items(transcript: str) -> list[EvidenceItem]:
     for speaker, turn_text in parse_turns(transcript):
         for sentence in split_sentences(turn_text):
             bucket = classify_sentence(sentence)
+            if speaker == "Unknown" and bucket not in {"noise", "discussion"}:
+                # "Unknown" only ever holds text before the first recognised
+                # speaker turn (see parse_turns) -- i.e. the transcript's own
+                # title/date/location header, never real meeting dialogue.
+                # Never let header text masquerade as an action/decision/risk.
+                bucket = "discussion"
             items.append(EvidenceItem(bucket=bucket, speaker=speaker, text=sentence))
     return items
 

@@ -73,6 +73,10 @@ const testUpload = multer({
 
 const MAX_TRANSCRIPT_CHARS = 2 * 1024 * 1024;
 const PYTHON_TIMEOUT_MS = Number(process.env.TRANSCRIPT_TEST_TIMEOUT_MS || 30000);
+// meeting_minutes_final_colab.py's Gemini call has its own internal 45s HTTP timeout
+// (scripts/google_ai_studio_minutes.py); this must exceed that or Node kills a
+// legitimately-slow-but-successful run before Gemini's own timeout ever fires.
+const MEETING_MINUTES_FINAL_TIMEOUT_MS = Number(process.env.MEETING_MINUTES_FINAL_TIMEOUT_MS || 90000);
 
 const REVIEW_TEMPLATE = {
   meetingTitle: '',
@@ -348,8 +352,7 @@ function sendTestError(res, error) {
   console.error('[Transcript test endpoint failed]', error);
   return res.status(error.statusCode || 500).json({
     ok: false,
-    error: error.message || 'Transcript analysis failed.',
-    details: error.details || null
+    error: error.message || 'Transcript analysis failed.'
   });
 }
 
@@ -635,11 +638,15 @@ router.post('/meeting-minutes-minilm-only', withTestUpload(async (req, res) => {
   }
 }));
 
-router.post('/meeting-minutes-final', withTestUpload(async (req, res) => {
+router.post('/meeting-minutes-final', requireAuth, withTestUpload(async (req, res) => {
   try {
     const transcript = await readTestTranscript(req);
     validateTranscriptText(transcript.text);
-    const scriptArgs = ['--skip-rewrite'];
+    const scriptArgs = [];
+
+    if (truthyFlag(req.query?.skipRewrite) || truthyFlag(req.body?.skipRewrite)) {
+      scriptArgs.push('--skip-rewrite');
+    }
 
     if (truthyFlag(req.query?.includeBaselineReference) || truthyFlag(req.body?.includeBaselineReference)) {
       scriptArgs.push('--include-baseline-reference');
@@ -649,7 +656,7 @@ router.post('/meeting-minutes-final', withTestUpload(async (req, res) => {
       scriptArgs.push('--skip-diagnostics');
     }
 
-    const result = await runPythonTranscriptScript('meeting_minutes_final_colab.py', transcript.text, scriptArgs);
+    const result = await runPythonTranscriptScript('meeting_minutes_final_colab.py', transcript.text, scriptArgs, { timeoutMs: MEETING_MINUTES_FINAL_TIMEOUT_MS });
     return res.json(buildTestTranscriptResponse(req, transcript, result));
   } catch (error) {
     return sendTestError(res, error);
@@ -825,9 +832,7 @@ router.delete('/meeting-minutes-final/feedback-submissions/:feedbackId', require
   }
 });
 
-// Upload/read endpoints intentionally remain open while /project-update-test is a test workflow.
-// Destructive/admin project-update endpoints below use requireAuth.
-router.post('/project-update-test', withTestUpload(async (req, res) => {
+router.post('/project-update-test', requireAuth, withTestUpload(async (req, res) => {
   const startedAt = Date.now();
   let scriptUsed = 'project_update_minilm.py';
   let fallbackUsed = false;
@@ -895,6 +900,7 @@ router.post('/project-update-test', withTestUpload(async (req, res) => {
     try {
       result = await runPythonTranscriptScript('project_update_minilm.py', transcript.text, scriptArgs, { timeoutMs: projectTimeoutMs });
     } catch (primaryError) {
+      console.error('[project-update-test] primary script failed, using legacy fallback', primaryError);
       scriptUsed = 'python_llm.py';
       fallbackUsed = true;
       const fallback = await runPythonTranscriptScript('python_llm.py', transcript.text, [], { timeoutMs: projectTimeoutMs });
@@ -903,8 +909,7 @@ router.post('/project-update-test', withTestUpload(async (req, res) => {
         mode: 'project_update_legacy_fallback',
         projectWorkflowFallback: {
           script: 'python_llm.py',
-          reason: primaryError.message,
-          details: primaryError.details || null
+          reason: primaryError.message
         }
       };
     } finally {
@@ -1379,8 +1384,7 @@ router.post('/agent/finalise', async (req, res) => {
     console.error(error);
     return res.status(error.statusCode || 500).json({
       ok: false,
-      error: error.message || 'Finalisation webhook call failed.',
-      details: error.details || null
+      error: error.message || 'Finalisation webhook call failed.'
     });
   }
 });

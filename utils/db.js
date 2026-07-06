@@ -37,6 +37,28 @@ async function query(sql, params = []) {
   return getPgPool().query(sql, params);
 }
 
+// pg's parameterized (extended) query protocol only allows a single statement
+// per call, so anything needing more than one parameterized statement in one
+// atomic unit (e.g. updating two tables together) must go through a real
+// transaction like this rather than a semicolon-joined multi-statement string.
+async function withTransaction(fn) {
+  if (!hasDatabaseConfig()) {
+    throw new Error(getDatabaseConfigError());
+  }
+  const client = await getPgPool().connect();
+  try {
+    await client.query('BEGIN');
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 function formatPgValue(value) {
   if (value == null) return '';
   if (value instanceof Date) return value.toISOString();
@@ -44,8 +66,8 @@ function formatPgValue(value) {
   return String(value);
 }
 
-async function runPsql(sql) {
-  const result = await query(sql);
+async function runPsql(sql, params = []) {
+  const result = await query(sql, params);
   const results = Array.isArray(result) ? result : [result];
   return results
     .flatMap((item) => item.rows || [])
@@ -57,6 +79,14 @@ async function runPsql(sql) {
 async function testConnection() {
   const out = await runPsql('SELECT NOW()::text');
   return out.split('\n')[0] || null;
+}
+
+// toDateParam is the parameterized-query equivalent of qDate: pass the result
+// as a query param and cast with ::date in the SQL text (a null param casts to
+// SQL NULL cleanly). q/qJson/qDate remain for any call sites not yet migrated.
+function toDateParam(value) {
+  const text = String(value || '').trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : null;
 }
 
 function q(value) { return `'${String(value || '').replace(/'/g, "''")}'`; }
@@ -201,33 +231,45 @@ async function saveProjectReportDetail(reportId, payload = {}) {
     }
   };
 
-  const versionOut = await runPsql(`
-BEGIN;
-UPDATE project_reports
-SET report_status = ${q(reportStatus)},
-    file_name = ${q(reportName || `Report ${id}`)},
-    approved_at = CASE WHEN ${q(reportStatus)} = 'approved' THEN COALESCE(approved_at, NOW()) ELSE approved_at END,
-    approved_by = CASE WHEN ${q(reportStatus)} = 'approved' THEN ${q(payload.savedBy || 'OpenClaw')} ELSE approved_by END,
-    updated_at = NOW()
-WHERE id = ${id};
-WITH inserted_version AS (
-  INSERT INTO project_report_versions (report_id, version_number, change_type, change_summary, saved_by, report_payload)
-  VALUES (${id}, ${nextVersion}, CASE WHEN ${q(reportStatus)} = 'approved' THEN 'approved' ELSE 'user_edit' END, ${q(payload.changeSummary || 'Saved from report detail page.')}, ${q(payload.savedBy || 'OpenClaw')}, ${qJson(nextPayload)})
-  RETURNING id
-)
-UPDATE project_reports
-SET approved_version_id = CASE WHEN ${q(reportStatus)} = 'approved' THEN (SELECT id FROM inserted_version) ELSE approved_version_id END
-WHERE id = ${id}
-RETURNING COALESCE(approved_version_id, (SELECT id FROM inserted_version))::text;
-COMMIT;`);
+  const isApproved = reportStatus === 'approved';
+  const client = await getPgPool().connect();
+  let newVersionId = null;
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `UPDATE project_reports
+       SET report_status = $1,
+           file_name = $2,
+           approved_at = CASE WHEN $1 = 'approved' THEN COALESCE(approved_at, NOW()) ELSE approved_at END,
+           approved_by = CASE WHEN $1 = 'approved' THEN $3 ELSE approved_by END,
+           updated_at = NOW()
+       WHERE id = $4`,
+      [reportStatus, reportName || `Report ${id}`, payload.savedBy || 'OpenClaw', id]
+    );
+    const inserted = await client.query(
+      `INSERT INTO project_report_versions (report_id, version_number, change_type, change_summary, saved_by, report_payload)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id`,
+      [id, nextVersion, isApproved ? 'approved' : 'user_edit', payload.changeSummary || 'Saved from report detail page.', payload.savedBy || 'OpenClaw', JSON.stringify(nextPayload)]
+    );
+    newVersionId = inserted.rows[0].id;
+    if (isApproved) {
+      await client.query('UPDATE project_reports SET approved_version_id = $1 WHERE id = $2', [newVersionId, id]);
+    }
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
 
   const saved = await getProjectReportDetail(id);
-  if (reportStatus === 'approved') {
-    const versionId = parseOptionalId(versionOut) || Number(saved?.versions?.[0]?.versionId || 0);
+  if (isApproved) {
     saved.knowledgeIngestion = await ingestApprovedProjectReportVersion({
       projectId: saved.projectId,
       reportId: saved.reportId,
-      reportVersionId: versionId,
+      reportVersionId: newVersionId || Number(saved?.versions?.[0]?.versionId || 0),
       periodLabel: saved.periodLabel,
       payload: nextPayload,
       createdAt: saved.updatedAt || saved.createdAt
@@ -426,53 +468,62 @@ async function createProjectMilestone(payload = {}) {
   const forecastFinishDate = payload.forecastFinishDate || payload.forecast_finish_date || payload.deadline || '';
 
   let projectId = parseOptionalId(
-    await runPsql(`SELECT id::text FROM projects WHERE project_name = ${q(projectName)} ORDER BY id LIMIT 1;`)
+    await runPsql('SELECT id::text FROM projects WHERE project_name = $1 ORDER BY id LIMIT 1', [projectName])
   );
   if (!projectId) {
     projectId = parseOptionalId(
-      await runPsql(`INSERT INTO projects (project_name, description, status, updated_at)
-        VALUES (${q(projectName)}, 'Created from /project-update-test milestones.', 'active', NOW())
-        RETURNING id::text;`)
+      await runPsql(
+        `INSERT INTO projects (project_name, description, status, updated_at)
+         VALUES ($1, 'Created from /project-update-test milestones.', 'active', NOW())
+         RETURNING id::text`,
+        [projectName]
+      )
     );
   }
   if (!projectId) throw new Error('Could not create project milestone: missing project id.');
 
   let reportingPeriodId = parseOptionalId(
-    await runPsql(`SELECT id::text FROM project_reporting_periods
-      WHERE project_id = ${projectId} AND period_type = 'quarter' AND period_label = ${q(periodLabel)}
-      ORDER BY id
-      LIMIT 1;`)
+    await runPsql(
+      `SELECT id::text FROM project_reporting_periods
+       WHERE project_id = $1 AND period_type = 'quarter' AND period_label = $2
+       ORDER BY id
+       LIMIT 1`,
+      [projectId, periodLabel]
+    )
   );
   if (!reportingPeriodId) {
     reportingPeriodId = parseOptionalId(
-      await runPsql(`INSERT INTO project_reporting_periods (project_id, period_type, period_label, start_date, end_date)
-        VALUES (${projectId}, 'quarter', ${q(periodLabel)}, ${q(quarterStartDate(periodLabel))}::date, ${q(quarterEndDate(periodLabel))}::date)
-        ON CONFLICT (project_id, period_type, period_label) DO UPDATE SET period_label = EXCLUDED.period_label
-        RETURNING id::text;`)
+      await runPsql(
+        `INSERT INTO project_reporting_periods (project_id, period_type, period_label, start_date, end_date)
+         VALUES ($1, 'quarter', $2, $3::date, $4::date)
+         ON CONFLICT (project_id, period_type, period_label) DO UPDATE SET period_label = EXCLUDED.period_label
+         RETURNING id::text`,
+        [projectId, periodLabel, quarterStartDate(periodLabel), quarterEndDate(periodLabel)]
+      )
     );
   }
   if (!reportingPeriodId) throw new Error('Could not create project milestone: missing reporting period id.');
 
-  const out = await runPsql(`
-WITH existing AS (
+  const out = await runPsql(
+    `WITH existing AS (
   SELECT id
   FROM project_core_milestones
-  WHERE project_id = ${projectId} AND milestone_name = ${q(milestoneName)} AND is_active = TRUE
+  WHERE project_id = $1 AND milestone_name = $2 AND is_active = TRUE
   ORDER BY id
   LIMIT 1
 ), inserted AS (
   INSERT INTO project_core_milestones (project_id, reporting_period_id, category, milestone_name, description, baseline_finish_date, forecast_finish_date, sort_order, is_active)
-  SELECT ${projectId}, ${reportingPeriodId}, ${q(category)}, ${q(milestoneName)}, ${q(description)}, ${qDate(baselineFinishDate)}, ${qDate(forecastFinishDate)},
-    COALESCE((SELECT MAX(sort_order) + 1 FROM project_core_milestones WHERE project_id = ${projectId}), 0), TRUE
+  SELECT $1, $3, $4, $2, $5, $6::date, $7::date,
+    COALESCE((SELECT MAX(sort_order) + 1 FROM project_core_milestones WHERE project_id = $1), 0), TRUE
   WHERE NOT EXISTS (SELECT 1 FROM existing)
   RETURNING id
 ), updated AS (
   UPDATE project_core_milestones
-  SET reporting_period_id = ${reportingPeriodId},
-      category = ${q(category)},
-      description = ${q(description)},
-      baseline_finish_date = COALESCE(${qDate(baselineFinishDate)}, baseline_finish_date),
-      forecast_finish_date = COALESCE(${qDate(forecastFinishDate)}, forecast_finish_date)
+  SET reporting_period_id = $3,
+      category = $4,
+      description = $5,
+      baseline_finish_date = COALESCE($6::date, baseline_finish_date),
+      forecast_finish_date = COALESCE($7::date, forecast_finish_date)
   WHERE id IN (SELECT id FROM existing)
   RETURNING id
 )
@@ -484,7 +535,9 @@ FROM (
   UNION ALL
   SELECT id, FALSE AS created FROM existing
   LIMIT 1
-) selected;`);
+) selected`,
+    [projectId, milestoneName, reportingPeriodId, category, description, toDateParam(baselineFinishDate), toDateParam(forecastFinishDate)]
+  );
 
   const [milestoneId, created] = (out.split('\n').find((line) => /^\d+\|/.test(line)) || '|').split('|');
   const milestone = await getProjectMilestoneDetail(milestoneId);
@@ -511,12 +564,14 @@ async function updateProjectMilestone(milestoneId, payload = {}) {
   const description = Object.prototype.hasOwnProperty.call(payload, 'description')
     ? String(payload.description || '').trim()
     : existing.description;
-  await runPsql(`
-UPDATE project_core_milestones
-SET baseline_finish_date = ${qDate(baselineFinishDate)},
-    forecast_finish_date = ${qDate(forecastFinishDate)},
-    description = ${q(description)}
-WHERE id = ${id} AND is_active = TRUE;`);
+  await runPsql(
+    `UPDATE project_core_milestones
+     SET baseline_finish_date = $1::date,
+         forecast_finish_date = $2::date,
+         description = $3
+     WHERE id = $4 AND is_active = TRUE`,
+    [toDateParam(baselineFinishDate), toDateParam(forecastFinishDate), description, id]
+  );
 
   return getProjectMilestoneDetail(id);
 }
@@ -649,8 +704,8 @@ async function resolveProjectForContext(projectRef = '') {
   const name = ref.projectName || fallbackName;
 
   if (Number.isFinite(ref.projectId) && ref.projectId > 0) {
-    const project = parseJsonLines(await runPsql(`
-SELECT json_build_object(
+    const project = parseJsonLines(await runPsql(
+      `SELECT json_build_object(
   'projectId', id,
   'projectName', project_name,
   'clientName', COALESCE(client_name, ''),
@@ -660,8 +715,10 @@ SELECT json_build_object(
   'updatedAt', updated_at
 )::text
 FROM projects
-WHERE id = ${Number(ref.projectId)}
-LIMIT 1;`))[0] || null;
+WHERE id = $1
+LIMIT 1`,
+      [Number(ref.projectId)]
+    ))[0] || null;
     return {
       project,
       projectName: project?.projectName || name,
@@ -669,8 +726,8 @@ LIMIT 1;`))[0] || null;
     };
   }
 
-  const candidates = parseJsonLines(await runPsql(`
-SELECT json_build_object(
+  const candidates = parseJsonLines(await runPsql(
+    `SELECT json_build_object(
   'projectId', p.id,
   'projectName', p.project_name,
   'clientName', COALESCE(p.client_name, ''),
@@ -683,14 +740,16 @@ SELECT json_build_object(
   'reportCount', (SELECT COUNT(*) FROM project_reports pr WHERE pr.project_id = p.id)
 )::text
 FROM projects p
-WHERE p.project_name = ${q(name)}
+WHERE p.project_name = $1
 ORDER BY
   (SELECT COUNT(*) FROM project_core_milestones m WHERE m.project_id = p.id AND m.is_active = TRUE) DESC,
   (SELECT COUNT(*) FROM project_core_risks r WHERE r.project_id = p.id AND r.is_active = TRUE) DESC,
   (SELECT COUNT(*) FROM project_reports pr WHERE pr.project_id = p.id) DESC,
   p.updated_at DESC NULLS LAST,
   p.created_at DESC NULLS LAST,
-  p.id;`));
+  p.id`,
+    [name]
+  ));
   const project = candidates[0] || null;
   return {
     project,
@@ -945,10 +1004,22 @@ async function createProjectContextSnapshot(projectName = '', payload = {}) {
     ? payload.contextPayload
     : context;
 
-  const out = await runPsql(`
-INSERT INTO project_context_snapshots (project_id, source_report_version_id, snapshot_type, context_payload, summary, created_by, is_official, official_label, official_at)
-VALUES (${Number(context.projectId)}, ${sourceReportVersionId > 0 ? sourceReportVersionId : 'NULL'}, ${q(snapshotType)}, ${qJson(contextPayload)}, ${q(summary)}, ${q(createdBy)}, ${truthy(payload.isOfficial) ? 'TRUE' : 'FALSE'}, ${q(payload.officialLabel || '')}, ${truthy(payload.isOfficial) ? 'NOW()' : 'NULL'})
-RETURNING id::text;`);
+  const isOfficial = truthy(payload.isOfficial);
+  const out = await runPsql(
+    `INSERT INTO project_context_snapshots (project_id, source_report_version_id, snapshot_type, context_payload, summary, created_by, is_official, official_label, official_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CASE WHEN $7 THEN NOW() ELSE NULL END)
+     RETURNING id::text`,
+    [
+      Number(context.projectId),
+      sourceReportVersionId > 0 ? sourceReportVersionId : null,
+      snapshotType,
+      JSON.stringify(contextPayload || {}),
+      summary,
+      createdBy,
+      isOfficial,
+      payload.officialLabel || ''
+    ]
+  );
   const snapshotId = parseOptionalId(out);
   if (!snapshotId) throw new Error('Could not create project context snapshot.');
 
@@ -1013,9 +1084,23 @@ RETURNING id::text;`);
   }
 
   for (const item of items) {
-    await runPsql(`INSERT INTO project_context_snapshot_items
-      (snapshot_id, item_type, item_key, item_label, status, previous_status, trend, confidence, evidence, metadata)
-      VALUES (${snapshotId}, ${q(item.itemType)}, ${q(item.itemKey)}, ${q(item.itemLabel)}, ${q(item.status)}, ${q(item.previousStatus)}, ${q(normaliseProjectTrend(item.trend))}, ${clampConfidence(item.confidence, 0.5)}, ${qJson(item.evidence)}, ${qJson(item.metadata)});`);
+    await runPsql(
+      `INSERT INTO project_context_snapshot_items
+       (snapshot_id, item_type, item_key, item_label, status, previous_status, trend, confidence, evidence, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [
+        snapshotId,
+        item.itemType,
+        item.itemKey,
+        item.itemLabel,
+        item.status,
+        item.previousStatus,
+        normaliseProjectTrend(item.trend),
+        clampConfidence(item.confidence, 0.5),
+        JSON.stringify(item.evidence || {}),
+        JSON.stringify(item.metadata || {})
+      ]
+    );
   }
 
   return getProjectContextSnapshot(snapshotId);
@@ -1068,21 +1153,21 @@ async function saveUploadedJob({ fileName, mimeType, transcriptText }) {
   const title = fileName || 'Uploaded transcript';
   const description = 'Auto-created from uploaded transcript.';
   const transcript = transcriptText || '';
-  const payload = JSON.stringify({ fileName, mimeType, status: 'uploaded' }).replace(/'/g, "''");
+  const payload = { fileName, mimeType, status: 'uploaded' };
 
-  const sql = `
-WITH inserted_meeting AS (
+  const out = await runPsql(
+    `WITH inserted_meeting AS (
   INSERT INTO meetings (meeting_title, meeting_description, source)
-  VALUES (${q(title)}, ${q(description)}, 'trinzo-upload')
+  VALUES ($1, $2, 'trinzo-upload')
   RETURNING id, created_at
 ), inserted_autosave AS (
   INSERT INTO meeting_autosaves (meeting_id, transcript_text, transcript_length, payload)
-  SELECT id, ${q(transcript)}, LENGTH(${q(transcript)}), '${payload}'::jsonb
+  SELECT id, $3, LENGTH($3), $4::jsonb
   FROM inserted_meeting
 )
-SELECT id::text || '|' || created_at::text FROM inserted_meeting;`;
-
-  const out = await runPsql(sql);
+SELECT id::text || '|' || created_at::text FROM inserted_meeting`,
+    [title, description, transcript, JSON.stringify(payload)]
+  );
   const [meetingId, createdAt] = (out.split('\n')[0] || '').split('|');
   return { meetingId: Number(meetingId), createdAt };
 }
@@ -1094,15 +1179,14 @@ async function saveMeetingMinutes(payload) {
   const autosavePayload = payload?.payload || {};
   const source = payload?.payload?.source || 'trinzo-upload';
 
-  const sql = `
-BEGIN;
-WITH inserted_meeting AS (
+  const out = await runPsql(
+    `WITH inserted_meeting AS (
   INSERT INTO meetings (meeting_title, meeting_description, source, status, webhook_status, last_activity_at)
-  VALUES (${q(meetingTitle)}, ${q(meetingDescription)}, ${q(source)}, 'queued', 'not_sent', NOW())
+  VALUES ($1, $2, $3, 'queued', 'not_sent', NOW())
   RETURNING id
 ), inserted_autosave AS (
   INSERT INTO meeting_autosaves (meeting_id, transcript_text, transcript_length, payload)
-  SELECT id, ${q(transcriptText)}, LENGTH(${q(transcriptText)}), ${qJson(autosavePayload)}
+  SELECT id, $4, LENGTH($4), $5::jsonb
   FROM inserted_meeting
 ), inserted_job AS (
   INSERT INTO meeting_jobs (meeting_id, job_type, status, attempts, max_attempts, run_after, created_at, updated_at)
@@ -1110,9 +1194,9 @@ WITH inserted_meeting AS (
   FROM inserted_meeting
   RETURNING id, meeting_id
 )
-SELECT meeting_id::text || '|' || id::text FROM inserted_job;
-COMMIT;`;
-  const out = await runPsql(sql);
+SELECT meeting_id::text || '|' || id::text FROM inserted_job`,
+    [meetingTitle, meetingDescription, source, transcriptText, JSON.stringify(autosavePayload || {})]
+  );
   const row = out.split('\n').find((line) => /^\d+\|\d+$/.test(line));
   const [meetingId, jobId] = (row || '|').split('|');
   return { meetingId: Number(meetingId), jobId: Number(jobId), status: 'queued' };
@@ -1127,24 +1211,13 @@ async function saveMeetingMinutesFeedback(payload = {}) {
   const userAgent = payload.userAgent ? String(payload.userAgent).slice(0, 500) : '';
   const metadata = payload.metadata && typeof payload.metadata === 'object' ? payload.metadata : {};
 
-  const sql = `
-CREATE TABLE IF NOT EXISTS meeting_minutes_feedback (
-  id BIGSERIAL PRIMARY KEY,
-  route TEXT NOT NULL,
-  feedback_type TEXT NOT NULL DEFAULT 'general',
-  message TEXT NOT NULL,
-  contact_name TEXT,
-  contact_email TEXT,
-  user_agent TEXT,
-  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-CREATE INDEX IF NOT EXISTS idx_meeting_minutes_feedback_created_at ON meeting_minutes_feedback (created_at DESC);
-INSERT INTO meeting_minutes_feedback (route, feedback_type, message, contact_name, contact_email, user_agent, metadata)
-VALUES (${q(route)}, ${q(feedbackType)}, ${q(message)}, ${q(contactName)}, ${q(contactEmail)}, ${q(userAgent)}, ${qJson(metadata)})
-RETURNING id::text, created_at::text;`;
-
-  const out = await runPsql(sql);
+  await runPsql(meetingMinutesFeedbackSchemaSql());
+  const out = await runPsql(
+    `INSERT INTO meeting_minutes_feedback (route, feedback_type, message, contact_name, contact_email, user_agent, metadata)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     RETURNING id::text, created_at::text`,
+    [route, feedbackType, message, contactName, contactEmail, userAgent, JSON.stringify(metadata || {})]
+  );
   const row = out.split('\n').find((line) => /^\d+\|/.test(line));
   const [id, createdAt] = (row || '|').split('|');
   return { feedbackId: Number(id), createdAt };
@@ -1230,16 +1303,18 @@ async function updateMeetingMinutesFeedback(feedbackId, payload = {}) {
   const status = allowedStatuses.has(String(payload.status || '').trim()) ? String(payload.status).trim() : 'submitted';
   const claireComments = String(payload.claireComments || '').slice(0, 4000);
   const fixDetails = String(payload.fixDetails || '').slice(0, 4000);
-  const fixedAtSql = status === 'resolved' ? 'COALESCE(fixed_at, NOW())' : 'NULL';
-  const out = await runPsql(`${meetingMinutesFeedbackSchemaSql()}
-UPDATE meeting_minutes_feedback
-SET status = ${q(status)},
-    claire_comments = ${q(claireComments)},
-    fix_details = ${q(fixDetails)},
-    fixed_at = ${fixedAtSql},
-    edited_at = NOW()
-WHERE id = ${id}
-RETURNING id::text;`);
+  await runPsql(meetingMinutesFeedbackSchemaSql());
+  const out = await runPsql(
+    `UPDATE meeting_minutes_feedback
+     SET status = $1,
+         claire_comments = $2,
+         fix_details = $3,
+         fixed_at = CASE WHEN $1 = 'resolved' THEN COALESCE(fixed_at, NOW()) ELSE NULL END,
+         edited_at = NOW()
+     WHERE id = $4
+     RETURNING id::text`,
+    [status, claireComments, fixDetails, id]
+  );
   const updatedId = parseOptionalId(out);
   return updatedId ? getMeetingMinutesFeedback(updatedId) : null;
 }
@@ -1247,10 +1322,8 @@ RETURNING id::text;`);
 async function deleteMeetingMinutesFeedback(feedbackId) {
   const id = Number(feedbackId);
   if (!Number.isFinite(id) || id <= 0) return false;
-  const out = await runPsql(`${meetingMinutesFeedbackSchemaSql()}
-DELETE FROM meeting_minutes_feedback
-WHERE id = ${id}
-RETURNING id::text;`);
+  await runPsql(meetingMinutesFeedbackSchemaSql());
+  const out = await runPsql('DELETE FROM meeting_minutes_feedback WHERE id = $1 RETURNING id::text', [id]);
   return Boolean(parseOptionalId(out));
 }
 
@@ -1279,8 +1352,8 @@ LIMIT 1;`;
 }
 
 async function claimNextJob(lockedBy = 'manual-runner') {
-  const sql = `
-WITH candidate AS (
+  const out = await runPsql(
+    `WITH candidate AS (
   SELECT id
   FROM meeting_jobs
   WHERE status = 'queued'
@@ -1294,12 +1367,13 @@ UPDATE meeting_jobs j
 SET status = 'running',
     attempts = COALESCE(attempts, 0) + 1,
     locked_at = NOW(),
-    locked_by = ${q(lockedBy)},
+    locked_by = $1,
     updated_at = NOW()
 FROM candidate
 WHERE j.id = candidate.id
-RETURNING j.id::text, j.meeting_id::text, j.job_type, j.status, j.attempts::text, j.max_attempts::text;`;
-  const out = await runPsql(sql);
+RETURNING j.id::text, j.meeting_id::text, j.job_type, j.status, j.attempts::text, j.max_attempts::text`,
+    [lockedBy]
+  );
   const line = out.split('\n').find(Boolean);
   if (!line) return null;
   const [id, meetingId, jobType, status, attempts, maxAttempts] = line.split('|');
@@ -1307,45 +1381,66 @@ RETURNING j.id::text, j.meeting_id::text, j.job_type, j.status, j.attempts::text
 }
 
 async function markJobCompleted(jobId, meetingId, resultPayload) {
-  const sql = `
-BEGIN;
-UPDATE meeting_jobs
-SET status = 'completed', result_payload = ${qJson(resultPayload)}, error_message = NULL, locked_at = NULL, locked_by = NULL, updated_at = NOW()
-WHERE id = ${Number(jobId)};
-UPDATE meetings SET status = CASE WHEN status = 'webhook_pending' THEN status ELSE 'processed' END, processing_completed_at = NOW(), last_activity_at = NOW() WHERE id = ${Number(meetingId)};
-COMMIT;`;
-  await runPsql(sql);
+  await withTransaction(async (client) => {
+    await client.query(
+      `UPDATE meeting_jobs
+       SET status = 'completed', result_payload = $1, error_message = NULL, locked_at = NULL, locked_by = NULL, updated_at = NOW()
+       WHERE id = $2`,
+      [JSON.stringify(resultPayload || {}), Number(jobId)]
+    );
+    await client.query(
+      `UPDATE meetings
+       SET status = CASE WHEN status = 'webhook_pending' THEN status ELSE 'processed' END, processing_completed_at = NOW(), last_activity_at = NOW()
+       WHERE id = $1`,
+      [Number(meetingId)]
+    );
+  });
 }
 
 async function markJobFailure(job, errorMessage) {
   const shouldRetry = job.attempts < job.maxAttempts;
-  const sql = shouldRetry ? `
-BEGIN;
-UPDATE meeting_jobs
-SET status = 'queued', error_message = ${q(errorMessage)}, locked_at = NULL, locked_by = NULL, run_after = NOW() + INTERVAL '2 minutes', updated_at = NOW()
-WHERE id = ${Number(job.id)};
-UPDATE meetings SET status = 'queued', last_error = ${q(errorMessage)}, last_activity_at = NOW() WHERE id = ${Number(job.meetingId)};
-COMMIT;` : `
-BEGIN;
-UPDATE meeting_jobs
-SET status = 'failed', error_message = ${q(errorMessage)}, locked_at = NULL, locked_by = NULL, updated_at = NOW()
-WHERE id = ${Number(job.id)};
-UPDATE meetings SET status = 'failed', last_error = ${q(errorMessage)}, last_activity_at = NOW() WHERE id = ${Number(job.meetingId)};
-COMMIT;`;
-  await runPsql(sql);
+  await withTransaction(async (client) => {
+    if (shouldRetry) {
+      await client.query(
+        `UPDATE meeting_jobs
+         SET status = 'queued', error_message = $1, locked_at = NULL, locked_by = NULL, run_after = NOW() + INTERVAL '2 minutes', updated_at = NOW()
+         WHERE id = $2`,
+        [errorMessage, Number(job.id)]
+      );
+      await client.query(
+        `UPDATE meetings SET status = 'queued', last_error = $1, last_activity_at = NOW() WHERE id = $2`,
+        [errorMessage, Number(job.meetingId)]
+      );
+    } else {
+      await client.query(
+        `UPDATE meeting_jobs
+         SET status = 'failed', error_message = $1, locked_at = NULL, locked_by = NULL, updated_at = NOW()
+         WHERE id = $2`,
+        [errorMessage, Number(job.id)]
+      );
+      await client.query(
+        `UPDATE meetings SET status = 'failed', last_error = $1, last_activity_at = NOW() WHERE id = $2`,
+        [errorMessage, Number(job.meetingId)]
+      );
+    }
+  });
   return shouldRetry;
 }
 
 async function queueWebhookJob(meetingId, payload) {
-  const sql = `
-BEGIN;
-UPDATE meetings SET webhook_status = 'pending', status = 'webhook_pending', last_activity_at = NOW() WHERE id = ${Number(meetingId)};
-INSERT INTO meeting_jobs (meeting_id, job_type, status, attempts, max_attempts, run_after, result_payload, created_at, updated_at)
-VALUES (${Number(meetingId)}, 'webhook_send', 'queued', 0, 3, NOW(), ${qJson(payload)}, NOW(), NOW())
-RETURNING id::text;
-COMMIT;`;
-  const out = await runPsql(sql);
-  const jobId = Number((out.split('\n').find((line) => /^\d+$/.test(line)) || '').trim());
+  const jobId = await withTransaction(async (client) => {
+    await client.query(
+      `UPDATE meetings SET webhook_status = 'pending', status = 'webhook_pending', last_activity_at = NOW() WHERE id = $1`,
+      [Number(meetingId)]
+    );
+    const inserted = await client.query(
+      `INSERT INTO meeting_jobs (meeting_id, job_type, status, attempts, max_attempts, run_after, result_payload, created_at, updated_at)
+       VALUES ($1, 'webhook_send', 'queued', 0, 3, NOW(), $2, NOW(), NOW())
+       RETURNING id`,
+      [Number(meetingId), JSON.stringify(payload || {})]
+    );
+    return inserted.rows[0].id;
+  });
   return { jobId, webhookStatus: 'pending' };
 }
 
@@ -1382,7 +1477,12 @@ async function deleteMeetingById(meetingId) {
 }
 
 async function updateMeetingById(meetingId, payload) {
-  await runPsql(`UPDATE meetings SET meeting_title=${q(payload?.meetingTitle || '')}, meeting_date=${payload?.meetingDate ? q(payload.meetingDate) : 'NULL'}, meeting_location=${q(payload?.meetingLocation || '')}, meeting_description=${q(payload?.meetingDescription || '')}, updated_at = NOW() WHERE id = ${Number(meetingId)};`);
+  await runPsql(
+    `UPDATE meetings
+     SET meeting_title = $1, meeting_date = $2::date, meeting_location = $3, meeting_description = $4, updated_at = NOW()
+     WHERE id = $5`,
+    [payload?.meetingTitle || '', payload?.meetingDate ? payload.meetingDate : null, payload?.meetingLocation || '', payload?.meetingDescription || '', Number(meetingId)]
+  );
   return { meetingId: Number(meetingId) };
 }
 
@@ -1823,7 +1923,7 @@ async function saveProjectUpdateDraft({ projectId: requestedProjectId, projectNa
 
   let projectId = Number(requestedProjectId || 0);
   if (Number.isFinite(projectId) && projectId > 0) {
-    const existingById = parseOptionalId(await runPsql(`SELECT id::text FROM projects WHERE id = ${projectId} LIMIT 1;`));
+    const existingById = parseOptionalId(await runPsql('SELECT id::text FROM projects WHERE id = $1 LIMIT 1', [projectId]));
     if (!existingById) {
       const error = new Error('Selected project was not found.');
       error.statusCode = 404;
@@ -1832,36 +1932,45 @@ async function saveProjectUpdateDraft({ projectId: requestedProjectId, projectNa
     projectId = existingById;
   } else {
     projectId = parseOptionalId(
-      await runPsql(`SELECT id::text FROM projects WHERE project_name = ${q(name)} ORDER BY id LIMIT 1;`),
+      await runPsql('SELECT id::text FROM projects WHERE project_name = $1 ORDER BY id LIMIT 1', [name]),
     );
   }
   if (!projectId) {
     projectId = parseId(
-      await runPsql(`INSERT INTO projects (project_name, description, status, updated_at)
-        VALUES (${q(name)}, 'Created from /project-update-test workflow.', 'active', NOW())
-        RETURNING id::text;`),
+      await runPsql(
+        `INSERT INTO projects (project_name, description, status, updated_at)
+         VALUES ($1, 'Created from /project-update-test workflow.', 'active', NOW())
+         RETURNING id::text`,
+        [name]
+      ),
       'project'
     );
   }
 
   let reportingPeriodId = parseOptionalId(
-    await runPsql(`SELECT id::text FROM project_reporting_periods
-      WHERE project_id = ${projectId} AND period_type = 'quarter' AND period_label = ${q(label)}
-      ORDER BY id
-      LIMIT 1;`)
+    await runPsql(
+      `SELECT id::text FROM project_reporting_periods
+       WHERE project_id = $1 AND period_type = 'quarter' AND period_label = $2
+       ORDER BY id
+       LIMIT 1`,
+      [projectId, label]
+    )
   );
   if (!reportingPeriodId) {
     reportingPeriodId = parseId(
-      await runPsql(`INSERT INTO project_reporting_periods (project_id, period_type, period_label, start_date, end_date)
-        VALUES (${projectId}, 'quarter', ${q(label)}, ${q(quarterStartDate(label))}::date, ${q(quarterEndDate(label))}::date)
-        ON CONFLICT (project_id, period_type, period_label) DO UPDATE SET period_label = EXCLUDED.period_label
-        RETURNING id::text;`),
+      await runPsql(
+        `INSERT INTO project_reporting_periods (project_id, period_type, period_label, start_date, end_date)
+         VALUES ($1, 'quarter', $2, $3::date, $4::date)
+         ON CONFLICT (project_id, period_type, period_label) DO UPDATE SET period_label = EXCLUDED.period_label
+         RETURNING id::text`,
+        [projectId, label, quarterStartDate(label), quarterEndDate(label)]
+      ),
       'reporting period'
     );
   }
 
-  const duplicateSource = parseJsonLines(await runPsql(`
-SELECT json_build_object(
+  const duplicateSource = parseJsonLines(await runPsql(
+    `SELECT json_build_object(
   'reportId', r.id,
   'reportVersionId', v.id,
   'transcriptSha256', s.transcript_sha256
@@ -1871,12 +1980,14 @@ JOIN project_reports r ON r.id = s.report_id
 LEFT JOIN LATERAL (
   SELECT id FROM project_report_versions WHERE report_id = r.id ORDER BY version_number DESC, id DESC LIMIT 1
 ) v ON TRUE
-WHERE r.project_id = ${projectId}
-  AND r.reporting_period_id = ${reportingPeriodId}
-  AND s.transcript_sha256 = ${q(transcriptSha)}
+WHERE r.project_id = $1
+  AND r.reporting_period_id = $2
+  AND s.transcript_sha256 = $3
   AND r.report_status <> 'archived'
 ORDER BY s.id DESC
-LIMIT 1;`))[0] || null;
+LIMIT 1`,
+    [projectId, reportingPeriodId, transcriptSha]
+  ))[0] || null;
   if (duplicateSource) {
     return {
       saved: false,
@@ -1892,23 +2003,35 @@ LIMIT 1;`))[0] || null;
   }
 
   const reportId = parseId(
-    await runPsql(`INSERT INTO project_reports (project_id, reporting_period_id, file_name, report_status, include_in_global_analysis, updated_at)
-      VALUES (${projectId}, ${reportingPeriodId}, ${q(fileName || '')}, 'draft', FALSE, NOW())
-      RETURNING id::text;`),
+    await runPsql(
+      `INSERT INTO project_reports (project_id, reporting_period_id, file_name, report_status, include_in_global_analysis, updated_at)
+       VALUES ($1, $2, $3, 'draft', FALSE, NOW())
+       RETURNING id::text`,
+      [projectId, reportingPeriodId, fileName || '']
+    ),
     'report'
   );
   const reportVersionId = parseId(
-    await runPsql(`INSERT INTO project_report_versions (report_id, version_number, change_type, change_summary, saved_by, report_payload)
-      VALUES (${reportId}, 1, 'ai_generated', 'Initial AI-generated draft from /project-update-test.', 'OpenClaw', ${qJson(result)})
-      RETURNING id::text;`),
+    await runPsql(
+      `INSERT INTO project_report_versions (report_id, version_number, change_type, change_summary, saved_by, report_payload)
+       VALUES ($1, 1, 'ai_generated', 'Initial AI-generated draft from /project-update-test.', 'OpenClaw', $2)
+       RETURNING id::text`,
+      [reportId, JSON.stringify(result || {})]
+    ),
     'report version'
   );
-  await runPsql(`INSERT INTO project_report_sources (report_id, source_type, file_name, transcript_text, transcript_length, transcript_sha256)
-    VALUES (${reportId}, ${q(source)}, ${q(fileName || '')}, ${q(transcript)}, LENGTH(${q(transcript)}), ${q(transcriptSha)});`);
+  await runPsql(
+    `INSERT INTO project_report_sources (report_id, source_type, file_name, transcript_text, transcript_length, transcript_sha256)
+     VALUES ($1, $2, $3, $4, LENGTH($4), $5)`,
+    [reportId, source, fileName || '', transcript, transcriptSha]
+  );
 
   for (const item of healthValues) {
-    await runPsql(`INSERT INTO project_report_health (report_version_id, area, status, trend, confidence, rationale)
-      VALUES (${reportVersionId}, ${q(item.area)}, ${q(item.status)}, ${q(item.trend)}, ${clampConfidence(item.confidence)}, ${q(item.rationale)});`);
+    await runPsql(
+      `INSERT INTO project_report_health (report_version_id, area, status, trend, confidence, rationale)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [reportVersionId, item.area, item.status, item.trend, clampConfidence(item.confidence), item.rationale]
+    );
   }
 
   const milestoneRows = reportMilestones.length ? reportMilestones : segments;
@@ -1923,21 +2046,21 @@ LIMIT 1;`))[0] || null;
     const trend = normaliseProjectTrend(milestoneDraft.trend || segment.trend || 'stable');
     const confidence = segment.delivery_status_confidence || milestoneDraft.delivery_status_confidence || segment.confidence || milestoneDraft.confidence;
     const summary = segment.normalised_evidence_summary || milestoneDraft.normalised_evidence_summary || segment.excerpt || milestoneDraft.excerpt || segment.status_resolution_note || '';
-    const milestoneOut = await runPsql(`
-WITH existing AS (
+    const milestoneOut = await runPsql(
+      `WITH existing AS (
   SELECT id FROM project_core_milestones
-  WHERE project_id = ${projectId} AND milestone_name = ${q(milestoneName)} AND is_active = TRUE
+  WHERE project_id = $1 AND milestone_name = $2 AND is_active = TRUE
   ORDER BY id
   LIMIT 1
 ), inserted AS (
   INSERT INTO project_core_milestones (project_id, reporting_period_id, category, milestone_name, baseline_finish_date, forecast_finish_date, sort_order, is_active)
-  SELECT ${projectId}, ${reportingPeriodId}, 'Transcript', ${q(milestoneName)}, ${qDate(baselineFinishDate)}, ${qDate(forecastFinishDate)}, ${index}, TRUE
+  SELECT $1, $3, 'Transcript', $2, $4::date, $5::date, $6, TRUE
   WHERE NOT EXISTS (SELECT 1 FROM existing)
   RETURNING id
 ), updated AS (
   UPDATE project_core_milestones
-  SET baseline_finish_date = COALESCE(${qDate(baselineFinishDate)}, baseline_finish_date),
-      forecast_finish_date = COALESCE(${qDate(forecastFinishDate)}, forecast_finish_date)
+  SET baseline_finish_date = COALESCE($4::date, baseline_finish_date),
+      forecast_finish_date = COALESCE($5::date, forecast_finish_date)
   WHERE id IN (SELECT id FROM existing)
   RETURNING id
 )
@@ -1946,25 +2069,37 @@ UNION ALL
 SELECT id::text FROM updated
 UNION ALL
 SELECT id::text FROM existing
-LIMIT 1;`);
+LIMIT 1`,
+      [projectId, milestoneName, reportingPeriodId, toDateParam(baselineFinishDate), toDateParam(forecastFinishDate), index]
+    );
     const milestoneId = Number(milestoneOut.split('\n').find((item) => /^\d+$/.test(item)));
-    await runPsql(`INSERT INTO project_report_milestone_assessments
-      (report_version_id, milestone_id, status, trend, confidence, summary, forecast_finish_date)
-      VALUES (${reportVersionId}, ${milestoneId}, ${q(toMilestoneAssessmentStatus(deliveryStatus))}, ${q(trend)}, ${clampConfidence(confidence)}, ${q(summary)}, ${qDate(forecastFinishDate)});`);
+    await runPsql(
+      `INSERT INTO project_report_milestone_assessments
+       (report_version_id, milestone_id, status, trend, confidence, summary, forecast_finish_date)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::date)`,
+      [reportVersionId, milestoneId, toMilestoneAssessmentStatus(deliveryStatus), trend, clampConfidence(confidence), summary, toDateParam(forecastFinishDate)]
+    );
     const evidence = Array.isArray(segment.semantic_evidence) && segment.semantic_evidence.length
       ? segment.semantic_evidence
       : (segment.evidence || []).slice(0, 3).map((text) => ({ text, confidence: segment.confidence || 0.5 }));
     for (const evidenceItem of evidence.slice(0, 3)) {
-      await runPsql(`INSERT INTO project_report_evidence
-        (report_version_id, linked_type, linked_id, evidence_text, speaker, turn_index, confidence)
-        VALUES (${reportVersionId}, 'milestone', ${milestoneId}, ${q(evidenceItem.text || '')}, ${q(evidenceItem.speaker || '')}, ${Number.isFinite(Number(evidenceItem.turnIndex)) ? Number(evidenceItem.turnIndex) : 'NULL'}, ${clampConfidence(evidenceItem.score || evidenceItem.confidence || segment.confidence)});`);
+      const turnIndex = Number.isFinite(Number(evidenceItem.turnIndex)) ? Number(evidenceItem.turnIndex) : null;
+      await runPsql(
+        `INSERT INTO project_report_evidence
+         (report_version_id, linked_type, linked_id, evidence_text, speaker, turn_index, confidence)
+         VALUES ($1, 'milestone', $2, $3, $4, $5, $6)`,
+        [reportVersionId, milestoneId, evidenceItem.text || '', evidenceItem.speaker || '', turnIndex, clampConfidence(evidenceItem.score || evidenceItem.confidence || segment.confidence)]
+      );
     }
   }
 
   for (const risk of risks.slice(0, 10)) {
-    await runPsql(`INSERT INTO project_ai_risk_suggestions
-      (report_version_id, risk_title, description, suggested_mitigation, confidence, review_status)
-      VALUES (${reportVersionId}, ${q(risk.riskTitle || 'Project risk')}, ${q(risk.description || '')}, ${q(risk.suggestedMitigation || '')}, ${clampConfidence(risk.confidence)}, 'pending');`);
+    await runPsql(
+      `INSERT INTO project_ai_risk_suggestions
+       (report_version_id, risk_title, description, suggested_mitigation, confidence, review_status)
+       VALUES ($1, $2, $3, $4, $5, 'pending')`,
+      [reportVersionId, risk.riskTitle || 'Project risk', risk.description || '', risk.suggestedMitigation || '', clampConfidence(risk.confidence)]
+    );
   }
 
   return {
@@ -1990,22 +2125,26 @@ async function markProjectContextOfficial(projectName = '', label = '') {
     throw error;
   }
 
-  const milestoneOut = await runPsql(`
-UPDATE project_core_milestones
-SET is_official = TRUE,
-    official_label = ${q(officialLabel)},
-    official_at = COALESCE(official_at, NOW()),
-    is_active = TRUE
-WHERE project_id = ${projectId} AND is_active = TRUE
-RETURNING id::text;`);
-  const riskOut = await runPsql(`
-UPDATE project_core_risks
-SET is_official = TRUE,
-    official_label = ${q(officialLabel)},
-    official_at = COALESCE(official_at, NOW()),
-    is_active = TRUE
-WHERE project_id = ${projectId} AND is_active = TRUE
-RETURNING id::text;`);
+  const milestoneOut = await runPsql(
+    `UPDATE project_core_milestones
+     SET is_official = TRUE,
+         official_label = $1,
+         official_at = COALESCE(official_at, NOW()),
+         is_active = TRUE
+     WHERE project_id = $2 AND is_active = TRUE
+     RETURNING id::text`,
+    [officialLabel, projectId]
+  );
+  const riskOut = await runPsql(
+    `UPDATE project_core_risks
+     SET is_official = TRUE,
+         official_label = $1,
+         official_at = COALESCE(official_at, NOW()),
+         is_active = TRUE
+     WHERE project_id = $2 AND is_active = TRUE
+     RETURNING id::text`,
+    [officialLabel, projectId]
+  );
 
   const snapshot = await createProjectContextSnapshot(ref.projectId ? { projectId, projectName: name } : name, {
     snapshotType: 'manual',
@@ -2094,35 +2233,55 @@ RETURNING id::text;`);
 
 
 async function markWebhookSuccess(jobId, meetingId, webhookResponse) {
-  const sql = `BEGIN;
-UPDATE meeting_jobs SET status='completed', result_payload=${qJson(webhookResponse)}, error_message=NULL, locked_at=NULL, locked_by=NULL, updated_at=NOW() WHERE id=${Number(jobId)};
-UPDATE meetings SET webhook_status='sent', webhook_sent_at=NOW(), webhook_response=${qJson(webhookResponse)}, status='completed', last_error='', processing_completed_at=NOW(), last_activity_at=NOW() WHERE id=${Number(meetingId)};
-COMMIT;`;
-  await runPsql(sql);
+  const responseJson = JSON.stringify(webhookResponse || {});
+  await withTransaction(async (client) => {
+    await client.query(
+      `UPDATE meeting_jobs SET status='completed', result_payload=$1, error_message=NULL, locked_at=NULL, locked_by=NULL, updated_at=NOW() WHERE id=$2`,
+      [responseJson, Number(jobId)]
+    );
+    await client.query(
+      `UPDATE meetings SET webhook_status='sent', webhook_sent_at=NOW(), webhook_response=$1, status='completed', last_error='', processing_completed_at=NOW(), last_activity_at=NOW() WHERE id=$2`,
+      [responseJson, Number(meetingId)]
+    );
+  });
 }
 
 async function markWebhookFailure(job, errorMessage) {
   const shouldRetry = job.attempts < job.maxAttempts;
-  const sql = shouldRetry ? `BEGIN;
-UPDATE meeting_jobs SET status='queued', error_message=${q(errorMessage)}, locked_at=NULL, locked_by=NULL, run_after=NOW()+INTERVAL '2 minutes', updated_at=NOW() WHERE id=${Number(job.id)};
-UPDATE meetings SET webhook_status='failed', status='failed', last_error=${q(errorMessage)}, last_activity_at=NOW() WHERE id=${Number(job.meetingId)};
-COMMIT;` : `BEGIN;
-UPDATE meeting_jobs SET status='failed', error_message=${q(errorMessage)}, locked_at=NULL, locked_by=NULL, updated_at=NOW() WHERE id=${Number(job.id)};
-UPDATE meetings SET webhook_status='failed', status='failed', last_error=${q(errorMessage)}, last_activity_at=NOW() WHERE id=${Number(job.meetingId)};
-COMMIT;`;
-  await runPsql(sql);
+  await withTransaction(async (client) => {
+    if (shouldRetry) {
+      await client.query(
+        `UPDATE meeting_jobs SET status='queued', error_message=$1, locked_at=NULL, locked_by=NULL, run_after=NOW()+INTERVAL '2 minutes', updated_at=NOW() WHERE id=$2`,
+        [errorMessage, Number(job.id)]
+      );
+    } else {
+      await client.query(
+        `UPDATE meeting_jobs SET status='failed', error_message=$1, locked_at=NULL, locked_by=NULL, updated_at=NOW() WHERE id=$2`,
+        [errorMessage, Number(job.id)]
+      );
+    }
+    await client.query(
+      `UPDATE meetings SET webhook_status='failed', status='failed', last_error=$1, last_activity_at=NOW() WHERE id=$2`,
+      [errorMessage, Number(job.meetingId)]
+    );
+  });
+  return shouldRetry;
 }
 
 async function createAuthUser({ email, fullName, passwordSalt, passwordHash }) {
-  const sql = `INSERT INTO auth_users (email, full_name, password_salt, password_hash) VALUES (${q(email.toLowerCase())}, ${q(fullName || '')}, ${q(passwordSalt)}, ${q(passwordHash)}) RETURNING id::text, email, full_name;`;
-  const out = await runPsql(sql);
+  const out = await runPsql(
+    'INSERT INTO auth_users (email, full_name, password_salt, password_hash) VALUES ($1, $2, $3, $4) RETURNING id::text, email, full_name',
+    [email.toLowerCase(), fullName || '', passwordSalt, passwordHash]
+  );
   const [id, userEmail, name] = (out.split('\n').find(Boolean) || '||').split('|');
   return { id: Number(id), email: userEmail, fullName: name };
 }
 
 async function findAuthUserByEmail(email) {
-  const sql = `SELECT id::text, email, full_name, password_salt, password_hash, is_active::text FROM auth_users WHERE email = ${q(String(email || '').toLowerCase())} LIMIT 1;`;
-  const out = await runPsql(sql);
+  const out = await runPsql(
+    'SELECT id::text, email, full_name, password_salt, password_hash, is_active::text FROM auth_users WHERE email = $1 LIMIT 1',
+    [String(email || '').toLowerCase()]
+  );
   const line = out.split('\n').find(Boolean);
   if (!line) return null;
   const [id, userEmail, fullName, passwordSalt, passwordHash, isActive] = line.split('|');
@@ -2130,22 +2289,37 @@ async function findAuthUserByEmail(email) {
 }
 
 async function touchAuthLastLogin(userId) {
-  await runPsql(`UPDATE auth_users SET last_login_at = NOW(), updated_at = NOW() WHERE id = ${Number(userId)};`);
+  await runPsql('UPDATE auth_users SET last_login_at = NOW(), updated_at = NOW() WHERE id = $1', [Number(userId)]);
 }
 
 async function createPasswordResetToken(userId, resetToken) {
-  await runPsql(`INSERT INTO auth_password_reset_tokens (user_id, reset_token, expires_at) VALUES (${Number(userId)}, ${q(resetToken)}, NOW() + INTERVAL '30 minutes');`);
+  await runPsql(
+    "INSERT INTO auth_password_reset_tokens (user_id, reset_token, expires_at) VALUES ($1, $2, NOW() + INTERVAL '30 minutes')",
+    [Number(userId), resetToken]
+  );
 }
 
 async function consumePasswordResetToken(resetToken) {
-  const sql = `UPDATE auth_password_reset_tokens SET used_at = NOW() WHERE id = (SELECT id FROM auth_password_reset_tokens WHERE reset_token = ${q(resetToken)} AND used_at IS NULL AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1) RETURNING user_id::text;`;
-  const out = await runPsql(sql);
+  const out = await runPsql(
+    `UPDATE auth_password_reset_tokens
+     SET used_at = NOW()
+     WHERE id = (
+       SELECT id FROM auth_password_reset_tokens
+       WHERE reset_token = $1 AND used_at IS NULL AND expires_at > NOW()
+       ORDER BY created_at DESC LIMIT 1
+     )
+     RETURNING user_id::text`,
+    [resetToken]
+  );
   const line = out.split('\n').find(Boolean);
   return line ? { userId: Number(line) } : null;
 }
 
 async function updateAuthPassword(userId, salt, hash) {
-  await runPsql(`UPDATE auth_users SET password_salt = ${q(salt)}, password_hash = ${q(hash)}, updated_at = NOW() WHERE id = ${Number(userId)};`);
+  await runPsql(
+    'UPDATE auth_users SET password_salt = $1, password_hash = $2, updated_at = NOW() WHERE id = $3',
+    [salt, hash, Number(userId)]
+  );
 }
 
 module.exports = {
