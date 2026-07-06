@@ -16,6 +16,9 @@ from google_ai_studio_minutes import (
 )
 from meeting_minutes_final_colab_core import generate_polished_minutes_pass
 from meeting_minutes_minilm_experiment import (
+    MiniLMBackend,
+    build_minilm_only_output,
+    collect_minilm_only_context,
     infer_minilm_meeting_date,
     infer_minilm_meeting_title,
     parse_numeric_turns,
@@ -40,8 +43,8 @@ def section(markdown: str, heading: str) -> str:
     return rest[: next_heading.start()] if next_heading else rest
 
 
-def clean_line(value: str) -> str:
-    value = re.sub(r"_\(Sources?:.*?\)_", "", value)
+def clean_line(value: Any) -> str:
+    value = re.sub(r"_\(Sources?:.*?\)_", "", str(value or ""))
     return value.strip(" -")
 
 
@@ -184,6 +187,160 @@ def enrich_fallback_meeting_fields(output: dict[str, Any], transcript_text: str)
     return enriched
 
 
+def _source_items(values: Any, limit: int = 6) -> list[dict[str, str]]:
+    sources: list[dict[str, str]] = []
+    if not isinstance(values, list):
+        return sources
+    for value in values:
+        if not isinstance(value, dict):
+            continue
+        text = clean_line(value.get("text", ""))
+        if not text:
+            continue
+        speaker = clean_line(value.get("speaker", ""))
+        sources.append({"speaker": speaker, "text": text})
+        if len(sources) >= limit:
+            break
+    return sources
+
+
+def _section_entry(text: Any, evidence: Any, *, owner: str = "", deadline: str = "") -> dict[str, Any] | None:
+    cleaned = clean_line(text)
+    if not cleaned:
+        return None
+    return {
+        "speaker": "",
+        "text": cleaned,
+        "owner": clean_line(owner),
+        "deadline": clean_line(deadline),
+        "sources": _source_items(evidence),
+    }
+
+
+def _append_entry(entries: list[dict[str, Any]], text: Any, evidence: Any, *, owner: str = "", deadline: str = "") -> None:
+    entry = _section_entry(text, evidence, owner=owner, deadline=deadline)
+    if entry is not None:
+        entries.append(entry)
+
+
+def build_minilm_topic_sections(minilm_output: dict[str, Any]) -> dict[str, Any]:
+    """Adapt semantic MiniLM output into the existing Google evidence-pack shape.
+
+    The older production writer already expects topic-group sections containing
+    short public text plus direct transcript sources. This adapter lets the
+    production route use the semantic MiniLM topic/action/decision selection
+    without making the Gemini prompt or UI contract understand a second schema.
+    """
+
+    topics: list[dict[str, Any]] = []
+    for topic in minilm_output.get("evidenceBackedTopics", []) or []:
+        if not isinstance(topic, dict):
+            continue
+        evidence = _source_items(topic.get("directEvidence", []), limit=4)
+        context = _source_items(topic.get("supportingContext", []), limit=3)
+        sources = evidence + [source for source in context if source not in evidence]
+        sections = {
+            "Discussion points": [],
+            "Responsibilities": [],
+            "Evidence required": [],
+            "Risks": [],
+            "Open questions": [],
+        }
+        _append_entry(sections["Discussion points"], topic.get("topicLabel", ""), sources)
+        for detail in topic.get("attributedDetailPoints", []) or []:
+            _append_entry(sections["Discussion points"], detail, sources)
+        for value in topic.get("candidateResponsibilitiesMentioned", []) or []:
+            _append_entry(sections["Responsibilities"], value, sources)
+        for value in topic.get("candidateDocumentsMentioned", []) or []:
+            _append_entry(sections["Evidence required"], value, sources)
+        for value in topic.get("candidateOpenQuestions", []) or []:
+            _append_entry(sections["Open questions"], value, sources)
+        for action in topic.get("candidateActionsOnlyIfExplicitlyStated", []) or []:
+            if not isinstance(action, dict):
+                continue
+            _append_entry(
+                sections["Discussion points"],
+                action.get("action", ""),
+                action.get("evidence", []) or sources,
+                owner=action.get("owner", ""),
+                deadline=action.get("deadline", ""),
+            )
+        sections = {name: entries for name, entries in sections.items() if entries}
+        if not sections:
+            continue
+        topics.append(
+            {
+                "topic": clean_line(topic.get("themeLabel", "")) or clean_line(topic.get("topicLabel", "")) or "Discussion",
+                "sections": sections,
+            }
+        )
+        if len(topics) >= 12:
+            break
+
+    actions = []
+    for action in minilm_output.get("actions", []) or []:
+        if not isinstance(action, dict):
+            continue
+        _append_entry(
+            actions,
+            action.get("meetingActionPoint", ""),
+            action.get("evidence", []) or action.get("_evidence", []),
+            owner=action.get("meetingActionPointOwner", ""),
+            deadline=action.get("meetingActionPointDeadline", ""),
+        )
+
+    decisions = []
+    evidence_by_decision = {
+        clean_line(item.get("decision", "")): item.get("evidence", []) or item.get("_evidence", [])
+        for item in minilm_output.get("decisionDetails", []) or []
+        if isinstance(item, dict)
+    }
+    for decision in minilm_output.get("decisions", []) or []:
+        _append_entry(decisions, decision, evidence_by_decision.get(clean_line(decision), []))
+
+    return {"topics": topics, "actions": actions, "decisions": decisions}
+
+
+def build_semantic_minilm_minutes(transcript_text: str, include_diagnostics: bool) -> tuple[dict[str, Any] | None, dict[str, Any], float]:
+    start = time.perf_counter()
+    diagnostics: dict[str, Any] = {
+        "enabled": True,
+        "used": False,
+        "modelAvailable": False,
+        "modelReason": "",
+        "fallbackReason": "",
+    }
+    try:
+        intermediate = collect_minilm_only_context(transcript_text)
+        backend = MiniLMBackend.load(enabled=True)
+        diagnostics["modelAvailable"] = backend.available
+        diagnostics["modelReason"] = backend.reason
+        output, minilm_diagnostics = build_minilm_only_output(
+            transcript_text,
+            intermediate,
+            backend,
+            rewriter=None,
+            include_diagnostics=include_diagnostics,
+        )
+        if include_diagnostics:
+            diagnostics["details"] = minilm_diagnostics
+        if not output:
+            diagnostics["fallbackReason"] = backend.reason or "MiniLM output was empty."
+            return None, diagnostics, round((time.perf_counter() - start) * 1000, 2)
+        counts = build_counts(output)
+        has_topic_evidence = bool(output.get("evidenceBackedTopics"))
+        if not has_topic_evidence and not any(counts.values()):
+            diagnostics["fallbackReason"] = "MiniLM selected no usable discussion, decision, or action candidates."
+            return None, diagnostics, round((time.perf_counter() - start) * 1000, 2)
+        diagnostics["used"] = True
+        diagnostics["counts"] = counts
+        diagnostics["topicCount"] = len(output.get("evidenceBackedTopics", []) or [])
+        return output, diagnostics, round((time.perf_counter() - start) * 1000, 2)
+    except Exception as exc:  # pragma: no cover - exercised in production/runtime environments
+        diagnostics["fallbackReason"] = f"MiniLM production extraction failed: {exc}"
+        return None, diagnostics, round((time.perf_counter() - start) * 1000, 2)
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the Colab-style meeting-minutes-final extractor.")
     parser.add_argument("transcript_path", help="Path to the transcript file.")
@@ -197,13 +354,23 @@ def main() -> int:
     args = parse_args(sys.argv[1:])
     transcript_text = Path(args.transcript_path).read_text(encoding="utf-8")
 
-    start = time.perf_counter()
+    keyword_start = time.perf_counter()
     result = generate_polished_minutes_pass(transcript_text=transcript_text)
-    minilm_runtime_ms = round((time.perf_counter() - start) * 1000, 2)
-    fallback_output = apply_british_english_to_payload(enrich_fallback_meeting_fields(parse_colab_minutes(result["minutes"]), transcript_text))
+    keyword_runtime_ms = round((time.perf_counter() - keyword_start) * 1000, 2)
+    keyword_fallback_output = apply_british_english_to_payload(enrich_fallback_meeting_fields(parse_colab_minutes(result["minutes"]), transcript_text))
+
+    semantic_output, semantic_diagnostics, semantic_runtime_ms = build_semantic_minilm_minutes(
+        transcript_text,
+        include_diagnostics=not args.skip_diagnostics,
+    )
+    using_semantic_minilm = semantic_output is not None
+    fallback_output = apply_british_english_to_payload(
+        enrich_fallback_meeting_fields(semantic_output or keyword_fallback_output, transcript_text)
+    )
 
     rewrite_start = time.perf_counter()
-    evidence_pack = build_google_minutes_evidence_pack(result.get("sections", {}), fallback_output)
+    evidence_sections = build_minilm_topic_sections(semantic_output) if semantic_output else result.get("sections", {})
+    evidence_pack = build_google_minutes_evidence_pack(evidence_sections, fallback_output)
     if args.skip_rewrite:
         google_output, google_diagnostics = None, {
             "provider": "google_ai_studio",
@@ -220,14 +387,14 @@ def main() -> int:
     qc_start = time.perf_counter()
     qc_diagnostics = run_minilm_quality_control(output, evidence_pack)
     qc_runtime_ms = round((time.perf_counter() - qc_start) * 1000, 2)
-    runtime_ms = round(minilm_runtime_ms + rewrite_runtime_ms + qc_runtime_ms, 2)
+    runtime_ms = round(keyword_runtime_ms + semantic_runtime_ms + rewrite_runtime_ms + qc_runtime_ms, 2)
 
     payload: dict[str, Any] = {
         "mode": "meeting_minutes_final_hybrid",
         "executed": True,
         "modelAvailable": True,
         "modelName": "MiniLM evidence graph + Google AI Studio writing pass",
-        "modelReason": "minilm_topics_google_first_pass_minilm_qc",
+        "modelReason": "semantic_minilm_topics_google_first_pass_minilm_qc" if using_semantic_minilm else "keyword_topics_google_first_pass_minilm_qc_fallback",
         "rewriterAvailable": bool(google_diagnostics.get("available")),
         "rewriterModelName": google_diagnostics.get("model"),
         "rewriterModelPath": None,
@@ -238,7 +405,9 @@ def main() -> int:
         "timingMs": {
             "baseline": 0.0,
             "context": 0.0,
-            "minilm": minilm_runtime_ms,
+            "keywordExtractor": keyword_runtime_ms,
+            "semanticMiniLM": semantic_runtime_ms,
+            "minilm": semantic_runtime_ms,
             "rewrite": rewrite_runtime_ms,
             "qualityControl": qc_runtime_ms,
             "total": runtime_ms,
@@ -250,6 +419,15 @@ def main() -> int:
             "scorecard": result.get("scorecard", {}),
             "evaluation": result.get("evaluation", {}),
             "markdownMinutes": result.get("minutes", ""),
+            "productionTopicExtractor": {
+                "used": "semantic_minilm" if using_semantic_minilm else "keyword_profile_fallback",
+                "semanticMiniLM": semantic_diagnostics,
+                "keywordProfileReference": {
+                    "runtimeMs": keyword_runtime_ms,
+                    "scorecard": result.get("scorecard", {}),
+                    "evaluation": result.get("evaluation", {}),
+                },
+            },
             "googleAiStudio": google_diagnostics,
             "minilmQualityControl": qc_diagnostics,
         }
