@@ -223,7 +223,7 @@ def _append_entry(entries: list[dict[str, Any]], text: Any, evidence: Any, *, ow
         entries.append(entry)
 
 
-def build_minilm_topic_sections(minilm_output: dict[str, Any]) -> dict[str, Any]:
+def build_minilm_topic_sections(minilm_output: dict[str, Any], fallback_sections: dict[str, Any] | None = None) -> dict[str, Any]:
     """Adapt semantic MiniLM output into the existing Google evidence-pack shape.
 
     The older production writer already expects topic-group sections containing
@@ -277,28 +277,62 @@ def build_minilm_topic_sections(minilm_output: dict[str, Any]) -> dict[str, Any]
         if len(topics) >= 12:
             break
 
-    actions = []
-    for action in minilm_output.get("actions", []) or []:
-        if not isinstance(action, dict):
-            continue
-        _append_entry(
-            actions,
-            action.get("meetingActionPoint", ""),
-            action.get("evidence", []) or action.get("_evidence", []),
-            owner=action.get("meetingActionPointOwner", ""),
-            deadline=action.get("meetingActionPointDeadline", ""),
-        )
-
-    decisions = []
-    evidence_by_decision = {
-        clean_line(item.get("decision", "")): item.get("evidence", []) or item.get("_evidence", [])
-        for item in minilm_output.get("decisionDetails", []) or []
-        if isinstance(item, dict)
+    # This production hook is deliberately topic/discussion-only. The older
+    # action/decision path has more fixture coverage and fewer false-positive
+    # risks, so keep it as the source of actions/decisions until those MiniLM
+    # selectors are separately re-baselined.
+    fallback_sections = fallback_sections if isinstance(fallback_sections, dict) else {}
+    return {
+        "topics": topics,
+        "actions": list(fallback_sections.get("actions", []) or []),
+        "decisions": list(fallback_sections.get("decisions", []) or []),
     }
-    for decision in minilm_output.get("decisions", []) or []:
-        _append_entry(decisions, decision, evidence_by_decision.get(clean_line(decision), []))
 
-    return {"topics": topics, "actions": actions, "decisions": decisions}
+
+def merge_semantic_topics_into_fallback(keyword_output: dict[str, Any], semantic_output: dict[str, Any] | None) -> dict[str, Any]:
+    if not semantic_output:
+        return dict(keyword_output)
+    merged = dict(keyword_output)
+    for key in [
+        "meetingTitle",
+        "meetingDate",
+        "meetingLocation",
+        "participants",
+        "meetingDescription",
+        "meetingObjectives",
+    ]:
+        if semantic_output.get(key):
+            merged[key] = semantic_output[key]
+    if semantic_output.get("discussionPoints"):
+        merged["discussionPoints"] = semantic_output["discussionPoints"]
+        merged["meetingMinutes"] = semantic_output.get("meetingMinutes") or [
+            {"topic": "Discussion", "discussionPoints": semantic_output["discussionPoints"]}
+        ]
+    for key in [
+        "discussionPointDetails",
+        "internalEvidence",
+        "meetingOverview",
+        "evidenceBackedTopics",
+        "openQuestions",
+        "documentsMentioned",
+        "responsibilitiesMentioned",
+        "excludedWeakCandidates",
+    ]:
+        if key in semantic_output:
+            merged[key] = semantic_output[key]
+    # Preserve the existing production action/decision extraction path.
+    for key in [
+        "decisions",
+        "decisionDetails",
+        "actions",
+        "meetingActionPoint",
+        "meetingActionPointOwner",
+        "meetingActionPointDeadline",
+        "nextSteps",
+    ]:
+        if key in keyword_output:
+            merged[key] = keyword_output[key]
+    return merged
 
 
 def build_semantic_minilm_minutes(transcript_text: str, include_diagnostics: bool) -> tuple[dict[str, Any] | None, dict[str, Any], float]:
@@ -364,12 +398,13 @@ def main() -> int:
         include_diagnostics=not args.skip_diagnostics,
     )
     using_semantic_minilm = semantic_output is not None
+    merged_fallback_output = merge_semantic_topics_into_fallback(keyword_fallback_output, semantic_output)
     fallback_output = apply_british_english_to_payload(
-        enrich_fallback_meeting_fields(semantic_output or keyword_fallback_output, transcript_text)
+        enrich_fallback_meeting_fields(merged_fallback_output, transcript_text)
     )
 
     rewrite_start = time.perf_counter()
-    evidence_sections = build_minilm_topic_sections(semantic_output) if semantic_output else result.get("sections", {})
+    evidence_sections = build_minilm_topic_sections(semantic_output, result.get("sections", {})) if semantic_output else result.get("sections", {})
     evidence_pack = build_google_minutes_evidence_pack(evidence_sections, fallback_output)
     if args.skip_rewrite:
         google_output, google_diagnostics = None, {
