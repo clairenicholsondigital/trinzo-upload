@@ -2319,7 +2319,15 @@ def looks_like_noisy_export_title(line: str, title: str = "") -> bool:
     cleaned = normalize_text_fragment(title or line).strip(".!?")
     lowered = cleaned.lower()
     tokens = tokenize(cleaned)
+    raw_line = str(line or "").strip()
+    raw_title = str(title or "").strip()
     if not cleaned:
+        return True
+    if "-->" in raw_line or "-->" in raw_title:
+        return True
+    if re.fullmatch(r"[\d\s:.;,\-–—>]+", raw_line) or re.fullmatch(r"[\d\s:.;,\-–—>]+", raw_title):
+        return True
+    if tokens and all(re.fullmatch(r"\d+", token) for token in tokens):
         return True
     if lowered in {"meeting transcript", "transcript", "recording", "transcript export", "recording export"}:
         return True
@@ -2357,6 +2365,12 @@ def infer_minilm_meeting_title(transcript_text: str) -> str:
         if not explicit_match:
             explicit_match = re.search(
                 r"\bmeeting is\s+(?:the\s+)?(?P<title>.+?)(?:[.!?]|$)",
+                content_line,
+                flags=re.I,
+            )
+        if not explicit_match:
+            explicit_match = re.search(
+                r"\bthis is\s+(?:our|the)\s+(?P<title>.+?)(?:,\s*(?:so|let|and)\b|[.!?]|$)",
                 content_line,
                 flags=re.I,
             )

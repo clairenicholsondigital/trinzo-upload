@@ -473,11 +473,19 @@ def _remove_actions_matching(output: dict[str, Any], banned_terms: list[str]) ->
 
 def _clean_action_owners(output: dict[str, Any], transcript_text: str) -> None:
     points = list(output.get("meetingActionPoint") or [])
+    points = [point[:1].upper() + point[1:] if isinstance(point, str) and point[:1].islower() else point for point in points]
+    output["meetingActionPoint"] = points
     owners = list(output.get("meetingActionPointOwner") or [])
     cleaned: list[str] = []
     for index, owner in enumerate(owners):
         value = clean_line(owner)
         value = re.sub(r"/(?:i['’]?ll|i\s+will|let['’]?s)\b.*$", "", value, flags=re.I).strip(" /")
+        if "/" in value:
+            # Slash-combined owners usually come from parser adjacency rather
+            # than an explicit shared owner. Wrong owners are worse than blank
+            # owners for circulatable minutes, so clear them instead of
+            # pretending the ambiguity is resolved.
+            value = ""
         if index < len(points) and "board pack" in _norm(points[index]) and "leah" in _norm(value):
             value = "Leah"
         if "support metrics" in _norm(transcript_text) and _norm(value) in {"mark", "james", "rachel"}:
@@ -602,7 +610,7 @@ def apply_real_transcript_coverage_guardrails(output: dict[str, Any], transcript
     _ensure_discussion(guarded, transcript_text, ["udamed", "authorised representative"], "UDAMED and authorised representative responsibilities need clarification before documentation and registration steps are finalised.")
     _ensure_discussion(guarded, transcript_text, ["ifu", "manufacturer"], "IFUs and manufacturer information need to be checked so required product information is available and controlled.")
     _ensure_discussion(guarded, transcript_text, ["declaration", "conformity", "ppe"], "Declarations of conformity and PPE requirements need a clear rationale, including whether sunglasses/PPE scope belongs in procedures.")
-    _ensure_discussion(guarded, transcript_text, ["hpra", "documentation"], "HPRA documentation and billing questions need to be clarified alongside authorised-representative and importer records.")
+    _ensure_discussion(guarded, transcript_text, ["hpra", "documentation"], "HPRA fee, invoice and documentation trail questions need to be clarified.")
     _ensure_discussion(guarded, transcript_text, ["med envoy", "project plan"], "Med Envoy project plan or task-list information is needed to understand activities, timelines and open information requests.")
 
     # Eakin/software technical-file coverage.
@@ -632,8 +640,10 @@ def apply_real_transcript_coverage_guardrails(output: dict[str, Any], transcript
     # Real transcript action/decision cleanup for recurring regulatory/software patterns.
     if "med envoy" in text:
         _set_action(guarded, transcript_text, ["med envoy"], "Follow up on the Med Envoy project plan or task list.", "Cody", "Not specified")
-    if "hpra" in text:
+    if "hpra" in text and ("authorised representative" in text or "authorized representative" in text or "bill" in text):
         _set_action(guarded, transcript_text, ["hpra"], "Clarify the HPRA authorised-representative bill/documentation question.", "Jacqui", "Not specified")
+    elif "hpra" in text and ("invoice" in text or "fee" in text) and "documentation" in text:
+        _set_action(guarded, transcript_text, ["hpra"], "Clarify the HPRA fee, invoice and documentation trail.", "", "Not specified")
     if "declaration" in text and "conformity" in text and "ppe" in text:
         _set_action(guarded, transcript_text, ["ppe"], "Confirm declarations of conformity and PPE risk rationale.", "Jacqui", "Not specified")
     if "working session" in text or all(day in text for day in ["wednesday", "thursday", "friday"]):
@@ -693,7 +703,7 @@ def apply_real_transcript_coverage_guardrails(output: dict[str, Any], transcript
     if "declaration" in text and "conformity" in text and "ppe" in text:
         _ensure_visible_concepts(guarded, transcript_text, ["declarations of conformity", "PPE"], "Declarations of conformity and PPE requirements need a clear rationale and procedure coverage.")
     if "hpra" in text:
-        _ensure_visible_concepts(guarded, transcript_text, ["HPRA", "documentation"], "HPRA documentation, authorised-representative billing and related records need clarification.")
+        _ensure_visible_concepts(guarded, transcript_text, ["HPRA", "documentation"], "HPRA fee, invoice and documentation trail questions need clarification.")
     if "working session" in text and "business works" in text:
         _ensure_visible_concepts(guarded, transcript_text, ["working sessions", "business works"], "Working sessions are needed to understand how the business works before procedures are finalised.")
     if all(day in text for day in ["wednesday", "thursday", "friday"]):

@@ -15,6 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from meeting_minutes_final_colab import (  # noqa: E402
+    _clean_action_owners,
     _deadline_is_grounded,
     _set_action,
     _transcript_grounding_ratio,
@@ -82,7 +83,7 @@ class GuardrailGroundingTest(unittest.TestCase):
             for key in ("discussionPoints", "decisions", "meetingActionPoint", "meetingActionPointOwner", "meetingActionPointDeadline")
             for value in (report.get(key) or [])
         ).lower()
-        for fabricated in ("jacqui", "cody", "rebecca", "john-paul", "hannah quinn", "med envoy", "sunglasses", "dublin", "19th june", "26th june", "23rd july"):
+        for fabricated in ("jacqui", "cody", "rebecca", "john-paul", "hannah quinn", "med envoy", "sunglasses", "dublin", "authorised-representative", "authorised representative", "19th june", "26th june", "23rd july"):
             self.assertNotIn(fabricated, blob)
 
     def test_guardrails_keep_grounded_coverage_on_original_style_meeting(self):
@@ -96,6 +97,20 @@ class GuardrailGroundingTest(unittest.TestCase):
         report = apply_real_transcript_coverage_guardrails(_empty_output(), transcript)
         owners = [owner.lower() for owner in report.get("meetingActionPointOwner") or []]
         self.assertIn("jacqui", owners)
+
+    def test_slash_combined_owner_is_cleared_as_ambiguous(self):
+        output = _empty_output()
+        output["meetingActionPoint"] = ["Circulate the labelling checklist.", "Review the debug commands."]
+        output["meetingActionPointOwner"] = ["Saoirse/Kelly", "Andrew/David"]
+        output["meetingActionPointDeadline"] = ["Not specified", "Not specified"]
+        output["actions"] = [
+            {"meetingActionPoint": text, "meetingActionPointOwner": owner, "meetingActionPointDeadline": "Not specified"}
+            for text, owner in zip(output["meetingActionPoint"], output["meetingActionPointOwner"])
+        ]
+
+        _clean_action_owners(output, LOOKALIKE_TRANSCRIPT)
+
+        self.assertEqual(output["meetingActionPointOwner"], ["", ""])
 
     def test_action_hygiene_dedupes_and_caps(self):
         output = _empty_output()

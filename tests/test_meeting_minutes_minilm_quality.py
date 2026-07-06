@@ -533,6 +533,22 @@ Jacqui: PPE requirements should be included for the sunglasses, and I will confi
         self.assertNotIn("Conor Flynn", infer_minilm_meeting_title(transcript))
         self.assertNotIn("0 03", infer_minilm_meeting_title(transcript))
 
+    def test_timestamp_rows_are_not_used_as_minilm_title(self):
+        transcript = """0:0:0.0 --> 0:0:6.2
+Priya Nair
+Priya Nair started transcription
+
+0:0:6.8 --> 0:0:19.4
+Priya Nair
+Right, thanks both for joining. This is our NovaMed Devices weekly regulatory catch-up, so let's work through the open items on the register.
+"""
+
+        title = infer_minilm_meeting_title(transcript)
+
+        self.assertEqual(title, "NovaMed Devices weekly regulatory catch-up")
+        self.assertNotIn("0 0 0", title)
+        self.assertNotIn("--", title)
+
     def test_teams_glued_status_review_recovers_useful_minutes(self):
         transcript = (FIXTURES_DIR / "meeting_minutes_teams_glued_status_review.txt").read_text(encoding="utf-8")
         output, diagnostics = build_minilm_only_output(
