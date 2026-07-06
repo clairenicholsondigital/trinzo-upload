@@ -11,17 +11,10 @@ import importlib.util
 import json
 import re
 import sys
-import tempfile
-import urllib.request
 from collections import Counter
 from pathlib import Path
 from typing import Any
 
-
-RAW_CLASSIFIER_URL = (
-    "https://raw.githubusercontent.com/clairenicholsondigital/"
-    "colab-tests-public/3dab2ac/minilm_evidence_graph.py"
-)
 
 DEFAULT_TRANSCRIPT_CANDIDATES = [
     Path("Untitled (2) (2).txt"),
@@ -227,17 +220,15 @@ def _load_classifier() -> Any:
         return _load_module_from_path(local_path)
 
     try:
-        with urllib.request.urlopen(RAW_CLASSIFIER_URL, timeout=20) as response:
-            source = response.read()
-
-        temp_dir = Path(tempfile.mkdtemp(prefix="minilm_classifier_"))
-        temp_path = temp_dir / "minilm_evidence_graph.py"
-        temp_path.write_bytes(source)
-        return _load_module_from_path(temp_path)
-    except Exception:
         import minilm_evidence_graph as classifier
 
         return classifier
+    except ImportError as exc:
+        raise RuntimeError(
+            "minilm_evidence_graph.py was not found next to this script and could not be "
+            "imported from the Python path. Restore the local file rather than fetching it "
+            "remotely -- this loader no longer downloads and executes code from a URL."
+        ) from exc
 
 
 def _load_module_from_path(path: Path) -> Any:
@@ -1150,27 +1141,29 @@ def _generic_action_entries(
     return entries
 
 
-OWNER_PATTERNS: list[tuple[str, str]] = [
-    ("Jack", r"\bjack\b"),
-    ("Ciara", r"\bciara\b"),
-    ("Conor", r"\bconor\b"),
-    ("Jacqui", r"\bjacqui\b"),
-    ("Orla", r"\borla\b|\bo['’]?reilly\b"),
-    ("Colm", r"\bcolm\b"),
-    ("Mark", r"\bmark\b"),
-    ("Jenny", r"\bjenny\b"),
-    ("John-Paul", r"\bjohn[-\s]?paul\b"),
-    ("Andrew", r"\bandrew\b"),
-    ("Rebecca", r"\brebecca\b"),
-    ("David", r"\bdavid\b"),
-    ("Ciaran", r"\bciaran\b"),
-    ("Adil", r"\badil\b"),
-    ("Kevin", r"\bkevin\b"),
-    ("Grace", r"\bgrace\b"),
-    ("Liam", r"\bliam\b"),
+GENERIC_OWNER_LABELS: list[tuple[str, str]] = [
     ("All", r"\ball\b"),
     ("Team", r"\bteam\b"),
 ]
+
+
+def _text_person_names(text: str) -> list[str]:
+    """Original-cased capitalised names found in free text, for owner display.
+
+    Used instead of a fixed name list so any attendee can be attributed as an
+    action owner, not just the names this was originally tuned against.
+    """
+
+    names: list[str] = []
+    seen: set[str] = set()
+    for match in _NAME_TOKEN_RE.finditer(text):
+        word = match.group(0)
+        key = word.lower()
+        if key in _NON_NAME_CAPITALISED_WORDS or key in seen:
+            continue
+        seen.add(key)
+        names.append(word)
+    return names
 
 
 SPEAKER_LABEL_RE = re.compile(r"^[A-Z][A-Za-z'’.-]+(?:\s+[A-Z][A-Za-z'’.-]+){0,3}$")
@@ -1234,8 +1227,8 @@ def _infer_action_owner(source_text: str, action: dict[str, Any]) -> str:
     if speaker_first_person and _looks_like_person_label(speaker_first_person.group(1)):
         return speaker_first_person.group(1)
     lowered = source_text.lower()
-    owners: list[str] = []
-    for owner, pattern in OWNER_PATTERNS:
+    owners: list[str] = list(_text_person_names(source_text))
+    for owner, pattern in GENERIC_OWNER_LABELS:
         if re.search(pattern, lowered) and owner not in owners:
             owners.append(owner)
     if not owners:
@@ -1793,14 +1786,25 @@ TOPIC_STOPWORDS = {
     "fine", "for", "got", "had", "has", "help", "how", "look", "problem", "then",
     "the", "them", "was", "you", "not", "don't", "all", "follow", "good", "i'll", "it's", "level",
     "talked", "team", "why", "you're",
-    # Speaker names are useful as owners, but they should not become topic
-    # labels when compressed transcripts leak labels into classifier buckets.
-    "adil", "andrew", "ciara", "claire", "colm", "conor", "dan", "david", "eleanor", "ella", "emma",
-    "grace", "helen", "ibrahim", "jack", "jacqui", "james", "jen", "joel", "jon",
-    "kevin", "leah", "liam", "louise", "mark", "maya", "megan", "miles", "mina",
-    "omar", "orla", "owen", "priya", "rachel", "ravi", "rebecca", "rhea", "ruth", "sara",
-    "hannah", "martin", "quinn", "steve", "tom",
 }
+
+
+def _speaker_name_stopwords(report: dict[str, Any]) -> set[str]:
+    """Lowercased name tokens for every speaker in this transcript.
+
+    Used instead of a fixed name list so speaker names are kept out of topic
+    labels for any transcript/client, not just the one this was tuned against.
+    """
+
+    stopwords: set[str] = set()
+    for source in _all_indexed_sources(report):
+        speaker = str(source.get("speaker") or "").strip()
+        if not speaker or speaker.lower() == "unknown":
+            continue
+        for word in re.findall(r"[a-zA-Z'-]+", speaker):
+            if len(word) >= 3:
+                stopwords.add(word.lower())
+    return stopwords
 
 
 BROAD_GENERIC_PROFILE_TERMS = {
@@ -1828,21 +1832,23 @@ def _all_indexed_sources(report: dict[str, Any], buckets: list[str] | None = Non
     return sources
 
 
-def _source_words(text: str) -> list[str]:
+def _source_words(text: str, extra_stopwords: set[str] | None = None) -> list[str]:
     words = re.findall(r"[a-z][a-z0-9'’-]{2,}", text.lower())
     cleaned: list[str] = []
     for word in words:
         word = word.strip("'’-")
-        if len(word) < 3 or word in TOPIC_STOPWORDS:
+        if len(word) < 3 or word in TOPIC_STOPWORDS or (extra_stopwords and word in extra_stopwords):
             continue
         cleaned.append(word)
     return cleaned
 
 
-def _topic_terms_from_sources(sources: list[dict[str, Any]], limit: int = 6) -> list[str]:
+def _topic_terms_from_sources(
+    sources: list[dict[str, Any]], limit: int = 6, extra_stopwords: set[str] | None = None
+) -> list[str]:
     counts: dict[str, int] = {}
     for source in sources:
-        for word in _source_words(source["text"]):
+        for word in _source_words(source["text"], extra_stopwords):
             counts[word] = counts.get(word, 0) + 1
     ranked = sorted(counts.items(), key=lambda row: (-row[1], row[0]))
     return [word for word, _ in ranked[:limit]]
@@ -1867,7 +1873,7 @@ def _dynamic_topic_from_remaining_sources(
     ]
     if len(candidate_sources) < 3:
         return None
-    terms = _topic_terms_from_sources(candidate_sources)
+    terms = _topic_terms_from_sources(candidate_sources, extra_stopwords=_speaker_name_stopwords(report))
     if not terms:
         return None
     if len([term for term in terms if term not in BROAD_GENERIC_PROFILE_TERMS]) < 2:

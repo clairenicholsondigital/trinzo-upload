@@ -427,6 +427,12 @@ def extract_items(transcript: str) -> list[EvidenceItem]:
     for speaker, turn_text in parse_turns(transcript):
         for sentence in split_sentences(turn_text):
             bucket = classify_sentence(sentence)
+            if speaker == "Unknown" and bucket not in {"noise", "discussion"}:
+                # "Unknown" only ever holds text before the first recognised
+                # speaker turn (see parse_turns) -- i.e. the transcript's own
+                # title/date/location header, never real meeting dialogue.
+                # Never let header text masquerade as an action/decision/risk.
+                bucket = "discussion"
             items.append(EvidenceItem(bucket=bucket, speaker=speaker, text=sentence))
     return items
 
