@@ -382,14 +382,44 @@ def _looks_like_speaker_name(name: str) -> bool:
     return True
 
 
-def parse_turns(transcript: str) -> list[tuple[str, str]]:
-    """Parse Teams-style speaker turns from a transcript.
+_INLINE_COLON_SPEAKER_RE = re.compile(r"([A-Z][A-Za-z'’-]*(?:\s+[A-Z][A-Za-z'’-]*){0,2}):\s+")
 
-    Handles both the classic export layout, where a "Speaker  H:MM" line is
-    followed by the message on later lines, and the layout produced by
-    mammoth's raw-text extraction of real Teams .docx transcripts, where the
-    message is glued directly onto the same line immediately after the
-    timestamp with no separating whitespace (e.g. "Jacqui Fox   0:03Perfect...").
+
+def _split_inline_colon_turns(line: str) -> list[tuple[str, str]]:
+    """Split a "Name: text" transcript with no timestamps at all.
+
+    Some exports have no "Speaker  H:MM" markers -- every turn is written as
+    "Name: message" with no separating whitespace between turns (e.g.
+    "James: Hi.Rachel: Hi back."), often collapsed onto a single line. This
+    never matches _SPEAKER_LINE_RE (there's no timestamp), so without this
+    fallback the whole transcript becomes one "Unknown" turn and the literal
+    "Name:" labels leak into the visible output as text.
+    """
+
+    matches = [m for m in _INLINE_COLON_SPEAKER_RE.finditer(line) if _looks_like_speaker_name(m.group(1))]
+    if len({m.group(1).strip() for m in matches}) < 2:
+        return []
+    turns: list[tuple[str, str]] = []
+    for index, match in enumerate(matches):
+        speaker = match.group(1).strip()
+        start = match.end()
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(line)
+        text = normalise(line[start:end])
+        if text:
+            turns.append((speaker, text))
+    return turns
+
+
+def parse_turns(transcript: str) -> list[tuple[str, str]]:
+    """Parse speaker turns from a transcript.
+
+    Handles the classic Teams-export layout, where a "Speaker  H:MM" line is
+    followed by the message on later lines; the layout produced by mammoth's
+    raw-text extraction of real Teams .docx transcripts, where the message is
+    glued directly onto the same line immediately after the timestamp with no
+    separating whitespace (e.g. "Jacqui Fox   0:03Perfect..."); and a
+    timestamp-free "Name: message" layout, including one where every turn is
+    glued onto a single line (see _split_inline_colon_turns).
     """
 
     turns: list[tuple[str, str]] = []
@@ -408,8 +438,16 @@ def parse_turns(transcript: str) -> list[tuple[str, str]]:
             current_speaker = speaker_candidate
             trailing = match.group(3).strip()
             current_lines = [trailing] if trailing else []
-        else:
-            current_lines.append(line)
+            continue
+        inline_turns = _split_inline_colon_turns(line)
+        if inline_turns:
+            if current_lines:
+                turns.append((current_speaker, normalise(" ".join(current_lines))))
+            turns.extend(inline_turns[:-1])
+            current_speaker, last_text = inline_turns[-1]
+            current_lines = [last_text] if last_text else []
+            continue
+        current_lines.append(line)
 
     if current_lines:
         turns.append((current_speaker, normalise(" ".join(current_lines))))
