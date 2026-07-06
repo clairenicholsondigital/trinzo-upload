@@ -114,6 +114,17 @@ def contains_match(actual_values: list[Any], expected_value: Any) -> bool:
     return _semantic_match(expected_value, actual_values)
 
 
+def forbidden_match(actual_values: list[Any], forbidden_value: Any) -> bool:
+    """One-directional check for mustNotContain: the forbidden phrase must
+    actually appear inside a visible value. The bidirectional/semantic logic in
+    contains_match is right for mustContain paraphrases but wrong here -- a
+    legitimate short value (an owner called "Andrew") would otherwise "match"
+    a longer forbidden chatter phrase that merely contains it."""
+
+    forbidden = normalize_text(forbidden_value)
+    return any(forbidden in normalize_text(value) for value in actual_values if normalize_text(value))
+
+
 def contains_all_concepts(actual_values: list[Any], concepts: list[str]) -> bool:
     normalized = [normalize_text(value) for value in actual_values if normalize_text(value)]
     for concept in concepts:
@@ -362,7 +373,7 @@ def evaluate_case(case_name: str, output: dict[str, Any], expected: dict[str, An
     hallucination_failures: list[str] = []
     for forbidden in criteria["hallucinations"].get("mustNotContain", []):
         hallucination_checks += 1
-        if contains_match(visible, forbidden):
+        if forbidden_match(visible, forbidden):
             hallucination_failures.append(f"hallucinations: forbidden content present {forbidden!r}")
     category_failures["hallucinations"] = hallucination_failures
     category_scores["hallucinations"] = 1.0 if hallucination_checks == 0 else (

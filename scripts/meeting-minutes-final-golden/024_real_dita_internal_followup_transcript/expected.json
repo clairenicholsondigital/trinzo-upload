@@ -2,8 +2,21 @@
   "description": "Real internal DITA T819 follow-up transcript after a client call, benchmarked against the human internal minutes PDF for objective, working-session plan, regulatory scope questions and concrete follow-up actions.",
   "coverage": {
     "sourceFixture": "uploaded PDF benchmark: T819_Dita_Eyewear_Importer_Obligations_Trinzo_Minutes_intern---ca1a2cfa-68ad-4d9d-8dca-3e4a97c9c6ce.pdf",
-    "meetingTypes": ["internal_followup_review", "importer_obligations_review", "real_client_transcript"],
-    "behaviours": ["real_docx_extraction", "raw_meeting_chatter_filtering", "hidden_decision", "concrete_actions", "working_session_planning", "internal_review", "question_clarification_capture", "human_minutes_coverage"]
+    "meetingTypes": [
+      "internal_followup_review",
+      "importer_obligations_review",
+      "real_client_transcript"
+    ],
+    "behaviours": [
+      "real_docx_extraction",
+      "raw_meeting_chatter_filtering",
+      "hidden_decision",
+      "concrete_actions",
+      "working_session_planning",
+      "internal_review",
+      "question_clarification_capture",
+      "human_minutes_coverage"
+    ]
   },
   "passThreshold": 0.9,
   "criteria": {
@@ -44,13 +57,34 @@
       "actionMaxCount": 6,
       "discussionMinCount": 6,
       "requiredDiscussionTopics": [
-        ["working sessions", "business works"],
-        ["Wednesday", "Thursday", "Friday"],
-        ["PPE", "sunglasses", "procedures"],
-        ["conformity", "language", "markets"],
-        ["MDR", "PPE", "declarations of conformity"],
-        ["site visit", "process works"],
-        ["quality manuals", "generic"]
+        [
+          "working sessions",
+          "business works"
+        ],
+        [
+          "Wednesday",
+          "Thursday",
+          "Friday"
+        ],
+        [
+          "PPE",
+          "sunglasses",
+          "procedures"
+        ],
+        [
+          "conformity",
+          "language",
+          "markets"
+        ],
+        [
+          "MDR",
+          "PPE",
+          "declarations of conformity"
+        ],
+        [
+          "quality manuals",
+          "generic"
+        ]
       ],
       "reason": "Internal follow-up should capture the human-minutes coverage: objective/follow-up from the client call, working sessions, weekly client connect, questions/clarifications, site visit follow-up, PPE/sunglasses scope, MDR/PPE declaration context, and unresolved DoC language requirements without leaking raw chatter."
     }

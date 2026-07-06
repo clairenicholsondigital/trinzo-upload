@@ -483,5 +483,7 @@ def run_minilm_quality_control(output: dict[str, Any], evidence_pack: dict[str, 
             unsupported.append({"type": item["type"], "text": item["text"], "bestSimilarity": round(score, 4)})
 
     diagnostics["minimumSimilarity"] = round(min_similarity, 4)
-    diagnostics["unsupportedItems"] = unsupported[:12]
+    # Full list, not a display sample: the enforcing QC step in the pipeline
+    # removes these items from the published output, so it must see them all.
+    diagnostics["unsupportedItems"] = unsupported
     return diagnostics

@@ -14,7 +14,11 @@ from google_ai_studio_minutes import (
     generate_minutes_with_google_ai_studio,
     run_minilm_quality_control,
 )
-from meeting_minutes_final_colab_core import generate_polished_minutes_pass
+from meeting_minutes_final_colab_core import (
+    _canned_text_is_grounded,
+    _owner_name_is_grounded,
+    generate_polished_minutes_pass,
+)
 from meeting_minutes_minilm_experiment import (
     MiniLMBackend,
     build_minilm_only_output,
@@ -327,9 +331,35 @@ def _visible_blob(output: dict[str, Any]) -> str:
     return "\n".join(values)
 
 
+def _canned_summary_is_grounded(summary: str, transcript_text: str) -> bool:
+    """A guardrail's canned sentence was authored from one specific transcript.
+    Any hard fact it names (a date, a code, a version) must be traceable to the
+    transcript it is about to be published against, or the injection would
+    fabricate a fact on a lookalike meeting that merely shares keywords."""
+
+    return _canned_text_is_grounded(summary, [{"text": transcript_text}])
+
+
+def _deadline_is_grounded(deadline: str, transcript_text: str) -> bool:
+    """A hardcoded deadline ("19th June", "Wednesday/Thursday/Friday") is only
+    publishable when every one of its date words/numbers appears in this
+    transcript; otherwise it belongs to the meeting the patch was written for."""
+
+    cleaned = _norm(deadline)
+    if not cleaned or cleaned == "not specified":
+        return True
+    lowered = _norm(transcript_text)
+    tokens = re.findall(r"[a-z]{3,}|\d+", cleaned)
+    return all(token in lowered for token in tokens)
+
+
 def _ensure_discussion(output: dict[str, Any], transcript_text: str, required_terms: list[str], summary: str) -> None:
     transcript_lower = _norm(transcript_text)
     if not all(term.lower() in transcript_lower for term in required_terms):
+        return
+    if not _canned_summary_is_grounded(summary, transcript_text):
+        return
+    if _transcript_grounding_ratio(summary, transcript_lower) < 0.5:
         return
     visible = _visible_blob(output)
     if all(term.lower() in _norm(visible) for term in required_terms):
@@ -358,14 +388,31 @@ def _force_discussion(output: dict[str, Any], summary: str) -> None:
         output["meetingMinutes"] = [{"topic": "Discussion", "discussionPoints": output["discussionPoints"]}]
 
 
-def _ensure_visible_concepts(output: dict[str, Any], concepts: list[str], summary: str) -> None:
+def _ensure_visible_concepts(output: dict[str, Any], transcript_text: str, concepts: list[str], summary: str) -> None:
+    if not _canned_summary_is_grounded(summary, transcript_text):
+        return
+    if _transcript_grounding_ratio(summary, _norm(transcript_text)) < 0.5:
+        return
     discussion_visible = "\n".join(str(item) for item in list(output.get("discussionPoints") or []))
     if all(concept.lower() in _norm(discussion_visible) for concept in concepts):
         return
     _force_discussion(output, summary)
 
 
-def _set_action(output: dict[str, Any], match_terms: list[str], text: str, owner: str = "", deadline: str = "") -> None:
+def _set_action(output: dict[str, Any], transcript_text: str, match_terms: list[str], text: str, owner: str = "", deadline: str = "") -> None:
+    # A canned action is a publishable commitment, so it needs stronger
+    # grounding than a canned discussion summary: besides any hard facts, most
+    # of its content words must actually occur in this transcript, or a
+    # lookalike meeting that only shares the trigger keywords would inherit
+    # another client's follow-ups.
+    if not _canned_summary_is_grounded(text, transcript_text):
+        return
+    if _transcript_grounding_ratio(text, _norm(transcript_text)) < 0.65:
+        return
+    if owner and not _owner_name_is_grounded(owner, _norm(transcript_text)):
+        owner = ""
+    if not _deadline_is_grounded(deadline, transcript_text):
+        deadline = "Not specified"
     actions = list(output.get("actions") or [])
     points = list(output.get("meetingActionPoint") or [])
     owners = list(output.get("meetingActionPointOwner") or [])
@@ -459,6 +506,32 @@ def _clean_action_owners(output: dict[str, Any], transcript_text: str) -> None:
                     action["deadline"] = output["meetingActionPointDeadline"][index]
 
 
+def _dedupe_actions(output: dict[str, Any]) -> None:
+    rows = list(
+        zip(
+            list(output.get("meetingActionPoint") or []),
+            list(output.get("meetingActionPointOwner") or []) + [""] * len(output.get("meetingActionPoint") or []),
+            list(output.get("meetingActionPointDeadline") or []) + [""] * len(output.get("meetingActionPoint") or []),
+        )
+    )
+    seen: set[str] = set()
+    deduped: list[tuple[str, str, str]] = []
+    for row in rows:
+        key = _norm(clean_line(row[0]))
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        deduped.append(row)
+    output["meetingActionPoint"] = [row[0] for row in deduped]
+    output["meetingActionPointOwner"] = [row[1] for row in deduped]
+    output["meetingActionPointDeadline"] = [row[2] for row in deduped]
+    output["actions"] = [
+        {"meetingActionPoint": row[0], "meetingActionPointOwner": row[1], "meetingActionPointDeadline": row[2]}
+        for row in deduped
+    ]
+    output["nextSteps"] = [{"action": row[0], "owner": row[1], "deadline": row[2]} for row in deduped]
+
+
 def _cap_actions(output: dict[str, Any], max_count: int) -> None:
     points = list(output.get("meetingActionPoint") or [])[:max_count]
     output["meetingActionPoint"] = points
@@ -480,6 +553,12 @@ def _cap_actions(output: dict[str, Any], max_count: int) -> None:
 
 def _ensure_decision(output: dict[str, Any], transcript_text: str, required_terms: list[str], decision: str) -> None:
     if not all(term.lower() in _norm(transcript_text) for term in required_terms):
+        return
+    if not _canned_summary_is_grounded(decision, transcript_text):
+        return
+    # A canned decision is the strongest possible claim to publish, so hold it
+    # to the same grounding bar as a canned action.
+    if _transcript_grounding_ratio(decision, _norm(transcript_text)) < 0.65:
         return
     decisions = list(output.get("decisions") or [])
     if any(_norm(decision) in _norm(existing) or _norm(existing) in _norm(decision) for existing in decisions if _norm(existing)):
@@ -552,33 +631,33 @@ def apply_real_transcript_coverage_guardrails(output: dict[str, Any], transcript
 
     # Real transcript action/decision cleanup for recurring regulatory/software patterns.
     if "med envoy" in text:
-        _set_action(guarded, ["med envoy"], "Follow up on the Med Envoy project plan or task list.", "Cody", "Not specified")
+        _set_action(guarded, transcript_text, ["med envoy"], "Follow up on the Med Envoy project plan or task list.", "Cody", "Not specified")
     if "hpra" in text:
-        _set_action(guarded, ["hpra"], "Clarify the HPRA authorised-representative bill/documentation question.", "Jacqui", "Not specified")
+        _set_action(guarded, transcript_text, ["hpra"], "Clarify the HPRA authorised-representative bill/documentation question.", "Jacqui", "Not specified")
     if "declaration" in text and "conformity" in text and "ppe" in text:
-        _set_action(guarded, ["ppe"], "Confirm declarations of conformity and PPE risk rationale.", "Jacqui", "Not specified")
+        _set_action(guarded, transcript_text, ["ppe"], "Confirm declarations of conformity and PPE risk rationale.", "Jacqui", "Not specified")
     if "working session" in text or all(day in text for day in ["wednesday", "thursday", "friday"]):
         _ensure_decision(guarded, transcript_text, ["ppe", "sunglasses"], "PPE and sunglasses requirements should be covered in the procedures.")
         _ensure_decision(guarded, transcript_text, ["wednesday", "thursday"], "Working sessions should be scheduled for Wednesday, Thursday and Friday.")
-        _set_action(guarded, ["working", "session"], "Set up working sessions with the client.", "Jacqui", "Wednesday/Thursday/Friday")
-        _set_action(guarded, ["ppe"], "Confirm the PPE and sunglasses procedure scope with the client.", "Jacqui", "Not specified")
-        _set_action(guarded, ["doc"], "Follow up internally on declaration of conformity language requirements.", "John-Paul", "Not specified")
-        _set_action(guarded, ["weekly", "client"], "Schedule a weekly client check-in call.", "Jacqui", "Not specified")
+        _set_action(guarded, transcript_text, ["working", "session"], "Set up working sessions with the client.", "Jacqui", "Wednesday/Thursday/Friday")
+        _set_action(guarded, transcript_text, ["ppe"], "Confirm the PPE and sunglasses procedure scope with the client.", "Jacqui", "Not specified")
+        _set_action(guarded, transcript_text, ["doc"], "Follow up internally on declaration of conformity language requirements.", "John-Paul", "Not specified")
+        _set_action(guarded, transcript_text, ["weekly", "client"], "Schedule a weekly client check-in call.", "Jacqui", "Not specified")
 
     if "mute button" in text or ("mute" in text and "alarm" in text):
-        _set_action(guarded, ["mute"], "Review the mute button flash sequence.", "Andrew", "19th June" if "19th" in text else "Not specified")
+        _set_action(guarded, transcript_text, ["mute"], "Review the mute button flash sequence.", "Andrew", "19th June")
     if "clinical" in text and "review" in text:
-        _set_action(guarded, ["clinical"], "Complete the clinical review of code changes for sounds, colour and flash.", "Rebecca", "26th June" if "26th" in text else "Not specified")
+        _set_action(guarded, transcript_text, ["clinical"], "Complete the clinical review of code changes for sounds, colour and flash.", "Rebecca", "26th June")
     if "electrical compliance" in text and "testing" in text:
-        _set_action(guarded, ["electrical", "compliance"], "Complete Electrical compliance testing.", "Andrew", "23rd July" if "23" in text and "july" in text else "Not specified")
+        _set_action(guarded, transcript_text, ["electrical", "compliance"], "Complete Electrical compliance testing.", "Andrew", "23rd July")
     if "software" in text and "traceability" in text:
-        _set_action(guarded, ["traceability"], "Confirm software change visibility and traceability in the code and records.", "David", "Not specified")
+        _set_action(guarded, transcript_text, ["traceability"], "Confirm software change visibility and traceability in the code and records.", "David", "Not specified")
     if "usb" in text and "risk management" in text:
-        _set_action(guarded, ["usb"], "Update Risk Management file addressing USB port lock and GUI security controls.", "Rebecca", "22nd June" if "22" in text and "june" in text else "Wednesday" if "wednesday" in text else "Not specified")
-    if "referenced reports" in text or "review referenced" in text or "reports" in text and "draft" in text:
-        _set_action(guarded, ["report"], "Review referenced reports.", "", "Not specified")
+        _set_action(guarded, transcript_text, ["usb"], "Update Risk Management file addressing USB port lock and GUI security controls.", "Rebecca", "22nd June" if "22" in text and "june" in text else "Wednesday" if "wednesday" in text else "Not specified")
+    if "referenced reports" in text or "review referenced" in text:
+        _set_action(guarded, transcript_text, ["report"], "Review referenced reports.", "", "Not specified")
     if "draft" in text and "review" in text and ("case study" in text or "assessment" in text):
-        _set_action(guarded, ["draft"], "Draft content and send it for review.", "Hannah Quinn", "Not specified")
+        _set_action(guarded, transcript_text, ["draft"], "Draft content and send it for review.", "Hannah Quinn", "Not specified")
 
     _remove_actions_matching(guarded, ["colm", "standards", "will share", "visible/implemented", "applicability", "you will still need", "servicing ofparticular", "we're going to worry"])
 
@@ -604,51 +683,38 @@ def apply_real_transcript_coverage_guardrails(output: dict[str, Any], transcript
     # normal synthesis because the older topic generator can produce broad
     # paraphrases that are true but too vague for real client minutes.
     if "importer" in text and ("qms" in text or "quality management" in text):
-        _ensure_visible_concepts(guarded, ["QMS", "importer-obligation"], "QMS importer-obligation coverage should define responsibilities, procedures and evidence for the importer role.")
+        _ensure_visible_concepts(guarded, transcript_text, ["QMS", "importer-obligation"], "QMS importer-obligation coverage should define responsibilities, procedures and evidence for the importer role.")
     if "warehouse" in text and "barcode" in text:
-        _ensure_visible_concepts(guarded, ["warehouse", "barcodes"], "Warehouse and barcodes processes need to support picking, packing and product traceability.")
+        _ensure_visible_concepts(guarded, transcript_text, ["warehouse", "barcodes"], "Warehouse and barcodes processes need to support picking, packing and product traceability.")
     if ("udimed" in text or "udamed" in text) and "representative" in text:
-        _ensure_visible_concepts(guarded, ["UDAMED", "authorised representative"], "UDAMED and authorised representative responsibilities need to be clarified for registration and documentation.")
+        _ensure_visible_concepts(guarded, transcript_text, ["UDAMED", "authorised representative"], "UDAMED and authorised representative responsibilities need to be clarified for registration and documentation.")
     if "med envoy" in text and "project plan" in text:
-        _ensure_visible_concepts(guarded, ["Med Envoy", "project plan"], "Med Envoy project plan or task-list information is needed for activities, timelines and open information requests.")
+        _ensure_visible_concepts(guarded, transcript_text, ["Med Envoy", "project plan"], "Med Envoy project plan or task-list information is needed for activities, timelines and open information requests.")
     if "declaration" in text and "conformity" in text and "ppe" in text:
-        _ensure_visible_concepts(guarded, ["declarations of conformity", "PPE"], "Declarations of conformity and PPE requirements need a clear rationale and procedure coverage.")
+        _ensure_visible_concepts(guarded, transcript_text, ["declarations of conformity", "PPE"], "Declarations of conformity and PPE requirements need a clear rationale and procedure coverage.")
     if "hpra" in text:
-        _ensure_visible_concepts(guarded, ["HPRA", "documentation"], "HPRA documentation, authorised-representative billing and related records need clarification.")
+        _ensure_visible_concepts(guarded, transcript_text, ["HPRA", "documentation"], "HPRA documentation, authorised-representative billing and related records need clarification.")
     if "working session" in text and "business works" in text:
-        _ensure_visible_concepts(guarded, ["working sessions", "business works"], "Working sessions are needed to understand how the business works before procedures are finalised.")
+        _ensure_visible_concepts(guarded, transcript_text, ["working sessions", "business works"], "Working sessions are needed to understand how the business works before procedures are finalised.")
     if all(day in text for day in ["wednesday", "thursday", "friday"]):
-        _ensure_visible_concepts(guarded, ["Wednesday", "Thursday", "Friday"], "Working sessions should be scheduled for Wednesday, Thursday and Friday where needed.")
+        _ensure_visible_concepts(guarded, transcript_text, ["Wednesday", "Thursday", "Friday"], "Working sessions should be scheduled for Wednesday, Thursday and Friday where needed.")
     if "ppe" in text and "sunglasses" in text:
-        _ensure_visible_concepts(guarded, ["PPE", "sunglasses", "procedures"], "PPE and sunglasses requirements should be covered in the procedures.")
+        _ensure_visible_concepts(guarded, transcript_text, ["PPE", "sunglasses", "procedures"], "PPE and sunglasses requirements should be covered in the procedures.")
     if "declaration" in text and "language" in text and "market" in text:
-        _ensure_visible_concepts(guarded, ["conformity", "language", "markets"], "Declaration of conformity language requirements need to be checked for the relevant markets.")
+        _ensure_visible_concepts(guarded, transcript_text, ["conformity", "language", "markets"], "Declaration of conformity language requirements need to be checked for the relevant markets.")
     if "mdr" in text and "ppe" in text and "declaration" in text:
-        _ensure_visible_concepts(guarded, ["MDR", "PPE", "declarations of conformity"], "MDR, PPE and declarations of conformity requirements need to be aligned before documentation is closed.")
-    if "site" in text and "process" in text:
-        _ensure_visible_concepts(guarded, ["site visit", "process works"], "A site visit or equivalent working session may be needed to confirm how the process works in practice.")
+        _ensure_visible_concepts(guarded, transcript_text, ["MDR", "PPE", "declarations of conformity"], "MDR, PPE and declarations of conformity requirements need to be aligned before documentation is closed.")
+    if "site visit" in text or "site assessment" in text or ("site" in text and "gemba" in text):
+        _ensure_visible_concepts(guarded, transcript_text, ["site visit", "process works"], "A site visit or equivalent working session may be needed to confirm how the process works in practice.")
     if "quality manual" in text or "quality manuals" in text:
-        _ensure_visible_concepts(guarded, ["quality manuals", "generic"], "Quality manuals and procedures risk being too generic unless they reflect actual business processes.")
+        _ensure_visible_concepts(guarded, transcript_text, ["quality manuals", "generic"], "Quality manuals and procedures risk being too generic unless they reflect actual business processes.")
     if "mute button" in text:
-        _ensure_visible_concepts(guarded, ["alarm", "mute button"], "Alarm and mute button behaviour, including flash and sound changes, needs review and evidence.")
+        _ensure_visible_concepts(guarded, transcript_text, ["alarm", "mute button"], "Alarm and mute button behaviour, including flash and sound changes, needs review and evidence.")
     if "software" in text and "traceability" in text:
-        _ensure_visible_concepts(guarded, ["software versioning", "traceability"], "Software versioning and traceability need to show where changes are visible in the code and records.")
+        _ensure_visible_concepts(guarded, transcript_text, ["software versioning", "traceability"], "Software versioning and traceability need to show where changes are visible in the code and records.")
     if "cybersecurity" in text and "usb" in text:
-        _ensure_visible_concepts(guarded, ["cybersecurity", "USB port"], "Cybersecurity and USB port controls need to be reflected in risk management and software documentation.")
+        _ensure_visible_concepts(guarded, transcript_text, ["cybersecurity", "USB port"], "Cybersecurity and USB port controls need to be reflected in risk management and software documentation.")
 
-    if "t761" in text and "busy man" in text:
-        owners = ["" if _norm(owner) in {"andrew", "andrew/david"} else owner for owner in list(guarded.get("meetingActionPointOwner") or [])]
-        guarded["meetingActionPointOwner"] = owners
-        if isinstance(guarded.get("actions"), list):
-            for index, action in enumerate(guarded["actions"]):
-                if isinstance(action, dict) and index < len(owners):
-                    action["meetingActionPointOwner"] = owners[index]
-        if isinstance(guarded.get("nextSteps"), list):
-            for index, action in enumerate(guarded["nextSteps"]):
-                if isinstance(action, dict) and index < len(owners):
-                    action["owner"] = owners[index]
-    if "t733" in text:
-        _cap_actions(guarded, 4)
     if "working session" in text:
         required_order = [
             "set up working sessions with the client",
@@ -671,12 +737,13 @@ def apply_real_transcript_coverage_guardrails(output: dict[str, Any], transcript
         guarded["actions"] = [{"meetingActionPoint": r[0], "meetingActionPointOwner": r[1], "meetingActionPointDeadline": r[2]} for r in rows]
         guarded["nextSteps"] = [{"action": r[0], "owner": r[1], "deadline": r[2]} for r in rows]
 
-    if "assessment tool" in text and "site assessment" in text:
-        guarded["meetingTitle"] = "QIP assessment tool case study"
-        guarded["discussionPoints"] = _dedupe_preserve(list(guarded.get("discussionPoints") or []))[:16]
-        if guarded.get("meetingMinutes") and isinstance(guarded["meetingMinutes"], list) and isinstance(guarded["meetingMinutes"][0], dict):
-            guarded["meetingMinutes"][0]["discussionPoints"] = guarded["discussionPoints"]
-        _cap_actions(guarded, 4)
+    # Universal minutes hygiene, applied to every transcript: deduplicated
+    # discussion points and actions, and at most 6 concise actions.
+    guarded["discussionPoints"] = _dedupe_preserve(list(guarded.get("discussionPoints") or []))
+    if guarded.get("meetingMinutes") and isinstance(guarded["meetingMinutes"], list) and isinstance(guarded["meetingMinutes"][0], dict):
+        guarded["meetingMinutes"][0]["discussionPoints"] = _dedupe_preserve(list(guarded["meetingMinutes"][0].get("discussionPoints") or []))
+    _dedupe_actions(guarded)
+    _cap_actions(guarded, 6)
 
     _clean_action_owners(guarded, transcript_text)
     return guarded
@@ -768,12 +835,95 @@ def build_semantic_minilm_minutes(transcript_text: str, include_diagnostics: boo
         return None, diagnostics, round((time.perf_counter() - start) * 1000, 2)
 
 
+_GROUNDING_STOPWORDS = {
+    "with", "this", "that", "from", "into", "should", "would", "could", "there",
+    "need", "needs", "needed", "have", "been", "being", "them", "they", "their",
+    "will", "when", "where", "what", "also", "after", "before", "over", "under",
+    "between", "about", "please", "ensure", "confirm", "review", "follow",
+}
+
+
+def _transcript_grounding_ratio(item_text: str, transcript_norm: str) -> float:
+    tokens = set(re.findall(r"[a-z0-9]{4,}", _norm(item_text))) - _GROUNDING_STOPWORDS
+    if not tokens:
+        return 0.0
+    # Substring matching so inflections still count as grounded ("obligation"
+    # should match a transcript that says "obligations"). Function words and
+    # generic verbs are excluded so they can't inflate the grounding score of a
+    # canned sentence written for a different meeting.
+    return sum(1 for token in tokens if token in transcript_norm) / len(tokens)
+
+
+def enforce_quality_control(output: dict[str, Any], qc_diagnostics: dict[str, Any], transcript_text: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Remove QC-flagged items from the published minutes instead of only
+    reporting them.
+
+    An item flagged as unsupported by the evidence comparison gets one second
+    chance: if most of its content words appear in the raw transcript it is a
+    weakly-evidenced summary rather than a fabrication, so it stays. Anything
+    unmoored from both the evidence pack and the transcript is removed --
+    publishing it would be inventing minutes content.
+    """
+
+    flagged = [item for item in qc_diagnostics.get("unsupportedItems", []) if isinstance(item, dict)]
+    summary: dict[str, Any] = {"mode": "enforcing", "flaggedCount": len(flagged), "removedCount": 0, "keptCount": 0, "removedItems": []}
+    if not flagged:
+        return output, summary
+
+    transcript_norm = _norm(transcript_text)
+    removed_by_type: dict[str, set[str]] = {"discussion": set(), "decision": set(), "action": set()}
+    for item in flagged:
+        item_type = str(item.get("type", ""))
+        item_text = str(item.get("text", ""))
+        if item_type not in removed_by_type or not item_text:
+            continue
+        if _transcript_grounding_ratio(item_text, transcript_norm) >= 0.5:
+            summary["keptCount"] += 1
+            continue
+        removed_by_type[item_type].add(_norm(item_text))
+        summary["removedCount"] += 1
+        summary["removedItems"].append({"type": item_type, "text": item_text, "bestSimilarity": item.get("bestSimilarity")})
+
+    if not summary["removedCount"]:
+        return output, summary
+
+    cleaned = dict(output)
+    if removed_by_type["discussion"]:
+        cleaned["discussionPoints"] = [point for point in list(cleaned.get("discussionPoints") or []) if _norm(clean_line(point)) not in removed_by_type["discussion"]]
+        minutes = cleaned.get("meetingMinutes")
+        if isinstance(minutes, list):
+            for minute in minutes:
+                if isinstance(minute, dict) and isinstance(minute.get("discussionPoints"), list):
+                    minute["discussionPoints"] = [point for point in minute["discussionPoints"] if _norm(clean_line(point)) not in removed_by_type["discussion"]]
+    if removed_by_type["decision"]:
+        cleaned["decisions"] = [decision for decision in list(cleaned.get("decisions") or []) if _norm(clean_line(decision)) not in removed_by_type["decision"]]
+    if removed_by_type["action"]:
+        rows = list(
+            zip(
+                list(cleaned.get("meetingActionPoint") or []),
+                list(cleaned.get("meetingActionPointOwner") or []) + [""] * len(cleaned.get("meetingActionPoint") or []),
+                list(cleaned.get("meetingActionPointDeadline") or []) + [""] * len(cleaned.get("meetingActionPoint") or []),
+            )
+        )
+        rows = [row for row in rows if _norm(clean_line(row[0])) not in removed_by_type["action"]]
+        cleaned["meetingActionPoint"] = [row[0] for row in rows]
+        cleaned["meetingActionPointOwner"] = [row[1] for row in rows]
+        cleaned["meetingActionPointDeadline"] = [row[2] for row in rows]
+        cleaned["actions"] = [
+            {"meetingActionPoint": row[0], "meetingActionPointOwner": row[1], "meetingActionPointDeadline": row[2]}
+            for row in rows
+        ]
+        cleaned["nextSteps"] = [{"action": row[0], "owner": row[1], "deadline": row[2]} for row in rows]
+    return cleaned, summary
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the Colab-style meeting-minutes-final extractor.")
     parser.add_argument("transcript_path", help="Path to the transcript file.")
     parser.add_argument("--include-baseline-reference", action="store_true")
     parser.add_argument("--skip-diagnostics", action="store_true")
     parser.add_argument("--skip-rewrite", action="store_true")
+    parser.add_argument("--qc-advisory", action="store_true", help="Report QC findings without removing flagged items from the output (pre-enforcement behaviour).")
     return parser.parse_args(argv)
 
 
@@ -818,6 +968,10 @@ def main() -> int:
     )
     qc_start = time.perf_counter()
     qc_diagnostics = run_minilm_quality_control(output, evidence_pack)
+    if args.qc_advisory:
+        qc_enforcement = {"mode": "advisory", "flaggedCount": len(qc_diagnostics.get("unsupportedItems", [])), "removedCount": 0, "keptCount": 0, "removedItems": []}
+    else:
+        output, qc_enforcement = enforce_quality_control(output, qc_diagnostics, transcript_text)
     qc_runtime_ms = round((time.perf_counter() - qc_start) * 1000, 2)
     runtime_ms = round(keyword_runtime_ms + semantic_runtime_ms + rewrite_runtime_ms + qc_runtime_ms, 2)
 
@@ -834,6 +988,7 @@ def main() -> int:
         "rewriterTokenUsage": google_diagnostics.get("usageMetadata") or None,
         "output": output,
         "counts": build_counts(output),
+        "qualityControl": qc_enforcement,
         "timingMs": {
             "baseline": 0.0,
             "context": 0.0,

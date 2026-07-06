@@ -2,8 +2,19 @@
   "description": "Real Eakin T733 weekly technical file review transcript covering tracker movement, risk/software focus, alarm and language software changes, electrical compliance testing, and submission timing.",
   "coverage": {
     "sourceFixture": "uploaded DOCX: Client_Eakin_T733_Consultancy_Retainer_Tech_File_review_week---37b36c13-51f7-4767-840c-9e45c97ded5d.docx",
-    "meetingTypes": ["client_status_review", "project_status_update", "technical_file_review", "real_client_transcript"],
-    "behaviours": ["real_docx_extraction", "raw_meeting_chatter_filtering", "technical_review", "discussion_only", "concrete_actions"]
+    "meetingTypes": [
+      "client_status_review",
+      "project_status_update",
+      "technical_file_review",
+      "real_client_transcript"
+    ],
+    "behaviours": [
+      "real_docx_extraction",
+      "raw_meeting_chatter_filtering",
+      "technical_review",
+      "discussion_only",
+      "concrete_actions"
+    ]
   },
   "passThreshold": 0.88,
   "criteria": {
@@ -13,7 +24,7 @@
     },
     "actions": {
       "weight": 0.2,
-      "maxCount": 4
+      "maxCount": 6
     },
     "hallucinations": {
       "weight": 0.3,
@@ -29,15 +40,27 @@
     "abstention": {
       "weight": 0.4,
       "decisionMaxCount": 1,
-      "actionMaxCount": 4,
+      "actionMaxCount": 6,
       "discussionMinCount": 3,
       "requiredDiscussionTopics": [
-        ["risk", "cybersecurity"],
-        ["alarm", "mute"],
-        ["language", "software"],
-        ["electrical compliance", "testing"]
+        [
+          "risk",
+          "cybersecurity"
+        ],
+        [
+          "alarm",
+          "mute"
+        ],
+        [
+          "language",
+          "software"
+        ],
+        [
+          "electrical compliance",
+          "testing"
+        ]
       ],
-      "reason": "This is a real weekly status transcript with useful technical updates but limited explicit decisions; output should summarise grounded progress and avoid turning status commentary into invented decisions."
+      "reason": "This is a real weekly status transcript with useful technical updates but limited explicit decisions; output should summarise grounded progress and avoid turning status commentary into invented decisions. Action tolerance follows the universal 6-action hygiene cap rather than a transcript-specific cap."
     }
   }
 }

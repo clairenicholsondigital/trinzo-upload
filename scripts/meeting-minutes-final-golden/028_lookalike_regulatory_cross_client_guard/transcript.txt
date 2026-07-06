@@ -1,0 +1,35 @@
+0:0:0.0 --> 0:0:6.2
+Priya Nair
+Priya Nair started transcription
+
+0:0:6.8 --> 0:0:19.4
+Priya Nair
+Right, thanks both for joining. This is our NovaMed Devices weekly regulatory catch-up, so let's work through the open items on the register.
+
+0:0:20.1 --> 0:0:41.9
+Tomás Brennan
+First one from me is the HPRA question. We still haven't had confirmation on whether the annual registration fee invoice comes to us directly or goes through the distributor, so I'll chase the HPRA contact this week and get a definitive answer on the documentation trail.
+
+0:0:42.5 --> 0:0:58.7
+Priya Nair
+Good. While you're at it, can you double-check what they need from us on the importer side? The QMS procedures we drafted still describe the old goods-in process and I'd rather fix that before the audit window.
+
+0:0:59.3 --> 0:1:21.6
+Saoirse Kelly
+On UDI, the labelling data for the new SKUs is nearly ready. I'm still waiting on the barcode verification report from the warehouse team, so registration submission slips to next month. I'll circulate the updated labelling checklist when the report lands.
+
+0:1:22.2 --> 0:1:44.8
+Tomás Brennan
+Related to that, the software team flagged the alarm behaviour change on the monitor. When you press the mute button the alarm silences but the on-screen indicator doesn't update, so there's a usability question. A clinical review of that behaviour is booked with our advisory nurse panel.
+
+0:1:45.4 --> 0:2:04.9
+Priya Nair
+Make sure the software traceability records are updated for that change as well. Last time the technical file didn't show which build the fix landed in, and we can't have that gap again if the notified body asks.
+
+0:2:05.5 --> 0:2:24.3
+Saoirse Kelly
+Understood. One more thing: the client asked whether we'd run a working session on the declaration of conformity updates and the PPE classification question for the sports eyewear range. I said we'd propose some dates once the register is tidy.
+
+0:2:24.9 --> 0:2:38.1
+Priya Nair
+Fine, propose it for later in the month. Okay, actions recapped: Tomás on the HPRA follow-up, Saoirse on the UDI labelling checklist, and I'll own the traceability record check. Anything else? No? Thanks both.

@@ -1,0 +1,64 @@
+{
+  "description": "Synthetic lookalike meeting for a DIFFERENT fictional client (NovaMed Devices, speakers Priya/Tomás/Saoirse) that deliberately shares vocabulary with the real client transcripts the coverage guardrails were authored from: HPRA, importer QMS procedures, UDI labelling, alarm mute button, clinical review, software traceability, working session, declarations of conformity and PPE. Guards against cross-client contamination: no owner names, deadlines, decisions or meeting-specific claims from the original client meetings may leak into this meeting's minutes.",
+  "coverage": {
+    "sourceFixture": "synthetic: authored for cross-client contamination guarding",
+    "meetingTypes": [
+      "regulatory_register_review",
+      "lookalike_domain_meeting"
+    ],
+    "behaviours": [
+      "cross_client_contamination_guard",
+      "fabricated_owner_filtering",
+      "fabricated_deadline_filtering",
+      "canned_content_gating"
+    ]
+  },
+  "passThreshold": 0.9,
+  "criteria": {
+    "decisions": {
+      "weight": 0.1,
+      "maxCount": 2
+    },
+    "actions": {
+      "weight": 0.2,
+      "minCount": 1,
+      "maxCount": 6
+    },
+    "hallucinations": {
+      "weight": 0.5,
+      "mustNotContain": [
+        "Jacqui",
+        "Cody",
+        "Rebecca",
+        "John-Paul",
+        "Hannah Quinn",
+        "Med Envoy",
+        "19th June",
+        "26th June",
+        "22nd June",
+        "23rd July",
+        "Wednesday, Thursday and Friday",
+        "Wednesday/Thursday/Friday",
+        "Dublin",
+        "QIP assessment tool case study",
+        "sunglasses",
+        "Eakin"
+      ]
+    },
+    "abstention": {
+      "weight": 0.2,
+      "decisionMaxCount": 2,
+      "discussionMinCount": 3,
+      "requiredDiscussionTopics": [
+        [
+          "UDI",
+          "labelling"
+        ],
+        [
+          "mute button"
+        ]
+      ],
+      "reason": "A different client's meeting that shares regulatory vocabulary with the transcripts the guardrail patches were written from must produce minutes grounded ONLY in this transcript: no fabricated owners (Jacqui/Cody/Rebecca/John-Paul/Hannah Quinn), no imported deadlines (19th/22nd/26th June, 23rd July), no canned working-session-day decisions, and no other client's specifics (Med Envoy, Dublin storage, sunglasses scope, QIP case-study title)."
+    }
+  }
+}

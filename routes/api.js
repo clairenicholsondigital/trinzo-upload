@@ -670,6 +670,9 @@ router.post('/meeting-minutes-final', requireAuth, withTestUpload(async (req, re
       rewriterUsed: result?.rewriterReason === 'Google AI Studio used.',
       rewriterReason: result?.rewriterReason ?? null,
       rewriterTokenUsage: result?.rewriterTokenUsage ?? null,
+      qcMode: result?.qualityControl?.mode ?? null,
+      qcFlaggedCount: result?.qualityControl?.flaggedCount ?? null,
+      qcRemovedCount: result?.qualityControl?.removedCount ?? null,
       durationMs: Date.now() - startedAt
     }));
 

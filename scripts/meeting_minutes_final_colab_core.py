@@ -1392,6 +1392,7 @@ ACTION_PROFILES: list[dict[str, Any]] = [
         "terms": ["ppe", "sunglasses", "scope", "doc", "declaration"],
         "requires_topic": ["Labelling"],
         "owner": "Jacqui",
+        "required_all_terms": ["sunglasses"],
     },
     {
         "text": "Follow up on DoC language-publication requirements and share the relevant country/language list.",

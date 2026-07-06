@@ -52,8 +52,8 @@
       "discussionMinCount": 6,
       "requiredDiscussionTopics": [
         [
-          "QMS",
-          "importer-obligation"
+          "quality-system",
+          "importer"
         ],
         [
           "storage",

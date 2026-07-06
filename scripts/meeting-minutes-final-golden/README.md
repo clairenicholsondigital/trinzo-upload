@@ -1,7 +1,7 @@
 # Meeting Minutes Final Golden Evaluation Pack
 
 This pack is the fixed production-readiness suite for `/meeting-minutes-final`.
-It contains 27 representative transcript/PDF/DOCX-text cases, mostly copied from `scripts/transcript-tests`, and focuses on semantic behaviour rather than transcript-specific wording:
+It contains 28 representative transcript/PDF/DOCX-text cases, mostly copied from `scripts/transcript-tests`, and focuses on semantic behaviour rather than transcript-specific wording:
 
 - decisions are captured only when the transcript supports them;
 - actions require concrete ownership or commitment evidence;
@@ -28,6 +28,7 @@ Current meeting-type coverage:
 - `low_substance`
 - `project_status_review`, `project_status_update`, `risk_review`, `software_technical_file_review`, `technical_file_review`, `internal_followup_review`
 - `sales_pipeline_review`, `supplier_onboarding_review`, `webinar_rehearsal`
+- `regulatory_register_review`, `lookalike_domain_meeting`
 - real client transcript, real DOCX extraction, and real client minutes-PDF text examples
 
 Current behaviour coverage:
@@ -39,6 +40,12 @@ Current behaviour coverage:
 - messy speaker/timestamp, compressed transcript, real PDF/DOCX extraction, and speaker-label filtering
 - pending approval, suggestion-not-decision, risk-not-blocker, budget trade-off, candidate assessment, rehearsal handling
 - raw transcript/chatter leakage filtering, internal follow-up planning, and owner/deadline table preservation
+- cross-client contamination guarding (case 028): a synthetic lookalike meeting for a *different* fictional client shares regulatory vocabulary (HPRA, UDI, mute button, working sessions, PPE/DoC) with the real client transcripts the coverage guardrails were authored from, and asserts that none of those meetings' owners, deadlines, canned decisions or client-specific content leak into its minutes
+
+Two enforcement notes:
+
+- the production pipeline now *enforces* the MiniLM QC evidence comparison (`--qc-advisory` restores report-only behaviour): items flagged as unsupported by both the evidence pack and the transcript are removed from the published output and reported in the payload's `qualityControl` block;
+- `mustNotContain` checks are one-directional (`forbidden_match`): the forbidden phrase must actually appear inside a visible value, so a legitimate short value (e.g. an owner name) can no longer false-positive against a longer forbidden chatter phrase.
 
 The runner also applies universal quality checks drawn from Claire's Notion checklist for perfect meeting minutes:
 
