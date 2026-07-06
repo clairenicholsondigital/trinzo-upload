@@ -6,6 +6,7 @@ import json
 import re
 import subprocess
 import sys
+import time
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -59,14 +60,69 @@ def normalize_text(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "").strip()).lower()
 
 
+MINILM_SIMILARITY_THRESHOLD = 0.6
+_MINILM_BACKEND_STATE: dict[str, Any] = {"loaded": False, "backend": None}
+
+
+def _minilm_backend() -> Any:
+    """Lazily load a single shared MiniLM backend for the whole eval run.
+
+    Reuses scripts/meeting_minutes_minilm_experiment.MiniLMBackend -- the same
+    class /project-update-test's golden eval already depends on for semantic
+    milestone/risk matching -- so mustContain/requiredDiscussionTopics checks
+    below aren't purely brittle to exact wording. Follows the same
+    .available/.reason degrade-gracefully contract: if sentence-transformers
+    isn't installed (or loading fails for any reason), callers see
+    available=False and fall back to today's literal-substring-only behaviour,
+    they never raise.
+    """
+    if not _MINILM_BACKEND_STATE["loaded"]:
+        _MINILM_BACKEND_STATE["loaded"] = True
+        try:
+            sys.path.insert(0, str(ROOT))
+            from meeting_minutes_minilm_experiment import MiniLMBackend
+
+            _MINILM_BACKEND_STATE["backend"] = MiniLMBackend.load(enabled=True, prefer_remote=False)
+        except Exception:
+            _MINILM_BACKEND_STATE["backend"] = None
+    return _MINILM_BACKEND_STATE["backend"]
+
+
+def _semantic_match(expected_value: Any, actual_values: list[Any]) -> bool:
+    backend = _minilm_backend()
+    if not backend or not getattr(backend, "available", False):
+        return False
+    expected_text = str(expected_value or "").strip()
+    if not expected_text:
+        return False
+    for value in actual_values:
+        text = str(value or "").strip()
+        if not text:
+            continue
+        try:
+            if backend.similarity(expected_text, text) >= MINILM_SIMILARITY_THRESHOLD:
+                return True
+        except Exception:
+            return False
+    return False
+
+
 def contains_match(actual_values: list[Any], expected_value: Any) -> bool:
     expected = normalize_text(expected_value)
-    return any(expected in normalize_text(value) or normalize_text(value) in expected for value in actual_values if normalize_text(value))
+    if any(expected in normalize_text(value) or normalize_text(value) in expected for value in actual_values if normalize_text(value)):
+        return True
+    return _semantic_match(expected_value, actual_values)
 
 
 def contains_all_concepts(actual_values: list[Any], concepts: list[str]) -> bool:
     normalized = [normalize_text(value) for value in actual_values if normalize_text(value)]
-    return all(any(normalize_text(concept) in value for value in normalized) for concept in concepts)
+    for concept in concepts:
+        concept_norm = normalize_text(concept)
+        if any(concept_norm in value for value in normalized):
+            continue
+        if not _semantic_match(concept, actual_values):
+            return False
+    return True
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -383,15 +439,21 @@ def validate_expected(case: Path, expected: dict[str, Any]) -> list[str]:
     return failures
 
 
-def run_extractor(case: Path, timeout: int, extractor: Path) -> dict[str, Any]:
+def _rewriter_meta(source: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "rewriterAvailable": source.get("rewriterAvailable"),
+        "rewriterReason": source.get("rewriterReason"),
+        "rewriterTokenUsage": source.get("rewriterTokenUsage"),
+    }
+
+
+def run_extractor(case: Path, timeout: int, extractor: Path = EXTRACTOR, skip_rewrite: bool = False) -> tuple[dict[str, Any], dict[str, Any]]:
+    cmd = [sys.executable, str(extractor), str(case / "transcript.txt")]
+    if skip_rewrite:
+        cmd.append("--skip-rewrite")
+    cmd.append("--skip-diagnostics")
     result = subprocess.run(
-        [
-            sys.executable,
-            str(extractor),
-            str(case / "transcript.txt"),
-            "--skip-rewrite",
-            "--skip-diagnostics",
-        ],
+        cmd,
         cwd=ROOT.parent,
         capture_output=True,
         text=True,
@@ -403,7 +465,7 @@ def run_extractor(case: Path, timeout: int, extractor: Path) -> dict[str, Any]:
     if not payload.get("executed"):
         reason = payload.get("modelReason") or "MiniLM backend unavailable"
         raise RuntimeError(f"extractor did not execute: {reason}")
-    return payload.get("output") or {}
+    return payload.get("output") or {}, _rewriter_meta(payload)
 
 
 def multipart_form(files: dict[str, tuple[str, bytes, str]]) -> tuple[bytes, str]:
@@ -419,7 +481,7 @@ def multipart_form(files: dict[str, tuple[str, bytes, str]]) -> tuple[bytes, str
     return b"".join(parts), boundary
 
 
-def run_live_endpoint(base_url: str, case: Path, timeout: int) -> dict[str, Any]:
+def run_live_endpoint(base_url: str, case: Path, timeout: int) -> tuple[dict[str, Any], dict[str, Any]]:
     body, boundary = multipart_form(
         {"file": ("transcript.txt", (case / "transcript.txt").read_bytes(), "text/plain")}
     )
@@ -435,7 +497,7 @@ def run_live_endpoint(base_url: str, case: Path, timeout: int) -> dict[str, Any]
     if not result.get("executed"):
         reason = result.get("modelReason") or payload.get("error") or "live endpoint did not execute"
         raise RuntimeError(str(reason))
-    return result.get("output") or {}
+    return result.get("output") or {}, _rewriter_meta(result)
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -450,6 +512,21 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="Extractor script under scripts/ to run locally (defaults to the production meeting_minutes_final_colab.py).",
     )
     parser.add_argument("--timeout", type=int, default=180)
+    parser.add_argument(
+        "--skip-rewrite",
+        action="store_true",
+        help=(
+            "Run the fast, Gemini-free fallback path instead of the live production path. "
+            "Default (flag omitted) now calls Gemini live, matching what actually ships -- "
+            "pass this flag to get back the old fast/free/deterministic dev-loop behaviour."
+        ),
+    )
+    parser.add_argument(
+        "--pace-seconds",
+        type=float,
+        default=3.5,
+        help="Delay between live Gemini calls to respect API rate limits. Ignored in --skip-rewrite/--dry-run mode.",
+    )
     parser.add_argument("--json", action="store_true", help="Print the full report as JSON.")
     return parser.parse_args(argv)
 
@@ -470,7 +547,8 @@ def main(argv: list[str]) -> int:
 
     case_reports = []
     validation_failures: list[str] = []
-    for case in cases:
+    is_live = not args.dry_run and not args.skip_rewrite
+    for index, case in enumerate(cases):
         expected = load_json(case / "expected.json")
         schema_failures = validate_expected(case, expected)
         if schema_failures:
@@ -484,9 +562,10 @@ def main(argv: list[str]) -> int:
         if not args.dry_run and not schema_failures:
             try:
                 if args.base_url:
-                    output = run_live_endpoint(args.base_url, case, args.timeout)
+                    output, rewriter_meta = run_live_endpoint(args.base_url, case, args.timeout)
                 else:
-                    output = run_extractor(case, args.timeout, extractor)
+                    output, rewriter_meta = run_extractor(case, args.timeout, extractor, args.skip_rewrite)
+                report["rewriter"] = rewriter_meta
                 report["evaluation"] = evaluate_case(case.name, output, expected)
             except Exception as exc:
                 report["evaluation"] = {
@@ -497,12 +576,18 @@ def main(argv: list[str]) -> int:
                     "failures": [str(exc)],
                 }
         case_reports.append(report)
+        if is_live and index < len(cases) - 1:
+            time.sleep(args.pace_seconds)
 
     executed_reports = [report["evaluation"] for report in case_reports if "evaluation" in report]
     failed_evals = [report for report in executed_reports if not report.get("passed")]
+    rewriter_used_count = sum(
+        1 for report in case_reports if (report.get("rewriter") or {}).get("rewriterReason") == "Google AI Studio used."
+    )
     summary = {
         "packDir": str(pack_dir),
         "mode": "dry-run" if args.dry_run else ("live-api" if args.base_url else "extractor"),
+        "rewriteMode": "skip-rewrite" if args.skip_rewrite else ("live" if is_live else "n/a"),
         "extractor": None if (args.dry_run or args.base_url) else extractor.name,
         "baseUrl": args.base_url,
         "totalCases": len(cases),
@@ -510,6 +595,7 @@ def main(argv: list[str]) -> int:
         "executedCases": len(executed_reports),
         "passedCases": len(executed_reports) - len(failed_evals),
         "failedCases": len(failed_evals),
+        "rewriterUsedCases": rewriter_used_count if is_live else None,
         "coverage": coverage_summary(case_reports),
     }
     if not args.cases:
@@ -521,10 +607,16 @@ def main(argv: list[str]) -> int:
     else:
         print(
             "Meeting-minutes-final golden eval: "
-            f"mode={summary['mode']}, cases={summary['totalCases']}, "
+            f"mode={summary['mode']}, rewrite_mode={summary['rewriteMode']}, cases={summary['totalCases']}, "
             f"schema_failures={len(validation_failures)}, executed={summary['executedCases']}, "
             f"passed={summary['passedCases']}, failed={summary['failedCases']}"
         )
+        if summary["rewriterUsedCases"] is not None:
+            print(
+                f"Rewriter (Gemini) actually used: {summary['rewriterUsedCases']}/{summary['executedCases']} "
+                "executed cases -- a lower number than expected here (rate limits, missing key, transient "
+                "errors) means the score below reflects degraded/fallback output, not necessarily a real regression."
+            )
         coverage = summary["coverage"]
         print(
             "Coverage: "

@@ -1,7 +1,7 @@
 # Meeting Minutes Final Golden Evaluation Pack
 
 This pack is the fixed production-readiness suite for `/meeting-minutes-final`.
-It contains 25 representative transcript/PDF/DOCX-text cases, mostly copied from `scripts/transcript-tests`, and focuses on semantic behaviour rather than transcript-specific wording:
+It contains 27 representative transcript/PDF/DOCX-text cases, mostly copied from `scripts/transcript-tests`, and focuses on semantic behaviour rather than transcript-specific wording:
 
 - decisions are captured only when the transcript supports them;
 - actions require concrete ownership or commitment evidence;
@@ -54,10 +54,18 @@ Run a schema/fixture dry validation:
 python3 scripts/run_meeting_minutes_final_golden_eval.py --dry-run
 ```
 
-Run against the local MiniLM final extractor when the model/runtime is available:
+**Default mode runs the real production path** -- the same `meeting_minutes_final_colab.py` pipeline that ships, including the live Gemini rewrite pass (needs `GOOGLE_AI_STUDIO_API_KEY`/`GEMINI_API_KEY` set; if unset, it gracefully degrades to the extractor-only fallback output, same as production does):
 
 ```bash
 python3 scripts/run_meeting_minutes_final_golden_eval.py
+```
+
+Each case's report includes a `rewriter` block (`rewriterAvailable`/`rewriterReason`/`rewriterTokenUsage`) and the summary reports `rewriterUsedCases` -- check this before trusting a low score, since a rate-limited or key-less run looks like a content regression otherwise. Requests are paced (`--pace-seconds`, default 3.5s) to stay under the Google AI Studio free-tier's 20 requests/minute limit; increase it if you still hit 429s, or pass `--cases` to score a smaller subset.
+
+For the old fast, free, deterministic dev-loop (no Gemini calls, no API key needed):
+
+```bash
+python3 scripts/run_meeting_minutes_final_golden_eval.py --skip-rewrite
 ```
 
 Run the same scoring pack against the deployed web-app API:
@@ -65,5 +73,7 @@ Run the same scoring pack against the deployed web-app API:
 ```bash
 python3 scripts/run_meeting_minutes_final_golden_eval.py --base-url https://trinzo.virtual-hub.online
 ```
+
+**Semantic matching (optional).** `mustContain`/`requiredDiscussionTopics` checks try an exact literal match first, then fall back to MiniLM cosine-similarity matching (via `scripts/meeting_minutes_minilm_experiment.MiniLMBackend`, same backend `/project-update-test`'s golden eval already depends on) so a correctly-paraphrased Gemini output isn't marked as a failure just for using different words. This needs `sentence-transformers` installed (`pip install -r requirements-experimental-minilm.txt`) **and** network access to download `all-MiniLM-L6-v2` from Hugging Face on first use -- neither is a hard requirement: without them, scoring silently falls back to today's literal-substring-only behaviour, exactly as before this feature existed.
 
 For the full repeatable process, interpretation guidance, and safe-change checklist, see `RUNBOOK.md`.

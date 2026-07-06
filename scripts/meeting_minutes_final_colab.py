@@ -232,6 +232,7 @@ def main() -> int:
         "rewriterModelName": google_diagnostics.get("model"),
         "rewriterModelPath": None,
         "rewriterReason": "Google AI Studio used." if google_diagnostics.get("used") else google_diagnostics.get("error", "Google AI Studio not used."),
+        "rewriterTokenUsage": google_diagnostics.get("usageMetadata") or None,
         "output": output,
         "counts": build_counts(output),
         "timingMs": {
