@@ -118,6 +118,33 @@ function buildTranscriptTestPage(config) {
       .replace(/'/g, '&#39;');
   }
 
+  const PROJECT_SELECTION_KEY = 'trinzoProjectUpdateSelectedProjectId';
+
+  async function loadProjectPicker() {
+    if (!projectPicker) return;
+    try {
+      const response = await fetch('/api/project-update-test/projects', { credentials: 'same-origin' });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload || payload.ok === false) throw new Error(payload?.error || 'Could not load projects.');
+      const selected = localStorage.getItem(PROJECT_SELECTION_KEY) || '';
+      const projects = Array.isArray(payload.projects) ? payload.projects : [];
+      projectPicker.innerHTML = [
+        '<option value="">Project update test / default</option>',
+        ...projects.map((project) => `<option value="${escapeHtml(project.projectId)}">${escapeHtml(project.projectName || `Project ${project.projectId}`)} (${project.reportCount || 0} reports, ${project.activeMilestoneCount || 0} milestones)</option>`)
+      ].join('');
+      if (selected && projects.some((project) => String(project.projectId) === selected)) projectPicker.value = selected;
+    } catch (error) {
+      projectPicker.innerHTML = '<option value="">Project update test / default</option>';
+      setMessage(`Project list unavailable; uploads will use the default project name. ${error.message || ''}`.trim(), 'error');
+    }
+  }
+
+  function selectedProjectPayload() {
+    if (!projectPicker || !projectPicker.value) return {};
+    localStorage.setItem(PROJECT_SELECTION_KEY, projectPicker.value);
+    return { projectId: Number(projectPicker.value) };
+  }
+
   function cloneJson(value) {
     return JSON.parse(JSON.stringify(value || {}));
   }
@@ -795,7 +822,16 @@ function buildTranscriptTestPage(config) {
         throw new Error((payload && payload.error ? payload.error : `Request failed with status ${response.status}.`) + detailText);
       }
 
-      setMessage(`Done. Analysed ${payload.transcriptLength || 0} characters from ${payload.source || 'transcript'}.`, 'success');
+      const fallback = payload.result && payload.result.mode === 'project_update_legacy_fallback'
+        ? (payload.result.projectWorkflowFallback || {})
+        : null;
+      const doneText = `Done. Analysed ${payload.transcriptLength || 0} characters from ${payload.source || 'transcript'}.`;
+      setMessage(
+        fallback
+          ? `${doneText} Note: the primary analysis pipeline failed, so this report was generated with the simplified fallback engine (${fallback.reason || 'reason unknown'}). Quality may be reduced.`
+          : doneText,
+        fallback ? 'warning' : 'success'
+      );
       displaySummary(payload.result);
       displayProjectReport(payload.result);
       displayDebugPanel(payload.result, payload);
@@ -1222,8 +1258,6 @@ function buildTranscriptMinilmOnlyPage(config) {
   const diagnosticsNode = document.getElementById('minilmOnlyDiagnostics');
   const REVIEW_STORAGE_KEY = 'reviewData';
 
-  let currentMeetingId = Number(localStorage.getItem('meetingId') || 0);
-
   function setStep(n) {
     const stepper = document.getElementById('stepper');
     if (!stepper) return;
@@ -1287,33 +1321,6 @@ function buildTranscriptMinilmOnlyPage(config) {
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
-  }
-
-  const PROJECT_SELECTION_KEY = 'trinzoProjectUpdateSelectedProjectId';
-
-  async function loadProjectPicker() {
-    if (!projectPicker) return;
-    try {
-      const response = await fetch('/api/project-update-test/projects', { credentials: 'same-origin' });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok || !payload || payload.ok === false) throw new Error(payload?.error || 'Could not load projects.');
-      const selected = localStorage.getItem(PROJECT_SELECTION_KEY) || '';
-      const projects = Array.isArray(payload.projects) ? payload.projects : [];
-      projectPicker.innerHTML = [
-        '<option value="">Project update test / default</option>',
-        ...projects.map((project) => `<option value="${escapeHtml(project.projectId)}">${escapeHtml(project.projectName || `Project ${project.projectId}`)} (${project.reportCount || 0} reports, ${project.activeMilestoneCount || 0} milestones)</option>`)
-      ].join('');
-      if (selected && projects.some((project) => String(project.projectId) === selected)) projectPicker.value = selected;
-    } catch (error) {
-      projectPicker.innerHTML = '<option value="">Project update test / default</option>';
-      setMessage(`Project list unavailable; uploads will use the default project name. ${error.message || ''}`.trim(), 'error');
-    }
-  }
-
-  function selectedProjectPayload() {
-    if (!projectPicker || !projectPicker.value) return {};
-    localStorage.setItem(PROJECT_SELECTION_KEY, projectPicker.value);
-    return { projectId: Number(projectPicker.value) };
   }
 
   function nearestElement(node) {
@@ -1708,19 +1715,6 @@ function buildTranscriptMinilmOnlyPage(config) {
     setMessage('Sending approved meeting minutes to webhook...', 'info');
 
     try {
-      if (currentMeetingId) {
-        await fetch(`/api/meetings/${currentMeetingId}/webhook`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            reviewData: payloadReviewData,
-            transcript: state.extractedText
-          })
-        });
-      }
-
       const response = await fetch('/api/agent/finalise', {
         method: 'POST',
         headers: {
@@ -1822,7 +1816,14 @@ function buildTranscriptMinilmOnlyPage(config) {
         throw new Error((payload && payload.error ? payload.error : `Request failed with status ${response.status}.`) + detailText);
       }
 
-      setMessage(`Done. Created draft meeting minutes from ${payload.transcriptLength || 0} characters.`, 'success');
+      const rewriterDegraded = payload.result && payload.result.rewriterAvailable === false;
+      const doneText = `Done. Created draft meeting minutes from ${payload.transcriptLength || 0} characters.`;
+      setMessage(
+        rewriterDegraded
+          ? `${doneText} Note: the AI writing pass did not run (${payload.result.rewriterReason || 'reason unknown'}), so these minutes are the unpolished draft extraction. Quality may be reduced.`
+          : doneText,
+        rewriterDegraded ? 'warning' : 'success'
+      );
       displayPayload(payload);
     } catch (error) {
       setMessage(error.message || 'Meeting minutes extraction failed.', 'error');
