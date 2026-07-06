@@ -21,12 +21,19 @@ still run; primary script error → legacy fallback; save error → reported in 
 
 ---
 
+## Status update (2026-07-06)
+
+Re-audited against the current code. Most of Phase 0 is done or substantially
+done; the notes below are kept for history but each item is now tagged with
+its real state so this doc doesn't send anyone chasing an already-solved
+problem.
+
 ## Phase 0 — Harden what exists (no new architecture)
 
 Highest value-per-effort. Everything here is independent of the RAG work and
 worth doing even if the knowledge-bucket plan changes.
 
-### 0.1 Replace the `psql` shell-out with a real Postgres client
+### 0.1 Replace the `psql` shell-out with a real Postgres client — PARTIALLY DONE
 - **Where:** `utils/db.js` (`runPsql`, `q`, `qJson`, `qDate`, `parseJsonLines`, `parseOptionalId`).
 - **Problem:** every query spawns a `psql` process with string-interpolated SQL.
   Manual `''` escaping via `q()`, output parsed as "lines starting with `{`",
@@ -50,8 +57,21 @@ worth doing even if the knowledge-bucket plan changes.
 - **Acceptance:** all existing endpoints return byte-identical JSON shapes;
   a milestone named `O'Brien's "phase|1" review` round-trips correctly;
   `npm test` / Python contract tests (0.4) pass.
+- **Current state:** `utils/db.js:1-20` now uses `pg.Pool` — no more `psql`
+  child process, real connection pooling, `PGPOOL_MAX`/connect-timeout env
+  vars are honoured. **However** `runPsql`, `q()`, `qJson()`, `qDate()`,
+  `parseJsonLines`, `parseOptionalId` are all still present and still used
+  everywhere — queries are still built as interpolated SQL strings with manual
+  `''`-escaping rather than `$1` parameterized queries (see e.g.
+  `listProjectReports` at `utils/db.js:83-90`, which splices a `Number`-coerced
+  `projectId` and `q()`-escaped strings directly into the SQL text). The
+  transport-level problem (one `psql` process per query) is fixed; the
+  query-construction problem this item was really about (manual string
+  escaping instead of parameterization) is **not** — worth a follow-up pass
+  through `query(sql, params)` (already exported, `utils/db.js:33-38`) rather
+  than treating this as closed.
 
-### 0.2 Add authentication to destructive / admin project-update endpoints
+### 0.2 Add authentication to destructive / admin project-update endpoints — DONE
 - **Where:** `routes/api.js`. Note `requireAuth` already exists
   (`routes/auth.js:75`) and is used only on the meeting-minutes feedback routes
   (`routes/api.js:751-812`).
@@ -70,8 +90,12 @@ worth doing even if the knowledge-bucket plan changes.
   the feedback admin page does, and to show a login prompt on 401.
 - **Acceptance:** unauthenticated `POST /api/project-update-test/reports/bulk-delete`
   returns 401; the admin pages still function after login; upload flow unaffected.
+- **Current state:** every listed endpoint carries `requireAuth`
+  (`routes/api.js:1112,1121,1133,1154,1175,1184,1196,1236,1248`), and the
+  upload/read endpoints are explicitly commented as intentionally open
+  (`routes/api.js:828-829`).
 
-### 0.3 Deterministic project resolution
+### 0.3 Deterministic project resolution — DONE
 - **Where:** `utils/db.js` (`getProjectIdForContext`, and the project lookup
   inside `saveProjectUpdateDraft`), `routes/api.js` (`POST /project-update-test`).
 - **Problem:** the project is chosen by name via a heuristic ("the project with
@@ -92,8 +116,13 @@ worth doing even if the knowledge-bucket plan changes.
     persist the selection (localStorage), sending `projectId` on upload.
 - **Acceptance:** with two projects named identically, an upload with explicit
   `projectId` saves to and reads context from that project only.
+- **Current state:** `projectId` is accepted explicitly (`routes/api.js:850`),
+  `projectResolution` diagnostics are returned (`utils/db.js:668,698-699`,
+  `routes/api.js:945`), and `GET /api/project-update-test/projects` exists
+  (`routes/api.js:1091`). Did not re-verify the frontend project-picker UI
+  persistence piece.
 
-### 0.4 Contract tests for the context payload (Node → Python boundary)
+### 0.4 Contract tests for the context payload (Node → Python boundary) — DONE
 - **Where:** new `tests/test_project_context_contract.py` (Python side) and a
   new Node test (e.g. `tests/context-contract.test.js` run via `npm test`).
 - **Problem:** `getProjectContext()` output is written to a temp JSON file and
@@ -116,25 +145,37 @@ worth doing even if the knowledge-bucket plan changes.
     fixture's key set — any key rename fails the build on *both* sides.
 - **Acceptance:** deleting `comparisonKey` from the Node output fails the Node
   test; renaming it in the Python reader fails the Python test.
+- **Current state:** `tests/test_project_context_contract.py`,
+  `tests/context-contract.test.js`, and `tests/fixtures/project_context_contract.json`
+  all exist. Did not re-verify their assertions still cover the exact
+  acceptance criteria above line-by-line.
 
-### 0.5 Small robustness fixes (batch these together)
+### 0.5 Small robustness fixes (batch these together) — DONE
 - `routes/api.js:836-840`: in the context-error path, `--context-file` is pushed
   before the temp dir exists; if `fs.mkdtemp` throws, the arg list is left with a
   dangling `--context-file`. Restructure so the flag and path are pushed together
   after the file is written.
+  — **Current state:** fixed; both the happy path and the error path call
+  `fs.mkdtemp`/`fs.writeFile` before pushing `--context-file` (`routes/api.js:872-887`).
 - Add a `limit`/size guard on `transcriptText` persisted to
   `project_report_sources` (already has `transcript_sha256` — use it to skip
   duplicate re-saves of an identical transcript for the same project+period).
+  — **Current state:** sha256 dedupe is in place (`utils/db.js:1787,1876`).
 - `project_context_snapshot_items.item_key` collisions: `projectContextItemKey`
   falls back to `item`; two unnamed risks collide. Suffix with the source id
   (`risk_<id>`) consistently (partially done — audit all call sites in
   `utils/db.js:830-895`).
+  — **Current state:** not re-verified this round; treat as still open.
 - Timeouts: `PROJECT_UPDATE_TIMEOUT_MS` exists for the primary script; give the
   legacy fallback (`python_llm.py`) its own explicit timeout too, so a hung
   fallback can't hold the request open indefinitely.
+  — **Current state:** fixed; the fallback call passes the same
+  `timeoutMs: projectTimeoutMs` (`routes/api.js:900`).
 - Log a single structured line per upload (project id, context found?, script
   used, fallback?, save ok?, duration) to make production incidents diagnosable
   from `agent.log`.
+  — **Current state:** fixed; see the `project_update_test_upload_completed`
+  structured log (`routes/api.js:953-973`).
 
 ---
 

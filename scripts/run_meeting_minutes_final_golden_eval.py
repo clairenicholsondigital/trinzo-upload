@@ -198,7 +198,9 @@ def universal_quality_failures(output: dict[str, Any]) -> list[str]:
     if "transcript" in normalize_text(title):
         failures.append("quality: meeting title contains 'Transcript'")
 
-    for participant in output.get("participants", []) or []:
+    participants = output.get("participants") or {}
+    all_participants = list(participants.get("client") or []) + list(participants.get("trinzo") or [])
+    for participant in all_participants:
         normalized = normalize_text(participant)
         if normalized in BAD_PARTICIPANT_NAMES:
             failures.append(f"quality: invalid participant name {participant!r}")
