@@ -26,14 +26,19 @@ OPEN_QUESTION_WORDS = [
     "what happens",
     "can i ask",
     "do we know",
-    "have we",
-    "are we",
     "when will",
     "what's the consequence",
     "what is the consequence",
     "what is the status",
     "what's the status",
 ]
+
+# "have we"/"are we" are weak, ambiguous question markers -- they read as a
+# real question at the start of a sentence ("Are we covering this?"), but can
+# also turn up mid-sentence in a disfluent stutter ("we are we are absolutely
+# covering it") that isn't a question at all. Only count them when they open
+# the sentence, where the question reading is actually reliable.
+_WEAK_OPEN_QUESTION_STARTERS = ("have we", "are we")
 
 RESPONSIBILITY_WORDS = [
     "responsibility",
@@ -121,6 +126,7 @@ EVIDENCE_ARTIFACT_WORDS = [
     "file",
     "warranty booklet",
     "manufacturer information note",
+    "bill",
 ]
 
 EVIDENCE_WORDS = EVIDENCE_REQUEST_WORDS + EVIDENCE_ARTIFACT_WORDS
@@ -138,6 +144,8 @@ RISK_WORDS = [
     "audit",
     "late",
     "delay",
+    "cybersecurity",
+    "usb",
 ]
 
 DECISION_WORDS = [
@@ -192,6 +200,8 @@ PROCESS_FLOW_WORDS = [
     "warehouse",
     "warehousing",
     "storage",
+    "stored",
+    "store",
     "transportation",
     "financial clearinghouse",
     "clearinghouse",
@@ -251,6 +261,24 @@ def has_any(text: str, phrases: Iterable[str]) -> bool:
 
 def normalise(text: str) -> str:
     return re.sub(r"\s+", " ", text.strip())
+
+
+def _has_open_question_marker(sentence: str, text: str) -> bool:
+    if has_any(text, OPEN_QUESTION_WORDS):
+        return True
+    return text.lstrip().startswith(_WEAK_OPEN_QUESTION_STARTERS)
+
+
+def _has_responsibility_marker(text: str) -> bool:
+    other_words = [word for word in RESPONSIBILITY_WORDS if word != "check"]
+    if has_any(text, other_words):
+        return True
+    if re.search(r"\bcheck\b", text):
+        # "check in" (touch base, schedule a recurring sync) is an idiom, not
+        # the verification/inspection sense of "check" this bucket is meant
+        # to catch -- let it fall through to action detection instead.
+        return not re.search(r"\bcheck\s+in\b", text)
+    return False
 
 
 def is_noise(sentence: str) -> bool:
@@ -328,8 +356,8 @@ def classify_sentence(sentence: str) -> str:
     if is_noise(text):
         return "noise"
 
-    question = "?" in sentence or has_any(text, OPEN_QUESTION_WORDS)
-    responsibility = has_any(text, RESPONSIBILITY_WORDS)
+    question = "?" in sentence or _has_open_question_marker(sentence, text)
+    responsibility = _has_responsibility_marker(text)
     evidence_request = has_any(text, EVIDENCE_REQUEST_WORDS)
     evidence_artifact = has_any(text, EVIDENCE_ARTIFACT_WORDS)
     decision = has_any(text, DECISION_WORDS)

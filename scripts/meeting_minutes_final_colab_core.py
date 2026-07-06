@@ -681,7 +681,10 @@ def _term_matches(lowered_text: str, lowered_term: str) -> bool:
     if not lowered_term:
         return False
     if re.fullmatch(r"[a-z0-9]+", lowered_term):
-        return re.search(rf"\b{re.escape(lowered_term)}\b", lowered_text) is not None
+        # Suffix-tolerant so a singular configured term (e.g. "declaration")
+        # still matches the plural form a real transcript actually uses
+        # ("declarations"), rather than requiring an exact word match.
+        return re.search(rf"\b{re.escape(lowered_term)}(?:e?s)?\b", lowered_text) is not None
     return lowered_term in lowered_text
 
 
@@ -1403,7 +1406,8 @@ ACTION_PROFILES: list[dict[str, Any]] = [
     },
     {
         "text": "Review invoice, annual fee or HPRA fee questions with the relevant internal contact.",
-        "terms": ["hpra", "invoice", "annual fee", "liam"],
+        "terms": ["hpra", "invoice", "annual fee", "liam", "bill"],
+        "buckets": ["action", "evidence_request", "responsibility", "evidence_artifact"],
         "owner": "Jacqui",
     },
     {
@@ -1772,6 +1776,16 @@ GENERIC_TOPIC_PROFILES: list[dict[str, Any]] = [
         "questions": "Open questions remain around client needs, staffing availability or what should happen next.",
         "terms": ["client", "scope", "engineers", "site", "onsite", "on-site", "galway", "gsk", "glaxosmithkline", "next week", "staff"],
         "required_any": ["client", "scope", "engineers", "onsite", "on-site", "galway", "gsk", "glaxosmithkline", "staff"],
+    },
+    {
+        "topic": "Working sessions, scheduling and recurring check-ins",
+        "summary": "The discussion covered setting up working sessions or a recurring check-in cadence between the team and client.",
+        "responsibility": "Whoever owns the calendar needs to confirm the working-session or check-in cadence and get it booked in.",
+        "evidence": "Proposed working-session slots, meeting cadence and calendar-booking comments are supporting evidence.",
+        "risk": "Without a confirmed cadence, working sessions or check-ins may slip or clash with other commitments.",
+        "questions": "Open questions remain around which days, times or attendees the working sessions or check-ins should cover.",
+        "terms": ["working session", "working sessions", "check-in", "check in", "check-ins", "recurring", "cadence", "block out", "calendar invite", "weekly call", "set that up", "book in"],
+        "required_any": ["working session", "working sessions", "check-in", "check in", "check-ins", "recurring", "cadence"],
     },
 ]
 
@@ -2872,6 +2886,9 @@ def _is_low_quality_public_decision_text(text: str) -> bool:
     return False
 
 
+_WEEKDAY_NAME = r"(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)"
+
+
 def _is_decision_sentence(text: str) -> bool:
     lowered = text.lower()
     if lowered.strip().endswith("?"):
@@ -2910,15 +2927,37 @@ def _is_decision_sentence(text: str) -> bool:
         return False
     return bool(
         re.search(r"\bdecision\s+(?:confirmed|is|was|then|:)\b", lowered)
+        or re.search(r"\bmade\s+the\s+decision\b", lowered)
         or re.search(r"\b(?:decided|agreed|rejected)\b", lowered)
-        or re.search(r"\b(?:approved|approval)\s+(?:to|for)\b", lowered)
+        # Requires an actual approval/sign-off object (launch, release, rollout,
+        # budget, etc.) -- a bare "approval for them to..." often just describes
+        # routine document sign-off status, not a decision taken in this meeting.
+        or re.search(r"\b(?:approved|approval)\s+(?:to|for)\s+(?:the\s+)?(?:launch|release|rollout|go[- ]live|budget|proposal|plan|project|change|purchase|contract|renewal)\b", lowered)
         or re.search(r"\b(?:we|the team)\s+(?:will|are going to|agreed to)\s+(?:start|begin|keep|defer|delay|include|exclude|use|proceed|pause|add|remove|approve|reject|move|focus|sign|refund|invite|onboard|hold|assign|renew|switch|make|buy|submit|drop|run|replace|escalate|ship|stay|progress)\b", lowered)
         or re.search(r"\bwe\s+will\s+not\s+progress\b", lowered)
         or re.search(r"\bwe\s+should\s+(?:keep|delay|drop|move)\b", lowered)
-        or re.search(r"\bwe\s+(?:start|begin|keep|defer|delay|include|exclude|use|proceed|pause|add|remove|approve|reject|move|focus|sign|refund|invite|onboard|hold|assign|renew|switch|make|buy|submit|drop|run|replace|escalate|ship|stay|progress)\b", lowered)
+        # Bare present-tense "we use X"/"we ship X" with no other qualifier is
+        # usually a description of standing/routine practice ("we use RF Smart",
+        # "we ship via DHL"), not a decision -- "use"/"ship" deliberately
+        # excluded here (they're still caught above when properly qualified by
+        # will/are going to/agreed to).
+        or re.search(r"\bwe\s+(?:start|begin|keep|defer|delay|include|exclude|proceed|pause|add|remove|approve|reject|move|focus|sign|refund|invite|onboard|hold|assign|renew|switch|make|buy|submit|drop|run|replace|escalate|stay|progress)\b", lowered)
         or re.search(r"\b\w+\s+stays\s+out\s+of\s+(?:phase|scope|release|rollout)\b", lowered)
-        or re.search(r"^(?:actually,?\s*)?(?:let['’]?s\s+)?(?:keep|include|defer|delay|start|begin|use|proceed|pause|approve|reject|move|focus|sign|refund|invite|onboard|hold|assign|renew|switch|make|buy|submit|drop|replace|escalate|ship)\b", lowered)
+        # "let's" is required here (not optional) -- a bare imperative verb with
+        # no subject at all ("Focus on TFO3 this week") is often the tail end of
+        # an interrupted turn ("I'm gonna... focus on TFO3 this week") that lost
+        # its subject when the sentence was split, not a genuine team decision.
+        or re.search(r"^(?:actually,?\s*)?let['’]?s\s+(?:keep|include|defer|delay|start|begin|use|proceed|pause|approve|reject|move|focus|sign|refund|invite|onboard|hold|assign|renew|switch|make|buy|submit|drop|replace|escalate|ship)\b", lowered)
         or re.search(r"\b(?:recommendation|recommend)\s+is\s+to\b", lowered)
+        # An explicit recurring multi-day commitment ("every third Wednesday,
+        # Thursday, and Friday") is a scheduling decision, not a passing
+        # mention of the days of the week -- requires "every" plus at least
+        # two named weekdays joined by "and"/commas, not a bare day list.
+        or re.search(
+            rf"\bevery\s+(?:other\s+|second\s+|third\s+|\d+(?:st|nd|rd|th)\s+)?{_WEEKDAY_NAME}"
+            rf"(?:\s*,\s*{_WEEKDAY_NAME})*\s*,?\s*and\s+{_WEEKDAY_NAME}\b",
+            lowered,
+        )
     )
 
 
