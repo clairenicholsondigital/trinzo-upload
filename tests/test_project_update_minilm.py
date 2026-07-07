@@ -306,7 +306,7 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertIn("runPythonTranscriptScript('python_llm.py'", api)
         self.assertIn("router.post('/meeting-minutes-final'", api)
         meeting_route = api.split("router.post('/meeting-minutes-final'", 1)[1].split("router.post('/meeting-minutes-final/improve'", 1)[0]
-        self.assertIn("meeting_minutes_openrouter.py", meeting_route)
+        self.assertIn("meeting_minutes_trooper.py", meeting_route)
         self.assertNotIn("project_update_minilm.py", meeting_route)
 
     def test_project_update_page_enables_editable_report_ui(self):

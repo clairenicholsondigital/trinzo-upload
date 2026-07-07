@@ -73,8 +73,8 @@ const testUpload = multer({
 
 const MAX_TRANSCRIPT_CHARS = 2 * 1024 * 1024;
 const PYTHON_TIMEOUT_MS = Number(process.env.TRANSCRIPT_TEST_TIMEOUT_MS || 30000);
-// /meeting-minutes-final now uses a single full-transcript OpenRouter LLM pass.
-// Free frontier/large-context models can be slow or queued, so keep the route timeout generous.
+// /meeting-minutes-final now uses a single full-transcript Trooper Liv operator pass.
+// Large transcripts can still take several seconds, so keep the route timeout generous.
 const MEETING_MINUTES_FINAL_TIMEOUT_MS = Number(process.env.MEETING_MINUTES_FINAL_TIMEOUT_MS || 180000);
 
 const REVIEW_TEMPLATE = {
@@ -675,7 +675,7 @@ router.post('/meeting-minutes-final', requireAuth, withTestUpload(async (req, re
       scriptArgs.push('--skip-diagnostics');
     }
 
-    const result = await runPythonTranscriptScript('meeting_minutes_openrouter.py', transcript.text, scriptArgs, { timeoutMs: MEETING_MINUTES_FINAL_TIMEOUT_MS });
+    const result = await runPythonTranscriptScript('meeting_minutes_trooper.py', transcript.text, scriptArgs, { timeoutMs: MEETING_MINUTES_FINAL_TIMEOUT_MS });
 
     console.info(JSON.stringify({
       event: 'meeting_minutes_final_completed',
@@ -684,7 +684,7 @@ router.post('/meeting-minutes-final', requireAuth, withTestUpload(async (req, re
       transcriptLength: transcript.text.length,
       skipRewrite,
       rewriterAvailable: result?.rewriterAvailable ?? null,
-      rewriterUsed: result?.rewriterReason === 'OpenRouter full-transcript LLM used.',
+      rewriterUsed: result?.rewriterReason === 'Trooper Liv HelixScribe operator used.',
       rewriterReason: result?.rewriterReason ?? null,
       rewriterDiagnosticsSummary: result?.rewriterDiagnosticsSummary ?? null,
       rewriterTokenUsage: result?.rewriterTokenUsage ?? null,
