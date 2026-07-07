@@ -1720,10 +1720,6 @@ function buildTranscriptMinilmOnlyPage(config) {
     const nextSteps = Array.isArray(reviewData.nextSteps) ? reviewData.nextSteps : [];
     const participants = reviewData.participants || {};
     const title = reviewData.meetingTitle || 'Meeting minutes';
-    const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=1100,height=800');
-    if (!printWindow) {
-      return setMessage('Popup blocked. Allow popups for this site, then click Export PDF again.', 'error');
-    }
 
     const minutesRows = minutes.flatMap((minute) => {
       const topic = minute.topic || title || 'Discussion';
@@ -1741,8 +1737,7 @@ function buildTranscriptMinilmOnlyPage(config) {
       </tr>
     `).join('') || '<tr><td class="empty">No actions stated</td><td></td><td></td></tr>';
 
-    printWindow.document.open();
-    printWindow.document.write(`<!doctype html>
+    const html = `<!doctype html>
 <html>
 <head>
 <meta charset="utf-8">
@@ -1753,6 +1748,8 @@ function buildTranscriptMinilmOnlyPage(config) {
   body { font-family: Arial, Helvetica, sans-serif; color: #111827; margin: 0; font-size: 11pt; }
   h1 { font-size: 20pt; margin: 0 0 8px; color: #0f172a; }
   h2 { font-size: 13pt; margin: 18px 0 8px; color: #0f172a; }
+  .toolbar { position: sticky; top: 0; margin: 0 0 12px; padding: 10px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; }
+  .toolbar button { background: #14b8a6; color: #042f2e; border: none; border-radius: 8px; padding: 8px 12px; font-weight: 700; cursor: pointer; }
   .meta { width: 100%; border-collapse: collapse; margin: 10px 0 14px; }
   table { width: 100%; border-collapse: collapse; page-break-inside: auto; }
   tr { page-break-inside: avoid; page-break-after: auto; }
@@ -1761,9 +1758,11 @@ function buildTranscriptMinilmOnlyPage(config) {
   .meta th { width: 28%; }
   .empty { color: #64748b; font-style: italic; }
   .footer { margin-top: 18px; color: #64748b; font-size: 9pt; }
+  @media print { .toolbar { display: none; } }
 </style>
 </head>
 <body>
+  <div class="toolbar"><button type="button" onclick="window.print()">Print / Save as PDF</button></div>
   <h1>${escapeHtml(title)}</h1>
   <table class="meta">
     <tr><th>Date</th><td>${escapeHtml(reviewData.meetingDate || 'Not stated')}</td></tr>
@@ -1785,12 +1784,37 @@ function buildTranscriptMinilmOnlyPage(config) {
     <tbody>${actionRows}</tbody>
   </table>
 
-  <div class="footer">Generated from Trinzo meeting minutes tool. Use your browser print dialog to save as PDF.</div>
-  <script>window.addEventListener('load', () => setTimeout(() => window.print(), 250));<\/script>
+  <div class="footer">Generated from Trinzo meeting minutes tool. Use the print dialog to save as PDF.</div>
+  <script>window.addEventListener('load', () => { window.focus(); setTimeout(() => window.print(), 400); });<\/script>
 </body>
-</html>`);
-    printWindow.document.close();
-    setMessage('PDF export opened. Choose “Save as PDF” in the print dialog.', 'success');
+</html>`;
+
+    const printWindow = window.open('about:blank', '_blank', 'width=1100,height=800');
+    if (!printWindow) {
+      const blob = new Blob([html], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${title.replace(/[^a-z0-9_-]+/gi, '_').slice(0, 80) || 'meeting_minutes'}.html`;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+      return setMessage('Popup blocked, so an HTML export was downloaded. Open it and choose Print → Save as PDF.', 'success');
+    }
+
+    try {
+      printWindow.document.open();
+      printWindow.document.write(html);
+      printWindow.document.close();
+      printWindow.focus();
+      setMessage('PDF export opened. Choose “Save as PDF” in the print dialog.', 'success');
+    } catch (error) {
+      printWindow.close();
+      const blob = new Blob([html], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+      setMessage('PDF export opened in a fallback tab. Use Print → Save as PDF.', 'success');
+    }
   }
 
   async function parseJsonResponse(response) {
