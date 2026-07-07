@@ -73,10 +73,9 @@ const testUpload = multer({
 
 const MAX_TRANSCRIPT_CHARS = 2 * 1024 * 1024;
 const PYTHON_TIMEOUT_MS = Number(process.env.TRANSCRIPT_TEST_TIMEOUT_MS || 30000);
-// meeting_minutes_final_colab.py's Gemini call has its own internal 45s HTTP timeout
-// (scripts/google_ai_studio_minutes.py); this must exceed that or Node kills a
-// legitimately-slow-but-successful run before Gemini's own timeout ever fires.
-const MEETING_MINUTES_FINAL_TIMEOUT_MS = Number(process.env.MEETING_MINUTES_FINAL_TIMEOUT_MS || 90000);
+// /meeting-minutes-final now uses a single full-transcript OpenRouter LLM pass.
+// Free frontier/large-context models can be slow or queued, so keep the route timeout generous.
+const MEETING_MINUTES_FINAL_TIMEOUT_MS = Number(process.env.MEETING_MINUTES_FINAL_TIMEOUT_MS || 180000);
 
 const REVIEW_TEMPLATE = {
   meetingTitle: '',
@@ -658,7 +657,7 @@ router.post('/meeting-minutes-final', requireAuth, withTestUpload(async (req, re
       scriptArgs.push('--skip-diagnostics');
     }
 
-    const result = await runPythonTranscriptScript('meeting_minutes_final_colab.py', transcript.text, scriptArgs, { timeoutMs: MEETING_MINUTES_FINAL_TIMEOUT_MS });
+    const result = await runPythonTranscriptScript('meeting_minutes_openrouter.py', transcript.text, scriptArgs, { timeoutMs: MEETING_MINUTES_FINAL_TIMEOUT_MS });
 
     console.info(JSON.stringify({
       event: 'meeting_minutes_final_completed',
@@ -667,7 +666,7 @@ router.post('/meeting-minutes-final', requireAuth, withTestUpload(async (req, re
       transcriptLength: transcript.text.length,
       skipRewrite,
       rewriterAvailable: result?.rewriterAvailable ?? null,
-      rewriterUsed: result?.rewriterReason === 'Google AI Studio used.',
+      rewriterUsed: result?.rewriterReason === 'OpenRouter full-transcript LLM used.',
       rewriterReason: result?.rewriterReason ?? null,
       rewriterTokenUsage: result?.rewriterTokenUsage ?? null,
       durationMs: Date.now() - startedAt
