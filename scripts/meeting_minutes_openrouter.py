@@ -14,12 +14,39 @@ from typing import Any
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 DEFAULT_MODELS = [
-    # Verified with Claire's OpenRouter key. Some larger free models are blocked by
-    # the account's provider/privacy restrictions, so keep the known-working model first.
+    # Verified with Claire's OpenRouter key on both short and ~36k-char transcripts.
+    # Other free models are often blocked/rate-limited on this account, so keep this first.
     "tencent/hy3:free",
-    "meta-llama/llama-3.3-70b-instruct:free",
-    "google/gemma-4-26b-a4b-it:free",
 ]
+
+
+def load_local_env_if_needed() -> None:
+    """Small dotenv fallback for Python child processes launched by PM2/Node.
+
+    The Node app may load only its own required env vars at startup; this script
+    also needs OpenRouter-specific values. Avoid a dependency on python-dotenv and
+    never print secrets.
+    """
+    env_path = Path(__file__).resolve().parents[1] / ".env"
+    if not env_path.exists():
+        return
+    wanted_prefixes = ("OPENROUTER_", "MEETING_MINUTES_FINAL_TIMEOUT_MS")
+    try:
+        lines = env_path.read_text(encoding="utf-8").splitlines()
+    except Exception:
+        return
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, value = stripped.split("=", 1)
+        key = key.strip()
+        if not key.startswith(wanted_prefixes):
+            continue
+        if os.environ.get(key):
+            continue
+        value = value.strip().strip('"').strip("'")
+        os.environ[key] = value
 
 
 def clean_text(value: Any) -> str:
@@ -293,6 +320,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 
 def main() -> int:
+    load_local_env_if_needed()
     args = parse_args(sys.argv[1:])
     transcript = Path(args.transcript_path).read_text(encoding="utf-8")
     started = time.perf_counter()
