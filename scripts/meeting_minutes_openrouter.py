@@ -130,6 +130,7 @@ Critical rules:
 - Do NOT write repetitive speaker-attribution lines like "Jacqui said that..." unless the named person is responsible for an action/decision or attribution is essential.
 - Do NOT include raw transcript artefacts: timestamps, speaker labels, "started transcription", "stopped transcription", filler, false starts, malformed grammar, duplicated names, or copied questions.
 - Do NOT invent facts, dates, decisions, owners, deadlines, attendees, or technical details.
+- Do NOT convert relative dates/deadlines into calendar dates. If the transcript says "Wednesday", "next week" or "the 20th", preserve that wording unless the exact calendar date is explicitly stated.
 - If the transcript is unclear, omit the point or write "Not stated" for owner/deadline fields.
 - Prefer fewer high-quality points over many weak points.
 - Action items must be actual commitments or required follow-ups, not general discussion.
