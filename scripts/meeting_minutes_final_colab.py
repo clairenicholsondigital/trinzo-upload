@@ -316,6 +316,41 @@ def _dedupe_preserve(values: list[Any]) -> list[str]:
     return output
 
 
+def _is_generic_minutes_meta_point(value: Any) -> bool:
+    lowered = _norm(clean_line(value))
+    if not lowered:
+        return True
+    generic_prefixes = (
+        "the discussion covered ",
+        "discussion covered ",
+        "the meeting covered ",
+        "the team discussed ",
+    )
+    generic_phrases = (
+        " are supporting evidence",
+        " is supporting evidence",
+        " supporting evidence for this topic",
+        " supporting evidence for this process",
+    )
+    return lowered.startswith(generic_prefixes) or any(phrase in lowered for phrase in generic_phrases)
+
+
+def _prune_generic_minutes_meta_points(output: dict[str, Any], minimum_remaining: int = 3) -> None:
+    points = _dedupe_preserve(list(output.get("discussionPoints") or []))
+    specific_points = [point for point in points if not _is_generic_minutes_meta_point(point)]
+    if len(specific_points) >= minimum_remaining:
+        output["discussionPoints"] = specific_points
+        minutes = output.get("meetingMinutes")
+        if isinstance(minutes, list):
+            for minute in minutes:
+                if not isinstance(minute, dict):
+                    continue
+                minute_points = _dedupe_preserve(list(minute.get("discussionPoints") or []))
+                minute_specific = [point for point in minute_points if not _is_generic_minutes_meta_point(point)]
+                if minute_specific:
+                    minute["discussionPoints"] = minute_specific
+
+
 def _visible_blob(output: dict[str, Any]) -> str:
     values: list[str] = []
     for key in ["meetingTitle", "meetingDescription", "executiveSummary", "meetingObjectives", "discussionPoints", "decisions", "meetingActionPoint"]:
@@ -678,6 +713,7 @@ def apply_real_transcript_coverage_guardrails(output: dict[str, Any], transcript
             guarded["meetingMinutes"][0]["discussionPoints"] = guarded["discussionPoints"]
         _cap_actions(guarded, 4)
 
+    _prune_generic_minutes_meta_points(guarded)
     _clean_action_owners(guarded, transcript_text)
     return guarded
 

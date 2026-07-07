@@ -7,7 +7,7 @@ SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
-from meeting_minutes_final_colab import enrich_fallback_meeting_fields, parse_colab_minutes
+from meeting_minutes_final_colab import enrich_fallback_meeting_fields, parse_colab_minutes, _prune_generic_minutes_meta_points
 from meeting_minutes_final_colab_core import (
     _decision_entries,
     _dynamic_topic_from_remaining_sources,
@@ -19,6 +19,7 @@ from google_ai_studio_minutes import (
     generate_minutes_with_google_ai_studio,
     run_minilm_quality_control,
     _normalise_minutes_output,
+    _prompt_for_evidence_pack,
 )
 from run_meeting_minutes_final_golden_eval import evaluate_case, load_json
 
@@ -75,6 +76,65 @@ class MeetingMinutesFinalColabCoreTests(unittest.TestCase):
         self.assertIsNone(output)
         self.assertFalse(diagnostics["available"])
         self.assertIn("GOOGLE_AI_STUDIO_API_KEY", diagnostics["error"])
+
+    def test_prunes_generic_minilm_meta_points_when_specific_points_remain(self):
+        output = {
+            "discussionPoints": [
+                "Cybersecurity and risk management coverage need to be considered in the audit plan.",
+                "The discussion covered cybersecurity, risk management updates and USB access controls.",
+                "Quality manuals, procedures, trackers or summary documents are supporting evidence for this topic.",
+                "Kappa and validation examples show why procedure quality needs to be tested against actual execution.",
+                "A site visit or equivalent working session may be needed to confirm how the process works in practice.",
+            ],
+            "meetingMinutes": [
+                {
+                    "topic": "Audit planning",
+                    "discussionPoints": [
+                        "The discussion covered cybersecurity, risk management updates and USB access controls.",
+                        "A site visit or equivalent working session may be needed to confirm how the process works in practice.",
+                    ],
+                }
+            ],
+        }
+
+        _prune_generic_minutes_meta_points(output)
+
+        self.assertEqual(
+            output["discussionPoints"],
+            [
+                "Cybersecurity and risk management coverage need to be considered in the audit plan.",
+                "Kappa and validation examples show why procedure quality needs to be tested against actual execution.",
+                "A site visit or equivalent working session may be needed to confirm how the process works in practice.",
+            ],
+        )
+        self.assertEqual(
+            output["meetingMinutes"][0]["discussionPoints"],
+            ["A site visit or equivalent working session may be needed to confirm how the process works in practice."],
+        )
+
+    def test_google_prompt_requires_specific_speaker_attributed_facts(self):
+        prompt = _prompt_for_evidence_pack(
+            {
+                "topics": [
+                    {
+                        "topic": "Audit planning",
+                        "discussionPoints": [
+                            {
+                                "text": "Cybersecurity and risk management coverage need to be considered in the audit plan.",
+                                "evidence": ["Jacqui Fox said cybersecurity and risk management should be built into the audit plan."],
+                            }
+                        ],
+                    }
+                ],
+                "actions": [],
+                "decisions": [],
+            }
+        )
+
+        self.assertIn("Prefer speaker-attributed factual sentences", prompt)
+        self.assertIn("Jacqui Fox stated that", prompt)
+        self.assertIn("Do not collapse concrete details into broad topic summaries", prompt)
+        self.assertIn("Cybersecurity and risk management coverage need to be considered", prompt)
 
     def test_google_normalisation_preserves_fallback_title_and_filters_admin_objectives(self):
         output = _normalise_minutes_output(

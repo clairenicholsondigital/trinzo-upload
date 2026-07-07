@@ -187,6 +187,13 @@ def _prompt_for_evidence_pack(evidence_pack: dict[str, Any]) -> str:
             "- If a detail is not explicitly supported, use an empty string, an empty list, or 'Not stated'.",
             "- Never write generic meta-commentary such as 'the discussion covered X, Y and Z' or 'open questions",
             "  remain around X' -- state the actual fact, risk, or question itself.",
+            "- Prefer speaker-attributed factual sentences when the evidence identifies the speaker, e.g.",
+            "  'Jacqui Fox stated that ...', 'Niamh noted that ...', 'Karen questioned whether ...'.",
+            "- Speaker-attributed sentences must preserve the speaker's meaning without copying filler, uncertainty,",
+            "  false starts, or first-person wording. Do not invent attribution when the speaker is not clear.",
+            "- Do not collapse concrete details into broad topic summaries. For example, write 'Cybersecurity and risk",
+            "  management coverage need to be considered in the audit plan' rather than 'Technical aspects were discussed'.",
+            "- If the evidence distinguishes scope that is fine from scope needing follow-up, keep those as separate facts.",
             "- Do not merge several unrelated facts from one topic into a single vague sentence; split them out.",
             "- Write every discussion point, decision, and open question as a complete, self-contained sentence a",
             "  reader could understand without having read the transcript -- never a fragment, and never dependent",
@@ -336,7 +343,10 @@ def generate_minutes_with_google_ai_studio(
     max_retries: int = 1,
     retry_delay_seconds: float = 3.0,
 ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
-    resolved_key = (api_key or os.environ.get("GOOGLE_AI_STUDIO_API_KEY") or os.environ.get("GEMINI_API_KEY") or "").strip()
+    if api_key is None:
+        resolved_key = (os.environ.get("GOOGLE_AI_STUDIO_API_KEY") or os.environ.get("GEMINI_API_KEY") or "").strip()
+    else:
+        resolved_key = str(api_key or "").strip()
     resolved_model = (model or os.environ.get("GOOGLE_AI_STUDIO_MODEL") or DEFAULT_GOOGLE_AI_STUDIO_MODEL).strip()
     diagnostics: dict[str, Any] = {
         "provider": "google_ai_studio",
