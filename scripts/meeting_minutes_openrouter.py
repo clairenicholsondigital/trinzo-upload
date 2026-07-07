@@ -43,10 +43,11 @@ def load_local_env_if_needed() -> None:
         key = key.strip()
         if not key.startswith(wanted_prefixes):
             continue
-        if os.environ.get(key):
-            continue
         value = value.strip().strip('"').strip("'")
-        os.environ[key] = value
+        # Treat the checked-in deployment .env as authoritative for OpenRouter.
+        # PM2 may retain stale/partial env values from earlier deploy attempts.
+        if key.startswith("OPENROUTER_") or not os.environ.get(key):
+            os.environ[key] = value
 
 
 def clean_text(value: Any) -> str:
@@ -337,6 +338,13 @@ def main() -> int:
         "rewriterModelPath": None,
         "rewriterReason": "OpenRouter full-transcript LLM used." if diagnostics.get("used") else diagnostics.get("error", "OpenRouter was not used."),
         "rewriterTokenUsage": diagnostics.get("usage") or None,
+        "rewriterDiagnosticsSummary": {
+            "provider": diagnostics.get("provider"),
+            "model": diagnostics.get("model"),
+            "used": diagnostics.get("used"),
+            "error": diagnostics.get("error"),
+            "errors": diagnostics.get("errors", [])[:4],
+        },
         "output": output,
         "counts": {
             "discussionPoints": len(output.get("discussionPoints", [])),

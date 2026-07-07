@@ -668,6 +668,7 @@ router.post('/meeting-minutes-final', requireAuth, withTestUpload(async (req, re
       rewriterAvailable: result?.rewriterAvailable ?? null,
       rewriterUsed: result?.rewriterReason === 'OpenRouter full-transcript LLM used.',
       rewriterReason: result?.rewriterReason ?? null,
+      rewriterDiagnosticsSummary: result?.rewriterDiagnosticsSummary ?? null,
       rewriterTokenUsage: result?.rewriterTokenUsage ?? null,
       durationMs: Date.now() - startedAt
     }));
