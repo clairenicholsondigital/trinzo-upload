@@ -1197,6 +1197,7 @@ function buildTranscriptMinilmOnlyPage(config) {
       <div id="minilmOnlyOutput"></div>
       <div class="panel-actions">
         ${config.improveEndpoint ? '<button id="minilmOnlyImproveBtn" class="secondary" type="button" disabled>Improve minutes</button>' : ''}
+        <button id="exportPdfBtn" class="secondary hidden" type="button">Export PDF</button>
         <button id="finaliseBtn" type="button" class="hidden">Confirm & Send to SharePoint</button>
       </div>
     </section>
@@ -1249,6 +1250,7 @@ function buildTranscriptMinilmOnlyPage(config) {
   const copyRawBtn = document.getElementById('copyMinilmOnlyRawBtn');
   const copyDiagnosticsBtn = document.getElementById('copyMinilmOnlyDiagnosticsBtn');
   const finaliseBtn = document.getElementById('finaliseBtn');
+  const exportPdfBtn = document.getElementById('exportPdfBtn');
   const message = document.getElementById('minilmOnlyMessage');
   const summaryGrid = document.getElementById('minilmOnlySummaryGrid');
   const outputPanel = document.getElementById('minilmOnlyOutputPanel');
@@ -1298,6 +1300,7 @@ function buildTranscriptMinilmOnlyPage(config) {
     if (improveBtn) {
       improveBtn.disabled = isLoading || state.improving || !(state.payload && state.payload.result && state.payload.result.output);
     }
+    if (exportPdfBtn) exportPdfBtn.disabled = isLoading || state.improving || !state.schemaOutput;
     goBtn.textContent = isLoading ? 'Working...' : config.buttonText;
   }
 
@@ -1312,6 +1315,7 @@ function buildTranscriptMinilmOnlyPage(config) {
       improveBtn.disabled = busy || state.loading || !(state.payload && state.payload.result && state.payload.result.output);
       improveBtn.textContent = isImproving ? 'Improving...' : 'Improve minutes';
     }
+    if (exportPdfBtn) exportPdfBtn.disabled = busy || state.loading || !state.schemaOutput;
   }
 
   function escapeHtml(value) {
@@ -1699,6 +1703,96 @@ function buildTranscriptMinilmOnlyPage(config) {
     }
   }
 
+  function rowsFromList(values) {
+    return (Array.isArray(values) ? values : [])
+      .map((value) => `<tr><td>${escapeHtml(value)}</td></tr>`)
+      .join('') || '<tr><td class="empty">Not stated</td></tr>';
+  }
+
+  function exportMinutesPdf() {
+    const editedSchema = collectEditedSchemaOutput();
+    const reviewData = editedSchema ? buildReviewDataFromSchema(editedSchema) : getReviewDataFromStorage();
+    if (!reviewData) {
+      return setMessage('No minutes found to export. Generate minutes first.', 'error');
+    }
+
+    const minutes = Array.isArray(reviewData.meetingMinutes) ? reviewData.meetingMinutes : [];
+    const nextSteps = Array.isArray(reviewData.nextSteps) ? reviewData.nextSteps : [];
+    const participants = reviewData.participants || {};
+    const title = reviewData.meetingTitle || 'Meeting minutes';
+    const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=1100,height=800');
+    if (!printWindow) {
+      return setMessage('Popup blocked. Allow popups for this site, then click Export PDF again.', 'error');
+    }
+
+    const minutesRows = minutes.flatMap((minute) => {
+      const topic = minute.topic || title || 'Discussion';
+      const points = Array.isArray(minute.discussionPoints) ? minute.discussionPoints : [];
+      return points.length
+        ? points.map((point) => `<tr><td>${escapeHtml(topic)}</td><td>${escapeHtml(point)}</td></tr>`)
+        : [`<tr><td>${escapeHtml(topic)}</td><td class="empty">No discussion points stated</td></tr>`];
+    }).join('') || '<tr><td>Discussion</td><td class="empty">No discussion points stated</td></tr>';
+
+    const actionRows = nextSteps.map((item) => `
+      <tr>
+        <td>${escapeHtml(item.action || '')}</td>
+        <td>${escapeHtml(item.owner || 'Not stated')}</td>
+        <td>${escapeHtml(item.deadline || 'Not stated')}</td>
+      </tr>
+    `).join('') || '<tr><td class="empty">No actions stated</td><td></td><td></td></tr>';
+
+    printWindow.document.open();
+    printWindow.document.write(`<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>${escapeHtml(title)}</title>
+<style>
+  @page { size: A4; margin: 14mm; }
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; color: #111827; margin: 0; font-size: 11pt; }
+  h1 { font-size: 20pt; margin: 0 0 8px; color: #0f172a; }
+  h2 { font-size: 13pt; margin: 18px 0 8px; color: #0f172a; }
+  .meta { width: 100%; border-collapse: collapse; margin: 10px 0 14px; }
+  table { width: 100%; border-collapse: collapse; page-break-inside: auto; }
+  tr { page-break-inside: avoid; page-break-after: auto; }
+  th, td { border: 1px solid #cbd5e1; padding: 7px 8px; vertical-align: top; text-align: left; }
+  th { background: #e2e8f0; font-weight: 700; color: #0f172a; }
+  .meta th { width: 28%; }
+  .empty { color: #64748b; font-style: italic; }
+  .footer { margin-top: 18px; color: #64748b; font-size: 9pt; }
+</style>
+</head>
+<body>
+  <h1>${escapeHtml(title)}</h1>
+  <table class="meta">
+    <tr><th>Date</th><td>${escapeHtml(reviewData.meetingDate || 'Not stated')}</td></tr>
+    <tr><th>Location</th><td>${escapeHtml(reviewData.meetingLocation || 'Not stated')}</td></tr>
+    <tr><th>Objectives</th><td>${(reviewData.meetingObjectives || []).map(escapeHtml).join('<br>') || '<span class="empty">Not stated</span>'}</td></tr>
+    <tr><th>Client participants</th><td>${(participants.client || []).map(escapeHtml).join('<br>') || '<span class="empty">Not stated</span>'}</td></tr>
+    <tr><th>Trinzo participants</th><td>${(participants.trinzo || []).map(escapeHtml).join('<br>') || '<span class="empty">Not stated</span>'}</td></tr>
+  </table>
+
+  <h2>Discussion points</h2>
+  <table>
+    <thead><tr><th style="width:28%">Topic</th><th>Point</th></tr></thead>
+    <tbody>${minutesRows}</tbody>
+  </table>
+
+  <h2>Actions</h2>
+  <table>
+    <thead><tr><th>Action</th><th style="width:22%">Owner</th><th style="width:20%">Deadline</th></tr></thead>
+    <tbody>${actionRows}</tbody>
+  </table>
+
+  <div class="footer">Generated from Trinzo meeting minutes tool. Use your browser print dialog to save as PDF.</div>
+  <script>window.addEventListener('load', () => setTimeout(() => window.print(), 250));<\/script>
+</body>
+</html>`);
+    printWindow.document.close();
+    setMessage('PDF export opened. Choose “Save as PDF” in the print dialog.', 'success');
+  }
+
   async function parseJsonResponse(response) {
     const text = await response.text();
     if (!text) return {};
@@ -1768,6 +1862,7 @@ function buildTranscriptMinilmOnlyPage(config) {
       outputPanel.classList.remove('hidden');
       diagnosticsPanel.classList.remove('hidden');
       if (finaliseBtn) finaliseBtn.classList.add('hidden');
+      if (exportPdfBtn) exportPdfBtn.classList.add('hidden');
       if (improveBtn) improveBtn.disabled = true;
       setMessage(result.modelReason ? `Extractor did not run: ${result.modelReason}` : 'Extractor did not produce minutes output.', 'error');
       return;
@@ -1789,6 +1884,10 @@ function buildTranscriptMinilmOnlyPage(config) {
     outputPanel.classList.remove('hidden');
     diagnosticsPanel.classList.remove('hidden');
     if (finaliseBtn) finaliseBtn.classList.remove('hidden');
+    if (exportPdfBtn) {
+      exportPdfBtn.classList.remove('hidden');
+      exportPdfBtn.disabled = false;
+    }
     if (improveBtn) improveBtn.disabled = !(state.payload && state.payload.result && state.payload.result.output);
   }
 
@@ -1900,6 +1999,7 @@ function buildTranscriptMinilmOnlyPage(config) {
     diagnosticsNode.textContent = '';
     summaryGrid.innerHTML = '';
     if (improveBtn) improveBtn.disabled = true;
+    if (exportPdfBtn) exportPdfBtn.classList.add('hidden');
     if (finaliseBtn) finaliseBtn.classList.add('hidden');
   }
 
@@ -1911,6 +2011,7 @@ function buildTranscriptMinilmOnlyPage(config) {
 
   goBtn.addEventListener('click', submitTranscript);
   if (improveBtn) improveBtn.addEventListener('click', improveMinutes);
+  if (exportPdfBtn) exportPdfBtn.addEventListener('click', exportMinutesPdf);
   if (finaliseBtn) finaliseBtn.addEventListener('click', finaliseWithAgent);
   document.addEventListener('keydown', (event) => {
     if (!(event.ctrlKey || event.metaKey) || !event.shiftKey || event.key.toLowerCase() !== 'm') return;
