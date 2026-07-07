@@ -179,10 +179,32 @@ def model_list() -> list[str]:
     return deduped
 
 
+def empty_failure_output(error_message: str) -> dict[str, Any]:
+    return {
+        "meetingTitle": "Meeting minutes generation failed",
+        "meetingDate": "",
+        "meetingLocation": "",
+        "meetingDescription": "The meeting minutes could not be generated automatically.",
+        "meetingObjectives": [],
+        "participants": {"client": [], "trinzo": []},
+        "executiveSummary": error_message,
+        "discussionPoints": [error_message],
+        "decisions": [],
+        "meetingActionPoint": [],
+        "meetingActionPointOwner": [],
+        "meetingActionPointDeadline": [],
+        "actions": [],
+        "meetingMinutes": [{"topic": "Generation issue", "discussionPoints": [error_message]}],
+        "nextSteps": [],
+        "openQuestions": [],
+    }
+
+
 def call_openrouter(transcript: str, timeout_seconds: int) -> tuple[dict[str, Any], dict[str, Any]]:
     api_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
     if not api_key:
-        raise RuntimeError("OPENROUTER_API_KEY is not configured")
+        message = "OPENROUTER_API_KEY is not configured."
+        return empty_failure_output(message), {"provider": "openrouter", "model": None, "used": False, "error": message}
 
     errors = []
     for model in model_list():
@@ -195,31 +217,41 @@ def call_openrouter(transcript: str, timeout_seconds: int) -> tuple[dict[str, An
             "temperature": 0.1,
             "max_tokens": 7000,
         }
-        request = urllib.request.Request(
-            OPENROUTER_URL,
-            data=json.dumps(body).encode("utf-8"),
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {api_key}",
-                "HTTP-Referer": "https://trinzo.virtual-hub.online",
-                "X-Title": "Trinzo Meeting Minutes Final",
-            },
-            method="POST",
-        )
         started = time.perf_counter()
-        try:
-            with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
-                payload = json.loads(response.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            detail = ""
+        payload = None
+        last_error = None
+        for attempt in range(2):
+            request = urllib.request.Request(
+                OPENROUTER_URL,
+                data=json.dumps(body).encode("utf-8"),
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {api_key}",
+                    "HTTP-Referer": "https://trinzo.virtual-hub.online",
+                    "X-Title": "Trinzo Meeting Minutes Final",
+                },
+                method="POST",
+            )
             try:
-                detail = json.loads(exc.read().decode("utf-8")).get("error", {}).get("message", "")
-            except Exception:
-                pass
-            errors.append({"model": model, "error": f"HTTP {exc.code}: {clean_text(detail)[:240]}"})
-            continue
-        except Exception as exc:
-            errors.append({"model": model, "error": clean_text(str(exc))[:240]})
+                with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                last_error = None
+                break
+            except urllib.error.HTTPError as exc:
+                detail = ""
+                try:
+                    detail = json.loads(exc.read().decode("utf-8")).get("error", {}).get("message", "")
+                except Exception:
+                    pass
+                last_error = f"HTTP {exc.code}: {clean_text(detail)[:240]}"
+                if exc.code not in {429, 500, 502, 503, 504}:
+                    break
+                time.sleep(2.0)
+            except Exception as exc:
+                last_error = clean_text(str(exc))[:240]
+                time.sleep(2.0)
+        if payload is None:
+            errors.append({"model": model, "error": last_error or "No response"})
             continue
 
         content = ""
@@ -240,7 +272,14 @@ def call_openrouter(transcript: str, timeout_seconds: int) -> tuple[dict[str, An
         }
         return normalise_output(parsed), diagnostics
 
-    raise RuntimeError("OpenRouter generation failed for all configured free models: " + json.dumps(errors, ensure_ascii=False))
+    message = "OpenRouter generation failed for all configured free models. Please retry; free models can be temporarily unavailable."
+    return empty_failure_output(message), {
+        "provider": "openrouter",
+        "model": None,
+        "used": False,
+        "error": message,
+        "errors": errors,
+    }
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -265,10 +304,10 @@ def main() -> int:
         "modelAvailable": True,
         "modelName": diagnostics.get("model"),
         "modelReason": "openrouter_full_transcript_single_prompt",
-        "rewriterAvailable": True,
+        "rewriterAvailable": bool(diagnostics.get("used")),
         "rewriterModelName": diagnostics.get("model"),
         "rewriterModelPath": None,
-        "rewriterReason": "OpenRouter full-transcript LLM used.",
+        "rewriterReason": "OpenRouter full-transcript LLM used." if diagnostics.get("used") else diagnostics.get("error", "OpenRouter was not used."),
         "rewriterTokenUsage": diagnostics.get("usage") or None,
         "output": output,
         "counts": {

@@ -674,6 +674,13 @@ router.post('/meeting-minutes-final', requireAuth, withTestUpload(async (req, re
 
     return res.json(buildTestTranscriptResponse(req, transcript, result));
   } catch (error) {
+    console.error(JSON.stringify({
+      event: 'meeting_minutes_final_failed',
+      message: error?.message || String(error),
+      statusCode: error?.statusCode || null,
+      details: error?.details || null,
+      durationMs: Date.now() - startedAt
+    }));
     return sendTestError(res, error);
   }
 }));
