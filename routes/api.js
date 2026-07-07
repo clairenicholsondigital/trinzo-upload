@@ -435,6 +435,24 @@ function normalizeReviewData(candidate, transcriptText = '') {
       : []
   };
 
+  if (!normalized.meetingMinutes.length && Array.isArray(source.discussionPoints)) {
+    const discussionPoints = asStringArray(source.discussionPoints);
+    if (discussionPoints.length) {
+      normalized.meetingMinutes = [{ topic: asString(source.itemTopic || source.meetingTitle || 'Discussion'), discussionPoints }];
+    }
+  }
+
+  if (!normalized.nextSteps.length && Array.isArray(source.meetingActionPoint)) {
+    const points = asStringArray(source.meetingActionPoint);
+    const owners = asStringArray(source.meetingActionPointOwner);
+    const deadlines = asStringArray(source.meetingActionPointDeadline);
+    normalized.nextSteps = points.map((point, index) => ({
+      action: point,
+      owner: owners[index] || 'Not stated',
+      deadline: deadlines[index] || 'Not stated'
+    }));
+  }
+
   const transcript = asString(transcriptText || source.autosave?.transcript);
 
   normalized.autosave = {

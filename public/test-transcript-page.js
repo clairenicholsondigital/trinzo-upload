@@ -1699,6 +1699,18 @@ function buildTranscriptMinilmOnlyPage(config) {
     }
   }
 
+  async function parseJsonResponse(response) {
+    const text = await response.text();
+    if (!text) return {};
+    try {
+      return JSON.parse(text);
+    } catch (error) {
+      const contentType = response.headers.get('content-type') || 'unknown content type';
+      const preview = text.replace(/\s+/g, ' ').slice(0, 240);
+      throw new Error(`Server returned ${response.status} ${contentType}, not JSON. ${preview}`);
+    }
+  }
+
   async function finaliseWithAgent() {
     const editedSchema = collectEditedSchemaOutput();
     const payloadReviewData = editedSchema ? buildReviewDataFromSchema(editedSchema) : getReviewDataFromStorage();
@@ -1726,7 +1738,7 @@ function buildTranscriptMinilmOnlyPage(config) {
         })
       });
 
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
 
       if (!response.ok || !data.ok) {
         throw new Error(data.error || 'Final webhook call failed');

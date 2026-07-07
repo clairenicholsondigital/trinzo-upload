@@ -132,6 +132,15 @@ app.get('/auth/forgot-password', (req, res) => {
 app.use('/api', apiRoutes);
 app.use('/api/auth', authRoutes);
 
+app.use('/api', (error, req, res, next) => {
+  if (res.headersSent) return next(error);
+  const status = error.status || error.statusCode || 500;
+  return res.status(status).json({
+    ok: false,
+    error: error.message || 'API request failed.'
+  });
+});
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log('Agent listening on port ' + PORT);
   const knowledgeInterval = startProjectKnowledgeEmbedInterval();
