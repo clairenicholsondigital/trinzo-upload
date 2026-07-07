@@ -36,6 +36,18 @@ button:disabled { opacity:.6; cursor:not-allowed; }
 .message.error { background:#3a1515; border-color:#7f1d1d; }
 .message.success { background:#0f2f29; border-color:#116149; }
 .message.warning { background:#3a2c15; border-color:#7f5f1d; }
+.progress-card { margin-top:1rem; padding:1rem; border:1px solid rgba(23,208,196,.45); border-radius:14px; background:linear-gradient(145deg,#0a1731,#071126); box-shadow:0 14px 38px rgba(0,0,0,.2); }
+.progress-card.hidden { display:none; }
+.progress-header { display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-bottom:.65rem; }
+.progress-title { font-weight:700; color:#e0fffd; }
+.progress-time { color:var(--muted); font-size:.88rem; white-space:nowrap; }
+.progress-track { position:relative; overflow:hidden; height:12px; border-radius:999px; background:#061022; border:1px solid var(--border); }
+.progress-fill { position:absolute; inset:0 auto 0 0; width:38%; border-radius:999px; background:linear-gradient(90deg,#17D0C4,#67e8f9,#17D0C4); animation:progressSlide 1.35s ease-in-out infinite; }
+.progress-steps { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:.45rem; margin-top:.8rem; }
+.progress-step { color:var(--muted); border:1px solid var(--border); background:#071126; border-radius:999px; padding:.35rem .55rem; font-size:.86rem; }
+.progress-step.active { color:#e0fffd; border-color:rgba(23,208,196,.65); background:rgba(23,208,196,.1); }
+.progress-tip { margin-top:.7rem; color:var(--muted); font-size:.9rem; }
+@keyframes progressSlide { 0% { transform:translateX(-105%); } 55% { transform:translateX(85%); } 100% { transform:translateX(265%); } }
 .summary-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:.75rem; }
 .summary-item { background:#071126; border:1px solid var(--border); border-radius:10px; padding:.75rem; }
 .summary-label { color:var(--muted); font-size:.85rem; }

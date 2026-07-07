@@ -1187,6 +1187,17 @@ function buildTranscriptMinilmOnlyPage(config) {
         <button id="minilmOnlyClearBtn" class="secondary" type="button">Clear / reset</button>
       </div>
       <div id="minilmOnlyMessage" class="message hidden"></div>
+      <div id="minilmOnlyProgress" class="progress-card hidden" role="status" aria-live="polite">
+        <div class="progress-header">
+          <div>
+            <div id="minilmOnlyProgressTitle" class="progress-title">Preparing transcript…</div>
+            <div id="minilmOnlyProgressTip" class="progress-tip">Large transcripts can take a minute or two while the AI writes the minutes.</div>
+          </div>
+          <div id="minilmOnlyProgressTime" class="progress-time">0s</div>
+        </div>
+        <div class="progress-track" aria-hidden="true"><div class="progress-fill"></div></div>
+        <div id="minilmOnlyProgressSteps" class="progress-steps"></div>
+      </div>
     </section>
 
     <section id="minilmOnlyOutputPanel" class="panel hidden">
@@ -1252,6 +1263,11 @@ function buildTranscriptMinilmOnlyPage(config) {
   const finaliseBtn = document.getElementById('finaliseBtn');
   const exportPdfBtn = document.getElementById('exportPdfBtn');
   const message = document.getElementById('minilmOnlyMessage');
+  const progressPanel = document.getElementById('minilmOnlyProgress');
+  const progressTitle = document.getElementById('minilmOnlyProgressTitle');
+  const progressTip = document.getElementById('minilmOnlyProgressTip');
+  const progressTime = document.getElementById('minilmOnlyProgressTime');
+  const progressStepsNode = document.getElementById('minilmOnlyProgressSteps');
   const summaryGrid = document.getElementById('minilmOnlySummaryGrid');
   const outputPanel = document.getElementById('minilmOnlyOutputPanel');
   const diagnosticsPanel = document.getElementById('minilmOnlyDiagnosticsPanel');
@@ -1259,6 +1275,15 @@ function buildTranscriptMinilmOnlyPage(config) {
   const rawOutputNode = document.getElementById('minilmOnlyRawOutput');
   const diagnosticsNode = document.getElementById('minilmOnlyDiagnostics');
   const REVIEW_STORAGE_KEY = 'reviewData';
+  const PROGRESS_STEPS = [
+    { at: 0, label: 'Preparing transcript', tip: 'Reading the uploaded file or pasted transcript.' },
+    { at: 4, label: 'Sending to AI', tip: 'Sending the full transcript to the meeting-minutes model.' },
+    { at: 14, label: 'Writing minutes', tip: 'The AI is turning the transcript into client-ready minutes.' },
+    { at: 38, label: 'Checking structure', tip: 'Checking the output has objectives, discussion points and actions.' },
+    { at: 70, label: 'Formatting table', tip: 'Almost there — formatting the editable table.' }
+  ];
+  let progressTimer = null;
+  let progressStartedAt = 0;
 
   function setStep(n) {
     const stepper = document.getElementById('stepper');
@@ -1291,6 +1316,36 @@ function buildTranscriptMinilmOnlyPage(config) {
     message.className = text ? `message ${type || ''}` : 'message hidden';
   }
 
+  function updateProgress() {
+    if (!progressPanel || !progressStartedAt) return;
+    const elapsed = Math.max(0, Math.floor((Date.now() - progressStartedAt) / 1000));
+    const current = [...PROGRESS_STEPS].reverse().find((step) => elapsed >= step.at) || PROGRESS_STEPS[0];
+    progressTitle.textContent = `${current.label}…`;
+    progressTip.textContent = elapsed > 95
+      ? 'Still working. Long transcripts and free AI models can take a little while, but the request is still active.'
+      : current.tip;
+    progressTime.textContent = `${elapsed}s`;
+    progressStepsNode.innerHTML = PROGRESS_STEPS.map((step) => `
+      <span class="progress-step ${elapsed >= step.at ? 'active' : ''}">${escapeHtml(step.label)}</span>
+    `).join('');
+  }
+
+  function startProgress() {
+    if (!progressPanel) return;
+    progressStartedAt = Date.now();
+    progressPanel.classList.remove('hidden');
+    updateProgress();
+    clearInterval(progressTimer);
+    progressTimer = setInterval(updateProgress, 1000);
+  }
+
+  function stopProgress() {
+    clearInterval(progressTimer);
+    progressTimer = null;
+    progressStartedAt = 0;
+    if (progressPanel) progressPanel.classList.add('hidden');
+  }
+
   function setLoading(isLoading) {
     state.loading = isLoading;
     goBtn.disabled = isLoading || state.improving;
@@ -1301,7 +1356,9 @@ function buildTranscriptMinilmOnlyPage(config) {
       improveBtn.disabled = isLoading || state.improving || !(state.payload && state.payload.result && state.payload.result.output);
     }
     if (exportPdfBtn) exportPdfBtn.disabled = isLoading || state.improving || !state.schemaOutput;
-    goBtn.textContent = isLoading ? 'Working...' : config.buttonText;
+    if (isLoading) startProgress();
+    else stopProgress();
+    goBtn.textContent = isLoading ? 'Generating minutes...' : config.buttonText;
   }
 
   function setImproving(isImproving) {
@@ -2016,6 +2073,7 @@ function buildTranscriptMinilmOnlyPage(config) {
     state.schemaOutput = null;
     state.extractedText = '';
     setMessage('', '');
+    stopProgress();
     outputPanel.classList.add('hidden');
     diagnosticsPanel.classList.add('hidden');
     outputNode.innerHTML = '';
