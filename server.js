@@ -105,6 +105,10 @@ app.get('/project-update-test/roadmap', (req, res) => {
   sendView(res, 'project-update-roadmap.html').catch((error) => res.status(404).send(error.message));
 });
 
+app.get('/roadmap', (req, res) => {
+  sendView(res, 'project-update-roadmap.html').catch((error) => res.status(404).send(error.message));
+});
+
 app.get('/auth', (req, res) => {
   sendView(res, 'auth.html').catch((error) => res.status(404).send(error.message));
 });

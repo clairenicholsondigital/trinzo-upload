@@ -91,8 +91,9 @@ test('dashboard and archive keep the active tool infrastructure organised', () =
 test('project update roadmap page keeps deferred lifecycle ideas visible', () => {
   const serverSource = fs.readFileSync(path.join(repoDir, 'server.js'), 'utf8');
   assert.ok(serverSource.includes("app.get('/project-update-test/roadmap'"));
+  assert.ok(serverSource.includes("app.get('/roadmap'"));
   assert.ok(roadmapPageSource.includes('Project update roadmap'));
-  assert.ok(roadmapPageSource.includes('Auto-compaction and retention policy'));
-  assert.ok(roadmapPageSource.includes('Never auto-archive official/manual background docs'));
+  assert.ok(roadmapPageSource.includes('Knowledge lifecycle'));
+  assert.ok(roadmapPageSource.includes('Never automatically archiving official or manually curated knowledge'));
   assert.ok(contextPageSource.includes('/project-update-test/roadmap'));
 });
