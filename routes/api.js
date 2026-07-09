@@ -786,8 +786,40 @@ router.patch('/meeting-minutes-final/jobs/:jobId/result', requireAuth, async (re
     const currentPayload = job.resultPayload && typeof job.resultPayload === 'object' ? job.resultPayload : {};
     const currentResult = currentPayload.result && typeof currentPayload.result === 'object' ? currentPayload.result : {};
     const currentOutput = currentResult.output && typeof currentResult.output === 'object' ? currentResult.output : {};
+    const editedMeta = req.body?.editedMeta && typeof req.body.editedMeta === 'object' ? req.body.editedMeta : {};
+    const currentParticipants = currentOutput.participants && typeof currentOutput.participants === 'object' ? currentOutput.participants : {};
+    const safeMeta = {
+      meetingTitle: String(editedMeta.meetingTitle ?? currentOutput.meetingTitle ?? currentOutput.title ?? '').slice(0, 300),
+      meetingDate: String(editedMeta.meetingDate ?? currentOutput.meetingDate ?? currentOutput.date ?? '').slice(0, 120),
+      meetingLocation: String(editedMeta.meetingLocation ?? currentOutput.meetingLocation ?? currentOutput.location ?? '').slice(0, 300),
+      meetingType: String(editedMeta.meetingType ?? currentOutput.meetingType ?? '').slice(0, 120),
+      meetingObjectives: Array.isArray(editedMeta.meetingObjectives)
+        ? editedMeta.meetingObjectives.map((value) => String(value || '').slice(0, 1000).trim()).filter(Boolean).slice(0, 100)
+        : Array.isArray(currentOutput.meetingObjectives)
+          ? currentOutput.meetingObjectives.map((value) => String(value || '').slice(0, 1000).trim()).filter(Boolean).slice(0, 100)
+          : [],
+      participants: {
+        client: Array.isArray(editedMeta.participants?.client)
+          ? editedMeta.participants.client.map((value) => String(value || '').slice(0, 200).trim()).filter(Boolean).slice(0, 100)
+          : Array.isArray(currentParticipants.client || currentOutput['participants.client'])
+            ? (currentParticipants.client || currentOutput['participants.client']).map((value) => String(value || '').slice(0, 200).trim()).filter(Boolean).slice(0, 100)
+            : [],
+        trinzo: Array.isArray(editedMeta.participants?.trinzo)
+          ? editedMeta.participants.trinzo.map((value) => String(value || '').slice(0, 200).trim()).filter(Boolean).slice(0, 100)
+          : Array.isArray(currentParticipants.trinzo || currentOutput['participants.trinzo'])
+            ? (currentParticipants.trinzo || currentOutput['participants.trinzo']).map((value) => String(value || '').slice(0, 200).trim()).filter(Boolean).slice(0, 100)
+            : []
+      }
+    };
     const editedOutput = {
       ...currentOutput,
+      meetingTitle: safeMeta.meetingTitle,
+      meetingDate: safeMeta.meetingDate,
+      meetingLocation: safeMeta.meetingLocation,
+      meetingType: safeMeta.meetingType,
+      meetingObjectives: safeMeta.meetingObjectives,
+      participants: safeMeta.participants,
+      editedMeta: safeMeta,
       editedRows: safeRows,
       humanEdited: true,
       humanEditedAt: new Date().toISOString(),

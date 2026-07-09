@@ -45,6 +45,32 @@ pre { white-space:pre-wrap; overflow:auto; max-height:620px; background:#071126;
 .summary-item { background:#071126; border:1px solid var(--border); border-radius:10px; padding:.75rem; }
 .summary-label { color:var(--muted); font-size:.85rem; }
 .summary-value { margin-top:.25rem; font-weight:700; overflow-wrap:anywhere; }
+.summary-item input,
+.summary-item textarea {
+  width:100%;
+  margin-top:.35rem;
+  background:#050914;
+  color:var(--text);
+  border:1px solid var(--border);
+  border-radius:8px;
+  padding:.55rem;
+  font:inherit;
+  font-weight:700;
+}
+.summary-item textarea { min-height:74px; resize:vertical; line-height:1.45; }
+.objectives-editor { margin-top:1rem; }
+.objectives-editor textarea {
+  width:100%;
+  min-height:118px;
+  background:#050914;
+  color:var(--text);
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:.7rem;
+  font:inherit;
+  line-height:1.45;
+  resize:vertical;
+}
 .result-toolbar { margin:.85rem 0 1rem; display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; }
 .minutes-table-wrap { width:100%; overflow-x:auto; margin-top:1rem; }
 .minutes-table { width:100%; border-collapse:collapse; min-width:760px; }
@@ -204,6 +230,21 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     return values.find(value => value !== undefined && value !== null && value !== '');
   }
 
+  function parseLines(value) {
+    return String(value || '')
+      .split(/\r?\n/)
+      .map((line) => cleanText(line))
+      .filter(Boolean);
+  }
+
+  function joinLines(values) {
+    return asArray(values).map((value) => cleanText(value)).filter(Boolean).join('\n');
+  }
+
+  function participantList(output, group) {
+    return asArray(output?.participants?.[group] || output?.[`participants.${group}`]);
+  }
+
   function getEvidenceSpeaker(item) {
     const evidence = asArray(item?.evidence || item?._evidence);
     const first = evidence.find((ev) => ev && ev.speaker);
@@ -286,6 +327,36 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     return payload;
   }
 
+  function resultMeta(output) {
+    return {
+      meetingTitle: cleanText(output.meetingTitle || output.title || ''),
+      meetingDate: cleanText(output.meetingDate || output.date || ''),
+      meetingLocation: cleanText(output.meetingLocation || output.location || ''),
+      meetingType: cleanText(output.meetingType || ''),
+      meetingObjectives: asArray(output.meetingObjectives).map((value) => cleanText(typeof value === 'string' ? value : firstDefined(value?.text, value?.summary, value?.topic, ''))).filter(Boolean),
+      participants: {
+        client: participantList(output, 'client').map((value) => cleanText(value)).filter(Boolean),
+        trinzo: participantList(output, 'trinzo').map((value) => cleanText(value)).filter(Boolean)
+      }
+    };
+  }
+
+  function renderMetaInput(label, field, value, multiline = false) {
+    const control = multiline
+      ? `<textarea data-edit-field="meta" data-meta-field="${escapeAttribute(field)}">${escapeHtml(value || '')}</textarea>`
+      : `<input data-edit-field="meta" data-meta-field="${escapeAttribute(field)}" value="${escapeAttribute(value || '')}" />`;
+    return `<label class="summary-item"><span class="summary-label">${escapeHtml(label)}</span>${control}</label>`;
+  }
+
+  function renderObjectivesEditor(values) {
+    return `
+      <section class="result-section objectives-editor">
+        <h3>Meeting objectives</h3>
+        <textarea data-edit-field="meta" data-meta-field="meetingObjectives" placeholder="One objective per line">${escapeHtml(joinLines(values))}</textarea>
+      </section>
+    `;
+  }
+
   function renderListSection(title, values) {
     const output = resultOutput(latestResultPayload);
     if (output.humanEdited && Array.isArray(output.editedRows)) return '';
@@ -335,22 +406,39 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   function renderReadableResult(payload) {
     latestResultPayload = payload;
     const output = resultOutput(payload);
+    const meta = resultMeta(output);
     const rows = buildResultRows(output);
-    const trinzo = asArray(output['participants.trinzo'] || output.participants?.trinzo).join(', ');
-    const client = asArray(output['participants.client'] || output.participants?.client).join(', ');
 
     resultView.innerHTML = `
       <div class="summary-grid">
-        ${summaryItem('Title', output.meetingTitle || output.title)}
-        ${summaryItem('Date', output.meetingDate || output.date)}
-        ${summaryItem('Location', output.meetingLocation || output.location)}
-        ${summaryItem('Type', output.meetingType)}
-        ${summaryItem('Client participants', client)}
-        ${summaryItem('Trinzo participants', trinzo)}
+        ${renderMetaInput('Title', 'meetingTitle', meta.meetingTitle)}
+        ${renderMetaInput('Date', 'meetingDate', meta.meetingDate)}
+        ${renderMetaInput('Location', 'meetingLocation', meta.meetingLocation)}
+        ${renderMetaInput('Type', 'meetingType', meta.meetingType)}
+        ${renderMetaInput('Client participants', 'participants.client', joinLines(meta.participants.client), true)}
+        ${renderMetaInput('Trinzo participants', 'participants.trinzo', joinLines(meta.participants.trinzo), true)}
       </div>
-      ${renderListSection('Meeting objectives', output.meetingObjectives)}
+      ${renderObjectivesEditor(meta.meetingObjectives)}
       ${renderResultTable(rows)}
     `;
+  }
+
+  function getEditedMetaFromDom() {
+    const output = resultOutput(latestResultPayload);
+    const meta = resultMeta(output);
+    document.querySelectorAll('[data-edit-field="meta"][data-meta-field]').forEach((input) => {
+      const field = input.dataset.metaField;
+      if (field === 'meetingObjectives') {
+        meta.meetingObjectives = parseLines(input.value);
+      } else if (field === 'participants.client') {
+        meta.participants.client = parseLines(input.value);
+      } else if (field === 'participants.trinzo') {
+        meta.participants.trinzo = parseLines(input.value);
+      } else if (Object.prototype.hasOwnProperty.call(meta, field)) {
+        meta[field] = cleanText(input.value || '');
+      }
+    });
+    return meta;
   }
 
   function getEditedRowsFromDom() {
@@ -372,6 +460,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   function editedPayload() {
     return {
       jobId: activeJobId,
+      editedMeta: getEditedMetaFromDom(),
       editedRows: getEditedRowsFromDom(),
       raw: latestResultPayload
     };
@@ -407,6 +496,25 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     URL.revokeObjectURL(url);
   }
 
+  function editedTextExport() {
+    const meta = getEditedMetaFromDom();
+    const parts = [
+      `Title: ${meta.meetingTitle || '—'}`,
+      `Date: ${meta.meetingDate || '—'}`,
+      `Location: ${meta.meetingLocation || '—'}`,
+      `Type: ${meta.meetingType || '—'}`,
+      `Client participants: ${meta.participants.client.join(', ') || '—'}`,
+      `Trinzo participants: ${meta.participants.trinzo.join(', ') || '—'}`
+    ];
+    if (meta.meetingObjectives.length) {
+      parts.push(`Meeting objectives:\n${meta.meetingObjectives.map((objective) => `- ${objective}`).join('\n')}`);
+    }
+    const rows = getEditedRowsFromDom()
+      .map((row) => `${row.type} | ${row.owner || '—'}\n${row.text}`)
+      .join('\n\n');
+    return rows ? `${parts.join('\n')}\n\n${rows}` : parts.join('\n');
+  }
+
   async function saveEditedResult(automatic = false) {
     if (!activeJobId) return;
     const rows = getEditedRowsFromDom();
@@ -414,7 +522,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
       const payload = await fetchJson(`/api/meeting-minutes-final/jobs/${encodeURIComponent(activeJobId)}/result`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ editedRows: rows })
+        body: JSON.stringify({ editedMeta: getEditedMetaFromDom(), editedRows: rows })
       });
       latestResultPayload = payload.result || latestResultPayload;
       if (payload.result) resultJson.textContent = JSON.stringify(payload.result, null, 2);
@@ -604,10 +712,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   resultActions.addEventListener('click', (event) => {
     if (event.target.closest('#saveEditedResultBtn')) saveEditedResult(false);
     if (event.target.closest('#copyEditedTableBtn')) {
-      const text = getEditedRowsFromDom()
-        .map((row) => `${row.type} | ${row.owner || '—'}\n${row.text}`)
-        .join('\n\n');
-      copyText(text);
+      copyText(editedTextExport());
       setEditStatus('Copied table text.', 'success');
     }
     if (event.target.closest('#downloadEditedJsonBtn')) {

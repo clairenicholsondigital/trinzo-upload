@@ -148,10 +148,17 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("Raw result JSON", jobs_page)
         self.assertIn("Save edits", jobs_page)
         self.assertIn("data-edit-field", jobs_page)
+        self.assertIn("data-meta-field", jobs_page)
+        self.assertIn("editedMeta", jobs_page)
+        self.assertIn("Client participants", jobs_page)
+        self.assertIn("Trinzo participants", jobs_page)
+        self.assertIn("Meeting objectives", jobs_page)
+        self.assertIn("meetingLocation", jobs_page)
         self.assertIn("saveEditedResult", jobs_page)
         self.assertIn("queueAutosave", jobs_page)
         self.assertIn("Copy table text", jobs_page)
         self.assertIn("Download edited JSON", jobs_page)
+        self.assertIn("editedMeta", api)
 
 
 if __name__ == "__main__":
