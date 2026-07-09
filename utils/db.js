@@ -1455,6 +1455,24 @@ ALTER TABLE meetings ADD COLUMN IF NOT EXISTS last_error TEXT NOT NULL DEFAULT '
 ALTER TABLE meetings ADD COLUMN IF NOT EXISTS processing_started_at TIMESTAMPTZ;
 ALTER TABLE meetings ADD COLUMN IF NOT EXISTS processing_completed_at TIMESTAMPTZ;
 ALTER TABLE meetings ADD COLUMN IF NOT EXISTS last_activity_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE meetings DROP CONSTRAINT IF EXISTS meetings_status_check;
+ALTER TABLE meetings ADD CONSTRAINT meetings_status_check
+  CHECK (status IN (
+    'draft',
+    'uploaded',
+    'queued',
+    'processing',
+    'agent_completed',
+    'webhook_pending',
+    'webhook_sent',
+    'completed',
+    'processed',
+    'failed',
+    'cancelled'
+  ));
+ALTER TABLE meetings DROP CONSTRAINT IF EXISTS meetings_webhook_status_check;
+ALTER TABLE meetings ADD CONSTRAINT meetings_webhook_status_check
+  CHECK (webhook_status IN ('not_sent', 'pending', 'sent', 'failed'));
 
 CREATE TABLE IF NOT EXISTS meeting_jobs (
   id BIGSERIAL PRIMARY KEY,
