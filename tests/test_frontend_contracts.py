@@ -126,6 +126,7 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("Opening job #", shared_js)
         self.assertIn("app.get('/meeting-minutes-final/jobs'", server)
         self.assertIn("app.get('/meeting-minutes-final/jobs/:jobId'", server)
+        self.assertIn("app.get('/meeting-minutes-final/jobs/:jobId/result'", server)
         self.assertIn("router.post('/meeting-minutes-final/jobs'", api)
         self.assertIn("router.get('/meeting-minutes-final/jobs'", api)
         self.assertIn("router.get('/meeting-minutes-final/jobs/:jobId'", api)
@@ -139,6 +140,10 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("/api/meeting-minutes-final/jobs?limit=100", jobs_page)
         self.assertIn("Job cancellation requested", jobs_page)
         self.assertIn("Delete this job, stored transcript and generated result?", jobs_page)
+        self.assertIn("Open result in new tab", jobs_page)
+        self.assertIn("renderReadableResult", jobs_page)
+        self.assertIn("payload.result.output", jobs_page)
+        self.assertIn("Raw result JSON", jobs_page)
 
 
 if __name__ == "__main__":

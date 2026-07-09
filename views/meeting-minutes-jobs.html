@@ -45,11 +45,34 @@ pre { white-space:pre-wrap; overflow:auto; max-height:620px; background:#071126;
 .summary-item { background:#071126; border:1px solid var(--border); border-radius:10px; padding:.75rem; }
 .summary-label { color:var(--muted); font-size:.85rem; }
 .summary-value { margin-top:.25rem; font-weight:700; overflow-wrap:anywhere; }
+.result-toolbar { margin:.85rem 0 1rem; display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; }
+.minutes-table-wrap { width:100%; overflow-x:auto; margin-top:1rem; }
+.minutes-table { width:100%; border-collapse:collapse; min-width:760px; }
+.minutes-table th, .minutes-table td { border:1px solid var(--border); padding:.65rem; vertical-align:top; }
+.minutes-table th { text-align:left; color:var(--accent); background:#071126; font-size:.9rem; }
+.minutes-table td { background:#081227; line-height:1.45; }
+.minutes-table .type-cell { width:15%; font-weight:700; }
+.minutes-table .owner-cell { width:20%; color:#dbeafe; }
+.minutes-table .text-cell { width:65%; }
+.result-section { margin-top:1rem; }
+.result-section h3 { margin:.1rem 0 .6rem; font-size:1rem; color:#dbeafe; }
+.result-section ul { margin:.35rem 0 0; padding-left:1.25rem; }
+.result-section li { margin:.4rem 0; line-height:1.45; }
+.result-empty { color:var(--muted); border:1px dashed var(--border); border-radius:12px; padding:1rem; margin-top:1rem; }
+details { margin-top:1rem; }
+summary { cursor:pointer; color:var(--accent); font-weight:700; padding:.75rem; background:#071126; border:1px solid var(--border); border-radius:10px; }
+details[open] summary { border-bottom-left-radius:0; border-bottom-right-radius:0; }
+details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-right-radius:0; }
 @media (max-width: 860px) {
   .jobs, .jobs thead, .jobs tbody, .jobs tr, .jobs th, .jobs td { display:block; width:100%; }
   .jobs thead { display:none; }
   .jobs td { border-bottom:none; }
   .jobs tr { margin-bottom:.8rem; border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+  .minutes-table { min-width:0; }
+  .minutes-table, .minutes-table thead, .minutes-table tbody, .minutes-table tr, .minutes-table th, .minutes-table td { display:block; width:100%; }
+  .minutes-table thead { display:none; }
+  .minutes-table tr { margin-bottom:.75rem; border:1px solid var(--border); border-radius:10px; overflow:hidden; }
+  .minutes-table td { border:0; border-bottom:1px solid var(--border); }
 }
 </style>
 </head>
@@ -57,7 +80,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:620px; background:#071126;
 <div class="container">
   <nav class="nav" aria-label="Primary navigation"><a href="/dashboard">Dashboard</a> · <a href="/meeting-minutes-final">Meeting transcript to minutes</a> · <a href="/meeting-minutes-final/jobs">Minutes jobs</a> · <a href="/project-update-test">Project update tool</a> · <a href="/archive">Archive</a></nav>
 
-  <section class="panel">
+  <section id="listPanel" class="panel">
     <div class="toolbar">
       <div>
         <h1>Meeting Minutes Jobs</h1>
@@ -83,12 +106,18 @@ pre { white-space:pre-wrap; overflow:auto; max-height:620px; background:#071126;
     <div id="detailSummary" class="summary-grid"></div>
     <h2>Result</h2>
     <div id="resultMessage" class="muted">Result will appear here when the job completes.</div>
-    <pre id="resultJson" hidden></pre>
+    <div id="resultActions" class="result-toolbar" hidden></div>
+    <div id="resultView"></div>
+    <details id="rawResultDetails" hidden>
+      <summary>Raw result JSON</summary>
+      <pre id="resultJson"></pre>
+    </details>
   </section>
 </div>
 
 <script>
 (function () {
+  const listPanel = document.getElementById('listPanel');
   const listView = document.getElementById('listView');
   const message = document.getElementById('message');
   const refreshBtn = document.getElementById('refreshBtn');
@@ -96,10 +125,14 @@ pre { white-space:pre-wrap; overflow:auto; max-height:620px; background:#071126;
   const detailTitle = document.getElementById('detailTitle');
   const detailSummary = document.getElementById('detailSummary');
   const resultMessage = document.getElementById('resultMessage');
+  const resultActions = document.getElementById('resultActions');
+  const resultView = document.getElementById('resultView');
+  const rawResultDetails = document.getElementById('rawResultDetails');
   const resultJson = document.getElementById('resultJson');
   const retryBtn = document.getElementById('retryBtn');
   const cancelBtn = document.getElementById('cancelBtn');
-  const pathMatch = window.location.pathname.match(/\/meeting-minutes-final\/jobs\/(\d+)$/);
+  const pathMatch = window.location.pathname.match(/\/meeting-minutes-final\/jobs\/(\d+)(?:\/result)?$/);
+  const resultOnly = /\/meeting-minutes-final\/jobs\/\d+\/result$/.test(window.location.pathname);
   let activeJobId = pathMatch ? Number(pathMatch[1]) : null;
   let timer = null;
 
@@ -132,6 +165,145 @@ pre { white-space:pre-wrap; overflow:auto; max-height:620px; background:#071126;
 
   function statusClass(status) {
     return String(status || '').toLowerCase().replace(/[^a-z0-9_-]+/g, '_');
+  }
+
+  function asArray(value) {
+    return Array.isArray(value) ? value : [];
+  }
+
+  function cleanText(value) {
+    return String(value || '')
+      .replace(/\s+/g, ' ')
+      .replace(/\s+\./g, '.')
+      .trim();
+  }
+
+  function firstDefined(...values) {
+    return values.find(value => value !== undefined && value !== null && value !== '');
+  }
+
+  function getEvidenceSpeaker(item) {
+    const evidence = asArray(item?.evidence || item?._evidence);
+    const first = evidence.find((ev) => ev && ev.speaker);
+    return first ? first.speaker : '';
+  }
+
+  function addRowsFromArray(rows, source, type, textKeyCandidates) {
+    asArray(source).forEach((item, index) => {
+      if (typeof item === 'string') {
+        const text = cleanText(item);
+        if (text) rows.push({ id: `${type}-${index}`, type, owner: '', text });
+        return;
+      }
+      if (!item || typeof item !== 'object') return;
+      const text = cleanText(firstDefined(
+        ...textKeyCandidates.map((key) => item[key]),
+        item.text,
+        item.summary,
+        item.topic
+      ));
+      if (!text) return;
+      rows.push({
+        id: `${type}-${index}`,
+        type,
+        owner: cleanText(firstDefined(item.owner, item.speaker, item.meetingActionPointOwner, getEvidenceSpeaker(item), '')),
+        text
+      });
+    });
+  }
+
+  function buildResultRows(output) {
+    const rows = [];
+    addRowsFromArray(rows, output.actions, 'Action', ['action', 'task', 'meetingActionPoint', 'text']);
+    asArray(output.meetingActionPoint).forEach((text, index) => {
+      const cleaned = cleanText(text);
+      if (!cleaned) return;
+      rows.push({
+        id: `meeting-action-${index}`,
+        type: 'Action',
+        owner: cleanText(asArray(output.meetingActionPointOwner)[index] || ''),
+        text: cleaned
+      });
+    });
+    addRowsFromArray(rows, output.decisionDetails, 'Decision', ['decision', 'decisionPoint', 'text', 'summary']);
+    addRowsFromArray(rows, output.decisions, 'Decision', ['decision', 'decisionPoint', 'text', 'summary']);
+    addRowsFromArray(rows, output.finalDiscussionPoints || output.discussionPointDetails, 'Discussion', ['discussionPoint', 'text', 'summary']);
+    addRowsFromArray(rows, output.statusReviewWorkstreams || output.statusReviewPoints, 'Status', ['topic', 'summary', 'text']);
+    addRowsFromArray(rows, output.discussionPoints, 'Discussion', ['discussionPoint', 'text', 'summary']);
+
+    const seen = new Set();
+    return rows.filter((row) => {
+      const key = `${row.type}|${row.owner}|${row.text}`.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
+  function resultOutput(payload) {
+    if (!payload || typeof payload !== 'object') return {};
+    if (payload.result?.output && typeof payload.result.output === 'object') return payload.result.output;
+    if (payload.output && typeof payload.output === 'object') return payload.output;
+    if (payload.result && typeof payload.result === 'object') return payload.result;
+    return payload;
+  }
+
+  function renderListSection(title, values) {
+    const items = asArray(values).map((value) => cleanText(typeof value === 'string' ? value : firstDefined(value?.text, value?.summary, value?.topic, value?.decision, value?.discussionPoint, ''))).filter(Boolean);
+    if (!items.length) return '';
+    return `
+      <section class="result-section">
+        <h3>${escapeHtml(title)}</h3>
+        <ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>
+      </section>
+    `;
+  }
+
+  function renderResultTable(rows) {
+    if (!rows.length) return '<div class="result-empty">No reviewable meeting rows found in the completed result.</div>';
+    return `
+      <div class="minutes-table-wrap">
+        <table class="minutes-table">
+          <thead>
+            <tr>
+              <th>Type</th>
+              <th>Owner / speaker</th>
+              <th>Output</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map((row) => `
+              <tr>
+                <td class="type-cell">${escapeHtml(row.type)}</td>
+                <td class="owner-cell">${escapeHtml(row.owner || '—')}</td>
+                <td class="text-cell">${escapeHtml(row.text)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function renderReadableResult(payload) {
+    const output = resultOutput(payload);
+    const rows = buildResultRows(output);
+    const trinzo = asArray(output['participants.trinzo'] || output.participants?.trinzo).join(', ');
+    const client = asArray(output['participants.client'] || output.participants?.client).join(', ');
+
+    resultView.innerHTML = `
+      <div class="summary-grid">
+        ${summaryItem('Title', output.meetingTitle || output.title)}
+        ${summaryItem('Date', output.meetingDate || output.date)}
+        ${summaryItem('Location', output.meetingLocation || output.location)}
+        ${summaryItem('Type', output.meetingType)}
+        ${summaryItem('Client participants', client)}
+        ${summaryItem('Trinzo participants', trinzo)}
+      </div>
+      ${renderListSection('Meeting objectives', output.meetingObjectives)}
+      ${output.executiveSummary ? `<section class="result-section"><h3>Executive summary</h3><p>${escapeHtml(output.executiveSummary)}</p></section>` : ''}
+      ${renderResultTable(rows)}
+    `;
   }
 
   function renderProgress(job) {
@@ -174,6 +346,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:620px; background:#071126;
               <td>${escapeHtml(job.attempts || 0)} / ${escapeHtml(job.maxAttempts || 0)}</td>
               <td class="row-actions">
                 <a class="button secondary" href="/meeting-minutes-final/jobs/${encodeURIComponent(job.jobId)}">Open</a>
+                ${job.status === 'completed' ? `<a class="button" target="_blank" rel="noopener" href="/meeting-minutes-final/jobs/${encodeURIComponent(job.jobId)}/result">Open result</a>` : ''}
                 ${job.status === 'failed' ? `<button class="secondary" data-retry="${escapeHtml(job.jobId)}" type="button">Retry</button>` : ''}
                 ${job.status === 'queued' || job.status === 'running' ? `<button class="danger" data-cancel="${escapeHtml(job.jobId)}" type="button">Cancel</button>` : ''}
                 ${['completed', 'failed', 'cancelled'].includes(job.status) ? `<button class="danger" data-delete="${escapeHtml(job.jobId)}" type="button">Delete</button>` : ''}
@@ -209,14 +382,23 @@ pre { white-space:pre-wrap; overflow:auto; max-height:620px; background:#071126;
     ].join('');
 
     if (job.status === 'completed' && payload.result) {
-      resultMessage.textContent = 'Completed result payload:';
-      resultJson.hidden = false;
+      resultMessage.textContent = 'Completed result:';
+      resultActions.hidden = false;
+      resultActions.innerHTML = `
+        <a class="button" target="_blank" rel="noopener" href="/meeting-minutes-final/jobs/${encodeURIComponent(job.jobId)}/result">Open result in new tab</a>
+        <a class="button secondary" href="/meeting-minutes-final/jobs/${encodeURIComponent(job.jobId)}">Open job detail</a>
+      `;
+      renderReadableResult(payload.result);
+      rawResultDetails.hidden = false;
       resultJson.textContent = JSON.stringify(payload.result, null, 2);
     } else {
       resultMessage.textContent = job.status === 'failed'
         ? (job.errorMessage || 'This job failed.')
         : 'Result will appear here when the job completes.';
-      resultJson.hidden = true;
+      resultActions.hidden = true;
+      resultActions.innerHTML = '';
+      resultView.innerHTML = '';
+      rawResultDetails.hidden = true;
       resultJson.textContent = '';
     }
   }
@@ -231,6 +413,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:620px; background:#071126;
   }
 
   async function loadList() {
+    if (resultOnly) return;
     const payload = await fetchJson('/api/meeting-minutes-final/jobs?limit=100');
     renderJobs(Array.isArray(payload.jobs) ? payload.jobs : []);
   }
@@ -289,6 +472,10 @@ pre { white-space:pre-wrap; overflow:auto; max-height:620px; background:#071126;
   cancelBtn.addEventListener('click', () => activeJobId && act('cancel', activeJobId));
   refreshBtn.addEventListener('click', refresh);
 
+  if (resultOnly) {
+    listPanel.hidden = true;
+    document.title = activeJobId ? `Meeting Minutes Result #${activeJobId}` : 'Meeting Minutes Result';
+  }
   refresh();
   timer = setInterval(refresh, 5000);
   window.addEventListener('beforeunload', () => clearInterval(timer));

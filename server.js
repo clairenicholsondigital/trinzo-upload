@@ -73,6 +73,10 @@ app.get('/meeting-minutes-final/jobs/:jobId', authRoutes.requireAuth, (req, res)
   sendView(res, 'meeting-minutes-jobs.html').catch((error) => res.status(404).send(error.message));
 });
 
+app.get('/meeting-minutes-final/jobs/:jobId/result', authRoutes.requireAuth, (req, res) => {
+  sendView(res, 'meeting-minutes-jobs.html').catch((error) => res.status(404).send(error.message));
+});
+
 app.get('/meeting-minutes-feedback', authRoutes.requireAuth, (req, res) => {
   sendView(res, 'meeting-minutes-feedback.html').catch((error) => res.status(404).send(error.message));
 });
