@@ -1851,6 +1851,23 @@ async function deleteMeetingMinutesJob(jobId) {
   return Boolean(result.rows[0]);
 }
 
+async function updateMeetingMinutesJobResult(jobId, resultPayload) {
+  await ensureMeetingJobQueueSchema();
+  const result = await query(
+    `UPDATE meeting_jobs
+     SET result_payload = $1::jsonb,
+         status_message = 'Minutes edited and ready for review.',
+         updated_at = NOW()
+     WHERE id = $2
+       AND job_type = 'meeting_minutes_generate'
+       AND status = 'completed'
+     RETURNING id`,
+    [JSON.stringify(resultPayload || {}), Number(jobId)]
+  );
+  if (!result.rows[0]) return null;
+  return getMeetingMinutesJob(jobId, { includeResult: true });
+}
+
 
 function parseJsonArray(value) {
   if (!value) return [];
@@ -2779,6 +2796,7 @@ module.exports = {
   retryMeetingMinutesJob,
   cancelMeetingMinutesJob,
   deleteMeetingMinutesJob,
+  updateMeetingMinutesJobResult,
   claimNextJob,
   markJobCompleted,
   markJobFailure,

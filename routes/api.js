@@ -58,6 +58,7 @@ const {
   retryMeetingMinutesJob,
   cancelMeetingMinutesJob,
   deleteMeetingMinutesJob,
+  updateMeetingMinutesJobResult,
   getMeetingStatus,
   claimNextJob,
   markJobCompleted,
@@ -760,6 +761,56 @@ router.get('/meeting-minutes-final/jobs/:jobId', requireAuth, async (req, res) =
     });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ ok: false, success: false, error: error.message || 'Failed to load job.' });
+  }
+});
+
+router.patch('/meeting-minutes-final/jobs/:jobId/result', requireAuth, async (req, res) => {
+  try {
+    const job = await getMeetingMinutesJob(req.params.jobId);
+    if (!job) return res.status(404).json({ ok: false, success: false, error: 'Job not found.' });
+    if (job.status !== 'completed') {
+      return res.status(409).json({ ok: false, success: false, error: 'Only completed meeting-minutes jobs can be edited.' });
+    }
+
+    const editedRows = Array.isArray(req.body?.editedRows) ? req.body.editedRows : null;
+    if (!editedRows) {
+      return res.status(400).json({ ok: false, success: false, error: 'Provide editedRows as an array.' });
+    }
+
+    const safeRows = editedRows.slice(0, 500).map((row) => ({
+      type: String(row?.type || 'Note').slice(0, 80),
+      owner: String(row?.owner || '').slice(0, 300),
+      text: String(row?.text || '').slice(0, 10000)
+    })).filter((row) => row.text.trim());
+
+    const currentPayload = job.resultPayload && typeof job.resultPayload === 'object' ? job.resultPayload : {};
+    const currentResult = currentPayload.result && typeof currentPayload.result === 'object' ? currentPayload.result : {};
+    const currentOutput = currentResult.output && typeof currentResult.output === 'object' ? currentResult.output : {};
+    const editedOutput = {
+      ...currentOutput,
+      editedRows: safeRows,
+      humanEdited: true,
+      humanEditedAt: new Date().toISOString(),
+      humanEditedBy: req.authUser?.email || 'OpenClaw'
+    };
+
+    const nextPayload = {
+      ...currentPayload,
+      humanEdited: true,
+      humanEditedAt: editedOutput.humanEditedAt,
+      humanEditedBy: editedOutput.humanEditedBy,
+      result: {
+        ...currentResult,
+        originalOutput: currentResult.originalOutput || currentOutput,
+        output: editedOutput
+      }
+    };
+
+    const updated = await updateMeetingMinutesJobResult(req.params.jobId, nextPayload);
+    if (!updated) return res.status(404).json({ ok: false, success: false, error: 'Editable completed job not found.' });
+    return res.json({ ok: true, success: true, job: updated, result: updated.resultPayload });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ ok: false, success: false, error: error.message || 'Failed to save edited result.' });
   }
 });
 

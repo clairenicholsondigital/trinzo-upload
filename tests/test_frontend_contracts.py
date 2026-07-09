@@ -130,12 +130,14 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("router.post('/meeting-minutes-final/jobs'", api)
         self.assertIn("router.get('/meeting-minutes-final/jobs'", api)
         self.assertIn("router.get('/meeting-minutes-final/jobs/:jobId'", api)
+        self.assertIn("router.patch('/meeting-minutes-final/jobs/:jobId/result'", api)
         self.assertIn("router.post('/meeting-minutes-final/jobs/:jobId/retry'", api)
         self.assertIn("router.post('/meeting-minutes-final/jobs/:jobId/cancel'", api)
         self.assertIn("router.delete('/meeting-minutes-final/jobs/:jobId'", api)
         self.assertIn("queueMeetingMinutesGeneration", db)
         self.assertIn("claimNextMeetingMinutesJob", db)
         self.assertIn("deleteMeetingMinutesJob", db)
+        self.assertIn("updateMeetingMinutesJobResult", db)
         self.assertIn("attempts = 0", db)
         self.assertIn("/api/meeting-minutes-final/jobs?limit=100", jobs_page)
         self.assertIn("Job cancellation requested", jobs_page)
@@ -144,6 +146,12 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("renderReadableResult", jobs_page)
         self.assertIn("payload.result.output", jobs_page)
         self.assertIn("Raw result JSON", jobs_page)
+        self.assertIn("Save edits", jobs_page)
+        self.assertIn("data-edit-field", jobs_page)
+        self.assertIn("saveEditedResult", jobs_page)
+        self.assertIn("queueAutosave", jobs_page)
+        self.assertIn("Copy table text", jobs_page)
+        self.assertIn("Download edited JSON", jobs_page)
 
 
 if __name__ == "__main__":

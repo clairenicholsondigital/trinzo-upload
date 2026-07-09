@@ -54,6 +54,21 @@ pre { white-space:pre-wrap; overflow:auto; max-height:620px; background:#071126;
 .minutes-table .type-cell { width:15%; font-weight:700; }
 .minutes-table .owner-cell { width:20%; color:#dbeafe; }
 .minutes-table .text-cell { width:65%; }
+.minutes-table select,
+.minutes-table input,
+.minutes-table textarea {
+  width:100%;
+  background:#050914;
+  color:var(--text);
+  border:1px solid var(--border);
+  border-radius:8px;
+  padding:.55rem;
+  font:inherit;
+}
+.minutes-table textarea { min-height:92px; resize:vertical; line-height:1.45; }
+.edit-status { color:var(--muted); }
+.edit-status.success { color:#bbf7d0; }
+.edit-status.error { color:#fecaca; }
 .result-section { margin-top:1rem; }
 .result-section h3 { margin:.1rem 0 .6rem; font-size:1rem; color:#dbeafe; }
 .result-section ul { margin:.35rem 0 0; padding-left:1.25rem; }
@@ -134,10 +149,17 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   const pathMatch = window.location.pathname.match(/\/meeting-minutes-final\/jobs\/(\d+)(?:\/result)?$/);
   const resultOnly = /\/meeting-minutes-final\/jobs\/\d+\/result$/.test(window.location.pathname);
   let activeJobId = pathMatch ? Number(pathMatch[1]) : null;
+  let latestResultPayload = null;
+  let latestResultRows = [];
+  let autosaveTimer = null;
   let timer = null;
 
   function escapeHtml(value) {
     return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function escapeAttribute(value) {
+    return escapeHtml(value);
   }
 
   function setMessage(text, type = '') {
@@ -213,7 +235,23 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   }
 
   function buildResultRows(output) {
+    if (output.humanEdited && Array.isArray(output.editedRows)) {
+      return output.editedRows.map((row, index) => ({
+        id: `edited-${index}`,
+        type: cleanText(row?.type || 'Note') || 'Note',
+        owner: cleanText(row?.owner || ''),
+        text: cleanText(row?.text || '')
+      })).filter((row) => row.text);
+    }
+
     const rows = [];
+    if (output.executiveSummary) {
+      rows.push({ id: 'summary-0', type: 'Summary', owner: '', text: cleanText(output.executiveSummary) });
+    }
+    asArray(output.meetingObjectives).forEach((text, index) => {
+      const cleaned = cleanText(text);
+      if (cleaned) rows.push({ id: `objective-${index}`, type: 'Objective', owner: '', text: cleaned });
+    });
     addRowsFromArray(rows, output.actions, 'Action', ['action', 'task', 'meetingActionPoint', 'text']);
     asArray(output.meetingActionPoint).forEach((text, index) => {
       const cleaned = cleanText(text);
@@ -249,6 +287,8 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   }
 
   function renderListSection(title, values) {
+    const output = resultOutput(latestResultPayload);
+    if (output.humanEdited && Array.isArray(output.editedRows)) return '';
     const items = asArray(values).map((value) => cleanText(typeof value === 'string' ? value : firstDefined(value?.text, value?.summary, value?.topic, value?.decision, value?.discussionPoint, ''))).filter(Boolean);
     if (!items.length) return '';
     return `
@@ -260,6 +300,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   }
 
   function renderResultTable(rows) {
+    latestResultRows = rows.map((row) => ({ ...row }));
     if (!rows.length) return '<div class="result-empty">No reviewable meeting rows found in the completed result.</div>';
     return `
       <div class="minutes-table-wrap">
@@ -272,11 +313,17 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
             </tr>
           </thead>
           <tbody>
-            ${rows.map((row) => `
+            ${rows.map((row, index) => `
               <tr>
-                <td class="type-cell">${escapeHtml(row.type)}</td>
-                <td class="owner-cell">${escapeHtml(row.owner || '—')}</td>
-                <td class="text-cell">${escapeHtml(row.text)}</td>
+                <td class="type-cell">
+                  <select data-edit-field="type" data-edit-index="${index}">
+                    ${['Summary', 'Objective', 'Action', 'Decision', 'Discussion', 'Status', 'Note'].map((type) => `
+                      <option value="${type}" ${row.type === type ? 'selected' : ''}>${type}</option>
+                    `).join('')}
+                  </select>
+                </td>
+                <td class="owner-cell"><input data-edit-field="owner" data-edit-index="${index}" value="${escapeAttribute(row.owner || '')}" /></td>
+                <td class="text-cell"><textarea data-edit-field="text" data-edit-index="${index}">${escapeHtml(row.text)}</textarea></td>
               </tr>
             `).join('')}
           </tbody>
@@ -286,6 +333,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   }
 
   function renderReadableResult(payload) {
+    latestResultPayload = payload;
     const output = resultOutput(payload);
     const rows = buildResultRows(output);
     const trinzo = asArray(output['participants.trinzo'] || output.participants?.trinzo).join(', ');
@@ -301,9 +349,85 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
         ${summaryItem('Trinzo participants', trinzo)}
       </div>
       ${renderListSection('Meeting objectives', output.meetingObjectives)}
-      ${output.executiveSummary ? `<section class="result-section"><h3>Executive summary</h3><p>${escapeHtml(output.executiveSummary)}</p></section>` : ''}
       ${renderResultTable(rows)}
     `;
+  }
+
+  function getEditedRowsFromDom() {
+    const rows = latestResultRows.map((row) => ({ ...row }));
+    document.querySelectorAll('[data-edit-field][data-edit-index]').forEach((input) => {
+      const index = Number(input.dataset.editIndex);
+      const field = input.dataset.editField;
+      if (!Number.isNaN(index) && rows[index]) rows[index][field] = input.value;
+    });
+    return rows
+      .map((row) => ({
+        type: cleanText(row.type || 'Note') || 'Note',
+        owner: cleanText(row.owner || ''),
+        text: cleanText(row.text || '')
+      }))
+      .filter((row) => row.text);
+  }
+
+  function editedPayload() {
+    return {
+      jobId: activeJobId,
+      editedRows: getEditedRowsFromDom(),
+      raw: latestResultPayload
+    };
+  }
+
+  function setEditStatus(text, type = '') {
+    const status = document.getElementById('editStatus');
+    if (!status) return;
+    status.textContent = text || '';
+    status.className = type ? `edit-status ${type}` : 'edit-status';
+  }
+
+  function copyText(text) {
+    navigator.clipboard.writeText(text).catch(() => {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      textarea.remove();
+    });
+  }
+
+  function downloadText(filename, text) {
+    const blob = new Blob([text], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  async function saveEditedResult(automatic = false) {
+    if (!activeJobId) return;
+    const rows = getEditedRowsFromDom();
+    try {
+      const payload = await fetchJson(`/api/meeting-minutes-final/jobs/${encodeURIComponent(activeJobId)}/result`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ editedRows: rows })
+      });
+      latestResultPayload = payload.result || latestResultPayload;
+      if (payload.result) resultJson.textContent = JSON.stringify(payload.result, null, 2);
+      setEditStatus(`${automatic ? 'Autosaved' : 'Saved'} at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`, 'success');
+    } catch (error) {
+      setEditStatus(error.message || 'Could not save edits.', 'error');
+    }
+  }
+
+  function queueAutosave() {
+    setEditStatus('Unsaved changes...');
+    clearTimeout(autosaveTimer);
+    autosaveTimer = setTimeout(() => saveEditedResult(true), 1000);
   }
 
   function renderProgress(job) {
@@ -382,11 +506,20 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     ].join('');
 
     if (job.status === 'completed' && payload.result) {
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
       resultMessage.textContent = 'Completed result:';
       resultActions.hidden = false;
       resultActions.innerHTML = `
         <a class="button" target="_blank" rel="noopener" href="/meeting-minutes-final/jobs/${encodeURIComponent(job.jobId)}/result">Open result in new tab</a>
         <a class="button secondary" href="/meeting-minutes-final/jobs/${encodeURIComponent(job.jobId)}">Open job detail</a>
+        <button id="saveEditedResultBtn" type="button">Save edits</button>
+        <button id="copyEditedTableBtn" class="secondary" type="button">Copy table text</button>
+        <button id="downloadEditedJsonBtn" class="secondary" type="button">Download edited JSON</button>
+        <button id="clearEditedRowsBtn" class="danger" type="button">Clear rows</button>
+        <span id="editStatus" class="edit-status"></span>
       `;
       renderReadableResult(payload.result);
       rawResultDetails.hidden = false;
@@ -467,6 +600,29 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     if (retry) act('retry', retry.dataset.retry);
     if (cancel) act('cancel', cancel.dataset.cancel);
     if (deleteButton) deleteJob(deleteButton.dataset.delete);
+  });
+  resultActions.addEventListener('click', (event) => {
+    if (event.target.closest('#saveEditedResultBtn')) saveEditedResult(false);
+    if (event.target.closest('#copyEditedTableBtn')) {
+      const text = getEditedRowsFromDom()
+        .map((row) => `${row.type} | ${row.owner || '—'}\n${row.text}`)
+        .join('\n\n');
+      copyText(text);
+      setEditStatus('Copied table text.', 'success');
+    }
+    if (event.target.closest('#downloadEditedJsonBtn')) {
+      downloadText(`meeting-minutes-job-${activeJobId || 'result'}-edited.json`, JSON.stringify(editedPayload(), null, 2));
+      setEditStatus('Downloaded edited JSON.', 'success');
+    }
+    if (event.target.closest('#clearEditedRowsBtn')) {
+      latestResultRows = [];
+      const tbody = resultView.querySelector('.minutes-table tbody');
+      if (tbody) tbody.innerHTML = '';
+      setEditStatus('Rows cleared. Save to persist this empty edited table.', 'error');
+    }
+  });
+  resultView.addEventListener('input', (event) => {
+    if (event.target.closest('[data-edit-field]')) queueAutosave();
   });
   retryBtn.addEventListener('click', () => activeJobId && act('retry', activeJobId));
   cancelBtn.addEventListener('click', () => activeJobId && act('cancel', activeJobId));
