@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Meeting Minutes Jobs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+:root { color-scheme: dark; --bg:#0b1020; --panel:#11192f; --panel2:#0f172a; --border:#2d3d60; --muted:#95a7cb; --text:#eef3ff; --accent:#17D0C4; --danger:#dc2626; --success:#16a34a; --warning:#f59e0b; }
+* { box-sizing:border-box; }
+body { margin:0; padding:1rem; background:var(--bg); color:var(--text); font-family:Roboto, Arial, Helvetica, sans-serif; }
+.container { max-width:1240px; margin:0 auto; }
+.panel { background:linear-gradient(145deg,var(--panel),var(--panel2)); border:1px solid var(--border); border-radius:14px; padding:1rem; margin-bottom:1rem; }
+.nav { margin-bottom:1rem; color:var(--muted); }
+a { color:#67e8f9; }
+h1 { margin:.2rem 0 .5rem; }
+h2 { margin:.1rem 0 .75rem; font-size:1.1rem; }
+.intro, .muted { color:var(--muted); }
+.toolbar, .row-actions { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; }
+.toolbar { justify-content:space-between; }
+button, .button { background:linear-gradient(180deg,var(--accent),#0fb5ab); color:#02173B; border:none; border-radius:10px; padding:.6rem .85rem; font-weight:700; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; }
+button.secondary, .button.secondary { background:#132847; color:#dbeafe; border:1px solid var(--border); }
+button.danger { background:#3a1515; color:#fecaca; border:1px solid #7f1d1d; }
+button:disabled { opacity:.55; cursor:not-allowed; }
+.message { margin-top:1rem; padding:.75rem; border-radius:10px; background:#17233f; border:1px solid var(--border); white-space:pre-wrap; }
+.message.error { background:#3a1515; border-color:#7f1d1d; }
+.message.success { background:#0f2f29; border-color:#116149; }
+.jobs { width:100%; border-collapse:collapse; margin-top:1rem; overflow:hidden; border-radius:12px; }
+.jobs th, .jobs td { border-bottom:1px solid var(--border); padding:.75rem; text-align:left; vertical-align:top; }
+.jobs th { background:#0b1530; color:var(--muted); font-size:.86rem; }
+.jobs tr { background:#071126; }
+.jobs tr:hover { background:#0b1730; }
+.status { display:inline-flex; padding:.25rem .55rem; border-radius:999px; border:1px solid var(--border); font-weight:700; font-size:.82rem; }
+.status.running { color:#e0fffd; border-color:rgba(23,208,196,.65); background:rgba(23,208,196,.1); }
+.status.completed { color:#bbf7d0; border-color:#166534; background:#052e1b; }
+.status.failed, .status.cancelled { color:#fecaca; border-color:#7f1d1d; background:#3a1515; }
+.status.queued, .status.retry_wait { color:#fde68a; border-color:#854d0e; background:#3a2c15; }
+.progress { min-width:160px; }
+.track { height:9px; border-radius:999px; background:#061022; border:1px solid var(--border); overflow:hidden; margin:.35rem 0; }
+.fill { height:100%; background:linear-gradient(90deg,#17D0C4,#67e8f9); border-radius:999px; }
+pre { white-space:pre-wrap; overflow:auto; max-height:620px; background:#071126; border:1px solid var(--border); border-radius:10px; padding:1rem; }
+.summary-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:.75rem; }
+.summary-item { background:#071126; border:1px solid var(--border); border-radius:10px; padding:.75rem; }
+.summary-label { color:var(--muted); font-size:.85rem; }
+.summary-value { margin-top:.25rem; font-weight:700; overflow-wrap:anywhere; }
+@media (max-width: 860px) {
+  .jobs, .jobs thead, .jobs tbody, .jobs tr, .jobs th, .jobs td { display:block; width:100%; }
+  .jobs thead { display:none; }
+  .jobs td { border-bottom:none; }
+  .jobs tr { margin-bottom:.8rem; border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <nav class="nav" aria-label="Primary navigation"><a href="/dashboard">Dashboard</a> · <a href="/meeting-minutes-final">Meeting transcript to minutes</a> · <a href="/meeting-minutes-final/jobs">Minutes jobs</a> · <a href="/project-update-test">Project update tool</a> · <a href="/archive">Archive</a></nav>
+
+  <section class="panel">
+    <div class="toolbar">
+      <div>
+        <h1>Meeting Minutes Jobs</h1>
+        <p class="intro">Track queued, running, completed and failed detailed minutes generations.</p>
+      </div>
+      <div class="toolbar">
+        <a class="button secondary" href="/meeting-minutes-final">New minutes</a>
+        <button id="refreshBtn" type="button">Refresh</button>
+      </div>
+    </div>
+    <div id="message" class="message" hidden></div>
+    <div id="listView"></div>
+  </section>
+
+  <section id="detailPanel" class="panel" hidden>
+    <div class="toolbar">
+      <h2 id="detailTitle">Job detail</h2>
+      <div class="row-actions">
+        <button id="retryBtn" class="secondary" type="button">Retry</button>
+        <button id="cancelBtn" class="danger" type="button">Cancel</button>
+      </div>
+    </div>
+    <div id="detailSummary" class="summary-grid"></div>
+    <h2>Result</h2>
+    <div id="resultMessage" class="muted">Result will appear here when the job completes.</div>
+    <pre id="resultJson" hidden></pre>
+  </section>
+</div>
+
+<script>
+(function () {
+  const listView = document.getElementById('listView');
+  const message = document.getElementById('message');
+  const refreshBtn = document.getElementById('refreshBtn');
+  const detailPanel = document.getElementById('detailPanel');
+  const detailTitle = document.getElementById('detailTitle');
+  const detailSummary = document.getElementById('detailSummary');
+  const resultMessage = document.getElementById('resultMessage');
+  const resultJson = document.getElementById('resultJson');
+  const retryBtn = document.getElementById('retryBtn');
+  const cancelBtn = document.getElementById('cancelBtn');
+  const pathMatch = window.location.pathname.match(/\/meeting-minutes-final\/jobs\/(\d+)$/);
+  let activeJobId = pathMatch ? Number(pathMatch[1]) : null;
+  let timer = null;
+
+  function escapeHtml(value) {
+    return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function setMessage(text, type = '') {
+    message.hidden = !text;
+    message.textContent = text || '';
+    message.className = type ? `message ${type}` : 'message';
+  }
+
+  function formatDate(value) {
+    if (!value) return '—';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('en-GB');
+  }
+
+  function runtime(job) {
+    const start = job.startedAt || job.createdAt;
+    const end = job.completedAt || Date.now();
+    if (!start) return '—';
+    const ms = new Date(end).getTime() - new Date(start).getTime();
+    if (!Number.isFinite(ms) || ms < 0) return '—';
+    const seconds = Math.floor(ms / 1000);
+    const mins = Math.floor(seconds / 60);
+    return mins ? `${mins}m ${seconds % 60}s` : `${seconds}s`;
+  }
+
+  function statusClass(status) {
+    return String(status || '').toLowerCase().replace(/[^a-z0-9_-]+/g, '_');
+  }
+
+  function renderProgress(job) {
+    const pct = Math.max(0, Math.min(100, Number(job.progressPercent || 0)));
+    return `
+      <div class="progress">
+        <div>${pct}% · ${escapeHtml(job.stage || job.status || 'queued')}</div>
+        <div class="track"><div class="fill" style="width:${pct}%"></div></div>
+        <small class="muted">${escapeHtml(job.statusMessage || '')}</small>
+      </div>
+    `;
+  }
+
+  function renderJobs(jobs) {
+    if (!jobs.length) {
+      listView.innerHTML = '<p class="muted">No meeting-minutes jobs yet.</p>';
+      return;
+    }
+    listView.innerHTML = `
+      <table class="jobs">
+        <thead>
+          <tr>
+            <th>Job</th>
+            <th>Meeting</th>
+            <th>Status</th>
+            <th>Progress</th>
+            <th>Runtime</th>
+            <th>Attempts</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${jobs.map((job) => `
+            <tr>
+              <td>#${escapeHtml(job.jobId)}<br><small class="muted">${escapeHtml(formatDate(job.createdAt))}</small></td>
+              <td>${escapeHtml(job.meetingTitle || 'Meeting minutes job')}<br><small class="muted">${escapeHtml(job.fileName || `${job.transcriptLength || 0} chars`)}</small></td>
+              <td><span class="status ${statusClass(job.status)}">${escapeHtml(job.status || 'queued')}</span>${job.errorMessage ? `<br><small class="muted">${escapeHtml(job.errorMessage)}</small>` : ''}</td>
+              <td>${renderProgress(job)}</td>
+              <td>${escapeHtml(runtime(job))}</td>
+              <td>${escapeHtml(job.attempts || 0)} / ${escapeHtml(job.maxAttempts || 0)}</td>
+              <td class="row-actions">
+                <a class="button secondary" href="/meeting-minutes-final/jobs/${encodeURIComponent(job.jobId)}">Open</a>
+                ${job.status === 'failed' ? `<button class="secondary" data-retry="${escapeHtml(job.jobId)}" type="button">Retry</button>` : ''}
+                ${job.status === 'queued' || job.status === 'running' ? `<button class="danger" data-cancel="${escapeHtml(job.jobId)}" type="button">Cancel</button>` : ''}
+                ${['completed', 'failed', 'cancelled'].includes(job.status) ? `<button class="danger" data-delete="${escapeHtml(job.jobId)}" type="button">Delete</button>` : ''}
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  function summaryItem(label, value) {
+    return `<div class="summary-item"><div class="summary-label">${escapeHtml(label)}</div><div class="summary-value">${escapeHtml(value || '—')}</div></div>`;
+  }
+
+  function renderDetail(payload) {
+    const job = payload.job;
+    if (!job) return;
+    activeJobId = job.jobId;
+    detailPanel.hidden = false;
+    detailTitle.textContent = `Job #${job.jobId}: ${job.meetingTitle || 'Meeting minutes job'}`;
+    retryBtn.disabled = job.status !== 'failed' && job.status !== 'completed';
+    cancelBtn.disabled = job.status !== 'queued' && job.status !== 'running';
+    detailSummary.innerHTML = [
+      summaryItem('Status', job.status),
+      summaryItem('Stage', job.stage),
+      summaryItem('Progress', `${job.progressPercent || 0}%`),
+      summaryItem('Message', job.statusMessage || job.errorMessage),
+      summaryItem('Runtime', runtime(job)),
+      summaryItem('Attempts', `${job.attempts || 0} / ${job.maxAttempts || 0}`),
+      summaryItem('Created', formatDate(job.createdAt)),
+      summaryItem('Updated', formatDate(job.updatedAt))
+    ].join('');
+
+    if (job.status === 'completed' && payload.result) {
+      resultMessage.textContent = 'Completed result payload:';
+      resultJson.hidden = false;
+      resultJson.textContent = JSON.stringify(payload.result, null, 2);
+    } else {
+      resultMessage.textContent = job.status === 'failed'
+        ? (job.errorMessage || 'This job failed.')
+        : 'Result will appear here when the job completes.';
+      resultJson.hidden = true;
+      resultJson.textContent = '';
+    }
+  }
+
+  async function fetchJson(url, options) {
+    const response = await fetch(url, { credentials: 'same-origin', ...(options || {}) });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || !payload || payload.ok === false) {
+      throw new Error(payload?.error || `Request failed with status ${response.status}`);
+    }
+    return payload;
+  }
+
+  async function loadList() {
+    const payload = await fetchJson('/api/meeting-minutes-final/jobs?limit=100');
+    renderJobs(Array.isArray(payload.jobs) ? payload.jobs : []);
+  }
+
+  async function loadDetail() {
+    if (!activeJobId) return;
+    const payload = await fetchJson(`/api/meeting-minutes-final/jobs/${encodeURIComponent(activeJobId)}`);
+    renderDetail(payload);
+  }
+
+  async function refresh() {
+    try {
+      await loadList();
+      await loadDetail();
+      setMessage('', '');
+    } catch (error) {
+      setMessage(error.message || 'Could not refresh jobs.', 'error');
+    }
+  }
+
+  async function act(action, jobId) {
+    try {
+      await fetchJson(`/api/meeting-minutes-final/jobs/${encodeURIComponent(jobId)}/${action}`, { method: 'POST' });
+      setMessage(action === 'retry' ? 'Job queued for retry.' : 'Job cancellation requested.', 'success');
+      await refresh();
+    } catch (error) {
+      setMessage(error.message || `Could not ${action} job.`, 'error');
+    }
+  }
+
+  async function deleteJob(jobId) {
+    if (!window.confirm('Delete this job, stored transcript and generated result?')) return;
+    try {
+      await fetchJson(`/api/meeting-minutes-final/jobs/${encodeURIComponent(jobId)}`, { method: 'DELETE' });
+      setMessage('Job deleted.', 'success');
+      if (String(activeJobId) === String(jobId)) {
+        activeJobId = null;
+        detailPanel.hidden = true;
+        history.replaceState(null, '', '/meeting-minutes-final/jobs');
+      }
+      await refresh();
+    } catch (error) {
+      setMessage(error.message || 'Could not delete job.', 'error');
+    }
+  }
+
+  listView.addEventListener('click', (event) => {
+    const retry = event.target.closest('[data-retry]');
+    const cancel = event.target.closest('[data-cancel]');
+    const deleteButton = event.target.closest('[data-delete]');
+    if (retry) act('retry', retry.dataset.retry);
+    if (cancel) act('cancel', cancel.dataset.cancel);
+    if (deleteButton) deleteJob(deleteButton.dataset.delete);
+  });
+  retryBtn.addEventListener('click', () => activeJobId && act('retry', activeJobId));
+  cancelBtn.addEventListener('click', () => activeJobId && act('cancel', activeJobId));
+  refreshBtn.addEventListener('click', refresh);
+
+  refresh();
+  timer = setInterval(refresh, 5000);
+  window.addEventListener('beforeunload', () => clearInterval(timer));
+})();
+</script>
+</body>
+</html>

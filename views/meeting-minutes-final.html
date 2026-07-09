@@ -106,7 +106,7 @@ a { color:#67e8f9; }
 </head>
 <body>
 <div class="container">
-  <nav class="nav" aria-label="Primary navigation"><a href="/dashboard">Dashboard</a> · <a href="/meeting-minutes-final">Meeting transcript to minutes</a> · <a href="/project-update-test">Project update tool</a> · <a href="/project-update-test/roadmap">Roadmap</a> · <a href="/archive">Archive</a></nav>
+  <nav class="nav" aria-label="Primary navigation"><a href="/dashboard">Dashboard</a> · <a href="/meeting-minutes-final">Meeting transcript to minutes</a> · <a href="/meeting-minutes-final/jobs">Minutes jobs</a> · <a href="/project-update-test">Project update tool</a> · <a href="/project-update-test/roadmap">Roadmap</a> · <a href="/archive">Archive</a></nav>
   <main id="transcriptMinilmOnlyRoot"></main>
 </div>
 <button id="feedbackWidgetButton" class="feedback-trigger" type="button" aria-label="Open feedback form" title="Send feedback about this page">💬</button>
@@ -157,6 +157,8 @@ buildTranscriptMinilmOnlyPage({
   intro: 'Upload or paste a transcript to create draft meeting minutes first. Then use Improve minutes to apply the local language model refinement separately so you can review the difference.',
   buttonText: 'Run meeting minutes',
   endpoint: '/api/meeting-minutes-final',
+  queuedEndpoint: '/api/meeting-minutes-final/jobs',
+  jobsPageUrl: '/meeting-minutes-final/jobs',
   improveEndpoint: '/api/meeting-minutes-final/improve',
   snippetImproveEndpoint: '/api/meeting-minutes-final/improve-snippet'
 });

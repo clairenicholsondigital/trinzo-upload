@@ -1164,7 +1164,9 @@ function buildTranscriptMinilmOnlyPage(config) {
     improving: false,
     snippetImproving: false,
     schemaOutput: null,
-    extractedText: ''
+    extractedText: '',
+    currentJobId: null,
+    jobPollTimer: null
   };
 
   const root = document.getElementById('transcriptMinilmOnlyRoot');
@@ -1185,6 +1187,7 @@ function buildTranscriptMinilmOnlyPage(config) {
       <div class="actions">
         <button id="minilmOnlyGoBtn" type="button">${config.buttonText}</button>
         <button id="minilmOnlyClearBtn" class="secondary" type="button">Clear / reset</button>
+        ${config.jobsPageUrl ? `<a class="button secondary" href="${escapeHtml(config.jobsPageUrl)}" style="text-decoration:none;">View jobs</a>` : ''}
       </div>
       <div id="minilmOnlyMessage" class="message hidden"></div>
       <div id="minilmOnlyProgress" class="progress-card hidden" role="status" aria-live="polite">
@@ -1344,6 +1347,32 @@ function buildTranscriptMinilmOnlyPage(config) {
     progressTimer = null;
     progressStartedAt = 0;
     if (progressPanel) progressPanel.classList.add('hidden');
+  }
+
+  function stopJobPolling() {
+    if (state.jobPollTimer) clearInterval(state.jobPollTimer);
+    state.jobPollTimer = null;
+  }
+
+  function updateQueuedProgress(job) {
+    if (!progressPanel || !job) return;
+    progressPanel.classList.remove('hidden');
+    const createdAt = job.startedAt || job.createdAt;
+    const elapsed = createdAt ? Math.max(0, Math.floor((Date.now() - new Date(createdAt).getTime()) / 1000)) : 0;
+    const stage = job.stage || job.status || 'queued';
+    progressTitle.textContent = `${titleize(stage)}…`;
+    progressTip.textContent = job.statusMessage || 'Waiting for the meeting-minutes worker.';
+    progressTime.textContent = `${elapsed}s`;
+    const activeProgress = Number(job.progressPercent || 0);
+    progressStepsNode.innerHTML = [
+      { at: 0, label: 'Queued' },
+      { at: 10, label: 'Extracting' },
+      { at: 30, label: 'Drafting' },
+      { at: 80, label: 'Finalising' },
+      { at: 100, label: 'Ready' }
+    ].map((step) => `
+      <span class="progress-step ${activeProgress >= step.at ? 'active' : ''}">${escapeHtml(step.label)}</span>
+    `).join('');
   }
 
   function setLoading(isLoading) {
@@ -1982,7 +2011,7 @@ function buildTranscriptMinilmOnlyPage(config) {
     }
 
     setLoading(true);
-    setMessage('Running meeting minutes extraction...', 'info');
+    setMessage(config.queuedEndpoint ? 'Queued meeting minutes generation...' : 'Running meeting minutes extraction...', 'info');
     outputPanel.classList.add('hidden');
     diagnosticsPanel.classList.add('hidden');
 
@@ -1999,13 +2028,24 @@ function buildTranscriptMinilmOnlyPage(config) {
         state.extractedText = await file.text().catch(() => '');
       }
 
-      const endpoint = `${config.endpoint}?includeTranscriptMetadata=1`;
+      const endpointBase = config.queuedEndpoint || config.endpoint;
+      const endpoint = `${endpointBase}?includeTranscriptMetadata=1`;
       const response = await fetch(endpoint, options);
       const payload = await response.json().catch(() => null);
 
       if (!response.ok || !payload || payload.ok === false) {
         const detailText = payload && payload.details ? ` ${JSON.stringify(payload.details)}` : '';
         throw new Error((payload && payload.error ? payload.error : `Request failed with status ${response.status}.`) + detailText);
+      }
+
+      if (config.queuedEndpoint && payload.jobId) {
+        state.currentJobId = payload.jobId;
+        setMessage(`Queued. Job #${payload.jobId} is waiting for the meeting-minutes worker. You can leave this page and reopen it from View jobs.`, 'success');
+        await pollQueuedJob(payload.jobId);
+        state.jobPollTimer = setInterval(() => {
+          pollQueuedJob(payload.jobId).catch((error) => setMessage(error.message || 'Could not refresh job status.', 'error'));
+        }, 3000);
+        return;
       }
 
       const rewriterDegraded = payload.result && payload.result.rewriterAvailable === false;
@@ -2020,7 +2060,40 @@ function buildTranscriptMinilmOnlyPage(config) {
     } catch (error) {
       setMessage(error.message || 'Meeting minutes extraction failed.', 'error');
     } finally {
+      if (!config.queuedEndpoint) setLoading(false);
+    }
+  }
+
+  async function pollQueuedJob(jobId) {
+    const response = await fetch(`/api/meeting-minutes-final/jobs/${encodeURIComponent(jobId)}`, { credentials: 'same-origin' });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || !payload || payload.ok === false) {
+      throw new Error(payload?.error || 'Could not load queued job status.');
+    }
+    const job = payload.job || {};
+    updateQueuedProgress(job);
+
+    if (job.status === 'completed' && payload.result) {
+      stopJobPolling();
+      stopProgress();
       setLoading(false);
+      const resultPayload = payload.result;
+      const rewriterDegraded = resultPayload.result && resultPayload.result.rewriterAvailable === false;
+      setMessage(
+        rewriterDegraded
+          ? `Done. Job #${jobId} created draft meeting minutes. Note: the AI writing pass did not run (${resultPayload.result.rewriterReason || 'reason unknown'}), so quality may be reduced.`
+          : `Done. Job #${jobId} created draft meeting minutes from ${resultPayload.transcriptLength || job.transcriptLength || 0} characters.`,
+        rewriterDegraded ? 'warning' : 'success'
+      );
+      displayPayload(resultPayload);
+      return;
+    }
+
+    if (job.status === 'failed' || job.status === 'cancelled') {
+      stopJobPolling();
+      stopProgress();
+      setLoading(false);
+      setMessage(job.errorMessage || job.statusMessage || `Job ${job.status}.`, 'error');
     }
   }
 
@@ -2072,6 +2145,8 @@ function buildTranscriptMinilmOnlyPage(config) {
     state.payload = null;
     state.schemaOutput = null;
     state.extractedText = '';
+    state.currentJobId = null;
+    stopJobPolling();
     setMessage('', '');
     stopProgress();
     outputPanel.classList.add('hidden');

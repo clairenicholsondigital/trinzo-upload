@@ -52,6 +52,12 @@ const {
   getMeetingMinutesFeedback,
   updateMeetingMinutesFeedback,
   deleteMeetingMinutesFeedback,
+  queueMeetingMinutesGeneration,
+  listMeetingMinutesJobs,
+  getMeetingMinutesJob,
+  retryMeetingMinutesJob,
+  cancelMeetingMinutesJob,
+  deleteMeetingMinutesJob,
   getMeetingStatus,
   claimNextJob,
   markJobCompleted,
@@ -703,6 +709,89 @@ router.post('/meeting-minutes-final', requireAuth, withTestUpload(async (req, re
     return sendTestError(res, error);
   }
 }));
+
+router.post('/meeting-minutes-final/jobs', requireAuth, withTestUpload(async (req, res) => {
+  try {
+    const transcript = await readTestTranscript(req);
+    validateTranscriptText(transcript.text);
+    const meta = transcriptMetadata(transcript.text);
+    const queued = await queueMeetingMinutesGeneration({
+      transcriptText: transcript.text,
+      source: 'meeting-minutes-final',
+      fileName: transcript.fileName || '',
+      transcriptSha256: meta.transcriptSha256,
+      includeDiagnostics: truthyFlag(req.query?.includeDiagnostics) || truthyFlag(req.body?.includeDiagnostics),
+      includeTranscriptMetadata: shouldIncludeTranscriptMetadata(req),
+      skipRewrite: truthyFlag(req.query?.skipRewrite) || truthyFlag(req.body?.skipRewrite),
+      queuedBy: req.authUser?.email || ''
+    });
+
+    return res.status(202).json({
+      ok: true,
+      success: true,
+      ...queued,
+      statusUrl: `/api/meeting-minutes-final/jobs/${queued.jobId}`,
+      resultUrl: `/api/meeting-minutes-final/jobs/${queued.jobId}`,
+      jobsUrl: '/meeting-minutes-final/jobs'
+    });
+  } catch (error) {
+    return sendTestError(res, error);
+  }
+}));
+
+router.get('/meeting-minutes-final/jobs', requireAuth, async (req, res) => {
+  try {
+    const jobs = await listMeetingMinutesJobs(req.query?.limit || 75);
+    return res.json({ ok: true, success: true, jobs });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ ok: false, success: false, error: error.message || 'Failed to list jobs.' });
+  }
+});
+
+router.get('/meeting-minutes-final/jobs/:jobId', requireAuth, async (req, res) => {
+  try {
+    const job = await getMeetingMinutesJob(req.params.jobId);
+    if (!job) return res.status(404).json({ ok: false, success: false, error: 'Job not found.' });
+    return res.json({
+      ok: true,
+      success: true,
+      job,
+      result: job.status === 'completed' ? job.resultPayload : null
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ ok: false, success: false, error: error.message || 'Failed to load job.' });
+  }
+});
+
+router.post('/meeting-minutes-final/jobs/:jobId/retry', requireAuth, async (req, res) => {
+  try {
+    const job = await retryMeetingMinutesJob(req.params.jobId);
+    if (!job) return res.status(404).json({ ok: false, success: false, error: 'Retryable job not found.' });
+    return res.json({ ok: true, success: true, job });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ ok: false, success: false, error: error.message || 'Failed to retry job.' });
+  }
+});
+
+router.post('/meeting-minutes-final/jobs/:jobId/cancel', requireAuth, async (req, res) => {
+  try {
+    const job = await cancelMeetingMinutesJob(req.params.jobId);
+    if (!job) return res.status(404).json({ ok: false, success: false, error: 'Cancellable job not found.' });
+    return res.json({ ok: true, success: true, job });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ ok: false, success: false, error: error.message || 'Failed to cancel job.' });
+  }
+});
+
+router.delete('/meeting-minutes-final/jobs/:jobId', requireAuth, async (req, res) => {
+  try {
+    const deleted = await deleteMeetingMinutesJob(req.params.jobId);
+    if (!deleted) return res.status(404).json({ ok: false, success: false, error: 'Deletable completed/failed/cancelled job not found.' });
+    return res.json({ ok: true, success: true });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ ok: false, success: false, error: error.message || 'Failed to delete job.' });
+  }
+});
 
 router.post('/meeting-minutes-final/improve', async (req, res) => {
   try {

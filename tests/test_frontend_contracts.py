@@ -109,6 +109,35 @@ class FrontendContractTest(unittest.TestCase):
         self.assertNotIn("/auth/forgot-password", login)
         self.assertNotIn("Trinzo secure authentication", login)
 
+    def test_meeting_minutes_final_queue_and_jobs_page_are_wired(self):
+        meeting_minutes_final = (REPO_DIR / "views" / "meeting-minutes-final.html").read_text(encoding="utf-8")
+        jobs_page = (REPO_DIR / "views" / "meeting-minutes-jobs.html").read_text(encoding="utf-8")
+        shared_js = (REPO_DIR / "public" / "test-transcript-page.js").read_text(encoding="utf-8")
+        server = (REPO_DIR / "server.js").read_text(encoding="utf-8")
+        api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+        db = (REPO_DIR / "utils" / "db.js").read_text(encoding="utf-8")
+
+        self.assertIn("queuedEndpoint: '/api/meeting-minutes-final/jobs'", meeting_minutes_final)
+        self.assertIn("jobsPageUrl: '/meeting-minutes-final/jobs'", meeting_minutes_final)
+        self.assertIn('href="/meeting-minutes-final/jobs"', meeting_minutes_final)
+        self.assertIn("config.queuedEndpoint", shared_js)
+        self.assertIn("pollQueuedJob", shared_js)
+        self.assertIn("app.get('/meeting-minutes-final/jobs'", server)
+        self.assertIn("app.get('/meeting-minutes-final/jobs/:jobId'", server)
+        self.assertIn("router.post('/meeting-minutes-final/jobs'", api)
+        self.assertIn("router.get('/meeting-minutes-final/jobs'", api)
+        self.assertIn("router.get('/meeting-minutes-final/jobs/:jobId'", api)
+        self.assertIn("router.post('/meeting-minutes-final/jobs/:jobId/retry'", api)
+        self.assertIn("router.post('/meeting-minutes-final/jobs/:jobId/cancel'", api)
+        self.assertIn("router.delete('/meeting-minutes-final/jobs/:jobId'", api)
+        self.assertIn("queueMeetingMinutesGeneration", db)
+        self.assertIn("claimNextMeetingMinutesJob", db)
+        self.assertIn("deleteMeetingMinutesJob", db)
+        self.assertIn("attempts = 0", db)
+        self.assertIn("/api/meeting-minutes-final/jobs?limit=100", jobs_page)
+        self.assertIn("Job cancellation requested", jobs_page)
+        self.assertIn("Delete this job, stored transcript and generated result?", jobs_page)
+
 
 if __name__ == "__main__":
     unittest.main()
