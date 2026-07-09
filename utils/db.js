@@ -1478,6 +1478,9 @@ ALTER TABLE meeting_jobs ADD COLUMN IF NOT EXISTS stage TEXT NOT NULL DEFAULT 'q
 ALTER TABLE meeting_jobs ADD COLUMN IF NOT EXISTS progress_percent INT NOT NULL DEFAULT 0;
 ALTER TABLE meeting_jobs ADD COLUMN IF NOT EXISTS status_message TEXT NOT NULL DEFAULT '';
 ALTER TABLE meeting_jobs ADD COLUMN IF NOT EXISTS cancel_requested BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE meeting_jobs DROP CONSTRAINT IF EXISTS meeting_jobs_job_type_check;
+ALTER TABLE meeting_jobs ADD CONSTRAINT meeting_jobs_job_type_check
+  CHECK (job_type IN ('agent_extract', 'webhook_send', 'document_generate', 'meeting_minutes_generate'));
 CREATE INDEX IF NOT EXISTS idx_meeting_jobs_status_run_after ON meeting_jobs (status, run_after, created_at);
 CREATE INDEX IF NOT EXISTS idx_meeting_jobs_type_status ON meeting_jobs (job_type, status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_meetings_status_activity ON meetings (status, last_activity_at DESC);
