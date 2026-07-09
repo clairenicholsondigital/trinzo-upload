@@ -2040,11 +2040,9 @@ function buildTranscriptMinilmOnlyPage(config) {
 
       if (config.queuedEndpoint && payload.jobId) {
         state.currentJobId = payload.jobId;
-        setMessage(`Queued. Job #${payload.jobId} is waiting for the meeting-minutes worker. You can leave this page and reopen it from View jobs.`, 'success');
-        await pollQueuedJob(payload.jobId);
-        state.jobPollTimer = setInterval(() => {
-          pollQueuedJob(payload.jobId).catch((error) => setMessage(error.message || 'Could not refresh job status.', 'error'));
-        }, 3000);
+        const jobUrl = `${config.jobsPageUrl || '/meeting-minutes-final/jobs'}/${encodeURIComponent(payload.jobId)}`;
+        setMessage(`Queued. Opening job #${payload.jobId} so you can track progress.`, 'success');
+        window.location.assign(jobUrl);
         return;
       }
 

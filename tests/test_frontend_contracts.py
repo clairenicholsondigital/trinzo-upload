@@ -122,6 +122,8 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn('href="/meeting-minutes-final/jobs"', meeting_minutes_final)
         self.assertIn("config.queuedEndpoint", shared_js)
         self.assertIn("pollQueuedJob", shared_js)
+        self.assertIn("window.location.assign(jobUrl)", shared_js)
+        self.assertIn("Opening job #", shared_js)
         self.assertIn("app.get('/meeting-minutes-final/jobs'", server)
         self.assertIn("app.get('/meeting-minutes-final/jobs/:jobId'", server)
         self.assertIn("router.post('/meeting-minutes-final/jobs'", api)
