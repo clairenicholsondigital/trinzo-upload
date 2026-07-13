@@ -13,6 +13,13 @@ const {
 const MAX_TRANSCRIPT_CHARS = 2 * 1024 * 1024;
 const PYTHON_TIMEOUT_MS = Number(process.env.TRANSCRIPT_TEST_TIMEOUT_MS || 180000);
 
+function truthy(value) {
+  return String(value || '').trim().toLowerCase() === '1'
+    || String(value || '').trim().toLowerCase() === 'true'
+    || String(value || '').trim().toLowerCase() === 'yes'
+    || String(value || '').trim().toLowerCase() === 'on';
+}
+
 function validateTranscriptText(text) {
   if (!text || !String(text).trim()) {
     const error = new Error('Transcript text is empty. Paste text or upload a non-empty transcript file.');
@@ -144,6 +151,9 @@ async function processMeetingMinutesJob(job, options = {}) {
 
   if (input.skipRewrite) scriptArgs.push('--skip-rewrite');
   if (!input.includeDiagnostics) scriptArgs.push('--skip-diagnostics');
+  if (input.includeProjectStatusEvidence || truthy(process.env.MEETING_MINUTES_PROJECT_STATUS_EVIDENCE)) {
+    scriptArgs.push('--include-project-status-evidence');
+  }
 
   try {
     if (job.cancelRequested) {
@@ -153,6 +163,7 @@ async function processMeetingMinutesJob(job, options = {}) {
     await updateMeetingMinutesJobProgress(job.jobId, 'extracting', 12, 'Transcript loaded. Preparing AI generation.');
     validateTranscriptText(job.transcriptText || '');
 
+    await updateMeetingMinutesJobProgress(job.jobId, 'analysing', 25, 'Building project-status evidence for extra detail.');
     await updateMeetingMinutesJobProgress(job.jobId, 'drafting', 35, 'Writing detailed meeting minutes with Trooper.');
     const result = await runPythonTranscriptScript('meeting_minutes_trooper.py', job.transcriptText, scriptArgs, { timeoutMs });
 
@@ -164,6 +175,7 @@ async function processMeetingMinutesJob(job, options = {}) {
         jobId: job.jobId,
         meetingId: job.meetingId,
         workerMode: 'meeting_minutes_generate',
+        projectStatusEvidenceEnabled: scriptArgs.includes('--include-project-status-evidence'),
         durationMs: Date.now() - startedAt
       }
     };

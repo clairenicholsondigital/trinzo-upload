@@ -678,6 +678,10 @@ router.post('/meeting-minutes-final', requireAuth, withTestUpload(async (req, re
       scriptArgs.push('--include-baseline-reference');
     }
 
+    if (truthyFlag(req.query?.includeProjectStatusEvidence) || truthyFlag(req.body?.includeProjectStatusEvidence)) {
+      scriptArgs.push('--include-project-status-evidence');
+    }
+
     if (!truthyFlag(req.query?.includeDiagnostics) && !truthyFlag(req.body?.includeDiagnostics)) {
       scriptArgs.push('--skip-diagnostics');
     }
@@ -724,6 +728,7 @@ router.post('/meeting-minutes-final/jobs', requireAuth, withTestUpload(async (re
       includeDiagnostics: truthyFlag(req.query?.includeDiagnostics) || truthyFlag(req.body?.includeDiagnostics),
       includeTranscriptMetadata: shouldIncludeTranscriptMetadata(req),
       skipRewrite: truthyFlag(req.query?.skipRewrite) || truthyFlag(req.body?.skipRewrite),
+      includeProjectStatusEvidence: truthyFlag(req.query?.includeProjectStatusEvidence) || truthyFlag(req.body?.includeProjectStatusEvidence),
       queuedBy: req.authUser?.email || ''
     });
 

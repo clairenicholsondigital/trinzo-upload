@@ -1564,6 +1564,7 @@ async function queueMeetingMinutesGeneration(payload = {}) {
     includeDiagnostics: Boolean(payload.includeDiagnostics),
     includeTranscriptMetadata: Boolean(payload.includeTranscriptMetadata),
     skipRewrite: Boolean(payload.skipRewrite),
+    includeProjectStatusEvidence: Boolean(payload.includeProjectStatusEvidence),
     queuedBy: payload.queuedBy || '',
     queuedAt: new Date().toISOString()
   };

@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 import urllib.error
@@ -14,6 +15,7 @@ from typing import Any
 
 TROOPER_URL_DEFAULT = "https://eu.router.trooper.ai/v1/chat/completions"
 TROOPER_MODEL_DEFAULT = "eu_liv_000099"
+PROJECT_STATUS_EVIDENCE_MAX_CHARS = 14000
 
 
 def load_local_env_if_needed() -> None:
@@ -226,11 +228,117 @@ def extract_json(text: str) -> dict[str, Any]:
         return {}
 
 
-def prompt_for_transcript(transcript: str) -> str:
+def truthy(value: Any) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def run_project_status_evidence_pack(transcript_path: Path, timeout_seconds: int = 90) -> dict[str, Any]:
+    script_path = Path(__file__).resolve().parent / "project_status_evidence_pack.py"
+    model_python = os.environ.get("PROJECT_STATUS_MODEL_PYTHON", "").strip()
+    if not model_python:
+        candidate_python = Path(os.environ.get("PROJECT_STATUS_MODEL_DIR", "/root/project-update-status-model")) / ".venv" / "bin" / "python"
+        model_python = str(candidate_python) if candidate_python.exists() else os.environ.get("PYTHON_BIN", "python3")
+    started = time.perf_counter()
+    if not script_path.exists():
+        return {
+            "enabled": True,
+            "available": False,
+            "reason": f"Project-status evidence script not found at {script_path}",
+            "runtimeMs": 0.0,
+            "items": [],
+        }
+    try:
+        completed = subprocess.run(
+            [model_python, str(script_path), str(transcript_path)],
+            cwd=str(Path(__file__).resolve().parents[1]),
+            env=os.environ,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=timeout_seconds,
+            check=False,
+        )
+        if completed.returncode != 0:
+            return {
+                "enabled": True,
+                "available": False,
+                "reason": f"Project-status evidence exited with code {completed.returncode}: {clean_text(completed.stderr)[:300]}",
+                "runtimeMs": round((time.perf_counter() - started) * 1000, 2),
+                "items": [],
+            }
+        try:
+            pack = json.loads(completed.stdout)
+        except json.JSONDecodeError as exc:
+            return {
+                "enabled": True,
+                "available": False,
+                "reason": f"Project-status evidence returned invalid JSON: {exc}",
+                "runtimeMs": round((time.perf_counter() - started) * 1000, 2),
+                "items": [],
+            }
+        if isinstance(pack, dict):
+            pack.setdefault("runtimeMs", round((time.perf_counter() - started) * 1000, 2))
+            if completed.stderr and truthy(os.environ.get("PROJECT_STATUS_EVIDENCE_INCLUDE_STDERR")):
+                pack["stderr"] = completed.stderr[-2000:]
+            return pack
+    except subprocess.TimeoutExpired:
+        return {
+            "enabled": True,
+            "available": False,
+            "reason": f"Project-status evidence timed out after {timeout_seconds}s.",
+            "runtimeMs": round((time.perf_counter() - started) * 1000, 2),
+            "items": [],
+        }
+    except Exception as exc:
+        return {
+            "enabled": True,
+            "available": False,
+            "reason": f"Project-status evidence failed: {clean_text(exc)[:300]}",
+            "runtimeMs": round((time.perf_counter() - started) * 1000, 2),
+            "items": [],
+        }
+    return {
+        "enabled": True,
+        "available": False,
+        "reason": "Project-status evidence returned an unexpected payload.",
+        "runtimeMs": round((time.perf_counter() - started) * 1000, 2),
+        "items": [],
+    }
+
+
+def compact_project_status_evidence(evidence_pack: dict[str, Any] | None) -> str:
+    if not evidence_pack or not isinstance(evidence_pack, dict):
+        return ""
+    items = evidence_pack.get("items")
+    if not evidence_pack.get("available") or not isinstance(items, list) or not items:
+        return ""
+    compact = {
+        "source": "project_update_status_model",
+        "guidance": "Use as attention hints only. The transcript remains the source of truth.",
+        "items": items[:10],
+    }
+    text = json.dumps(compact, ensure_ascii=False, indent=2)
+    if len(text) <= PROJECT_STATUS_EVIDENCE_MAX_CHARS:
+        return text
+    compact["items"] = items[:6]
+    text = json.dumps(compact, ensure_ascii=False, indent=2)
+    return text[:PROJECT_STATUS_EVIDENCE_MAX_CHARS]
+
+
+def prompt_for_transcript(transcript: str, project_status_evidence: dict[str, Any] | None = None) -> str:
+    evidence_text = compact_project_status_evidence(project_status_evidence)
+    evidence_section = ""
+    if evidence_text:
+        evidence_section = f"""
+[PROJECT_STATUS_EVIDENCE]
+{evidence_text}
+[/PROJECT_STATUS_EVIDENCE]
+"""
     return f"""[CMD]@meeting-minutes|verify=true|detail=9|creativity=1|format=json|audience=client|language=en-GB
 [INPUT]
 {transcript}
 [/INPUT]
+{evidence_section}
 -bannedWords=["game-changing","revolutionary","seamless","world-class","obviously","basically"]
 
 Return valid JSON only, with exactly this shape:
@@ -262,6 +370,8 @@ Operator rules for this task:
 - Prefer fewer high-quality points over many weak points.
 - Deduplicate repeated actions and repeated discussion points.
 - If evidence is weak, omit the point or state "Not stated" rather than filling gaps.
+- If PROJECT_STATUS_EVIDENCE is supplied, use it only as an attention guide for project-management detail that may be easy to miss.
+- PROJECT_STATUS_EVIDENCE is not an independent source of truth. Include a blocker, risk, action, decision, owner, deadline or detail only when the transcript itself supports it.
 """
 
 
@@ -286,7 +396,11 @@ def empty_failure_output(error_message: str) -> dict[str, Any]:
     }
 
 
-def call_trooper(transcript: str, timeout_seconds: int) -> tuple[dict[str, Any], dict[str, Any]]:
+def call_trooper(
+    transcript: str,
+    timeout_seconds: int,
+    project_status_evidence: dict[str, Any] | None = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
     api_key = os.environ.get("TROOPER_API_KEY", "").strip()
     if not api_key:
         message = "TROOPER_API_KEY is not configured."
@@ -301,7 +415,7 @@ def call_trooper(transcript: str, timeout_seconds: int) -> tuple[dict[str, Any],
                 "role": "system",
                 "content": "You operate HelixScribe's behavioural stabilisation operator. Interpret [CMD] operator parameters exactly. Return valid JSON only when format=json.",
             },
-            {"role": "user", "content": prompt_for_transcript(transcript)},
+            {"role": "user", "content": prompt_for_transcript(transcript, project_status_evidence)},
         ],
         "temperature": 0.1,
         "max_tokens": int(os.environ.get("TROOPER_MAX_TOKENS", "4000")),
@@ -360,6 +474,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--skip-diagnostics", action="store_true")
     parser.add_argument("--include-baseline-reference", action="store_true")
     parser.add_argument("--skip-rewrite", action="store_true", help="Accepted for compatibility; ignored.")
+    parser.add_argument("--include-project-status-evidence", action="store_true")
     parser.add_argument("--timeout-seconds", type=int, default=int(os.environ.get("TROOPER_TIMEOUT_SECONDS", "120")))
     return parser.parse_args(argv)
 
@@ -367,16 +482,24 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 def main() -> int:
     load_local_env_if_needed()
     args = parse_args(sys.argv[1:])
-    transcript = Path(args.transcript_path).read_text(encoding="utf-8")
+    transcript_path = Path(args.transcript_path)
+    transcript = transcript_path.read_text(encoding="utf-8")
     started = time.perf_counter()
-    output, diagnostics = call_trooper(transcript, args.timeout_seconds)
+    use_project_status_evidence = args.include_project_status_evidence or truthy(os.environ.get("MEETING_MINUTES_PROJECT_STATUS_EVIDENCE"))
+    project_status_evidence = None
+    if use_project_status_evidence:
+        project_status_evidence = run_project_status_evidence_pack(
+            transcript_path,
+            timeout_seconds=int(os.environ.get("PROJECT_STATUS_EVIDENCE_TIMEOUT_SECONDS", "90")),
+        )
+    output, diagnostics = call_trooper(transcript, args.timeout_seconds, project_status_evidence)
     runtime_ms = round((time.perf_counter() - started) * 1000, 2)
     payload: dict[str, Any] = {
         "mode": "meeting_minutes_final_trooper_operator_full_transcript",
         "executed": True,
         "modelAvailable": True,
         "modelName": diagnostics.get("model"),
-        "modelReason": "trooper_liv_operator_full_transcript",
+        "modelReason": "trooper_liv_operator_project_status_evidence" if project_status_evidence and project_status_evidence.get("items") else "trooper_liv_operator_full_transcript",
         "rewriterAvailable": bool(diagnostics.get("used")),
         "rewriterModelName": diagnostics.get("model"),
         "rewriterModelPath": None,
@@ -399,6 +522,8 @@ def main() -> int:
     }
     if not args.skip_diagnostics:
         payload["diagnostics"] = {"trooper": diagnostics}
+        if project_status_evidence is not None:
+            payload["diagnostics"]["projectStatusEvidence"] = project_status_evidence
     print(json.dumps(payload, ensure_ascii=False))
     return 0
 

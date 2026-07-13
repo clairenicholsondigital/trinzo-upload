@@ -109,6 +109,18 @@ class FrontendContractTest(unittest.TestCase):
         self.assertNotIn("/auth/forgot-password", login)
         self.assertNotIn("Trinzo secure authentication", login)
 
+    def test_login_password_visibility_toggle_is_wired(self):
+        login = (REPO_DIR / "views" / "auth-login.html").read_text(encoding="utf-8")
+
+        self.assertIn('class="password-input"', login)
+        self.assertIn('id="passwordToggle"', login)
+        self.assertIn('type="button"', login)
+        self.assertIn('aria-label="Show password"', login)
+        self.assertIn('aria-pressed="false"', login)
+        self.assertIn("passwordInput.type = isVisible ? 'password' : 'text'", login)
+        self.assertIn("passwordToggle.setAttribute('aria-label', isVisible ? 'Show password' : 'Hide password')", login)
+        self.assertIn("passwordInput.focus()", login)
+
     def test_meeting_minutes_final_queue_and_jobs_page_are_wired(self):
         meeting_minutes_final = (REPO_DIR / "views" / "meeting-minutes-final.html").read_text(encoding="utf-8")
         jobs_page = (REPO_DIR / "views" / "meeting-minutes-jobs.html").read_text(encoding="utf-8")
@@ -138,6 +150,11 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("claimNextMeetingMinutesJob", db)
         self.assertIn("deleteMeetingMinutesJob", db)
         self.assertIn("updateMeetingMinutesJobResult", db)
+        self.assertIn("includeProjectStatusEvidence", api)
+        self.assertIn("includeProjectStatusEvidence", db)
+        self.assertIn("--include-project-status-evidence", api)
+        self.assertIn("--include-project-status-evidence", (REPO_DIR / "utils" / "meetingMinutesGenerator.js").read_text(encoding="utf-8"))
+        self.assertIn("MEETING_MINUTES_PROJECT_STATUS_EVIDENCE", (REPO_DIR / "utils" / "meetingMinutesGenerator.js").read_text(encoding="utf-8"))
         self.assertIn("attempts = 0", db)
         self.assertIn("/api/meeting-minutes-final/jobs?limit=100", jobs_page)
         self.assertIn("Job cancellation requested", jobs_page)
