@@ -128,13 +128,13 @@ pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:#071126;
     app.innerHTML = `
       <section class="panel">
         <h1>Project context</h1>
-        <p class="intro">This is the history/context layer that future /project-update-test trend analysis can consume before analysing a new transcript.</p>
+        <p class="intro">This page shows the project history used when analysing new update transcripts.</p>
         <div class="actions">
           <label>Project name <input id="projectNameInput" type="text" value="${escapeHtml(context.projectName || 'Project update test')}" /></label>
           <button id="loadContextBtn" type="button">Load context</button>
           <button id="createSnapshotBtn" type="button" ${context.found ? '' : 'disabled'}>Create context snapshot</button>
           <button id="markOfficialBtn" type="button" class="primary" ${context.found ? '' : 'disabled'}>Mark active context official</button>
-          <button id="cleanupTestsBtn" type="button" ${context.found ? '' : 'disabled'}>Clear test clutter</button>
+          <button id="cleanupTestsBtn" type="button" ${context.found ? '' : 'disabled'}>Tidy draft data</button>
         </div>
         <p id="contextStatus" class="status"></p>
         ${context.found ? '' : '<p class="status error">No saved project exists yet for this name. Create/save a project update report first.</p>'}
@@ -194,7 +194,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:#071126;
         <label>Content <textarea id="knowledgeContent" placeholder="Paste project background here..."></textarea></label>
         <div class="actions" style="margin-top:.75rem">
           <button id="saveKnowledgeBtn" type="button" class="primary" ${context.projectId ? '' : 'disabled'}>Save knowledge</button>
-          <button id="processKnowledgeBtn" type="button" ${context.projectId ? '' : 'disabled'}>Process embedding queue</button>
+          <button id="processKnowledgeBtn" type="button" ${context.projectId ? '' : 'disabled'}>Update searchable memory</button>
         </div>
         <p id="knowledgeStatus" class="status"></p>
         <div id="knowledgeList" class="table-scroll"><table><tbody><tr><td>Loading knowledge items...</td></tr></tbody></table></div>
@@ -222,7 +222,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:#071126;
         <div id="knowledgeAskResult" class="empty-state">Ask a question to retrieve relevant project memory.</div>
       </section>
       <section class="panel">
-        <details><summary>Raw context JSON</summary>${renderJson(context)}</details>
+        <details><summary>Advanced context export</summary>${renderJson(context)}</details>
       </section>
     `;
 
@@ -283,7 +283,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:#071126;
     document.getElementById('cleanupTestsBtn').addEventListener('click', async () => {
       const button = document.getElementById('cleanupTestsBtn');
       const status = document.getElementById('contextStatus');
-      if (!window.confirm('Clear test clutter for this project? This archives draft reports, deactivates non-official milestones/risks, and removes non-official context snapshots. Official items stay active.')) return;
+      if (!window.confirm('Tidy draft data for this project? This archives draft reports, deactivates non-official milestones/risks, and removes non-official context snapshots. Official items stay active.')) return;
       button.disabled = true;
       status.className = 'status';
       status.textContent = 'Clearing test clutter...';

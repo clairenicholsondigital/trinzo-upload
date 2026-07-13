@@ -222,6 +222,7 @@ async function saveProjectReportDetail(reportId, payload = {}) {
     ? String(payload.reportName || '').trim()
     : String(existing.reportName || existing.fileName || '').trim();
   const nextVersion = Number(latest.versionNumber || 0) + 1;
+  const isAutosave = payload.autosave === true;
   const nextPayload = {
     ...latestPayload,
     projectReport: {
@@ -246,13 +247,26 @@ async function saveProjectReportDetail(reportId, payload = {}) {
        WHERE id = $4`,
       [reportStatus, reportName || `Report ${id}`, payload.savedBy || 'OpenClaw', id]
     );
-    const inserted = await client.query(
-      `INSERT INTO project_report_versions (report_id, version_number, change_type, change_summary, saved_by, report_payload)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id`,
-      [id, nextVersion, isApproved ? 'approved' : 'user_edit', payload.changeSummary || 'Saved from report detail page.', payload.savedBy || 'OpenClaw', JSON.stringify(nextPayload)]
-    );
-    newVersionId = inserted.rows[0].id;
+    if (isAutosave && latest.changeType === 'autosave' && Number(latest.versionId || 0) > 0 && !isApproved) {
+      await client.query(
+        `UPDATE project_report_versions
+         SET change_summary = $1,
+             saved_by = $2,
+             report_payload = $3,
+             created_at = NOW()
+         WHERE id = $4 AND report_id = $5`,
+        [payload.changeSummary || 'Autosaved draft from report detail page.', payload.savedBy || 'OpenClaw', JSON.stringify(nextPayload), Number(latest.versionId), id]
+      );
+      newVersionId = Number(latest.versionId);
+    } else {
+      const inserted = await client.query(
+        `INSERT INTO project_report_versions (report_id, version_number, change_type, change_summary, saved_by, report_payload)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING id`,
+        [id, nextVersion, isApproved ? 'approved' : isAutosave ? 'autosave' : 'user_edit', payload.changeSummary || (isAutosave ? 'Autosaved draft from report detail page.' : 'Saved from report detail page.'), payload.savedBy || 'OpenClaw', JSON.stringify(nextPayload)]
+      );
+      newVersionId = inserted.rows[0].id;
+    }
     if (isApproved) {
       await client.query('UPDATE project_reports SET approved_version_id = $1 WHERE id = $2', [newVersionId, id]);
     }

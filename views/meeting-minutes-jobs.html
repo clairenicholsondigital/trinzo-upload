@@ -184,6 +184,8 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   let latestResultPayload = null;
   let latestResultRows = [];
   let autosaveTimer = null;
+  let editDirty = false;
+  let editFocused = false;
   let timer = null;
 
   function escapeHtml(value) {
@@ -219,6 +221,12 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
 
   function statusClass(status) {
     return String(status || '').toLowerCase().replace(/[^a-z0-9_-]+/g, '_');
+  }
+
+  function friendlyLabel(value) {
+    const text = String(value || '').replace(/[_-]+/g, ' ').trim();
+    if (!text) return '—';
+    return text.replace(/\b\w/g, (letter) => letter.toUpperCase());
   }
 
   function asArray(value) {
@@ -780,6 +788,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
       });
       latestResultPayload = payload.result || latestResultPayload;
       if (payload.result) resultJson.textContent = JSON.stringify(payload.result, null, 2);
+      editDirty = false;
       setEditStatus(`${automatic ? 'Autosaved' : 'Saved'} at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`, 'success');
     } catch (error) {
       setEditStatus(error.message || 'Could not save edits.', 'error');
@@ -787,6 +796,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   }
 
   function queueAutosave() {
+    editDirty = true;
     setEditStatus('Unsaved changes...');
     clearTimeout(autosaveTimer);
     autosaveTimer = setTimeout(() => saveEditedResult(true), 1000);
@@ -796,7 +806,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     const pct = Math.max(0, Math.min(100, Number(job.progressPercent || 0)));
     return `
       <div class="progress">
-        <div>${pct}% · ${escapeHtml(job.stage || job.status || 'queued')}</div>
+        <div>${pct}% · ${escapeHtml(friendlyLabel(job.stage || job.status || 'queued'))}</div>
         <div class="track"><div class="fill" style="width:${pct}%"></div></div>
         <small class="muted">${escapeHtml(job.statusMessage || '')}</small>
       </div>
@@ -826,7 +836,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
             <tr>
               <td>#${escapeHtml(job.jobId)}<br><small class="muted">${escapeHtml(formatDate(job.createdAt))}</small></td>
               <td>${escapeHtml(job.meetingTitle || 'Meeting minutes job')}<br><small class="muted">${escapeHtml(job.fileName || `${job.transcriptLength || 0} chars`)}</small></td>
-              <td><span class="status ${statusClass(job.status)}">${escapeHtml(job.status || 'queued')}</span>${job.errorMessage ? `<br><small class="muted">${escapeHtml(job.errorMessage)}</small>` : ''}</td>
+              <td><span class="status ${statusClass(job.status)}">${escapeHtml(friendlyLabel(job.status || 'queued'))}</span>${job.errorMessage ? `<br><small class="muted">${escapeHtml(job.errorMessage)}</small>` : ''}</td>
               <td>${renderProgress(job)}</td>
               <td>${escapeHtml(runtime(job))}</td>
               <td>${escapeHtml(job.attempts || 0)} / ${escapeHtml(job.maxAttempts || 0)}</td>
@@ -853,12 +863,12 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     if (!job) return;
     activeJobId = job.jobId;
     detailPanel.hidden = false;
-    detailTitle.textContent = `Job #${job.jobId}: ${job.meetingTitle || 'Meeting minutes job'}`;
+    detailTitle.textContent = `Minutes generation #${job.jobId}: ${job.meetingTitle || 'Meeting minutes job'}`;
     retryBtn.disabled = job.status !== 'failed' && job.status !== 'completed';
     cancelBtn.disabled = job.status !== 'queued' && job.status !== 'running';
     detailSummary.innerHTML = [
-      summaryItem('Status', job.status),
-      summaryItem('Stage', job.stage),
+      summaryItem('Status', friendlyLabel(job.status)),
+      summaryItem('Progress step', friendlyLabel(job.stage)),
       summaryItem('Progress', `${job.progressPercent || 0}%`),
       summaryItem('Message', job.statusMessage || job.errorMessage),
       summaryItem('Runtime', runtime(job)),
@@ -915,6 +925,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
 
   async function loadDetail() {
     if (!activeJobId) return;
+    if (editDirty || editFocused || autosaveTimer) return;
     const payload = await fetchJson(`/api/meeting-minutes-final/jobs/${encodeURIComponent(activeJobId)}`);
     renderDetail(payload);
   }
@@ -974,6 +985,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
       setEditStatus('Downloaded edited JSON.', 'success');
     }
     if (event.target.closest('#clearEditedRowsBtn')) {
+      if (!window.confirm('Clear all edited rows from this result? Save afterwards only if you want the empty table to persist.')) return;
       latestResultRows = [];
       const tbody = resultView.querySelector('.minutes-table tbody');
       if (tbody) tbody.innerHTML = '';
@@ -983,13 +995,21 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   resultView.addEventListener('input', (event) => {
     if (event.target.closest('[data-edit-field]')) queueAutosave();
   });
+  resultView.addEventListener('focusin', (event) => {
+    if (event.target.closest('[data-edit-field]')) editFocused = true;
+  });
+  resultView.addEventListener('focusout', () => {
+    setTimeout(() => {
+      editFocused = Boolean(resultView.querySelector('[data-edit-field]:focus'));
+    }, 0);
+  });
   retryBtn.addEventListener('click', () => activeJobId && act('retry', activeJobId));
   cancelBtn.addEventListener('click', () => activeJobId && act('cancel', activeJobId));
   refreshBtn.addEventListener('click', refresh);
 
   if (resultOnly) {
     listPanel.hidden = true;
-    document.title = activeJobId ? `Meeting Minutes Result #${activeJobId}` : 'Meeting Minutes Result';
+    document.title = activeJobId ? `Meeting minutes result #${activeJobId}` : 'Meeting minutes result';
   }
   refresh();
   timer = setInterval(refresh, 5000);

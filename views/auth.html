@@ -17,14 +17,14 @@
 <h1>Authentication</h1>
 <ul>
 <li><a href='/auth/login'>Login</a></li>
-<li><a href='/auth/register'>Register</a></li>
-<li><a href='/auth/forgot-password'>Forgot Password</a></li>
+<li><a href='/auth/forgot-password'>Reset password</a></li>
 </ul>
+<p>Self-registration is disabled. Ask an administrator to create an account.</p>
 <button id='logout'>Logout</button>
-<pre id='out'></pre>
+<p id='out' role='status'></p>
 <script>
 const out=document.getElementById('out');
-async function me(){const r=await fetch('/api/auth/me'); out.textContent=JSON.stringify(await r.json(),null,2);} me();
-document.getElementById('logout').onclick=async()=>{const r=await fetch('/api/auth/logout',{method:'POST'}); out.textContent=JSON.stringify(await r.json(),null,2)};
+async function me(){const r=await fetch('/api/auth/me'); const data=await r.json().catch(()=>({})); out.textContent=r.ok && data.authenticated ? `Signed in as ${data.user.email}.` : 'Not signed in.';} me();
+document.getElementById('logout').onclick=async()=>{await fetch('/api/auth/logout',{method:'POST'}).catch(()=>null); out.textContent='Signed out.'};
 </script>
 </body></html>

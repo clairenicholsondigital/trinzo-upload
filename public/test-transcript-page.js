@@ -73,6 +73,7 @@ function buildTranscriptTestPage(config) {
           <h2>Project report</h2>
         </div>
         <div class="actions">
+          <button id="saveProjectReportDraftBtn" class="secondary" type="button">Save report</button>
           <button id="downloadProjectReportPdfBtn" class="secondary" type="button">Download PDF</button>
           <button id="openProjectReportFullScreenBtn" class="secondary" type="button">Open in full screen</button>
         </div>
@@ -89,10 +90,10 @@ function buildTranscriptTestPage(config) {
 
     <section id="jsonPanel" class="panel hidden">
       <details class="raw-json">
-        <summary>Backend & Debug Information</summary>
+        <summary>Advanced details</summary>
         <div class="json-heading">
-          <h2>Backend & Debug Information</h2>
-          <button id="copyBtn" class="secondary" type="button">Copy JSON</button>
+          <h2>Advanced details</h2>
+          <button id="copyBtn" class="secondary" type="button">Copy data</button>
         </div>
         <pre id="jsonOutput"></pre>
       </details>
@@ -123,6 +124,7 @@ function buildTranscriptTestPage(config) {
   const projectReportOutput = document.getElementById('projectReportOutput');
   const projectReportPrintOutput = document.getElementById('projectReportPrintOutput');
   const downloadProjectReportPdfBtn = document.getElementById('downloadProjectReportPdfBtn');
+  const saveProjectReportDraftBtn = document.getElementById('saveProjectReportDraftBtn');
   const openProjectReportFullScreenBtn = document.getElementById('openProjectReportFullScreenBtn');
   const jsonPanel = document.getElementById('jsonPanel');
   const jsonOutput = document.getElementById('jsonOutput');
@@ -199,13 +201,13 @@ function buildTranscriptTestPage(config) {
       const projects = Array.isArray(payload.projects) ? payload.projects : [];
       state.projects = projects;
       projectPicker.innerHTML = [
-        '<option value="">Project update test / default</option>',
+        '<option value="">Default project</option>',
         ...projects.map((project) => `<option value="${escapeHtml(project.projectId)}">${escapeHtml(project.projectName || `Project ${project.projectId}`)} (${project.reportCount || 0} reports, ${project.activeMilestoneCount || 0} milestones)</option>`)
       ].join('');
       if (selected && projects.some((project) => String(project.projectId) === selected)) projectPicker.value = selected;
       populateProjectForm(projectById(projectPicker.value));
     } catch (error) {
-      projectPicker.innerHTML = '<option value="">Project update test / default</option>';
+      projectPicker.innerHTML = '<option value="">Default project</option>';
       setMessage(`Project list unavailable; uploads will use the default project name. ${error.message || ''}`.trim(), 'error');
     }
   }
@@ -751,7 +753,7 @@ function buildTranscriptTestPage(config) {
           <textarea readonly>${escapeHtml(transcript || 'Transcript text is not available in this browser session.')}</textarea>
         </label>
         <details class="raw-json wide">
-          <summary>Backend & Debug Information</summary>
+          <summary>Original backend response</summary>
           <label class="wide">Backend JSON
             <textarea readonly>${escapeHtml(JSON.stringify(backendPayload, null, 2))}</textarea>
           </label>
@@ -1004,7 +1006,39 @@ function buildTranscriptTestPage(config) {
   async function copyJson() {
     if (!state.result) return;
     await navigator.clipboard.writeText(JSON.stringify(state.result, null, 2));
-    setMessage('JSON copied to clipboard.', 'success');
+    setMessage('Data copied to clipboard.', 'success');
+  }
+
+  async function saveCurrentProjectReport() {
+    refreshProjectReportState();
+    const persistence = state.result && state.result.projectReportPersistence ? state.result.projectReportPersistence : {};
+    const reportId = persistence.reportId || persistence.report_id || '';
+    if (!reportId || !state.projectReport) {
+      setMessage('Process meeting with saving enabled before saving report edits.', 'error');
+      return;
+    }
+    saveProjectReportDraftBtn.disabled = true;
+    try {
+      const response = await fetch(`/api/project-update-test/reports/${encodeURIComponent(reportId)}`, {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectReport: state.projectReport,
+          reportName: state.result.fileName || state.result.projectName || `Report ${reportId}`,
+          reportStatus: state.projectReport.reportStatus || 'draft',
+          changeSummary: 'Saved from project update page.'
+        })
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload || payload.ok === false) throw new Error(payload?.error || 'Could not save report.');
+      setAutosaveStatus(`Saved report at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`);
+      setMessage('Report edits saved.', 'success');
+    } catch (error) {
+      setMessage(error.message || 'Could not save report.', 'error');
+    } finally {
+      saveProjectReportDraftBtn.disabled = false;
+    }
   }
 
   goBtn.addEventListener('click', submitTranscript);
@@ -1028,6 +1062,7 @@ function buildTranscriptTestPage(config) {
   if (saveProjectBtn) saveProjectBtn.addEventListener('click', saveProject);
   if (deleteProjectBtn) deleteProjectBtn.addEventListener('click', deleteSelectedProject);
   copyBtn.addEventListener('click', copyJson);
+  saveProjectReportDraftBtn.addEventListener('click', saveCurrentProjectReport);
   downloadProjectReportPdfBtn.addEventListener('click', () => {
     refreshProjectReportState();
     if (!state.projectReport) return;
@@ -1349,7 +1384,7 @@ function buildTranscriptMinilmOnlyPage(config) {
     <section id="minilmOnlyOutputPanel" class="panel hidden">
       <div class="json-heading">
         <h2>Minutes output</h2>
-        <button id="copyMinilmOnlyOutputBtn" class="secondary" type="button">Copy schema JSON</button>
+        <button id="copyMinilmOnlyOutputBtn" class="secondary" type="button">Copy minutes data</button>
       </div>
       <div id="minilmOnlyOutput"></div>
       <div class="panel-actions">
@@ -1362,7 +1397,7 @@ function buildTranscriptMinilmOnlyPage(config) {
     <section id="minilmOnlyDiagnosticsPanel" class="panel hidden">
       <div class="accordion">
         <details>
-          <summary>Details</summary>
+          <summary>Advanced details</summary>
           <div class="accordion-body">
             <div class="accordion">
               <details>
@@ -1372,10 +1407,10 @@ function buildTranscriptMinilmOnlyPage(config) {
                 </div>
               </details>
               <details>
-                <summary>Raw output</summary>
+                <summary>Original output</summary>
                 <div class="accordion-body">
                   <div class="json-heading">
-                    <span class="note">Current raw MiniLM-only payload</span>
+                    <span class="note">Original MiniLM-only payload</span>
                     <button id="copyMinilmOnlyRawBtn" class="secondary" type="button">Copy raw output</button>
                   </div>
                   <pre id="minilmOnlyRawOutput"></pre>

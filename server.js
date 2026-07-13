@@ -89,35 +89,35 @@ app.get('/project-update-test', authRoutes.requireAuth, (req, res) => {
   sendView(res, 'project-update-test.html').catch((error) => res.status(404).send(error.message));
 });
 
-app.get('/project-update-test/reports', (req, res) => {
+app.get('/project-update-test/reports', authRoutes.requireAuth, (req, res) => {
   sendView(res, 'project-update-reports.html').catch((error) => res.status(404).send(error.message));
 });
 
-app.get('/project-update-test/reports/:reportId', (req, res) => {
+app.get('/project-update-test/reports/:reportId', authRoutes.requireAuth, (req, res) => {
   sendView(res, 'project-update-reports.html').catch((error) => res.status(404).send(error.message));
 });
 
-app.get('/project-update-test/milestones', (req, res) => {
+app.get('/project-update-test/milestones', authRoutes.requireAuth, (req, res) => {
   sendView(res, 'project-update-milestones.html').catch((error) => res.status(404).send(error.message));
 });
 
-app.get('/project-update-test/milestones/:milestoneId', (req, res) => {
+app.get('/project-update-test/milestones/:milestoneId', authRoutes.requireAuth, (req, res) => {
   sendView(res, 'project-update-milestones.html').catch((error) => res.status(404).send(error.message));
 });
 
-app.get('/project-update-test/context', (req, res) => {
+app.get('/project-update-test/context', authRoutes.requireAuth, (req, res) => {
   sendView(res, 'project-update-context.html').catch((error) => res.status(404).send(error.message));
 });
 
-app.get('/project-update-test/context/snapshots/:snapshotId', (req, res) => {
+app.get('/project-update-test/context/snapshots/:snapshotId', authRoutes.requireAuth, (req, res) => {
   sendView(res, 'project-update-context.html').catch((error) => res.status(404).send(error.message));
 });
 
-app.get('/project-update-test/roadmap', (req, res) => {
+app.get('/project-update-test/roadmap', authRoutes.requireAuth, (req, res) => {
   sendView(res, 'project-update-roadmap.html').catch((error) => res.status(404).send(error.message));
 });
 
-app.get('/roadmap', (req, res) => {
+app.get('/roadmap', authRoutes.requireAuth, (req, res) => {
   sendView(res, 'project-update-roadmap.html').catch((error) => res.status(404).send(error.message));
 });
 

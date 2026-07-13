@@ -9,7 +9,7 @@
     })(window, document, "clarity", "script", "x0ats5auf9");
 </script>
   <meta charset='utf-8'>
-  <title>Register</title>
+  <title>Account access</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
@@ -17,14 +17,8 @@
     body { font-family:"Roboto",sans-serif; font-optical-sizing:auto; font-style:normal; font-variation-settings:"wdth" 100; }
   </style>
 </head>
-<body><h1>Register</h1>
+<body><h1>Account access</h1>
 <p><a href='/auth'>Back to auth</a></p>
-<input id='fullName' placeholder='Full name'><input id='email' placeholder='Email'><input id='password' type='password' placeholder='Password'><button id='go'>Register</button><pre id='out'></pre>
-<script>
-document.getElementById('go').onclick=async()=>{
-  const r=await fetch('/api/auth/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fullName:fullName.value,email:email.value,password:password.value})});
-  const data = await r.json();
-  out.textContent=JSON.stringify(data,null,2);
-  if (r.ok && data.success) window.location.href = '/register-success';
-}
-</script></body></html>
+<p>Self-registration is disabled. Ask an administrator to create an account, then use the login page.</p>
+<p><a href='/auth/login'>Go to login</a></p>
+</body></html>
