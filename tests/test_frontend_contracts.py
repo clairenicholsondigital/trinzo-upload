@@ -188,11 +188,18 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("meetingLocation", jobs_page)
         self.assertIn("meetingLocationText", jobs_page)
         self.assertIn("Microsoft Teams", jobs_page)
+        self.assertIn("discussionTopicLookup", jobs_page)
+        self.assertIn("addDiscussionRowsFromMeetingMinutes", jobs_page)
+        self.assertIn("data-edit-field=\"topic\"", jobs_page)
+        self.assertIn("<th>Topic</th>", jobs_page)
         self.assertIn("saveEditedResult", jobs_page)
         self.assertIn("queueAutosave", jobs_page)
         self.assertIn("Copy table text", jobs_page)
         self.assertIn("Download edited JSON", jobs_page)
         self.assertIn("editedMeta", api)
+        self.assertIn("topic: String(row?.topic", api)
+        self.assertIn("detail: String(row?.detail", api)
+        self.assertIn("evidence: String(row?.evidence", api)
 
 
 if __name__ == "__main__":

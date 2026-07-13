@@ -784,8 +784,11 @@ router.patch('/meeting-minutes-final/jobs/:jobId/result', requireAuth, async (re
 
     const safeRows = editedRows.slice(0, 500).map((row) => ({
       type: String(row?.type || 'Note').slice(0, 80),
+      topic: String(row?.topic || '').slice(0, 300),
       owner: String(row?.owner || '').slice(0, 300),
-      text: String(row?.text || '').slice(0, 10000)
+      text: String(row?.text || '').slice(0, 10000),
+      detail: String(row?.detail || '').slice(0, 10000),
+      evidence: String(row?.evidence || '').slice(0, 10000)
     })).filter((row) => row.text.trim());
 
     const currentPayload = job.resultPayload && typeof job.resultPayload === 'object' ? job.resultPayload : {};

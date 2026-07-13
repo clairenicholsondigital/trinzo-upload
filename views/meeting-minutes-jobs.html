@@ -78,6 +78,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:620px; background:#071126;
 .minutes-table th { text-align:left; color:var(--accent); background:#071126; font-size:.9rem; }
 .minutes-table td { background:#081227; line-height:1.45; }
 .minutes-table .type-cell { width:14%; font-weight:700; }
+.minutes-table .topic-cell { width:18%; color:#dbeafe; }
 .minutes-table .owner-cell { width:16%; color:#dbeafe; }
 .minutes-table .text-cell { width:34%; }
 .minutes-table .detail-cell { width:18%; color:#dbeafe; }
@@ -315,6 +316,11 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     return valueText(firstDefined(item.evidence, item.sourceSnippet, item._evidence, item.source, ''));
   }
 
+  function rowTopic(item) {
+    if (!item || typeof item !== 'object') return '';
+    return cleanText(firstDefined(item.topic, item.itemTopic, item.sectionTopic, item.heading, ''));
+  }
+
   function rowText(item, textKeyCandidates) {
     if (typeof item === 'string') return cleanText(item);
     if (!item || typeof item !== 'object') return '';
@@ -332,19 +338,42 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     return missingLocationValues.has(location.toLowerCase()) ? 'Microsoft Teams' : location;
   }
 
-  function addRowsFromArray(rows, source, type, textKeyCandidates) {
+  function discussionTopicLookup(output) {
+    const lookup = new Map();
+    asArray(output.meetingMinutes).forEach((section) => {
+      const topic = cleanText(section?.topic || '');
+      if (!topic) return;
+      asArray(section?.discussionPoints).forEach((point) => {
+        const text = rowText(point, ['discussionPoint', 'text', 'summary']);
+        const key = text.toLowerCase();
+        if (key && !lookup.has(key)) lookup.set(key, topic);
+      });
+    });
+    return lookup;
+  }
+
+  function addRowsFromArray(rows, source, type, textKeyCandidates, options = {}) {
     asArray(source).forEach((item, index) => {
       if (typeof item === 'string') {
         const text = cleanText(item);
-        if (text) rows.push({ id: `${type}-${index}`, type, owner: '', text, detail: '', evidence: '' });
+        if (text) rows.push({
+          id: `${options.idPrefix || type}-${index}`,
+          type,
+          topic: cleanText(options.topic || options.topicLookup?.get(text.toLowerCase()) || ''),
+          owner: '',
+          text,
+          detail: '',
+          evidence: ''
+        });
         return;
       }
       if (!item || typeof item !== 'object') return;
       const text = rowText(item, textKeyCandidates);
       if (!text) return;
       rows.push({
-        id: `${type}-${index}`,
+        id: `${options.idPrefix || type}-${index}`,
         type,
+        topic: rowTopic(item) || cleanText(options.topic || options.topicLookup?.get(text.toLowerCase()) || ''),
         owner: cleanText(firstDefined(item.owner, item.speaker, item.meetingActionPointOwner, getEvidenceSpeaker(item), '')),
         text,
         detail: rowDetail(item),
@@ -353,11 +382,25 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     });
   }
 
+  function addDiscussionRowsFromMeetingMinutes(rows, output) {
+    asArray(output.meetingMinutes).forEach((section, sectionIndex) => {
+      const topic = cleanText(section?.topic || '');
+      addRowsFromArray(
+        rows,
+        section?.discussionPoints,
+        'Discussion',
+        ['discussionPoint', 'text', 'summary'],
+        { topic, idPrefix: `meeting-minute-${sectionIndex}` }
+      );
+    });
+  }
+
   function buildResultRows(output) {
     if (output.humanEdited && Array.isArray(output.editedRows)) {
       return output.editedRows.map((row, index) => ({
         id: `edited-${index}`,
         type: cleanText(row?.type || 'Note') || 'Note',
+        topic: cleanText(row?.topic || ''),
         owner: cleanText(row?.owner || ''),
         text: cleanText(row?.text || ''),
         detail: cleanMultiline(row?.detail || ''),
@@ -367,12 +410,13 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
 
     const rows = [];
     if (output.executiveSummary) {
-      rows.push({ id: 'summary-0', type: 'Summary', owner: '', text: cleanText(output.executiveSummary), detail: '', evidence: '' });
+      rows.push({ id: 'summary-0', type: 'Summary', topic: '', owner: '', text: cleanText(output.executiveSummary), detail: '', evidence: '' });
     }
     asArray(output.meetingObjectives).forEach((text, index) => {
       const cleaned = cleanText(text);
-      if (cleaned) rows.push({ id: `objective-${index}`, type: 'Objective', owner: '', text: cleaned, detail: '', evidence: '' });
+      if (cleaned) rows.push({ id: `objective-${index}`, type: 'Objective', topic: '', owner: '', text: cleaned, detail: '', evidence: '' });
     });
+    const topicLookup = discussionTopicLookup(output);
     addRowsFromArray(rows, output.actions, 'Action', ['action', 'task', 'meetingActionPoint', 'text']);
     asArray(output.meetingActionPoint).forEach((text, index) => {
       const cleaned = cleanText(text);
@@ -380,6 +424,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
       rows.push({
         id: `meeting-action-${index}`,
         type: 'Action',
+        topic: '',
         owner: cleanText(asArray(output.meetingActionPointOwner)[index] || ''),
         text: cleaned,
         detail: cleanText(asArray(output.meetingActionPointDeadline)[index] || ''),
@@ -393,9 +438,10 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     addRowsFromArray(rows, output.dependencies, 'Dependency', ['text', 'summary', 'dependency']);
     addRowsFromArray(rows, output.complianceFollowUps, 'Compliance follow-up', ['text', 'summary', 'action']);
     addRowsFromArray(rows, output.termsForReview, 'Term for review', ['term', 'text', 'summary', 'normalisedTerm']);
-    addRowsFromArray(rows, output.finalDiscussionPoints || output.discussionPointDetails, 'Discussion', ['discussionPoint', 'text', 'summary']);
+    addDiscussionRowsFromMeetingMinutes(rows, output);
+    addRowsFromArray(rows, output.finalDiscussionPoints || output.discussionPointDetails, 'Discussion', ['discussionPoint', 'text', 'summary'], { topicLookup });
     addRowsFromArray(rows, output.statusReviewWorkstreams || output.statusReviewPoints, 'Status', ['topic', 'summary', 'text']);
-    addRowsFromArray(rows, output.discussionPoints, 'Discussion', ['discussionPoint', 'text', 'summary']);
+    addRowsFromArray(rows, output.discussionPoints, 'Discussion', ['discussionPoint', 'text', 'summary'], { topicLookup });
 
     const seen = new Set();
     return rows.filter((row) => {
@@ -495,6 +541,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   function hiddenRowFields(type, index, row, visibleFields = {}) {
     return `
       <input type="hidden" data-edit-field="type" data-edit-index="${index}" value="${escapeAttribute(type)}" />
+      ${visibleFields.topic ? '' : `<input type="hidden" data-edit-field="topic" data-edit-index="${index}" value="${escapeAttribute(row.topic || '')}" />`}
       ${visibleFields.owner ? '' : `<input type="hidden" data-edit-field="owner" data-edit-index="${index}" value="${escapeAttribute(row.owner || '')}" />`}
       ${visibleFields.detail ? '' : `<input type="hidden" data-edit-field="detail" data-edit-index="${index}" value="${escapeAttribute(row.detail || '')}" />`}
       ${visibleFields.evidence ? '' : `<input type="hidden" data-edit-field="evidence" data-edit-index="${index}" value="${escapeAttribute(row.evidence || '')}" />`}
@@ -502,6 +549,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   }
 
   function renderResultTableSection(type, groupedRows) {
+    const showTopic = type === 'Discussion' || sectionHasField(groupedRows, 'topic');
     const showOwner = type !== 'Discussion' && sectionHasField(groupedRows, 'owner');
     const showDetail = type !== 'Discussion' && sectionHasField(groupedRows, 'detail');
     const showEvidence = type !== 'Discussion' && sectionHasField(groupedRows, 'evidence');
@@ -514,6 +562,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
           <table class="minutes-table">
             <thead>
               <tr>
+                ${showTopic ? '<th>Topic</th>' : ''}
                 ${showOwner ? '<th>Owner / speaker</th>' : ''}
                 <th>${escapeHtml(outputHeader)}</th>
                 ${showDetail ? '<th>Status / deadline / detail</th>' : ''}
@@ -523,9 +572,10 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
             <tbody>
               ${groupedRows.map(({ row, index }) => `
                 <tr>
+                  ${showTopic ? `<td class="topic-cell"><input data-edit-field="topic" data-edit-index="${index}" value="${escapeAttribute(row.topic || '')}" /></td>` : ''}
                   ${showOwner ? `<td class="owner-cell"><input data-edit-field="owner" data-edit-index="${index}" value="${escapeAttribute(row.owner || '')}" /></td>` : ''}
                   <td class="text-cell">
-                    ${hiddenRowFields(type, index, row, { owner: showOwner, detail: showDetail, evidence: showEvidence })}
+                    ${hiddenRowFields(type, index, row, { topic: showTopic, owner: showOwner, detail: showDetail, evidence: showEvidence })}
                     <textarea data-edit-field="text" data-edit-index="${index}">${escapeHtml(row.text)}</textarea>
                   </td>
                   ${showDetail ? `<td class="detail-cell"><textarea data-edit-field="detail" data-edit-index="${index}" placeholder="Status, deadline, dependency, confidence...">${escapeHtml(row.detail || '')}</textarea></td>` : ''}
@@ -587,6 +637,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     return rows
       .map((row) => ({
         type: cleanText(row.type || 'Note') || 'Note',
+        topic: cleanText(row.topic || ''),
         owner: cleanText(row.owner || ''),
         text: cleanText(row.text || ''),
         detail: cleanMultiline(row.detail || ''),
