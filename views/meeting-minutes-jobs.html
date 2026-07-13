@@ -306,6 +306,11 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     });
     addRowsFromArray(rows, output.decisionDetails, 'Decision', ['decision', 'decisionPoint', 'text', 'summary']);
     addRowsFromArray(rows, output.decisions, 'Decision', ['decision', 'decisionPoint', 'text', 'summary']);
+    addRowsFromArray(rows, output.confirmedPoints, 'Confirmed', ['text', 'summary', 'point']);
+    addRowsFromArray(rows, output.risksAndIssues, 'Risk / issue', ['text', 'summary', 'risk', 'issue']);
+    addRowsFromArray(rows, output.dependencies, 'Dependency', ['text', 'summary', 'dependency']);
+    addRowsFromArray(rows, output.complianceFollowUps, 'Compliance follow-up', ['text', 'summary', 'action']);
+    addRowsFromArray(rows, output.termsForReview, 'Term for review', ['term', 'normalisedTerm', 'text', 'summary']);
     addRowsFromArray(rows, output.finalDiscussionPoints || output.discussionPointDetails, 'Discussion', ['discussionPoint', 'text', 'summary']);
     addRowsFromArray(rows, output.statusReviewWorkstreams || output.statusReviewPoints, 'Status', ['topic', 'summary', 'text']);
     addRowsFromArray(rows, output.discussionPoints, 'Discussion', ['discussionPoint', 'text', 'summary']);

@@ -44,6 +44,39 @@ class MeetingMinutesProjectStatusEvidenceTest(unittest.TestCase):
         self.assertIn("attention guide", prompt)
         self.assertIn("transcript remains the source of truth", prompt)
         self.assertIn("approval_needed", prompt)
+        self.assertIn('"confirmedPoints"', prompt)
+        self.assertIn('"risksAndIssues"', prompt)
+        self.assertIn('"dependencies"', prompt)
+        self.assertIn('"complianceFollowUps"', prompt)
+        self.assertIn('"termsForReview"', prompt)
+        self.assertIn("Do not make regulatory, compliance, audit or quality-system meetings falsely neat", prompt)
+        self.assertIn("Preserve uncertainty, dependencies and ownership ambiguity", prompt)
+
+    def test_normalise_output_keeps_compliance_schema_and_legacy_fields(self):
+        module = load_trooper_module()
+        output = module.normalise_output(
+            {
+                "meetingTitle": "Compliance review",
+                "participants": {"client": ["Orla"], "trinzo": ["Jacqui"]},
+                "otherParticipants": ["John-Paul Hughes"],
+                "confirmedPoints": [{"text": "Goods are fiscally cleared in the Netherlands before onward transport.", "evidence": "fiscal clearance in Netherlands"}],
+                "risksAndIssues": [{"text": "EUDAMED product information was not visible.", "owner": "Not stated", "evidence": "could not see product info"}],
+                "dependencies": [{"text": "MedEnvoy plan and responsibilities need confirmation.", "owner": "Orla", "evidence": "call with Cody"}],
+                "complianceFollowUps": [{"text": "Send the HPRA invoice to Jacqui and Colm for review.", "owner": "Orla", "deadline": "Not stated", "evidence": "send bill to Jacqui and Colm"}],
+                "termsForReview": [{"term": "Udimed", "normalisedTerm": "EUDAMED", "confidence": "high", "reason": "transcription variant"}],
+                "actions": [],
+                "decisions": [],
+            }
+        )
+
+        self.assertEqual(output["otherParticipants"], ["John-Paul Hughes"])
+        self.assertEqual(output["confirmedPoints"][0]["text"], "Goods are fiscally cleared in the Netherlands before onward transport.")
+        self.assertEqual(output["risksAndIssues"][0]["text"], "EUDAMED product information was not visible.")
+        self.assertEqual(output["dependencies"][0]["owner"], "Orla")
+        self.assertEqual(output["complianceFollowUps"][0]["owner"], "Orla")
+        self.assertEqual(output["termsForReview"][0]["normalisedTerm"], "EUDAMED")
+        self.assertIn("Send the HPRA invoice", output["meetingActionPoint"][0])
+        self.assertTrue(output["discussionPoints"])
 
     def test_evidence_pack_cli_fails_open_when_model_is_missing(self):
         with tempfile.NamedTemporaryFile("w", suffix=".txt", encoding="utf-8") as transcript:

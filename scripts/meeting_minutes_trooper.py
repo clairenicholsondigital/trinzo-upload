@@ -70,6 +70,55 @@ def string_list(value: Any, limit: int = 20) -> list[str]:
     return out
 
 
+def first_text(value: Any, keys: list[str] | None = None) -> str:
+    if isinstance(value, str):
+        return clean_text(value)
+    if not isinstance(value, dict):
+        return clean_text(value)
+    for key in keys or ["text", "summary", "point", "issue", "risk", "question", "dependency", "term", "action", "decision"]:
+        text = clean_text(value.get(key))
+        if text:
+            return text
+    return ""
+
+
+def structured_item_list(value: Any, limit: int = 20) -> list[dict[str, str]]:
+    if isinstance(value, str):
+        value = [value]
+    if not isinstance(value, list):
+        return []
+    out: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in value:
+        if isinstance(item, dict):
+            text = first_text(item)
+            if not text:
+                continue
+            row = {
+                "text": text,
+                "status": clean_text(item.get("status")),
+                "owner": clean_text(item.get("owner")),
+                "deadline": clean_text(item.get("deadline") or item.get("target")),
+                "evidence": clean_text(item.get("evidence") or item.get("sourceSnippet")),
+            }
+            for optional in ("category", "term", "normalisedTerm", "confidence", "reason"):
+                if clean_text(item.get(optional)):
+                    row[optional] = clean_text(item.get(optional))
+        else:
+            text = clean_text(item)
+            if not text:
+                continue
+            row = {"text": text, "status": "", "owner": "", "deadline": "", "evidence": ""}
+        key = text.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(row)
+        if len(out) >= limit:
+            break
+    return out
+
+
 def normalise_action(action: Any) -> dict[str, str] | None:
     if not isinstance(action, dict):
         text = clean_text(action)
@@ -92,11 +141,22 @@ def normalise_action(action: Any) -> dict[str, str] | None:
     deadline = clean_text(action.get("meetingActionPointDeadline") or action.get("deadline")) or "Not stated"
     if deadline.lower() in {"none", "null", "unknown", "no deadline", "no deadline agreed"}:
         deadline = "Not stated"
-    return {
+    normalised = {
         "meetingActionPoint": text,
         "meetingActionPointOwner": owner,
         "meetingActionPointDeadline": deadline,
     }
+    if isinstance(action, dict):
+        dependency = clean_text(action.get("dependency"))
+        evidence = clean_text(action.get("evidence") or action.get("sourceSnippet"))
+        confidence = clean_text(action.get("confidence"))
+        if dependency:
+            normalised["dependency"] = dependency
+        if evidence:
+            normalised["evidence"] = evidence
+        if confidence:
+            normalised["confidence"] = confidence
+    return normalised
 
 
 def normalise_participants(value: Any) -> dict[str, list[str]]:
@@ -143,6 +203,17 @@ def discussion_list(value: Any, limit: int = 30) -> list[str]:
     return out
 
 
+def structured_texts(items: list[dict[str, str]], limit: int = 20) -> list[str]:
+    out: list[str] = []
+    for item in items:
+        text = clean_text(item.get("text"))
+        if text:
+            out.append(text)
+        if len(out) >= limit:
+            break
+    return out
+
+
 def normalise_minutes(raw: dict[str, Any], discussion: list[str]) -> list[dict[str, Any]]:
     minutes: list[dict[str, Any]] = []
     for item in raw.get("meetingMinutes") or raw.get("minutes") or []:
@@ -165,17 +236,34 @@ def normalise_minutes(raw: dict[str, Any], discussion: list[str]) -> list[dict[s
 
 
 def normalise_output(raw: dict[str, Any]) -> dict[str, Any]:
-    discussion = discussion_list(raw.get("discussionPoints"), limit=30)
-    if not discussion and isinstance(raw.get("risks"), list):
-        risk_points = []
-        for item in raw.get("risks") or []:
-            if isinstance(item, dict):
-                risk_points.append(clean_text(item.get("risk") or item.get("description")))
-            else:
-                risk_points.append(clean_text(item))
-        discussion = string_list(risk_points, limit=30)
+    confirmed_points = structured_item_list(raw.get("confirmedPoints") or raw.get("agreements"), limit=20)
+    risks_and_issues = structured_item_list(raw.get("risksAndIssues") or raw.get("risks") or raw.get("issues"), limit=20)
+    dependencies = structured_item_list(raw.get("dependencies"), limit=20)
+    compliance_followups = structured_item_list(raw.get("complianceFollowUps"), limit=20)
+    terms_for_review = structured_item_list(raw.get("termsForReview"), limit=20)
 
-    actions = [item for item in (normalise_action(a) for a in (raw.get("actions") or raw.get("nextSteps") or [])) if item]
+    discussion = discussion_list(raw.get("discussionPoints"), limit=30)
+    if not discussion:
+        discussion = string_list(
+            [
+                *structured_texts(confirmed_points, limit=8),
+                *structured_texts(risks_and_issues, limit=8),
+                *structured_texts(dependencies, limit=6),
+            ],
+            limit=30,
+        )
+
+    action_source = list(raw.get("actions") or raw.get("nextSteps") or [])
+    for followup in compliance_followups:
+        action_source.append(
+            {
+                "meetingActionPoint": followup.get("text"),
+                "owner": followup.get("owner") or "Not stated",
+                "deadline": followup.get("deadline") or "Not stated",
+                "evidence": followup.get("evidence"),
+            }
+        )
+    actions = [item for item in (normalise_action(a) for a in action_source) if item]
     deduped_actions: list[dict[str, str]] = []
     seen_actions: set[tuple[str, str]] = set()
     for action in actions:
@@ -192,7 +280,13 @@ def normalise_output(raw: dict[str, Any]) -> dict[str, Any]:
         "meetingDescription": clean_text(raw.get("meetingDescription") or raw.get("executiveSummary") or raw.get("summary")),
         "meetingObjectives": string_list(raw.get("meetingObjectives"), limit=8),
         "participants": normalise_participants(raw.get("participants")),
+        "otherParticipants": string_list(raw.get("otherParticipants") or raw.get("participantsOther"), limit=20),
         "executiveSummary": clean_text(raw.get("executiveSummary") or raw.get("summary")),
+        "confirmedPoints": confirmed_points,
+        "risksAndIssues": risks_and_issues,
+        "dependencies": dependencies,
+        "complianceFollowUps": compliance_followups,
+        "termsForReview": terms_for_review,
         "discussionPoints": discussion,
         "decisions": string_list(raw.get("decisions"), limit=15),
         "meetingActionPoint": [a["meetingActionPoint"] for a in deduped_actions],
@@ -201,7 +295,13 @@ def normalise_output(raw: dict[str, Any]) -> dict[str, Any]:
         "actions": deduped_actions,
         "meetingMinutes": normalise_minutes(raw, discussion),
         "nextSteps": [
-            {"action": a["meetingActionPoint"], "owner": a["meetingActionPointOwner"], "deadline": a["meetingActionPointDeadline"]}
+            {
+                "action": a["meetingActionPoint"],
+                "owner": a["meetingActionPointOwner"],
+                "deadline": a["meetingActionPointDeadline"],
+                **({"dependency": a["dependency"]} if a.get("dependency") else {}),
+                **({"evidence": a["evidence"]} if a.get("evidence") else {}),
+            }
             for a in deduped_actions
         ],
         "openQuestions": string_list(raw.get("openQuestions") or raw.get("unresolvedQuestions"), limit=15),
@@ -349,12 +449,18 @@ Return valid JSON only, with exactly this shape:
   "meetingDescription": "",
   "meetingObjectives": [],
   "participants": {{"client": [], "trinzo": []}},
+  "otherParticipants": [],
   "executiveSummary": "",
+  "confirmedPoints": [{{"text": "", "evidence": ""}}],
+  "risksAndIssues": [{{"text": "", "status": "open", "owner": "Not stated", "evidence": ""}}],
+  "dependencies": [{{"text": "", "owner": "Not stated", "deadline": "Not stated", "evidence": ""}}],
+  "complianceFollowUps": [{{"text": "", "owner": "Not stated", "deadline": "Not stated", "evidence": ""}}],
+  "termsForReview": [{{"term": "", "normalisedTerm": "", "reason": "", "confidence": "low|medium|high", "evidence": ""}}],
   "discussionPoints": [],
   "decisions": [],
-  "actions": [{{"meetingActionPoint": "", "meetingActionPointOwner": "Not stated", "meetingActionPointDeadline": "Not stated"}}],
+  "actions": [{{"meetingActionPoint": "", "meetingActionPointOwner": "Not stated", "meetingActionPointDeadline": "Not stated", "dependency": "", "evidence": ""}}],
   "meetingMinutes": [{{"topic": "", "discussionPoints": []}}],
-  "nextSteps": [{{"action": "", "owner": "Not stated", "deadline": "Not stated"}}],
+  "nextSteps": [{{"action": "", "owner": "Not stated", "deadline": "Not stated", "dependency": "", "evidence": ""}}],
   "openQuestions": []
 }}
 
@@ -370,6 +476,14 @@ Operator rules for this task:
 - Prefer fewer high-quality points over many weak points.
 - Deduplicate repeated actions and repeated discussion points.
 - If evidence is weak, omit the point or state "Not stated" rather than filling gaps.
+- Do not make regulatory, compliance, audit or quality-system meetings falsely neat.
+- Do not convert provisional, disputed, unclear or dependent items into settled facts. Preserve uncertainty, dependencies and ownership ambiguity.
+- Put settled factual confirmations in confirmedPoints. Put unresolved compliance gaps, audit risks, missing evidence and regulatory concerns in risksAndIssues.
+- Put external prerequisites, unclear ownership, pending inputs and third-party blockers in dependencies.
+- Put compliance-specific follow-ups in complianceFollowUps, even if they also appear in actions.
+- Put inconsistent, misspelled or uncertain names/terms in termsForReview. Normalise terms only when confidence is high; otherwise flag them for human review.
+- If an attendee appears but affiliation is unclear, include them in otherParticipants rather than guessing client or Trinzo.
+- Every action, risk, dependency and compliance follow-up should include a short evidence phrase from the transcript where possible.
 - If PROJECT_STATUS_EVIDENCE is supplied, use it only as an attention guide for project-management detail that may be easy to miss.
 - PROJECT_STATUS_EVIDENCE is not an independent source of truth. Include a blocker, risk, action, decision, owner, deadline or detail only when the transcript itself supports it.
 """
@@ -517,6 +631,11 @@ def main() -> int:
             "discussionPoints": len(output.get("discussionPoints", [])),
             "decisions": len(output.get("decisions", [])),
             "actions": len(output.get("actions", [])),
+            "confirmedPoints": len(output.get("confirmedPoints", [])),
+            "risksAndIssues": len(output.get("risksAndIssues", [])),
+            "dependencies": len(output.get("dependencies", [])),
+            "complianceFollowUps": len(output.get("complianceFollowUps", [])),
+            "termsForReview": len(output.get("termsForReview", [])),
         },
         "timingMs": {"total": runtime_ms, "trooper": diagnostics.get("runtimeMs", runtime_ms)},
     }
