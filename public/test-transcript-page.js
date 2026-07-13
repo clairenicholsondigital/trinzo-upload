@@ -12,7 +12,7 @@ function buildTranscriptTestPage(config) {
     <section class="panel">
       <h1>${config.title}</h1>
       <p class="intro">${config.intro}</p>
-      ${config.projectReportUi ? `
+      ${config.projectReportUi && !config.fixedProjectId ? `
       <div class="field">
         <label for="projectPicker">Project context</label>
         <select id="projectPicker"><option value="">Loading projects…</option></select>
@@ -213,6 +213,9 @@ function buildTranscriptTestPage(config) {
   }
 
   function selectedProjectPayload() {
+    // When embedded in the workspace, the selected project is owned by the
+    // workspace bar rather than an internal picker.
+    if (config.fixedProjectId) return { projectId: Number(config.fixedProjectId) };
     if (!projectPicker || !projectPicker.value) return {};
     localStorage.setItem(PROJECT_SELECTION_KEY, projectPicker.value);
     return { projectId: Number(projectPicker.value) };
@@ -397,7 +400,10 @@ function buildTranscriptTestPage(config) {
 
   function projectAutosaveKey() {
     const endpoint = String(config.endpoint || 'default').replace(/[^a-z0-9_-]+/gi, '_');
-    return `transcriptTest:${endpoint}:autosave`;
+    // Scope the local draft per project so switching projects in the workspace
+    // does not restore another project's in-progress transcript.
+    const scope = config.fixedProjectId ? String(config.fixedProjectId) : 'all';
+    return `transcriptTest:${endpoint}:${scope}:autosave`;
   }
 
   function setAutosaveStatus(text) {

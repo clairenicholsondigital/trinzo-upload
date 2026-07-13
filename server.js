@@ -85,12 +85,16 @@ app.get('/meeting-minutes-feedback/:feedbackId', authRoutes.requireAuth, (req, r
   sendView(res, 'meeting-minutes-feedback.html').catch((error) => res.status(404).send(error.message));
 });
 
+// The project workspace: one project-first page hosting the Setup → Process →
+// Reports → Insights stages. The old standalone list pages now redirect into the
+// matching workspace stage; the detail pages (single report/milestone/snapshot)
+// are kept as deep-link targets.
 app.get('/project-update-test', authRoutes.requireAuth, (req, res) => {
-  sendView(res, 'project-update-test.html').catch((error) => res.status(404).send(error.message));
+  sendView(res, 'project-update-workspace.html').catch((error) => res.status(404).send(error.message));
 });
 
 app.get('/project-update-test/reports', authRoutes.requireAuth, (req, res) => {
-  sendView(res, 'project-update-reports.html').catch((error) => res.status(404).send(error.message));
+  res.redirect(302, '/project-update-test?stage=reports');
 });
 
 app.get('/project-update-test/reports/:reportId', authRoutes.requireAuth, (req, res) => {
@@ -98,7 +102,7 @@ app.get('/project-update-test/reports/:reportId', authRoutes.requireAuth, (req, 
 });
 
 app.get('/project-update-test/milestones', authRoutes.requireAuth, (req, res) => {
-  sendView(res, 'project-update-milestones.html').catch((error) => res.status(404).send(error.message));
+  res.redirect(302, '/project-update-test?stage=setup');
 });
 
 app.get('/project-update-test/milestones/:milestoneId', authRoutes.requireAuth, (req, res) => {
@@ -106,7 +110,7 @@ app.get('/project-update-test/milestones/:milestoneId', authRoutes.requireAuth, 
 });
 
 app.get('/project-update-test/context', authRoutes.requireAuth, (req, res) => {
-  sendView(res, 'project-update-context.html').catch((error) => res.status(404).send(error.message));
+  res.redirect(302, '/project-update-test?stage=insights');
 });
 
 app.get('/project-update-test/context/snapshots/:snapshotId', authRoutes.requireAuth, (req, res) => {

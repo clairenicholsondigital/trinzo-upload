@@ -85,7 +85,7 @@ test('dashboard and archive keep the active tool infrastructure organised', () =
   assert.ok(serverSource.includes("'/archive/legacy-transcript-workflow': 'index.html'"));
   assert.ok(serverSource.includes("'/meeting-minutes-test': '/archive/meeting-minutes-test'"));
   assert.ok(dashboardPageSource.includes('Meeting transcript to minutes'));
-  assert.ok(dashboardPageSource.includes('Project update tool'));
+  assert.ok(dashboardPageSource.includes('Project workspace'));
   assert.ok(dashboardPageSource.includes('Older labs and prototypes'));
   assert.ok(archivePageSource.includes('Legacy / archived'));
   assert.ok(archivePageSource.includes('/archive/meeting-minutes-minilm-only'));

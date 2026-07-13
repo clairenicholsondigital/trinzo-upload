@@ -481,9 +481,18 @@ async function createProjectMilestone(payload = {}) {
   const baselineFinishDate = payload.baselineFinishDate || payload.baseline_finish_date || payload.deadline || '';
   const forecastFinishDate = payload.forecastFinishDate || payload.forecast_finish_date || payload.deadline || '';
 
+  // Prefer an explicit projectId when supplied so scoped callers (the workspace
+  // Setup stage) never rely on project-name matching; fall back to name lookup.
   let projectId = parseOptionalId(
-    await runPsql('SELECT id::text FROM projects WHERE project_name = $1 ORDER BY id LIMIT 1', [projectName])
+    payload.projectId
+      ? await runPsql('SELECT id::text FROM projects WHERE id = $1 LIMIT 1', [Number(payload.projectId)])
+      : null
   );
+  if (!projectId) {
+    projectId = parseOptionalId(
+      await runPsql('SELECT id::text FROM projects WHERE project_name = $1 ORDER BY id LIMIT 1', [projectName])
+    );
+  }
   if (!projectId) {
     projectId = parseOptionalId(
       await runPsql(

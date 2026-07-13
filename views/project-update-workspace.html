@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script type="text/javascript">
+    (function(c,l,a,r,i,t,y){
+        c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+        t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+        y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+    })(window, document, "clarity", "script", "x0ats5auf9");
+</script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Project workspace</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+:root { color-scheme: dark; --bg:#0b1020; --panel:#11192f; --panel2:#0f172a; --border:#2d3d60; --muted:#95a7cb; --text:#eef3ff; --accent:#17D0C4; --danger:#dc2626; --success:#16a34a; --soft:#071126; }
+* { box-sizing:border-box; }
+body { margin:0; padding:1rem; background:var(--bg); color:var(--text); font-family:Roboto, Arial, Helvetica, sans-serif; line-height:1.45; }
+.container { max-width:1280px; margin:0 auto; }
+.nav { display:flex; gap:.75rem; flex-wrap:wrap; align-items:center; margin-bottom:1rem; }
+a { color:#67e8f9; }
+.panel { background:linear-gradient(145deg,var(--panel),var(--panel2)); border:1px solid var(--border); border-radius:14px; padding:1rem; margin-bottom:1rem; }
+h1 { margin:.2rem 0 .5rem; }
+h2 { margin:.1rem 0 .75rem; font-size:1.1rem; }
+h3 { margin:.1rem 0 .5rem; font-size:1rem; }
+.intro, .muted, .label { color:var(--muted); }
+
+/* Inputs / buttons (shared across stages) */
+button, .button-link { display:inline-block; background:#132847; color:#dbeafe; border:1px solid var(--border); border-radius:8px; padding:.55rem .75rem; font-weight:700; text-decoration:none; white-space:nowrap; cursor:pointer; font:inherit; }
+button.primary { background:linear-gradient(180deg,var(--accent),#0fb5ab); border-color:#0fb5ab; color:#02173B; }
+button.danger { background:#7f1d1d; border-color:#dc2626; color:#fee2e2; }
+button:disabled { opacity:.6; cursor:not-allowed; }
+input, select, textarea { width:100%; background:var(--soft); color:var(--text); border:1px solid var(--border); border-radius:10px; padding:.65rem; font:inherit; }
+textarea { min-height:120px; resize:vertical; }
+label { display:grid; gap:.35rem; color:var(--muted); font-weight:700; }
+
+/* Status lines */
+.status { margin:.75rem 0; color:var(--muted); }
+.status.error { color:#fecaca; }
+.status.success { color:#bbf7d0; }
+
+/* Grids / cards / tables */
+.grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:.75rem; }
+.card, .item { background:var(--soft); border:1px solid var(--border); border-radius:10px; padding:.75rem; }
+.value { margin-top:.25rem; font-weight:700; overflow-wrap:anywhere; }
+.table-scroll { overflow:auto; border:1px solid var(--border); border-radius:10px; background:var(--soft); }
+table { width:100%; border-collapse:separate; border-spacing:0; min-width:860px; }
+th, td { border-bottom:1px solid var(--border); border-right:1px solid var(--border); padding:.65rem; text-align:left; vertical-align:top; }
+thead th { background:#132847; color:#dbeafe; position:sticky; top:0; }
+tr:last-child td { border-bottom:0; }
+th:last-child, td:last-child { border-right:0; }
+.evidence { margin:.5rem 0 0; padding-left:1.1rem; color:#dbeafe; }
+
+/* Forms */
+.form-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.75rem; align-items:end; }
+.form-grid label { color:var(--muted); font-size:.86rem; font-weight:700; }
+.form-grid textarea { min-height:5.5rem; }
+.form-grid .wide { grid-column:span 2; }
+.form-grid .full { grid-column:1 / -1; }
+.actions { display:flex; gap:.65rem; flex-wrap:wrap; align-items:center; }
+.bulk-actions { display:flex; gap:.65rem; flex-wrap:wrap; align-items:center; justify-content:space-between; margin-bottom:.75rem; }
+.bulk-actions .status { margin:0; }
+.select-cell { width:3rem; text-align:center; }
+.select-cell input { width:auto; margin:0; }
+
+/* Colour swatches (RAG) */
+.colour-field { display:flex; align-items:center; justify-content:center; min-height:1.6rem; }
+.colour-swatch { display:inline-block; width:1.35rem; height:1.35rem; border-radius:999px; border:2px solid rgba(238,243,255,.85); box-shadow:0 0 0 1px rgba(0,0,0,.45), inset 0 0 0 1px rgba(0,0,0,.25); }
+.colour-swatch.unknown { background:transparent; border-style:dashed; border-color:var(--muted); }
+
+/* Trend colours */
+.trend-improving, .trend-resolved { color:#bbf7d0; }
+.trend-deteriorating, .trend-new_risk { color:#fecaca; }
+.trend-new_update, .trend-replanned { color:#bfdbfe; }
+.trend-stable { color:#fde68a; }
+
+/* Ask-project-memory (insights) */
+.ask-panel { border-color:rgba(23,208,196,.55); box-shadow:0 14px 42px rgba(0,0,0,.18); }
+.ask-layout { display:grid; grid-template-columns:minmax(280px, 1fr) minmax(260px, .8fr); gap:1rem; align-items:start; }
+.ask-help { background:rgba(23,208,196,.08); border:1px solid rgba(23,208,196,.25); color:#c9fffb; border-radius:12px; padding:.85rem; }
+.ask-help ul { margin:.45rem 0 0; padding-left:1.1rem; }
+.badges { display:flex; flex-wrap:wrap; gap:.5rem; margin:.7rem 0; }
+.badge { display:inline-flex; align-items:center; gap:.35rem; border:1px solid var(--border); border-radius:999px; padding:.3rem .55rem; background:var(--soft); color:#dbeafe; font-size:.86rem; font-weight:700; }
+.badge.success { border-color:rgba(34,197,94,.45); color:#bbf7d0; background:rgba(22,163,74,.12); }
+.badge.warn { border-color:rgba(250,204,21,.45); color:#fde68a; background:rgba(202,138,4,.12); }
+.badge.muted { color:var(--muted); }
+.ask-answer { background:var(--soft); border:1px solid rgba(23,208,196,.35); border-radius:14px; padding:1rem; margin:.75rem 0; }
+.ask-answer h3 { margin:0 0 .4rem; font-size:1rem; color:#c9fffb; }
+.ask-answer p { margin:.35rem 0 0; }
+.citation-list { display:flex; flex-wrap:wrap; gap:.4rem; margin-top:.6rem; }
+.chunk-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:.75rem; margin-top:.75rem; }
+.chunk-card { background:var(--soft); border:1px solid var(--border); border-radius:12px; padding:.75rem; }
+.chunk-meta { display:flex; gap:.4rem; flex-wrap:wrap; margin:.45rem 0; }
+.chunk-text { color:#dbeafe; font-size:.94rem; }
+.empty-state { border:1px dashed var(--border); border-radius:12px; padding:1rem; color:var(--muted); background:rgba(7,17,38,.55); }
+pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:var(--soft); border:1px solid var(--border); border-radius:10px; padding:1rem; }
+
+/* ---- Workspace-specific chrome ---- */
+.project-bar { display:flex; gap:1rem; align-items:center; flex-wrap:wrap; justify-content:space-between; border-color:rgba(23,208,196,.4); }
+.project-bar .identity { display:flex; flex-direction:column; gap:.15rem; min-width:12rem; }
+.project-bar .identity .eyebrow { color:var(--accent); font-weight:700; letter-spacing:.04em; text-transform:uppercase; font-size:.72rem; }
+.project-bar .identity .name { font-size:1.35rem; font-weight:700; }
+.project-bar .meta { display:flex; gap:.4rem; flex-wrap:wrap; align-items:center; }
+.project-bar .bar-actions { display:flex; gap:.5rem; flex-wrap:wrap; margin-left:auto; }
+.status-pill { display:inline-flex; align-items:center; border:1px solid var(--border); border-radius:999px; padding:.2rem .55rem; font-size:.8rem; font-weight:700; color:#dbeafe; background:var(--soft); text-transform:capitalize; }
+.status-pill[data-status="active"] { border-color:rgba(34,197,94,.45); color:#bbf7d0; background:rgba(22,163,74,.12); }
+.status-pill[data-status="paused"] { border-color:rgba(250,204,21,.45); color:#fde68a; background:rgba(202,138,4,.12); }
+.status-pill[data-status="completed"] { border-color:rgba(37,99,235,.5); color:#bfdbfe; background:rgba(37,99,235,.14); }
+.status-pill[data-status="archived"] { color:var(--muted); }
+
+.stage-tabs { display:flex; gap:.4rem; flex-wrap:wrap; margin:0 0 1rem; }
+.stage-tab { display:flex; gap:.55rem; align-items:baseline; background:var(--soft); border:1px solid var(--border); border-radius:10px; padding:.6rem .9rem; color:#dbeafe; }
+.stage-tab .step-no { display:inline-flex; align-items:center; justify-content:center; width:1.35rem; height:1.35rem; border-radius:999px; background:#132847; color:var(--muted); font-size:.78rem; font-weight:700; }
+.stage-tab .step-label { font-weight:700; }
+.stage-tab .step-hint { color:var(--muted); font-weight:400; font-size:.82rem; }
+.stage-tab.active { border-color:var(--accent); background:rgba(23,208,196,.1); }
+.stage-tab.active .step-no { background:var(--accent); color:#02173B; }
+
+/* Project chooser */
+.chooser-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:.85rem; }
+.project-card { display:flex; flex-direction:column; gap:.5rem; text-align:left; align-items:stretch; background:var(--soft); border:1px solid var(--border); border-radius:14px; padding:1rem; cursor:pointer; color:var(--text); white-space:normal; }
+.project-card:hover { border-color:var(--accent); }
+.project-card .pc-name { font-size:1.1rem; font-weight:700; }
+.project-card .pc-meta { display:flex; gap:.4rem; flex-wrap:wrap; margin-top:auto; }
+.new-project-card { border-style:dashed; align-items:center; justify-content:center; text-align:center; color:var(--muted); min-height:9rem; font-weight:700; }
+
+@media (max-width: 860px) {
+  .form-grid { grid-template-columns:1fr; }
+  .form-grid .wide, .form-grid .full { grid-column:auto; }
+  .ask-layout { grid-template-columns:1fr; }
+  .project-bar .bar-actions { margin-left:0; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <nav class="nav">
+    <a href="/dashboard">Dashboard</a>
+    <a href="/meeting-minutes-final">Meeting transcript to minutes</a>
+    <a href="/project-update-test">Project workspace</a>
+    <a href="/project-update-test/roadmap">Roadmap</a>
+    <a href="/archive">Archive</a>
+  </nav>
+  <main id="workspaceRoot">
+    <section class="panel"><h1>Project workspace</h1><p class="intro">Loading projects…</p></section>
+  </main>
+  <!-- Stage panels mount their own #transcriptTestRoot etc. inside #workspaceRoot -->
+</div>
+<script src="/static/project-update-shared.js"></script>
+<script src="/static/test-transcript-page.js"></script>
+<script src="/static/project-stage-setup.js"></script>
+<script src="/static/project-stage-process.js"></script>
+<script src="/static/project-stage-reports.js"></script>
+<script src="/static/project-stage-insights.js"></script>
+<script src="/static/project-workspace.js"></script>
+</body>
+</html>
