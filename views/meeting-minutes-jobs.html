@@ -321,6 +321,11 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     return cleanText(firstDefined(item.topic, item.itemTopic, item.sectionTopic, item.heading, ''));
   }
 
+  function rowStatus(item) {
+    if (!item || typeof item !== 'object') return '';
+    return cleanText(firstDefined(item.status, item.state, item.reviewRequired ? 'Review required' : '', ''));
+  }
+
   function rowText(item, textKeyCandidates) {
     if (typeof item === 'string') return cleanText(item);
     if (!item || typeof item !== 'object') return '';
@@ -352,6 +357,43 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     return lookup;
   }
 
+  function titleFromType(value) {
+    const text = cleanText(value || 'discussion').replace(/[_-]+/g, ' ');
+    return text ? text.charAt(0).toUpperCase() + text.slice(1) : 'Discussion';
+  }
+
+  function isActionType(value) {
+    return cleanText(value || '').toLowerCase().replace(/[\s-]+/g, '_') === 'action';
+  }
+
+  function discussionTopics(output) {
+    return asArray(output.discussionTopics).filter((topic) => topic && typeof topic === 'object' && asArray(topic.items).length);
+  }
+
+  function addRowsFromDiscussionTopics(rows, output, options = {}) {
+    discussionTopics(output).forEach((topic, topicIndex) => {
+      const topicName = cleanText(topic.topic || topic.title || topic.heading || 'Discussion');
+      asArray(topic.items).forEach((item, itemIndex) => {
+        if (!item || typeof item !== 'object') return;
+        const itemType = cleanText(item.type || 'discussion');
+        if (options.actionsOnly !== isActionType(itemType)) return;
+        const text = rowText(item, ['text', 'summary', 'point', 'discussionPoint', 'risk', 'issue', 'dependency', 'action', 'decision']);
+        if (!text) return;
+        rows.push({
+          id: `discussion-topic-${topicIndex}-${itemIndex}`,
+          type: options.actionsOnly ? 'Action' : 'Discussion',
+          topic: topicName,
+          itemType: titleFromType(itemType),
+          owner: cleanText(firstDefined(item.owner, item.meetingActionPointOwner, '')),
+          text,
+          detail: rowDetail(item),
+          evidence: rowEvidence(item),
+          status: rowStatus(item)
+        });
+      });
+    });
+  }
+
   function addRowsFromArray(rows, source, type, textKeyCandidates, options = {}) {
     asArray(source).forEach((item, index) => {
       if (typeof item === 'string') {
@@ -360,6 +402,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
           id: `${options.idPrefix || type}-${index}`,
           type,
           topic: cleanText(options.topic || options.topicLookup?.get(text.toLowerCase()) || ''),
+          itemType: cleanText(options.itemType || ''),
           owner: '',
           text,
           detail: '',
@@ -374,6 +417,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
         id: `${options.idPrefix || type}-${index}`,
         type,
         topic: rowTopic(item) || cleanText(options.topic || options.topicLookup?.get(text.toLowerCase()) || ''),
+        itemType: cleanText(options.itemType || ''),
         owner: cleanText(firstDefined(item.owner, item.speaker, item.meetingActionPointOwner, getEvidenceSpeaker(item), '')),
         text,
         detail: rowDetail(item),
@@ -401,6 +445,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
         id: `edited-${index}`,
         type: cleanText(row?.type || 'Note') || 'Note',
         topic: cleanText(row?.topic || ''),
+        itemType: cleanText(row?.itemType || ''),
         owner: cleanText(row?.owner || ''),
         text: cleanText(row?.text || ''),
         detail: cleanMultiline(row?.detail || ''),
@@ -417,7 +462,10 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
       if (cleaned) rows.push({ id: `objective-${index}`, type: 'Objective', topic: '', owner: '', text: cleaned, detail: '', evidence: '' });
     });
     const topicLookup = discussionTopicLookup(output);
+    const hasNestedDiscussionTopics = discussionTopics(output).length > 0;
+    if (hasNestedDiscussionTopics) addRowsFromDiscussionTopics(rows, output, { actionsOnly: false });
     addRowsFromArray(rows, output.actions, 'Action', ['action', 'task', 'meetingActionPoint', 'text']);
+    if (hasNestedDiscussionTopics) addRowsFromDiscussionTopics(rows, output, { actionsOnly: true });
     asArray(output.meetingActionPoint).forEach((text, index) => {
       const cleaned = cleanText(text);
       if (!cleaned) return;
@@ -431,17 +479,21 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
         evidence: ''
       });
     });
-    addRowsFromArray(rows, output.decisionDetails, 'Decision', ['decision', 'decisionPoint', 'text', 'summary']);
-    addRowsFromArray(rows, output.decisions, 'Decision', ['decision', 'decisionPoint', 'text', 'summary']);
-    addRowsFromArray(rows, output.confirmedPoints, 'Confirmed', ['text', 'summary', 'point']);
-    addRowsFromArray(rows, output.risksAndIssues, 'Risk / issue', ['text', 'summary', 'risk', 'issue']);
-    addRowsFromArray(rows, output.dependencies, 'Dependency', ['text', 'summary', 'dependency']);
-    addRowsFromArray(rows, output.complianceFollowUps, 'Compliance follow-up', ['text', 'summary', 'action']);
+    if (!hasNestedDiscussionTopics) {
+      addRowsFromArray(rows, output.decisionDetails, 'Decision', ['decision', 'decisionPoint', 'text', 'summary']);
+      addRowsFromArray(rows, output.decisions, 'Decision', ['decision', 'decisionPoint', 'text', 'summary']);
+      addRowsFromArray(rows, output.confirmedPoints, 'Confirmed', ['text', 'summary', 'point']);
+      addRowsFromArray(rows, output.risksAndIssues, 'Risk / issue', ['text', 'summary', 'risk', 'issue']);
+      addRowsFromArray(rows, output.dependencies, 'Dependency', ['text', 'summary', 'dependency']);
+      addRowsFromArray(rows, output.complianceFollowUps, 'Compliance follow-up', ['text', 'summary', 'action']);
+    }
     addRowsFromArray(rows, output.termsForReview, 'Term for review', ['term', 'text', 'summary', 'normalisedTerm']);
-    addDiscussionRowsFromMeetingMinutes(rows, output);
-    addRowsFromArray(rows, output.finalDiscussionPoints || output.discussionPointDetails, 'Discussion', ['discussionPoint', 'text', 'summary'], { topicLookup });
+    if (!hasNestedDiscussionTopics) {
+      addDiscussionRowsFromMeetingMinutes(rows, output);
+      addRowsFromArray(rows, output.finalDiscussionPoints || output.discussionPointDetails, 'Discussion', ['discussionPoint', 'text', 'summary'], { topicLookup });
+    }
     addRowsFromArray(rows, output.statusReviewWorkstreams || output.statusReviewPoints, 'Status', ['topic', 'summary', 'text']);
-    addRowsFromArray(rows, output.discussionPoints, 'Discussion', ['discussionPoint', 'text', 'summary'], { topicLookup });
+    if (!hasNestedDiscussionTopics) addRowsFromArray(rows, output.discussionPoints, 'Discussion', ['discussionPoint', 'text', 'summary'], { topicLookup });
 
     const seen = new Set();
     return rows.filter((row) => {
@@ -542,6 +594,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     return `
       <input type="hidden" data-edit-field="type" data-edit-index="${index}" value="${escapeAttribute(type)}" />
       ${visibleFields.topic ? '' : `<input type="hidden" data-edit-field="topic" data-edit-index="${index}" value="${escapeAttribute(row.topic || '')}" />`}
+      ${visibleFields.itemType ? '' : `<input type="hidden" data-edit-field="itemType" data-edit-index="${index}" value="${escapeAttribute(row.itemType || '')}" />`}
       ${visibleFields.owner ? '' : `<input type="hidden" data-edit-field="owner" data-edit-index="${index}" value="${escapeAttribute(row.owner || '')}" />`}
       ${visibleFields.detail ? '' : `<input type="hidden" data-edit-field="detail" data-edit-index="${index}" value="${escapeAttribute(row.detail || '')}" />`}
       ${visibleFields.evidence ? '' : `<input type="hidden" data-edit-field="evidence" data-edit-index="${index}" value="${escapeAttribute(row.evidence || '')}" />`}
@@ -550,9 +603,10 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
 
   function renderResultTableSection(type, groupedRows) {
     const showTopic = type === 'Discussion' || sectionHasField(groupedRows, 'topic');
-    const showOwner = type !== 'Discussion' && sectionHasField(groupedRows, 'owner');
-    const showDetail = type !== 'Discussion' && sectionHasField(groupedRows, 'detail');
-    const showEvidence = type !== 'Discussion' && sectionHasField(groupedRows, 'evidence');
+    const showItemType = type === 'Discussion' && sectionHasField(groupedRows, 'itemType');
+    const showOwner = sectionHasField(groupedRows, 'owner');
+    const showDetail = sectionHasField(groupedRows, 'detail');
+    const showEvidence = sectionHasField(groupedRows, 'evidence');
     const outputHeader = type === 'Discussion' ? 'Discussion point' : 'Output';
 
     return `
@@ -563,6 +617,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
             <thead>
               <tr>
                 ${showTopic ? '<th>Topic</th>' : ''}
+                ${showItemType ? '<th>Type</th>' : ''}
                 ${showOwner ? '<th>Owner / speaker</th>' : ''}
                 <th>${escapeHtml(outputHeader)}</th>
                 ${showDetail ? '<th>Status / deadline / detail</th>' : ''}
@@ -573,9 +628,10 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
               ${groupedRows.map(({ row, index }) => `
                 <tr>
                   ${showTopic ? `<td class="topic-cell"><input data-edit-field="topic" data-edit-index="${index}" value="${escapeAttribute(row.topic || '')}" /></td>` : ''}
+                  ${showItemType ? `<td class="topic-cell"><input data-edit-field="itemType" data-edit-index="${index}" value="${escapeAttribute(row.itemType || '')}" /></td>` : ''}
                   ${showOwner ? `<td class="owner-cell"><input data-edit-field="owner" data-edit-index="${index}" value="${escapeAttribute(row.owner || '')}" /></td>` : ''}
                   <td class="text-cell">
-                    ${hiddenRowFields(type, index, row, { topic: showTopic, owner: showOwner, detail: showDetail, evidence: showEvidence })}
+                    ${hiddenRowFields(type, index, row, { topic: showTopic, itemType: showItemType, owner: showOwner, detail: showDetail, evidence: showEvidence })}
                     <textarea data-edit-field="text" data-edit-index="${index}">${escapeHtml(row.text)}</textarea>
                   </td>
                   ${showDetail ? `<td class="detail-cell"><textarea data-edit-field="detail" data-edit-index="${index}" placeholder="Status, deadline, dependency, confidence...">${escapeHtml(row.detail || '')}</textarea></td>` : ''}
@@ -638,6 +694,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
       .map((row) => ({
         type: cleanText(row.type || 'Note') || 'Note',
         topic: cleanText(row.topic || ''),
+        itemType: cleanText(row.itemType || ''),
         owner: cleanText(row.owner || ''),
         text: cleanText(row.text || ''),
         detail: cleanMultiline(row.detail || ''),
@@ -705,7 +762,8 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
           row.detail ? `Detail: ${row.detail}` : '',
           row.evidence ? `Evidence: ${row.evidence}` : ''
         ].filter(Boolean).join('\n');
-        return `${row.type} | ${row.owner || '—'}\n${details}`;
+        const label = [row.type, row.topic, row.itemType, row.owner].filter(Boolean).join(' | ');
+        return `${label || row.type}\n${details}`;
       })
       .join('\n\n');
     return rows ? `${parts.join('\n')}\n\n${rows}` : parts.join('\n');

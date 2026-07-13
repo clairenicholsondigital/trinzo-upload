@@ -214,6 +214,83 @@ def structured_texts(items: list[dict[str, str]], limit: int = 20) -> list[str]:
     return out
 
 
+def normalise_topic_item(item: Any, default_type: str = "discussion") -> dict[str, Any] | None:
+    if isinstance(item, str):
+        text = clean_text(item)
+        if not text:
+            return None
+        return {"type": default_type, "text": text}
+    if not isinstance(item, dict):
+        return None
+    text = first_text(item, ["text", "summary", "point", "discussionPoint", "issue", "risk", "dependency", "action", "decision"])
+    if not text:
+        return None
+    item_type = clean_text(item.get("type") or item.get("category") or default_type).lower().replace(" ", "_")
+    out: dict[str, Any] = {
+        "itemId": clean_text(item.get("itemId") or item.get("id")),
+        "type": item_type or default_type,
+        "text": text,
+        "owner": clean_text(item.get("owner") or item.get("meetingActionPointOwner")) or None,
+        "status": clean_text(item.get("status") or item.get("state")) or None,
+        "deadline": clean_text(item.get("deadline") or item.get("target") or item.get("meetingActionPointDeadline")) or None,
+        "dependency": clean_text(item.get("dependency")) or None,
+        "evidence": item.get("evidence") if isinstance(item.get("evidence"), list) else clean_text(item.get("evidence") or item.get("sourceSnippet") or item.get("_evidence")) or None,
+    }
+    confidence = item.get("confidence")
+    if confidence not in (None, ""):
+        out["confidence"] = confidence
+    if item.get("reviewRequired") is True:
+        out["reviewRequired"] = True
+    return {key: value for key, value in out.items() if value not in ("", None, [])}
+
+
+def normalise_discussion_topics(raw: dict[str, Any], minutes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    topics: list[dict[str, Any]] = []
+    for index, topic in enumerate(raw.get("discussionTopics") or raw.get("topics") or []):
+        if not isinstance(topic, dict):
+            continue
+        topic_name = clean_text(topic.get("topic") or topic.get("title") or topic.get("heading")) or "Discussion"
+        items: list[dict[str, Any]] = []
+        seen_items: set[str] = set()
+        for raw_item in topic.get("items") or topic.get("discussionPoints") or topic.get("points") or []:
+            normalised = normalise_topic_item(raw_item)
+            if not normalised:
+                continue
+            key = f"{normalised.get('type')}|{normalised.get('text')}".lower()
+            if key in seen_items:
+                continue
+            seen_items.add(key)
+            items.append(normalised)
+        if items:
+            topics.append({
+                "topicId": clean_text(topic.get("topicId") or topic.get("id")) or re.sub(r"[^a-z0-9]+", "-", topic_name.lower()).strip("-") or f"topic-{index + 1}",
+                "topic": topic_name,
+                "summary": clean_text(topic.get("summary")),
+                "outcome": clean_text(topic.get("outcome")),
+                "items": items,
+            })
+    if topics:
+        return topics
+
+    return [
+        {
+            "topicId": re.sub(r"[^a-z0-9]+", "-", clean_text(minute.get("topic") or "Discussion").lower()).strip("-") or f"topic-{index + 1}",
+            "topic": clean_text(minute.get("topic")) or "Discussion",
+            "summary": "",
+            "outcome": "",
+            "items": [
+                item for item in (
+                    normalise_topic_item(point, default_type="discussion")
+                    for point in minute.get("discussionPoints", [])
+                )
+                if item
+            ],
+        }
+        for index, minute in enumerate(minutes)
+        if minute.get("discussionPoints")
+    ]
+
+
 def normalise_minutes(raw: dict[str, Any], discussion: list[str]) -> list[dict[str, Any]]:
     minutes: list[dict[str, Any]] = []
     for item in raw.get("meetingMinutes") or raw.get("minutes") or []:
@@ -273,6 +350,9 @@ def normalise_output(raw: dict[str, Any]) -> dict[str, Any]:
         seen_actions.add(key)
         deduped_actions.append(action)
 
+    meeting_minutes = normalise_minutes(raw, discussion)
+    discussion_topics = normalise_discussion_topics(raw, meeting_minutes)
+
     output = {
         "meetingTitle": clean_text(raw.get("meetingTitle")) or "Meeting minutes",
         "meetingDate": clean_text(raw.get("meetingDate")),
@@ -287,13 +367,14 @@ def normalise_output(raw: dict[str, Any]) -> dict[str, Any]:
         "dependencies": dependencies,
         "complianceFollowUps": compliance_followups,
         "termsForReview": terms_for_review,
+        "discussionTopics": discussion_topics,
         "discussionPoints": discussion,
         "decisions": string_list(raw.get("decisions"), limit=15),
         "meetingActionPoint": [a["meetingActionPoint"] for a in deduped_actions],
         "meetingActionPointOwner": [a["meetingActionPointOwner"] for a in deduped_actions],
         "meetingActionPointDeadline": [a["meetingActionPointDeadline"] for a in deduped_actions],
         "actions": deduped_actions,
-        "meetingMinutes": normalise_minutes(raw, discussion),
+        "meetingMinutes": meeting_minutes,
         "nextSteps": [
             {
                 "action": a["meetingActionPoint"],
@@ -456,6 +537,17 @@ Return valid JSON only, with exactly this shape:
   "dependencies": [{{"text": "", "owner": "Not stated", "deadline": "Not stated", "evidence": ""}}],
   "complianceFollowUps": [{{"text": "", "owner": "Not stated", "deadline": "Not stated", "evidence": ""}}],
   "termsForReview": [{{"term": "", "normalisedTerm": "", "reason": "", "confidence": "low|medium|high", "evidence": ""}}],
+  "discussionTopics": [
+    {{
+      "topicId": "",
+      "topic": "",
+      "summary": "",
+      "outcome": "",
+      "items": [
+        {{"itemId": "", "type": "discussion|decision|confirmed|risk|dependency|compliance_follow_up", "text": "", "owner": null, "status": "", "deadline": null, "dependency": null, "evidence": "", "confidence": 0.0}}
+      ]
+    }}
+  ],
   "discussionPoints": [],
   "decisions": [],
   "actions": [{{"meetingActionPoint": "", "meetingActionPointOwner": "Not stated", "meetingActionPointDeadline": "Not stated", "dependency": "", "evidence": ""}}],
@@ -482,6 +574,9 @@ Operator rules for this task:
 - Put external prerequisites, unclear ownership, pending inputs and third-party blockers in dependencies.
 - Put compliance-specific follow-ups in complianceFollowUps, even if they also appear in actions.
 - Put inconsistent, misspelled or uncertain names/terms in termsForReview. Normalise terms only when confidence is high; otherwise flag them for human review.
+- Use discussionTopics as the main nested discussion structure: each topic should contain mixed non-action items such as decisions, confirmations, risks, dependencies and compliance follow-ups.
+- Do not force every discussionTopics item to have owner, deadline or dependency fields. Use null or empty values unless the transcript explicitly gives them.
+- Keep concrete commitments in actions/nextSteps as the separate action list. Only put an action-like item inside discussionTopics when it is needed to explain the topic context.
 - If an attendee appears but affiliation is unclear, include them in otherParticipants rather than guessing client or Trinzo.
 - Every action, risk, dependency and compliance follow-up should include a short evidence phrase from the transcript where possible.
 - If PROJECT_STATUS_EVIDENCE is supplied, use it only as an attention guide for project-management detail that may be easy to miss.

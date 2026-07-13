@@ -189,6 +189,9 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("meetingLocationText", jobs_page)
         self.assertIn("Microsoft Teams", jobs_page)
         self.assertIn("discussionTopicLookup", jobs_page)
+        self.assertIn("discussionTopics(output)", jobs_page)
+        self.assertIn("addRowsFromDiscussionTopics", jobs_page)
+        self.assertIn("data-edit-field=\"itemType\"", jobs_page)
         self.assertIn("addDiscussionRowsFromMeetingMinutes", jobs_page)
         self.assertIn("data-edit-field=\"topic\"", jobs_page)
         self.assertIn("<th>Topic</th>", jobs_page)
@@ -197,9 +200,13 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("Copy table text", jobs_page)
         self.assertIn("Download edited JSON", jobs_page)
         self.assertIn("editedMeta", api)
+        self.assertIn("discussionTopics: editedDiscussionTopics", api)
+        self.assertIn("meetingMinutes: editedMeetingMinutes", api)
+        self.assertIn("itemType: String(row?.itemType", api)
         self.assertIn("topic: String(row?.topic", api)
         self.assertIn("detail: String(row?.detail", api)
         self.assertIn("evidence: String(row?.evidence", api)
+        self.assertIn('"discussionTopics": [', (REPO_DIR / "scripts" / "meeting_minutes_trooper.py").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

@@ -788,6 +788,7 @@ router.patch('/meeting-minutes-final/jobs/:jobId/result', requireAuth, async (re
     const safeRows = editedRows.slice(0, 500).map((row) => ({
       type: String(row?.type || 'Note').slice(0, 80),
       topic: String(row?.topic || '').slice(0, 300),
+      itemType: String(row?.itemType || '').slice(0, 80),
       owner: String(row?.owner || '').slice(0, 300),
       text: String(row?.text || '').slice(0, 10000),
       detail: String(row?.detail || '').slice(0, 10000),
@@ -822,6 +823,41 @@ router.patch('/meeting-minutes-final/jobs/:jobId/result', requireAuth, async (re
             : []
       }
     };
+    const discussionRows = safeRows.filter((row) => row.type.toLowerCase() === 'discussion');
+    const actionRows = safeRows.filter((row) => row.type.toLowerCase() === 'action');
+    const discussionTopicMap = new Map();
+    for (const row of discussionRows) {
+      const topic = row.topic || 'Discussion';
+      if (!discussionTopicMap.has(topic)) {
+        discussionTopicMap.set(topic, {
+          topicId: topic.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'discussion',
+          topic,
+          summary: '',
+          outcome: '',
+          items: []
+        });
+      }
+      const itemType = (row.itemType || 'discussion').toLowerCase().replace(/[\s-]+/g, '_');
+      discussionTopicMap.get(topic).items.push({
+        type: itemType,
+        text: row.text,
+        ...(row.owner ? { owner: row.owner } : {}),
+        ...(row.detail ? { detail: row.detail } : {}),
+        ...(row.evidence ? { evidence: row.evidence } : {})
+      });
+    }
+    const editedDiscussionTopics = Array.from(discussionTopicMap.values());
+    const editedMeetingMinutes = editedDiscussionTopics.map((topic) => ({
+      topic: topic.topic,
+      discussionPoints: topic.items.map((item) => item.text).filter(Boolean)
+    })).filter((topic) => topic.discussionPoints.length);
+    const editedActions = actionRows.map((row) => ({
+      meetingActionPoint: row.text,
+      meetingActionPointOwner: row.owner || 'Not stated',
+      meetingActionPointDeadline: row.detail || 'Not stated',
+      ...(row.topic ? { topic: row.topic } : {}),
+      ...(row.evidence ? { evidence: row.evidence } : {})
+    }));
     const editedOutput = {
       ...currentOutput,
       meetingTitle: safeMeta.meetingTitle,
@@ -830,6 +866,18 @@ router.patch('/meeting-minutes-final/jobs/:jobId/result', requireAuth, async (re
       meetingType: safeMeta.meetingType,
       meetingObjectives: safeMeta.meetingObjectives,
       participants: safeMeta.participants,
+      discussionTopics: editedDiscussionTopics,
+      meetingMinutes: editedMeetingMinutes,
+      discussionPoints: discussionRows.map((row) => row.text),
+      actions: editedActions,
+      meetingActionPoint: editedActions.map((row) => row.meetingActionPoint),
+      meetingActionPointOwner: editedActions.map((row) => row.meetingActionPointOwner),
+      meetingActionPointDeadline: editedActions.map((row) => row.meetingActionPointDeadline),
+      nextSteps: editedActions.map((row) => ({
+        action: row.meetingActionPoint,
+        owner: row.meetingActionPointOwner,
+        deadline: row.meetingActionPointDeadline
+      })),
       editedMeta: safeMeta,
       editedRows: safeRows,
       humanEdited: true,
