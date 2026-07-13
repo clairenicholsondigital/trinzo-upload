@@ -790,6 +790,7 @@ router.patch('/meeting-minutes-final/jobs/:jobId/result', requireAuth, async (re
       topic: String(row?.topic || '').slice(0, 300),
       itemType: String(row?.itemType || '').slice(0, 80),
       owner: String(row?.owner || '').slice(0, 300),
+      deadline: String(row?.deadline || '').slice(0, 300),
       text: String(row?.text || '').slice(0, 10000),
       detail: String(row?.detail || '').slice(0, 10000),
       evidence: String(row?.evidence || '').slice(0, 10000)
@@ -842,6 +843,7 @@ router.patch('/meeting-minutes-final/jobs/:jobId/result', requireAuth, async (re
         type: itemType,
         text: row.text,
         ...(row.owner ? { owner: row.owner } : {}),
+        ...(row.deadline ? { deadline: row.deadline } : {}),
         ...(row.detail ? { detail: row.detail } : {}),
         ...(row.evidence ? { evidence: row.evidence } : {})
       });
@@ -854,8 +856,9 @@ router.patch('/meeting-minutes-final/jobs/:jobId/result', requireAuth, async (re
     const editedActions = actionRows.map((row) => ({
       meetingActionPoint: row.text,
       meetingActionPointOwner: row.owner || 'Not stated',
-      meetingActionPointDeadline: row.detail || 'Not stated',
+      meetingActionPointDeadline: row.deadline || row.detail || 'Not stated',
       ...(row.topic ? { topic: row.topic } : {}),
+      ...(row.detail ? { detail: row.detail } : {}),
       ...(row.evidence ? { evidence: row.evidence } : {})
     }));
     const editedOutput = {

@@ -95,6 +95,8 @@ pre { white-space:pre-wrap; overflow:auto; max-height:620px; background:#071126;
   font:inherit;
 }
 .minutes-table textarea { min-height:92px; resize:vertical; line-height:1.45; }
+.deadline-editor { display:grid; gap:.35rem; }
+.deadline-editor input[type="date"] { color-scheme:dark; }
 .edit-status { color:var(--muted); }
 .edit-status.success { color:#bbf7d0; }
 .edit-status.error { color:#fecaca; }
@@ -208,6 +210,21 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('en-GB');
   }
 
+  function toDateInputValue(value) {
+    const text = cleanText(value);
+    if (!text) return '';
+    const isoMatch = text.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (isoMatch) return isoMatch[1];
+    const ukMatch = text.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);
+    if (ukMatch) {
+      const [, day, month, year] = ukMatch;
+      return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+    }
+    const date = new Date(text);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toISOString().slice(0, 10);
+  }
+
   function runtime(job) {
     const start = job.startedAt || job.createdAt;
     const end = job.completedAt || Date.now();
@@ -303,7 +320,6 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     if (!item || typeof item !== 'object') return '';
     const pairs = [
       ['Status', firstDefined(item.status, item.state)],
-      ['Deadline', firstDefined(item.deadline, item.target, item.meetingActionPointDeadline)],
       ['Dependency', item.dependency],
       ['Normalised term', item.normalisedTerm],
       ['Confidence', item.confidence],
@@ -317,6 +333,11 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
       })
       .filter(Boolean)
       .join('\n');
+  }
+
+  function rowDeadline(item) {
+    if (!item || typeof item !== 'object') return '';
+    return cleanText(firstDefined(item.deadline, item.target, item.meetingActionPointDeadline, item.dueDate, item.date, ''));
   }
 
   function rowEvidence(item) {
@@ -393,6 +414,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
           topic: topicName,
           itemType: titleFromType(itemType),
           owner: cleanText(firstDefined(item.owner, item.meetingActionPointOwner, '')),
+          deadline: rowDeadline(item),
           text,
           detail: rowDetail(item),
           evidence: rowEvidence(item),
@@ -412,6 +434,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
           topic: cleanText(options.topic || options.topicLookup?.get(text.toLowerCase()) || ''),
           itemType: cleanText(options.itemType || ''),
           owner: '',
+          deadline: '',
           text,
           detail: '',
           evidence: ''
@@ -427,6 +450,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
         topic: rowTopic(item) || cleanText(options.topic || options.topicLookup?.get(text.toLowerCase()) || ''),
         itemType: cleanText(options.itemType || ''),
         owner: cleanText(firstDefined(item.owner, item.speaker, item.meetingActionPointOwner, getEvidenceSpeaker(item), '')),
+        deadline: rowDeadline(item),
         text,
         detail: rowDetail(item),
         evidence: rowEvidence(item)
@@ -455,6 +479,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
         topic: cleanText(row?.topic || ''),
         itemType: cleanText(row?.itemType || ''),
         owner: cleanText(row?.owner || ''),
+        deadline: cleanText(row?.deadline || ''),
         text: cleanText(row?.text || ''),
         detail: cleanMultiline(row?.detail || ''),
         evidence: cleanMultiline(row?.evidence || '')
@@ -463,11 +488,11 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
 
     const rows = [];
     if (output.executiveSummary) {
-      rows.push({ id: 'summary-0', type: 'Summary', topic: '', owner: '', text: cleanText(output.executiveSummary), detail: '', evidence: '' });
+      rows.push({ id: 'summary-0', type: 'Summary', topic: '', owner: '', deadline: '', text: cleanText(output.executiveSummary), detail: '', evidence: '' });
     }
     asArray(output.meetingObjectives).forEach((text, index) => {
       const cleaned = cleanText(text);
-      if (cleaned) rows.push({ id: `objective-${index}`, type: 'Objective', topic: '', owner: '', text: cleaned, detail: '', evidence: '' });
+      if (cleaned) rows.push({ id: `objective-${index}`, type: 'Objective', topic: '', owner: '', deadline: '', text: cleaned, detail: '', evidence: '' });
     });
     const topicLookup = discussionTopicLookup(output);
     const hasNestedDiscussionTopics = discussionTopics(output).length > 0;
@@ -482,8 +507,9 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
         type: 'Action',
         topic: '',
         owner: cleanText(asArray(output.meetingActionPointOwner)[index] || ''),
+        deadline: cleanText(asArray(output.meetingActionPointDeadline)[index] || ''),
         text: cleaned,
-        detail: cleanText(asArray(output.meetingActionPointDeadline)[index] || ''),
+        detail: '',
         evidence: ''
       });
     });
@@ -535,9 +561,11 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   }
 
   function renderMetaInput(label, field, value, multiline = false) {
+    const type = field === 'meetingDate' ? 'date' : 'text';
+    const inputValue = field === 'meetingDate' ? toDateInputValue(value) : value;
     const control = multiline
       ? `<textarea data-edit-field="meta" data-meta-field="${escapeAttribute(field)}">${escapeHtml(value || '')}</textarea>`
-      : `<input data-edit-field="meta" data-meta-field="${escapeAttribute(field)}" value="${escapeAttribute(value || '')}" />`;
+      : `<input type="${type}" data-edit-field="meta" data-meta-field="${escapeAttribute(field)}" value="${escapeAttribute(inputValue || '')}" />`;
     return `<label class="summary-item"><span class="summary-label">${escapeHtml(label)}</span>${control}</label>`;
   }
 
@@ -604,8 +632,19 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
       ${visibleFields.topic ? '' : `<input type="hidden" data-edit-field="topic" data-edit-index="${index}" value="${escapeAttribute(row.topic || '')}" />`}
       ${visibleFields.itemType ? '' : `<input type="hidden" data-edit-field="itemType" data-edit-index="${index}" value="${escapeAttribute(row.itemType || '')}" />`}
       ${visibleFields.owner ? '' : `<input type="hidden" data-edit-field="owner" data-edit-index="${index}" value="${escapeAttribute(row.owner || '')}" />`}
+      ${visibleFields.deadline ? '' : `<input type="hidden" data-edit-field="deadline" data-edit-index="${index}" value="${escapeAttribute(row.deadline || '')}" />`}
       ${visibleFields.detail ? '' : `<input type="hidden" data-edit-field="detail" data-edit-index="${index}" value="${escapeAttribute(row.detail || '')}" />`}
       ${visibleFields.evidence ? '' : `<input type="hidden" data-edit-field="evidence" data-edit-index="${index}" value="${escapeAttribute(row.evidence || '')}" />`}
+    `;
+  }
+
+  function renderDeadlineEditor(index, value) {
+    const dateValue = toDateInputValue(value);
+    return `
+      <div class="deadline-editor">
+        <input data-edit-field="deadline" data-edit-index="${index}" value="${escapeAttribute(value || '')}" placeholder="Deadline or date" />
+        <input type="date" data-deadline-picker-index="${index}" value="${escapeAttribute(dateValue)}" title="Pick an exact date" aria-label="Pick deadline date" />
+      </div>
     `;
   }
 
@@ -613,6 +652,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     const showTopic = type === 'Discussion' || sectionHasField(groupedRows, 'topic');
     const showItemType = type === 'Discussion' && sectionHasField(groupedRows, 'itemType');
     const showOwner = sectionHasField(groupedRows, 'owner');
+    const showDeadline = type === 'Action' || sectionHasField(groupedRows, 'deadline');
     const showDetail = sectionHasField(groupedRows, 'detail');
     const showEvidence = sectionHasField(groupedRows, 'evidence');
     const outputHeader = type === 'Discussion' ? 'Discussion point' : 'Output';
@@ -628,7 +668,8 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
                 ${showItemType ? '<th>Type</th>' : ''}
                 ${showOwner ? '<th>Owner / speaker</th>' : ''}
                 <th>${escapeHtml(outputHeader)}</th>
-                ${showDetail ? '<th>Status / deadline / detail</th>' : ''}
+                ${showDeadline ? '<th>Deadline / date</th>' : ''}
+                ${showDetail ? '<th>Status / detail</th>' : ''}
                 ${showEvidence ? '<th>Evidence / source note</th>' : ''}
               </tr>
             </thead>
@@ -639,9 +680,10 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
                   ${showItemType ? `<td class="topic-cell"><input data-edit-field="itemType" data-edit-index="${index}" value="${escapeAttribute(row.itemType || '')}" /></td>` : ''}
                   ${showOwner ? `<td class="owner-cell"><input data-edit-field="owner" data-edit-index="${index}" value="${escapeAttribute(row.owner || '')}" /></td>` : ''}
                   <td class="text-cell">
-                    ${hiddenRowFields(type, index, row, { topic: showTopic, itemType: showItemType, owner: showOwner, detail: showDetail, evidence: showEvidence })}
+                    ${hiddenRowFields(type, index, row, { topic: showTopic, itemType: showItemType, owner: showOwner, deadline: showDeadline, detail: showDetail, evidence: showEvidence })}
                     <textarea data-edit-field="text" data-edit-index="${index}">${escapeHtml(row.text)}</textarea>
                   </td>
+                  ${showDeadline ? `<td class="detail-cell">${renderDeadlineEditor(index, row.deadline || '')}</td>` : ''}
                   ${showDetail ? `<td class="detail-cell"><textarea data-edit-field="detail" data-edit-index="${index}" placeholder="Status, deadline, dependency, confidence...">${escapeHtml(row.detail || '')}</textarea></td>` : ''}
                   ${showEvidence ? `<td class="evidence-cell"><textarea data-edit-field="evidence" data-edit-index="${index}" placeholder="Transcript evidence or source note">${escapeHtml(row.evidence || '')}</textarea></td>` : ''}
                 </tr>
@@ -704,6 +746,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
         topic: cleanText(row.topic || ''),
         itemType: cleanText(row.itemType || ''),
         owner: cleanText(row.owner || ''),
+        deadline: cleanText(row.deadline || ''),
         text: cleanText(row.text || ''),
         detail: cleanMultiline(row.detail || ''),
         evidence: cleanMultiline(row.evidence || '')
@@ -767,6 +810,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
       .map((row) => {
         const details = [
           row.text,
+          row.deadline ? `Deadline: ${row.deadline}` : '',
           row.detail ? `Detail: ${row.detail}` : '',
           row.evidence ? `Evidence: ${row.evidence}` : ''
         ].filter(Boolean).join('\n');
@@ -858,6 +902,12 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     return `<div class="summary-item"><div class="summary-label">${escapeHtml(label)}</div><div class="summary-value">${escapeHtml(value || '—')}</div></div>`;
   }
 
+  function progressSummary(job) {
+    const pct = Math.max(0, Math.min(100, Number(job.progressPercent || 0)));
+    const label = friendlyLabel(job.stage || job.status || 'queued');
+    return `${pct}% · ${label}`;
+  }
+
   function renderDetail(payload) {
     const job = payload.job;
     if (!job) return;
@@ -868,8 +918,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     cancelBtn.disabled = job.status !== 'queued' && job.status !== 'running';
     detailSummary.innerHTML = [
       summaryItem('Status', friendlyLabel(job.status)),
-      summaryItem('Progress step', friendlyLabel(job.stage)),
-      summaryItem('Progress', `${job.progressPercent || 0}%`),
+      summaryItem('Progress', progressSummary(job)),
       summaryItem('Message', job.statusMessage || job.errorMessage),
       summaryItem('Runtime', runtime(job)),
       summaryItem('Attempts', `${job.attempts || 0} / ${job.maxAttempts || 0}`),
@@ -995,12 +1044,21 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   resultView.addEventListener('input', (event) => {
     if (event.target.closest('[data-edit-field]')) queueAutosave();
   });
+  resultView.addEventListener('change', (event) => {
+    const picker = event.target.closest('[data-deadline-picker-index]');
+    if (!picker || !picker.value) return;
+    const input = Array.from(resultView.querySelectorAll('[data-edit-field="deadline"][data-edit-index]'))
+      .find((candidate) => candidate.dataset.editIndex === picker.dataset.deadlinePickerIndex);
+    if (!input) return;
+    input.value = picker.value;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
   resultView.addEventListener('focusin', (event) => {
-    if (event.target.closest('[data-edit-field]')) editFocused = true;
+    if (event.target.closest('[data-edit-field], [data-deadline-picker-index]')) editFocused = true;
   });
   resultView.addEventListener('focusout', () => {
     setTimeout(() => {
-      editFocused = Boolean(resultView.querySelector('[data-edit-field]:focus'));
+      editFocused = Boolean(resultView.querySelector('[data-edit-field]:focus, [data-deadline-picker-index]:focus'));
     }, 0);
   });
   retryBtn.addEventListener('click', () => activeJobId && act('retry', activeJobId));
