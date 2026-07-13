@@ -685,6 +685,8 @@ async function listProjectOptions(limit = 100) {
 SELECT json_build_object(
   'projectId', p.id,
   'projectName', p.project_name,
+  'clientName', COALESCE(p.client_name, ''),
+  'description', COALESCE(p.description, ''),
   'status', p.status,
   'updatedAt', p.updated_at,
   'createdAt', p.created_at,
@@ -696,6 +698,110 @@ FROM projects p
 ORDER BY p.updated_at DESC NULLS LAST, p.created_at DESC NULLS LAST, p.project_name, p.id
 LIMIT ${safeLimit};`);
   return parseJsonLines(out);
+}
+
+function normaliseProjectStatus(value) {
+  const status = String(value || 'active').trim().toLowerCase();
+  return ['active', 'paused', 'completed', 'archived'].includes(status) ? status : 'active';
+}
+
+function projectRowToJson(row = {}) {
+  return {
+    projectId: Number(row.id),
+    projectName: row.project_name || '',
+    clientName: row.client_name || '',
+    description: row.description || '',
+    status: row.status || 'active',
+    createdAt: row.created_at || null,
+    updatedAt: row.updated_at || null,
+    activeMilestoneCount: Number(row.active_milestone_count || 0),
+    activeRiskCount: Number(row.active_risk_count || 0),
+    reportCount: Number(row.report_count || 0)
+  };
+}
+
+async function getProjectManagementDetail(projectId) {
+  const id = Number(projectId);
+  if (!Number.isFinite(id) || id <= 0) return null;
+  const result = await query(
+    `SELECT
+       p.id,
+       p.project_name,
+       COALESCE(p.client_name, '') AS client_name,
+       COALESCE(p.description, '') AS description,
+       p.status,
+       p.created_at,
+       p.updated_at,
+       (SELECT COUNT(*) FROM project_core_milestones m WHERE m.project_id = p.id AND m.is_active = TRUE) AS active_milestone_count,
+       (SELECT COUNT(*) FROM project_core_risks r WHERE r.project_id = p.id AND r.is_active = TRUE) AS active_risk_count,
+       (SELECT COUNT(*) FROM project_reports pr WHERE pr.project_id = p.id) AS report_count
+     FROM projects p
+     WHERE p.id = $1
+     LIMIT 1`,
+    [id]
+  );
+  return result.rows[0] ? projectRowToJson(result.rows[0]) : null;
+}
+
+async function createProject(payload = {}) {
+  const projectName = String(payload.projectName || payload.project_name || '').trim();
+  if (!projectName) {
+    const error = new Error('Project name is required.');
+    error.statusCode = 400;
+    throw error;
+  }
+  const clientName = String(payload.clientName || payload.client_name || '').trim();
+  const description = String(payload.description || '').trim();
+  const status = normaliseProjectStatus(payload.status);
+  const result = await query(
+    `INSERT INTO projects (project_name, client_name, description, status, updated_at)
+     VALUES ($1, NULLIF($2, ''), NULLIF($3, ''), $4, NOW())
+     RETURNING id`,
+    [projectName, clientName, description, status]
+  );
+  return getProjectManagementDetail(result.rows[0].id);
+}
+
+async function updateProject(projectId, payload = {}) {
+  const id = Number(projectId);
+  if (!Number.isFinite(id) || id <= 0) {
+    const error = new Error('Valid project id is required.');
+    error.statusCode = 400;
+    throw error;
+  }
+  const projectName = String(payload.projectName || payload.project_name || '').trim();
+  if (!projectName) {
+    const error = new Error('Project name is required.');
+    error.statusCode = 400;
+    throw error;
+  }
+  const clientName = String(payload.clientName || payload.client_name || '').trim();
+  const description = String(payload.description || '').trim();
+  const status = normaliseProjectStatus(payload.status);
+  const result = await query(
+    `UPDATE projects
+     SET project_name = $1,
+         client_name = NULLIF($2, ''),
+         description = NULLIF($3, ''),
+         status = $4,
+         updated_at = NOW()
+     WHERE id = $5
+     RETURNING id`,
+    [projectName, clientName, description, status, id]
+  );
+  if (!result.rowCount) {
+    const error = new Error('Project not found.');
+    error.statusCode = 404;
+    throw error;
+  }
+  return getProjectManagementDetail(id);
+}
+
+async function deleteProject(projectId) {
+  const existing = await getProjectManagementDetail(projectId);
+  if (!existing) return null;
+  await query('DELETE FROM projects WHERE id = $1', [existing.projectId]);
+  return existing;
 }
 
 async function resolveProjectForContext(projectRef = '') {
@@ -2769,6 +2875,9 @@ module.exports = {
   ingestApprovedProjectReportVersion,
   chunkKnowledgeText,
   listProjectOptions,
+  createProject,
+  updateProject,
+  deleteProject,
   listProjectReports,
   getProjectReportDetail,
   saveProjectReportDetail,

@@ -3,7 +3,8 @@ function buildTranscriptTestPage(config) {
     result: null,
     loading: false,
     projectReport: null,
-    autosaveTimer: null
+    autosaveTimer: null,
+    projects: []
   };
 
   const root = document.getElementById('transcriptTestRoot');
@@ -15,7 +16,31 @@ function buildTranscriptTestPage(config) {
       <div class="field">
         <label for="projectPicker">Project context</label>
         <select id="projectPicker"><option value="">Loading projects…</option></select>
-        <small>Choose an explicit project so stored context and report saves do not rely on name matching.</small>
+        <div class="project-picker-actions">
+          <small>Choose an explicit project so stored context and report saves do not rely on name matching.</small>
+          <button id="toggleProjectManagerBtn" class="secondary" type="button">Manage projects</button>
+        </div>
+        <div id="projectManager" class="project-manager hidden">
+          <div class="project-manager-grid">
+            <label>Project name <input id="projectNameInput" type="text" placeholder="Project name" /></label>
+            <label>Client <input id="projectClientInput" type="text" placeholder="Optional client" /></label>
+            <label>Status
+              <select id="projectStatusInput">
+                <option value="active">Active</option>
+                <option value="paused">Paused</option>
+                <option value="completed">Completed</option>
+                <option value="archived">Archived</option>
+              </select>
+            </label>
+            <label class="wide">Description <textarea id="projectDescriptionInput" placeholder="Optional project notes"></textarea></label>
+          </div>
+          <div class="actions">
+            <button id="saveProjectBtn" type="button">Create project</button>
+            <button id="newProjectBtn" class="secondary" type="button">New</button>
+            <button id="deleteProjectBtn" class="secondary danger" type="button" disabled>Delete selected</button>
+          </div>
+          <small id="projectManagerStatus" class="autosave-status"></small>
+        </div>
       </div>
       ` : ''}
       <div class="field">
@@ -77,6 +102,16 @@ function buildTranscriptTestPage(config) {
   const fileInput = document.getElementById('transcriptFile');
   const textInput = document.getElementById('transcriptText');
   const projectPicker = document.getElementById('projectPicker');
+  const toggleProjectManagerBtn = document.getElementById('toggleProjectManagerBtn');
+  const projectManager = document.getElementById('projectManager');
+  const projectNameInput = document.getElementById('projectNameInput');
+  const projectClientInput = document.getElementById('projectClientInput');
+  const projectStatusInput = document.getElementById('projectStatusInput');
+  const projectDescriptionInput = document.getElementById('projectDescriptionInput');
+  const saveProjectBtn = document.getElementById('saveProjectBtn');
+  const newProjectBtn = document.getElementById('newProjectBtn');
+  const deleteProjectBtn = document.getElementById('deleteProjectBtn');
+  const projectManagerStatus = document.getElementById('projectManagerStatus');
   const goBtn = document.getElementById('goBtn');
   const clearBtn = document.getElementById('clearBtn');
   const copyBtn = document.getElementById('copyBtn');
@@ -120,6 +155,40 @@ function buildTranscriptTestPage(config) {
 
   const PROJECT_SELECTION_KEY = 'trinzoProjectUpdateSelectedProjectId';
 
+  function setProjectManagerStatus(text, type) {
+    if (!projectManagerStatus) return;
+    projectManagerStatus.textContent = text || '';
+    projectManagerStatus.className = `autosave-status${type ? ` ${type}` : ''}`;
+  }
+
+  function projectById(projectId) {
+    return state.projects.find((project) => String(project.projectId) === String(projectId)) || null;
+  }
+
+  function projectFormPayload() {
+    return {
+      projectName: projectNameInput ? projectNameInput.value.trim() : '',
+      clientName: projectClientInput ? projectClientInput.value.trim() : '',
+      status: projectStatusInput ? projectStatusInput.value : 'active',
+      description: projectDescriptionInput ? projectDescriptionInput.value.trim() : ''
+    };
+  }
+
+  function populateProjectForm(project) {
+    if (!projectNameInput) return;
+    const item = project || {};
+    projectNameInput.value = item.projectName || '';
+    projectClientInput.value = item.clientName || '';
+    projectStatusInput.value = item.status || 'active';
+    projectDescriptionInput.value = item.description || '';
+    saveProjectBtn.textContent = item.projectId ? 'Save project' : 'Create project';
+    deleteProjectBtn.disabled = !item.projectId;
+    setProjectManagerStatus(item.projectId
+      ? `${item.reportCount || 0} reports, ${item.activeMilestoneCount || 0} active milestones, ${item.activeRiskCount || 0} active risks.`
+      : ''
+    );
+  }
+
   async function loadProjectPicker() {
     if (!projectPicker) return;
     try {
@@ -128,11 +197,13 @@ function buildTranscriptTestPage(config) {
       if (!response.ok || !payload || payload.ok === false) throw new Error(payload?.error || 'Could not load projects.');
       const selected = localStorage.getItem(PROJECT_SELECTION_KEY) || '';
       const projects = Array.isArray(payload.projects) ? payload.projects : [];
+      state.projects = projects;
       projectPicker.innerHTML = [
         '<option value="">Project update test / default</option>',
         ...projects.map((project) => `<option value="${escapeHtml(project.projectId)}">${escapeHtml(project.projectName || `Project ${project.projectId}`)} (${project.reportCount || 0} reports, ${project.activeMilestoneCount || 0} milestones)</option>`)
       ].join('');
       if (selected && projects.some((project) => String(project.projectId) === selected)) projectPicker.value = selected;
+      populateProjectForm(projectById(projectPicker.value));
     } catch (error) {
       projectPicker.innerHTML = '<option value="">Project update test / default</option>';
       setMessage(`Project list unavailable; uploads will use the default project name. ${error.message || ''}`.trim(), 'error');
@@ -143,6 +214,65 @@ function buildTranscriptTestPage(config) {
     if (!projectPicker || !projectPicker.value) return {};
     localStorage.setItem(PROJECT_SELECTION_KEY, projectPicker.value);
     return { projectId: Number(projectPicker.value) };
+  }
+
+  async function saveProject() {
+    if (!projectPicker) return;
+    const payload = projectFormPayload();
+    if (!payload.projectName) {
+      setProjectManagerStatus('Project name is required.', 'error');
+      return;
+    }
+    const selectedProjectId = projectPicker.value;
+    const url = selectedProjectId
+      ? `/api/project-update-test/projects/${encodeURIComponent(selectedProjectId)}`
+      : '/api/project-update-test/projects';
+    const method = selectedProjectId ? 'PATCH' : 'POST';
+    try {
+      saveProjectBtn.disabled = true;
+      const response = await fetch(url, {
+        method,
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result || result.ok === false) throw new Error(result?.error || 'Could not save project.');
+      const project = result.project || {};
+      localStorage.setItem(PROJECT_SELECTION_KEY, String(project.projectId || ''));
+      await loadProjectPicker();
+      if (project.projectId) projectPicker.value = String(project.projectId);
+      populateProjectForm(projectById(project.projectId) || project);
+      setProjectManagerStatus(selectedProjectId ? 'Project updated.' : 'Project created.', 'success');
+    } catch (error) {
+      setProjectManagerStatus(error.message || 'Could not save project.', 'error');
+    } finally {
+      saveProjectBtn.disabled = false;
+    }
+  }
+
+  async function deleteSelectedProject() {
+    const project = projectById(projectPicker && projectPicker.value);
+    if (!project) return;
+    const summary = `${project.projectName} (${project.reportCount || 0} reports, ${project.activeMilestoneCount || 0} milestones)`;
+    if (!window.confirm(`Delete ${summary}? This also deletes this project's saved reports, milestones, risks, context snapshots and knowledge items.`)) return;
+    try {
+      deleteProjectBtn.disabled = true;
+      const response = await fetch(`/api/project-update-test/projects/${encodeURIComponent(project.projectId)}`, {
+        method: 'DELETE',
+        credentials: 'same-origin'
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result || result.ok === false) throw new Error(result?.error || 'Could not delete project.');
+      localStorage.removeItem(PROJECT_SELECTION_KEY);
+      await loadProjectPicker();
+      projectPicker.value = '';
+      populateProjectForm(null);
+      setProjectManagerStatus('Project deleted.', 'success');
+    } catch (error) {
+      setProjectManagerStatus(error.message || 'Could not delete project.', 'error');
+      deleteProjectBtn.disabled = false;
+    }
   }
 
   function cloneJson(value) {
@@ -883,7 +1013,20 @@ function buildTranscriptTestPage(config) {
   if (projectPicker) projectPicker.addEventListener('change', () => {
     if (projectPicker.value) localStorage.setItem(PROJECT_SELECTION_KEY, projectPicker.value);
     else localStorage.removeItem(PROJECT_SELECTION_KEY);
+    populateProjectForm(projectById(projectPicker.value));
   });
+  if (toggleProjectManagerBtn) toggleProjectManagerBtn.addEventListener('click', () => {
+    projectManager.classList.toggle('hidden');
+    populateProjectForm(projectById(projectPicker.value));
+  });
+  if (newProjectBtn) newProjectBtn.addEventListener('click', () => {
+    projectPicker.value = '';
+    localStorage.removeItem(PROJECT_SELECTION_KEY);
+    populateProjectForm(null);
+    projectNameInput.focus();
+  });
+  if (saveProjectBtn) saveProjectBtn.addEventListener('click', saveProject);
+  if (deleteProjectBtn) deleteProjectBtn.addEventListener('click', deleteSelectedProject);
   copyBtn.addEventListener('click', copyJson);
   downloadProjectReportPdfBtn.addEventListener('click', () => {
     refreshProjectReportState();

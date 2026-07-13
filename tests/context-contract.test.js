@@ -51,6 +51,9 @@ test('project context producer preserves the contract and deterministic resoluti
     assert.ok(dbSource.includes(token), `utils/db.js should contain ${token}`);
   }
   assert.ok(apiSource.includes("router.get('/project-update-test/projects'"));
+  assert.ok(apiSource.includes("router.post('/project-update-test/projects', requireAuth"));
+  assert.ok(apiSource.includes("router.patch('/project-update-test/projects/:projectId', requireAuth"));
+  assert.ok(apiSource.includes("router.delete('/project-update-test/projects/:projectId', requireAuth"));
   assert.ok(apiSource.includes('projectId'));
 });
 

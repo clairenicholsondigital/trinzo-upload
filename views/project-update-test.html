@@ -30,8 +30,16 @@ input[type=file], input[type=text], input[type=date], select, textarea { width:1
 textarea { min-height:260px; resize:vertical; }
 button { background:linear-gradient(180deg,var(--accent),#0fb5ab); color:#02173B; border:none; border-radius:10px; padding:.65rem .95rem; font-weight:700; cursor:pointer; }
 button.secondary { background:#132847; color:#dbeafe; border:1px solid var(--border); }
+button.danger { color:#fecaca; border-color:#7f1d1d; }
 button:disabled { opacity:.6; cursor:not-allowed; }
 .actions, .json-heading { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; justify-content:space-between; }
+.project-picker-actions { display:flex; gap:.75rem; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-top:.35rem; }
+.project-manager { margin-top:.75rem; padding:.85rem; background:#071126; border:1px solid var(--border); border-radius:10px; }
+.project-manager-grid { display:grid; grid-template-columns:2fr 1.2fr .8fr; gap:.75rem; margin-bottom:.75rem; }
+.project-manager-grid label { color:var(--muted); font-size:.86rem; }
+.project-manager-grid label.wide { grid-column:1 / -1; }
+.project-manager-grid input, .project-manager-grid select, .project-manager-grid textarea { margin-top:.35rem; }
+.project-manager-grid textarea { min-height:88px; }
 .project-report-brand { display:flex; gap:.75rem; align-items:center; }
 .project-report-logo { width:132px; height:auto; background:#071126; border:1px solid var(--border); border-radius:6px; padding:.45rem; }
 .print-only { display:none; }
@@ -84,6 +92,7 @@ a { color:#67e8f9; }
   body { padding:.7rem; }
   .panel { padding:.85rem; border-radius:10px; }
   .project-form-grid { grid-template-columns:1fr; }
+  .project-manager-grid { grid-template-columns:1fr; }
   .project-tab { flex:1 1 auto; }
 }
 @media print {

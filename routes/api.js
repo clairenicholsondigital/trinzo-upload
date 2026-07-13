@@ -33,6 +33,9 @@ const {
   deleteProjectMilestone,
   deactivateProjectMilestones,
   listProjectOptions,
+  createProject,
+  updateProject,
+  deleteProject,
   getProjectContext,
   createProjectContextSnapshot,
   getProjectContextSnapshot,
@@ -1318,6 +1321,34 @@ router.get('/project-update-test/projects', async (req, res) => {
   try {
     const projects = await listProjectOptions(req.query?.limit);
     return res.json({ ok: true, projects });
+  } catch (error) {
+    return sendTestError(res, error);
+  }
+});
+
+router.post('/project-update-test/projects', requireAuth, async (req, res) => {
+  try {
+    const project = await createProject(req.body || {});
+    return res.status(201).json({ ok: true, project });
+  } catch (error) {
+    return sendTestError(res, error);
+  }
+});
+
+router.patch('/project-update-test/projects/:projectId', requireAuth, async (req, res) => {
+  try {
+    const project = await updateProject(req.params.projectId, req.body || {});
+    return res.json({ ok: true, project });
+  } catch (error) {
+    return sendTestError(res, error);
+  }
+});
+
+router.delete('/project-update-test/projects/:projectId', requireAuth, async (req, res) => {
+  try {
+    const project = await deleteProject(req.params.projectId);
+    if (!project) return res.status(404).json({ ok: false, error: 'Project not found.' });
+    return res.json({ ok: true, project });
   } catch (error) {
     return sendTestError(res, error);
   }
