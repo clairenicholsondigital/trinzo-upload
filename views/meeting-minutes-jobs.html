@@ -73,13 +73,15 @@ pre { white-space:pre-wrap; overflow:auto; max-height:620px; background:#071126;
 }
 .result-toolbar { margin:.85rem 0 1rem; display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; }
 .minutes-table-wrap { width:100%; overflow-x:auto; margin-top:1rem; }
-.minutes-table { width:100%; border-collapse:collapse; min-width:760px; }
+.minutes-table { width:100%; border-collapse:collapse; min-width:980px; }
 .minutes-table th, .minutes-table td { border:1px solid var(--border); padding:.65rem; vertical-align:top; }
 .minutes-table th { text-align:left; color:var(--accent); background:#071126; font-size:.9rem; }
 .minutes-table td { background:#081227; line-height:1.45; }
-.minutes-table .type-cell { width:15%; font-weight:700; }
-.minutes-table .owner-cell { width:20%; color:#dbeafe; }
-.minutes-table .text-cell { width:65%; }
+.minutes-table .type-cell { width:14%; font-weight:700; }
+.minutes-table .owner-cell { width:16%; color:#dbeafe; }
+.minutes-table .text-cell { width:34%; }
+.minutes-table .detail-cell { width:18%; color:#dbeafe; }
+.minutes-table .evidence-cell { width:18%; color:#dbeafe; }
 .minutes-table select,
 .minutes-table input,
 .minutes-table textarea {
@@ -226,6 +228,14 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
       .trim();
   }
 
+  function cleanMultiline(value) {
+    return String(value || '')
+      .split(/\r?\n/)
+      .map((line) => cleanText(line))
+      .filter(Boolean)
+      .join('\n');
+  }
+
   function firstDefined(...values) {
     return values.find(value => value !== undefined && value !== null && value !== '');
   }
@@ -245,32 +255,91 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     return asArray(output?.participants?.[group] || output?.[`participants.${group}`]);
   }
 
+  function objectText(value) {
+    if (!value || typeof value !== 'object') return cleanText(value);
+    return cleanText(firstDefined(
+      value.text,
+      value.quote,
+      value.snippet,
+      value.sourceSnippet,
+      value.summary,
+      value.evidence,
+      ''
+    ));
+  }
+
+  function valueText(value) {
+    if (Array.isArray(value)) {
+      return value.map((item) => {
+        if (typeof item === 'string') return cleanText(item);
+        const text = objectText(item);
+        const speaker = cleanText(item?.speaker || '');
+        return text && speaker ? `${speaker}: ${text}` : text;
+      }).filter(Boolean).join('\n');
+    }
+    if (value && typeof value === 'object') return objectText(value);
+    return cleanText(value);
+  }
+
   function getEvidenceSpeaker(item) {
     const evidence = asArray(item?.evidence || item?._evidence);
     const first = evidence.find((ev) => ev && ev.speaker);
     return first ? first.speaker : '';
   }
 
+  function rowDetail(item) {
+    if (!item || typeof item !== 'object') return '';
+    const pairs = [
+      ['Status', firstDefined(item.status, item.state)],
+      ['Deadline', firstDefined(item.deadline, item.target, item.meetingActionPointDeadline)],
+      ['Dependency', item.dependency],
+      ['Normalised term', item.normalisedTerm],
+      ['Confidence', item.confidence],
+      ['Reason', item.reason],
+      ['Category', item.category]
+    ];
+    return pairs
+      .map(([label, value]) => {
+        const text = valueText(value);
+        return text ? `${label}: ${text}` : '';
+      })
+      .filter(Boolean)
+      .join('\n');
+  }
+
+  function rowEvidence(item) {
+    if (!item || typeof item !== 'object') return '';
+    return valueText(firstDefined(item.evidence, item.sourceSnippet, item._evidence, item.source, ''));
+  }
+
+  function rowText(item, textKeyCandidates) {
+    if (typeof item === 'string') return cleanText(item);
+    if (!item || typeof item !== 'object') return '';
+    return cleanText(firstDefined(
+      ...textKeyCandidates.map((key) => item[key]),
+      item.text,
+      item.summary,
+      item.topic
+    ));
+  }
+
   function addRowsFromArray(rows, source, type, textKeyCandidates) {
     asArray(source).forEach((item, index) => {
       if (typeof item === 'string') {
         const text = cleanText(item);
-        if (text) rows.push({ id: `${type}-${index}`, type, owner: '', text });
+        if (text) rows.push({ id: `${type}-${index}`, type, owner: '', text, detail: '', evidence: '' });
         return;
       }
       if (!item || typeof item !== 'object') return;
-      const text = cleanText(firstDefined(
-        ...textKeyCandidates.map((key) => item[key]),
-        item.text,
-        item.summary,
-        item.topic
-      ));
+      const text = rowText(item, textKeyCandidates);
       if (!text) return;
       rows.push({
         id: `${type}-${index}`,
         type,
         owner: cleanText(firstDefined(item.owner, item.speaker, item.meetingActionPointOwner, getEvidenceSpeaker(item), '')),
-        text
+        text,
+        detail: rowDetail(item),
+        evidence: rowEvidence(item)
       });
     });
   }
@@ -281,17 +350,19 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
         id: `edited-${index}`,
         type: cleanText(row?.type || 'Note') || 'Note',
         owner: cleanText(row?.owner || ''),
-        text: cleanText(row?.text || '')
+        text: cleanText(row?.text || ''),
+        detail: cleanMultiline(row?.detail || ''),
+        evidence: cleanMultiline(row?.evidence || '')
       })).filter((row) => row.text);
     }
 
     const rows = [];
     if (output.executiveSummary) {
-      rows.push({ id: 'summary-0', type: 'Summary', owner: '', text: cleanText(output.executiveSummary) });
+      rows.push({ id: 'summary-0', type: 'Summary', owner: '', text: cleanText(output.executiveSummary), detail: '', evidence: '' });
     }
     asArray(output.meetingObjectives).forEach((text, index) => {
       const cleaned = cleanText(text);
-      if (cleaned) rows.push({ id: `objective-${index}`, type: 'Objective', owner: '', text: cleaned });
+      if (cleaned) rows.push({ id: `objective-${index}`, type: 'Objective', owner: '', text: cleaned, detail: '', evidence: '' });
     });
     addRowsFromArray(rows, output.actions, 'Action', ['action', 'task', 'meetingActionPoint', 'text']);
     asArray(output.meetingActionPoint).forEach((text, index) => {
@@ -301,7 +372,9 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
         id: `meeting-action-${index}`,
         type: 'Action',
         owner: cleanText(asArray(output.meetingActionPointOwner)[index] || ''),
-        text: cleaned
+        text: cleaned,
+        detail: cleanText(asArray(output.meetingActionPointDeadline)[index] || ''),
+        evidence: ''
       });
     });
     addRowsFromArray(rows, output.decisionDetails, 'Decision', ['decision', 'decisionPoint', 'text', 'summary']);
@@ -310,7 +383,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     addRowsFromArray(rows, output.risksAndIssues, 'Risk / issue', ['text', 'summary', 'risk', 'issue']);
     addRowsFromArray(rows, output.dependencies, 'Dependency', ['text', 'summary', 'dependency']);
     addRowsFromArray(rows, output.complianceFollowUps, 'Compliance follow-up', ['text', 'summary', 'action']);
-    addRowsFromArray(rows, output.termsForReview, 'Term for review', ['term', 'normalisedTerm', 'text', 'summary']);
+    addRowsFromArray(rows, output.termsForReview, 'Term for review', ['term', 'text', 'summary', 'normalisedTerm']);
     addRowsFromArray(rows, output.finalDiscussionPoints || output.discussionPointDetails, 'Discussion', ['discussionPoint', 'text', 'summary']);
     addRowsFromArray(rows, output.statusReviewWorkstreams || output.statusReviewPoints, 'Status', ['topic', 'summary', 'text']);
     addRowsFromArray(rows, output.discussionPoints, 'Discussion', ['discussionPoint', 'text', 'summary']);
@@ -378,6 +451,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   function renderResultTable(rows) {
     latestResultRows = rows.map((row) => ({ ...row }));
     if (!rows.length) return '<div class="result-empty">No reviewable meeting rows found in the completed result.</div>';
+    const rowTypes = ['Summary', 'Objective', 'Confirmed', 'Risk / issue', 'Dependency', 'Compliance follow-up', 'Term for review', 'Action', 'Decision', 'Discussion', 'Status', 'Note'];
     return `
       <div class="minutes-table-wrap">
         <table class="minutes-table">
@@ -386,6 +460,8 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
               <th>Type</th>
               <th>Owner / speaker</th>
               <th>Output</th>
+              <th>Status / deadline / detail</th>
+              <th>Evidence / source note</th>
             </tr>
           </thead>
           <tbody>
@@ -393,13 +469,15 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
               <tr>
                 <td class="type-cell">
                   <select data-edit-field="type" data-edit-index="${index}">
-                    ${['Summary', 'Objective', 'Action', 'Decision', 'Discussion', 'Status', 'Note'].map((type) => `
+                    ${rowTypes.map((type) => `
                       <option value="${type}" ${row.type === type ? 'selected' : ''}>${type}</option>
                     `).join('')}
                   </select>
                 </td>
                 <td class="owner-cell"><input data-edit-field="owner" data-edit-index="${index}" value="${escapeAttribute(row.owner || '')}" /></td>
                 <td class="text-cell"><textarea data-edit-field="text" data-edit-index="${index}">${escapeHtml(row.text)}</textarea></td>
+                <td class="detail-cell"><textarea data-edit-field="detail" data-edit-index="${index}" placeholder="Status, deadline, dependency, confidence...">${escapeHtml(row.detail || '')}</textarea></td>
+                <td class="evidence-cell"><textarea data-edit-field="evidence" data-edit-index="${index}" placeholder="Transcript evidence or source note">${escapeHtml(row.evidence || '')}</textarea></td>
               </tr>
             `).join('')}
           </tbody>
@@ -457,7 +535,9 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
       .map((row) => ({
         type: cleanText(row.type || 'Note') || 'Note',
         owner: cleanText(row.owner || ''),
-        text: cleanText(row.text || '')
+        text: cleanText(row.text || ''),
+        detail: cleanMultiline(row.detail || ''),
+        evidence: cleanMultiline(row.evidence || '')
       }))
       .filter((row) => row.text);
   }
@@ -515,7 +595,14 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
       parts.push(`Meeting objectives:\n${meta.meetingObjectives.map((objective) => `- ${objective}`).join('\n')}`);
     }
     const rows = getEditedRowsFromDom()
-      .map((row) => `${row.type} | ${row.owner || '—'}\n${row.text}`)
+      .map((row) => {
+        const details = [
+          row.text,
+          row.detail ? `Detail: ${row.detail}` : '',
+          row.evidence ? `Evidence: ${row.evidence}` : ''
+        ].filter(Boolean).join('\n');
+        return `${row.type} | ${row.owner || '—'}\n${details}`;
+      })
       .join('\n\n');
     return rows ? `${parts.join('\n')}\n\n${rows}` : parts.join('\n');
   }
