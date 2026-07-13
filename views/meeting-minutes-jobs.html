@@ -326,6 +326,12 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     ));
   }
 
+  function meetingLocationText(value) {
+    const location = cleanText(value);
+    const missingLocationValues = new Set(['', 'not stated', 'not specified', 'unknown', 'n/a', 'none']);
+    return missingLocationValues.has(location.toLowerCase()) ? 'Microsoft Teams' : location;
+  }
+
   function addRowsFromArray(rows, source, type, textKeyCandidates) {
     asArray(source).forEach((item, index) => {
       if (typeof item === 'string') {
@@ -412,7 +418,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     return {
       meetingTitle: cleanText(output.meetingTitle || output.title || ''),
       meetingDate: cleanText(output.meetingDate || output.date || ''),
-      meetingLocation: cleanText(output.meetingLocation || output.location || ''),
+      meetingLocation: meetingLocationText(output.meetingLocation || output.location || ''),
       meetingType: cleanText(output.meetingType || ''),
       meetingObjectives: asArray(output.meetingObjectives).map((value) => cleanText(typeof value === 'string' ? value : firstDefined(value?.text, value?.summary, value?.topic, ''))).filter(Boolean),
       participants: {

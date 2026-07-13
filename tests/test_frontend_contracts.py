@@ -186,6 +186,8 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("Trinzo participants", jobs_page)
         self.assertIn("Meeting objectives", jobs_page)
         self.assertIn("meetingLocation", jobs_page)
+        self.assertIn("meetingLocationText", jobs_page)
+        self.assertIn("Microsoft Teams", jobs_page)
         self.assertIn("saveEditedResult", jobs_page)
         self.assertIn("queueAutosave", jobs_page)
         self.assertIn("Copy table text", jobs_page)
