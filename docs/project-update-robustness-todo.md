@@ -38,6 +38,149 @@ knowledge is now treated as a pgvector-only feature; the old implied `REAL[]`
 schema fallback has been removed from the migration because the worker/retriever
 use vector casts/operators directly.
 
+## Remaining To Finish
+
+This is the current "not finished yet" list as of 2026-07-27, after commit
+`59d59f6` was deployed and smoke checked on `trinzo.virtual-hub.online`.
+
+### 1. Restore A Trustworthy Full Regression Baseline
+
+Focused project-update gates are green, but the full `npm test` baseline still
+has old meeting-minutes MiniLM comparison drift in `tests/test_minilm_comparison.py`.
+
+Why it matters:
+
+- project-update can now be deployed with confidence from its focused gates;
+- the whole repo still lacks one clean all-green signal;
+- future changes will be harder to judge until old meeting-minutes drift is
+  either fixed, rebased, split out, or explicitly quarantined.
+
+Acceptance:
+
+- `npm test` passes end to end; or
+- old meeting-minutes drift is isolated behind a separately named diagnostic
+  command, leaving the default deploy regression gate clean.
+
+### 2. Expand Real-World Project-Update Golden Cases
+
+The strict project-update golden eval is now useful, but it only has two real
+cases. That is too thin for broad confidence.
+
+Add real cases covering:
+
+- fresh-context report generation;
+- existing stored milestones carried forward correctly;
+- existing risks updated without duplicate risk spam;
+- messy transcript/chatter with sparse signal;
+- retrieved knowledge supplementing context without being cited as transcript
+  evidence;
+- health/status disagreements where the correct answer is not obvious.
+
+Acceptance:
+
+- at least 8-10 real cases exist;
+- `python3 scripts/run_project_update_golden_eval.py --mode all --skip-minilm`
+  passes;
+- each case checks at least one milestone, risk, health, retrieval, or
+  evidence-discipline expectation.
+
+### 3. Run A Proper Internal Pilot
+
+The core workflow works, but it needs a real internal usage pass rather than
+only smoke projects and fixtures.
+
+Pilot checklist:
+
+1. choose one real Trinzo project;
+2. enter standing context and agreed milestones;
+3. process 3-5 real project update transcripts;
+4. approve reports that are genuinely good enough to become memory;
+5. use Insights and Ask this project before the next report;
+6. record every manual correction needed.
+
+Acceptance:
+
+- reports are useful without heavy manual rescue;
+- corrections are categorised into parser/model/UI/setup issues;
+- project memory improves later reports rather than polluting them.
+
+### 4. Tighten Project Lifecycle And Admin Rules
+
+The workspace can create, read, save, approve, archive and tidy data, but the
+rules are still operator-shaped rather than product-shaped.
+
+Decisions needed:
+
+- when a milestone/risk becomes official;
+- who can approve reports;
+- when generated knowledge should be retained, archived or deleted;
+- what "Tidy draft data" should do in production versus test data;
+- whether destructive buttons need an admin-only layer beyond normal login;
+- how to surface version history so users can trust edits.
+
+Acceptance:
+
+- lifecycle rules are written in this doc or product docs;
+- UI copy/actions match those rules;
+- destructive actions have confirmation and regression coverage.
+
+### 5. Improve The Client-Facing UX
+
+The frontend is usable as an internal workspace, but it still feels like an
+operator tool.
+
+Needed polish:
+
+- clearer empty states for new projects;
+- guided setup for milestones/context before first transcript;
+- better status language when generation/retrieval is unavailable;
+- fewer exposed technical controls for normal users;
+- mobile table behaviour reviewed beyond smoke screenshots;
+- better separation of "project memory", "report evidence" and "suggested
+  follow-up".
+
+Acceptance:
+
+- a first-time user can create/select a project, add context, process a
+  transcript, save a report and understand Insights without developer guidance;
+- authenticated browser pass covers desktop and mobile for Setup, Process,
+  Reports, report detail and Insights;
+- no page JavaScript errors in the checked journey.
+
+### 6. Wire The Status Classifier Deliberately
+
+The separate status model at `/root/project-update-status-model` is promising,
+but it is not part of the core live decision path yet.
+
+Do this after the golden cases are broader.
+
+Suggested integration:
+
+1. expose classifier output as diagnostics only;
+2. compare classifier status/action-state/signal output against current report
+   output in golden evals;
+3. decide whether it should influence health/status decisions;
+4. keep transcript evidence and model diagnostics visibly separate.
+
+Acceptance:
+
+- classifier diagnostics are visible in technical output;
+- golden evals compare classifier output without letting it silently override
+  existing report logic;
+- a deliberate product decision is recorded before classifier output changes
+  user-facing statuses.
+
+### 7. Continue DB Parameterisation Outside Project-Update
+
+The project-update critical slices are now parameterised, but older meeting,
+admin and compatibility paths still contain legacy query-building patterns.
+
+Acceptance:
+
+- no high-risk user-input SQL paths remain in the wider app;
+- conversion happens in small tested slices;
+- project-update behaviour does not regress while old paths are cleaned.
+
 ## Guardrails
 
 - Keep all changes inside `trinzo-upload`.
@@ -280,12 +423,11 @@ node --check public/project-stage-reports.js
 node --check public/project-stage-insights.js
 python3 -m unittest tests.test_project_update_minilm tests.test_project_context_contract tests.test_project_knowledge tests.test_project_update_phase2_rag -v
 node --test tests/context-contract.test.js
-python3 scripts/run_project_update_golden_eval.py --mode synthetic --skip-minilm
+python3 scripts/run_project_update_golden_eval.py --mode all --skip-minilm
 ```
 
-The golden command is currently expected to fail until the Priority 2 quality
-tickets are fixed; use it as a diagnostic gate, not a deployment blocker, during
-the current hardening pass.
+The project-update golden command is now expected to pass. Treat failures as a
+real quality signal unless the fixture itself is deliberately being updated.
 
 Before calling the frontend safe:
 
