@@ -100,10 +100,11 @@ Verified:
   passes 20/20;
 - `npm test` still passes after the new cases and runner assertion.
 
-### 3. Run A Proper Internal Pilot
+### 3. Run A Proper Internal Pilot - Ready For Real Data
 
-The core workflow works, but it needs a real internal usage pass rather than
-only smoke projects and fixtures.
+The core workflow works, but it still needs a real internal usage pass rather
+than only smoke projects and fixtures. The pilot checklist and correction log
+now live in `docs/project-update-internal-pilot.md`.
 
 Pilot checklist:
 
@@ -114,7 +115,14 @@ Pilot checklist:
 5. use Insights and Ask this project before the next report;
 6. record every manual correction needed.
 
-Acceptance:
+Preparation completed:
+
+- pilot scope and run checklist documented;
+- correction log fields defined;
+- pass/fail criteria written down;
+- before/after checks documented.
+
+Acceptance for marking this fully done:
 
 - reports are useful without heavy manual rescue;
 - corrections are categorised into parser/model/UI/setup issues;
