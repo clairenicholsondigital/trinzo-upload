@@ -10,7 +10,15 @@
     container.innerHTML = `
       <section class="panel">
         <h1>Setup</h1>
-        <p class="intro">Add the milestones and standing context this project should be measured against. These feed every transcript you process and the project's memory.</p>
+        <p class="intro">Set the baseline this project should be measured against before processing update transcripts.</p>
+        <div class="empty-state">
+          <strong>Before the first report</strong>
+          <ol>
+            <li>Add the agreed milestones or delivery workstreams.</li>
+            <li>Add standing context such as SoW constraints, decisions, known risks, or client preferences.</li>
+            <li>Process the first transcript, review the draft, then approve only when it is good enough to become future project memory.</li>
+          </ol>
+        </div>
       </section>
       <section class="panel">
         <h2>Milestones</h2>
@@ -35,17 +43,21 @@
         <div id="milestoneList" class="table-scroll"><table><tbody><tr><td>Loading…</td></tr></tbody></table></div>
       </section>
       <section class="panel">
-        <h2>Standing context / project knowledge</h2>
-        <p class="intro">Paste standing context such as SoW notes, background decisions, or client constraints. This is supplemental memory for retrieval and future reports — not transcript evidence.</p>
+        <h2>Project memory</h2>
+        <p class="intro">Store background that should guide future reports. This is retrieved as project memory; transcript evidence still has to come from the update transcript itself.</p>
         <div class="grid">
           <label>Title <input id="knowledgeTitle" type="text" placeholder="Statement of work / background note" /></label>
           <label>Type <select id="knowledgeType"><option value="background_doc">Background doc</option><option value="decision">Decision</option><option value="note">Note</option><option value="risk">Risk</option></select></label>
         </div>
         <label style="margin-top:.75rem">Content <textarea id="knowledgeContent" placeholder="Paste project background here..."></textarea></label>
         <div class="actions" style="margin-top:.75rem">
-          <button id="saveKnowledgeBtn" class="primary" type="button">Save knowledge</button>
-          <button id="processKnowledgeBtn" type="button">Update searchable memory</button>
+          <button id="saveKnowledgeBtn" class="primary" type="button">Save to project memory</button>
         </div>
+        <details style="margin-top:.75rem">
+          <summary>Memory search maintenance</summary>
+          <p class="muted">Use this if saved memory has not appeared in Ask this project after a short wait.</p>
+          <button id="processKnowledgeBtn" type="button">Refresh memory search</button>
+        </details>
         <p id="knowledgeStatus" class="status"></p>
         <div id="knowledgeList" class="table-scroll"><table><tbody><tr><td>Loading knowledge items…</td></tr></tbody></table></div>
       </section>
@@ -75,7 +87,7 @@
     function renderMilestones(milestones) {
       countNode.textContent = milestones.length
         ? `${milestones.length} active milestone${milestones.length === 1 ? '' : 's'} for this project.`
-        : 'No milestones yet for this project. Add one below.';
+        : 'No milestones yet. Add the delivery workstreams this project update should track.';
       listNode.innerHTML = `
         <table>
           <thead><tr><th class="select-cell"><input id="selectAllMilestones" type="checkbox" aria-label="Select all milestones" /></th><th>Milestone</th><th>Period</th><th>Baseline</th><th>Forecast</th><th>Latest status</th><th>Trend</th></tr></thead>
@@ -94,7 +106,7 @@
                   <td>${escapeHtml(friendlyLabel(latest.trend))}</td>
                 </tr>
               `;
-            }).join('') || '<tr><td colspan="7">No milestones yet.</td></tr>'}
+            }).join('') || '<tr><td colspan="7"><strong>No milestones yet.</strong><br />Add at least one milestone before processing the first transcript so the report has a project baseline.</td></tr>'}
           </tbody>
         </table>
       `;
@@ -185,10 +197,14 @@
       try {
         const payload = await PW.request(`knowledge/items?projectId=${encodeURIComponent(projectId)}&status=active`);
         const items = asArray(payload.items);
-        listNode.innerHTML = `<table><thead><tr><th>Title</th><th>Type</th><th>Official</th><th>Chunks</th><th>Embeddings</th><th>Updated</th><th>Action</th></tr></thead><tbody>${items.map((item) => {
+        listNode.innerHTML = `<table><thead><tr><th>Title</th><th>Type</th><th>Official</th><th>Search status</th><th>Updated</th><th>Action</th></tr></thead><tbody>${items.map((item) => {
           const counts = item.embeddingCounts || {};
-          return `<tr><td>${escapeHtml(item.title)}</td><td>${escapeHtml(friendlyLabel(item.itemType))}</td><td>${item.isOfficial ? '✅' : '—'}</td><td>${escapeHtml(item.chunkCount || 0)}</td><td>queued ${escapeHtml(counts.queued || 0)} · embedded ${escapeHtml(counts.embedded || 0)} · failed ${escapeHtml(counts.failed || 0)}</td><td>${escapeHtml(dateValue(item.updatedAt))}</td><td><button type="button" data-archive-knowledge="${escapeHtml(item.itemId)}">Archive</button></td></tr>`;
-        }).join('') || '<tr><td colspan="7">No knowledge items yet.</td></tr>'}</tbody></table>`;
+          const embedded = Number(counts.embedded || 0);
+          const queued = Number(counts.queued || 0);
+          const failed = Number(counts.failed || 0);
+          const searchStatus = failed ? 'Needs refresh' : embedded ? 'Searchable' : queued ? 'Indexing' : 'Saved';
+          return `<tr><td>${escapeHtml(item.title)}</td><td>${escapeHtml(friendlyLabel(item.itemType))}</td><td>${item.isOfficial ? '✅' : '—'}</td><td>${escapeHtml(searchStatus)}</td><td>${escapeHtml(dateValue(item.updatedAt))}</td><td><button type="button" data-archive-knowledge="${escapeHtml(item.itemId)}">Archive</button></td></tr>`;
+        }).join('') || '<tr><td colspan="6"><strong>No project memory yet.</strong><br />Add standing context, constraints, decisions, or risks before the first report.</td></tr>'}</tbody></table>`;
         listNode.querySelectorAll('[data-archive-knowledge]').forEach((button) => {
           button.addEventListener('click', async () => {
             await PW.request(`knowledge/items/${encodeURIComponent(button.getAttribute('data-archive-knowledge'))}`, { method: 'DELETE' });
@@ -217,7 +233,9 @@
           })
         });
         statusNode.className = 'status success';
-        statusNode.textContent = `Saved ${result.item.chunkCount || 0} chunks. Embedding worker ${result.embeddingWorker?.spawned ? 'started' : 'not started'}.`;
+        statusNode.textContent = result.embeddingWorker?.spawned
+          ? 'Saved to project memory. Search indexing has started.'
+          : 'Saved to project memory. Search indexing will run shortly.';
         container.querySelector('#knowledgeTitle').value = '';
         container.querySelector('#knowledgeContent').value = '';
         await loadKnowledge();
@@ -229,7 +247,7 @@
 
     container.querySelector('#processKnowledgeBtn').addEventListener('click', async () => {
       statusNode.className = 'status';
-      statusNode.textContent = 'Starting embedding worker…';
+      statusNode.textContent = 'Refreshing memory search…';
       try {
         const result = await PW.request('knowledge/embeddings/process', {
           method: 'POST',
@@ -237,7 +255,7 @@
           body: JSON.stringify({ projectId })
         });
         statusNode.className = 'status success';
-        statusNode.textContent = result.embeddingWorker?.spawned ? 'Embedding worker started.' : 'Embedding worker was not started.';
+        statusNode.textContent = result.embeddingWorker?.spawned ? 'Memory search refresh started.' : 'Memory search refresh could not start automatically.';
         window.setTimeout(loadKnowledge, 1500);
       } catch (error) {
         statusNode.className = 'status error';

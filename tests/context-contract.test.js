@@ -12,7 +12,10 @@ const serverSource = fs.readFileSync(path.join(repoDir, 'server.js'), 'utf8');
 const knowledgeSource = fs.readFileSync(path.join(repoDir, 'utils/knowledge.js'), 'utf8');
 const backfillSource = fs.readFileSync(path.join(repoDir, 'scripts/backfill_project_knowledge.js'), 'utf8');
 const contextPageSource = fs.readFileSync(path.join(repoDir, 'views/project-update-context.html'), 'utf8');
+const projectStageSetupSource = fs.readFileSync(path.join(repoDir, 'public/project-stage-setup.js'), 'utf8');
+const projectStageProcessSource = fs.readFileSync(path.join(repoDir, 'public/project-stage-process.js'), 'utf8');
 const projectStageReportsSource = fs.readFileSync(path.join(repoDir, 'public/project-stage-reports.js'), 'utf8');
+const projectStageInsightsSource = fs.readFileSync(path.join(repoDir, 'public/project-stage-insights.js'), 'utf8');
 const roadmapPageSource = fs.readFileSync(path.join(repoDir, 'views/project-update-roadmap.html'), 'utf8');
 const dashboardPageSource = fs.readFileSync(path.join(repoDir, 'views/dashboard.html'), 'utf8');
 const archivePageSource = fs.readFileSync(path.join(repoDir, 'views/archive.html'), 'utf8');
@@ -109,4 +112,15 @@ test('project report lifecycle archives instead of hard deleting reports', () =>
   assert.ok(projectStageReportsSource.includes('Archive selected'));
   assert.ok(projectStageReportsSource.includes('keeps its version history'));
   assert.ok(projectStageReportsSource.includes('removes it from active reports and project context'));
+});
+
+test('project workspace labels separate memory, draft reports and evidence', () => {
+  assert.ok(projectStageSetupSource.includes('Before the first report'));
+  assert.ok(projectStageSetupSource.includes('Project memory'));
+  assert.ok(projectStageSetupSource.includes('Memory search maintenance'));
+  assert.ok(projectStageSetupSource.includes('Search status'));
+  assert.ok(projectStageProcessSource.includes('Create draft report'));
+  assert.ok(projectStageProcessSource.includes('evidence must come from this transcript'));
+  assert.ok(projectStageInsightsSource.includes('stored project memory'));
+  assert.ok(projectStageInsightsSource.includes('Suggested follow-up risks'));
 });

@@ -8,7 +8,7 @@
 
   function mount(container, ctx) {
     const projectId = ctx.projectId;
-    container.innerHTML = '<section class="panel"><h1>Insights</h1><p class="intro">Loading project analytics…</p></section>';
+    container.innerHTML = '<section class="panel"><h1>Insights</h1><p class="intro">Loading project status, report history and memory…</p></section>';
 
     PW.request(`context?projectId=${encodeURIComponent(projectId)}&limit=8`)
       .then((payload) => render(container, ctx, payload.context || {}))
@@ -29,14 +29,14 @@
     container.innerHTML = `
       <section class="panel">
         <h1>Insights</h1>
-        <p class="intro">Project analytics used when analysing new update transcripts — milestone trends, health history, risks and saved reports.</p>
+        <p class="intro">Review the current project position, recent report history and stored project memory. Memory can guide future reports, but report evidence remains transcript-only.</p>
         <div class="actions">
           <button id="createSnapshotBtn" type="button" ${context.found ? '' : 'disabled'}>Create context snapshot</button>
           <button id="markOfficialBtn" type="button" ${context.found ? '' : 'disabled'}>Mark active context official</button>
           <button id="cleanupTestsBtn" type="button" ${context.found ? '' : 'disabled'}>Tidy draft data</button>
         </div>
         <p id="contextStatus" class="status"></p>
-        ${context.found ? '' : '<p class="status">No saved analytics yet for this project. Process a transcript to generate the first report.</p>'}
+        ${context.found ? '' : '<p class="status">No project history yet. Add Setup context, then create and approve the first draft report.</p>'}
       </section>
       <section class="panel">
         <h2>At a glance</h2>
@@ -49,7 +49,7 @@
         </div>
       </section>
       <section class="panel">
-        <h2>Active milestones and latest assessment</h2>
+        <h2>Active milestones</h2>
         <div class="table-scroll"><table><thead><tr><th>Milestone</th><th>Official</th><th>Latest status</th><th>Previous status</th><th>Trend</th><th>Forecast</th><th>Summary</th></tr></thead><tbody>
           ${milestones.map((milestone) => {
             const latest = milestone.latestAssessment || {};
@@ -77,7 +77,7 @@
         </tbody></table></div>
       </section>
       <section class="panel">
-        <h2>Risk suggestions</h2>
+        <h2>Suggested follow-up risks</h2>
         <div class="table-scroll"><table><thead><tr><th>Risk</th><th>Review status</th><th>Confidence</th><th>Report</th><th>Description</th><th>Mitigation</th></tr></thead><tbody>
           ${riskSuggestions.map((risk) => `<tr><td>${escapeHtml(risk.riskTitle || '-')}</td><td>${escapeHtml(friendlyLabel(risk.reviewStatus))}</td><td>${escapeHtml(risk.confidence || '-')}</td><td><a href="/project-update-test/reports/${escapeHtml(risk.reportId)}">Report ${escapeHtml(risk.reportId)}</a></td><td>${escapeHtml(risk.description || '-')}</td><td>${escapeHtml(risk.suggestedMitigation || '-')}</td></tr>`).join('') || '<tr><td colspan="6">No risk suggestions yet.</td></tr>'}
         </tbody></table></div>
@@ -86,7 +86,7 @@
         <h2>Ask this project</h2>
         <div class="ask-layout">
           <div>
-            <p class="intro">Ask stored project memory before a report, review, or client call. The answer is grounded in retrieved chunks; if generation is unavailable, the matching snippets still appear.</p>
+            <p class="intro">Ask stored project memory before a report, review, or client call. If generation is unavailable, the matching memory snippets still appear.</p>
             <label>Question <textarea id="knowledgeAskQuestion" placeholder="What risks, decisions, or constraints should I remember before the next update?"></textarea></label>
             <div class="actions" style="margin-top:.75rem">
               <button id="askKnowledgeBtn" class="primary" type="button">Ask project memory</button>

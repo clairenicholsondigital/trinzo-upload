@@ -173,20 +173,33 @@ Acceptance:
 - report UI copy/actions match those rules;
 - report archive behaviour has regression coverage.
 
-### 5. Improve The Client-Facing UX
+### 5. Improve The Client-Facing UX - First Pass Done 2026-07-27
 
-The frontend is usable as an internal workspace, but it still feels like an
-operator tool.
+The frontend is usable as an internal workspace. The first client-facing polish
+pass keeps the same four-stage flow while reducing operator language and making
+the first-report path clearer.
 
-Needed polish:
+Implemented:
 
-- clearer empty states for new projects;
-- guided setup for milestones/context before first transcript;
-- better status language when generation/retrieval is unavailable;
-- fewer exposed technical controls for normal users;
-- mobile table behaviour reviewed beyond smoke screenshots;
-- better separation of "project memory", "report evidence" and "suggested
-  follow-up".
+- Setup now has a concise before-first-report checklist;
+- milestone and memory empty states tell the user what to add before the first
+  transcript;
+- `Standing context / project knowledge` is now labelled `Project memory`;
+- technical chunk/embedding wording is hidden behind `Memory search
+  maintenance`;
+- saving memory now reports user-facing search-indexing status instead of
+  worker/chunk internals;
+- Process now says `Create draft report` and reminds users to review before
+  approval;
+- Insights copy separates current project status, stored project memory, and
+  suggested follow-up risks.
+
+Still needed before external/client-facing use:
+
+- authenticated browser pass with screenshots on desktop and mobile after the
+  next deployable UI batch;
+- decide whether advanced JSON/report payload controls should be admin-only;
+- test the first-time journey with someone who has not seen the tool before.
 
 Acceptance:
 
