@@ -1115,10 +1115,12 @@ router.post('/project-update-test', requireAuth, withTestUpload(async (req, res)
   let resolvedProjectId = null;
   let saveOk = false;
   let retrievedKnowledge = { retrievalMode: 'none', chunks: [] };
+  let statusClassifierDiagnostics = { enabled: true, available: false, items: [], reason: 'Not run yet.' };
   try {
     const transcript = await readTestTranscript(req);
     validateTranscriptText(transcript.text);
     const scriptArgs = [];
+    const skipStatusDiagnostics = truthyFlag(req.query?.skipStatusDiagnostics) || truthyFlag(req.body?.skipStatusDiagnostics);
     if (truthyFlag(req.query?.skipMiniLM) || truthyFlag(req.body?.skipMiniLM)) {
       scriptArgs.push('--skip-minilm');
     }
@@ -1167,6 +1169,31 @@ router.post('/project-update-test', requireAuth, withTestUpload(async (req, res)
         retrievedKnowledge = { retrievalMode: 'error', chunks: [], error: contextError.message };
         await fs.writeFile(contextPath, JSON.stringify({ _contextLoadError: contextError.message, retrievedKnowledge }), 'utf8');
         scriptArgs.push('--context-file', contextPath);
+      }
+    }
+
+    if (skipStatusDiagnostics) {
+      statusClassifierDiagnostics = {
+        enabled: false,
+        available: false,
+        items: [],
+        reason: 'skipStatusDiagnostics requested.'
+      };
+    } else {
+      try {
+        statusClassifierDiagnostics = await runPythonTranscriptScript(
+          'project_status_evidence_pack.py',
+          transcript.text,
+          ['--max-chunks', String(Math.min(Math.max(Number(req.query?.statusDiagnosticsMaxChunks || req.body?.statusDiagnosticsMaxChunks || 24), 1), 80))],
+          { timeoutMs: Number(process.env.PROJECT_STATUS_DIAGNOSTICS_TIMEOUT_MS || 45000) }
+        );
+      } catch (statusError) {
+        statusClassifierDiagnostics = {
+          enabled: true,
+          available: false,
+          items: [],
+          reason: `Project status diagnostics failed open: ${statusError.message}`
+        };
       }
     }
 
@@ -1220,6 +1247,10 @@ router.post('/project-update-test', requireAuth, withTestUpload(async (req, res)
       };
     }
 
+    result.statusClassifierDiagnostics = {
+      ...statusClassifierDiagnostics,
+      decisionUse: 'diagnostics_only'
+    };
     if (result?.projectReport && typeof result.projectReport === 'object') {
       result.projectReport.retrievedKnowledge = result.projectReport.retrievedKnowledge || { retrievalMode: retrievedKnowledge.retrievalMode || 'none', chunkCount: Array.isArray(retrievedKnowledge.chunks) ? retrievedKnowledge.chunks.length : 0 };
       result.projectReport.projectResolution = result.projectReport.projectResolution || {
@@ -1227,6 +1258,15 @@ router.post('/project-update-test', requireAuth, withTestUpload(async (req, res)
         projectId: resolvedProjectId,
         projectName,
         contextFound
+      };
+      result.projectReport.statusClassifierDiagnostics = {
+        enabled: statusClassifierDiagnostics.enabled !== false,
+        available: Boolean(statusClassifierDiagnostics.available),
+        decisionUse: 'diagnostics_only',
+        chunksAnalysed: Number(statusClassifierDiagnostics.chunksAnalysed || 0),
+        itemCount: Array.isArray(statusClassifierDiagnostics.items) ? statusClassifierDiagnostics.items.length : 0,
+        topItems: Array.isArray(statusClassifierDiagnostics.items) ? statusClassifierDiagnostics.items.slice(0, 5) : [],
+        reason: statusClassifierDiagnostics.reason || ''
       };
     }
 
@@ -1244,12 +1284,15 @@ router.post('/project-update-test', requireAuth, withTestUpload(async (req, res)
       saveOk,
       retrievalMode: retrievedKnowledge.retrievalMode || 'none',
       retrievedKnowledgeChunks: Array.isArray(retrievedKnowledge.chunks) ? retrievedKnowledge.chunks.length : 0,
+      statusDiagnosticsAvailable: Boolean(statusClassifierDiagnostics.available),
+      statusDiagnosticsItems: Array.isArray(statusClassifierDiagnostics.items) ? statusClassifierDiagnostics.items.length : 0,
       durationMs: Date.now() - startedAt,
       skipMiniLM: truthyFlag(req.query?.skipMiniLM) || truthyFlag(req.body?.skipMiniLM),
       skipRewrite: truthyFlag(req.query?.skipRewrite) || truthyFlag(req.body?.skipRewrite),
       skipSave: truthyFlag(req.query?.skipSave) || truthyFlag(req.body?.skipSave),
       skipContext: truthyFlag(req.query?.skipContext) || truthyFlag(req.body?.skipContext),
-      skipKnowledge: truthyFlag(req.query?.skipKnowledge) || truthyFlag(req.body?.skipKnowledge)
+      skipKnowledge: truthyFlag(req.query?.skipKnowledge) || truthyFlag(req.body?.skipKnowledge),
+      skipStatusDiagnostics
     }));
 
     return res.json(buildTestTranscriptResponse(req, transcript, result));

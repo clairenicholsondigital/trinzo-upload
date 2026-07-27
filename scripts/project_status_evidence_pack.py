@@ -20,6 +20,7 @@ from typing import Any
 
 DEFAULT_PROJECT_STATUS_DIR = Path("/root/project-update-status-model")
 DEFAULT_MODEL_PATH = DEFAULT_PROJECT_STATUS_DIR / "models" / "production" / "classifier.joblib"
+DEFAULT_MODEL_PYTHON = DEFAULT_PROJECT_STATUS_DIR / ".venv" / "bin" / "python"
 IMPORTANT_STATUSES = {"blocked", "at_risk", "off_track", "watch", "complete"}
 IMPORTANT_ACTIONS = {
     "action_required",
@@ -212,8 +213,29 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def maybe_reexec_with_model_python(args: argparse.Namespace) -> None:
+    """Use the status-model venv when available, without making it mandatory."""
+    if os.environ.get("PROJECT_STATUS_MODEL_NO_REEXEC"):
+        return
+    model_path = Path(args.model)
+    if not model_path.exists():
+        return
+    preferred = Path(os.environ.get("PROJECT_STATUS_MODEL_PYTHON", str(Path(args.project_dir) / ".venv" / "bin" / "python")))
+    if not preferred.exists():
+        preferred = DEFAULT_MODEL_PYTHON
+    if not preferred.exists():
+        return
+    try:
+        if preferred.absolute() == Path(sys.executable).absolute():
+            return
+    except OSError:
+        return
+    os.execv(str(preferred), [str(preferred), str(Path(__file__).resolve()), *sys.argv[1:]])
+
+
 def main() -> int:
     args = parse_args(sys.argv[1:])
+    maybe_reexec_with_model_python(args)
     transcript_text = Path(args.transcript_path).read_text(encoding="utf-8")
     pack = build_pack(
         transcript_text,

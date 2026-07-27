@@ -209,28 +209,40 @@ Acceptance:
   Reports, report detail and Insights;
 - no page JavaScript errors in the checked journey.
 
-### 6. Wire The Status Classifier Deliberately
+### 6. Wire The Status Classifier Deliberately - Diagnostics First Done 2026-07-27
 
 The separate status model at `/root/project-update-status-model` is promising,
-but it is not part of the core live decision path yet.
+but it is not trusted enough to drive user-facing report decisions yet. It is
+now wired into the project-update upload route as diagnostics only.
 
-Do this after the golden cases are broader.
+Current behaviour:
 
-Suggested integration:
+- `/api/project-update-test` runs `scripts/project_status_evidence_pack.py`
+  before the normal project-update report script;
+- the classifier output is attached as `statusClassifierDiagnostics` with
+  `decisionUse: diagnostics_only`;
+- `projectReport.statusClassifierDiagnostics` contains a compact summary for
+  technical output/version history;
+- the existing report-generation path still decides overall health, milestone
+  status, actions and risks;
+- `skipStatusDiagnostics` can disable the hook for testing or emergency
+  troubleshooting;
+- classifier work is capped by `statusDiagnosticsMaxChunks` and
+  `PROJECT_STATUS_DIAGNOSTICS_TIMEOUT_MS`, and failures are fail-open.
 
-1. expose classifier output as diagnostics only;
-2. compare classifier status/action-state/signal output against current report
+Still needed before it can influence outputs:
+
+1. compare classifier status/action-state/signal output against current report
    output in golden evals;
-3. decide whether it should influence health/status decisions;
-4. keep transcript evidence and model diagnostics visibly separate.
+2. decide whether it should influence health/status decisions;
+3. keep transcript evidence and model diagnostics visibly separate.
 
 Acceptance:
 
 - classifier diagnostics are visible in technical output;
-- golden evals compare classifier output without letting it silently override
-  existing report logic;
-- a deliberate product decision is recorded before classifier output changes
-  user-facing statuses.
+- route regression checks pin `decisionUse: diagnostics_only`;
+- a deliberate product decision is still required before classifier output
+  changes user-facing statuses.
 
 ### 7. Continue DB Parameterisation Outside Project-Update
 

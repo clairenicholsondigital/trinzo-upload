@@ -619,8 +619,13 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
 
         self.assertIn("scriptArgs.push('--context-file', contextPath);", project_route)
         self.assertNotIn("scriptArgs.push('--context-file');", project_route)
+        self.assertIn("'project_status_evidence_pack.py'", project_route)
+        self.assertIn("skipStatusDiagnostics", project_route)
+        self.assertIn("statusClassifierDiagnostics", project_route)
+        self.assertIn("decisionUse: 'diagnostics_only'", project_route)
         self.assertIn("runPythonTranscriptScript('python_llm.py', transcript.text, [], { timeoutMs: projectTimeoutMs })", project_route)
         self.assertIn("project_update_test_upload_completed", project_route)
+        self.assertIn("statusDiagnosticsAvailable", project_route)
         self.assertIn("durationMs", project_route)
         self.assertIn("saveOk", project_route)
         self.assertIn("projectId", project_route)
