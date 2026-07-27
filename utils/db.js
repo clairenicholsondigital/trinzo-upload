@@ -1378,53 +1378,58 @@ CREATE INDEX IF NOT EXISTS idx_meeting_minutes_feedback_status ON meeting_minute
 
 async function listMeetingMinutesFeedback(limit = 100) {
   const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 250);
-  const out = await runPsql(`${meetingMinutesFeedbackSchemaSql()}
-SELECT json_build_object(
-  'id', id,
-  'route', route,
-  'feedbackType', feedback_type,
-  'message', message,
-  'contactName', COALESCE(contact_name, ''),
-  'status', COALESCE(status, 'submitted'),
-  'claireComments', COALESCE(claire_comments, ''),
-  'fixDetails', COALESCE(fix_details, ''),
-  'selectedSnippet', COALESCE(metadata->>'selectedSnippet', ''),
-  'createdAt', created_at,
-  'editedAt', edited_at,
-  'fixedAt', fixed_at
-)::text
-FROM meeting_minutes_feedback
-ORDER BY created_at DESC, id DESC
-LIMIT ${safeLimit};`);
-  return parseJsonLines(out);
+  await runPsql(meetingMinutesFeedbackSchemaSql());
+  const result = await query(
+    `SELECT json_build_object(
+       'id', id,
+       'route', route,
+       'feedbackType', feedback_type,
+       'message', message,
+       'contactName', COALESCE(contact_name, ''),
+       'status', COALESCE(status, 'submitted'),
+       'claireComments', COALESCE(claire_comments, ''),
+       'fixDetails', COALESCE(fix_details, ''),
+       'selectedSnippet', COALESCE(metadata->>'selectedSnippet', ''),
+       'createdAt', created_at,
+       'editedAt', edited_at,
+       'fixedAt', fixed_at
+     ) AS payload
+     FROM meeting_minutes_feedback
+     ORDER BY created_at DESC, id DESC
+     LIMIT $1`,
+    [safeLimit]
+  );
+  return result.rows.map((row) => row.payload);
 }
 
 async function getMeetingMinutesFeedback(feedbackId) {
   const id = Number(feedbackId);
   if (!Number.isFinite(id) || id <= 0) return null;
-  const out = await runPsql(`${meetingMinutesFeedbackSchemaSql()}
-SELECT json_build_object(
-  'id', id,
-  'route', route,
-  'feedbackType', feedback_type,
-  'message', message,
-  'contactName', COALESCE(contact_name, ''),
-  'contactEmail', COALESCE(contact_email, ''),
-  'userAgent', COALESCE(user_agent, ''),
-  'status', COALESCE(status, 'submitted'),
-  'claireComments', COALESCE(claire_comments, ''),
-  'fixDetails', COALESCE(fix_details, ''),
-  'metadata', metadata,
-  'selectedSnippet', COALESCE(metadata->>'selectedSnippet', ''),
-  'createdAt', created_at,
-  'editedAt', edited_at,
-  'fixedAt', fixed_at
-)::text
-FROM meeting_minutes_feedback
-WHERE id = ${id}
-LIMIT 1;`);
-  const rows = parseJsonLines(out);
-  return rows[0] || null;
+  await runPsql(meetingMinutesFeedbackSchemaSql());
+  const result = await query(
+    `SELECT json_build_object(
+       'id', id,
+       'route', route,
+       'feedbackType', feedback_type,
+       'message', message,
+       'contactName', COALESCE(contact_name, ''),
+       'contactEmail', COALESCE(contact_email, ''),
+       'userAgent', COALESCE(user_agent, ''),
+       'status', COALESCE(status, 'submitted'),
+       'claireComments', COALESCE(claire_comments, ''),
+       'fixDetails', COALESCE(fix_details, ''),
+       'metadata', metadata,
+       'selectedSnippet', COALESCE(metadata->>'selectedSnippet', ''),
+       'createdAt', created_at,
+       'editedAt', edited_at,
+       'fixedAt', fixed_at
+     ) AS payload
+     FROM meeting_minutes_feedback
+     WHERE id = $1
+     LIMIT 1`,
+    [id]
+  );
+  return result.rows[0]?.payload || null;
 }
 
 async function updateMeetingMinutesFeedback(feedbackId, payload = {}) {
@@ -1454,8 +1459,8 @@ async function deleteMeetingMinutesFeedback(feedbackId) {
   const id = Number(feedbackId);
   if (!Number.isFinite(id) || id <= 0) return false;
   await runPsql(meetingMinutesFeedbackSchemaSql());
-  const out = await runPsql('DELETE FROM meeting_minutes_feedback WHERE id = $1 RETURNING id::text', [id]);
-  return Boolean(parseOptionalId(out));
+  const result = await query('DELETE FROM meeting_minutes_feedback WHERE id = $1 RETURNING id', [id]);
+  return result.rowCount > 0;
 }
 
 async function getMeetingStatus(meetingId) {

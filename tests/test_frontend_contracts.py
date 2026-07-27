@@ -66,6 +66,15 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("listMeetingMinutesFeedback", db)
         self.assertIn("updateMeetingMinutesFeedback", db)
         self.assertIn("deleteMeetingMinutesFeedback", db)
+        feedback_list_section = db.split("async function listMeetingMinutesFeedback", 1)[1].split("async function getMeetingMinutesFeedback", 1)[0]
+        feedback_detail_section = db.split("async function getMeetingMinutesFeedback", 1)[1].split("async function updateMeetingMinutesFeedback", 1)[0]
+        feedback_delete_section = db.split("async function deleteMeetingMinutesFeedback", 1)[1].split("async function getMeetingStatus", 1)[0]
+        self.assertIn("LIMIT $1", feedback_list_section)
+        self.assertIn("WHERE id = $1", feedback_detail_section)
+        self.assertIn("WHERE id = $1 RETURNING id", feedback_delete_section)
+        self.assertNotIn("LIMIT ${safeLimit}", feedback_list_section)
+        self.assertNotIn("WHERE id = ${id}", feedback_detail_section)
+        self.assertNotIn("WHERE id = ${id}", feedback_delete_section)
         self.assertIn("isActive === 't' || isActive === 'true'", db)
         self.assertIn("selectedSnippet", db)
         self.assertIn("claire_comments", db)

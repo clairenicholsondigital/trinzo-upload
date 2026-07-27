@@ -434,7 +434,13 @@ Do it in small slices:
 4. context snapshot/cleanup paths - done locally on 2026-07-27:
    snapshot creation/item inserts, mark-official counters, and cleanup counters
    now use `query(sql, params)`/row counts instead of text parsing;
-5. legacy meeting/admin paths only after project-update is stable.
+5. legacy meeting/admin paths in small, low-risk passes:
+   - first pass done locally on 2026-07-27: meeting-minutes feedback
+     list/detail/delete helpers now use parameterised `query(sql, params)` for
+     limits and feedback IDs while preserving the existing listing/detail/delete
+     API behaviour;
+   - remaining older meeting/admin reads and destructive helpers should be
+     handled one boundary at a time, with contract tests before broader rewrites.
 
 Acceptance for each slice:
 
