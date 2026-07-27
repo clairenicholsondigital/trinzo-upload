@@ -95,6 +95,248 @@
         "expectedRetrievalModeIn": ["none"],
         "mustNotUseRetrievedKnowledgeAsTranscriptEvidence": true
       }
+    },
+    {
+      "case_id": "real_003",
+      "case_name": "Fresh low-risk update does not invent retrieval evidence",
+      "source": "realistic_synthetic",
+      "purpose": "A short positive project update with no stored context. This is a realistic first-use case where the report should stay conservative, avoid invented project memory, and keep retrieval mode at none.",
+      "transcript": "Mia: Quick update. Payments integration is complete now. Stripe checkout passed live testing yesterday. Onboarding email redesign is on track; first draft is approved and build starts tomorrow. The team agreed to keep the current launch date.",
+      "context": {
+        "found": false,
+        "projectId": 778,
+        "projectName": "Retail Checkout Launch",
+        "activeMilestones": [],
+        "activeRisks": [],
+        "riskSuggestions": [],
+        "healthHistory": [],
+        "recentReports": [],
+        "milestoneHistory": [],
+        "latestSnapshot": null,
+        "generatedAt": "2026-07-08T09:00:00Z",
+        "retrievedKnowledge": { "retrievalMode": "none", "chunks": [] }
+      },
+      "expected": {
+        "overallHealthIn": ["unknown", "on_track"],
+        "expectedRetrievalModeIn": ["none"],
+        "mustNotUseRetrievedKnowledgeAsTranscriptEvidence": true
+      }
+    },
+    {
+      "case_id": "real_004",
+      "case_name": "Retrieved knowledge remains background when transcript omits it",
+      "source": "realistic_synthetic",
+      "purpose": "Stored knowledge says a security review is a go-live constraint, but the transcript only mentions UAT and release notes. This guards the boundary between useful background memory and transcript evidence.",
+      "transcript": "Ava: The deployment checklist is moving. UAT is complete and the release notes are drafted. No one mentioned security sign-off today, so let's not invent a status for that. Ben: Agreed, just note UAT complete and release notes drafted.",
+      "context": {
+        "found": true,
+        "projectId": 779,
+        "projectName": "Portal Release",
+        "activeMilestones": [],
+        "activeRisks": [],
+        "riskSuggestions": [],
+        "healthHistory": [],
+        "recentReports": [],
+        "milestoneHistory": [],
+        "latestSnapshot": null,
+        "generatedAt": "2026-07-09T09:00:00Z",
+        "retrievedKnowledge": {
+          "retrievalMode": "semantic",
+          "chunks": [
+            {
+              "knowledgeItemId": 7,
+              "title": "SoW constraint",
+              "content": "The client cannot go live before the security review is signed off.",
+              "similarity": 0.82
+            }
+          ]
+        }
+      },
+      "expected": {
+        "overallHealthIn": ["on_track"],
+        "expectedRetrievalModeIn": ["semantic"],
+        "mustNotUseRetrievedKnowledgeAsTranscriptEvidence": true
+      }
+    },
+    {
+      "case_id": "real_005",
+      "case_name": "Existing risk is updated without duplicate risk spam",
+      "source": "realistic_synthetic",
+      "purpose": "A realistic follow-up where an already tracked data migration risk is still active but improving. The same risk should be recognised instead of creating a fresh duplicate risk.",
+      "transcript": "Leo: Data migration defects remain active. The count is down from twenty-four to six after daily triage. Nina: Keep daily triage until the defect count is under three.",
+      "context": {
+        "found": true,
+        "projectId": 780,
+        "projectName": "Customer Data Migration",
+        "activeMilestones": [],
+        "activeRisks": [
+          {
+            "riskId": 88,
+            "riskTitle": "Data migration defects",
+            "comparisonKey": "data_migration_defects",
+            "description": "Open defects in migrated customer records may delay go-live.",
+            "status": "active",
+            "latestAssessment": {
+              "status": "active",
+              "trend": "new_risk",
+              "confidence": 0.7,
+              "description": "Defect count remains high.",
+              "mitigation": "Daily triage."
+            }
+          }
+        ],
+        "riskSuggestions": [],
+        "healthHistory": [],
+        "recentReports": [],
+        "milestoneHistory": [],
+        "latestSnapshot": null,
+        "generatedAt": "2026-07-10T09:00:00Z",
+        "retrievedKnowledge": { "retrievalMode": "none", "chunks": [] }
+      },
+      "expected": {
+        "overallHealthIn": ["unknown", "on_track"],
+        "expectedRiskCountMax": 1,
+        "riskChecks": [
+          {
+            "labelContains": "Data migration defects",
+            "expectedTrend": "stable",
+            "expectedMatchedByIn": ["exact_title"]
+          }
+        ],
+        "expectedRetrievalModeIn": ["none"],
+        "mustNotUseRetrievedKnowledgeAsTranscriptEvidence": true
+      }
+    },
+    {
+      "case_id": "real_006",
+      "case_name": "Omitted active milestone is carried forward cleanly",
+      "source": "realistic_synthetic",
+      "purpose": "A weekly update covers a support backlog and deliberately says the training rollout has no update. The stored milestone should remain visible as carried-forward context rather than disappearing.",
+      "transcript": "Priya: The support backlog is down to eighteen open tickets after the weekend triage. We did not touch the training rollout this week, so there is no new update for that. Owen: Fine, keep the rollout on the watch list and focus next week on the final region.",
+      "context": {
+        "found": true,
+        "projectId": 781,
+        "projectName": "Regional Support Enablement",
+        "activeMilestones": [
+          {
+            "milestoneId": 9002,
+            "milestoneName": "Regional training rollout",
+            "comparisonKey": "regional_training_rollout",
+            "category": "Delivery",
+            "description": "Roll out the new support playbook training to all regional teams.",
+            "baselineFinishDate": "2026-08-01",
+            "forecastFinishDate": "2026-08-01",
+            "isOfficial": false,
+            "officialLabel": "",
+            "officialAt": null,
+            "latestAssessment": {
+              "assessmentId": 2,
+              "status": "in_progress",
+              "trend": "stable",
+              "confidence": 0.7,
+              "summary": "Training modules for three of four regions have been delivered.",
+              "forecastFinishDate": "2026-08-01"
+            },
+            "previousAssessment": null
+          }
+        ],
+        "activeRisks": [],
+        "riskSuggestions": [],
+        "healthHistory": [],
+        "recentReports": [],
+        "milestoneHistory": [],
+        "latestSnapshot": null,
+        "generatedAt": "2026-07-11T09:00:00Z",
+        "retrievedKnowledge": { "retrievalMode": "none", "chunks": [] }
+      },
+      "expected": {
+        "overallHealthIn": ["on_track", "unknown"],
+        "milestoneChecks": [
+          {
+            "labelContains": "Regional training rollout",
+            "expectedTrend": "stable",
+            "shouldBeCarriedForward": true
+          }
+        ],
+        "expectedRetrievalModeIn": ["none"],
+        "mustNotUseRetrievedKnowledgeAsTranscriptEvidence": true
+      }
+    },
+    {
+      "case_id": "real_007",
+      "case_name": "Sparse noisy call does not create a busy report",
+      "source": "realistic_synthetic",
+      "purpose": "A low-substance update call with setup chatter and no concrete project facts should not produce a pile of fake milestones or risks just to fill the report.",
+      "transcript": "Sam: Can everyone hear me? I think we may need to move this because half the team is missing. Jo: Yeah, let's park the proper update until Thursday. Sam: Fine, no project decisions today then.",
+      "context": {
+        "found": false,
+        "projectId": 782,
+        "projectName": "Sparse Call Example",
+        "activeMilestones": [],
+        "activeRisks": [],
+        "riskSuggestions": [],
+        "healthHistory": [],
+        "recentReports": [],
+        "milestoneHistory": [],
+        "latestSnapshot": null,
+        "generatedAt": "2026-07-12T09:00:00Z",
+        "retrievedKnowledge": { "retrievalMode": "none", "chunks": [] }
+      },
+      "expected": {
+        "overallHealthIn": ["unknown", "on_track"],
+        "expectedRiskCountMax": 1,
+        "expectedRetrievalModeIn": ["none"],
+        "shouldGenerateSparseOutput": true,
+        "mustNotUseRetrievedKnowledgeAsTranscriptEvidence": true
+      }
+    },
+    {
+      "case_id": "real_008",
+      "case_name": "Prior at-risk health can remain at risk when dependency is unresolved",
+      "source": "realistic_synthetic",
+      "purpose": "A dependency remains unresolved across reports. This guards against a bland positive summary flipping the project to green when the transcript still says the blocker has not moved.",
+      "transcript": "Nora: The API gateway integration is at risk because client credentials still have not arrived. We chased again yesterday but there is no answer yet. Build work around it is fine, but that dependency could delay launch. Ravi: Keep it amber until credentials arrive.",
+      "context": {
+        "found": true,
+        "projectId": 783,
+        "projectName": "API Gateway Integration",
+        "activeMilestones": [],
+        "activeRisks": [],
+        "riskSuggestions": [],
+        "healthHistory": [
+          {
+            "area": "Schedule",
+            "status": "at_risk",
+            "trend": "stable",
+            "confidence": 0.7,
+            "rationale": "Client credentials were blocking integration."
+          }
+        ],
+        "recentReports": [
+          {
+            "reportId": 31,
+            "periodLabel": "Q2 2026",
+            "overallHealth": "at_risk",
+            "summary": "Client credentials were blocking the API gateway integration."
+          }
+        ],
+        "milestoneHistory": [],
+        "latestSnapshot": null,
+        "generatedAt": "2026-07-13T09:00:00Z",
+        "retrievedKnowledge": { "retrievalMode": "none", "chunks": [] }
+      },
+      "expected": {
+        "overallHealthIn": ["at_risk"],
+        "riskChecks": [
+          {
+            "labelContains": "client credentials",
+            "expectedTrend": "new_risk",
+            "expectedMatchedByIn": ["none"]
+          }
+        ],
+        "expectedRetrievalModeIn": ["none"],
+        "mustNotUseRetrievedKnowledgeAsTranscriptEvidence": true
+      }
     }
   ]
 }

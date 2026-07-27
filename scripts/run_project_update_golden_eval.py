@@ -142,6 +142,8 @@ def check_case(case: dict[str, Any], *, use_minilm: bool, use_rewrite: bool) -> 
             failures.append(f"milestone {label!r} was expected to be carried forward")
 
     risks = [r for r in report.get("risks", []) if isinstance(r, dict)]
+    if "expectedRiskCountMax" in expected and len(risks) > int(expected["expectedRiskCountMax"]):
+        failures.append(f"risk count {len(risks)} exceeded maximum {expected['expectedRiskCountMax']}")
     for check in expected.get("riskChecks", []) or []:
         label = check.get("labelContains", "")
         risk = find_by_label(risks, label, ("riskTitle", "description", "suggestedMitigation"))

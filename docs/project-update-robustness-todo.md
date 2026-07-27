@@ -70,12 +70,13 @@ Verified:
 - `npm run test:meeting-minutes-drift` still exposes the historical 31
   meeting-minutes MiniLM comparison failures as a separate diagnostic suite.
 
-### 2. Expand Real-World Project-Update Golden Cases
+### 2. Expand Real-World Project-Update Golden Cases - Done 2026-07-27
 
-The strict project-update golden eval is now useful, but it only has two real
-cases. That is too thin for broad confidence.
+The strict project-update golden eval now has eight real/realistic cases rather
+than two. This is enough for a useful deploy gate, while still leaving room for
+more real customer transcripts during the pilot.
 
-Add real cases covering:
+Coverage now includes:
 
 - fresh-context report generation;
 - existing stored milestones carried forward correctly;
@@ -85,13 +86,19 @@ Add real cases covering:
   evidence;
 - health/status disagreements where the correct answer is not obvious.
 
-Acceptance:
+Implemented:
 
-- at least 8-10 real cases exist;
+- added six more realistic real-mode cases in
+  `scripts/project-update-golden/real/001_realistic_cases.json`;
+- added `expectedRiskCountMax` support to the golden runner so duplicate risk
+  spam can be caught directly;
+- kept the checks behavioural rather than whole-output snapshots.
+
+Verified:
+
 - `python3 scripts/run_project_update_golden_eval.py --mode all --skip-minilm`
-  passes;
-- each case checks at least one milestone, risk, health, retrieval, or
-  evidence-discipline expectation.
+  passes 20/20;
+- `npm test` still passes after the new cases and runner assertion.
 
 ### 3. Run A Proper Internal Pilot
 
