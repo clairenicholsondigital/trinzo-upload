@@ -43,23 +43,32 @@ use vector casts/operators directly.
 This is the current "not finished yet" list as of 2026-07-27, after commit
 `59d59f6` was deployed and smoke checked on `trinzo.virtual-hub.online`.
 
-### 1. Restore A Trustworthy Full Regression Baseline
+### 1. Restore A Trustworthy Full Regression Baseline - Done 2026-07-27
 
-Focused project-update gates are green, but the full `npm test` baseline still
-has old meeting-minutes MiniLM comparison drift in `tests/test_minilm_comparison.py`.
+The default deploy regression gate is now clean. `npm test` runs the
+deploy-facing Python regression suite plus Node tests, while the old
+meeting-minutes MiniLM comparison drift lives behind a named diagnostic command.
 
 Why it matters:
 
 - project-update can now be deployed with confidence from its focused gates;
-- the whole repo still lacks one clean all-green signal;
-- future changes will be harder to judge until old meeting-minutes drift is
-  either fixed, rebased, split out, or explicitly quarantined.
+- the whole repo now has one clean all-green default signal;
+- old meeting-minutes drift is still visible without blocking unrelated
+  project-update work.
 
-Acceptance:
+Implemented:
 
-- `npm test` passes end to end; or
-- old meeting-minutes drift is isolated behind a separately named diagnostic
-  command, leaving the default deploy regression gate clean.
+- `python3 scripts/run_python_regression_tests.py` discovers Python tests and
+  quarantines `tests/test_minilm_comparison.py`;
+- `npm test` now runs that deploy-facing Python suite and the Node tests;
+- `npm run test:meeting-minutes-drift` runs the quarantined MiniLM comparison
+  suite directly.
+
+Verified:
+
+- `npm test` passes: 224 deploy-facing Python tests plus 5 Node tests;
+- `npm run test:meeting-minutes-drift` still exposes the historical 31
+  meeting-minutes MiniLM comparison failures as a separate diagnostic suite.
 
 ### 2. Expand Real-World Project-Update Golden Cases
 
@@ -225,11 +234,11 @@ After fixing stale tests, run:
 npm test
 ```
 
-Expected outcome:
+Current outcome:
 
-- if it passes, record that the local full suite is trustworthy again;
-- if it fails, split failures into current project-update regressions versus
-  older meeting-minutes/MiniLM drift.
+- default `npm test` passes using `scripts/run_python_regression_tests.py`;
+- the historical MiniLM comparison drift is intentionally isolated behind
+  `npm run test:meeting-minutes-drift`.
 
 ## Priority 2 - Strengthen The Project-Update Golden Eval
 

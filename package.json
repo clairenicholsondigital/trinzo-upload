@@ -4,8 +4,9 @@
   "description": "",
   "main": "server.js",
   "scripts": {
-    "test": "python3 -m unittest discover -s tests -p 'test_*.py' && node --test tests/*.test.js",
-    "test:project-update-golden": "python3 scripts/run_project_update_golden_eval.py --mode synthetic",
+    "test": "python3 scripts/run_python_regression_tests.py && node --test tests/*.test.js",
+    "test:meeting-minutes-drift": "python3 -m unittest tests.test_minilm_comparison -v",
+    "test:project-update-golden": "python3 scripts/run_project_update_golden_eval.py --mode all --skip-minilm",
     "start": "node server.js"
   },
   "keywords": [],
