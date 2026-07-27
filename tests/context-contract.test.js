@@ -12,6 +12,7 @@ const serverSource = fs.readFileSync(path.join(repoDir, 'server.js'), 'utf8');
 const knowledgeSource = fs.readFileSync(path.join(repoDir, 'utils/knowledge.js'), 'utf8');
 const backfillSource = fs.readFileSync(path.join(repoDir, 'scripts/backfill_project_knowledge.js'), 'utf8');
 const contextPageSource = fs.readFileSync(path.join(repoDir, 'views/project-update-context.html'), 'utf8');
+const projectStageReportsSource = fs.readFileSync(path.join(repoDir, 'public/project-stage-reports.js'), 'utf8');
 const roadmapPageSource = fs.readFileSync(path.join(repoDir, 'views/project-update-roadmap.html'), 'utf8');
 const dashboardPageSource = fs.readFileSync(path.join(repoDir, 'views/dashboard.html'), 'utf8');
 const archivePageSource = fs.readFileSync(path.join(repoDir, 'views/archive.html'), 'utf8');
@@ -99,4 +100,13 @@ test('project update roadmap page keeps deferred lifecycle ideas visible', () =>
   assert.ok(roadmapPageSource.includes('Knowledge lifecycle'));
   assert.ok(roadmapPageSource.includes('Never automatically archiving official or manually curated knowledge'));
   assert.ok(contextPageSource.includes('/project-update-test/roadmap'));
+});
+
+test('project report lifecycle archives instead of hard deleting reports', () => {
+  assert.ok(dbSource.includes("SET report_status = 'archived'"));
+  assert.ok(dbSource.includes('archivedCount'));
+  assert.ok(dbSource.includes('WHERE id = ANY($1::bigint[])'));
+  assert.ok(projectStageReportsSource.includes('Archive selected'));
+  assert.ok(projectStageReportsSource.includes('keeps its version history'));
+  assert.ok(projectStageReportsSource.includes('removes it from active reports and project context'));
 });

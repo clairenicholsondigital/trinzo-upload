@@ -15,7 +15,7 @@
       <section class="panel">
         <div class="bulk-actions">
           <p id="bulkReportStatus" class="status">Select reports to enable bulk actions.</p>
-          <button id="bulkDeleteReportsBtn" class="danger" type="button" disabled>Delete selected</button>
+          <button id="bulkDeleteReportsBtn" class="danger" type="button" disabled>Archive selected</button>
         </div>
         <div id="reportList" class="table-scroll"><table><tbody><tr><td>Loading…</td></tr></tbody></table></div>
       </section>
@@ -50,7 +50,7 @@
                 <td>${escapeHtml(dateValue(report.updatedAt || report.createdAt))}</td>
                 <td class="actions">
                   <a class="button-link" href="/project-update-test/reports/${escapeHtml(report.reportId)}">Open report</a>
-                  <button class="danger" type="button" data-delete-report="${escapeHtml(report.reportId)}" data-report-name="${escapeHtml(report.reportName || `Report ${report.reportId}`)}">Delete</button>
+                  <button class="danger" type="button" data-delete-report="${escapeHtml(report.reportId)}" data-report-name="${escapeHtml(report.reportName || `Report ${report.reportId}`)}">Archive</button>
                 </td>
               </tr>
             `).join('') || '<tr><td colspan="7">No reports yet.</td></tr>'}
@@ -66,14 +66,14 @@
         button.addEventListener('click', async () => {
           const id = button.getAttribute('data-delete-report');
           const name = button.getAttribute('data-report-name') || `Report ${id}`;
-          if (!window.confirm(`Delete ${name}? This cannot be undone.`)) return;
+          if (!window.confirm(`Archive ${name}? This keeps its version history but removes it from active reports and project context.`)) return;
           button.disabled = true;
           try {
             await PW.request(`reports/${encodeURIComponent(id)}`, { method: 'DELETE' });
             await load();
             if (ctx.reloadProject) ctx.reloadProject();
           } catch (error) {
-            window.alert(error.message || 'Could not delete report.');
+            window.alert(error.message || 'Could not archive report.');
             button.disabled = false;
           }
         });
@@ -104,7 +104,7 @@
         if (!chosen.length) return;
         const preview = chosen.slice(0, 8).map((r) => `• ${r.name}`).join('\n');
         const suffix = chosen.length > 8 ? `\n…and ${chosen.length - 8} more.` : '';
-        if (!window.confirm(`Delete ${chosen.length} selected report${chosen.length === 1 ? '' : 's'}? This cannot be undone.\n\n${preview}${suffix}`)) return;
+        if (!window.confirm(`Archive ${chosen.length} selected report${chosen.length === 1 ? '' : 's'}? This keeps their version history but removes them from active reports and project context.\n\n${preview}${suffix}`)) return;
         bulkButton.disabled = true;
         try {
           await PW.request('reports/bulk-delete', {
@@ -115,7 +115,7 @@
           await load();
           if (ctx.reloadProject) ctx.reloadProject();
         } catch (error) {
-          window.alert(error.message || 'Could not delete selected reports.');
+          window.alert(error.message || 'Could not archive selected reports.');
           update();
         }
       });

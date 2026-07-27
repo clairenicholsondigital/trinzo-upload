@@ -219,7 +219,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
       <section class="panel">
         <div class="bulk-actions">
           <p id="bulkReportStatus" class="status">Select reports to enable bulk actions.</p>
-          <button id="bulkDeleteReportsBtn" class="danger" type="button" disabled>Delete selected</button>
+          <button id="bulkDeleteReportsBtn" class="danger" type="button" disabled>Archive selected</button>
         </div>
         <div class="table-scroll">
           <table>
@@ -236,7 +236,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
                   <td>${escapeHtml(dateValue(report.updatedAt || report.createdAt))}</td>
                   <td class="actions">
                     <a class="button-link" href="/project-update-test/reports/${escapeHtml(report.reportId)}">Open report</a>
-                    <button class="danger" type="button" data-delete-report="${escapeHtml(report.reportId)}" data-report-name="${escapeHtml(report.reportName || `Report ${report.reportId}`)}">Delete</button>
+                    <button class="danger" type="button" data-delete-report="${escapeHtml(report.reportId)}" data-report-name="${escapeHtml(report.reportName || `Report ${report.reportId}`)}">Archive</button>
                   </td>
                 </tr>
               `).join('')}
@@ -249,7 +249,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
       button.addEventListener('click', async () => {
         const id = button.getAttribute('data-delete-report');
         const name = button.getAttribute('data-report-name') || `Report ${id}`;
-        if (!window.confirm(`Delete ${name}? This cannot be undone.`)) return;
+        if (!window.confirm(`Archive ${name}? This keeps its version history but removes it from active reports and project context.`)) return;
         button.disabled = true;
         try {
           const response = await authedFetch(`/api/project-update-test/reports/${encodeURIComponent(id)}`, { method: 'DELETE' });
@@ -259,7 +259,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
           }
           await load();
         } catch (error) {
-          window.alert(error.message || 'Could not delete report.');
+          window.alert(error.message || 'Could not archive report.');
           button.disabled = false;
         }
       });
@@ -296,9 +296,9 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
         if (!selected.length) return;
         const preview = selected.slice(0, 8).map((report) => `• ${report.name}`).join('\n');
         const suffix = selected.length > 8 ? `\n…and ${selected.length - 8} more.` : '';
-        if (!window.confirm(`Delete ${selected.length} selected report${selected.length === 1 ? '' : 's'}? This cannot be undone.\n\n${preview}${suffix}`)) return;
+        if (!window.confirm(`Archive ${selected.length} selected report${selected.length === 1 ? '' : 's'}? This keeps their version history but removes them from active reports and project context.\n\n${preview}${suffix}`)) return;
         bulkDeleteButton.disabled = true;
-        if (bulkStatus) bulkStatus.textContent = `Deleting ${selected.length} report${selected.length === 1 ? '' : 's'}...`;
+        if (bulkStatus) bulkStatus.textContent = `Archiving ${selected.length} report${selected.length === 1 ? '' : 's'}...`;
         try {
           const response = await authedFetch('/api/project-update-test/reports/bulk-delete', {
             method: 'POST',
@@ -311,7 +311,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
           }
           await load();
         } catch (error) {
-          window.alert(error.message || 'Could not delete selected reports.');
+          window.alert(error.message || 'Could not archive selected reports.');
           updateBulkActions();
         }
       });

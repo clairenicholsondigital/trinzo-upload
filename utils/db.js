@@ -307,11 +307,14 @@ async function deleteProjectReport(reportId) {
   const existing = await getProjectReportDetail(id);
   if (!existing) return null;
 
-  await runPsql(`
-BEGIN;
-UPDATE project_reports SET approved_version_id = NULL WHERE id = ${id};
-DELETE FROM project_reports WHERE id = ${id};
-COMMIT;`);
+  await query(
+    `UPDATE project_reports
+     SET report_status = 'archived',
+         approved_version_id = NULL,
+         updated_at = NOW()
+     WHERE id = $1`,
+    [id]
+  );
 
   return existing;
 }
@@ -331,8 +334,7 @@ async function deleteProjectReports(reportIds = []) {
     throw error;
   }
 
-  const idList = ids.join(',');
-  const out = await runPsql(`
+  const result = await query(`
 WITH selected AS (
   SELECT json_build_object(
     'reportId', r.id,
@@ -348,24 +350,24 @@ WITH selected AS (
   FROM project_reports r
   JOIN projects p ON p.id = r.project_id
   LEFT JOIN project_reporting_periods rp ON rp.id = r.reporting_period_id
-  WHERE r.id IN (${idList})
-), cleared AS (
+  WHERE r.id = ANY($1::bigint[])
+), archived AS (
   UPDATE project_reports
-  SET approved_version_id = NULL
-  WHERE id IN (${idList})
-  RETURNING id
-), deleted AS (
-  DELETE FROM project_reports
-  WHERE id IN (${idList})
+  SET report_status = 'archived',
+      approved_version_id = NULL,
+      updated_at = NOW()
+  WHERE id = ANY($1::bigint[])
+    AND report_status <> 'archived'
   RETURNING id
 )
 SELECT json_build_object(
-  'requestedIds', ARRAY[${idList}],
-  'deletedCount', (SELECT COUNT(*) FROM deleted),
+  'requestedIds', $1::bigint[],
+  'archivedCount', (SELECT COUNT(*) FROM archived),
+  'deletedCount', (SELECT COUNT(*) FROM archived),
   'reports', COALESCE((SELECT json_agg(report ORDER BY (report->>'reportId')::int) FROM selected), '[]'::json)
-)::text;
-`);
-  return parseJsonLines(out)[0] || { requestedIds: ids, deletedCount: 0, reports: [] };
+) AS payload;
+`, [ids]);
+  return result.rows[0]?.payload || { requestedIds: ids, archivedCount: 0, deletedCount: 0, reports: [] };
 }
 
 async function listProjectMilestones(limit = 100, filters = {}) {

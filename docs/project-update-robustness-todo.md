@@ -128,25 +128,50 @@ Acceptance for marking this fully done:
 - corrections are categorised into parser/model/UI/setup issues;
 - project memory improves later reports rather than polluting them.
 
-### 4. Tighten Project Lifecycle And Admin Rules
+### 4. Tighten Project Lifecycle And Admin Rules - First Pass Done 2026-07-27
 
-The workspace can create, read, save, approve, archive and tidy data, but the
-rules are still operator-shaped rather than product-shaped.
+The workspace can create, read, save, approve, archive and tidy data. The first
+product-safety pass is now in place: reports are archived from the active
+workspace/context by default rather than hard-deleted.
 
-Decisions needed:
+Current lifecycle rules:
 
-- when a milestone/risk becomes official;
-- who can approve reports;
-- when generated knowledge should be retained, archived or deleted;
-- what "Tidy draft data" should do in production versus test data;
-- whether destructive buttons need an admin-only layer beyond normal login;
-- how to surface version history so users can trust edits.
+- `draft` and `in_review` reports are editable working copies;
+- `approved` means the report is good enough to become future project memory;
+- approving a report creates an approved version and ingests approved-report
+  knowledge for later retrieval;
+- archiving a report keeps its versions/audit trail but removes it from active
+  report lists and project context;
+- `Mark active context official` freezes the current active milestones/risks as
+  an official baseline and creates an official snapshot;
+- `Tidy draft data` is a project cleanup tool: it archives reports, deactivates
+  non-official milestones/risks, archives non-official knowledge, and removes
+  non-official snapshots while preserving official/manual knowledge;
+- project and milestone delete remain true destructive actions and require
+  confirmation. They should stay internal/admin-only until proper roles exist.
+
+Implemented:
+
+- report row and bulk actions now say `Archive`, not `Delete`;
+- the existing report delete endpoints now archive reports instead of hard
+  deleting report/version rows;
+- bulk report archive now uses parameterised SQL rather than an interpolated ID
+  list;
+- regression assertions pin the archive wording and `report_status =
+  'archived'` behaviour.
+
+Still needed before external/client-facing use:
+
+- add real roles/permissions if non-admin users are added;
+- decide whether milestone/project destructive actions should become archive
+  actions too;
+- make approval ownership visible in the report detail UI.
 
 Acceptance:
 
-- lifecycle rules are written in this doc or product docs;
-- UI copy/actions match those rules;
-- destructive actions have confirmation and regression coverage.
+- lifecycle rules are written in this doc;
+- report UI copy/actions match those rules;
+- report archive behaviour has regression coverage.
 
 ### 5. Improve The Client-Facing UX
 
