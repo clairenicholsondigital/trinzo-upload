@@ -460,6 +460,189 @@ def collect_action_source_texts(result: dict[str, Any], enriched_segments: list[
     return unique
 
 
+def infer_status_from_text(value: Any) -> str:
+    text = clean_text(value).lower()
+    if not text:
+        return "unknown"
+    if any(cue in text for cue in ["blocked", "roadblock", "can't ", "cannot", "unable", "revoked", "major regression"]):
+        return "blocked"
+    if any(cue in text for cue in ["fully complete", "completed", "finished", "done", "signed off", "secured"]):
+        return "complete"
+    if any(cue in text for cue in ["slipping", "behind schedule", "declining", "delayed", "at risk", "hurdle", "obstacle"]):
+        return "awaiting_input"
+    if any(cue in text for cue in ["underway", "in progress", "initiated", "started", "built", "tracking fine", "moving along"]):
+        return "in_progress"
+    return "unknown"
+
+
+def infer_trend_from_text(value: Any, status: str = "") -> str:
+    text = clean_text(value).lower()
+    if any(cue in text for cue in ["strongly improving", "trended up", "trend up", "ahead of time", "moving along brilliantly"]):
+        return "improving"
+    if any(cue in text for cue in ["declining", "slipping", "behind schedule", "major regression", "revoked", "blocks our release", "blocked"]):
+        return "deteriorating"
+    if status == "complete":
+        return "resolved"
+    if status in {"blocked", "awaiting_input", "delayed"}:
+        return "deteriorating"
+    if status in {"in_progress", "scheduled"}:
+        return "stable"
+    return "unknown"
+
+
+def source_sentences_from_context(minilm_first_context: dict[str, Any], result: dict[str, Any], enriched_segments: list[dict[str, Any]]) -> list[str]:
+    texts: list[str] = []
+    raw_sources = minilm_first_context.get("actionSourceTexts", [])
+    if isinstance(raw_sources, list):
+        for value in raw_sources:
+            texts.extend(split_report_sentences(value))
+    if not texts:
+        for value in collect_action_source_texts(result, enriched_segments):
+            texts.extend(split_report_sentences(value))
+    seen: set[str] = set()
+    sentences: list[str] = []
+    for text in texts:
+        key = clean_text(text).lower()
+        if key and key not in seen:
+            seen.add(key)
+            sentences.append(clean_text(text))
+    return sentences[:80]
+
+
+def quoted_phrases(value: Any) -> list[str]:
+    return [clean_text(phrase) for phrase in re.findall(r"(?<![A-Za-z])['\"]([^'\"]{4,90})['\"](?![A-Za-z])", clean_text(value)) if clean_text(phrase)]
+
+
+def inferred_milestone_names(sentence: str) -> list[str]:
+    lowered = sentence.lower()
+    names = quoted_phrases(sentence)
+    if "where are we with the" in lowered:
+        match = re.search(r"where are we with the\s+(.+?)(?:\?|$)", sentence, flags=re.IGNORECASE)
+        if match:
+            names.append(match.group(1))
+    if "track the" in lowered and "milestone" in lowered:
+        match = re.search(r"track the\s+(.+?)\s+as\s+(?:our\s+)?active milestones", sentence, flags=re.IGNORECASE)
+        if match:
+            names.extend(re.split(r"\s+and\s+|,\s*", match.group(1)))
+    if "milestone for" in lowered:
+        match = re.search(r"milestone for\s+(.+?)(?:\s+is\b|$)", sentence, flags=re.IGNORECASE)
+        if match:
+            names.append(match.group(1))
+
+    useful: list[str] = []
+    seen: set[str] = set()
+    for name in names:
+        cleaned = clean_text(name).strip(" .;:!?")
+        if not cleaned or len(cleaned.split()) < 2:
+            continue
+        if cleaned.lower().startswith("project "):
+            continue
+        key = normalise_key(cleaned)
+        if key and key not in seen:
+            seen.add(key)
+            useful.append(cleaned)
+    return useful[:4]
+
+
+def infer_transcript_milestone_segments(sentences: list[str], existing_segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    existing_keys = {normalise_key(item.get("comparison_key") or item.get("milestone")) for item in existing_segments}
+    inferred: list[dict[str, Any]] = []
+    seen = set(existing_keys)
+    for index, sentence in enumerate(sentences):
+        names = inferred_milestone_names(sentence)
+        if not names:
+            continue
+        context_text = " ".join(sentences[max(0, index - 1): index + 2])
+        status = infer_status_from_text(context_text)
+        trend = infer_trend_from_text(context_text, status)
+        for name in names:
+            key = normalise_key(name)
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            inferred.append({
+                "milestone": friendly_milestone_label(name),
+                "comparison_key": key,
+                "delivery_status": status,
+                "agreed_rag_status": "red" if status == "blocked" else "amber" if status in {"awaiting_input", "delayed"} else "green" if status in {"complete", "in_progress"} else "unknown",
+                "health_assessment": status,
+                "confidence": 0.55,
+                "normalised_evidence_summary": sentence_case(sentence),
+                "excerpt": sentence,
+                "evidence": [sentence],
+                "semantic_evidence": [{"text": sentence, "score": 0.55}],
+                "next_steps": [],
+                "blocking_factors": [],
+                "trend": trend,
+            })
+    return inferred
+
+
+def infer_risk_title(sentence: str) -> str:
+    text = clean_text(sentence)
+    patterns = [
+        r"(?:concern|issue|risk)\s+(?:honestly\s+)?is\s+(?:the\s+)?(.+?)(?:,|\.|$)",
+        r"list that\s+(.+?)\s+as\s+(?:a\s+)?(?:potential\s+)?risk",
+        r"risk that\s+(.+?)(?:,|\.|$)",
+        r"managing\s+(?:the\s+)?(.+?)\s+issue",
+        r"ran into\s+(.+?)(?:\s+with\b|,|\.|$)",
+        r"obstacle around\s+(.+?)(?:,|\.|$)",
+        r"because of\s+(?:the\s+)?(?:new\s+)?(.+?)(?:,|\.|$)",
+        r"the\s+(.+?)\s+require\s+us\s+to",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match:
+            return friendly_milestone_label(match.group(1).strip(" '\""))
+    for phrase in quoted_phrases(text):
+        if any(cue in text.lower() for cue in ["obstacle", "risk", "blocked", "can't", "cannot"]):
+            return friendly_milestone_label(phrase)
+    return "Project risk"
+
+
+def infer_transcript_risks(sentences: list[str], existing_risks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen = {risk_match_key(item) for item in existing_risks if isinstance(item, dict)}
+    risks: list[dict[str, Any]] = []
+    for sentence in sentences:
+        lowered = sentence.lower()
+        if not any(cue in lowered for cue in ["risk", "issue", "concern", "block", "roadblock", "obstacle", "slipping", "behind schedule", "declining", "revoked", "hurdle", "haven't", "can't ", "cannot", "unable", "credentials", "require us", "compliance", "legal"]):
+            continue
+        if is_conversational_report_framing(sentence):
+            continue
+        title = infer_risk_title(sentence)
+        description = sentence_case(sentence)
+        key = normalise_key(f"{title} {description}")
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        risks.append({
+            "riskTitle": title,
+            "description": description,
+            "suggestedMitigation": "Confirm owner, dependency, and next action.",
+            "confidence": 0.6,
+            "relatedMilestone": "",
+        })
+    return risks[:8]
+
+
+def infer_overall_health_from_sentences(current: str, sentences: list[str], risks: list[dict[str, Any]]) -> str:
+    joined = " ".join(sentences).lower()
+    project_substance = bool(re.search(r"\b(project|milestone|risk|status|schedule|delivery|release|sprint)\b", joined))
+    reschedule_only = "reschedule this project review call" in joined and not re.search(r"\b(milestone|risk|status|schedule|delivery|release|sprint)\b", joined)
+    if not joined or not project_substance or reschedule_only:
+        return "unknown"
+    if any(cue in joined for cue in ["major regression", "completely blocks", "blocks our release"]):
+        return "red"
+    if "minor risk" in joined and any(cue in joined for cue in ["managing it", "managing this", "health looks green", "tracking fine"]):
+        return current or "green"
+    current_status = health_to_report_status(current)
+    if current_status == "on_track" and not any(cue in joined for cue in ["at risk", "roadblock", "obstacle", "slipping", "behind schedule", "declining", "hurdle", "revoked", "haven't", "can't ", "cannot", "unable", "credentials"]):
+        return current
+    if risks or any(cue in joined for cue in ["at risk", "risk", "roadblock", "obstacle", "slipping", "behind schedule", "declining", "hurdle", "revoked", "haven't", "can't ", "cannot", "unable", "credentials"]):
+        return "amber"
+    return current or "unknown"
+
+
 def collect_raw_transcript_windows(transcript_text: str) -> list[EvidenceWindow]:
     windows: list[EvidenceWindow] = []
     turn_re = re.compile(r"^(?P<speaker>.+?)\s+(?P<timestamp>\d+:\d{2})(?P<tail>.*)$")
@@ -866,12 +1049,36 @@ def normalise_key(value: Any) -> str:
 
 def milestone_match_tokens(value: Any) -> set[str]:
     key = normalise_key(value).replace("stagegate", "stage_gate")
+    aliases = {
+        "front": "frontend",
+        "end": "frontend",
+        "frontend": "frontend",
+        "wireframes": "wireframe",
+        "wireframing": "wireframe",
+        "sign": "signoff",
+        "off": "signoff",
+        "resourcing": "resource",
+        "resources": "resource",
+        "shortages": "shortage",
+        "contractor": "vendor",
+        "contractors": "vendor",
+        "external": "vendor",
+        "third": "vendor",
+        "party": "vendor",
+        "staffing": "resource",
+        "availability": "capacity",
+    }
     stop_words = {
         "a", "an", "and", "the", "of", "for", "to",
         "completed", "complete", "delivered", "defined", "implemented", "rolled", "out",
         "review", "reviewed", "internal", "forum", "plan", "set", "delivery",
     }
-    return {token for token in key.split("_") if token and token not in stop_words}
+    tokens = []
+    for token in key.split("_"):
+        if not token or token in stop_words:
+            continue
+        tokens.append(aliases.get(token, token))
+    return set(tokens)
 
 
 def milestone_match_score(left: Any, right: Any) -> float:
@@ -928,9 +1135,12 @@ def status_severity(value: Any) -> int:
 def infer_trend(previous_status: Any, current_status: Any, *, existing: Any = None) -> str:
     current = assessment_status(current_status)
     previous = assessment_status(previous_status)
+    existing_trend = normalise_trend(existing)
     if current == "unknown":
-        return normalise_trend(existing) if normalise_trend(existing) != "unknown" else "unknown"
+        return existing_trend if existing_trend != "unknown" else "unknown"
     if previous == "unknown":
+        if existing_trend != "unknown":
+            return existing_trend
         return "new_update"
     if previous == "completed" and current in {"on_track", "not_started", "at_risk"}:
         return "replanned"
@@ -1072,6 +1282,15 @@ def annotate_report_with_project_context(report: dict[str, Any], project_context
                 previous_index = previous_risk_items.index(previous)
             except ValueError:
                 previous_index = None
+        if not previous and risk.get("riskId"):
+            for candidate_index, candidate in enumerate(previous_risk_items):
+                if str(candidate.get("riskId") or "") == str(risk.get("riskId") or ""):
+                    previous = candidate
+                    previous_index = candidate_index
+                    existing_provenance = risk.get("risk_match_provenance") if isinstance(risk.get("risk_match_provenance"), dict) else {}
+                    matched_by = clean_text(existing_provenance.get("matchedBy") or "token_overlap").lower()
+                    match_score = float(existing_provenance.get("score") or 1.0)
+                    break
         if not previous and risk_index in semantic_matches:
             candidate_index, score = semantic_matches[risk_index]
             if candidate_index not in used_previous_indexes:
@@ -1318,6 +1537,26 @@ def build_context_first_risks(risk_suggestions: list[dict[str, Any]], project_co
                     matched_by = "semantic"
                     match_score = float(score)
                     break
+        if not suggestion:
+            best_index = None
+            best_score = 0.0
+            for suggestion_index, candidate in enumerate(suggestion_rows):
+                if suggestion_index in used_suggestion_indexes:
+                    continue
+                score = max(
+                    milestone_match_score(risk.get("riskTitle") or risk.get("title"), candidate.get("riskTitle") or candidate.get("title")),
+                    milestone_match_score(risk_match_text(risk), risk_match_text(candidate)),
+                )
+                if score > best_score:
+                    best_index = suggestion_index
+                    best_score = score
+            if best_index is not None and best_score >= float(os.getenv("PROJECT_UPDATE_RISK_TOKEN_MATCH_THRESHOLD", "0.38")):
+                suggestion = suggestion_rows[best_index]
+                used_suggestion_indexes.add(best_index)
+                matched_by = "token_overlap"
+                match_score = float(best_score)
+                if diagnostics is not None:
+                    diagnostics["tokenRiskMatches"] = int(diagnostics.get("tokenRiskMatches", 0) or 0) + 1
         row = {
             "riskId": risk.get("riskId"),
             "riskTitle": risk.get("riskTitle") or "Project risk",
@@ -1366,11 +1605,15 @@ def build_report_payload(
         for signal in minilm_project_signals
         if isinstance(signal, dict) and clean_text(signal.get("text")) and float(signal.get("score") or 0) >= 0.28
     ]
+    source_sentences = source_sentences_from_context(minilm_first_context, result, enriched_segments)
+    inferred_segments = infer_transcript_milestone_segments(source_sentences, enriched_segments)
+    all_segments = [*enriched_segments, *inferred_segments]
+
     key_updates = [
         *minilm_signal_updates,
         *[
             segment.get("normalised_evidence_summary") or segment.get("excerpt")
-            for segment in enriched_segments
+            for segment in all_segments
             if segment.get("normalised_evidence_summary") or segment.get("excerpt")
         ],
     ]
@@ -1387,7 +1630,7 @@ def build_report_payload(
         deduped_key_updates.append(cleaned)
     key_updates = deduped_key_updates[:8]
     risk_suggestions = []
-    for segment in enriched_segments:
+    for segment in all_segments:
         if segment.get("delivery_status") in {"blocked", "awaiting_input", "delayed"} or segment.get("agreed_rag_status") in {"amber", "red"}:
             risk_suggestions.append(
                 {
@@ -1398,8 +1641,10 @@ def build_report_payload(
                     "relatedMilestone": segment.get("milestone", ""),
                 }
             )
+    risk_suggestions.extend(infer_transcript_risks(source_sentences, risk_suggestions))
 
-    report_milestones = build_context_first_milestones(enriched_segments, project_context, backend=backend, diagnostics=diagnostics)
+    report_milestones = build_context_first_milestones(all_segments, project_context, backend=backend, diagnostics=diagnostics)
+    overall = infer_overall_health_from_sentences(overall, source_sentences, risk_suggestions)
 
     minilm_actions = minilm_first_context.get("actions", []) if isinstance(minilm_first_context.get("actions", []), list) else []
     minilm_action_sources = minilm_first_context.get("actionSourceTexts", []) if isinstance(minilm_first_context.get("actionSourceTexts", []), list) else []
@@ -1414,7 +1659,7 @@ def build_report_payload(
         "milestones": report_milestones,
         "risks": build_context_first_risks(risk_suggestions, project_context, backend=backend, diagnostics=diagnostics),
         "actions": minilm_actions or result.get("actions", []),
-        "_actionSourceTexts": [*minilm_action_sources, *collect_action_source_texts(result, enriched_segments)],
+        "_actionSourceTexts": [*minilm_action_sources, *collect_action_source_texts(result, all_segments)],
         "comparisonSnapshot": result.get("comparison_snapshot", {}),
         "retrievedKnowledge": knowledge_diagnostics(project_context),
     })

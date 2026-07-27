@@ -113,84 +113,88 @@ function parseOptionalId(out) {
 async function listProjectReports(limit = 50, filters = {}) {
   const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 100);
   const projectId = Number(filters.projectId || 0);
-  const projectFilter = Number.isFinite(projectId) && projectId > 0 ? `WHERE r.project_id = ${projectId}` : '';
-  const out = await runPsql(`
-SELECT json_build_object(
-  'reportId', r.id,
-  'projectId', p.id,
-  'projectName', p.project_name,
-  'periodLabel', COALESCE(rp.period_label, ''),
-  'fileName', COALESCE(r.file_name, ''),
-  'reportName', COALESCE(NULLIF(r.file_name, ''), 'Report ' || r.id::text),
-  'reportStatus', r.report_status,
-  'createdAt', r.created_at,
-  'updatedAt', r.updated_at,
-  'latestVersionId', v.id,
-  'latestVersionNumber', v.version_number,
-  'overallHealth', COALESCE(v.report_payload->'projectReport'->>'overallHealth', ''),
-  'summary', COALESCE(v.report_payload->'projectReport'->>'summary', '')
-)::text
-FROM project_reports r
-JOIN projects p ON p.id = r.project_id
-LEFT JOIN project_reporting_periods rp ON rp.id = r.reporting_period_id
-LEFT JOIN LATERAL (
-  SELECT id, version_number, report_payload
-  FROM project_report_versions
-  WHERE report_id = r.id
-  ORDER BY version_number DESC, id DESC
-  LIMIT 1
-) v ON TRUE
-${projectFilter}
-ORDER BY r.created_at DESC, r.id DESC
-LIMIT ${safeLimit};`);
-  return parseJsonLines(out);
+  const safeProjectId = Number.isFinite(projectId) && projectId > 0 ? projectId : null;
+  const result = await query(
+    `SELECT
+       r.id AS "reportId",
+       p.id AS "projectId",
+       p.project_name AS "projectName",
+       COALESCE(rp.period_label, '') AS "periodLabel",
+       COALESCE(r.file_name, '') AS "fileName",
+       COALESCE(NULLIF(r.file_name, ''), 'Report ' || r.id::text) AS "reportName",
+       r.report_status AS "reportStatus",
+       r.created_at AS "createdAt",
+       r.updated_at AS "updatedAt",
+       v.id AS "latestVersionId",
+       v.version_number AS "latestVersionNumber",
+       COALESCE(v.report_payload->'projectReport'->>'overallHealth', '') AS "overallHealth",
+       COALESCE(v.report_payload->'projectReport'->>'summary', '') AS "summary"
+     FROM project_reports r
+     JOIN projects p ON p.id = r.project_id
+     LEFT JOIN project_reporting_periods rp ON rp.id = r.reporting_period_id
+     LEFT JOIN LATERAL (
+       SELECT id, version_number, report_payload
+       FROM project_report_versions
+       WHERE report_id = r.id
+       ORDER BY version_number DESC, id DESC
+       LIMIT 1
+     ) v ON TRUE
+     WHERE ($1::bigint IS NULL OR r.project_id = $1::bigint)
+     ORDER BY r.created_at DESC, r.id DESC
+     LIMIT $2`,
+    [safeProjectId, safeLimit]
+  );
+  return result.rows;
 }
 
 async function getProjectReportDetail(reportId) {
-  const out = await runPsql(`
-SELECT json_build_object(
-  'reportId', r.id,
-  'projectId', p.id,
-  'projectName', p.project_name,
-  'periodLabel', COALESCE(rp.period_label, ''),
-  'fileName', COALESCE(r.file_name, ''),
-  'reportName', COALESCE(NULLIF(r.file_name, ''), 'Report ' || r.id::text),
-  'reportStatus', r.report_status,
-  'createdAt', r.created_at,
-  'updatedAt', r.updated_at,
-  'source', (
-    SELECT json_build_object(
-      'sourceType', source_type,
-      'fileName', COALESCE(file_name, ''),
-      'transcriptText', COALESCE(transcript_text, ''),
-      'transcriptLength', transcript_length,
-      'transcriptSha256', COALESCE(transcript_sha256, '')
-    )
-    FROM project_report_sources
-    WHERE report_id = r.id
-    ORDER BY id DESC
-    LIMIT 1
-  ),
-  'versions', COALESCE((
-    SELECT json_agg(json_build_object(
-      'versionId', id,
-      'versionNumber', version_number,
-      'changeType', change_type,
-      'changeSummary', COALESCE(change_summary, ''),
-      'savedBy', COALESCE(saved_by, ''),
-      'createdAt', created_at,
-      'payload', report_payload
-    ) ORDER BY version_number DESC, id DESC)
-    FROM project_report_versions
-    WHERE report_id = r.id
-  ), '[]'::json)
-)::text
-FROM project_reports r
-JOIN projects p ON p.id = r.project_id
-LEFT JOIN project_reporting_periods rp ON rp.id = r.reporting_period_id
-WHERE r.id = ${Number(reportId)}
-LIMIT 1;`);
-  return parseJsonLines(out)[0] || null;
+  const id = Number(reportId);
+  if (!Number.isFinite(id) || id <= 0) return null;
+  const result = await query(
+    `SELECT
+       r.id AS "reportId",
+       p.id AS "projectId",
+       p.project_name AS "projectName",
+       COALESCE(rp.period_label, '') AS "periodLabel",
+       COALESCE(r.file_name, '') AS "fileName",
+       COALESCE(NULLIF(r.file_name, ''), 'Report ' || r.id::text) AS "reportName",
+       r.report_status AS "reportStatus",
+       r.created_at AS "createdAt",
+       r.updated_at AS "updatedAt",
+       (
+         SELECT json_build_object(
+           'sourceType', source_type,
+           'fileName', COALESCE(file_name, ''),
+           'transcriptText', COALESCE(transcript_text, ''),
+           'transcriptLength', transcript_length,
+           'transcriptSha256', COALESCE(transcript_sha256, '')
+         )
+         FROM project_report_sources
+         WHERE report_id = r.id
+         ORDER BY id DESC
+         LIMIT 1
+       ) AS "source",
+       COALESCE((
+         SELECT json_agg(json_build_object(
+           'versionId', id,
+           'versionNumber', version_number,
+           'changeType', change_type,
+           'changeSummary', COALESCE(change_summary, ''),
+           'savedBy', COALESCE(saved_by, ''),
+           'createdAt', created_at,
+           'payload', report_payload
+         ) ORDER BY version_number DESC, id DESC)
+         FROM project_report_versions
+         WHERE report_id = r.id
+       ), '[]'::json) AS "versions"
+     FROM project_reports r
+     JOIN projects p ON p.id = r.project_id
+     LEFT JOIN project_reporting_periods rp ON rp.id = r.reporting_period_id
+     WHERE r.id = $1
+     LIMIT 1`,
+    [id]
+  );
+  return result.rows[0] || null;
 }
 
 async function saveProjectReportDetail(reportId, payload = {}) {
@@ -704,23 +708,24 @@ function normaliseProjectRef(projectRef = '') {
 
 async function listProjectOptions(limit = 100) {
   const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 500);
-  const out = await runPsql(`
-SELECT json_build_object(
-  'projectId', p.id,
-  'projectName', p.project_name,
-  'clientName', COALESCE(p.client_name, ''),
-  'description', COALESCE(p.description, ''),
-  'status', p.status,
-  'updatedAt', p.updated_at,
-  'createdAt', p.created_at,
-  'activeMilestoneCount', (SELECT COUNT(*) FROM project_core_milestones m WHERE m.project_id = p.id AND m.is_active = TRUE),
-  'activeRiskCount', (SELECT COUNT(*) FROM project_core_risks r WHERE r.project_id = p.id AND r.is_active = TRUE),
-  'reportCount', (SELECT COUNT(*) FROM project_reports pr WHERE pr.project_id = p.id)
-)::text
-FROM projects p
-ORDER BY p.updated_at DESC NULLS LAST, p.created_at DESC NULLS LAST, p.project_name, p.id
-LIMIT ${safeLimit};`);
-  return parseJsonLines(out);
+  const result = await query(
+    `SELECT
+       p.id,
+       p.project_name,
+       COALESCE(p.client_name, '') AS client_name,
+       COALESCE(p.description, '') AS description,
+       p.status,
+       p.updated_at,
+       p.created_at,
+       (SELECT COUNT(*) FROM project_core_milestones m WHERE m.project_id = p.id AND m.is_active = TRUE) AS active_milestone_count,
+       (SELECT COUNT(*) FROM project_core_risks r WHERE r.project_id = p.id AND r.is_active = TRUE) AS active_risk_count,
+       (SELECT COUNT(*) FROM project_reports pr WHERE pr.project_id = p.id) AS report_count
+     FROM projects p
+     ORDER BY p.updated_at DESC NULLS LAST, p.created_at DESC NULLS LAST, p.project_name, p.id
+     LIMIT $1`,
+    [safeLimit]
+  );
+  return result.rows.map(projectRowToJson);
 }
 
 function normaliseProjectStatus(value) {
@@ -833,21 +838,7 @@ async function resolveProjectForContext(projectRef = '') {
   const name = ref.projectName || fallbackName;
 
   if (Number.isFinite(ref.projectId) && ref.projectId > 0) {
-    const project = parseJsonLines(await runPsql(
-      `SELECT json_build_object(
-  'projectId', id,
-  'projectName', project_name,
-  'clientName', COALESCE(client_name, ''),
-  'description', COALESCE(description, ''),
-  'status', status,
-  'createdAt', created_at,
-  'updatedAt', updated_at
-)::text
-FROM projects
-WHERE id = $1
-LIMIT 1`,
-      [Number(ref.projectId)]
-    ))[0] || null;
+    const project = await getProjectManagementDetail(Number(ref.projectId));
     return {
       project,
       projectName: project?.projectName || name,
@@ -855,30 +846,30 @@ LIMIT 1`,
     };
   }
 
-  const candidates = parseJsonLines(await runPsql(
-    `SELECT json_build_object(
-  'projectId', p.id,
-  'projectName', p.project_name,
-  'clientName', COALESCE(p.client_name, ''),
-  'description', COALESCE(p.description, ''),
-  'status', p.status,
-  'createdAt', p.created_at,
-  'updatedAt', p.updated_at,
-  'activeMilestoneCount', (SELECT COUNT(*) FROM project_core_milestones m WHERE m.project_id = p.id AND m.is_active = TRUE),
-  'activeRiskCount', (SELECT COUNT(*) FROM project_core_risks r WHERE r.project_id = p.id AND r.is_active = TRUE),
-  'reportCount', (SELECT COUNT(*) FROM project_reports pr WHERE pr.project_id = p.id)
-)::text
-FROM projects p
-WHERE p.project_name = $1
-ORDER BY
-  (SELECT COUNT(*) FROM project_core_milestones m WHERE m.project_id = p.id AND m.is_active = TRUE) DESC,
-  (SELECT COUNT(*) FROM project_core_risks r WHERE r.project_id = p.id AND r.is_active = TRUE) DESC,
-  (SELECT COUNT(*) FROM project_reports pr WHERE pr.project_id = p.id) DESC,
-  p.updated_at DESC NULLS LAST,
-  p.created_at DESC NULLS LAST,
-  p.id`,
+  const candidateRows = await query(
+    `SELECT
+       p.id,
+       p.project_name,
+       COALESCE(p.client_name, '') AS client_name,
+       COALESCE(p.description, '') AS description,
+       p.status,
+       p.created_at,
+       p.updated_at,
+       (SELECT COUNT(*) FROM project_core_milestones m WHERE m.project_id = p.id AND m.is_active = TRUE) AS active_milestone_count,
+       (SELECT COUNT(*) FROM project_core_risks r WHERE r.project_id = p.id AND r.is_active = TRUE) AS active_risk_count,
+       (SELECT COUNT(*) FROM project_reports pr WHERE pr.project_id = p.id) AS report_count
+     FROM projects p
+     WHERE p.project_name = $1
+     ORDER BY
+       (SELECT COUNT(*) FROM project_core_milestones m WHERE m.project_id = p.id AND m.is_active = TRUE) DESC,
+       (SELECT COUNT(*) FROM project_core_risks r WHERE r.project_id = p.id AND r.is_active = TRUE) DESC,
+       (SELECT COUNT(*) FROM project_reports pr WHERE pr.project_id = p.id) DESC,
+       p.updated_at DESC NULLS LAST,
+       p.created_at DESC NULLS LAST,
+       p.id`,
     [name]
-  ));
+  );
+  const candidates = candidateRows.rows.map(projectRowToJson);
   const project = candidates[0] || null;
   return {
     project,
@@ -918,7 +909,7 @@ async function getProjectContext(projectName = '', limit = 5) {
   }
   const projectId = Number(project.projectId);
 
-  const activeMilestones = parseJsonLines(await runPsql(`
+  const activeMilestonesResult = await query(`
 SELECT json_build_object(
   'milestoneId', m.id,
   'milestoneName', m.milestone_name,
@@ -932,7 +923,7 @@ SELECT json_build_object(
   'officialAt', m.official_at,
   'latestAssessment', latest.assessment,
   'previousAssessment', previous.assessment
-)::text
+) AS payload
 FROM project_core_milestones m
 LEFT JOIN LATERAL (
   SELECT json_build_object(
@@ -973,10 +964,11 @@ LEFT JOIN LATERAL (
   ORDER BY v.created_at DESC, a.id DESC
   LIMIT 1
 ) previous ON TRUE
-WHERE m.project_id = ${projectId} AND m.is_active = TRUE
-ORDER BY m.sort_order, m.id;`));
+WHERE m.project_id = $1 AND m.is_active = TRUE
+ORDER BY m.sort_order, m.id;`, [projectId]);
+  const activeMilestones = activeMilestonesResult.rows.map((row) => row.payload);
 
-  const activeRisks = parseJsonLines(await runPsql(`
+  const activeRisksResult = await query(`
 SELECT json_build_object(
   'riskId', id,
   'projectId', project_id,
@@ -988,12 +980,13 @@ SELECT json_build_object(
   'officialLabel', COALESCE(official_label, ''),
   'officialAt', official_at,
   'createdAt', created_at
-)::text
+) AS payload
 FROM project_core_risks
-WHERE project_id = ${projectId} AND is_active = TRUE
-ORDER BY id;`));
+WHERE project_id = $1 AND is_active = TRUE
+ORDER BY id;`, [projectId]);
+  const activeRisks = activeRisksResult.rows.map((row) => row.payload);
 
-  const recentReports = parseJsonLines(await runPsql(`
+  const recentReportsResult = await query(`
 SELECT json_build_object(
   'reportId', r.id,
   'reportVersionId', v.id,
@@ -1008,7 +1001,7 @@ SELECT json_build_object(
   'overallHealthRag', COALESCE(v.report_payload->'projectReport'->>'overallHealthRag', ''),
   'summary', COALESCE(v.report_payload->'projectReport'->>'summary', ''),
   'comparisonSnapshot', COALESCE(v.report_payload->'projectReport'->'comparisonSnapshot', '{}'::jsonb)
-)::text
+) AS payload
 FROM project_reports r
 LEFT JOIN project_reporting_periods rp ON rp.id = r.reporting_period_id
 JOIN LATERAL (
@@ -1018,12 +1011,13 @@ JOIN LATERAL (
   ORDER BY version_number DESC, id DESC
   LIMIT 1
 ) v ON TRUE
-WHERE r.project_id = ${projectId}
+WHERE r.project_id = $1
   AND r.report_status <> 'archived'
 ORDER BY v.created_at DESC, r.id DESC
-LIMIT ${safeLimit};`));
+LIMIT $2;`, [projectId, safeLimit]);
+  const recentReports = recentReportsResult.rows.map((row) => row.payload);
 
-  const healthHistory = parseJsonLines(await runPsql(`
+  const healthHistoryResult = await query(`
 SELECT json_build_object(
   'area', h.area,
   'status', h.status,
@@ -1033,16 +1027,17 @@ SELECT json_build_object(
   'reportVersionId', h.report_version_id,
   'reportId', v.report_id,
   'createdAt', v.created_at
-)::text
+) AS payload
 FROM project_report_health h
 JOIN project_report_versions v ON v.id = h.report_version_id
 JOIN project_reports r ON r.id = v.report_id
-WHERE r.project_id = ${projectId}
+WHERE r.project_id = $1
   AND r.report_status <> 'archived'
 ORDER BY v.created_at DESC, h.area
-LIMIT ${safeLimit * 5};`));
+LIMIT $2;`, [projectId, safeLimit * 5]);
+  const healthHistory = healthHistoryResult.rows.map((row) => row.payload);
 
-  const milestoneHistory = parseJsonLines(await runPsql(`
+  const milestoneHistoryResult = await query(`
 SELECT json_build_object(
   'milestoneId', m.id,
   'milestoneName', m.milestone_name,
@@ -1055,17 +1050,18 @@ SELECT json_build_object(
   'reportVersionId', a.report_version_id,
   'reportId', v.report_id,
   'createdAt', v.created_at
-)::text
+) AS payload
 FROM project_report_milestone_assessments a
 JOIN project_core_milestones m ON m.id = a.milestone_id
 JOIN project_report_versions v ON v.id = a.report_version_id
 JOIN project_reports r ON r.id = v.report_id
-WHERE r.project_id = ${projectId}
+WHERE r.project_id = $1
   AND r.report_status <> 'archived'
 ORDER BY v.created_at DESC, a.id DESC
-LIMIT ${safeLimit * 25};`));
+LIMIT $2;`, [projectId, safeLimit * 25]);
+  const milestoneHistory = milestoneHistoryResult.rows.map((row) => row.payload);
 
-  const riskSuggestions = parseJsonLines(await runPsql(`
+  const riskSuggestionsResult = await query(`
 SELECT json_build_object(
   'riskSuggestionId', s.id,
   'riskTitle', s.risk_title,
@@ -1076,16 +1072,17 @@ SELECT json_build_object(
   'reportVersionId', s.report_version_id,
   'reportId', v.report_id,
   'createdAt', v.created_at
-)::text
+) AS payload
 FROM project_ai_risk_suggestions s
 JOIN project_report_versions v ON v.id = s.report_version_id
 JOIN project_reports r ON r.id = v.report_id
-WHERE r.project_id = ${projectId}
+WHERE r.project_id = $1
   AND r.report_status <> 'archived'
 ORDER BY v.created_at DESC, s.id DESC
-LIMIT ${safeLimit * 10};`));
+LIMIT $2;`, [projectId, safeLimit * 10]);
+  const riskSuggestions = riskSuggestionsResult.rows.map((row) => row.payload);
 
-  const latestSnapshot = parseJsonLines(await runPsql(`
+  const latestSnapshotResult = await query(`
 SELECT json_build_object(
   'snapshotId', id,
   'sourceReportVersionId', source_report_version_id,
@@ -1097,11 +1094,12 @@ SELECT json_build_object(
   'createdBy', COALESCE(created_by, ''),
   'createdAt', created_at,
   'contextPayload', context_payload
-)::text
+) AS payload
 FROM project_context_snapshots
-WHERE project_id = ${projectId}
+WHERE project_id = $1
 ORDER BY created_at DESC, id DESC
-LIMIT 1;`))[0] || null;
+LIMIT 1;`, [projectId]);
+  const latestSnapshot = latestSnapshotResult.rows[0]?.payload || null;
 
   return {
     ...project,
@@ -1134,10 +1132,10 @@ async function createProjectContextSnapshot(projectName = '', payload = {}) {
     : context;
 
   const isOfficial = truthy(payload.isOfficial);
-  const out = await runPsql(
+  const snapshotResult = await query(
     `INSERT INTO project_context_snapshots (project_id, source_report_version_id, snapshot_type, context_payload, summary, created_by, is_official, official_label, official_at)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CASE WHEN $7 THEN NOW() ELSE NULL END)
-     RETURNING id::text`,
+     RETURNING id`,
     [
       Number(context.projectId),
       sourceReportVersionId > 0 ? sourceReportVersionId : null,
@@ -1149,7 +1147,7 @@ async function createProjectContextSnapshot(projectName = '', payload = {}) {
       payload.officialLabel || ''
     ]
   );
-  const snapshotId = parseOptionalId(out);
+  const snapshotId = Number(snapshotResult.rows[0]?.id) || null;
   if (!snapshotId) throw new Error('Could not create project context snapshot.');
 
   const items = [];
@@ -1213,7 +1211,7 @@ async function createProjectContextSnapshot(projectName = '', payload = {}) {
   }
 
   for (const item of items) {
-    await runPsql(
+    await query(
       `INSERT INTO project_context_snapshot_items
        (snapshot_id, item_type, item_key, item_label, status, previous_status, trend, confidence, evidence, metadata)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
@@ -1242,40 +1240,42 @@ async function getProjectContextSnapshot(snapshotId) {
     error.statusCode = 400;
     throw error;
   }
-  const snapshot = parseJsonLines(await runPsql(`
-SELECT json_build_object(
-  'snapshotId', s.id,
-  'projectId', p.id,
-  'projectName', p.project_name,
-  'sourceReportVersionId', s.source_report_version_id,
-  'snapshotType', s.snapshot_type,
-  'summary', COALESCE(s.summary, ''),
-  'createdBy', COALESCE(s.created_by, ''),
-  'createdAt', s.created_at,
-  'contextPayload', s.context_payload,
-  'items', COALESCE((
-    SELECT json_agg(json_build_object(
-      'itemId', i.id,
-      'itemType', i.item_type,
-      'itemKey', i.item_key,
-      'itemLabel', COALESCE(i.item_label, ''),
-      'status', COALESCE(i.status, ''),
-      'previousStatus', COALESCE(i.previous_status, ''),
-      'trend', i.trend,
-      'confidence', i.confidence,
-      'evidence', i.evidence,
-      'metadata', i.metadata,
-      'createdAt', i.created_at
-    ) ORDER BY i.item_type, i.id)
-    FROM project_context_snapshot_items i
-    WHERE i.snapshot_id = s.id
-  ), '[]'::json)
-)::text
-FROM project_context_snapshots s
-JOIN projects p ON p.id = s.project_id
-WHERE s.id = ${id}
-LIMIT 1;`))[0] || null;
-  return snapshot;
+  const result = await query(
+    `SELECT json_build_object(
+       'snapshotId', s.id,
+       'projectId', p.id,
+       'projectName', p.project_name,
+       'sourceReportVersionId', s.source_report_version_id,
+       'snapshotType', s.snapshot_type,
+       'summary', COALESCE(s.summary, ''),
+       'createdBy', COALESCE(s.created_by, ''),
+       'createdAt', s.created_at,
+       'contextPayload', s.context_payload,
+       'items', COALESCE((
+         SELECT json_agg(json_build_object(
+           'itemId', i.id,
+           'itemType', i.item_type,
+           'itemKey', i.item_key,
+           'itemLabel', COALESCE(i.item_label, ''),
+           'status', COALESCE(i.status, ''),
+           'previousStatus', COALESCE(i.previous_status, ''),
+           'trend', i.trend,
+           'confidence', i.confidence,
+           'evidence', i.evidence,
+           'metadata', i.metadata,
+           'createdAt', i.created_at
+         ) ORDER BY i.item_type, i.id)
+         FROM project_context_snapshot_items i
+         WHERE i.snapshot_id = s.id
+       ), '[]'::json)
+     ) AS payload
+     FROM project_context_snapshots s
+     JOIN projects p ON p.id = s.project_id
+     WHERE s.id = $1
+     LIMIT 1`,
+    [id]
+  );
+  return result.rows[0]?.payload || null;
 }
 
 async function saveUploadedJob({ fileName, mimeType, transcriptText }) {
@@ -2451,13 +2451,8 @@ async function saveProjectUpdateDraft({ projectId: requestedProjectId, projectNa
     };
   });
 
-  const parseOptionalId = (out) => {
-    const line = String(out || '').split('\n').find((item) => /^\d+$/.test(item));
-    const id = Number(line);
-    return Number.isFinite(id) && id > 0 ? id : null;
-  };
-  const parseId = (out, labelName) => {
-    const id = parseOptionalId(out);
+  const parseId = (row, labelName) => {
+    const id = Number(row?.id);
     if (!Number.isFinite(id) || id <= 0) {
       throw new Error(`Could not save project update draft: missing ${labelName} id.`);
     }
@@ -2477,71 +2472,70 @@ async function saveProjectUpdateDraft({ projectId: requestedProjectId, projectNa
 
   let projectId = Number(requestedProjectId || 0);
   if (Number.isFinite(projectId) && projectId > 0) {
-    const existingById = parseOptionalId(await runPsql('SELECT id::text FROM projects WHERE id = $1 LIMIT 1', [projectId]));
-    if (!existingById) {
+    const existingById = await query('SELECT id FROM projects WHERE id = $1 LIMIT 1', [projectId]);
+    const existingProjectId = Number(existingById.rows[0]?.id);
+    if (!existingProjectId) {
       const error = new Error('Selected project was not found.');
       error.statusCode = 404;
       throw error;
     }
-    projectId = existingById;
+    projectId = existingProjectId;
   } else {
-    projectId = parseOptionalId(
-      await runPsql('SELECT id::text FROM projects WHERE project_name = $1 ORDER BY id LIMIT 1', [name]),
-    );
+    const existingByName = await query('SELECT id FROM projects WHERE project_name = $1 ORDER BY id LIMIT 1', [name]);
+    projectId = Number(existingByName.rows[0]?.id) || null;
   }
   if (!projectId) {
     projectId = parseId(
-      await runPsql(
+      (await query(
         `INSERT INTO projects (project_name, description, status, updated_at)
          VALUES ($1, 'Created from /project-update-test workflow.', 'active', NOW())
-         RETURNING id::text`,
+         RETURNING id`,
         [name]
-      ),
+      )).rows[0],
       'project'
     );
   }
 
-  let reportingPeriodId = parseOptionalId(
-    await runPsql(
-      `SELECT id::text FROM project_reporting_periods
+  const existingPeriod = await query(
+    `SELECT id FROM project_reporting_periods
        WHERE project_id = $1 AND period_type = 'quarter' AND period_label = $2
        ORDER BY id
        LIMIT 1`,
-      [projectId, label]
-    )
+    [projectId, label]
   );
+  let reportingPeriodId = Number(existingPeriod.rows[0]?.id) || null;
   if (!reportingPeriodId) {
     reportingPeriodId = parseId(
-      await runPsql(
+      (await query(
         `INSERT INTO project_reporting_periods (project_id, period_type, period_label, start_date, end_date)
          VALUES ($1, 'quarter', $2, $3::date, $4::date)
          ON CONFLICT (project_id, period_type, period_label) DO UPDATE SET period_label = EXCLUDED.period_label
-         RETURNING id::text`,
+         RETURNING id`,
         [projectId, label, quarterStartDate(label), quarterEndDate(label)]
-      ),
+      )).rows[0],
       'reporting period'
     );
   }
 
-  const duplicateSource = parseJsonLines(await runPsql(
-    `SELECT json_build_object(
-  'reportId', r.id,
-  'reportVersionId', v.id,
-  'transcriptSha256', s.transcript_sha256
-)::text
-FROM project_report_sources s
-JOIN project_reports r ON r.id = s.report_id
-LEFT JOIN LATERAL (
-  SELECT id FROM project_report_versions WHERE report_id = r.id ORDER BY version_number DESC, id DESC LIMIT 1
-) v ON TRUE
-WHERE r.project_id = $1
-  AND r.reporting_period_id = $2
-  AND s.transcript_sha256 = $3
-  AND r.report_status <> 'archived'
-ORDER BY s.id DESC
-LIMIT 1`,
+  const duplicateSourceResult = await query(
+    `SELECT
+       r.id AS "reportId",
+       v.id AS "reportVersionId",
+       s.transcript_sha256 AS "transcriptSha256"
+     FROM project_report_sources s
+     JOIN project_reports r ON r.id = s.report_id
+     LEFT JOIN LATERAL (
+       SELECT id FROM project_report_versions WHERE report_id = r.id ORDER BY version_number DESC, id DESC LIMIT 1
+     ) v ON TRUE
+     WHERE r.project_id = $1
+       AND r.reporting_period_id = $2
+       AND s.transcript_sha256 = $3
+       AND r.report_status <> 'archived'
+     ORDER BY s.id DESC
+     LIMIT 1`,
     [projectId, reportingPeriodId, transcriptSha]
-  ))[0] || null;
+  );
+  const duplicateSource = duplicateSourceResult.rows[0] || null;
   if (duplicateSource) {
     return {
       saved: false,
@@ -2557,31 +2551,31 @@ LIMIT 1`,
   }
 
   const reportId = parseId(
-    await runPsql(
+    (await query(
       `INSERT INTO project_reports (project_id, reporting_period_id, file_name, report_status, include_in_global_analysis, updated_at)
        VALUES ($1, $2, $3, 'draft', FALSE, NOW())
-       RETURNING id::text`,
+       RETURNING id`,
       [projectId, reportingPeriodId, fileName || '']
-    ),
+    )).rows[0],
     'report'
   );
   const reportVersionId = parseId(
-    await runPsql(
+    (await query(
       `INSERT INTO project_report_versions (report_id, version_number, change_type, change_summary, saved_by, report_payload)
        VALUES ($1, 1, 'ai_generated', 'Initial AI-generated draft from /project-update-test.', 'OpenClaw', $2)
-       RETURNING id::text`,
+       RETURNING id`,
       [reportId, JSON.stringify(result || {})]
-    ),
+    )).rows[0],
     'report version'
   );
-  await runPsql(
+  await query(
     `INSERT INTO project_report_sources (report_id, source_type, file_name, transcript_text, transcript_length, transcript_sha256)
      VALUES ($1, $2, $3, $4, LENGTH($4), $5)`,
     [reportId, source, fileName || '', transcript, transcriptSha]
   );
 
   for (const item of healthValues) {
-    await runPsql(
+    await query(
       `INSERT INTO project_report_health (report_version_id, area, status, trend, confidence, rationale)
        VALUES ($1, $2, $3, $4, $5, $6)`,
       [reportVersionId, item.area, item.status, item.trend, clampConfidence(item.confidence), item.rationale]
@@ -2600,7 +2594,7 @@ LIMIT 1`,
     const trend = normaliseProjectTrend(milestoneDraft.trend || segment.trend || 'stable');
     const confidence = segment.delivery_status_confidence || milestoneDraft.delivery_status_confidence || segment.confidence || milestoneDraft.confidence;
     const summary = segment.normalised_evidence_summary || milestoneDraft.normalised_evidence_summary || segment.excerpt || milestoneDraft.excerpt || segment.status_resolution_note || '';
-    const milestoneOut = await runPsql(
+    const milestoneResult = await query(
       `WITH existing AS (
   SELECT id FROM project_core_milestones
   WHERE project_id = $1 AND milestone_name = $2 AND is_active = TRUE
@@ -2626,8 +2620,8 @@ SELECT id::text FROM existing
 LIMIT 1`,
       [projectId, milestoneName, reportingPeriodId, toDateParam(baselineFinishDate), toDateParam(forecastFinishDate), index]
     );
-    const milestoneId = Number(milestoneOut.split('\n').find((item) => /^\d+$/.test(item)));
-    await runPsql(
+    const milestoneId = Number(milestoneResult.rows[0]?.id);
+    await query(
       `INSERT INTO project_report_milestone_assessments
        (report_version_id, milestone_id, status, trend, confidence, summary, forecast_finish_date)
        VALUES ($1, $2, $3, $4, $5, $6, $7::date)`,
@@ -2638,7 +2632,7 @@ LIMIT 1`,
       : (segment.evidence || []).slice(0, 3).map((text) => ({ text, confidence: segment.confidence || 0.5 }));
     for (const evidenceItem of evidence.slice(0, 3)) {
       const turnIndex = Number.isFinite(Number(evidenceItem.turnIndex)) ? Number(evidenceItem.turnIndex) : null;
-      await runPsql(
+      await query(
         `INSERT INTO project_report_evidence
          (report_version_id, linked_type, linked_id, evidence_text, speaker, turn_index, confidence)
          VALUES ($1, 'milestone', $2, $3, $4, $5, $6)`,
@@ -2648,7 +2642,7 @@ LIMIT 1`,
   }
 
   for (const risk of risks.slice(0, 10)) {
-    await runPsql(
+    await query(
       `INSERT INTO project_ai_risk_suggestions
        (report_version_id, risk_title, description, suggested_mitigation, confidence, review_status)
        VALUES ($1, $2, $3, $4, $5, 'pending')`,
@@ -2679,24 +2673,24 @@ async function markProjectContextOfficial(projectName = '', label = '') {
     throw error;
   }
 
-  const milestoneOut = await runPsql(
+  const milestoneResult = await query(
     `UPDATE project_core_milestones
      SET is_official = TRUE,
          official_label = $1,
          official_at = COALESCE(official_at, NOW()),
          is_active = TRUE
      WHERE project_id = $2 AND is_active = TRUE
-     RETURNING id::text`,
+     RETURNING id`,
     [officialLabel, projectId]
   );
-  const riskOut = await runPsql(
+  const riskResult = await query(
     `UPDATE project_core_risks
      SET is_official = TRUE,
          official_label = $1,
          official_at = COALESCE(official_at, NOW()),
          is_active = TRUE
      WHERE project_id = $2 AND is_active = TRUE
-     RETURNING id::text`,
+     RETURNING id`,
     [officialLabel, projectId]
   );
 
@@ -2712,8 +2706,8 @@ async function markProjectContextOfficial(projectName = '', label = '') {
     projectId,
     projectName: name,
     officialLabel,
-    officialMilestones: milestoneOut.split('\n').filter((line) => /^\d+$/.test(line)).length,
-    officialRisks: riskOut.split('\n').filter((line) => /^\d+$/.test(line)).length,
+    officialMilestones: milestoneResult.rowCount,
+    officialRisks: riskResult.rowCount,
     officialSnapshotId: snapshot?.snapshotId || null,
     context: await getProjectContext(ref.projectId ? { projectId, projectName: name } : name, 5)
   };
@@ -2731,56 +2725,58 @@ async function cleanupProjectUpdateTestContext(projectName = '', options = {}) {
     throw error;
   }
 
-  const milestoneOut = await runPsql(`
+  const milestoneResult = await query(`
 UPDATE project_core_milestones
 SET is_active = FALSE
-WHERE project_id = ${projectId}
+WHERE project_id = $1
   AND is_active = TRUE
   AND COALESCE(is_official, FALSE) = FALSE
-RETURNING id::text;`);
-  const riskOut = await runPsql(`
+RETURNING id;`, [projectId]);
+  const riskResult = await query(`
 UPDATE project_core_risks
 SET is_active = FALSE
-WHERE project_id = ${projectId}
+WHERE project_id = $1
   AND is_active = TRUE
   AND COALESCE(is_official, FALSE) = FALSE
-RETURNING id::text;`);
+RETURNING id;`, [projectId]);
 
-  const knowledgeOut = await runPsql(`
+  const knowledgeResult = await query(`
 UPDATE project_knowledge_items
 SET status = 'archived', updated_at = NOW()
-WHERE project_id = ${projectId}
+WHERE project_id = $1
   AND status <> 'archived'
   AND COALESCE(is_official, FALSE) = FALSE
-RETURNING id::text;`);
+RETURNING id;`, [projectId]);
 
-  let reportOut = '';
+  let archivedReports = 0;
   if (archiveReports) {
-    reportOut = await runPsql(`
+    const reportResult = await query(`
 UPDATE project_reports
 SET report_status = 'archived', updated_at = NOW()
-WHERE project_id = ${projectId}
+WHERE project_id = $1
   AND report_status <> 'archived'
-RETURNING id::text;`);
+RETURNING id;`, [projectId]);
+    archivedReports = reportResult.rowCount;
   }
 
-  let snapshotOut = '';
+  let deletedSnapshots = 0;
   if (deleteNonOfficialSnapshots) {
-    snapshotOut = await runPsql(`
+    const snapshotResult = await query(`
 DELETE FROM project_context_snapshots
-WHERE project_id = ${projectId}
+WHERE project_id = $1
   AND COALESCE(is_official, FALSE) = FALSE
-RETURNING id::text;`);
+RETURNING id;`, [projectId]);
+    deletedSnapshots = snapshotResult.rowCount;
   }
 
   return {
     projectId,
     projectName: name,
-    deactivatedMilestones: milestoneOut.split('\n').filter((line) => /^\d+$/.test(line)).length,
-    deactivatedRisks: riskOut.split('\n').filter((line) => /^\d+$/.test(line)).length,
-    archivedReports: reportOut.split('\n').filter((line) => /^\d+$/.test(line)).length,
-    archivedKnowledgeItems: knowledgeOut.split('\n').filter((line) => /^\d+$/.test(line)).length,
-    deletedSnapshots: snapshotOut.split('\n').filter((line) => /^\d+$/.test(line)).length,
+    deactivatedMilestones: milestoneResult.rowCount,
+    deactivatedRisks: riskResult.rowCount,
+    archivedReports,
+    archivedKnowledgeItems: knowledgeResult.rowCount,
+    deletedSnapshots,
     context: await getProjectContext(ref.projectId ? { projectId, projectName: name } : name, 5)
   };
 }

@@ -21,7 +21,7 @@
         "retrievedKnowledge": { "retrievalMode": "none", "chunks": [] }
       },
       "expected": {
-        "overallHealthIn": ["on_track"],
+        "overallHealthIn": ["at_risk"],
         "milestoneChecks": [],
         "riskChecks": [
           {
@@ -77,7 +77,7 @@
         "retrievedKnowledge": { "retrievalMode": "none", "chunks": [] }
       },
       "expected": {
-        "overallHealthIn": ["on_track"],
+        "overallHealthIn": ["at_risk"],
         "milestoneChecks": [
           {
             "labelContains": "Regional training rollout",

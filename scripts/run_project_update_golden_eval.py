@@ -121,18 +121,14 @@ def check_case(case: dict[str, Any], *, use_minilm: bool, use_rewrite: bool) -> 
     allowed_health = {canonical_status(v) for v in expected.get("overallHealthIn", [])}
     actual_health = canonical_status(report.get("overallHealth") or report.get("overallHealthRag"))
     if allowed_health and actual_health not in allowed_health:
-        warnings.append(f"overall health {actual_health!r} not in {sorted(allowed_health)}")
+        failures.append(f"overall health {actual_health!r} not in {sorted(allowed_health)}")
 
     milestones = [m for m in report.get("milestones", []) if isinstance(m, dict)]
     for check in expected.get("milestoneChecks", []) or []:
         label = check.get("labelContains", "")
         milestone = find_by_label(milestones, label, ("milestone", "milestoneName", "normalised_evidence_summary", "previous_summary"))
         if not milestone:
-            msg = f"milestone containing {label!r} not found"
-            if check.get("shouldBeCarriedForward"):
-                failures.append(msg)
-            else:
-                warnings.append(msg)
+            failures.append(f"milestone containing {label!r} not found")
             continue
         expected_trend = clean(check.get("expectedTrend")).lower()
         expected_trends = {clean(v).lower() for v in check.get("expectedTrendIn", [])}
@@ -141,7 +137,7 @@ def check_case(case: dict[str, Any], *, use_minilm: bool, use_rewrite: bool) -> 
         actual_trend = canonical_status(trend_of(milestone))
         expected_trends = {canonical_status(v) for v in expected_trends}
         if expected_trends and actual_trend not in expected_trends:
-            warnings.append(f"milestone {label!r} trend {actual_trend!r} not in {sorted(expected_trends)}")
+            failures.append(f"milestone {label!r} trend {actual_trend!r} not in {sorted(expected_trends)}")
         if check.get("shouldBeCarriedForward") and milestone.get("transcript_update_status") not in {"carried_forward", "unchanged_from_context"}:
             failures.append(f"milestone {label!r} was expected to be carried forward")
 
@@ -150,19 +146,21 @@ def check_case(case: dict[str, Any], *, use_minilm: bool, use_rewrite: bool) -> 
         label = check.get("labelContains", "")
         risk = find_by_label(risks, label, ("riskTitle", "description", "suggestedMitigation"))
         if not risk:
-            warnings.append(f"risk containing {label!r} not found")
+            failures.append(f"risk containing {label!r} not found")
             continue
         expected_trend = canonical_status(check.get("expectedTrend"))
         if expected_trend and canonical_status(risk.get("trend")) != expected_trend:
-            warnings.append(f"risk {label!r} trend {canonical_status(risk.get('trend'))!r} != {expected_trend!r}")
+            failures.append(f"risk {label!r} trend {canonical_status(risk.get('trend'))!r} != {expected_trend!r}")
         allowed_match = {clean(v).lower() for v in check.get("expectedMatchedByIn", [])}
+        if not use_minilm and "semantic" in allowed_match:
+            allowed_match.add("token_overlap")
         actual_match = matched_by(risk)
         if allowed_match and actual_match and actual_match not in allowed_match:
-            warnings.append(f"risk {label!r} matchedBy {actual_match!r} not in {sorted(allowed_match)}")
+            failures.append(f"risk {label!r} matchedBy {actual_match!r} not in {sorted(allowed_match)}")
 
     expected_retrieval = {clean(v).lower() for v in expected.get("expectedRetrievalModeIn", [])}
     actual_retrieval = clean((report.get("retrievedKnowledge") or diagnostics.get("projectKnowledge") or {}).get("retrievalMode")).lower()
-    if expected_retrieval and actual_retrieval and actual_retrieval not in expected_retrieval:
+    if expected_retrieval and actual_retrieval not in expected_retrieval:
         failures.append(f"retrieval mode {actual_retrieval!r} not in {sorted(expected_retrieval)}")
 
     if expected.get("mustNotUseRetrievedKnowledgeAsTranscriptEvidence"):

@@ -1359,7 +1359,7 @@ router.post('/project-update-test/knowledge/embeddings/process', requireAuth, as
   }
 });
 
-router.get('/project-update-test/reports', async (req, res) => {
+router.get('/project-update-test/reports', requireAuth, async (req, res) => {
   try {
     const reports = await listProjectReports(req.query?.limit, { projectId: req.query?.projectId });
     return res.json({ ok: true, reports });
@@ -1368,7 +1368,7 @@ router.get('/project-update-test/reports', async (req, res) => {
   }
 });
 
-router.get('/project-update-test/projects', async (req, res) => {
+router.get('/project-update-test/projects', requireAuth, async (req, res) => {
   try {
     const projects = await listProjectOptions(req.query?.limit);
     return res.json({ ok: true, projects });
@@ -1405,7 +1405,7 @@ router.delete('/project-update-test/projects/:projectId', requireAuth, async (re
   }
 });
 
-router.get('/project-update-test/reports/:reportId', async (req, res) => {
+router.get('/project-update-test/reports/:reportId', requireAuth, async (req, res) => {
   try {
     const report = await getProjectReportDetail(req.params.reportId);
     if (!report) {
@@ -1450,7 +1450,7 @@ router.delete('/project-update-test/reports/:reportId', requireAuth, async (req,
   }
 });
 
-router.get('/project-update-test/milestones', async (req, res) => {
+router.get('/project-update-test/milestones', requireAuth, async (req, res) => {
   try {
     const milestones = await listProjectMilestones(req.query?.limit, { projectId: req.query?.projectId });
     return res.json({ ok: true, milestones });
@@ -1468,7 +1468,7 @@ router.post('/project-update-test/milestones', requireAuth, async (req, res) => 
   }
 });
 
-router.get('/project-update-test/milestones/:milestoneId', async (req, res) => {
+router.get('/project-update-test/milestones/:milestoneId', requireAuth, async (req, res) => {
   try {
     const milestone = await getProjectMilestoneDetail(req.params.milestoneId);
     if (!milestone) {
@@ -1513,7 +1513,7 @@ router.delete('/project-update-test/milestones/:milestoneId', requireAuth, async
   }
 });
 
-router.get('/project-update-test/context', async (req, res) => {
+router.get('/project-update-test/context', requireAuth, async (req, res) => {
   try {
     const context = await getProjectContext({ projectId: req.query?.projectId, projectName: req.query?.projectName }, req.query?.limit);
     return res.json({ ok: true, context });
@@ -1531,7 +1531,7 @@ router.post('/project-update-test/context/snapshots', requireAuth, async (req, r
   }
 });
 
-router.get('/project-update-test/context/snapshots/:snapshotId', async (req, res) => {
+router.get('/project-update-test/context/snapshots/:snapshotId', requireAuth, async (req, res) => {
   try {
     const snapshot = await getProjectContextSnapshot(req.params.snapshotId);
     if (!snapshot) return res.status(404).json({ ok: false, error: 'Project context snapshot not found.' });
