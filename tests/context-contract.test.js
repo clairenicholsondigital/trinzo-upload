@@ -18,7 +18,6 @@ const projectStageReportsSource = fs.readFileSync(path.join(repoDir, 'public/pro
 const projectStageInsightsSource = fs.readFileSync(path.join(repoDir, 'public/project-stage-insights.js'), 'utf8');
 const roadmapPageSource = fs.readFileSync(path.join(repoDir, 'views/project-update-roadmap.html'), 'utf8');
 const dashboardPageSource = fs.readFileSync(path.join(repoDir, 'views/dashboard.html'), 'utf8');
-const archivePageSource = fs.readFileSync(path.join(repoDir, 'views/archive.html'), 'utf8');
 
 test('canonical project context fixture contains the Node/Python boundary keys', () => {
   for (const key of [
@@ -82,17 +81,20 @@ test('project knowledge phase 1 surfaces schema and protected endpoints', () => 
   assert.ok(contextPageSource.includes('/api/project-update-test/knowledge/ask'));
 });
 
-test('dashboard and archive keep the active tool infrastructure organised', () => {
+test('dashboard keeps only active tool infrastructure visible', () => {
   const serverSource = fs.readFileSync(path.join(repoDir, 'server.js'), 'utf8');
   assert.ok(serverSource.includes("sendView(res, 'dashboard.html')"));
-  assert.ok(serverSource.includes("app.get('/archive'"));
-  assert.ok(serverSource.includes("'/archive/legacy-transcript-workflow': 'index.html'"));
-  assert.ok(serverSource.includes("'/meeting-minutes-test': '/archive/meeting-minutes-test'"));
+  assert.ok(!serverSource.includes("app.get('/archive'"));
+  assert.ok(!serverSource.includes("'/archive/legacy-transcript-workflow': 'index.html'"));
+  assert.ok(!serverSource.includes("'/meeting-minutes-test': '/archive/meeting-minutes-test'"));
+  assert.ok(!apiSource.includes("router.post('/meeting-minutes-test'"));
+  assert.ok(!apiSource.includes("router.post('/meeting-minutes-numbers'"));
+  assert.ok(!apiSource.includes("router.post('/meeting-minutes-comparison'"));
+  assert.ok(!apiSource.includes("router.post('/meeting-minutes-minilm-only'"));
   assert.ok(dashboardPageSource.includes('Meeting transcript to minutes'));
   assert.ok(dashboardPageSource.includes('Project workspace'));
-  assert.ok(dashboardPageSource.includes('Older labs and prototypes'));
-  assert.ok(archivePageSource.includes('Legacy / archived'));
-  assert.ok(archivePageSource.includes('/archive/meeting-minutes-minilm-only'));
+  assert.ok(!dashboardPageSource.includes('Older labs and prototypes'));
+  assert.ok(!dashboardPageSource.includes('href="/archive"'));
 });
 
 test('project update roadmap page keeps deferred lifecycle ideas visible', () => {

@@ -29,38 +29,6 @@ app.get('/dashboard', (req, res) => {
   sendView(res, 'dashboard.html').catch((error) => res.status(404).send(error.message));
 });
 
-app.get('/archive', (req, res) => {
-  sendView(res, 'archive.html').catch((error) => res.status(404).send(error.message));
-});
-
-// Legacy/archive routes. These are kept for reference but intentionally removed
-// from the main dashboard navigation.
-const legacyViews = {
-  '/archive/legacy-transcript-workflow': 'index.html',
-  '/archive/meetings': 'meetings.html',
-  '/archive/review': 'review.html',
-  '/archive/meeting-minutes-test': 'meeting-minutes-test.html',
-  '/archive/meeting-minutes-numbers': 'meeting-minutes-numbers.html',
-  '/archive/meeting-minutes-comparison': 'meeting-minutes-comparison.html',
-  '/archive/meeting-minutes-minilm-only': 'meeting-minutes-minilm-only.html'
-};
-for (const [route, fileName] of Object.entries(legacyViews)) {
-  app.get(route, (req, res) => {
-    sendView(res, fileName).catch((error) => res.status(404).send(error.message));
-  });
-}
-const legacyRedirects = {
-  '/meetings': '/archive/meetings',
-  '/review': '/archive/review',
-  '/meeting-minutes-test': '/archive/meeting-minutes-test',
-  '/meeting-minutes-numbers': '/archive/meeting-minutes-numbers',
-  '/meeting-minutes-comparison': '/archive/meeting-minutes-comparison',
-  '/meeting-minutes-minilm-only': '/archive/meeting-minutes-minilm-only'
-};
-for (const [route, target] of Object.entries(legacyRedirects)) {
-  app.get(route, (req, res) => res.redirect(302, target));
-}
-
 app.get('/meeting-minutes-final', authRoutes.requireAuth, (req, res) => {
   sendView(res, 'meeting-minutes-final.html').catch((error) => res.status(404).send(error.message));
 });

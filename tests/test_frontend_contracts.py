@@ -15,7 +15,7 @@ class FrontendContractTest(unittest.TestCase):
 
     def test_feedback_widget_is_scoped_to_meeting_minutes_final(self):
         meeting_minutes_final = (REPO_DIR / "views" / "meeting-minutes-final.html").read_text(encoding="utf-8")
-        index = (REPO_DIR / "views" / "index.html").read_text(encoding="utf-8")
+        dashboard = (REPO_DIR / "views" / "dashboard.html").read_text(encoding="utf-8")
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
         db = (REPO_DIR / "utils" / "db.js").read_text(encoding="utf-8")
 
@@ -25,7 +25,7 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn(".feedback-backdrop.hidden { display:none; }", meeting_minutes_final)
         self.assertNotIn("Please don’t paste transcripts or sensitive meeting details here.", meeting_minutes_final)
         self.assertNotIn('id="feedbackEmail"', meeting_minutes_final)
-        self.assertNotIn('id="feedbackWidgetButton"', index)
+        self.assertNotIn('id="feedbackWidgetButton"', dashboard)
         self.assertIn("router.post('/meeting-minutes-final/feedback'", api)
         self.assertIn("saveMeetingMinutesFeedback", api)
         self.assertIn("meeting_minutes_feedback", db)
