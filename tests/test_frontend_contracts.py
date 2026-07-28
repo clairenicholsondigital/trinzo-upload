@@ -111,6 +111,20 @@ class FrontendContractTest(unittest.TestCase):
         self.assertNotIn("Meeting manager", dashboard)
         self.assertNotIn("Auth center", dashboard)
 
+
+    def test_meeting_minutes_golden_eval_defaults_to_live_trooper_route(self):
+        runner = (REPO_DIR / "scripts" / "run_meeting_minutes_final_golden_eval.py").read_text(encoding="utf-8")
+        api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+        readme = (REPO_DIR / "scripts" / "meeting-minutes-final-golden" / "README.md").read_text(encoding="utf-8")
+        runbook = (REPO_DIR / "scripts" / "meeting-minutes-final-golden" / "RUNBOOK.md").read_text(encoding="utf-8")
+
+        self.assertIn("runPythonTranscriptScript('meeting_minutes_trooper.py'", api)
+        self.assertIn('DEFAULT_EXTRACTOR_NAME = "meeting_minutes_trooper.py"', runner)
+        self.assertIn('meeting_minutes_trooper.py', readme)
+        self.assertIn('meeting_minutes_trooper.py', runbook)
+        default_section = runner.split('DEFAULT_EXTRACTOR_NAME', 1)[1].split('REQUIRED_CATEGORIES', 1)[0]
+        self.assertNotIn('meeting_minutes_final_colab.py', default_section)
+
     def test_login_removes_forgot_password_and_secure_auth_copy(self):
         login = (REPO_DIR / "views" / "auth-login.html").read_text(encoding="utf-8")
 

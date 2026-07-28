@@ -78,12 +78,12 @@ Only use this when the local MiniLM runtime and dependencies are installed:
 python3 scripts/run_meeting_minutes_final_golden_eval.py
 ```
 
-This calls `scripts/meeting_minutes_final_colab.py` -- the same script `/api/meeting-minutes-final`
+This calls `scripts/meeting_minutes_trooper.py` -- the same script `/api/meeting-minutes-final`
 runs in production (see `routes/api.js`) -- and evaluates the extracted output against the golden
-criteria. Pass `--extractor meeting_minutes_minilm_only.py` to score its unused predecessor instead
-(kept only for comparison; nothing calls it from the live route).
+criteria. Pass `--extractor meeting_minutes_final_colab.py` or `--extractor meeting_minutes_minilm_only.py`
+to score older predecessors for comparison only; nothing calls those from the live route.
 
-If MiniLM is unavailable locally, use the live API mode instead.
+If MiniLM semantic scoring is slow/unavailable locally, add `--literal-only` for a deterministic literal-only score, or use the live API mode instead.
 
 ## 4. Run Against The Deployed Web App API
 
@@ -126,8 +126,19 @@ Important failure categories:
 
 ## Current Baseline
 
-Last recorded local-extractor run (2026-07-02, against `meeting_minutes_final_colab.py`, the script the live
-route actually runs -- this baseline was not previously measured against that script; see below):
+Current local Trooper extractor alignment run (2026-07-28, against `meeting_minutes_trooper.py`, matching the live route in `routes/api.js`):
+
+```text
+Command: python3 scripts/run_meeting_minutes_final_golden_eval.py --skip-rewrite --literal-only --json
+27 cases executed
+0 passed
+27 failed
+```
+
+This is a deliberately strict literal-only score: it disables optional MiniLM semantic matching so the run is deterministic/offline and does not hang on model loading. Treat `0/27` as a baseline-alignment warning, not as a new production-route breakage: Trooper executed all cases, but the current golden expectations/scoring pack is not yet calibrated to Trooper's output shape/wording and flags paraphrases, extra extracted actions, and quality checks very aggressively. The next quality task is to review Trooper outputs case-by-case and either fix genuine output issues or update stale expectations with evidence; do not loosen thresholds blindly.
+
+Historical local-extractor run (2026-07-02, against the older `meeting_minutes_final_colab.py` path that the live
+route no longer uses):
 
 ```text
 27 cases executed
@@ -147,11 +158,11 @@ failures are mostly stale expectations rather than new defects -- but they have 
 treat them as a known gap rather than a false "all green" signal. Do not close this gap by loosening
 `expected.json` counts without checking the actual output is not also introducing new noise.
 
-Before this pass, the suite defaulted to scoring `meeting_minutes_minilm_only.py`, an older sibling script the
-live route (`meeting_minutes_final_colab.py`) does not use, so the same parser bug was previously invisible to
-this whole suite. Continue treating the suite as a regression baseline rather than a guarantee that every
-real-world transcript will be perfect, and re-run live API mode (`--base-url`) before claiming production
-readiness, since it is the only mode that reflects the deployed `GOOGLE_AI_STUDIO_API_KEY` rewrite pass.
+Before the July 2026 Colab baseline pass, the suite defaulted to scoring `meeting_minutes_minilm_only.py`, an older sibling script the
+live route did not use, so the same parser bug was previously invisible to this whole suite. The current default now follows the live
+Trooper route (`meeting_minutes_trooper.py`). Continue treating the suite as a regression baseline rather than a guarantee that every
+real-world transcript will be perfect, and re-run live API mode (`--base-url`) before claiming production readiness, since it is the only
+mode that reflects the deployed service configuration.
 
 ## Safe Change Process
 

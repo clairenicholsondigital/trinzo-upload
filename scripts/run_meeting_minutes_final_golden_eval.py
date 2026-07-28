@@ -14,11 +14,11 @@ from uuid import uuid4
 
 ROOT = Path(__file__).resolve().parent
 PACK_DIR = ROOT / "meeting-minutes-final-golden"
-# The production /api/meeting-minutes-final route runs meeting_minutes_final_colab.py
+# The production /api/meeting-minutes-final route runs meeting_minutes_trooper.py
 # (see routes/api.js). This must stay the default extractor so the golden pack tests
-# what is actually deployed; meeting_minutes_minilm_only.py is the predecessor used by
-# the separate /meeting-minutes-minilm-only tool and is kept only for comparison.
-DEFAULT_EXTRACTOR_NAME = "meeting_minutes_final_colab.py"
+# what is actually deployed. Older Colab/MiniLM-only scripts are retained only for
+# regression comparison and must be selected explicitly with --extractor.
+DEFAULT_EXTRACTOR_NAME = "meeting_minutes_trooper.py"
 EXTRACTOR = ROOT / DEFAULT_EXTRACTOR_NAME
 REQUIRED_CATEGORIES = ("decisions", "actions", "hallucinations", "abstention")
 CONVERSATIONAL_LEAKAGE = (
@@ -61,6 +61,7 @@ def normalize_text(value: Any) -> str:
 
 
 MINILM_SIMILARITY_THRESHOLD = 0.6
+SEMANTIC_MATCHING_ENABLED = True
 _MINILM_BACKEND_STATE: dict[str, Any] = {"loaded": False, "backend": None}
 
 
@@ -89,6 +90,8 @@ def _minilm_backend() -> Any:
 
 
 def _semantic_match(expected_value: Any, actual_values: list[Any]) -> bool:
+    if not SEMANTIC_MATCHING_ENABLED:
+        return False
     backend = _minilm_backend()
     if not backend or not getattr(backend, "available", False):
         return False
@@ -509,30 +512,37 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--extractor",
         default=DEFAULT_EXTRACTOR_NAME,
-        help="Extractor script under scripts/ to run locally (defaults to the production meeting_minutes_final_colab.py).",
+        help="Extractor script under scripts/ to run locally (defaults to the production meeting_minutes_trooper.py).",
     )
     parser.add_argument("--timeout", type=int, default=180)
     parser.add_argument(
         "--skip-rewrite",
         action="store_true",
         help=(
-            "Run the fast, Gemini-free fallback path instead of the live production path. "
-            "Default (flag omitted) now calls Gemini live, matching what actually ships -- "
-            "pass this flag to get back the old fast/free/deterministic dev-loop behaviour."
+            "Run the fast, rewrite-free fallback path instead of the live production path. "
+            "Default (flag omitted) lets the Trooper production script use its configured rewrite path -- "
+            "pass this flag for a faster deterministic dev-loop."
         ),
     )
     parser.add_argument(
         "--pace-seconds",
         type=float,
         default=3.5,
-        help="Delay between live Gemini calls to respect API rate limits. Ignored in --skip-rewrite/--dry-run mode.",
+        help="Delay between external rewrite/API calls to respect rate limits. Ignored in --skip-rewrite/--dry-run mode.",
+    )
+    parser.add_argument(
+        "--literal-only",
+        action="store_true",
+        help="Disable optional MiniLM semantic matching during scoring; useful for deterministic/offline dev-loop runs.",
     )
     parser.add_argument("--json", action="store_true", help="Print the full report as JSON.")
     return parser.parse_args(argv)
 
 
 def main(argv: list[str]) -> int:
+    global SEMANTIC_MATCHING_ENABLED
     args = parse_args(argv)
+    SEMANTIC_MATCHING_ENABLED = not args.literal_only
     pack_dir = Path(args.pack_dir)
     extractor = Path(args.extractor)
     if not extractor.is_absolute():

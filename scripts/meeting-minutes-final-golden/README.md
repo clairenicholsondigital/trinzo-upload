@@ -54,18 +54,20 @@ Run a schema/fixture dry validation:
 python3 scripts/run_meeting_minutes_final_golden_eval.py --dry-run
 ```
 
-**Default mode runs the real production path** -- the same `meeting_minutes_final_colab.py` pipeline that ships, including the live Gemini rewrite pass (needs `GOOGLE_AI_STUDIO_API_KEY`/`GEMINI_API_KEY` set; if unset, it gracefully degrades to the extractor-only fallback output, same as production does):
+**Default mode runs the real production path** -- the same `meeting_minutes_trooper.py` pipeline used by `/api/meeting-minutes-final`. Trooper handles the live rewrite/orchestration path; if an external rewrite service is unavailable, it degrades through the same fallback behaviour as production:
 
 ```bash
 python3 scripts/run_meeting_minutes_final_golden_eval.py
 ```
 
-Each case's report includes a `rewriter` block (`rewriterAvailable`/`rewriterReason`/`rewriterTokenUsage`) and the summary reports `rewriterUsedCases` -- check this before trusting a low score, since a rate-limited or key-less run looks like a content regression otherwise. Requests are paced (`--pace-seconds`, default 3.5s) to stay under the Google AI Studio free-tier's 20 requests/minute limit; increase it if you still hit 429s, or pass `--cases` to score a smaller subset.
+Each case's report includes a `rewriter` block (`rewriterAvailable`/`rewriterReason`/`rewriterTokenUsage`) and the summary reports `rewriterUsedCases` -- check this before trusting a low score, since an unavailable rewrite path can look like a content regression otherwise. Requests are paced (`--pace-seconds`, default 3.5s) for external rewrite/API use; increase it if you hit rate limits, or pass `--cases` to score a smaller subset.
 
-For the old fast, free, deterministic dev-loop (no Gemini calls, no API key needed):
+The current local Trooper literal-only baseline is intentionally strict and not yet calibrated to the Trooper output shape; see `RUNBOOK.md` before treating a low score as a production breakage.
+
+For the fast, deterministic dev-loop that exercises the Trooper extractor without the rewrite layer. Add `--literal-only` when you want scoring to avoid optional MiniLM semantic matching/loading and rely only on literal checks:
 
 ```bash
-python3 scripts/run_meeting_minutes_final_golden_eval.py --skip-rewrite
+python3 scripts/run_meeting_minutes_final_golden_eval.py --skip-rewrite --literal-only
 ```
 
 Run the same scoring pack against the deployed web-app API:
