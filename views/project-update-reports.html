@@ -28,6 +28,7 @@ th, td { border-bottom:1px solid var(--border); border-right:1px solid var(--bor
 thead th { background:#132847; color:#dbeafe; position:sticky; top:0; }
 tr:last-child td { border-bottom:0; }
 th:last-child, td:last-child { border-right:0; }
+.long-text-cell { min-width:18rem; white-space:normal; overflow-wrap:anywhere; line-height:1.45; color:#dbeafe; }
 .actions { display:flex; gap:.65rem; flex-wrap:wrap; align-items:center; }
 .bulk-actions { display:flex; gap:.65rem; flex-wrap:wrap; align-items:center; justify-content:space-between; margin-bottom:.75rem; }
 .bulk-actions .status { margin:0; }
@@ -146,7 +147,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
   function dateValue(value) {
     if (!value) return '-';
     const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? String(value).replace(/T/g, ' ').replace(/Z$/i, '') : date.toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' });
+    return Number.isNaN(date.getTime()) ? String(value).replace(/T/g, ' ').replace(/Z$/i, '') : date.toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   }
 
   function displayDate(value) {
@@ -595,7 +596,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
         <p class="intro summary">${escapeHtml(projectReport.summary || 'No summary saved for this report.')}</p>
         ${reviewBanner}
         <div class="safeguard-banner quiet"><strong>Data handling:</strong> this saved report keeps the report draft and any available source transcript so it can be reviewed, edited and audited later. Archive reports that should no longer appear in the active workspace.</div>
-        <div class="print-footer" style="display:none">Exported ${escapeHtml(new Date().toLocaleString())}</div>
+        <div class="print-footer" style="display:none">Exported ${escapeHtml(new Date().toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }))}</div>
         <p id="reportSaveStatus" class="status"></p>
         <div class="grid">
           <div class="item"><div class="label">Project</div><div class="value">${escapeHtml(report.projectName || '-')}</div></div>
@@ -703,7 +704,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
           <table>
             <thead><tr><th>Milestone</th><th>Baseline</th><th>Forecast</th><th>Delivery status</th><th>Status</th><th>Health</th><th>Summary</th><th>Next steps</th></tr></thead>
             <tbody>
-              ${milestones.map((item) => `<tr><td>${escapeHtml(titleLabel(item.milestone))}</td><td>${escapeHtml(displayDate(item.baseline_finish_date || item.baselineDeadline || item.deadline))}</td><td>${escapeHtml(displayDate(item.forecast_finish_date || item.forecastDeadline || item.deadline))}</td><td>${statusBadge(item.delivery_status || item.status)}</td><td>${renderColour(item.agreed_rag_status || item.rag_status)}</td><td>${statusBadge(item.health_assessment)}</td><td>${escapeHtml(staticText(item.normalised_evidence_summary || item.excerpt))}</td><td>${escapeHtml(staticText(combinedNextSteps(item)))}</td></tr>`).join('') || '<tr><td colspan="8"><strong>No milestones saved.</strong><br />Add milestones in Setup or edit this report before approval.</td></tr>'}
+              ${milestones.map((item) => `<tr><td>${escapeHtml(titleLabel(item.milestone))}</td><td>${escapeHtml(displayDate(item.baseline_finish_date || item.baselineDeadline || item.deadline))}</td><td>${escapeHtml(displayDate(item.forecast_finish_date || item.forecastDeadline || item.deadline))}</td><td>${statusBadge(item.delivery_status || item.status)}</td><td>${renderColour(item.agreed_rag_status || item.rag_status)}</td><td class="long-text-cell">${escapeHtml(staticText(item.health_assessment))}</td><td>${escapeHtml(staticText(item.normalised_evidence_summary || item.excerpt))}</td><td>${escapeHtml(staticText(combinedNextSteps(item)))}</td></tr>`).join('') || '<tr><td colspan="8"><strong>No milestones saved.</strong><br />Add milestones in Setup or edit this report before approval.</td></tr>'}
             </tbody>
           </table>
         </div>

@@ -461,7 +461,7 @@ function buildTranscriptTestPage(config) {
     }
     if (saved.savedAt) {
       const projectLabel = saved.projectName || saved.projectId ? ` for ${saved.projectName || `project ${saved.projectId}`}` : '';
-      setAutosaveStatus(`Restored browser-only draft${projectLabel} from ${new Date(saved.savedAt).toLocaleString()}. Press Save report to save it to the server.`);
+      setAutosaveStatus(`Restored browser-only draft${projectLabel} from ${new Date(saved.savedAt).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}. Press Save report to save it to the server.`);
     }
   }
 
@@ -669,7 +669,7 @@ function buildTranscriptTestPage(config) {
 
     return `
       <div class="project-print-report">
-        <div class="project-print-footer">Exported ${escapeHtml(new Date().toLocaleString())}</div>
+        <div class="project-print-footer">Exported ${escapeHtml(new Date().toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }))}</div>
         <section>
           <h3>Summary</h3>
           <div class="project-print-summary">

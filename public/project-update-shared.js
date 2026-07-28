@@ -25,7 +25,7 @@
     const date = new Date(value);
     return Number.isNaN(date.getTime())
       ? String(value).replace(/T/g, ' ').replace(/Z$/i, '')
-      : date.toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' });
+      : date.toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   }
 
   function dateOnly(value) {
