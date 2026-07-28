@@ -37,6 +37,19 @@
     `).join('') || '<tr><td colspan="6"><strong>No configured risks yet.</strong><br />Add a core project risk below so future updates can track it.</td></tr>';
   }
 
+  function renderSuggestedRiskRows(risks) {
+    return risks.map((risk) => `
+      <tr data-suggested-risk="${escapeHtml(risk.riskSuggestionId || '')}">
+        <td><textarea class="profile-title-field" data-field="riskTitle">${inputValue(risk.riskTitle || '')}</textarea></td>
+        <td><input data-field="category" value="${inputValue(risk.category || 'Follow-up risk')}" /></td>
+        <td><textarea data-field="description">${inputValue(risk.description || '')}</textarea></td>
+        <td><textarea data-field="mitigation">${inputValue(risk.suggestedMitigation || risk.mitigation || '')}</textarea></td>
+        <td><a href="/project-update-test/reports/${escapeHtml(risk.reportId)}">Report ${escapeHtml(risk.reportId)}</a><br /><span class="muted">${escapeHtml(friendlyLabel(risk.reviewStatus))}${risk.confidence ? ` · ${escapeHtml(risk.confidence)} confidence` : ''}</span></td>
+        <td class="actions"><button type="button" data-add-suggested-risk>Add to monitored risks</button></td>
+      </tr>
+    `).join('') || '<tr><td colspan="6"><strong>No suggested follow-up risks yet.</strong><br />New risks found in draft reports will appear here for review.</td></tr>';
+  }
+
   function mount(container, ctx) {
     const projectId = ctx.projectId;
     container.innerHTML = '<section class="panel"><h1>Insights</h1><p class="intro">Loading project status, report history and memory…</p></section>';
@@ -144,8 +157,9 @@
       </section>
       <section class="panel">
         <h2>Suggested follow-up risks</h2>
-        <div class="table-scroll"><table><thead><tr><th>Risk</th><th>Review status</th><th>Confidence</th><th>Report</th><th>Description</th><th>Mitigation</th></tr></thead><tbody>
-          ${riskSuggestions.map((risk) => `<tr><td>${escapeHtml(risk.riskTitle || '-')}</td><td>${escapeHtml(friendlyLabel(risk.reviewStatus))}</td><td>${escapeHtml(risk.confidence || '-')}</td><td><a href="/project-update-test/reports/${escapeHtml(risk.reportId)}">Report ${escapeHtml(risk.reportId)}</a></td><td>${escapeHtml(risk.description || '-')}</td><td>${escapeHtml(risk.suggestedMitigation || '-')}</td></tr>`).join('') || '<tr><td colspan="6"><strong>No suggested follow-up risks yet.</strong><br />New risks found in draft reports will appear here for review.</td></tr>'}
+        <p class="intro">These are risks suggested from saved reports. Edit the wording here, then add the useful ones to the monitored project profile above.</p>
+        <div class="table-scroll profile-editor-scroll"><table class="profile-editor-table"><thead><tr><th>Risk</th><th>Category</th><th>Description</th><th>Mitigation</th><th>Source</th><th>Actions</th></tr></thead><tbody>
+          ${renderSuggestedRiskRows(riskSuggestions)}
         </tbody></table></div>
       </section>
       <section class="panel ask-panel">
@@ -325,6 +339,33 @@
         setProfileStatus(container, error.message || 'Could not add risk.', 'error');
         addRiskBtn.disabled = false;
       }
+    });
+
+    container.querySelectorAll('[data-add-suggested-risk]').forEach((button) => {
+      button.addEventListener('click', async () => {
+        const row = button.closest('[data-suggested-risk]');
+        if (!row) return;
+        const payload = rowPayload(row);
+        if (!payload.riskTitle) {
+          setProfileStatus(container, 'Add a risk title before adding it to the monitored profile.', 'error');
+          return;
+        }
+        button.disabled = true;
+        setProfileStatus(container, 'Adding suggested risk to monitored profile…');
+        try {
+          await PW.request('risks', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectId, ...payload })
+          });
+          setProfileStatus(container, 'Suggested risk added to monitored risks. Reloading…', 'success');
+          if (ctx.reloadProject) ctx.reloadProject();
+          window.setTimeout(() => mount(container, ctx), 500);
+        } catch (error) {
+          setProfileStatus(container, error.message || 'Could not add suggested risk to monitoring.', 'error');
+          button.disabled = false;
+        }
+      });
     });
   }
 
