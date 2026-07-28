@@ -40,6 +40,18 @@ label { display:grid; gap:.35rem; color:var(--muted); font-weight:700; }
 .status { margin:.75rem 0; color:var(--muted); }
 .status.error { color:#fecaca; }
 .status.success { color:#bbf7d0; }
+.message { margin-top:1rem; padding:.75rem; border-radius:10px; background:#17233f; border:1px solid var(--border); white-space:pre-wrap; }
+.message.hidden { display:none; }
+.message.error { background:#3a1515; border-color:#7f1d1d; }
+.message.success { background:#0f2f29; border-color:#116149; }
+.message.warning { background:#3a2c15; border-color:#7f5f1d; }
+.autosave-status { display:block; margin:.55rem 0 0; color:var(--muted); }
+.autosave-status.hidden { display:none; }
+.autosave-status.error { color:#fecaca; }
+.autosave-status.success { color:#bbf7d0; }
+.safeguard-banner { margin:.75rem 0; padding:.75rem; border-radius:10px; background:rgba(23,208,196,.08); border:1px solid rgba(23,208,196,.35); color:#dbeafe; }
+.safeguard-banner.warning { background:#3a2c15; border-color:#7f5f1d; color:#fde68a; }
+.safeguard-banner.success { background:#0f2f29; border-color:#116149; color:#bbf7d0; }
 
 /* Grids / cards / tables */
 .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:.75rem; }

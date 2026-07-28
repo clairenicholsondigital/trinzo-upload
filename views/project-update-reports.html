@@ -56,6 +56,9 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
 .status { margin:.75rem 0; color:var(--muted); }
 .status.error { color:#fecaca; }
 .status.success { color:#bbf7d0; }
+.safeguard-banner { margin:.75rem 0; padding:.75rem; border-radius:10px; background:rgba(23,208,196,.08); border:1px solid rgba(23,208,196,.35); color:#dbeafe; }
+.safeguard-banner.warning { background:#3a2c15; border-color:#7f5f1d; color:#fde68a; }
+.safeguard-banner.success { background:#0f2f29; border-color:#116149; color:#bbf7d0; }
 .summary { max-width:56rem; }
 .colour-field { display:flex; align-items:center; justify-content:center; min-height:1.6rem; }
 .colour-swatch { display:inline-block; width:1.35rem; height:1.35rem; border-radius:999px; border:2px solid rgba(238,243,255,.85); box-shadow:0 0 0 1px rgba(0,0,0,.45), inset 0 0 0 1px rgba(0,0,0,.25); }
@@ -410,6 +413,10 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
     const approvalText = report.approvedAt
       ? `${report.approvedBy ? `Approved by ${report.approvedBy}` : 'Approved'} on ${dateValue(report.approvedAt)}`
       : 'Not approved yet. Approve only after the report is good enough to become future project memory.';
+    const statusLabel = String(report.reportStatus || projectReport.reportStatus || 'draft').toLowerCase();
+    const reviewBanner = statusLabel === 'approved'
+      ? '<div class="safeguard-banner success"><strong>Approved report:</strong> this has been marked approved. Re-check any edits before exporting or sharing a new copy.</div>'
+      : `<div class="safeguard-banner warning"><strong>Draft / review required:</strong> this report is ${escapeHtml(friendlyLabel(statusLabel))}. Check evidence, dates, risks and actions before approval or client sharing.</div>`;
     const statusCrossCheck = statusDiagnostics && Object.keys(statusDiagnostics).length
       ? `<div class="item"><div class="label">Status cross-check</div><div class="value">${statusDiagnostics.decisionUse === 'diagnostics_only' ? 'Review aid only' : 'Review before use'}</div><div class="muted">${escapeHtml(statusDiagnostics.reason || `${statusDiagnostics.itemCount || 0} signal${Number(statusDiagnostics.itemCount || 0) === 1 ? '' : 's'} found`)}</div></div>`
       : '';
@@ -424,6 +431,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
           <button id="saveReportBtn" class="primary" type="button">Save report</button>
         </div>
         <p class="intro summary">${escapeHtml(projectReport.summary || 'No summary saved for this report.')}</p>
+        ${reviewBanner}
         <div class="print-footer" style="display:none">Exported ${escapeHtml(new Date().toLocaleString())}</div>
         <p id="reportSaveStatus" class="status"></p>
         <div class="grid">
@@ -438,7 +446,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
       </section>
       <section class="panel edit-panel">
         <h2>Edit report</h2>
-        <p class="editor-note">Edit the report in normal fields, like a working document. Changes autosave after a short pause. The advanced JSON view is only there for support/debugging.</p>
+        <p class="editor-note">Edit the report in normal fields, like a working document. Changes autosave to the server after a short pause. The advanced JSON view is only there for support/debugging.</p>
         <div class="grid">
           <label>Report name
             <input id="reportNameEditor" type="text" value="${escapeHtml(report.reportName || `Report ${report.reportId}`)}" />
@@ -676,7 +684,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
         return;
       }
       saveButton.disabled = true;
-      setSaveStatus(automatic ? 'Autosaving report...' : 'Saving report...');
+      setSaveStatus(automatic ? 'Autosaving server draft...' : 'Saving report...');
       try {
         const response = await authedFetch(`/api/project-update-test/reports/${encodeURIComponent(report.reportId)}`, {
           method: 'PATCH',
@@ -693,7 +701,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
         if (!response.ok || !result || result.ok === false) {
           throw new Error(response.status === 401 ? authMessage() : (result && result.error ? result.error : `Request failed with status ${response.status}.`));
         }
-        setSaveStatus(`${automatic ? 'Autosaved' : 'Saved'} at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`, 'success');
+        setSaveStatus(`${automatic ? 'Autosaved server draft' : 'Saved'} at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`, 'success');
         report = result.report;
         if (!automatic) renderDetail(result.report);
       } catch (error) {
@@ -704,7 +712,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
     }
 
     function queueAutosave() {
-      setSaveStatus('Unsaved changes...');
+      setSaveStatus('Unsaved changes — server autosave will run shortly.');
       clearTimeout(autosaveTimer);
       autosaveTimer = setTimeout(() => saveReport(true), 900);
     }

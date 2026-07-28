@@ -132,6 +132,10 @@
   // ---- Workspace (bar + tabs + stage panel) ---------------------------------
 
   function renderProjectBar(project) {
+    const status = String(project.status || 'active').toLowerCase();
+    const contextWarning = ['paused', 'archived', 'completed'].includes(status)
+      ? `<div class="safeguard-banner warning"><strong>Check project context:</strong> this project is ${escapeHtml(status)}. Do not process a new client update here unless that status is intentional.</div>`
+      : '';
     return `
       <section class="panel project-bar">
         <div class="identity">
@@ -149,6 +153,7 @@
           <button id="switchProjectBtn" type="button">Switch project</button>
         </div>
       </section>
+      ${contextWarning}
       <div id="editProjectPanel"></div>
     `;
   }
@@ -342,6 +347,7 @@
   function renderWorkspace() {
     const project = PW.getProject(PW.getSelectedProjectId());
     if (!project) {
+      if (PW.getSelectedProjectId()) PW.clearSelectedProject();
       renderChooser(PW.getCachedProjects());
       return;
     }

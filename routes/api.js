@@ -87,6 +87,26 @@ const PYTHON_TIMEOUT_MS = Number(process.env.TRANSCRIPT_TEST_TIMEOUT_MS || 30000
 // Large transcripts can still take several seconds, so keep the route timeout generous.
 const MEETING_MINUTES_FINAL_TIMEOUT_MS = Number(process.env.MEETING_MINUTES_FINAL_TIMEOUT_MS || 180000);
 
+function safeErrorInfo(error, extra = {}) {
+  const details = error && error.details && typeof error.details === 'object' ? error.details : null;
+  return {
+    message: error && error.message ? error.message : String(error || 'Unknown error'),
+    statusCode: error && error.statusCode ? error.statusCode : undefined,
+    code: error && error.code ? error.code : undefined,
+    scriptName: details && details.scriptName ? details.scriptName : undefined,
+    exitCode: details && details.exitCode != null ? details.exitCode : undefined,
+    stdoutBytes: details && details.stdoutBytes != null ? details.stdoutBytes : undefined,
+    stderrBytes: details && details.stderrBytes != null ? details.stderrBytes : undefined,
+    rawOutputBytes: details && details.rawOutputBytes != null ? details.rawOutputBytes : undefined,
+    parseError: details && details.parseError ? details.parseError : undefined,
+    ...extra
+  };
+}
+
+function safeLogError(label, error, extra = {}) {
+  console.error(label, safeErrorInfo(error, extra));
+}
+
 const REVIEW_TEMPLATE = {
   meetingTitle: '',
   meetingDate: '',
@@ -217,8 +237,9 @@ function parsePythonJson(rawOutput, scriptName) {
     const wrapped = new Error(`${scriptName} returned output that could not be parsed as JSON.`);
     wrapped.statusCode = 502;
     wrapped.details = {
+      scriptName,
       parseError: error.message,
-      rawOutput: rawOutput.slice(0, 4000)
+      rawOutputBytes: Buffer.byteLength(String(rawOutput || ''), 'utf8')
     };
     throw wrapped;
   }
@@ -269,7 +290,7 @@ async function runPythonTranscriptScript(scriptName, transcriptText, scriptArgs 
         if (timedOut) {
           const error = new Error(`${scriptName} timed out after ${timeoutMs}ms.`);
           error.statusCode = 504;
-          error.details = { stderr };
+          error.details = { scriptName, stderrBytes: Buffer.byteLength(stderr, 'utf8') };
           reject(error);
           return;
         }
@@ -277,7 +298,12 @@ async function runPythonTranscriptScript(scriptName, transcriptText, scriptArgs 
         if (code !== 0) {
           const error = new Error(`${scriptName} failed with exit code ${code}.`);
           error.statusCode = 502;
-          error.details = { stderr: stderr.slice(0, 4000), stdout: stdout.slice(0, 4000) };
+          error.details = {
+            scriptName,
+            exitCode: code,
+            stderrBytes: Buffer.byteLength(stderr, 'utf8'),
+            stdoutBytes: Buffer.byteLength(stdout, 'utf8')
+          };
           reject(error);
           return;
         }
@@ -334,7 +360,7 @@ async function runPythonJsonScript(scriptName, payload, scriptArgs = []) {
         if (timedOut) {
           const error = new Error(`${scriptName} timed out after ${PYTHON_TIMEOUT_MS}ms.`);
           error.statusCode = 504;
-          error.details = { stderr };
+          error.details = { scriptName, stderrBytes: Buffer.byteLength(stderr, 'utf8') };
           reject(error);
           return;
         }
@@ -342,7 +368,12 @@ async function runPythonJsonScript(scriptName, payload, scriptArgs = []) {
         if (code !== 0) {
           const error = new Error(`${scriptName} failed with exit code ${code}.`);
           error.statusCode = 502;
-          error.details = { stderr: stderr.slice(0, 4000), stdout: stdout.slice(0, 4000) };
+          error.details = {
+            scriptName,
+            exitCode: code,
+            stderrBytes: Buffer.byteLength(stderr, 'utf8'),
+            stdoutBytes: Buffer.byteLength(stdout, 'utf8')
+          };
           reject(error);
           return;
         }
@@ -358,7 +389,7 @@ async function runPythonJsonScript(scriptName, payload, scriptArgs = []) {
 }
 
 function sendTestError(res, error) {
-  console.error('[Transcript test endpoint failed]', error);
+  safeLogError('[Transcript test endpoint failed]', error);
   return res.status(error.statusCode || 500).json({
     ok: false,
     error: error.message || 'Transcript analysis failed.'
@@ -546,12 +577,16 @@ async function postToWebhook(payload) {
   if (!response.ok) {
     console.error('[Webhook failed]', {
       status: response.status,
-      body: parsedBody || rawBody || null
+      responseBytes: Buffer.byteLength(rawBody || '', 'utf8'),
+      responseContentType: response.headers.get('content-type') || ''
     });
 
     const error = new Error(`Webhook call failed with status ${response.status}.`);
     error.statusCode = 502;
-    error.details = parsedBody || rawBody || null;
+    error.details = {
+      status: response.status,
+      responseBytes: Buffer.byteLength(rawBody || '', 'utf8')
+    };
     throw error;
   }
 
@@ -1202,7 +1237,7 @@ router.post('/project-update-test', requireAuth, withTestUpload(async (req, res)
     try {
       result = await runPythonTranscriptScript('project_update_minilm.py', transcript.text, scriptArgs, { timeoutMs: projectTimeoutMs });
     } catch (primaryError) {
-      console.error('[project-update-test] primary script failed, using legacy fallback', primaryError);
+      safeLogError('[project-update-test] primary script failed, using legacy fallback', primaryError);
       scriptUsed = 'python_llm.py';
       fallbackUsed = true;
       const fallback = await runPythonTranscriptScript('python_llm.py', transcript.text, [], { timeoutMs: projectTimeoutMs });
@@ -1636,7 +1671,7 @@ router.post('/extract-docx', upload.single('file'), async (req, res) => {
       extractedTextLength: text.length
     });
   } catch (error) {
-    console.error(error);
+    safeLogError('[extract-docx] failed', error);
     return res.status(500).json({ ok: false, error: error.message || 'Failed text extraction.' });
   }
 });
@@ -1699,7 +1734,7 @@ ${extractedText}`;
       agentRawOutput: agent.finalText
     });
   } catch (error) {
-    console.error(error);
+    safeLogError('[agent/process] failed', error);
     return res.status(500).json({ ok: false, error: error.message || 'Agent processing failed.' });
   }
 });
@@ -1723,11 +1758,11 @@ router.post('/agent/finalise', async (req, res) => {
       approvedContent: JSON.stringify(reviewData, null, 2),
       payload,
       webhookStatus: webhookResult.status,
-      webhookResponse: webhookResult.body || webhookResult.rawBody || null,
+      webhookResponse: webhookResult.rawBody ? { responseBytes: Buffer.byteLength(webhookResult.rawBody, 'utf8') } : null,
       finalMessage: 'Approved content sent to Power Automate webhook successfully.'
     });
   } catch (error) {
-    console.error(error);
+    safeLogError('[agent/finalise] failed', error);
     return res.status(error.statusCode || 500).json({
       ok: false,
       error: error.message || 'Finalisation webhook call failed.'
@@ -1873,7 +1908,7 @@ router.post('/jobs/run-once', async (req, res) => {
 
         await markWebhookSuccess(job.id, job.meetingId, {
           webhookStatus: webhookResult.status,
-          webhookResponse: webhookResult.body || webhookResult.rawBody || null
+          webhookResponse: webhookResult.rawBody ? { responseBytes: Buffer.byteLength(webhookResult.rawBody, 'utf8') } : null
         });
 
         return res.json({
@@ -1965,7 +2000,7 @@ router.post('/copilot-chat', async (req, res) => {
       finalText: agent.finalText
     });
   } catch (error) {
-    console.error(error);
+    safeLogError('[copilot-chat] failed', error);
     return res.status(500).json({ ok: false, error: error.message || 'Chat test failed.' });
   }
 });

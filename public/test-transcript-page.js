@@ -53,6 +53,7 @@ function buildTranscriptTestPage(config) {
         <textarea id="transcriptText" placeholder="Paste transcript here..."></textarea>
         <small>If both a file and pasted text are provided, pasted text takes priority.</small>
       </div>
+      ${config.projectReportUi ? '<div class="safeguard-banner"><strong>Draft workspace:</strong> generated project updates are review drafts. Check the selected project context, evidence, risks, actions and dates before approving or sharing.</div>' : ''}
       <div class="actions">
         <button id="goBtn" type="button">${config.buttonText}</button>
         <button id="clearBtn" class="secondary" type="button">${config.resetButtonText || 'Clear / reset'}</button>
@@ -430,10 +431,12 @@ function buildTranscriptTestPage(config) {
       transcriptText: textInput.value,
       result: state.result,
       projectReport: state.projectReport,
+      projectId: config.fixedProjectId || '',
+      projectName: selectedProjectPayload().projectName || '',
       savedAt: new Date().toISOString()
     };
     localStorage.setItem(projectAutosaveKey(), JSON.stringify(payload));
-    setAutosaveStatus(`Autosaved locally at ${new Date(payload.savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`);
+    setAutosaveStatus(`Browser draft only — not saved to server until you press Save report. Last local autosave ${new Date(payload.savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`);
   }
 
   function queueProjectAutosave() {
@@ -457,7 +460,8 @@ function buildTranscriptTestPage(config) {
       displayJson(state.result);
     }
     if (saved.savedAt) {
-      setAutosaveStatus(`Restored local autosave from ${new Date(saved.savedAt).toLocaleString()}.`);
+      const projectLabel = saved.projectName || saved.projectId ? ` for ${saved.projectName || `project ${saved.projectId}`}` : '';
+      setAutosaveStatus(`Restored browser-only draft${projectLabel} from ${new Date(saved.savedAt).toLocaleString()}. Press Save report to save it to the server.`);
     }
   }
 
@@ -794,6 +798,10 @@ function buildTranscriptTestPage(config) {
   }
 
   function renderProjectReport(report, result) {
+    const reportStatus = String(report.reportStatus || result?.projectReport?.reportStatus || 'draft').toLowerCase();
+    const reviewBanner = reportStatus === 'approved'
+      ? '<div class="safeguard-banner success"><strong>Approved report:</strong> this has been marked approved. Re-check any edits before sharing a new PDF or saving changes.</div>'
+      : `<div class="safeguard-banner warning"><strong>Draft / review required:</strong> this report is ${escapeHtml(reportStatus.replace(/[_-]+/g, ' '))}. Treat every AI-generated claim as provisional until the evidence, dates, risks and actions have been checked.</div>`;
     const tabs = [
       ['summary', 'Summary', renderReportSummaryTab(report)],
       ['health', 'Overall summary', renderHealthTab(report)],
@@ -803,6 +811,7 @@ function buildTranscriptTestPage(config) {
       ['snapshot', 'Review details', renderSnapshotTab(report, result)]
     ];
     projectReportOutput.innerHTML = `
+      ${reviewBanner}
       <div class="project-tabs" role="tablist">
         ${tabs.map(([key, label], index) => `<button class="project-tab ${index === 0 ? 'active' : ''}" type="button" role="tab" aria-selected="${index === 0 ? 'true' : 'false'}" data-project-tab="${key}">${escapeHtml(label)}</button>`).join('')}
       </div>
@@ -951,6 +960,12 @@ function buildTranscriptTestPage(config) {
 
     if (!pastedText && !file) {
       setMessage('Paste transcript text or choose a transcript file first.', 'error');
+      return;
+    }
+
+    const qualityWarning = transcriptQualityWarning(pastedText, file);
+    if (qualityWarning && !window.confirm(`${qualityWarning}\n\nContinue anyway?`)) {
+      setMessage(qualityWarning, 'warning');
       return;
     }
 
@@ -1393,6 +1408,7 @@ function buildTranscriptMinilmOnlyPage(config) {
         <textarea id="minilmOnlyTranscriptText" placeholder="Paste transcript here..."></textarea>
         <small>If both a file and pasted text are provided, pasted text takes priority.</small>
       </div>
+      <div class="safeguard-banner"><strong>Draft workflow:</strong> generated minutes must be reviewed before exporting or sending. Confirm the title, date, discussion points, owners and deadlines against the transcript.</div>
       <div class="actions">
         <button id="minilmOnlyGoBtn" type="button">${config.buttonText}</button>
         <button id="minilmOnlyClearBtn" class="secondary" type="button">Clear / reset</button>
@@ -1417,6 +1433,7 @@ function buildTranscriptMinilmOnlyPage(config) {
         <h2>Minutes output</h2>
         <button id="copyMinilmOnlyOutputBtn" class="secondary" type="button">Copy minutes data</button>
       </div>
+      <div class="safeguard-banner warning"><strong>Draft minutes — review required:</strong> check all editable fields before exporting or sending to SharePoint. AI-written minutes can miss nuance, invent certainty, or misassign actions.</div>
       <div id="minilmOnlyOutput"></div>
       <div class="panel-actions">
         ${config.improveEndpoint ? '<button id="minilmOnlyImproveBtn" class="secondary" type="button" disabled>Improve minutes</button>' : ''}
@@ -2135,6 +2152,18 @@ function buildTranscriptMinilmOnlyPage(config) {
       );
     }
 
+    const finaliseIssues = minutesReviewIssues(payloadReviewData);
+    if (finaliseIssues.length) {
+      setMessage(`Review these before sending to SharePoint:\n- ${finaliseIssues.join('\n- ')}`, 'error');
+      return;
+    }
+
+    const confirmed = window.confirm('Send these reviewed minutes to SharePoint? This should only be done after checking the transcript, title/date, discussion points, owners and deadlines.');
+    if (!confirmed) {
+      setMessage('SharePoint send cancelled. Keep reviewing the draft until it is ready.', 'warning');
+      return;
+    }
+
     saveReviewDataToStorage(payloadReviewData);
     setStep(5);
     setMessage('Sending approved meeting minutes to webhook...', 'info');
@@ -2216,6 +2245,12 @@ function buildTranscriptMinilmOnlyPage(config) {
 
     if (!pastedText && !file) {
       setMessage('Paste transcript text or choose a transcript file first.', 'error');
+      return;
+    }
+
+    const qualityWarning = transcriptQualityWarning(pastedText, file);
+    if (qualityWarning && !window.confirm(`${qualityWarning}\n\nContinue anyway?`)) {
+      setMessage(qualityWarning, 'warning');
       return;
     }
 
@@ -2390,4 +2425,36 @@ function buildTranscriptMinilmOnlyPage(config) {
   });
   copyRawBtn.addEventListener('click', () => copyValue(rawOutputNode.textContent, 'MiniLM-only raw output'));
   copyDiagnosticsBtn.addEventListener('click', () => copyValue(diagnosticsNode.textContent, 'MiniLM-only diagnostics'));
+}
+
+function transcriptQualityWarning(pastedText, file) {
+  const text = String(pastedText || '').trim();
+  const fileName = file && file.name ? String(file.name) : '';
+  const lower = text.toLowerCase();
+  if (text && text.length < 800) {
+    return 'This transcript is very short, so the draft may be thin or misleading. Use a fuller transcript where possible.';
+  }
+  if (text && /(lorem ipsum|test transcript|sample transcript|placeholder|asdf|dummy data)/i.test(text)) {
+    return 'This looks like test or placeholder input. Do not approve, share, or send the generated output as a real client report.';
+  }
+  if (text && !/[.!?]\s+[A-Z0-9]/.test(text) && text.length > 1200) {
+    return 'This transcript has very little sentence structure. Check the source file/extraction before trusting the draft.';
+  }
+  if (!text && fileName && /test|sample|dummy|placeholder/i.test(fileName)) {
+    return 'The selected file name looks like test or placeholder data. Do not treat the generated output as client-ready unless this is intentional.';
+  }
+  return '';
+}
+
+function minutesReviewIssues(reviewData) {
+  const issues = [];
+  const minutes = Array.isArray(reviewData?.meetingMinutes) ? reviewData.meetingMinutes : [];
+  const nextSteps = Array.isArray(reviewData?.nextSteps) ? reviewData.nextSteps : [];
+  const discussionPoints = minutes.flatMap((minute) => Array.isArray(minute.discussionPoints) ? minute.discussionPoints : []);
+  if (!String(reviewData?.meetingTitle || '').trim()) issues.push('Meeting title is blank.');
+  if (!String(reviewData?.meetingDate || '').trim()) issues.push('Meeting date is blank.');
+  if (!discussionPoints.some((point) => String(point || '').trim())) issues.push('No discussion points are recorded.');
+  const ownerlessActions = nextSteps.filter((item) => String(item?.action || '').trim() && (!String(item?.owner || '').trim() || /owner not specified/i.test(String(item?.owner || ''))));
+  if (ownerlessActions.length) issues.push(`${ownerlessActions.length} action${ownerlessActions.length === 1 ? '' : 's'} missing a named owner.`);
+  return issues;
 }
