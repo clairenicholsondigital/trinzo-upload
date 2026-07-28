@@ -660,6 +660,7 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertIn("Configured risks", insights_stage)
         self.assertIn("Suggested follow-up risks", insights_stage)
         self.assertIn("These are risks suggested from saved reports", insights_stage)
+        self.assertLess(insights_stage.index("Suggested follow-up risks"), insights_stage.index("Recent reports"))
         self.assertIn("renderSuggestedRiskRows", insights_stage)
         self.assertIn("data-suggested-risk", insights_stage)
         self.assertIn("data-add-suggested-risk", insights_stage)

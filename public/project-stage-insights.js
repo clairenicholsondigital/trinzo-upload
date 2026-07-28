@@ -210,17 +210,17 @@
         </tbody></table></div>
       </section>
       <section class="panel">
-        <h2>Recent reports</h2>
-        <p class="intro">Open a saved report to review or edit the full project update.</p>
-        <div class="table-scroll"><table><thead><tr><th>Report</th><th>Period</th><th>Status</th><th>Overall health</th><th>Created</th><th>Summary</th><th>Actions</th></tr></thead><tbody>
-          ${recentReports.map((report) => `<tr><td><strong>Report ${escapeHtml(report.reportId)}</strong></td><td>${escapeHtml(report.periodLabel || '-')}</td><td>${escapeHtml(friendlyLabel(report.reportStatus))}</td><td>${escapeHtml(proseOrLabel(report.overallHealth || report.overallHealthRag))}</td><td>${escapeHtml(dateValue(report.versionCreatedAt || report.createdAt))}</td><td>${escapeHtml(report.summary || '-')}</td><td><a class="button-link" href="/project-update-test/reports/${escapeHtml(report.reportId)}">Open report</a></td></tr>`).join('') || '<tr><td colspan="7"><strong>No reports yet.</strong><br />Process a transcript, review the draft, then approve it when it is ready to become project memory.</td></tr>'}
-        </tbody></table></div>
-      </section>
-      <section class="panel">
         <h2>Suggested follow-up risks</h2>
         <p class="intro">These are risks suggested from saved reports. Edit the wording here, then add the useful ones to the monitored project profile above.</p>
         <div class="table-scroll profile-editor-scroll"><table class="profile-editor-table"><thead><tr><th>Risk</th><th>Category</th><th>Description</th><th>Mitigation</th><th>Source</th><th>Actions</th></tr></thead><tbody>
           ${renderSuggestedRiskRows(riskSuggestions)}
+        </tbody></table></div>
+      </section>
+      <section class="panel">
+        <h2>Recent reports</h2>
+        <p class="intro">Open a saved report to review or edit the full project update.</p>
+        <div class="table-scroll"><table><thead><tr><th>Report</th><th>Period</th><th>Status</th><th>Overall health</th><th>Created</th><th>Summary</th><th>Actions</th></tr></thead><tbody>
+          ${recentReports.map((report) => `<tr><td><strong>Report ${escapeHtml(report.reportId)}</strong></td><td>${escapeHtml(report.periodLabel || '-')}</td><td>${escapeHtml(friendlyLabel(report.reportStatus))}</td><td>${escapeHtml(proseOrLabel(report.overallHealth || report.overallHealthRag))}</td><td>${escapeHtml(dateValue(report.versionCreatedAt || report.createdAt))}</td><td>${escapeHtml(report.summary || '-')}</td><td><a class="button-link" href="/project-update-test/reports/${escapeHtml(report.reportId)}">Open report</a></td></tr>`).join('') || '<tr><td colspan="7"><strong>No reports yet.</strong><br />Process a transcript, review the draft, then approve it when it is ready to become project memory.</td></tr>'}
         </tbody></table></div>
       </section>
       <section class="panel ask-panel">
