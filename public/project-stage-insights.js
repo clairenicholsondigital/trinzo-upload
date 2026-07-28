@@ -18,7 +18,7 @@
         <td><textarea data-field="description">${inputValue(milestone.description || '')}</textarea></td>
         <td><input data-field="baselineFinishDate" type="date" value="${inputValue(dateOnly(milestone.baselineFinishDate) === '-' ? '' : dateOnly(milestone.baselineFinishDate))}" /></td>
         <td><input data-field="forecastFinishDate" type="date" value="${inputValue(dateOnly(milestone.forecastFinishDate) === '-' ? '' : dateOnly(milestone.forecastFinishDate))}" /></td>
-        <td><label class="monitor-checkbox"><input type="checkbox" data-monitor-profile checked /> Monitor</label></td>
+        <td><label class="monitor-checkbox" title="Monitor this milestone in future project updates"><input type="checkbox" data-monitor-profile checked aria-label="Monitor this milestone in future project updates" /></label></td>
         <td class="actions"><button type="button" data-save-milestone>Save</button></td>
       </tr>
     `).join('') || '<tr><td colspan="7"><strong>No profile milestones yet.</strong><br />Add milestones in Setup or from a reviewed report.</td></tr>';
@@ -31,7 +31,7 @@
         <td><input data-field="category" value="${inputValue(risk.category || 'General')}" /></td>
         <td><textarea data-field="description">${inputValue(risk.description || '')}</textarea></td>
         <td><textarea data-field="mitigation">${inputValue(risk.mitigation || '')}</textarea></td>
-        <td><label class="monitor-checkbox"><input type="checkbox" data-monitor-profile checked /> Monitor</label></td>
+        <td><label class="monitor-checkbox" title="Monitor this risk in future project updates"><input type="checkbox" data-monitor-profile checked aria-label="Monitor this risk in future project updates" /></label></td>
         <td class="actions"><button type="button" data-save-risk>Save</button></td>
       </tr>
     `).join('') || '<tr><td colspan="6"><strong>No configured risks yet.</strong><br />Add a core project risk below so future updates can track it.</td></tr>';
