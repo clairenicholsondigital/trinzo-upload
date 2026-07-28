@@ -131,8 +131,8 @@ Current local Trooper extractor alignment run (2026-07-28, against `meeting_minu
 ```text
 Command: python3 scripts/run_meeting_minutes_final_golden_eval.py --skip-rewrite --literal-only --json
 27 cases executed
-15 passed
-12 failed
+16 passed
+11 failed
 ```
 
 This is a deliberately strict literal-only score: it disables optional MiniLM semantic matching so the run is deterministic/offline and does not hang on model loading. The expectations have been calibrated case-by-case for the live Trooper output shape so ordinary paraphrases and evidence metadata are no longer treated as failures, while unsupported output remains red.
@@ -149,6 +149,7 @@ Current passing Trooper-calibrated cases:
 009_board_launch_delay
 010_webinar_rehearsal_trim
 011_finance_budget_review
+012_hiring_interview_debrief
 013_messy_speaker_timestamp_formats
 015_hidden_decision_meeting
 018_support_metrics_action_heavy
@@ -159,8 +160,8 @@ Current passing Trooper-calibrated cases:
 
 Current failing cases should stay red until the extractor/runtime quality improves or a fresh case review proves the expectation is stale:
 
-- `003`, `004`, `012`, `014`, `016`, `017`: Trooper is still producing unsupported actions/decisions or discussion output where the transcript should abstain more strongly.
-- `021`, `022`, `024`, `025`, `026`, `027`: real-document/real-transcript cases still collapse to sparse generic output or miss important concrete actions/discussion topics.
+- `003`, `004`, `014`, `016`, `017`: Trooper is still producing unsupported actions/decisions or discussion output where the transcript should abstain more strongly.
+- `021`, `022`, `024`, `025`, `026`, `027`: current direct Trooper runs return `HTTP 422: JSON generation failed`, causing fallback failure text instead of useful minutes.
 
 Do not mark these green by lowering thresholds alone; fix extraction/runtime behaviour first, then update expectations only with reviewed output evidence.
 

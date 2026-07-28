@@ -1,9 +1,9 @@
 {
-  "description": "Hiring interview debrief with a final-interview decision and no explicit follow-up action.",
+  "description": "Hiring interview debrief with a final-interview decision that is also a practical follow-up action.",
   "coverage": {
     "sourceFixture": "scripts/transcript-tests/021_hiring_interview_debrief",
     "meetingTypes": ["hr_interview_debrief"],
-    "behaviours": ["decision_only", "no_actions", "candidate_assessment"]
+    "behaviours": ["supported_decision", "owner_action", "candidate_assessment"]
   },
   "passThreshold": 0.9,
   "criteria": {
@@ -16,7 +16,13 @@
     },
     "actions": {
       "weight": 0.2,
-      "maxCount": 0
+      "mustContain": [
+        {
+          "text": "invite Maya to the final interview",
+          "owner": "Lena"
+        }
+      ],
+      "minCount": 1
     },
     "hallucinations": {
       "weight": 0.25,
@@ -28,13 +34,11 @@
     },
     "abstention": {
       "weight": 0.2,
-      "actionMaxCount": 0,
       "discussionMinCount": 1,
       "requiredDiscussionTopics": [
         ["system design"]
       ],
-      "reason": "The meeting makes a candidate decision but does not assign a concrete follow-up owner."
+      "reason": "The meeting makes a candidate decision and the invite is also a practical follow-up for Lena."
     }
   }
 }
-
