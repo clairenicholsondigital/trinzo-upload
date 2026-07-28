@@ -30,11 +30,15 @@
       <section class="panel">
         <h1>Insights</h1>
         <p class="intro">Review the current project position, recent report history and stored project memory. Memory can guide future reports, but report evidence remains transcript-only.</p>
-        <div class="actions">
-          <button id="createSnapshotBtn" type="button" ${context.found ? '' : 'disabled'}>Create context snapshot</button>
-          <button id="markOfficialBtn" type="button" ${context.found ? '' : 'disabled'}>Mark active context official</button>
-          <button id="cleanupTestsBtn" type="button" ${context.found ? '' : 'disabled'}>Tidy draft data</button>
-        </div>
+        <details>
+          <summary>Workspace management</summary>
+          <p class="muted">Use these controls after review. They change what counts as the active baseline for future reports.</p>
+          <div class="actions">
+            <button id="createSnapshotBtn" type="button" ${context.found ? '' : 'disabled'}>Create context snapshot</button>
+            <button id="markOfficialBtn" type="button" ${context.found ? '' : 'disabled'}>Mark active context official</button>
+            <button id="cleanupTestsBtn" type="button" ${context.found ? '' : 'disabled'}>Tidy draft data</button>
+          </div>
+        </details>
         <p id="contextStatus" class="status"></p>
         ${context.found ? '' : '<p class="status">No project history yet. Add Setup context, then create and approve the first draft report.</p>'}
       </section>
@@ -55,31 +59,31 @@
             const latest = milestone.latestAssessment || {};
             const previous = milestone.previousAssessment || {};
             return `<tr><td>${escapeHtml(friendlyLabel(milestone.milestoneName))}</td><td>${milestone.isOfficial ? `✅ ${escapeHtml(milestone.officialLabel || 'Official')}` : '—'}</td><td>${escapeHtml(friendlyLabel(latest.status))}</td><td>${escapeHtml(friendlyLabel(previous.status))}</td><td class="${escapeHtml(trendClass(latest.trend))}">${escapeHtml(friendlyLabel(latest.trend))}</td><td>${escapeHtml(String(latest.forecastFinishDate || milestone.forecastFinishDate || '-').slice(0, 10))}</td><td>${escapeHtml(latest.summary || '-')}</td></tr>`;
-          }).join('') || '<tr><td colspan="7">No active milestones yet.</td></tr>'}
+          }).join('') || '<tr><td colspan="7"><strong>No active milestones yet.</strong><br />Add milestones in Setup so future reports can track delivery against a baseline.</td></tr>'}
         </tbody></table></div>
       </section>
       <section class="panel">
         <h2>Recent reports</h2>
         <div class="table-scroll"><table><thead><tr><th>Report</th><th>Period</th><th>Status</th><th>Overall health</th><th>Created</th><th>Summary</th></tr></thead><tbody>
-          ${recentReports.map((report) => `<tr><td><a href="/project-update-test/reports/${escapeHtml(report.reportId)}">Report ${escapeHtml(report.reportId)}</a></td><td>${escapeHtml(report.periodLabel || '-')}</td><td>${escapeHtml(friendlyLabel(report.reportStatus))}</td><td>${escapeHtml(friendlyLabel(report.overallHealth || report.overallHealthRag))}</td><td>${escapeHtml(dateValue(report.versionCreatedAt || report.createdAt))}</td><td>${escapeHtml(report.summary || '-')}</td></tr>`).join('') || '<tr><td colspan="6">No reports yet.</td></tr>'}
+          ${recentReports.map((report) => `<tr><td><a href="/project-update-test/reports/${escapeHtml(report.reportId)}">Report ${escapeHtml(report.reportId)}</a></td><td>${escapeHtml(report.periodLabel || '-')}</td><td>${escapeHtml(friendlyLabel(report.reportStatus))}</td><td>${escapeHtml(friendlyLabel(report.overallHealth || report.overallHealthRag))}</td><td>${escapeHtml(dateValue(report.versionCreatedAt || report.createdAt))}</td><td>${escapeHtml(report.summary || '-')}</td></tr>`).join('') || '<tr><td colspan="6"><strong>No reports yet.</strong><br />Process a transcript, review the draft, then approve it when it is ready to become project memory.</td></tr>'}
         </tbody></table></div>
       </section>
       <section class="panel">
         <h2>Health history</h2>
         <div class="table-scroll"><table><thead><tr><th>Area</th><th>Status</th><th>Trend</th><th>Confidence</th><th>Report</th><th>Rationale</th></tr></thead><tbody>
-          ${healthHistory.map((item) => `<tr><td>${escapeHtml(friendlyLabel(item.area))}</td><td>${escapeHtml(friendlyLabel(item.status))}</td><td class="${escapeHtml(trendClass(item.trend))}">${escapeHtml(friendlyLabel(item.trend))}</td><td>${escapeHtml(item.confidence || '-')}</td><td><a href="/project-update-test/reports/${escapeHtml(item.reportId)}">Report ${escapeHtml(item.reportId)}</a></td><td>${escapeHtml(item.rationale || '-')}</td></tr>`).join('') || '<tr><td colspan="6">No health history yet.</td></tr>'}
+          ${healthHistory.map((item) => `<tr><td>${escapeHtml(friendlyLabel(item.area))}</td><td>${escapeHtml(friendlyLabel(item.status))}</td><td class="${escapeHtml(trendClass(item.trend))}">${escapeHtml(friendlyLabel(item.trend))}</td><td>${escapeHtml(item.confidence || '-')}</td><td><a href="/project-update-test/reports/${escapeHtml(item.reportId)}">Report ${escapeHtml(item.reportId)}</a></td><td>${escapeHtml(item.rationale || '-')}</td></tr>`).join('') || '<tr><td colspan="6"><strong>No health history yet.</strong><br />Approved reports will build a timeline here.</td></tr>'}
         </tbody></table></div>
       </section>
       <section class="panel">
         <h2>Active core risks</h2>
         <div class="table-scroll"><table><thead><tr><th>Risk</th><th>Official</th><th>Category</th><th>Description</th><th>Mitigation</th></tr></thead><tbody>
-          ${activeRisks.map((risk) => `<tr><td>${escapeHtml(risk.riskTitle || '-')}</td><td>${risk.isOfficial ? `✅ ${escapeHtml(risk.officialLabel || 'Official')}` : '—'}</td><td>${escapeHtml(risk.category || '-')}</td><td>${escapeHtml(risk.description || '-')}</td><td>${escapeHtml(risk.mitigation || '-')}</td></tr>`).join('') || '<tr><td colspan="5">No active core risks yet.</td></tr>'}
+          ${activeRisks.map((risk) => `<tr><td>${escapeHtml(risk.riskTitle || '-')}</td><td>${risk.isOfficial ? `✅ ${escapeHtml(risk.officialLabel || 'Official')}` : '—'}</td><td>${escapeHtml(risk.category || '-')}</td><td>${escapeHtml(risk.description || '-')}</td><td>${escapeHtml(risk.mitigation || '-')}</td></tr>`).join('') || '<tr><td colspan="5"><strong>No active core risks yet.</strong><br />Add known risks in Setup or approve report risks after review.</td></tr>'}
         </tbody></table></div>
       </section>
       <section class="panel">
         <h2>Suggested follow-up risks</h2>
         <div class="table-scroll"><table><thead><tr><th>Risk</th><th>Review status</th><th>Confidence</th><th>Report</th><th>Description</th><th>Mitigation</th></tr></thead><tbody>
-          ${riskSuggestions.map((risk) => `<tr><td>${escapeHtml(risk.riskTitle || '-')}</td><td>${escapeHtml(friendlyLabel(risk.reviewStatus))}</td><td>${escapeHtml(risk.confidence || '-')}</td><td><a href="/project-update-test/reports/${escapeHtml(risk.reportId)}">Report ${escapeHtml(risk.reportId)}</a></td><td>${escapeHtml(risk.description || '-')}</td><td>${escapeHtml(risk.suggestedMitigation || '-')}</td></tr>`).join('') || '<tr><td colspan="6">No risk suggestions yet.</td></tr>'}
+          ${riskSuggestions.map((risk) => `<tr><td>${escapeHtml(risk.riskTitle || '-')}</td><td>${escapeHtml(friendlyLabel(risk.reviewStatus))}</td><td>${escapeHtml(risk.confidence || '-')}</td><td><a href="/project-update-test/reports/${escapeHtml(risk.reportId)}">Report ${escapeHtml(risk.reportId)}</a></td><td>${escapeHtml(risk.description || '-')}</td><td>${escapeHtml(risk.suggestedMitigation || '-')}</td></tr>`).join('') || '<tr><td colspan="6"><strong>No suggested follow-up risks yet.</strong><br />New risks found in draft reports will appear here for review.</td></tr>'}
         </tbody></table></div>
       </section>
       <section class="panel ask-panel">
@@ -204,7 +208,7 @@
           const score = Number(chunk.score || 0);
           return `<article class="chunk-card"><strong>${escapeHtml(chunk.title || 'Project memory')}</strong><div class="chunk-meta"><span class="badge muted">chunk ${escapeHtml(chunkId)}</span><span class="badge muted">${escapeHtml(friendlyLabel(chunk.item_type || chunk.itemType))}</span>${score ? `<span class="badge muted">score ${escapeHtml(score.toFixed(2))}</span>` : ''}</div><div class="chunk-text">${escapeHtml((chunk.chunk_text || chunk.chunkText || '').slice(0, 700))}</div></article>`;
         }).join('')}</div>`
-      : '<div class="empty-state"><strong>No matching project memory found.</strong><br />Try adding background notes, decisions, risks, or an SoW excerpt to Setup → Standing context first.</div>';
+      : '<div class="empty-state"><strong>No matching project memory found.</strong><br />Try adding background notes, decisions, risks, or an SoW excerpt to Setup → Project memory first.</div>';
     return `<div class="badges"><span class="badge ${escapeHtml(modeBadgeClass(result.answerMode))}">Answer: ${escapeHtml(answerMode)}</span><span class="badge ${escapeHtml(modeBadgeClass(result.retrievalMode))}">Retrieval: ${escapeHtml(retrievalMode)}</span><span class="badge muted">${chunks.length} chunk${chunks.length === 1 ? '' : 's'}</span>${result.confidence ? `<span class="badge muted">Confidence: ${escapeHtml(friendlyLabel(result.confidence))}</span>` : ''}</div>${answer}${chunksHtml}`;
   }
 

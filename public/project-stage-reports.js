@@ -53,7 +53,7 @@
                   <button class="danger" type="button" data-delete-report="${escapeHtml(report.reportId)}" data-report-name="${escapeHtml(report.reportName || `Report ${report.reportId}`)}">Archive</button>
                 </td>
               </tr>
-            `).join('') || '<tr><td colspan="7">No reports yet.</td></tr>'}
+            `).join('') || '<tr><td colspan="7"><strong>No reports yet.</strong><br />Use Process to create a draft report, then review and approve it when it is ready to become project memory.</td></tr>'}
           </tbody>
         </table>
       `;

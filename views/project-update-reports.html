@@ -327,7 +327,14 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
     const milestones = asArray(projectReport.milestones);
     const risks = asArray(projectReport.risks);
     const actions = asArray(projectReport.actions);
+    const statusDiagnostics = projectReport.statusClassifierDiagnostics || payload.statusClassifierDiagnostics || {};
     const statusOptions = ['draft', 'in_review', 'approved', 'archived'];
+    const approvalText = report.approvedAt
+      ? `${report.approvedBy ? `Approved by ${report.approvedBy}` : 'Approved'} on ${dateValue(report.approvedAt)}`
+      : 'Not approved yet. Approve only after the report is good enough to become future project memory.';
+    const statusCrossCheck = statusDiagnostics && Object.keys(statusDiagnostics).length
+      ? `<div class="item"><div class="label">Status cross-check</div><div class="value">${statusDiagnostics.decisionUse === 'diagnostics_only' ? 'Review aid only' : 'Review before use'}</div><div class="muted">${escapeHtml(statusDiagnostics.reason || `${statusDiagnostics.itemCount || 0} signal${Number(statusDiagnostics.itemCount || 0) === 1 ? '' : 's'} found`)}</div></div>`
+      : '';
     app.innerHTML = `
       <section class="panel">
         <div class="actions">
@@ -345,8 +352,10 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
           <div class="item"><div class="label">Project</div><div class="value">${escapeHtml(report.projectName || '-')}</div></div>
           <div class="item"><div class="label">Period</div><div class="value">${escapeHtml(report.periodLabel || '-')}</div></div>
           <div class="item"><div class="label">Status</div><div class="value">${escapeHtml(friendlyLabel(report.reportStatus))}</div></div>
+          <div class="item"><div class="label">Approval</div><div class="value">${escapeHtml(approvalText)}</div></div>
           <div class="item"><div class="label">Overall health</div><div class="value">${escapeHtml(friendlyLabel(projectReport.overallHealth))}</div></div>
           <div class="item"><div class="label">Overall status</div><div class="value">${renderColour(projectReport.overallHealthRag)}</div></div>
+          ${statusCrossCheck}
         </div>
       </section>
       <section class="panel edit-panel">
@@ -364,12 +373,12 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
             <textarea id="reportSummaryEditor">${escapeHtml(projectReport.summary || '')}</textarea>
           </label>
         </div>
-        <p class="muted">The report detail is table-first; advanced data is tucked away for occasional fixes.</p>
-        <div class="json-tools">
-          <button id="copySavedProjectReportBtn" class="secondary" type="button">Copy report data</button>
-        </div>
         <details class="raw-json" style="margin-top:.75rem">
-          <summary>Advanced report settings</summary>
+          <summary>Advanced report data</summary>
+          <p class="muted">Use this only for occasional fixes or support review. The tables below are the normal report view.</p>
+          <div class="json-tools">
+            <button id="copySavedProjectReportBtn" class="secondary" type="button">Copy report data</button>
+          </div>
           <label style="margin-top:.75rem">Project report JSON
             <textarea id="projectReportJsonEditor" class="json-editor" spellcheck="false">${escapeHtml(JSON.stringify(projectReport, null, 2))}</textarea>
           </label>
@@ -389,7 +398,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
                 const area = areas[key] || {};
                 const evidence = asArray(area.evidence).map((item) => item.text || item.source || '').filter(Boolean).join('\n');
                 return `<tr><td>${escapeHtml(titleLabel(key))}</td><td>${escapeHtml(friendlyLabel(area.status))}</td><td>${escapeHtml(friendlyLabel(area.trend))}</td><td>${escapeHtml(evidence || area.evidenceNotes || '-')}</td></tr>`;
-              }).join('') || '<tr><td colspan="4">-</td></tr>'}
+              }).join('') || '<tr><td colspan="4"><strong>No overall summary saved.</strong><br />Create or edit a report summary before sharing this report.</td></tr>'}
             </tbody>
           </table>
         </div>
@@ -400,7 +409,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
           <table>
             <thead><tr><th>Milestone</th><th>Baseline</th><th>Forecast</th><th>Delivery status</th><th>Status</th><th>Health</th><th>Summary</th><th>Next steps</th></tr></thead>
             <tbody>
-              ${milestones.map((item) => `<tr><td>${escapeHtml(titleLabel(item.milestone))}</td><td>${escapeHtml(staticText(item.baseline_finish_date || item.baselineDeadline || item.deadline))}</td><td>${escapeHtml(staticText(item.forecast_finish_date || item.forecastDeadline || item.deadline))}</td><td>${escapeHtml(friendlyLabel(item.delivery_status || item.status))}</td><td>${renderColour(item.agreed_rag_status || item.rag_status)}</td><td>${escapeHtml(friendlyLabel(item.health_assessment))}</td><td>${escapeHtml(staticText(item.normalised_evidence_summary || item.excerpt))}</td><td>${escapeHtml(staticText(combinedNextSteps(item)))}</td></tr>`).join('') || '<tr><td colspan="8">-</td></tr>'}
+              ${milestones.map((item) => `<tr><td>${escapeHtml(titleLabel(item.milestone))}</td><td>${escapeHtml(staticText(item.baseline_finish_date || item.baselineDeadline || item.deadline))}</td><td>${escapeHtml(staticText(item.forecast_finish_date || item.forecastDeadline || item.deadline))}</td><td>${escapeHtml(friendlyLabel(item.delivery_status || item.status))}</td><td>${renderColour(item.agreed_rag_status || item.rag_status)}</td><td>${escapeHtml(friendlyLabel(item.health_assessment))}</td><td>${escapeHtml(staticText(item.normalised_evidence_summary || item.excerpt))}</td><td>${escapeHtml(staticText(combinedNextSteps(item)))}</td></tr>`).join('') || '<tr><td colspan="8"><strong>No milestones saved.</strong><br />Add milestones in Setup or edit this report before approval.</td></tr>'}
             </tbody>
           </table>
         </div>
@@ -411,7 +420,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
           <table>
             <thead><tr><th>Risk</th><th>Description</th><th>Mitigation</th><th>Milestone</th></tr></thead>
             <tbody>
-              ${risks.map((risk) => `<tr><td>${escapeHtml(staticText(risk.riskTitle))}</td><td>${escapeHtml(staticText(risk.description))}</td><td>${escapeHtml(staticText(risk.suggestedMitigation))}</td><td>${escapeHtml(staticText(risk.relatedMilestone))}</td></tr>`).join('') || '<tr><td colspan="4">-</td></tr>'}
+              ${risks.map((risk) => `<tr><td>${escapeHtml(staticText(risk.riskTitle))}</td><td>${escapeHtml(staticText(risk.description))}</td><td>${escapeHtml(staticText(risk.suggestedMitigation))}</td><td>${escapeHtml(staticText(risk.relatedMilestone))}</td></tr>`).join('') || '<tr><td colspan="4"><strong>No risks saved.</strong><br />That may be fine, but check the transcript before approval.</td></tr>'}
             </tbody>
           </table>
         </div>
@@ -422,7 +431,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
           <table>
             <thead><tr><th>Action</th><th>Owner</th><th>Deadline</th><th>Milestone</th></tr></thead>
             <tbody>
-              ${actions.map((action) => `<tr><td>${escapeHtml(staticText(action.action || action.meetingActionPoint))}</td><td>${escapeHtml(staticText(action.meetingActionPointOwner || action.owner))}</td><td>${escapeHtml(staticText(action.deadline || action.meetingActionPointDeadline))}</td><td>${escapeHtml(staticText(action.related_milestone || action.relatedMilestone))}</td></tr>`).join('') || '<tr><td colspan="4">-</td></tr>'}
+              ${actions.map((action) => `<tr><td>${escapeHtml(staticText(action.action || action.meetingActionPoint))}</td><td>${escapeHtml(staticText(action.meetingActionPointOwner || action.owner))}</td><td>${escapeHtml(staticText(action.deadline || action.meetingActionPointDeadline))}</td><td>${escapeHtml(staticText(action.related_milestone || action.relatedMilestone))}</td></tr>`).join('') || '<tr><td colspan="4"><strong>No actions saved.</strong><br />If the transcript contains actions, add them before approval.</td></tr>'}
             </tbody>
           </table>
         </div>
@@ -449,7 +458,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
       </section>
       <section class="panel">
         <details>
-          <summary>Technical payload</summary>
+          <summary>Original response</summary>
           <pre>${escapeHtml(JSON.stringify(payload, null, 2))}</pre>
         </details>
       </section>

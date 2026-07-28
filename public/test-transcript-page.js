@@ -736,35 +736,57 @@ function buildTranscriptTestPage(config) {
     const snapshot = report.comparisonSnapshot || {};
     const persistence = result.projectReportPersistence || {};
     const backendPayload = result || {};
+    const statusDiagnostics = report.statusClassifierDiagnostics || result.statusClassifierDiagnostics || {};
     const transcript = textInput.value || '';
+    const diagnosticsSummary = statusDiagnostics && Object.keys(statusDiagnostics).length
+      ? `<div class="empty-state" style="margin-bottom:.75rem">
+          <strong>Status cross-check</strong><br />
+          ${statusDiagnostics.decisionUse === 'diagnostics_only'
+            ? 'This classifier is a review aid only. It does not change the report status.'
+            : 'This classifier output should be reviewed before it affects the report status.'}
+          ${statusDiagnostics.itemCount || statusDiagnostics.items?.length ? `<br />${escapeHtml(statusDiagnostics.itemCount || statusDiagnostics.items.length)} transcript-backed signal${Number(statusDiagnostics.itemCount || statusDiagnostics.items.length) === 1 ? '' : 's'} found.` : ''}
+        </div>`
+      : '';
     return `
-      <div class="actions" style="justify-content:flex-start;margin-bottom:.75rem">
-        <button id="copyProjectReportBtn" class="secondary" type="button">Copy report JSON</button>
-      </div>
+      ${diagnosticsSummary}
       <div class="project-meta-grid">
-        <div class="summary-item"><div class="summary-label">Mode</div><div class="summary-value">${escapeHtml(result.mode || 'unknown')}</div></div>
         <div class="summary-item"><div class="summary-label">Saved</div><div class="summary-value">${escapeHtml(persistence.saved === true ? 'yes' : 'no')}</div></div>
         <div class="summary-item"><div class="summary-label">Report ID</div><div class="summary-value">${escapeHtml(persistence.reportId || '—')}</div></div>
-        <div class="summary-item"><div class="summary-label">Version ID</div><div class="summary-value">${escapeHtml(persistence.reportVersionId || '—')}</div></div>
-        <div class="summary-item"><div class="summary-label">Runtime ms</div><div class="summary-value">${escapeHtml(result.modelDiagnostics && result.modelDiagnostics.totalRuntimeMs || '—')}</div></div>
       </div>
-      <div class="project-form-grid">
-        <label class="wide">Comparison snapshot
-          <textarea data-project-path="comparisonSnapshotJson" data-project-mode="json" readonly>${escapeHtml(JSON.stringify(snapshot, null, 2))}</textarea>
-        </label>
-        <label class="wide">Persistence metadata
-          <textarea readonly>${escapeHtml(JSON.stringify(persistence, null, 2))}</textarea>
-        </label>
+      <details class="raw-json" style="margin-top:.75rem">
+        <summary>Advanced review data</summary>
+        <div class="actions" style="justify-content:flex-start;margin:.75rem 0">
+          <button id="copyProjectReportBtn" class="secondary" type="button">Copy report data</button>
+        </div>
+        <div class="project-form-grid">
+          <label class="wide">Comparison snapshot
+            <textarea data-project-path="comparisonSnapshotJson" data-project-mode="json" readonly>${escapeHtml(JSON.stringify(snapshot, null, 2))}</textarea>
+          </label>
+          <label class="wide">Save details
+            <textarea readonly>${escapeHtml(JSON.stringify(persistence, null, 2))}</textarea>
+          </label>
+          <label class="wide">Status cross-check details
+            <textarea readonly>${escapeHtml(JSON.stringify(statusDiagnostics, null, 2))}</textarea>
+          </label>
+          <label class="wide">Run details
+            <textarea readonly>${escapeHtml(JSON.stringify({ mode: result.mode || 'unknown', runtimeMs: result.modelDiagnostics && result.modelDiagnostics.totalRuntimeMs || null }, null, 2))}</textarea>
+          </label>
+        </div>
+      </details>
+      <details style="margin-top:.75rem">
+        <summary>Transcript used for report</summary>
         <label class="wide">Transcript used for report
           <textarea readonly>${escapeHtml(transcript || 'Transcript text is not available in this browser session.')}</textarea>
         </label>
-        <details class="raw-json wide">
-          <summary>Original backend response</summary>
+      </details>
+      <details class="raw-json" style="margin-top:.75rem">
+        <summary>Original response</summary>
+        <div class="project-form-grid">
           <label class="wide">Backend JSON
             <textarea readonly>${escapeHtml(JSON.stringify(backendPayload, null, 2))}</textarea>
           </label>
-        </details>
-      </div>
+        </div>
+      </details>
     `;
   }
 
@@ -775,7 +797,7 @@ function buildTranscriptTestPage(config) {
       ['milestones', 'Milestones', renderMilestonesTab(report)],
       ['risks', 'Risks', renderRisksTab(report)],
       ['actions', 'Actions', renderActionsTab(report)],
-      ['snapshot', 'Settings', renderSnapshotTab(report, result)]
+      ['snapshot', 'Review details', renderSnapshotTab(report, result)]
     ];
     projectReportOutput.innerHTML = `
       <div class="project-tabs" role="tablist">
@@ -848,7 +870,7 @@ function buildTranscriptTestPage(config) {
         refreshProjectReportState();
         if (!state.projectReport) return;
         await navigator.clipboard.writeText(JSON.stringify(state.projectReport, null, 2));
-        setMessage('Project report JSON copied to clipboard.', 'success');
+        setMessage('Project report data copied to clipboard.', 'success');
       });
     }
     projectReportPanel.classList.remove('hidden');

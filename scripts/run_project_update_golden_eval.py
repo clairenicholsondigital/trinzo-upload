@@ -9,7 +9,9 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +20,10 @@ if str(REPO_DIR) not in sys.path:
     sys.path.insert(0, str(REPO_DIR))
 
 from scripts.project_update_minilm import build_project_update_output  # noqa: E402
+from scripts.project_status_evidence_pack import (  # noqa: E402
+    DEFAULT_MODEL_PATH as STATUS_CLASSIFIER_MODEL_PATH,
+    DEFAULT_PROJECT_STATUS_DIR,
+)
 
 CASE_ROOT = REPO_DIR / "scripts" / "project-update-golden"
 
@@ -99,7 +105,113 @@ def case_context_with_retrieval(case: dict[str, Any]) -> dict[str, Any]:
     return context
 
 
-def check_case(case: dict[str, Any], *, use_minilm: bool, use_rewrite: bool) -> tuple[bool, list[str], list[str], dict[str, Any]]:
+def top_label(items: list[dict[str, Any]], key: str) -> str:
+    counts: dict[str, float] = {}
+    for item in items:
+        ranked = item.get(key) if isinstance(item, dict) else None
+        if not isinstance(ranked, list) or not ranked:
+            continue
+        best = ranked[0] if isinstance(ranked[0], dict) else {}
+        label = canonical_status(best.get("label"))
+        if not label:
+            continue
+        counts[label] = counts.get(label, 0.0) + float(best.get("score") or 0.0)
+    if not counts:
+        return ""
+    return max(counts.items(), key=lambda item: item[1])[0]
+
+
+def top_signals(items: list[dict[str, Any]], limit: int = 6) -> list[str]:
+    scores: dict[str, float] = {}
+    for item in items:
+        for signal in item.get("signals") or []:
+            if not isinstance(signal, dict):
+                continue
+            label = clean(signal.get("label")).lower()
+            if not label:
+                continue
+            scores[label] = max(scores.get(label, 0.0), float(signal.get("score") or 0.0))
+    return [label for label, _ in sorted(scores.items(), key=lambda item: item[1], reverse=True)[:limit]]
+
+
+def status_classifier_summary(pack: dict[str, Any], report: dict[str, Any]) -> dict[str, Any]:
+    items = [item for item in pack.get("items", []) if isinstance(item, dict)]
+    report_health = canonical_status(report.get("overallHealth") or report.get("overallHealthRag"))
+    classifier_status = top_label(items, "status")
+    action_state = top_label(items, "actionState")
+    comparison = "unavailable"
+    if pack.get("available"):
+        if not classifier_status:
+            comparison = "no_strong_status_signal"
+        elif classifier_status == report_health:
+            comparison = "agrees"
+        else:
+            comparison = "differs"
+    return {
+        "decisionUse": "diagnostics_only",
+        "available": bool(pack.get("available")),
+        "reason": clean(pack.get("reason")),
+        "chunksAnalysed": int(pack.get("chunksAnalysed") or 0),
+        "itemCount": len(items),
+        "reportOverallHealth": report_health,
+        "classifierTopStatus": classifier_status,
+        "classifierTopActionState": action_state,
+        "classifierTopSignals": top_signals(items),
+        "comparison": comparison,
+    }
+
+
+def run_status_classifier(case: dict[str, Any], max_chunks: int, timeout_seconds: int) -> tuple[dict[str, Any], list[str]]:
+    warnings: list[str] = []
+    try:
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".txt", delete=True) as transcript_file:
+            transcript_file.write(case.get("transcript", ""))
+            transcript_file.flush()
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(REPO_DIR / "scripts" / "project_status_evidence_pack.py"),
+                    transcript_file.name,
+                    "--model",
+                    str(STATUS_CLASSIFIER_MODEL_PATH),
+                    "--project-dir",
+                    str(DEFAULT_PROJECT_STATUS_DIR),
+                    "--max-chunks",
+                    str(max_chunks),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=max(1, timeout_seconds),
+            )
+    except subprocess.TimeoutExpired:
+        pack = {"available": False, "items": [], "reason": "Status classifier timed out."}
+    except OSError as exc:
+        pack = {"available": False, "items": [], "reason": f"Status classifier could not run: {clean(exc)}"}
+    else:
+        if completed.returncode != 0:
+            pack = {"available": False, "items": [], "reason": clean(completed.stderr or completed.stdout or f"Status classifier exited {completed.returncode}.")}
+        else:
+            try:
+                pack = json.loads(completed.stdout)
+            except json.JSONDecodeError:
+                pack = {"available": False, "items": [], "reason": "Classifier returned unparseable JSON."}
+    if not isinstance(pack, dict):
+        return {"decisionUse": "diagnostics_only", "available": False, "reason": "Classifier returned a malformed result.", "items": []}, warnings
+    if not pack.get("available"):
+        warnings.append(clean(pack.get("reason")) or "Status classifier unavailable.")
+    return {**pack, "decisionUse": "diagnostics_only"}, warnings
+
+
+def check_case(
+    case: dict[str, Any],
+    *,
+    use_minilm: bool,
+    use_rewrite: bool,
+    with_status_classifier: bool,
+    status_classifier_max_chunks: int,
+    status_classifier_timeout_seconds: int,
+) -> tuple[bool, list[str], list[str], dict[str, Any]]:
     result = build_project_update_output(
         case.get("transcript", ""),
         use_minilm=use_minilm,
@@ -117,6 +229,16 @@ def check_case(case: dict[str, Any], *, use_minilm: bool, use_rewrite: bool) -> 
     if not isinstance(report, dict):
         failures.append("projectReport missing")
         return False, failures, warnings, result
+
+    if with_status_classifier:
+        classifier_pack, classifier_warnings = run_status_classifier(case, status_classifier_max_chunks, status_classifier_timeout_seconds)
+        warnings.extend(classifier_warnings)
+        result["statusClassifierDiagnostics"] = classifier_pack
+        result["statusClassifierComparison"] = status_classifier_summary(classifier_pack, report)
+        if result["statusClassifierComparison"].get("decisionUse") != "diagnostics_only":
+            failures.append("status classifier decisionUse was not diagnostics_only")
+        if "comparison" not in result["statusClassifierComparison"]:
+            failures.append("status classifier comparison was malformed")
 
     allowed_health = {canonical_status(v) for v in expected.get("overallHealthIn", [])}
     actual_health = canonical_status(report.get("overallHealth") or report.get("overallHealthRag"))
@@ -183,14 +305,27 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--mode", choices=["synthetic", "real", "all"], default="synthetic")
     parser.add_argument("--skip-minilm", action="store_true", help="Disable MiniLM for faster/deterministic smoke runs.")
     parser.add_argument("--use-rewrite", action="store_true", help="Enable optional rewrite layer; off by default for eval stability.")
+    parser.add_argument("--with-status-classifier", action="store_true", help="Run the separate status classifier as diagnostics and compare it with report output.")
+    parser.add_argument("--status-classifier-max-chunks", type=int, default=24, help="Maximum transcript chunks to send through classifier diagnostics.")
+    parser.add_argument("--status-classifier-timeout-seconds", type=int, default=20, help="Per-case timeout for optional classifier diagnostics.")
     parser.add_argument("--json", action="store_true", help="Emit JSON summary.")
     args = parser.parse_args(argv)
 
     cases = load_cases(args.mode)
     results = []
     for case in cases:
-        ok, failures, warnings, _ = check_case(case, use_minilm=not args.skip_minilm, use_rewrite=args.use_rewrite)
-        results.append({"case_id": case.get("case_id"), "case_name": case.get("case_name"), "source": case.get("source", "unknown"), "ok": ok, "failures": failures, "warnings": warnings})
+        ok, failures, warnings, result = check_case(
+            case,
+            use_minilm=not args.skip_minilm,
+            use_rewrite=args.use_rewrite,
+            with_status_classifier=args.with_status_classifier,
+            status_classifier_max_chunks=max(1, args.status_classifier_max_chunks),
+            status_classifier_timeout_seconds=max(1, args.status_classifier_timeout_seconds),
+        )
+        item = {"case_id": case.get("case_id"), "case_name": case.get("case_name"), "source": case.get("source", "unknown"), "ok": ok, "failures": failures, "warnings": warnings}
+        if args.with_status_classifier:
+            item["statusClassifierComparison"] = result.get("statusClassifierComparison", {})
+        results.append(item)
 
     passed = sum(1 for item in results if item["ok"])
     summary = {
@@ -201,6 +336,7 @@ def main(argv: list[str]) -> int:
         "failed": len(results) - passed,
         "warningCount": sum(len(item.get("warnings", [])) for item in results),
         "syntheticCaveat": "Synthetic cases are AI-generated behavioural checks, not proof of real-world performance.",
+        "statusClassifierMode": "diagnostics_only" if args.with_status_classifier else "not_run",
         "results": results,
     }
     if args.json:
@@ -216,6 +352,15 @@ def main(argv: list[str]) -> int:
                 print(f"    - FAIL: {failure}")
             for warning in item.get("warnings", []):
                 print(f"    - WARN: {warning}")
+            if args.with_status_classifier:
+                comparison = item.get("statusClassifierComparison") or {}
+                print(
+                    "    - STATUS CLASSIFIER: "
+                    f"{comparison.get('comparison', 'unknown')} "
+                    f"(report={comparison.get('reportOverallHealth') or '-'}, "
+                    f"classifier={comparison.get('classifierTopStatus') or '-'}, "
+                    f"action={comparison.get('classifierTopActionState') or '-'})"
+                )
     return 0 if summary["ok"] else 1
 
 

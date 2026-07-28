@@ -173,7 +173,7 @@ Acceptance:
 - report UI copy/actions match those rules;
 - report archive behaviour has regression coverage.
 
-### 5. Improve The Client-Facing UX - First Pass Done 2026-07-27
+### 5. Improve The Client-Facing UX - Cold-User Polish Pass Done 2026-07-28
 
 The frontend is usable as an internal workspace. The first client-facing polish
 pass keeps the same four-stage flow while reducing operator language and making
@@ -201,6 +201,51 @@ Still needed before external/client-facing use:
 - decide whether advanced JSON/report payload controls should be admin-only;
 - test the first-time journey with someone who has not seen the tool before.
 
+Next task plan - cold user polish:
+
+1. Map the first-time journey from a blank project:
+   - create/select project;
+   - add project summary, milestones, risks and standing memory;
+   - process the first transcript;
+   - review, edit, save and approve a draft report;
+   - open Insights and ask a follow-up question.
+2. Remove or hide remaining internal/operator surfaces from the normal path:
+   - make raw JSON, payload copy, diagnostics and search-maintenance controls
+     admin/advanced-only;
+   - keep the client path focused on project setup, draft creation, report
+     review and insights;
+   - ensure every destructive or irreversible action has plain-language copy.
+3. Tighten empty, loading and error states:
+   - no blank panels when a project has no reports, milestones, risks or memory;
+   - failed transcript/report generation should explain what the user can do
+     next without exposing stack traces;
+   - memory indexing should say whether search is ready, pending or unavailable.
+4. Add approval and provenance clarity:
+   - report detail should show who approved the report and when, where that data
+     is available;
+   - make it obvious that approved reports can become future project memory;
+   - keep generated suggestions distinct from agreed project facts.
+5. Do an external-user browser rehearsal:
+   - desktop and mobile screenshots for Setup, Process, Reports, report detail
+     and Insights;
+   - one signed-in run using a clean project and realistic transcript;
+   - record any point where the tester hesitates, misreads a control or needs
+     explanation.
+
+Implemented in this pass:
+
+- normal report review now labels the final tab `Review details` rather than
+  `Settings`;
+- raw report data, save metadata, classifier details and original responses are
+  behind advanced/detail sections;
+- Insights management actions are behind `Workspace management` so the default
+  page reads as a review hub rather than an admin console;
+- report detail shows approval status, approver and approval time when
+  available;
+- report/detail/Insights empty states now tell a cold user what to do next;
+- status-classifier output is surfaced as a review-only cross-check, not as a
+  report decision.
+
 Acceptance:
 
 - a first-time user can create/select a project, add context, process a
@@ -209,7 +254,7 @@ Acceptance:
   Reports, report detail and Insights;
 - no page JavaScript errors in the checked journey.
 
-### 6. Wire The Status Classifier Deliberately - Diagnostics First Done 2026-07-27
+### 6. Wire The Status Classifier Deliberately - Eval Comparison Pass Done 2026-07-28
 
 The separate status model at `/root/project-update-status-model` is promising,
 but it is not trusted enough to drive user-facing report decisions yet. It is
@@ -236,6 +281,47 @@ Still needed before it can influence outputs:
    output in golden evals;
 2. decide whether it should influence health/status decisions;
 3. keep transcript evidence and model diagnostics visibly separate.
+
+Next task plan - classifier decision path:
+
+1. Capture classifier diagnostics in the golden runner:
+   - save expected/actual classifier `project_status`, action-state and signal
+     summaries alongside the current report health/status expectations;
+   - fail only if diagnostics disappear or become malformed at first;
+   - report disagreements as structured comparison output, not immediate
+     product failures.
+2. Build a comparison matrix from real/realistic cases:
+   - where classifier agrees with the existing report;
+   - where classifier catches something the report misses;
+   - where classifier is noisier or overconfident;
+   - where there is too little transcript evidence to trust either signal.
+3. Make an explicit product decision:
+   - keep diagnostic-only if it is mainly useful for QA;
+   - use it as a warning/second opinion if it spots possible status drift;
+   - allow it to influence final health/status only after real-case agreement is
+     strong enough and the UI can explain why.
+4. Add user-facing safeguards before any influence:
+   - status changes must cite transcript evidence, not just classifier labels;
+   - diagnostics must never be presented as agreed project facts;
+   - if classifier and report disagree, prefer a visible review flag over a
+     silent override.
+5. Regression-test the chosen mode:
+   - route tests keep `decisionUse: diagnostics_only` until the product decision
+     changes;
+   - golden eval cases cover agreement, disagreement and weak-evidence inputs;
+   - fail-open behaviour remains covered for classifier timeout/failure.
+
+Implemented in this pass:
+
+- `scripts/run_project_update_golden_eval.py` has an optional
+  `--with-status-classifier` mode;
+- the eval attaches `statusClassifierComparison` per case with report health,
+  classifier top status, top action state, top signals and comparison result;
+- classifier output is pinned to `decisionUse: diagnostics_only`;
+- classifier failures/timeouts become warnings while the existing report-quality
+  gate still passes or fails on the report output;
+- the CLI exposes chunk and timeout controls so the diagnostic can be run as a
+  quick smoke or a fuller offline comparison.
 
 Acceptance:
 
@@ -480,11 +566,20 @@ Only start this after Priorities 1-3 are trustworthy.
 
 Suggested integration order:
 
-1. expose classifier output as diagnostics only;
+1. expose classifier output as diagnostics only - done 2026-07-27;
 2. compare classifier status/action-state/signal output against current report
-   output in the golden eval;
+   output in the golden eval - done 2026-07-28;
 3. decide whether it should influence health/status decisions;
 4. never let it override transcript evidence without a visible diagnostic.
+
+Remaining decision task:
+
+- run the classifier comparison across the internal pilot transcripts when
+  available;
+- document a decision: diagnostics-only, review-flag, or controlled influence;
+- only if influence is approved, add conservative logic that uses classifier
+  output as a cross-check and requires transcript-backed evidence before
+  changing user-facing statuses.
 
 ## Deployment Checklist
 
