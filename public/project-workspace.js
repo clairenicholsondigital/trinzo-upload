@@ -38,6 +38,22 @@
     return `<span class="status-pill" data-status="${escapeHtml(value)}">${escapeHtml(value)}</span>`;
   }
 
+  function projectCard(project, currentProjectId) {
+    const selected = String(project.projectId) === String(currentProjectId || '');
+    return `
+      <button type="button" class="project-card ${selected ? 'selected' : ''}" data-open-project="${escapeHtml(project.projectId)}" aria-current="${selected ? 'true' : 'false'}">
+        <span class="pc-name">${escapeHtml(project.projectName || `Project ${project.projectId}`)}</span>
+        <span class="muted">${escapeHtml(project.clientName || 'No client set')}</span>
+        <span class="pc-meta">
+          ${statusPill(project.status)}
+          <span class="badge muted">${escapeHtml(project.reportCount || 0)} reports</span>
+          <span class="badge muted">${escapeHtml(project.activeMilestoneCount || 0)} milestones</span>
+          ${selected ? '<span class="badge success">Current</span>' : ''}
+        </span>
+      </button>
+    `;
+  }
+
   // ---- Project chooser -------------------------------------------------------
 
   function renderChooser(projects) {
@@ -73,17 +89,7 @@
 
     const grid = document.getElementById('chooserGrid');
     grid.innerHTML = projects.length
-      ? projects.map((project) => `
-          <button type="button" class="project-card" data-open-project="${escapeHtml(project.projectId)}">
-            <span class="pc-name">${escapeHtml(project.projectName || `Project ${project.projectId}`)}</span>
-            <span class="muted">${escapeHtml(project.clientName || 'No client set')}</span>
-            <span class="pc-meta">
-              ${statusPill(project.status)}
-              <span class="badge muted">${escapeHtml(project.reportCount || 0)} reports</span>
-              <span class="badge muted">${escapeHtml(project.activeMilestoneCount || 0)} milestones</span>
-            </span>
-          </button>
-        `).join('')
+      ? projects.map((project) => projectCard(project, PW.getSelectedProjectId())).join('')
       : '<p class="empty-state">No projects yet. Create your first one below.</p>';
 
     grid.querySelectorAll('[data-open-project]').forEach((card) => {
@@ -155,6 +161,29 @@
       </section>
       ${contextWarning}
       <div id="editProjectPanel"></div>
+    `;
+  }
+
+  function renderProjectSwitcher(project) {
+    const projects = PW.getCachedProjects();
+    const otherProjects = projects.filter((item) => String(item.projectId) !== String(project.projectId));
+    const previewProjects = [project, ...otherProjects].slice(0, 4);
+    const hiddenCount = Math.max(projects.length - previewProjects.length, 0);
+    return `
+      <section class="panel project-switcher-panel">
+        <div>
+          <span class="eyebrow">Choose project</span>
+          <h2>Working in: ${escapeHtml(project.projectName || `Project ${project.projectId}`)}</h2>
+          <p class="intro">Projects are separate workspaces. Pick another project below, or use the full chooser to create/manage projects.</p>
+        </div>
+        <div class="compact-project-grid">
+          ${previewProjects.map((item) => projectCard(item, project.projectId)).join('')}
+        </div>
+        <div class="actions switcher-actions">
+          <button id="openProjectChooserBtn" type="button">View all projects${hiddenCount ? ` (+${hiddenCount})` : ''}</button>
+          <button id="hideProjectSwitcherBtn" class="secondary" type="button">Hide project list</button>
+        </div>
+      </section>
     `;
   }
 
@@ -344,6 +373,34 @@
     });
   }
 
+  function attachProjectSwitcher(project) {
+    const slot = document.getElementById('projectSwitcherSlot');
+    const fullChooserBtn = document.getElementById('openProjectChooserBtn');
+    const hideBtn = document.getElementById('hideProjectSwitcherBtn');
+    if (!slot) return;
+    slot.querySelectorAll('[data-open-project]').forEach((card) => {
+      card.addEventListener('click', () => {
+        const nextProjectId = card.getAttribute('data-open-project');
+        if (String(nextProjectId) === String(project.projectId)) return;
+        openProject(nextProjectId);
+      });
+    });
+    if (fullChooserBtn) fullChooserBtn.addEventListener('click', () => renderChooser(PW.getCachedProjects()));
+    if (hideBtn) hideBtn.addEventListener('click', () => {
+      slot.innerHTML = `
+        <section class="panel project-switcher-collapsed">
+          <p><strong>Current project:</strong> ${escapeHtml(project.projectName || `Project ${project.projectId}`)}</p>
+          <button id="showProjectSwitcherBtn" type="button">Choose/switch project</button>
+        </section>
+      `;
+      const showBtn = document.getElementById('showProjectSwitcherBtn');
+      if (showBtn) showBtn.addEventListener('click', () => {
+        slot.innerHTML = renderProjectSwitcher(project);
+        attachProjectSwitcher(project);
+      });
+    });
+  }
+
   function renderWorkspace() {
     const project = PW.getProject(PW.getSelectedProjectId());
     if (!project) {
@@ -355,10 +412,12 @@
     const activeKey = currentStageKey();
     root.innerHTML = `
       ${renderProjectBar(project)}
+      <div id="projectSwitcherSlot">${renderProjectSwitcher(project)}</div>
       ${renderStageTabs(activeKey)}
       <div id="stagePanel"></div>
     `;
     attachEditPanel(project);
+    attachProjectSwitcher(project);
     root.querySelectorAll('[data-stage]').forEach((tab) => {
       tab.addEventListener('click', () => goToStage(tab.getAttribute('data-stage'), true));
     });
