@@ -331,7 +331,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
   function renderMilestoneEditorRows(milestones) {
     return asArray(milestones).map((item, index) => `
       <tr data-milestone-edit-row>
-        <td>${editableCell('milestone', item.milestone || '', `Milestone ${index + 1}`, 'input')}</td>
+        <td>${editableCell('milestone', item.milestone || '', `Milestone ${index + 1}`)}</td>
         <td>${editableCell('baseline_finish_date', item.baseline_finish_date || item.baselineDeadline || item.deadline || '', `Milestone ${index + 1} baseline`, 'input')}</td>
         <td>${editableCell('forecast_finish_date', item.forecast_finish_date || item.forecastDeadline || item.deadline || '', `Milestone ${index + 1} forecast`, 'input')}</td>
         <td>${editableCell('delivery_status', item.delivery_status || item.status || '', `Milestone ${index + 1} delivery status`, 'input')}</td>
@@ -346,10 +346,10 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
   function renderRiskEditorRows(risks) {
     return asArray(risks).map((risk, index) => `
       <tr data-risk-edit-row>
-        <td>${editableCell('riskTitle', risk.riskTitle || '', `Risk ${index + 1} title`, 'input')}</td>
+        <td>${editableCell('riskTitle', risk.riskTitle || '', `Risk ${index + 1} title`)}</td>
         <td>${editableCell('description', risk.description || '', `Risk ${index + 1} description`)}</td>
         <td>${editableCell('suggestedMitigation', risk.suggestedMitigation || risk.mitigation || '', `Risk ${index + 1} mitigation`)}</td>
-        <td>${editableCell('relatedMilestone', risk.relatedMilestone || '', `Risk ${index + 1} milestone`, 'input')}</td>
+        <td>${editableCell('relatedMilestone', risk.relatedMilestone || '', `Risk ${index + 1} milestone`)}</td>
         <td class="narrow"><button type="button" class="subtle" data-expand-editor-row>Expand</button><button type="button" class="danger" data-remove-editor-row>Remove</button></td>
       </tr>`).join('') || '';
   }
@@ -360,7 +360,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
         <td>${editableCell('action', action.action || action.meetingActionPoint || '', `Action ${index + 1}`)}</td>
         <td>${editableCell('owner', action.owner || action.meetingActionPointOwner || '', `Action ${index + 1} owner`, 'input')}</td>
         <td>${editableCell('deadline', action.deadline || action.meetingActionPointDeadline || '', `Action ${index + 1} deadline`, 'input')}</td>
-        <td>${editableCell('relatedMilestone', action.related_milestone || action.relatedMilestone || '', `Action ${index + 1} milestone`, 'input')}</td>
+        <td>${editableCell('relatedMilestone', action.related_milestone || action.relatedMilestone || '', `Action ${index + 1} milestone`)}</td>
         <td class="narrow"><button type="button" class="subtle" data-expand-editor-row>Expand</button><button type="button" class="danger" data-remove-editor-row>Remove</button></td>
       </tr>`).join('') || '';
   }
