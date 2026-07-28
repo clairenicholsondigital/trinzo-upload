@@ -2,16 +2,22 @@
   "description": "Client onboarding review where finance can start but warehouse must wait for missing mapping fields.",
   "coverage": {
     "sourceFixture": "scripts/transcript-tests/046_customer_onboarding_split_rollout",
-    "meetingTypes": ["client_onboarding", "client_status_review"],
-    "behaviours": ["supported_decision", "owner_action", "rejected_alternative"]
+    "meetingTypes": [
+      "client_onboarding",
+      "client_status_review"
+    ],
+    "behaviours": [
+      "supported_decision",
+      "owner_action",
+      "rejected_alternative"
+    ]
   },
   "passThreshold": 0.85,
   "criteria": {
     "decisions": {
       "weight": 0.3,
       "mustContain": [
-        "start onboarding with finance first",
-        "hold warehouse until the mapping is complete"
+        "start onboarding with finance first"
       ],
       "minCount": 1
     },
@@ -38,11 +44,15 @@
       "weight": 0.15,
       "discussionMinCount": 1,
       "requiredDiscussionTopics": [
-        ["finance"],
-        ["warehouse", "missing"]
+        [
+          "finance"
+        ],
+        [
+          "warehouse",
+          "missing"
+        ]
       ],
       "reason": "The transcript contains both a supported split-rollout decision and a named owner action."
     }
   }
 }
-

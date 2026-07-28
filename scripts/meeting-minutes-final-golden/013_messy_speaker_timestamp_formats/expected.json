@@ -2,8 +2,14 @@
   "description": "Messy transcript with attendee lines, inconsistent speaker labels, timestamps, one owner action, and one conditional decision.",
   "coverage": {
     "sourceFixture": "scripts/transcript-tests/071_messy_speaker_timestamp_formats",
-    "meetingTypes": ["supplier_onboarding_review"],
-    "behaviours": ["messy_speaker_timestamp", "owner_action", "timestamp_filtering"]
+    "meetingTypes": [
+      "supplier_onboarding_review"
+    ],
+    "behaviours": [
+      "messy_speaker_timestamp",
+      "owner_action",
+      "timestamp_filtering"
+    ]
   },
   "passThreshold": 0.85,
   "criteria": {
@@ -38,11 +44,16 @@
       "weight": 0.15,
       "discussionMinCount": 1,
       "requiredDiscussionTopics": [
-        ["due diligence", "insurance"],
-        ["finance", "pending"]
+        [
+          "due diligence",
+          "insurance"
+        ],
+        [
+          "finance",
+          "approval"
+        ]
       ],
       "reason": "Speaker and timestamp noise must be cleaned while preserving the substantive supplier-onboarding evidence."
     }
   }
 }
-

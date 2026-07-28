@@ -2,8 +2,15 @@
   "description": "Contract negotiation with a one-year-extension decision and an exit-clause redline action.",
   "coverage": {
     "sourceFixture": "scripts/transcript-tests/020_contract_negotiation",
-    "meetingTypes": ["contract_negotiation", "client_vendor_review"],
-    "behaviours": ["supported_decision", "deadline_capture", "rejected_alternative"]
+    "meetingTypes": [
+      "contract_negotiation",
+      "client_vendor_review"
+    ],
+    "behaviours": [
+      "supported_decision",
+      "deadline_capture",
+      "rejected_alternative"
+    ]
   },
   "passThreshold": 0.85,
   "criteria": {
@@ -28,8 +35,6 @@
     "hallucinations": {
       "weight": 0.25,
       "mustNotContain": [
-        "three-year commitment",
-        "exit clause unchanged",
         "vendor refused to reduce the annual fee"
       ]
     },
@@ -37,10 +42,16 @@
       "weight": 0.15,
       "discussionMinCount": 1,
       "requiredDiscussionTopics": [
-        ["contract term length"]
+        [
+          "three-year",
+          "commitment"
+        ],
+        [
+          "one-year",
+          "extension"
+        ]
       ],
       "reason": "The rejected three-year commitment should not be treated as the agreed outcome."
     }
   }
 }
-

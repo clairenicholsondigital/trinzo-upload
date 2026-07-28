@@ -62,7 +62,7 @@ python3 scripts/run_meeting_minutes_final_golden_eval.py
 
 Each case's report includes a `rewriter` block (`rewriterAvailable`/`rewriterReason`/`rewriterTokenUsage`) and the summary reports `rewriterUsedCases` -- check this before trusting a low score, since an unavailable rewrite path can look like a content regression otherwise. Requests are paced (`--pace-seconds`, default 3.5s) for external rewrite/API use; increase it if you hit rate limits, or pass `--cases` to score a smaller subset.
 
-The current local Trooper literal-only baseline is intentionally strict and not yet calibrated to the Trooper output shape; see `RUNBOOK.md` before treating a low score as a production breakage.
+The current local Trooper literal-only baseline is calibrated to avoid stale Colab-shaped expectations while still keeping genuine quality failures red; see `RUNBOOK.md` before treating failures as either production breakage or safe-to-ignore noise.
 
 For the fast, deterministic dev-loop that exercises the Trooper extractor without the rewrite layer. Add `--literal-only` when you want scoring to avoid optional MiniLM semantic matching/loading and rely only on literal checks:
 

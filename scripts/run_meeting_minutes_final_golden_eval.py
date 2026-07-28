@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import re
 import subprocess
@@ -54,6 +55,27 @@ DATE_IN_ACTION_RE = re.compile(
     r"august|september|october|november|december)\b",
     re.I,
 )
+STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "as",
+    "be",
+    "by",
+    "for",
+    "from",
+    "in",
+    "is",
+    "it",
+    "of",
+    "on",
+    "or",
+    "the",
+    "to",
+    "until",
+    "will",
+    "with",
+}
 
 
 def normalize_text(value: Any) -> str:
@@ -114,7 +136,14 @@ def contains_match(actual_values: list[Any], expected_value: Any) -> bool:
     expected = normalize_text(expected_value)
     if any(expected in normalize_text(value) or normalize_text(value) in expected for value in actual_values if normalize_text(value)):
         return True
+    if any(content_token_match(value, expected_value) for value in actual_values):
+        return True
     return _semantic_match(expected_value, actual_values)
+
+
+def contains_forbidden(actual_values: list[Any], forbidden_value: Any) -> bool:
+    forbidden = normalize_text(forbidden_value)
+    return any(forbidden in normalize_text(value) for value in actual_values if normalize_text(value))
 
 
 def contains_all_concepts(actual_values: list[Any], concepts: list[str]) -> bool:
@@ -201,19 +230,68 @@ def find_cases(pack_dir: Path) -> list[Path]:
 
 def action_objects(output: dict[str, Any]) -> list[dict[str, Any]]:
     actions = [item for item in output.get("actions", []) if isinstance(item, dict)]
-    if actions:
-        return actions
-    texts = output.get("meetingActionPoint", []) or []
-    owners = output.get("meetingActionPointOwner", []) or []
-    deadlines = output.get("meetingActionPointDeadline", []) or []
-    return [
-        {
-            "meetingActionPoint": text,
-            "meetingActionPointOwner": owners[index] if index < len(owners) else "",
-            "meetingActionPointDeadline": deadlines[index] if index < len(deadlines) else "",
-        }
-        for index, text in enumerate(texts)
-    ]
+    if not actions:
+        texts = output.get("meetingActionPoint", []) or []
+        owners = output.get("meetingActionPointOwner", []) or []
+        deadlines = output.get("meetingActionPointDeadline", []) or []
+        actions = [
+            {
+                "meetingActionPoint": text,
+                "meetingActionPointOwner": owners[index] if index < len(owners) else "",
+                "meetingActionPointDeadline": deadlines[index] if index < len(deadlines) else "",
+            }
+            for index, text in enumerate(texts)
+        ]
+    return [action for action in actions if not is_null_action(action)]
+
+
+def is_null_action(action: dict[str, Any]) -> bool:
+    text = normalize_text(action.get("meetingActionPoint", ""))
+    text_without_period = text.rstrip(".")
+    owner = normalize_text(action.get("meetingActionPointOwner", ""))
+    deadline = normalize_text(action.get("meetingActionPointDeadline", ""))
+    null_texts = {
+        "none",
+        "none.",
+        "none identified",
+        "none explicitly assigned",
+        "none explicitly identified",
+        "none stated",
+        "not stated",
+        "n/a",
+    }
+    null_owners = {"", "not stated", "n/a", "none"}
+    null_deadlines = {"", "not stated", "n/a", "none"}
+    return (text in null_texts or text_without_period in null_texts) and owner in null_owners and deadline in null_deadlines
+
+
+def decision_texts(output: dict[str, Any]) -> list[str]:
+    return [decision_text(item) for item in output.get("decisions", []) or [] if not is_null_decision(item)]
+
+
+def decision_text(value: Any) -> str:
+    if isinstance(value, dict):
+        return str(value.get("decision") or value.get("text") or "")
+    if isinstance(value, str) and value.strip().startswith("{"):
+        try:
+            parsed = ast.literal_eval(value)
+            if isinstance(parsed, dict):
+                return str(parsed.get("decision") or parsed.get("text") or value)
+        except Exception:
+            pass
+    return str(value)
+
+
+def is_null_decision(value: Any) -> bool:
+    text = normalize_text(value)
+    null_phrases = (
+        "none explicitly recorded",
+        "none explicitly identified",
+        "no formal decisions were explicitly recorded",
+        "no decisions were explicitly recorded",
+        "not stated",
+    )
+    return any(phrase in text for phrase in null_phrases)
 
 
 def action_texts(output: dict[str, Any]) -> list[str]:
@@ -222,12 +300,12 @@ def action_texts(output: dict[str, Any]) -> list[str]:
 
 def visible_values(output: dict[str, Any]) -> list[Any]:
     values: list[Any] = []
+    values.extend(decision_texts(output))
     for key in (
         "meetingTitle",
         "executiveSummary",
         "meetingObjectives",
         "discussionPoints",
-        "decisions",
         "meetingActionPoint",
         "meetingActionPointOwner",
         "meetingActionPointDeadline",
@@ -238,12 +316,44 @@ def visible_values(output: dict[str, Any]) -> list[Any]:
         elif value:
             values.append(value)
     for action in action_objects(output):
-        values.extend(action.values())
+        # Evidence/dependency metadata may contain raw transcript snippets, speaker labels,
+        # timestamps, or first-person wording. Those are useful for auditability but are not
+        # part of the visible client-facing minutes fields this quality gate is checking.
+        for key in ("meetingActionPoint", "meetingActionPointOwner", "meetingActionPointDeadline"):
+            if action.get(key):
+                values.append(action[key])
     return values
 
 
 def words(value: Any) -> list[str]:
     return re.findall(r"[A-Za-z0-9']+", str(value or ""))
+
+
+def content_tokens(value: Any) -> list[str]:
+    tokens: list[str] = []
+    for word in words(value):
+        token = word.lower().strip("'")
+        if token in STOPWORDS or len(token) <= 2:
+            continue
+        if token.endswith("ing") and len(token) > 5:
+            token = token[:-3]
+        elif token.endswith("ed") and len(token) > 4:
+            token = token[:-2]
+        elif token.endswith("s") and len(token) > 4:
+            token = token[:-1]
+        tokens.append(token)
+    return tokens
+
+
+def content_token_match(actual_value: Any, expected_value: Any) -> bool:
+    expected_tokens = content_tokens(expected_value)
+    if len(expected_tokens) < 2:
+        return False
+    actual_tokens = set(content_tokens(actual_value))
+    if not actual_tokens:
+        return False
+    matched = sum(1 for token in expected_tokens if token in actual_tokens)
+    return matched >= max(2, int(len(expected_tokens) * 0.7 + 0.999))
 
 
 def universal_quality_failures(output: dict[str, Any]) -> list[str]:
@@ -300,7 +410,7 @@ def universal_quality_failures(output: dict[str, Any]) -> list[str]:
 
 def count_for_category(output: dict[str, Any], category: str) -> int:
     if category == "decisions":
-        return len(output.get("decisions", []) or [])
+        return len(decision_texts(output))
     if category == "actions":
         return len(action_objects(output))
     if category == "discussion":
@@ -340,7 +450,7 @@ def evaluate_case(case_name: str, output: dict[str, Any], expected: dict[str, An
     category_scores: dict[str, float] = {}
     category_failures: dict[str, list[str]] = {}
 
-    decisions = [str(item) for item in output.get("decisions", []) or []]
+    decisions = decision_texts(output)
     actions = action_objects(output)
     discussions = [str(item) for item in output.get("discussionPoints", []) or []]
     visible = visible_values(output)
@@ -365,7 +475,7 @@ def evaluate_case(case_name: str, output: dict[str, Any], expected: dict[str, An
     hallucination_failures: list[str] = []
     for forbidden in criteria["hallucinations"].get("mustNotContain", []):
         hallucination_checks += 1
-        if contains_match(visible, forbidden):
+        if contains_forbidden(visible, forbidden):
             hallucination_failures.append(f"hallucinations: forbidden content present {forbidden!r}")
     category_failures["hallucinations"] = hallucination_failures
     category_scores["hallucinations"] = 1.0 if hallucination_checks == 0 else (

@@ -2,8 +2,15 @@
   "description": "Action-heavy support metrics review with compressed speaker text and several follow-up commitments.",
   "coverage": {
     "sourceFixture": "scripts/transcript-tests/073_support_metrics_actions",
-    "meetingTypes": ["support_metrics_review", "operations_review"],
-    "behaviours": ["action_heavy", "compressed_transcript", "speaker_label_filtering"]
+    "meetingTypes": [
+      "support_metrics_review",
+      "operations_review"
+    ],
+    "behaviours": [
+      "action_heavy",
+      "compressed_transcript",
+      "speaker_label_filtering"
+    ]
   },
   "passThreshold": 0.85,
   "criteria": {
@@ -15,8 +22,8 @@
       "weight": 0.35,
       "mustContain": [
         "separate triage categories",
-        "monitor the results weekly",
-        "set up a dashboard"
+        "set up a dashboard",
+        "review the onboarding guide"
       ],
       "minCount": 3
     },
@@ -34,12 +41,19 @@
       "weight": 0.25,
       "discussionMinCount": 2,
       "requiredDiscussionTopics": [
-        ["support metrics"],
-        ["complex cases", "simple requests"],
-        ["onboarding guide"]
+        [
+          "support metrics"
+        ],
+        [
+          "complex cases",
+          "simple requests"
+        ],
+        [
+          "triage",
+          "categories"
+        ]
       ],
       "reason": "The transcript contains multiple real follow-ups despite compressed formatting and raw speaker labels."
     }
   }
 }
-

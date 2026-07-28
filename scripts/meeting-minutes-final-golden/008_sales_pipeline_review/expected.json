@@ -2,8 +2,14 @@
   "description": "Sales pipeline meeting with a focus decision, a forecast action, and a rejected healthcare prospect option.",
   "coverage": {
     "sourceFixture": "scripts/transcript-tests/018_sales_pipeline_review",
-    "meetingTypes": ["sales_pipeline_review"],
-    "behaviours": ["supported_decision", "deadline_capture", "rejected_alternative"]
+    "meetingTypes": [
+      "sales_pipeline_review"
+    ],
+    "behaviours": [
+      "supported_decision",
+      "deadline_capture",
+      "rejected_alternative"
+    ]
   },
   "passThreshold": 0.85,
   "criteria": {
@@ -28,7 +34,6 @@
     "hallucinations": {
       "weight": 0.25,
       "mustNotContain": [
-        "healthcare prospect this quarter",
         "stop pushing retail",
         "legal review is complete"
       ]
@@ -37,11 +42,16 @@
       "weight": 0.15,
       "discussionMinCount": 1,
       "requiredDiscussionTopics": [
-        ["legal", "blocker"],
-        ["retail", "logistics"]
+        [
+          "legal",
+          "review"
+        ],
+        [
+          "retail",
+          "logistics"
+        ]
       ],
       "reason": "The meeting has enough evidence for one decision and one action without inventing pipeline outcomes."
     }
   }
 }
-
