@@ -70,6 +70,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
 .colour-field { display:flex; align-items:center; justify-content:center; min-height:1.6rem; }
 .colour-swatch { display:inline-block; width:1.35rem; height:1.35rem; border-radius:999px; border:2px solid rgba(238,243,255,.85); box-shadow:0 0 0 1px rgba(0,0,0,.45), inset 0 0 0 1px rgba(0,0,0,.25); }
 .colour-swatch.unknown { background:transparent; border-style:dashed; border-color:var(--muted); }
+.colour-with-label { display:inline-flex; align-items:center; gap:.45rem; }
 @media print {
   body { background:#fff; color:#111827; padding:0; }
   .nav, .actions, .edit-panel, details { display:none !important; }
@@ -219,6 +220,10 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
     const colour = colourValue(value);
     const label = friendlyLabel(value);
     return `<span class="colour-field" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}"><span class="colour-swatch ${colour ? '' : 'unknown'}" style="${colour ? `background:${escapeHtml(colour)}` : ''}"></span></span>`;
+  }
+
+  function renderColourWithLabel(value) {
+    return `<span class="colour-with-label">${renderColour(value)}<span>${escapeHtml(friendlyLabel(value))}</span></span>`;
   }
 
   function combinedNextSteps(item) {
@@ -513,7 +518,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
           <div class="item"><div class="label">Status</div><div class="value">${statusBadge(report.reportStatus)}</div></div>
           <div class="item"><div class="label">Approval</div><div class="value">${escapeHtml(approvalText)}</div></div>
           <div class="item"><div class="label">Overall health</div><div class="value">${escapeHtml(proseOrLabel(projectReport.overallHealth))}</div></div>
-          <div class="item"><div class="label">Overall status</div><div class="value">${renderColour(projectReport.overallHealthRag)}</div></div>
+          <div class="item"><div class="label">Overall status</div><div class="value">${renderColourWithLabel(projectReport.overallHealthRag)}</div></div>
           ${statusCrossCheck}
         </div>
       </section>

@@ -76,18 +76,18 @@
         <p class="intro">Review the current project position, recent report history and stored project memory. Memory can guide future reports, but report evidence remains transcript-only.</p>
         <details>
           <summary>Workspace management</summary>
-          <p class="muted">Use these controls after review. They change what counts as the active baseline for future reports.</p>
+          <p class="muted">Use these controls after review. They change what future reports compare against.</p>
           <div class="actions">
-            <button id="createSnapshotBtn" type="button" title="Save a point-in-time copy of the current project context so you can refer back to it later." ${context.found ? '' : 'disabled'}>Create context snapshot</button>
-            <button id="markOfficialBtn" type="button" title="Mark the currently active milestones and risks as the agreed baseline for future reports." ${context.found ? '' : 'disabled'}>Mark active context official</button>
-            <button id="cleanupTestsBtn" type="button" title="Archive draft/test reports and remove non-official context clutter while keeping official items active." ${context.found ? '' : 'disabled'}>Tidy draft data</button>
+            <button id="createSnapshotBtn" type="button" title="Save a point-in-time copy of the current project profile so you can refer back to it later." ${context.found ? '' : 'disabled'}>Save profile snapshot</button>
+            <button id="markOfficialBtn" type="button" title="Confirm the currently active milestones and risks as the agreed baseline for future reports." ${context.found ? '' : 'disabled'}>Approve active baseline</button>
+            <button id="cleanupTestsBtn" type="button" title="Archive draft reports and tidy profile clutter while keeping approved items active." ${context.found ? '' : 'disabled'}>Tidy draft workspace</button>
           </div>
           <div class="empty-state" style="margin-top:.75rem">
             <strong>What these do</strong>
             <ul>
-              <li><strong>Create context snapshot:</strong> saves a point-in-time copy of the current project context for later reference.</li>
-              <li><strong>Mark active context official:</strong> makes the current active milestones and risks the agreed baseline for future reports.</li>
-              <li><strong>Tidy draft data:</strong> clears test/draft clutter while keeping official milestones, risks and approved context.</li>
+              <li><strong>Save profile snapshot:</strong> saves a point-in-time copy of the current project profile for later reference.</li>
+              <li><strong>Approve active baseline:</strong> confirms the current milestones and risks as the agreed baseline for future reports.</li>
+              <li><strong>Tidy draft workspace:</strong> clears draft clutter while keeping approved milestones, risks and context.</li>
             </ul>
           </div>
         </details>
@@ -143,8 +143,8 @@
         </details>
       </section>
       <section class="panel">
-        <h2>Pilot milestone progress</h2>
-        <p class="intro">Read-only view of the latest progress against the monitored pilot milestones. Use this to see what is complete, what still needs checking, and what should be covered in the next update.</p>
+        <h2>Milestone progress</h2>
+        <p class="intro">Read-only view of the latest progress against the monitored milestones. Use this to see what is complete, what still needs checking, and what should be covered in the next update.</p>
         <div class="table-scroll"><table><thead><tr><th>Milestone</th><th>Latest status</th><th>Previous status</th><th>Trend</th><th>Forecast</th><th>Monitor?</th><th>Summary</th></tr></thead><tbody>
           ${milestones.map((milestone) => {
             const latest = milestone.latestAssessment || {};
@@ -400,28 +400,28 @@
     });
 
     if (officialBtn) officialBtn.addEventListener('click', async () => {
-      const officialLabel = window.prompt('Official label for this baseline?', 'Official baseline');
+      const officialLabel = window.prompt('Label for this agreed baseline?', 'Approved baseline');
       if (!officialLabel) return;
       officialBtn.disabled = true;
       status.className = 'status';
-      status.textContent = 'Marking active milestones and risks as official…';
+      status.textContent = 'Approving active milestones and risks as the baseline…';
       try {
         const result = await PW.request('context/mark-official', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ projectId, officialLabel })
         });
         status.className = 'status success';
-        status.textContent = `Marked official: ${result.result.officialMilestones} milestones, ${result.result.officialRisks} risks. Reloading…`;
+        status.textContent = `Approved baseline: ${result.result.officialMilestones} milestones, ${result.result.officialRisks} risks. Reloading…`;
         window.setTimeout(() => mount(container, ctx), 700);
       } catch (error) {
         status.className = 'status error';
-        status.textContent = error.message || 'Could not mark context official.';
+        status.textContent = error.message || 'Could not approve the active baseline.';
         officialBtn.disabled = false;
       }
     });
 
     if (cleanupBtn) cleanupBtn.addEventListener('click', async () => {
-      if (!window.confirm('Tidy draft data for this project? This archives draft reports, deactivates non-official milestones/risks, and removes non-official context snapshots. Official items stay active.')) return;
+      if (!window.confirm('Tidy draft workspace for this project? This archives draft reports, removes unapproved profile clutter, and keeps approved items active.')) return;
       cleanupBtn.disabled = true;
       status.className = 'status';
       status.textContent = 'Clearing draft clutter…';

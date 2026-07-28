@@ -11,7 +11,7 @@
     { key: 'process', no: 1, label: 'Update meeting', hint: 'Run the meeting → draft report' },
     { key: 'insights', no: 2, label: 'Project profile', hint: 'Milestones, risks & baseline' },
     { key: 'reports', no: 3, label: 'Saved reports', hint: 'Review previous updates' },
-    { key: 'setup', no: 4, label: 'Advanced setup', hint: 'Memory & bulk tools' }
+    { key: 'setup', no: 4, label: 'Setup', hint: 'Milestones & project memory' }
   ];
   const STAGE_KEYS = STAGES.map((stage) => stage.key);
 
@@ -318,8 +318,12 @@
           </div>
           <div class="actions" style="margin-top:.75rem">
             <button id="saveProjectDetailsBtn" class="primary" type="button">Save details</button>
-            <button id="deleteProjectBtn" class="danger" type="button">Delete project</button>
           </div>
+          <details class="danger-zone" style="margin-top:1rem">
+            <summary>Danger zone</summary>
+            <p class="muted">Only use this if the whole project workspace was created by mistake.</p>
+            <button id="deleteProjectBtn" class="danger" type="button">Delete project workspace</button>
+          </details>
           <p id="editProjectStatusMsg" class="status"></p>
         </section>
       `;
@@ -365,7 +369,7 @@
 
       deleteBtn.addEventListener('click', async () => {
         const summary = `${project.projectName} (${project.reportCount || 0} reports, ${project.activeMilestoneCount || 0} milestones)`;
-        if (!window.confirm(`Delete ${summary}? This also deletes this project's saved reports, milestones, risks, context snapshots and knowledge items.`)) return;
+        if (!window.confirm(`Delete ${summary}? This also deletes this project's saved reports, milestones, risks, snapshots and project memory.`)) return;
         deleteBtn.disabled = true;
         try {
           await PW.request(`projects/${encodeURIComponent(project.projectId)}`, { method: 'DELETE' });
