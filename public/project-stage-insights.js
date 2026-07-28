@@ -18,8 +18,8 @@
         <td><textarea data-field="description">${inputValue(milestone.description || '')}</textarea></td>
         <td><input data-field="baselineFinishDate" type="date" value="${inputValue(dateOnly(milestone.baselineFinishDate) === '-' ? '' : dateOnly(milestone.baselineFinishDate))}" /></td>
         <td><input data-field="forecastFinishDate" type="date" value="${inputValue(dateOnly(milestone.forecastFinishDate) === '-' ? '' : dateOnly(milestone.forecastFinishDate))}" /></td>
-        <td>${milestone.isOfficial ? `✅ ${escapeHtml(milestone.officialLabel || 'Official')}` : 'Draft'}</td>
-        <td class="actions"><button type="button" data-save-milestone>Save</button><button type="button" class="danger" data-delete-milestone>Deactivate</button></td>
+        <td><label class="monitor-checkbox"><input type="checkbox" data-monitor-profile checked /> Monitor</label></td>
+        <td class="actions"><button type="button" data-save-milestone>Save</button></td>
       </tr>
     `).join('') || '<tr><td colspan="7"><strong>No profile milestones yet.</strong><br />Add milestones in Setup or from a reviewed report.</td></tr>';
   }
@@ -31,8 +31,8 @@
         <td><input data-field="category" value="${inputValue(risk.category || 'General')}" /></td>
         <td><textarea data-field="description">${inputValue(risk.description || '')}</textarea></td>
         <td><textarea data-field="mitigation">${inputValue(risk.mitigation || '')}</textarea></td>
-        <td>${risk.isOfficial ? `✅ ${escapeHtml(risk.officialLabel || 'Official')}` : 'Draft'}</td>
-        <td class="actions"><button type="button" data-save-risk>Save</button><button type="button" class="danger" data-delete-risk>Deactivate</button></td>
+        <td><label class="monitor-checkbox"><input type="checkbox" data-monitor-profile checked /> Monitor</label></td>
+        <td class="actions"><button type="button" data-save-risk>Save</button></td>
       </tr>
     `).join('') || '<tr><td colspan="6"><strong>No configured risks yet.</strong><br />Add a core project risk below so future updates can track it.</td></tr>';
   }
@@ -97,14 +97,14 @@
       </section>
       <section class="panel">
         <h2>Profile milestones</h2>
-        <div class="table-scroll profile-editor-scroll"><table class="profile-editor-table"><thead><tr><th>Milestone</th><th>Category</th><th>Description</th><th>Baseline</th><th>Forecast</th><th>Official</th><th>Actions</th></tr></thead><tbody id="profileMilestonesBody">
+        <div class="table-scroll profile-editor-scroll"><table class="profile-editor-table"><thead><tr><th>Milestone</th><th>Category</th><th>Description</th><th>Baseline</th><th>Forecast</th><th>Monitor?</th><th>Actions</th></tr></thead><tbody id="profileMilestonesBody">
           ${renderMilestoneProfileRows(milestones)}
         </tbody></table></div>
       </section>
       <section class="panel">
         <h2>Configured risks</h2>
         <p class="intro">These are standing project risks, not one-off AI suggestions. Keep them current as part of the project profile.</p>
-        <div class="table-scroll profile-editor-scroll"><table class="profile-editor-table"><thead><tr><th>Risk</th><th>Category</th><th>Description</th><th>Mitigation</th><th>Official</th><th>Actions</th></tr></thead><tbody id="profileRisksBody">
+        <div class="table-scroll profile-editor-scroll"><table class="profile-editor-table"><thead><tr><th>Risk</th><th>Category</th><th>Description</th><th>Mitigation</th><th>Monitor?</th><th>Actions</th></tr></thead><tbody id="profileRisksBody">
           ${renderRiskProfileRows(activeRisks)}
         </tbody></table></div>
         <details style="margin-top:.75rem">
@@ -191,14 +191,35 @@
     status.textContent = message;
   }
 
+  async function removeFromMonitoring(container, ctx, kind, id, name) {
+    const label = kind === 'milestone' ? 'milestone' : 'configured risk';
+    const endpoint = kind === 'milestone' ? 'milestones' : 'risks';
+    if (!window.confirm(`Remove ${name || `this ${label}`} from ongoing project monitoring? Existing reports stay intact, but it will no longer appear in the active project profile.`)) {
+      return false;
+    }
+    setProfileStatus(container, `Removing ${label} from monitoring…`);
+    await PW.request(`${endpoint}/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    setProfileStatus(container, `${label.charAt(0).toUpperCase() + label.slice(1)} removed from monitoring. Reloading…`, 'success');
+    if (ctx.reloadProject) ctx.reloadProject();
+    window.setTimeout(() => mount(container, ctx), 500);
+    return true;
+  }
+
   function wireProfileEditors(container, ctx, projectId) {
     container.querySelectorAll('[data-save-milestone]').forEach((button) => {
       button.addEventListener('click', async () => {
         const row = button.closest('[data-profile-milestone]');
         if (!row) return;
+        const monitorBox = row.querySelector('[data-monitor-profile]');
+        const name = row.querySelector('[data-field="milestoneName"]')?.value || 'this milestone';
         button.disabled = true;
         setProfileStatus(container, 'Saving milestone profile…');
         try {
+          if (monitorBox && !monitorBox.checked) {
+            const removed = await removeFromMonitoring(container, ctx, 'milestone', row.getAttribute('data-profile-milestone'), name);
+            if (!removed) button.disabled = false;
+            return;
+          }
           await PW.request(`milestones/${encodeURIComponent(row.getAttribute('data-profile-milestone'))}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
@@ -214,33 +235,20 @@
       });
     });
 
-    container.querySelectorAll('[data-delete-milestone]').forEach((button) => {
-      button.addEventListener('click', async () => {
-        const row = button.closest('[data-profile-milestone]');
-        if (!row) return;
-        const name = row.querySelector('[data-field="milestoneName"]')?.value || 'this milestone';
-        if (!window.confirm(`Deactivate ${name}? It will stop being part of the active project profile, but existing reports stay intact.`)) return;
-        button.disabled = true;
-        setProfileStatus(container, 'Deactivating milestone…');
-        try {
-          await PW.request(`milestones/${encodeURIComponent(row.getAttribute('data-profile-milestone'))}`, { method: 'DELETE' });
-          setProfileStatus(container, 'Milestone deactivated. Reloading…', 'success');
-          if (ctx.reloadProject) ctx.reloadProject();
-          window.setTimeout(() => mount(container, ctx), 500);
-        } catch (error) {
-          setProfileStatus(container, error.message || 'Could not deactivate milestone.', 'error');
-          button.disabled = false;
-        }
-      });
-    });
-
     container.querySelectorAll('[data-save-risk]').forEach((button) => {
       button.addEventListener('click', async () => {
         const row = button.closest('[data-profile-risk]');
         if (!row) return;
+        const monitorBox = row.querySelector('[data-monitor-profile]');
+        const name = row.querySelector('[data-field="riskTitle"]')?.value || 'this risk';
         button.disabled = true;
         setProfileStatus(container, 'Saving configured risk…');
         try {
+          if (monitorBox && !monitorBox.checked) {
+            const removed = await removeFromMonitoring(container, ctx, 'risk', row.getAttribute('data-profile-risk'), name);
+            if (!removed) button.disabled = false;
+            return;
+          }
           await PW.request(`risks/${encodeURIComponent(row.getAttribute('data-profile-risk'))}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
@@ -251,26 +259,6 @@
           window.setTimeout(() => mount(container, ctx), 500);
         } catch (error) {
           setProfileStatus(container, error.message || 'Could not save risk.', 'error');
-          button.disabled = false;
-        }
-      });
-    });
-
-    container.querySelectorAll('[data-delete-risk]').forEach((button) => {
-      button.addEventListener('click', async () => {
-        const row = button.closest('[data-profile-risk]');
-        if (!row) return;
-        const name = row.querySelector('[data-field="riskTitle"]')?.value || 'this risk';
-        if (!window.confirm(`Deactivate ${name}? It will stop being part of the active project profile.`)) return;
-        button.disabled = true;
-        setProfileStatus(container, 'Deactivating configured risk…');
-        try {
-          await PW.request(`risks/${encodeURIComponent(row.getAttribute('data-profile-risk'))}`, { method: 'DELETE' });
-          setProfileStatus(container, 'Configured risk deactivated. Reloading…', 'success');
-          if (ctx.reloadProject) ctx.reloadProject();
-          window.setTimeout(() => mount(container, ctx), 500);
-        } catch (error) {
-          setProfileStatus(container, error.message || 'Could not deactivate risk.', 'error');
           button.disabled = false;
         }
       });
