@@ -84,16 +84,16 @@
       const milestones = PW.asArray(context.activeMilestones).slice(0, 6);
       const risks = PW.asArray(context.activeRisks).slice(0, 6);
       const milestoneHtml = milestones.length
-        ? milestones.map((item) => `<li><strong>${PW.escapeHtml(PW.friendlyLabel(item.milestoneName))}</strong>${item.forecastFinishDate ? ` <span class="muted">target/forecast ${PW.escapeHtml(PW.displayDate(item.forecastFinishDate))}</span>` : ''}<br /><span class="muted">Ask: what changed, what is blocked, and does the forecast still hold?</span></li>`).join('')
+        ? milestones.map((item) => `<li><strong>${PW.escapeHtml(PW.friendlyLabel(item.milestoneName))}</strong>${item.forecastFinishDate ? ` <span class="muted">Forecast ${PW.escapeHtml(PW.displayDate(item.forecastFinishDate))}</span>` : ''}</li>`).join('')
         : '<li class="muted">No monitored milestones yet — add them in the project profile if this meeting should track delivery progress.</li>';
       const riskHtml = risks.length
-        ? risks.map((item) => `<li><strong>${PW.escapeHtml(item.riskTitle || 'Risk')}</strong>${item.mitigation ? `<br /><span class="muted">Check: ${PW.escapeHtml(String(item.mitigation).slice(0, 150))}</span>` : '<br /><span class="muted">Ask: has this risk changed, reduced, or escalated?</span>'}</li>`).join('')
+        ? risks.map((item) => `<li><strong>${PW.escapeHtml(item.riskTitle || 'Risk')}</strong>${item.category ? ` <span class="muted">${PW.escapeHtml(PW.friendlyLabel(item.category))}</span>` : ''}${item.mitigation ? `<br /><span class="muted">Mitigation: ${PW.escapeHtml(String(item.mitigation).slice(0, 120))}${String(item.mitigation).length > 120 ? '…' : ''}</span>` : ''}</li>`).join('')
         : '<li class="muted">No monitored risks yet — add standing risks in the project profile if they need regular review.</li>';
       target.className = 'meeting-agenda';
       target.innerHTML = `
         <article class="agenda-step"><span class="step-no">1</span><div><h3>Start with changes since the last update</h3><ul><li>What has moved forward, changed, slipped, or become clearer?</li><li>Are there any decisions or actions from the previous update to close out?</li></ul></div></article>
-        <article class="agenda-step"><span class="step-no">2</span><div><h3>Review monitored milestones</h3><ul>${milestoneHtml}</ul></div></article>
-        <article class="agenda-step"><span class="step-no">3</span><div><h3>Review monitored risks</h3><ul>${riskHtml}</ul></div></article>
+        <article class="agenda-step"><span class="step-no">2</span><div><h3>Review monitored milestones</h3><p class="muted">For each item, confirm what changed, what is blocked, and whether the forecast still holds.</p><ul>${milestoneHtml}</ul></div></article>
+        <article class="agenda-step"><span class="step-no">3</span><div><h3>Review monitored risks</h3><p class="muted">Confirm whether each risk has reduced, escalated, or needs a new action.</p><ul>${riskHtml}</ul></div></article>
         <article class="agenda-step"><span class="step-no">4</span><div><h3>Capture decisions, actions and next update</h3><ul><li>What decisions were made?</li><li>Who owns each action and by when?</li><li>What should the client-facing update say?</li></ul></div></article>
       `;
     } catch (error) {
