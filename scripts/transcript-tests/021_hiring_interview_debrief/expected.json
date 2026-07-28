@@ -8,6 +8,13 @@
   ],
   "expectedDecisionCount": 1,
   "expectedDiscussionCountMin": 1,
+  "expectedActionCountMin": 1,
+  "mustContainActions": [
+    {
+      "text": "invite Maya to the final interview",
+      "owner": "Lena"
+    }
+  ],
   "mustContainDiscussionTopics": [
     [
       "system design"
