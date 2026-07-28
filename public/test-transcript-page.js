@@ -53,7 +53,7 @@ function buildTranscriptTestPage(config) {
         <textarea id="transcriptText" placeholder="Paste transcript here..."></textarea>
         <small>If both a file and pasted text are provided, pasted text takes priority.</small>
       </div>
-      ${config.projectReportUi ? '<div class="safeguard-banner"><strong>Draft workspace:</strong> generated project updates are review drafts. Check the selected project context, evidence, risks, actions and dates before approving or sharing.</div>' : ''}
+      ${config.projectReportUi ? '<div class="safeguard-banner"><strong>Draft workspace:</strong> generated project updates are review drafts. Check the selected project context, evidence, risks, actions and dates before approving or sharing.</div><div class="safeguard-banner quiet"><strong>Data handling:</strong> pasted notes/transcripts are sent to the server to create the draft. Browser autosave stays on this device until you save. Saving a report stores the transcript, draft report and project context in this workspace so the report can be reviewed later.</div>' : ''}
       <div class="actions">
         <button id="goBtn" type="button">${config.buttonText}</button>
         <button id="clearBtn" class="secondary" type="button">${config.resetButtonText || 'Clear / reset'}</button>
@@ -1413,6 +1413,7 @@ function buildTranscriptMinilmOnlyPage(config) {
         <small>If both a file and pasted text are provided, pasted text takes priority.</small>
       </div>
       <div class="safeguard-banner"><strong>Draft workflow:</strong> generated minutes must be reviewed before exporting or sending. Confirm the title, date, discussion points, owners and deadlines against the transcript.</div>
+      <div class="safeguard-banner quiet"><strong>Data handling:</strong> uploaded or pasted transcripts are sent to the server to create draft minutes. Saved jobs keep the transcript and generated result until the job is deleted.</div>
       <div class="actions">
         <button id="minilmOnlyGoBtn" type="button">${config.buttonText}</button>
         <button id="minilmOnlyClearBtn" class="secondary" type="button">Clear / reset</button>
