@@ -53,7 +53,7 @@ function buildTranscriptTestPage(config) {
         <textarea id="transcriptText" placeholder="Paste transcript here..."></textarea>
         <small>If both a file and pasted text are provided, pasted text takes priority.</small>
       </div>
-      ${config.projectReportUi ? '<div class="safeguard-banner"><strong>Draft workspace:</strong> generated project updates are review drafts. Check the selected project context, evidence, risks, actions and dates before approving or sharing.</div><div class="safeguard-banner quiet"><strong>Data handling:</strong> pasted notes/transcripts are sent to the server to create the draft. Browser autosave stays on this device until you save. Saving a report stores the transcript, draft report and project context in this workspace so the report can be reviewed later.</div>' : ''}
+      ${config.projectReportUi ? '<div class="safeguard-banner quiet"><strong>Review before approving:</strong> check the evidence, dates, risks and actions before sharing or saving as project memory.<details style="margin-top:.5rem"><summary>Data handling</summary><p class="muted">Notes/transcripts are sent to the server to create the draft. Browser autosave stays on this device until you save; saved reports keep the source text and draft so they can be reviewed later.</p></details></div>' : ''}
       <div class="actions">
         <button id="goBtn" type="button">${config.buttonText}</button>
         <button id="clearBtn" class="secondary" type="button">${config.resetButtonText || 'Clear / reset'}</button>
