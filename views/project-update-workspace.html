@@ -133,6 +133,11 @@ th:last-child, td:last-child { border-right:0; }
 .chunk-text { color:#dbeafe; font-size:.94rem; }
 .empty-state { border:1px dashed var(--border); border-radius:12px; padding:1rem; color:var(--muted); background:rgba(7,17,38,.55); }
 pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:var(--soft); border:1px solid var(--border); border-radius:10px; padding:1rem; }
+.support-details { background:rgba(7,17,38,.35); border:1px solid rgba(148,163,184,.22); border-radius:12px; padding:.7rem .85rem; color:var(--muted); }
+.support-details summary { cursor:pointer; color:#cbd5e1; font-weight:700; }
+.support-details[open] { background:rgba(7,17,38,.62); }
+.support-details details { border-top:1px solid rgba(148,163,184,.16); padding-top:.65rem; }
+.support-details textarea, .support-details pre { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:.9rem; }
 .print-only { display:none; }
 #projectReportPrintOutput { display:none; }
 

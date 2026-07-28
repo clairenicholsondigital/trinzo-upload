@@ -37,6 +37,10 @@ label { display:grid; gap:.35rem; color:var(--muted); font-weight:700; }
 .status.error { color:#fecaca; }
 .status.success { color:#bbf7d0; }
 pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:#071126; border:1px solid var(--border); border-radius:10px; padding:1rem; }
+.support-details { background:rgba(7,17,38,.35); border:1px solid rgba(148,163,184,.22); border-radius:12px; padding:.7rem .85rem; color:var(--muted); }
+.support-details summary { cursor:pointer; color:#cbd5e1; font-weight:700; }
+.support-details[open] { background:rgba(7,17,38,.62); }
+.support-details pre { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:.9rem; }
 .trend-improving, .trend-resolved { color:#bbf7d0; }
 .trend-deteriorating, .trend-new_risk { color:#fecaca; }
 .trend-new_update, .trend-replanned { color:#bfdbfe; }
@@ -233,8 +237,8 @@ pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:#071126;
         </div>
         <div id="knowledgeAskResult" class="empty-state">Ask a question to retrieve relevant project memory.</div>
       </section>
-      <section class="panel">
-        <details><summary>Advanced context export</summary>${renderJson(context)}</details>
+      <section class="panel support-panel">
+        <details class="support-details"><summary>Support / audit details</summary>${renderJson(context)}</details>
       </section>
     `;
 
@@ -468,7 +472,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:#071126;
           ${items.map((item) => `<tr><td>${escapeHtml(friendlyLabel(item.itemType))}</td><td>${escapeHtml(item.itemLabel || item.itemKey || '-')}</td><td>${escapeHtml(friendlyLabel(item.status))}</td><td>${escapeHtml(friendlyLabel(item.previousStatus))}</td><td class="${escapeHtml(trendClass(item.trend))}">${escapeHtml(friendlyLabel(item.trend))}</td><td>${escapeHtml(item.confidence || '-')}</td></tr>`).join('') || '<tr><td colspan="6">No snapshot items.</td></tr>'}
         </tbody></table></div>
       </section>
-      <section class="panel"><details open><summary>Raw snapshot JSON</summary>${renderJson(snapshot)}</details></section>
+      <section class="panel support-panel"><details class="support-details"><summary>Support / audit details</summary>${renderJson(snapshot)}</details></section>
     `;
   }
 

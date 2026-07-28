@@ -53,6 +53,11 @@ textarea { min-height:7rem; resize:vertical; }
 .editor-note { margin:.35rem 0 .75rem; color:var(--muted); }
 .row-tools { display:flex; gap:.4rem; flex-wrap:wrap; }
 pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126; border:1px solid var(--border); border-radius:10px; padding:1rem; }
+.support-details { background:rgba(7,17,38,.35); border:1px solid rgba(148,163,184,.22); border-radius:12px; padding:.7rem .85rem; color:var(--muted); }
+.support-details summary { cursor:pointer; color:#cbd5e1; font-weight:700; }
+.support-details[open] { background:rgba(7,17,38,.62); }
+.support-details details { border-top:1px solid rgba(148,163,184,.16); padding-top:.65rem; }
+.support-details textarea, .support-details pre { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:.9rem; }
 .status { margin:.75rem 0; color:var(--muted); }
 .status.error { color:#fecaca; }
 .status.success { color:#bbf7d0; }
@@ -570,19 +575,46 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
             <tbody id="actionEditorRows">${renderActionEditorRows(actions) || '<tr class="empty-editor-row"><td colspan="5">No action rows yet. Add one if the report needs an action.</td></tr>'}</tbody>
           </table>
         </div>
-        <details class="raw-json" style="margin-top:.75rem">
-          <summary>Advanced/support: raw report data</summary>
-          <p class="muted">Only use this if a support/debugging fix cannot be made in the normal fields above.</p>
+        <details class="support-details raw-json" style="margin-top:.75rem">
+          <summary>Support / audit details</summary>
+          <p class="muted">Kept out of the main report view. Use only if you need to audit the source transcript, report data, version history, or backend response.</p>
           <div class="json-tools">
             <button id="copySavedProjectReportBtn" class="secondary" type="button">Copy report data</button>
           </div>
-          <label style="margin-top:.75rem">Project report JSON
-            <textarea id="projectReportJsonEditor" class="json-editor" spellcheck="false">${escapeHtml(JSON.stringify(projectReport, null, 2))}</textarea>
-          </label>
-        </details>
-        <details class="raw-json" style="margin-top:.75rem">
-          <summary>Transcript used for report</summary>
-          <pre>${escapeHtml(report.source && report.source.transcriptText ? report.source.transcriptText : 'Transcript text is not available for this report.')}</pre>
+          <details style="margin-top:.75rem">
+            <summary>Editable report JSON</summary>
+            <label style="margin-top:.75rem">Project report JSON
+              <textarea id="projectReportJsonEditor" class="json-editor" spellcheck="false">${escapeHtml(JSON.stringify(projectReport, null, 2))}</textarea>
+            </label>
+          </details>
+          <details style="margin-top:.75rem">
+            <summary>Transcript used for report</summary>
+            <pre>${escapeHtml(report.source && report.source.transcriptText ? report.source.transcriptText : 'Transcript text is not available for this report.')}</pre>
+          </details>
+          <details style="margin-top:.75rem">
+            <summary>Version history</summary>
+            <div class="table-scroll">
+              <table>
+                <thead><tr><th>Version</th><th>Type</th><th>Change</th><th>Saved by</th><th>Created</th><th>Details</th></tr></thead>
+                <tbody>
+                  ${versions.map((version) => `
+                    <tr>
+                      <td>${escapeHtml(version.versionNumber || '')}</td>
+                      <td>${statusBadge(version.changeType)}</td>
+                      <td>${escapeHtml(version.changeSummary || version.changeType || '')}</td>
+                      <td>${escapeHtml(version.savedBy || '-')}</td>
+                      <td>${escapeHtml(dateValue(version.createdAt))}</td>
+                      <td><details><summary>View version data</summary><pre>${escapeHtml(JSON.stringify(version.payload || {}, null, 2))}</pre></details></td>
+                    </tr>
+                  `).join('') || '<tr><td colspan="6">No version history available.</td></tr>'}
+                </tbody>
+              </table>
+            </div>
+          </details>
+          <details style="margin-top:.75rem">
+            <summary>Backend response</summary>
+            <pre>${escapeHtml(JSON.stringify(payload, null, 2))}</pre>
+          </details>
         </details>
       </section>
       <section class="panel">
@@ -617,32 +649,6 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
             </tbody>
           </table>
         </div>
-      </section>
-      <section class="panel">
-        <h2>Versions</h2>
-        <div class="table-scroll">
-          <table>
-            <thead><tr><th>Version</th><th>Type</th><th>Change</th><th>Saved by</th><th>Created</th><th>Details</th></tr></thead>
-            <tbody>
-              ${versions.map((version) => `
-                <tr>
-                  <td>${escapeHtml(version.versionNumber || '')}</td>
-                  <td>${statusBadge(version.changeType)}</td>
-                  <td>${escapeHtml(version.changeSummary || version.changeType || '')}</td>
-                  <td>${escapeHtml(version.savedBy || '-')}</td>
-                  <td>${escapeHtml(dateValue(version.createdAt))}</td>
-                  <td><details><summary>View payload</summary><pre>${escapeHtml(JSON.stringify(version.payload || {}, null, 2))}</pre></details></td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        </div>
-      </section>
-      <section class="panel">
-        <details>
-          <summary>Original response</summary>
-          <pre>${escapeHtml(JSON.stringify(payload, null, 2))}</pre>
-        </details>
       </section>
     `;
     const saveButton = document.getElementById('saveReportBtn');

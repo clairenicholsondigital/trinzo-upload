@@ -760,39 +760,38 @@ function buildTranscriptTestPage(config) {
         <div class="summary-item"><div class="summary-label">Saved</div><div class="summary-value">${escapeHtml(persistence.saved === true ? 'yes' : 'no')}</div></div>
         <div class="summary-item"><div class="summary-label">Report ID</div><div class="summary-value">${escapeHtml(persistence.reportId || '—')}</div></div>
       </div>
-      <details class="raw-json" style="margin-top:.75rem">
-        <summary>Advanced review data</summary>
+      <details class="support-details raw-json" style="margin-top:.75rem">
+        <summary>Support / audit details</summary>
+        <p class="muted">Kept out of the main report flow. Use only if you need to inspect the source transcript, comparison snapshot, save details, status cross-check, or backend response.</p>
         <div class="actions" style="justify-content:flex-start;margin:.75rem 0">
           <button id="copyProjectReportBtn" class="secondary" type="button">Copy report data</button>
         </div>
-        <div class="project-form-grid">
-          <label class="wide">Comparison snapshot
-            <textarea data-project-path="comparisonSnapshotJson" data-project-mode="json" readonly>${escapeHtml(JSON.stringify(snapshot, null, 2))}</textarea>
-          </label>
-          <label class="wide">Save details
-            <textarea readonly>${escapeHtml(JSON.stringify(persistence, null, 2))}</textarea>
-          </label>
-          <label class="wide">Status cross-check details
-            <textarea readonly>${escapeHtml(JSON.stringify(statusDiagnostics, null, 2))}</textarea>
-          </label>
-          <label class="wide">Run details
-            <textarea readonly>${escapeHtml(JSON.stringify({ mode: result.mode || 'unknown', runtimeMs: result.modelDiagnostics && result.modelDiagnostics.totalRuntimeMs || null }, null, 2))}</textarea>
-          </label>
-        </div>
-      </details>
-      <details style="margin-top:.75rem">
-        <summary>Transcript used for report</summary>
-        <label class="wide">Transcript used for report
+        <details style="margin-top:.75rem">
+          <summary>Comparison snapshot</summary>
+          <textarea data-project-path="comparisonSnapshotJson" data-project-mode="json" readonly>${escapeHtml(JSON.stringify(snapshot, null, 2))}</textarea>
+        </details>
+        <details style="margin-top:.75rem">
+          <summary>Transcript used for report</summary>
           <textarea readonly>${escapeHtml(transcript || 'Transcript text is not available in this browser session.')}</textarea>
-        </label>
-      </details>
-      <details class="raw-json" style="margin-top:.75rem">
-        <summary>Original response</summary>
-        <div class="project-form-grid">
-          <label class="wide">Backend JSON
-            <textarea readonly>${escapeHtml(JSON.stringify(backendPayload, null, 2))}</textarea>
-          </label>
-        </div>
+        </details>
+        <details style="margin-top:.75rem">
+          <summary>Run and save details</summary>
+          <div class="project-form-grid">
+            <label class="wide">Save details
+              <textarea readonly>${escapeHtml(JSON.stringify(persistence, null, 2))}</textarea>
+            </label>
+            <label class="wide">Status cross-check details
+              <textarea readonly>${escapeHtml(JSON.stringify(statusDiagnostics, null, 2))}</textarea>
+            </label>
+            <label class="wide">Run details
+              <textarea readonly>${escapeHtml(JSON.stringify({ mode: result.mode || 'unknown', runtimeMs: result.modelDiagnostics && result.modelDiagnostics.totalRuntimeMs || null }, null, 2))}</textarea>
+            </label>
+          </div>
+        </details>
+        <details style="margin-top:.75rem">
+          <summary>Backend response</summary>
+          <textarea readonly>${escapeHtml(JSON.stringify(backendPayload, null, 2))}</textarea>
+        </details>
       </details>
     `;
   }
