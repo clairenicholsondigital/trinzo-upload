@@ -8,34 +8,8 @@
     container.innerHTML = `
       <section class="panel meeting-hero">
         <span class="eyebrow">Project update meeting</span>
-        <h1>${PW.escapeHtml(ctx.project.projectName || 'Project update')}</h1>
-        <p class="intro">Use this as the scaffold for a real update meeting: check the baseline, capture what changed, then turn the transcript or notes into a reviewed draft report.</p>
-        <div class="meeting-scaffold-grid">
-          <article class="scaffold-card">
-            <strong>1. Before the meeting</strong>
-            <ul>
-              <li>Check milestones and configured risks.</li>
-              <li>Remind yourself what changed last time.</li>
-              <li>Note any decisions or context the update should respect.</li>
-            </ul>
-          </article>
-          <article class="scaffold-card">
-            <strong>2. During the meeting</strong>
-            <ul>
-              <li>What changed since the last update?</li>
-              <li>Are any milestones blocked, delayed, or complete?</li>
-              <li>Are there new risks, decisions, or actions?</li>
-            </ul>
-          </article>
-          <article class="scaffold-card">
-            <strong>3. After the meeting</strong>
-            <ul>
-              <li>Paste transcript or rough notes below.</li>
-              <li>Create a draft report.</li>
-              <li>Review evidence before saving anything as project memory.</li>
-            </ul>
-          </article>
-        </div>
+        <h1>Capture this update</h1>
+        <p class="intro">Use the agenda below, then paste the meeting notes or transcript to create a reviewed draft report.</p>
       </section>
       <section class="panel meeting-agenda-panel">
         <div class="section-heading-row">
