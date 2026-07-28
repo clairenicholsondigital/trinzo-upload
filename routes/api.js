@@ -32,6 +32,11 @@ const {
   updateProjectMilestone,
   deleteProjectMilestone,
   deactivateProjectMilestones,
+  listProjectRisks,
+  getProjectRiskDetail,
+  createProjectRisk,
+  updateProjectRisk,
+  deleteProjectRisk,
   listProjectOptions,
   createProject,
   updateProject,
@@ -1586,6 +1591,54 @@ router.delete('/project-update-test/milestones/:milestoneId', requireAuth, async
       return res.status(404).json({ ok: false, error: 'Project milestone not found.' });
     }
     return res.json({ ok: true, milestone });
+  } catch (error) {
+    return sendTestError(res, error);
+  }
+});
+
+router.get('/project-update-test/risks', requireAuth, async (req, res) => {
+  try {
+    const risks = await listProjectRisks(req.query?.limit, { projectId: req.query?.projectId });
+    return res.json({ ok: true, risks });
+  } catch (error) {
+    return sendTestError(res, error);
+  }
+});
+
+router.post('/project-update-test/risks', requireAuth, async (req, res) => {
+  try {
+    const risk = await createProjectRisk(req.body || {});
+    return res.status(risk?.created ? 201 : 200).json({ ok: true, risk });
+  } catch (error) {
+    return sendTestError(res, error);
+  }
+});
+
+router.get('/project-update-test/risks/:riskId', requireAuth, async (req, res) => {
+  try {
+    const risk = await getProjectRiskDetail(req.params.riskId);
+    if (!risk) return res.status(404).json({ ok: false, error: 'Project risk not found.' });
+    return res.json({ ok: true, risk });
+  } catch (error) {
+    return sendTestError(res, error);
+  }
+});
+
+router.patch('/project-update-test/risks/:riskId', requireAuth, async (req, res) => {
+  try {
+    const risk = await updateProjectRisk(req.params.riskId, req.body || {});
+    if (!risk) return res.status(404).json({ ok: false, error: 'Project risk not found.' });
+    return res.json({ ok: true, risk });
+  } catch (error) {
+    return sendTestError(res, error);
+  }
+});
+
+router.delete('/project-update-test/risks/:riskId', requireAuth, async (req, res) => {
+  try {
+    const risk = await deleteProjectRisk(req.params.riskId);
+    if (!risk) return res.status(404).json({ ok: false, error: 'Project risk not found.' });
+    return res.json({ ok: true, risk });
   } catch (error) {
     return sendTestError(res, error);
   }

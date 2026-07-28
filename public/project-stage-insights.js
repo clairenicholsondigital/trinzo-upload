@@ -4,7 +4,38 @@
 // Lifted from the old Context page, now driven by the workspace's selected project.
 (function () {
   const PW = window.ProjectWorkspace;
-  const { escapeHtml, friendlyLabel, dateValue, trendClass, asArray } = PW;
+  const { escapeHtml, friendlyLabel, dateValue, dateOnly, trendClass, asArray } = PW;
+
+  function inputValue(value) {
+    return escapeHtml(value || '');
+  }
+
+  function renderMilestoneProfileRows(milestones) {
+    return milestones.map((milestone) => `
+      <tr data-profile-milestone="${escapeHtml(milestone.milestoneId)}">
+        <td><input data-field="milestoneName" value="${inputValue(milestone.milestoneName)}" /></td>
+        <td><input data-field="category" value="${inputValue(milestone.category || 'Manual')}" /></td>
+        <td><textarea data-field="description">${inputValue(milestone.description || '')}</textarea></td>
+        <td><input data-field="baselineFinishDate" type="date" value="${inputValue(dateOnly(milestone.baselineFinishDate) === '-' ? '' : dateOnly(milestone.baselineFinishDate))}" /></td>
+        <td><input data-field="forecastFinishDate" type="date" value="${inputValue(dateOnly(milestone.forecastFinishDate) === '-' ? '' : dateOnly(milestone.forecastFinishDate))}" /></td>
+        <td>${milestone.isOfficial ? `✅ ${escapeHtml(milestone.officialLabel || 'Official')}` : 'Draft'}</td>
+        <td class="actions"><button type="button" data-save-milestone>Save</button><button type="button" class="danger" data-delete-milestone>Deactivate</button></td>
+      </tr>
+    `).join('') || '<tr><td colspan="7"><strong>No profile milestones yet.</strong><br />Add milestones in Setup or from a reviewed report.</td></tr>';
+  }
+
+  function renderRiskProfileRows(risks) {
+    return risks.map((risk) => `
+      <tr data-profile-risk="${escapeHtml(risk.riskId)}">
+        <td><input data-field="riskTitle" value="${inputValue(risk.riskTitle)}" /></td>
+        <td><input data-field="category" value="${inputValue(risk.category || 'General')}" /></td>
+        <td><textarea data-field="description">${inputValue(risk.description || '')}</textarea></td>
+        <td><textarea data-field="mitigation">${inputValue(risk.mitigation || '')}</textarea></td>
+        <td>${risk.isOfficial ? `✅ ${escapeHtml(risk.officialLabel || 'Official')}` : 'Draft'}</td>
+        <td class="actions"><button type="button" data-save-risk>Save</button><button type="button" class="danger" data-delete-risk>Deactivate</button></td>
+      </tr>
+    `).join('') || '<tr><td colspan="6"><strong>No configured risks yet.</strong><br />Add a core project risk below so future updates can track it.</td></tr>';
+  }
 
   function mount(container, ctx) {
     const projectId = ctx.projectId;
@@ -61,7 +92,35 @@
         </div>
       </section>
       <section class="panel">
-        <h2>Active milestones</h2>
+        <h2>Project profile / baseline</h2>
+        <p class="intro">This is the ongoing project state future reports compare against. Edit milestones and configured risks here; reports are snapshots against this profile.</p>
+      </section>
+      <section class="panel">
+        <h2>Profile milestones</h2>
+        <div class="table-scroll"><table><thead><tr><th>Milestone</th><th>Category</th><th>Description</th><th>Baseline</th><th>Forecast</th><th>Official</th><th>Actions</th></tr></thead><tbody id="profileMilestonesBody">
+          ${renderMilestoneProfileRows(milestones)}
+        </tbody></table></div>
+      </section>
+      <section class="panel">
+        <h2>Configured risks</h2>
+        <p class="intro">These are standing project risks, not one-off AI suggestions. Keep them current as part of the project profile.</p>
+        <div class="table-scroll"><table><thead><tr><th>Risk</th><th>Category</th><th>Description</th><th>Mitigation</th><th>Official</th><th>Actions</th></tr></thead><tbody id="profileRisksBody">
+          ${renderRiskProfileRows(activeRisks)}
+        </tbody></table></div>
+        <details style="margin-top:.75rem">
+          <summary>Add configured risk</summary>
+          <div class="form-grid" style="margin-top:.75rem">
+            <label class="wide">Risk title <input id="newRiskTitle" placeholder="e.g. Wrong project context used" /></label>
+            <label>Category <input id="newRiskCategory" placeholder="Context" /></label>
+            <label class="full">Description <textarea id="newRiskDescription"></textarea></label>
+            <label class="full">Mitigation <textarea id="newRiskMitigation"></textarea></label>
+          </div>
+          <div class="actions" style="margin-top:.75rem"><button id="addProfileRiskBtn" type="button" class="primary">Add risk</button></div>
+        </details>
+      </section>
+      <section class="panel">
+        <h2>Latest milestone assessments</h2>
+        <p class="intro">Read-only view of how recent reports assessed the profile milestones.</p>
         <div class="table-scroll"><table><thead><tr><th>Milestone</th><th>Official</th><th>Latest status</th><th>Previous status</th><th>Trend</th><th>Forecast</th><th>Summary</th></tr></thead><tbody>
           ${milestones.map((milestone) => {
             const latest = milestone.latestAssessment || {};
@@ -80,12 +139,6 @@
         <h2>Health history</h2>
         <div class="table-scroll"><table><thead><tr><th>Area</th><th>Status</th><th>Trend</th><th>Confidence</th><th>Report</th><th>Rationale</th></tr></thead><tbody>
           ${healthHistory.map((item) => `<tr><td>${escapeHtml(friendlyLabel(item.area))}</td><td>${escapeHtml(friendlyLabel(item.status))}</td><td class="${escapeHtml(trendClass(item.trend))}">${escapeHtml(friendlyLabel(item.trend))}</td><td>${escapeHtml(item.confidence || '-')}</td><td><a href="/project-update-test/reports/${escapeHtml(item.reportId)}">Report ${escapeHtml(item.reportId)}</a></td><td>${escapeHtml(item.rationale || '-')}</td></tr>`).join('') || '<tr><td colspan="6"><strong>No health history yet.</strong><br />Approved reports will build a timeline here.</td></tr>'}
-        </tbody></table></div>
-      </section>
-      <section class="panel">
-        <h2>Active core risks</h2>
-        <div class="table-scroll"><table><thead><tr><th>Risk</th><th>Official</th><th>Category</th><th>Description</th><th>Mitigation</th></tr></thead><tbody>
-          ${activeRisks.map((risk) => `<tr><td>${escapeHtml(risk.riskTitle || '-')}</td><td>${risk.isOfficial ? `✅ ${escapeHtml(risk.officialLabel || 'Official')}` : '—'}</td><td>${escapeHtml(risk.category || '-')}</td><td>${escapeHtml(risk.description || '-')}</td><td>${escapeHtml(risk.mitigation || '-')}</td></tr>`).join('') || '<tr><td colspan="5"><strong>No active core risks yet.</strong><br />Add known risks in Setup or approve report risks after review.</td></tr>'}
         </tbody></table></div>
       </section>
       <section class="panel">
@@ -118,8 +171,140 @@
       </section>
     `;
 
+    wireProfileEditors(container, ctx, projectId);
     wireActions(container, ctx, projectId);
     wireAsk(container, projectId);
+  }
+
+  function rowPayload(row) {
+    const payload = {};
+    row.querySelectorAll('[data-field]').forEach((field) => {
+      payload[field.getAttribute('data-field')] = field.value.trim();
+    });
+    return payload;
+  }
+
+  function setProfileStatus(container, message, kind = '') {
+    const status = container.querySelector('#contextStatus');
+    if (!status) return;
+    status.className = kind ? `status ${kind}` : 'status';
+    status.textContent = message;
+  }
+
+  function wireProfileEditors(container, ctx, projectId) {
+    container.querySelectorAll('[data-save-milestone]').forEach((button) => {
+      button.addEventListener('click', async () => {
+        const row = button.closest('[data-profile-milestone]');
+        if (!row) return;
+        button.disabled = true;
+        setProfileStatus(container, 'Saving milestone profile…');
+        try {
+          await PW.request(`milestones/${encodeURIComponent(row.getAttribute('data-profile-milestone'))}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(rowPayload(row))
+          });
+          setProfileStatus(container, 'Milestone profile saved. Reloading…', 'success');
+          if (ctx.reloadProject) ctx.reloadProject();
+          window.setTimeout(() => mount(container, ctx), 500);
+        } catch (error) {
+          setProfileStatus(container, error.message || 'Could not save milestone.', 'error');
+          button.disabled = false;
+        }
+      });
+    });
+
+    container.querySelectorAll('[data-delete-milestone]').forEach((button) => {
+      button.addEventListener('click', async () => {
+        const row = button.closest('[data-profile-milestone]');
+        if (!row) return;
+        const name = row.querySelector('[data-field="milestoneName"]')?.value || 'this milestone';
+        if (!window.confirm(`Deactivate ${name}? It will stop being part of the active project profile, but existing reports stay intact.`)) return;
+        button.disabled = true;
+        setProfileStatus(container, 'Deactivating milestone…');
+        try {
+          await PW.request(`milestones/${encodeURIComponent(row.getAttribute('data-profile-milestone'))}`, { method: 'DELETE' });
+          setProfileStatus(container, 'Milestone deactivated. Reloading…', 'success');
+          if (ctx.reloadProject) ctx.reloadProject();
+          window.setTimeout(() => mount(container, ctx), 500);
+        } catch (error) {
+          setProfileStatus(container, error.message || 'Could not deactivate milestone.', 'error');
+          button.disabled = false;
+        }
+      });
+    });
+
+    container.querySelectorAll('[data-save-risk]').forEach((button) => {
+      button.addEventListener('click', async () => {
+        const row = button.closest('[data-profile-risk]');
+        if (!row) return;
+        button.disabled = true;
+        setProfileStatus(container, 'Saving configured risk…');
+        try {
+          await PW.request(`risks/${encodeURIComponent(row.getAttribute('data-profile-risk'))}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(rowPayload(row))
+          });
+          setProfileStatus(container, 'Configured risk saved. Reloading…', 'success');
+          if (ctx.reloadProject) ctx.reloadProject();
+          window.setTimeout(() => mount(container, ctx), 500);
+        } catch (error) {
+          setProfileStatus(container, error.message || 'Could not save risk.', 'error');
+          button.disabled = false;
+        }
+      });
+    });
+
+    container.querySelectorAll('[data-delete-risk]').forEach((button) => {
+      button.addEventListener('click', async () => {
+        const row = button.closest('[data-profile-risk]');
+        if (!row) return;
+        const name = row.querySelector('[data-field="riskTitle"]')?.value || 'this risk';
+        if (!window.confirm(`Deactivate ${name}? It will stop being part of the active project profile.`)) return;
+        button.disabled = true;
+        setProfileStatus(container, 'Deactivating configured risk…');
+        try {
+          await PW.request(`risks/${encodeURIComponent(row.getAttribute('data-profile-risk'))}`, { method: 'DELETE' });
+          setProfileStatus(container, 'Configured risk deactivated. Reloading…', 'success');
+          if (ctx.reloadProject) ctx.reloadProject();
+          window.setTimeout(() => mount(container, ctx), 500);
+        } catch (error) {
+          setProfileStatus(container, error.message || 'Could not deactivate risk.', 'error');
+          button.disabled = false;
+        }
+      });
+    });
+
+    const addRiskBtn = container.querySelector('#addProfileRiskBtn');
+    if (addRiskBtn) addRiskBtn.addEventListener('click', async () => {
+      const riskTitle = container.querySelector('#newRiskTitle').value.trim();
+      if (!riskTitle) {
+        setProfileStatus(container, 'Risk title is required.', 'error');
+        return;
+      }
+      addRiskBtn.disabled = true;
+      setProfileStatus(container, 'Adding configured risk…');
+      try {
+        await PW.request('risks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            projectId,
+            riskTitle,
+            category: container.querySelector('#newRiskCategory').value.trim(),
+            description: container.querySelector('#newRiskDescription').value.trim(),
+            mitigation: container.querySelector('#newRiskMitigation').value.trim()
+          })
+        });
+        setProfileStatus(container, 'Configured risk added. Reloading…', 'success');
+        if (ctx.reloadProject) ctx.reloadProject();
+        window.setTimeout(() => mount(container, ctx), 500);
+      } catch (error) {
+        setProfileStatus(container, error.message || 'Could not add risk.', 'error');
+        addRiskBtn.disabled = false;
+      }
+    });
   }
 
   function wireActions(container, ctx, projectId) {

@@ -593,19 +593,181 @@ async function updateProjectMilestone(milestoneId, payload = {}) {
   const forecastFinishDate = Object.prototype.hasOwnProperty.call(payload, 'forecastFinishDate')
     ? payload.forecastFinishDate
     : (Object.prototype.hasOwnProperty.call(payload, 'forecast_finish_date') ? payload.forecast_finish_date : existing.forecastFinishDate);
+  const milestoneName = Object.prototype.hasOwnProperty.call(payload, 'milestoneName')
+    ? String(payload.milestoneName || '').trim()
+    : (Object.prototype.hasOwnProperty.call(payload, 'milestone_name') ? String(payload.milestone_name || '').trim() : existing.milestoneName);
+  const category = Object.prototype.hasOwnProperty.call(payload, 'category')
+    ? String(payload.category || '').trim()
+    : existing.category;
   const description = Object.prototype.hasOwnProperty.call(payload, 'description')
     ? String(payload.description || '').trim()
     : existing.description;
+  if (!milestoneName) {
+    const error = new Error('Milestone name is required.');
+    error.statusCode = 400;
+    throw error;
+  }
   await runPsql(
     `UPDATE project_core_milestones
-     SET baseline_finish_date = $1::date,
-         forecast_finish_date = $2::date,
-         description = $3
-     WHERE id = $4 AND is_active = TRUE`,
-    [toDateParam(baselineFinishDate), toDateParam(forecastFinishDate), description, id]
+     SET milestone_name = $1,
+         category = $2,
+         baseline_finish_date = $3::date,
+         forecast_finish_date = $4::date,
+         description = $5
+     WHERE id = $6 AND is_active = TRUE`,
+    [milestoneName, category || 'Manual', toDateParam(baselineFinishDate), toDateParam(forecastFinishDate), description, id]
   );
 
   return getProjectMilestoneDetail(id);
+}
+
+async function listProjectRisks(limit = 100, filters = {}) {
+  const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 500);
+  const projectId = Number(filters.projectId || 0);
+  const params = [];
+  const conditions = ['is_active = TRUE'];
+  if (Number.isFinite(projectId) && projectId > 0) {
+    params.push(projectId);
+    conditions.push(`project_id = $${params.length}`);
+  }
+  params.push(safeLimit);
+  const result = await query(
+    `SELECT json_build_object(
+       'riskId', id,
+       'projectId', project_id,
+       'category', category,
+       'riskTitle', risk_title,
+       'description', COALESCE(description, ''),
+       'mitigation', COALESCE(mitigation, ''),
+       'isOfficial', is_official,
+       'officialLabel', COALESCE(official_label, ''),
+       'officialAt', official_at,
+       'createdAt', created_at
+     ) AS payload
+     FROM project_core_risks
+     WHERE ${conditions.join(' AND ')}
+     ORDER BY is_official DESC, id
+     LIMIT $${params.length}`,
+    params
+  );
+  return result.rows.map((row) => row.payload);
+}
+
+async function getProjectRiskDetail(riskId) {
+  const id = Number(riskId);
+  if (!Number.isFinite(id) || id <= 0) return null;
+  const result = await query(
+    `SELECT json_build_object(
+       'riskId', id,
+       'projectId', project_id,
+       'category', category,
+       'riskTitle', risk_title,
+       'description', COALESCE(description, ''),
+       'mitigation', COALESCE(mitigation, ''),
+       'isOfficial', is_official,
+       'officialLabel', COALESCE(official_label, ''),
+       'officialAt', official_at,
+       'createdAt', created_at
+     ) AS payload
+     FROM project_core_risks
+     WHERE id = $1 AND is_active = TRUE
+     LIMIT 1`,
+    [id]
+  );
+  return result.rows[0]?.payload || null;
+}
+
+async function createProjectRisk(payload = {}) {
+  const projectId = Number(payload.projectId || 0);
+  if (!Number.isFinite(projectId) || projectId <= 0) {
+    const error = new Error('Valid projectId is required.');
+    error.statusCode = 400;
+    throw error;
+  }
+  const riskTitle = String(payload.riskTitle || payload.risk_title || '').trim();
+  if (!riskTitle) {
+    const error = new Error('Risk title is required.');
+    error.statusCode = 400;
+    throw error;
+  }
+  const category = String(payload.category || 'General').trim() || 'General';
+  const description = String(payload.description || '').trim();
+  const mitigation = String(payload.mitigation || payload.suggestedMitigation || '').trim();
+  const existingProject = await query('SELECT id FROM projects WHERE id = $1 LIMIT 1', [projectId]);
+  if (!existingProject.rowCount) {
+    const error = new Error('Project not found.');
+    error.statusCode = 404;
+    throw error;
+  }
+  const existing = await query(
+    `SELECT id FROM project_core_risks
+     WHERE project_id = $1 AND risk_title = $2 AND is_active = TRUE
+     ORDER BY id LIMIT 1`,
+    [projectId, riskTitle]
+  );
+  let id = Number(existing.rows[0]?.id || 0);
+  let created = false;
+  if (id) {
+    await query(
+      `UPDATE project_core_risks
+       SET category = $1, description = $2, mitigation = $3
+       WHERE id = $4`,
+      [category, description, mitigation, id]
+    );
+  } else {
+    const inserted = await query(
+      `INSERT INTO project_core_risks (project_id, category, risk_title, description, mitigation, is_active)
+       VALUES ($1, $2, $3, $4, $5, TRUE)
+       RETURNING id`,
+      [projectId, category, riskTitle, description, mitigation]
+    );
+    id = Number(inserted.rows[0]?.id || 0);
+    created = true;
+  }
+  const risk = await getProjectRiskDetail(id);
+  return risk ? { ...risk, created } : null;
+}
+
+async function updateProjectRisk(riskId, payload = {}) {
+  const id = Number(riskId);
+  if (!Number.isFinite(id) || id <= 0) {
+    const error = new Error('Valid risk id is required.');
+    error.statusCode = 400;
+    throw error;
+  }
+  const existing = await getProjectRiskDetail(id);
+  if (!existing) return null;
+  const riskTitle = Object.prototype.hasOwnProperty.call(payload, 'riskTitle')
+    ? String(payload.riskTitle || '').trim()
+    : (Object.prototype.hasOwnProperty.call(payload, 'risk_title') ? String(payload.risk_title || '').trim() : existing.riskTitle);
+  if (!riskTitle) {
+    const error = new Error('Risk title is required.');
+    error.statusCode = 400;
+    throw error;
+  }
+  const category = Object.prototype.hasOwnProperty.call(payload, 'category') ? String(payload.category || '').trim() : existing.category;
+  const description = Object.prototype.hasOwnProperty.call(payload, 'description') ? String(payload.description || '').trim() : existing.description;
+  const mitigation = Object.prototype.hasOwnProperty.call(payload, 'mitigation') ? String(payload.mitigation || '').trim() : existing.mitigation;
+  await query(
+    `UPDATE project_core_risks
+     SET risk_title = $1, category = $2, description = $3, mitigation = $4
+     WHERE id = $5 AND is_active = TRUE`,
+    [riskTitle, category || 'General', description, mitigation, id]
+  );
+  return getProjectRiskDetail(id);
+}
+
+async function deleteProjectRisk(riskId) {
+  const id = Number(riskId);
+  if (!Number.isFinite(id) || id <= 0) {
+    const error = new Error('Valid risk id is required.');
+    error.statusCode = 400;
+    throw error;
+  }
+  const existing = await getProjectRiskDetail(id);
+  if (!existing) return null;
+  await query('UPDATE project_core_risks SET is_active = FALSE WHERE id = $1 AND is_active = TRUE', [id]);
+  return existing;
 }
 
 async function deleteProjectMilestone(milestoneId) {
@@ -2918,6 +3080,11 @@ module.exports = {
   updateProjectMilestone,
   deleteProjectMilestone,
   deactivateProjectMilestones,
+  listProjectRisks,
+  getProjectRiskDetail,
+  createProjectRisk,
+  updateProjectRisk,
+  deleteProjectRisk,
   getProjectContextSnapshot,
   createProjectContextSnapshot,
   getProjectContext,
