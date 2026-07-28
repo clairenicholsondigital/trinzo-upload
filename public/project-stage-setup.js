@@ -15,7 +15,7 @@
           <strong>Before the first report</strong>
           <ol>
             <li>Add the agreed milestones or delivery workstreams.</li>
-            <li>Add standing context such as SoW constraints, decisions, known risks, or client preferences.</li>
+            <li>Add standing project memory such as SoW constraints, decisions, known risks, or client preferences.</li>
             <li>Process the first transcript, review the draft, then approve only when it is good enough to become future project memory.</li>
           </ol>
         </div>
@@ -198,14 +198,14 @@
       try {
         const payload = await PW.request(`knowledge/items?projectId=${encodeURIComponent(projectId)}&status=active`);
         const items = asArray(payload.items);
-        listNode.innerHTML = `<table><thead><tr><th>Title</th><th>Type</th><th>Official</th><th>Search status</th><th>Updated</th><th>Action</th></tr></thead><tbody>${items.map((item) => {
+        listNode.innerHTML = `<table><thead><tr><th>Title</th><th>Type</th><th>Baseline</th><th>Search status</th><th>Updated</th><th>Action</th></tr></thead><tbody>${items.map((item) => {
           const counts = item.embeddingCounts || {};
           const embedded = Number(counts.embedded || 0);
           const queued = Number(counts.queued || 0);
           const failed = Number(counts.failed || 0);
           const searchStatus = failed ? 'Needs refresh' : embedded ? 'Searchable' : queued ? 'Indexing' : 'Saved';
-          return `<tr><td>${escapeHtml(item.title)}</td><td>${escapeHtml(friendlyLabel(item.itemType))}</td><td>${item.isOfficial ? '✅' : '—'}</td><td>${escapeHtml(searchStatus)}</td><td>${escapeHtml(dateValue(item.updatedAt))}</td><td><button type="button" data-archive-knowledge="${escapeHtml(item.itemId)}">Archive</button></td></tr>`;
-        }).join('') || '<tr><td colspan="6"><strong>No project memory yet.</strong><br />Add standing context, constraints, decisions, or risks before the first report.</td></tr>'}</tbody></table>`;
+          return `<tr><td>${escapeHtml(item.title)}</td><td>${escapeHtml(friendlyLabel(item.itemType))}</td><td>${item.isOfficial ? 'Included' : 'Draft'}</td><td>${escapeHtml(searchStatus)}</td><td>${escapeHtml(dateValue(item.updatedAt))}</td><td><button type="button" data-archive-knowledge="${escapeHtml(item.itemId)}">Archive</button></td></tr>`;
+        }).join('') || '<tr><td colspan="6"><strong>No project memory yet.</strong><br />Add standing project memory, constraints, decisions, or risks before the first report.</td></tr>'}</tbody></table>`;
         listNode.querySelectorAll('[data-archive-knowledge]').forEach((button) => {
           button.addEventListener('click', async () => {
             await PW.request(`knowledge/items/${encodeURIComponent(button.getAttribute('data-archive-knowledge'))}`, { method: 'DELETE' });

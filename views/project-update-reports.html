@@ -330,6 +330,14 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
     const escaped = escapeHtml(value || '');
     if (tag === 'input') return `<input aria-label="${escapeHtml(label)}" data-field="${escapeHtml(field)}" type="text" value="${escaped}" />`;
     if (tag === 'date') return `<input aria-label="${escapeHtml(label)}" data-field="${escapeHtml(field)}" type="date" value="${escapeHtml(dateInputValue(value))}" />`;
+    if (tag === 'select-trend') {
+      const options = ['', 'stable', 'improving', 'deteriorating', 'replanned', 'new_update', 'unknown'];
+      return `<select aria-label="${escapeHtml(label)}" data-field="${escapeHtml(field)}">${options.map((option) => `<option value="${escapeHtml(option)}" ${String(value || '') === option ? 'selected' : ''}>${escapeHtml(option ? friendlyLabel(option) : '-')}</option>`).join('')}</select>`;
+    }
+    if (tag === 'select-delivery') {
+      const options = ['', 'not_started', 'on_track', 'at_risk', 'delayed', 'blocked', 'completed', 'unknown'];
+      return `<select aria-label="${escapeHtml(label)}" data-field="${escapeHtml(field)}">${options.map((option) => `<option value="${escapeHtml(option)}" ${String(value || '') === option ? 'selected' : ''}>${escapeHtml(option ? friendlyLabel(option) : '-')}</option>`).join('')}</select>`;
+    }
     if (tag === 'select-health') {
       const options = ['', 'on_track', 'at_risk', 'off_track', 'blocked', 'completed', 'green', 'amber', 'red'];
       return `<select aria-label="${escapeHtml(label)}" data-field="${escapeHtml(field)}">${options.map((option) => `<option value="${escapeHtml(option)}" ${String(value || '') === option ? 'selected' : ''}>${escapeHtml(option ? friendlyLabel(option) : '-')}</option>`).join('')}</select>`;
@@ -343,7 +351,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
       <tr data-health-area-row="${escapeHtml(key)}">
         <td>${escapeHtml(titleLabel(key))}</td>
         <td>${editableCell('status', area.status || '', `${titleLabel(key)} status`, 'select-health')}</td>
-        <td>${editableCell('trend', area.trend || '', `${titleLabel(key)} trend`, 'input')}</td>
+        <td>${editableCell('trend', area.trend || '', `${titleLabel(key)} trend`, 'select-trend')}</td>
         <td>${editableCell('evidenceNotes', area.evidenceNotes || linesValue(asArray(area.evidence).map((item) => item.text || item.source || '').filter(Boolean)), `${titleLabel(key)} evidence`)}</td>
         <td class="narrow"><button type="button" class="subtle" data-expand-editor-row>Expand</button></td>
       </tr>`).join('') || '<tr><td colspan="5">No health areas yet. Save generated report data first, then edit here.</td></tr>';
@@ -355,7 +363,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
         <td>${editableCell('milestone', item.milestone || '', `Milestone ${index + 1}`)}</td>
         <td>${editableCell('baseline_finish_date', item.baseline_finish_date || item.baselineDeadline || item.deadline || '', `Milestone ${index + 1} baseline`, 'date')}</td>
         <td>${editableCell('forecast_finish_date', item.forecast_finish_date || item.forecastDeadline || item.deadline || '', `Milestone ${index + 1} forecast`, 'date')}</td>
-        <td>${editableCell('delivery_status', item.delivery_status || item.status || '', `Milestone ${index + 1} delivery status`, 'input')}</td>
+        <td>${editableCell('delivery_status', item.delivery_status || item.status || '', `Milestone ${index + 1} delivery status`, 'select-delivery')}</td>
         <td>${editableCell('agreed_rag_status', item.agreed_rag_status || item.rag_status || '', `Milestone ${index + 1} RAG`, 'select-health')}</td>
         <td>${editableCell('health_assessment', item.health_assessment || '', `Milestone ${index + 1} health assessment`)}</td>
         <td>${editableCell('normalised_evidence_summary', item.normalised_evidence_summary || item.excerpt || '', `Milestone ${index + 1} summary`)}</td>
@@ -497,7 +505,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
       button.addEventListener('click', async () => {
         const id = button.getAttribute('data-delete-report');
         const name = button.getAttribute('data-report-name') || `Report ${id}`;
-        if (!window.confirm(`Archive ${name}? This keeps its version history but removes it from active reports and project context.`)) return;
+        if (!window.confirm(`Archive ${name}? This keeps its version history but removes it from active report lists and future project memory.`)) return;
         button.disabled = true;
         try {
           const response = await authedFetch(`/api/project-update-test/reports/${encodeURIComponent(id)}`, { method: 'DELETE' });
@@ -544,7 +552,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
         if (!selected.length) return;
         const preview = selected.slice(0, 8).map((report) => `• ${report.name}`).join('\n');
         const suffix = selected.length > 8 ? `\n…and ${selected.length - 8} more.` : '';
-        if (!window.confirm(`Archive ${selected.length} selected report${selected.length === 1 ? '' : 's'}? This keeps their version history but removes them from active reports and project context.\n\n${preview}${suffix}`)) return;
+        if (!window.confirm(`Archive ${selected.length} selected report${selected.length === 1 ? '' : 's'}? This keeps their version history but removes them from active report lists and future project memory.\n\n${preview}${suffix}`)) return;
         bulkDeleteButton.disabled = true;
         if (bulkStatus) bulkStatus.textContent = `Archiving ${selected.length} report${selected.length === 1 ? '' : 's'}...`;
         try {
