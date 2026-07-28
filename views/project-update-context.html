@@ -37,9 +37,12 @@ label { display:grid; gap:.35rem; color:var(--muted); font-weight:700; }
 .status.error { color:#fecaca; }
 .status.success { color:#bbf7d0; }
 pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:#071126; border:1px solid var(--border); border-radius:10px; padding:1rem; }
-.support-details { background:rgba(7,17,38,.35); border:1px solid rgba(148,163,184,.22); border-radius:12px; padding:.7rem .85rem; color:var(--muted); }
-.support-details summary { cursor:pointer; color:#cbd5e1; font-weight:700; }
-.support-details[open] { background:rgba(7,17,38,.62); }
+.support-footer { margin:-.25rem 0 1rem; padding:0 .25rem; }
+.support-details { background:transparent; border:0; border-radius:0; padding:.2rem 0; color:var(--muted); font-size:.9rem; }
+.support-details summary { cursor:pointer; color:#8fa2c7; font-weight:500; font-size:.88rem; list-style-position:inside; }
+.support-details summary:hover { color:#cbd5e1; }
+.support-details[open] { background:rgba(7,17,38,.42); border:1px solid rgba(148,163,184,.16); border-radius:10px; padding:.65rem .75rem; }
+.support-details.support-details-compact:not([open]) { opacity:.72; }
 .support-details pre { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:.9rem; }
 .trend-improving, .trend-resolved { color:#bbf7d0; }
 .trend-deteriorating, .trend-new_risk { color:#fecaca; }
@@ -237,8 +240,8 @@ pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:#071126;
         </div>
         <div id="knowledgeAskResult" class="empty-state">Ask a question to retrieve relevant project memory.</div>
       </section>
-      <section class="panel support-panel">
-        <details class="support-details"><summary>Support / audit details</summary>${renderJson(context)}</details>
+      <section class="support-footer" aria-label="Support and audit details">
+        <details class="support-details support-details-compact"><summary>Need audit/debug info?</summary>${renderJson(context)}</details>
       </section>
     `;
 
@@ -472,7 +475,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:#071126;
           ${items.map((item) => `<tr><td>${escapeHtml(friendlyLabel(item.itemType))}</td><td>${escapeHtml(item.itemLabel || item.itemKey || '-')}</td><td>${escapeHtml(friendlyLabel(item.status))}</td><td>${escapeHtml(friendlyLabel(item.previousStatus))}</td><td class="${escapeHtml(trendClass(item.trend))}">${escapeHtml(friendlyLabel(item.trend))}</td><td>${escapeHtml(item.confidence || '-')}</td></tr>`).join('') || '<tr><td colspan="6">No snapshot items.</td></tr>'}
         </tbody></table></div>
       </section>
-      <section class="panel support-panel"><details class="support-details"><summary>Support / audit details</summary>${renderJson(snapshot)}</details></section>
+      <section class="support-footer" aria-label="Support and audit details"><details class="support-details support-details-compact"><summary>Need audit/debug info?</summary>${renderJson(snapshot)}</details></section>
     `;
   }
 

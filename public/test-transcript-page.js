@@ -83,10 +83,10 @@ function buildTranscriptTestPage(config) {
       <div id="projectReportPrintOutput" aria-hidden="true"></div>
     </section>
 
-    <section id="advancedDetailsPanel" class="panel hidden support-panel">
-      <details class="support-details raw-json">
-        <summary>Support / audit details</summary>
-        <p class="muted">Kept out of the main workflow. Use only if you need to inspect support data, diagnostics, or the backend response.</p>
+    <section id="advancedDetailsPanel" class="support-footer hidden" aria-label="Support and audit details">
+      <details class="support-details support-details-compact raw-json">
+        <summary>Need audit/debug info?</summary>
+        <p class="muted">Optional support-only detail. Leave this closed during normal review or demos.</p>
         <div id="debugPanel" class="hidden">
           <h3>Support diagnostics</h3>
           <div id="debugSummary" class="summary-grid"></div>
@@ -760,9 +760,9 @@ function buildTranscriptTestPage(config) {
         <div class="summary-item"><div class="summary-label">Saved</div><div class="summary-value">${escapeHtml(persistence.saved === true ? 'yes' : 'no')}</div></div>
         <div class="summary-item"><div class="summary-label">Report ID</div><div class="summary-value">${escapeHtml(persistence.reportId || '—')}</div></div>
       </div>
-      <details class="support-details raw-json" style="margin-top:.75rem">
-        <summary>Support / audit details</summary>
-        <p class="muted">Kept out of the main report flow. Use only if you need to inspect the source transcript, comparison snapshot, save details, status cross-check, or backend response.</p>
+      <details class="support-details support-details-compact raw-json" style="margin-top:.75rem">
+        <summary>Need audit/debug info?</summary>
+        <p class="muted">Optional support-only detail. Leave this closed during normal review or demos.</p>
         <div class="actions" style="justify-content:flex-start;margin:.75rem 0">
           <button id="copyProjectReportBtn" class="secondary" type="button">Copy report data</button>
         </div>
