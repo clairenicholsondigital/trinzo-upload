@@ -32,6 +32,18 @@
     return value ? String(value).slice(0, 10) : '-';
   }
 
+  function displayDate(value) {
+    if (!value) return '-';
+    const raw = String(value).slice(0, 10);
+    const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    const date = match
+      ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+      : new Date(value);
+    return Number.isNaN(date.getTime())
+      ? raw
+      : date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  }
+
   // Acronym-aware title case (milestones / context style).
   function friendlyLabel(value) {
     const words = String(value || '').replace(/[_-]+/g, ' ').trim().split(/\s+/).filter(Boolean);
@@ -150,6 +162,7 @@
     asArray,
     dateValue,
     dateOnly,
+    displayDate,
     friendlyLabel,
     sentenceLabel,
     titleLabel,

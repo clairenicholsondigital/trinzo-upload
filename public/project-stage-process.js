@@ -84,7 +84,7 @@
       const milestones = PW.asArray(context.activeMilestones).slice(0, 6);
       const risks = PW.asArray(context.activeRisks).slice(0, 6);
       const milestoneHtml = milestones.length
-        ? milestones.map((item) => `<li><strong>${PW.escapeHtml(PW.friendlyLabel(item.milestoneName))}</strong>${item.forecastFinishDate ? ` <span class="muted">forecast ${PW.escapeHtml(String(item.forecastFinishDate).slice(0, 10))}</span>` : ''}</li>`).join('')
+        ? milestones.map((item) => `<li><strong>${PW.escapeHtml(PW.friendlyLabel(item.milestoneName))}</strong>${item.forecastFinishDate ? ` <span class="muted">forecast ${PW.escapeHtml(PW.displayDate(item.forecastFinishDate))}</span>` : ''}</li>`).join('')
         : '<li class="muted">No milestones yet.</li>';
       const riskHtml = risks.length
         ? risks.map((item) => `<li><strong>${PW.escapeHtml(item.riskTitle || 'Risk')}</strong>${item.mitigation ? ` <span class="muted">— ${PW.escapeHtml(String(item.mitigation).slice(0, 120))}</span>` : ''}</li>`).join('')

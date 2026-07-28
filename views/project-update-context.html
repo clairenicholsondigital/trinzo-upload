@@ -99,6 +99,14 @@ pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:#071126;
     return Number.isNaN(date.getTime()) ? String(value).replace(/T/g, ' ').replace(/Z$/i, '') : date.toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' });
   }
 
+  function displayDate(value) {
+    if (!value) return '-';
+    const raw = String(value).slice(0, 10);
+    const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    const date = match ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])) : new Date(value);
+    return Number.isNaN(date.getTime()) ? raw : date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  }
+
   function friendlyLabel(value) {
     const words = String(value || '').replace(/[_-]+/g, ' ').trim().split(/\s+/).filter(Boolean);
     return words.length ? words.map((word) => {
@@ -153,7 +161,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:#071126;
           ${milestones.map((milestone) => {
             const latest = milestone.latestAssessment || {};
             const previous = milestone.previousAssessment || {};
-            return `<tr><td>${escapeHtml(friendlyLabel(milestone.milestoneName))}</td><td>${milestone.isOfficial ? `✅ ${escapeHtml(milestone.officialLabel || 'Official')}` : '—'}</td><td>${escapeHtml(friendlyLabel(latest.status))}</td><td>${escapeHtml(friendlyLabel(previous.status))}</td><td class="${escapeHtml(trendClass(latest.trend))}">${escapeHtml(friendlyLabel(latest.trend))}</td><td>${escapeHtml(String(latest.forecastFinishDate || milestone.forecastFinishDate || '-').slice(0, 10))}</td><td>${escapeHtml(latest.summary || '-')}</td></tr>`;
+            return `<tr><td>${escapeHtml(friendlyLabel(milestone.milestoneName))}</td><td>${milestone.isOfficial ? `✅ ${escapeHtml(milestone.officialLabel || 'Official')}` : '—'}</td><td>${escapeHtml(friendlyLabel(latest.status))}</td><td>${escapeHtml(friendlyLabel(previous.status))}</td><td class="${escapeHtml(trendClass(latest.trend))}">${escapeHtml(friendlyLabel(latest.trend))}</td><td>${escapeHtml(displayDate(latest.forecastFinishDate || milestone.forecastFinishDate))}</td><td>${escapeHtml(latest.summary || '-')}</td></tr>`;
           }).join('') || '<tr><td colspan="7">No active milestones yet.</td></tr>'}
         </tbody></table></div>
       </section>

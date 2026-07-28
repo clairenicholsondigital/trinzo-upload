@@ -3,7 +3,7 @@
 // the selected project. Lifted from the old milestones + context pages.
 (function () {
   const PW = window.ProjectWorkspace;
-  const { escapeHtml, friendlyLabel, dateOnly, dateValue, renderColour, asArray } = PW;
+  const { escapeHtml, friendlyLabel, displayDate, dateValue, renderColour, asArray } = PW;
 
   function mount(container, ctx) {
     const projectId = ctx.projectId;
@@ -101,8 +101,8 @@
                   <td class="select-cell"><input type="checkbox" data-milestone-select="${escapeHtml(milestone.milestoneId)}" data-milestone-name="${escapeHtml(name)}" aria-label="Select ${escapeHtml(name)}" /></td>
                   <td><a href="/project-update-test/milestones/${escapeHtml(milestone.milestoneId)}">${escapeHtml(name)}</a></td>
                   <td>${escapeHtml(milestone.periodLabel || '-')}</td>
-                  <td>${escapeHtml(dateOnly(milestone.baselineFinishDate))}</td>
-                  <td>${escapeHtml(dateOnly(milestone.forecastFinishDate || latest.forecastFinishDate))}</td>
+                  <td>${escapeHtml(displayDate(milestone.baselineFinishDate))}</td>
+                  <td>${escapeHtml(displayDate(milestone.forecastFinishDate || latest.forecastFinishDate))}</td>
                   <td>${escapeHtml(friendlyLabel(latest.status))}</td>
                   <td>${escapeHtml(friendlyLabel(latest.trend))}</td>
                 </tr>

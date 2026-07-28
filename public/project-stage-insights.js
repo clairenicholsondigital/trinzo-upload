@@ -4,7 +4,7 @@
 // Lifted from the old Context page, now driven by the workspace's selected project.
 (function () {
   const PW = window.ProjectWorkspace;
-  const { escapeHtml, friendlyLabel, dateValue, dateOnly, trendClass, asArray } = PW;
+  const { escapeHtml, friendlyLabel, dateValue, dateOnly, displayDate, trendClass, asArray } = PW;
 
   function inputValue(value) {
     return escapeHtml(value || '');
@@ -125,7 +125,7 @@
           ${milestones.map((milestone) => {
             const latest = milestone.latestAssessment || {};
             const previous = milestone.previousAssessment || {};
-            return `<tr><td>${escapeHtml(friendlyLabel(milestone.milestoneName))}</td><td>${milestone.isOfficial ? `✅ ${escapeHtml(milestone.officialLabel || 'Official')}` : '—'}</td><td>${escapeHtml(friendlyLabel(latest.status))}</td><td>${escapeHtml(friendlyLabel(previous.status))}</td><td class="${escapeHtml(trendClass(latest.trend))}">${escapeHtml(friendlyLabel(latest.trend))}</td><td>${escapeHtml(String(latest.forecastFinishDate || milestone.forecastFinishDate || '-').slice(0, 10))}</td><td>${escapeHtml(latest.summary || '-')}</td></tr>`;
+            return `<tr><td>${escapeHtml(friendlyLabel(milestone.milestoneName))}</td><td>${milestone.isOfficial ? `✅ ${escapeHtml(milestone.officialLabel || 'Official')}` : '—'}</td><td>${escapeHtml(friendlyLabel(latest.status))}</td><td>${escapeHtml(friendlyLabel(previous.status))}</td><td class="${escapeHtml(trendClass(latest.trend))}">${escapeHtml(friendlyLabel(latest.trend))}</td><td>${escapeHtml(displayDate(latest.forecastFinishDate || milestone.forecastFinishDate))}</td><td>${escapeHtml(latest.summary || '-')}</td></tr>`;
           }).join('') || '<tr><td colspan="7"><strong>No active milestones yet.</strong><br />Add milestones in Setup so future reports can track delivery against a baseline.</td></tr>'}
         </tbody></table></div>
       </section>

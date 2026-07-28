@@ -89,6 +89,14 @@ th:last-child, td:last-child { border-right:0; }
     return value ? String(value).slice(0, 10) : '-';
   }
 
+  function displayDate(value) {
+    if (!value) return '-';
+    const raw = String(value).slice(0, 10);
+    const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    const date = match ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])) : new Date(value);
+    return Number.isNaN(date.getTime()) ? raw : date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  }
+
   function dateValue(value) {
     if (!value) return '-';
     const date = new Date(value);
@@ -184,8 +192,8 @@ th:last-child, td:last-child { border-right:0; }
                     <td><a href="/project-update-test/milestones/${escapeHtml(milestone.milestoneId)}">${escapeHtml(milestoneName)}</a></td>
                     <td>${escapeHtml(milestone.projectName || '-')}</td>
                     <td>${escapeHtml(milestone.periodLabel || '-')}</td>
-                    <td>${escapeHtml(dateOnly(milestone.baselineFinishDate))}</td>
-                    <td>${escapeHtml(dateOnly(milestone.forecastFinishDate || latest.forecastFinishDate))}</td>
+                    <td>${escapeHtml(displayDate(milestone.baselineFinishDate))}</td>
+                    <td>${escapeHtml(displayDate(milestone.forecastFinishDate || latest.forecastFinishDate))}</td>
                     <td>${escapeHtml(friendlyLabel(latest.status))}</td>
                     <td>${escapeHtml(friendlyLabel(latest.trend))}</td>
                   </tr>
@@ -294,8 +302,8 @@ th:last-child, td:last-child { border-right:0; }
         <div class="grid">
           <div class="item"><div class="label">Project</div><div class="value">${escapeHtml(milestone.projectName || '-')}</div></div>
           <div class="item"><div class="label">Period</div><div class="value">${escapeHtml(milestone.periodLabel || '-')}</div></div>
-          <div class="item"><div class="label">Baseline</div><div class="value">${escapeHtml(dateOnly(milestone.baselineFinishDate))}</div></div>
-          <div class="item"><div class="label">Forecast</div><div class="value">${escapeHtml(dateOnly(milestone.forecastFinishDate))}</div></div>
+          <div class="item"><div class="label">Baseline</div><div class="value">${escapeHtml(displayDate(milestone.baselineFinishDate))}</div></div>
+          <div class="item"><div class="label">Forecast</div><div class="value">${escapeHtml(displayDate(milestone.forecastFinishDate))}</div></div>
         </div>
       </section>
       <section class="panel">
@@ -327,7 +335,7 @@ th:last-child, td:last-child { border-right:0; }
                   <td>${renderColour(assessment.ragStatus || assessment.agreedRagStatus)}</td>
                   <td>${escapeHtml(friendlyLabel(assessment.trend))}</td>
                   <td>${escapeHtml(assessment.confidence || '-')}</td>
-                  <td>${escapeHtml(dateOnly(assessment.forecastFinishDate))}</td>
+                  <td>${escapeHtml(displayDate(assessment.forecastFinishDate))}</td>
                   <td>
                     ${escapeHtml(assessment.summary || '-')}
                     <ul class="evidence">
