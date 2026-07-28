@@ -125,8 +125,8 @@
         </details>
       </section>
       <section class="panel">
-        <h2>Latest milestone assessments</h2>
-        <p class="intro">Read-only view of how recent reports assessed the profile milestones.</p>
+        <h2>Pilot milestone progress</h2>
+        <p class="intro">Read-only view of the latest progress against the monitored pilot milestones. Use this to see what is complete, what still needs checking, and what should be covered in the next update.</p>
         <div class="table-scroll"><table><thead><tr><th>Milestone</th><th>Latest status</th><th>Previous status</th><th>Trend</th><th>Forecast</th><th>Monitor?</th><th>Summary</th></tr></thead><tbody>
           ${milestones.map((milestone) => {
             const latest = milestone.latestAssessment || {};
