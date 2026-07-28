@@ -186,9 +186,9 @@ pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:#071126;
         </tbody></table></div>
       </section>
       <section class="panel">
-        <h2>Health history</h2>
+        <h2>Project health overview</h2>
         <div class="table-scroll"><table><thead><tr><th>Area</th><th>Status</th><th>Trend</th><th>Confidence</th><th>Report</th><th>Rationale</th></tr></thead><tbody>
-          ${healthHistory.map((item) => `<tr><td>${escapeHtml(friendlyLabel(item.area))}</td><td>${escapeHtml(friendlyLabel(item.status))}</td><td class="${escapeHtml(trendClass(item.trend))}">${escapeHtml(friendlyLabel(item.trend))}</td><td>${escapeHtml(item.confidence || '-')}</td><td><a href="/project-update-test/reports/${escapeHtml(item.reportId)}">Report ${escapeHtml(item.reportId)}</a></td><td>${escapeHtml(item.rationale || '-')}</td></tr>`).join('') || '<tr><td colspan="6">No health history yet.</td></tr>'}
+          ${healthHistory.map((item) => `<tr><td>${escapeHtml(friendlyLabel(item.area))}</td><td>${escapeHtml(friendlyLabel(item.status))}</td><td class="${escapeHtml(trendClass(item.trend))}">${escapeHtml(friendlyLabel(item.trend))}</td><td>${escapeHtml(item.confidence || '-')}</td><td><a href="/project-update-test/reports/${escapeHtml(item.reportId)}">Report ${escapeHtml(item.reportId)}</a></td><td>${escapeHtml(item.rationale || '-')}</td></tr>`).join('') || '<tr><td colspan="6">No project health overview yet.</td></tr>'}
         </tbody></table></div>
       </section>
       <section class="panel">

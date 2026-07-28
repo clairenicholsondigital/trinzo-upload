@@ -453,14 +453,14 @@
       lines.push('- No monitored risks.', '');
     }
 
-    lines.push('## Health history', '');
+    lines.push('## Project health overview', '');
     if (health.length) {
       health.forEach((item) => {
         lines.push(`- ${mdLine(PW.friendlyLabel(item.area))}: ${mdLine(PW.friendlyLabel(item.status))}; trend ${mdLine(PW.friendlyLabel(item.trend))}; confidence ${mdLine(item.confidence)}. ${mdLine(item.rationale)}`);
       });
       lines.push('');
     } else {
-      lines.push('- No health history yet.', '');
+      lines.push('- No project health overview yet.', '');
     }
 
     lines.push('## Recent reports', '');

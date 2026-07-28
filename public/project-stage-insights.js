@@ -1,5 +1,5 @@
 // Insights stage: the project's analytics/memory hub. One GET /context?projectId=
-// call powers health tiles, milestone assessments + trend, health history, risks,
+// call powers health tiles, milestone assessments + trend, project health overview, risks,
 // risk suggestions and recent reports; plus an "Ask this project" memory box.
 // Lifted from the old Context page, now driven by the workspace's selected project.
 (function () {
@@ -165,14 +165,15 @@
         </div>
       </section>
       <section class="panel">
-        <h2>Health history</h2>
-        <div class="table-scroll"><table><thead><tr><th>Area</th><th>Status</th><th>Trend</th><th>Confidence</th><th>Report</th><th>Rationale</th></tr></thead><tbody>
-          ${healthHistory.map((item) => `<tr><td>${escapeHtml(friendlyLabel(item.area))}</td><td>${escapeHtml(friendlyLabel(item.status))}</td><td class="${escapeHtml(trendClass(item.trend))}">${escapeHtml(friendlyLabel(item.trend))}</td><td>${escapeHtml(item.confidence || '-')}</td><td><a href="/project-update-test/reports/${escapeHtml(item.reportId)}">Report ${escapeHtml(item.reportId)}</a></td><td>${escapeHtml(item.rationale || '-')}</td></tr>`).join('') || '<tr><td colspan="6"><strong>No health history yet.</strong><br />Approved reports will build a timeline here.</td></tr>'}
-        </tbody></table></div>
-      </section>
-      <section class="panel">
         <h2>Project profile / baseline</h2>
         <p class="intro">This is the ongoing project state future reports compare against. Edit milestones and configured risks here; reports are snapshots against this profile.</p>
+      </section>
+      <section class="panel">
+        <h2>Project health overview</h2>
+        <p class="intro">Latest saved-report view of each health area, with the trend and rationale behind it.</p>
+        <div class="table-scroll"><table><thead><tr><th>Area</th><th>Status</th><th>Trend</th><th>Confidence</th><th>Report</th><th>Rationale</th></tr></thead><tbody>
+          ${healthHistory.map((item) => `<tr><td>${escapeHtml(friendlyLabel(item.area))}</td><td>${escapeHtml(friendlyLabel(item.status))}</td><td class="${escapeHtml(trendClass(item.trend))}">${escapeHtml(friendlyLabel(item.trend))}</td><td>${escapeHtml(item.confidence || '-')}</td><td><a href="/project-update-test/reports/${escapeHtml(item.reportId)}">Report ${escapeHtml(item.reportId)}</a></td><td>${escapeHtml(item.rationale || '-')}</td></tr>`).join('') || '<tr><td colspan="6"><strong>No project health overview yet.</strong><br />Approved reports will build a timeline here.</td></tr>'}
+        </tbody></table></div>
       </section>
       <section class="panel">
         <h2>Profile milestones</h2>
