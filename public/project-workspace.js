@@ -155,13 +155,10 @@
           </span>
         </div>
         <div class="bar-actions">
-          <button id="exportProjectOverviewBtn" class="subtle" type="button">Export overview</button>
-          <button id="editProjectBtn" type="button">Edit details</button>
           <button id="switchProjectBtn" type="button">Switch project</button>
         </div>
       </section>
       ${contextWarning}
-      <div id="editProjectPanel"></div>
     `;
   }
 
@@ -210,6 +207,7 @@
       projectId: String(project.projectId),
       project,
       workspace: PW,
+      exportProjectOverview,
       reloadProject: async () => {
         await PW.loadProjects();
         const fresh = PW.getProject(project.projectId);
@@ -284,104 +282,12 @@
     if (project) showStage(project, stageKey);
   }
 
-  function attachEditPanel(project) {
-    const editBtn = document.getElementById('editProjectBtn');
+  function attachProjectBarActions(project) {
     const switchBtn = document.getElementById('switchProjectBtn');
-    const exportBtn = document.getElementById('exportProjectOverviewBtn');
-    const editPanel = document.getElementById('editProjectPanel');
-
-    if (exportBtn) exportBtn.addEventListener('click', () => exportProjectOverview(project, exportBtn));
+    if (!switchBtn) return;
 
     switchBtn.addEventListener('click', () => {
       renderChooser(PW.getCachedProjects());
-    });
-
-    editBtn.addEventListener('click', () => {
-      if (editPanel.dataset.open === 'true') {
-        editPanel.dataset.open = 'false';
-        editPanel.innerHTML = '';
-        return;
-      }
-      editPanel.dataset.open = 'true';
-      editPanel.innerHTML = `
-        <section class="panel">
-          <h2>Edit project details</h2>
-          <div class="form-grid">
-            <label class="wide">Project name <input id="editProjectName" type="text" value="${escapeHtml(project.projectName || '')}" /></label>
-            <label>Client <input id="editProjectClient" type="text" value="${escapeHtml(project.clientName || '')}" /></label>
-            <label>Status
-              <select id="editProjectStatus">
-                ${['active', 'paused', 'completed', 'archived'].map((option) => `<option value="${option}" ${option === (project.status || 'active') ? 'selected' : ''}>${option.charAt(0).toUpperCase() + option.slice(1)}</option>`).join('')}
-              </select>
-            </label>
-            <label class="full">Description <textarea id="editProjectDescription">${escapeHtml(project.description || '')}</textarea></label>
-          </div>
-          <div class="actions" style="margin-top:.75rem">
-            <button id="saveProjectDetailsBtn" class="primary" type="button">Save details</button>
-          </div>
-          <details class="danger-zone" style="margin-top:1rem">
-            <summary>Danger zone</summary>
-            <p class="muted">Only use this if the whole project workspace was created by mistake.</p>
-            <button id="deleteProjectBtn" class="danger" type="button">Delete project workspace</button>
-          </details>
-          <p id="editProjectStatusMsg" class="status"></p>
-        </section>
-      `;
-
-      const saveBtn = document.getElementById('saveProjectDetailsBtn');
-      const deleteBtn = document.getElementById('deleteProjectBtn');
-      const statusMsg = document.getElementById('editProjectStatusMsg');
-
-      saveBtn.addEventListener('click', async () => {
-        const projectName = document.getElementById('editProjectName').value.trim();
-        if (!projectName) {
-          statusMsg.className = 'status error';
-          statusMsg.textContent = 'Project name is required.';
-          return;
-        }
-        saveBtn.disabled = true;
-        statusMsg.className = 'status';
-        statusMsg.textContent = 'Saving…';
-        try {
-          await PW.request(`projects/${encodeURIComponent(project.projectId)}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              projectName,
-              clientName: document.getElementById('editProjectClient').value.trim(),
-              status: document.getElementById('editProjectStatus').value,
-              description: document.getElementById('editProjectDescription').value.trim()
-            })
-          });
-          await PW.loadProjects();
-          const fresh = PW.getProject(project.projectId) || project;
-          refreshProjectBar(fresh);
-          Object.assign(project, fresh);
-          statusMsg.className = 'status success';
-          statusMsg.textContent = 'Project updated.';
-        } catch (error) {
-          statusMsg.className = 'status error';
-          statusMsg.textContent = error.message || 'Could not save project.';
-        } finally {
-          saveBtn.disabled = false;
-        }
-      });
-
-      deleteBtn.addEventListener('click', async () => {
-        const summary = `${project.projectName} (${project.reportCount || 0} reports, ${project.activeMilestoneCount || 0} milestones)`;
-        if (!window.confirm(`Delete ${summary}? This also deletes this project's saved reports, milestones, risks, snapshots and project memory.`)) return;
-        deleteBtn.disabled = true;
-        try {
-          await PW.request(`projects/${encodeURIComponent(project.projectId)}`, { method: 'DELETE' });
-          PW.clearSelectedProject();
-          await PW.loadProjects();
-          renderChooser(PW.getCachedProjects());
-        } catch (error) {
-          statusMsg.className = 'status error';
-          statusMsg.textContent = error.message || 'Could not delete project.';
-          deleteBtn.disabled = false;
-        }
-      });
     });
   }
 
@@ -551,7 +457,7 @@
       ${renderStageTabs(activeKey)}
       <div id="stagePanel"></div>
     `;
-    attachEditPanel(project);
+    attachProjectBarActions(project);
     const showSwitcher = document.getElementById('showProjectSwitcherBtn');
     if (showSwitcher) showSwitcher.addEventListener('click', () => {
       const slot = document.getElementById('projectSwitcherSlot');
