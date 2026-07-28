@@ -131,26 +131,21 @@
     const latestReport = recentReports[0] || {};
 
     container.innerHTML = `
-      <section class="panel">
-        <h1>Insights</h1>
-        <p class="intro">Review the current project position, recent report history and stored project memory. Memory can guide future reports, but report evidence remains transcript-only.</p>
-        <details>
-          <summary>Workspace management</summary>
-          <p class="muted">Use these controls after review. They change what future reports compare against.</p>
-          <div class="actions">
-            <button id="createSnapshotBtn" type="button" title="Save a point-in-time copy of the current project profile so you can refer back to it later." ${context.found ? '' : 'disabled'}>Save profile snapshot</button>
-            <button id="markOfficialBtn" type="button" title="Confirm the currently active milestones and risks as the agreed baseline for future reports." ${context.found ? '' : 'disabled'}>Approve active baseline</button>
-            <button id="cleanupTestsBtn" type="button" title="Archive draft reports and tidy profile clutter while keeping approved items active." ${context.found ? '' : 'disabled'}>Tidy draft workspace</button>
+      <section class="panel insights-header-panel">
+        <div class="section-title-row">
+          <div>
+            <h1>Insights</h1>
+            <p class="intro">Current project position, profile and recent reports.</p>
           </div>
-          <div class="empty-state" style="margin-top:.75rem">
-            <strong>What these do</strong>
-            <ul>
-              <li><strong>Save profile snapshot:</strong> saves a point-in-time copy of the current project profile for later reference.</li>
-              <li><strong>Approve active baseline:</strong> confirms the current milestones and risks as the agreed baseline for future reports.</li>
-              <li><strong>Tidy draft workspace:</strong> clears draft clutter while keeping approved milestones, risks and context.</li>
-            </ul>
-          </div>
-        </details>
+          <details class="compact-options">
+            <summary>More options</summary>
+            <div class="compact-options-menu">
+              <button id="createSnapshotBtn" type="button" title="Save a point-in-time copy of the current project profile." ${context.found ? '' : 'disabled'}>Save snapshot</button>
+              <button id="markOfficialBtn" type="button" title="Use the current milestones and risks as the agreed baseline." ${context.found ? '' : 'disabled'}>Approve baseline</button>
+              <button id="cleanupTestsBtn" type="button" title="Archive draft clutter while keeping approved items active." ${context.found ? '' : 'disabled'}>Tidy drafts</button>
+            </div>
+          </details>
+        </div>
         <p id="contextStatus" class="status"></p>
         ${context.found ? '' : '<p class="status">No project history yet. Add Setup context, then create and approve the first draft report.</p>'}
       </section>

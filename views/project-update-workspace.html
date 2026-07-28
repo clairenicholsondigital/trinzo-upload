@@ -165,6 +165,15 @@ pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:var(--so
 .status-pill[data-status="completed"] { border-color:rgba(37,99,235,.5); color:#bfdbfe; background:rgba(37,99,235,.14); }
 .status-pill[data-status="archived"] { color:var(--muted); }
 
+.section-title-row { display:flex; justify-content:space-between; align-items:flex-start; gap:1rem; flex-wrap:wrap; }
+.section-title-row h1, .section-title-row h2 { margin-bottom:.25rem; }
+.compact-options { margin-left:auto; position:relative; }
+.compact-options summary { cursor:pointer; color:#cbd5e1; background:rgba(19,40,71,.55); border:1px solid rgba(148,163,184,.28); border-radius:999px; padding:.42rem .65rem; font-size:.9rem; font-weight:700; list-style:none; }
+.compact-options summary::-webkit-details-marker { display:none; }
+.compact-options[open] summary { border-color:rgba(23,208,196,.45); color:#dffefa; }
+.compact-options-menu { display:flex; gap:.45rem; flex-wrap:wrap; justify-content:flex-end; margin-top:.55rem; }
+.compact-options-menu button { padding:.42rem .62rem; font-size:.9rem; }
+
 .stage-tabs { display:flex; gap:.4rem; flex-wrap:wrap; margin:0 0 1rem; }
 .supporting-tools { background:rgba(7,17,38,.55); border:1px solid var(--border); border-radius:14px; padding:.85rem 1rem; margin-bottom:1rem; }
 .supporting-tools summary { cursor:pointer; font-weight:700; color:#dbeafe; }
