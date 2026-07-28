@@ -59,6 +59,13 @@ label { display:grid; gap:.35rem; color:var(--muted); font-weight:700; }
 .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:.75rem; }
 .card, .item { background:var(--soft); border:1px solid var(--border); border-radius:10px; padding:.75rem; }
 .value { margin-top:.25rem; font-weight:700; overflow-wrap:anywhere; }
+.at-glance-strip { display:flex; gap:1rem; align-items:center; justify-content:space-between; flex-wrap:wrap; background:rgba(7,17,38,.55); border:1px solid rgba(148,163,184,.22); border-radius:14px; padding:.85rem 1rem; }
+.glance-primary { min-width:220px; }
+.glance-primary .label { display:block; color:var(--muted); font-size:.82rem; margin-bottom:.2rem; }
+.glance-primary strong { display:block; font-size:1.05rem; color:#eef3ff; overflow-wrap:anywhere; }
+.glance-metrics { display:flex; gap:.45rem; flex-wrap:wrap; align-items:center; justify-content:flex-end; }
+.glance-metrics span { display:inline-flex; align-items:center; gap:.25rem; border:1px solid var(--border); border-radius:999px; padding:.32rem .62rem; color:#cbd5e1; background:rgba(15,23,42,.54); font-size:.9rem; }
+.glance-metrics strong { color:#eef3ff; }
 .table-scroll { overflow:auto; border:1px solid var(--border); border-radius:10px; background:var(--soft); }
 table { width:100%; border-collapse:separate; border-spacing:0; min-width:860px; }
 th, td { border-bottom:1px solid var(--border); border-right:1px solid var(--border); padding:.65rem; text-align:left; vertical-align:top; }

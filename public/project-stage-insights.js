@@ -96,12 +96,17 @@
       </section>
       <section class="panel">
         <h2>At a glance</h2>
-        <div class="grid">
-          <div class="card"><div class="label">Overall health</div><div class="value">${escapeHtml(proseOrLabel(latestReport.overallHealth || latestReport.overallHealthRag))}</div></div>
-          <div class="card"><div class="label">Active milestones</div><div class="value">${milestones.length}</div></div>
-          <div class="card"><div class="label">Active risks</div><div class="value">${activeRisks.length}</div></div>
-          <div class="card"><div class="label">Saved reports</div><div class="value">${recentReports.length}</div></div>
-          <div class="card"><div class="label">Latest snapshot</div><div class="value">${context.latestSnapshot ? `<a href="/project-update-test/context/snapshots/${escapeHtml(context.latestSnapshot.snapshotId)}">Snapshot ${escapeHtml(context.latestSnapshot.snapshotId)}</a>` : '-'}</div></div>
+        <div class="at-glance-strip" aria-label="Project summary">
+          <div class="glance-primary">
+            <span class="label">Overall position</span>
+            <strong>${escapeHtml(proseOrLabel(latestReport.overallHealth || latestReport.overallHealthRag))}</strong>
+          </div>
+          <div class="glance-metrics">
+            <span><strong>${milestones.length}</strong> monitored milestone${milestones.length === 1 ? '' : 's'}</span>
+            <span><strong>${activeRisks.length}</strong> monitored risk${activeRisks.length === 1 ? '' : 's'}</span>
+            <span><strong>${recentReports.length}</strong> saved report${recentReports.length === 1 ? '' : 's'}</span>
+            <span>${context.latestSnapshot ? `<a href="/project-update-test/context/snapshots/${escapeHtml(context.latestSnapshot.snapshotId)}">Latest snapshot ${escapeHtml(context.latestSnapshot.snapshotId)}</a>` : 'No snapshot yet'}</span>
+          </div>
         </div>
       </section>
       <section class="panel">
