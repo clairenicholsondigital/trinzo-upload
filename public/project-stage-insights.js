@@ -13,7 +13,7 @@
   function renderMilestoneProfileRows(milestones) {
     return milestones.map((milestone) => `
       <tr data-profile-milestone="${escapeHtml(milestone.milestoneId)}">
-        <td><input data-field="milestoneName" value="${inputValue(milestone.milestoneName)}" /></td>
+        <td><textarea class="profile-title-field" data-field="milestoneName">${inputValue(milestone.milestoneName)}</textarea></td>
         <td><input data-field="category" value="${inputValue(milestone.category || 'Manual')}" /></td>
         <td><textarea data-field="description">${inputValue(milestone.description || '')}</textarea></td>
         <td><input data-field="baselineFinishDate" type="date" value="${inputValue(dateOnly(milestone.baselineFinishDate) === '-' ? '' : dateOnly(milestone.baselineFinishDate))}" /></td>
@@ -27,7 +27,7 @@
   function renderRiskProfileRows(risks) {
     return risks.map((risk) => `
       <tr data-profile-risk="${escapeHtml(risk.riskId)}">
-        <td><input data-field="riskTitle" value="${inputValue(risk.riskTitle)}" /></td>
+        <td><textarea class="profile-title-field" data-field="riskTitle">${inputValue(risk.riskTitle)}</textarea></td>
         <td><input data-field="category" value="${inputValue(risk.category || 'General')}" /></td>
         <td><textarea data-field="description">${inputValue(risk.description || '')}</textarea></td>
         <td><textarea data-field="mitigation">${inputValue(risk.mitigation || '')}</textarea></td>
@@ -97,14 +97,14 @@
       </section>
       <section class="panel">
         <h2>Profile milestones</h2>
-        <div class="table-scroll"><table><thead><tr><th>Milestone</th><th>Category</th><th>Description</th><th>Baseline</th><th>Forecast</th><th>Official</th><th>Actions</th></tr></thead><tbody id="profileMilestonesBody">
+        <div class="table-scroll profile-editor-scroll"><table class="profile-editor-table"><thead><tr><th>Milestone</th><th>Category</th><th>Description</th><th>Baseline</th><th>Forecast</th><th>Official</th><th>Actions</th></tr></thead><tbody id="profileMilestonesBody">
           ${renderMilestoneProfileRows(milestones)}
         </tbody></table></div>
       </section>
       <section class="panel">
         <h2>Configured risks</h2>
         <p class="intro">These are standing project risks, not one-off AI suggestions. Keep them current as part of the project profile.</p>
-        <div class="table-scroll"><table><thead><tr><th>Risk</th><th>Category</th><th>Description</th><th>Mitigation</th><th>Official</th><th>Actions</th></tr></thead><tbody id="profileRisksBody">
+        <div class="table-scroll profile-editor-scroll"><table class="profile-editor-table"><thead><tr><th>Risk</th><th>Category</th><th>Description</th><th>Mitigation</th><th>Official</th><th>Actions</th></tr></thead><tbody id="profileRisksBody">
           ${renderRiskProfileRows(activeRisks)}
         </tbody></table></div>
         <details style="margin-top:.75rem">

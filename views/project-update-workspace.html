@@ -63,6 +63,19 @@ th, td { border-bottom:1px solid var(--border); border-right:1px solid var(--bor
 thead th { background:#132847; color:#dbeafe; position:sticky; top:0; }
 tr:last-child td { border-bottom:0; }
 th:last-child, td:last-child { border-right:0; }
+.profile-editor-scroll { max-width:100%; }
+.profile-editor-table { min-width:1120px; table-layout:fixed; }
+.profile-editor-table th:nth-child(1), .profile-editor-table td:nth-child(1) { width:260px; }
+.profile-editor-table th:nth-child(2), .profile-editor-table td:nth-child(2) { width:140px; }
+.profile-editor-table th:nth-child(3), .profile-editor-table td:nth-child(3) { width:300px; }
+.profile-editor-table th:nth-child(4), .profile-editor-table td:nth-child(4),
+.profile-editor-table th:nth-child(5), .profile-editor-table td:nth-child(5) { width:150px; }
+.profile-editor-table th:nth-child(6), .profile-editor-table td:nth-child(6) { width:120px; }
+.profile-editor-table th:nth-child(7), .profile-editor-table td:nth-child(7) { width:150px; }
+.profile-editor-table textarea { min-height:5.25rem; line-height:1.35; overflow:auto; white-space:pre-wrap; }
+.profile-editor-table .profile-title-field { min-height:4.6rem; font-weight:650; }
+.profile-editor-table input[type="date"] { min-width:8.5rem; }
+.profile-editor-table .actions { display:flex; flex-direction:column; gap:.45rem; }
 .evidence { margin:.5rem 0 0; padding-left:1.1rem; color:#dbeafe; }
 
 /* Forms */
