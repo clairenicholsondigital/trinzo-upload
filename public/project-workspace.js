@@ -1,6 +1,6 @@
-// Workspace controller: owns project selection + the Setup→Process→Reports→Insights
-// stage flow. Renders a project chooser when nothing is selected, otherwise a
-// persistent project bar + stage tabs, mounting one stage at a time.
+// Workspace controller: owns project selection + the project-update meeting
+// scaffold. Renders a project chooser when nothing is selected, otherwise opens
+// straight into the update meeting flow with supporting tools tucked away.
 (function () {
   const PW = window.ProjectWorkspace;
   const Stages = window.ProjectStages || {};
@@ -8,10 +8,10 @@
   const { escapeHtml } = PW;
 
   const STAGES = [
-    { key: 'setup', no: 1, label: 'Setup', hint: 'Milestones & context' },
-    { key: 'process', no: 2, label: 'Process', hint: 'Transcript → report' },
-    { key: 'reports', no: 3, label: 'Reports', hint: 'Saved reports' },
-    { key: 'insights', no: 4, label: 'Insights', hint: 'Analytics & memory' }
+    { key: 'process', no: 1, label: 'Update meeting', hint: 'Run the meeting → draft report' },
+    { key: 'insights', no: 2, label: 'Project profile', hint: 'Milestones, risks & baseline' },
+    { key: 'reports', no: 3, label: 'Saved reports', hint: 'Review previous updates' },
+    { key: 'setup', no: 4, label: 'Advanced setup', hint: 'Memory & bulk tools' }
   ];
   const STAGE_KEYS = STAGES.map((stage) => stage.key);
 
@@ -22,7 +22,7 @@
 
   function currentStageKey() {
     const requested = new URLSearchParams(location.search).get('stage');
-    return STAGE_KEYS.includes(requested) ? requested : 'setup';
+    return STAGE_KEYS.includes(requested) ? requested : 'process';
   }
 
   function setStageInUrl(stageKey, replace) {
@@ -61,7 +61,7 @@
     root.innerHTML = `
       <section class="panel">
         <h1>Project workspace</h1>
-        <p class="intro">Pick a project to work on, then move through Setup → Process → Reports → Insights. Everything below stays scoped to the project you choose.</p>
+        <p class="intro">Pick a project, then use the workspace as a scaffold for the next project update meeting. Profile/admin tools stay scoped to the project you choose.</p>
       </section>
       <section class="panel">
         <h2>Your projects</h2>
@@ -189,14 +189,18 @@
 
   function renderStageTabs(activeKey) {
     return `
-      <nav class="stage-tabs" aria-label="Workspace stages">
+      <details class="supporting-tools" ${activeKey === 'process' ? '' : 'open'}>
+        <summary>Supporting tools</summary>
+        <p class="muted">Most updates should start on <strong>Update meeting</strong>. Use these when you need to adjust the project profile, review old reports, or do admin maintenance.</p>
+        <nav class="stage-tabs" aria-label="Workspace stages">
         ${STAGES.map((stage) => `
           <button type="button" class="stage-tab ${stage.key === activeKey ? 'active' : ''}" data-stage="${stage.key}" aria-current="${stage.key === activeKey ? 'page' : 'false'}">
             <span class="step-no">${stage.no}</span>
             <span><span class="step-label">${escapeHtml(stage.label)}</span> <span class="step-hint">${escapeHtml(stage.hint)}</span></span>
           </button>
         `).join('')}
-      </nav>
+        </nav>
+      </details>
     `;
   }
 
@@ -273,7 +277,7 @@
   }
 
   function goToStage(stageKey, push) {
-    if (!STAGE_KEYS.includes(stageKey)) stageKey = 'setup';
+    if (!STAGE_KEYS.includes(stageKey)) stageKey = 'process';
     setStageInUrl(stageKey, !push);
     const project = PW.getProject(PW.getSelectedProjectId());
     if (project) showStage(project, stageKey);
@@ -401,6 +405,15 @@
     });
   }
 
+  function renderCollapsedProjectSwitcher(project) {
+    return `
+      <section class="panel project-switcher-collapsed">
+        <p><strong>Current project:</strong> ${escapeHtml(project.projectName || `Project ${project.projectId}`)}</p>
+        <button id="showProjectSwitcherBtn" type="button">Change project</button>
+      </section>
+    `;
+  }
+
   function renderWorkspace() {
     const project = PW.getProject(PW.getSelectedProjectId());
     if (!project) {
@@ -412,12 +425,17 @@
     const activeKey = currentStageKey();
     root.innerHTML = `
       ${renderProjectBar(project)}
-      <div id="projectSwitcherSlot">${renderProjectSwitcher(project)}</div>
+      <div id="projectSwitcherSlot">${renderCollapsedProjectSwitcher(project)}</div>
       ${renderStageTabs(activeKey)}
       <div id="stagePanel"></div>
     `;
     attachEditPanel(project);
-    attachProjectSwitcher(project);
+    const showSwitcher = document.getElementById('showProjectSwitcherBtn');
+    if (showSwitcher) showSwitcher.addEventListener('click', () => {
+      const slot = document.getElementById('projectSwitcherSlot');
+      slot.innerHTML = renderProjectSwitcher(project);
+      attachProjectSwitcher(project);
+    });
     root.querySelectorAll('[data-stage]').forEach((tab) => {
       tab.addEventListener('click', () => goToStage(tab.getAttribute('data-stage'), true));
     });

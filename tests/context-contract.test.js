@@ -120,7 +120,8 @@ test('project workspace labels separate memory, draft reports and evidence', () 
   assert.ok(projectStageSetupSource.includes('Memory search maintenance'));
   assert.ok(projectStageSetupSource.includes('Search status'));
   assert.ok(projectStageProcessSource.includes('Create draft report'));
-  assert.ok(projectStageProcessSource.includes('evidence must come from this transcript'));
+  assert.ok(projectStageProcessSource.includes('Project update meeting'));
+  assert.ok(projectStageProcessSource.includes('evidence must come from this update'));
   assert.ok(projectStageInsightsSource.includes('stored project memory'));
   assert.ok(projectStageInsightsSource.includes('Suggested follow-up risks'));
 });
