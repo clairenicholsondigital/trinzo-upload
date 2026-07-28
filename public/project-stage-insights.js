@@ -19,7 +19,7 @@
         <td><input data-field="baselineFinishDate" type="date" value="${inputValue(dateOnly(milestone.baselineFinishDate) === '-' ? '' : dateOnly(milestone.baselineFinishDate))}" /></td>
         <td><input data-field="forecastFinishDate" type="date" value="${inputValue(dateOnly(milestone.forecastFinishDate) === '-' ? '' : dateOnly(milestone.forecastFinishDate))}" /></td>
         <td><label class="monitor-checkbox" title="Monitor this milestone in future project updates"><input type="checkbox" data-monitor-profile checked aria-label="Monitor this milestone in future project updates" /></label></td>
-        <td class="actions"><button type="button" data-save-milestone>Save</button><button type="button" class="danger" data-delete-milestone>Delete</button></td>
+        <td class="actions"><button type="button" class="subtle" data-expand-edit-row>Expand</button><button type="button" data-save-milestone>Save</button><button type="button" class="danger" data-delete-milestone>Delete</button></td>
       </tr>
     `).join('') || '<tr><td colspan="7"><strong>No profile milestones yet.</strong><br />Add milestones in Setup or from a reviewed report.</td></tr>';
   }
@@ -32,7 +32,7 @@
         <td><textarea data-field="description">${inputValue(risk.description || '')}</textarea></td>
         <td><textarea data-field="mitigation">${inputValue(risk.mitigation || '')}</textarea></td>
         <td><label class="monitor-checkbox" title="Monitor this risk in future project updates"><input type="checkbox" data-monitor-profile checked aria-label="Monitor this risk in future project updates" /></label></td>
-        <td class="actions"><button type="button" data-save-risk>Save</button><button type="button" class="danger" data-delete-risk>Delete</button></td>
+        <td class="actions"><button type="button" class="subtle" data-expand-edit-row>Expand</button><button type="button" data-save-risk>Save</button><button type="button" class="danger" data-delete-risk>Delete</button></td>
       </tr>
     `).join('') || '<tr><td colspan="6"><strong>No configured risks yet.</strong><br />Add a core project risk below so future updates can track it.</td></tr>';
   }
@@ -45,9 +45,69 @@
         <td><textarea data-field="description">${inputValue(risk.description || '')}</textarea></td>
         <td><textarea data-field="mitigation">${inputValue(risk.suggestedMitigation || risk.mitigation || '')}</textarea></td>
         <td><a href="/project-update-test/reports/${escapeHtml(risk.reportId)}">Report ${escapeHtml(risk.reportId)}</a><br /><span class="muted">${escapeHtml(friendlyLabel(risk.reviewStatus))}${risk.confidence ? ` · ${escapeHtml(risk.confidence)} confidence` : ''}</span></td>
-        <td class="actions"><button type="button" data-add-suggested-risk>Add to monitored risks</button></td>
+        <td class="actions"><button type="button" class="subtle" data-expand-edit-row>Expand</button><button type="button" data-add-suggested-risk>Add to monitored risks</button></td>
       </tr>
     `).join('') || '<tr><td colspan="6"><strong>No suggested follow-up risks yet.</strong><br />New risks found in draft reports will appear here for review.</td></tr>';
+  }
+
+  function fieldLabel(field) {
+    const labels = {
+      milestoneName: 'Milestone',
+      riskTitle: 'Risk',
+      category: 'Category',
+      description: 'Description',
+      mitigation: 'Mitigation',
+      baselineFinishDate: 'Baseline date',
+      forecastFinishDate: 'Forecast date'
+    };
+    return labels[field] || friendlyLabel(field);
+  }
+
+  function openRowEditModal(row) {
+    if (!row) return;
+    const fields = Array.from(row.querySelectorAll('[data-field]'));
+    if (!fields.length) return;
+    const existing = document.querySelector('[data-row-edit-modal]');
+    if (existing) existing.remove();
+    const title = fields[0]?.value || 'Edit row';
+    const modal = document.createElement('div');
+    modal.className = 'row-edit-modal-backdrop';
+    modal.setAttribute('data-row-edit-modal', 'true');
+    modal.innerHTML = `
+      <div class="row-edit-modal" role="dialog" aria-modal="true" aria-label="Expanded row editor">
+        <div class="row-edit-modal-head">
+          <div><strong>Edit row</strong><p class="muted">${escapeHtml(title)}</p></div>
+          <button type="button" class="subtle" data-close-row-modal>Close</button>
+        </div>
+        <div class="row-edit-modal-fields">
+          ${fields.map((field, index) => {
+            const key = field.getAttribute('data-field');
+            const type = field.getAttribute('type') === 'date' ? 'date' : 'text';
+            const value = escapeHtml(field.value || '');
+            if (field.tagName.toLowerCase() === 'input' && type === 'date') {
+              return `<label>${escapeHtml(fieldLabel(key))}<input data-modal-field-index="${index}" type="date" value="${value}" /></label>`;
+            }
+            return `<label>${escapeHtml(fieldLabel(key))}<textarea data-modal-field-index="${index}">${value}</textarea></label>`;
+          }).join('')}
+        </div>
+        <div class="row-edit-modal-actions"><button type="button" class="primary" data-apply-row-modal>Apply to row</button></div>
+      </div>`;
+    document.body.appendChild(modal);
+    const close = () => modal.remove();
+    modal.querySelector('[data-close-row-modal]').addEventListener('click', close);
+    modal.addEventListener('click', (event) => { if (event.target === modal) close(); });
+    modal.querySelector('[data-apply-row-modal]').addEventListener('click', () => {
+      modal.querySelectorAll('[data-modal-field-index]').forEach((editor) => {
+        const field = fields[Number(editor.getAttribute('data-modal-field-index'))];
+        if (!field) return;
+        field.value = editor.value;
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+        field.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      close();
+    });
+    const firstField = modal.querySelector('[data-modal-field-index]');
+    if (firstField) firstField.focus();
   }
 
   function mount(container, ctx) {
@@ -226,6 +286,10 @@
   }
 
   function wireProfileEditors(container, ctx, projectId) {
+    container.querySelectorAll('[data-expand-edit-row]').forEach((button) => {
+      button.addEventListener('click', () => openRowEditModal(button.closest('tr')));
+    });
+
     container.querySelectorAll('[data-save-milestone]').forEach((button) => {
       button.addEventListener('click', async () => {
         const row = button.closest('[data-profile-milestone]');

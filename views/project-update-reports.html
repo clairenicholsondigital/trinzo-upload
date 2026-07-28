@@ -41,6 +41,7 @@ th:last-child, td:last-child { border-right:0; }
 .button-link, button { display:inline-block; background:#132847; color:#dbeafe; border:1px solid var(--border); border-radius:8px; padding:.5rem .7rem; font-weight:700; text-decoration:none; white-space:nowrap; cursor:pointer; font:inherit; }
 button.primary { background:linear-gradient(180deg,var(--accent),#0fb5ab); border-color:#0fb5ab; color:#02173B; }
 button.danger { background:#7f1d1d; border-color:#dc2626; color:#fee2e2; }
+button.subtle { background:rgba(19,40,71,.55); border-color:rgba(148,163,184,.28); color:#cbd5e1; }
 button:disabled { opacity:.6; cursor:not-allowed; }
 label { display:block; color:var(--muted); font-size:.86rem; font-weight:700; }
 input, select, textarea { width:100%; margin-top:.35rem; background:#071126; color:var(--text); border:1px solid var(--border); border-radius:10px; padding:.65rem; font:inherit; }
@@ -50,8 +51,16 @@ textarea { min-height:7rem; resize:vertical; }
 .inline-edit-table input, .inline-edit-table select, .inline-edit-table textarea { min-width:10rem; }
 .inline-edit-table td { min-width:12rem; }
 .inline-edit-table .narrow { min-width:8rem; }
+.inline-edit-table .narrow button { display:block; width:100%; margin:.25rem 0; }
 .editor-note { margin:.35rem 0 .75rem; color:var(--muted); }
 .row-tools { display:flex; gap:.4rem; flex-wrap:wrap; }
+.row-edit-modal-backdrop { position:fixed; inset:0; z-index:1000; background:rgba(2,6,23,.72); display:flex; align-items:center; justify-content:center; padding:1rem; }
+.row-edit-modal { width:min(760px,96vw); max-height:90vh; overflow:auto; background:linear-gradient(145deg,var(--panel),var(--panel2)); border:1px solid rgba(148,163,184,.35); border-radius:16px; box-shadow:0 24px 80px rgba(0,0,0,.45); padding:1rem; }
+.row-edit-modal-head { display:flex; justify-content:space-between; gap:1rem; align-items:flex-start; margin-bottom:1rem; }
+.row-edit-modal-head p { margin:.2rem 0 0; }
+.row-edit-modal-fields { display:grid; grid-template-columns:1fr; gap:.85rem; }
+.row-edit-modal-fields textarea { min-height:8rem; }
+.row-edit-modal-actions { display:flex; justify-content:flex-end; margin-top:1rem; }
 pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126; border:1px solid var(--border); border-radius:10px; padding:1rem; }
 .support-details { background:transparent; border:0; border-radius:0; padding:.2rem 0; color:var(--muted); font-size:.9rem; }
 .support-details summary { cursor:pointer; color:#8fa2c7; font-weight:500; font-size:.88rem; list-style-position:inside; }
@@ -314,7 +323,8 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
         <td>${editableCell('status', area.status || '', `${titleLabel(key)} status`, 'select-health')}</td>
         <td>${editableCell('trend', area.trend || '', `${titleLabel(key)} trend`, 'input')}</td>
         <td>${editableCell('evidenceNotes', area.evidenceNotes || linesValue(asArray(area.evidence).map((item) => item.text || item.source || '').filter(Boolean)), `${titleLabel(key)} evidence`)}</td>
-      </tr>`).join('') || '<tr><td colspan="4">No health areas yet. Save generated report data first, then edit here.</td></tr>';
+        <td class="narrow"><button type="button" class="subtle" data-expand-editor-row>Expand</button></td>
+      </tr>`).join('') || '<tr><td colspan="5">No health areas yet. Save generated report data first, then edit here.</td></tr>';
   }
 
   function renderMilestoneEditorRows(milestones) {
@@ -328,7 +338,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
         <td>${editableCell('health_assessment', item.health_assessment || '', `Milestone ${index + 1} health assessment`)}</td>
         <td>${editableCell('normalised_evidence_summary', item.normalised_evidence_summary || item.excerpt || '', `Milestone ${index + 1} summary`)}</td>
         <td>${editableCell('next_steps', linesValue(combinedNextSteps(item)), `Milestone ${index + 1} next steps`)}</td>
-        <td class="narrow"><button type="button" class="danger" data-remove-editor-row>Remove</button></td>
+        <td class="narrow"><button type="button" class="subtle" data-expand-editor-row>Expand</button><button type="button" class="danger" data-remove-editor-row>Remove</button></td>
       </tr>`).join('') || '';
   }
 
@@ -339,7 +349,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
         <td>${editableCell('description', risk.description || '', `Risk ${index + 1} description`)}</td>
         <td>${editableCell('suggestedMitigation', risk.suggestedMitigation || risk.mitigation || '', `Risk ${index + 1} mitigation`)}</td>
         <td>${editableCell('relatedMilestone', risk.relatedMilestone || '', `Risk ${index + 1} milestone`, 'input')}</td>
-        <td class="narrow"><button type="button" class="danger" data-remove-editor-row>Remove</button></td>
+        <td class="narrow"><button type="button" class="subtle" data-expand-editor-row>Expand</button><button type="button" class="danger" data-remove-editor-row>Remove</button></td>
       </tr>`).join('') || '';
   }
 
@@ -350,8 +360,76 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
         <td>${editableCell('owner', action.owner || action.meetingActionPointOwner || '', `Action ${index + 1} owner`, 'input')}</td>
         <td>${editableCell('deadline', action.deadline || action.meetingActionPointDeadline || '', `Action ${index + 1} deadline`, 'input')}</td>
         <td>${editableCell('relatedMilestone', action.related_milestone || action.relatedMilestone || '', `Action ${index + 1} milestone`, 'input')}</td>
-        <td class="narrow"><button type="button" class="danger" data-remove-editor-row>Remove</button></td>
+        <td class="narrow"><button type="button" class="subtle" data-expand-editor-row>Expand</button><button type="button" class="danger" data-remove-editor-row>Remove</button></td>
       </tr>`).join('') || '';
+  }
+
+
+  function editorFieldLabel(field) {
+    const labels = {
+      evidenceNotes: 'Evidence notes',
+      baseline_finish_date: 'Baseline date',
+      forecast_finish_date: 'Forecast date',
+      delivery_status: 'Delivery status',
+      agreed_rag_status: 'Status',
+      health_assessment: 'Health assessment',
+      normalised_evidence_summary: 'Summary',
+      next_steps: 'Next steps',
+      riskTitle: 'Risk',
+      suggestedMitigation: 'Mitigation',
+      relatedMilestone: 'Related milestone',
+      action: 'Action',
+      owner: 'Owner',
+      deadline: 'Deadline'
+    };
+    return labels[field] || friendlyLabel(field);
+  }
+
+  function openEditorRowModal(row) {
+    if (!row) return;
+    const fields = Array.from(row.querySelectorAll('[data-field]'));
+    if (!fields.length) return;
+    const existing = document.querySelector('[data-row-edit-modal]');
+    if (existing) existing.remove();
+    const title = fields[0]?.value || row.cells[0]?.textContent || 'Edit row';
+    const modal = document.createElement('div');
+    modal.className = 'row-edit-modal-backdrop';
+    modal.setAttribute('data-row-edit-modal', 'true');
+    modal.innerHTML = `
+      <div class="row-edit-modal" role="dialog" aria-modal="true" aria-label="Expanded row editor">
+        <div class="row-edit-modal-head">
+          <div><strong>Edit row</strong><p class="muted">${escapeHtml(title)}</p></div>
+          <button type="button" class="secondary" data-close-row-modal>Close</button>
+        </div>
+        <div class="row-edit-modal-fields">
+          ${fields.map((field, index) => {
+            const key = field.getAttribute('data-field');
+            const value = escapeHtml(field.value || '');
+            if (field.tagName.toLowerCase() === 'select') {
+              return `<label>${escapeHtml(editorFieldLabel(key))}<select data-modal-field-index="${index}">${Array.from(field.options).map((option) => `<option value="${escapeHtml(option.value)}" ${option.selected ? 'selected' : ''}>${escapeHtml(option.textContent || option.value || '-')}</option>`).join('')}</select></label>`;
+            }
+            return `<label>${escapeHtml(editorFieldLabel(key))}<textarea data-modal-field-index="${index}">${value}</textarea></label>`;
+          }).join('')}
+        </div>
+        <div class="row-edit-modal-actions"><button type="button" class="primary" data-apply-row-modal>Apply to row</button></div>
+      </div>`;
+    document.body.appendChild(modal);
+    const close = () => modal.remove();
+    modal.querySelector('[data-close-row-modal]').addEventListener('click', close);
+    modal.addEventListener('click', (event) => { if (event.target === modal) close(); });
+    modal.querySelector('[data-apply-row-modal]').addEventListener('click', () => {
+      modal.querySelectorAll('[data-modal-field-index]').forEach((editor) => {
+        const field = fields[Number(editor.getAttribute('data-modal-field-index'))];
+        if (!field) return;
+        field.value = editor.value;
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+        field.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      queueAutosave();
+      close();
+    });
+    const firstField = modal.querySelector('[data-modal-field-index]');
+    if (firstField) firstField.focus();
   }
 
   function renderError(error) {
@@ -549,7 +627,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
         <h3>Overall health areas</h3>
         <div class="table-scroll">
           <table class="inline-edit-table">
-            <thead><tr><th>Area</th><th>Status</th><th>Trend</th><th>Evidence / rationale</th></tr></thead>
+            <thead><tr><th>Area</th><th>Status</th><th>Trend</th><th>Evidence / rationale</th><th>Actions</th></tr></thead>
             <tbody id="healthAreaEditorRows">${renderHealthAreaEditorRows(areas)}</tbody>
           </table>
         </div>
@@ -736,6 +814,11 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
           button.closest('tr').remove();
           queueAutosave();
         });
+      });
+      document.querySelectorAll('[data-expand-editor-row]').forEach((button) => {
+        if (button.dataset.structuredEditorWired === 'true') return;
+        button.dataset.structuredEditorWired = 'true';
+        button.addEventListener('click', () => openEditorRowModal(button.closest('tr')));
       });
     }
 
