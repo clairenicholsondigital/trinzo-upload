@@ -143,6 +143,13 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
     return String(value || '').trim() || '-';
   }
 
+  function proseOrLabel(value) {
+    const text = String(value || '').trim();
+    if (!text) return '-';
+    const looksLikeEnum = /^[a-z0-9_-]+$/i.test(text) && !text.includes(' ');
+    return looksLikeEnum ? friendlyLabel(text) : text;
+  }
+
   function colourValue(value) {
     const key = String(value || '').trim().toLowerCase().replace(/[^a-z]+/g, '_');
     const colours = {
@@ -313,7 +320,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
                   <td>${escapeHtml(report.projectName || '-')}</td>
                   <td>${escapeHtml(report.periodLabel || '-')}</td>
                   <td>${escapeHtml(friendlyLabel(report.reportStatus))}</td>
-                  <td>${escapeHtml(friendlyLabel(report.overallHealth))}</td>
+                  <td>${escapeHtml(proseOrLabel(report.overallHealth))}</td>
                   <td>${escapeHtml(dateValue(report.updatedAt || report.createdAt))}</td>
                   <td class="actions">
                     <a class="button-link" href="/project-update-test/reports/${escapeHtml(report.reportId)}">Open report</a>
@@ -439,7 +446,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
           <div class="item"><div class="label">Period</div><div class="value">${escapeHtml(report.periodLabel || '-')}</div></div>
           <div class="item"><div class="label">Status</div><div class="value">${escapeHtml(friendlyLabel(report.reportStatus))}</div></div>
           <div class="item"><div class="label">Approval</div><div class="value">${escapeHtml(approvalText)}</div></div>
-          <div class="item"><div class="label">Overall health</div><div class="value">${escapeHtml(friendlyLabel(projectReport.overallHealth))}</div></div>
+          <div class="item"><div class="label">Overall health</div><div class="value">${escapeHtml(proseOrLabel(projectReport.overallHealth))}</div></div>
           <div class="item"><div class="label">Overall status</div><div class="value">${renderColour(projectReport.overallHealthRag)}</div></div>
           ${statusCrossCheck}
         </div>

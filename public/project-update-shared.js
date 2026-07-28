@@ -71,6 +71,13 @@
     return String(value || '').trim() || '-';
   }
 
+  function proseOrLabel(value) {
+    const text = String(value || '').trim();
+    if (!text) return '-';
+    const looksLikeEnum = /^[a-z0-9_-]+$/i.test(text) && !text.includes(' ');
+    return looksLikeEnum ? friendlyLabel(text) : text;
+  }
+
   function trendClass(value) {
     return `trend-${String(value || 'unknown').toLowerCase().replace(/[^a-z0-9]+/g, '_')}`;
   }
@@ -167,6 +174,7 @@
     sentenceLabel,
     titleLabel,
     staticText,
+    proseOrLabel,
     trendClass,
     colourValue,
     renderColour,

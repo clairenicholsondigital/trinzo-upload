@@ -155,6 +155,7 @@
           </span>
         </div>
         <div class="bar-actions">
+          <button id="exportProjectOverviewBtn" class="subtle" type="button">Export overview</button>
           <button id="editProjectBtn" type="button">Edit details</button>
           <button id="switchProjectBtn" type="button">Switch project</button>
         </div>
@@ -286,7 +287,10 @@
   function attachEditPanel(project) {
     const editBtn = document.getElementById('editProjectBtn');
     const switchBtn = document.getElementById('switchProjectBtn');
+    const exportBtn = document.getElementById('exportProjectOverviewBtn');
     const editPanel = document.getElementById('editProjectPanel');
+
+    if (exportBtn) exportBtn.addEventListener('click', () => exportProjectOverview(project, exportBtn));
 
     switchBtn.addEventListener('click', () => {
       renderChooser(PW.getCachedProjects());
@@ -375,6 +379,120 @@
         }
       });
     });
+  }
+
+  function safeFilename(value) {
+    return String(value || 'project-overview')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 80) || 'project-overview';
+  }
+
+  function mdLine(value) {
+    return String(value || '').trim() || '-';
+  }
+
+  function mdDate(value) {
+    return PW.displayDate ? PW.displayDate(value) : (value ? String(value).slice(0, 10) : '-');
+  }
+
+  function buildProjectOverviewMarkdown(project, context = {}) {
+    const milestones = PW.asArray(context.activeMilestones);
+    const risks = PW.asArray(context.activeRisks);
+    const reports = PW.asArray(context.recentReports);
+    const health = PW.asArray(context.healthHistory);
+    const generatedAt = new Date().toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
+    const lines = [
+      `# ${mdLine(project.projectName || context.projectName || 'Project overview')}`,
+      '',
+      `Generated: ${generatedAt}`,
+      `Client: ${mdLine(project.clientName || context.clientName)}`,
+      `Status: ${mdLine(project.status || context.status)}`,
+      project.description ? `Description: ${mdLine(project.description)}` : '',
+      '',
+      '## Monitored milestones',
+      ''
+    ].filter((line) => line !== '');
+
+    if (milestones.length) {
+      milestones.forEach((milestone) => {
+        const latest = milestone.latestAssessment || {};
+        lines.push(
+          `### ${mdLine(PW.friendlyLabel(milestone.milestoneName))}`,
+          `- Category: ${mdLine(milestone.category)}`,
+          `- Baseline date: ${mdDate(milestone.baselineFinishDate)}`,
+          `- Forecast date: ${mdDate(milestone.forecastFinishDate || latest.forecastFinishDate)}`,
+          `- Latest status: ${mdLine(PW.friendlyLabel(latest.status))}`,
+          `- Trend: ${mdLine(PW.friendlyLabel(latest.trend))}`,
+          `- Summary: ${mdLine(latest.summary || milestone.description)}`,
+          ''
+        );
+      });
+    } else {
+      lines.push('- No monitored milestones.', '');
+    }
+
+    lines.push('## Monitored risks', '');
+    if (risks.length) {
+      risks.forEach((risk) => {
+        lines.push(
+          `### ${mdLine(risk.riskTitle || 'Risk')}`,
+          `- Category: ${mdLine(risk.category)}`,
+          `- Description: ${mdLine(risk.description)}`,
+          `- Mitigation/check: ${mdLine(risk.mitigation)}`,
+          ''
+        );
+      });
+    } else {
+      lines.push('- No monitored risks.', '');
+    }
+
+    lines.push('## Health history', '');
+    if (health.length) {
+      health.forEach((item) => {
+        lines.push(`- ${mdLine(PW.friendlyLabel(item.area))}: ${mdLine(PW.friendlyLabel(item.status))}; trend ${mdLine(PW.friendlyLabel(item.trend))}; confidence ${mdLine(item.confidence)}. ${mdLine(item.rationale)}`);
+      });
+      lines.push('');
+    } else {
+      lines.push('- No health history yet.', '');
+    }
+
+    lines.push('## Recent reports', '');
+    if (reports.length) {
+      reports.forEach((report) => {
+        lines.push(`- Report ${mdLine(report.reportId)} (${mdLine(report.periodLabel)}): ${mdLine(report.summary)} — /project-update-test/reports/${mdLine(report.reportId)}`);
+      });
+    } else {
+      lines.push('- No saved reports yet.');
+    }
+
+    return `${lines.join('\n')}\n`;
+  }
+
+  async function exportProjectOverview(project, button) {
+    const original = button.textContent;
+    button.disabled = true;
+    button.textContent = 'Exporting…';
+    try {
+      const payload = await PW.request(`context?projectId=${encodeURIComponent(project.projectId)}&limit=20`);
+      const markdown = buildProjectOverviewMarkdown(project, payload.context || {});
+      const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${safeFilename(project.projectName)}-project-overview.md`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      window.alert(error.message || 'Could not export project overview.');
+    } finally {
+      button.disabled = false;
+      button.textContent = original;
+    }
   }
 
   function attachProjectSwitcher(project) {

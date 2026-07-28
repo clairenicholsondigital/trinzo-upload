@@ -37,15 +37,15 @@
           </article>
         </div>
       </section>
-      <section class="panel profile-summary-panel">
+      <section class="panel meeting-agenda-panel">
         <div class="section-heading-row">
           <div>
-            <h2>Project profile at a glance</h2>
-            <p class="intro">The standing baseline this update is compared against.</p>
+            <h2>Suggested project update agenda</h2>
+            <p class="intro">Automatically built from the monitored milestones and risks in this project profile. Use it to guide the meeting, then paste the notes/transcript below.</p>
           </div>
           <button type="button" data-open-stage="insights">Edit project profile</button>
         </div>
-        <div id="meetingProfileSummary" class="empty-state">Loading milestones and risks…</div>
+        <div id="meetingAgenda" class="empty-state">Building agenda from project profile…</div>
       </section>
       <section class="panel">
         <h2>Create the update</h2>
@@ -60,7 +60,7 @@
         if (tab) tab.click();
       });
     });
-    renderProfileSummary(container, ctx);
+    renderMeetingAgenda(container, ctx);
     buildTranscriptTestPage({
       title: 'Meeting notes or transcript',
       intro: 'Create a draft project update from this meeting. Review it before approving it as project memory.',
@@ -75,8 +75,8 @@
     });
   }
 
-  async function renderProfileSummary(container, ctx) {
-    const target = container.querySelector('#meetingProfileSummary');
+  async function renderMeetingAgenda(container, ctx) {
+    const target = container.querySelector('#meetingAgenda');
     if (!target) return;
     try {
       const payload = await PW.request(`context?projectId=${encodeURIComponent(ctx.projectId)}&limit=4`);
@@ -84,19 +84,21 @@
       const milestones = PW.asArray(context.activeMilestones).slice(0, 6);
       const risks = PW.asArray(context.activeRisks).slice(0, 6);
       const milestoneHtml = milestones.length
-        ? milestones.map((item) => `<li><strong>${PW.escapeHtml(PW.friendlyLabel(item.milestoneName))}</strong>${item.forecastFinishDate ? ` <span class="muted">forecast ${PW.escapeHtml(PW.displayDate(item.forecastFinishDate))}</span>` : ''}</li>`).join('')
-        : '<li class="muted">No milestones yet.</li>';
+        ? milestones.map((item) => `<li><strong>${PW.escapeHtml(PW.friendlyLabel(item.milestoneName))}</strong>${item.forecastFinishDate ? ` <span class="muted">target/forecast ${PW.escapeHtml(PW.displayDate(item.forecastFinishDate))}</span>` : ''}<br /><span class="muted">Ask: what changed, what is blocked, and does the forecast still hold?</span></li>`).join('')
+        : '<li class="muted">No monitored milestones yet — add them in the project profile if this meeting should track delivery progress.</li>';
       const riskHtml = risks.length
-        ? risks.map((item) => `<li><strong>${PW.escapeHtml(item.riskTitle || 'Risk')}</strong>${item.mitigation ? ` <span class="muted">— ${PW.escapeHtml(String(item.mitigation).slice(0, 120))}</span>` : ''}</li>`).join('')
-        : '<li class="muted">No configured risks yet.</li>';
-      target.className = 'profile-summary-grid';
+        ? risks.map((item) => `<li><strong>${PW.escapeHtml(item.riskTitle || 'Risk')}</strong>${item.mitigation ? `<br /><span class="muted">Check: ${PW.escapeHtml(String(item.mitigation).slice(0, 150))}</span>` : '<br /><span class="muted">Ask: has this risk changed, reduced, or escalated?</span>'}</li>`).join('')
+        : '<li class="muted">No monitored risks yet — add standing risks in the project profile if they need regular review.</li>';
+      target.className = 'meeting-agenda';
       target.innerHTML = `
-        <article class="card"><h3>Milestones</h3><ul>${milestoneHtml}</ul></article>
-        <article class="card"><h3>Configured risks</h3><ul>${riskHtml}</ul></article>
+        <article class="agenda-step"><span class="step-no">1</span><div><h3>Start with changes since the last update</h3><ul><li>What has moved forward, changed, slipped, or become clearer?</li><li>Are there any decisions or actions from the previous update to close out?</li></ul></div></article>
+        <article class="agenda-step"><span class="step-no">2</span><div><h3>Review monitored milestones</h3><ul>${milestoneHtml}</ul></div></article>
+        <article class="agenda-step"><span class="step-no">3</span><div><h3>Review monitored risks</h3><ul>${riskHtml}</ul></div></article>
+        <article class="agenda-step"><span class="step-no">4</span><div><h3>Capture decisions, actions and next update</h3><ul><li>What decisions were made?</li><li>Who owns each action and by when?</li><li>What should the client-facing update say?</li></ul></div></article>
       `;
     } catch (error) {
       target.className = 'empty-state';
-      target.innerHTML = `Could not load the project profile summary. You can still paste notes and create a draft report.`;
+      target.innerHTML = `Could not build the agenda from the project profile. You can still paste notes and create a draft report.`;
     }
   }
 

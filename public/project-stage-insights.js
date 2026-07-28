@@ -4,7 +4,7 @@
 // Lifted from the old Context page, now driven by the workspace's selected project.
 (function () {
   const PW = window.ProjectWorkspace;
-  const { escapeHtml, friendlyLabel, dateValue, dateOnly, displayDate, trendClass, asArray } = PW;
+  const { escapeHtml, friendlyLabel, proseOrLabel, dateValue, dateOnly, displayDate, trendClass, asArray } = PW;
 
   function inputValue(value) {
     return escapeHtml(value || '');
@@ -19,7 +19,7 @@
         <td><input data-field="baselineFinishDate" type="date" value="${inputValue(dateOnly(milestone.baselineFinishDate) === '-' ? '' : dateOnly(milestone.baselineFinishDate))}" /></td>
         <td><input data-field="forecastFinishDate" type="date" value="${inputValue(dateOnly(milestone.forecastFinishDate) === '-' ? '' : dateOnly(milestone.forecastFinishDate))}" /></td>
         <td><label class="monitor-checkbox" title="Monitor this milestone in future project updates"><input type="checkbox" data-monitor-profile checked aria-label="Monitor this milestone in future project updates" /></label></td>
-        <td class="actions"><button type="button" data-save-milestone>Save</button></td>
+        <td class="actions"><button type="button" data-save-milestone>Save</button><button type="button" class="danger" data-delete-milestone>Delete</button></td>
       </tr>
     `).join('') || '<tr><td colspan="7"><strong>No profile milestones yet.</strong><br />Add milestones in Setup or from a reviewed report.</td></tr>';
   }
@@ -32,7 +32,7 @@
         <td><textarea data-field="description">${inputValue(risk.description || '')}</textarea></td>
         <td><textarea data-field="mitigation">${inputValue(risk.mitigation || '')}</textarea></td>
         <td><label class="monitor-checkbox" title="Monitor this risk in future project updates"><input type="checkbox" data-monitor-profile checked aria-label="Monitor this risk in future project updates" /></label></td>
-        <td class="actions"><button type="button" data-save-risk>Save</button></td>
+        <td class="actions"><button type="button" data-save-risk>Save</button><button type="button" class="danger" data-delete-risk>Delete</button></td>
       </tr>
     `).join('') || '<tr><td colspan="6"><strong>No configured risks yet.</strong><br />Add a core project risk below so future updates can track it.</td></tr>';
   }
@@ -84,12 +84,18 @@
       <section class="panel">
         <h2>At a glance</h2>
         <div class="grid">
-          <div class="card"><div class="label">Overall health</div><div class="value">${escapeHtml(friendlyLabel(latestReport.overallHealth || latestReport.overallHealthRag))}</div></div>
+          <div class="card"><div class="label">Overall health</div><div class="value">${escapeHtml(proseOrLabel(latestReport.overallHealth || latestReport.overallHealthRag))}</div></div>
           <div class="card"><div class="label">Active milestones</div><div class="value">${milestones.length}</div></div>
           <div class="card"><div class="label">Active risks</div><div class="value">${activeRisks.length}</div></div>
           <div class="card"><div class="label">Saved reports</div><div class="value">${recentReports.length}</div></div>
           <div class="card"><div class="label">Latest snapshot</div><div class="value">${context.latestSnapshot ? `<a href="/project-update-test/context/snapshots/${escapeHtml(context.latestSnapshot.snapshotId)}">Snapshot ${escapeHtml(context.latestSnapshot.snapshotId)}</a>` : '-'}</div></div>
         </div>
+      </section>
+      <section class="panel">
+        <h2>Health history</h2>
+        <div class="table-scroll"><table><thead><tr><th>Area</th><th>Status</th><th>Trend</th><th>Confidence</th><th>Report</th><th>Rationale</th></tr></thead><tbody>
+          ${healthHistory.map((item) => `<tr><td>${escapeHtml(friendlyLabel(item.area))}</td><td>${escapeHtml(friendlyLabel(item.status))}</td><td class="${escapeHtml(trendClass(item.trend))}">${escapeHtml(friendlyLabel(item.trend))}</td><td>${escapeHtml(item.confidence || '-')}</td><td><a href="/project-update-test/reports/${escapeHtml(item.reportId)}">Report ${escapeHtml(item.reportId)}</a></td><td>${escapeHtml(item.rationale || '-')}</td></tr>`).join('') || '<tr><td colspan="6"><strong>No health history yet.</strong><br />Approved reports will build a timeline here.</td></tr>'}
+        </tbody></table></div>
       </section>
       <section class="panel">
         <h2>Project profile / baseline</h2>
@@ -121,24 +127,19 @@
       <section class="panel">
         <h2>Latest milestone assessments</h2>
         <p class="intro">Read-only view of how recent reports assessed the profile milestones.</p>
-        <div class="table-scroll"><table><thead><tr><th>Milestone</th><th>Official</th><th>Latest status</th><th>Previous status</th><th>Trend</th><th>Forecast</th><th>Summary</th></tr></thead><tbody>
+        <div class="table-scroll"><table><thead><tr><th>Milestone</th><th>Latest status</th><th>Previous status</th><th>Trend</th><th>Forecast</th><th>Monitor?</th><th>Summary</th></tr></thead><tbody>
           ${milestones.map((milestone) => {
             const latest = milestone.latestAssessment || {};
             const previous = milestone.previousAssessment || {};
-            return `<tr><td>${escapeHtml(friendlyLabel(milestone.milestoneName))}</td><td>${milestone.isOfficial ? `✅ ${escapeHtml(milestone.officialLabel || 'Official')}` : '—'}</td><td>${escapeHtml(friendlyLabel(latest.status))}</td><td>${escapeHtml(friendlyLabel(previous.status))}</td><td class="${escapeHtml(trendClass(latest.trend))}">${escapeHtml(friendlyLabel(latest.trend))}</td><td>${escapeHtml(displayDate(latest.forecastFinishDate || milestone.forecastFinishDate))}</td><td>${escapeHtml(latest.summary || '-')}</td></tr>`;
+            return `<tr><td>${escapeHtml(friendlyLabel(milestone.milestoneName))}</td><td>${escapeHtml(friendlyLabel(latest.status))}</td><td>${escapeHtml(friendlyLabel(previous.status))}</td><td class="${escapeHtml(trendClass(latest.trend))}">${escapeHtml(friendlyLabel(latest.trend))}</td><td>${escapeHtml(displayDate(latest.forecastFinishDate || milestone.forecastFinishDate))}</td><td><span class="monitor-indicator" title="Monitored in this project">✓</span></td><td>${escapeHtml(latest.summary || '-')}</td></tr>`;
           }).join('') || '<tr><td colspan="7"><strong>No active milestones yet.</strong><br />Add milestones in Setup so future reports can track delivery against a baseline.</td></tr>'}
         </tbody></table></div>
       </section>
       <section class="panel">
         <h2>Recent reports</h2>
-        <div class="table-scroll"><table><thead><tr><th>Report</th><th>Period</th><th>Status</th><th>Overall health</th><th>Created</th><th>Summary</th></tr></thead><tbody>
-          ${recentReports.map((report) => `<tr><td><a href="/project-update-test/reports/${escapeHtml(report.reportId)}">Report ${escapeHtml(report.reportId)}</a></td><td>${escapeHtml(report.periodLabel || '-')}</td><td>${escapeHtml(friendlyLabel(report.reportStatus))}</td><td>${escapeHtml(friendlyLabel(report.overallHealth || report.overallHealthRag))}</td><td>${escapeHtml(dateValue(report.versionCreatedAt || report.createdAt))}</td><td>${escapeHtml(report.summary || '-')}</td></tr>`).join('') || '<tr><td colspan="6"><strong>No reports yet.</strong><br />Process a transcript, review the draft, then approve it when it is ready to become project memory.</td></tr>'}
-        </tbody></table></div>
-      </section>
-      <section class="panel">
-        <h2>Health history</h2>
-        <div class="table-scroll"><table><thead><tr><th>Area</th><th>Status</th><th>Trend</th><th>Confidence</th><th>Report</th><th>Rationale</th></tr></thead><tbody>
-          ${healthHistory.map((item) => `<tr><td>${escapeHtml(friendlyLabel(item.area))}</td><td>${escapeHtml(friendlyLabel(item.status))}</td><td class="${escapeHtml(trendClass(item.trend))}">${escapeHtml(friendlyLabel(item.trend))}</td><td>${escapeHtml(item.confidence || '-')}</td><td><a href="/project-update-test/reports/${escapeHtml(item.reportId)}">Report ${escapeHtml(item.reportId)}</a></td><td>${escapeHtml(item.rationale || '-')}</td></tr>`).join('') || '<tr><td colspan="6"><strong>No health history yet.</strong><br />Approved reports will build a timeline here.</td></tr>'}
+        <p class="intro">Open a saved report to review or edit the full project update.</p>
+        <div class="table-scroll"><table><thead><tr><th>Report</th><th>Period</th><th>Status</th><th>Overall health</th><th>Created</th><th>Summary</th><th>Actions</th></tr></thead><tbody>
+          ${recentReports.map((report) => `<tr><td><strong>Report ${escapeHtml(report.reportId)}</strong></td><td>${escapeHtml(report.periodLabel || '-')}</td><td>${escapeHtml(friendlyLabel(report.reportStatus))}</td><td>${escapeHtml(proseOrLabel(report.overallHealth || report.overallHealthRag))}</td><td>${escapeHtml(dateValue(report.versionCreatedAt || report.createdAt))}</td><td>${escapeHtml(report.summary || '-')}</td><td><a class="button-link" href="/project-update-test/reports/${escapeHtml(report.reportId)}">Open report</a></td></tr>`).join('') || '<tr><td colspan="7"><strong>No reports yet.</strong><br />Process a transcript, review the draft, then approve it when it is ready to become project memory.</td></tr>'}
         </tbody></table></div>
       </section>
       <section class="panel">
@@ -235,6 +236,22 @@
       });
     });
 
+    container.querySelectorAll('[data-delete-milestone]').forEach((button) => {
+      button.addEventListener('click', async () => {
+        const row = button.closest('[data-profile-milestone]');
+        if (!row) return;
+        const name = row.querySelector('[data-field="milestoneName"]')?.value || 'this milestone';
+        button.disabled = true;
+        try {
+          const removed = await removeFromMonitoring(container, ctx, 'milestone', row.getAttribute('data-profile-milestone'), name);
+          if (!removed) button.disabled = false;
+        } catch (error) {
+          setProfileStatus(container, error.message || 'Could not delete milestone from monitoring.', 'error');
+          button.disabled = false;
+        }
+      });
+    });
+
     container.querySelectorAll('[data-save-risk]').forEach((button) => {
       button.addEventListener('click', async () => {
         const row = button.closest('[data-profile-risk]');
@@ -259,6 +276,22 @@
           window.setTimeout(() => mount(container, ctx), 500);
         } catch (error) {
           setProfileStatus(container, error.message || 'Could not save risk.', 'error');
+          button.disabled = false;
+        }
+      });
+    });
+
+    container.querySelectorAll('[data-delete-risk]').forEach((button) => {
+      button.addEventListener('click', async () => {
+        const row = button.closest('[data-profile-risk]');
+        if (!row) return;
+        const name = row.querySelector('[data-field="riskTitle"]')?.value || 'this risk';
+        button.disabled = true;
+        try {
+          const removed = await removeFromMonitoring(container, ctx, 'risk', row.getAttribute('data-profile-risk'), name);
+          if (!removed) button.disabled = false;
+        } catch (error) {
+          setProfileStatus(container, error.message || 'Could not delete risk from monitoring.', 'error');
           button.disabled = false;
         }
       });

@@ -107,6 +107,13 @@ pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:#071126;
     return Number.isNaN(date.getTime()) ? raw : date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
   }
 
+  function proseOrLabel(value) {
+    const text = String(value || '').trim();
+    if (!text) return '-';
+    const looksLikeEnum = /^[a-z0-9_-]+$/i.test(text) && !text.includes(' ');
+    return looksLikeEnum ? friendlyLabel(text) : text;
+  }
+
   function friendlyLabel(value) {
     const words = String(value || '').replace(/[_-]+/g, ' ').trim().split(/\s+/).filter(Boolean);
     return words.length ? words.map((word) => {
@@ -168,7 +175,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:#071126;
       <section class="panel">
         <h2>Recent reports</h2>
         <div class="table-scroll"><table><thead><tr><th>Report</th><th>Period</th><th>Status</th><th>Overall health</th><th>Created</th><th>Summary</th></tr></thead><tbody>
-          ${recentReports.map((report) => `<tr><td><a href="/project-update-test/reports/${escapeHtml(report.reportId)}">Report ${escapeHtml(report.reportId)}</a></td><td>${escapeHtml(report.periodLabel || '-')}</td><td>${escapeHtml(friendlyLabel(report.reportStatus))}</td><td>${escapeHtml(friendlyLabel(report.overallHealth || report.overallHealthRag))}</td><td>${escapeHtml(dateValue(report.versionCreatedAt || report.createdAt))}</td><td>${escapeHtml(report.summary || '-')}</td></tr>`).join('') || '<tr><td colspan="6">No reports yet.</td></tr>'}
+          ${recentReports.map((report) => `<tr><td><a href="/project-update-test/reports/${escapeHtml(report.reportId)}">Report ${escapeHtml(report.reportId)}</a></td><td>${escapeHtml(report.periodLabel || '-')}</td><td>${escapeHtml(friendlyLabel(report.reportStatus))}</td><td>${escapeHtml(proseOrLabel(report.overallHealth || report.overallHealthRag))}</td><td>${escapeHtml(dateValue(report.versionCreatedAt || report.createdAt))}</td><td>${escapeHtml(report.summary || '-')}</td></tr>`).join('') || '<tr><td colspan="6">No reports yet.</td></tr>'}
         </tbody></table></div>
       </section>
       <section class="panel">
