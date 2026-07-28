@@ -83,18 +83,18 @@ function buildTranscriptTestPage(config) {
       <div id="projectReportPrintOutput" aria-hidden="true"></div>
     </section>
 
-    <section id="advancedDetailsPanel" class="panel hidden">
-      <details class="raw-json">
-        <summary>Advanced/support details</summary>
-        <p class="muted">Raw data and diagnostic provenance are useful for support and tuning, but hidden by default so they do not dominate the report.</p>
+    <section id="advancedDetailsPanel" class="panel hidden support-panel">
+      <details class="support-details raw-json">
+        <summary>Support / audit details</summary>
+        <p class="muted">Kept out of the main workflow. Use only if you need to inspect support data, diagnostics, or the backend response.</p>
         <div id="debugPanel" class="hidden">
-          <h3>Diagnostic provenance</h3>
+          <h3>Support diagnostics</h3>
           <div id="debugSummary" class="summary-grid"></div>
           <pre id="debugOutput"></pre>
         </div>
         <div id="jsonPanel" class="hidden">
           <div class="json-heading">
-            <h3>Raw output data</h3>
+            <h3>Backend response</h3>
             <button id="copyBtn" class="secondary" type="button">Copy data</button>
           </div>
           <pre id="jsonOutput"></pre>
