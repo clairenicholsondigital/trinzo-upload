@@ -34,9 +34,17 @@
           <summary>Workspace management</summary>
           <p class="muted">Use these controls after review. They change what counts as the active baseline for future reports.</p>
           <div class="actions">
-            <button id="createSnapshotBtn" type="button" ${context.found ? '' : 'disabled'}>Create context snapshot</button>
-            <button id="markOfficialBtn" type="button" ${context.found ? '' : 'disabled'}>Mark active context official</button>
-            <button id="cleanupTestsBtn" type="button" ${context.found ? '' : 'disabled'}>Tidy draft data</button>
+            <button id="createSnapshotBtn" type="button" title="Save a point-in-time copy of the current project context so you can refer back to it later." ${context.found ? '' : 'disabled'}>Create context snapshot</button>
+            <button id="markOfficialBtn" type="button" title="Mark the currently active milestones and risks as the agreed baseline for future reports." ${context.found ? '' : 'disabled'}>Mark active context official</button>
+            <button id="cleanupTestsBtn" type="button" title="Archive draft/test reports and remove non-official context clutter while keeping official items active." ${context.found ? '' : 'disabled'}>Tidy draft data</button>
+          </div>
+          <div class="empty-state" style="margin-top:.75rem">
+            <strong>What these do</strong>
+            <ul>
+              <li><strong>Create context snapshot:</strong> saves a point-in-time copy of the current project context for later reference.</li>
+              <li><strong>Mark active context official:</strong> makes the current active milestones and risks the agreed baseline for future reports.</li>
+              <li><strong>Tidy draft data:</strong> clears test/draft clutter while keeping official milestones, risks and approved context.</li>
+            </ul>
           </div>
         </details>
         <p id="contextStatus" class="status"></p>

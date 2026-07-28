@@ -55,7 +55,8 @@
         </div>
         <details style="margin-top:.75rem">
           <summary>Memory search maintenance</summary>
-          <p class="muted">Use this if saved memory has not appeared in Ask this project after a short wait.</p>
+          <p class="muted"><strong>What this does:</strong> project memory is turned into searchable chunks so “Ask this project” can find the right background later. This usually happens automatically after you save memory.</p>
+          <p class="muted"><strong>When to use it:</strong> only refresh if you have just saved memory and “Ask this project” still cannot find it after a short wait.</p>
           <button id="processKnowledgeBtn" type="button">Refresh memory search</button>
         </details>
         <p id="knowledgeStatus" class="status"></p>

@@ -46,6 +46,12 @@ label { display:block; color:var(--muted); font-size:.86rem; font-weight:700; }
 input, select, textarea { width:100%; margin-top:.35rem; background:#071126; color:var(--text); border:1px solid var(--border); border-radius:10px; padding:.65rem; font:inherit; }
 textarea { min-height:7rem; resize:vertical; }
 .json-editor { min-height:36rem; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:.9rem; }
+.inline-edit-table textarea { min-height:4.5rem; }
+.inline-edit-table input, .inline-edit-table select, .inline-edit-table textarea { min-width:10rem; }
+.inline-edit-table td { min-width:12rem; }
+.inline-edit-table .narrow { min-width:8rem; }
+.editor-note { margin:.35rem 0 .75rem; color:var(--muted); }
+.row-tools { display:flex; gap:.4rem; flex-wrap:wrap; }
 pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126; border:1px solid var(--border); border-radius:10px; padding:1rem; }
 .status { margin:.75rem 0; color:var(--muted); }
 .status.error { color:#fecaca; }
@@ -206,6 +212,78 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
     editor.value = JSON.stringify(report, null, 2);
   }
 
+  function linesValue(value) {
+    if (Array.isArray(value)) return value.map((item) => String(item || '').trim()).filter(Boolean).join('\n');
+    return String(value || '').trim();
+  }
+
+  function linesArray(value) {
+    return String(value || '').split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
+  }
+
+  function fieldValue(row, field) {
+    const node = row.querySelector(`[data-field="${field}"]`);
+    return node ? node.value.trim() : '';
+  }
+
+  function editableCell(field, value, label, tag = 'textarea') {
+    const escaped = escapeHtml(value || '');
+    if (tag === 'input') return `<input aria-label="${escapeHtml(label)}" data-field="${escapeHtml(field)}" type="text" value="${escaped}" />`;
+    if (tag === 'select-health') {
+      const options = ['', 'on_track', 'at_risk', 'off_track', 'blocked', 'completed', 'green', 'amber', 'red'];
+      return `<select aria-label="${escapeHtml(label)}" data-field="${escapeHtml(field)}">${options.map((option) => `<option value="${escapeHtml(option)}" ${String(value || '') === option ? 'selected' : ''}>${escapeHtml(option ? friendlyLabel(option) : '-')}</option>`).join('')}</select>`;
+    }
+    return `<textarea aria-label="${escapeHtml(label)}" data-field="${escapeHtml(field)}">${escaped}</textarea>`;
+  }
+
+  function renderHealthAreaEditorRows(areas) {
+    const entries = Object.entries(areas || {});
+    return entries.map(([key, area]) => `
+      <tr data-health-area-row="${escapeHtml(key)}">
+        <td>${escapeHtml(titleLabel(key))}</td>
+        <td>${editableCell('status', area.status || '', `${titleLabel(key)} status`, 'select-health')}</td>
+        <td>${editableCell('trend', area.trend || '', `${titleLabel(key)} trend`, 'input')}</td>
+        <td>${editableCell('evidenceNotes', area.evidenceNotes || linesValue(asArray(area.evidence).map((item) => item.text || item.source || '').filter(Boolean)), `${titleLabel(key)} evidence`)}</td>
+      </tr>`).join('') || '<tr><td colspan="4">No health areas yet. Save generated report data first, then edit here.</td></tr>';
+  }
+
+  function renderMilestoneEditorRows(milestones) {
+    return asArray(milestones).map((item, index) => `
+      <tr data-milestone-edit-row>
+        <td>${editableCell('milestone', item.milestone || '', `Milestone ${index + 1}`, 'input')}</td>
+        <td>${editableCell('baseline_finish_date', item.baseline_finish_date || item.baselineDeadline || item.deadline || '', `Milestone ${index + 1} baseline`, 'input')}</td>
+        <td>${editableCell('forecast_finish_date', item.forecast_finish_date || item.forecastDeadline || item.deadline || '', `Milestone ${index + 1} forecast`, 'input')}</td>
+        <td>${editableCell('delivery_status', item.delivery_status || item.status || '', `Milestone ${index + 1} delivery status`, 'input')}</td>
+        <td>${editableCell('agreed_rag_status', item.agreed_rag_status || item.rag_status || '', `Milestone ${index + 1} RAG`, 'select-health')}</td>
+        <td>${editableCell('health_assessment', item.health_assessment || '', `Milestone ${index + 1} health assessment`)}</td>
+        <td>${editableCell('normalised_evidence_summary', item.normalised_evidence_summary || item.excerpt || '', `Milestone ${index + 1} summary`)}</td>
+        <td>${editableCell('next_steps', linesValue(combinedNextSteps(item)), `Milestone ${index + 1} next steps`)}</td>
+        <td class="narrow"><button type="button" class="danger" data-remove-editor-row>Remove</button></td>
+      </tr>`).join('') || '';
+  }
+
+  function renderRiskEditorRows(risks) {
+    return asArray(risks).map((risk, index) => `
+      <tr data-risk-edit-row>
+        <td>${editableCell('riskTitle', risk.riskTitle || '', `Risk ${index + 1} title`, 'input')}</td>
+        <td>${editableCell('description', risk.description || '', `Risk ${index + 1} description`)}</td>
+        <td>${editableCell('suggestedMitigation', risk.suggestedMitigation || risk.mitigation || '', `Risk ${index + 1} mitigation`)}</td>
+        <td>${editableCell('relatedMilestone', risk.relatedMilestone || '', `Risk ${index + 1} milestone`, 'input')}</td>
+        <td class="narrow"><button type="button" class="danger" data-remove-editor-row>Remove</button></td>
+      </tr>`).join('') || '';
+  }
+
+  function renderActionEditorRows(actions) {
+    return asArray(actions).map((action, index) => `
+      <tr data-action-edit-row>
+        <td>${editableCell('action', action.action || action.meetingActionPoint || '', `Action ${index + 1}`)}</td>
+        <td>${editableCell('owner', action.owner || action.meetingActionPointOwner || '', `Action ${index + 1} owner`, 'input')}</td>
+        <td>${editableCell('deadline', action.deadline || action.meetingActionPointDeadline || '', `Action ${index + 1} deadline`, 'input')}</td>
+        <td>${editableCell('relatedMilestone', action.related_milestone || action.relatedMilestone || '', `Action ${index + 1} milestone`, 'input')}</td>
+        <td class="narrow"><button type="button" class="danger" data-remove-editor-row>Remove</button></td>
+      </tr>`).join('') || '';
+  }
+
   function renderError(error) {
     app.innerHTML = `<section class="panel"><h1>Project update reports</h1><p class="status">${escapeHtml(error.message || 'Could not load reports.')}</p></section>`;
   }
@@ -360,6 +438,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
       </section>
       <section class="panel edit-panel">
         <h2>Edit report</h2>
+        <p class="editor-note">Edit the report in normal fields, like a working document. Changes autosave after a short pause. The advanced JSON view is only there for support/debugging.</p>
         <div class="grid">
           <label>Report name
             <input id="reportNameEditor" type="text" value="${escapeHtml(report.reportName || `Report ${report.reportId}`)}" />
@@ -373,9 +452,40 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
             <textarea id="reportSummaryEditor">${escapeHtml(projectReport.summary || '')}</textarea>
           </label>
         </div>
+        <h3>Overall health areas</h3>
+        <div class="table-scroll">
+          <table class="inline-edit-table">
+            <thead><tr><th>Area</th><th>Status</th><th>Trend</th><th>Evidence / rationale</th></tr></thead>
+            <tbody id="healthAreaEditorRows">${renderHealthAreaEditorRows(areas)}</tbody>
+          </table>
+        </div>
+        <h3>Milestones</h3>
+        <div class="row-tools"><button id="addMilestoneRowBtn" type="button">Add milestone row</button></div>
+        <div class="table-scroll" style="margin-top:.5rem">
+          <table class="inline-edit-table">
+            <thead><tr><th>Milestone</th><th>Baseline</th><th>Forecast</th><th>Delivery status</th><th>RAG</th><th>Health assessment</th><th>Summary</th><th>Next steps</th><th></th></tr></thead>
+            <tbody id="milestoneEditorRows">${renderMilestoneEditorRows(milestones) || '<tr class="empty-editor-row"><td colspan="9">No milestone rows yet. Add one if the report needs a milestone update.</td></tr>'}</tbody>
+          </table>
+        </div>
+        <h3>Risks</h3>
+        <div class="row-tools"><button id="addRiskRowBtn" type="button">Add risk row</button></div>
+        <div class="table-scroll" style="margin-top:.5rem">
+          <table class="inline-edit-table">
+            <thead><tr><th>Risk</th><th>Description</th><th>Mitigation</th><th>Milestone</th><th></th></tr></thead>
+            <tbody id="riskEditorRows">${renderRiskEditorRows(risks) || '<tr class="empty-editor-row"><td colspan="5">No risk rows yet. Add one if the report needs a risk.</td></tr>'}</tbody>
+          </table>
+        </div>
+        <h3>Actions</h3>
+        <div class="row-tools"><button id="addActionRowBtn" type="button">Add action row</button></div>
+        <div class="table-scroll" style="margin-top:.5rem">
+          <table class="inline-edit-table">
+            <thead><tr><th>Action</th><th>Owner</th><th>Deadline</th><th>Milestone</th><th></th></tr></thead>
+            <tbody id="actionEditorRows">${renderActionEditorRows(actions) || '<tr class="empty-editor-row"><td colspan="5">No action rows yet. Add one if the report needs an action.</td></tr>'}</tbody>
+          </table>
+        </div>
         <details class="raw-json" style="margin-top:.75rem">
-          <summary>Advanced report data</summary>
-          <p class="muted">Use this only for occasional fixes or support review. The tables below are the normal report view.</p>
+          <summary>Advanced/support: raw report data</summary>
+          <p class="muted">Only use this if a support/debugging fix cannot be made in the normal fields above.</p>
           <div class="json-tools">
             <button id="copySavedProjectReportBtn" class="secondary" type="button">Copy report data</button>
           </div>
@@ -478,13 +588,91 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
       statusNode.className = type ? `status ${type}` : 'status';
     }
 
+    function removeEmptyPlaceholder(tbody) {
+      const placeholder = tbody && tbody.querySelector('.empty-editor-row');
+      if (placeholder) placeholder.remove();
+    }
+
+    function syncStructuredEditorsToJson() {
+      const reportData = parseEditedReport();
+      reportData.summary = summaryEditor.value;
+      reportData.reportStatus = statusEditor.value;
+
+      const nextHealthAreas = {};
+      document.querySelectorAll('[data-health-area-row]').forEach((row) => {
+        const key = row.getAttribute('data-health-area-row');
+        const existing = (reportData.healthAreas && reportData.healthAreas[key]) || {};
+        const evidenceNotes = fieldValue(row, 'evidenceNotes');
+        nextHealthAreas[key] = {
+          ...existing,
+          status: fieldValue(row, 'status'),
+          trend: fieldValue(row, 'trend'),
+          evidenceNotes,
+          evidence: evidenceNotes ? [{ text: evidenceNotes }] : []
+        };
+      });
+      if (Object.keys(nextHealthAreas).length) reportData.healthAreas = nextHealthAreas;
+
+      reportData.milestones = Array.from(document.querySelectorAll('[data-milestone-edit-row]')).map((row) => ({
+        milestone: fieldValue(row, 'milestone'),
+        baseline_finish_date: fieldValue(row, 'baseline_finish_date'),
+        forecast_finish_date: fieldValue(row, 'forecast_finish_date'),
+        delivery_status: fieldValue(row, 'delivery_status'),
+        agreed_rag_status: fieldValue(row, 'agreed_rag_status'),
+        health_assessment: fieldValue(row, 'health_assessment'),
+        normalised_evidence_summary: fieldValue(row, 'normalised_evidence_summary'),
+        next_steps: linesArray(fieldValue(row, 'next_steps'))
+      })).filter((item) => Object.values(item).some((value) => Array.isArray(value) ? value.length : String(value || '').trim()));
+
+      reportData.risks = Array.from(document.querySelectorAll('[data-risk-edit-row]')).map((row) => ({
+        riskTitle: fieldValue(row, 'riskTitle'),
+        description: fieldValue(row, 'description'),
+        suggestedMitigation: fieldValue(row, 'suggestedMitigation'),
+        relatedMilestone: fieldValue(row, 'relatedMilestone')
+      })).filter((item) => Object.values(item).some((value) => String(value || '').trim()));
+
+      reportData.actions = Array.from(document.querySelectorAll('[data-action-edit-row]')).map((row) => ({
+        action: fieldValue(row, 'action'),
+        owner: fieldValue(row, 'owner'),
+        deadline: fieldValue(row, 'deadline'),
+        relatedMilestone: fieldValue(row, 'relatedMilestone')
+      })).filter((item) => Object.values(item).some((value) => String(value || '').trim()));
+
+      jsonEditor.value = JSON.stringify(reportData, null, 2);
+      return reportData;
+    }
+
+    function wireStructuredEditors() {
+      document.querySelectorAll('.inline-edit-table input, .inline-edit-table select, .inline-edit-table textarea').forEach((node) => {
+        if (node.dataset.structuredEditorWired === 'true') return;
+        node.dataset.structuredEditorWired = 'true';
+        node.addEventListener('input', queueAutosave);
+        node.addEventListener('change', queueAutosave);
+      });
+      document.querySelectorAll('[data-remove-editor-row]').forEach((button) => {
+        if (button.dataset.structuredEditorWired === 'true') return;
+        button.dataset.structuredEditorWired = 'true';
+        button.addEventListener('click', () => {
+          button.closest('tr').remove();
+          queueAutosave();
+        });
+      });
+    }
+
+    function appendRows(tbody, html) {
+      removeEmptyPlaceholder(tbody);
+      tbody.insertAdjacentHTML('beforeend', html);
+      wireStructuredEditors();
+      queueAutosave();
+    }
+
     async function saveReport(automatic) {
       clearTimeout(autosaveTimer);
       let editedReport;
       try {
-        editedReport = parseEditedReport();
+        editedReport = syncStructuredEditorsToJson();
       } catch (error) {
-        setSaveStatus(error.message || 'Project report JSON is invalid.', 'error');
+        setSaveStatus(error.message || 'Project report data is invalid.', 'error');
         return;
       }
       saveButton.disabled = true;
@@ -531,7 +719,12 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
       queueAutosave();
     });
     jsonEditor.addEventListener('input', queueAutosave);
+    wireStructuredEditors();
+    document.getElementById('addMilestoneRowBtn').addEventListener('click', () => appendRows(document.getElementById('milestoneEditorRows'), renderMilestoneEditorRows([{}])));
+    document.getElementById('addRiskRowBtn').addEventListener('click', () => appendRows(document.getElementById('riskEditorRows'), renderRiskEditorRows([{}])));
+    document.getElementById('addActionRowBtn').addEventListener('click', () => appendRows(document.getElementById('actionEditorRows'), renderActionEditorRows([{}])));
     copySavedProjectReportBtn.addEventListener('click', async () => {
+      syncStructuredEditorsToJson();
       await navigator.clipboard.writeText(jsonEditor.value || '{}');
       setSaveStatus('Project report data copied to clipboard.', 'success');
     });

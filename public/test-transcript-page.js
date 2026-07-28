@@ -83,9 +83,12 @@ function buildTranscriptTestPage(config) {
     </section>
 
     <section id="debugPanel" class="panel hidden">
-      <h2>Numbers experiment provenance</h2>
-      <div id="debugSummary" class="summary-grid"></div>
-      <pre id="debugOutput"></pre>
+      <details class="raw-json">
+        <summary>Advanced diagnostic details</summary>
+        <p class="muted">Numbers experiment provenance is useful for support and tuning, but it is hidden by default so it does not dominate the report.</p>
+        <div id="debugSummary" class="summary-grid"></div>
+        <pre id="debugOutput"></pre>
+      </details>
     </section>
 
     <section id="jsonPanel" class="panel hidden">
