@@ -103,6 +103,24 @@ pre { white-space:pre-wrap; overflow:auto; max-height:620px; background:#071126;
 .edit-status { color:var(--muted); }
 .edit-status.success { color:#bbf7d0; }
 .edit-status.error { color:#fecaca; }
+.row-edit-modal-backdrop { position:fixed; inset:0; z-index:1000; background:rgba(2,6,23,.72); display:flex; align-items:center; justify-content:center; padding:1rem; }
+.row-edit-modal { width:min(760px,96vw); max-height:90vh; overflow:auto; background:linear-gradient(145deg,var(--panel),var(--panel2)); border:1px solid rgba(148,163,184,.35); border-radius:16px; box-shadow:0 24px 80px rgba(0,0,0,.45); padding:1rem; }
+.row-edit-modal-head { display:flex; justify-content:space-between; gap:1rem; align-items:flex-start; margin-bottom:1rem; }
+.row-edit-modal-head p { margin:.2rem 0 0; }
+.row-edit-modal-fields { display:grid; grid-template-columns:1fr; gap:.85rem; }
+.row-edit-modal-fields label { display:grid; gap:.35rem; color:var(--muted); font-weight:700; }
+.row-edit-modal-fields input,
+.row-edit-modal-fields textarea {
+  width:100%;
+  background:#050914;
+  color:var(--text);
+  border:1px solid var(--border);
+  border-radius:8px;
+  padding:.65rem;
+  font:inherit;
+}
+.row-edit-modal-fields textarea { min-height:8rem; resize:vertical; line-height:1.45; }
+.row-edit-modal-actions { display:flex; justify-content:flex-end; gap:.5rem; margin-top:1rem; }
 .result-section { margin-top:1rem; }
 .result-section h3 { margin:.1rem 0 .6rem; font-size:1rem; color:#dbeafe; }
 .result-section ul { margin:.35rem 0 0; padding-left:1.25rem; }
@@ -634,6 +652,71 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     }[type] || `${type} points`;
   }
 
+  function rowEditFieldLabel(field) {
+    return {
+      type: 'Type',
+      topic: 'Topic',
+      itemType: 'Subtype',
+      owner: 'Owner / speaker',
+      deadline: 'Deadline / date',
+      text: 'Output',
+      detail: 'Status / detail',
+      evidence: 'Evidence / source note'
+    }[field] || friendlyLabel(field);
+  }
+
+  function openRowEditModal(row) {
+    if (!row) return;
+    const fields = Array.from(row.querySelectorAll('[data-edit-field][data-edit-index]'));
+    if (!fields.length) return;
+    const existing = document.querySelector('[data-row-edit-modal]');
+    if (existing) existing.remove();
+    const title = cleanText(row.querySelector('[data-edit-field="text"]')?.value || row.textContent || 'Edit row').slice(0, 140);
+    const modal = document.createElement('div');
+    modal.className = 'row-edit-modal-backdrop';
+    modal.setAttribute('data-row-edit-modal', 'true');
+    modal.innerHTML = `
+      <div class="row-edit-modal" role="dialog" aria-modal="true" aria-label="Expanded row editor">
+        <div class="row-edit-modal-head">
+          <div><strong>Edit meeting-minutes row</strong><p class="muted">${escapeHtml(title || 'Review and edit this row')}</p></div>
+          <button type="button" class="secondary" data-close-row-modal>Close</button>
+        </div>
+        <div class="row-edit-modal-fields">
+          ${fields.map((field, index) => {
+            const key = field.getAttribute('data-edit-field') || '';
+            const value = escapeHtml(field.value || '');
+            const hidden = field.type === 'hidden';
+            if (key === 'deadline') {
+              const dateValue = toDateInputValue(field.value || '');
+              return `<label>${escapeHtml(rowEditFieldLabel(key))}<input data-modal-field-index="${index}" value="${value}" placeholder="Deadline or date" />${dateValue ? `<small class="muted">Date picker value: ${escapeHtml(dateValue)}</small>` : ''}</label>`;
+            }
+            if (hidden && ['type', 'topic', 'itemType', 'owner'].includes(key)) {
+              return `<label>${escapeHtml(rowEditFieldLabel(key))}<input data-modal-field-index="${index}" value="${value}" /></label>`;
+            }
+            return `<label>${escapeHtml(rowEditFieldLabel(key))}<textarea data-modal-field-index="${index}">${value}</textarea></label>`;
+          }).join('')}
+        </div>
+        <div class="row-edit-modal-actions"><button type="button" class="primary" data-apply-row-modal>Apply to row</button></div>
+      </div>`;
+    document.body.appendChild(modal);
+    const close = () => modal.remove();
+    modal.querySelector('[data-close-row-modal]').addEventListener('click', close);
+    modal.addEventListener('click', (event) => { if (event.target === modal) close(); });
+    modal.querySelector('[data-apply-row-modal]').addEventListener('click', () => {
+      modal.querySelectorAll('[data-modal-field-index]').forEach((editor) => {
+        const field = fields[Number(editor.getAttribute('data-modal-field-index'))];
+        if (!field) return;
+        field.value = editor.value;
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+        field.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      queueAutosave();
+      close();
+    });
+    const firstField = modal.querySelector('[data-modal-field-index]');
+    if (firstField) firstField.focus();
+  }
+
   function sectionHasField(groupedRows, field) {
     return groupedRows.some(({ row }) => cleanText(row[field] || ''));
   }
@@ -676,6 +759,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
           <table class="minutes-table">
             <thead>
               <tr>
+                <th class="type-cell">Edit</th>
                 ${showTopic ? '<th>Topic</th>' : ''}
                 ${showItemType ? '<th>Type</th>' : ''}
                 ${showOwner ? '<th>Owner / speaker</th>' : ''}
@@ -688,6 +772,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
             <tbody>
               ${groupedRows.map(({ row, index }) => `
                 <tr>
+                  <td class="type-cell" data-label="Edit"><button type="button" class="secondary" data-expand-minutes-row>Expand</button></td>
                   ${showTopic ? `<td class="topic-cell" data-label="Topic"><input data-edit-field="topic" data-edit-index="${index}" value="${escapeAttribute(row.topic || '')}" /></td>` : ''}
                   ${showItemType ? `<td class="topic-cell" data-label="Type"><input data-edit-field="itemType" data-edit-index="${index}" value="${escapeAttribute(row.itemType || '')}" /></td>` : ''}
                   ${showOwner ? `<td class="owner-cell" data-label="Owner / speaker"><input data-edit-field="owner" data-edit-index="${index}" value="${escapeAttribute(row.owner || '')}" /></td>` : ''}
@@ -1139,6 +1224,11 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   });
   resultView.addEventListener('input', (event) => {
     if (event.target.closest('[data-edit-field]')) queueAutosave();
+  });
+  resultView.addEventListener('click', (event) => {
+    const expand = event.target.closest('[data-expand-minutes-row]');
+    if (!expand) return;
+    openRowEditModal(expand.closest('tr'));
   });
   resultView.addEventListener('change', (event) => {
     const picker = event.target.closest('[data-deadline-picker-index]');
