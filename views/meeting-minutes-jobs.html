@@ -660,7 +660,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
       owner: 'Owner / speaker',
       deadline: 'Deadline / date',
       text: 'Output',
-      detail: 'Status / detail',
+      detail: 'Notes / context',
       evidence: 'Evidence / source note'
     }[field] || friendlyLabel(field);
   }
@@ -748,7 +748,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     const showItemType = type === 'Discussion' && sectionHasField(groupedRows, 'itemType');
     const showOwner = sectionHasField(groupedRows, 'owner');
     const showDeadline = type === 'Action' || sectionHasField(groupedRows, 'deadline');
-    const showDetail = sectionHasField(groupedRows, 'detail');
+    const showDetail = false;
     const showEvidence = sectionHasField(groupedRows, 'evidence');
     const outputHeader = type === 'Discussion' ? 'Discussion point' : 'Output';
 
@@ -765,7 +765,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
                 ${showOwner ? '<th>Owner / speaker</th>' : ''}
                 <th>${escapeHtml(outputHeader)}</th>
                 ${showDeadline ? '<th>Deadline / date</th>' : ''}
-                ${showDetail ? '<th>Status / detail</th>' : ''}
+                ${showDetail ? '<th>Notes / context</th>' : ''}
                 ${showEvidence ? '<th>Evidence / source note</th>' : ''}
               </tr>
             </thead>
@@ -781,7 +781,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
                     <textarea data-edit-field="text" data-edit-index="${index}">${escapeHtml(row.text)}</textarea>
                   </td>
                   ${showDeadline ? `<td class="deadline-cell" data-label="Deadline / date">${renderDeadlineEditor(index, row.deadline || '')}</td>` : ''}
-                  ${showDetail ? `<td class="detail-cell" data-label="Status / detail"><textarea data-edit-field="detail" data-edit-index="${index}" placeholder="Status, deadline, dependency, confidence...">${escapeHtml(row.detail || '')}</textarea></td>` : ''}
+                  ${showDetail ? `<td class="detail-cell" data-label="Notes / context"><textarea data-edit-field="detail" data-edit-index="${index}" placeholder="Notes, context, dependency or confidence...">${escapeHtml(row.detail || '')}</textarea></td>` : ''}
                   ${showEvidence ? `<td class="evidence-cell" data-label="Evidence / source note"><textarea data-edit-field="evidence" data-edit-index="${index}" placeholder="Transcript evidence or source note">${escapeHtml(row.evidence || '')}</textarea></td>` : ''}
                 </tr>
               `).join('')}
