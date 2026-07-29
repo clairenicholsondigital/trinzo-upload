@@ -793,6 +793,88 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     URL.revokeObjectURL(url);
   }
 
+  function safeFilename(value) {
+    return cleanText(value || 'meeting-minutes')
+      .replace(/[^a-z0-9_-]+/gi, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 80) || 'meeting-minutes';
+  }
+
+  function rowsForPdf(rows, type) {
+    const filtered = rows.filter((row) => cleanText(row.type).toLowerCase() === type.toLowerCase());
+    if (!filtered.length) return '<tr><td class="empty">None stated</td><td></td><td></td></tr>';
+    return filtered.map((row) => `
+      <tr>
+        <td>${escapeHtml(row.topic || row.itemType || type)}</td>
+        <td>${escapeHtml(row.text || '')}${row.detail ? `<br><small>${escapeHtml(row.detail)}</small>` : ''}</td>
+        <td>${escapeHtml([row.owner, row.deadline].filter(Boolean).join(' · ') || 'Not stated')}</td>
+      </tr>
+    `).join('');
+  }
+
+  function exportEditedPdf() {
+    const meta = getEditedMetaFromDom();
+    const rows = getEditedRowsFromDom();
+    if (!latestResultPayload || !rows.length) {
+      setEditStatus('No completed minutes found to export.', 'error');
+      return;
+    }
+    const title = meta.meetingTitle || `Meeting minutes #${activeJobId || ''}`.trim() || 'Meeting minutes';
+    const html = `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>${escapeHtml(title)}</title>
+<style>
+  @page { size: A4; margin: 14mm; }
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; color: #111827; margin: 0; font-size: 11pt; }
+  h1 { font-size: 20pt; margin: 0 0 8px; color: #0f172a; }
+  h2 { font-size: 13pt; margin: 18px 0 8px; color: #0f172a; }
+  .toolbar { position: sticky; top: 0; margin: 0 0 12px; padding: 10px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; }
+  .toolbar button { background: #14b8a6; color: #042f2e; border: none; border-radius: 8px; padding: 8px 12px; font-weight: 700; cursor: pointer; }
+  table { width: 100%; border-collapse: collapse; page-break-inside: auto; margin-bottom: 12px; }
+  tr { page-break-inside: avoid; page-break-after: auto; }
+  th, td { border: 1px solid #cbd5e1; padding: 7px 8px; vertical-align: top; text-align: left; }
+  th { background: #e2e8f0; font-weight: 700; color: #0f172a; }
+  small, .empty, .footer { color: #64748b; }
+  .footer { margin-top: 18px; font-size: 9pt; }
+  @media print { .toolbar { display: none; } }
+</style>
+</head>
+<body>
+  <div class="toolbar"><button type="button" onclick="window.print()">Print / Save as PDF</button></div>
+  <h1>${escapeHtml(title)}</h1>
+  <table>
+    <tr><th style="width:28%">Date</th><td>${escapeHtml(meta.meetingDate || 'Not stated')}</td></tr>
+    <tr><th>Location</th><td>${escapeHtml(meta.meetingLocation || 'Not stated')}</td></tr>
+    <tr><th>Objectives</th><td>${escapeHtml(meta.meetingObjectives.join('\n') || 'Not stated').replace(/\n/g, '<br>')}</td></tr>
+    <tr><th>Client participants</th><td>${escapeHtml(meta.participants.client.join('\n') || 'Not stated').replace(/\n/g, '<br>')}</td></tr>
+    <tr><th>Trinzo participants</th><td>${escapeHtml(meta.participants.trinzo.join('\n') || 'Not stated').replace(/\n/g, '<br>')}</td></tr>
+  </table>
+  <h2>Discussion points</h2>
+  <table><thead><tr><th style="width:24%">Topic</th><th>Point</th><th style="width:22%">Owner / date</th></tr></thead><tbody>${rowsForPdf(rows, 'Discussion')}</tbody></table>
+  <h2>Decisions</h2>
+  <table><thead><tr><th style="width:24%">Topic</th><th>Decision</th><th style="width:22%">Owner / date</th></tr></thead><tbody>${rowsForPdf(rows, 'Decision')}</tbody></table>
+  <h2>Actions</h2>
+  <table><thead><tr><th style="width:24%">Topic</th><th>Action</th><th style="width:22%">Owner / deadline</th></tr></thead><tbody>${rowsForPdf(rows, 'Action')}</tbody></table>
+  <div class="footer">Generated from Trinzo meeting minutes job #${escapeHtml(activeJobId || '')}. Review before sharing.</div>
+  <script>window.addEventListener('load', () => { window.focus(); setTimeout(() => window.print(), 400); });<\/script>
+</body>
+</html>`;
+    const printWindow = window.open('about:blank', '_blank', 'width=1100,height=800');
+    if (!printWindow) {
+      downloadText(`${safeFilename(title)}.html`, html);
+      setEditStatus('Popup blocked, so an HTML export was downloaded. Open it and choose Print → Save as PDF.', 'success');
+      return;
+    }
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.focus();
+    setEditStatus('PDF export opened. Choose “Save as PDF” in the print dialog.', 'success');
+  }
+
   function editedTextExport() {
     const meta = getEditedMetaFromDom();
     const parts = [
@@ -938,6 +1020,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
         <a class="button secondary" href="/meeting-minutes-final/jobs/${encodeURIComponent(job.jobId)}">Open job detail</a>
         <button id="saveEditedResultBtn" type="button">Save edits</button>
         <button id="copyEditedTableBtn" class="secondary" type="button">Copy table text</button>
+        <button id="exportEditedPdfBtn" class="secondary" type="button">Export PDF</button>
         <button id="downloadEditedJsonBtn" class="secondary" type="button">Download edited JSON</button>
         <button id="clearEditedRowsBtn" class="danger" type="button">Clear rows</button>
         <span id="editStatus" class="edit-status"></span>
@@ -1029,6 +1112,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
       copyText(editedTextExport());
       setEditStatus('Copied table text.', 'success');
     }
+    if (event.target.closest('#exportEditedPdfBtn')) exportEditedPdf();
     if (event.target.closest('#downloadEditedJsonBtn')) {
       downloadText(`meeting-minutes-job-${activeJobId || 'result'}-edited.json`, JSON.stringify(editedPayload(), null, 2));
       setEditStatus('Downloaded edited JSON.', 'success');
