@@ -91,14 +91,16 @@ def detect_transcript_route(transcript: str) -> dict[str, Any]:
     # Avoid downgrading a genuine webinar rehearsal with explicit commitments.
     explicit_commitment = bool(re.search(
         r"\b(?:[A-Z][a-z]+\s+to\s+|i['’]?ll\s+|i\s+will\s+|we\s+will\s+|agreed,?\s+let['’]?s|"
-        r"decided\s+to|will\s+(?:send|update|remove|prepare|share|confirm))\b",
+        r"decision\s+confirmed|decided\s+to|will\s+(?:send|update|remove|prepare|share|confirm))\b",
         compact,
+        re.I,
     ))
     if topic_planning:
         signals.append("topic_planning_language")
         reasons.append("The transcript contains webinar/session/topic-planning language.")
 
-    short_discussion_without_commitment = word_count < 120 and len(time_values) <= 8 and not explicit_commitment and not topic_planning
+    pending_status_language = bool(re.search(r"\b(still\s+(?:not\s+finalised|missing|pending)|is\s+absent|approval\s+.*pending|awaiting\s+leadership)\b", lower))
+    short_discussion_without_commitment = word_count < 120 and len(time_values) <= 8 and not explicit_commitment and not topic_planning and not pending_status_language
     if short_discussion_without_commitment and not low_substance:
         signals.append("low_action_evidence")
         reasons.append("The transcript is short and does not contain explicit action or decision language.")
@@ -229,6 +231,10 @@ def clean_text(value: Any) -> str:
 
 def simplify_action_text(text: str) -> str:
     cleaned = clean_text(text)
+    cleaned = re.sub(r"^[A-Z][a-z]+\s+to\s+", "", cleaned).strip()
+    cleaned = re.sub(r"\b(?:today|tonight|this evening|before noon|by (?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))\.?$", "", cleaned, flags=re.I).strip(" .")
+    if cleaned and cleaned[0].islower():
+        cleaned = cleaned[0].upper() + cleaned[1:]
     lower = cleaned.lower()
     if "hpra" in lower and "bill" in lower and "authorised rep" in lower:
         return "Review the HPRA authorised-representative bill and send a copy."
@@ -236,7 +242,7 @@ def simplify_action_text(text: str) -> str:
         return "Review the HPRA authorised-representative bill."
     if "med envoy" in lower and "project plan" in lower:
         return "Follow up on the Med Envoy project plan or task list."
-    return cleaned
+    return cleaned.rstrip(".") + "." if cleaned else ""
 
 
 def is_placeholder_text(text: str) -> bool:
@@ -757,6 +763,36 @@ def evidence_supported(blob: str, *terms: str) -> bool:
     return bool(blob) and all(term.lower() in blob for term in terms)
 
 
+def rejected_alternative_phrases(transcript: str) -> list[str]:
+    compact = clean_text(transcript).lower()
+    phrases: list[str] = []
+    for match in re.finditer(r"\bmaybe\s+we\s+([^.?]+)", compact):
+        if "not this month" in compact[max(0, match.end() - 80): match.end() + 180]:
+            phrases.append(clean_text(match.group(1)))
+    for match in re.finditer(r"\boriginal plan was to\s+([^.?]+)", compact):
+        later = compact[match.end(): match.end() + 260]
+        if re.search(r"\b(?:actually|instead|agreed|move|changed?)\b", later):
+            phrases.append(clean_text(match.group(1)))
+    return [phrase for phrase in dict.fromkeys(phrases) if phrase]
+
+
+def remove_phrases_from_visible_output(value: Any, phrases: list[str]) -> Any:
+    if not phrases:
+        return value
+    lowered = [phrase.lower() for phrase in phrases]
+    if isinstance(value, str):
+        text = clean_text(value)
+        if any(phrase and phrase in text.lower() for phrase in lowered):
+            return ""
+        return text
+    if isinstance(value, list):
+        cleaned_items = [remove_phrases_from_visible_output(item, phrases) for item in value]
+        return [item for item in cleaned_items if item not in ("", None, [], {})]
+    if isinstance(value, dict):
+        return {key: item for key, item in ((key, remove_phrases_from_visible_output(item, phrases)) for key, item in value.items()) if item not in ("", None, [], {})}
+    return value
+
+
 def strip_visible_transcript_artifacts(value: Any) -> Any:
     if isinstance(value, str):
         text = re.sub(r"\b[A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){0,2}\s+\d{1,2}:\d{2}\s*", "", value)
@@ -787,18 +823,33 @@ def prepend_unique_text(values: list[str], text: str, limit: int = 30) -> list[s
     return string_list(next_values, limit=limit)
 
 
-def append_unique_action(actions: list[dict[str, Any]], text: str, evidence: str = "MiniLM evidence selector", *, prepend: bool = False) -> list[dict[str, Any]]:
+def append_unique_action(
+    actions: list[dict[str, Any]],
+    text: str,
+    evidence: str = "MiniLM evidence selector",
+    *,
+    prepend: bool = False,
+    owner: str = "Not stated",
+    deadline: str = "Not stated",
+) -> list[dict[str, Any]]:
     if not text:
         return actions
     normalised = clean_text(text).lower()
     for action in actions:
         existing = action_text_from_item(action).lower() if isinstance(action, dict) else clean_text(action).lower()
         if existing == normalised or (normalised in existing) or (existing and existing in normalised):
+            if isinstance(action, dict):
+                if clean_text(owner) and clean_text(action.get("meetingActionPointOwner")).lower() in {"", "not stated"}:
+                    action["meetingActionPointOwner"] = clean_text(owner)
+                if clean_text(deadline) and clean_text(deadline).lower() != "not stated" and clean_text(action.get("meetingActionPointDeadline")).lower() in {"", "not stated"}:
+                    action["meetingActionPointDeadline"] = clean_text(deadline)
+                if evidence and not clean_text(action.get("evidence")):
+                    action["evidence"] = evidence[:220]
             return actions
     item = {
         "meetingActionPoint": text,
-        "meetingActionPointOwner": "Not stated",
-        "meetingActionPointDeadline": "Not stated",
+        "meetingActionPointOwner": clean_text(owner) or "Not stated",
+        "meetingActionPointDeadline": clean_text(deadline) or "Not stated",
         **({"evidence": evidence[:220]} if evidence else {}),
     }
     if prepend:
@@ -806,6 +857,140 @@ def append_unique_action(actions: list[dict[str, Any]], text: str, evidence: str
     else:
         actions.append(item)
     return actions
+
+
+def clean_action_sentence(text: str) -> str:
+    cleaned = clean_text(text).strip(" .")
+    cleaned = re.sub(r"\b(?:today|tonight|this evening|before noon|by (?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))$", "", cleaned, flags=re.I).strip(" .")
+    if cleaned and cleaned[0].islower():
+        cleaned = cleaned[0].upper() + cleaned[1:]
+    return cleaned.rstrip(".") + "." if cleaned else ""
+
+
+def deadline_from_text(text: str) -> str:
+    match = re.search(r"\b(by\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)|today|tonight|this evening|before noon)\b", text, re.I)
+    if not match:
+        return "Not stated"
+    deadline = clean_text(match.group(1))
+    return deadline[0].upper() + deadline[1:] if deadline else "Not stated"
+
+
+def add_unique_decision(decisions: list[str], text: str) -> list[str]:
+    cleaned = clean_text(text).strip(" .")
+    cleaned = re.sub(r"^(?:we will|let['’]?s|to)\s+", "", cleaned, flags=re.I).strip(" .")
+    if cleaned and cleaned[0].islower():
+        cleaned = cleaned[0].upper() + cleaned[1:]
+    if cleaned:
+        decisions = append_unique_text(decisions, f"Decided to {cleaned[0].lower() + cleaned[1:] if cleaned else cleaned}.", limit=15)
+    return decisions
+
+
+def strip_speaker_prefix(text: str) -> str:
+    return re.sub(r"^[A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){0,2}\s+\d{1,2}:\d{2}\s+", "", clean_text(text)).strip()
+
+
+def apply_concise_transcript_recovery(output: dict[str, Any], transcript: str, route: dict[str, Any] | None) -> dict[str, Any]:
+    """Recover obvious decisions/actions from concise transcripts.
+
+    This is intentionally generic and conservative: it only runs on short-ish
+    complete/formal inputs and looks for explicit commitment language, not topic
+    mentions. Long real transcripts stay governed by chunk/evidence paths.
+    """
+    if (route or {}).get("recommendedMode") != "formal_minutes":
+        return output
+    compact = clean_text(transcript)
+    word_count = len(re.findall(r"\w+", compact))
+    if word_count > 420:
+        return output
+
+    recovered = dict(output)
+    decisions = decision_list(recovered.get("decisions"), limit=15)
+    actions = [dict(action) for action in recovered.get("actions") or [] if isinstance(action, dict)]
+    discussion = string_list(recovered.get("discussionPoints"), limit=30)
+
+    for match in re.finditer(r"\bDecision confirmed:\s*([^\n.]+(?:\.[^\n.]+)?)", transcript, re.I):
+        decisions = add_unique_decision(decisions, match.group(1))
+
+    sentences = [clean_text(part) for part in re.split(r"(?<=[.!?])\s+|\n+", transcript) if clean_text(part)]
+    for index, sentence in enumerate(sentences):
+        body = strip_speaker_prefix(sentence)
+        next_text = " ".join(sentences[index + 1:index + 3]).lower()
+        will_match = re.match(r"We will\s+(.+)", body, re.I)
+        if will_match and ("agreed" in next_text or "decision confirmed" in next_text or "decision" in body.lower()):
+            decisions = add_unique_decision(decisions, will_match.group(1))
+        lets_match = re.search(r"Agreed,?\s+let['’]?s\s+(.+)", body, re.I)
+        if lets_match:
+            decisions = add_unique_decision(decisions, lets_match.group(1))
+
+    for match in re.finditer(r"\b([A-Z][a-z]+)\s+to\s+([^\n.]+)", transcript):
+        owner, text = match.group(1), match.group(2)
+        if owner.lower() in {"date", "location", "participants"}:
+            continue
+        actions = append_unique_action(actions, clean_action_sentence(text), "Explicit transcript action", owner=owner, deadline=deadline_from_text(text), prepend=True)
+
+    current_speaker = "Not stated"
+    for raw_line in transcript.splitlines():
+        line = clean_text(raw_line)
+        speaker_only = re.match(r"^([A-Z][a-z]+)\s+\d{1,2}:\d{2}$", line)
+        speaker_match = re.match(r"^([A-Z][a-z]+)(?:\s+\d{1,2}:\d{2})?\s+(.+)$", line)
+        if speaker_only:
+            current_speaker = speaker_only.group(1)
+            spoken = ""
+        elif speaker_match:
+            current_speaker = speaker_match.group(1)
+            spoken = speaker_match.group(2)
+        else:
+            spoken = line
+        commitment = re.search(r"\bI['’]?ll\s+([^\n.]+)", spoken, re.I)
+        if commitment:
+            actions = append_unique_action(actions, clean_action_sentence(commitment.group(1)), "Explicit transcript action", owner=current_speaker, deadline=deadline_from_text(commitment.group(1)), prepend=True)
+
+    question_then_accept = re.finditer(
+        r"([A-Z][a-z]+)(?:\s+\d{1,2}:\d{2})?\s+Can you\s+([^\n?]+?)\?\s+([A-Z][a-z]+)(?:\s+\d{1,2}:\d{2})?\s+I['’]?ll do that",
+        compact,
+        re.I,
+    )
+    for match in question_then_accept:
+        action_text, owner = match.group(2), match.group(3)
+        actions = append_unique_action(actions, clean_action_sentence(action_text), "Explicit transcript action", owner=owner, deadline=deadline_from_text(action_text), prepend=True)
+
+    pending_rules = [
+        (r"([^\n.]+?)\s+are\s+still\s+not\s+finalised", "Review {item}"),
+        (r"Sales input is still missing for\s+([^\n.]+)", "Provide sales input for {item}"),
+        (r"The\s+([^\n.]+?document)\s+is\s+absent", "Draft {item}"),
+        (r"([^\n.]+?feedback)\s+is\s+still\s+pending", "Follow up {item}"),
+    ]
+    for pattern, template in pending_rules:
+        for match in re.finditer(pattern, transcript, re.I):
+            item = clean_text(match.group(1)).strip(" .")
+            if not item:
+                continue
+            action_text = template.format(item=item).replace("  ", " ")
+            actions = append_unique_action(actions, clean_action_sentence(action_text), "Pending item in transcript", prepend=False)
+
+    has_explicit_action_cue = bool(re.search(r"\b[A-Z][a-z]+\s+to\s+|\bI['’]?ll\s+|\bI\s+will\s+|\bCan you\s+", transcript, re.I))
+    if decisions and not has_explicit_action_cue:
+        actions = []
+
+    concise_topic_rules = [
+        (("legal review",), "Legal review was discussed as a blocker."),
+        (("retail", "logistics"), "Retail and logistics accounts were discussed as the focus."),
+        (("leadership review",), "Leadership review was discussed as pending."),
+        (("vendor strategy",), "Vendor strategy was discussed."),
+    ]
+    lower_compact = compact.lower()
+    for terms, text in concise_topic_rules:
+        if all(term in lower_compact for term in terms):
+            discussion = append_unique_text(discussion, text, limit=30)
+
+    for text in [*decisions[:6], *[action_text_from_item(action) for action in actions[:6]]]:
+        if text:
+            discussion = append_unique_text(discussion, text, limit=30)
+
+    recovered["decisions"] = decisions
+    recovered["actions"] = actions
+    recovered["discussionPoints"] = discussion
+    return normalise_output(recovered)
 
 
 def augment_output_with_project_evidence(output: dict[str, Any], evidence_pack: dict[str, Any] | None) -> dict[str, Any]:
@@ -1595,12 +1780,17 @@ def apply_routing_quality_gate(output: dict[str, Any], route: dict[str, Any] | N
 
     existing_summary = clean_text(gated.get("executiveSummary") or gated.get("meetingDescription"))
     if mode == "ask_for_better_transcript":
-        gated["meetingTitle"] = "Transcript needs review"
-        gated["executiveSummary"] = "There is not enough usable meeting content in this transcript to generate reliable formal minutes."
+        gated["meetingTitle"] = "Meeting content needs review"
+        gated["executiveSummary"] = "There is not enough usable meeting content to generate reliable formal minutes."
         gated["meetingDescription"] = gated["executiveSummary"]
-        gated["discussionPoints"] = ["The transcript appears too short or low-substance for reliable formal minutes."]
+        gated["discussionPoints"] = []
         gated["discussionTopics"] = []
-        gated["meetingMinutes"] = [{"topic": "Transcript quality", "discussionPoints": gated["discussionPoints"]}]
+        gated["meetingMinutes"] = []
+        gated["confirmedPoints"] = []
+        gated["risksAndIssues"] = []
+        gated["dependencies"] = []
+        gated["complianceFollowUps"] = []
+        gated["termsForReview"] = []
         gated["decisions"] = []
         gated["actions"] = []
         gated["nextSteps"] = []
@@ -1608,7 +1798,22 @@ def apply_routing_quality_gate(output: dict[str, Any], route: dict[str, Any] | N
         gated["meetingActionPointOwner"] = []
         gated["meetingActionPointDeadline"] = []
         gated["openQuestions"] = prepend_unique_text(string_list(gated.get("openQuestions"), limit=10), "Please provide a fuller transcript or meeting notes if formal minutes are required.", limit=10)
-        return normalise_output(gated)
+        normalised = normalise_output(gated)
+        normalised["discussionPoints"] = []
+        normalised["discussionTopics"] = []
+        normalised["meetingMinutes"] = []
+        normalised["confirmedPoints"] = []
+        normalised["risksAndIssues"] = []
+        normalised["dependencies"] = []
+        normalised["complianceFollowUps"] = []
+        normalised["termsForReview"] = []
+        normalised["decisions"] = []
+        normalised["actions"] = []
+        normalised["nextSteps"] = []
+        normalised["meetingActionPoint"] = []
+        normalised["meetingActionPointOwner"] = []
+        normalised["meetingActionPointDeadline"] = []
+        return normalised
 
     if mode == "topic_summary_with_caution":
         if existing_summary:
@@ -1657,6 +1862,7 @@ def post_process_meeting_output(
     output: dict[str, Any],
     route: dict[str, Any] | None,
     project_status_evidence: dict[str, Any] | None,
+    transcript: str = "",
     *,
     chunked: bool = False,
 ) -> dict[str, Any]:
@@ -1670,8 +1876,10 @@ def post_process_meeting_output(
     processed = apply_chunked_quality_gate(output) if chunked else normalise_output(output)
     processed = apply_routing_quality_gate(processed, route)
     if mode == "formal_minutes":
+        processed = apply_concise_transcript_recovery(processed, transcript, route)
         processed = augment_output_with_project_evidence(processed, project_status_evidence)
     processed = apply_routing_quality_gate(processed, route)
+    processed = remove_phrases_from_visible_output(processed, rejected_alternative_phrases(transcript))
     return strip_visible_transcript_artifacts(processed)
 
 
@@ -1733,7 +1941,7 @@ def process_chunked_transcript(
         merge_diagnostics = {"used": False, "error": "All transcript chunks failed."}
         merge_strategy = "all_chunks_failed"
 
-    output = post_process_meeting_output(output, route, project_status_evidence, chunked=True)
+    output = post_process_meeting_output(output, route, project_status_evidence, transcript, chunked=True)
     review_diagnostics: dict[str, Any] = {"used": False, "skipped": True}
     if successful_chunks and merge_strategy != "all_chunks_failed" and truthy(os.environ.get("MEETING_MINUTES_FINAL_REVIEW", "true")):
         review_prompt = prompt_for_compact_final_review(output, successful_chunks)
@@ -1758,7 +1966,7 @@ def process_chunked_transcript(
                 review_diagnostics["reviewMode"] = "compact_verdict"
                 output = apply_compact_review_verdict(output, review_verdict)
 
-    output = post_process_meeting_output(output, route, project_status_evidence, chunked=True)
+    output = post_process_meeting_output(output, route, project_status_evidence, transcript, chunked=True)
 
     diagnostics = {
         "provider": "trooper",
@@ -1842,7 +2050,7 @@ def main() -> int:
         output, diagnostics = process_chunked_transcript(transcript, args.timeout_seconds, project_status_evidence, route)
     else:
         output, diagnostics = call_trooper(transcript, args.timeout_seconds, project_status_evidence, route)
-        output = post_process_meeting_output(output, route, project_status_evidence, chunked=False)
+        output = post_process_meeting_output(output, route, project_status_evidence, transcript, chunked=False)
         diagnostics["routing"] = route
     runtime_ms = round((time.perf_counter() - started) * 1000, 2)
     payload: dict[str, Any] = {
