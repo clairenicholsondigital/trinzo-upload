@@ -101,25 +101,29 @@ Possible topic/theme output from this transcript:
 - AI vendor approval / approved supplier status.
 - Scope for AI use across project/service-provider work.
 
-## Current improvement ideas
+## Current improvement status
 
-Potential improvements to investigate next:
+The tool now includes a conservative pre-router before generation. This is not a broad meeting classifier; it only catches high-confidence failure patterns such as partial transcripts, large timestamp gaps, very low-substance/audio-check input, and webinar/content-planning language.
 
-1. **Meeting-intent detection before extraction**
-   - Add a lightweight classification step that detects whether a transcript looks like a formal meeting, status review, decision meeting, content planning session, webinar planning session, or low-substance/partial transcript.
+Implemented improvements:
 
-2. **Partial transcript warning**
-   - Detect large timestamp gaps or transcript-start cues such as “I just turned on the transcript”.
-   - Warn the reviewer when the transcript appears incomplete.
+1. **Selective meeting/transcript routing before extraction**
+   - The generator now identifies obvious partial, gappy, low-substance, and topic-planning transcripts before asking the AI to produce minutes.
 
-3. **Discussion-led meeting mode**
-   - If the transcript has low action/decision language, produce a discussion/topic map rather than forcing actions and decisions.
+2. **Partial transcript and timestamp-gap detection**
+   - Cues such as “I just turned on the transcript” and large timestamp gaps are detected and passed into the generation prompts/diagnostics.
 
-4. **Safer deadline handling**
-   - Treat phrases like “first one in September” or “November one” as ambiguous unless there is clear task assignment language.
+3. **Cautious topic-summary mode**
+   - For partial webinar/content-planning style transcripts, the tool now avoids forcing formal action-heavy minutes and treats dates/session references cautiously.
 
-5. **Output confidence notes**
-   - Add a visible note when the tool is inferring heavily or when actions are weakly supported.
+4. **Deterministic safety gate**
+   - Even if generation fails or tries to over-extract, cautious modes remove weak actions/decisions and add a transcript-quality caveat rather than inventing deadlines or owners.
+
+Still worth improving next:
+
+- Make the caution/routing note more visible in the review UI, rather than mostly in diagnostics/summary text.
+- Improve discussion/topic summaries for partial planning transcripts so the output is more useful even when actions and decisions are correctly empty.
+- Continue improving the full golden suite for long formal transcripts, where the issue is missed content rather than over-extraction.
 
 ## Current caveat for Conor/client use
 
