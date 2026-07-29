@@ -88,9 +88,11 @@ const testUpload = multer({
 
 const MAX_TRANSCRIPT_CHARS = 2 * 1024 * 1024;
 const PYTHON_TIMEOUT_MS = Number(process.env.TRANSCRIPT_TEST_TIMEOUT_MS || 30000);
-// /meeting-minutes-final now uses a single full-transcript Trooper Liv operator pass.
-// Large transcripts can still take several seconds, so keep the route timeout generous.
+// /meeting-minutes-final supports the old single full-transcript Trooper pass and the
+// more reliable queued chunked pipeline. Large transcripts can still take several
+// seconds, so keep the route timeout generous.
 const MEETING_MINUTES_FINAL_TIMEOUT_MS = Number(process.env.MEETING_MINUTES_FINAL_TIMEOUT_MS || 180000);
+const MEETING_MINUTES_JOB_PIPELINE = process.env.MEETING_MINUTES_JOB_PIPELINE || 'chunked';
 
 function safeErrorInfo(error, extra = {}) {
   const details = error && error.details && typeof error.details === 'object' ? error.details : null;
@@ -657,6 +659,10 @@ router.post('/meeting-minutes-final', requireAuth, withTestUpload(async (req, re
       scriptArgs.push('--skip-rewrite');
     }
 
+    if (['single', 'chunked', 'auto'].includes(String(req.query?.pipeline || req.body?.pipeline || '').trim())) {
+      scriptArgs.push('--pipeline', String(req.query?.pipeline || req.body?.pipeline).trim());
+    }
+
     if (truthyFlag(req.query?.includeBaselineReference) || truthyFlag(req.body?.includeBaselineReference)) {
       scriptArgs.push('--include-baseline-reference');
     }
@@ -711,6 +717,9 @@ router.post('/meeting-minutes-final/jobs', requireAuth, withTestUpload(async (re
       includeDiagnostics: truthyFlag(req.query?.includeDiagnostics) || truthyFlag(req.body?.includeDiagnostics),
       includeTranscriptMetadata: shouldIncludeTranscriptMetadata(req),
       skipRewrite: truthyFlag(req.query?.skipRewrite) || truthyFlag(req.body?.skipRewrite),
+      pipeline: ['single', 'chunked', 'auto'].includes(String(req.query?.pipeline || req.body?.pipeline || '').trim())
+        ? String(req.query?.pipeline || req.body?.pipeline).trim()
+        : MEETING_MINUTES_JOB_PIPELINE,
       includeProjectStatusEvidence: truthyFlag(req.query?.includeProjectStatusEvidence) || truthyFlag(req.body?.includeProjectStatusEvidence),
       queuedBy: req.authUser?.email || ''
     });

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import json
 import os
 import re
@@ -16,6 +17,9 @@ from typing import Any
 TROOPER_URL_DEFAULT = "https://eu.router.trooper.ai/v1/chat/completions"
 TROOPER_MODEL_DEFAULT = "eu_liv_000099"
 PROJECT_STATUS_EVIDENCE_MAX_CHARS = 14000
+CHUNK_TARGET_CHARS = int(os.environ.get("MEETING_MINUTES_CHUNK_TARGET_CHARS", "9000"))
+CHUNK_OVERLAP_CHARS = int(os.environ.get("MEETING_MINUTES_CHUNK_OVERLAP_CHARS", "900"))
+CHUNK_MAX_PARALLEL = int(os.environ.get("MEETING_MINUTES_CHUNK_MAX_PARALLEL", "3"))
 
 
 def load_local_env_if_needed() -> None:
@@ -47,6 +51,27 @@ def load_local_env_if_needed() -> None:
 
 def clean_text(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "").strip())
+
+
+def is_placeholder_text(text: str) -> bool:
+    normalised = clean_text(text).strip(" .:-").lower()
+    if normalised.startswith("no explicit decision") or normalised.startswith("no decisions"):
+        return True
+    if normalised.startswith("none explicitly"):
+        return True
+    return normalised in {
+        "none",
+        "none stated",
+        "none explicitly stated",
+        "none explicitly recorded",
+        "none explicitly recorded in this chunk",
+        "no decisions stated",
+        "no decision stated",
+        "no explicit decisions",
+        "not stated",
+        "n/a",
+        "null",
+    }
 
 
 def string_list(value: Any, limit: int = 20) -> list[str]:
@@ -92,7 +117,7 @@ def structured_item_list(value: Any, limit: int = 20) -> list[dict[str, str]]:
     for item in value:
         if isinstance(item, dict):
             text = first_text(item)
-            if not text:
+            if not text or is_placeholder_text(text):
                 continue
             row = {
                 "text": text,
@@ -106,7 +131,7 @@ def structured_item_list(value: Any, limit: int = 20) -> list[dict[str, str]]:
                     row[optional] = clean_text(item.get(optional))
         else:
             text = clean_text(item)
-            if not text:
+            if not text or is_placeholder_text(text):
                 continue
             row = {"text": text, "status": "", "owner": "", "deadline": "", "evidence": ""}
         key = text.lower()
@@ -135,7 +160,7 @@ def normalise_action(action: Any) -> dict[str, str] | None:
         or action.get("task")
         or action.get("description")
     )
-    if not text:
+    if not text or is_placeholder_text(text):
         return None
     owner = clean_text(action.get("meetingActionPointOwner") or action.get("owner")) or "Not stated"
     deadline = clean_text(action.get("meetingActionPointDeadline") or action.get("deadline")) or "Not stated"
@@ -209,6 +234,27 @@ def structured_texts(items: list[dict[str, str]], limit: int = 20) -> list[str]:
         text = clean_text(item.get("text"))
         if text:
             out.append(text)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def decision_list(value: Any, limit: int = 15) -> list[str]:
+    if isinstance(value, str):
+        value = [value]
+    if not isinstance(value, list):
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        text = first_text(item, ["text", "decision", "summary", "point"]) if isinstance(item, dict) else clean_text(item)
+        if not text or is_placeholder_text(text):
+            continue
+        key = text.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(text)
         if len(out) >= limit:
             break
     return out
@@ -369,7 +415,7 @@ def normalise_output(raw: dict[str, Any]) -> dict[str, Any]:
         "termsForReview": terms_for_review,
         "discussionTopics": discussion_topics,
         "discussionPoints": discussion,
-        "decisions": string_list(raw.get("decisions"), limit=15),
+        "decisions": decision_list(raw.get("decisions"), limit=15),
         "meetingActionPoint": [a["meetingActionPoint"] for a in deduped_actions],
         "meetingActionPointOwner": [a["meetingActionPointOwner"] for a in deduped_actions],
         "meetingActionPointDeadline": [a["meetingActionPointDeadline"] for a in deduped_actions],
@@ -515,6 +561,152 @@ def prompt_for_transcript(transcript: str, project_status_evidence: dict[str, An
 {evidence_text}
 [/PROJECT_STATUS_EVIDENCE]
 """
+
+
+def prompt_for_chunk(chunk_text: str, chunk_index: int, chunk_count: int) -> str:
+    return f"""[CMD]@meeting-minutes-chunk|verify=true|detail=8|creativity=0|format=json|audience=client|language=en-GB
+[INPUT_CHUNK index={chunk_index} of {chunk_count}]
+{chunk_text}
+[/INPUT_CHUNK]
+
+Return valid JSON only, with this shape:
+{{
+  "chunkIndex": {chunk_index},
+  "meetingTitleHints": [],
+  "meetingDateHints": [],
+  "participants": {{"client": [], "trinzo": []}},
+  "otherParticipants": [],
+  "confirmedPoints": [{{"text": "", "evidence": ""}}],
+  "risksAndIssues": [{{"text": "", "status": "open", "owner": "Not stated", "evidence": ""}}],
+  "dependencies": [{{"text": "", "owner": "Not stated", "deadline": "Not stated", "evidence": ""}}],
+  "complianceFollowUps": [{{"text": "", "owner": "Not stated", "deadline": "Not stated", "evidence": ""}}],
+  "termsForReview": [{{"term": "", "normalisedTerm": "", "reason": "", "confidence": "low|medium|high", "evidence": ""}}],
+  "discussionTopics": [{{"topic": "", "summary": "", "items": [{{"type": "discussion|decision|confirmed|risk|dependency|compliance_follow_up", "text": "", "owner": null, "deadline": null, "evidence": "", "confidence": 0.0}}]}}],
+  "decisions": [],
+  "actions": [{{"meetingActionPoint": "", "meetingActionPointOwner": "Not stated", "meetingActionPointDeadline": "Not stated", "dependency": "", "evidence": ""}}],
+  "openQuestions": []
+}}
+
+Chunk rules:
+- Extract only what is explicitly supported inside this chunk.
+- Do not fill gaps from common sense or from likely meeting context.
+- Prefer sparse output over weak output.
+- Use empty arrays when nothing is explicitly stated. Never write placeholder items such as "None stated".
+- Return at most 2 decisions and at most 3 actions for this chunk unless the chunk contains several unmistakable commitments.
+- Actions must be actual commitments/follow-ups, not general discussion.
+- Decisions must be actual decisions/confirmations, not status statements.
+- Owners and deadlines must be explicitly stated; otherwise use "Not stated".
+- Include short evidence phrases for actions, risks, dependencies, compliance follow-ups and decisions.
+- Remove filler, timestamps, speaker labels and transcript artefacts.
+"""
+
+
+def prompt_for_merge(chunk_outputs: list[dict[str, Any]], project_status_evidence: dict[str, Any] | None = None) -> str:
+    evidence_text = compact_project_status_evidence(project_status_evidence)
+    compact_chunks = []
+    for chunk in chunk_outputs:
+        output = chunk.get("output") if isinstance(chunk, dict) else None
+        if not isinstance(output, dict):
+            continue
+        compact_chunks.append(truncate_for_prompt({
+            "chunkIndex": chunk.get("chunkIndex"),
+            "meetingTitleHints": string_list(output.get("meetingTitleHints") or output.get("meetingTitle"), limit=4),
+            "meetingDateHints": string_list(output.get("meetingDateHints") or output.get("meetingDate"), limit=4),
+            "participants": output.get("participants") or {},
+            "otherParticipants": output.get("otherParticipants") or [],
+            "confirmedPoints": (output.get("confirmedPoints") or [])[:12],
+            "risksAndIssues": (output.get("risksAndIssues") or [])[:12],
+            "dependencies": (output.get("dependencies") or [])[:12],
+            "complianceFollowUps": (output.get("complianceFollowUps") or [])[:12],
+            "termsForReview": (output.get("termsForReview") or [])[:10],
+            "discussionTopics": (output.get("discussionTopics") or [])[:10],
+            "decisions": string_list(output.get("decisions"), limit=12),
+            "actions": (output.get("actions") or output.get("nextSteps") or [])[:12],
+            "openQuestions": string_list(output.get("openQuestions"), limit=8),
+        }))
+    chunks_text = json.dumps(compact_chunks, ensure_ascii=False, indent=2)
+    if len(chunks_text) > 52000:
+        chunks_text = chunks_text[:52000]
+    evidence_section = f"""
+[PROJECT_STATUS_EVIDENCE]
+{evidence_text}
+[/PROJECT_STATUS_EVIDENCE]
+""" if evidence_text else ""
+    return f"""[CMD]@meeting-minutes-merge|verify=true|detail=9|creativity=0|format=json|audience=client|language=en-GB
+[CHUNK_OUTPUTS]
+{chunks_text}
+[/CHUNK_OUTPUTS]
+{evidence_section}
+
+Return valid JSON only, with exactly this shape:
+{{
+  "meetingTitle": "",
+  "meetingDate": "",
+  "meetingLocation": "",
+  "meetingDescription": "",
+  "meetingObjectives": [],
+  "participants": {{"client": [], "trinzo": []}},
+  "otherParticipants": [],
+  "executiveSummary": "",
+  "confirmedPoints": [{{"text": "", "evidence": ""}}],
+  "risksAndIssues": [{{"text": "", "status": "open", "owner": "Not stated", "evidence": ""}}],
+  "dependencies": [{{"text": "", "owner": "Not stated", "deadline": "Not stated", "evidence": ""}}],
+  "complianceFollowUps": [{{"text": "", "owner": "Not stated", "deadline": "Not stated", "evidence": ""}}],
+  "termsForReview": [{{"term": "", "normalisedTerm": "", "reason": "", "confidence": "low|medium|high", "evidence": ""}}],
+  "discussionTopics": [{{"topicId": "", "topic": "", "summary": "", "outcome": "", "items": [{{"itemId": "", "type": "discussion|decision|confirmed|risk|dependency|compliance_follow_up", "text": "", "owner": null, "status": "", "deadline": null, "dependency": null, "evidence": "", "confidence": 0.0}}]}}],
+  "discussionPoints": [],
+  "decisions": [],
+  "actions": [{{"meetingActionPoint": "", "meetingActionPointOwner": "Not stated", "meetingActionPointDeadline": "Not stated", "dependency": "", "evidence": ""}}],
+  "meetingMinutes": [{{"topic": "", "discussionPoints": []}}],
+  "nextSteps": [{{"action": "", "owner": "Not stated", "deadline": "Not stated", "dependency": "", "evidence": ""}}],
+  "openQuestions": []
+}}
+
+Merge rules:
+- Deduplicate repeated items across chunks.
+- Prefer fewer high-confidence points over long noisy minutes.
+- Use empty arrays when nothing is explicitly stated. Never keep placeholder items such as "None stated".
+- Keep the final action list short and concrete; avoid general recommendations or vague "check the side of things" style items.
+- Keep uncertainty; do not upgrade tentative discussion into decisions or actions.
+- Only include actions/decisions with evidence from the chunk outputs.
+- If chunk outputs disagree, keep the cautious version and add review wording rather than inventing certainty.
+- PROJECT_STATUS_EVIDENCE is only an attention guide. The chunk outputs remain the source of truth.
+"""
+
+
+def split_transcript_chunks(transcript: str, target_chars: int = CHUNK_TARGET_CHARS, overlap_chars: int = CHUNK_OVERLAP_CHARS) -> list[str]:
+    text = transcript.strip()
+    if len(text) <= target_chars:
+        return [text] if text else []
+    parts = re.split(r"(?=\n\s*(?:[A-Z][A-Za-z .'-]{1,60}\s+\d{1,2}:\d{2}|\d{1,2}:\d{2}(?::\d{2})?\b|Speaker\s+\d+\b))", text)
+    if len(parts) <= 1:
+        parts = re.split(r"(?<=[.!?])\s+", text)
+    chunks: list[str] = []
+    current = ""
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+        if current and len(current) + len(part) + 2 > target_chars:
+            chunks.append(current.strip())
+            overlap = current[-overlap_chars:] if overlap_chars > 0 else ""
+            current = f"{overlap}\n{part}".strip() if overlap else part
+        else:
+            current = f"{current}\n{part}".strip() if current else part
+    if current:
+        chunks.append(current.strip())
+    return chunks
+
+
+def truncate_for_prompt(value: Any, max_string_chars: int = 420) -> Any:
+    if isinstance(value, str):
+        text = clean_text(value)
+        return text[:max_string_chars]
+    if isinstance(value, list):
+        return [truncate_for_prompt(item, max_string_chars=max_string_chars) for item in value]
+    if isinstance(value, dict):
+        return {key: truncate_for_prompt(item, max_string_chars=max_string_chars) for key, item in value.items()}
+    return value
     return f"""[CMD]@meeting-minutes|verify=true|detail=9|creativity=1|format=json|audience=client|language=en-GB
 [INPUT]
 {transcript}
@@ -605,10 +797,10 @@ def empty_failure_output(error_message: str) -> dict[str, Any]:
     }
 
 
-def call_trooper(
-    transcript: str,
+def call_trooper_prompt(
+    prompt: str,
     timeout_seconds: int,
-    project_status_evidence: dict[str, Any] | None = None,
+    task_label: str = "meeting_minutes_final",
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     api_key = os.environ.get("TROOPER_API_KEY", "").strip()
     if not api_key:
@@ -624,7 +816,7 @@ def call_trooper(
                 "role": "system",
                 "content": "You operate HelixScribe's behavioural stabilisation operator. Interpret [CMD] operator parameters exactly. Return valid JSON only when format=json.",
             },
-            {"role": "user", "content": prompt_for_transcript(transcript, project_status_evidence)},
+            {"role": "user", "content": prompt},
         ],
         "temperature": 0.1,
         "max_tokens": int(os.environ.get("TROOPER_MAX_TOKENS", "4000")),
@@ -653,6 +845,7 @@ def call_trooper(
             diagnostics = {
                 "provider": "trooper",
                 "model": model,
+                "task": task_label,
                 "used": True,
                 "errorsBeforeSuccess": errors,
                 "runtimeMs": round((time.perf_counter() - started) * 1000, 2),
@@ -674,7 +867,288 @@ def call_trooper(
             time.sleep(2.0)
 
     message = "Trooper Liv generation failed. Please retry; the API may be temporarily unavailable."
-    return empty_failure_output(message), {"provider": "trooper", "model": model, "used": False, "error": message, "errors": errors}
+    return empty_failure_output(message), {"provider": "trooper", "model": model, "task": task_label, "used": False, "error": message, "errors": errors}
+
+
+def call_trooper(
+    transcript: str,
+    timeout_seconds: int,
+    project_status_evidence: dict[str, Any] | None = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    return call_trooper_prompt(
+        prompt_for_transcript(transcript, project_status_evidence),
+        timeout_seconds,
+        task_label="full_transcript",
+    )
+
+
+def dedupe_structured_items(items: list[dict[str, Any]], key_names: list[str], limit: int = 30) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        text = "|".join(clean_text(item.get(key)) for key in key_names).lower().strip("|")
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        out.append(item)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def action_text_from_item(item: dict[str, Any]) -> str:
+    return clean_text(item.get("meetingActionPoint") or item.get("action") or item.get("task") or item.get("description"))
+
+
+def rank_actions_for_fallback(actions: list[dict[str, Any]], limit: int = 6) -> list[dict[str, Any]]:
+    """Keep deterministic fallback cautious when the AI merge cannot produce JSON."""
+    weak_starts = ("need to ", "check the side of things", "look at that side of things")
+    strong_starts = ("send ", "provide ", "update ", "obtain ", "review ", "confirm ", "follow up ", "share ", "prepare ", "agree ")
+
+    scored: list[tuple[int, int, dict[str, Any]]] = []
+    for index, action in enumerate(actions):
+        if not isinstance(action, dict):
+            continue
+        text = action_text_from_item(action)
+        if not text or is_placeholder_text(text):
+            continue
+        lower = text.lower()
+        if lower.startswith(weak_starts):
+            continue
+        owner = clean_text(action.get("meetingActionPointOwner") or action.get("owner"))
+        deadline = clean_text(action.get("meetingActionPointDeadline") or action.get("deadline"))
+        evidence = clean_text(action.get("evidence") or action.get("sourceSnippet"))
+        score = 0
+        if owner and owner.lower() != "not stated":
+            score += 4
+        if deadline and deadline.lower() != "not stated":
+            score += 2
+        if evidence:
+            score += 3
+        if lower.startswith(strong_starts):
+            score += 2
+        if any(term in lower for term in ("hpra", "bill", "declaration", "conformity", "project plan", "formal feedback")):
+            score += 1
+        scored.append((score, -index, action))
+    scored.sort(reverse=True)
+
+    selected: list[dict[str, Any]] = []
+    selected_tokens: list[set[str]] = []
+    for _, __, item in scored:
+        tokens = set(re.findall(r"[a-z0-9']+", action_text_from_item(item).lower())) - {
+            "the", "a", "an", "and", "or", "to", "for", "of", "regarding", "review", "check", "send", "update"
+        }
+        if any(tokens and existing and len(tokens & existing) / max(len(tokens | existing), 1) >= 0.58 for existing in selected_tokens):
+            continue
+        selected.append(item)
+        selected_tokens.append(tokens)
+        if len(selected) >= limit:
+            break
+    selected.sort(key=lambda item: actions.index(item) if item in actions else 999999)
+    return selected
+
+
+def filter_explicit_decisions(decisions: list[str], limit: int = 6) -> list[str]:
+    explicit_markers = (
+        "decided", "decision", "agreed", "approved", "confirmed", "accepted", "selected",
+        "signed off", "go ahead", "proceed", "invite", "shortlist", "defer", "reject",
+    )
+    cautious: list[str] = []
+    for decision in decision_list(decisions, limit=30):
+        lower = decision.lower()
+        if any(marker in lower for marker in explicit_markers):
+            cautious.append(decision)
+        if len(cautious) >= limit:
+            break
+    return cautious
+
+
+def apply_chunked_quality_gate(output: dict[str, Any]) -> dict[str, Any]:
+    gated = dict(output)
+    decision_limit = int(os.environ.get("MEETING_MINUTES_CHUNKED_DECISION_LIMIT", "6"))
+    action_limit = int(os.environ.get("MEETING_MINUTES_CHUNKED_ACTION_LIMIT", "6"))
+    gated["decisions"] = filter_explicit_decisions(gated.get("decisions") or [], limit=decision_limit)
+    gated["actions"] = rank_actions_for_fallback(gated.get("actions") or [], limit=action_limit)
+    gated["meetingActionPoint"] = [a["meetingActionPoint"] for a in gated["actions"] if a.get("meetingActionPoint")]
+    gated["meetingActionPointOwner"] = [a.get("meetingActionPointOwner", "Not stated") for a in gated["actions"]]
+    gated["meetingActionPointDeadline"] = [a.get("meetingActionPointDeadline", "Not stated") for a in gated["actions"]]
+    gated["nextSteps"] = [
+        {
+            "action": a.get("meetingActionPoint", ""),
+            "owner": a.get("meetingActionPointOwner", "Not stated"),
+            "deadline": a.get("meetingActionPointDeadline", "Not stated"),
+            **({"dependency": a["dependency"]} if a.get("dependency") else {}),
+            **({"evidence": a["evidence"]} if a.get("evidence") else {}),
+        }
+        for a in gated["actions"]
+    ]
+    return gated
+
+
+def deterministic_merge_outputs(chunk_outputs: list[dict[str, Any]]) -> dict[str, Any]:
+    raw: dict[str, Any] = {
+        "meetingTitle": "Meeting minutes",
+        "meetingDate": "",
+        "meetingLocation": "",
+        "meetingObjectives": [],
+        "participants": {"client": [], "trinzo": []},
+        "otherParticipants": [],
+        "confirmedPoints": [],
+        "risksAndIssues": [],
+        "dependencies": [],
+        "complianceFollowUps": [],
+        "termsForReview": [],
+        "discussionTopics": [],
+        "discussionPoints": [],
+        "decisions": [],
+        "actions": [],
+        "openQuestions": [],
+    }
+    title_hints: list[str] = []
+    date_hints: list[str] = []
+    topic_index = 1
+    for chunk in chunk_outputs:
+        output = chunk.get("output") if isinstance(chunk, dict) else None
+        if not isinstance(output, dict):
+            continue
+        title_hints.extend(string_list(output.get("meetingTitleHints") or output.get("meetingTitle"), limit=4))
+        date_hints.extend(string_list(output.get("meetingDateHints") or output.get("meetingDate"), limit=4))
+        participants = output.get("participants") if isinstance(output.get("participants"), dict) else {}
+        raw["participants"]["client"].extend(string_list(participants.get("client"), limit=20))
+        raw["participants"]["trinzo"].extend(string_list(participants.get("trinzo"), limit=20))
+        raw["otherParticipants"].extend(string_list(output.get("otherParticipants"), limit=20))
+        raw["confirmedPoints"].extend(output.get("confirmedPoints") or [])
+        raw["risksAndIssues"].extend(output.get("risksAndIssues") or [])
+        raw["dependencies"].extend(output.get("dependencies") or [])
+        raw["complianceFollowUps"].extend(output.get("complianceFollowUps") or [])
+        raw["termsForReview"].extend(output.get("termsForReview") or [])
+        raw["decisions"].extend(string_list(output.get("decisions"), limit=20))
+        raw["actions"].extend(output.get("actions") or output.get("nextSteps") or [])
+        raw["openQuestions"].extend(string_list(output.get("openQuestions"), limit=20))
+        for topic in output.get("discussionTopics") or []:
+            if not isinstance(topic, dict):
+                continue
+            for topic_item in topic.get("items") or []:
+                if isinstance(topic_item, dict):
+                    topic_text = first_text(topic_item)
+                    if topic_text and not is_placeholder_text(topic_text):
+                        raw["discussionPoints"].append(topic_text)
+            raw["discussionTopics"].append({
+                "topicId": clean_text(topic.get("topicId")) or f"topic-{topic_index}",
+                "topic": clean_text(topic.get("topic")) or f"Discussion {topic_index}",
+                "summary": clean_text(topic.get("summary")),
+                "outcome": clean_text(topic.get("outcome")),
+                "items": topic.get("items") or [],
+            })
+            topic_index += 1
+    raw["meetingTitle"] = title_hints[0] if title_hints else "Meeting minutes"
+    raw["meetingDate"] = date_hints[0] if date_hints else ""
+    raw["participants"] = {
+        "client": string_list(raw["participants"]["client"], limit=20),
+        "trinzo": string_list(raw["participants"]["trinzo"], limit=20),
+    }
+    raw["otherParticipants"] = string_list(raw["otherParticipants"], limit=20)
+    raw["confirmedPoints"] = dedupe_structured_items(raw["confirmedPoints"], ["text"], limit=30)
+    raw["risksAndIssues"] = dedupe_structured_items(raw["risksAndIssues"], ["text"], limit=30)
+    raw["dependencies"] = dedupe_structured_items(raw["dependencies"], ["text"], limit=25)
+    raw["complianceFollowUps"] = dedupe_structured_items(raw["complianceFollowUps"], ["text", "owner"], limit=25)
+    raw["termsForReview"] = dedupe_structured_items(raw["termsForReview"], ["term"], limit=20)
+    raw["discussionPoints"] = string_list(raw["discussionPoints"], limit=30)
+    raw["decisions"] = decision_list(raw["decisions"], limit=8)
+    raw["actions"] = rank_actions_for_fallback(
+        dedupe_structured_items(raw["actions"], ["meetingActionPoint", "action", "owner", "meetingActionPointOwner"], limit=30),
+        limit=int(os.environ.get("MEETING_MINUTES_FALLBACK_ACTION_LIMIT", "6")),
+    )
+    raw["openQuestions"] = string_list(raw["openQuestions"], limit=20)
+    return normalise_output(raw)
+
+
+def process_chunked_transcript(
+    transcript: str,
+    timeout_seconds: int,
+    project_status_evidence: dict[str, Any] | None = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    chunks = split_transcript_chunks(transcript)
+    if len(chunks) <= 1:
+        output, diagnostics = call_trooper(transcript, timeout_seconds, project_status_evidence)
+        diagnostics["chunked"] = False
+        diagnostics["chunkCount"] = len(chunks)
+        return output, diagnostics
+
+    chunk_results: list[dict[str, Any]] = []
+    started = time.perf_counter()
+
+    def run_chunk(index_and_text: tuple[int, str]) -> dict[str, Any]:
+        index, chunk_text = index_and_text
+        output, diagnostics = call_trooper_prompt(
+            prompt_for_chunk(chunk_text, index, len(chunks)),
+            timeout_seconds,
+            task_label=f"chunk_{index}",
+        )
+        return {
+            "chunkIndex": index,
+            "chars": len(chunk_text),
+            "output": normalise_output(output),
+            "diagnostics": diagnostics,
+        }
+
+    max_workers = max(1, min(CHUNK_MAX_PARALLEL, len(chunks)))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [executor.submit(run_chunk, item) for item in enumerate(chunks, start=1)]
+        for future in concurrent.futures.as_completed(futures):
+            try:
+                chunk_results.append(future.result())
+            except Exception as exc:
+                chunk_results.append({"chunkIndex": None, "error": clean_text(str(exc))[:240], "output": empty_failure_output(clean_text(str(exc))[:240]), "diagnostics": {"used": False, "error": clean_text(str(exc))[:240]}})
+    chunk_results.sort(key=lambda item: item.get("chunkIndex") or 999999)
+
+    successful_chunks = [item for item in chunk_results if item.get("diagnostics", {}).get("used")]
+    if successful_chunks:
+        merged_output, merge_diagnostics = call_trooper_prompt(
+            prompt_for_merge(successful_chunks, project_status_evidence),
+            timeout_seconds,
+            task_label="merge_chunks",
+        )
+        if merge_diagnostics.get("used"):
+            output = normalise_output(merged_output)
+            merge_strategy = "trooper_merge"
+        else:
+            output = deterministic_merge_outputs(successful_chunks)
+            merge_strategy = "deterministic_fallback_after_merge_failure"
+    else:
+        output = empty_failure_output("All transcript chunks failed to generate meeting minutes.")
+        merge_diagnostics = {"used": False, "error": "All transcript chunks failed."}
+        merge_strategy = "all_chunks_failed"
+
+    output = apply_chunked_quality_gate(output)
+
+    diagnostics = {
+        "provider": "trooper",
+        "model": os.environ.get("TROOPER_MODEL", TROOPER_MODEL_DEFAULT).strip() or TROOPER_MODEL_DEFAULT,
+        "task": "chunked_parallel_pipeline",
+        "used": bool(successful_chunks),
+        "chunked": True,
+        "chunkCount": len(chunks),
+        "successfulChunkCount": len(successful_chunks),
+        "failedChunkCount": len(chunks) - len(successful_chunks),
+        "maxParallel": max_workers,
+        "mergeStrategy": merge_strategy,
+        "runtimeMs": round((time.perf_counter() - started) * 1000, 2),
+        "chunks": [
+            {
+                "chunkIndex": item.get("chunkIndex"),
+                "chars": item.get("chars"),
+                "used": item.get("diagnostics", {}).get("used"),
+                "error": item.get("diagnostics", {}).get("error"),
+                "errors": item.get("diagnostics", {}).get("errors", [])[:2],
+            }
+            for item in chunk_results
+        ],
+        "merge": merge_diagnostics,
+    }
+    return output, diagnostics
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -685,6 +1159,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--skip-rewrite", action="store_true", help="Accepted for compatibility; ignored.")
     parser.add_argument("--include-project-status-evidence", action="store_true")
     parser.add_argument("--timeout-seconds", type=int, default=int(os.environ.get("TROOPER_TIMEOUT_SECONDS", "120")))
+    parser.add_argument(
+        "--pipeline",
+        choices=["single", "chunked", "auto"],
+        default=os.environ.get("MEETING_MINUTES_PIPELINE", "single"),
+        help="Generation pipeline. 'chunked' splits long transcripts into parallel section calls then merges the evidence-backed outputs.",
+    )
     return parser.parse_args(argv)
 
 
@@ -701,14 +1181,25 @@ def main() -> int:
             transcript_path,
             timeout_seconds=int(os.environ.get("PROJECT_STATUS_EVIDENCE_TIMEOUT_SECONDS", "90")),
         )
-    output, diagnostics = call_trooper(transcript, args.timeout_seconds, project_status_evidence)
+    pipeline = args.pipeline
+    if pipeline == "auto":
+        pipeline = "chunked" if len(transcript) > CHUNK_TARGET_CHARS else "single"
+    if pipeline == "chunked":
+        output, diagnostics = process_chunked_transcript(transcript, args.timeout_seconds, project_status_evidence)
+    else:
+        output, diagnostics = call_trooper(transcript, args.timeout_seconds, project_status_evidence)
     runtime_ms = round((time.perf_counter() - started) * 1000, 2)
     payload: dict[str, Any] = {
-        "mode": "meeting_minutes_final_trooper_operator_full_transcript",
+        "mode": "meeting_minutes_final_trooper_operator_chunked_parallel" if diagnostics.get("chunked") else "meeting_minutes_final_trooper_operator_full_transcript",
         "executed": True,
         "modelAvailable": True,
         "modelName": diagnostics.get("model"),
-        "modelReason": "trooper_liv_operator_project_status_evidence" if project_status_evidence and project_status_evidence.get("items") else "trooper_liv_operator_full_transcript",
+        "modelReason": (
+            "trooper_liv_operator_chunked_parallel"
+            if diagnostics.get("chunked")
+            else "trooper_liv_operator_project_status_evidence" if project_status_evidence and project_status_evidence.get("items")
+            else "trooper_liv_operator_full_transcript"
+        ),
         "rewriterAvailable": bool(diagnostics.get("used")),
         "rewriterModelName": diagnostics.get("model"),
         "rewriterModelPath": None,
@@ -717,6 +1208,11 @@ def main() -> int:
         "rewriterDiagnosticsSummary": {
             "provider": diagnostics.get("provider"),
             "model": diagnostics.get("model"),
+            "pipeline": "chunked" if diagnostics.get("chunked") else "single",
+            "chunkCount": diagnostics.get("chunkCount"),
+            "successfulChunkCount": diagnostics.get("successfulChunkCount"),
+            "failedChunkCount": diagnostics.get("failedChunkCount"),
+            "mergeStrategy": diagnostics.get("mergeStrategy"),
             "used": diagnostics.get("used"),
             "error": diagnostics.get("error"),
             "errors": diagnostics.get("errors", [])[:4],

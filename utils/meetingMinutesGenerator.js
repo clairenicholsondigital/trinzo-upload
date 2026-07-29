@@ -150,6 +150,7 @@ async function processMeetingMinutesJob(job, options = {}) {
   const scriptArgs = [];
 
   if (input.skipRewrite) scriptArgs.push('--skip-rewrite');
+  scriptArgs.push('--pipeline', input.pipeline || process.env.MEETING_MINUTES_JOB_PIPELINE || 'chunked');
   if (!input.includeDiagnostics) scriptArgs.push('--skip-diagnostics');
   if (input.includeProjectStatusEvidence || truthy(process.env.MEETING_MINUTES_PROJECT_STATUS_EVIDENCE)) {
     scriptArgs.push('--include-project-status-evidence');
@@ -163,8 +164,8 @@ async function processMeetingMinutesJob(job, options = {}) {
     await updateMeetingMinutesJobProgress(job.jobId, 'extracting', 12, 'Transcript loaded. Preparing AI generation.');
     validateTranscriptText(job.transcriptText || '');
 
-    await updateMeetingMinutesJobProgress(job.jobId, 'analysing', 25, 'Building project-status evidence for extra detail.');
-    await updateMeetingMinutesJobProgress(job.jobId, 'drafting', 35, 'Writing detailed meeting minutes with Trooper.');
+    await updateMeetingMinutesJobProgress(job.jobId, 'analysing', 25, 'Splitting the transcript into evidence-backed sections.');
+    await updateMeetingMinutesJobProgress(job.jobId, 'drafting', 35, 'Generating section-level minutes in parallel, then reconciling them.');
     const result = await runPythonTranscriptScript('meeting_minutes_trooper.py', job.transcriptText, scriptArgs, { timeoutMs });
 
     await updateMeetingMinutesJobProgress(job.jobId, 'finalising', 90, 'Formatting editable minutes output.');
