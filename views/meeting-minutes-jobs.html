@@ -77,7 +77,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:620px; background:#071126;
 .advanced-result-tools[open] summary { border-radius:10px; }
 .advanced-result-tools .advanced-body { margin-top:.5rem; display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; color:var(--muted); }
 .minutes-table-wrap { width:100%; overflow-x:auto; margin-top:1rem; -webkit-overflow-scrolling:touch; }
-.minutes-table { width:100%; border-collapse:collapse; min-width:1120px; table-layout:fixed; }
+.minutes-table { width:100%; border-collapse:collapse; min-width:940px; table-layout:fixed; }
 .minutes-table th, .minutes-table td { border:1px solid var(--border); padding:.65rem; vertical-align:top; }
 .minutes-table th { text-align:left; color:var(--accent); background:#071126; font-size:.9rem; }
 .minutes-table td { background:#081227; line-height:1.45; }
@@ -753,7 +753,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     const showOwner = sectionHasField(groupedRows, 'owner');
     const showDeadline = type === 'Action' || sectionHasField(groupedRows, 'deadline');
     const showDetail = false;
-    const showEvidence = sectionHasField(groupedRows, 'evidence');
+    const showEvidence = false;
     const outputHeader = type === 'Discussion' ? 'Discussion point' : 'Output';
 
     return `
