@@ -485,7 +485,10 @@ def run_project_status_evidence_pack(transcript_path: Path, timeout_seconds: int
     model_python = os.environ.get("PROJECT_STATUS_MODEL_PYTHON", "").strip()
     if not model_python:
         candidate_python = Path(os.environ.get("PROJECT_STATUS_MODEL_DIR", "/root/project-update-status-model")) / ".venv" / "bin" / "python"
-        model_python = str(candidate_python) if candidate_python.exists() else os.environ.get("PYTHON_BIN", "python3")
+        try:
+            model_python = str(candidate_python) if candidate_python.exists() else os.environ.get("PYTHON_BIN", "python3")
+        except OSError:
+            model_python = os.environ.get("PYTHON_BIN", "python3")
     started = time.perf_counter()
     if not script_path.exists():
         return {
