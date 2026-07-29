@@ -72,21 +72,24 @@ pre { white-space:pre-wrap; overflow:auto; max-height:620px; background:#071126;
   resize:vertical;
 }
 .result-toolbar { margin:.85rem 0 1rem; display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; }
-.minutes-table-wrap { width:100%; overflow-x:auto; margin-top:1rem; }
-.minutes-table { width:100%; border-collapse:collapse; min-width:980px; }
+.minutes-table-wrap { width:100%; overflow-x:auto; margin-top:1rem; -webkit-overflow-scrolling:touch; }
+.minutes-table { width:100%; border-collapse:collapse; min-width:1120px; table-layout:fixed; }
 .minutes-table th, .minutes-table td { border:1px solid var(--border); padding:.65rem; vertical-align:top; }
 .minutes-table th { text-align:left; color:var(--accent); background:#071126; font-size:.9rem; }
 .minutes-table td { background:#081227; line-height:1.45; }
-.minutes-table .type-cell { width:14%; font-weight:700; }
-.minutes-table .topic-cell { width:18%; color:#dbeafe; }
-.minutes-table .owner-cell { width:16%; color:#dbeafe; }
-.minutes-table .text-cell { width:34%; }
-.minutes-table .detail-cell { width:18%; color:#dbeafe; }
-.minutes-table .evidence-cell { width:18%; color:#dbeafe; }
+.minutes-table .type-cell { width:130px; font-weight:700; }
+.minutes-table .topic-cell { width:180px; color:#dbeafe; }
+.minutes-table .owner-cell { width:160px; color:#dbeafe; }
+.minutes-table .text-cell { width:360px; }
+.minutes-table .deadline-cell { width:210px; color:#dbeafe; }
+.minutes-table .detail-cell { width:230px; color:#dbeafe; }
+.minutes-table .evidence-cell { width:260px; color:#dbeafe; }
 .minutes-table select,
 .minutes-table input,
 .minutes-table textarea {
+  display:block;
   width:100%;
+  min-width:0;
   background:#050914;
   color:var(--text);
   border:1px solid var(--border);
@@ -121,7 +124,16 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   .minutes-table, .minutes-table thead, .minutes-table tbody, .minutes-table tr, .minutes-table th, .minutes-table td { display:block; width:100%; }
   .minutes-table thead { display:none; }
   .minutes-table tr { margin-bottom:.75rem; border:1px solid var(--border); border-radius:10px; overflow:hidden; }
-  .minutes-table td { border:0; border-bottom:1px solid var(--border); }
+  .minutes-table td { border:0; border-bottom:1px solid var(--border); padding:.7rem; }
+  .minutes-table td::before {
+    content: attr(data-label);
+    display:block;
+    color:var(--accent);
+    font-weight:700;
+    font-size:.82rem;
+    margin-bottom:.35rem;
+  }
+  .minutes-table textarea { min-height:110px; }
 }
 </style>
 </head>
@@ -676,16 +688,16 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
             <tbody>
               ${groupedRows.map(({ row, index }) => `
                 <tr>
-                  ${showTopic ? `<td class="topic-cell"><input data-edit-field="topic" data-edit-index="${index}" value="${escapeAttribute(row.topic || '')}" /></td>` : ''}
-                  ${showItemType ? `<td class="topic-cell"><input data-edit-field="itemType" data-edit-index="${index}" value="${escapeAttribute(row.itemType || '')}" /></td>` : ''}
-                  ${showOwner ? `<td class="owner-cell"><input data-edit-field="owner" data-edit-index="${index}" value="${escapeAttribute(row.owner || '')}" /></td>` : ''}
-                  <td class="text-cell">
+                  ${showTopic ? `<td class="topic-cell" data-label="Topic"><input data-edit-field="topic" data-edit-index="${index}" value="${escapeAttribute(row.topic || '')}" /></td>` : ''}
+                  ${showItemType ? `<td class="topic-cell" data-label="Type"><input data-edit-field="itemType" data-edit-index="${index}" value="${escapeAttribute(row.itemType || '')}" /></td>` : ''}
+                  ${showOwner ? `<td class="owner-cell" data-label="Owner / speaker"><input data-edit-field="owner" data-edit-index="${index}" value="${escapeAttribute(row.owner || '')}" /></td>` : ''}
+                  <td class="text-cell" data-label="${escapeAttribute(outputHeader)}">
                     ${hiddenRowFields(type, index, row, { topic: showTopic, itemType: showItemType, owner: showOwner, deadline: showDeadline, detail: showDetail, evidence: showEvidence })}
                     <textarea data-edit-field="text" data-edit-index="${index}">${escapeHtml(row.text)}</textarea>
                   </td>
-                  ${showDeadline ? `<td class="detail-cell">${renderDeadlineEditor(index, row.deadline || '')}</td>` : ''}
-                  ${showDetail ? `<td class="detail-cell"><textarea data-edit-field="detail" data-edit-index="${index}" placeholder="Status, deadline, dependency, confidence...">${escapeHtml(row.detail || '')}</textarea></td>` : ''}
-                  ${showEvidence ? `<td class="evidence-cell"><textarea data-edit-field="evidence" data-edit-index="${index}" placeholder="Transcript evidence or source note">${escapeHtml(row.evidence || '')}</textarea></td>` : ''}
+                  ${showDeadline ? `<td class="deadline-cell" data-label="Deadline / date">${renderDeadlineEditor(index, row.deadline || '')}</td>` : ''}
+                  ${showDetail ? `<td class="detail-cell" data-label="Status / detail"><textarea data-edit-field="detail" data-edit-index="${index}" placeholder="Status, deadline, dependency, confidence...">${escapeHtml(row.detail || '')}</textarea></td>` : ''}
+                  ${showEvidence ? `<td class="evidence-cell" data-label="Evidence / source note"><textarea data-edit-field="evidence" data-edit-index="${index}" placeholder="Transcript evidence or source note">${escapeHtml(row.evidence || '')}</textarea></td>` : ''}
                 </tr>
               `).join('')}
             </tbody>
