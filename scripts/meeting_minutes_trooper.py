@@ -839,7 +839,10 @@ def append_unique_action(
         existing = action_text_from_item(action).lower() if isinstance(action, dict) else clean_text(action).lower()
         if existing == normalised or (normalised in existing) or (existing and existing in normalised):
             if isinstance(action, dict):
-                if clean_text(owner) and clean_text(action.get("meetingActionPointOwner")).lower() in {"", "not stated"}:
+                existing_owner = clean_text(action.get("meetingActionPointOwner"))
+                existing_action_text = action_text_from_item(action).lower()
+                owner_is_action_object = bool(existing_owner and existing_owner.lower() in existing_action_text)
+                if clean_text(owner) and (existing_owner.lower() in {"", "not stated"} or "/" in existing_owner or "implied" in existing_owner.lower() or owner_is_action_object):
                     action["meetingActionPointOwner"] = clean_text(owner)
                 if clean_text(deadline) and clean_text(deadline).lower() != "not stated" and clean_text(action.get("meetingActionPointDeadline")).lower() in {"", "not stated"}:
                     action["meetingActionPointDeadline"] = clean_text(deadline)
@@ -908,6 +911,12 @@ def is_concise_discussion_only_transcript(transcript: str) -> bool:
     if transcript_has_explicit_action_cue(transcript) or transcript_has_explicit_decision_cue(transcript):
         return False
     lower = transcript.lower()
+    action_worthy_pending = bool(re.search(
+        r"\b(sales input is still missing|document is absent|feedback is still pending|templates are still not finalised|awaiting leadership approval)\b",
+        lower,
+    ))
+    if action_worthy_pending:
+        return False
     discussion_only_cues = [
         "still pending",
         "have now been received",
@@ -1005,19 +1014,26 @@ def apply_concise_transcript_recovery(output: dict[str, Any], transcript: str, r
     current_speaker = "Not stated"
     for raw_line in transcript.splitlines():
         line = clean_text(raw_line)
-        speaker_only = re.match(r"^([A-Z][a-z]+)\s+\d{1,2}:\d{2}$", line)
-        speaker_match = re.match(r"^([A-Z][a-z]+)(?:\s+\d{1,2}:\d{2})?\s+(.+)$", line)
+        speaker_only = re.match(r"^([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})\s+\d{1,2}:\d{2}$", line)
+        speaker_match = re.match(r"^([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})\s+\d{1,2}:\d{2}\s+(.+)$", line)
+        colon_match = re.match(r"^([A-Z][a-z]+):\s+(.+)$", line)
         if speaker_only:
-            current_speaker = speaker_only.group(1)
+            current_speaker = speaker_only.group(1).split()[0]
             spoken = ""
         elif speaker_match:
-            current_speaker = speaker_match.group(1)
+            current_speaker = speaker_match.group(1).split()[0]
             spoken = speaker_match.group(2)
+        elif colon_match:
+            current_speaker = colon_match.group(1)
+            spoken = colon_match.group(2)
         else:
             spoken = line
         commitment = re.search(r"\bI['’]?ll\s+([^\n.]+)", spoken, re.I)
         if commitment:
             actions = append_unique_action(actions, clean_action_sentence(commitment.group(1)), "Explicit transcript action", owner=current_speaker, deadline=deadline_from_text(commitment.group(1)), prepend=True)
+        we_will_action = re.search(r"\bWe\s+will\s+(invite\s+[^\n.]+)", spoken, re.I)
+        if we_will_action:
+            actions = append_unique_action(actions, clean_action_sentence(we_will_action.group(1)), "Explicit transcript action", owner=current_speaker, deadline=deadline_from_text(we_will_action.group(1)), prepend=True)
 
     for match in re.finditer(r"\b([A-Z][a-z]+):\s*I\s+can\s+([^\n.]+)", transcript, re.I):
         owner, text = match.group(1), match.group(2)
@@ -1070,6 +1086,7 @@ def apply_concise_transcript_recovery(output: dict[str, Any], transcript: str, r
         if text:
             discussion = append_unique_text(discussion, text, limit=30)
 
+    actions = [action for action in actions if not is_placeholder_text(action_text_from_item(action))]
     recovered["decisions"] = decisions
     recovered["actions"] = actions
     recovered["discussionPoints"] = discussion
