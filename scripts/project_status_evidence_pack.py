@@ -52,7 +52,21 @@ MEETING_MINUTES_KEYWORD_RE = re.compile(
     r"dependency|blocked|pending|awaiting|timeline|project\s+plan|task\s+list|owner|deadline|risk|issue|"
     r"QMS|quality\s+management|importer|authori[sz]ed\s+rep(?:resentative)?|Med\s*Envoy|UDI|Udimed|UDAMED|"
     r"label(?:ling)?|barcode|warehouse|storage|Dublin|IFU|instructions\s+for\s+use|manufacturer\s+information|"
-    r"declaration(?:s)?\s+of\s+conformity|PPE|HPRA|documentation|invoice|bill|translation|language)\b",
+    r"declaration(?:s)?\s+of\s+conformity|PPE|HPRA|documentation|invoice|bill|translation|language|"
+    r"clinical|electrical\s+compliance|cybersecurity|USB|mute\s+button|change\s+request|testing)\b",
+    re.I,
+)
+
+OPEN_ACTION_CUE_RE = re.compile(
+    r"\b(?:need(?:s|ed)?\s+(?:to|still)|still\s+(?:need|needs|to\s+be\s+done)|"
+    r"will\s+(?:start|send|share|review|confirm)|continu(?:e|ing)\s+to|with\s+a\s+view\s+to|"
+    r"i(?:'|’)ll\s+(?:send|share|get|review|confirm)|i\s+can\s+send)\b",
+    re.I,
+)
+
+COMPLETED_HISTORY_RE = re.compile(
+    r"\b(?:has|have|had|was|were)\s+(?:already\s+)?(?:been\s+)?"
+    r"(?:done|completed|approved|sent|shared|reviewed|closed|finished)\b",
     re.I,
 )
 
@@ -153,10 +167,17 @@ def classify_chunks(chunks: list[str], model_path: Path, project_dir: Path, max_
         strong_signals = [item for item in signals if item["label"] in IMPORTANT_SIGNALS and item["score"] >= 0.52]
         keyword_hits = sorted({clean_text(match.group(0)).lower() for match in MEETING_MINUTES_KEYWORD_RE.finditer(chunk)})[:12]
         keyword_boost = min(0.45, 0.07 * len(keyword_hits))
+        has_open_action_cue = bool(OPEN_ACTION_CUE_RE.search(chunk))
+        completed_history_only = (
+            best_action["label"] == "no_action"
+            and bool(COMPLETED_HISTORY_RE.search(chunk))
+            and not has_open_action_cue
+        )
+        open_action_boost = 0.16 if has_open_action_cue and not completed_history_only else 0.0
         semantic_priority = max(
             [best_status["score"], best_action["score"], *[item["score"] for item in strong_signals]]
         )
-        priority = min(1.0, float(semantic_priority) + keyword_boost)
+        priority = min(1.0, float(semantic_priority) + keyword_boost + open_action_boost)
         keep = (
             best_status["label"] in IMPORTANT_STATUSES
             and best_status["score"] >= 0.42
