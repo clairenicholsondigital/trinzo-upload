@@ -674,6 +674,49 @@ Merge rules:
 """
 
 
+def prompt_for_final_review(output: dict[str, Any], chunk_outputs: list[dict[str, Any]]) -> str:
+    evidence_pack = []
+    for chunk in chunk_outputs:
+        candidate = chunk.get("output") if isinstance(chunk, dict) else None
+        if not isinstance(candidate, dict):
+            continue
+        evidence_pack.append(truncate_for_prompt({
+            "chunkIndex": chunk.get("chunkIndex"),
+            "confirmedPoints": (candidate.get("confirmedPoints") or [])[:10],
+            "risksAndIssues": (candidate.get("risksAndIssues") or [])[:10],
+            "dependencies": (candidate.get("dependencies") or [])[:8],
+            "complianceFollowUps": (candidate.get("complianceFollowUps") or [])[:8],
+            "discussionTopics": (candidate.get("discussionTopics") or [])[:8],
+            "decisions": decision_list(candidate.get("decisions"), limit=8),
+            "actions": (candidate.get("actions") or candidate.get("nextSteps") or [])[:8],
+        }, max_string_chars=300))
+    evidence_text = json.dumps(evidence_pack, ensure_ascii=False, indent=2)
+    if len(evidence_text) > 36000:
+        evidence_text = evidence_text[:36000]
+    current_text = json.dumps(truncate_for_prompt(output, max_string_chars=360), ensure_ascii=False, indent=2)
+    return f"""[CMD]@meeting-minutes-final-review|verify=true|detail=8|creativity=0|format=json|audience=client|language=en-GB
+[CURRENT_MINUTES]
+{current_text}
+[/CURRENT_MINUTES]
+
+[SECTION_EVIDENCE]
+{evidence_text}
+[/SECTION_EVIDENCE]
+
+Return valid JSON only, using the same meeting-minutes shape as CURRENT_MINUTES.
+
+Verifier rules:
+- This is a final quality-control pass, not a creative rewrite.
+- Remove any action, decision, owner or deadline that is not directly supported by SECTION_EVIDENCE.
+- Remove placeholders such as "None stated" or "No explicit decisions were recorded".
+- Deduplicate near-duplicate actions, especially repeated bill/review/follow-up actions.
+- Keep the action list short and practical. Prefer 3-6 concrete actions over 10 vague actions.
+- Keep all important discussion evidence even if it is not an action.
+- Improve wording into concise UK business English.
+- Do not add new facts beyond SECTION_EVIDENCE.
+"""
+
+
 def split_transcript_chunks(transcript: str, target_chars: int = CHUNK_TARGET_CHARS, overlap_chars: int = CHUNK_OVERLAP_CHARS) -> list[str]:
     text = transcript.strip()
     if len(text) <= target_chars:
@@ -1123,6 +1166,26 @@ def process_chunked_transcript(
         merge_strategy = "all_chunks_failed"
 
     output = apply_chunked_quality_gate(output)
+    review_diagnostics: dict[str, Any] = {"used": False, "skipped": True}
+    if successful_chunks and merge_strategy != "all_chunks_failed" and truthy(os.environ.get("MEETING_MINUTES_FINAL_REVIEW", "true")):
+        review_prompt = prompt_for_final_review(output, successful_chunks)
+        review_max_chars = int(os.environ.get("MEETING_MINUTES_FINAL_REVIEW_MAX_CHARS", "18000"))
+        if len(review_prompt) > review_max_chars:
+            review_diagnostics = {
+                "used": False,
+                "skipped": True,
+                "reason": "final_review_prompt_too_large",
+                "promptChars": len(review_prompt),
+                "maxPromptChars": review_max_chars,
+            }
+        else:
+            reviewed_output, review_diagnostics = call_trooper_prompt(
+                review_prompt,
+                timeout_seconds,
+                task_label="final_review",
+            )
+            if review_diagnostics.get("used"):
+                output = apply_chunked_quality_gate(normalise_output(reviewed_output))
 
     diagnostics = {
         "provider": "trooper",
@@ -1135,6 +1198,7 @@ def process_chunked_transcript(
         "failedChunkCount": len(chunks) - len(successful_chunks),
         "maxParallel": max_workers,
         "mergeStrategy": merge_strategy,
+        "finalReviewUsed": bool(review_diagnostics.get("used")),
         "runtimeMs": round((time.perf_counter() - started) * 1000, 2),
         "chunks": [
             {
@@ -1147,6 +1211,7 @@ def process_chunked_transcript(
             for item in chunk_results
         ],
         "merge": merge_diagnostics,
+        "finalReview": review_diagnostics,
     }
     return output, diagnostics
 
@@ -1213,6 +1278,7 @@ def main() -> int:
             "successfulChunkCount": diagnostics.get("successfulChunkCount"),
             "failedChunkCount": diagnostics.get("failedChunkCount"),
             "mergeStrategy": diagnostics.get("mergeStrategy"),
+            "finalReviewUsed": diagnostics.get("finalReviewUsed"),
             "used": diagnostics.get("used"),
             "error": diagnostics.get("error"),
             "errors": diagnostics.get("errors", [])[:4],
