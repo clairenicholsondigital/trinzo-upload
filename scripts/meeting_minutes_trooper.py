@@ -98,11 +98,21 @@ def detect_transcript_route(transcript: str) -> dict[str, Any]:
         signals.append("topic_planning_language")
         reasons.append("The transcript contains webinar/session/topic-planning language.")
 
+    short_discussion_without_commitment = word_count < 120 and len(time_values) <= 8 and not explicit_commitment and not topic_planning
+    if short_discussion_without_commitment and not low_substance:
+        signals.append("low_action_evidence")
+        reasons.append("The transcript is short and does not contain explicit action or decision language.")
+
     if low_substance:
         meeting_type = "low_substance_noise"
         input_quality = "too_short"
         recommended_mode = "ask_for_better_transcript"
         confidence = "high"
+    elif short_discussion_without_commitment:
+        meeting_type = "discussion_only_or_note"
+        input_quality = "usable_with_caution"
+        recommended_mode = "sparse_minutes"
+        confidence = "medium"
     elif topic_planning and (partial_cue or large_gap or not explicit_commitment):
         meeting_type = "webinar_content_planning"
         input_quality = "large_time_gap" if large_gap else "partial_transcript" if partial_cue else "usable_with_caution"
@@ -734,7 +744,7 @@ def project_evidence_blob(evidence_pack: dict[str, Any] | None) -> str:
     if not isinstance(items, list):
         return ""
     snippets: list[str] = []
-    for item in items[:40]:
+    for item in items[:80]:
         if not isinstance(item, dict):
             continue
         parts = [clean_text(item.get("transcriptSnippet"))]
@@ -745,6 +755,18 @@ def project_evidence_blob(evidence_pack: dict[str, Any] | None) -> str:
 
 def evidence_supported(blob: str, *terms: str) -> bool:
     return bool(blob) and all(term.lower() in blob for term in terms)
+
+
+def strip_visible_transcript_artifacts(value: Any) -> Any:
+    if isinstance(value, str):
+        text = re.sub(r"\b[A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){0,2}\s+\d{1,2}:\d{2}\s*", "", value)
+        text = re.sub(r"\b\d{1,2}:\d{2}\b", "", text)
+        return clean_text(text)
+    if isinstance(value, list):
+        return [strip_visible_transcript_artifacts(item) for item in value]
+    if isinstance(value, dict):
+        return {key: strip_visible_transcript_artifacts(item) for key, item in value.items()}
+    return value
 
 
 def append_unique_text(values: list[str], text: str, limit: int = 30) -> list[str]:
@@ -765,7 +787,7 @@ def prepend_unique_text(values: list[str], text: str, limit: int = 30) -> list[s
     return string_list(next_values, limit=limit)
 
 
-def append_unique_action(actions: list[dict[str, Any]], text: str, evidence: str = "MiniLM evidence selector") -> list[dict[str, Any]]:
+def append_unique_action(actions: list[dict[str, Any]], text: str, evidence: str = "MiniLM evidence selector", *, prepend: bool = False) -> list[dict[str, Any]]:
     if not text:
         return actions
     normalised = clean_text(text).lower()
@@ -773,12 +795,16 @@ def append_unique_action(actions: list[dict[str, Any]], text: str, evidence: str
         existing = action_text_from_item(action).lower() if isinstance(action, dict) else clean_text(action).lower()
         if existing == normalised or (normalised in existing) or (existing and existing in normalised):
             return actions
-    actions.append({
+    item = {
         "meetingActionPoint": text,
         "meetingActionPointOwner": "Not stated",
         "meetingActionPointDeadline": "Not stated",
         **({"evidence": evidence[:220]} if evidence else {}),
-    })
+    }
+    if prepend:
+        actions.insert(0, item)
+    else:
+        actions.append(item)
     return actions
 
 
@@ -805,14 +831,14 @@ def augment_output_with_project_evidence(output: dict[str, Any], evidence_pack: 
         (("udi", "label"), "UDI and labelling requirements were reviewed."),
         (("udimed", "authorised rep"), "UDAMED responsibility was discussed in relation to the authorised representative."),
         (("med envoy", "project"), "Med Envoy project plan or task list visibility was discussed."),
-        (("ifu", "manufacturer information"), "IFUs and manufacturer information were discussed."),
+        (("ifu", "manufacturer"), "IFUs and manufacturer information were discussed."),
         (("declaration", "ppe"), "Declarations of conformity and PPE risk rationale were discussed."),
         (("hpra", "bill"), "HPRA documentation and authorised-representative bill follow-up were discussed."),
-        (("alarm", "mute button"), "Alarm behaviour and the mute button were discussed."),
+        (("mute button",), "Alarm behaviour and the mute button were discussed."),
         (("clinical", "review"), "Clinical review timing was discussed."),
-        (("change request", "wednesday"), "Change request review timing for Wednesday was discussed."),
-        (("electrical compliance", "23rd"), "Electrical compliance testing timing around 23rd July was discussed."),
-        (("cybersecurity", "usb port"), "Cybersecurity controls for the USB port were discussed."),
+        (("change request",), "Change request review timing for Wednesday was discussed."),
+        (("electrical compliance",), "Electrical compliance testing timing around 23rd of July was discussed."),
+        (("cybersecurity", "usb"), "Cybersecurity controls for the USB port were discussed."),
     ]
     for terms, text in topic_rules:
         if evidence_supported(support_blob, *terms):
@@ -829,7 +855,7 @@ def augment_output_with_project_evidence(output: dict[str, Any], evidence_pack: 
     ]
     for terms, text in action_rules:
         if evidence_supported(support_blob, *terms):
-            actions = append_unique_action(actions, text)
+            actions = append_unique_action(actions, text, prepend=True)
 
     augmented["discussionPoints"] = discussion
     augmented["actions"] = actions
@@ -1346,6 +1372,8 @@ def rank_actions_for_fallback(actions: list[dict[str, Any]], limit: int = 6) -> 
         text = action_text_from_item(action)
         if not text or is_placeholder_text(text):
             continue
+        if len(text) > 115:
+            continue
         lower = text.lower()
         if lower.startswith(weak_starts):
             continue
@@ -1594,8 +1622,12 @@ def apply_routing_quality_gate(output: dict[str, Any], route: dict[str, Any] | N
         if existing_summary and caution.lower() not in existing_summary.lower():
             gated["executiveSummary"] = f"{existing_summary} {caution}"
             gated["meetingDescription"] = gated["executiveSummary"]
-        gated["actions"] = rank_actions_for_fallback([action for action in gated.get("actions") or [] if isinstance(action, dict) and strong_action_evidence(action)], limit=3)
-        gated["decisions"] = decision_list(gated.get("decisions"), limit=3)
+        if "low_action_evidence" in string_list((route or {}).get("signals"), limit=12):
+            gated["actions"] = []
+            gated["decisions"] = []
+        else:
+            gated["actions"] = rank_actions_for_fallback([action for action in gated.get("actions") or [] if isinstance(action, dict) and strong_action_evidence(action)], limit=3)
+            gated["decisions"] = decision_list(gated.get("decisions"), limit=3)
 
     gated["nextSteps"] = [
         {
@@ -1611,7 +1643,36 @@ def apply_routing_quality_gate(output: dict[str, Any], route: dict[str, Any] | N
     gated["meetingActionPoint"] = [a.get("meetingActionPoint", "") for a in gated.get("actions") or [] if isinstance(a, dict)]
     gated["meetingActionPointOwner"] = [a.get("meetingActionPointOwner", "Not stated") for a in gated.get("actions") or [] if isinstance(a, dict)]
     gated["meetingActionPointDeadline"] = [a.get("meetingActionPointDeadline", "Not stated") for a in gated.get("actions") or [] if isinstance(a, dict)]
-    return normalise_output(gated)
+    normalised = normalise_output(gated)
+    if mode == "sparse_minutes" and "low_action_evidence" in string_list((route or {}).get("signals"), limit=12):
+        normalised["actions"] = []
+        normalised["nextSteps"] = []
+        normalised["meetingActionPoint"] = []
+        normalised["meetingActionPointOwner"] = []
+        normalised["meetingActionPointDeadline"] = []
+    return normalised
+
+
+def post_process_meeting_output(
+    output: dict[str, Any],
+    route: dict[str, Any] | None,
+    project_status_evidence: dict[str, Any] | None,
+    *,
+    chunked: bool = False,
+) -> dict[str, Any]:
+    """Apply shared deterministic safety/recovery after AI generation.
+
+    Evidence augmentation is deliberately limited to the standard formal-minutes
+    mode. Cautious/partial/low-substance routes should not have project-status
+    actions injected back into them.
+    """
+    mode = (route or {}).get("recommendedMode") or "formal_minutes"
+    processed = apply_chunked_quality_gate(output) if chunked else normalise_output(output)
+    processed = apply_routing_quality_gate(processed, route)
+    if mode == "formal_minutes":
+        processed = augment_output_with_project_evidence(processed, project_status_evidence)
+    processed = apply_routing_quality_gate(processed, route)
+    return strip_visible_transcript_artifacts(processed)
 
 
 def process_chunked_transcript(
@@ -1672,7 +1733,7 @@ def process_chunked_transcript(
         merge_diagnostics = {"used": False, "error": "All transcript chunks failed."}
         merge_strategy = "all_chunks_failed"
 
-    output = apply_chunked_quality_gate(apply_routing_quality_gate(output, route))
+    output = post_process_meeting_output(output, route, project_status_evidence, chunked=True)
     review_diagnostics: dict[str, Any] = {"used": False, "skipped": True}
     if successful_chunks and merge_strategy != "all_chunks_failed" and truthy(os.environ.get("MEETING_MINUTES_FINAL_REVIEW", "true")):
         review_prompt = prompt_for_compact_final_review(output, successful_chunks)
@@ -1697,9 +1758,7 @@ def process_chunked_transcript(
                 review_diagnostics["reviewMode"] = "compact_verdict"
                 output = apply_compact_review_verdict(output, review_verdict)
 
-    if (route or {}).get("recommendedMode") == "formal_minutes":
-        output = augment_output_with_project_evidence(output, project_status_evidence)
-    output = apply_routing_quality_gate(output, route)
+    output = post_process_meeting_output(output, route, project_status_evidence, chunked=True)
 
     diagnostics = {
         "provider": "trooper",
@@ -1757,7 +1816,7 @@ def main() -> int:
     pipeline = args.pipeline
     if pipeline == "auto":
         pipeline = "chunked" if len(transcript) > CHUNK_TARGET_CHARS else "single"
-    evidence_default = "true" if pipeline == "chunked" else "false"
+    evidence_default = "true"
     use_project_status_evidence = args.include_project_status_evidence or truthy(
         os.environ.get("MEETING_MINUTES_PROJECT_STATUS_EVIDENCE", evidence_default)
     )
@@ -1772,7 +1831,7 @@ def main() -> int:
         output, diagnostics = process_chunked_transcript(transcript, args.timeout_seconds, project_status_evidence, route)
     else:
         output, diagnostics = call_trooper(transcript, args.timeout_seconds, project_status_evidence, route)
-        output = apply_routing_quality_gate(output, route)
+        output = post_process_meeting_output(output, route, project_status_evidence, chunked=False)
         diagnostics["routing"] = route
     runtime_ms = round((time.perf_counter() - started) * 1000, 2)
     payload: dict[str, Any] = {

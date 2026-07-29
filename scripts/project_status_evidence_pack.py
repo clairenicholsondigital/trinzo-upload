@@ -248,7 +248,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--model", default=os.environ.get("PROJECT_STATUS_MODEL_BUNDLE", str(DEFAULT_MODEL_PATH)))
     parser.add_argument("--project-dir", default=os.environ.get("PROJECT_STATUS_MODEL_DIR", str(DEFAULT_PROJECT_STATUS_DIR)))
     parser.add_argument("--max-chunks", type=int, default=int(os.environ.get("PROJECT_STATUS_EVIDENCE_MAX_CHUNKS", "220")))
-    parser.add_argument("--max-items", type=int, default=int(os.environ.get("PROJECT_STATUS_EVIDENCE_MAX_ITEMS", "45")))
+    parser.add_argument("--max-items", type=int, default=int(os.environ.get("PROJECT_STATUS_EVIDENCE_MAX_ITEMS", "80")))
     return parser.parse_args(argv)
 
 
