@@ -47,6 +47,15 @@ IMPORTANT_SIGNALS = {
     "security_privacy",
 }
 
+MEETING_MINUTES_KEYWORD_RE = re.compile(
+    r"\b(action|follow\s*up|send|share|provide|review|confirm|check|decid(?:e|ed|ion)|agreed|approved|"
+    r"dependency|blocked|pending|awaiting|timeline|project\s+plan|task\s+list|owner|deadline|risk|issue|"
+    r"QMS|quality\s+management|importer|authori[sz]ed\s+rep(?:resentative)?|Med\s*Envoy|UDI|Udimed|UDAMED|"
+    r"label(?:ling)?|barcode|warehouse|storage|Dublin|IFU|instructions\s+for\s+use|manufacturer\s+information|"
+    r"declaration(?:s)?\s+of\s+conformity|PPE|HPRA|documentation|invoice|bill|translation|language)\b",
+    re.I,
+)
+
 
 def clean_text(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "").strip())
@@ -65,7 +74,12 @@ def load_predict_module(project_dir: Path):
 
 
 def split_transcript(text: str, max_chars: int = 900, overlap_chars: int = 180) -> list[str]:
-    paragraphs = [clean_text(part) for part in re.split(r"\n\s*\n+", text) if clean_text(part)]
+    speaker_parts = [
+        clean_text(part)
+        for part in re.split(r"(?=\n?\s*[A-Z][A-Za-z .'’-]{1,60}\s+\d{1,2}:\d{2})", text)
+        if clean_text(part)
+    ]
+    paragraphs = speaker_parts if len(speaker_parts) >= 8 else [clean_text(part) for part in re.split(r"\n\s*\n+", text) if clean_text(part)]
     chunks: list[str] = []
     for paragraph in paragraphs or [clean_text(text)]:
         if len(paragraph) <= max_chars:
@@ -88,7 +102,7 @@ def top_ranked(classes, probs, limit: int = 3) -> list[dict[str, Any]]:
     return [{"label": str(classes[i]), "score": round(float(probs[i]), 3)} for i in order[:limit]]
 
 
-def classify_chunks(chunks: list[str], model_path: Path, project_dir: Path, max_chunks: int) -> dict[str, Any]:
+def classify_chunks(chunks: list[str], model_path: Path, project_dir: Path, max_chunks: int, max_items: int) -> dict[str, Any]:
     import joblib
     import numpy as np
     from sentence_transformers import SentenceTransformer
@@ -137,24 +151,27 @@ def classify_chunks(chunks: list[str], model_path: Path, project_dir: Path, max_
         best_status = statuses[0] if statuses else {"label": "", "score": 0.0}
         best_action = actions[0] if actions else {"label": "", "score": 0.0}
         strong_signals = [item for item in signals if item["label"] in IMPORTANT_SIGNALS and item["score"] >= 0.52]
+        keyword_hits = sorted({clean_text(match.group(0)).lower() for match in MEETING_MINUTES_KEYWORD_RE.finditer(chunk)})[:12]
+        keyword_boost = min(0.45, 0.07 * len(keyword_hits))
+        semantic_priority = max(
+            [best_status["score"], best_action["score"], *[item["score"] for item in strong_signals]]
+        )
+        priority = min(1.0, float(semantic_priority) + keyword_boost)
         keep = (
             best_status["label"] in IMPORTANT_STATUSES
             and best_status["score"] >= 0.42
         ) or (
             best_action["label"] in IMPORTANT_ACTIONS
             and best_action["score"] >= 0.42
-        ) or bool(strong_signals)
+        ) or bool(strong_signals) or (keyword_hits and priority >= 0.38)
 
         if not keep:
             continue
-
-        priority = max(
-            [best_status["score"], best_action["score"], *[item["score"] for item in strong_signals]]
-        )
         evidence_items.append(
             {
                 "chunkIndex": index,
                 "priority": round(float(priority), 3),
+                "keywordHits": keyword_hits,
                 "status": statuses,
                 "actionState": actions,
                 "signals": signals[:6],
@@ -169,11 +186,11 @@ def classify_chunks(chunks: list[str], model_path: Path, project_dir: Path, max_
         "modelPath": str(model_path),
         "embeddingModel": bundle.get("embedding_model"),
         "chunksAnalysed": len(selected_chunks),
-        "items": evidence_items[:12],
+        "items": evidence_items[:max_items],
     }
 
 
-def build_pack(transcript_text: str, model_path: Path, project_dir: Path, max_chunks: int) -> dict[str, Any]:
+def build_pack(transcript_text: str, model_path: Path, project_dir: Path, max_chunks: int, max_items: int) -> dict[str, Any]:
     started = time.perf_counter()
     chunks = split_transcript(transcript_text)
     pack: dict[str, Any] = {
@@ -193,7 +210,7 @@ def build_pack(transcript_text: str, model_path: Path, project_dir: Path, max_ch
         if not chunks:
             pack["reason"] = "Transcript produced no usable chunks."
             return pack
-        result = classify_chunks(chunks, model_path, project_dir, max_chunks=max_chunks)
+        result = classify_chunks(chunks, model_path, project_dir, max_chunks=max_chunks, max_items=max_items)
         pack.update(result)
         pack["reason"] = "Project-status evidence pack built." if pack["items"] else "No high-confidence project-status evidence found."
         return pack
@@ -209,7 +226,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("transcript_path")
     parser.add_argument("--model", default=os.environ.get("PROJECT_STATUS_MODEL_BUNDLE", str(DEFAULT_MODEL_PATH)))
     parser.add_argument("--project-dir", default=os.environ.get("PROJECT_STATUS_MODEL_DIR", str(DEFAULT_PROJECT_STATUS_DIR)))
-    parser.add_argument("--max-chunks", type=int, default=int(os.environ.get("PROJECT_STATUS_EVIDENCE_MAX_CHUNKS", "80")))
+    parser.add_argument("--max-chunks", type=int, default=int(os.environ.get("PROJECT_STATUS_EVIDENCE_MAX_CHUNKS", "220")))
+    parser.add_argument("--max-items", type=int, default=int(os.environ.get("PROJECT_STATUS_EVIDENCE_MAX_ITEMS", "45")))
     return parser.parse_args(argv)
 
 
@@ -242,6 +260,7 @@ def main() -> int:
         model_path=Path(args.model),
         project_dir=Path(args.project_dir),
         max_chunks=max(1, args.max_chunks),
+        max_items=max(1, args.max_items),
     )
     print(json.dumps(pack, ensure_ascii=False))
     return 0

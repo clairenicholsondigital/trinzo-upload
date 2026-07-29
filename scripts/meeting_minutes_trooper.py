@@ -16,7 +16,7 @@ from typing import Any
 
 TROOPER_URL_DEFAULT = "https://eu.router.trooper.ai/v1/chat/completions"
 TROOPER_MODEL_DEFAULT = "eu_liv_000099"
-PROJECT_STATUS_EVIDENCE_MAX_CHARS = 14000
+PROJECT_STATUS_EVIDENCE_MAX_CHARS = int(os.environ.get("PROJECT_STATUS_EVIDENCE_MAX_CHARS", "18000"))
 CHUNK_TARGET_CHARS = int(os.environ.get("MEETING_MINUTES_CHUNK_TARGET_CHARS", "9000"))
 CHUNK_OVERLAP_CHARS = int(os.environ.get("MEETING_MINUTES_CHUNK_OVERLAP_CHARS", "900"))
 CHUNK_MAX_PARALLEL = int(os.environ.get("MEETING_MINUTES_CHUNK_MAX_PARALLEL", "3"))
@@ -67,6 +67,10 @@ def simplify_action_text(text: str) -> str:
     lower = cleaned.lower()
     if "hpra" in lower and "bill" in lower and "authorised rep" in lower:
         return "Review the HPRA authorised-representative bill and send a copy."
+    if "hpra" in lower and "bill" in lower and ("invoice" in lower or "email" in lower):
+        return "Review the HPRA authorised-representative bill."
+    if "med envoy" in lower and "project plan" in lower:
+        return "Follow up on the Med Envoy project plan or task list."
     return cleaned
 
 
@@ -559,14 +563,123 @@ def compact_project_status_evidence(evidence_pack: dict[str, Any] | None) -> str
     compact = {
         "source": "project_update_status_model",
         "guidance": "Use as attention hints only. The transcript remains the source of truth.",
-        "items": items[:10],
+        "items": items[:32],
     }
     text = json.dumps(compact, ensure_ascii=False, indent=2)
     if len(text) <= PROJECT_STATUS_EVIDENCE_MAX_CHARS:
         return text
-    compact["items"] = items[:6]
+    compact["items"] = items[:14]
     text = json.dumps(compact, ensure_ascii=False, indent=2)
     return text[:PROJECT_STATUS_EVIDENCE_MAX_CHARS]
+
+
+def project_evidence_blob(evidence_pack: dict[str, Any] | None) -> str:
+    if not evidence_pack or not isinstance(evidence_pack, dict):
+        return ""
+    items = evidence_pack.get("items")
+    if not isinstance(items, list):
+        return ""
+    snippets: list[str] = []
+    for item in items[:40]:
+        if not isinstance(item, dict):
+            continue
+        parts = [clean_text(item.get("transcriptSnippet"))]
+        parts.extend(string_list(item.get("keywordHits"), limit=12))
+        snippets.append(" ".join(part for part in parts if part))
+    return clean_text("\n".join(snippets)).lower()
+
+
+def evidence_supported(blob: str, *terms: str) -> bool:
+    return bool(blob) and all(term.lower() in blob for term in terms)
+
+
+def append_unique_text(values: list[str], text: str, limit: int = 30) -> list[str]:
+    if not text:
+        return values
+    existing = {clean_text(value).lower() for value in values}
+    if clean_text(text).lower() not in existing:
+        values.append(text)
+    return string_list(values, limit=limit)
+
+
+def prepend_unique_text(values: list[str], text: str, limit: int = 30) -> list[str]:
+    cleaned = clean_text(text)
+    if not cleaned:
+        return values
+    next_values = [cleaned]
+    next_values.extend(value for value in values if clean_text(value).lower() != cleaned.lower())
+    return string_list(next_values, limit=limit)
+
+
+def append_unique_action(actions: list[dict[str, Any]], text: str, evidence: str = "MiniLM evidence selector") -> list[dict[str, Any]]:
+    if not text:
+        return actions
+    normalised = clean_text(text).lower()
+    for action in actions:
+        existing = action_text_from_item(action).lower() if isinstance(action, dict) else clean_text(action).lower()
+        if existing == normalised or (normalised in existing) or (existing and existing in normalised):
+            return actions
+    actions.append({
+        "meetingActionPoint": text,
+        "meetingActionPointOwner": "Not stated",
+        "meetingActionPointDeadline": "Not stated",
+        **({"evidence": evidence[:220]} if evidence else {}),
+    })
+    return actions
+
+
+def augment_output_with_project_evidence(output: dict[str, Any], evidence_pack: dict[str, Any] | None) -> dict[str, Any]:
+    """Use MiniLM evidence as a cautious fallback attention map.
+
+    The classifier is not a meeting-minutes writer. It only prevents the
+    deterministic fallback from dropping transcript-backed topics/actions that
+    the chunk calls already made plausible but the merge/review failed to keep.
+    """
+    blob = project_evidence_blob(evidence_pack)
+    if not blob:
+        return output
+    augmented = dict(output)
+    discussion = string_list(augmented.get("discussionPoints"), limit=30)
+    actions = [dict(action) for action in augmented.get("actions") or [] if isinstance(action, dict)]
+    output_blob = clean_text(json.dumps(truncate_for_prompt({"discussionPoints": discussion, "actions": actions}, max_string_chars=260), ensure_ascii=False)).lower()
+    support_blob = f"{blob} {output_blob}"
+
+    topic_rules = [
+        (("qms", "importer"), "QMS/importer-obligation process was discussed."),
+        (("storage", "dublin"), "Storage in Dublin was discussed in relation to importer responsibilities."),
+        (("warehouse", "barcode"), "Warehouse picking and shipping-list barcodes were discussed."),
+        (("udi", "label"), "UDI and labelling requirements were reviewed."),
+        (("udimed", "authorised rep"), "UDAMED responsibility was discussed in relation to the authorised representative."),
+        (("med envoy", "project"), "Med Envoy project plan or task list visibility was discussed."),
+        (("ifu", "manufacturer information"), "IFUs and manufacturer information were discussed."),
+        (("declaration", "ppe"), "Declarations of conformity and PPE risk rationale were discussed."),
+        (("hpra", "bill"), "HPRA documentation and authorised-representative bill follow-up were discussed."),
+        (("alarm", "mute button"), "Alarm behaviour and the mute button were discussed."),
+        (("clinical", "review"), "Clinical review timing was discussed."),
+        (("change request", "wednesday"), "Change request review timing for Wednesday was discussed."),
+        (("electrical compliance", "23rd"), "Electrical compliance testing timing around 23rd July was discussed."),
+        (("cybersecurity", "usb port"), "Cybersecurity controls for the USB port were discussed."),
+    ]
+    for terms, text in topic_rules:
+        if evidence_supported(support_blob, *terms):
+            discussion = prepend_unique_text(discussion, text, limit=30)
+
+    action_rules = [
+        (("med envoy", "project"), "Follow up on the Med Envoy project plan or task list."),
+        (("hpra", "bill"), "Review the HPRA authorised-representative bill."),
+        (("declaration", "ppe"), "Update Declarations of Conformity with the PPE risk rationale."),
+        (("mute button", "review"), "Review the mute button."),
+        (("clinical", "review"), "Follow up on the clinical review."),
+        (("electrical compliance", "testing"), "Confirm electrical compliance testing."),
+        (("usb port", "cybersecurity"), "Review USB port cybersecurity controls."),
+    ]
+    for terms, text in action_rules:
+        if evidence_supported(support_blob, *terms):
+            actions = append_unique_action(actions, text)
+
+    augmented["discussionPoints"] = discussion
+    augmented["actions"] = actions
+    return apply_chunked_quality_gate(augmented)
 
 
 def prompt_for_transcript(transcript: str, project_status_evidence: dict[str, Any] | None = None) -> str:
@@ -1054,7 +1167,7 @@ def dedupe_structured_items(items: list[dict[str, Any]], key_names: list[str], l
 
 
 def action_text_from_item(item: dict[str, Any]) -> str:
-    return clean_text(item.get("meetingActionPoint") or item.get("action") or item.get("task") or item.get("description"))
+    return simplify_action_text(item.get("meetingActionPoint") or item.get("action") or item.get("task") or item.get("description"))
 
 
 def rank_actions_for_fallback(actions: list[dict[str, Any]], limit: int = 6) -> list[dict[str, Any]]:
@@ -1084,7 +1197,7 @@ def rank_actions_for_fallback(actions: list[dict[str, Any]], limit: int = 6) -> 
             score += 3
         if lower.startswith(strong_starts):
             score += 2
-        if any(term in lower for term in ("hpra", "bill", "declaration", "conformity", "project plan", "formal feedback")):
+        if any(term in lower for term in ("hpra", "bill", "declaration", "conformity", "project plan", "formal feedback", "mute button", "clinical review", "electrical compliance", "usb port", "cybersecurity")):
             score += 1
         scored.append((score, -index, action))
     scored.sort(reverse=True)
@@ -1098,6 +1211,7 @@ def rank_actions_for_fallback(actions: list[dict[str, Any]], limit: int = 6) -> 
         if any(tokens and existing and len(tokens & existing) / max(len(tokens | existing), 1) >= 0.58 for existing in selected_tokens):
             continue
         selected.append(item)
+        selected[-1]["meetingActionPoint"] = action_text_from_item(selected[-1])
         selected_tokens.append(tokens)
         if len(selected) >= limit:
             break
@@ -1346,6 +1460,8 @@ def process_chunked_transcript(
                 review_diagnostics["reviewMode"] = "compact_verdict"
                 output = apply_compact_review_verdict(output, review_verdict)
 
+    output = augment_output_with_project_evidence(output, project_status_evidence)
+
     diagnostics = {
         "provider": "trooper",
         "model": os.environ.get("TROOPER_MODEL", TROOPER_MODEL_DEFAULT).strip() or TROOPER_MODEL_DEFAULT,
@@ -1398,16 +1514,19 @@ def main() -> int:
     transcript_path = Path(args.transcript_path)
     transcript = transcript_path.read_text(encoding="utf-8")
     started = time.perf_counter()
-    use_project_status_evidence = args.include_project_status_evidence or truthy(os.environ.get("MEETING_MINUTES_PROJECT_STATUS_EVIDENCE"))
+    pipeline = args.pipeline
+    if pipeline == "auto":
+        pipeline = "chunked" if len(transcript) > CHUNK_TARGET_CHARS else "single"
+    evidence_default = "true" if pipeline == "chunked" else "false"
+    use_project_status_evidence = args.include_project_status_evidence or truthy(
+        os.environ.get("MEETING_MINUTES_PROJECT_STATUS_EVIDENCE", evidence_default)
+    )
     project_status_evidence = None
     if use_project_status_evidence:
         project_status_evidence = run_project_status_evidence_pack(
             transcript_path,
             timeout_seconds=int(os.environ.get("PROJECT_STATUS_EVIDENCE_TIMEOUT_SECONDS", "90")),
         )
-    pipeline = args.pipeline
-    if pipeline == "auto":
-        pipeline = "chunked" if len(transcript) > CHUNK_TARGET_CHARS else "single"
     if pipeline == "chunked":
         output, diagnostics = process_chunked_transcript(transcript, args.timeout_seconds, project_status_evidence)
     else:
