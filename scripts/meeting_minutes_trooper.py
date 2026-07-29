@@ -22,6 +22,161 @@ CHUNK_OVERLAP_CHARS = int(os.environ.get("MEETING_MINUTES_CHUNK_OVERLAP_CHARS", 
 CHUNK_MAX_PARALLEL = int(os.environ.get("MEETING_MINUTES_CHUNK_MAX_PARALLEL", "3"))
 
 
+def truthy(value: Any) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def parse_transcript_time_minutes(text: str) -> list[float]:
+    values: list[float] = []
+    for match in re.finditer(r"(?<!\d)(\d{1,2}):(\d{2})(?!\d)", text or ""):
+        minutes = int(match.group(1))
+        seconds = int(match.group(2))
+        if seconds < 60:
+            values.append(minutes + seconds / 60)
+    for match in re.finditer(r"\b(\d{1,3})\s+minutes?\s+(\d{1,2})\s+seconds\b", text or "", re.I):
+        minutes = int(match.group(1))
+        seconds = int(match.group(2))
+        if seconds < 60:
+            values.append(minutes + seconds / 60)
+    return sorted(set(values))
+
+
+def detect_transcript_route(transcript: str) -> dict[str, Any]:
+    """Selective pre-router for obvious transcript modes.
+
+    This is intentionally conservative. It catches high-confidence cases that the
+    generator currently handles badly (partial recordings, large timestamp gaps,
+    no-substance audio checks and webinar/content planning) without trying to be
+    a full meeting classifier.
+    """
+    text = str(transcript or "")
+    compact = re.sub(r"\s+", " ", text.strip())
+    lower = compact.lower()
+    word_count = len(re.findall(r"\w+", compact))
+    time_values = parse_transcript_time_minutes(text)
+    largest_gap = max([b - a for a, b in zip(time_values, time_values[1:])], default=0.0)
+
+    reasons: list[str] = []
+    signals: list[str] = []
+
+    partial_cue = bool(re.search(
+        r"\b(just turned on the transcript|turned (?:the )?(?:recording|transcript) on|"
+        r"missed the (?:middle|start|first half|beginning)|only the last minute|"
+        r"joined late|recording started late)\b",
+        lower,
+    ))
+    if partial_cue:
+        signals.append("partial_transcript_cue")
+        reasons.append("The transcript explicitly says recording/transcription started late or missed part of the meeting.")
+
+    large_gap = largest_gap >= float(os.environ.get("MEETING_MINUTES_LARGE_GAP_MINUTES", "15"))
+    if large_gap:
+        signals.append("large_timestamp_gap")
+        reasons.append(f"The transcript contains a large timestamp gap of about {largest_gap:.0f} minutes.")
+
+    low_substance = (
+        word_count < 35
+        or bool(re.search(r"\b(can everyone hear me|red light|webcam|no project update today|no actions from me|let['’]?s stop there)\b", lower))
+    )
+    if low_substance:
+        signals.append("low_action_evidence")
+        reasons.append("The transcript is very short or mainly audio-check / low-substance chatter.")
+
+    topic_planning = bool(re.search(
+        r"\b(webinar|webinar topic|session|series|slides?|presentation|registration slide|"
+        r"topic to address|approved supplier topic|first one in september|november one|"
+        r"opening example|governance drive)\b",
+        lower,
+    ))
+    # Avoid downgrading a genuine webinar rehearsal with explicit commitments.
+    explicit_commitment = bool(re.search(
+        r"\b(?:[A-Z][a-z]+\s+to\s+|i['’]?ll\s+|i\s+will\s+|we\s+will\s+|agreed,?\s+let['’]?s|"
+        r"decided\s+to|will\s+(?:send|update|remove|prepare|share|confirm))\b",
+        compact,
+    ))
+    if topic_planning:
+        signals.append("topic_planning_language")
+        reasons.append("The transcript contains webinar/session/topic-planning language.")
+
+    if low_substance:
+        meeting_type = "low_substance_noise"
+        input_quality = "too_short"
+        recommended_mode = "ask_for_better_transcript"
+        confidence = "high"
+    elif topic_planning and (partial_cue or large_gap or not explicit_commitment):
+        meeting_type = "webinar_content_planning"
+        input_quality = "large_time_gap" if large_gap else "partial_transcript" if partial_cue else "usable_with_caution"
+        recommended_mode = "topic_summary_with_caution"
+        confidence = "high" if (partial_cue or large_gap) else "medium"
+    elif large_gap:
+        meeting_type = "unknown_or_mixed"
+        input_quality = "large_time_gap"
+        recommended_mode = "sparse_minutes"
+        confidence = "high"
+    elif partial_cue:
+        meeting_type = "unknown_or_mixed"
+        input_quality = "partial_transcript"
+        recommended_mode = "sparse_minutes"
+        confidence = "high"
+    else:
+        meeting_type = "formal_action_meeting"
+        input_quality = "complete_transcript"
+        recommended_mode = "formal_minutes"
+        confidence = "low"
+        reasons.append("No high-confidence pre-router cue was detected; use the standard formal-minutes pipeline.")
+
+    return {
+        "meetingType": meeting_type,
+        "inputQuality": input_quality,
+        "recommendedMode": recommended_mode,
+        "signals": string_list(signals, limit=12) if "string_list" in globals() else list(dict.fromkeys(signals))[:12],
+        "confidence": confidence,
+        "wordCount": word_count,
+        "timestampCount": len(time_values),
+        "largestTimestampGapMinutes": round(largest_gap, 2),
+        "reasons": string_list(reasons, limit=8) if "string_list" in globals() else list(dict.fromkeys(reasons))[:8],
+    }
+
+
+def routing_prompt_section(route: dict[str, Any] | None) -> str:
+    if not route:
+        return ""
+    return f"""
+[TRANSCRIPT_ROUTING]
+{json.dumps(route, ensure_ascii=False, indent=2)}
+[/TRANSCRIPT_ROUTING]
+"""
+
+
+def routing_instruction_text(route: dict[str, Any] | None) -> str:
+    mode = (route or {}).get("recommendedMode")
+    if mode == "topic_summary_with_caution":
+        return """
+Routing rules for this transcript:
+- This transcript appears to be webinar/content planning or a topic-planning discussion, possibly partial.
+- Do not force it into formal action-heavy meeting minutes.
+- Produce a useful topic/content-planning summary with themes, candidate topics, context, questions and possible follow-ups.
+- Keep decisions and actions empty unless the transcript explicitly assigns an owner/commitment.
+- Treat calendar/session sequencing as planning context, not as a project deadline unless an owner is assigned.
+"""
+    if mode == "sparse_minutes":
+        return """
+Routing rules for this transcript:
+- This transcript appears partial, gappy or mixed, so produce sparse cautious minutes.
+- Summarise only the clearly evidenced discussion.
+- Keep actions/decisions empty unless they are explicit commitments with transcript evidence.
+- Add uncertainty to openQuestions or discussion wording rather than inventing missing context.
+"""
+    if mode == "ask_for_better_transcript":
+        return """
+Routing rules for this transcript:
+- This transcript appears too short or too low-substance for reliable formal minutes.
+- Produce a minimal output explaining that there is not enough usable meeting content.
+- Do not invent actions, decisions, objectives, owners or deadlines.
+"""
+    return ""
+
+
 def load_local_env_if_needed() -> None:
     """Load deployment .env values needed by this child process without printing secrets."""
     candidates = [
@@ -476,10 +631,6 @@ def extract_json(text: str) -> dict[str, Any]:
         return {}
 
 
-def truthy(value: Any) -> bool:
-    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
-
-
 def run_project_status_evidence_pack(transcript_path: Path, timeout_seconds: int = 90) -> dict[str, Any]:
     script_path = Path(__file__).resolve().parent / "project_status_evidence_pack.py"
     model_python = os.environ.get("PROJECT_STATUS_MODEL_PYTHON", "").strip()
@@ -685,7 +836,7 @@ def augment_output_with_project_evidence(output: dict[str, Any], evidence_pack: 
     return apply_chunked_quality_gate(augmented)
 
 
-def prompt_for_transcript(transcript: str, project_status_evidence: dict[str, Any] | None = None) -> str:
+def prompt_for_transcript(transcript: str, project_status_evidence: dict[str, Any] | None = None, route: dict[str, Any] | None = None) -> str:
     evidence_text = compact_project_status_evidence(project_status_evidence)
     evidence_section = ""
     if evidence_text:
@@ -694,12 +845,14 @@ def prompt_for_transcript(transcript: str, project_status_evidence: dict[str, An
 {evidence_text}
 [/PROJECT_STATUS_EVIDENCE]
 """
+    route_section = routing_prompt_section(route)
+    route_instructions = routing_instruction_text(route)
 
     return f"""[CMD]@meeting-minutes|verify=true|detail=9|creativity=1|format=json|audience=client|language=en-GB
 [INPUT]
 {transcript}
 [/INPUT]
-{evidence_section}
+{route_section}{evidence_section}
 -bannedWords=["game-changing","revolutionary","seamless","world-class","obviously","basically"]
 
 Return valid JSON only, with exactly this shape:
@@ -761,15 +914,18 @@ Operator rules for this task:
 - Every action, risk, dependency and compliance follow-up should include a short evidence phrase from the transcript where possible.
 - If PROJECT_STATUS_EVIDENCE is supplied, use it only as an attention guide for project-management detail that may be easy to miss.
 - PROJECT_STATUS_EVIDENCE is not an independent source of truth. Include a blocker, risk, action, decision, owner, deadline or detail only when the transcript itself supports it.
+{route_instructions}
 """
 
 
-def prompt_for_chunk(chunk_text: str, chunk_index: int, chunk_count: int) -> str:
+def prompt_for_chunk(chunk_text: str, chunk_index: int, chunk_count: int, route: dict[str, Any] | None = None) -> str:
+    route_section = routing_prompt_section(route)
+    route_instructions = routing_instruction_text(route)
     return f"""[CMD]@meeting-minutes-chunk|verify=true|detail=8|creativity=0|format=json|audience=client|language=en-GB
 [INPUT_CHUNK index={chunk_index} of {chunk_count}]
 {chunk_text}
 [/INPUT_CHUNK]
-
+{route_section}
 Return valid JSON only, with this shape:
 {{
   "chunkIndex": {chunk_index},
@@ -799,10 +955,11 @@ Chunk rules:
 - Owners and deadlines must be explicitly stated; otherwise use "Not stated".
 - Include short evidence phrases for actions, risks, dependencies, compliance follow-ups and decisions.
 - Remove filler, timestamps, speaker labels and transcript artefacts.
+{route_instructions}
 """
 
 
-def prompt_for_merge(chunk_outputs: list[dict[str, Any]], project_status_evidence: dict[str, Any] | None = None) -> str:
+def prompt_for_merge(chunk_outputs: list[dict[str, Any]], project_status_evidence: dict[str, Any] | None = None, route: dict[str, Any] | None = None) -> str:
     evidence_text = compact_project_status_evidence(project_status_evidence)
     compact_chunks = []
     for chunk in chunk_outputs:
@@ -833,11 +990,13 @@ def prompt_for_merge(chunk_outputs: list[dict[str, Any]], project_status_evidenc
 {evidence_text}
 [/PROJECT_STATUS_EVIDENCE]
 """ if evidence_text else ""
+    route_section = routing_prompt_section(route)
+    route_instructions = routing_instruction_text(route)
     return f"""[CMD]@meeting-minutes-merge|verify=true|detail=9|creativity=0|format=json|audience=client|language=en-GB
 [CHUNK_OUTPUTS]
 {chunks_text}
 [/CHUNK_OUTPUTS]
-{evidence_section}
+{route_section}{evidence_section}
 
 Return valid JSON only, with exactly this shape:
 {{
@@ -872,6 +1031,7 @@ Merge rules:
 - Only include actions/decisions with evidence from the chunk outputs.
 - If chunk outputs disagree, keep the cautious version and add review wording rather than inventing certainty.
 - PROJECT_STATUS_EVIDENCE is only an attention guide. The chunk outputs remain the source of truth.
+{route_instructions}
 """
 
 
@@ -1145,9 +1305,10 @@ def call_trooper(
     transcript: str,
     timeout_seconds: int,
     project_status_evidence: dict[str, Any] | None = None,
+    route: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     return call_trooper_prompt(
-        prompt_for_transcript(transcript, project_status_evidence),
+        prompt_for_transcript(transcript, project_status_evidence, route),
         timeout_seconds,
         task_label="full_transcript",
     )
@@ -1381,14 +1542,87 @@ def deterministic_merge_outputs(chunk_outputs: list[dict[str, Any]]) -> dict[str
     return normalise_output(raw)
 
 
+def strong_action_evidence(action: dict[str, Any]) -> bool:
+    text = action_text_from_item(action).lower()
+    owner = clean_text(action.get("meetingActionPointOwner") or action.get("owner"))
+    deadline = clean_text(action.get("meetingActionPointDeadline") or action.get("deadline"))
+    evidence = clean_text(action.get("evidence") or action.get("sourceSnippet"))
+    owner_known = bool(owner and owner.lower() != "not stated")
+    deadline_known = bool(deadline and deadline.lower() != "not stated")
+    evidence_lower = evidence.lower()
+    commitment_word = bool(re.search(r"\b(will|to send|to update|to prepare|to confirm|agreed|decided|action|follow up|owner)\b", f"{text} {evidence_lower}"))
+    return bool(text and evidence and commitment_word and (owner_known or deadline_known or re.search(r"\b(i['’]?ll|i will|we will|will)\b", evidence_lower)))
+
+
+def apply_routing_quality_gate(output: dict[str, Any], route: dict[str, Any] | None) -> dict[str, Any]:
+    mode = (route or {}).get("recommendedMode")
+    if mode not in {"topic_summary_with_caution", "sparse_minutes", "ask_for_better_transcript"}:
+        return output
+
+    gated = dict(output)
+    reasons = string_list((route or {}).get("reasons"), limit=4)
+    caution = "Generated cautiously because the transcript appears partial, gappy, non-formal, or low-substance."
+    if reasons:
+        caution = f"{caution} {' '.join(reasons)}"
+
+    existing_summary = clean_text(gated.get("executiveSummary") or gated.get("meetingDescription"))
+    if mode == "ask_for_better_transcript":
+        gated["meetingTitle"] = "Transcript needs review"
+        gated["executiveSummary"] = "There is not enough usable meeting content in this transcript to generate reliable formal minutes."
+        gated["meetingDescription"] = gated["executiveSummary"]
+        gated["discussionPoints"] = ["The transcript appears too short or low-substance for reliable formal minutes."]
+        gated["discussionTopics"] = []
+        gated["meetingMinutes"] = [{"topic": "Transcript quality", "discussionPoints": gated["discussionPoints"]}]
+        gated["decisions"] = []
+        gated["actions"] = []
+        gated["nextSteps"] = []
+        gated["meetingActionPoint"] = []
+        gated["meetingActionPointOwner"] = []
+        gated["meetingActionPointDeadline"] = []
+        gated["openQuestions"] = prepend_unique_text(string_list(gated.get("openQuestions"), limit=10), "Please provide a fuller transcript or meeting notes if formal minutes are required.", limit=10)
+        return normalise_output(gated)
+
+    if mode == "topic_summary_with_caution":
+        if existing_summary:
+            gated["executiveSummary"] = f"{existing_summary} {caution}"
+        else:
+            gated["executiveSummary"] = caution
+        gated["meetingDescription"] = gated["executiveSummary"]
+        gated["decisions"] = []
+        gated["actions"] = [action for action in gated.get("actions") or [] if isinstance(action, dict) and strong_action_evidence(action)]
+    elif mode == "sparse_minutes":
+        if existing_summary and caution.lower() not in existing_summary.lower():
+            gated["executiveSummary"] = f"{existing_summary} {caution}"
+            gated["meetingDescription"] = gated["executiveSummary"]
+        gated["actions"] = rank_actions_for_fallback([action for action in gated.get("actions") or [] if isinstance(action, dict) and strong_action_evidence(action)], limit=3)
+        gated["decisions"] = decision_list(gated.get("decisions"), limit=3)
+
+    gated["nextSteps"] = [
+        {
+            "action": action.get("meetingActionPoint"),
+            "owner": action.get("meetingActionPointOwner", "Not stated"),
+            "deadline": action.get("meetingActionPointDeadline", "Not stated"),
+            **({"dependency": action.get("dependency")} if action.get("dependency") else {}),
+            **({"evidence": action.get("evidence")} if action.get("evidence") else {}),
+        }
+        for action in gated.get("actions") or []
+        if isinstance(action, dict)
+    ]
+    gated["meetingActionPoint"] = [a.get("meetingActionPoint", "") for a in gated.get("actions") or [] if isinstance(a, dict)]
+    gated["meetingActionPointOwner"] = [a.get("meetingActionPointOwner", "Not stated") for a in gated.get("actions") or [] if isinstance(a, dict)]
+    gated["meetingActionPointDeadline"] = [a.get("meetingActionPointDeadline", "Not stated") for a in gated.get("actions") or [] if isinstance(a, dict)]
+    return normalise_output(gated)
+
+
 def process_chunked_transcript(
     transcript: str,
     timeout_seconds: int,
     project_status_evidence: dict[str, Any] | None = None,
+    route: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     chunks = split_transcript_chunks(transcript)
     if len(chunks) <= 1:
-        output, diagnostics = call_trooper(transcript, timeout_seconds, project_status_evidence)
+        output, diagnostics = call_trooper(transcript, timeout_seconds, project_status_evidence, route)
         diagnostics["chunked"] = False
         diagnostics["chunkCount"] = len(chunks)
         return output, diagnostics
@@ -1399,7 +1633,7 @@ def process_chunked_transcript(
     def run_chunk(index_and_text: tuple[int, str]) -> dict[str, Any]:
         index, chunk_text = index_and_text
         output, diagnostics = call_trooper_prompt(
-            prompt_for_chunk(chunk_text, index, len(chunks)),
+            prompt_for_chunk(chunk_text, index, len(chunks), route),
             timeout_seconds,
             task_label=f"chunk_{index}",
         )
@@ -1423,7 +1657,7 @@ def process_chunked_transcript(
     successful_chunks = [item for item in chunk_results if item.get("diagnostics", {}).get("used")]
     if successful_chunks:
         merged_output, merge_diagnostics = call_trooper_prompt(
-            prompt_for_merge(successful_chunks, project_status_evidence),
+            prompt_for_merge(successful_chunks, project_status_evidence, route),
             timeout_seconds,
             task_label="merge_chunks",
         )
@@ -1438,7 +1672,7 @@ def process_chunked_transcript(
         merge_diagnostics = {"used": False, "error": "All transcript chunks failed."}
         merge_strategy = "all_chunks_failed"
 
-    output = apply_chunked_quality_gate(output)
+    output = apply_chunked_quality_gate(apply_routing_quality_gate(output, route))
     review_diagnostics: dict[str, Any] = {"used": False, "skipped": True}
     if successful_chunks and merge_strategy != "all_chunks_failed" and truthy(os.environ.get("MEETING_MINUTES_FINAL_REVIEW", "true")):
         review_prompt = prompt_for_compact_final_review(output, successful_chunks)
@@ -1463,7 +1697,9 @@ def process_chunked_transcript(
                 review_diagnostics["reviewMode"] = "compact_verdict"
                 output = apply_compact_review_verdict(output, review_verdict)
 
-    output = augment_output_with_project_evidence(output, project_status_evidence)
+    if (route or {}).get("recommendedMode") == "formal_minutes":
+        output = augment_output_with_project_evidence(output, project_status_evidence)
+    output = apply_routing_quality_gate(output, route)
 
     diagnostics = {
         "provider": "trooper",
@@ -1477,6 +1713,7 @@ def process_chunked_transcript(
         "maxParallel": max_workers,
         "mergeStrategy": merge_strategy,
         "finalReviewUsed": bool(review_diagnostics.get("used")),
+        "routing": route,
         "runtimeMs": round((time.perf_counter() - started) * 1000, 2),
         "chunks": [
             {
@@ -1524,6 +1761,7 @@ def main() -> int:
     use_project_status_evidence = args.include_project_status_evidence or truthy(
         os.environ.get("MEETING_MINUTES_PROJECT_STATUS_EVIDENCE", evidence_default)
     )
+    route = detect_transcript_route(transcript)
     project_status_evidence = None
     if use_project_status_evidence:
         project_status_evidence = run_project_status_evidence_pack(
@@ -1531,9 +1769,11 @@ def main() -> int:
             timeout_seconds=int(os.environ.get("PROJECT_STATUS_EVIDENCE_TIMEOUT_SECONDS", "90")),
         )
     if pipeline == "chunked":
-        output, diagnostics = process_chunked_transcript(transcript, args.timeout_seconds, project_status_evidence)
+        output, diagnostics = process_chunked_transcript(transcript, args.timeout_seconds, project_status_evidence, route)
     else:
-        output, diagnostics = call_trooper(transcript, args.timeout_seconds, project_status_evidence)
+        output, diagnostics = call_trooper(transcript, args.timeout_seconds, project_status_evidence, route)
+        output = apply_routing_quality_gate(output, route)
+        diagnostics["routing"] = route
     runtime_ms = round((time.perf_counter() - started) * 1000, 2)
     payload: dict[str, Any] = {
         "mode": "meeting_minutes_final_trooper_operator_chunked_parallel" if diagnostics.get("chunked") else "meeting_minutes_final_trooper_operator_full_transcript",
@@ -1560,6 +1800,7 @@ def main() -> int:
             "failedChunkCount": diagnostics.get("failedChunkCount"),
             "mergeStrategy": diagnostics.get("mergeStrategy"),
             "finalReviewUsed": diagnostics.get("finalReviewUsed"),
+            "routing": diagnostics.get("routing"),
             "used": diagnostics.get("used"),
             "error": diagnostics.get("error"),
             "errors": diagnostics.get("errors", [])[:4],
