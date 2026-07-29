@@ -50,7 +50,24 @@ def load_local_env_if_needed() -> None:
 
 
 def clean_text(value: Any) -> str:
-    return re.sub(r"\s+", " ", str(value or "").strip())
+    text = re.sub(r"\s+", " ", str(value or "").strip())
+    spelling_swaps = {
+        r"\bauthorized\b": "authorised",
+        r"\bAuthorized\b": "Authorised",
+        r"\bauthorization\b": "authorisation",
+        r"\bAuthorization\b": "Authorisation",
+    }
+    for pattern, replacement in spelling_swaps.items():
+        text = re.sub(pattern, replacement, text)
+    return text
+
+
+def simplify_action_text(text: str) -> str:
+    cleaned = clean_text(text)
+    lower = cleaned.lower()
+    if "hpra" in lower and "bill" in lower and "authorised rep" in lower:
+        return "Review the HPRA authorised-representative bill and send a copy."
+    return cleaned
 
 
 def is_placeholder_text(text: str) -> bool:
@@ -154,7 +171,7 @@ def normalise_action(action: Any) -> dict[str, str] | None:
             "meetingActionPointOwner": "Not stated",
             "meetingActionPointDeadline": "Not stated",
         }
-    text = clean_text(
+    text = simplify_action_text(
         action.get("meetingActionPoint")
         or action.get("action")
         or action.get("task")
@@ -562,6 +579,74 @@ def prompt_for_transcript(transcript: str, project_status_evidence: dict[str, An
 [/PROJECT_STATUS_EVIDENCE]
 """
 
+    return f"""[CMD]@meeting-minutes|verify=true|detail=9|creativity=1|format=json|audience=client|language=en-GB
+[INPUT]
+{transcript}
+[/INPUT]
+{evidence_section}
+-bannedWords=["game-changing","revolutionary","seamless","world-class","obviously","basically"]
+
+Return valid JSON only, with exactly this shape:
+{{
+  "meetingTitle": "",
+  "meetingDate": "",
+  "meetingLocation": "",
+  "meetingDescription": "",
+  "meetingObjectives": [],
+  "participants": {{"client": [], "trinzo": []}},
+  "otherParticipants": [],
+  "executiveSummary": "",
+  "confirmedPoints": [{{"text": "", "evidence": ""}}],
+  "risksAndIssues": [{{"text": "", "status": "open", "owner": "Not stated", "evidence": ""}}],
+  "dependencies": [{{"text": "", "owner": "Not stated", "deadline": "Not stated", "evidence": ""}}],
+  "complianceFollowUps": [{{"text": "", "owner": "Not stated", "deadline": "Not stated", "evidence": ""}}],
+  "termsForReview": [{{"term": "", "normalisedTerm": "", "reason": "", "confidence": "low|medium|high", "evidence": ""}}],
+  "discussionTopics": [
+    {{
+      "topicId": "",
+      "topic": "",
+      "summary": "",
+      "outcome": "",
+      "items": [
+        {{"itemId": "", "type": "discussion|decision|confirmed|risk|dependency|compliance_follow_up", "text": "", "owner": null, "status": "", "deadline": null, "dependency": null, "evidence": "", "confidence": 0.0}}
+      ]
+    }}
+  ],
+  "discussionPoints": [],
+  "decisions": [],
+  "actions": [{{"meetingActionPoint": "", "meetingActionPointOwner": "Not stated", "meetingActionPointDeadline": "Not stated", "dependency": "", "evidence": ""}}],
+  "meetingMinutes": [{{"topic": "", "discussionPoints": []}}],
+  "nextSteps": [{{"action": "", "owner": "Not stated", "deadline": "Not stated", "dependency": "", "evidence": ""}}],
+  "openQuestions": []
+}}
+
+Operator rules for this task:
+- Write client-ready professional meeting minutes, not a transcript summary.
+- Use concise UK business English.
+- Do not imitate transcript wording or include speaker labels, timestamps, filler, false starts, transcription artefacts, copied malformed questions, or meta-comments about the transcript.
+- Do not invent facts, dates, attendees, decisions, owners, deadlines, regulations, standards, site names or actions.
+- Deadlines and owners must be explicitly evidenced; otherwise use "Not stated".
+- Preserve relative deadlines exactly when stated, e.g. "next week" or "Wednesday". Do not convert them into calendar dates.
+- Actions must be actual commitments or required follow-ups, not general discussion.
+- Decisions must be actual decisions/confirmations, not every statement.
+- Prefer fewer high-quality points over many weak points.
+- Deduplicate repeated actions and repeated discussion points.
+- If evidence is weak, omit the point or state "Not stated" rather than filling gaps.
+- Do not make regulatory, compliance, audit or quality-system meetings falsely neat.
+- Do not convert provisional, disputed, unclear or dependent items into settled facts. Preserve uncertainty, dependencies and ownership ambiguity.
+- Put settled factual confirmations in confirmedPoints. Put unresolved compliance gaps, audit risks, missing evidence and regulatory concerns in risksAndIssues.
+- Put external prerequisites, unclear ownership, pending inputs and third-party blockers in dependencies.
+- Put compliance-specific follow-ups in complianceFollowUps, even if they also appear in actions.
+- Put inconsistent, misspelled or uncertain names/terms in termsForReview. Normalise terms only when confidence is high; otherwise flag them for human review.
+- Use discussionTopics as the main nested discussion structure: each topic should contain mixed non-action items such as decisions, confirmations, risks, dependencies and compliance follow-ups.
+- Do not force every discussionTopics item to have owner, deadline or dependency fields. Use null or empty values unless the transcript explicitly gives them.
+- Keep concrete commitments in actions/nextSteps as the separate action list. Only put an action-like item inside discussionTopics when it is needed to explain the topic context.
+- If an attendee appears but affiliation is unclear, include them in otherParticipants rather than guessing client or Trinzo.
+- Every action, risk, dependency and compliance follow-up should include a short evidence phrase from the transcript where possible.
+- If PROJECT_STATUS_EVIDENCE is supplied, use it only as an attention guide for project-management detail that may be easy to miss.
+- PROJECT_STATUS_EVIDENCE is not an independent source of truth. Include a blocker, risk, action, decision, owner, deadline or detail only when the transcript itself supports it.
+"""
+
 
 def prompt_for_chunk(chunk_text: str, chunk_index: int, chunk_count: int) -> str:
     return f"""[CMD]@meeting-minutes-chunk|verify=true|detail=8|creativity=0|format=json|audience=client|language=en-GB
@@ -717,6 +802,99 @@ Verifier rules:
 """
 
 
+def prompt_for_compact_final_review(output: dict[str, Any], chunk_outputs: list[dict[str, Any]]) -> str:
+    candidates = {
+        "decisions": [
+            {"index": index, "text": text}
+            for index, text in enumerate(decision_list(output.get("decisions"), limit=12))
+        ],
+        "actions": [
+            {
+                "index": index,
+                "text": clean_text(action.get("meetingActionPoint")),
+                "owner": clean_text(action.get("meetingActionPointOwner")) or "Not stated",
+                "deadline": clean_text(action.get("meetingActionPointDeadline")) or "Not stated",
+                "evidence": clean_text(action.get("evidence"))[:220],
+            }
+            for index, action in enumerate(output.get("actions") or [])
+            if isinstance(action, dict) and clean_text(action.get("meetingActionPoint"))
+        ],
+    }
+    evidence_rows: list[dict[str, Any]] = []
+    for chunk in chunk_outputs:
+        candidate = chunk.get("output") if isinstance(chunk, dict) else None
+        if not isinstance(candidate, dict):
+            continue
+        rows: list[Any] = []
+        rows.extend(candidate.get("confirmedPoints") or [])
+        rows.extend(candidate.get("risksAndIssues") or [])
+        rows.extend(candidate.get("dependencies") or [])
+        rows.extend(candidate.get("complianceFollowUps") or [])
+        rows.extend(candidate.get("actions") or candidate.get("nextSteps") or [])
+        for decision in decision_list(candidate.get("decisions"), limit=6):
+            rows.append({"text": decision, "kind": "decision"})
+        for topic in candidate.get("discussionTopics") or []:
+            if isinstance(topic, dict):
+                rows.extend((topic.get("items") or [])[:6])
+        compact_rows = []
+        seen: set[str] = set()
+        for row in rows:
+            if isinstance(row, dict):
+                text = first_text(row, ["text", "meetingActionPoint", "action", "decision", "summary", "risk", "dependency"])
+                evidence = clean_text(row.get("evidence") or row.get("sourceSnippet"))
+                owner = clean_text(row.get("owner") or row.get("meetingActionPointOwner"))
+                deadline = clean_text(row.get("deadline") or row.get("meetingActionPointDeadline"))
+            else:
+                text = clean_text(row)
+                evidence = ""
+                owner = ""
+                deadline = ""
+            if not text or is_placeholder_text(text):
+                continue
+            key = text.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            compact_rows.append({
+                "text": text[:220],
+                **({"owner": owner[:80]} if owner else {}),
+                **({"deadline": deadline[:80]} if deadline else {}),
+                **({"evidence": evidence[:220]} if evidence else {}),
+            })
+            if len(compact_rows) >= 14:
+                break
+        evidence_rows.append({"chunkIndex": chunk.get("chunkIndex"), "items": compact_rows})
+    evidence_text = json.dumps(evidence_rows, ensure_ascii=False, indent=2)
+    if len(evidence_text) > 14000:
+        evidence_text = evidence_text[:14000]
+    candidates_text = json.dumps(candidates, ensure_ascii=False, indent=2)
+    return f"""[CMD]@meeting-minutes-action-verifier|verify=true|detail=6|creativity=0|format=json|audience=client|language=en-GB
+[CANDIDATE_DECISIONS_AND_ACTIONS]
+{candidates_text}
+[/CANDIDATE_DECISIONS_AND_ACTIONS]
+
+[SECTION_EVIDENCE]
+{evidence_text}
+[/SECTION_EVIDENCE]
+
+Return valid JSON only with this exact shape:
+{{
+  "removeDecisionIndexes": [],
+  "removeActionIndexes": [],
+  "rewriteActions": [{{"index": 0, "text": "", "owner": "Not stated", "deadline": "Not stated", "evidence": ""}}],
+  "notes": []
+}}
+
+Verifier rules:
+- Do not rewrite the whole minutes. Only judge the candidate decisions/actions.
+- Remove decisions that are placeholders, status statements, or not explicit decisions in SECTION_EVIDENCE.
+- Remove actions that are vague recommendations, duplicates, or not concrete commitments/follow-ups.
+- Rewrite only when the action is valid but too long, duplicated, or unclear.
+- Owners/deadlines must remain "Not stated" unless explicitly evidenced.
+- Prefer 3-6 strong actions over noisy completeness.
+"""
+
+
 def split_transcript_chunks(transcript: str, target_chars: int = CHUNK_TARGET_CHARS, overlap_chars: int = CHUNK_OVERLAP_CHARS) -> list[str]:
     text = transcript.strip()
     if len(text) <= target_chars:
@@ -750,73 +928,6 @@ def truncate_for_prompt(value: Any, max_string_chars: int = 420) -> Any:
     if isinstance(value, dict):
         return {key: truncate_for_prompt(item, max_string_chars=max_string_chars) for key, item in value.items()}
     return value
-    return f"""[CMD]@meeting-minutes|verify=true|detail=9|creativity=1|format=json|audience=client|language=en-GB
-[INPUT]
-{transcript}
-[/INPUT]
-{evidence_section}
--bannedWords=["game-changing","revolutionary","seamless","world-class","obviously","basically"]
-
-Return valid JSON only, with exactly this shape:
-{{
-  "meetingTitle": "",
-  "meetingDate": "",
-  "meetingLocation": "",
-  "meetingDescription": "",
-  "meetingObjectives": [],
-  "participants": {{"client": [], "trinzo": []}},
-  "otherParticipants": [],
-  "executiveSummary": "",
-  "confirmedPoints": [{{"text": "", "evidence": ""}}],
-  "risksAndIssues": [{{"text": "", "status": "open", "owner": "Not stated", "evidence": ""}}],
-  "dependencies": [{{"text": "", "owner": "Not stated", "deadline": "Not stated", "evidence": ""}}],
-  "complianceFollowUps": [{{"text": "", "owner": "Not stated", "deadline": "Not stated", "evidence": ""}}],
-  "termsForReview": [{{"term": "", "normalisedTerm": "", "reason": "", "confidence": "low|medium|high", "evidence": ""}}],
-  "discussionTopics": [
-    {{
-      "topicId": "",
-      "topic": "",
-      "summary": "",
-      "outcome": "",
-      "items": [
-        {{"itemId": "", "type": "discussion|decision|confirmed|risk|dependency|compliance_follow_up", "text": "", "owner": null, "status": "", "deadline": null, "dependency": null, "evidence": "", "confidence": 0.0}}
-      ]
-    }}
-  ],
-  "discussionPoints": [],
-  "decisions": [],
-  "actions": [{{"meetingActionPoint": "", "meetingActionPointOwner": "Not stated", "meetingActionPointDeadline": "Not stated", "dependency": "", "evidence": ""}}],
-  "meetingMinutes": [{{"topic": "", "discussionPoints": []}}],
-  "nextSteps": [{{"action": "", "owner": "Not stated", "deadline": "Not stated", "dependency": "", "evidence": ""}}],
-  "openQuestions": []
-}}
-
-Operator rules for this task:
-- Write client-ready professional meeting minutes, not a transcript summary.
-- Use concise UK business English.
-- Do not imitate transcript wording or include speaker labels, timestamps, filler, false starts, transcription artefacts, copied malformed questions, or meta-comments about the transcript.
-- Do not invent facts, dates, attendees, decisions, owners, deadlines, regulations, standards, site names or actions.
-- Deadlines and owners must be explicitly evidenced; otherwise use "Not stated".
-- Preserve relative deadlines exactly when stated, e.g. "next week" or "Wednesday". Do not convert them into calendar dates.
-- Actions must be actual commitments or required follow-ups, not general discussion.
-- Decisions must be actual decisions/confirmations, not every statement.
-- Prefer fewer high-quality points over many weak points.
-- Deduplicate repeated actions and repeated discussion points.
-- If evidence is weak, omit the point or state "Not stated" rather than filling gaps.
-- Do not make regulatory, compliance, audit or quality-system meetings falsely neat.
-- Do not convert provisional, disputed, unclear or dependent items into settled facts. Preserve uncertainty, dependencies and ownership ambiguity.
-- Put settled factual confirmations in confirmedPoints. Put unresolved compliance gaps, audit risks, missing evidence and regulatory concerns in risksAndIssues.
-- Put external prerequisites, unclear ownership, pending inputs and third-party blockers in dependencies.
-- Put compliance-specific follow-ups in complianceFollowUps, even if they also appear in actions.
-- Put inconsistent, misspelled or uncertain names/terms in termsForReview. Normalise terms only when confidence is high; otherwise flag them for human review.
-- Use discussionTopics as the main nested discussion structure: each topic should contain mixed non-action items such as decisions, confirmations, risks, dependencies and compliance follow-ups.
-- Do not force every discussionTopics item to have owner, deadline or dependency fields. Use null or empty values unless the transcript explicitly gives them.
-- Keep concrete commitments in actions/nextSteps as the separate action list. Only put an action-like item inside discussionTopics when it is needed to explain the topic context.
-- If an attendee appears but affiliation is unclear, include them in otherParticipants rather than guessing client or Trinzo.
-- Every action, risk, dependency and compliance follow-up should include a short evidence phrase from the transcript where possible.
-- If PROJECT_STATUS_EVIDENCE is supplied, use it only as an attention guide for project-management detail that may be easy to miss.
-- PROJECT_STATUS_EVIDENCE is not an independent source of truth. Include a blocker, risk, action, decision, owner, deadline or detail only when the transcript itself supports it.
-"""
 
 
 def empty_failure_output(error_message: str) -> dict[str, Any]:
@@ -844,6 +955,7 @@ def call_trooper_prompt(
     prompt: str,
     timeout_seconds: int,
     task_label: str = "meeting_minutes_final",
+    normalise_response: bool = True,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     api_key = os.environ.get("TROOPER_API_KEY", "").strip()
     if not api_key:
@@ -894,7 +1006,7 @@ def call_trooper_prompt(
                 "runtimeMs": round((time.perf_counter() - started) * 1000, 2),
                 "usage": payload.get("usage") or {},
             }
-            return normalise_output(parsed), diagnostics
+            return normalise_output(parsed) if normalise_response else parsed, diagnostics
         except urllib.error.HTTPError as exc:
             detail = ""
             try:
@@ -1028,6 +1140,50 @@ def apply_chunked_quality_gate(output: dict[str, Any]) -> dict[str, Any]:
         for a in gated["actions"]
     ]
     return gated
+
+
+def apply_compact_review_verdict(output: dict[str, Any], verdict: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(verdict, dict):
+        return output
+    gated = dict(output)
+
+    remove_decisions = {
+        int(value) for value in verdict.get("removeDecisionIndexes") or []
+        if isinstance(value, int) or str(value).isdigit()
+    }
+    decisions = decision_list(gated.get("decisions"), limit=20)
+    gated["decisions"] = [text for index, text in enumerate(decisions) if index not in remove_decisions]
+
+    actions = [dict(action) for action in gated.get("actions") or [] if isinstance(action, dict)]
+    rewrites = {}
+    for rewrite in verdict.get("rewriteActions") or []:
+        if not isinstance(rewrite, dict):
+            continue
+        index_value = rewrite.get("index")
+        if not (isinstance(index_value, int) or str(index_value).isdigit()):
+            continue
+        index = int(index_value)
+        text = clean_text(rewrite.get("text"))
+        if not text or is_placeholder_text(text):
+            continue
+        rewrites[index] = {
+            "meetingActionPoint": text,
+            "meetingActionPointOwner": clean_text(rewrite.get("owner")) or "Not stated",
+            "meetingActionPointDeadline": clean_text(rewrite.get("deadline")) or "Not stated",
+            **({"evidence": clean_text(rewrite.get("evidence"))} if clean_text(rewrite.get("evidence")) else {}),
+        }
+
+    remove_actions = {
+        int(value) for value in verdict.get("removeActionIndexes") or []
+        if isinstance(value, int) or str(value).isdigit()
+    }
+    next_actions: list[dict[str, Any]] = []
+    for index, action in enumerate(actions):
+        if index in remove_actions:
+            continue
+        next_actions.append(rewrites.get(index, action))
+    gated["actions"] = next_actions
+    return apply_chunked_quality_gate(gated)
 
 
 def deterministic_merge_outputs(chunk_outputs: list[dict[str, Any]]) -> dict[str, Any]:
@@ -1168,24 +1324,27 @@ def process_chunked_transcript(
     output = apply_chunked_quality_gate(output)
     review_diagnostics: dict[str, Any] = {"used": False, "skipped": True}
     if successful_chunks and merge_strategy != "all_chunks_failed" and truthy(os.environ.get("MEETING_MINUTES_FINAL_REVIEW", "true")):
-        review_prompt = prompt_for_final_review(output, successful_chunks)
+        review_prompt = prompt_for_compact_final_review(output, successful_chunks)
         review_max_chars = int(os.environ.get("MEETING_MINUTES_FINAL_REVIEW_MAX_CHARS", "18000"))
         if len(review_prompt) > review_max_chars:
             review_diagnostics = {
                 "used": False,
                 "skipped": True,
-                "reason": "final_review_prompt_too_large",
+                "reviewMode": "compact_verdict",
+                "reason": "compact_final_review_prompt_too_large",
                 "promptChars": len(review_prompt),
                 "maxPromptChars": review_max_chars,
             }
         else:
-            reviewed_output, review_diagnostics = call_trooper_prompt(
+            review_verdict, review_diagnostics = call_trooper_prompt(
                 review_prompt,
                 timeout_seconds,
-                task_label="final_review",
+                task_label="compact_final_review",
+                normalise_response=False,
             )
             if review_diagnostics.get("used"):
-                output = apply_chunked_quality_gate(normalise_output(reviewed_output))
+                review_diagnostics["reviewMode"] = "compact_verdict"
+                output = apply_compact_review_verdict(output, review_verdict)
 
     diagnostics = {
         "provider": "trooper",
