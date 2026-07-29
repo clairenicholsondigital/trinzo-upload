@@ -777,7 +777,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
             ${groupedRows.map(({ row, index }) => `
               <tr>
                 <td class="type-cell" data-label="Edit"><button type="button" class="secondary" data-expand-minutes-row>Expand</button></td>
-                ${showTopic ? `<td class="topic-cell" data-label="Topic"><input data-edit-field="topic" data-edit-index="${index}" value="${escapeAttribute(row.topic || '')}" /></td>` : ''}
+                ${showTopic ? `<td class="topic-cell" data-label="Topic"><textarea data-edit-field="topic" data-edit-index="${index}">${escapeHtml(row.topic || '')}</textarea></td>` : ''}
                 ${showItemType ? `<td class="topic-cell" data-label="Type"><input data-edit-field="itemType" data-edit-index="${index}" value="${escapeAttribute(row.itemType || '')}" /></td>` : ''}
                 ${showOwner ? `<td class="owner-cell" data-label="Owner / speaker"><input data-edit-field="owner" data-edit-index="${index}" value="${escapeAttribute(row.owner || '')}" /></td>` : ''}
                 <td class="text-cell" data-label="${escapeAttribute(outputHeader)}">
