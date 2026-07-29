@@ -132,6 +132,8 @@ pre { white-space:pre-wrap; overflow:auto; max-height:620px; background:#071126;
 .result-table-section { margin-top:1.1rem; }
 .result-table-section h3 { margin:.1rem 0 .55rem; font-size:1rem; color:#dbeafe; }
 .result-table-section .minutes-table-wrap { margin-top:0; }
+.result-table-accordion summary { font-size:1rem; color:#dbeafe; }
+.result-table-accordion .minutes-table-wrap { margin-top:.75rem; }
 .result-empty { color:var(--muted); border:1px dashed var(--border); border-radius:12px; padding:1rem; margin-top:1rem; }
 details { margin-top:1rem; }
 summary { cursor:pointer; color:var(--accent); font-weight:700; padding:.75rem; background:#071126; border:1px solid var(--border); border-radius:10px; }
@@ -755,43 +757,56 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     const showDetail = false;
     const showEvidence = false;
     const outputHeader = type === 'Discussion' ? 'Discussion point' : 'Output';
+    const sectionTitle = resultSectionTitle(type);
+    const tableMarkup = `
+      <div class="minutes-table-wrap">
+        <table class="minutes-table">
+          <thead>
+            <tr>
+              <th class="type-cell">Edit</th>
+              ${showTopic ? '<th>Topic</th>' : ''}
+              ${showItemType ? '<th>Type</th>' : ''}
+              ${showOwner ? '<th>Owner / speaker</th>' : ''}
+              <th>${escapeHtml(outputHeader)}</th>
+              ${showDeadline ? '<th>Deadline / date</th>' : ''}
+              ${showDetail ? '<th>Notes / context</th>' : ''}
+              ${showEvidence ? '<th>Evidence / source note</th>' : ''}
+            </tr>
+          </thead>
+          <tbody>
+            ${groupedRows.map(({ row, index }) => `
+              <tr>
+                <td class="type-cell" data-label="Edit"><button type="button" class="secondary" data-expand-minutes-row>Expand</button></td>
+                ${showTopic ? `<td class="topic-cell" data-label="Topic"><input data-edit-field="topic" data-edit-index="${index}" value="${escapeAttribute(row.topic || '')}" /></td>` : ''}
+                ${showItemType ? `<td class="topic-cell" data-label="Type"><input data-edit-field="itemType" data-edit-index="${index}" value="${escapeAttribute(row.itemType || '')}" /></td>` : ''}
+                ${showOwner ? `<td class="owner-cell" data-label="Owner / speaker"><input data-edit-field="owner" data-edit-index="${index}" value="${escapeAttribute(row.owner || '')}" /></td>` : ''}
+                <td class="text-cell" data-label="${escapeAttribute(outputHeader)}">
+                  ${hiddenRowFields(type, index, row, { topic: showTopic, itemType: showItemType, owner: showOwner, deadline: showDeadline, detail: showDetail, evidence: showEvidence })}
+                  <textarea data-edit-field="text" data-edit-index="${index}">${escapeHtml(row.text)}</textarea>
+                </td>
+                ${showDeadline ? `<td class="deadline-cell" data-label="Deadline / date">${renderDeadlineEditor(index, row.deadline || '')}</td>` : ''}
+                ${showDetail ? `<td class="detail-cell" data-label="Notes / context"><textarea data-edit-field="detail" data-edit-index="${index}" placeholder="Notes, context, dependency or confidence...">${escapeHtml(row.detail || '')}</textarea></td>` : ''}
+                ${showEvidence ? `<td class="evidence-cell" data-label="Evidence / source note"><textarea data-edit-field="evidence" data-edit-index="${index}" placeholder="Transcript evidence or source note">${escapeHtml(row.evidence || '')}</textarea></td>` : ''}
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+
+    if (type === 'Term for review') {
+      return `
+        <details class="result-table-section result-table-accordion">
+          <summary>${escapeHtml(sectionTitle)} (${groupedRows.length})</summary>
+          ${tableMarkup}
+        </details>
+      `;
+    }
 
     return `
       <section class="result-table-section">
-        <h3>${escapeHtml(resultSectionTitle(type))}</h3>
-        <div class="minutes-table-wrap">
-          <table class="minutes-table">
-            <thead>
-              <tr>
-                <th class="type-cell">Edit</th>
-                ${showTopic ? '<th>Topic</th>' : ''}
-                ${showItemType ? '<th>Type</th>' : ''}
-                ${showOwner ? '<th>Owner / speaker</th>' : ''}
-                <th>${escapeHtml(outputHeader)}</th>
-                ${showDeadline ? '<th>Deadline / date</th>' : ''}
-                ${showDetail ? '<th>Notes / context</th>' : ''}
-                ${showEvidence ? '<th>Evidence / source note</th>' : ''}
-              </tr>
-            </thead>
-            <tbody>
-              ${groupedRows.map(({ row, index }) => `
-                <tr>
-                  <td class="type-cell" data-label="Edit"><button type="button" class="secondary" data-expand-minutes-row>Expand</button></td>
-                  ${showTopic ? `<td class="topic-cell" data-label="Topic"><input data-edit-field="topic" data-edit-index="${index}" value="${escapeAttribute(row.topic || '')}" /></td>` : ''}
-                  ${showItemType ? `<td class="topic-cell" data-label="Type"><input data-edit-field="itemType" data-edit-index="${index}" value="${escapeAttribute(row.itemType || '')}" /></td>` : ''}
-                  ${showOwner ? `<td class="owner-cell" data-label="Owner / speaker"><input data-edit-field="owner" data-edit-index="${index}" value="${escapeAttribute(row.owner || '')}" /></td>` : ''}
-                  <td class="text-cell" data-label="${escapeAttribute(outputHeader)}">
-                    ${hiddenRowFields(type, index, row, { topic: showTopic, itemType: showItemType, owner: showOwner, deadline: showDeadline, detail: showDetail, evidence: showEvidence })}
-                    <textarea data-edit-field="text" data-edit-index="${index}">${escapeHtml(row.text)}</textarea>
-                  </td>
-                  ${showDeadline ? `<td class="deadline-cell" data-label="Deadline / date">${renderDeadlineEditor(index, row.deadline || '')}</td>` : ''}
-                  ${showDetail ? `<td class="detail-cell" data-label="Notes / context"><textarea data-edit-field="detail" data-edit-index="${index}" placeholder="Notes, context, dependency or confidence...">${escapeHtml(row.detail || '')}</textarea></td>` : ''}
-                  ${showEvidence ? `<td class="evidence-cell" data-label="Evidence / source note"><textarea data-edit-field="evidence" data-edit-index="${index}" placeholder="Transcript evidence or source note">${escapeHtml(row.evidence || '')}</textarea></td>` : ''}
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        </div>
+        <h3>${escapeHtml(sectionTitle)}</h3>
+        ${tableMarkup}
       </section>
     `;
   }
