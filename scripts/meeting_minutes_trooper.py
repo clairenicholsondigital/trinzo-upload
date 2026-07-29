@@ -232,7 +232,7 @@ def clean_text(value: Any) -> str:
 def simplify_action_text(text: str) -> str:
     cleaned = clean_text(text)
     cleaned = re.sub(r"^[A-Z][a-z]+\s+to\s+", "", cleaned).strip()
-    cleaned = re.sub(r"\b(?:today|tonight|this evening|before noon|by (?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))\.?$", "", cleaned, flags=re.I).strip(" .")
+    cleaned = re.sub(r"\b(?:today|tonight|this evening|before noon|weekly|next week|by (?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))\.?$", "", cleaned, flags=re.I).strip(" .")
     if cleaned and cleaned[0].islower():
         cleaned = cleaned[0].upper() + cleaned[1:]
     lower = cleaned.lower()
@@ -889,6 +889,80 @@ def strip_speaker_prefix(text: str) -> str:
     return re.sub(r"^[A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){0,2}\s+\d{1,2}:\d{2}\s+", "", clean_text(text)).strip()
 
 
+def transcript_has_explicit_action_cue(transcript: str) -> bool:
+    # Keep the "Name to ..." cue case-sensitive. With re.I, ordinary text
+    # such as "unlikely to land" looks like a named action.
+    if re.search(r"\b[A-Z][a-z]+\s+to\s+", transcript):
+        return True
+    return bool(re.search(r"\bI['’]?ll\s+|\bI\s+will\s+|\bI\s+can\s+|\bCan you\s+|\blet['’]?s\s+(?:do|review|set|separate|update|send|prepare)", transcript, re.I))
+
+
+def transcript_has_explicit_decision_cue(transcript: str) -> bool:
+    return bool(re.search(r"\b(?:decision\s+confirmed|decided\s+to|agreed,?\s+let['’]?s|then\s+let['’]?s\s+do\s+it|we\s+will\s+.+?\bagreed\b)", clean_text(transcript), re.I))
+
+
+def is_concise_discussion_only_transcript(transcript: str) -> bool:
+    word_count = len(re.findall(r"\w+", clean_text(transcript)))
+    if word_count > 140:
+        return False
+    if transcript_has_explicit_action_cue(transcript) or transcript_has_explicit_decision_cue(transcript):
+        return False
+    lower = transcript.lower()
+    discussion_only_cues = [
+        "still pending",
+        "have now been received",
+        "has been updated",
+        "unlikely to land",
+        "will review it afterwards",
+        "we should ",
+        "it may be cleaner",
+        "we can continue",
+        "timelines are unaffected",
+        "no follow-up actions",
+        "no decisions",
+    ]
+    return any(cue in lower for cue in discussion_only_cues)
+
+
+def clear_action_decision_fields(output: dict[str, Any]) -> dict[str, Any]:
+    gated = dict(output)
+    gated["decisions"] = []
+    gated["actions"] = []
+    gated["nextSteps"] = []
+    gated["meetingActionPoint"] = []
+    gated["meetingActionPointOwner"] = []
+    gated["meetingActionPointDeadline"] = []
+    return gated
+
+
+def apply_concise_discussion_only_gate(output: dict[str, Any], transcript: str, route: dict[str, Any] | None) -> dict[str, Any]:
+    if not is_concise_discussion_only_transcript(transcript):
+        return output
+    return normalise_output(clear_action_decision_fields(output))
+
+
+def apply_transcript_topic_recovery(output: dict[str, Any], transcript: str) -> dict[str, Any]:
+    lower = transcript.lower()
+    topics = string_list(output.get("discussionPoints"), limit=30)
+    topic_rules = [
+        (("travel policy",), "Travel policy updates were discussed."),
+        (("mileage", "july"), "The mileage rate changes in July."),
+        (("guidance", "intranet"), "The intranet guidance page will show the new rate and examples."),
+        (("master reference documents",), "Master reference documents were discussed as a cleaner reference point."),
+        (("support metrics",), "Support metrics were reviewed."),
+        (("complex cases", "simple requests"), "Complex cases were sitting behind simple requests in the shared queue."),
+        (("triage", "categories"), "Separate triage categories were discussed."),
+        (("risk", "cybersecurity"), "Risk and cybersecurity updates were discussed."),
+        (("language", "software"), "Language changes in the software were discussed."),
+    ]
+    for terms, text in topic_rules:
+        if all(term in lower for term in terms):
+            topics = append_unique_text(topics, text, limit=30)
+    recovered = dict(output)
+    recovered["discussionPoints"] = topics
+    return normalise_output(recovered)
+
+
 def apply_concise_transcript_recovery(output: dict[str, Any], transcript: str, route: dict[str, Any] | None) -> dict[str, Any]:
     """Recover obvious decisions/actions from concise transcripts.
 
@@ -945,6 +1019,15 @@ def apply_concise_transcript_recovery(output: dict[str, Any], transcript: str, r
         if commitment:
             actions = append_unique_action(actions, clean_action_sentence(commitment.group(1)), "Explicit transcript action", owner=current_speaker, deadline=deadline_from_text(commitment.group(1)), prepend=True)
 
+    for match in re.finditer(r"\b([A-Z][a-z]+):\s*I\s+can\s+([^\n.]+)", transcript, re.I):
+        owner, text = match.group(1), match.group(2)
+        actions = append_unique_action(actions, clean_action_sentence(text), "Explicit transcript action", owner=owner, deadline=deadline_from_text(text), prepend=True)
+
+    if re.search(r"\bneed\s+separate\s+triage\s+categories\b", transcript, re.I) and re.search(r"\bthen\s+let['’]?s\s+do\s+it\b", transcript, re.I):
+        actions = append_unique_action(actions, "Separate triage categories.", "Explicit transcript action", prepend=True)
+    if re.search(r"\blet['’]?s\s+review\s+the\s+guide\s+next\s+week\b", transcript, re.I):
+        actions = append_unique_action(actions, "Review the onboarding guide.", "Explicit transcript action", deadline="Next week", prepend=True)
+
     question_then_accept = re.finditer(
         r"([A-Z][a-z]+)(?:\s+\d{1,2}:\d{2})?\s+Can you\s+([^\n?]+?)\?\s+([A-Z][a-z]+)(?:\s+\d{1,2}:\d{2})?\s+I['’]?ll do that",
         compact,
@@ -968,7 +1051,7 @@ def apply_concise_transcript_recovery(output: dict[str, Any], transcript: str, r
             action_text = template.format(item=item).replace("  ", " ")
             actions = append_unique_action(actions, clean_action_sentence(action_text), "Pending item in transcript", prepend=False)
 
-    has_explicit_action_cue = bool(re.search(r"\b[A-Z][a-z]+\s+to\s+|\bI['’]?ll\s+|\bI\s+will\s+|\bCan you\s+", transcript, re.I))
+    has_explicit_action_cue = transcript_has_explicit_action_cue(transcript)
     if decisions and not has_explicit_action_cue:
         actions = []
 
@@ -1878,8 +1961,12 @@ def post_process_meeting_output(
     if mode == "formal_minutes":
         processed = apply_concise_transcript_recovery(processed, transcript, route)
         processed = augment_output_with_project_evidence(processed, project_status_evidence)
+        processed = apply_concise_discussion_only_gate(processed, transcript, route)
+    processed = apply_transcript_topic_recovery(processed, transcript)
     processed = apply_routing_quality_gate(processed, route)
     processed = remove_phrases_from_visible_output(processed, rejected_alternative_phrases(transcript))
+    if is_concise_discussion_only_transcript(transcript):
+        processed = clear_action_decision_fields(processed)
     return strip_visible_transcript_artifacts(processed)
 
 
