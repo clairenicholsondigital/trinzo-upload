@@ -1797,6 +1797,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--include-baseline-reference", action="store_true")
     parser.add_argument("--skip-rewrite", action="store_true", help="Accepted for compatibility; ignored.")
     parser.add_argument("--include-project-status-evidence", action="store_true")
+    parser.add_argument("--project-status-evidence-json", help="Use a precomputed project-status evidence JSON file instead of building one in this process.")
     parser.add_argument("--timeout-seconds", type=int, default=int(os.environ.get("TROOPER_TIMEOUT_SECONDS", "120")))
     parser.add_argument(
         "--pipeline",
@@ -1822,7 +1823,17 @@ def main() -> int:
     )
     route = detect_transcript_route(transcript)
     project_status_evidence = None
-    if use_project_status_evidence:
+    if args.project_status_evidence_json:
+        try:
+            project_status_evidence = json.loads(Path(args.project_status_evidence_json).read_text(encoding="utf-8"))
+        except Exception as exc:
+            project_status_evidence = {
+                "enabled": True,
+                "available": False,
+                "reason": f"Precomputed project-status evidence could not be loaded: {clean_text(exc)[:240]}",
+                "items": [],
+            }
+    elif use_project_status_evidence:
         project_status_evidence = run_project_status_evidence_pack(
             transcript_path,
             timeout_seconds=int(os.environ.get("PROJECT_STATUS_EVIDENCE_TIMEOUT_SECONDS", "90")),

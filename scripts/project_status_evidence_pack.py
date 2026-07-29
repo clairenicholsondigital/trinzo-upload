@@ -116,14 +116,30 @@ def top_ranked(classes, probs, limit: int = 3) -> list[dict[str, Any]]:
     return [{"label": str(classes[i]), "score": round(float(probs[i]), 3)} for i in order[:limit]]
 
 
-def classify_chunks(chunks: list[str], model_path: Path, project_dir: Path, max_chunks: int, max_items: int) -> dict[str, Any]:
+def load_classifier_components(model_path: Path, project_dir: Path) -> dict[str, Any]:
     import joblib
-    import numpy as np
     from sentence_transformers import SentenceTransformer
 
     predict_module = load_predict_module(project_dir)
     bundle = joblib.load(model_path)
     embedder = SentenceTransformer(bundle["embedding_model"])
+    return {"predict_module": predict_module, "bundle": bundle, "embedder": embedder}
+
+
+def classify_chunks(
+    chunks: list[str],
+    model_path: Path,
+    project_dir: Path,
+    max_chunks: int,
+    max_items: int,
+    components: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    import numpy as np
+
+    components = components or load_classifier_components(model_path, project_dir)
+    predict_module = components["predict_module"]
+    bundle = components["bundle"]
+    embedder = components["embedder"]
     selected_chunks = chunks[:max_chunks]
     embeddings = embedder.encode(
         selected_chunks,
@@ -211,7 +227,14 @@ def classify_chunks(chunks: list[str], model_path: Path, project_dir: Path, max_
     }
 
 
-def build_pack(transcript_text: str, model_path: Path, project_dir: Path, max_chunks: int, max_items: int) -> dict[str, Any]:
+def build_pack(
+    transcript_text: str,
+    model_path: Path,
+    project_dir: Path,
+    max_chunks: int,
+    max_items: int,
+    components: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     started = time.perf_counter()
     chunks = split_transcript(transcript_text)
     pack: dict[str, Any] = {
@@ -231,7 +254,7 @@ def build_pack(transcript_text: str, model_path: Path, project_dir: Path, max_ch
         if not chunks:
             pack["reason"] = "Transcript produced no usable chunks."
             return pack
-        result = classify_chunks(chunks, model_path, project_dir, max_chunks=max_chunks, max_items=max_items)
+        result = classify_chunks(chunks, model_path, project_dir, max_chunks=max_chunks, max_items=max_items, components=components)
         pack.update(result)
         pack["reason"] = "Project-status evidence pack built." if pack["items"] else "No high-confidence project-status evidence found."
         return pack

@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import ast
 import json
+import os
 import re
 import subprocess
 import sys
@@ -560,8 +561,16 @@ def _rewriter_meta(source: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def run_extractor(case: Path, timeout: int, extractor: Path = EXTRACTOR, skip_rewrite: bool = False) -> tuple[dict[str, Any], dict[str, Any]]:
+def run_extractor(
+    case: Path,
+    timeout: int,
+    extractor: Path = EXTRACTOR,
+    skip_rewrite: bool = False,
+    evidence_json: Path | None = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
     cmd = [sys.executable, str(extractor), str(case / "transcript.txt")]
+    if evidence_json is not None:
+        cmd.extend(["--project-status-evidence-json", str(evidence_json)])
     if skip_rewrite:
         cmd.append("--skip-rewrite")
     cmd.append("--skip-diagnostics")
@@ -645,6 +654,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help="Disable optional MiniLM semantic matching during scoring; useful for deterministic/offline dev-loop runs.",
     )
+    parser.add_argument(
+        "--precompute-project-status-evidence",
+        action="store_true",
+        help="Precompute project-status evidence once in this runner and pass JSON to the default extractor, avoiding repeated MiniLM/classifier loads.",
+    )
     parser.add_argument("--json", action="store_true", help="Print the full report as JSON.")
     return parser.parse_args(argv)
 
@@ -665,6 +679,38 @@ def main(argv: list[str]) -> int:
         print("No golden cases found.", file=sys.stderr)
         return 2
 
+    precomputed_evidence_paths: dict[str, Path] = {}
+    if args.precompute_project_status_evidence and not args.dry_run and not args.base_url:
+        if extractor.name != DEFAULT_EXTRACTOR_NAME:
+            print("--precompute-project-status-evidence is only supported with the default meeting_minutes_trooper.py extractor.", file=sys.stderr)
+            return 2
+        evidence_module_path = ROOT / "project_status_evidence_pack.py"
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("project_status_evidence_pack", evidence_module_path)
+        evidence_module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(evidence_module)
+        model_path = Path(os.environ.get("PROJECT_STATUS_MODEL_BUNDLE", str(evidence_module.DEFAULT_MODEL_PATH)))
+        project_dir = Path(os.environ.get("PROJECT_STATUS_MODEL_DIR", str(evidence_module.DEFAULT_PROJECT_STATUS_DIR)))
+        max_chunks = int(os.environ.get("PROJECT_STATUS_EVIDENCE_MAX_CHUNKS", "220"))
+        max_items = int(os.environ.get("PROJECT_STATUS_EVIDENCE_MAX_ITEMS", "80"))
+        evidence_dir = ROOT / ".golden-evidence-cache"
+        evidence_dir.mkdir(exist_ok=True)
+        components = evidence_module.load_classifier_components(model_path, project_dir)
+        for case in cases:
+            transcript_text = (case / "transcript.txt").read_text(encoding="utf-8")
+            pack = evidence_module.build_pack(
+                transcript_text,
+                model_path=model_path,
+                project_dir=project_dir,
+                max_chunks=max(1, max_chunks),
+                max_items=max(1, max_items),
+                components=components,
+            )
+            evidence_path = evidence_dir / f"{case.name}.project-status-evidence.json"
+            evidence_path.write_text(json.dumps(pack, ensure_ascii=False), encoding="utf-8")
+            precomputed_evidence_paths[case.name] = evidence_path
+
     case_reports = []
     validation_failures: list[str] = []
     is_live = not args.dry_run and not args.skip_rewrite
@@ -684,7 +730,13 @@ def main(argv: list[str]) -> int:
                 if args.base_url:
                     output, rewriter_meta = run_live_endpoint(args.base_url, case, args.timeout)
                 else:
-                    output, rewriter_meta = run_extractor(case, args.timeout, extractor, args.skip_rewrite)
+                    output, rewriter_meta = run_extractor(
+                        case,
+                        args.timeout,
+                        extractor,
+                        args.skip_rewrite,
+                        precomputed_evidence_paths.get(case.name),
+                    )
                 report["rewriter"] = rewriter_meta
                 report["evaluation"] = evaluate_case(case.name, output, expected)
             except Exception as exc:
@@ -716,6 +768,7 @@ def main(argv: list[str]) -> int:
         "passedCases": len(executed_reports) - len(failed_evals),
         "failedCases": len(failed_evals),
         "rewriterUsedCases": rewriter_used_count if is_live else None,
+        "precomputedProjectStatusEvidence": bool(precomputed_evidence_paths),
         "coverage": coverage_summary(case_reports),
     }
     if not args.cases:
