@@ -3045,6 +3045,81 @@ async function updateAuthPassword(userId, salt, hash) {
   );
 }
 
+let authSessionSchemaReady = false;
+
+async function ensureAuthSessionSchema() {
+  if (authSessionSchemaReady) return;
+  await query(`
+    CREATE TABLE IF NOT EXISTS auth_sessions (
+      id BIGSERIAL PRIMARY KEY,
+      session_token_hash TEXT NOT NULL UNIQUE,
+      user_id BIGINT NOT NULL REFERENCES auth_users(id) ON DELETE CASCADE,
+      expires_at TIMESTAMPTZ NOT NULL,
+      user_agent TEXT NOT NULL DEFAULT '',
+      ip_address TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await query('CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_seen ON auth_sessions(user_id, last_seen_at DESC)');
+  await query('CREATE INDEX IF NOT EXISTS idx_auth_sessions_expiry ON auth_sessions(expires_at)');
+  authSessionSchemaReady = true;
+}
+
+async function createAuthSession({ tokenHash, userId, expiresAt, userAgent = '', ipAddress = '' }) {
+  await ensureAuthSessionSchema();
+  await query('DELETE FROM auth_sessions WHERE expires_at <= NOW()');
+  await query(
+    `INSERT INTO auth_sessions (session_token_hash, user_id, expires_at, user_agent, ip_address)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [tokenHash, Number(userId), expiresAt, String(userAgent || '').slice(0, 500), String(ipAddress || '').slice(0, 120)]
+  );
+}
+
+async function getAuthSession(tokenHash) {
+  await ensureAuthSessionSchema();
+  const result = await query(
+    `SELECT
+       s.session_token_hash AS "tokenHash",
+       s.expires_at AS "expiresAt",
+       u.id::text AS "userId",
+       u.email,
+       u.full_name AS "fullName",
+       u.is_active AS "isActive"
+     FROM auth_sessions s
+     JOIN auth_users u ON u.id = s.user_id
+     WHERE s.session_token_hash = $1
+     LIMIT 1`,
+    [tokenHash]
+  );
+  const session = result.rows[0] || null;
+  if (!session) return null;
+  if (!session.isActive || new Date(session.expiresAt).getTime() <= Date.now()) {
+    await deleteAuthSession(tokenHash).catch(() => {});
+    return null;
+  }
+  return {
+    tokenHash: session.tokenHash,
+    userId: Number(session.userId),
+    email: session.email,
+    fullName: session.fullName,
+    expiresAt: session.expiresAt
+  };
+}
+
+async function touchAuthSession(tokenHash, expiresAt) {
+  await ensureAuthSessionSchema();
+  await query(
+    'UPDATE auth_sessions SET last_seen_at = NOW(), expires_at = $2 WHERE session_token_hash = $1',
+    [tokenHash, expiresAt]
+  );
+}
+
+async function deleteAuthSession(tokenHash) {
+  await ensureAuthSessionSchema();
+  await query('DELETE FROM auth_sessions WHERE session_token_hash = $1', [tokenHash]);
+}
+
 module.exports = {
   testConnection,
   listMeetings,
@@ -3117,6 +3192,10 @@ module.exports = {
   createAuthUser,
   findAuthUserByEmail,
   touchAuthLastLogin,
+  createAuthSession,
+  getAuthSession,
+  touchAuthSession,
+  deleteAuthSession,
   createPasswordResetToken,
   consumePasswordResetToken,
   updateAuthPassword
