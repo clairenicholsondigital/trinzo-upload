@@ -72,6 +72,10 @@ pre { white-space:pre-wrap; overflow:auto; max-height:620px; background:#071126;
   resize:vertical;
 }
 .result-toolbar { margin:.85rem 0 1rem; display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; }
+.advanced-result-tools { flex-basis:100%; margin-top:.25rem; }
+.advanced-result-tools summary { display:inline-flex; width:auto; padding:.45rem .65rem; font-size:.86rem; color:var(--muted); background:#071126; }
+.advanced-result-tools[open] summary { border-radius:10px; }
+.advanced-result-tools .advanced-body { margin-top:.5rem; display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; color:var(--muted); }
 .minutes-table-wrap { width:100%; overflow-x:auto; margin-top:1rem; -webkit-overflow-scrolling:touch; }
 .minutes-table { width:100%; border-collapse:collapse; min-width:1120px; table-layout:fixed; }
 .minutes-table th, .minutes-table td { border:1px solid var(--border); padding:.65rem; vertical-align:top; }
@@ -1118,12 +1122,20 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
         <button id="saveEditedResultBtn" type="button">Save edits</button>
         <button id="copyEditedTableBtn" class="secondary" type="button">Copy table text</button>
         <button id="exportEditedPdfBtn" class="secondary" type="button">Export PDF</button>
-        <button id="downloadEditedJsonBtn" class="secondary" type="button">Download edited JSON</button>
         <button id="clearEditedRowsBtn" class="danger" type="button">Clear rows</button>
+        <details class="advanced-result-tools">
+          <summary>Advanced / debug</summary>
+          <div class="advanced-body">
+            <button id="downloadEditedJsonBtn" class="secondary" type="button">Download edited JSON</button>
+            <span>Raw result JSON is below for troubleshooting.</span>
+          </div>
+        </details>
         <span id="editStatus" class="edit-status"></span>
       `;
       renderReadableResult(payload.result);
       rawResultDetails.hidden = false;
+      const rawSummary = rawResultDetails.querySelector('summary');
+      if (rawSummary) rawSummary.textContent = 'Advanced: raw result JSON';
       resultJson.textContent = JSON.stringify(payload.result, null, 2);
     } else {
       resultMessage.textContent = job.status === 'failed'
