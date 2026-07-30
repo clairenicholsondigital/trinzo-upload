@@ -204,6 +204,27 @@ tbody tr:last-child td { border-bottom:none; }
 .danger, .status.danger { color:var(--danger-text) !important; background:var(--danger-bg) !important; border-color:var(--danger-border) !important; }
 .unknown, .status.unknown { color:var(--muted) !important; background:var(--soft) !important; border-color:var(--border) !important; }
 
+button.danger,
+.button.danger,
+.actions button.danger,
+.row-actions button.danger,
+.toolbar button.danger,
+.bulk-actions button.danger {
+  background:var(--danger-text) !important;
+  border-color:var(--danger-text) !important;
+  color:#fff !important;
+}
+button.danger:hover,
+.button.danger:hover,
+.actions button.danger:hover,
+.row-actions button.danger:hover,
+.toolbar button.danger:hover,
+.bulk-actions button.danger:hover {
+  background:#921b12 !important;
+  border-color:#921b12 !important;
+  color:#fff !important;
+}
+
 .message, .safeguard-banner, .autosave-status {
   border:1px solid var(--info-border); background:var(--info-bg);
   color:var(--info-text); border-radius:var(--radius-sm); padding:.7rem .85rem;
