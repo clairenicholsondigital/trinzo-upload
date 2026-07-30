@@ -196,6 +196,21 @@ tbody tr:last-child td { border-bottom:none; }
 .pill.active, .badge.active { color:var(--accent-700); background:var(--brand-100); border-color:var(--brand-200); }
 .pill.legacy, .badge.legacy { color:var(--warn-text); background:var(--warn-bg); border-color:var(--warn-border); }
 
+.status-pill[data-status="active"],
+.pill.active,
+.badge.success {
+  background:var(--ok-text) !important;
+  border-color:var(--ok-text) !important;
+  color:#fff !important;
+}
+.status-pill[data-status="paused"],
+.status-pill[data-status="completed"],
+.status-pill[data-status="archived"] {
+  background:var(--soft) !important;
+  border-color:var(--border-strong) !important;
+  color:var(--muted) !important;
+}
+
 .success, .status.success, .badge.success, .status-pill.success,
 .ok, .status.ok       { color:var(--ok-text) !important;   background:var(--ok-bg) !important;   border-color:var(--ok-border) !important; }
 .warning, .status.warning, .badge.warning, .status-pill.warning,
