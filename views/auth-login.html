@@ -21,216 +21,97 @@
   >
 
   <style>
-    * {
-      box-sizing: border-box;
+    :root {
+      --brand:#79b1c2; --accent:#2c7a90; --accent-600:#24657a; --accent-700:#1c5061;
+      --brand-050:#f0f6f8; --brand-100:#dcebf0; --brand-200:#c3dde5;
+      --text:#17222c; --heading:#142b34; --muted:#596875;
+      --border:#d9e1e8; --border-strong:#c3ced8;
     }
+    * { box-sizing: border-box; }
 
     body {
       margin: 0;
       min-height: 100vh;
-      font-family: "Roboto", sans-serif;
+      font-family: "Roboto", "Segoe UI", system-ui, sans-serif;
       background:
-        radial-gradient(circle at top left, #1e293b 0%, #0f172a 45%),
-        #020617;
-      color: #e2e8f0;
+        radial-gradient(1000px 520px at 50% -10%, #ffffff 0%, #eef2f6 55%),
+        #eef2f6;
+      color: var(--text);
       display: flex;
       align-items: center;
       justify-content: center;
       padding: 24px;
     }
 
-    .auth-shell {
-      width: 100%;
-      max-width: 420px;
-    }
+    .auth-shell { width: 100%; max-width: 420px; }
 
     .auth-card {
-      background: rgba(15, 23, 42, 0.94);
-      border: 1px solid rgba(148, 163, 184, 0.18);
-      border-radius: 24px;
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: 20px;
       padding: 32px;
-      box-shadow:
-        0 24px 60px rgba(0, 0, 0, 0.45),
-        inset 0 1px 0 rgba(255, 255, 255, 0.03);
-      backdrop-filter: blur(10px);
+      box-shadow: 0 12px 40px rgba(20, 43, 52, 0.10), 0 2px 6px rgba(20, 43, 52, 0.05);
     }
+
+    .brand-logo { display: block; height: 30px; width: auto; margin-bottom: 22px; }
 
     .eyebrow {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      background: rgba(59, 130, 246, 0.14);
-      color: #93c5fd;
-      border: 1px solid rgba(59, 130, 246, 0.25);
-      border-radius: 999px;
-      padding: 6px 12px;
-      font-size: 13px;
-      font-weight: 600;
-      margin-bottom: 18px;
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--brand-100); color: var(--accent-700);
+      border: 1px solid var(--brand-200); border-radius: 999px;
+      padding: 5px 12px; font-size: 12px; font-weight: 700;
+      letter-spacing: .06em; text-transform: uppercase; margin-bottom: 18px;
     }
 
-    h1 {
-      margin: 0 0 10px;
-      font-size: 34px;
-      line-height: 1.1;
-      color: #f8fafc;
-    }
+    h1 { margin: 0 0 10px; font-size: 30px; line-height: 1.15; color: var(--heading); letter-spacing: -.01em; }
 
-    .intro {
-      margin: 0 0 28px;
-      color: #94a3b8;
-      font-size: 15px;
-      line-height: 1.6;
-    }
+    .intro { margin: 0 0 26px; color: var(--muted); font-size: 15px; line-height: 1.6; }
 
-    .field-group {
-      margin-bottom: 18px;
-    }
+    .field-group { margin-bottom: 18px; }
 
-    label {
-      display: block;
-      margin-bottom: 8px;
-      font-size: 14px;
-      font-weight: 600;
-      color: #cbd5e1;
-    }
+    label { display: block; margin-bottom: 7px; font-size: 14px; font-weight: 600; color: var(--heading); }
 
     input {
-      width: 100%;
-      border: 1px solid #334155;
-      background: #0f172a;
-      color: #f8fafc;
-      border-radius: 14px;
-      padding: 14px 16px;
-      font-size: 15px;
-      transition: border-color 0.2s ease, box-shadow 0.2s ease;
-      outline: none;
+      width: 100%; border: 1px solid var(--border-strong); background: #fff; color: var(--text);
+      border-radius: 10px; padding: 12px 14px; font-size: 15px;
+      transition: border-color .15s ease, box-shadow .15s ease; outline: none;
     }
+    input::placeholder { color: #9aa8b4; }
+    input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(44,122,144,0.15); }
 
-    input:focus {
-      border-color: #60a5fa;
-      box-shadow: 0 0 0 4px rgba(96, 165, 250, 0.16);
-    }
-
-    .password-input {
-      position: relative;
-    }
-
-    .password-input input {
-      padding-right: 52px;
-    }
+    .password-input { position: relative; }
+    .password-input input { padding-right: 52px; }
 
     .password-toggle {
-      position: absolute;
-      top: 50%;
-      right: 10px;
-      width: 36px;
-      height: 36px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      padding: 0;
-      border: 0;
-      border-radius: 10px;
-      background: transparent;
-      color: #94a3b8;
-      box-shadow: none;
-      transform: translateY(-50%);
+      position: absolute; top: 50%; right: 10px; width: 36px; height: 36px;
+      display: inline-flex; align-items: center; justify-content: center; padding: 0;
+      border: 0; border-radius: 8px; background: transparent; color: var(--muted);
+      box-shadow: none; transform: translateY(-50%); cursor: pointer;
     }
-
-    .password-toggle:hover {
-      color: #bfdbfe;
-      background: rgba(96, 165, 250, 0.12);
-      transform: translateY(-50%);
-    }
-
-    .password-toggle:focus-visible {
-      outline: 2px solid #60a5fa;
-      outline-offset: 2px;
-    }
-
-    .password-toggle svg {
-      width: 20px;
-      height: 20px;
-      stroke: currentColor;
-      stroke-width: 2;
-      stroke-linecap: round;
-      stroke-linejoin: round;
-      fill: none;
-    }
-
-    .password-toggle .icon-eye-off {
-      display: none;
-    }
-
-    .password-toggle[aria-pressed="true"] .icon-eye {
-      display: none;
-    }
-
-    .password-toggle[aria-pressed="true"] .icon-eye-off {
-      display: block;
-    }
+    .password-toggle:hover { color: var(--accent-700); background: var(--brand-050); transform: translateY(-50%); }
+    .password-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .password-toggle svg { width: 20px; height: 20px; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+    .password-toggle .icon-eye-off { display: none; }
+    .password-toggle[aria-pressed="true"] .icon-eye { display: none; }
+    .password-toggle[aria-pressed="true"] .icon-eye-off { display: block; }
 
     button {
-      width: 100%;
-      border: 0;
-      border-radius: 14px;
-      background: linear-gradient(135deg, #2563eb, #3b82f6);
-      color: white;
-      padding: 14px 18px;
-      font-size: 15px;
-      font-weight: 700;
-      cursor: pointer;
-      transition:
-        transform 0.15s ease,
-        opacity 0.2s ease,
-        box-shadow 0.2s ease;
-      box-shadow: 0 14px 30px rgba(37, 99, 235, 0.35);
+      width: 100%; border: 0; border-radius: 10px;
+      background: var(--accent); color: #fff; padding: 13px 18px;
+      font-size: 15px; font-weight: 700; cursor: pointer;
+      transition: background .15s ease, transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 8px 20px rgba(44, 122, 144, 0.22);
     }
+    button:hover { background: var(--accent-600); transform: translateY(-1px); }
+    button:disabled { opacity: 0.7; cursor: wait; transform: none; }
 
-    button:hover {
-      transform: translateY(-1px);
-    }
-
-    button:disabled {
-      opacity: 0.7;
-      cursor: wait;
-      transform: none;
-    }
-
-    .status {
-      margin-top: 18px;
-      padding: 14px;
-      border-radius: 14px;
-      font-size: 14px;
-      line-height: 1.5;
-      display: none;
-      white-space: pre-wrap;
-    }
-
-    .status.error {
-      display: block;
-      background: rgba(239, 68, 68, 0.12);
-      border: 1px solid rgba(239, 68, 68, 0.28);
-      color: #fecaca;
-    }
-
-    .status.success {
-      display: block;
-      background: rgba(34, 197, 94, 0.12);
-      border: 1px solid rgba(34, 197, 94, 0.28);
-      color: #bbf7d0;
-    }
+    .status { margin-top: 18px; padding: 13px 14px; border-radius: 10px; font-size: 14px; line-height: 1.5; display: none; white-space: pre-wrap; }
+    .status.error { display: block; background: #fdeceb; border: 1px solid #f3c6c2; color: #b42318; }
+    .status.success { display: block; background: #e7f5ec; border: 1px solid #b6e0c5; color: #146c43; }
 
     @media (max-width: 520px) {
-      .auth-card {
-        padding: 24px;
-        border-radius: 20px;
-      }
-
-      h1 {
-        font-size: 28px;
-      }
+      .auth-card { padding: 24px; border-radius: 16px; }
+      h1 { font-size: 26px; }
     }
   </style>
 </head>
@@ -238,6 +119,8 @@
 <body>
   <div class="auth-shell">
     <div class="auth-card">
+
+      <img class="brand-logo" src="/static/trinzo-logo-dark.svg" alt="Trinzo">
 
       <div class="eyebrow">
         Secure login

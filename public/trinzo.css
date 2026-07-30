@@ -1,0 +1,303 @@
+/* ==========================================================================
+   Trinzo shared design system  ·  /static/trinzo.css
+   Light, brand-matched theme. Loaded LAST in each view so it overrides the
+   older inline dark styles by matching the same (copy-pasted) selectors.
+   Brand teal: #79b1c2 (mark) · accessible interactive teal: #2c7a90
+   ========================================================================== */
+
+:root {
+  color-scheme: light;
+
+  /* Brand */
+  --brand:        #79b1c2;   /* logo mark tint */
+  --brand-050:    #f0f6f8;
+  --brand-100:    #dcebf0;
+  --brand-200:    #c3dde5;
+
+  --accent:       #2c7a90;   /* interactive teal, AA on white */
+  --accent-600:   #24657a;
+  --accent-700:   #1c5061;
+
+  /* Surfaces */
+  --bg:           #eef2f6;
+  --panel:        #ffffff;
+  --panel2:       #ffffff;
+  --surface:      #ffffff;
+  --soft:         #f4f7f9;
+  --soft-2:       #e9f1f4;
+  --border:       #d9e1e8;
+  --border-strong:#c3ced8;
+
+  /* Text */
+  --text:         #17222c;
+  --muted:        #596875;
+  --heading:      #142b34;
+
+  /* Status */
+  --ok-text:#146c43;   --ok-bg:#e7f5ec;   --ok-border:#b6e0c5;
+  --warn-text:#8a5300; --warn-bg:#fdf2da; --warn-border:#f2d89a;
+  --danger-text:#b42318; --danger-bg:#fdeceb; --danger-border:#f3c6c2;
+  --info-text:#1c5061; --info-bg:#e6f1f4; --info-border:#c3dde5;
+
+  /* Effects */
+  --radius:12px;
+  --radius-sm:8px;
+  --radius-pill:999px;
+  --shadow-sm:0 1px 2px rgba(16,24,40,.06);
+  --shadow:0 1px 3px rgba(16,24,40,.10), 0 1px 2px rgba(16,24,40,.06);
+  --shadow-lg:0 10px 30px rgba(20,43,52,.12);
+
+  /* legacy aliases kept so old var() references recolor cleanly */
+  --warn:#b8860b;
+}
+
+/* ------------------------------------------------------------------ base -- */
+html { -webkit-text-size-adjust:100%; }
+body {
+  margin:0;
+  padding:1.25rem;
+  min-height:100vh;
+  background:var(--bg) !important;
+  color:var(--text);
+  font-family:Roboto, "Segoe UI", system-ui, Arial, sans-serif;
+  font-size:16px;
+  line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+}
+.container { max-width:1180px; margin:0 auto; padding:1.25rem 0 3rem; }
+
+h1, h2, h3, h4 { color:var(--heading); font-weight:700; line-height:1.2; }
+h1 { margin:.2rem 0 .5rem; font-size:clamp(1.6rem, 3.4vw, 2.15rem); letter-spacing:-.01em; }
+h2 { margin:.15rem 0 .5rem; font-size:1.25rem; }
+h3 { font-size:1.05rem; }
+p  { margin:.4rem 0; }
+small, .muted, .intro, .quiet { color:var(--muted); }
+a { color:var(--accent); text-decoration:none; }
+a:hover { color:var(--accent-700); text-decoration:underline; }
+
+.eyebrow {
+  margin:0 0 .5rem; color:var(--accent); font-weight:700;
+  letter-spacing:.08em; text-transform:uppercase; font-size:.72rem;
+}
+
+/* ---------------------------------------------------------- nav / header -- */
+.nav {
+  display:flex; gap:.4rem; flex-wrap:wrap; align-items:center;
+  margin-bottom:1.25rem; padding:.55rem .75rem;
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius); box-shadow:var(--shadow-sm);
+}
+.nav .brand { display:inline-flex; align-items:center; margin-right:auto; padding:.15rem .35rem; }
+.nav .brand img { height:26px; width:auto; display:block; }
+.nav a:not(.brand) {
+  color:var(--muted); font-weight:600; font-size:.92rem;
+  padding:.42rem .7rem; border-radius:var(--radius-sm); text-decoration:none;
+  border:1px solid transparent; transition:background .12s, color .12s;
+}
+.nav a:not(.brand):hover { color:var(--accent-700); background:var(--brand-050); text-decoration:none; }
+.nav a[aria-current="page"] { color:var(--accent-700); background:var(--brand-100); border-color:var(--brand-200); }
+
+/* --------------------------------------------------------- panels/cards -- */
+.panel, .card, .project-card {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius); box-shadow:var(--shadow);
+  color:var(--text);
+}
+.panel { padding:1.25rem; margin-bottom:1.1rem; }
+.card  { padding:1.1rem; }
+.hero, .panel.hero { border-color:var(--border); border-top:3px solid var(--brand); }
+.card.primary  { border-top:3px solid var(--accent); }
+.card.warning  { border-top:3px solid var(--warn-border); }
+.grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:1rem; }
+
+/* ---------------------------------------------------------------- buttons -- */
+.button, button.button, .btn, a.button {
+  display:inline-flex; align-items:center; justify-content:center; gap:.4rem;
+  background:var(--accent); color:#fff !important; border:1px solid var(--accent);
+  border-radius:var(--radius-sm); padding:.6rem .95rem; font-weight:600;
+  font-size:.94rem; text-decoration:none; cursor:pointer; line-height:1.1;
+  transition:background .12s, border-color .12s, box-shadow .12s;
+}
+.button:hover, .btn:hover, a.button:hover { background:var(--accent-600); border-color:var(--accent-600); color:#fff !important; text-decoration:none; }
+.button:focus-visible, button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline:2px solid var(--accent); outline-offset:2px;
+}
+.button.secondary, .button.ghost, button.secondary, a.button.secondary {
+  background:var(--surface); color:var(--accent-700) !important;
+  border:1px solid var(--border-strong);
+}
+.button.secondary:hover, button.secondary:hover { background:var(--brand-050); color:var(--accent-700) !important; }
+.button.danger, button.danger { background:var(--danger-text); border-color:var(--danger-text); color:#fff !important; }
+.button:disabled, button:disabled { opacity:.55; cursor:not-allowed; }
+
+/* Bare <button> action elements (no component class) — the old inline sheets
+   styled every button as the teal action button, so match that intent in brand
+   colours. Elements with their own component class (.stage-tab, .password-toggle,
+   .accordion, etc.) keep that class's styling via higher specificity. */
+button:not([class]), input[type=submit], input[type=button] {
+  background:var(--accent); color:#fff; border:1px solid var(--accent);
+  border-radius:var(--radius-sm); padding:.6rem .95rem; font-weight:600;
+  font-size:.94rem; cursor:pointer; line-height:1.1;
+}
+button:not([class]):hover { background:var(--accent-600); border-color:var(--accent-600); }
+/* Beat common parent-scoped button rules (specificity 0,1,1 → shared wins on order) */
+.toolbar button, .row-actions button, .actions button, .bulk-actions button, .project-bar button {
+  background:var(--accent); color:#fff; border:1px solid var(--accent); border-radius:var(--radius-sm);
+}
+.toolbar button.secondary, .row-actions button.secondary, .actions button.secondary,
+.toolbar .button.secondary, .row-actions .button.secondary, .actions .button.secondary {
+  background:var(--surface); color:var(--accent-700); border:1px solid var(--border-strong);
+}
+
+/* ------------------------------------------------------------------ forms -- */
+input[type=text], input[type=email], input[type=password], input[type=search],
+input[type=number], input[type=url], input:not([type]), select, textarea {
+  font-family:inherit; font-size:.95rem; color:var(--text);
+  background:var(--surface); border:1px solid var(--border-strong);
+  border-radius:var(--radius-sm); padding:.55rem .65rem; width:100%;
+}
+textarea { line-height:1.5; }
+input::placeholder, textarea::placeholder { color:#9aa8b4; }
+input:focus, select:focus, textarea:focus { border-color:var(--accent); }
+label, .label { color:var(--heading); font-weight:600; font-size:.9rem; }
+.form-grid { display:grid; gap:.75rem; }
+
+/* ----------------------------------------------------------------- tables -- */
+table, .minutes-table, .schema-table, .schema-subtable, .profile-editor-table, .inline-edit-table {
+  width:100%; border-collapse:collapse; background:var(--surface);
+  font-size:.92rem; color:var(--text);
+}
+.table-scroll, .minutes-table-wrap, .result-table-section {
+  overflow-x:auto; border:1px solid var(--border); border-radius:var(--radius);
+  box-shadow:var(--shadow-sm); background:var(--surface);
+}
+thead th, table th {
+  text-align:left; font-weight:700; color:var(--muted);
+  font-size:.74rem; letter-spacing:.04em; text-transform:uppercase;
+  background:var(--soft); padding:.6rem .7rem;
+  border-bottom:2px solid var(--border-strong); white-space:nowrap;
+  position:sticky; top:0; z-index:1;
+}
+tbody td, table td {
+  padding:.6rem .7rem; border-bottom:1px solid var(--border);
+  vertical-align:top;
+}
+tbody tr:nth-child(even) td { background:#fafcfd; }
+tbody tr:hover td { background:var(--brand-050); }
+tbody tr:last-child td { border-bottom:none; }
+
+/* ---------------------------------------------------- badges / statuses -- */
+.pill, .badge, .status-pill, .status {
+  display:inline-flex; align-items:center; gap:.35rem; width:max-content;
+  border:1px solid var(--border); border-radius:var(--radius-pill);
+  padding:.2rem .6rem; font-size:.78rem; font-weight:700;
+  background:var(--soft); color:var(--muted); line-height:1.4;
+}
+.pill.active, .badge.active { color:var(--accent-700); background:var(--brand-100); border-color:var(--brand-200); }
+.pill.legacy, .badge.legacy { color:var(--warn-text); background:var(--warn-bg); border-color:var(--warn-border); }
+
+.success, .status.success, .badge.success, .status-pill.success,
+.ok, .status.ok       { color:var(--ok-text) !important;   background:var(--ok-bg) !important;   border-color:var(--ok-border) !important; }
+.warning, .status.warning, .badge.warning, .status-pill.warning,
+.warn, .status.warn   { color:var(--warn-text) !important; background:var(--warn-bg) !important; border-color:var(--warn-border) !important; }
+.error, .status.error, .badge.error, .status-pill.error,
+.danger, .status.danger { color:var(--danger-text) !important; background:var(--danger-bg) !important; border-color:var(--danger-border) !important; }
+.unknown, .status.unknown { color:var(--muted) !important; background:var(--soft) !important; border-color:var(--border) !important; }
+
+.message, .safeguard-banner, .autosave-status {
+  border:1px solid var(--info-border); background:var(--info-bg);
+  color:var(--info-text); border-radius:var(--radius-sm); padding:.7rem .85rem;
+}
+.message.success { border-color:var(--ok-border); background:var(--ok-bg); color:var(--ok-text); }
+.message.error   { border-color:var(--danger-border); background:var(--danger-bg); color:var(--danger-text); }
+
+/* ------------------------------------------------------------------ tabs -- */
+.stage-tabs, .tabs { display:flex; flex-wrap:wrap; gap:.35rem; border-bottom:1px solid var(--border); }
+.stage-tab, .tab {
+  background:transparent; border:1px solid transparent; border-bottom:none;
+  color:var(--muted); font-weight:600; padding:.55rem .9rem; cursor:pointer;
+  border-radius:var(--radius-sm) var(--radius-sm) 0 0;
+}
+.stage-tab:hover, .tab:hover { color:var(--accent-700); background:var(--brand-050); }
+.stage-tab.active, .stage-tab[aria-selected="true"], .tab.active {
+  color:var(--accent-700); background:var(--surface);
+  border-color:var(--border); border-bottom:2px solid var(--accent); margin-bottom:-1px;
+}
+
+/* -------------------------------------------------------- bars / toolbars -- */
+.project-bar, .toolbar, .bulk-actions, .actions, .supporting-tools {
+  display:flex; flex-wrap:wrap; gap:.55rem; align-items:center;
+}
+.project-bar, .toolbar {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius); padding:.6rem .8rem; box-shadow:var(--shadow-sm);
+}
+
+/* ---------------------------------------------------------------- modals -- */
+.row-edit-modal-backdrop, .feedback-modal, .modal-backdrop {
+  background:rgba(20,43,52,.45);
+}
+.row-edit-modal, .feedback-modal .modal, .modal {
+  background:var(--surface); color:var(--text);
+  border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow-lg);
+}
+
+/* --------------------------------------------------------------- utility -- */
+.hidden { display:none !important; }
+hr { border:none; border-top:1px solid var(--border); margin:1rem 0; }
+code, pre { background:var(--soft); border:1px solid var(--border); border-radius:6px; }
+code { padding:.1rem .35rem; font-size:.88em; }
+pre  { padding:.75rem; overflow:auto; }
+::selection { background:var(--brand-200); }
+
+/* ------------------------------------ light overrides for dark long-tail --
+   These component classes carried hardcoded dark backgrounds in the old inline
+   sheets, with class-scoped specificity (0,1,1) that beats generic rules. We
+   match that specificity and win on load order (this sheet loads last). */
+input[type=file] { background:var(--surface); color:var(--text); border:1px solid var(--border-strong); border-radius:var(--radius-sm); padding:.55rem .65rem; width:100%; }
+input[type=file]::file-selector-button {
+  background:var(--brand-050); color:var(--accent-700); border:1px solid var(--border-strong);
+  border-radius:6px; padding:.35rem .7rem; margin-right:.6rem; font-weight:600; cursor:pointer;
+}
+
+.schema-table, .schema-subtable, .profile-editor-table, .inline-edit-table,
+.summary-item, .progress-card, .accordion details {
+  background:var(--surface) !important; color:var(--text);
+  border:1px solid var(--border); border-radius:var(--radius);
+}
+.schema-table th, .schema-subtable th, .profile-editor-table th {
+  background:var(--soft) !important; color:var(--muted);
+}
+.schema-table td, .schema-subtable td, .profile-editor-table td { background:var(--surface) !important; }
+.schema-table input[type=text], .schema-table textarea,
+.schema-subtable input[type=text], .schema-subtable textarea,
+.schema-subtable textarea.action-field,
+.inline-edit-table input, .inline-edit-table textarea {
+  background:var(--surface) !important; color:var(--text) !important; border:1px solid var(--border-strong) !important;
+}
+
+.progress-track { background:var(--soft-2) !important; border:1px solid var(--border); }
+.progress-step { background:var(--soft) !important; color:var(--muted) !important; border:1px solid var(--border) !important; }
+.progress-step.active { background:var(--brand-100) !important; color:var(--accent-700) !important; border-color:var(--brand-200) !important; }
+
+.message { background:var(--info-bg) !important; border:1px solid var(--info-border) !important; color:var(--info-text) !important; }
+.message.error   { background:var(--danger-bg) !important; border-color:var(--danger-border) !important; color:var(--danger-text) !important; }
+.message.success { background:var(--ok-bg) !important; border-color:var(--ok-border) !important; color:var(--ok-text) !important; }
+.message.warning { background:var(--warn-bg) !important; border-color:var(--warn-border) !important; color:var(--warn-text) !important; }
+
+.safeguard-banner { background:var(--brand-050) !important; border:1px solid var(--brand-200) !important; color:var(--text) !important; }
+.safeguard-banner.quiet   { background:var(--soft) !important; border-color:var(--border) !important; color:var(--muted) !important; }
+.safeguard-banner.warning { background:var(--warn-bg) !important; border-color:var(--warn-border) !important; color:var(--warn-text) !important; }
+.safeguard-banner.success { background:var(--ok-bg) !important; border-color:var(--ok-border) !important; color:var(--ok-text) !important; }
+
+pre { background:var(--soft) !important; color:var(--text); border:1px solid var(--border); }
+.feedback-modal, .row-edit-modal { background:var(--surface) !important; color:var(--text); }
+
+@media (max-width:680px) {
+  body { padding:.75rem; }
+  .container { padding-top:.5rem; }
+  .nav { padding:.5rem; }
+  .nav .brand img { height:22px; }
+  .button { width:100%; }
+  .actions .button { width:auto; }
+}
