@@ -261,7 +261,8 @@ input[type=file]::file-selector-button {
 }
 
 .schema-table, .schema-subtable, .profile-editor-table, .inline-edit-table,
-.summary-item, .progress-card, .accordion details {
+.summary-item, .progress-card, .accordion details,
+.at-glance-strip, .section-block, .item {
   background:var(--surface) !important; color:var(--text);
   border:1px solid var(--border); border-radius:var(--radius);
 }
@@ -371,6 +372,56 @@ input[type=file]::file-selector-button {
 .agenda-step {
   background:var(--surface) !important;
   border:1px solid var(--border) !important;
+  color:var(--text) !important;
+}
+.at-glance-strip {
+  align-items:flex-start !important;
+  box-shadow:var(--shadow-sm) !important;
+  gap:.85rem !important;
+}
+.glance-primary {
+  flex:1 1 20rem;
+  min-width:min(100%, 18rem) !important;
+}
+.glance-primary .label,
+.summary-label {
+  color:var(--muted) !important;
+}
+.glance-primary strong,
+.summary-value,
+.value {
+  color:var(--heading) !important;
+}
+.glance-metrics {
+  flex:1 1 18rem;
+  justify-content:flex-start !important;
+}
+.glance-metrics span,
+.project-bar .meta .badge,
+.project-card .pc-meta .badge {
+  background:var(--brand-050) !important;
+  border:1px solid var(--brand-200) !important;
+  color:var(--accent-700) !important;
+}
+.glance-metrics strong {
+  color:var(--accent-700) !important;
+}
+.section-block,
+.item,
+.card {
+  background:var(--surface) !important;
+  color:var(--text) !important;
+  border-color:var(--border) !important;
+}
+.section-block .muted,
+.card .muted,
+.item .muted {
+  color:var(--muted) !important;
+}
+.section-block li,
+.card li,
+.item li,
+.evidence {
   color:var(--text) !important;
 }
 .ask-help,
