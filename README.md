@@ -55,6 +55,21 @@ Retrieval helper: `python3 scripts/project_knowledge_retrieval.py --project-id <
 
 Current hardening priorities live in `docs/project-update-robustness-todo.md`: keep the redesigned-workspace tests honest, fix the now-strict project-update golden eval failures, keep the project-memory smoke path repeatable, and continue parameterising old `runPsql` compatibility paths in small slices.
 
+## Frontend styling
+
+Shared, brand-matched UI styling lives in `public/trinzo.css` (served at
+`/static/trinzo.css`) with progressive-enhancement JS in `public/trinzo.js`
+(brand logo in the nav + active-page highlight). Each view links these near the
+end of its `<head>` so the shared sheet loads last and themes the copy-pasted
+component classes (`.nav`, `.panel`, `.card`, `.button`, tables, `.status`,
+`.stage-tab`, etc.) consistently. The palette is light with the Trinzo brand
+teal (`#79b1c2` mark, `#2c7a90` for accessible interactive elements); logo assets
+are `public/trinzo-logo.svg` (light-on-dark) and `public/trinzo-logo-dark.svg`
+(dark wordmark for light backgrounds).
+
+Prefer adding to `public/trinzo.css` over new inline `<style>` theme blocks so
+pages stay visually consistent.
+
 ## Power Automate requirement
 The finalisation endpoint posts approved meeting minutes JSON directly to `POWER_AUTOMATE_WEBHOOK_URL` (HTTP trigger flow).
 
