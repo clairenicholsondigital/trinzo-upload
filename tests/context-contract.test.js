@@ -142,6 +142,9 @@ test('mobile project profile row actions stay compact and distinct', () => {
   assert.ok(sharedCssSource.includes('.profile-editor-table .actions [data-expand-edit-row]'));
   assert.ok(sharedCssSource.includes('.profile-editor-table .actions button.danger'));
   assert.ok(sharedCssSource.includes('.profile-editor-table { min-width:980px !important; }'));
+  assert.ok(projectStageInsightsSource.includes('suggested-risk-actions'));
+  assert.ok(projectStageInsightsSource.includes('suggested-risk-table'));
+  assert.ok(sharedCssSource.includes('.profile-editor-table .suggested-risk-actions'));
 });
 
 test('supporting tools start collapsed on page load', () => {

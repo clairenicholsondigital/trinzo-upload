@@ -491,6 +491,22 @@ input[type=file]::file-selector-button {
   border-color:var(--danger-text) !important;
   color:#fff !important;
 }
+.profile-editor-table.suggested-risk-table th:last-child,
+.profile-editor-table.suggested-risk-table td:last-child {
+  width:210px !important;
+}
+.profile-editor-table .suggested-risk-actions {
+  grid-template-columns:1fr !important;
+}
+.profile-editor-table .suggested-risk-actions button {
+  min-height:2.2rem !important;
+  white-space:normal !important;
+}
+.profile-editor-table .suggested-risk-actions [data-add-suggested-risk] {
+  font-size:.86rem !important;
+  overflow-wrap:anywhere;
+  padding:.48rem .65rem !important;
+}
 .schema-table input[type=text], .schema-table textarea,
 .schema-subtable input[type=text], .schema-subtable textarea,
 .schema-subtable textarea.action-field,
@@ -781,9 +797,16 @@ pre { background:var(--soft) !important; color:var(--text); border:1px solid var
   .profile-editor-table td:nth-child(6) { width:92px !important; }
   .profile-editor-table th:last-child,
   .profile-editor-table td:last-child { width:132px !important; }
+  .profile-editor-table.suggested-risk-table th:last-child,
+  .profile-editor-table.suggested-risk-table td:last-child { width:196px !important; }
   .profile-editor-table .actions button {
     font-size:.78rem !important;
     min-height:1.9rem !important;
     padding:.36rem .42rem !important;
+  }
+  .profile-editor-table .suggested-risk-actions [data-add-suggested-risk] {
+    font-size:.82rem !important;
+    line-height:1.2 !important;
+    min-height:2.35rem !important;
   }
 }

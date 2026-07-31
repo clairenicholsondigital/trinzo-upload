@@ -45,7 +45,7 @@
         <td><textarea data-field="description">${inputValue(risk.description || '')}</textarea></td>
         <td><textarea data-field="mitigation">${inputValue(risk.suggestedMitigation || risk.mitigation || '')}</textarea></td>
         <td><a href="/project-update-test/reports/${escapeHtml(risk.reportId)}">Report ${escapeHtml(risk.reportId)}</a><br /><span class="muted">${escapeHtml(friendlyLabel(risk.reviewStatus))}${risk.confidence ? ` · ${escapeHtml(risk.confidence)} confidence` : ''}</span></td>
-        <td class="actions"><button type="button" class="subtle" data-expand-edit-row>Expand</button><button type="button" data-add-suggested-risk>Add to monitored risks</button></td>
+        <td class="actions suggested-risk-actions"><button type="button" class="subtle" data-expand-edit-row>Expand</button><button type="button" data-add-suggested-risk>Add to monitored risks</button></td>
       </tr>
     `).join('') || '<tr><td colspan="6"><strong>No suggested follow-up risks yet.</strong><br />New risks found in draft reports will appear here for review.</td></tr>';
   }
@@ -247,7 +247,7 @@
       <section class="panel">
         <h2>Suggested follow-up risks</h2>
         <p class="intro">These are risks suggested from saved reports. Edit the wording here, then add the useful ones to the monitored project profile above.</p>
-        <div class="table-scroll profile-editor-scroll"><table class="profile-editor-table"><thead><tr><th>Risk</th><th>Category</th><th>Description</th><th>Mitigation</th><th>Source</th><th>Actions</th></tr></thead><tbody>
+        <div class="table-scroll profile-editor-scroll"><table class="profile-editor-table suggested-risk-table"><thead><tr><th>Risk</th><th>Category</th><th>Description</th><th>Mitigation</th><th>Source</th><th>Actions</th></tr></thead><tbody>
           ${renderSuggestedRiskRows(riskSuggestions)}
         </tbody></table></div>
       </section>
