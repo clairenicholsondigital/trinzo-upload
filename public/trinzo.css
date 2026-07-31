@@ -511,6 +511,39 @@ button.danger:hover,
 .ask-panel-standalone .ask-layout {
   grid-template-columns:minmax(0, 1fr) minmax(240px, 320px) !important;
 }
+.ask-panel-standalone,
+.ask-panel-standalone * {
+  min-width:0;
+}
+.ask-panel-standalone .badges,
+.ask-panel-standalone .chunk-meta {
+  display:flex;
+  flex-wrap:wrap;
+  gap:.45rem;
+  max-width:100%;
+}
+.ask-panel-standalone .status,
+.ask-panel-standalone .badge {
+  max-width:100%;
+  width:fit-content;
+  white-space:normal;
+  overflow-wrap:anywhere;
+}
+.ask-panel-standalone .ask-help,
+.ask-panel-standalone .ask-answer,
+.ask-panel-standalone .chunk-card,
+.ask-panel-standalone .empty-state {
+  max-width:100%;
+  overflow:hidden;
+}
+.ask-panel-standalone .ask-help ul {
+  padding-left:1.2rem;
+}
+.ask-panel-standalone .ask-help li,
+.ask-panel-standalone .ask-answer p,
+.ask-panel-standalone .chunk-text {
+  overflow-wrap:anywhere;
+}
 .ask-panel-standalone #knowledgeAskQuestion {
   min-height:12rem !important;
 }
@@ -1282,9 +1315,21 @@ pre { background:var(--soft) !important; color:var(--text); border:1px solid var
   .ask-panel-standalone .ask-layout {
     display:grid !important;
     grid-template-columns:1fr !important;
+    gap:.85rem !important;
   }
   .ask-panel-standalone .ask-help {
     order:2 !important;
+    padding:1rem !important;
+  }
+  .ask-panel-standalone .badges {
+    gap:.4rem !important;
+    margin:.75rem 0 !important;
+  }
+  .ask-panel-standalone .status {
+    margin:.8rem 0 0 !important;
+  }
+  .ask-panel-standalone .badge {
+    line-height:1.25 !important;
   }
   .ask-panel-standalone #knowledgeAskQuestion {
     min-height:9rem !important;

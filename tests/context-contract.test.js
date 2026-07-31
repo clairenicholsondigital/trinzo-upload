@@ -249,6 +249,10 @@ test('project bar behaves like scoped project navigation', () => {
   assert.ok(sharedCssSource.includes('color:var(--heading) !important'));
   assert.ok(sharedCssSource.includes('.project-bar .project-summary'));
   assert.ok(sharedCssSource.includes('.ask-panel-standalone .ask-layout'));
+  assert.ok(sharedCssSource.includes('.ask-panel-standalone .badges'));
+  assert.ok(sharedCssSource.includes('.ask-panel-standalone .status'));
+  assert.ok(sharedCssSource.includes('overflow-wrap:anywhere'));
+  assert.ok(sharedCssSource.includes('width:fit-content'));
   assert.ok(sharedCssSource.includes('grid-template-columns:1fr !important'));
   assert.ok(projectStageInsightsSource.includes('id="ask-this-project"'));
   assert.ok(projectStageInsightsSource.includes('window.ProjectStages.ask'));
