@@ -1086,7 +1086,6 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
                 <td data-label="Runtime">${escapeHtml(runtime(job))}</td>
                 <td data-label="Attempts">${escapeHtml(job.attempts || 0)} / ${escapeHtml(job.maxAttempts || 0)}</td>
                 <td data-label="Actions" class="row-actions">
-                  <a class="button secondary" href="/meeting-minutes-final/jobs/${encodeURIComponent(job.jobId)}">Open</a>
                   ${job.status === 'completed' ? `<a class="button" target="_blank" rel="noopener" href="/meeting-minutes-final/jobs/${encodeURIComponent(job.jobId)}/result">Open result</a>` : ''}
                   ${job.status === 'failed' ? `<button class="secondary" data-retry="${escapeHtml(job.jobId)}" type="button">Retry</button>` : ''}
                   ${job.status === 'queued' || job.status === 'running' ? `<button class="danger" data-cancel="${escapeHtml(job.jobId)}" type="button">Cancel</button>` : ''}
