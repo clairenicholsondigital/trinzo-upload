@@ -12,12 +12,9 @@
         <p class="intro">Use the agenda below, then paste the meeting notes or transcript to create a reviewed draft report.</p>
       </section>
       <section class="panel meeting-agenda-panel">
-        <div class="section-heading-row">
-          <div>
-            <h2>Suggested project update agenda</h2>
-            <p class="intro">Automatically built from the monitored milestones and risks in this project profile. Use it to guide the meeting, then paste the notes/transcript below.</p>
-          </div>
-          <button type="button" data-open-stage="insights">Edit project profile</button>
+        <div>
+          <h2>Suggested project update agenda</h2>
+          <p class="intro">Automatically built from the monitored milestones and risks in this project profile. Use it to guide the meeting, then paste the notes/transcript below.</p>
         </div>
         <div id="meetingAgenda" class="empty-state">Building agenda from project profile…</div>
       </section>

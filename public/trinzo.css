@@ -145,6 +145,7 @@ button:not([class]):hover { background:var(--accent-600); border-color:var(--acc
   background:var(--accent); color:#fff; border:1px solid var(--accent); border-radius:var(--radius-sm);
 }
 .toolbar button.secondary, .row-actions button.secondary, .actions button.secondary,
+.project-bar button.secondary,
 .toolbar .button.secondary, .row-actions .button.secondary, .actions .button.secondary {
   background:var(--surface); color:var(--accent-700); border:1px solid var(--border-strong);
 }

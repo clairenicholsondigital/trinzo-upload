@@ -155,7 +155,8 @@
           </span>
         </div>
         <div class="bar-actions">
-          <button id="switchProjectBtn" type="button">Switch project</button>
+          <button id="switchProjectBtn" class="secondary" type="button">Switch project</button>
+          <button id="openProjectProfileBtn" class="primary" type="button">Open project profile</button>
         </div>
       </section>
       ${contextWarning}
@@ -284,10 +285,13 @@
 
   function attachProjectBarActions(project) {
     const switchBtn = document.getElementById('switchProjectBtn');
-    if (!switchBtn) return;
+    const profileBtn = document.getElementById('openProjectProfileBtn');
 
-    switchBtn.addEventListener('click', () => {
+    if (switchBtn) switchBtn.addEventListener('click', () => {
       renderChooser(PW.getCachedProjects());
+    });
+    if (profileBtn) profileBtn.addEventListener('click', () => {
+      goToStage('insights', true);
     });
   }
 
@@ -433,15 +437,6 @@
     });
   }
 
-  function renderCollapsedProjectSwitcher(project) {
-    return `
-      <section class="panel project-switcher-collapsed">
-        <p><strong>Current project:</strong> ${escapeHtml(project.projectName || `Project ${project.projectId}`)}</p>
-        <button id="showProjectSwitcherBtn" type="button">Change project</button>
-      </section>
-    `;
-  }
-
   function renderWorkspace() {
     const project = PW.getProject(PW.getSelectedProjectId());
     if (!project) {
@@ -453,17 +448,10 @@
     const activeKey = currentStageKey();
     root.innerHTML = `
       ${renderProjectBar(project)}
-      <div id="projectSwitcherSlot">${renderCollapsedProjectSwitcher(project)}</div>
       ${renderStageTabs(activeKey)}
       <div id="stagePanel"></div>
     `;
     attachProjectBarActions(project);
-    const showSwitcher = document.getElementById('showProjectSwitcherBtn');
-    if (showSwitcher) showSwitcher.addEventListener('click', () => {
-      const slot = document.getElementById('projectSwitcherSlot');
-      slot.innerHTML = renderProjectSwitcher(project);
-      attachProjectSwitcher(project);
-    });
     root.querySelectorAll('[data-stage]').forEach((tab) => {
       tab.addEventListener('click', () => goToStage(tab.getAttribute('data-stage'), true));
     });
