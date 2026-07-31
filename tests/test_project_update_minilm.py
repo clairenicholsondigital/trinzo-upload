@@ -379,7 +379,7 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertIn("Save project settings", settings_stage)
         self.assertIn("window.ProjectStages.settings", settings_stage)
         self.assertNotIn("renderProjectSettings", insights_stage)
-        self.assertIn('href="/project-update-test?stage=settings"', insights_stage)
+        self.assertNotIn('href="/project-update-test?stage=settings"', insights_stage)
         self.assertIn("Export project overview", insights_stage)
         self.assertIn("Danger zone", settings_stage)
         self.assertIn("exportProjectOverview", workspace_shell)

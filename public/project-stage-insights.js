@@ -151,7 +151,6 @@
             <h1>Insights</h1>
             <p class="intro">Current project position, profile and recent reports.</p>
           </div>
-          <a class="button secondary" href="/project-update-test?stage=settings">Project settings</a>
         </div>
         <p id="contextStatus" class="status"></p>
         ${context.found ? '' : '<p class="status">No project history yet. Add Setup context, then create and approve the first draft report.</p>'}
