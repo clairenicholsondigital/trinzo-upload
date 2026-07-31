@@ -96,6 +96,36 @@ a:hover { color:var(--accent-700); text-decoration:underline; }
 }
 .nav a:not(.brand):hover { color:var(--accent-700); background:var(--brand-050); text-decoration:none; }
 .nav a[aria-current="page"] { color:var(--accent-700); background:var(--brand-100); border-color:var(--brand-200); }
+.nav-menu { position:relative; }
+.nav-menu summary {
+  list-style:none; cursor:pointer; color:var(--muted); font-weight:600; font-size:.92rem;
+  padding:.42rem .7rem; border-radius:var(--radius-sm); border:1px solid transparent;
+}
+.nav-menu summary::-webkit-details-marker { display:none; }
+.nav-menu summary::after { content:"▾"; margin-left:.4rem; font-size:.76rem; }
+.nav-menu summary:hover,
+.nav-menu[open] summary,
+.nav-menu[aria-current="page"] summary {
+  color:var(--accent-700); background:var(--brand-050); text-decoration:none;
+}
+.nav-menu[aria-current="page"] summary { background:var(--brand-100); border-color:var(--brand-200); }
+.nav-menu-items {
+  position:absolute; top:calc(100% + .35rem); right:0; z-index:20;
+  display:grid; min-width:18rem; padding:.35rem; background:var(--surface);
+  border:1px solid var(--border); border-radius:var(--radius-sm); box-shadow:var(--shadow-lg);
+}
+.nav .nav-menu-items a {
+  display:block; color:var(--muted); padding:.55rem .65rem; border-radius:6px;
+  font-size:.9rem; font-weight:600; text-decoration:none;
+}
+.nav .nav-menu-items a:hover,
+.nav .nav-menu-items a[aria-current="page"] {
+  color:var(--accent-700); background:var(--brand-050); text-decoration:none;
+}
+@media (max-width:680px) {
+  .nav-menu, .nav-menu-items { width:100%; }
+  .nav-menu-items { position:static; margin-top:.35rem; min-width:0; box-shadow:none; }
+}
 
 /* --------------------------------------------------------- panels/cards -- */
 .panel, .card, .project-card {

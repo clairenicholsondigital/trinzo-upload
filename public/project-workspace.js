@@ -25,6 +25,10 @@
     return STAGE_KEYS.includes(requested) ? requested : 'process';
   }
 
+  function requestedProjectName() {
+    return (new URLSearchParams(location.search).get('projectName') || '').trim().toLowerCase();
+  }
+
   function setStageInUrl(stageKey, replace) {
     const params = new URLSearchParams(location.search);
     params.set('stage', stageKey);
@@ -474,6 +478,17 @@
     } catch (error) {
       root.innerHTML = `<section class="panel"><h1>Project workspace</h1><p class="status error">${escapeHtml(error.message || 'Could not load projects.')}</p></section>`;
       return;
+    }
+    const params = new URLSearchParams(location.search);
+    if (params.get('choose') === 'project') {
+      PW.clearSelectedProject();
+      renderChooser(PW.getCachedProjects());
+      return;
+    }
+    const namedProject = requestedProjectName();
+    if (namedProject) {
+      const match = PW.getCachedProjects().find((project) => String(project.projectName || '').trim().toLowerCase() === namedProject);
+      if (match) PW.setSelectedProjectId(match.projectId);
     }
     const selected = PW.getProject(PW.getSelectedProjectId());
     if (selected) renderWorkspace();
