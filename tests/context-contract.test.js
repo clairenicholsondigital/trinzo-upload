@@ -135,3 +135,11 @@ test('light theme keeps project health trend colours readable', () => {
   assert.ok(sharedCssSource.includes('color:var(--ok-text) !important'));
   assert.ok(sharedCssSource.includes('font-weight:700 !important'));
 });
+
+test('mobile project profile row actions stay compact and distinct', () => {
+  assert.ok(sharedCssSource.includes('.profile-editor-table .actions'));
+  assert.ok(sharedCssSource.includes('grid-template-columns:repeat(2, minmax(0, 1fr)) !important'));
+  assert.ok(sharedCssSource.includes('.profile-editor-table .actions [data-expand-edit-row]'));
+  assert.ok(sharedCssSource.includes('.profile-editor-table .actions button.danger'));
+  assert.ok(sharedCssSource.includes('.profile-editor-table { min-width:980px !important; }'));
+});

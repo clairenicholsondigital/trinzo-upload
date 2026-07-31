@@ -457,6 +457,40 @@ input[type=file]::file-selector-button {
   background:var(--soft) !important; color:var(--muted);
 }
 .schema-table td, .schema-subtable td, .profile-editor-table td { background:var(--surface) !important; }
+.profile-editor-table .actions {
+  display:grid !important;
+  grid-template-columns:repeat(2, minmax(0, 1fr)) !important;
+  gap:.35rem !important;
+  margin:0 !important;
+  min-width:0;
+}
+.profile-editor-table .actions button {
+  align-items:center;
+  border-radius:7px !important;
+  display:inline-flex;
+  font-size:.84rem !important;
+  justify-content:center;
+  line-height:1.1 !important;
+  min-height:2.05rem !important;
+  padding:.42rem .5rem !important;
+  width:100%;
+}
+.profile-editor-table .actions [data-expand-edit-row] {
+  background:var(--surface) !important;
+  border:1px solid var(--border-strong) !important;
+  color:var(--accent-700) !important;
+  grid-column:1 / -1;
+}
+.profile-editor-table .actions button.danger {
+  background:var(--danger-bg) !important;
+  border:1px solid var(--danger-border) !important;
+  color:var(--danger-text) !important;
+}
+.profile-editor-table .actions button.danger:hover {
+  background:var(--danger-text) !important;
+  border-color:var(--danger-text) !important;
+  color:#fff !important;
+}
 .schema-table input[type=text], .schema-table textarea,
 .schema-subtable input[type=text], .schema-subtable textarea,
 .schema-subtable textarea.action-field,
@@ -742,4 +776,14 @@ pre { background:var(--soft) !important; color:var(--text); border:1px solid var
   .actions .button { width:auto; }
   .supporting-tools .stage-tabs { display:grid !important; grid-template-columns:1fr !important; }
   .supporting-tools .stage-tab { width:100% !important; }
+  .profile-editor-table { min-width:980px !important; }
+  .profile-editor-table th:nth-child(6),
+  .profile-editor-table td:nth-child(6) { width:92px !important; }
+  .profile-editor-table th:last-child,
+  .profile-editor-table td:last-child { width:132px !important; }
+  .profile-editor-table .actions button {
+    font-size:.78rem !important;
+    min-height:1.9rem !important;
+    padding:.36rem .42rem !important;
+  }
 }
