@@ -1153,13 +1153,13 @@ pre { background:var(--soft) !important; color:var(--text); border:1px solid var
 }
 .project-report-page .status-completed,
 .project-report-page .status-approved,
-.project-report-page .status-resolved {
+.project-report-page .status-resolved,
+.project-report-page .status-improving {
   background:var(--ok-bg) !important;
   border-color:var(--ok-border) !important;
   color:var(--ok-text) !important;
 }
-.project-report-page .status-on_track,
-.project-report-page .status-stable {
+.project-report-page .status-on_track {
   background:var(--info-bg) !important;
   border-color:var(--info-border) !important;
   color:var(--info-text) !important;
@@ -1177,6 +1177,14 @@ pre { background:var(--soft) !important; color:var(--text); border:1px solid var
   background:var(--danger-bg) !important;
   border-color:var(--danger-border) !important;
   color:var(--danger-text) !important;
+}
+.project-report-page .status-stable,
+.project-report-page .status-not_started,
+.project-report-page .status-draft,
+.project-report-page .status-unknown {
+  background:var(--soft) !important;
+  border-color:var(--border-strong) !important;
+  color:var(--muted) !important;
 }
 
 @media (max-width:680px) {

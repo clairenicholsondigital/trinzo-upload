@@ -141,8 +141,12 @@ test('saved report detail tables keep readable light-theme contrast', () => {
   assert.ok(reportsPageSource.includes('<body class="project-report-page">'));
   assert.ok(sharedCssSource.includes('.project-report-page .long-text-cell'));
   assert.ok(sharedCssSource.includes('.project-report-page .status-completed'));
+  assert.ok(sharedCssSource.includes('.project-report-page .status-improving'));
+  assert.ok(sharedCssSource.includes('.project-report-page .status-on_track'));
+  assert.ok(sharedCssSource.includes('.project-report-page .status-stable'));
   assert.ok(sharedCssSource.includes('color:var(--text) !important'));
   assert.ok(sharedCssSource.includes('color:var(--ok-text) !important'));
+  assert.ok(reportsPageSource.includes('.status-completed, .status-approved, .status-resolved, .status-improving'));
 });
 
 test('project workspace heading hierarchy promotes the project title', () => {
