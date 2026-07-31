@@ -233,27 +233,72 @@ function questionMentionsRisk(question) {
   return /\b(risk|risks|blocker|blockers|concern|concerns|issue|issues|watch|watching)\b/i.test(String(question || ''));
 }
 
+function riskSignalText(value) {
+  return joinParts(Array.isArray(value) ? value : [value]).toLowerCase();
+}
+
+function isCompletedSignal(value) {
+  return /\b(completed|complete|done|closed|resolved|addressed|verified)\b/i.test(riskSignalText(value));
+}
+
+function isRiskSignal(value) {
+  return /\b(at[_ -]?risk|risk|blocked|blocker|delayed|delay|late|amber|red|concern|issue|dependency|constraint|warning)\b/i.test(riskSignalText(value));
+}
+
+function rankProjectRiskSignals(projectContext = {}) {
+  const signals = [];
+  for (const risk of Array.isArray(projectContext.activeRisks) ? projectContext.activeRisks : []) {
+    const title = cleanText(risk.riskTitle);
+    if (!title) continue;
+    signals.push({
+      weight: 100,
+      title,
+      detail: joinParts([risk.description, risk.mitigation ? `Mitigation: ${risk.mitigation}` : '']),
+      source: `risk:${risk.riskId || title}`
+    });
+  }
+  for (const health of Array.isArray(projectContext.healthHistory) ? projectContext.healthHistory : []) {
+    const text = [health.status, health.trend, health.rationale];
+    if (!isRiskSignal(text) || isCompletedSignal(text)) continue;
+    signals.push({
+      weight: 80,
+      title: `${cleanText(health.area) || 'Project health'} health`,
+      detail: joinParts([health.status ? `Status: ${health.status}.` : '', health.trend ? `Trend: ${health.trend}.` : '', health.rationale]),
+      source: `health:${health.reportId || 'latest'}:${health.area || 'area'}`
+    });
+  }
+  for (const milestone of Array.isArray(projectContext.activeMilestones) ? projectContext.activeMilestones : []) {
+    const latest = milestone.latestAssessment || {};
+    const text = [latest.status, latest.trend, latest.summary];
+    if (isCompletedSignal(text) && !isRiskSignal(text)) continue;
+    if (!isRiskSignal(text) && isCompletedSignal([latest.status, latest.summary])) continue;
+    const incompleteButCurrent = !isCompletedSignal([latest.status, latest.summary]);
+    if (!isRiskSignal(text) && !incompleteButCurrent) continue;
+    signals.push({
+      weight: isRiskSignal(text) ? 60 : 35,
+      title: cleanText(milestone.milestoneName) || 'Milestone',
+      detail: joinParts([latest.status ? `Status: ${latest.status}.` : '', latest.trend ? `Trend: ${latest.trend}.` : '', latest.summary]),
+      source: `milestone:${milestone.milestoneId || milestone.milestoneName || 'item'}`
+    });
+  }
+  return signals
+    .filter((signal) => signal.title)
+    .sort((a, b) => b.weight - a.weight || a.title.localeCompare(b.title))
+    .slice(0, 5);
+}
+
 function buildProjectContextFallbackAnswer({ question, projectContext, chunks }) {
   const safeChunks = Array.isArray(chunks) ? chunks : [];
   if (!safeChunks.length) return '';
   const projectName = cleanText(projectContext?.projectName) || 'this project';
   if (questionMentionsRisk(question)) {
-    const risks = (projectContext.activeRisks || []).slice(0, 4).map((risk) => {
-      const mitigation = cleanText(risk.mitigation);
-      return `- ${cleanText(risk.riskTitle)}${risk.description ? `: ${cleanText(risk.description)}` : ''}${mitigation ? ` Mitigation: ${mitigation}` : ''}`;
-    });
-    const riskyMilestones = (projectContext.activeMilestones || [])
-      .filter((milestone) => /risk|block|delay|late|amber|red|concern/i.test(joinParts([
-        milestone.latestAssessment?.status,
-        milestone.latestAssessment?.trend,
-        milestone.latestAssessment?.summary
-      ])))
-      .slice(0, 4)
-      .map((milestone) => `- ${cleanText(milestone.milestoneName)}${milestone.latestAssessment?.summary ? `: ${cleanText(milestone.latestAssessment.summary)}` : milestone.latestAssessment?.status ? `: ${cleanText(milestone.latestAssessment.status)}` : ''}`);
+    const riskSignals = rankProjectRiskSignals(projectContext);
+    if (!riskSignals.length) {
+      return `I do not see an active risk signal in the current ${projectName} project record. The available context is mostly milestones, recent reports and health notes, so the next useful step is to add or approve a monitored risk if there is one.`;
+    }
     const lines = [
       `From the current ${projectName} project record, the main risks to watch are:`,
-      ...risks,
-      ...(riskyMilestones.length ? ['Milestones that look risk-relevant:', ...riskyMilestones] : [])
+      ...riskSignals.map((signal, index) => `${index + 1}. ${signal.title}${signal.detail ? `: ${signal.detail}` : ''}`)
     ].filter(Boolean);
     return lines.join('\n');
   }
@@ -332,7 +377,9 @@ async function answerProjectKnowledge({ projectId, question, topK = 8, timeoutMs
   if (!chunks.length) {
     const fallbackChunks = buildProjectContextFallbackChunks(projectContext);
     if (fallbackChunks.length) {
-      const generated = await generateProjectKnowledgeAnswer({ question, chunks: fallbackChunks.slice(0, topK || 8), timeoutMs });
+      const generated = questionMentionsRisk(question)
+        ? { answerMode: 'context_fallback', answer: '', citations: [], confidence: 'medium', diagnostics: { provider: 'deterministic_project_context', used: true } }
+        : await generateProjectKnowledgeAnswer({ question, chunks: fallbackChunks.slice(0, topK || 8), timeoutMs });
       const fallbackAnswer = generated.answer || buildProjectContextFallbackAnswer({ question, projectContext, chunks: fallbackChunks });
       return {
         ok: true,
@@ -380,5 +427,6 @@ module.exports = {
   answerProjectKnowledge,
   buildProjectKnowledgeAskPrompt,
   buildProjectContextFallbackChunks,
-  buildProjectContextFallbackAnswer
+  buildProjectContextFallbackAnswer,
+  rankProjectRiskSignals
 };

@@ -20,6 +20,7 @@ const roadmapPageSource = fs.readFileSync(path.join(repoDir, 'views/project-upda
 const dashboardPageSource = fs.readFileSync(path.join(repoDir, 'views/dashboard.html'), 'utf8');
 const reportsPageSource = fs.readFileSync(path.join(repoDir, 'views/project-update-reports.html'), 'utf8');
 const sharedCssSource = fs.readFileSync(path.join(repoDir, 'public/trinzo.css'), 'utf8');
+const { buildProjectContextFallbackAnswer, rankProjectRiskSignals } = require('../utils/knowledge');
 
 test('canonical project context fixture contains the Node/Python boundary keys', () => {
   for (const key of [
@@ -83,9 +84,47 @@ test('project knowledge phase 1 surfaces schema and protected endpoints', () => 
   assert.ok(knowledgeSource.includes('answerMode: \'retrieval_only\''));
   assert.ok(knowledgeSource.includes('buildProjectContextFallbackChunks'));
   assert.ok(knowledgeSource.includes("retrievalMode: 'project_context'"));
-  assert.ok(knowledgeSource.includes("answerMode: generated.answerMode === 'generated' ? 'generated' : 'context_fallback'"));
+  assert.ok(knowledgeSource.includes("provider: 'deterministic_project_context'"));
   assert.ok(contextPageSource.includes('Ask this project'));
   assert.ok(contextPageSource.includes('/api/project-update-test/knowledge/ask'));
+});
+
+test('project context fallback gives direct risk answers instead of hedging on completed milestones', () => {
+  const projectContext = {
+    found: true,
+    projectName: 'Trinzo Project Update Tool',
+    activeRisks: [{
+      riskId: 12,
+      riskTitle: 'Privacy review handoff',
+      description: 'Client data handling needs a named owner before wider pilot use.',
+      mitigation: 'Assign an owner and keep review gates visible.'
+    }],
+    activeMilestones: [{
+      milestoneId: 90,
+      milestoneName: 'Sensitive project data handling reviewed',
+      latestAssessment: { status: 'completed', summary: 'Privacy risks have been addressed.' }
+    }, {
+      milestoneId: 91,
+      milestoneName: 'Pilot readiness safeguards',
+      latestAssessment: { status: 'at_risk', summary: 'Safeguards need sign-off before client pilot use.' }
+    }],
+    healthHistory: [{
+      reportId: 39,
+      area: 'Scope',
+      status: 'at_risk',
+      trend: 'stable',
+      rationale: 'Client pilot scope depends on privacy and support decisions.'
+    }]
+  };
+  const signals = rankProjectRiskSignals(projectContext);
+  assert.equal(signals[0].title, 'Privacy review handoff');
+  assert.ok(signals.some((signal) => signal.title === 'Scope health'));
+  assert.ok(!signals.some((signal) => signal.title === 'Sensitive project data handling reviewed'));
+  const answer = buildProjectContextFallbackAnswer({ question: 'What are the biggest risks?', projectContext, chunks: [{ chunk_text: 'x' }] });
+  assert.ok(answer.includes('main risks to watch are'));
+  assert.ok(answer.includes('Privacy review handoff'));
+  assert.ok(answer.includes('Pilot readiness safeguards'));
+  assert.ok(!answer.includes('insufficient'));
 });
 
 test('dashboard keeps only active tool infrastructure visible', () => {
