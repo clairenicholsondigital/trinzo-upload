@@ -1358,11 +1358,13 @@ router.post('/project-update-test/knowledge/ask', requireAuth, async (req, res) 
     const question = String(req.body?.question || req.query?.question || '').trim();
     if (!Number.isFinite(projectId) || projectId <= 0) return sendJson(res, 400, { ok: false, error: 'Valid projectId is required.' });
     if (!question) return sendJson(res, 400, { ok: false, error: 'Question is required.' });
+    const projectContext = await getProjectContext({ projectId }, 8);
     const result = await answerProjectKnowledge({
       projectId,
       question,
       topK: Math.min(Math.max(Number(req.body?.topK || req.query?.topK || 8), 1), 25),
-      timeoutMs: Math.min(Math.max(Number(req.body?.timeoutMs || 30000), 5000), 45000)
+      timeoutMs: Math.min(Math.max(Number(req.body?.timeoutMs || 30000), 5000), 45000),
+      projectContext
     });
     res.json(result);
   } catch (error) {

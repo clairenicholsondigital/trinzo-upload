@@ -76,9 +76,14 @@ test('project knowledge phase 1 surfaces schema and protected endpoints', () => 
   assert.ok(apiSource.includes('projectContext.retrievedKnowledge'));
   assert.ok(backfillSource.includes('ingestApprovedProjectReportVersion'));
   assert.ok(apiSource.includes("router.post('/project-update-test/knowledge/ask', requireAuth"));
+  assert.ok(apiSource.includes('const projectContext = await getProjectContext({ projectId }, 8);'));
+  assert.ok(apiSource.includes('projectContext'));
   assert.ok(knowledgeSource.includes('answerProjectKnowledge'));
   assert.ok(knowledgeSource.includes('Cite chunk ids explicitly'));
   assert.ok(knowledgeSource.includes('answerMode: \'retrieval_only\''));
+  assert.ok(knowledgeSource.includes('buildProjectContextFallbackChunks'));
+  assert.ok(knowledgeSource.includes("retrievalMode: 'project_context'"));
+  assert.ok(knowledgeSource.includes("answerMode: generated.answerMode === 'generated' ? 'generated' : 'context_fallback'"));
   assert.ok(contextPageSource.includes('Ask this project'));
   assert.ok(contextPageSource.includes('/api/project-update-test/knowledge/ask'));
 });
@@ -127,6 +132,8 @@ test('project workspace labels separate memory, draft reports and evidence', () 
   assert.ok(projectStageProcessSource.includes('Project update meeting'));
   assert.ok(projectStageProcessSource.includes('evidence must come from this update'));
   assert.ok(projectStageInsightsSource.includes('stored project memory'));
+  assert.ok(projectStageInsightsSource.includes('milestones, monitored risks, recent reports and stored project memory'));
+  assert.ok(projectStageInsightsSource.includes('Ask project context'));
   assert.ok(projectStageInsightsSource.includes('Suggested follow-up risks'));
 });
 

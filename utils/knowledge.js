@@ -113,6 +113,154 @@ function buildProjectKnowledgeAskPrompt({ question, chunks }) {
   ].join('\n');
 }
 
+function joinParts(parts) {
+  return parts.map(cleanText).filter(Boolean).join(' ');
+}
+
+function readableDate(value) {
+  const raw = cleanText(value);
+  if (!raw) return '';
+  return raw.slice(0, 10);
+}
+
+function contextChunk({ chunkId, itemId, itemType, title, text, score = 0.75, metadata = {} }) {
+  return {
+    chunk_id: chunkId,
+    chunkId,
+    item_id: itemId || chunkId,
+    itemId: itemId || chunkId,
+    item_type: itemType,
+    itemType,
+    title: cleanText(title),
+    chunk_text: cleanText(text),
+    chunkText: cleanText(text),
+    score,
+    metadata: { source: 'project_context', ...metadata }
+  };
+}
+
+function buildProjectContextFallbackChunks(projectContext = {}) {
+  if (!projectContext || projectContext.found === false) return [];
+  const chunks = [];
+  const projectName = cleanText(projectContext.projectName);
+
+  for (const milestone of Array.isArray(projectContext.activeMilestones) ? projectContext.activeMilestones : []) {
+    const latest = milestone.latestAssessment || {};
+    const parts = [
+      `Project: ${projectName}.`,
+      `Milestone: ${milestone.milestoneName}.`,
+      milestone.category ? `Category: ${milestone.category}.` : '',
+      milestone.description ? `Description: ${milestone.description}.` : '',
+      milestone.baselineFinishDate ? `Baseline finish: ${readableDate(milestone.baselineFinishDate)}.` : '',
+      (latest.forecastFinishDate || milestone.forecastFinishDate) ? `Forecast finish: ${readableDate(latest.forecastFinishDate || milestone.forecastFinishDate)}.` : '',
+      latest.status ? `Latest status: ${latest.status}.` : '',
+      latest.trend ? `Trend: ${latest.trend}.` : '',
+      latest.confidence ? `Confidence: ${latest.confidence}.` : '',
+      latest.summary ? `Latest assessment: ${latest.summary}.` : ''
+    ];
+    chunks.push(contextChunk({
+      chunkId: `project-context:milestone:${milestone.milestoneId || chunks.length + 1}`,
+      itemId: milestone.milestoneId,
+      itemType: 'milestone',
+      title: `Milestone: ${milestone.milestoneName || 'Untitled'}`,
+      text: joinParts(parts),
+      metadata: { milestoneId: milestone.milestoneId || null, reportId: latest.reportId || null }
+    }));
+  }
+
+  for (const risk of Array.isArray(projectContext.activeRisks) ? projectContext.activeRisks : []) {
+    const parts = [
+      `Project: ${projectName}.`,
+      `Monitored risk: ${risk.riskTitle}.`,
+      risk.category ? `Category: ${risk.category}.` : '',
+      risk.description ? `Description: ${risk.description}.` : '',
+      risk.mitigation ? `Mitigation: ${risk.mitigation}.` : '',
+      risk.officialLabel ? `Official label: ${risk.officialLabel}.` : ''
+    ];
+    chunks.push(contextChunk({
+      chunkId: `project-context:risk:${risk.riskId || chunks.length + 1}`,
+      itemId: risk.riskId,
+      itemType: 'risk',
+      title: `Risk: ${risk.riskTitle || 'Untitled'}`,
+      text: joinParts(parts),
+      metadata: { riskId: risk.riskId || null }
+    }));
+  }
+
+  for (const report of Array.isArray(projectContext.recentReports) ? projectContext.recentReports.slice(0, 5) : []) {
+    const parts = [
+      `Project: ${projectName}.`,
+      `Report ${report.reportId}.`,
+      report.periodLabel ? `Period: ${report.periodLabel}.` : '',
+      report.reportStatus ? `Report status: ${report.reportStatus}.` : '',
+      (report.overallHealth || report.overallHealthRag) ? `Overall health: ${report.overallHealth || report.overallHealthRag}.` : '',
+      report.summary ? `Summary: ${report.summary}.` : ''
+    ];
+    chunks.push(contextChunk({
+      chunkId: `project-context:report:${report.reportId || chunks.length + 1}`,
+      itemId: report.reportId,
+      itemType: 'report_summary',
+      title: `Report ${report.reportId || ''}${report.periodLabel ? `: ${report.periodLabel}` : ''}`,
+      text: joinParts(parts),
+      metadata: { reportId: report.reportId || null, reportVersionId: report.reportVersionId || null }
+    }));
+  }
+
+  for (const health of Array.isArray(projectContext.healthHistory) ? projectContext.healthHistory.slice(0, 12) : []) {
+    const parts = [
+      `Project: ${projectName}.`,
+      `Health area: ${health.area}.`,
+      health.status ? `Status: ${health.status}.` : '',
+      health.trend ? `Trend: ${health.trend}.` : '',
+      health.confidence ? `Confidence: ${health.confidence}.` : '',
+      health.rationale ? `Rationale: ${health.rationale}.` : ''
+    ];
+    chunks.push(contextChunk({
+      chunkId: `project-context:health:${health.reportId || 'latest'}:${cleanText(health.area).toLowerCase().replace(/[^a-z0-9]+/g, '-') || chunks.length + 1}`,
+      itemId: health.reportId,
+      itemType: 'health_area',
+      title: `Health: ${health.area || 'Area'}`,
+      text: joinParts(parts),
+      score: 0.7,
+      metadata: { reportId: health.reportId || null, reportVersionId: health.reportVersionId || null }
+    }));
+  }
+
+  return chunks.filter((chunk) => chunk.chunk_text).slice(0, 20);
+}
+
+function questionMentionsRisk(question) {
+  return /\b(risk|risks|blocker|blockers|concern|concerns|issue|issues|watch|watching)\b/i.test(String(question || ''));
+}
+
+function buildProjectContextFallbackAnswer({ question, projectContext, chunks }) {
+  const safeChunks = Array.isArray(chunks) ? chunks : [];
+  if (!safeChunks.length) return '';
+  const projectName = cleanText(projectContext?.projectName) || 'this project';
+  if (questionMentionsRisk(question)) {
+    const risks = (projectContext.activeRisks || []).slice(0, 4).map((risk) => {
+      const mitigation = cleanText(risk.mitigation);
+      return `- ${cleanText(risk.riskTitle)}${risk.description ? `: ${cleanText(risk.description)}` : ''}${mitigation ? ` Mitigation: ${mitigation}` : ''}`;
+    });
+    const riskyMilestones = (projectContext.activeMilestones || [])
+      .filter((milestone) => /risk|block|delay|late|amber|red|concern/i.test(joinParts([
+        milestone.latestAssessment?.status,
+        milestone.latestAssessment?.trend,
+        milestone.latestAssessment?.summary
+      ])))
+      .slice(0, 4)
+      .map((milestone) => `- ${cleanText(milestone.milestoneName)}${milestone.latestAssessment?.summary ? `: ${cleanText(milestone.latestAssessment.summary)}` : milestone.latestAssessment?.status ? `: ${cleanText(milestone.latestAssessment.status)}` : ''}`);
+    const lines = [
+      `From the current ${projectName} project record, the main risks to watch are:`,
+      ...risks,
+      ...(riskyMilestones.length ? ['Milestones that look risk-relevant:', ...riskyMilestones] : [])
+    ].filter(Boolean);
+    return lines.join('\n');
+  }
+  const titles = safeChunks.slice(0, 5).map((chunk) => `- ${chunk.title}: ${chunk.chunk_text.slice(0, 220)}`);
+  return [`I found relevant live project context for ${projectName}:`, ...titles].join('\n');
+}
+
 function extractJsonObject(text) {
   const raw = String(text || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
   try { return JSON.parse(raw); } catch (_) {}
@@ -172,7 +320,7 @@ async function generateProjectKnowledgeAnswer({ question, chunks, timeoutMs = 30
   }
 }
 
-async function answerProjectKnowledge({ projectId, question, topK = 8, timeoutMs = 30000 }) {
+async function answerProjectKnowledge({ projectId, question, topK = 8, timeoutMs = 30000, projectContext = null }) {
   const retrieval = await runProjectKnowledgeRetrieval({
     projectId,
     query: question,
@@ -182,6 +330,26 @@ async function answerProjectKnowledge({ projectId, question, topK = 8, timeoutMs
   });
   const chunks = Array.isArray(retrieval.chunks) ? retrieval.chunks : [];
   if (!chunks.length) {
+    const fallbackChunks = buildProjectContextFallbackChunks(projectContext);
+    if (fallbackChunks.length) {
+      const generated = await generateProjectKnowledgeAnswer({ question, chunks: fallbackChunks.slice(0, topK || 8), timeoutMs });
+      const fallbackAnswer = generated.answer || buildProjectContextFallbackAnswer({ question, projectContext, chunks: fallbackChunks });
+      return {
+        ok: true,
+        answerMode: generated.answerMode === 'generated' ? 'generated' : 'context_fallback',
+        retrievalMode: 'project_context',
+        retrievedChunks: fallbackChunks,
+        answer: fallbackAnswer,
+        citations: generated.citations || [],
+        confidence: generated.confidence || 'medium',
+        diagnostics: {
+          retrieval: retrieval.diagnostics || {},
+          generation: generated.diagnostics || {},
+          fallback: { source: 'project_context', chunks: fallbackChunks.length },
+          error: retrieval.error || ''
+        }
+      };
+    }
     return {
       ok: true,
       answerMode: 'no_context',
@@ -210,5 +378,7 @@ module.exports = {
   runProjectKnowledgeRetrieval,
   startProjectKnowledgeEmbedInterval,
   answerProjectKnowledge,
-  buildProjectKnowledgeAskPrompt
+  buildProjectKnowledgeAskPrompt,
+  buildProjectContextFallbackChunks,
+  buildProjectContextFallbackAnswer
 };

@@ -482,6 +482,7 @@
   function modeBadgeClass(value) {
     const mode = String(value || '').toLowerCase();
     if (['generated', 'semantic'].includes(mode)) return 'success';
+    if (['context_fallback', 'project_context'].includes(mode)) return 'success';
     if (['retrieval_only', 'keyword_fallback'].includes(mode)) return 'warn';
     return 'muted';
   }
@@ -495,12 +496,12 @@
       ? `<div class="citation-list">${citations.map((citation) => `<span class="badge muted">chunk ${escapeHtml(citation.chunkId || citation.chunk_id || '-')}</span>`).join('')}</div>`
       : '';
     const answer = result.answer
-      ? `<div class="ask-answer"><h3>Answer from project memory</h3><p>${escapeHtml(result.answer)}</p>${citationHtml}</div>`
+      ? `<div class="ask-answer"><h3>Answer from project context</h3><p>${escapeHtml(result.answer)}</p>${citationHtml}</div>`
       : result.answerMode === 'retrieval_only'
         ? '<div class="empty-state"><strong>Generation unavailable.</strong><br />Showing the most relevant project-memory snippets instead.</div>'
         : '';
     const chunksHtml = chunks.length
-      ? `<h3 style="margin:.9rem 0 .2rem">Retrieved memory</h3><div class="chunk-grid">${chunks.map((chunk) => {
+      ? `<h3 style="margin:.9rem 0 .2rem">${result.retrievalMode === 'project_context' ? 'Project context used' : 'Retrieved memory'}</h3><div class="chunk-grid">${chunks.map((chunk) => {
           const chunkId = chunk.chunk_id || chunk.chunkId || '-';
           const score = Number(chunk.score || 0);
           return `<article class="chunk-card"><strong>${escapeHtml(chunk.title || 'Project memory')}</strong><div class="chunk-meta"><span class="badge muted">chunk ${escapeHtml(chunkId)}</span><span class="badge muted">${escapeHtml(friendlyLabel(chunk.item_type || chunk.itemType))}</span>${score ? `<span class="badge muted">score ${escapeHtml(score.toFixed(2))}</span>` : ''}</div><div class="chunk-text">${escapeHtml((chunk.chunk_text || chunk.chunkText || '').slice(0, 700))}</div></article>`;
@@ -516,7 +517,7 @@
         <div class="section-title-row">
           <div>
             <h2>Ask this project</h2>
-            <p class="intro">Ask stored project memory before a report, review, or client call. If generation is unavailable, the matching memory snippets still appear.</p>
+            <p class="intro">Ask the project record before a report, review, or client call. It checks milestones, monitored risks, recent reports and stored project memory.</p>
           </div>
           <span class="badge muted">${escapeHtml(projectName)}</span>
         </div>
@@ -524,7 +525,7 @@
           <div>
             <label>Question <textarea id="knowledgeAskQuestion" placeholder="What risks, decisions, or constraints should I remember before the next update?"></textarea></label>
             <div class="actions" style="margin-top:.75rem">
-              <button id="askKnowledgeBtn" class="primary" type="button">Ask project memory</button>
+              <button id="askKnowledgeBtn" class="primary" type="button">Ask project context</button>
             </div>
             <p id="knowledgeAskStatus" class="status"></p>
           </div>
@@ -537,7 +538,7 @@
             </ul>
           </aside>
         </div>
-        <div id="knowledgeAskResult" class="empty-state">Ask a question to retrieve relevant project memory.</div>
+        <div id="knowledgeAskResult" class="empty-state">Ask a question to retrieve relevant project context.</div>
       </section>
     `;
   }
@@ -549,9 +550,9 @@
     if (!button || !status || !resultBox) return;
     button.addEventListener('click', async () => {
       status.className = 'status';
-      status.textContent = 'Asking project memory…';
+      status.textContent = 'Asking project context…';
       resultBox.className = 'empty-state';
-      resultBox.innerHTML = 'Searching stored project memory…';
+      resultBox.innerHTML = 'Searching project memory, milestones, risks and reports…';
       button.disabled = true;
       try {
         const result = await PW.request('knowledge/ask', {
@@ -560,9 +561,11 @@
         });
         status.className = result.answerMode === 'no_context' ? 'status' : 'status success';
         status.textContent = result.answerMode === 'generated'
-          ? 'Generated from project memory.'
+          ? 'Generated from project context.'
           : result.answerMode === 'retrieval_only'
             ? 'Showing retrieved memory snippets; generation was unavailable.'
+            : result.answerMode === 'context_fallback'
+              ? 'Showing live project context; no separate memory chunks matched.'
             : 'No matching project memory found.';
         resultBox.className = '';
         resultBox.innerHTML = renderAskResult(result);
