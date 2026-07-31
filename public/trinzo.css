@@ -175,11 +175,11 @@ button:not([class]), input[type=submit], input[type=button] {
 }
 button:not([class]):hover { background:var(--accent-600); border-color:var(--accent-600); }
 /* Beat common parent-scoped button rules (specificity 0,1,1 → shared wins on order) */
-.toolbar button, .row-actions button, .actions button, .bulk-actions button, .project-bar button {
+.toolbar button, .row-actions button, .actions button, .bulk-actions button, .project-bar button:not(.project-nav-link) {
   background:var(--accent); color:#fff; border:1px solid var(--accent); border-radius:var(--radius-sm);
 }
 .toolbar button.secondary, .row-actions button.secondary, .actions button.secondary,
-.project-bar button.secondary,
+.project-bar button.secondary:not(.project-nav-link),
 .toolbar .button.secondary, .row-actions .button.secondary, .actions .button.secondary {
   background:var(--surface); color:var(--accent-700); border:1px solid var(--border-strong);
 }
@@ -839,6 +839,96 @@ input[type=file]::file-selector-button {
   margin:0;
   min-height:1.5rem;
 }
+.project-bar {
+  display:grid !important;
+  gap:.85rem !important;
+  align-items:stretch !important;
+}
+.project-bar-topline {
+  align-items:flex-start;
+  display:flex;
+  gap:1rem;
+  justify-content:space-between;
+}
+.project-bar .identity {
+  display:flex;
+  flex-direction:column;
+  gap:.15rem;
+  min-width:12rem;
+}
+.project-bar .identity .name {
+  font-size:1.35rem;
+  font-weight:700;
+}
+.project-bar .meta {
+  align-items:center;
+  display:flex;
+  flex-wrap:wrap;
+  gap:.4rem;
+}
+.project-bar-subtext {
+  color:var(--muted);
+  font-size:.94rem;
+  margin-top:.25rem;
+  max-width:64rem;
+}
+.project-switch-link {
+  color:var(--muted) !important;
+  font-size:.9rem;
+  font-weight:700;
+  padding:.1rem 0;
+  text-decoration:none;
+  white-space:nowrap;
+}
+.project-switch-link:hover {
+  color:var(--accent-700) !important;
+  text-decoration:underline;
+}
+.project-nav {
+  align-items:center;
+  border-bottom:1px solid rgba(148,163,184,.2);
+  display:flex;
+  flex-wrap:wrap;
+  gap:.45rem;
+}
+.project-nav-link,
+.project-bar .project-nav-link {
+  align-items:center !important;
+  background:transparent !important;
+  border:1px solid transparent !important;
+  border-bottom:2px solid transparent !important;
+  border-radius:8px 8px 0 0 !important;
+  color:var(--muted) !important;
+  display:inline-flex !important;
+  font-weight:700 !important;
+  justify-content:center !important;
+  line-height:1.1 !important;
+  min-height:2.35rem;
+  padding:.55rem .85rem !important;
+  text-decoration:none !important;
+  white-space:nowrap;
+}
+.project-nav-link:hover,
+.project-bar .project-nav-link:hover {
+  background:var(--brand-050) !important;
+  color:var(--accent-700) !important;
+  text-decoration:none !important;
+}
+.project-nav-link.active,
+.project-nav-link[aria-current="page"],
+.project-bar .project-nav-link.active,
+.project-bar .project-nav-link[aria-current="page"] {
+  background:var(--surface) !important;
+  border-color:var(--border) !important;
+  border-bottom-color:var(--accent) !important;
+  color:var(--accent-700) !important;
+}
+.project-settings-icon {
+  font-size:1.05rem !important;
+  line-height:1 !important;
+  padding:.45rem !important;
+  width:2.35rem;
+}
 .section-block,
 .item,
 .card {
@@ -907,6 +997,20 @@ pre { background:var(--soft) !important; color:var(--text); border:1px solid var
   .new-project-actions { grid-column:1 / -1 !important; }
   .new-project-actions { align-items:stretch; flex-direction:column; gap:.5rem; }
   .new-project-actions .primary { width:100%; }
+  .ask-layout { grid-template-columns:1fr !important; }
+  .ask-stage-panel textarea { min-height:8rem !important; }
+  .ask-help { order:2; }
+  .ask-question-area { min-width:0; }
+  .project-bar-topline { flex-direction:column; }
+  .project-switch-link { align-self:flex-end; }
+  .project-nav { border-bottom:0; display:grid !important; gap:.35rem; grid-template-columns:repeat(4, minmax(0, 1fr)); }
+  .project-nav-link,
+  .project-bar .project-nav-link {
+    border:1px solid var(--border) !important;
+    border-radius:var(--radius-sm) !important;
+    min-width:0;
+    padding:.5rem .55rem !important;
+  }
   .supporting-tools .stage-tabs { display:grid !important; grid-template-columns:1fr !important; }
   .supporting-tools .stage-tab { width:100% !important; }
   .profile-editor-table { min-width:980px !important; }

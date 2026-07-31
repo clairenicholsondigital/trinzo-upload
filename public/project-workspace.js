@@ -14,7 +14,12 @@
     { key: 'setup', no: 4, label: 'Setup', hint: 'Milestones & project memory' },
     { key: 'settings', no: 5, label: 'Settings', hint: 'Project details & danger zone' }
   ];
-  const STAGE_KEYS = STAGES.map((stage) => stage.key);
+  const STAGE_KEYS = [...STAGES.map((stage) => stage.key), 'ask'];
+  const PROJECT_NAV = [
+    { key: 'insights', label: 'Overview' },
+    { key: 'reports', label: 'Reports' },
+    { key: 'ask', label: 'Ask' }
+  ];
 
   // process is mounted once and kept alive so in-progress transcript text is not
   // lost when switching tabs; data stages rebuild on each activation for freshness.
@@ -146,25 +151,40 @@
 
   function renderProjectBar(project) {
     const status = String(project.status || 'active').toLowerCase();
+    const activeKey = currentStageKey();
+    const params = new URLSearchParams(location.search);
+    params.delete('choose');
+    const switchParams = new URLSearchParams(params);
+    switchParams.set('choose', 'project');
+    const switchHref = `${location.pathname}?${switchParams.toString()}`;
     const contextWarning = ['paused', 'archived', 'completed'].includes(status)
       ? `<div class="safeguard-banner warning"><strong>Check project context:</strong> this project is ${escapeHtml(status)}. Do not process a new client update here unless that status is intentional.</div>`
       : '';
     return `
       <section class="panel project-bar">
-        <div class="identity">
-          <span class="eyebrow">Project workspace</span>
-          <span class="name">${escapeHtml(project.projectName || `Project ${project.projectId}`)}</span>
-          <span class="meta">
-            <span class="muted">${escapeHtml(project.clientName || 'No client set')}</span>
-            ${statusPill(project.status)}
-            <span class="badge muted">${escapeHtml(project.reportCount || 0)} reports</span>
-            <span class="badge muted">${escapeHtml(project.activeMilestoneCount || 0)} milestones</span>
-          </span>
+        <div class="project-bar-topline">
+          <div class="identity">
+            <span class="eyebrow">Project workspace</span>
+            <span class="name">${escapeHtml(project.projectName || `Project ${project.projectId}`)}</span>
+            <span class="meta">
+              <span class="muted">${escapeHtml(project.clientName || 'No client set')}</span>
+              ${statusPill(project.status)}
+              <span class="badge muted">${escapeHtml(project.reportCount || 0)} reports</span>
+              <span class="badge muted">${escapeHtml(project.activeMilestoneCount || 0)} milestones</span>
+            </span>
+            <span class="project-bar-subtext">View your current project position, project profile and recent reports. Future reports are compared against this baseline. Edit milestones and monitored risks in Project settings.</span>
+          </div>
+          <a id="switchProjectLink" class="project-switch-link" href="${escapeHtml(switchHref)}" target="_blank" rel="noopener">Switch project</a>
         </div>
-        <div class="bar-actions">
-          <button id="switchProjectBtn" class="secondary" type="button">Switch project</button>
-          <button id="openProjectProfileBtn" class="primary" type="button">Open project profile</button>
-          <button id="openProjectSettingsBtn" class="secondary" type="button">Project settings</button>
+        <div class="project-nav" aria-label="Project navigation">
+          ${PROJECT_NAV.map((item) => {
+            const navParams = new URLSearchParams(location.search);
+            navParams.delete('choose');
+            navParams.set('stage', item.key);
+            const href = `${location.pathname}?${navParams.toString()}`;
+            return `<a class="project-nav-link ${item.key === activeKey ? 'active' : ''}" data-stage="${item.key}" href="${escapeHtml(href)}" aria-current="${item.key === activeKey ? 'page' : 'false'}">${escapeHtml(item.label)}</a>`;
+          }).join('')}
+          <button id="openProjectSettingsBtn" class="project-nav-link project-settings-icon ${activeKey === 'settings' ? 'active' : ''}" type="button" aria-label="Settings" title="Settings" aria-current="${activeKey === 'settings' ? 'page' : 'false'}"><span aria-hidden="true">&#9881;</span></button>
         </div>
       </section>
       ${contextWarning}
@@ -245,8 +265,12 @@
   }
 
   function updateProjectBarForStage(stageKey) {
-    const profileBtn = document.getElementById('openProjectProfileBtn');
-    if (profileBtn) profileBtn.hidden = stageKey === 'insights';
+    root.querySelectorAll('.project-nav [data-stage], .project-settings-icon').forEach((item) => {
+      const itemStage = item.getAttribute('data-stage') || 'settings';
+      const active = itemStage === stageKey;
+      item.classList.toggle('active', active);
+      item.setAttribute('aria-current', active ? 'page' : 'false');
+    });
   }
 
   function showStage(project, stageKey) {
@@ -302,15 +326,13 @@
   }
 
   function attachProjectBarActions(project) {
-    const switchBtn = document.getElementById('switchProjectBtn');
-    const profileBtn = document.getElementById('openProjectProfileBtn');
     const settingsBtn = document.getElementById('openProjectSettingsBtn');
 
-    if (switchBtn) switchBtn.addEventListener('click', () => {
-      renderChooser(PW.getCachedProjects());
-    });
-    if (profileBtn) profileBtn.addEventListener('click', () => {
-      goToStage('insights', true);
+    root.querySelectorAll('.project-nav [data-stage]').forEach((link) => {
+      link.addEventListener('click', (event) => {
+        event.preventDefault();
+        goToStage(link.getAttribute('data-stage'), true);
+      });
     });
     if (settingsBtn) settingsBtn.addEventListener('click', () => {
       goToStage('settings', true);
@@ -498,7 +520,6 @@
     }
     const params = new URLSearchParams(location.search);
     if (params.get('choose') === 'project') {
-      PW.clearSelectedProject();
       renderChooser(PW.getCachedProjects());
       return;
     }

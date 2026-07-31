@@ -1,6 +1,6 @@
 // Insights stage: the project's analytics/memory hub. One GET /context?projectId=
 // call powers health tiles, milestone assessments + trend, project health overview, risks,
-// risk suggestions and recent reports; plus an "Ask this project" memory box.
+// risk suggestions and recent reports.
 // Lifted from the old Context page, now driven by the workspace's selected project.
 (function () {
   const PW = window.ProjectWorkspace;
@@ -145,18 +145,10 @@
     const latestReport = recentReports[0] || {};
 
     container.innerHTML = `
-      <section class="panel insights-header-panel">
-        <div class="section-title-row">
-          <div>
-            <h1>Insights</h1>
-            <p class="intro">View your current project position, project profile and recent reports. Future reports are compared against this baseline. Edit milestones and monitored risks in Project settings.</p>
-          </div>
-        </div>
-        <p id="contextStatus" class="status"></p>
-        ${context.found ? '' : '<p class="status">No project history yet. Add Setup context, then create and approve the first draft report.</p>'}
-      </section>
       <section class="panel">
         <h2>At a glance</h2>
+        <p id="contextStatus" class="status"></p>
+        ${context.found ? '' : '<p class="status">No project history yet. Add Setup context, then create and approve the first draft report.</p>'}
         <div class="at-glance-strip" aria-label="Project summary">
           <div class="glance-primary">
             <span class="label">Overall position</span>
@@ -225,34 +217,11 @@
           ${recentReports.map((report) => `<tr><td><strong>Report ${escapeHtml(report.reportId)}</strong></td><td>${escapeHtml(report.periodLabel || '-')}</td><td>${escapeHtml(friendlyLabel(report.reportStatus))}</td><td>${escapeHtml(proseOrLabel(report.overallHealth || report.overallHealthRag))}</td><td>${escapeHtml(dateValue(report.versionCreatedAt || report.createdAt))}</td><td>${escapeHtml(report.summary || '-')}</td><td><a class="button-link" href="/project-update-test/reports/${escapeHtml(report.reportId)}">Open report</a></td></tr>`).join('') || '<tr><td colspan="7"><strong>No reports yet.</strong><br />Process a transcript, review the draft, then approve it when it is ready to become project memory.</td></tr>'}
         </tbody></table></div>
       </section>
-      <section class="panel ask-panel">
-        <h2>Ask this project</h2>
-        <div class="ask-layout">
-          <div>
-            <p class="intro">Ask stored project memory before a report, review, or client call. If generation is unavailable, the matching memory snippets still appear.</p>
-            <label>Question <textarea id="knowledgeAskQuestion" placeholder="What risks, decisions, or constraints should I remember before the next update?"></textarea></label>
-            <div class="actions" style="margin-top:.75rem">
-              <button id="askKnowledgeBtn" class="primary" type="button">Ask project memory</button>
-            </div>
-            <p id="knowledgeAskStatus" class="status"></p>
-          </div>
-          <aside class="ask-help">
-            <strong>Good questions</strong>
-            <ul>
-              <li>What risks should we watch this week?</li>
-              <li>What decisions have already been made?</li>
-              <li>What constraints from the SoW matter here?</li>
-            </ul>
-          </aside>
-        </div>
-        <div id="knowledgeAskResult" class="empty-state">Ask a question to retrieve relevant project memory.</div>
-      </section>
     `;
 
     renderSupportActions(context);
     wireProfileEditors(container, ctx, projectId);
     wireActions(container, ctx, projectId);
-    wireAsk(container, projectId);
   }
 
   function rowPayload(row) {
@@ -507,70 +476,6 @@
         status.className = 'status error';
         status.textContent = error.message || 'Could not clear draft clutter.';
         cleanupBtn.disabled = false;
-      }
-    });
-  }
-
-  function modeBadgeClass(value) {
-    const mode = String(value || '').toLowerCase();
-    if (['generated', 'semantic'].includes(mode)) return 'success';
-    if (['retrieval_only', 'keyword_fallback'].includes(mode)) return 'warn';
-    return 'muted';
-  }
-
-  function renderAskResult(result) {
-    const chunks = asArray(result.retrievedChunks);
-    const citations = asArray(result.citations);
-    const answerMode = friendlyLabel(result.answerMode);
-    const retrievalMode = friendlyLabel(result.retrievalMode);
-    const citationHtml = citations.length
-      ? `<div class="citation-list">${citations.map((citation) => `<span class="badge muted">chunk ${escapeHtml(citation.chunkId || citation.chunk_id || '-')}</span>`).join('')}</div>`
-      : '';
-    const answer = result.answer
-      ? `<div class="ask-answer"><h3>Answer from project memory</h3><p>${escapeHtml(result.answer)}</p>${citationHtml}</div>`
-      : result.answerMode === 'retrieval_only'
-        ? '<div class="empty-state"><strong>Generation unavailable.</strong><br />Showing the most relevant project-memory snippets instead.</div>'
-        : '';
-    const chunksHtml = chunks.length
-      ? `<h3 style="margin:.9rem 0 .2rem">Retrieved memory</h3><div class="chunk-grid">${chunks.map((chunk) => {
-          const chunkId = chunk.chunk_id || chunk.chunkId || '-';
-          const score = Number(chunk.score || 0);
-          return `<article class="chunk-card"><strong>${escapeHtml(chunk.title || 'Project memory')}</strong><div class="chunk-meta"><span class="badge muted">chunk ${escapeHtml(chunkId)}</span><span class="badge muted">${escapeHtml(friendlyLabel(chunk.item_type || chunk.itemType))}</span>${score ? `<span class="badge muted">score ${escapeHtml(score.toFixed(2))}</span>` : ''}</div><div class="chunk-text">${escapeHtml((chunk.chunk_text || chunk.chunkText || '').slice(0, 700))}</div></article>`;
-        }).join('')}</div>`
-      : '<div class="empty-state"><strong>No matching project memory found.</strong><br />Try adding background notes, decisions, risks, or an SoW excerpt to Setup → Project memory first.</div>';
-    return `<div class="badges"><span class="badge ${escapeHtml(modeBadgeClass(result.answerMode))}">Answer: ${escapeHtml(answerMode)}</span><span class="badge ${escapeHtml(modeBadgeClass(result.retrievalMode))}">Retrieval: ${escapeHtml(retrievalMode)}</span><span class="badge muted">${chunks.length} chunk${chunks.length === 1 ? '' : 's'}</span>${result.confidence ? `<span class="badge muted">Confidence: ${escapeHtml(friendlyLabel(result.confidence))}</span>` : ''}</div>${answer}${chunksHtml}`;
-  }
-
-  function wireAsk(container, projectId) {
-    const button = container.querySelector('#askKnowledgeBtn');
-    const status = container.querySelector('#knowledgeAskStatus');
-    const resultBox = container.querySelector('#knowledgeAskResult');
-    button.addEventListener('click', async () => {
-      status.className = 'status';
-      status.textContent = 'Asking project memory…';
-      resultBox.className = 'empty-state';
-      resultBox.innerHTML = 'Searching stored project memory…';
-      button.disabled = true;
-      try {
-        const result = await PW.request('knowledge/ask', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ projectId, question: container.querySelector('#knowledgeAskQuestion').value, topK: 8 })
-        });
-        status.className = result.answerMode === 'no_context' ? 'status' : 'status success';
-        status.textContent = result.answerMode === 'generated'
-          ? 'Generated from project memory.'
-          : result.answerMode === 'retrieval_only'
-            ? 'Showing retrieved memory snippets; generation was unavailable.'
-            : 'No matching project memory found.';
-        resultBox.className = '';
-        resultBox.innerHTML = renderAskResult(result);
-      } catch (error) {
-        status.className = 'status error';
-        status.textContent = error.message || 'Could not ask project memory.';
-        resultBox.className = 'empty-state';
-        resultBox.innerHTML = 'The project memory search could not complete. Check you are logged in, then try again.';
-      } finally {
-        button.disabled = false;
       }
     });
   }

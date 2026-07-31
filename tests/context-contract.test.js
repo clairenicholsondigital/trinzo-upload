@@ -16,6 +16,7 @@ const projectStageSetupSource = fs.readFileSync(path.join(repoDir, 'public/proje
 const projectStageProcessSource = fs.readFileSync(path.join(repoDir, 'public/project-stage-process.js'), 'utf8');
 const projectStageReportsSource = fs.readFileSync(path.join(repoDir, 'public/project-stage-reports.js'), 'utf8');
 const projectStageInsightsSource = fs.readFileSync(path.join(repoDir, 'public/project-stage-insights.js'), 'utf8');
+const projectStageAskSource = fs.readFileSync(path.join(repoDir, 'public/project-stage-ask.js'), 'utf8');
 const roadmapPageSource = fs.readFileSync(path.join(repoDir, 'views/project-update-roadmap.html'), 'utf8');
 const dashboardPageSource = fs.readFileSync(path.join(repoDir, 'views/dashboard.html'), 'utf8');
 const sharedCssSource = fs.readFileSync(path.join(repoDir, 'public/trinzo.css'), 'utf8');
@@ -125,7 +126,8 @@ test('project workspace labels separate memory, draft reports and evidence', () 
   assert.ok(projectStageProcessSource.includes('Create draft report'));
   assert.ok(projectStageProcessSource.includes('Project update meeting'));
   assert.ok(projectStageProcessSource.includes('evidence must come from this update'));
-  assert.ok(projectStageInsightsSource.includes('stored project memory'));
+  assert.ok(projectStageAskSource.includes('stored project memory'));
+  assert.ok(projectStageAskSource.includes('window.ProjectStages.ask'));
   assert.ok(projectStageInsightsSource.includes('Suggested follow-up risks'));
 });
 
