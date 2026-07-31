@@ -673,7 +673,7 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertIn("/project-update-test/reports/", reports_stage)
         self.assertNotIn("Project profile / baseline", insights_stage)
         self.assertNotIn("ongoing project state future reports compare against", insights_stage)
-        self.assertIn("Current project position, profile and recent reports.", insights_stage)
+        self.assertIn("View your current project position, project profile and recent reports. Future reports are compared against this baseline. Edit milestones and monitored risks in Project settings.", insights_stage)
         self.assertIn("stageSupportActions", workspace_shell)
         self.assertIn("support-action-row", insights_stage)
         self.assertIn("Project profile options", insights_stage)

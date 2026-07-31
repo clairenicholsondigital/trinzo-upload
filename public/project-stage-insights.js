@@ -149,7 +149,7 @@
         <div class="section-title-row">
           <div>
             <h1>Insights</h1>
-            <p class="intro">Current project position, profile and recent reports.</p>
+            <p class="intro">View your current project position, project profile and recent reports. Future reports are compared against this baseline. Edit milestones and monitored risks in Project settings.</p>
           </div>
         </div>
         <p id="contextStatus" class="status"></p>
