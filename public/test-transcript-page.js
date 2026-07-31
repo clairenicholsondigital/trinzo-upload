@@ -1411,8 +1411,7 @@ function buildTranscriptMinilmOnlyPage(config) {
         <textarea id="minilmOnlyTranscriptText" placeholder="Paste transcript here..."></textarea>
         <small>If both a file and pasted text are provided, pasted text takes priority.</small>
       </div>
-      <div class="safeguard-banner"><strong>Draft workflow:</strong> generated minutes must be reviewed before exporting or sending. Confirm the title, date, discussion points, owners and deadlines against the transcript.</div>
-      <div class="safeguard-banner quiet"><strong>Data handling:</strong> uploaded or pasted transcripts are sent to the server to create draft minutes. Saved jobs keep the transcript and generated result until the job is deleted.</div>
+      <div class="safeguard-banner"><strong>Draft workflow and data handling:</strong> uploaded or pasted transcripts are sent to the server to generate draft meeting minutes. Review and verify drafts against the original transcript, including the title, date, discussion points, owners and deadlines, before exporting or sharing. Saved jobs retain both the transcript and generated minutes until the job is deleted.</div>
       <div class="actions">
         <button id="minilmOnlyGoBtn" type="button">${config.buttonText}</button>
         <button id="minilmOnlyClearBtn" class="secondary" type="button">Clear / reset</button>
