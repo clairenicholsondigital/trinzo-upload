@@ -178,10 +178,6 @@
         </tbody></table></div>
       </section>
       <section class="panel">
-        <h2>Project profile / baseline</h2>
-        <p class="intro">This is the ongoing project state future reports compare against. Edit milestones and configured risks here; reports are snapshots against this profile.</p>
-      </section>
-      <section class="panel">
         <h2>Profile milestones</h2>
         <div class="table-scroll profile-editor-scroll"><table class="profile-editor-table"><thead><tr><th>Milestone</th><th>Category</th><th>Description</th><th>Baseline</th><th>Forecast</th><th>Monitor?</th><th>Actions</th></tr></thead><tbody id="profileMilestonesBody">
           ${renderMilestoneProfileRows(milestones)}
