@@ -216,6 +216,8 @@
       project,
       workspace: PW,
       exportProjectOverview,
+      renderStageTabs,
+      goToStage,
       reloadProject: async () => {
         await PW.loadProjects();
         const fresh = PW.getProject(project.projectId);
@@ -243,8 +245,6 @@
   function showStage(project, stageKey) {
     const panel = document.getElementById('stagePanel');
     if (!panel) return;
-    const supportActions = document.getElementById('stageSupportActions');
-    if (supportActions) supportActions.innerHTML = '';
     root.querySelectorAll('[data-stage]').forEach((tab) => {
       const active = tab.getAttribute('data-stage') === stageKey;
       tab.classList.toggle('active', active);
@@ -280,6 +280,7 @@
     container.hidden = false;
     try {
       stage.mount(container, stageContext(project));
+      attachStageTabActions(container);
     } catch (error) {
       container.innerHTML = `<section class="panel"><p class="status error">${escapeHtml(error.message || 'Could not load this stage.')}</p></section>`;
     }
@@ -305,6 +306,12 @@
     });
     if (settingsBtn) settingsBtn.addEventListener('click', () => {
       goToStage('settings', true);
+    });
+  }
+
+  function attachStageTabActions(scope) {
+    scope.querySelectorAll('[data-stage]').forEach((tab) => {
+      tab.addEventListener('click', () => goToStage(tab.getAttribute('data-stage'), true));
     });
   }
 
@@ -461,13 +468,9 @@
     const activeKey = currentStageKey();
     root.innerHTML = `
       ${renderProjectBar(project)}
-      ${renderStageTabs(activeKey)}
       <div id="stagePanel"></div>
     `;
     attachProjectBarActions(project);
-    root.querySelectorAll('[data-stage]').forEach((tab) => {
-      tab.addEventListener('click', () => goToStage(tab.getAttribute('data-stage'), true));
-    });
     showStage(project, activeKey);
   }
 

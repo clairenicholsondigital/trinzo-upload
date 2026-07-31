@@ -8,7 +8,7 @@
     return escapeHtml(value || '');
   }
 
-  function renderProjectSettings(project) {
+  function renderProjectSettings(project, renderStageTabs) {
     return `
       <section class="panel project-settings-panel">
         <h1>Project settings</h1>
@@ -33,12 +33,13 @@
         </details>
         <p id="projectSettingsStatus" class="status"></p>
       </section>
+      ${typeof renderStageTabs === 'function' ? renderStageTabs('settings') : ''}
     `;
   }
 
   function mount(container, ctx) {
     const projectId = ctx.projectId;
-    container.innerHTML = renderProjectSettings(ctx.project || {});
+    container.innerHTML = renderProjectSettings(ctx.project || {}, ctx.renderStageTabs);
     wireProjectSettings(container, ctx, projectId);
   }
 
