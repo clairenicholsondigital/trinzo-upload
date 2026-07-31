@@ -79,6 +79,19 @@
     `;
   }
 
+  function renderSupportActions(context) {
+    const slot = document.getElementById('stageSupportActions');
+    if (!slot) return;
+    slot.innerHTML = `
+      <div class="support-action-row">
+        <span class="support-action-label">Project profile options</span>
+        <button id="createSnapshotBtn" type="button" title="Save a point-in-time copy of the current project profile." ${context.found ? '' : 'disabled'}>Save snapshot</button>
+        <button id="markOfficialBtn" type="button" title="Use the current milestones and risks as the agreed baseline." ${context.found ? '' : 'disabled'}>Approve baseline</button>
+        <button id="cleanupTestsBtn" type="button" title="Archive draft clutter while keeping approved items active." ${context.found ? '' : 'disabled'}>Tidy drafts</button>
+      </div>
+    `;
+  }
+
   function fieldLabel(field) {
     const labels = {
       milestoneName: 'Milestone',
@@ -166,14 +179,6 @@
             <h1>Insights</h1>
             <p class="intro">Current project position, profile and recent reports.</p>
           </div>
-          <details class="compact-options">
-            <summary>More options</summary>
-            <div class="compact-options-menu">
-              <button id="createSnapshotBtn" type="button" title="Save a point-in-time copy of the current project profile." ${context.found ? '' : 'disabled'}>Save snapshot</button>
-              <button id="markOfficialBtn" type="button" title="Use the current milestones and risks as the agreed baseline." ${context.found ? '' : 'disabled'}>Approve baseline</button>
-              <button id="cleanupTestsBtn" type="button" title="Archive draft clutter while keeping approved items active." ${context.found ? '' : 'disabled'}>Tidy drafts</button>
-            </div>
-          </details>
         </div>
         <p id="contextStatus" class="status"></p>
         ${context.found ? '' : '<p class="status">No project history yet. Add Setup context, then create and approve the first draft report.</p>'}
@@ -277,6 +282,7 @@
       </section>
     `;
 
+    renderSupportActions(context);
     wireProfileEditors(container, ctx, projectId);
     wireProjectSettings(container, ctx, projectId);
     wireActions(container, ctx, projectId);
@@ -534,9 +540,10 @@
 
   function wireActions(container, ctx, projectId) {
     const status = container.querySelector('#contextStatus');
-    const snapshotBtn = container.querySelector('#createSnapshotBtn');
-    const officialBtn = container.querySelector('#markOfficialBtn');
-    const cleanupBtn = container.querySelector('#cleanupTestsBtn');
+    const actionRoot = document.getElementById('stageSupportActions') || container;
+    const snapshotBtn = actionRoot.querySelector('#createSnapshotBtn');
+    const officialBtn = actionRoot.querySelector('#markOfficialBtn');
+    const cleanupBtn = actionRoot.querySelector('#cleanupTestsBtn');
 
     if (snapshotBtn) snapshotBtn.addEventListener('click', async () => {
       snapshotBtn.disabled = true;

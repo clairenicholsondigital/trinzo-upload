@@ -578,6 +578,26 @@ input[type=file]::file-selector-button {
 .supporting-tools .stage-tab .step-hint {
   color:var(--muted) !important;
 }
+.stage-support-actions:empty {
+  display:none;
+}
+.stage-support-actions:not(:empty) {
+  margin-top:.75rem;
+}
+.support-action-row {
+  display:flex;
+  gap:.5rem;
+  flex-wrap:wrap;
+  align-items:center;
+  padding-top:.75rem;
+  border-top:1px solid var(--border);
+}
+.support-action-label {
+  color:var(--muted);
+  font-size:.82rem;
+  font-weight:700;
+  margin-right:.15rem;
+}
 
 .support-details summary,
 .compact-options summary {

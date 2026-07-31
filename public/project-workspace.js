@@ -199,6 +199,7 @@
           </button>
         `).join('')}
         </nav>
+        <div id="stageSupportActions" class="stage-support-actions"></div>
       </details>
     `;
   }
@@ -236,6 +237,8 @@
   function showStage(project, stageKey) {
     const panel = document.getElementById('stagePanel');
     if (!panel) return;
+    const supportActions = document.getElementById('stageSupportActions');
+    if (supportActions) supportActions.innerHTML = '';
     root.querySelectorAll('[data-stage]').forEach((tab) => {
       const active = tab.getAttribute('data-stage') === stageKey;
       tab.classList.toggle('active', active);
