@@ -370,7 +370,7 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertNotIn("exportProjectOverviewBtn", workspace_shell)
         self.assertIn("Project settings", insights_stage)
         self.assertIn("Save project settings", insights_stage)
-        self.assertIn("Export overview", insights_stage)
+        self.assertIn("Export project overview", insights_stage)
         self.assertIn("Danger zone", insights_stage)
         self.assertIn("exportProjectOverview", workspace_shell)
         self.assertIn("buildProjectOverviewMarkdown", workspace_shell)

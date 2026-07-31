@@ -67,7 +67,6 @@
         </div>
         <div class="actions" style="margin-top:.75rem">
           <button id="saveProjectSettingsBtn" class="primary" type="button">Save project settings</button>
-          <button id="exportProjectOverviewBtn" class="subtle" type="button">Export overview</button>
         </div>
         <details class="danger-zone" style="margin-top:1rem">
           <summary>Danger zone</summary>
@@ -87,6 +86,7 @@
         <span class="support-action-label">Project profile options</span>
         <button id="createSnapshotBtn" type="button" title="Save a point-in-time copy of the current project profile." ${context.found ? '' : 'disabled'}>Save snapshot</button>
         <button id="markOfficialBtn" type="button" title="Use the current milestones and risks as the agreed baseline." ${context.found ? '' : 'disabled'}>Approve baseline</button>
+        <button id="exportProjectOverviewBtn" type="button" title="Download a Markdown overview of this project profile." ${context.found ? '' : 'disabled'}>Export project overview</button>
         <button id="cleanupTestsBtn" type="button" title="Archive draft clutter while keeping approved items active." ${context.found ? '' : 'disabled'}>Tidy drafts</button>
       </div>
     `;
@@ -291,14 +291,9 @@
 
   function wireProjectSettings(container, ctx, projectId) {
     const saveBtn = container.querySelector('#saveProjectSettingsBtn');
-    const exportBtn = container.querySelector('#exportProjectOverviewBtn');
     const deleteBtn = container.querySelector('#deleteProjectBtn');
     const statusMsg = container.querySelector('#projectSettingsStatus');
     if (!saveBtn || !statusMsg) return;
-
-    if (exportBtn && typeof ctx.exportProjectOverview === 'function') {
-      exportBtn.addEventListener('click', () => ctx.exportProjectOverview(ctx.project || {}, exportBtn));
-    }
 
     saveBtn.addEventListener('click', async () => {
       const projectName = container.querySelector('#settingsProjectName').value.trim();
@@ -543,7 +538,12 @@
     const actionRoot = document.getElementById('stageSupportActions') || container;
     const snapshotBtn = actionRoot.querySelector('#createSnapshotBtn');
     const officialBtn = actionRoot.querySelector('#markOfficialBtn');
+    const exportBtn = actionRoot.querySelector('#exportProjectOverviewBtn');
     const cleanupBtn = actionRoot.querySelector('#cleanupTestsBtn');
+
+    if (exportBtn && typeof ctx.exportProjectOverview === 'function') {
+      exportBtn.addEventListener('click', () => ctx.exportProjectOverview(ctx.project || {}, exportBtn));
+    }
 
     if (snapshotBtn) snapshotBtn.addEventListener('click', async () => {
       snapshotBtn.disabled = true;
