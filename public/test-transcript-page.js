@@ -1,3 +1,10 @@
+const DRAFT_WORKFLOW_DATA_HANDLING_COPY = 'uploaded or pasted transcripts are sent to the server to generate draft meeting minutes. Review and verify drafts against the original transcript, including the title, date, discussion points, owners and deadlines, before exporting or sharing. Saved jobs retain both the transcript and generated minutes until the job is deleted.';
+
+function renderDraftWorkflowDataHandlingBanner(className = '') {
+  const classes = ['safeguard-banner', className].filter(Boolean).join(' ');
+  return `<div class="${classes}"><strong>Draft workflow and data handling:</strong> ${DRAFT_WORKFLOW_DATA_HANDLING_COPY}</div>`;
+}
+
 function buildTranscriptTestPage(config) {
   const state = {
     result: null,
@@ -53,7 +60,7 @@ function buildTranscriptTestPage(config) {
         <textarea id="transcriptText" placeholder="Paste transcript here..."></textarea>
         <small>If both a file and pasted text are provided, pasted text takes priority.</small>
       </div>
-      ${config.projectReportUi ? '<div class="safeguard-banner quiet"><strong>Review before approving:</strong> check the evidence, dates, risks and actions before sharing or saving as project memory.<details style="margin-top:.5rem"><summary>Data handling</summary><p class="muted">Notes/transcripts are sent to the server to create the draft. Browser autosave stays on this device until you save; saved reports keep the source text and draft so they can be reviewed later.</p></details></div>' : ''}
+      ${config.projectReportUi ? renderDraftWorkflowDataHandlingBanner('quiet') : ''}
       <div class="actions">
         <button id="goBtn" type="button">${config.buttonText}</button>
         <button id="clearBtn" class="secondary" type="button">${config.resetButtonText || 'Clear / reset'}</button>
@@ -1411,7 +1418,7 @@ function buildTranscriptMinilmOnlyPage(config) {
         <textarea id="minilmOnlyTranscriptText" placeholder="Paste transcript here..."></textarea>
         <small>If both a file and pasted text are provided, pasted text takes priority.</small>
       </div>
-      <div class="safeguard-banner"><strong>Draft workflow and data handling:</strong> uploaded or pasted transcripts are sent to the server to generate draft meeting minutes. Review and verify drafts against the original transcript, including the title, date, discussion points, owners and deadlines, before exporting or sharing. Saved jobs retain both the transcript and generated minutes until the job is deleted.</div>
+      ${renderDraftWorkflowDataHandlingBanner()}
       <div class="actions">
         <button id="minilmOnlyGoBtn" type="button">${config.buttonText}</button>
         <button id="minilmOnlyClearBtn" class="secondary" type="button">Clear / reset</button>
