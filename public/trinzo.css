@@ -422,6 +422,39 @@ button.danger:hover,
   color:var(--accent-700); background:var(--surface);
   border-color:var(--border); border-bottom:2px solid var(--accent); margin-bottom:-1px;
 }
+.process-subtabs {
+  display:flex;
+  gap:.5rem;
+  margin:0 0 1rem;
+}
+.process-subtab {
+  align-items:center;
+  background:var(--soft);
+  border:1px solid var(--border);
+  border-radius:var(--radius-sm);
+  color:var(--heading);
+  cursor:pointer;
+  display:inline-flex;
+  font-weight:700;
+  justify-content:center;
+  min-height:2.75rem;
+  padding:.65rem .95rem;
+}
+.process-subtab:hover {
+  background:var(--brand-050);
+  border-color:var(--brand-200);
+  color:var(--accent-700);
+}
+.process-subtab.active,
+.process-subtab[aria-pressed="true"] {
+  background:var(--surface);
+  border-color:var(--accent);
+  box-shadow:0 0 0 2px rgba(44,122,144,.12);
+  color:var(--accent-700);
+}
+.process-subpanel[hidden] {
+  display:none !important;
+}
 
 /* -------------------------------------------------------- bars / toolbars -- */
 .project-bar, .toolbar, .bulk-actions, .actions, .quick-links {
@@ -1315,6 +1348,17 @@ pre { background:var(--soft) !important; color:var(--text); border:1px solid var
   }
   .quick-links .stage-tabs { display:grid !important; grid-template-columns:1fr !important; }
   .quick-links .stage-tab { width:100% !important; }
+  .process-subtabs {
+    display:grid !important;
+    gap:.5rem !important;
+    grid-template-columns:repeat(2, minmax(0, 1fr)) !important;
+  }
+  .process-subtab {
+    min-width:0 !important;
+    padding:.65rem .5rem !important;
+    text-align:center !important;
+    width:100% !important;
+  }
   .profile-editor-table { min-width:980px !important; }
   .profile-editor-table th:nth-child(6),
   .profile-editor-table td:nth-child(6) { width:92px !important; }

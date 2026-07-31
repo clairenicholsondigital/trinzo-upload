@@ -252,9 +252,15 @@ test('project bar behaves like scoped project navigation', () => {
   assert.ok(sharedCssSource.includes('.ask-panel-standalone .badges'));
   assert.ok(sharedCssSource.includes('.ask-panel-standalone .status'));
   assert.ok(sharedCssSource.includes('.ask-panel-standalone .ask-chunks-details'));
+  assert.ok(sharedCssSource.includes('.process-subtabs'));
+  assert.ok(sharedCssSource.includes('grid-template-columns:repeat(2, minmax(0, 1fr)) !important'));
   assert.ok(sharedCssSource.includes('overflow-wrap:anywhere'));
   assert.ok(sharedCssSource.includes('width:fit-content'));
   assert.ok(sharedCssSource.includes('grid-template-columns:1fr !important'));
+  assert.ok(projectStageProcessSource.includes('data-process-panel="meeting" aria-pressed="true">Process meeting</button>'));
+  assert.ok(projectStageProcessSource.includes('data-process-panel="agenda" aria-pressed="false">Suggested agenda</button>'));
+  assert.ok(projectStageProcessSource.includes('data-process-tab-panel="agenda" hidden'));
+  assert.ok(projectStageProcessSource.includes('wireProcessSubtabs(container)'));
   assert.ok(projectStageInsightsSource.includes('id="ask-this-project"'));
   assert.ok(projectStageInsightsSource.includes('<details class="ask-chunks-details">'));
   assert.ok(projectStageInsightsSource.includes('id="knowledgeAskResult" class="ask-result" hidden'));

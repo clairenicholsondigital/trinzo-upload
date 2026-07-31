@@ -11,19 +11,28 @@
         <h1>Capture this update</h1>
         <p class="intro">Use the agenda below, then paste the meeting notes or transcript to create a reviewed draft report.</p>
       </section>
-      <section class="panel meeting-agenda-panel">
-        <div>
-          <h2>Suggested project update agenda</h2>
-          <p class="intro">Automatically built from the monitored milestones and risks in this project profile. Use it to guide the meeting, then paste the notes/transcript below.</p>
-        </div>
-        <div id="meetingAgenda" class="empty-state">Building agenda from project profile…</div>
+      <section class="process-subtabs" aria-label="Project update meeting sections">
+        <button class="process-subtab active" type="button" data-process-panel="meeting" aria-pressed="true">Process meeting</button>
+        <button class="process-subtab" type="button" data-process-panel="agenda" aria-pressed="false">Suggested agenda</button>
       </section>
-      <section class="panel">
-        <h2>Create the update</h2>
-        <p class="intro">Paste meeting notes or a transcript. The draft can use project memory as background, but report evidence must come from this update.</p>
-      </section>
-      <main id="transcriptTestRoot"></main>
+      <div class="process-subpanel" data-process-tab-panel="meeting">
+        <section class="panel">
+          <h2>Create the update</h2>
+          <p class="intro">Paste meeting notes or a transcript. The draft can use project memory as background, but report evidence must come from this update.</p>
+        </section>
+        <main id="transcriptTestRoot"></main>
+      </div>
+      <div class="process-subpanel" data-process-tab-panel="agenda" hidden>
+        <section class="panel meeting-agenda-panel">
+          <div>
+            <h2>Suggested project update agenda</h2>
+            <p class="intro">Automatically built from the monitored milestones and risks in this project profile. Use it to guide the meeting, then paste the notes/transcript below.</p>
+          </div>
+          <div id="meetingAgenda" class="empty-state">Building agenda from project profile…</div>
+        </section>
+      </div>
     `;
+    wireProcessSubtabs(container);
     container.querySelectorAll('[data-open-stage]').forEach((button) => {
       button.addEventListener('click', () => {
         const stage = button.getAttribute('data-open-stage');
@@ -71,6 +80,24 @@
       target.className = 'empty-state';
       target.innerHTML = `Could not build the agenda from the project profile. You can still paste notes and create a draft report.`;
     }
+  }
+
+  function wireProcessSubtabs(container) {
+    const buttons = Array.from(container.querySelectorAll('[data-process-panel]'));
+    const panels = Array.from(container.querySelectorAll('[data-process-tab-panel]'));
+    buttons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const target = button.getAttribute('data-process-panel');
+        buttons.forEach((node) => {
+          const active = node === button;
+          node.classList.toggle('active', active);
+          node.setAttribute('aria-pressed', active ? 'true' : 'false');
+        });
+        panels.forEach((panel) => {
+          panel.hidden = panel.getAttribute('data-process-tab-panel') !== target;
+        });
+      });
+    });
   }
 
   window.ProjectStages = window.ProjectStages || {};
