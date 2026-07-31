@@ -539,7 +539,7 @@
             </ul>
           </aside>
         </div>
-        <div id="knowledgeAskResult" class="empty-state">Ask a question to retrieve relevant project context.</div>
+        <div id="knowledgeAskResult" class="ask-result" hidden></div>
       </section>
     `;
   }
@@ -552,6 +552,7 @@
     button.addEventListener('click', async () => {
       status.className = 'status';
       status.textContent = 'Asking project context…';
+      resultBox.hidden = false;
       resultBox.className = 'empty-state';
       resultBox.innerHTML = 'Searching project memory, milestones, risks and reports…';
       button.disabled = true;

@@ -257,6 +257,9 @@ test('project bar behaves like scoped project navigation', () => {
   assert.ok(sharedCssSource.includes('grid-template-columns:1fr !important'));
   assert.ok(projectStageInsightsSource.includes('id="ask-this-project"'));
   assert.ok(projectStageInsightsSource.includes('<details class="ask-chunks-details">'));
+  assert.ok(projectStageInsightsSource.includes('id="knowledgeAskResult" class="ask-result" hidden'));
+  assert.ok(projectStageInsightsSource.includes('resultBox.hidden = false'));
+  assert.ok(!projectStageInsightsSource.includes('Ask a question to retrieve relevant project context.'));
   assert.ok(projectStageInsightsSource.includes('window.ProjectStages.ask'));
   assert.ok(projectStageInsightsSource.includes('ask-panel-standalone'));
   assert.ok(!workspaceShell.includes('#ask-this-project'));
