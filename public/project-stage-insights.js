@@ -50,34 +50,6 @@
     `).join('') || '<tr><td colspan="6"><strong>No suggested follow-up risks yet.</strong><br />New risks found in draft reports will appear here for review.</td></tr>';
   }
 
-  function renderProjectSettings(project) {
-    return `
-      <section class="panel project-settings-panel">
-        <h2>Project settings</h2>
-        <p class="intro">Global details for this project workspace. Keep these here so the update meeting flow stays focused.</p>
-        <div class="form-grid">
-          <label class="wide">Project name <input id="settingsProjectName" type="text" value="${inputValue(project.projectName || '')}" /></label>
-          <label>Client <input id="settingsProjectClient" type="text" value="${inputValue(project.clientName || '')}" /></label>
-          <label>Status
-            <select id="settingsProjectStatus">
-              ${['active', 'paused', 'completed', 'archived'].map((option) => `<option value="${option}" ${option === (project.status || 'active') ? 'selected' : ''}>${option.charAt(0).toUpperCase() + option.slice(1)}</option>`).join('')}
-            </select>
-          </label>
-          <label class="full">Description <textarea id="settingsProjectDescription">${inputValue(project.description || '')}</textarea></label>
-        </div>
-        <div class="actions" style="margin-top:.75rem">
-          <button id="saveProjectSettingsBtn" class="primary" type="button">Save project settings</button>
-        </div>
-        <details class="danger-zone" style="margin-top:1rem">
-          <summary>Danger zone</summary>
-          <p class="muted">Only use this if the whole project workspace was created by mistake.</p>
-          <button id="deleteProjectBtn" class="danger" type="button">Delete project workspace</button>
-        </details>
-        <p id="projectSettingsStatus" class="status"></p>
-      </section>
-    `;
-  }
-
   function renderSupportActions(context) {
     const slot = document.getElementById('stageSupportActions');
     if (!slot) return;
@@ -209,7 +181,6 @@
         <h2>Project profile / baseline</h2>
         <p class="intro">This is the ongoing project state future reports compare against. Edit milestones and configured risks here; reports are snapshots against this profile.</p>
       </section>
-      ${renderProjectSettings(ctx.project || {})}
       <section class="panel">
         <h2>Profile milestones</h2>
         <div class="table-scroll profile-editor-scroll"><table class="profile-editor-table"><thead><tr><th>Milestone</th><th>Category</th><th>Description</th><th>Baseline</th><th>Forecast</th><th>Monitor?</th><th>Actions</th></tr></thead><tbody id="profileMilestonesBody">
@@ -284,71 +255,8 @@
 
     renderSupportActions(context);
     wireProfileEditors(container, ctx, projectId);
-    wireProjectSettings(container, ctx, projectId);
     wireActions(container, ctx, projectId);
     wireAsk(container, projectId);
-  }
-
-  function wireProjectSettings(container, ctx, projectId) {
-    const saveBtn = container.querySelector('#saveProjectSettingsBtn');
-    const deleteBtn = container.querySelector('#deleteProjectBtn');
-    const statusMsg = container.querySelector('#projectSettingsStatus');
-    if (!saveBtn || !statusMsg) return;
-
-    saveBtn.addEventListener('click', async () => {
-      const projectName = container.querySelector('#settingsProjectName').value.trim();
-      if (!projectName) {
-        statusMsg.className = 'status error';
-        statusMsg.textContent = 'Project name is required.';
-        return;
-      }
-      saveBtn.disabled = true;
-      statusMsg.className = 'status';
-      statusMsg.textContent = 'Saving project settings…';
-      try {
-        await PW.request(`projects/${encodeURIComponent(projectId)}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            projectName,
-            clientName: container.querySelector('#settingsProjectClient').value.trim(),
-            status: container.querySelector('#settingsProjectStatus').value,
-            description: container.querySelector('#settingsProjectDescription').value.trim()
-          })
-        });
-        await PW.loadProjects();
-        const fresh = PW.getProject(projectId);
-        if (fresh && ctx.project) Object.assign(ctx.project, fresh);
-        if (ctx.reloadProject) await ctx.reloadProject();
-        statusMsg.className = 'status success';
-        statusMsg.textContent = 'Project settings saved.';
-      } catch (error) {
-        statusMsg.className = 'status error';
-        statusMsg.textContent = error.message || 'Could not save project settings.';
-      } finally {
-        saveBtn.disabled = false;
-      }
-    });
-
-    if (deleteBtn) {
-      deleteBtn.addEventListener('click', async () => {
-        const project = ctx.project || {};
-        const summary = `${project.projectName || 'this project'} (${project.reportCount || 0} reports, ${project.activeMilestoneCount || 0} milestones)`;
-        if (!window.confirm(`Delete ${summary}? This also deletes this project's saved reports, milestones, risks, snapshots and project memory.`)) return;
-        deleteBtn.disabled = true;
-        statusMsg.className = 'status';
-        statusMsg.textContent = 'Deleting project workspace…';
-        try {
-          await PW.request(`projects/${encodeURIComponent(projectId)}`, { method: 'DELETE' });
-          PW.clearSelectedProject();
-          window.location.href = '/project-update-test';
-        } catch (error) {
-          statusMsg.className = 'status error';
-          statusMsg.textContent = error.message || 'Could not delete project.';
-          deleteBtn.disabled = false;
-        }
-      });
-    }
   }
 
   function rowPayload(row) {

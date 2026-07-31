@@ -81,6 +81,10 @@ app.get('/project-update-test/context', authRoutes.requireAuth, (req, res) => {
   res.redirect(302, '/project-update-test?stage=insights');
 });
 
+app.get('/project-update-test/settings', authRoutes.requireAuth, (req, res) => {
+  res.redirect(302, '/project-update-test?stage=settings');
+});
+
 app.get('/project-update-test/context/snapshots/:snapshotId', authRoutes.requireAuth, (req, res) => {
   sendView(res, 'project-update-context.html').catch((error) => res.status(404).send(error.message));
 });

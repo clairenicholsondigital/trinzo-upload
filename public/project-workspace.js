@@ -9,9 +9,10 @@
 
   const STAGES = [
     { key: 'process', no: 1, label: 'Update meeting', hint: 'Run the meeting → draft report' },
-    { key: 'insights', no: 2, label: 'Project profile', hint: 'Milestones, risks & baseline' },
+    { key: 'insights', no: 2, label: 'Project status', hint: 'Health, risks & recent updates' },
     { key: 'reports', no: 3, label: 'Saved reports', hint: 'Review previous updates' },
-    { key: 'setup', no: 4, label: 'Setup', hint: 'Milestones & project memory' }
+    { key: 'setup', no: 4, label: 'Setup', hint: 'Milestones & project memory' },
+    { key: 'settings', no: 5, label: 'Settings', hint: 'Project details & danger zone' }
   ];
   const STAGE_KEYS = STAGES.map((stage) => stage.key);
 
