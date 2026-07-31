@@ -695,7 +695,7 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertIn("Latest saved-report view of each health area", insights_stage)
         self.assertNotIn("<h2>Health history</h2>", insights_stage)
         self.assertLess(insights_stage.index("At a glance"), insights_stage.index("Project profile / baseline"))
-        self.assertLess(insights_stage.index("Project profile / baseline"), insights_stage.index("Project health overview"))
+        self.assertLess(insights_stage.index("Project health overview"), insights_stage.index("Project profile / baseline"))
         self.assertIn("profile-editor-table", insights_stage)
         self.assertIn("profile-title-field", insights_stage)
         self.assertIn("data-expand-edit-row", insights_stage)

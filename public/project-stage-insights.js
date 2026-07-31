@@ -199,17 +199,17 @@
         </div>
       </section>
       <section class="panel">
-        <h2>Project profile / baseline</h2>
-        <p class="intro">This is the ongoing project state future reports compare against. Edit milestones and configured risks here; reports are snapshots against this profile.</p>
-      </section>
-      ${renderProjectSettings(ctx.project || {})}
-      <section class="panel">
         <h2>Project health overview</h2>
         <p class="intro">Latest saved-report view of each health area, with the trend and rationale behind it.</p>
         <div class="table-scroll"><table><thead><tr><th>Area</th><th>Status</th><th>Trend</th><th>Confidence</th><th>Report</th><th>Rationale</th></tr></thead><tbody>
           ${healthHistory.map((item) => `<tr><td>${escapeHtml(friendlyLabel(item.area))}</td><td>${escapeHtml(friendlyLabel(item.status))}</td><td class="${escapeHtml(trendClass(item.trend))}">${escapeHtml(friendlyLabel(item.trend))}</td><td>${escapeHtml(item.confidence || '-')}</td><td><a href="/project-update-test/reports/${escapeHtml(item.reportId)}">Report ${escapeHtml(item.reportId)}</a></td><td>${escapeHtml(item.rationale || '-')}</td></tr>`).join('') || '<tr><td colspan="6"><strong>No project health overview yet.</strong><br />Approved reports will build a timeline here.</td></tr>'}
         </tbody></table></div>
       </section>
+      <section class="panel">
+        <h2>Project profile / baseline</h2>
+        <p class="intro">This is the ongoing project state future reports compare against. Edit milestones and configured risks here; reports are snapshots against this profile.</p>
+      </section>
+      ${renderProjectSettings(ctx.project || {})}
       <section class="panel">
         <h2>Profile milestones</h2>
         <div class="table-scroll profile-editor-scroll"><table class="profile-editor-table"><thead><tr><th>Milestone</th><th>Category</th><th>Description</th><th>Baseline</th><th>Forecast</th><th>Monitor?</th><th>Actions</th></tr></thead><tbody id="profileMilestonesBody">
