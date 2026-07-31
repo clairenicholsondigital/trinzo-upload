@@ -1120,6 +1120,14 @@ pre { background:var(--soft) !important; color:var(--text); border:1px solid var
   background:var(--bg) !important;
   color:var(--text) !important;
 }
+.project-report-page .nav .brand img {
+  background:transparent !important;
+  border:0 !important;
+  border-radius:0 !important;
+  height:26px !important;
+  padding:0 !important;
+  width:auto !important;
+}
 .project-report-page .panel,
 .project-report-page .item,
 .project-report-page .table-scroll,

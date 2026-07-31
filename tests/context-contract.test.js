@@ -144,9 +144,13 @@ test('saved report detail tables keep readable light-theme contrast', () => {
   assert.ok(sharedCssSource.includes('.project-report-page .status-improving'));
   assert.ok(sharedCssSource.includes('.project-report-page .status-on_track'));
   assert.ok(sharedCssSource.includes('.project-report-page .status-stable'));
+  assert.ok(sharedCssSource.includes('.project-report-page .nav .brand img'));
+  assert.ok(sharedCssSource.includes('background:transparent !important'));
   assert.ok(sharedCssSource.includes('color:var(--text) !important'));
   assert.ok(sharedCssSource.includes('color:var(--ok-text) !important'));
   assert.ok(reportsPageSource.includes('.status-completed, .status-approved, .status-resolved, .status-improving'));
+  assert.ok(reportsPageSource.includes('.brand .print-only'));
+  assert.ok(!reportsPageSource.includes('.brand img { width:132px'));
 });
 
 test('project workspace heading hierarchy promotes the project title', () => {
