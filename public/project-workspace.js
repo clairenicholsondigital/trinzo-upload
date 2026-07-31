@@ -11,8 +11,9 @@
     { key: 'process', no: 1, label: 'Update meeting', hint: 'Run the meeting → draft report' },
     { key: 'insights', no: 2, label: 'Project status', hint: 'Health, risks & recent updates' },
     { key: 'reports', no: 3, label: 'Saved reports', hint: 'Review previous updates' },
-    { key: 'setup', no: 4, label: 'Setup', hint: 'Milestones & project memory' },
-    { key: 'settings', no: 5, label: 'Settings', hint: 'Project details & danger zone' }
+    { key: 'ask', no: 4, label: 'Ask', hint: 'Query project memory' },
+    { key: 'setup', no: 5, label: 'Setup', hint: 'Milestones & project memory' },
+    { key: 'settings', no: 6, label: 'Settings', hint: 'Project details & danger zone' }
   ];
   const STAGE_KEYS = STAGES.map((stage) => stage.key);
 
@@ -36,6 +37,20 @@
     const url = `${location.pathname}?${params.toString()}`;
     if (replace) history.replaceState({ stage: stageKey }, '', url);
     else history.pushState({ stage: stageKey }, '', url);
+  }
+
+  function workspaceStageUrl(stageKey, hash) {
+    const params = new URLSearchParams(location.search);
+    params.set('stage', stageKey);
+    return `${location.pathname}?${params.toString()}${hash || ''}`;
+  }
+
+  function projectChooserUrl() {
+    const params = new URLSearchParams(location.search);
+    params.delete('stage');
+    params.delete('projectName');
+    params.set('choose', 'project');
+    return `${location.pathname}?${params.toString()}`;
   }
 
   function statusPill(status) {
@@ -151,6 +166,7 @@
       : '';
     return `
       <section class="panel project-bar">
+        <a id="switchProjectLink" class="project-switch-link" href="${escapeHtml(projectChooserUrl())}" target="_blank" rel="noopener">Switch project</a>
         <div class="identity">
           <span class="eyebrow">Project workspace</span>
           <span class="name">${escapeHtml(project.projectName || `Project ${project.projectId}`)}</span>
@@ -160,12 +176,14 @@
             <span class="badge muted">${escapeHtml(project.reportCount || 0)} reports</span>
             <span class="badge muted">${escapeHtml(project.activeMilestoneCount || 0)} milestones</span>
           </span>
+          <span class="project-summary">View your current project position, project profile and recent reports. Future reports are compared against this baseline. Edit milestones and monitored risks in Project settings.</span>
         </div>
-        <div class="bar-actions">
-          <button id="switchProjectBtn" class="secondary" type="button">Switch project</button>
-          <button id="openProjectProfileBtn" class="primary" type="button">Open project profile</button>
-          <button id="openProjectSettingsBtn" class="secondary" type="button">Project settings</button>
-        </div>
+        <nav class="project-nav" aria-label="Project navigation">
+          <a id="openProjectProfileBtn" class="project-nav-link" href="${escapeHtml(workspaceStageUrl('insights'))}" data-project-nav="overview">Overview</a>
+          <a id="openProjectReportsBtn" class="project-nav-link" href="${escapeHtml(workspaceStageUrl('reports'))}" data-project-nav="reports">Reports</a>
+          <a id="openProjectAskBtn" class="project-nav-link" href="${escapeHtml(workspaceStageUrl('ask'))}" data-project-nav="ask">Ask</a>
+          <a id="openProjectSettingsBtn" class="project-nav-link icon-only" href="${escapeHtml(workspaceStageUrl('settings'))}" data-project-nav="settings" aria-label="Settings" title="Settings"><span aria-hidden="true">&#9881;</span></a>
+        </nav>
       </section>
       ${contextWarning}
     `;
@@ -245,8 +263,15 @@
   }
 
   function updateProjectBarForStage(stageKey) {
-    const profileBtn = document.getElementById('openProjectProfileBtn');
-    if (profileBtn) profileBtn.hidden = stageKey === 'insights';
+    root.querySelectorAll('[data-project-nav]').forEach((item) => {
+      const target = item.getAttribute('data-project-nav');
+      const active = (
+        (target === 'overview' && stageKey === 'insights') ||
+        target === stageKey
+      );
+      item.classList.toggle('active', active);
+      item.setAttribute('aria-current', active ? 'page' : 'false');
+    });
   }
 
   function showStage(project, stageKey) {
@@ -302,17 +327,29 @@
   }
 
   function attachProjectBarActions(project) {
-    const switchBtn = document.getElementById('switchProjectBtn');
     const profileBtn = document.getElementById('openProjectProfileBtn');
+    const reportsBtn = document.getElementById('openProjectReportsBtn');
+    const askBtn = document.getElementById('openProjectAskBtn');
     const settingsBtn = document.getElementById('openProjectSettingsBtn');
 
-    if (switchBtn) switchBtn.addEventListener('click', () => {
-      renderChooser(PW.getCachedProjects());
-    });
-    if (profileBtn) profileBtn.addEventListener('click', () => {
+    if (profileBtn) profileBtn.addEventListener('click', (event) => {
+      event.preventDefault();
+      if (location.hash) history.replaceState({ stage: 'insights' }, '', workspaceStageUrl('insights'));
       goToStage('insights', true);
     });
-    if (settingsBtn) settingsBtn.addEventListener('click', () => {
+    if (reportsBtn) reportsBtn.addEventListener('click', (event) => {
+      event.preventDefault();
+      if (location.hash) history.replaceState({ stage: 'reports' }, '', workspaceStageUrl('reports'));
+      goToStage('reports', true);
+    });
+    if (askBtn) askBtn.addEventListener('click', (event) => {
+      event.preventDefault();
+      if (location.hash) history.replaceState({ stage: 'ask' }, '', workspaceStageUrl('ask'));
+      goToStage('ask', true);
+    });
+    if (settingsBtn) settingsBtn.addEventListener('click', (event) => {
+      event.preventDefault();
+      if (location.hash) history.replaceState({ stage: 'settings' }, '', workspaceStageUrl('settings'));
       goToStage('settings', true);
     });
   }
@@ -498,7 +535,6 @@
     }
     const params = new URLSearchParams(location.search);
     if (params.get('choose') === 'project') {
-      PW.clearSelectedProject();
       renderChooser(PW.getCachedProjects());
       return;
     }

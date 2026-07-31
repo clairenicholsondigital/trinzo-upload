@@ -24,7 +24,7 @@
     var menu = document.createElement('div');
     menu.className = 'nav-menu-items';
     [
-      { href: '/project-update-test?choose=project', label: 'Choose a project' },
+      { href: '/project-update-test?choose=project', label: 'Project listing' },
       { href: pilotProfileUrl, label: pilotProjectName }
     ].forEach(function (item) {
       var link = document.createElement('a');

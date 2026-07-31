@@ -94,12 +94,15 @@ class FrontendContractTest(unittest.TestCase):
     def test_dashboard_only_links_to_feedback_listing_and_matches_final_style(self):
         dashboard = (REPO_DIR / "views" / "dashboard.html").read_text(encoding="utf-8")
         meeting_minutes_final = (REPO_DIR / "views" / "meeting-minutes-final.html").read_text(encoding="utf-8")
+        shared_nav = (REPO_DIR / "public" / "trinzo.js").read_text(encoding="utf-8")
 
         shared_style_tokens = ["--bg:#0b1020", "--panel:#11192f", "--accent:#17D0C4", "linear-gradient(145deg,var(--panel),var(--panel2))"]
         for token in shared_style_tokens:
             self.assertIn(token, dashboard)
             self.assertIn(token, meeting_minutes_final)
 
+        self.assertIn("Project listing", shared_nav)
+        self.assertNotIn("Choose a project", shared_nav)
         self.assertIn('href="/meeting-minutes-feedback"', dashboard)
         self.assertIn("Open feedback listing", dashboard)
         self.assertNotIn('href="/"', dashboard)
@@ -152,6 +155,8 @@ class FrontendContractTest(unittest.TestCase):
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
         db = (REPO_DIR / "utils" / "db.js").read_text(encoding="utf-8")
 
+        self.assertIn("Process new meeting", jobs_page)
+        self.assertNotIn("New minutes", jobs_page)
         self.assertIn("queuedEndpoint: '/api/meeting-minutes-final/jobs'", meeting_minutes_final)
         self.assertIn("jobsPageUrl: '/meeting-minutes-final/jobs'", meeting_minutes_final)
         self.assertIn('href="/meeting-minutes-final/jobs"', meeting_minutes_final)

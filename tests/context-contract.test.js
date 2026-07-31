@@ -136,12 +136,55 @@ test('light theme keeps project health trend colours readable', () => {
   assert.ok(sharedCssSource.includes('font-weight:700 !important'));
 });
 
+test('project workspace heading hierarchy promotes the project title', () => {
+  assert.ok(sharedCssSource.includes('.project-bar .identity .name'));
+  assert.ok(sharedCssSource.includes('font-size:2.15rem !important'));
+  assert.ok(!sharedCssSource.includes('.insights-header-panel h1'));
+  assert.ok(!projectStageInsightsSource.includes('panel insights-header-panel'));
+});
+
+test('project bar behaves like scoped project navigation', () => {
+  const workspaceShell = fs.readFileSync(path.join(repoDir, 'public/project-workspace.js'), 'utf8');
+  assert.ok(workspaceShell.includes('project-nav'));
+  assert.ok(workspaceShell.includes('data-project-nav="overview"'));
+  assert.ok(workspaceShell.includes('data-project-nav="reports"'));
+  assert.ok(workspaceShell.includes('data-project-nav="ask"'));
+  assert.ok(!workspaceShell.includes('data-project-nav="switch"'));
+  assert.ok(workspaceShell.includes('workspaceStageUrl(\'ask\')'));
+  assert.ok(workspaceShell.includes("goToStage('ask', true)"));
+  assert.ok(workspaceShell.includes('projectChooserUrl'));
+  assert.ok(workspaceShell.includes('id="switchProjectLink"'));
+  assert.ok(workspaceShell.includes('class="project-switch-link"'));
+  assert.ok(workspaceShell.includes('target="_blank"'));
+  assert.ok(workspaceShell.includes('rel="noopener"'));
+  assert.ok(!workspaceShell.includes('switchProjectBtn'));
+  assert.ok(workspaceShell.includes('class="project-nav-link icon-only"'));
+  assert.ok(workspaceShell.includes('aria-label="Settings"'));
+  assert.ok(workspaceShell.includes('&#9881;'));
+  assert.ok(!workspaceShell.includes('data-project-nav="settings">Settings</a>'));
+  assert.ok(workspaceShell.includes('project-summary'));
+  assert.ok(workspaceShell.includes('View your current project position, project profile and recent reports.'));
+  assert.ok(workspaceShell.includes('aria-current'));
+  assert.ok(sharedCssSource.includes('.project-nav-link.active'));
+  assert.ok(sharedCssSource.includes('.project-nav-link.icon-only'));
+  assert.ok(sharedCssSource.includes('.project-switch-link'));
+  assert.ok(sharedCssSource.includes('.project-bar .project-summary'));
+  assert.ok(sharedCssSource.includes('.ask-panel-standalone .ask-layout'));
+  assert.ok(sharedCssSource.includes('grid-template-columns:1fr !important'));
+  assert.ok(projectStageInsightsSource.includes('id="ask-this-project"'));
+  assert.ok(projectStageInsightsSource.includes('window.ProjectStages.ask'));
+  assert.ok(projectStageInsightsSource.includes('ask-panel-standalone'));
+  assert.ok(!workspaceShell.includes('#ask-this-project'));
+});
+
 test('mobile project profile row actions stay compact and distinct', () => {
   assert.ok(sharedCssSource.includes('.profile-editor-table .actions'));
   assert.ok(sharedCssSource.includes('grid-template-columns:repeat(2, minmax(0, 1fr)) !important'));
   assert.ok(sharedCssSource.includes('.profile-editor-table .actions [data-expand-edit-row]'));
   assert.ok(sharedCssSource.includes('.profile-editor-table .actions button.danger'));
   assert.ok(sharedCssSource.includes('.profile-editor-table { min-width:980px !important; }'));
+  assert.ok(sharedCssSource.includes('.profile-editor-table .profile-monitor-column'));
+  assert.ok(sharedCssSource.includes('width:60px !important'));
   assert.ok(projectStageInsightsSource.includes('suggested-risk-actions'));
   assert.ok(projectStageInsightsSource.includes('suggested-risk-table'));
   assert.ok(sharedCssSource.includes('.profile-editor-table .suggested-risk-actions'));

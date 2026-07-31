@@ -423,6 +423,82 @@ button.danger:hover,
   background:var(--surface); border:1px solid var(--border);
   border-radius:var(--radius); padding:.6rem .8rem; box-shadow:var(--shadow-sm);
 }
+.project-bar {
+  position:relative !important;
+  align-items:flex-end !important;
+  padding-top:1.55rem !important;
+}
+.project-bar .identity .name {
+  font-size:2.15rem !important;
+  line-height:1.2 !important;
+}
+.project-bar .project-summary {
+  display:block !important;
+  max-width:760px !important;
+  color:var(--muted) !important;
+  font-size:.95rem !important;
+  line-height:1.45 !important;
+  margin-top:.25rem !important;
+}
+.project-nav {
+  display:flex !important;
+  gap:.35rem !important;
+  flex-wrap:wrap !important;
+  align-items:center !important;
+  justify-content:flex-end !important;
+  margin-left:auto !important;
+}
+.project-nav-link {
+  display:inline-flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  background:var(--surface) !important;
+  color:var(--accent-700) !important;
+  border:1px solid var(--border-strong) !important;
+  border-radius:8px !important;
+  padding:.55rem .75rem !important;
+  font:inherit !important;
+  font-weight:700 !important;
+  line-height:1.1 !important;
+  text-decoration:none !important;
+  white-space:nowrap !important;
+  cursor:pointer !important;
+}
+.project-nav-link:hover {
+  background:var(--brand-050) !important;
+  color:var(--accent-700) !important;
+  text-decoration:none !important;
+}
+.project-nav-link.active {
+  background:var(--accent) !important;
+  border-color:var(--accent) !important;
+  color:#fff !important;
+  box-shadow:0 0 0 2px rgba(44,122,144,.12) !important;
+}
+.project-nav-link.icon-only {
+  min-width:2.5rem !important;
+  padding:.55rem .65rem !important;
+  font-size:1.05rem !important;
+}
+.project-switch-link {
+  position:absolute !important;
+  top:.65rem !important;
+  right:.8rem !important;
+  color:var(--muted) !important;
+  font-size:.88rem !important;
+  font-weight:650 !important;
+  text-decoration:none !important;
+}
+.project-switch-link:hover {
+  color:var(--accent-700) !important;
+  text-decoration:underline !important;
+}
+.ask-panel-standalone .ask-layout {
+  grid-template-columns:minmax(0, 1fr) minmax(240px, 320px) !important;
+}
+.ask-panel-standalone #knowledgeAskQuestion {
+  min-height:12rem !important;
+}
 
 /* ---------------------------------------------------------------- modals -- */
 .row-edit-modal-backdrop, .feedback-modal, .modal-backdrop {
@@ -461,6 +537,41 @@ input[type=file]::file-selector-button {
   background:var(--soft) !important; color:var(--muted);
 }
 .schema-table td, .schema-subtable td, .profile-editor-table td { background:var(--surface) !important; }
+.profile-editor-table .profile-monitor-column {
+  text-align:center !important;
+  width:60px !important;
+}
+.profile-editor-table th.profile-monitor-column {
+  font-size:.76rem !important;
+  padding-left:.35rem !important;
+  padding-right:.35rem !important;
+  white-space:normal !important;
+}
+.profile-editor-table td.profile-monitor-column {
+  padding-left:.35rem !important;
+  padding-right:.35rem !important;
+}
+.profile-risk-table th:nth-child(3),
+.profile-risk-table td:nth-child(3),
+.profile-risk-table th:nth-child(4),
+.profile-risk-table td:nth-child(4) {
+  width:330px !important;
+}
+.profile-risk-table th:nth-child(5),
+.profile-risk-table td:nth-child(5),
+.profile-milestone-table th:nth-child(6),
+.profile-milestone-table td:nth-child(6) {
+  width:60px !important;
+}
+.profile-milestone-table th:nth-child(3),
+.profile-milestone-table td:nth-child(3) {
+  width:360px !important;
+}
+.profile-editor-table .monitor-checkbox {
+  align-items:flex-start !important;
+  justify-content:center !important;
+  min-width:0 !important;
+}
 .profile-editor-table .actions {
   display:grid !important;
   grid-template-columns:repeat(2, minmax(0, 1fr)) !important;
@@ -925,5 +1036,19 @@ pre { background:var(--soft) !important; color:var(--text); border:1px solid var
     font-size:.82rem !important;
     line-height:1.2 !important;
     min-height:2.35rem !important;
+  }
+  .ask-panel-standalone .section-title-row {
+    display:grid !important;
+    grid-template-columns:1fr !important;
+  }
+  .ask-panel-standalone .ask-layout {
+    display:grid !important;
+    grid-template-columns:1fr !important;
+  }
+  .ask-panel-standalone .ask-help {
+    order:2 !important;
+  }
+  .ask-panel-standalone #knowledgeAskQuestion {
+    min-height:9rem !important;
   }
 }
