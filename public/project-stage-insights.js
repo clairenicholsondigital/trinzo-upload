@@ -513,6 +513,11 @@
 
   function renderAskPanel(project) {
     const projectName = project?.projectName || 'this project';
+    const demoQuestions = [
+      'What risks should we watch this week?',
+      'What decisions have already been made?',
+      'What constraints from the SoW matter here?'
+    ];
     return `
       <section id="ask-this-project" class="panel ask-panel ask-panel-standalone">
         <div class="section-title-row">
@@ -532,11 +537,14 @@
           </div>
           <aside class="ask-help">
             <strong>Good questions</strong>
-            <ul>
-              <li>What risks should we watch this week?</li>
-              <li>What decisions have already been made?</li>
-              <li>What constraints from the SoW matter here?</li>
-            </ul>
+            <div class="ask-preset-list">
+              ${demoQuestions.map((question) => `
+                <button class="ask-preset" type="button" data-question-preset="${escapeHtml(question)}">
+                  <span class="ask-preset-plus" aria-hidden="true">+</span>
+                  <span>${escapeHtml(question)}</span>
+                </button>
+              `).join('')}
+            </div>
           </aside>
         </div>
         <div id="knowledgeAskResult" class="ask-result" hidden></div>
@@ -548,7 +556,14 @@
     const button = container.querySelector('#askKnowledgeBtn');
     const status = container.querySelector('#knowledgeAskStatus');
     const resultBox = container.querySelector('#knowledgeAskResult');
-    if (!button || !status || !resultBox) return;
+    const questionBox = container.querySelector('#knowledgeAskQuestion');
+    if (!button || !status || !resultBox || !questionBox) return;
+    container.querySelectorAll('[data-question-preset]').forEach((preset) => {
+      preset.addEventListener('click', () => {
+        questionBox.value = preset.getAttribute('data-question-preset') || '';
+        questionBox.focus();
+      });
+    });
     button.addEventListener('click', async () => {
       status.className = 'status';
       status.textContent = 'Asking project context…';
@@ -559,7 +574,7 @@
       try {
         const result = await PW.request('knowledge/ask', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ projectId, question: container.querySelector('#knowledgeAskQuestion').value, topK: 8 })
+          body: JSON.stringify({ projectId, question: questionBox.value, topK: 8 })
         });
         status.className = result.answerMode === 'no_context' ? 'status' : 'status success';
         status.textContent = result.answerMode === 'generated'

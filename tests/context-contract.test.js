@@ -266,8 +266,14 @@ test('project bar behaves like scoped project navigation', () => {
   assert.ok(projectStageInsightsSource.includes('id="knowledgeAskResult" class="ask-result" hidden'));
   assert.ok(projectStageInsightsSource.includes('resultBox.hidden = false'));
   assert.ok(!projectStageInsightsSource.includes('Ask a question to retrieve relevant project context.'));
+  assert.ok(projectStageInsightsSource.includes('class="ask-preset" type="button" data-question-preset'));
+  assert.ok(projectStageInsightsSource.includes('ask-preset-plus'));
+  assert.ok(projectStageInsightsSource.includes("container.querySelectorAll('[data-question-preset]')"));
+  assert.ok(projectStageInsightsSource.includes('questionBox.value = preset.getAttribute'));
   assert.ok(projectStageInsightsSource.includes('window.ProjectStages.ask'));
   assert.ok(projectStageInsightsSource.includes('ask-panel-standalone'));
+  assert.ok(sharedCssSource.includes('.ask-preset-list'));
+  assert.ok(sharedCssSource.includes('.ask-preset-plus'));
   assert.ok(!workspaceShell.includes('#ask-this-project'));
 });
 
