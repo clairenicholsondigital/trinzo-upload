@@ -143,3 +143,9 @@ test('mobile project profile row actions stay compact and distinct', () => {
   assert.ok(sharedCssSource.includes('.profile-editor-table .actions button.danger'));
   assert.ok(sharedCssSource.includes('.profile-editor-table { min-width:980px !important; }'));
 });
+
+test('supporting tools start collapsed on page load', () => {
+  assert.ok(projectStageInsightsSource.includes('renderSupportActions'));
+  assert.ok(fs.readFileSync(path.join(repoDir, 'public/project-workspace.js'), 'utf8').includes('<details class="supporting-tools">'));
+  assert.ok(!fs.readFileSync(path.join(repoDir, 'public/project-workspace.js'), 'utf8').includes('class="supporting-tools" ${'));
+});

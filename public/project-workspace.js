@@ -192,7 +192,7 @@
 
   function renderStageTabs(activeKey) {
     return `
-      <details class="supporting-tools" ${activeKey === 'process' ? '' : 'open'}>
+      <details class="supporting-tools">
         <summary>Supporting tools</summary>
         <p class="muted">Most updates should start on <strong>Update meeting</strong>. Use these when you need to adjust the project profile, review old reports, or do admin maintenance.</p>
         <nav class="stage-tabs" aria-label="Workspace stages">
