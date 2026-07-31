@@ -1063,38 +1063,40 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
       return;
     }
     listView.innerHTML = `
-      <table class="jobs">
-        <thead>
-          <tr>
-            <th>Job</th>
-            <th>Meeting</th>
-            <th>Status</th>
-            <th>Progress</th>
-            <th>Runtime</th>
-            <th>Attempts</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${jobs.map((job) => `
+      <div class="jobs-table-wrap">
+        <table class="jobs">
+          <thead>
             <tr>
-              <td>#${escapeHtml(job.jobId)}<br><small class="muted">${escapeHtml(formatDate(job.createdAt))}</small></td>
-              <td>${escapeHtml(job.meetingTitle || 'Meeting minutes job')}<br><small class="muted">${escapeHtml(job.fileName || `${job.transcriptLength || 0} chars`)}</small></td>
-              <td><span class="status ${statusClass(job.status)}">${escapeHtml(friendlyLabel(job.status || 'queued'))}</span>${job.errorMessage ? `<br><small class="muted">${escapeHtml(job.errorMessage)}</small>` : ''}</td>
-              <td>${renderProgress(job)}</td>
-              <td>${escapeHtml(runtime(job))}</td>
-              <td>${escapeHtml(job.attempts || 0)} / ${escapeHtml(job.maxAttempts || 0)}</td>
-              <td class="row-actions">
-                <a class="button secondary" href="/meeting-minutes-final/jobs/${encodeURIComponent(job.jobId)}">Open</a>
-                ${job.status === 'completed' ? `<a class="button" target="_blank" rel="noopener" href="/meeting-minutes-final/jobs/${encodeURIComponent(job.jobId)}/result">Open result</a>` : ''}
-                ${job.status === 'failed' ? `<button class="secondary" data-retry="${escapeHtml(job.jobId)}" type="button">Retry</button>` : ''}
-                ${job.status === 'queued' || job.status === 'running' ? `<button class="danger" data-cancel="${escapeHtml(job.jobId)}" type="button">Cancel</button>` : ''}
-                ${['completed', 'failed', 'cancelled'].includes(job.status) ? `<button class="danger" data-delete="${escapeHtml(job.jobId)}" type="button">Delete</button>` : ''}
-              </td>
+              <th>Job</th>
+              <th>Meeting</th>
+              <th>Status</th>
+              <th>Progress</th>
+              <th>Runtime</th>
+              <th>Attempts</th>
+              <th>Actions</th>
             </tr>
-          `).join('')}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            ${jobs.map((job) => `
+              <tr>
+                <td data-label="Job"><strong>#${escapeHtml(job.jobId)}</strong><br><small class="muted">${escapeHtml(formatDate(job.createdAt))}</small></td>
+                <td data-label="Meeting"><strong>${escapeHtml(job.meetingTitle || 'Meeting minutes job')}</strong><br><small class="muted">${escapeHtml(job.fileName || `${job.transcriptLength || 0} chars`)}</small></td>
+                <td data-label="Status"><span class="status ${statusClass(job.status)}">${escapeHtml(friendlyLabel(job.status || 'queued'))}</span>${job.errorMessage ? `<br><small class="muted">${escapeHtml(job.errorMessage)}</small>` : ''}</td>
+                <td data-label="Progress">${renderProgress(job)}</td>
+                <td data-label="Runtime">${escapeHtml(runtime(job))}</td>
+                <td data-label="Attempts">${escapeHtml(job.attempts || 0)} / ${escapeHtml(job.maxAttempts || 0)}</td>
+                <td data-label="Actions" class="row-actions">
+                  <a class="button secondary" href="/meeting-minutes-final/jobs/${encodeURIComponent(job.jobId)}">Open</a>
+                  ${job.status === 'completed' ? `<a class="button" target="_blank" rel="noopener" href="/meeting-minutes-final/jobs/${encodeURIComponent(job.jobId)}/result">Open result</a>` : ''}
+                  ${job.status === 'failed' ? `<button class="secondary" data-retry="${escapeHtml(job.jobId)}" type="button">Retry</button>` : ''}
+                  ${job.status === 'queued' || job.status === 'running' ? `<button class="danger" data-cancel="${escapeHtml(job.jobId)}" type="button">Cancel</button>` : ''}
+                  ${['completed', 'failed', 'cancelled'].includes(job.status) ? `<button class="danger" data-delete="${escapeHtml(job.jobId)}" type="button">Delete</button>` : ''}
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
     `;
   }
 

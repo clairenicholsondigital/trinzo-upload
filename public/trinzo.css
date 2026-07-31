@@ -187,7 +187,124 @@ tbody tr:nth-child(even) td { background:#fafcfd; }
 tbody tr:hover td { background:var(--brand-050); }
 tbody tr:last-child td { border-bottom:none; }
 
+/* Meeting-minutes jobs list: override the legacy dark inline table rules. */
+.jobs-table-wrap {
+  margin-top:1rem;
+  overflow-x:auto;
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  background:var(--surface);
+  box-shadow:var(--shadow-sm);
+}
+.jobs {
+  margin:0 !important;
+  border-collapse:collapse !important;
+  background:var(--surface) !important;
+  color:var(--text) !important;
+}
+.jobs th {
+  background:var(--soft) !important;
+  color:var(--muted) !important;
+  border-bottom:1px solid var(--border-strong) !important;
+}
+.jobs tr {
+  background:var(--surface) !important;
+}
+.jobs td {
+  background:var(--surface) !important;
+  color:var(--text) !important;
+  border-bottom:1px solid var(--border) !important;
+}
+.jobs tbody tr:nth-child(even) td {
+  background:#fafcfd !important;
+}
+.jobs tbody tr:hover td {
+  background:var(--brand-050) !important;
+}
+.jobs td:nth-child(1) { width:7.5rem; }
+.jobs td:nth-child(2) { min-width:17rem; }
+.jobs td:nth-child(4) { min-width:12rem; }
+.jobs .progress {
+  min-width:10rem;
+  color:var(--text);
+}
+.jobs .track {
+  background:var(--soft-2) !important;
+  border:1px solid var(--border-strong) !important;
+}
+.jobs .fill {
+  background:linear-gradient(90deg,var(--accent),var(--brand)) !important;
+}
+.jobs .row-actions {
+  display:flex;
+  gap:.45rem;
+  flex-wrap:wrap;
+  align-items:center;
+  min-width:12rem;
+}
+.jobs .row-actions .button,
+.jobs .row-actions button {
+  min-height:2.25rem;
+}
+.jobs .row-actions button.danger {
+  background:var(--danger-text) !important;
+  border-color:var(--danger-text) !important;
+  color:#fff !important;
+}
+@media (max-width: 860px) {
+  .jobs-table-wrap {
+    border:0;
+    background:transparent;
+    box-shadow:none;
+  }
+  .jobs tr {
+    background:var(--surface) !important;
+    border:1px solid var(--border) !important;
+    box-shadow:var(--shadow-sm);
+  }
+  .jobs td {
+    display:block;
+    width:100% !important;
+    padding:.72rem .85rem !important;
+  }
+  .jobs td::before {
+    content:attr(data-label);
+    display:block;
+    margin-bottom:.25rem;
+    color:var(--muted);
+    font-size:.72rem;
+    font-weight:700;
+    letter-spacing:.04em;
+    text-transform:uppercase;
+  }
+  .jobs .row-actions {
+    min-width:0;
+  }
+}
+
 /* ---------------------------------------------------- badges / statuses -- */
+.status.completed {
+  color:var(--ok-text) !important;
+  background:var(--ok-bg) !important;
+  border-color:var(--ok-border) !important;
+}
+.status.running {
+  color:var(--info-text) !important;
+  background:var(--info-bg) !important;
+  border-color:var(--info-border) !important;
+}
+.status.failed,
+.status.cancelled {
+  color:var(--danger-text) !important;
+  background:var(--danger-bg) !important;
+  border-color:var(--danger-border) !important;
+}
+.status.queued,
+.status.retry_wait {
+  color:var(--warn-text) !important;
+  background:var(--warn-bg) !important;
+  border-color:var(--warn-border) !important;
+}
 .pill, .badge, .status-pill, .status {
   display:inline-flex; align-items:center; gap:.35rem; width:max-content;
   border:1px solid var(--border); border-radius:var(--radius-pill);
