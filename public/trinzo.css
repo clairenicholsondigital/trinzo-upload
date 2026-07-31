@@ -1214,13 +1214,39 @@ pre { background:var(--soft) !important; color:var(--text); border:1px solid var
   .ask-question-area { min-width:0; }
   .project-bar-topline { flex-direction:column; }
   .project-switch-link { align-self:flex-end; }
-  .project-nav { border-bottom:0; display:grid !important; gap:.35rem; grid-template-columns:repeat(4, minmax(0, 1fr)); }
+  .project-nav {
+    border-bottom:0;
+    display:grid !important;
+    gap:.45rem !important;
+    grid-template-columns:repeat(2, minmax(0, 1fr)) !important;
+    width:100%;
+  }
   .project-nav-link,
   .project-bar .project-nav-link {
+    align-items:center !important;
     border:1px solid var(--border) !important;
     border-radius:var(--radius-sm) !important;
+    display:inline-flex !important;
+    font-size:.92rem !important;
+    gap:.35rem !important;
+    justify-content:center !important;
+    line-height:1.2 !important;
     min-width:0;
-    padding:.5rem .55rem !important;
+    min-height:2.75rem;
+    padding:.5rem .45rem !important;
+    text-align:center !important;
+    white-space:nowrap !important;
+  }
+  .project-nav-link span,
+  .project-bar .project-nav-link span {
+    min-width:0;
+  }
+  .project-nav-link.icon-only,
+  .project-bar .project-nav-link.icon-only {
+    grid-column:1 / -1;
+    justify-self:start;
+    min-width:3.2rem !important;
+    width:3.2rem;
   }
   .quick-links .stage-tabs { display:grid !important; grid-template-columns:1fr !important; }
   .quick-links .stage-tab { width:100% !important; }

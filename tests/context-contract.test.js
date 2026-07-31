@@ -195,6 +195,8 @@ test('project bar behaves like scoped project navigation', () => {
   assert.ok(sharedCssSource.includes('.project-nav-link.active'));
   assert.ok(sharedCssSource.includes('.project-nav-link.icon-only'));
   assert.ok(sharedCssSource.includes('.project-switch-link'));
+  assert.ok(sharedCssSource.includes('grid-template-columns:repeat(2, minmax(0, 1fr)) !important'));
+  assert.ok(sharedCssSource.includes('grid-column:1 / -1'));
   assert.ok(sharedCssSource.includes('color:var(--text) !important'));
   assert.ok(sharedCssSource.includes('color:var(--heading) !important'));
   assert.ok(sharedCssSource.includes('.project-bar .project-summary'));
