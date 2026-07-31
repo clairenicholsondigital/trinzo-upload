@@ -162,6 +162,7 @@
         <div class="bar-actions">
           <button id="switchProjectBtn" class="secondary" type="button">Switch project</button>
           <button id="openProjectProfileBtn" class="primary" type="button">Open project profile</button>
+          <button id="openProjectSettingsBtn" class="secondary" type="button">Project settings</button>
         </div>
       </section>
       ${contextWarning}
@@ -294,12 +295,16 @@
   function attachProjectBarActions(project) {
     const switchBtn = document.getElementById('switchProjectBtn');
     const profileBtn = document.getElementById('openProjectProfileBtn');
+    const settingsBtn = document.getElementById('openProjectSettingsBtn');
 
     if (switchBtn) switchBtn.addEventListener('click', () => {
       renderChooser(PW.getCachedProjects());
     });
     if (profileBtn) profileBtn.addEventListener('click', () => {
       goToStage('insights', true);
+    });
+    if (settingsBtn) settingsBtn.addEventListener('click', () => {
+      goToStage('settings', true);
     });
   }
 
