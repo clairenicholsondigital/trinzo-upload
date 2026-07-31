@@ -127,6 +127,14 @@ a:hover { color:var(--accent-700); text-decoration:underline; }
   color:var(--accent-700); background:var(--brand-050); text-decoration:none;
 }
 @media (max-width:680px) {
+  .nav {
+    align-items:flex-start;
+  }
+  .nav .brand {
+    flex:0 0 100%;
+    margin-right:0;
+    width:100%;
+  }
   .nav-menu, .nav-menu-items { width:100%; }
   .nav-menu-items { position:static; margin-top:.35rem; min-width:0; box-shadow:none; }
 }
