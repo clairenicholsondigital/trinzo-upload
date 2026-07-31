@@ -364,6 +364,7 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertIn("openProject(projectId)", workspace_shell)
         self.assertIn("Switch project", workspace_shell)
         self.assertIn("Open project profile", workspace_shell)
+        self.assertIn("profileBtn.hidden = stageKey === 'insights'", workspace_shell)
         self.assertIn("Project settings", workspace_shell)
         self.assertIn("openProjectSettingsBtn", workspace_shell)
         self.assertIn("goToStage('settings', true)", workspace_shell)

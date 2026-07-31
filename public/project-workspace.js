@@ -242,9 +242,15 @@
     if (name) name.textContent = project.projectName || `Project ${project.projectId}`;
   }
 
+  function updateProjectBarForStage(stageKey) {
+    const profileBtn = document.getElementById('openProjectProfileBtn');
+    if (profileBtn) profileBtn.hidden = stageKey === 'insights';
+  }
+
   function showStage(project, stageKey) {
     const panel = document.getElementById('stagePanel');
     if (!panel) return;
+    updateProjectBarForStage(stageKey);
     root.querySelectorAll('[data-stage]').forEach((tab) => {
       const active = tab.getAttribute('data-stage') === stageKey;
       tab.classList.toggle('active', active);
