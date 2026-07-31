@@ -166,7 +166,7 @@
       : '';
     return `
       <section class="panel project-bar">
-        <a id="switchProjectLink" class="project-switch-link" href="${escapeHtml(projectChooserUrl())}" target="_blank" rel="noopener">Switch project</a>
+        <a id="switchProjectLink" class="project-switch-link" href="${escapeHtml(projectChooserUrl())}" target="_blank" rel="noopener">Switch project <span class="project-switch-arrow" aria-hidden="true">&rarr;</span></a>
         <div class="identity">
           <span class="eyebrow">Project workspace</span>
           <span class="name">${escapeHtml(project.projectName || `Project ${project.projectId}`)}</span>

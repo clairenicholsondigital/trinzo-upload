@@ -481,17 +481,24 @@ button.danger:hover,
   font-size:1.05rem !important;
 }
 .project-switch-link {
+  display:inline-flex !important;
+  align-items:center !important;
+  gap:.25rem !important;
   position:absolute !important;
   top:.65rem !important;
   right:.8rem !important;
-  color:var(--muted) !important;
+  color:var(--text) !important;
   font-size:.88rem !important;
   font-weight:650 !important;
   text-decoration:none !important;
 }
 .project-switch-link:hover {
-  color:var(--accent-700) !important;
+  color:var(--heading) !important;
   text-decoration:underline !important;
+}
+.project-switch-arrow {
+  font-size:1.05em;
+  line-height:1;
 }
 .ask-panel-standalone .ask-layout {
   grid-template-columns:minmax(0, 1fr) minmax(240px, 320px) !important;
@@ -984,7 +991,10 @@ input[type=file]::file-selector-button {
   max-width:64rem;
 }
 .project-switch-link {
-  color:var(--muted) !important;
+  align-items:center;
+  color:var(--text) !important;
+  display:inline-flex;
+  gap:.25rem;
   font-size:.9rem;
   font-weight:700;
   padding:.1rem 0;
@@ -992,7 +1002,7 @@ input[type=file]::file-selector-button {
   white-space:nowrap;
 }
 .project-switch-link:hover {
-  color:var(--accent-700) !important;
+  color:var(--heading) !important;
   text-decoration:underline;
 }
 .project-nav {

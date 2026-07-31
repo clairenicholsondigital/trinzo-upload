@@ -158,6 +158,8 @@ test('project bar behaves like scoped project navigation', () => {
   assert.ok(workspaceShell.includes('target="_blank"'));
   assert.ok(workspaceShell.includes('rel="noopener"'));
   assert.ok(!workspaceShell.includes('switchProjectBtn'));
+  assert.ok(workspaceShell.includes('project-switch-arrow'));
+  assert.ok(workspaceShell.includes('&rarr;'));
   assert.ok(workspaceShell.includes('class="project-nav-link icon-only"'));
   assert.ok(workspaceShell.includes('aria-label="Settings"'));
   assert.ok(workspaceShell.includes('&#9881;'));
@@ -168,6 +170,8 @@ test('project bar behaves like scoped project navigation', () => {
   assert.ok(sharedCssSource.includes('.project-nav-link.active'));
   assert.ok(sharedCssSource.includes('.project-nav-link.icon-only'));
   assert.ok(sharedCssSource.includes('.project-switch-link'));
+  assert.ok(sharedCssSource.includes('color:var(--text) !important'));
+  assert.ok(sharedCssSource.includes('color:var(--heading) !important'));
   assert.ok(sharedCssSource.includes('.project-bar .project-summary'));
   assert.ok(sharedCssSource.includes('.ask-panel-standalone .ask-layout'));
   assert.ok(sharedCssSource.includes('grid-template-columns:1fr !important'));

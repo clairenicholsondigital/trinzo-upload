@@ -380,6 +380,8 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertIn("project-summary", workspace_shell)
         self.assertIn("View your current project position, project profile and recent reports. Future reports are compared against this baseline. Edit milestones and monitored risks in Project settings.", workspace_shell)
         self.assertIn("Switch project", workspace_shell)
+        self.assertIn("project-switch-arrow", workspace_shell)
+        self.assertIn("&rarr;", workspace_shell)
         self.assertIn(">Overview</a>", workspace_shell)
         self.assertIn(">Reports</a>", workspace_shell)
         self.assertIn(">Ask</a>", workspace_shell)
