@@ -18,6 +18,7 @@ const projectStageReportsSource = fs.readFileSync(path.join(repoDir, 'public/pro
 const projectStageInsightsSource = fs.readFileSync(path.join(repoDir, 'public/project-stage-insights.js'), 'utf8');
 const roadmapPageSource = fs.readFileSync(path.join(repoDir, 'views/project-update-roadmap.html'), 'utf8');
 const dashboardPageSource = fs.readFileSync(path.join(repoDir, 'views/dashboard.html'), 'utf8');
+const sharedCssSource = fs.readFileSync(path.join(repoDir, 'public/trinzo.css'), 'utf8');
 
 test('canonical project context fixture contains the Node/Python boundary keys', () => {
   for (const key of [
@@ -126,4 +127,11 @@ test('project workspace labels separate memory, draft reports and evidence', () 
   assert.ok(projectStageProcessSource.includes('evidence must come from this update'));
   assert.ok(projectStageInsightsSource.includes('stored project memory'));
   assert.ok(projectStageInsightsSource.includes('Suggested follow-up risks'));
+});
+
+test('light theme keeps project health trend colours readable', () => {
+  assert.ok(sharedCssSource.includes('.trend-improving'));
+  assert.ok(sharedCssSource.includes('background:var(--ok-bg) !important'));
+  assert.ok(sharedCssSource.includes('color:var(--ok-text) !important'));
+  assert.ok(sharedCssSource.includes('font-weight:700 !important'));
 });

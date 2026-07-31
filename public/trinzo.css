@@ -706,11 +706,29 @@ input[type=file]::file-selector-button {
 .agenda-step li {
   color:var(--text) !important;
 }
+.trend-improving,
+.trend-resolved {
+  background:var(--ok-bg) !important;
+  color:var(--ok-text) !important;
+  font-weight:700 !important;
+}
 .trend-deteriorating,
-.trend-new_risk { color:var(--danger-text) !important; }
+.trend-new_risk {
+  background:var(--danger-bg) !important;
+  color:var(--danger-text) !important;
+  font-weight:700 !important;
+}
 .trend-new_update,
-.trend-replanned { color:var(--accent-700) !important; }
-.trend-stable { color:var(--warn-text) !important; }
+.trend-replanned {
+  background:var(--info-bg) !important;
+  color:var(--accent-700) !important;
+  font-weight:700 !important;
+}
+.trend-stable {
+  background:var(--warn-bg) !important;
+  color:var(--warn-text) !important;
+  font-weight:700 !important;
+}
 
 pre { background:var(--soft) !important; color:var(--text); border:1px solid var(--border); }
 .feedback-modal, .row-edit-modal { background:var(--surface) !important; color:var(--text); }
