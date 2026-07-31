@@ -311,6 +311,9 @@ tbody tr:last-child td { border-bottom:none; }
   padding:.2rem .6rem; font-size:.78rem; font-weight:700;
   background:var(--soft); color:var(--muted); line-height:1.4;
 }
+.status:empty {
+  display:none !important;
+}
 .pill.active, .badge.active { color:var(--accent-700); background:var(--brand-100); border-color:var(--brand-200); }
 .pill.legacy, .badge.legacy { color:var(--warn-text); background:var(--warn-bg); border-color:var(--warn-border); }
 
