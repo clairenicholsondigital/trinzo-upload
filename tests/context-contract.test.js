@@ -18,6 +18,7 @@ const projectStageReportsSource = fs.readFileSync(path.join(repoDir, 'public/pro
 const projectStageInsightsSource = fs.readFileSync(path.join(repoDir, 'public/project-stage-insights.js'), 'utf8');
 const roadmapPageSource = fs.readFileSync(path.join(repoDir, 'views/project-update-roadmap.html'), 'utf8');
 const dashboardPageSource = fs.readFileSync(path.join(repoDir, 'views/dashboard.html'), 'utf8');
+const reportsPageSource = fs.readFileSync(path.join(repoDir, 'views/project-update-reports.html'), 'utf8');
 const sharedCssSource = fs.readFileSync(path.join(repoDir, 'public/trinzo.css'), 'utf8');
 
 test('canonical project context fixture contains the Node/Python boundary keys', () => {
@@ -134,6 +135,14 @@ test('light theme keeps project health trend colours readable', () => {
   assert.ok(sharedCssSource.includes('background:var(--ok-bg) !important'));
   assert.ok(sharedCssSource.includes('color:var(--ok-text) !important'));
   assert.ok(sharedCssSource.includes('font-weight:700 !important'));
+});
+
+test('saved report detail tables keep readable light-theme contrast', () => {
+  assert.ok(reportsPageSource.includes('<body class="project-report-page">'));
+  assert.ok(sharedCssSource.includes('.project-report-page .long-text-cell'));
+  assert.ok(sharedCssSource.includes('.project-report-page .status-completed'));
+  assert.ok(sharedCssSource.includes('color:var(--text) !important'));
+  assert.ok(sharedCssSource.includes('color:var(--ok-text) !important'));
 });
 
 test('project workspace heading hierarchy promotes the project title', () => {

@@ -1114,6 +1114,71 @@ input[type=file]::file-selector-button {
 pre { background:var(--soft) !important; color:var(--text); border:1px solid var(--border); }
 .feedback-modal, .row-edit-modal { background:var(--surface) !important; color:var(--text); }
 
+/* Saved project report detail pages still define some legacy dark-page colours
+   inline. Keep them readable on the current light Trinzo surface. */
+.project-report-page {
+  background:var(--bg) !important;
+  color:var(--text) !important;
+}
+.project-report-page .panel,
+.project-report-page .item,
+.project-report-page .table-scroll,
+.project-report-page table {
+  background:var(--surface) !important;
+  color:var(--text) !important;
+}
+.project-report-page th,
+.project-report-page table th {
+  background:var(--soft) !important;
+  color:var(--muted) !important;
+  border-color:var(--border-strong) !important;
+}
+.project-report-page td,
+.project-report-page table td,
+.project-report-page .long-text-cell,
+.project-report-page .colour-with-label span:last-child {
+  color:var(--text) !important;
+  border-color:var(--border) !important;
+}
+.project-report-page tbody tr:nth-child(even) td {
+  background:#fafcfd !important;
+}
+.project-report-page tbody tr:hover td {
+  background:var(--brand-050) !important;
+}
+.project-report-page .status-badge {
+  background:var(--soft) !important;
+  border-color:var(--border-strong) !important;
+  color:var(--text) !important;
+}
+.project-report-page .status-completed,
+.project-report-page .status-approved,
+.project-report-page .status-resolved {
+  background:var(--ok-bg) !important;
+  border-color:var(--ok-border) !important;
+  color:var(--ok-text) !important;
+}
+.project-report-page .status-on_track,
+.project-report-page .status-stable {
+  background:var(--info-bg) !important;
+  border-color:var(--info-border) !important;
+  color:var(--info-text) !important;
+}
+.project-report-page .status-at_risk,
+.project-report-page .status-delayed,
+.project-report-page .status-replanned,
+.project-report-page .status-in_review {
+  background:var(--warn-bg) !important;
+  border-color:var(--warn-border) !important;
+  color:var(--warn-text) !important;
+}
+.project-report-page .status-blocked,
+.project-report-page .status-deteriorating {
+  background:var(--danger-bg) !important;
+  border-color:var(--danger-border) !important;
+  color:var(--danger-text) !important;
+}
+
 @media (max-width:680px) {
   body { padding:.75rem; }
   .container { padding-top:.5rem; }
