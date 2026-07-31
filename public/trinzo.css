@@ -728,6 +728,57 @@ input[type=file]::file-selector-button {
 .glance-metrics strong {
   color:var(--accent-700) !important;
 }
+.project-create-panel h2 {
+  margin-bottom:.9rem;
+}
+.new-project-form {
+  grid-template-columns:minmax(16rem, 2fr) minmax(12rem, 1fr) minmax(10rem, .9fr) !important;
+  gap:.85rem 1rem !important;
+  align-items:start !important;
+}
+.new-project-form label {
+  gap:.42rem !important;
+}
+.new-project-form .wide,
+.new-project-form .full,
+.new-project-actions {
+  grid-column:auto !important;
+}
+.new-project-form .full {
+  grid-column:1 / -1 !important;
+}
+.new-project-form textarea {
+  min-height:7rem !important;
+}
+.new-project-actions {
+  display:flex;
+  align-items:center;
+  gap:.75rem;
+  margin-top:.1rem;
+}
+.new-project-actions .primary {
+  display:inline-flex !important;
+  align-items:center;
+  justify-content:center;
+  min-height:2.65rem;
+  min-width:11.5rem;
+  background:var(--accent) !important;
+  border:1px solid var(--accent) !important;
+  border-radius:var(--radius-sm) !important;
+  color:#fff !important;
+  font-weight:700 !important;
+  line-height:1.1 !important;
+  padding:.7rem 1rem !important;
+  box-shadow:var(--shadow-sm);
+}
+.new-project-actions .primary:hover {
+  background:var(--accent-600) !important;
+  border-color:var(--accent-600) !important;
+}
+.new-project-actions .status {
+  margin:0;
+  min-height:1.5rem;
+}
 .section-block,
 .item,
 .card {
@@ -790,6 +841,12 @@ pre { background:var(--soft) !important; color:var(--text); border:1px solid var
   .nav .brand img { height:22px; }
   .button { width:100%; }
   .actions .button { width:auto; }
+  .new-project-form { grid-template-columns:1fr !important; }
+  .new-project-form .wide,
+  .new-project-form .full,
+  .new-project-actions { grid-column:1 / -1 !important; }
+  .new-project-actions { align-items:stretch; flex-direction:column; gap:.5rem; }
+  .new-project-actions .primary { width:100%; }
   .supporting-tools .stage-tabs { display:grid !important; grid-template-columns:1fr !important; }
   .supporting-tools .stage-tab { width:100% !important; }
   .profile-editor-table { min-width:980px !important; }

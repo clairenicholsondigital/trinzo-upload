@@ -72,9 +72,9 @@
         <h2>Your projects</h2>
         <div id="chooserGrid" class="chooser-grid"></div>
       </section>
-      <section class="panel">
+      <section class="panel project-create-panel">
         <h2>New project</h2>
-        <div class="form-grid">
+        <div class="form-grid new-project-form">
           <label class="wide">Project name <input id="newProjectName" type="text" placeholder="e.g. Acme platform rollout" /></label>
           <label>Client <input id="newProjectClient" type="text" placeholder="Optional client" /></label>
           <label>Status
@@ -86,9 +86,11 @@
             </select>
           </label>
           <label class="full">Description <textarea id="newProjectDescription" placeholder="Optional project notes"></textarea></label>
-          <button id="createProjectBtn" class="primary" type="button">Create and open</button>
+          <div class="new-project-actions">
+            <button id="createProjectBtn" class="primary" type="button">Create and open</button>
+            <p id="createProjectStatus" class="status"></p>
+          </div>
         </div>
-        <p id="createProjectStatus" class="status"></p>
       </section>
     `;
 
