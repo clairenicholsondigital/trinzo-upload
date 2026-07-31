@@ -155,8 +155,10 @@ test('project bar behaves like scoped project navigation', () => {
   assert.ok(workspaceShell.includes('workspaceStageUrl(\'ask\')'));
   assert.ok(workspaceShell.includes("goToStage('process', true)"));
   assert.ok(workspaceShell.includes("goToStage('ask', true)"));
-  assert.ok(workspaceShell.indexOf('>Overview</a>') < workspaceShell.indexOf('>Process meeting</a>'));
-  assert.ok(workspaceShell.indexOf('>Process meeting</a>') < workspaceShell.indexOf('>Reports</a>'));
+  assert.ok(workspaceShell.includes('project-nav-icon" aria-hidden="true">+</span><span>Process meeting</span>'));
+  assert.ok(workspaceShell.includes('project-nav-icon" aria-hidden="true">&#128172;</span><span>Ask</span>'));
+  assert.ok(workspaceShell.indexOf('>Overview</a>') < workspaceShell.indexOf('>Process meeting</span></a>'));
+  assert.ok(workspaceShell.indexOf('>Process meeting</span></a>') < workspaceShell.indexOf('>Reports</a>'));
   assert.ok(workspaceShell.includes('id="openProjectProcessBtn"'));
   assert.ok(workspaceShell.includes('projectChooserUrl'));
   assert.ok(workspaceShell.includes('id="switchProjectLink"'));

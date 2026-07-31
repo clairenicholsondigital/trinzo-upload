@@ -180,9 +180,9 @@
         </div>
         <nav class="project-nav" aria-label="Project navigation">
           <a id="openProjectProfileBtn" class="project-nav-link" href="${escapeHtml(workspaceStageUrl('insights'))}" data-project-nav="overview">Overview</a>
-          <a id="openProjectProcessBtn" class="project-nav-link" href="${escapeHtml(workspaceStageUrl('process'))}" data-project-nav="process">Process meeting</a>
+          <a id="openProjectProcessBtn" class="project-nav-link" href="${escapeHtml(workspaceStageUrl('process'))}" data-project-nav="process"><span class="project-nav-icon" aria-hidden="true">+</span><span>Process meeting</span></a>
           <a id="openProjectReportsBtn" class="project-nav-link" href="${escapeHtml(workspaceStageUrl('reports'))}" data-project-nav="reports">Reports</a>
-          <a id="openProjectAskBtn" class="project-nav-link" href="${escapeHtml(workspaceStageUrl('ask'))}" data-project-nav="ask">Ask</a>
+          <a id="openProjectAskBtn" class="project-nav-link" href="${escapeHtml(workspaceStageUrl('ask'))}" data-project-nav="ask"><span class="project-nav-icon" aria-hidden="true">&#128172;</span><span>Ask</span></a>
           <a id="openProjectSettingsBtn" class="project-nav-link icon-only" href="${escapeHtml(workspaceStageUrl('settings'))}" data-project-nav="settings" aria-label="Settings" title="Settings"><span aria-hidden="true">&#9881;</span></a>
         </nav>
       </section>

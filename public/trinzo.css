@@ -1024,6 +1024,7 @@ input[type=file]::file-selector-button {
   border-radius:8px 8px 0 0 !important;
   color:var(--muted) !important;
   display:inline-flex !important;
+  gap:.38rem !important;
   font-weight:700 !important;
   justify-content:center !important;
   line-height:1.1 !important;
@@ -1031,6 +1032,11 @@ input[type=file]::file-selector-button {
   padding:.55rem .85rem !important;
   text-decoration:none !important;
   white-space:nowrap;
+}
+.project-nav-icon {
+  flex:0 0 auto;
+  font-size:.95em;
+  line-height:1;
 }
 .project-nav-link:hover,
 .project-bar .project-nav-link:hover {
