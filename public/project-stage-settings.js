@@ -9,6 +9,7 @@
   }
 
   function renderProjectSettings(project, renderStageTabs) {
+    const quickLinks = typeof renderStageTabs === 'function' ? renderStageTabs('settings') : '';
     return `
       <section class="panel project-settings-panel">
         <h1>Project settings</h1>
@@ -26,14 +27,16 @@
         <div class="actions" style="margin-top:.75rem">
           <button id="saveProjectSettingsBtn" class="primary" type="button">Save project settings</button>
         </div>
-        <details class="danger-zone" style="margin-top:1rem">
+        <p id="projectSettingsStatus" class="status"></p>
+      </section>
+      ${quickLinks}
+      <section class="panel project-danger-panel">
+        <details class="danger-zone">
           <summary>Danger zone</summary>
           <p class="muted">Only use this if the whole project workspace was created by mistake.</p>
           <button id="deleteProjectBtn" class="danger" type="button">Delete project workspace</button>
         </details>
-        <p id="projectSettingsStatus" class="status"></p>
       </section>
-      ${typeof renderStageTabs === 'function' ? renderStageTabs('settings') : ''}
     `;
   }
 

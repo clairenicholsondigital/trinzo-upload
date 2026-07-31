@@ -1,6 +1,6 @@
 // Workspace controller: owns project selection + the project-update meeting
 // scaffold. Renders a project chooser when nothing is selected, otherwise opens
-// straight into the update meeting flow with supporting tools tucked away.
+// straight into the update meeting flow with quick links for scoped tools.
 (function () {
   const PW = window.ProjectWorkspace;
   const Stages = window.ProjectStages || {};
@@ -13,7 +13,7 @@
     { key: 'reports', no: 3, label: 'Saved reports', hint: 'Review previous updates' },
     { key: 'ask', no: 4, label: 'Ask', hint: 'Query project memory' },
     { key: 'setup', no: 5, label: 'Setup', hint: 'Milestones & project memory' },
-    { key: 'settings', no: 6, label: 'Settings', hint: 'Project details & danger zone' }
+    { key: 'settings', no: 6, label: 'Settings', hint: 'Project details' }
   ];
   const STAGE_KEYS = STAGES.map((stage) => stage.key);
 
@@ -214,8 +214,8 @@
 
   function renderStageTabs(activeKey) {
     return `
-      <details class="supporting-tools">
-        <summary>Supporting tools</summary>
+      <section class="panel quick-links">
+        <h2>Quick links</h2>
         <p class="muted">Most updates should start on <strong>Update meeting</strong>. Use these when you need to adjust the project profile, review old reports, or do admin maintenance.</p>
         <nav class="stage-tabs" aria-label="Workspace stages">
         ${STAGES.map((stage) => `
@@ -226,7 +226,7 @@
         `).join('')}
         </nav>
         <div id="stageSupportActions" class="stage-support-actions"></div>
-      </details>
+      </section>
     `;
   }
 

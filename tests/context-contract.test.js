@@ -194,8 +194,11 @@ test('mobile project profile row actions stay compact and distinct', () => {
   assert.ok(sharedCssSource.includes('.profile-editor-table .suggested-risk-actions'));
 });
 
-test('supporting tools start collapsed on page load', () => {
+test('settings quick links are visible without an accordion', () => {
+  const workspaceSource = fs.readFileSync(path.join(repoDir, 'public/project-workspace.js'), 'utf8');
   assert.ok(projectStageInsightsSource.includes('renderSupportActions'));
-  assert.ok(fs.readFileSync(path.join(repoDir, 'public/project-workspace.js'), 'utf8').includes('<details class="supporting-tools">'));
-  assert.ok(!fs.readFileSync(path.join(repoDir, 'public/project-workspace.js'), 'utf8').includes('class="supporting-tools" ${'));
+  assert.ok(workspaceSource.includes('<section class="panel quick-links">'));
+  assert.ok(workspaceSource.includes('<h2>Quick links</h2>'));
+  assert.ok(!workspaceSource.includes('<details class="supporting-tools">'));
+  assert.ok(!workspaceSource.includes('class="supporting-tools" ${'));
 });

@@ -199,9 +199,9 @@ pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:var(--so
 .compact-options-menu button { padding:.42rem .62rem; font-size:.9rem; }
 
 .stage-tabs { display:flex; gap:.4rem; flex-wrap:wrap; margin:0 0 1rem; }
-.supporting-tools { background:rgba(7,17,38,.55); border:1px solid var(--border); border-radius:14px; padding:.85rem 1rem; margin-bottom:1rem; }
-.supporting-tools summary { cursor:pointer; font-weight:700; color:#dbeafe; }
-.supporting-tools .stage-tabs { margin:.75rem 0 0; }
+.quick-links { background:rgba(7,17,38,.55); border:1px solid var(--border); border-radius:14px; padding:.85rem 1rem; margin-bottom:1rem; }
+.quick-links h2 { font-weight:700; color:#dbeafe; margin:0 0 .35rem; }
+.quick-links .stage-tabs { margin:.75rem 0 0; }
 .stage-tab { display:flex; gap:.55rem; align-items:baseline; background:var(--soft); border:1px solid var(--border); border-radius:10px; padding:.6rem .9rem; color:#dbeafe; }
 .stage-tab > span:not(.step-no) { min-width:0; }
 .stage-tab .step-no { display:inline-flex; align-items:center; justify-content:center; width:1.35rem; height:1.35rem; border-radius:999px; background:#132847; color:var(--muted); font-size:.78rem; font-weight:700; }
@@ -248,11 +248,11 @@ pre { white-space:pre-wrap; overflow:auto; max-height:520px; background:var(--so
   .ask-panel-standalone .ask-help { order:2; }
   .project-bar .bar-actions { margin-left:0; }
   .project-switcher-collapsed { align-items:stretch; flex-direction:column; }
-  .supporting-tools { padding:.75rem; }
-  .supporting-tools .stage-tabs { display:grid; grid-template-columns:1fr; gap:.5rem; }
-  .supporting-tools .stage-tab { width:100%; align-items:flex-start; white-space:normal; }
-  .supporting-tools .stage-tab > span:not(.step-no) { display:grid; gap:.15rem; }
-  .supporting-tools .stage-tab .step-hint { display:block; overflow-wrap:anywhere; line-height:1.25; }
+  .quick-links { padding:.75rem; }
+  .quick-links .stage-tabs { display:grid; grid-template-columns:1fr; gap:.5rem; }
+  .quick-links .stage-tab { width:100%; align-items:flex-start; white-space:normal; }
+  .quick-links .stage-tab > span:not(.step-no) { display:grid; gap:.15rem; }
+  .quick-links .stage-tab .step-hint { display:block; overflow-wrap:anywhere; line-height:1.25; }
 }
 @media print {
   body { background:#fff; color:#111827; padding:0; }
