@@ -582,6 +582,32 @@ input[type=file]::file-selector-button {
 .result-table-accordion summary {
   color:var(--heading) !important;
 }
+.advanced-result-tools {
+  margin-top:.45rem !important;
+}
+.advanced-result-tools summary {
+  display:inline-flex !important;
+  align-items:center !important;
+  width:auto !important;
+  background:var(--surface) !important;
+  border:1px solid var(--border-strong) !important;
+  border-radius:var(--radius-sm) !important;
+  color:var(--accent-700) !important;
+  box-shadow:var(--shadow-sm) !important;
+  padding:.48rem .7rem !important;
+  font-size:.86rem !important;
+  line-height:1.1 !important;
+}
+.advanced-result-tools summary:hover {
+  background:var(--brand-050) !important;
+  border-color:var(--brand-200) !important;
+}
+.advanced-result-tools[open] summary {
+  border-radius:var(--radius-sm) !important;
+}
+.advanced-result-tools .advanced-body {
+  color:var(--muted) !important;
+}
 
 .progress-track { background:var(--soft-2) !important; border:1px solid var(--border); }
 .progress-step { background:var(--soft) !important; color:var(--muted) !important; border:1px solid var(--border) !important; }
