@@ -147,11 +147,17 @@ test('project bar behaves like scoped project navigation', () => {
   const workspaceShell = fs.readFileSync(path.join(repoDir, 'public/project-workspace.js'), 'utf8');
   assert.ok(workspaceShell.includes('project-nav'));
   assert.ok(workspaceShell.includes('data-project-nav="overview"'));
+  assert.ok(workspaceShell.includes('data-project-nav="process"'));
   assert.ok(workspaceShell.includes('data-project-nav="reports"'));
   assert.ok(workspaceShell.includes('data-project-nav="ask"'));
   assert.ok(!workspaceShell.includes('data-project-nav="switch"'));
+  assert.ok(workspaceShell.includes('workspaceStageUrl(\'process\')'));
   assert.ok(workspaceShell.includes('workspaceStageUrl(\'ask\')'));
+  assert.ok(workspaceShell.includes("goToStage('process', true)"));
   assert.ok(workspaceShell.includes("goToStage('ask', true)"));
+  assert.ok(workspaceShell.indexOf('>Overview</a>') < workspaceShell.indexOf('>Process meeting</a>'));
+  assert.ok(workspaceShell.indexOf('>Process meeting</a>') < workspaceShell.indexOf('>Reports</a>'));
+  assert.ok(workspaceShell.includes('id="openProjectProcessBtn"'));
   assert.ok(workspaceShell.includes('projectChooserUrl'));
   assert.ok(workspaceShell.includes('id="switchProjectLink"'));
   assert.ok(workspaceShell.includes('class="project-switch-link"'));

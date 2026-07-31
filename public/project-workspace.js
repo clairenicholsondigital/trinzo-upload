@@ -180,6 +180,7 @@
         </div>
         <nav class="project-nav" aria-label="Project navigation">
           <a id="openProjectProfileBtn" class="project-nav-link" href="${escapeHtml(workspaceStageUrl('insights'))}" data-project-nav="overview">Overview</a>
+          <a id="openProjectProcessBtn" class="project-nav-link" href="${escapeHtml(workspaceStageUrl('process'))}" data-project-nav="process">Process meeting</a>
           <a id="openProjectReportsBtn" class="project-nav-link" href="${escapeHtml(workspaceStageUrl('reports'))}" data-project-nav="reports">Reports</a>
           <a id="openProjectAskBtn" class="project-nav-link" href="${escapeHtml(workspaceStageUrl('ask'))}" data-project-nav="ask">Ask</a>
           <a id="openProjectSettingsBtn" class="project-nav-link icon-only" href="${escapeHtml(workspaceStageUrl('settings'))}" data-project-nav="settings" aria-label="Settings" title="Settings"><span aria-hidden="true">&#9881;</span></a>
@@ -328,6 +329,7 @@
 
   function attachProjectBarActions(project) {
     const profileBtn = document.getElementById('openProjectProfileBtn');
+    const processBtn = document.getElementById('openProjectProcessBtn');
     const reportsBtn = document.getElementById('openProjectReportsBtn');
     const askBtn = document.getElementById('openProjectAskBtn');
     const settingsBtn = document.getElementById('openProjectSettingsBtn');
@@ -336,6 +338,11 @@
       event.preventDefault();
       if (location.hash) history.replaceState({ stage: 'insights' }, '', workspaceStageUrl('insights'));
       goToStage('insights', true);
+    });
+    if (processBtn) processBtn.addEventListener('click', (event) => {
+      event.preventDefault();
+      if (location.hash) history.replaceState({ stage: 'process' }, '', workspaceStageUrl('process'));
+      goToStage('process', true);
     });
     if (reportsBtn) reportsBtn.addEventListener('click', (event) => {
       event.preventDefault();
