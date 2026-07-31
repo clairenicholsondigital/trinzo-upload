@@ -431,6 +431,71 @@ input[type=file]::file-selector-button {
   background:var(--surface) !important; color:var(--text) !important; border:1px solid var(--border-strong) !important;
 }
 
+/* Meeting-minutes job detail/result editor. */
+.summary-item input,
+.summary-item textarea,
+.objectives-editor textarea,
+.minutes-table select,
+.minutes-table input,
+.minutes-table textarea,
+.row-edit-modal-fields input,
+.row-edit-modal-fields textarea {
+  background:var(--surface) !important;
+  color:var(--text) !important;
+  border:1px solid var(--border-strong) !important;
+  box-shadow:none !important;
+}
+.summary-item input:focus,
+.summary-item textarea:focus,
+.objectives-editor textarea:focus,
+.minutes-table select:focus,
+.minutes-table input:focus,
+.minutes-table textarea:focus,
+.row-edit-modal-fields input:focus,
+.row-edit-modal-fields textarea:focus {
+  border-color:var(--accent) !important;
+}
+.deadline-editor input[type="date"],
+.minutes-table input[type="date"],
+.summary-item input[type="date"] {
+  color-scheme:light !important;
+}
+.minutes-table-wrap,
+.result-table-section {
+  background:var(--surface) !important;
+  border:1px solid var(--border) !important;
+}
+.minutes-table {
+  background:var(--surface) !important;
+  color:var(--text) !important;
+}
+.minutes-table th {
+  background:var(--soft) !important;
+  color:var(--muted) !important;
+  border-color:var(--border) !important;
+}
+.minutes-table td {
+  background:var(--surface) !important;
+  color:var(--text) !important;
+  border-color:var(--border) !important;
+}
+.minutes-table tbody tr:nth-child(even) td {
+  background:#fafcfd !important;
+}
+.minutes-table .type-cell,
+.minutes-table .topic-cell,
+.minutes-table .owner-cell,
+.minutes-table .deadline-cell,
+.minutes-table .detail-cell,
+.minutes-table .evidence-cell {
+  color:var(--text) !important;
+}
+.result-section h3,
+.result-table-section h3,
+.result-table-accordion summary {
+  color:var(--heading) !important;
+}
+
 .progress-track { background:var(--soft-2) !important; border:1px solid var(--border); }
 .progress-step { background:var(--soft) !important; color:var(--muted) !important; border:1px solid var(--border) !important; }
 .progress-step.active { background:var(--brand-100) !important; color:var(--accent-700) !important; border-color:var(--brand-200) !important; }
