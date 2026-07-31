@@ -500,12 +500,13 @@
       : result.answerMode === 'retrieval_only'
         ? '<div class="empty-state"><strong>Generation unavailable.</strong><br />Showing the most relevant project-memory snippets instead.</div>'
         : '';
+    const chunksTitle = result.retrievalMode === 'project_context' ? 'Project context used' : 'Retrieved memory';
     const chunksHtml = chunks.length
-      ? `<h3 style="margin:.9rem 0 .2rem">${result.retrievalMode === 'project_context' ? 'Project context used' : 'Retrieved memory'}</h3><div class="chunk-grid">${chunks.map((chunk) => {
+      ? `<details class="ask-chunks-details"><summary><span>${escapeHtml(chunksTitle)}</span><span class="badge muted">${chunks.length} chunk${chunks.length === 1 ? '' : 's'}</span></summary><div class="chunk-grid">${chunks.map((chunk) => {
           const chunkId = chunk.chunk_id || chunk.chunkId || '-';
           const score = Number(chunk.score || 0);
           return `<article class="chunk-card"><strong>${escapeHtml(chunk.title || 'Project memory')}</strong><div class="chunk-meta"><span class="badge muted">chunk ${escapeHtml(chunkId)}</span><span class="badge muted">${escapeHtml(friendlyLabel(chunk.item_type || chunk.itemType))}</span>${score ? `<span class="badge muted">score ${escapeHtml(score.toFixed(2))}</span>` : ''}</div><div class="chunk-text">${escapeHtml((chunk.chunk_text || chunk.chunkText || '').slice(0, 700))}</div></article>`;
-        }).join('')}</div>`
+        }).join('')}</div></details>`
       : '<div class="empty-state"><strong>No matching project memory found.</strong><br />Try adding background notes, decisions, risks, or an SoW excerpt to Setup → Project memory first.</div>';
     return `<div class="badges"><span class="badge ${escapeHtml(modeBadgeClass(result.answerMode))}">Answer: ${escapeHtml(answerMode)}</span><span class="badge ${escapeHtml(modeBadgeClass(result.retrievalMode))}">Retrieval: ${escapeHtml(retrievalMode)}</span><span class="badge muted">${chunks.length} chunk${chunks.length === 1 ? '' : 's'}</span>${result.confidence ? `<span class="badge muted">Confidence: ${escapeHtml(friendlyLabel(result.confidence))}</span>` : ''}</div>${answer}${chunksHtml}`;
   }
