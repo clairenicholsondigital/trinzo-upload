@@ -78,7 +78,11 @@ app.get('/project-update-test/milestones/:milestoneId', authRoutes.requireAuth, 
 });
 
 app.get('/project-update-test/context', authRoutes.requireAuth, (req, res) => {
-  res.redirect(302, '/project-update-test?stage=insights');
+  const params = new URLSearchParams();
+  params.set('stage', 'memory');
+  if (req.query.projectName) params.set('projectName', String(req.query.projectName));
+  if (req.query.projectId) params.set('projectId', String(req.query.projectId));
+  res.redirect(302, `/project-update-test?${params.toString()}`);
 });
 
 app.get('/project-update-test/settings', authRoutes.requireAuth, (req, res) => {

@@ -1055,6 +1055,60 @@ input[type=file]::file-selector-button {
 .project-create-panel h2 {
   margin-bottom:.9rem;
 }
+.project-resume-panel {
+  display:grid !important;
+  gap:1rem !important;
+  grid-template-columns:minmax(0, 1.1fr) minmax(18rem, 1.6fr);
+  align-items:center !important;
+}
+.project-resume-panel h2 {
+  margin:.1rem 0 .25rem;
+}
+.project-resume-actions {
+  display:grid;
+  gap:.6rem;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+}
+.project-resume-actions .primary,
+.project-quick-action {
+  align-items:flex-start !important;
+  border-radius:var(--radius-sm) !important;
+  display:flex !important;
+  flex-direction:column;
+  gap:.2rem;
+  justify-content:center !important;
+  min-height:4.4rem;
+  padding:.8rem .9rem !important;
+  text-align:left;
+  width:100%;
+}
+.project-resume-actions .primary {
+  align-items:center !important;
+  background:var(--accent) !important;
+  border:1px solid var(--accent) !important;
+  color:#fff !important;
+  font-weight:700 !important;
+  grid-row:span 2;
+  text-align:center;
+}
+.project-quick-action small {
+  color:var(--muted);
+  font-size:.78rem;
+  line-height:1.25;
+}
+.project-quick-action span {
+  color:var(--heading);
+  font-weight:700;
+}
+.compact-actions {
+  display:grid !important;
+  gap:.35rem !important;
+  grid-template-columns:repeat(2, minmax(4.5rem, 1fr)) !important;
+}
+.compact-actions button {
+  min-height:2.25rem;
+  width:100%;
+}
 .new-project-form {
   grid-template-columns:minmax(16rem, 2fr) minmax(12rem, 1fr) minmax(10rem, .9fr) !important;
   gap:.85rem 1rem !important;
@@ -1346,6 +1400,11 @@ pre { background:var(--soft) !important; color:var(--text); border:1px solid var
   .button { width:100%; }
   .actions .button { width:auto; }
   .new-project-form { grid-template-columns:1fr !important; }
+  .project-resume-panel { grid-template-columns:1fr !important; }
+  .project-resume-actions { grid-template-columns:1fr !important; }
+  .project-resume-actions .primary,
+  .project-quick-action { min-height:3.4rem; }
+  .compact-actions { grid-template-columns:repeat(2, minmax(0, 1fr)) !important; }
   .new-project-form .wide,
   .new-project-form .full,
   .new-project-actions { grid-column:1 / -1 !important; }

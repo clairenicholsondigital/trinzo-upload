@@ -24,7 +24,12 @@
         <td>${item.isOfficial ? 'Included' : 'Draft'}</td>
         <td>${escapeHtml(memoryStatus(item))}</td>
         <td>${escapeHtml(dateValue(item.updatedAt))}</td>
-        <td><button type="button" data-archive-knowledge="${escapeHtml(item.itemId)}">Archive</button></td>
+        <td>
+          <div class="row-actions compact-actions">
+            <button type="button" data-edit-knowledge="${escapeHtml(item.itemId)}">Edit</button>
+            <button type="button" class="danger" data-archive-knowledge="${escapeHtml(item.itemId)}">Archive</button>
+          </div>
+        </td>
       </tr>
     `).join('') || '<tr><td colspan="6"><strong>No memory items added yet.</strong><br />Ask can still use project setup straight away. Add background docs, decisions or notes here when you want searchable project memory.</td></tr>';
   }
@@ -40,7 +45,7 @@
         </div>
       </section>
       <section class="panel">
-        <h2>Add memory item</h2>
+        <h2 id="memoryFormHeading">Add memory item</h2>
         <div class="grid">
           <label>Title <input id="knowledgeTitle" type="text" placeholder="Statement of work / background note" /></label>
           <label>Type <select id="knowledgeType"><option value="background_doc">Background doc</option><option value="decision">Decision</option><option value="note">Note</option><option value="risk">Risk</option></select></label>
@@ -48,6 +53,7 @@
         <label style="margin-top:.75rem">Content <textarea id="knowledgeContent" placeholder="Paste project background here..."></textarea></label>
         <div class="actions" style="margin-top:.75rem">
           <button id="saveKnowledgeBtn" class="primary" type="button">Save memory item</button>
+          <button id="cancelKnowledgeEditBtn" class="secondary" type="button" hidden>Cancel edit</button>
           <button id="processKnowledgeBtn" type="button">Refresh memory search</button>
         </div>
         <p id="knowledgeStatus" class="status"></p>
@@ -62,20 +68,60 @@
 
     const listNode = container.querySelector('#knowledgeList');
     const statusNode = container.querySelector('#knowledgeStatus');
+    const headingNode = container.querySelector('#memoryFormHeading');
+    const saveBtn = container.querySelector('#saveKnowledgeBtn');
+    const cancelBtn = container.querySelector('#cancelKnowledgeEditBtn');
+    const titleInput = container.querySelector('#knowledgeTitle');
+    const typeInput = container.querySelector('#knowledgeType');
+    const contentInput = container.querySelector('#knowledgeContent');
+    let loadedItems = [];
+    let editingItemId = null;
+
+    function resetEditor() {
+      editingItemId = null;
+      headingNode.textContent = 'Add memory item';
+      saveBtn.textContent = 'Save memory item';
+      cancelBtn.hidden = true;
+      titleInput.value = '';
+      contentInput.value = '';
+      typeInput.value = 'background_doc';
+    }
+
+    function beginEdit(itemId) {
+      const item = loadedItems.find((entry) => String(entry.itemId) === String(itemId));
+      if (!item) return;
+      editingItemId = item.itemId;
+      headingNode.textContent = 'Edit memory item';
+      saveBtn.textContent = 'Update memory item';
+      cancelBtn.hidden = false;
+      titleInput.value = item.title || '';
+      typeInput.value = item.itemType || 'note';
+      contentInput.value = item.content || '';
+      titleInput.focus();
+      statusNode.className = 'status';
+      statusNode.textContent = 'Editing existing memory item.';
+    }
 
     async function loadKnowledge() {
       try {
         const payload = await PW.request(`knowledge/items?projectId=${encodeURIComponent(projectId)}&status=active`);
         const items = asArray(payload.items);
+        loadedItems = items;
         listNode.innerHTML = `
           <table>
             <thead><tr><th>Title</th><th>Type</th><th>Baseline</th><th>Search status</th><th>Updated</th><th>Action</th></tr></thead>
             <tbody>${renderMemoryRows(items)}</tbody>
           </table>
         `;
+        listNode.querySelectorAll('[data-edit-knowledge]').forEach((button) => {
+          button.addEventListener('click', () => beginEdit(button.getAttribute('data-edit-knowledge')));
+        });
         listNode.querySelectorAll('[data-archive-knowledge]').forEach((button) => {
           button.addEventListener('click', async () => {
-            await PW.request(`knowledge/items/${encodeURIComponent(button.getAttribute('data-archive-knowledge'))}`, { method: 'DELETE' });
+            const itemId = button.getAttribute('data-archive-knowledge');
+            if (!window.confirm('Archive this memory item?')) return;
+            await PW.request(`knowledge/items/${encodeURIComponent(itemId)}`, { method: 'DELETE' });
+            if (String(editingItemId) === String(itemId)) resetEditor();
             await loadKnowledge();
           });
         });
@@ -84,28 +130,34 @@
       }
     }
 
-    container.querySelector('#saveKnowledgeBtn').addEventListener('click', async () => {
+    cancelBtn.addEventListener('click', () => {
+      resetEditor();
       statusNode.className = 'status';
-      statusNode.textContent = 'Saving memory item…';
+      statusNode.textContent = 'Edit cancelled.';
+    });
+
+    saveBtn.addEventListener('click', async () => {
+      statusNode.className = 'status';
+      statusNode.textContent = editingItemId ? 'Updating memory item…' : 'Saving memory item…';
+      const body = {
+        projectId,
+        title: titleInput.value,
+        content: contentInput.value,
+        itemType: typeInput.value,
+        isOfficial: true,
+        metadata: { source: 'workspace_memory' }
+      };
       try {
-        const result = await PW.request('knowledge/items', {
-          method: 'POST',
+        const result = await PW.request(editingItemId ? `knowledge/items/${encodeURIComponent(editingItemId)}` : 'knowledge/items', {
+          method: editingItemId ? 'PATCH' : 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            projectId,
-            title: container.querySelector('#knowledgeTitle').value,
-            content: container.querySelector('#knowledgeContent').value,
-            itemType: container.querySelector('#knowledgeType').value,
-            isOfficial: true,
-            metadata: { source: 'workspace_memory' }
-          })
+          body: JSON.stringify(body)
         });
         statusNode.className = 'status success';
         statusNode.textContent = result.embeddingWorker?.spawned
           ? 'Memory item saved. Search indexing has started.'
           : 'Memory item saved. Search indexing will run shortly.';
-        container.querySelector('#knowledgeTitle').value = '';
-        container.querySelector('#knowledgeContent').value = '';
+        resetEditor();
         await loadKnowledge();
       } catch (error) {
         statusNode.className = 'status error';

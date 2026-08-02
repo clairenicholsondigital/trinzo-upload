@@ -2366,6 +2366,7 @@ function cameliseKnowledgeItem(row = {}) {
     itemId: row.id,
     projectId: row.project_id,
     title: row.title,
+    content: row.content || '',
     itemType: row.item_type,
     status: row.status,
     isOfficial: row.is_official,
@@ -2400,7 +2401,7 @@ async function listProjectKnowledgeItems(filters = {}) {
   const limit = Math.min(Math.max(Number(filters.limit || 50), 1), 100);
   params.push(limit);
   const result = await query(
-    `SELECT i.id, i.project_id, i.title, i.item_type, i.status, i.is_official,
+    `SELECT i.id, i.project_id, i.title, i.content, i.item_type, i.status, i.is_official,
             i.source_report_id, i.source_report_version_id, i.metadata, i.created_at, i.updated_at,
             COUNT(c.id)::int AS chunk_count,
             jsonb_build_object(

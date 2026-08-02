@@ -143,6 +143,23 @@ function buildProjectContextFallbackChunks(projectContext = {}) {
   if (!projectContext || projectContext.found === false) return [];
   const chunks = [];
   const projectName = cleanText(projectContext.projectName);
+  const projectProfileParts = [
+    projectName ? `Project: ${projectName}.` : '',
+    projectContext.clientName ? `Client: ${projectContext.clientName}.` : '',
+    projectContext.status ? `Status: ${projectContext.status}.` : '',
+    projectContext.description ? `Description: ${projectContext.description}.` : ''
+  ];
+  if (joinParts(projectProfileParts)) {
+    chunks.push(contextChunk({
+      chunkId: 'project-context:profile',
+      itemId: projectContext.projectId || 'profile',
+      itemType: 'project_profile',
+      title: `Project profile: ${projectName || 'Untitled project'}`,
+      text: joinParts(projectProfileParts),
+      score: 0.72,
+      metadata: { projectId: projectContext.projectId || null }
+    }));
+  }
 
   for (const milestone of Array.isArray(projectContext.activeMilestones) ? projectContext.activeMilestones : []) {
     const latest = milestone.latestAssessment || {};

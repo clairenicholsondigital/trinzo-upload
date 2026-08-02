@@ -21,7 +21,7 @@ const roadmapPageSource = fs.readFileSync(path.join(repoDir, 'views/project-upda
 const dashboardPageSource = fs.readFileSync(path.join(repoDir, 'views/dashboard.html'), 'utf8');
 const reportsPageSource = fs.readFileSync(path.join(repoDir, 'views/project-update-reports.html'), 'utf8');
 const sharedCssSource = fs.readFileSync(path.join(repoDir, 'public/trinzo.css'), 'utf8');
-const { buildProjectContextFallbackAnswer, rankProjectRiskSignals } = require('../utils/knowledge');
+const { buildProjectContextFallbackAnswer, buildProjectContextFallbackChunks, rankProjectRiskSignals } = require('../utils/knowledge');
 
 test('canonical project context fixture contains the Node/Python boundary keys', () => {
   for (const key of [
@@ -128,6 +128,31 @@ test('project context fallback gives direct risk answers instead of hedging on c
   assert.ok(!answer.includes('insufficient'));
 });
 
+test('fresh project ask can use structured setup before searchable memory exists', () => {
+  const projectContext = {
+    found: true,
+    projectId: 501,
+    projectName: 'Fresh Client Launch',
+    clientName: 'Fresh Client',
+    status: 'active',
+    description: 'Set up the first project update workflow before any memory items are indexed.',
+    activeMilestones: [],
+    activeRisks: [],
+    recentReports: [],
+    healthHistory: []
+  };
+  const chunks = buildProjectContextFallbackChunks(projectContext);
+  assert.ok(chunks.some((chunk) => chunk.itemType === 'project_profile'));
+  const answer = buildProjectContextFallbackAnswer({
+    question: 'What do we know about this project?',
+    projectContext,
+    chunks
+  });
+  assert.ok(answer.includes('Fresh Client Launch'));
+  assert.ok(answer.includes('Project profile'));
+  assert.ok(answer.includes('first project update workflow'));
+});
+
 test('dashboard keeps only active tool infrastructure visible', () => {
   const serverSource = fs.readFileSync(path.join(repoDir, 'server.js'), 'utf8');
   assert.ok(serverSource.includes("sendView(res, 'dashboard.html')"));
@@ -174,6 +199,10 @@ test('project workspace labels separate memory, draft reports and evidence', () 
   assert.ok(projectStageMemorySource.includes('Memory health'));
   assert.ok(projectStageMemorySource.includes('searchable project memory'));
   assert.ok(projectStageMemorySource.includes('Fresh project note'));
+  assert.ok(projectStageMemorySource.includes('Edit memory item'));
+  assert.ok(projectStageMemorySource.includes('data-edit-knowledge'));
+  assert.ok(projectStageMemorySource.includes("method: editingItemId ? 'PATCH' : 'POST'"));
+  assert.ok(dbSource.includes('i.title, i.content, i.item_type'));
   assert.ok(projectStageProcessSource.includes('Create draft report'));
   assert.ok(projectStageProcessSource.includes('Project update meeting'));
   assert.ok(projectStageProcessSource.includes('evidence must come from this update'));
@@ -215,6 +244,11 @@ test('project workspace heading hierarchy promotes the project title', () => {
 
 test('project bar behaves like scoped project navigation', () => {
   const workspaceShell = fs.readFileSync(path.join(repoDir, 'public/project-workspace.js'), 'utf8');
+  assert.ok(workspaceShell.includes('Continue latest project'));
+  assert.ok(workspaceShell.includes("quickActionButton('ask', 'Ask project'"));
+  assert.ok(workspaceShell.includes("quickActionButton('memory', 'Add memory'"));
+  assert.ok(workspaceShell.includes("quickActionButton('reports', 'View reports'"));
+  assert.ok(workspaceShell.includes('requestedProjectId'));
   assert.ok(workspaceShell.includes('project-nav'));
   assert.ok(workspaceShell.includes('data-project-nav="overview"'));
   assert.ok(workspaceShell.includes('data-project-nav="setup"'));

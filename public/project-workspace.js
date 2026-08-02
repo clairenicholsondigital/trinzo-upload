@@ -32,9 +32,18 @@
     return (new URLSearchParams(location.search).get('projectName') || '').trim().toLowerCase();
   }
 
-  function setStageInUrl(stageKey, replace) {
+  function requestedProjectId() {
+    return (new URLSearchParams(location.search).get('projectId') || '').trim();
+  }
+
+  function setStageInUrl(stageKey, replace, projectId) {
     const params = new URLSearchParams(location.search);
+    params.delete('choose');
+    params.delete('projectName');
     params.set('stage', stageKey);
+    const activeProjectId = projectId || PW.getSelectedProjectId();
+    if (activeProjectId) params.set('projectId', activeProjectId);
+    else params.delete('projectId');
     const url = `${location.pathname}?${params.toString()}`;
     if (replace) history.replaceState({ stage: stageKey }, '', url);
     else history.pushState({ stage: stageKey }, '', url);
@@ -42,7 +51,11 @@
 
   function workspaceStageUrl(stageKey, hash) {
     const params = new URLSearchParams(location.search);
+    params.delete('choose');
+    params.delete('projectName');
     params.set('stage', stageKey);
+    const projectId = PW.getSelectedProjectId();
+    if (projectId) params.set('projectId', projectId);
     return `${location.pathname}?${params.toString()}${hash || ''}`;
   }
 
@@ -50,6 +63,7 @@
     const params = new URLSearchParams(location.search);
     params.delete('stage');
     params.delete('projectName');
+    params.delete('projectId');
     params.set('choose', 'project');
     return `${location.pathname}?${params.toString()}`;
   }
@@ -75,15 +89,47 @@
     `;
   }
 
+  function quickActionButton(stageKey, label, hint) {
+    return `
+      <button type="button" class="project-quick-action" data-open-latest-stage="${escapeHtml(stageKey)}">
+        <span>${escapeHtml(label)}</span>
+        <small>${escapeHtml(hint)}</small>
+      </button>
+    `;
+  }
+
+  function renderResumePanel(project) {
+    if (!project) return '';
+    return `
+      <section class="panel project-resume-panel">
+        <div class="resume-copy">
+          <span class="eyebrow">Continue latest project</span>
+          <h2>${escapeHtml(project.projectName || `Project ${project.projectId}`)}</h2>
+          <p class="intro">${escapeHtml(project.clientName || 'No client set')} &middot; ${escapeHtml(project.reportCount || 0)} reports &middot; ${escapeHtml(project.activeMilestoneCount || 0)} milestones &middot; ${escapeHtml(project.activeRiskCount || 0)} risks</p>
+        </div>
+        <div class="project-resume-actions">
+          <button id="continueLatestProjectBtn" class="primary" type="button" data-open-latest-stage="insights">Open overview</button>
+          ${quickActionButton('process', 'Process meeting', 'Create a draft update')}
+          ${quickActionButton('ask', 'Ask project', 'Use setup and memory')}
+          ${quickActionButton('memory', 'Add memory', 'Save background knowledge')}
+          ${quickActionButton('reports', 'View reports', 'Review drafts and approvals')}
+        </div>
+      </section>
+    `;
+  }
+
   // ---- Project chooser -------------------------------------------------------
 
   function renderChooser(projects) {
     Object.keys(mounted).forEach((key) => delete mounted[key]);
+    const selectedProject = PW.getProject(PW.getSelectedProjectId());
+    const latestProject = selectedProject || projects[0] || null;
     root.innerHTML = `
       <section class="panel">
         <h1>Project Updates Dashboard</h1>
         <p class="intro">Choose an existing project or create a new one. Each project has its own setup, memory, meeting processing, reports and Ask area.</p>
       </section>
+      ${renderResumePanel(latestProject)}
       <section class="panel">
         <h2>Your projects</h2>
         <p class="intro">Open a project to see its overview first, then choose the next action from the project navigation.</p>
@@ -119,6 +165,12 @@
     grid.querySelectorAll('[data-open-project]').forEach((card) => {
       card.addEventListener('click', () => openProject(card.getAttribute('data-open-project')));
     });
+    root.querySelectorAll('[data-open-latest-stage]').forEach((button) => {
+      button.addEventListener('click', () => {
+        if (!latestProject) return;
+        openProject(latestProject.projectId, button.getAttribute('data-open-latest-stage'));
+      });
+    });
 
     const createBtn = document.getElementById('createProjectBtn');
     createBtn.addEventListener('click', async () => {
@@ -144,7 +196,7 @@
           })
         });
         await PW.loadProjects();
-        openProject(payload.project.projectId);
+        openProject(payload.project.projectId, 'insights');
       } catch (error) {
         status.className = 'status error';
         status.textContent = error.message || 'Could not create project.';
@@ -153,9 +205,9 @@
     });
   }
 
-  function openProject(projectId) {
+  function openProject(projectId, stageKey) {
     PW.setSelectedProjectId(projectId);
-    setStageInUrl(currentStageKey(), true);
+    setStageInUrl(STAGE_KEYS.includes(stageKey) ? stageKey : currentStageKey(), true, projectId);
     renderWorkspace();
   }
 
@@ -562,6 +614,11 @@
       return;
     }
     const namedProject = requestedProjectName();
+    const explicitProjectId = requestedProjectId();
+    if (explicitProjectId) {
+      const match = PW.getCachedProjects().find((project) => String(project.projectId) === explicitProjectId);
+      if (match) PW.setSelectedProjectId(match.projectId);
+    }
     if (namedProject) {
       const match = PW.getCachedProjects().find((project) => String(project.projectName || '').trim().toLowerCase() === namedProject);
       if (match) PW.setSelectedProjectId(match.projectId);
