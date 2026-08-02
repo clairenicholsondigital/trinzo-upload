@@ -48,11 +48,14 @@ label { display:block; color:var(--muted); font-size:.86rem; font-weight:700; }
 input, select, textarea { width:100%; margin-top:.35rem; background:#071126; color:var(--text); border:1px solid var(--border); border-radius:10px; padding:.65rem; font:inherit; }
 textarea { min-height:7rem; resize:vertical; }
 .json-editor { min-height:36rem; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:.9rem; }
-.inline-edit-table textarea { min-height:4.5rem; }
-.inline-edit-table input, .inline-edit-table select, .inline-edit-table textarea { min-width:10rem; }
-.inline-edit-table td { min-width:12rem; }
+.inline-edit-table textarea { min-height:4.5rem; line-height:1.4; overflow:hidden; }
+.inline-edit-table input, .inline-edit-table select, .inline-edit-table textarea { display:block; width:100%; min-width:10rem; margin:0; background:rgba(7,17,38,.64); border-color:rgba(148,163,184,.3); border-radius:6px; }
+.inline-edit-table input:focus, .inline-edit-table select:focus, .inline-edit-table textarea:focus { outline:2px solid rgba(23,208,196,.45); border-color:var(--accent); background:#071126; }
+.inline-edit-table td { min-width:12rem; padding:.45rem; }
 .inline-edit-table .narrow { min-width:8rem; }
 .inline-edit-table .narrow button { display:block; width:100%; margin:.25rem 0; }
+.direct-edit-panel .editor-note { margin-top:-.25rem; }
+.direct-edit-panel .row-tools { justify-content:flex-end; margin-bottom:.5rem; }
 .editor-note { margin:.35rem 0 .75rem; color:var(--muted); }
 .row-tools { display:flex; gap:.4rem; flex-wrap:wrap; }
 .row-edit-modal-backdrop { position:fixed; inset:0; z-index:1000; background:rgba(2,6,23,.72); display:flex; align-items:center; justify-content:center; padding:1rem; }
@@ -90,7 +93,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
 .colour-with-label { display:inline-flex; align-items:center; gap:.45rem; }
 @media print {
   body { background:#fff; color:#111827; padding:0; }
-  .nav, .actions, .edit-panel, details { display:none !important; }
+  .nav, .actions, .edit-panel, details, .direct-edit-panel .editor-note, .direct-edit-panel .row-tools, .inline-edit-table .narrow { display:none !important; }
   .print-only { display:inline-block; }
   .panel { background:#fff; color:#111827; border-color:#d1d5db; break-inside:avoid; }
   .print-footer { display:block !important; position:fixed; left:0; right:0; bottom:0; color:#6b7280; font-size:8px; border-top:1px solid #d1d5db; padding-top:2mm; }
@@ -98,6 +101,17 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
   a { color:#111827; }
   th { background:#f3f4f6; color:#111827; }
   th, td, .table-scroll { border-color:#d1d5db; }
+  .inline-edit-table input, .inline-edit-table select, .inline-edit-table textarea {
+    background:#fff;
+    color:#111827;
+    border:0;
+    border-radius:0;
+    padding:0;
+    min-width:0;
+    resize:none;
+    print-color-adjust:exact;
+    -webkit-print-color-adjust:exact;
+  }
   .colour-field { min-height:auto; }
   .colour-swatch {
     width:10px;
@@ -641,7 +655,7 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
       ${overallSummarySection}
       <section class="panel edit-panel">
         <h2>Edit report</h2>
-        <p class="editor-note">Edit the report in normal fields, like a working document. Changes autosave to the server after a short pause. The advanced JSON view is only there for support/debugging.</p>
+        <p class="editor-note">Edit the report in normal fields, like a working document. Changes autosave to the server after a short pause. The detailed milestone, risk and action rows are editable directly in their report tables below.</p>
         <div class="grid">
           <label>Report name
             <input id="reportNameEditor" type="text" value="${escapeHtml(report.reportName || `Report ${report.reportId}`)}" />
@@ -660,30 +674,6 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
           <table class="inline-edit-table">
             <thead><tr><th>Area</th><th>Status</th><th>Trend</th><th>Evidence / rationale</th><th>Actions</th></tr></thead>
             <tbody id="healthAreaEditorRows">${renderHealthAreaEditorRows(areas)}</tbody>
-          </table>
-        </div>
-        <h3>Milestones</h3>
-        <div class="row-tools"><button id="addMilestoneRowBtn" type="button">Add milestone row</button></div>
-        <div class="table-scroll" style="margin-top:.5rem">
-          <table class="inline-edit-table">
-            <thead><tr><th>Milestone</th><th>Baseline</th><th>Forecast</th><th>Delivery status</th><th>RAG</th><th>Health assessment</th><th>Summary</th><th>Next steps</th><th></th></tr></thead>
-            <tbody id="milestoneEditorRows">${renderMilestoneEditorRows(milestones) || '<tr class="empty-editor-row"><td colspan="9">No milestone rows yet. Add one if the report needs a milestone update.</td></tr>'}</tbody>
-          </table>
-        </div>
-        <h3>Risks</h3>
-        <div class="row-tools"><button id="addRiskRowBtn" type="button">Add risk row</button></div>
-        <div class="table-scroll" style="margin-top:.5rem">
-          <table class="inline-edit-table">
-            <thead><tr><th>Risk</th><th>Description</th><th>Mitigation</th><th>Milestone</th><th></th></tr></thead>
-            <tbody id="riskEditorRows">${renderRiskEditorRows(risks) || '<tr class="empty-editor-row"><td colspan="5">No risk rows yet. Add one if the report needs a risk.</td></tr>'}</tbody>
-          </table>
-        </div>
-        <h3>Actions</h3>
-        <div class="row-tools"><button id="addActionRowBtn" type="button">Add action row</button></div>
-        <div class="table-scroll" style="margin-top:.5rem">
-          <table class="inline-edit-table">
-            <thead><tr><th>Action</th><th>Owner</th><th>Deadline</th><th>Milestone</th><th></th></tr></thead>
-            <tbody id="actionEditorRows">${renderActionEditorRows(actions) || '<tr class="empty-editor-row"><td colspan="5">No action rows yet. Add one if the report needs an action.</td></tr>'}</tbody>
           </table>
         </div>
         <details class="support-details support-details-compact raw-json" style="margin-top:.75rem">
@@ -728,36 +718,36 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
           </details>
         </details>
       </section>
-      <section class="panel">
+      <section class="panel direct-edit-panel">
         <h2>Milestones</h2>
+        <p class="editor-note">Edit these cells directly. Use Open row when a row has too much text for the table view.</p>
+        <div class="row-tools"><button id="addMilestoneRowBtn" type="button">Add milestone row</button></div>
         <div class="table-scroll">
-          <table>
-            <thead><tr><th>Milestone</th><th>Baseline</th><th>Forecast</th><th>Delivery status</th><th>Status</th><th>Health</th><th>Summary</th><th>Next steps</th></tr></thead>
-            <tbody>
-              ${milestones.map((item) => `<tr><td>${escapeHtml(titleLabel(item.milestone))}</td><td>${escapeHtml(displayDate(item.baseline_finish_date || item.baselineDeadline || item.deadline))}</td><td>${escapeHtml(displayDate(item.forecast_finish_date || item.forecastDeadline || item.deadline))}</td><td>${statusBadge(item.delivery_status || item.status)}</td><td>${renderColour(item.agreed_rag_status || item.rag_status)}</td><td class="long-text-cell">${escapeHtml(staticText(item.health_assessment))}</td><td>${escapeHtml(staticText(item.normalised_evidence_summary || item.excerpt))}</td><td>${escapeHtml(staticText(combinedNextSteps(item)))}</td></tr>`).join('') || '<tr><td colspan="8"><strong>No milestones saved.</strong><br />Add milestones in Setup or edit this report before approval.</td></tr>'}
-            </tbody>
+          <table class="inline-edit-table">
+            <thead><tr><th>Milestone</th><th>Baseline</th><th>Forecast</th><th>Delivery status</th><th>RAG</th><th>Health assessment</th><th>Summary</th><th>Next steps</th><th></th></tr></thead>
+            <tbody id="milestoneEditorRows">${renderMilestoneEditorRows(milestones) || '<tr class="empty-editor-row"><td colspan="9">No milestone rows yet. Add one if the report needs a milestone update.</td></tr>'}</tbody>
           </table>
         </div>
       </section>
-      <section class="panel">
+      <section class="panel direct-edit-panel">
         <h2>Risks</h2>
+        <p class="editor-note">Edit these cells directly. Use Open row when a row has too much text for the table view.</p>
+        <div class="row-tools"><button id="addRiskRowBtn" type="button">Add risk row</button></div>
         <div class="table-scroll">
-          <table>
-            <thead><tr><th>Risk</th><th>Description</th><th>Mitigation</th><th>Milestone</th></tr></thead>
-            <tbody>
-              ${risks.map((risk) => `<tr><td>${escapeHtml(staticText(risk.riskTitle))}</td><td>${escapeHtml(staticText(risk.description))}</td><td>${escapeHtml(staticText(risk.suggestedMitigation))}</td><td>${escapeHtml(staticText(risk.relatedMilestone))}</td></tr>`).join('') || '<tr><td colspan="4"><strong>No risks saved.</strong><br />That may be fine, but check the transcript before approval.</td></tr>'}
-            </tbody>
+          <table class="inline-edit-table">
+            <thead><tr><th>Risk</th><th>Description</th><th>Mitigation</th><th>Milestone</th><th></th></tr></thead>
+            <tbody id="riskEditorRows">${renderRiskEditorRows(risks) || '<tr class="empty-editor-row"><td colspan="5">No risk rows yet. Add one if the report needs a risk.</td></tr>'}</tbody>
           </table>
         </div>
       </section>
-      <section class="panel">
+      <section class="panel direct-edit-panel">
         <h2>Actions</h2>
+        <p class="editor-note">Edit these cells directly. Use Open row when a row has too much text for the table view.</p>
+        <div class="row-tools"><button id="addActionRowBtn" type="button">Add action row</button></div>
         <div class="table-scroll">
-          <table>
-            <thead><tr><th>Action</th><th>Owner</th><th>Deadline</th><th>Milestone</th></tr></thead>
-            <tbody>
-              ${actions.map((action) => `<tr><td>${escapeHtml(staticText(action.action || action.meetingActionPoint))}</td><td>${escapeHtml(staticText(action.meetingActionPointOwner || action.owner))}</td><td>${escapeHtml(displayDate(action.deadline || action.meetingActionPointDeadline))}</td><td>${escapeHtml(staticText(action.related_milestone || action.relatedMilestone))}</td></tr>`).join('') || '<tr><td colspan="4"><strong>No actions saved.</strong><br />If the transcript contains actions, add them before approval.</td></tr>'}
-            </tbody>
+          <table class="inline-edit-table">
+            <thead><tr><th>Action</th><th>Owner</th><th>Deadline</th><th>Milestone</th><th></th></tr></thead>
+            <tbody id="actionEditorRows">${renderActionEditorRows(actions) || '<tr class="empty-editor-row"><td colspan="5">No action rows yet. Add one if the report needs an action.</td></tr>'}</tbody>
           </table>
         </div>
       </section>
@@ -780,6 +770,12 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
     function removeEmptyPlaceholder(tbody) {
       const placeholder = tbody && tbody.querySelector('.empty-editor-row');
       if (placeholder) placeholder.remove();
+    }
+
+    function resizeEditorTextarea(node) {
+      if (!node || node.tagName.toLowerCase() !== 'textarea') return;
+      node.style.height = 'auto';
+      node.style.height = `${Math.max(node.scrollHeight, 72)}px`;
     }
 
     function syncStructuredEditorsToJson() {
@@ -835,7 +831,11 @@ pre { white-space:pre-wrap; overflow:auto; max-height:560px; background:#071126;
       document.querySelectorAll('.inline-edit-table input, .inline-edit-table select, .inline-edit-table textarea').forEach((node) => {
         if (node.dataset.structuredEditorWired === 'true') return;
         node.dataset.structuredEditorWired = 'true';
-        node.addEventListener('input', queueAutosave);
+        resizeEditorTextarea(node);
+        node.addEventListener('input', () => {
+          resizeEditorTextarea(node);
+          queueAutosave();
+        });
         node.addEventListener('change', queueAutosave);
       });
       document.querySelectorAll('[data-remove-editor-row]').forEach((button) => {
