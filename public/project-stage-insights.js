@@ -19,7 +19,7 @@
         <td><input data-field="baselineFinishDate" type="date" value="${inputValue(dateOnly(milestone.baselineFinishDate) === '-' ? '' : dateOnly(milestone.baselineFinishDate))}" /></td>
         <td><input data-field="forecastFinishDate" type="date" value="${inputValue(dateOnly(milestone.forecastFinishDate) === '-' ? '' : dateOnly(milestone.forecastFinishDate))}" /></td>
         <td class="profile-monitor-column"><label class="monitor-checkbox" title="Monitor this milestone in future project updates"><input type="checkbox" data-monitor-profile checked aria-label="Monitor this milestone in future project updates" /></label></td>
-        <td class="actions"><button type="button" class="subtle" data-expand-edit-row>Expand</button><button type="button" data-save-milestone>Save</button><button type="button" class="danger" data-delete-milestone>Delete</button></td>
+        <td class="actions"><button type="button" class="subtle" data-expand-edit-row>Open row</button><button type="button" data-save-milestone>Save</button><button type="button" class="danger" data-delete-milestone>Delete</button></td>
       </tr>
     `).join('') || '<tr><td colspan="7"><strong>No profile milestones yet.</strong><br />Add milestones in Setup or from a reviewed report.</td></tr>';
   }
@@ -32,7 +32,7 @@
         <td><textarea data-field="description">${inputValue(risk.description || '')}</textarea></td>
         <td><textarea data-field="mitigation">${inputValue(risk.mitigation || '')}</textarea></td>
         <td class="profile-monitor-column"><label class="monitor-checkbox" title="Monitor this risk in future project updates"><input type="checkbox" data-monitor-profile checked aria-label="Monitor this risk in future project updates" /></label></td>
-        <td class="actions"><button type="button" class="subtle" data-expand-edit-row>Expand</button><button type="button" data-save-risk>Save</button><button type="button" class="danger" data-delete-risk>Delete</button></td>
+        <td class="actions"><button type="button" class="subtle" data-expand-edit-row>Open row</button><button type="button" data-save-risk>Save</button><button type="button" class="danger" data-delete-risk>Delete</button></td>
       </tr>
     `).join('') || '<tr><td colspan="6"><strong>No configured risks yet.</strong><br />Add a core project risk below so future updates can track it.</td></tr>';
   }
@@ -45,7 +45,7 @@
         <td><textarea data-field="description">${inputValue(risk.description || '')}</textarea></td>
         <td><textarea data-field="mitigation">${inputValue(risk.suggestedMitigation || risk.mitigation || '')}</textarea></td>
         <td><a href="/project-update-test/reports/${escapeHtml(risk.reportId)}">Report ${escapeHtml(risk.reportId)}</a><br /><span class="muted">${escapeHtml(friendlyLabel(risk.reviewStatus))}${risk.confidence ? ` · ${escapeHtml(risk.confidence)} confidence` : ''}</span></td>
-        <td class="actions suggested-risk-actions"><button type="button" class="subtle" data-expand-edit-row>Expand</button><button type="button" data-add-suggested-risk>Add to monitored risks</button></td>
+        <td class="actions suggested-risk-actions"><button type="button" class="subtle" data-expand-edit-row>Open row</button><button type="button" data-add-suggested-risk>Add to monitored risks</button></td>
       </tr>
     `).join('') || '<tr><td colspan="6"><strong>No suggested follow-up risks yet.</strong><br />New risks found in draft reports will appear here for review.</td></tr>';
   }
@@ -88,7 +88,7 @@
     modal.className = 'row-edit-modal-backdrop';
     modal.setAttribute('data-row-edit-modal', 'true');
     modal.innerHTML = `
-      <div class="row-edit-modal" role="dialog" aria-modal="true" aria-label="Expanded row editor">
+      <div class="row-edit-modal" role="dialog" aria-modal="true" aria-label="Row editor">
         <div class="row-edit-modal-head">
           <div><strong>Edit row</strong><p class="muted">${escapeHtml(title)}</p></div>
           <button type="button" class="subtle" data-close-row-modal>Close</button>

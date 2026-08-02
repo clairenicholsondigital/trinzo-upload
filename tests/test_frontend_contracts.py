@@ -157,6 +157,9 @@ class FrontendContractTest(unittest.TestCase):
 
         self.assertIn("Process new meeting", jobs_page)
         self.assertNotIn("New minutes", jobs_page)
+        self.assertIn("data-expand-minutes-row>Open row</button>", jobs_page)
+        self.assertNotIn("data-expand-minutes-row>Expand</button>", jobs_page)
+        self.assertNotIn("Expanded row editor", jobs_page)
         self.assertIn("queuedEndpoint: '/api/meeting-minutes-final/jobs'", meeting_minutes_final)
         self.assertIn("jobsPageUrl: '/meeting-minutes-final/jobs'", meeting_minutes_final)
         self.assertIn('href="/meeting-minutes-final/jobs"', meeting_minutes_final)

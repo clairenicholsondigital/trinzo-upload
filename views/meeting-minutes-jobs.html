@@ -689,7 +689,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     modal.className = 'row-edit-modal-backdrop';
     modal.setAttribute('data-row-edit-modal', 'true');
     modal.innerHTML = `
-      <div class="row-edit-modal" role="dialog" aria-modal="true" aria-label="Expanded row editor">
+      <div class="row-edit-modal" role="dialog" aria-modal="true" aria-label="Row editor">
         <div class="row-edit-modal-head">
           <div><strong>Edit meeting-minutes row</strong><p class="muted">${escapeHtml(title || 'Review and edit this row')}</p></div>
           <button type="button" class="secondary" data-close-row-modal>Close</button>
@@ -783,7 +783,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
           <tbody>
             ${groupedRows.map(({ row, index }) => `
               <tr>
-                <td class="type-cell" data-label="Edit"><button type="button" class="secondary" data-expand-minutes-row>Expand</button></td>
+                <td class="type-cell" data-label="Edit"><button type="button" class="secondary" data-expand-minutes-row>Open row</button></td>
                 ${showTopic ? `<td class="topic-cell" data-label="Topic"><textarea data-edit-field="topic" data-edit-index="${index}">${escapeHtml(row.topic || '')}</textarea></td>` : ''}
                 ${showItemType ? `<td class="topic-cell" data-label="Type"><input data-edit-field="itemType" data-edit-index="${index}" value="${escapeAttribute(row.itemType || '')}" /></td>` : ''}
                 ${showOwner ? `<td class="owner-cell" data-label="Owner / speaker"><input data-edit-field="owner" data-edit-index="${index}" value="${escapeAttribute(row.owner || '')}" /></td>` : ''}
