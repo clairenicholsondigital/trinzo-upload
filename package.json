@@ -22,5 +22,8 @@
     "node-fetch": "^2.7.0",
     "openai": "^6.36.0",
     "pg": "^8.22.0"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.1"
   }
 }
