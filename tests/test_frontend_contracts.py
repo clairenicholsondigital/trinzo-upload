@@ -101,7 +101,8 @@ class FrontendContractTest(unittest.TestCase):
             self.assertIn(token, dashboard)
             self.assertIn(token, meeting_minutes_final)
 
-        self.assertIn("Project listing", shared_nav)
+        self.assertIn("Project Updates", shared_nav)
+        self.assertIn("Choose project", shared_nav)
         self.assertNotIn("Choose a project", shared_nav)
         self.assertIn('href="/meeting-minutes-feedback"', dashboard)
         self.assertIn("Open feedback listing", dashboard)

@@ -1,6 +1,6 @@
-// Setup stage: everything you configure ON a project before/around processing
-// transcripts — milestones and standing knowledge/context. Both are scoped to
-// the selected project. Lifted from the old milestones + context pages.
+// Setup stage: structured project state used before/around processing
+// transcripts — milestones and monitored risks. Searchable background knowledge
+// lives in the Memory stage.
 (function () {
   const PW = window.ProjectWorkspace;
   const { escapeHtml, friendlyLabel, displayDate, dateValue, renderColour, asArray } = PW;
@@ -15,7 +15,8 @@
           <strong>Before the first report</strong>
           <ol>
             <li>Add the agreed milestones or delivery workstreams.</li>
-            <li>Add standing project memory such as SoW constraints, decisions, known risks, or client preferences.</li>
+            <li>Add the standing risks you want monitored in future updates.</li>
+            <li>Add background docs, decisions and notes in Memory if Ask should retrieve them later.</li>
             <li>Process the first transcript, review the draft, then approve only when it is good enough to become future project memory.</li>
           </ol>
         </div>
@@ -43,29 +44,25 @@
         <div id="milestoneList" class="table-scroll"><table><tbody><tr><td>Loading…</td></tr></tbody></table></div>
       </section>
       <section class="panel">
-        <h2>Project memory</h2>
-        <p class="intro">Store background that should guide future reports. This is retrieved as project memory; transcript evidence still has to come from the update transcript itself.</p>
-        <div class="grid">
-          <label>Title <input id="knowledgeTitle" type="text" placeholder="Statement of work / background note" /></label>
-          <label>Type <select id="knowledgeType"><option value="background_doc">Background doc</option><option value="decision">Decision</option><option value="note">Note</option><option value="risk">Risk</option></select></label>
-        </div>
-        <label style="margin-top:.75rem">Content <textarea id="knowledgeContent" placeholder="Paste project background here..."></textarea></label>
-        <div class="actions" style="margin-top:.75rem">
-          <button id="saveKnowledgeBtn" class="primary" type="button">Save to project memory</button>
-        </div>
+        <h2>Monitored risks</h2>
+        <p class="intro">These are standing risks you want each project update to keep checking. They are structured project setup, not searchable memory items.</p>
+        <div id="riskList" class="table-scroll"><table><tbody><tr><td>Loading monitored risks…</td></tr></tbody></table></div>
         <details style="margin-top:.75rem">
-          <summary>Memory search maintenance</summary>
-          <p class="muted"><strong>What this does:</strong> project memory is turned into searchable chunks so “Ask this project” can find the right background later. This usually happens automatically after you save memory.</p>
-          <p class="muted"><strong>When to use it:</strong> only refresh if you have just saved memory and “Ask this project” still cannot find it after a short wait.</p>
-          <button id="processKnowledgeBtn" type="button">Refresh memory search</button>
+          <summary>Add monitored risk</summary>
+          <div class="form-grid" style="margin-top:.75rem">
+            <label class="wide">Risk title <input id="newRiskTitle" placeholder="e.g. Supplier decision delayed" /></label>
+            <label>Category <input id="newRiskCategory" placeholder="Delivery" /></label>
+            <label class="full">Description <textarea id="newRiskDescription" placeholder="What could affect delivery?"></textarea></label>
+            <label class="full">Mitigation <textarea id="newRiskMitigation" placeholder="How should the team keep this under control?"></textarea></label>
+          </div>
+          <div class="actions" style="margin-top:.75rem"><button id="addRiskBtn" type="button" class="primary">Add risk</button></div>
         </details>
-        <p id="knowledgeStatus" class="status"></p>
-        <div id="knowledgeList" class="table-scroll"><table><tbody><tr><td>Loading knowledge items…</td></tr></tbody></table></div>
+        <p id="riskStatus" class="status"></p>
       </section>
     `;
 
     setupMilestones(container, ctx, projectId);
-    setupKnowledge(container, ctx, projectId);
+    setupRisks(container, ctx, projectId);
   }
 
   // ---- Milestones -----------------------------------------------------------
@@ -188,83 +185,134 @@
     loadMilestones();
   }
 
-  // ---- Standing knowledge ----------------------------------------------------
+  // ---- Monitored risks -------------------------------------------------------
 
-  function setupKnowledge(container, ctx, projectId) {
-    const listNode = container.querySelector('#knowledgeList');
-    const statusNode = container.querySelector('#knowledgeStatus');
+  function riskInput(value) {
+    return escapeHtml(value || '');
+  }
 
-    async function loadKnowledge() {
+  function riskPayload(row) {
+    const payload = {};
+    row.querySelectorAll('[data-risk-field]').forEach((field) => {
+      payload[field.getAttribute('data-risk-field')] = field.value.trim();
+    });
+    return payload;
+  }
+
+  function setupRisks(container, ctx, projectId) {
+    const listNode = container.querySelector('#riskList');
+    const statusNode = container.querySelector('#riskStatus');
+    const addButton = container.querySelector('#addRiskBtn');
+
+    function setStatus(message, kind = '') {
+      statusNode.className = kind ? `status ${kind}` : 'status';
+      statusNode.textContent = message;
+    }
+
+    async function loadRisks() {
       try {
-        const payload = await PW.request(`knowledge/items?projectId=${encodeURIComponent(projectId)}&status=active`);
-        const items = asArray(payload.items);
-        listNode.innerHTML = `<table><thead><tr><th>Title</th><th>Type</th><th>Baseline</th><th>Search status</th><th>Updated</th><th>Action</th></tr></thead><tbody>${items.map((item) => {
-          const counts = item.embeddingCounts || {};
-          const embedded = Number(counts.embedded || 0);
-          const queued = Number(counts.queued || 0);
-          const failed = Number(counts.failed || 0);
-          const searchStatus = failed ? 'Needs refresh' : embedded ? 'Searchable' : queued ? 'Indexing' : 'Saved';
-          return `<tr><td>${escapeHtml(item.title)}</td><td>${escapeHtml(friendlyLabel(item.itemType))}</td><td>${item.isOfficial ? 'Included' : 'Draft'}</td><td>${escapeHtml(searchStatus)}</td><td>${escapeHtml(dateValue(item.updatedAt))}</td><td><button type="button" data-archive-knowledge="${escapeHtml(item.itemId)}">Archive</button></td></tr>`;
-        }).join('') || '<tr><td colspan="6"><strong>No project memory yet.</strong><br />Add standing project memory, constraints, decisions, or risks before the first report.</td></tr>'}</tbody></table>`;
-        listNode.querySelectorAll('[data-archive-knowledge]').forEach((button) => {
-          button.addEventListener('click', async () => {
-            await PW.request(`knowledge/items/${encodeURIComponent(button.getAttribute('data-archive-knowledge'))}`, { method: 'DELETE' });
-            await loadKnowledge();
-          });
-        });
+        const payload = await PW.request(`context?projectId=${encodeURIComponent(projectId)}&limit=8`);
+        const risks = asArray(payload.context && payload.context.activeRisks);
+        listNode.innerHTML = `
+          <table class="profile-editor-table profile-risk-table">
+            <thead><tr><th>Risk</th><th>Category</th><th>Description</th><th>Mitigation</th><th>Actions</th></tr></thead>
+            <tbody>
+              ${risks.map((risk) => `
+                <tr data-risk-id="${escapeHtml(risk.riskId)}">
+                  <td><textarea class="profile-title-field" data-risk-field="riskTitle">${riskInput(risk.riskTitle)}</textarea></td>
+                  <td><input data-risk-field="category" value="${riskInput(risk.category || 'General')}" /></td>
+                  <td><textarea data-risk-field="description">${riskInput(risk.description || '')}</textarea></td>
+                  <td><textarea data-risk-field="mitigation">${riskInput(risk.mitigation || '')}</textarea></td>
+                  <td class="actions"><button type="button" data-save-risk>Save</button><button type="button" class="danger" data-delete-risk>Remove</button></td>
+                </tr>
+              `).join('') || '<tr><td colspan="5"><strong>No monitored risks yet.</strong><br />Add standing risks here so fresh-project Ask and future reports know what to watch.</td></tr>'}
+            </tbody>
+          </table>
+        `;
+        wireRiskRows();
       } catch (error) {
-        listNode.innerHTML = `<table><tbody><tr><td class="status error">${escapeHtml(error.message || 'Could not load knowledge items.')}</td></tr></tbody></table>`;
+        listNode.innerHTML = `<table><tbody><tr><td class="status error">${escapeHtml(error.message || 'Could not load monitored risks.')}</td></tr></tbody></table>`;
       }
     }
 
-    container.querySelector('#saveKnowledgeBtn').addEventListener('click', async () => {
-      statusNode.className = 'status';
-      statusNode.textContent = 'Saving knowledge item…';
+    function wireRiskRows() {
+      listNode.querySelectorAll('[data-save-risk]').forEach((button) => {
+        button.addEventListener('click', async () => {
+          const row = button.closest('[data-risk-id]');
+          if (!row) return;
+          button.disabled = true;
+          setStatus('Saving monitored risk…');
+          try {
+            await PW.request(`risks/${encodeURIComponent(row.getAttribute('data-risk-id'))}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(riskPayload(row))
+            });
+            setStatus('Monitored risk saved.', 'success');
+            if (ctx.reloadProject) ctx.reloadProject();
+          } catch (error) {
+            setStatus(error.message || 'Could not save monitored risk.', 'error');
+          } finally {
+            button.disabled = false;
+          }
+        });
+      });
+      listNode.querySelectorAll('[data-delete-risk]').forEach((button) => {
+        button.addEventListener('click', async () => {
+          const row = button.closest('[data-risk-id]');
+          if (!row) return;
+          const name = row.querySelector('[data-risk-field="riskTitle"]')?.value || 'this risk';
+          if (!window.confirm(`Remove ${name} from monitored risks? Existing reports stay intact.`)) return;
+          button.disabled = true;
+          setStatus('Removing monitored risk…');
+          try {
+            await PW.request(`risks/${encodeURIComponent(row.getAttribute('data-risk-id'))}`, { method: 'DELETE' });
+            setStatus('Monitored risk removed.', 'success');
+            await loadRisks();
+            if (ctx.reloadProject) ctx.reloadProject();
+          } catch (error) {
+            setStatus(error.message || 'Could not remove monitored risk.', 'error');
+            button.disabled = false;
+          }
+        });
+      });
+    }
+
+    addButton.addEventListener('click', async () => {
+      const riskTitle = container.querySelector('#newRiskTitle').value.trim();
+      if (!riskTitle) {
+        setStatus('Risk title is required.', 'error');
+        return;
+      }
+      addButton.disabled = true;
+      setStatus('Adding monitored risk…');
       try {
-        const result = await PW.request('knowledge/items', {
+        await PW.request('risks', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             projectId,
-            title: container.querySelector('#knowledgeTitle').value,
-            content: container.querySelector('#knowledgeContent').value,
-            itemType: container.querySelector('#knowledgeType').value,
-            isOfficial: true,
-            metadata: { source: 'workspace_setup' }
+            riskTitle,
+            category: container.querySelector('#newRiskCategory').value.trim(),
+            description: container.querySelector('#newRiskDescription').value.trim(),
+            mitigation: container.querySelector('#newRiskMitigation').value.trim()
           })
         });
-        statusNode.className = 'status success';
-        statusNode.textContent = result.embeddingWorker?.spawned
-          ? 'Saved to project memory. Search indexing has started.'
-          : 'Saved to project memory. Search indexing will run shortly.';
-        container.querySelector('#knowledgeTitle').value = '';
-        container.querySelector('#knowledgeContent').value = '';
-        await loadKnowledge();
+        container.querySelector('#newRiskTitle').value = '';
+        container.querySelector('#newRiskCategory').value = '';
+        container.querySelector('#newRiskDescription').value = '';
+        container.querySelector('#newRiskMitigation').value = '';
+        setStatus('Monitored risk added.', 'success');
+        await loadRisks();
+        if (ctx.reloadProject) ctx.reloadProject();
       } catch (error) {
-        statusNode.className = 'status error';
-        statusNode.textContent = error.message || 'Could not save knowledge item.';
+        setStatus(error.message || 'Could not add monitored risk.', 'error');
+      } finally {
+        addButton.disabled = false;
       }
     });
 
-    container.querySelector('#processKnowledgeBtn').addEventListener('click', async () => {
-      statusNode.className = 'status';
-      statusNode.textContent = 'Refreshing memory search…';
-      try {
-        const result = await PW.request('knowledge/embeddings/process', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ projectId })
-        });
-        statusNode.className = 'status success';
-        statusNode.textContent = result.embeddingWorker?.spawned ? 'Memory search refresh started.' : 'Memory search refresh could not start automatically.';
-        window.setTimeout(loadKnowledge, 1500);
-      } catch (error) {
-        statusNode.className = 'status error';
-        statusNode.textContent = error.message || 'Could not process embeddings.';
-      }
-    });
-
-    loadKnowledge();
+    loadRisks();
   }
 
   window.ProjectStages = window.ProjectStages || {};

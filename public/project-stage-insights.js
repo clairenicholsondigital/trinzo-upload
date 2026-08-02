@@ -180,46 +180,16 @@
         </tbody></table></div>
       </section>
       <section class="panel">
-        <h2>Project milestones</h2>
-        <div class="table-scroll profile-editor-scroll"><table class="profile-editor-table profile-milestone-table"><thead><tr><th>Milestone</th><th>Category</th><th>Description</th><th>Baseline</th><th>Forecast</th><th class="profile-monitor-column">Monitor?</th><th>Actions</th></tr></thead><tbody id="profileMilestonesBody">
-          ${renderMilestoneProfileRows(milestones)}
-        </tbody></table></div>
-      </section>
-      <section class="panel">
-        <h2>Configured risks</h2>
-        <p class="intro">These are standing project risks, not one-off AI suggestions. Keep them current as part of the project profile.</p>
-        <div class="table-scroll profile-editor-scroll"><table class="profile-editor-table profile-risk-table"><thead><tr><th>Risk</th><th>Category</th><th>Description</th><th>Mitigation</th><th class="profile-monitor-column">Monitor?</th><th>Actions</th></tr></thead><tbody id="profileRisksBody">
-          ${renderRiskProfileRows(activeRisks)}
-        </tbody></table></div>
-        <details style="margin-top:.75rem">
-          <summary>Add configured risk</summary>
-          <div class="form-grid" style="margin-top:.75rem">
-            <label class="wide">Risk title <input id="newRiskTitle" placeholder="e.g. Wrong project context used" /></label>
-            <label>Category <input id="newRiskCategory" placeholder="Context" /></label>
-            <label class="full">Description <textarea id="newRiskDescription"></textarea></label>
-            <label class="full">Mitigation <textarea id="newRiskMitigation"></textarea></label>
-          </div>
-          <div class="actions" style="margin-top:.75rem"><button id="addProfileRiskBtn" type="button" class="primary">Add risk</button></div>
-        </details>
-      </section>
-      <section class="panel">
-        <h2>Suggested follow-up risks</h2>
-        <p class="intro">These are risks suggested from saved reports. Edit the wording here, then add the useful ones to the monitored project profile above.</p>
-        <div class="table-scroll profile-editor-scroll"><table class="profile-editor-table suggested-risk-table"><thead><tr><th>Risk</th><th>Category</th><th>Description</th><th>Mitigation</th><th>Source</th><th>Actions</th></tr></thead><tbody>
-          ${renderSuggestedRiskRows(riskSuggestions)}
-        </tbody></table></div>
-      </section>
-      <section class="panel">
         <h2>Recent reports</h2>
         <p class="intro">Open a saved report to review or edit the full project update.</p>
         <div class="table-scroll"><table><thead><tr><th>Report</th><th>Period</th><th>Status</th><th>Overall health</th><th>Created</th><th>Summary</th><th>Actions</th></tr></thead><tbody>
           ${recentReports.map((report) => `<tr><td><strong>Report ${escapeHtml(report.reportId)}</strong></td><td>${escapeHtml(report.periodLabel || '-')}</td><td>${escapeHtml(friendlyLabel(report.reportStatus))}</td><td>${escapeHtml(proseOrLabel(report.overallHealth || report.overallHealthRag))}</td><td>${escapeHtml(dateValue(report.versionCreatedAt || report.createdAt))}</td><td>${escapeHtml(report.summary || '-')}</td><td><a class="button-link" href="/project-update-test/reports/${escapeHtml(report.reportId)}">Open report</a></td></tr>`).join('') || '<tr><td colspan="7"><strong>No reports yet.</strong><br />Process a transcript, review the draft, then approve it when it is ready to become project memory.</td></tr>'}
         </tbody></table></div>
+        <p id="contextStatus" class="status"></p>
       </section>
     `;
 
     renderSupportActions(context);
-    wireProfileEditors(container, ctx, projectId);
     wireActions(container, ctx, projectId);
   }
 
@@ -507,7 +477,7 @@
           const score = Number(chunk.score || 0);
           return `<article class="chunk-card"><strong>${escapeHtml(chunk.title || 'Project memory')}</strong><div class="chunk-meta"><span class="badge muted">chunk ${escapeHtml(chunkId)}</span><span class="badge muted">${escapeHtml(friendlyLabel(chunk.item_type || chunk.itemType))}</span>${score ? `<span class="badge muted">score ${escapeHtml(score.toFixed(2))}</span>` : ''}</div><div class="chunk-text">${escapeHtml((chunk.chunk_text || chunk.chunkText || '').slice(0, 700))}</div></article>`;
         }).join('')}</div></details>`
-      : '<div class="empty-state"><strong>No matching project memory found.</strong><br />Try adding background notes, decisions, risks, or an SoW excerpt to Setup → Project memory first.</div>';
+      : '<div class="empty-state"><strong>No matching project memory found.</strong><br />Ask can still use project setup. Add background docs, decisions, notes or risks in Memory when you want searchable project memory.</div>';
     return `<div class="badges"><span class="badge ${escapeHtml(modeBadgeClass(result.answerMode))}">Answer: ${escapeHtml(answerMode)}</span><span class="badge ${escapeHtml(modeBadgeClass(result.retrievalMode))}">Retrieval: ${escapeHtml(retrievalMode)}</span><span class="badge muted">${chunks.length} chunk${chunks.length === 1 ? '' : 's'}</span>${result.confidence ? `<span class="badge muted">Confidence: ${escapeHtml(friendlyLabel(result.confidence))}</span>` : ''}</div>${answer}${chunksHtml}`;
   }
 
@@ -582,7 +552,7 @@
           : result.answerMode === 'retrieval_only'
             ? 'Showing retrieved memory snippets; generation was unavailable.'
             : result.answerMode === 'context_fallback'
-              ? 'Showing live project context; no separate memory chunks matched.'
+              ? 'Using project setup; no separate searchable memory chunks matched.'
             : 'No matching project memory found.';
         resultBox.className = '';
         resultBox.innerHTML = renderAskResult(result);

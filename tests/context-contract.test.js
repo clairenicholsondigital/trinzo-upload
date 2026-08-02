@@ -13,6 +13,7 @@ const knowledgeSource = fs.readFileSync(path.join(repoDir, 'utils/knowledge.js')
 const backfillSource = fs.readFileSync(path.join(repoDir, 'scripts/backfill_project_knowledge.js'), 'utf8');
 const contextPageSource = fs.readFileSync(path.join(repoDir, 'views/project-update-context.html'), 'utf8');
 const projectStageSetupSource = fs.readFileSync(path.join(repoDir, 'public/project-stage-setup.js'), 'utf8');
+const projectStageMemorySource = fs.readFileSync(path.join(repoDir, 'public/project-stage-memory.js'), 'utf8');
 const projectStageProcessSource = fs.readFileSync(path.join(repoDir, 'public/project-stage-process.js'), 'utf8');
 const projectStageReportsSource = fs.readFileSync(path.join(repoDir, 'public/project-stage-reports.js'), 'utf8');
 const projectStageInsightsSource = fs.readFileSync(path.join(repoDir, 'public/project-stage-insights.js'), 'utf8');
@@ -138,7 +139,10 @@ test('dashboard keeps only active tool infrastructure visible', () => {
   assert.ok(!apiSource.includes("router.post('/meeting-minutes-comparison'"));
   assert.ok(!apiSource.includes("router.post('/meeting-minutes-minilm-only'"));
   assert.ok(dashboardPageSource.includes('Meeting transcript to minutes'));
-  assert.ok(dashboardPageSource.includes('Project workspace'));
+  assert.ok(dashboardPageSource.includes('Project Updates'));
+  assert.ok(dashboardPageSource.includes('Open Project Updates'));
+  assert.ok(!dashboardPageSource.includes('/project-update-test?stage=reports'));
+  assert.ok(!dashboardPageSource.includes('/project-update-test?stage=insights'));
   assert.ok(!dashboardPageSource.includes('Older labs and prototypes'));
   assert.ok(!dashboardPageSource.includes('href="/archive"'));
 });
@@ -164,16 +168,19 @@ test('project report lifecycle archives instead of hard deleting reports', () =>
 
 test('project workspace labels separate memory, draft reports and evidence', () => {
   assert.ok(projectStageSetupSource.includes('Before the first report'));
-  assert.ok(projectStageSetupSource.includes('Project memory'));
-  assert.ok(projectStageSetupSource.includes('Memory search maintenance'));
-  assert.ok(projectStageSetupSource.includes('Search status'));
+  assert.ok(projectStageSetupSource.includes('Monitored risks'));
+  assert.ok(!projectStageSetupSource.includes('Memory search maintenance'));
+  assert.ok(projectStageMemorySource.includes('Add memory item'));
+  assert.ok(projectStageMemorySource.includes('Memory health'));
+  assert.ok(projectStageMemorySource.includes('searchable project memory'));
+  assert.ok(projectStageMemorySource.includes('Fresh project note'));
   assert.ok(projectStageProcessSource.includes('Create draft report'));
   assert.ok(projectStageProcessSource.includes('Project update meeting'));
   assert.ok(projectStageProcessSource.includes('evidence must come from this update'));
   assert.ok(projectStageInsightsSource.includes('stored project memory'));
   assert.ok(projectStageInsightsSource.includes('milestones, monitored risks, recent reports and stored project memory'));
   assert.ok(projectStageInsightsSource.includes('Ask project context'));
-  assert.ok(projectStageInsightsSource.includes('Suggested follow-up risks'));
+  assert.ok(projectStageInsightsSource.includes('Using project setup; no separate searchable memory chunks matched.'));
 });
 
 test('light theme keeps project health trend colours readable', () => {
@@ -210,17 +217,26 @@ test('project bar behaves like scoped project navigation', () => {
   const workspaceShell = fs.readFileSync(path.join(repoDir, 'public/project-workspace.js'), 'utf8');
   assert.ok(workspaceShell.includes('project-nav'));
   assert.ok(workspaceShell.includes('data-project-nav="overview"'));
+  assert.ok(workspaceShell.includes('data-project-nav="setup"'));
+  assert.ok(workspaceShell.includes('data-project-nav="memory"'));
   assert.ok(workspaceShell.includes('data-project-nav="process"'));
   assert.ok(workspaceShell.includes('data-project-nav="reports"'));
   assert.ok(workspaceShell.includes('data-project-nav="ask"'));
+  assert.ok(workspaceShell.includes('data-project-nav="settings"'));
   assert.ok(!workspaceShell.includes('data-project-nav="switch"'));
+  assert.ok(workspaceShell.includes('workspaceStageUrl(\'setup\')'));
+  assert.ok(workspaceShell.includes('workspaceStageUrl(\'memory\')'));
   assert.ok(workspaceShell.includes('workspaceStageUrl(\'process\')'));
   assert.ok(workspaceShell.includes('workspaceStageUrl(\'ask\')'));
+  assert.ok(workspaceShell.includes("goToStage('setup', true)"));
+  assert.ok(workspaceShell.includes("goToStage('memory', true)"));
   assert.ok(workspaceShell.includes("goToStage('process', true)"));
   assert.ok(workspaceShell.includes("goToStage('ask', true)"));
   assert.ok(workspaceShell.includes('project-nav-icon" aria-hidden="true">+</span><span>Process meeting</span>'));
   assert.ok(workspaceShell.includes('project-nav-icon" aria-hidden="true">&#128172;</span><span>Ask</span>'));
-  assert.ok(workspaceShell.indexOf('>Overview</a>') < workspaceShell.indexOf('>Process meeting</span></a>'));
+  assert.ok(workspaceShell.indexOf('>Overview</a>') < workspaceShell.indexOf('>Setup</a>'));
+  assert.ok(workspaceShell.indexOf('>Setup</a>') < workspaceShell.indexOf('>Memory</a>'));
+  assert.ok(workspaceShell.indexOf('>Memory</a>') < workspaceShell.indexOf('>Process meeting</span></a>'));
   assert.ok(workspaceShell.indexOf('>Process meeting</span></a>') < workspaceShell.indexOf('>Reports</a>'));
   assert.ok(workspaceShell.includes('id="openProjectProcessBtn"'));
   assert.ok(workspaceShell.includes('projectChooserUrl'));
@@ -231,15 +247,15 @@ test('project bar behaves like scoped project navigation', () => {
   assert.ok(!workspaceShell.includes('switchProjectBtn'));
   assert.ok(workspaceShell.includes('project-switch-arrow'));
   assert.ok(workspaceShell.includes('&rarr;'));
-  assert.ok(workspaceShell.includes('class="project-nav-link icon-only"'));
-  assert.ok(workspaceShell.includes('aria-label="Settings"'));
-  assert.ok(workspaceShell.includes('&#9881;'));
-  assert.ok(!workspaceShell.includes('data-project-nav="settings">Settings</a>'));
+  assert.ok(!workspaceShell.includes('class="project-nav-link icon-only"'));
+  assert.ok(!workspaceShell.includes('aria-label="Settings"'));
+  assert.ok(!workspaceShell.includes('&#9881;'));
+  assert.ok(workspaceShell.includes('data-project-nav="settings">Settings</a>'));
   assert.ok(workspaceShell.includes('project-summary'));
-  assert.ok(workspaceShell.includes('View your current project position, project profile and recent reports.'));
+  assert.ok(workspaceShell.includes('Start with the project overview'));
   assert.ok(workspaceShell.includes('aria-current'));
   assert.ok(sharedCssSource.includes('.project-nav-link.active'));
-  assert.ok(sharedCssSource.includes('.project-nav-link.icon-only'));
+  assert.ok(sharedCssSource.includes('.project-nav-link'));
   assert.ok(sharedCssSource.includes('.project-switch-link'));
   assert.ok(sharedCssSource.includes('.nav .brand'));
   assert.ok(sharedCssSource.includes('flex:0 0 100%'));
@@ -279,7 +295,7 @@ test('project bar behaves like scoped project navigation', () => {
   assert.ok(!workspaceShell.includes('#ask-this-project'));
 });
 
-test('mobile project profile row actions stay compact and distinct', () => {
+test('mobile project setup row actions stay compact and distinct', () => {
   assert.ok(sharedCssSource.includes('.profile-editor-table .actions'));
   assert.ok(sharedCssSource.includes('grid-template-columns:repeat(2, minmax(0, 1fr)) !important'));
   assert.ok(sharedCssSource.includes('.profile-editor-table .actions [data-expand-edit-row]'));
@@ -287,9 +303,9 @@ test('mobile project profile row actions stay compact and distinct', () => {
   assert.ok(sharedCssSource.includes('.profile-editor-table { min-width:980px !important; }'));
   assert.ok(sharedCssSource.includes('.profile-editor-table .profile-monitor-column'));
   assert.ok(sharedCssSource.includes('width:60px !important'));
-  assert.ok(projectStageInsightsSource.includes('suggested-risk-actions'));
-  assert.ok(projectStageInsightsSource.includes('suggested-risk-table'));
-  assert.ok(sharedCssSource.includes('.profile-editor-table .suggested-risk-actions'));
+  assert.ok(projectStageSetupSource.includes('data-risk-id'));
+  assert.ok(projectStageSetupSource.includes('addRiskBtn'));
+  assert.ok(projectStageSetupSource.includes('riskStatus'));
 });
 
 test('settings quick links are visible without an accordion', () => {

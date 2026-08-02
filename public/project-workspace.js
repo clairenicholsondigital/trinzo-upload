@@ -1,6 +1,6 @@
 // Workspace controller: owns project selection + the project-update meeting
 // scaffold. Renders a project chooser when nothing is selected, otherwise opens
-// straight into the update meeting flow with quick links for scoped tools.
+// straight into the project overview with clear links for scoped tools.
 (function () {
   const PW = window.ProjectWorkspace;
   const Stages = window.ProjectStages || {};
@@ -8,12 +8,13 @@
   const { escapeHtml } = PW;
 
   const STAGES = [
-    { key: 'process', no: 1, label: 'Update meeting', hint: 'Run the meeting → draft report' },
-    { key: 'insights', no: 2, label: 'Project status', hint: 'Health, risks & recent updates' },
-    { key: 'reports', no: 3, label: 'Saved reports', hint: 'Review previous updates' },
-    { key: 'ask', no: 4, label: 'Ask', hint: 'Query project memory' },
-    { key: 'setup', no: 5, label: 'Setup', hint: 'Milestones & project memory' },
-    { key: 'settings', no: 6, label: 'Settings', hint: 'Project details' }
+    { key: 'insights', no: 1, label: 'Overview', hint: 'Status, risks & recent updates' },
+    { key: 'setup', no: 2, label: 'Setup', hint: 'Milestones & monitored risks' },
+    { key: 'memory', no: 3, label: 'Memory', hint: 'Background docs, decisions & search' },
+    { key: 'process', no: 4, label: 'Process meeting', hint: 'Run the meeting → draft report' },
+    { key: 'reports', no: 5, label: 'Reports', hint: 'Review previous updates' },
+    { key: 'ask', no: 6, label: 'Ask', hint: 'Query this project' },
+    { key: 'settings', no: 7, label: 'Settings', hint: 'Project details' }
   ];
   const STAGE_KEYS = STAGES.map((stage) => stage.key);
 
@@ -24,7 +25,7 @@
 
   function currentStageKey() {
     const requested = new URLSearchParams(location.search).get('stage');
-    return STAGE_KEYS.includes(requested) ? requested : 'process';
+    return STAGE_KEYS.includes(requested) ? requested : 'insights';
   }
 
   function requestedProjectName() {
@@ -80,15 +81,16 @@
     Object.keys(mounted).forEach((key) => delete mounted[key]);
     root.innerHTML = `
       <section class="panel">
-        <h1>Project workspace</h1>
-        <p class="intro">Pick a project, then use the workspace as a scaffold for the next project update meeting. Profile/admin tools stay scoped to the project you choose.</p>
+        <h1>Project Updates Dashboard</h1>
+        <p class="intro">Choose an existing project or create a new one. Each project has its own setup, memory, meeting processing, reports and Ask area.</p>
       </section>
       <section class="panel">
         <h2>Your projects</h2>
+        <p class="intro">Open a project to see its overview first, then choose the next action from the project navigation.</p>
         <div id="chooserGrid" class="chooser-grid"></div>
       </section>
       <section class="panel project-create-panel">
-        <h2>New project</h2>
+        <h2>Create project</h2>
         <div class="form-grid new-project-form">
           <label class="wide">Project name <input id="newProjectName" type="text" placeholder="e.g. Acme platform rollout" /></label>
           <label>Client <input id="newProjectClient" type="text" placeholder="Optional client" /></label>
@@ -168,7 +170,7 @@
       <section class="panel project-bar">
         <a id="switchProjectLink" class="project-switch-link" href="${escapeHtml(projectChooserUrl())}" target="_blank" rel="noopener">Switch project <span class="project-switch-arrow" aria-hidden="true">&rarr;</span></a>
         <div class="identity">
-          <span class="eyebrow">Project workspace</span>
+          <span class="eyebrow">Project Updates</span>
           <span class="name">${escapeHtml(project.projectName || `Project ${project.projectId}`)}</span>
           <span class="meta">
             <span class="muted">${escapeHtml(project.clientName || 'No client set')}</span>
@@ -176,14 +178,16 @@
             <span class="badge muted">${escapeHtml(project.reportCount || 0)} reports</span>
             <span class="badge muted">${escapeHtml(project.activeMilestoneCount || 0)} milestones</span>
           </span>
-          <span class="project-summary">View your current project position, project profile and recent reports. Future reports are compared against this baseline. Edit milestones and monitored risks in Project settings.</span>
+          <span class="project-summary">Start with the project overview, then use Setup for milestones and risks, Memory for background knowledge, Process Meeting for new updates, Reports for saved drafts, and Ask for project questions.</span>
         </div>
         <nav class="project-nav" aria-label="Project navigation">
           <a id="openProjectProfileBtn" class="project-nav-link" href="${escapeHtml(workspaceStageUrl('insights'))}" data-project-nav="overview">Overview</a>
+          <a id="openProjectSetupBtn" class="project-nav-link" href="${escapeHtml(workspaceStageUrl('setup'))}" data-project-nav="setup">Setup</a>
+          <a id="openProjectMemoryBtn" class="project-nav-link" href="${escapeHtml(workspaceStageUrl('memory'))}" data-project-nav="memory">Memory</a>
           <a id="openProjectProcessBtn" class="project-nav-link" href="${escapeHtml(workspaceStageUrl('process'))}" data-project-nav="process"><span class="project-nav-icon" aria-hidden="true">+</span><span>Process meeting</span></a>
           <a id="openProjectReportsBtn" class="project-nav-link" href="${escapeHtml(workspaceStageUrl('reports'))}" data-project-nav="reports">Reports</a>
           <a id="openProjectAskBtn" class="project-nav-link" href="${escapeHtml(workspaceStageUrl('ask'))}" data-project-nav="ask"><span class="project-nav-icon" aria-hidden="true">&#128172;</span><span>Ask</span></a>
-          <a id="openProjectSettingsBtn" class="project-nav-link icon-only" href="${escapeHtml(workspaceStageUrl('settings'))}" data-project-nav="settings" aria-label="Settings" title="Settings"><span aria-hidden="true">&#9881;</span></a>
+          <a id="openProjectSettingsBtn" class="project-nav-link" href="${escapeHtml(workspaceStageUrl('settings'))}" data-project-nav="settings">Settings</a>
         </nav>
       </section>
       ${contextWarning}
@@ -217,7 +221,7 @@
     return `
       <section class="panel quick-links">
         <h2>Quick links</h2>
-        <p class="muted">Most updates should start on <strong>Update meeting</strong>. Use these when you need to adjust the project profile, review old reports, or do admin maintenance.</p>
+          <p class="muted">Use these when you want to jump directly to a project task.</p>
         <nav class="stage-tabs" aria-label="Workspace stages">
         ${STAGES.map((stage) => `
           <button type="button" class="stage-tab ${stage.key === activeKey ? 'active' : ''}" data-stage="${stage.key}" aria-current="${stage.key === activeKey ? 'page' : 'false'}">
@@ -321,7 +325,7 @@
   }
 
   function goToStage(stageKey, push) {
-    if (!STAGE_KEYS.includes(stageKey)) stageKey = 'process';
+    if (!STAGE_KEYS.includes(stageKey)) stageKey = 'insights';
     setStageInUrl(stageKey, !push);
     const project = PW.getProject(PW.getSelectedProjectId());
     if (project) showStage(project, stageKey);
@@ -329,6 +333,8 @@
 
   function attachProjectBarActions(project) {
     const profileBtn = document.getElementById('openProjectProfileBtn');
+    const setupBtn = document.getElementById('openProjectSetupBtn');
+    const memoryBtn = document.getElementById('openProjectMemoryBtn');
     const processBtn = document.getElementById('openProjectProcessBtn');
     const reportsBtn = document.getElementById('openProjectReportsBtn');
     const askBtn = document.getElementById('openProjectAskBtn');
@@ -338,6 +344,16 @@
       event.preventDefault();
       if (location.hash) history.replaceState({ stage: 'insights' }, '', workspaceStageUrl('insights'));
       goToStage('insights', true);
+    });
+    if (setupBtn) setupBtn.addEventListener('click', (event) => {
+      event.preventDefault();
+      if (location.hash) history.replaceState({ stage: 'setup' }, '', workspaceStageUrl('setup'));
+      goToStage('setup', true);
+    });
+    if (memoryBtn) memoryBtn.addEventListener('click', (event) => {
+      event.preventDefault();
+      if (location.hash) history.replaceState({ stage: 'memory' }, '', workspaceStageUrl('memory'));
+      goToStage('memory', true);
     });
     if (processBtn) processBtn.addEventListener('click', (event) => {
       event.preventDefault();
@@ -537,7 +553,7 @@
     try {
       await PW.loadProjects();
     } catch (error) {
-      root.innerHTML = `<section class="panel"><h1>Project workspace</h1><p class="status error">${escapeHtml(error.message || 'Could not load projects.')}</p></section>`;
+      root.innerHTML = `<section class="panel"><h1>Project Updates</h1><p class="status error">${escapeHtml(error.message || 'Could not load projects.')}</p></section>`;
       return;
     }
     const params = new URLSearchParams(location.search);

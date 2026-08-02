@@ -18,14 +18,14 @@
     var details = document.createElement('details');
     details.className = 'nav-menu nav-menu-project-management';
     var summary = document.createElement('summary');
-    summary.textContent = 'Project Management';
+    summary.textContent = 'Project Updates';
     details.appendChild(summary);
 
     var menu = document.createElement('div');
     menu.className = 'nav-menu-items';
     [
-      { href: '/project-update-test?choose=project', label: 'Project listing' },
-      { href: pilotProfileUrl, label: pilotProjectName }
+      { href: '/project-update-test?choose=project', label: 'Choose project' },
+      { href: pilotProfileUrl, label: 'Continue latest project' }
     ].forEach(function (item) {
       var link = document.createElement('a');
       link.href = item.href;
