@@ -274,6 +274,8 @@ test('project bar behaves like scoped project navigation', () => {
   assert.ok(projectStageInsightsSource.includes('ask-panel-standalone'));
   assert.ok(sharedCssSource.includes('.ask-preset-list'));
   assert.ok(sharedCssSource.includes('.ask-preset-plus'));
+  assert.ok(sharedCssSource.includes('.ask-preset span:last-child'));
+  assert.ok(sharedCssSource.includes('grid-template-columns:1.5rem minmax(0, 1fr) !important'));
   assert.ok(!workspaceShell.includes('#ask-this-project'));
 });
 

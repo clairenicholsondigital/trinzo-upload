@@ -612,6 +612,11 @@ button.danger:hover,
   line-height:1;
   width:1.65rem;
 }
+.ask-preset span:last-child {
+  min-width:0;
+  overflow-wrap:anywhere;
+  white-space:normal;
+}
 .ask-panel-standalone .ask-help li,
 .ask-panel-standalone .ask-answer p,
 .ask-panel-standalone .chunk-text {
@@ -1428,6 +1433,15 @@ pre { background:var(--soft) !important; color:var(--text); border:1px solid var
   .ask-panel-standalone .ask-help {
     order:2 !important;
     padding:1rem !important;
+  }
+  .ask-panel-standalone .ask-preset {
+    gap:.5rem !important;
+    grid-template-columns:1.5rem minmax(0, 1fr) !important;
+    padding:.62rem .58rem !important;
+  }
+  .ask-panel-standalone .ask-preset-plus {
+    height:1.5rem !important;
+    width:1.5rem !important;
   }
   .ask-panel-standalone .badges {
     gap:.4rem !important;
