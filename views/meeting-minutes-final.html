@@ -115,7 +115,7 @@ a { color:#67e8f9; }
   <nav class="nav" aria-label="Primary navigation">
     <a href="/dashboard">Dashboard</a>
     <a href="/meeting-minutes-final">Meeting transcript to minutes</a>
-    <a href="/meeting-minutes-final/jobs">Minutes jobs</a>
+    <a href="/jobs">Jobs</a>
     <a href="/project-update-test">Project Updates</a>
     <a href="/project-update-test/roadmap">Roadmap</a>
   </nav>
@@ -170,7 +170,7 @@ buildTranscriptMinilmOnlyPage({
   buttonText: 'Run meeting minutes',
   endpoint: '/api/meeting-minutes-final',
   queuedEndpoint: '/api/meeting-minutes-final/jobs',
-  jobsPageUrl: '/meeting-minutes-final/jobs',
+  jobsPageUrl: '/jobs',
   improveEndpoint: '/api/meeting-minutes-final/improve',
   snippetImproveEndpoint: '/api/meeting-minutes-final/improve-snippet'
 });

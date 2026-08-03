@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Meeting Minutes Jobs</title>
+<title>Jobs</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet" />
@@ -20,6 +20,10 @@ h2 { margin:.1rem 0 .75rem; font-size:1.1rem; }
 .intro, .muted { color:var(--muted); }
 .toolbar, .row-actions { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; }
 .toolbar { justify-content:space-between; }
+.queue-tabs { display:flex; gap:.5rem; flex-wrap:wrap; margin:1rem 0 .5rem; }
+.queue-tab { display:inline-flex; align-items:center; gap:.35rem; padding:.45rem .7rem; border:1px solid var(--border); border-radius:999px; background:#071126; color:#dbeafe; font-weight:700; text-decoration:none; }
+.queue-tab[aria-current="page"] { background:rgba(23,208,196,.12); border-color:rgba(23,208,196,.7); color:#e0fffd; }
+.queue-tab.disabled { color:var(--muted); opacity:.75; cursor:default; }
 button, .button { background:linear-gradient(180deg,var(--accent),#0fb5ab); color:#02173B; border:none; border-radius:10px; padding:.6rem .85rem; font-weight:700; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; }
 button.secondary, .button.secondary { background:#132847; color:#dbeafe; border:1px solid var(--border); }
 button.danger { background:#3a1515; color:#fecaca; border:1px solid #7f1d1d; }
@@ -168,21 +172,26 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   <nav class="nav" aria-label="Primary navigation">
     <a href="/dashboard">Dashboard</a>
     <a href="/meeting-minutes-final">Meeting transcript to minutes</a>
-    <a href="/meeting-minutes-final/jobs">Minutes jobs</a>
+    <a href="/jobs">Jobs</a>
     <a href="/project-update-test">Project Updates</a>
   </nav>
 
   <section id="listPanel" class="panel">
     <div class="toolbar">
       <div>
-        <h1>Meeting Minutes Jobs</h1>
-        <p class="intro">Track queued, running, completed and failed detailed minutes generations.</p>
+        <h1>Jobs</h1>
+        <p class="intro">Track queued, running, completed and failed work across the Trinzo tools. Meeting-minutes jobs are live here now; project-update jobs will use this same dashboard once that queue is wired.</p>
       </div>
       <div class="toolbar">
         <a class="button secondary" href="/meeting-minutes-final">Process new meeting</a>
         <button id="refreshBtn" type="button">Refresh</button>
       </div>
     </div>
+    <nav class="queue-tabs" aria-label="Job queues">
+      <a class="queue-tab" href="/jobs" aria-current="page">All jobs</a>
+      <a class="queue-tab" href="/jobs?type=meeting-minutes">Meeting minutes</a>
+      <span class="queue-tab disabled" aria-disabled="true">Project updates · next</span>
+    </nav>
     <div id="message" class="message" hidden></div>
     <div id="listView"></div>
   </section>
@@ -223,8 +232,8 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   const resultJson = document.getElementById('resultJson');
   const retryBtn = document.getElementById('retryBtn');
   const cancelBtn = document.getElementById('cancelBtn');
-  const pathMatch = window.location.pathname.match(/\/meeting-minutes-final\/jobs\/(\d+)(?:\/result)?$/);
-  const resultOnly = /\/meeting-minutes-final\/jobs\/\d+\/result$/.test(window.location.pathname);
+  const pathMatch = window.location.pathname.match(/(?:\/jobs|\/meeting-minutes-final\/jobs)\/(\d+)(?:\/result)?$/);
+  const resultOnly = /(?:\/jobs|\/meeting-minutes-final\/jobs)\/\d+\/result$/.test(window.location.pathname);
   let activeJobId = pathMatch ? Number(pathMatch[1]) : null;
   let latestResultPayload = null;
   let latestResultRows = [];
@@ -1091,7 +1100,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
                 <td data-label="Runtime">${escapeHtml(runtime(job))}</td>
                 <td data-label="Attempts">${escapeHtml(job.attempts || 0)} / ${escapeHtml(job.maxAttempts || 0)}</td>
                 <td data-label="Actions" class="row-actions">
-                  ${job.status === 'completed' ? `<a class="button" target="_blank" rel="noopener" href="/meeting-minutes-final/jobs/${encodeURIComponent(job.jobId)}/result">Open result</a>` : ''}
+                  ${job.status === 'completed' ? `<a class="button" target="_blank" rel="noopener" href="/jobs/${encodeURIComponent(job.jobId)}/result">Open result</a>` : ''}
                   ${job.status === 'failed' ? `<button class="secondary" data-retry="${escapeHtml(job.jobId)}" type="button">Retry</button>` : ''}
                   ${job.status === 'queued' || job.status === 'running' ? `<button class="danger" data-cancel="${escapeHtml(job.jobId)}" type="button">Cancel</button>` : ''}
                   ${['completed', 'failed', 'cancelled'].includes(job.status) ? `<button class="danger" data-delete="${escapeHtml(job.jobId)}" type="button">Delete</button>` : ''}
@@ -1140,7 +1149,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
       resultMessage.textContent = 'Completed result:';
       resultActions.hidden = false;
       resultActions.innerHTML = `
-        <a class="button" target="_blank" rel="noopener" href="/meeting-minutes-final/jobs/${encodeURIComponent(job.jobId)}/result">Open result in new tab</a>
+        <a class="button" target="_blank" rel="noopener" href="/jobs/${encodeURIComponent(job.jobId)}/result">Open result in new tab</a>
         <button id="saveEditedResultBtn" type="button">Save edits</button>
         <button id="copyEditedTableBtn" class="secondary" type="button">Copy table text</button>
         <button id="exportEditedPdfBtn" class="secondary" type="button">Export PDF</button>
@@ -1221,7 +1230,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
       if (String(activeJobId) === String(jobId)) {
         activeJobId = null;
         detailPanel.hidden = true;
-        history.replaceState(null, '', '/meeting-minutes-final/jobs');
+        history.replaceState(null, '', '/jobs');
       }
       await refresh();
     } catch (error) {
