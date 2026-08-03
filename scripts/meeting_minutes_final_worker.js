@@ -2,10 +2,11 @@
 require('dotenv').config();
 
 const {
-  claimNextMeetingMinutesJob,
+  claimNextGenerationJob,
   ensureMeetingJobQueueSchema
 } = require('../utils/db');
 const { processMeetingMinutesJob } = require('../utils/meetingMinutesGenerator');
+const { processProjectUpdateJob } = require('../utils/projectUpdateGenerator');
 
 const WORKER_ID = process.env.MEETING_MINUTES_WORKER_ID || `minutes-final-${process.pid}`;
 const POLL_MS = Number(process.env.MEETING_MINUTES_WORKER_POLL_MS || 5000);
@@ -20,7 +21,7 @@ async function runLoop() {
 
   while (true) {
     try {
-      const job = await claimNextMeetingMinutesJob(WORKER_ID);
+      const job = await claimNextGenerationJob(WORKER_ID);
       if (!job) {
         await sleep(POLL_MS);
         continue;
@@ -31,15 +32,19 @@ async function runLoop() {
         workerId: WORKER_ID,
         jobId: job.jobId,
         meetingId: job.meetingId,
+        jobType: job.jobType,
         transcriptLength: job.transcriptLength
       }));
 
-      const result = await processMeetingMinutesJob(job);
+      const result = job.jobType === 'project_update_generate'
+        ? await processProjectUpdateJob(job)
+        : await processMeetingMinutesJob(job);
       console.log(JSON.stringify({
-        event: result.ok ? 'meeting_minutes_worker_completed' : 'meeting_minutes_worker_failed',
+        event: result.ok ? 'generation_worker_completed' : 'generation_worker_failed',
         workerId: WORKER_ID,
         jobId: job.jobId,
         meetingId: job.meetingId,
+        jobType: job.jobType,
         error: result.ok ? null : result.error?.message || String(result.error)
       }));
     } catch (error) {

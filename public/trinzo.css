@@ -635,6 +635,18 @@ button.danger:hover,
   color:#fff !important;
   box-shadow:0 0 0 2px rgba(44,122,144,.12) !important;
 }
+.project-nav-link.project-nav-primary {
+  background:var(--accent) !important;
+  border-color:var(--accent) !important;
+  color:#fff !important;
+  box-shadow:0 0 0 2px rgba(44,122,144,.12) !important;
+}
+.project-nav-link.project-nav-primary:hover,
+.project-nav-link.project-nav-primary.active {
+  background:var(--accent-600) !important;
+  border-color:var(--accent-600) !important;
+  color:#fff !important;
+}
 .project-nav-link.icon-only {
   min-width:2.5rem !important;
   padding:.55rem .65rem !important;
@@ -1380,6 +1392,25 @@ input[type=file]::file-selector-button {
   border-color:var(--border) !important;
   border-bottom-color:var(--accent) !important;
   color:var(--accent-700) !important;
+}
+.project-nav-link.project-nav-primary,
+.project-nav-link.project-nav-primary.active,
+.project-nav-link.project-nav-primary[aria-current="page"],
+.project-bar .project-nav-link.project-nav-primary,
+.project-bar .project-nav-link.project-nav-primary.active,
+.project-bar .project-nav-link.project-nav-primary[aria-current="page"] {
+  background:var(--accent) !important;
+  border-color:var(--accent) !important;
+  border-bottom-color:var(--accent) !important;
+  color:#fff !important;
+  box-shadow:0 0 0 2px rgba(44,122,144,.12) !important;
+}
+.project-nav-link.project-nav-primary:hover,
+.project-bar .project-nav-link.project-nav-primary:hover {
+  background:var(--accent-600) !important;
+  border-color:var(--accent-600) !important;
+  border-bottom-color:var(--accent-600) !important;
+  color:#fff !important;
 }
 .project-settings-icon {
   font-size:1.05rem !important;

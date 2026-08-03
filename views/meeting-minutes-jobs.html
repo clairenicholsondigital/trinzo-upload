@@ -190,7 +190,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     <nav class="queue-tabs" aria-label="Job queues">
       <a class="queue-tab" href="/jobs" aria-current="page">All jobs</a>
       <a class="queue-tab" href="/jobs?type=meeting-minutes">Meeting minutes</a>
-      <span class="queue-tab disabled" aria-disabled="true">Project updates · next</span>
+      <a class="queue-tab" href="/jobs?type=project-updates">Project updates</a>
     </nav>
     <div id="message" class="message" hidden></div>
     <div id="listView"></div>
@@ -1071,9 +1071,36 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     `;
   }
 
+  function jobTypeLabel(job) {
+    const type = String(job.jobType || '').toLowerCase();
+    if (type === 'project_update_generate') return 'Project update';
+    return 'Meeting minutes';
+  }
+
+  function jobTitle(job) {
+    const fallback = job.jobType === 'project_update_generate' ? 'Project update job' : 'Meeting minutes job';
+    return job.meetingTitle || fallback;
+  }
+
+  function currentQueueType() {
+    const type = new URLSearchParams(window.location.search).get('type') || '';
+    return ['meeting-minutes', 'project-updates'].includes(type) ? type : '';
+  }
+
+  function updateQueueTabs() {
+    const current = currentQueueType();
+    document.querySelectorAll('.queue-tab[href]').forEach((tab) => {
+      const url = new URL(tab.getAttribute('href'), window.location.origin);
+      const tabType = url.searchParams.get('type') || '';
+      if (tabType === current) tab.setAttribute('aria-current', 'page');
+      else tab.removeAttribute('aria-current');
+    });
+  }
+
   function renderJobs(jobs) {
     if (!jobs.length) {
-      listView.innerHTML = '<p class="muted">No meeting-minutes jobs yet.</p>';
+      const type = currentQueueType();
+      listView.innerHTML = `<p class="muted">No ${type === 'project-updates' ? 'project-update' : type === 'meeting-minutes' ? 'meeting-minutes' : ''} jobs yet.</p>`;
       return;
     }
     listView.innerHTML = `
@@ -1082,6 +1109,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
           <thead>
             <tr>
               <th>Job</th>
+              <th>Type</th>
               <th>Meeting</th>
               <th>Status</th>
               <th>Progress</th>
@@ -1094,13 +1122,14 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
             ${jobs.map((job) => `
               <tr>
                 <td data-label="Job"><strong>#${escapeHtml(job.jobId)}</strong><br><small class="muted">${escapeHtml(formatDate(job.createdAt))}</small></td>
-                <td data-label="Meeting"><strong>${escapeHtml(job.meetingTitle || 'Meeting minutes job')}</strong><br><small class="muted">${escapeHtml(job.fileName || `${job.transcriptLength || 0} chars`)}</small></td>
+                <td data-label="Type"><span class="badge">${escapeHtml(jobTypeLabel(job))}</span></td>
+                <td data-label="Meeting"><strong>${escapeHtml(jobTitle(job))}</strong><br><small class="muted">${escapeHtml(job.fileName || `${job.transcriptLength || 0} chars`)}</small></td>
                 <td data-label="Status"><span class="status ${statusClass(job.status)}">${escapeHtml(friendlyLabel(job.status || 'queued'))}</span>${job.errorMessage ? `<br><small class="muted">${escapeHtml(job.errorMessage)}</small>` : ''}</td>
                 <td data-label="Progress">${renderProgress(job)}</td>
                 <td data-label="Runtime">${escapeHtml(runtime(job))}</td>
                 <td data-label="Attempts">${escapeHtml(job.attempts || 0)} / ${escapeHtml(job.maxAttempts || 0)}</td>
                 <td data-label="Actions" class="row-actions">
-                  ${job.status === 'completed' ? `<a class="button" target="_blank" rel="noopener" href="/jobs/${encodeURIComponent(job.jobId)}/result">Open result</a>` : ''}
+                  ${job.status === 'completed' ? `<a class="button" target="_blank" rel="noopener" href="/jobs/${encodeURIComponent(job.jobId)}/result">${job.jobType === 'project_update_generate' ? 'Open job' : 'Open result'}</a>` : ''}
                   ${job.status === 'failed' ? `<button class="secondary" data-retry="${escapeHtml(job.jobId)}" type="button">Retry</button>` : ''}
                   ${job.status === 'queued' || job.status === 'running' ? `<button class="danger" data-cancel="${escapeHtml(job.jobId)}" type="button">Cancel</button>` : ''}
                   ${['completed', 'failed', 'cancelled'].includes(job.status) ? `<button class="danger" data-delete="${escapeHtml(job.jobId)}" type="button">Delete</button>` : ''}
@@ -1128,11 +1157,12 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     if (!job) return;
     activeJobId = job.jobId;
     detailPanel.hidden = false;
-    detailTitle.textContent = `Minutes generation #${job.jobId}: ${job.meetingTitle || 'Meeting minutes job'}`;
+    detailTitle.textContent = `${jobTypeLabel(job)} #${job.jobId}: ${jobTitle(job)}`;
     retryBtn.disabled = job.status !== 'failed' && job.status !== 'completed';
     cancelBtn.disabled = job.status !== 'queued' && job.status !== 'running';
     detailSummary.innerHTML = [
       summaryItem('Status', friendlyLabel(job.status)),
+      summaryItem('Type', jobTypeLabel(job)),
       summaryItem('Progress', progressSummary(job)),
       summaryItem('Message', job.statusMessage || job.errorMessage),
       summaryItem('Runtime', runtime(job)),
@@ -1148,22 +1178,37 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
       }
       resultMessage.textContent = 'Completed result:';
       resultActions.hidden = false;
-      resultActions.innerHTML = `
-        <a class="button" target="_blank" rel="noopener" href="/jobs/${encodeURIComponent(job.jobId)}/result">Open result in new tab</a>
-        <button id="saveEditedResultBtn" type="button">Save edits</button>
-        <button id="copyEditedTableBtn" class="secondary" type="button">Copy table text</button>
-        <button id="exportEditedPdfBtn" class="secondary" type="button">Export PDF</button>
-        <button id="clearEditedRowsBtn" class="danger" type="button">Clear rows</button>
-        <details class="advanced-result-tools">
-          <summary>Advanced / debug</summary>
-          <div class="advanced-body">
-            <button id="downloadEditedJsonBtn" class="secondary" type="button">Download edited JSON</button>
-            <span>Raw result JSON is below for troubleshooting.</span>
+      if (job.jobType === 'project_update_generate') {
+        const saved = payload.result?.result?.projectReportPersistence || payload.result?.projectReportPersistence || {};
+        const reportId = saved.reportId || saved.report_id || '';
+        resultActions.innerHTML = `
+          <a class="button" target="_blank" rel="noopener" href="/jobs/${encodeURIComponent(job.jobId)}/result">Open result in new tab</a>
+          ${reportId ? `<a class="button secondary" target="_blank" rel="noopener" href="/project-update-test/reports/${encodeURIComponent(reportId)}">Open saved report</a>` : ''}
+        `;
+        resultView.innerHTML = `
+          <div class="result-section">
+            <h3>Project update ready</h3>
+            <p class="muted">${reportId ? 'The draft report was saved and can be reviewed from Reports.' : 'The generation result is stored on this job. Raw result JSON is below for support review.'}</p>
           </div>
-        </details>
-        <span id="editStatus" class="edit-status"></span>
-      `;
-      renderReadableResult(payload.result);
+        `;
+      } else {
+        resultActions.innerHTML = `
+          <a class="button" target="_blank" rel="noopener" href="/jobs/${encodeURIComponent(job.jobId)}/result">Open result in new tab</a>
+          <button id="saveEditedResultBtn" type="button">Save edits</button>
+          <button id="copyEditedTableBtn" class="secondary" type="button">Copy table text</button>
+          <button id="exportEditedPdfBtn" class="secondary" type="button">Export PDF</button>
+          <button id="clearEditedRowsBtn" class="danger" type="button">Clear rows</button>
+          <details class="advanced-result-tools">
+            <summary>Advanced / debug</summary>
+            <div class="advanced-body">
+              <button id="downloadEditedJsonBtn" class="secondary" type="button">Download edited JSON</button>
+              <span>Raw result JSON is below for troubleshooting.</span>
+            </div>
+          </details>
+          <span id="editStatus" class="edit-status"></span>
+        `;
+        renderReadableResult(payload.result);
+      }
       rawResultDetails.hidden = false;
       const rawSummary = rawResultDetails.querySelector('summary');
       if (rawSummary) rawSummary.textContent = 'Advanced: raw result JSON';
@@ -1191,14 +1236,16 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
 
   async function loadList() {
     if (resultOnly) return;
-    const payload = await fetchJson('/api/meeting-minutes-final/jobs?limit=100');
+    updateQueueTabs();
+    const type = currentQueueType();
+    const payload = await fetchJson(`/api/jobs?limit=100${type ? `&type=${encodeURIComponent(type)}` : ''}`);
     renderJobs(Array.isArray(payload.jobs) ? payload.jobs : []);
   }
 
   async function loadDetail() {
     if (!activeJobId) return;
     if (editDirty || editFocused || autosaveTimer) return;
-    const payload = await fetchJson(`/api/meeting-minutes-final/jobs/${encodeURIComponent(activeJobId)}`);
+    const payload = await fetchJson(`/api/jobs/${encodeURIComponent(activeJobId)}`);
     renderDetail(payload);
   }
 
@@ -1214,7 +1261,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
 
   async function act(action, jobId) {
     try {
-      await fetchJson(`/api/meeting-minutes-final/jobs/${encodeURIComponent(jobId)}/${action}`, { method: 'POST' });
+      await fetchJson(`/api/jobs/${encodeURIComponent(jobId)}/${action}`, { method: 'POST' });
       setMessage(action === 'retry' ? 'Job queued for retry.' : 'Job cancellation requested.', 'success');
       await refresh();
     } catch (error) {
@@ -1225,7 +1272,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   async function deleteJob(jobId) {
     if (!window.confirm('Delete this job, stored transcript and generated result?')) return;
     try {
-      await fetchJson(`/api/meeting-minutes-final/jobs/${encodeURIComponent(jobId)}`, { method: 'DELETE' });
+      await fetchJson(`/api/jobs/${encodeURIComponent(jobId)}`, { method: 'DELETE' });
       setMessage('Job deleted.', 'success');
       if (String(activeJobId) === String(jobId)) {
         activeJobId = null;
@@ -1296,7 +1343,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
 
   if (resultOnly) {
     listPanel.hidden = true;
-    document.title = activeJobId ? `Meeting minutes result #${activeJobId}` : 'Meeting minutes result';
+    document.title = activeJobId ? `Job result #${activeJobId}` : 'Job result';
   }
   refresh();
   timer = setInterval(refresh, 5000);

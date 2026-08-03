@@ -49,8 +49,11 @@
       confirmReset: true,
       loadingMessage: 'Analysing transcript...',
       endpoint: '/api/project-update-test',
+      queuedEndpoint: '/api/project-update-test/jobs',
+      jobsPageUrl: '/jobs',
       projectReportUi: true,
       fixedProjectId: ctx.projectId,
+      fixedProjectName: ctx.project?.projectName || '',
       summary: projectUpdateSummary
     });
   }

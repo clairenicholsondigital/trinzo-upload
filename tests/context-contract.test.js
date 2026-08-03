@@ -268,10 +268,11 @@ test('project bar behaves like scoped project navigation', () => {
   assert.ok(workspaceShell.includes("goToStage('ask', true)"));
   assert.ok(workspaceShell.includes('project-nav-icon" aria-hidden="true">+</span><span>Process meeting</span>'));
   assert.ok(workspaceShell.includes('project-nav-icon" aria-hidden="true">&#128172;</span><span>Ask</span>'));
+  assert.ok(workspaceShell.includes('project-nav-link project-nav-primary'));
+  assert.ok(workspaceShell.indexOf('>Process meeting</span></a>') < workspaceShell.indexOf('>Overview</a>'));
   assert.ok(workspaceShell.indexOf('>Overview</a>') < workspaceShell.indexOf('>Setup</a>'));
   assert.ok(workspaceShell.indexOf('>Setup</a>') < workspaceShell.indexOf('>Memory</a>'));
-  assert.ok(workspaceShell.indexOf('>Memory</a>') < workspaceShell.indexOf('>Process meeting</span></a>'));
-  assert.ok(workspaceShell.indexOf('>Process meeting</span></a>') < workspaceShell.indexOf('>Reports</a>'));
+  assert.ok(workspaceShell.indexOf('>Memory</a>') < workspaceShell.indexOf('>Reports</a>'));
   assert.ok(workspaceShell.includes('id="openProjectProcessBtn"'));
   assert.ok(workspaceShell.includes('projectChooserUrl'));
   assert.ok(workspaceShell.includes('id="switchProjectLink"'));
@@ -308,6 +309,8 @@ test('project bar behaves like scoped project navigation', () => {
   assert.ok(sharedCssSource.includes('width:fit-content'));
   assert.ok(sharedCssSource.includes('grid-template-columns:1fr !important'));
   assert.ok(projectStageProcessSource.includes('data-process-panel="meeting" aria-pressed="true">Process meeting</button>'));
+  assert.ok(projectStageProcessSource.includes("queuedEndpoint: '/api/project-update-test/jobs'"));
+  assert.ok(projectStageProcessSource.includes("jobsPageUrl: '/jobs'"));
   assert.ok(projectStageProcessSource.includes('data-process-panel="agenda" aria-pressed="false">Suggested agenda</button>'));
   assert.ok(projectStageProcessSource.includes('data-process-tab-panel="agenda" hidden'));
   assert.ok(projectStageProcessSource.includes('wireProcessSubtabs(container)'));

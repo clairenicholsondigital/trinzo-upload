@@ -8,10 +8,10 @@
   const { escapeHtml } = PW;
 
   const STAGES = [
-    { key: 'insights', no: 1, label: 'Overview', hint: 'Status, risks & recent updates' },
-    { key: 'setup', no: 2, label: 'Setup', hint: 'Milestones & monitored risks' },
-    { key: 'memory', no: 3, label: 'Memory', hint: 'Background docs, decisions & search' },
-    { key: 'process', no: 4, label: 'Process meeting', hint: 'Run the meeting → draft report' },
+    { key: 'process', no: 1, label: 'Process meeting', hint: 'Run the meeting → draft report' },
+    { key: 'insights', no: 2, label: 'Overview', hint: 'Status, risks & recent updates' },
+    { key: 'setup', no: 3, label: 'Setup', hint: 'Milestones & monitored risks' },
+    { key: 'memory', no: 4, label: 'Memory', hint: 'Background docs, decisions & search' },
     { key: 'reports', no: 5, label: 'Reports', hint: 'Review previous updates' },
     { key: 'ask', no: 6, label: 'Ask', hint: 'Query this project' },
     { key: 'settings', no: 7, label: 'Settings', hint: 'Project details' }
@@ -233,10 +233,10 @@
           <span class="project-summary">Start with the project overview, then use Setup for milestones and risks, Memory for background knowledge, Process Meeting for new updates, Reports for saved drafts, and Ask for project questions.</span>
         </div>
         <nav class="project-nav" aria-label="Project navigation">
+          <a id="openProjectProcessBtn" class="project-nav-link project-nav-primary" href="${escapeHtml(workspaceStageUrl('process'))}" data-project-nav="process"><span class="project-nav-icon" aria-hidden="true">+</span><span>Process meeting</span></a>
           <a id="openProjectProfileBtn" class="project-nav-link" href="${escapeHtml(workspaceStageUrl('insights'))}" data-project-nav="overview">Overview</a>
           <a id="openProjectSetupBtn" class="project-nav-link" href="${escapeHtml(workspaceStageUrl('setup'))}" data-project-nav="setup">Setup</a>
           <a id="openProjectMemoryBtn" class="project-nav-link" href="${escapeHtml(workspaceStageUrl('memory'))}" data-project-nav="memory">Memory</a>
-          <a id="openProjectProcessBtn" class="project-nav-link" href="${escapeHtml(workspaceStageUrl('process'))}" data-project-nav="process"><span class="project-nav-icon" aria-hidden="true">+</span><span>Process meeting</span></a>
           <a id="openProjectReportsBtn" class="project-nav-link" href="${escapeHtml(workspaceStageUrl('reports'))}" data-project-nav="reports">Reports</a>
           <a id="openProjectAskBtn" class="project-nav-link" href="${escapeHtml(workspaceStageUrl('ask'))}" data-project-nav="ask"><span class="project-nav-icon" aria-hidden="true">&#128172;</span><span>Ask</span></a>
           <a id="openProjectSettingsBtn" class="project-nav-link" href="${escapeHtml(workspaceStageUrl('settings'))}" data-project-nav="settings">Settings</a>

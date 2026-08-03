@@ -61,10 +61,16 @@ const {
   updateMeetingMinutesFeedback,
   deleteMeetingMinutesFeedback,
   queueMeetingMinutesGeneration,
+  queueProjectUpdateGeneration,
+  listGenerationJobs,
   listMeetingMinutesJobs,
+  getGenerationJob,
   getMeetingMinutesJob,
+  retryGenerationJob,
   retryMeetingMinutesJob,
+  cancelGenerationJob,
   cancelMeetingMinutesJob,
+  deleteGenerationJob,
   deleteMeetingMinutesJob,
   updateMeetingMinutesJobResult,
   getMeetingStatus,
@@ -743,6 +749,98 @@ router.get('/meeting-minutes-final/jobs', requireAuth, async (req, res) => {
     return res.json({ ok: true, success: true, jobs });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ ok: false, success: false, error: error.message || 'Failed to list jobs.' });
+  }
+});
+
+router.post('/project-update-test/jobs', requireAuth, withTestUpload(async (req, res) => {
+  try {
+    const transcript = await readTestTranscript(req);
+    validateTranscriptText(transcript.text);
+    const meta = transcriptMetadata(transcript.text);
+    const projectId = Number(req.body?.projectId || req.query?.projectId || 0) || null;
+    const projectName = req.body?.projectName || req.query?.projectName || process.env.PROJECT_UPDATE_DEFAULT_PROJECT || 'Project update test';
+    const queued = await queueProjectUpdateGeneration({
+      transcriptText: transcript.text,
+      source: 'project-update-test',
+      fileName: transcript.fileName || '',
+      transcriptSha256: meta.transcriptSha256,
+      includeTranscriptMetadata: shouldIncludeTranscriptMetadata(req),
+      projectId,
+      projectName,
+      periodLabel: req.body?.periodLabel || req.query?.periodLabel || '',
+      skipMiniLM: truthyFlag(req.query?.skipMiniLM) || truthyFlag(req.body?.skipMiniLM),
+      skipRewrite: truthyFlag(req.query?.skipRewrite) || truthyFlag(req.body?.skipRewrite),
+      skipSave: truthyFlag(req.query?.skipSave) || truthyFlag(req.body?.skipSave),
+      skipContext: truthyFlag(req.query?.skipContext) || truthyFlag(req.body?.skipContext),
+      skipKnowledge: truthyFlag(req.query?.skipKnowledge) || truthyFlag(req.body?.skipKnowledge),
+      skipStatusDiagnostics: truthyFlag(req.query?.skipStatusDiagnostics) || truthyFlag(req.body?.skipStatusDiagnostics),
+      queuedBy: req.authUser?.email || ''
+    });
+
+    return res.status(202).json({
+      ok: true,
+      success: true,
+      ...queued,
+      statusUrl: `/api/jobs/${queued.jobId}`,
+      resultUrl: `/api/jobs/${queued.jobId}`,
+      jobsUrl: '/jobs'
+    });
+  } catch (error) {
+    return sendTestError(res, error);
+  }
+}));
+
+router.get('/jobs', requireAuth, async (req, res) => {
+  try {
+    const jobs = await listGenerationJobs(req.query?.limit || 75, { type: req.query?.type || '' });
+    return res.json({ ok: true, success: true, jobs });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ ok: false, success: false, error: error.message || 'Failed to list jobs.' });
+  }
+});
+
+router.get('/jobs/:jobId', requireAuth, async (req, res) => {
+  try {
+    const job = await getGenerationJob(req.params.jobId);
+    if (!job) return res.status(404).json({ ok: false, success: false, error: 'Job not found.' });
+    return res.json({
+      ok: true,
+      success: true,
+      job,
+      result: job.status === 'completed' ? job.resultPayload : null
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ ok: false, success: false, error: error.message || 'Failed to load job.' });
+  }
+});
+
+router.post('/jobs/:jobId/retry', requireAuth, async (req, res) => {
+  try {
+    const job = await retryGenerationJob(req.params.jobId);
+    if (!job) return res.status(404).json({ ok: false, success: false, error: 'Retryable job not found.' });
+    return res.json({ ok: true, success: true, job });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ ok: false, success: false, error: error.message || 'Failed to retry job.' });
+  }
+});
+
+router.post('/jobs/:jobId/cancel', requireAuth, async (req, res) => {
+  try {
+    const job = await cancelGenerationJob(req.params.jobId);
+    if (!job) return res.status(404).json({ ok: false, success: false, error: 'Cancellable job not found.' });
+    return res.json({ ok: true, success: true, job });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ ok: false, success: false, error: error.message || 'Failed to cancel job.' });
+  }
+});
+
+router.delete('/jobs/:jobId', requireAuth, async (req, res) => {
+  try {
+    const deleted = await deleteGenerationJob(req.params.jobId);
+    if (!deleted) return res.status(404).json({ ok: false, success: false, error: 'Deletable completed/failed/cancelled job not found.' });
+    return res.json({ ok: true, success: true });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ ok: false, success: false, error: error.message || 'Failed to delete job.' });
   }
 });
 

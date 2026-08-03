@@ -1799,7 +1799,7 @@ ALTER TABLE meeting_jobs ADD COLUMN IF NOT EXISTS status_message TEXT NOT NULL D
 ALTER TABLE meeting_jobs ADD COLUMN IF NOT EXISTS cancel_requested BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE meeting_jobs DROP CONSTRAINT IF EXISTS meeting_jobs_job_type_check;
 ALTER TABLE meeting_jobs ADD CONSTRAINT meeting_jobs_job_type_check
-  CHECK (job_type IN ('agent_extract', 'webhook_send', 'document_generate', 'meeting_minutes_generate'));
+  CHECK (job_type IN ('agent_extract', 'webhook_send', 'document_generate', 'meeting_minutes_generate', 'project_update_generate'));
 CREATE INDEX IF NOT EXISTS idx_meeting_jobs_status_run_after ON meeting_jobs (status, run_after, created_at);
 CREATE INDEX IF NOT EXISTS idx_meeting_jobs_type_status ON meeting_jobs (job_type, status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_meetings_status_activity ON meetings (status, last_activity_at DESC);
@@ -1906,8 +1906,83 @@ async function queueMeetingMinutesGeneration(payload = {}) {
 }
 
 async function listMeetingMinutesJobs(limit = 50) {
+  return listGenerationJobs(limit, { jobType: 'meeting_minutes_generate' });
+}
+
+function normaliseGenerationJobType(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (['meeting-minutes', 'meeting_minutes', 'meeting_minutes_generate'].includes(raw)) return 'meeting_minutes_generate';
+  if (['project-updates', 'project_update', 'project-updates', 'project_update_generate'].includes(raw)) return 'project_update_generate';
+  return '';
+}
+
+async function queueProjectUpdateGeneration(payload = {}) {
+  await ensureMeetingJobQueueSchema();
+  const transcriptText = String(payload.transcriptText || '');
+  const fileName = String(payload.fileName || '').trim();
+  const projectId = Number(payload.projectId || 0) || null;
+  const projectName = String(payload.projectName || 'Project update').trim().slice(0, 500);
+  const source = String(payload.source || 'project-update-test').slice(0, 100);
+  const title = String(payload.meetingTitle || fileName || `${projectName} update meeting`).trim().slice(0, 500);
+  const description = String(payload.meetingDescription || 'Queued project update report generation.').slice(0, 2000);
+  const inputPayload = {
+    source,
+    fileName,
+    projectId,
+    projectName,
+    periodLabel: String(payload.periodLabel || '').slice(0, 200),
+    transcriptLength: transcriptText.length,
+    transcriptSha256: payload.transcriptSha256 || '',
+    includeTranscriptMetadata: Boolean(payload.includeTranscriptMetadata),
+    skipMiniLM: Boolean(payload.skipMiniLM),
+    skipRewrite: Boolean(payload.skipRewrite),
+    skipSave: Boolean(payload.skipSave),
+    skipContext: Boolean(payload.skipContext),
+    skipKnowledge: Boolean(payload.skipKnowledge),
+    skipStatusDiagnostics: Boolean(payload.skipStatusDiagnostics),
+    queuedBy: payload.queuedBy || '',
+    queuedAt: new Date().toISOString()
+  };
+
+  const result = await withTransaction(async (client) => {
+    const meeting = await client.query(
+      `INSERT INTO meetings (meeting_title, meeting_description, source, status, webhook_status, last_activity_at)
+       VALUES ($1, $2, $3, 'queued', 'not_sent', NOW())
+       RETURNING id`,
+      [title, description, source]
+    );
+    const meetingId = meeting.rows[0].id;
+    await client.query(
+      `INSERT INTO meeting_autosaves (meeting_id, transcript_text, transcript_length, payload)
+       VALUES ($1, $2, LENGTH($2), $3::jsonb)`,
+      [meetingId, transcriptText, JSON.stringify({ source, fileName, autosaveKind: 'queued_project_update_generation', projectId, projectName })]
+    );
+    const job = await client.query(
+      `INSERT INTO meeting_jobs (
+         meeting_id, job_type, status, stage, progress_percent, status_message,
+         attempts, max_attempts, run_after, input_payload, created_at, updated_at
+       )
+       VALUES ($1, 'project_update_generate', 'queued', 'queued', 0, 'Queued for project update report generation.', 0, 3, NOW(), $2::jsonb, NOW(), NOW())
+       RETURNING id`,
+      [meetingId, JSON.stringify(inputPayload)]
+    );
+    return { meetingId: Number(meetingId), jobId: Number(job.rows[0].id) };
+  });
+
+  return {
+    ...result,
+    status: 'queued',
+    stage: 'queued',
+    progressPercent: 0,
+    statusMessage: 'Queued for project update report generation.'
+  };
+}
+
+async function listGenerationJobs(limit = 50, filters = {}) {
   await ensureMeetingJobQueueSchema();
   const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 200);
+  const jobType = normaliseGenerationJobType(filters.jobType || filters.type);
+  const params = jobType ? [safeLimit, jobType] : [safeLimit];
   const result = await query(
     `SELECT
        j.id AS job_id, j.meeting_id, j.job_type, j.status, j.stage, j.progress_percent,
@@ -1925,17 +2000,18 @@ async function listMeetingMinutesJobs(limit = 50) {
        ORDER BY saved_at DESC, id DESC
        LIMIT 1
      ) a ON TRUE
-     WHERE j.job_type = 'meeting_minutes_generate'
+     WHERE j.job_type IN ('meeting_minutes_generate', 'project_update_generate')
+       ${jobType ? 'AND j.job_type = $2' : ''}
      ORDER BY
        CASE j.status WHEN 'running' THEN 0 WHEN 'queued' THEN 1 WHEN 'failed' THEN 2 ELSE 3 END,
        j.created_at DESC
      LIMIT $1`,
-    [safeLimit]
+    params
   );
   return result.rows.map((row) => meetingJobFromRow(row));
 }
 
-async function getMeetingMinutesJob(jobId, options = {}) {
+async function getGenerationJob(jobId, options = {}) {
   await ensureMeetingJobQueueSchema();
   const result = await query(
     `SELECT
@@ -1955,13 +2031,56 @@ async function getMeetingMinutesJob(jobId, options = {}) {
        ORDER BY saved_at DESC, id DESC
        LIMIT 1
      ) a ON TRUE
-     WHERE j.id = $1 AND j.job_type = 'meeting_minutes_generate'
+     WHERE j.id = $1 AND j.job_type IN ('meeting_minutes_generate', 'project_update_generate')
      LIMIT 1`,
     [Number(jobId)]
   );
   const job = meetingJobFromRow(result.rows[0], true);
   if (job && options.includeTranscript) job.transcriptText = result.rows[0].transcript_text || '';
   return job;
+}
+
+async function getMeetingMinutesJob(jobId, options = {}) {
+  const job = await getGenerationJob(jobId, options);
+  return job && job.jobType === 'meeting_minutes_generate' ? job : null;
+}
+
+async function claimNextGenerationJob(lockedBy = 'generation-worker') {
+  await ensureMeetingJobQueueSchema();
+  const result = await query(
+    `WITH candidate AS (
+       SELECT id
+       FROM meeting_jobs
+       WHERE job_type IN ('meeting_minutes_generate', 'project_update_generate')
+         AND status = 'queued'
+         AND cancel_requested = FALSE
+         AND (run_after IS NULL OR run_after <= NOW())
+         AND attempts < max_attempts
+       ORDER BY created_at ASC
+       LIMIT 1
+       FOR UPDATE SKIP LOCKED
+     )
+     UPDATE meeting_jobs j
+     SET status = 'running',
+         stage = 'starting',
+         progress_percent = GREATEST(progress_percent, 5),
+         status_message = CASE
+           WHEN j.job_type = 'project_update_generate' THEN 'Starting project update report generation.'
+           ELSE 'Starting detailed minutes generation.'
+         END,
+         attempts = COALESCE(attempts, 0) + 1,
+         locked_at = NOW(),
+         locked_by = $1,
+         started_at = COALESCE(started_at, NOW()),
+         updated_at = NOW()
+     FROM candidate
+     WHERE j.id = candidate.id
+     RETURNING j.id`,
+    [lockedBy]
+  );
+  const id = result.rows[0]?.id;
+  if (!id) return null;
+  return getGenerationJob(id, { includeTranscript: true });
 }
 
 async function claimNextMeetingMinutesJob(lockedBy = 'meeting-minutes-worker') {
@@ -1999,7 +2118,7 @@ async function claimNextMeetingMinutesJob(lockedBy = 'meeting-minutes-worker') {
   return getMeetingMinutesJob(id, { includeTranscript: true });
 }
 
-async function updateMeetingMinutesJobProgress(jobId, stage, progressPercent, statusMessage) {
+async function updateGenerationJobProgress(jobId, stage, progressPercent, statusMessage) {
   await ensureMeetingJobQueueSchema();
   await query(
     `UPDATE meeting_jobs
@@ -2007,12 +2126,16 @@ async function updateMeetingMinutesJobProgress(jobId, stage, progressPercent, st
          progress_percent = LEAST(99, GREATEST(0, $2)),
          status_message = $3,
          updated_at = NOW()
-     WHERE id = $4 AND job_type = 'meeting_minutes_generate'`,
+     WHERE id = $4 AND job_type IN ('meeting_minutes_generate', 'project_update_generate')`,
     [String(stage || 'running'), Number(progressPercent || 0), String(statusMessage || ''), Number(jobId)]
   );
 }
 
-async function markMeetingMinutesJobCompleted(jobId, meetingId, resultPayload) {
+async function updateMeetingMinutesJobProgress(jobId, stage, progressPercent, statusMessage) {
+  return updateGenerationJobProgress(jobId, stage, progressPercent, statusMessage);
+}
+
+async function markGenerationJobCompleted(jobId, meetingId, resultPayload, statusMessage = 'Job result is ready for review.') {
   await ensureMeetingJobQueueSchema();
   await withTransaction(async (client) => {
     await client.query(
@@ -2020,15 +2143,15 @@ async function markMeetingMinutesJobCompleted(jobId, meetingId, resultPayload) {
        SET status = 'completed',
            stage = 'completed',
            progress_percent = 100,
-           status_message = 'Minutes are ready for review.',
+           status_message = $3,
            result_payload = $1::jsonb,
            error_message = '',
            locked_at = NULL,
            locked_by = '',
            completed_at = NOW(),
            updated_at = NOW()
-       WHERE id = $2 AND job_type = 'meeting_minutes_generate'`,
-      [JSON.stringify(resultPayload || {}), Number(jobId)]
+       WHERE id = $2 AND job_type IN ('meeting_minutes_generate', 'project_update_generate')`,
+      [JSON.stringify(resultPayload || {}), Number(jobId), String(statusMessage || 'Job result is ready for review.')]
     );
     await client.query(
       `UPDATE meetings
@@ -2042,7 +2165,11 @@ async function markMeetingMinutesJobCompleted(jobId, meetingId, resultPayload) {
   });
 }
 
-async function markMeetingMinutesJobFailure(job, errorMessage) {
+async function markMeetingMinutesJobCompleted(jobId, meetingId, resultPayload) {
+  return markGenerationJobCompleted(jobId, meetingId, resultPayload, 'Minutes are ready for review.');
+}
+
+async function markGenerationJobFailure(job, errorMessage, label = 'Generation') {
   await ensureMeetingJobQueueSchema();
   const shouldRetry = Number(job.attempts || 0) < Number(job.maxAttempts || 0);
   await withTransaction(async (client) => {
@@ -2052,18 +2179,18 @@ async function markMeetingMinutesJobFailure(job, errorMessage) {
          SET status = 'queued',
              stage = 'retry_wait',
              progress_percent = 0,
-             status_message = 'Generation failed; queued for retry.',
+             status_message = $3,
              error_message = $1,
              locked_at = NULL,
              locked_by = '',
              run_after = NOW() + INTERVAL '2 minutes',
              updated_at = NOW()
          WHERE id = $2`,
-        [String(errorMessage || 'Meeting minutes generation failed.'), Number(job.jobId || job.id)]
+        [String(errorMessage || `${label} failed.`), Number(job.jobId || job.id), `${label} failed; queued for retry.`]
       );
       await client.query(
         `UPDATE meetings SET status = 'queued', last_error = $1, last_activity_at = NOW() WHERE id = $2`,
-        [String(errorMessage || 'Meeting minutes generation failed.'), Number(job.meetingId)]
+        [String(errorMessage || `${label} failed.`), Number(job.meetingId)]
       );
     } else {
       await client.query(
@@ -2071,25 +2198,29 @@ async function markMeetingMinutesJobFailure(job, errorMessage) {
          SET status = 'failed',
              stage = 'failed',
              progress_percent = 0,
-             status_message = 'Generation failed.',
+             status_message = $3,
              error_message = $1,
              locked_at = NULL,
              locked_by = '',
              completed_at = NOW(),
              updated_at = NOW()
          WHERE id = $2`,
-        [String(errorMessage || 'Meeting minutes generation failed.'), Number(job.jobId || job.id)]
+        [String(errorMessage || `${label} failed.`), Number(job.jobId || job.id), `${label} failed.`]
       );
       await client.query(
         `UPDATE meetings SET status = 'failed', last_error = $1, last_activity_at = NOW() WHERE id = $2`,
-        [String(errorMessage || 'Meeting minutes generation failed.'), Number(job.meetingId)]
+        [String(errorMessage || `${label} failed.`), Number(job.meetingId)]
       );
     }
   });
   return shouldRetry;
 }
 
-async function retryMeetingMinutesJob(jobId) {
+async function markMeetingMinutesJobFailure(job, errorMessage) {
+  return markGenerationJobFailure(job, errorMessage, 'Generation');
+}
+
+async function retryGenerationJob(jobId) {
   await ensureMeetingJobQueueSchema();
   const result = await query(
     `UPDATE meeting_jobs
@@ -2106,16 +2237,21 @@ async function retryMeetingMinutesJob(jobId) {
          completed_at = NULL,
          updated_at = NOW()
      WHERE id = $1
-       AND job_type = 'meeting_minutes_generate'
+       AND job_type IN ('meeting_minutes_generate', 'project_update_generate')
        AND status IN ('failed','completed','queued')
      RETURNING id`,
     [Number(jobId)]
   );
   if (!result.rows[0]) return null;
-  return getMeetingMinutesJob(jobId, { includeResult: true });
+  return getGenerationJob(jobId, { includeResult: true });
 }
 
-async function cancelMeetingMinutesJob(jobId) {
+async function retryMeetingMinutesJob(jobId) {
+  const job = await retryGenerationJob(jobId);
+  return job && job.jobType === 'meeting_minutes_generate' ? job : null;
+}
+
+async function cancelGenerationJob(jobId) {
   await ensureMeetingJobQueueSchema();
   const result = await query(
     `UPDATE meeting_jobs
@@ -2125,23 +2261,28 @@ async function cancelMeetingMinutesJob(jobId) {
          status_message = CASE WHEN status = 'queued' THEN 'Cancelled before processing.' ELSE 'Cancellation requested.' END,
          updated_at = NOW()
      WHERE id = $1
-       AND job_type = 'meeting_minutes_generate'
+       AND job_type IN ('meeting_minutes_generate', 'project_update_generate')
        AND status IN ('queued','running')
      RETURNING id`,
     [Number(jobId)]
   );
   if (!result.rows[0]) return null;
-  return getMeetingMinutesJob(jobId, { includeResult: true });
+  return getGenerationJob(jobId, { includeResult: true });
 }
 
-async function deleteMeetingMinutesJob(jobId) {
+async function cancelMeetingMinutesJob(jobId) {
+  const job = await cancelGenerationJob(jobId);
+  return job && job.jobType === 'meeting_minutes_generate' ? job : null;
+}
+
+async function deleteGenerationJob(jobId) {
   await ensureMeetingJobQueueSchema();
   const result = await query(
     `WITH target AS (
        SELECT meeting_id
        FROM meeting_jobs
        WHERE id = $1
-         AND job_type = 'meeting_minutes_generate'
+         AND job_type IN ('meeting_minutes_generate', 'project_update_generate')
          AND status IN ('completed','failed','cancelled')
        LIMIT 1
      )
@@ -2152,6 +2293,12 @@ async function deleteMeetingMinutesJob(jobId) {
     [Number(jobId)]
   );
   return Boolean(result.rows[0]);
+}
+
+async function deleteMeetingMinutesJob(jobId) {
+  const job = await getMeetingMinutesJob(jobId);
+  if (!job) return false;
+  return deleteGenerationJob(jobId);
 }
 
 async function updateMeetingMinutesJobResult(jobId, resultPayload) {
@@ -3170,14 +3317,24 @@ module.exports = {
   getMeetingStatus,
   ensureMeetingJobQueueSchema,
   queueMeetingMinutesGeneration,
+  queueProjectUpdateGeneration,
+  listGenerationJobs,
   listMeetingMinutesJobs,
+  getGenerationJob,
   getMeetingMinutesJob,
+  claimNextGenerationJob,
   claimNextMeetingMinutesJob,
+  updateGenerationJobProgress,
   updateMeetingMinutesJobProgress,
+  markGenerationJobCompleted,
   markMeetingMinutesJobCompleted,
+  markGenerationJobFailure,
   markMeetingMinutesJobFailure,
+  retryGenerationJob,
   retryMeetingMinutesJob,
+  cancelGenerationJob,
   cancelMeetingMinutesJob,
+  deleteGenerationJob,
   deleteMeetingMinutesJob,
   updateMeetingMinutesJobResult,
   claimNextJob,

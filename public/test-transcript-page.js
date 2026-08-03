@@ -1,8 +1,9 @@
 const DRAFT_WORKFLOW_DATA_HANDLING_COPY = 'uploaded or pasted transcripts are sent to the server to generate draft meeting minutes. Review and verify drafts against the original transcript, including the title, date, discussion points, owners and deadlines, before exporting or sharing. Saved jobs retain both the transcript and generated minutes until the job is deleted.';
+const PROJECT_UPDATE_DATA_HANDLING_COPY = 'uploaded or pasted meeting notes are sent to the server to generate a draft project update report. Review and verify the draft against the original update before approving or sharing it. Saved jobs retain both the transcript and generated report until the job is deleted.';
 
-function renderDraftWorkflowDataHandlingBanner(className = '') {
+function renderDraftWorkflowDataHandlingBanner(className = '', copy = DRAFT_WORKFLOW_DATA_HANDLING_COPY) {
   const classes = ['safeguard-banner', className].filter(Boolean).join(' ');
-  return `<div class="${classes}"><strong>Draft workflow and data handling:</strong> ${DRAFT_WORKFLOW_DATA_HANDLING_COPY}</div>`;
+  return `<div class="${classes}"><strong>Draft workflow and data handling:</strong> ${copy}</div>`;
 }
 
 function buildTranscriptTestPage(config) {
@@ -60,7 +61,7 @@ function buildTranscriptTestPage(config) {
         <textarea id="transcriptText" placeholder="Paste transcript here..."></textarea>
         <small>If both a file and pasted text are provided, pasted text takes priority.</small>
       </div>
-      ${config.projectReportUi ? renderDraftWorkflowDataHandlingBanner('quiet') : ''}
+      ${config.projectReportUi ? renderDraftWorkflowDataHandlingBanner('quiet', PROJECT_UPDATE_DATA_HANDLING_COPY) : ''}
       <div class="actions">
         <button id="goBtn" type="button">${config.buttonText}</button>
         <button id="clearBtn" class="secondary" type="button">${config.resetButtonText || 'Clear / reset'}</button>
@@ -226,7 +227,12 @@ function buildTranscriptTestPage(config) {
   function selectedProjectPayload() {
     // When embedded in the workspace, the selected project is owned by the
     // workspace bar rather than an internal picker.
-    if (config.fixedProjectId) return { projectId: Number(config.fixedProjectId) };
+    if (config.fixedProjectId) {
+      return {
+        projectId: Number(config.fixedProjectId),
+        projectName: config.fixedProjectName || ''
+      };
+    }
     if (!projectPicker || !projectPicker.value) return {};
     localStorage.setItem(PROJECT_SELECTION_KEY, projectPicker.value);
     return { projectId: Number(projectPicker.value) };
@@ -978,7 +984,7 @@ function buildTranscriptTestPage(config) {
     }
 
     setLoading(true);
-    setMessage(config.loadingMessage || 'Analysing transcript with local Python logic...', 'info');
+    setMessage(config.queuedEndpoint ? 'Queued project update report generation...' : (config.loadingMessage || 'Analysing transcript with local Python logic...'), 'info');
     summaryPanel.classList.add('hidden');
     projectReportPanel.classList.add('hidden');
     advancedDetailsPanel.classList.add('hidden');
@@ -995,18 +1001,27 @@ function buildTranscriptTestPage(config) {
         const formData = new FormData();
         formData.append('file', file);
         if (projectPayload.projectId) formData.append('projectId', String(projectPayload.projectId));
+        if (projectPayload.projectName) formData.append('projectName', String(projectPayload.projectName));
         options.body = formData;
       }
 
-      const endpoint = config.includeTranscriptMetadata
-        ? `${config.endpoint}${config.endpoint.includes('?') ? '&' : '?'}includeTranscriptMetadata=1`
-        : config.endpoint;
+      const endpointBase = config.queuedEndpoint || config.endpoint;
+      const endpoint = config.includeTranscriptMetadata || config.queuedEndpoint
+        ? `${endpointBase}${endpointBase.includes('?') ? '&' : '?'}includeTranscriptMetadata=1`
+        : endpointBase;
       const response = await fetch(endpoint, options);
       const payload = await response.json().catch(() => null);
 
       if (!response.ok || !payload || payload.ok === false) {
         const detailText = payload && payload.details ? ` ${JSON.stringify(payload.details)}` : '';
         throw new Error((payload && payload.error ? payload.error : `Request failed with status ${response.status}.`) + detailText);
+      }
+
+      if (config.queuedEndpoint && payload.jobId) {
+        const jobUrl = `${config.jobsPageUrl || '/jobs'}/${encodeURIComponent(payload.jobId)}`;
+        setMessage(`Queued. Opening job #${payload.jobId} so you can track progress.`, 'success');
+        window.location.assign(jobUrl);
+        return;
       }
 
       const fallback = payload.result && payload.result.mode === 'project_update_legacy_fallback'
@@ -1027,7 +1042,7 @@ function buildTranscriptTestPage(config) {
     } catch (error) {
       setMessage(error.message || 'Transcript analysis failed.', 'error');
     } finally {
-      setLoading(false);
+      if (!config.queuedEndpoint) setLoading(false);
     }
   }
 
