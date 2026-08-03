@@ -707,8 +707,13 @@ input[type=file]::file-selector-button {
 .profile-risk-table td:nth-child(4) {
   width:330px !important;
 }
+.profile-risk-table {
+  min-width:1230px !important;
+}
 .profile-risk-table th:nth-child(5),
-.profile-risk-table td:nth-child(5),
+.profile-risk-table td:nth-child(5) {
+  width:170px !important;
+}
 .profile-milestone-table th:nth-child(6),
 .profile-milestone-table td:nth-child(6) {
   width:60px !important;
