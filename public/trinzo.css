@@ -1077,7 +1077,10 @@ input[type=file]::file-selector-button {
 .project-resume-actions .primary,
 .project-quick-action {
   align-items:flex-start !important;
+  background:var(--surface) !important;
+  border:1px solid var(--border-strong) !important;
   border-radius:var(--radius-sm) !important;
+  color:var(--heading) !important;
   display:flex !important;
   flex-direction:column;
   gap:.2rem;
@@ -1086,6 +1089,10 @@ input[type=file]::file-selector-button {
   padding:.8rem .9rem !important;
   text-align:left;
   width:100%;
+}
+.project-quick-action:hover {
+  background:var(--brand-050) !important;
+  border-color:var(--brand-200) !important;
 }
 .project-resume-actions .primary {
   align-items:center !important;
@@ -1102,7 +1109,7 @@ input[type=file]::file-selector-button {
   line-height:1.25;
 }
 .project-quick-action span {
-  color:var(--heading);
+  color:inherit;
   font-weight:700;
 }
 .compact-actions {
