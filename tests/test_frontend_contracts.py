@@ -158,6 +158,9 @@ class FrontendContractTest(unittest.TestCase):
 
         self.assertIn("Process new meeting", jobs_page)
         self.assertIn("<h1>Jobs</h1>", jobs_page)
+        self.assertIn('class="jobs-page"', jobs_page)
+        self.assertIn('class="jobs-header"', jobs_page)
+        self.assertIn('class="jobs-actions"', jobs_page)
         self.assertIn("Project updates · next", jobs_page)
         self.assertIn('aria-label="Job queues"', jobs_page)
         self.assertNotIn("New minutes", jobs_page)

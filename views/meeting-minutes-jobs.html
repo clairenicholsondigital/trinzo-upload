@@ -167,7 +167,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   <link rel="stylesheet" href="/static/trinzo.css">
   <script defer src="/static/trinzo.js"></script>
 </head>
-<body>
+<body class="jobs-page">
 <div class="container">
   <nav class="nav" aria-label="Primary navigation">
     <a href="/dashboard">Dashboard</a>
@@ -176,13 +176,13 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     <a href="/project-update-test">Project Updates</a>
   </nav>
 
-  <section id="listPanel" class="panel">
-    <div class="toolbar">
-      <div>
+  <section id="listPanel" class="panel jobs-shell">
+    <div class="jobs-header">
+      <div class="jobs-heading">
         <h1>Jobs</h1>
         <p class="intro">Track queued, running, completed and failed work across the Trinzo tools. Meeting-minutes jobs are live here now; project-update jobs will use this same dashboard once that queue is wired.</p>
       </div>
-      <div class="toolbar">
+      <div class="jobs-actions">
         <a class="button secondary" href="/meeting-minutes-final">Process new meeting</a>
         <button id="refreshBtn" type="button">Refresh</button>
       </div>
