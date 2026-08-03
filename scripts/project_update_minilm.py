@@ -496,6 +496,10 @@ def source_sentences_from_context(minilm_first_context: dict[str, Any], result: 
     if isinstance(raw_sources, list):
         for value in raw_sources:
             texts.extend(split_report_sentences(value))
+    raw_transcript_texts = minilm_first_context.get("rawTranscriptTexts", [])
+    if isinstance(raw_transcript_texts, list):
+        for value in raw_transcript_texts:
+            texts.extend(split_report_sentences(value))
     if not texts:
         for value in collect_action_source_texts(result, enriched_segments):
             texts.extend(split_report_sentences(value))
@@ -758,6 +762,7 @@ def build_minilm_first_context(transcript_text: str, backend: MiniLMBackend) -> 
     return {
         "actions": actions,
         "actionSourceTexts": action_source_texts,
+        "rawTranscriptTexts": [window.text for window in windows],
         "selectedActionWindows": selected_windows,
         "projectSignals": project_signals,
         "rankedProjectSignals": ranked_project_signals(project_signals, limit=12, per_category=2),

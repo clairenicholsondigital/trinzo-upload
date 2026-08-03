@@ -432,7 +432,9 @@
             "labelContains": "Vendor Resourcing Shortages",
             "expectedTrend": "stable",
             "expectedMatchedByIn": [
-              "semantic"
+              "exact_title",
+              "semantic",
+              "token_overlap"
             ]
           }
         ],
@@ -842,7 +844,8 @@
             "expectedTrend": "stable",
             "expectedMatchedByIn": [
               "exact_title",
-              "semantic"
+              "semantic",
+              "token_overlap"
             ]
           }
         ],

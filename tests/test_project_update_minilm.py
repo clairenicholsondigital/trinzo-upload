@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from scripts.project_update_minilm import build_project_update_output
-from scripts.project_update_minilm import annotate_report_with_project_context, build_context_first_milestones, build_context_first_risks, build_minilm_first_context, build_report_payload, is_valid_risk_mitigation_candidate, normalise_report_payload, ranked_project_signals, rewrite_report_summary, select_risk_mitigations, split_action_candidates
+from scripts.project_update_minilm import annotate_report_with_project_context, build_context_first_milestones, build_context_first_risks, build_minilm_first_context, build_report_payload, is_valid_risk_mitigation_candidate, normalise_report_payload, ranked_project_signals, rewrite_report_summary, select_risk_mitigations, source_sentences_from_context, split_action_candidates
 
 
 REPO_DIR = Path(__file__).resolve().parents[1]
@@ -79,6 +79,29 @@ class ProjectUpdateMiniLMWorkflowTest(unittest.TestCase):
         self.assertTrue(context["diagnostics"]["runsBeforeRules"])
         self.assertEqual(context["actions"][0]["action"], "Enforce capacity sign-off before SOW approval.")
         self.assertEqual(context["actions"][0]["_source"], "minilm_first")
+
+    def test_minilm_first_context_keeps_raw_sentences_for_rule_fallback(self):
+        class FakeBackend:
+            available = True
+            model_name = "fake-minilm"
+            reason = ""
+
+            def encode_many(self, texts):
+                return {" ".join(str(text or "").split()).strip(): [0.0, 1.0] for text in texts if str(text or "").strip()}
+
+        context = build_minilm_first_context(
+            """
+            Ciara: Health looks green for now as we've just started.
+            Connor: The milestone for 'Schema Mapping Sign-off' is safely underway.
+            Lewis: We should list that data profiling bottleneck as a potential risk.
+            """,
+            FakeBackend(),
+        )
+        sentences = source_sentences_from_context(context, {"segments": []}, [])
+
+        self.assertTrue(any("health looks green" in sentence.lower() for sentence in sentences))
+        self.assertTrue(any("schema mapping" in sentence.lower() for sentence in sentences))
+        self.assertTrue(any("data profiling bottleneck" in sentence.lower() for sentence in sentences))
 
     def test_minilm_first_context_prioritises_explicit_action_list_over_chatter(self):
         class FakeBackend:
