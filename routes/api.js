@@ -324,7 +324,7 @@ function titleCaseMeetingText(value) {
     .replace(/\bPms\b/g, 'PMS');
 }
 
-function cleanStagedMeetingTitleCandidate(value) {
+function cleanStagedMeetingTitleCandidate(value, options = {}) {
   let title = String(value || '').trim();
   if (!title) return '';
 
@@ -346,7 +346,7 @@ function cleanStagedMeetingTitleCandidate(value) {
     .trim();
 
   title = titleCaseMeetingText(title);
-  if (readableDate && !title.includes(readableDate)) {
+  if (readableDate && options.includeReadableDate !== false && !title.includes(readableDate)) {
     title = `${title} - ${readableDate}`;
   }
 
@@ -398,9 +398,31 @@ function uniqueNames(names) {
 
 const TEAMS_PERSON_NAME_PATTERN = "[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:\\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){1,4}";
 const TEAMS_TIMESTAMP_PATTERN = "(?:\\d{1,2}:)?\\d{1,2}:\\d{2}";
+const TEAMS_HEADER_DATE_PATTERN = "\\b(?:20\\d{6}|20\\d{2}[-/]\\d{1,2}[-/]\\d{1,2}|\\d{1,2}[/-]\\d{1,2}[/-]20\\d{2}|\\d{1,2}\\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\\s+20\\d{2})\\b";
+
+function extractTeamsTranscriptHeader(lines) {
+  const headerLines = Array.isArray(lines) ? lines.map((line) => String(line || '').trim()).filter(Boolean).slice(0, 8) : [];
+  const titleLine = headerLines.find((line) => /\b(?:meeting transcript|transcript|recording)\b/i.test(line)) || headerLines[0] || '';
+  const dateLine = headerLines.find((line) => new RegExp(TEAMS_HEADER_DATE_PATTERN, 'i').test(line)) || '';
+  const durationLine = headerLines.find((line) => /\b\d+\s*(?:h|hr|hrs|hour|hours|m|min|mins|minute|minutes)\b/i.test(line)) || '';
+  const dateMatch = dateLine.match(new RegExp(TEAMS_HEADER_DATE_PATTERN, 'i'));
+
+  return {
+    meetingTitle: cleanStagedMeetingTitleCandidate(titleLine, { includeReadableDate: false }),
+    meetingDate: normaliseDateInput(dateMatch ? dateMatch[0] : dateLine),
+    duration: durationLine,
+    source: titleLine || dateLine ? 'microsoft_teams_header' : ''
+  };
+}
 
 function extractTeamsTranscriptStructure(text) {
   const transcript = String(text || '');
+  const firstLines = transcript
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 12);
+  const header = extractTeamsTranscriptHeader(firstLines);
   const speakerTurnCounts = new Map();
   const eventSpeakers = [];
   let turnCount = 0;
@@ -438,6 +460,7 @@ function extractTeamsTranscriptStructure(text) {
   }
 
   return {
+    header,
     speakers: uniqueNames([...speakerTurnCounts.keys(), ...eventSpeakers]),
     speakerTurnCounts: Object.fromEntries([...speakerTurnCounts.entries()].sort((a, b) => b[1] - a[1])),
     eventSpeakers: uniqueNames(eventSpeakers),
@@ -490,9 +513,12 @@ function extractStagedDetailsFromTranscript(transcriptText, fileName = '') {
   const clientLine = extractLineAfterLabel(firstChunk, ['client attendees', 'client participants']);
   const trinzoLine = extractLineAfterLabel(firstChunk, ['trinzo attendees', 'internal attendees', 'trinzo participants', 'internal participants']);
   const teamsStructure = extractTeamsTranscriptStructure(text);
+  const teamsHeader = teamsStructure.header || {};
   const teamsSpeakers = teamsStructure.speakers.length ? teamsStructure.speakers : extractTeamsSpeakerNames(text);
   const explicitClientAttendees = extractNamesFromLine(clientLine || attendeesLine);
   const explicitInternalAttendees = extractNamesFromLine(trinzoLine);
+  const headerDate = teamsHeader.meetingDate || '';
+  const headerTitle = teamsHeader.meetingTitle || '';
 
   return {
     ok: true,
@@ -500,8 +526,8 @@ function extractStagedDetailsFromTranscript(transcriptText, fileName = '') {
     stagedStage: 'details',
     screens: {
       details: {
-        meetingTitle: meetingTitle.slice(0, 180),
-        meetingDate: normaliseDateInput(rawDate),
+        meetingTitle: (headerTitle || meetingTitle).slice(0, 180),
+        meetingDate: headerDate || normaliseDateInput(rawDate),
         meetingLocation: rawLocation || (/teams|microsoft teams/i.test(text) ? 'Microsoft Teams' : 'Microsoft Teams'),
         organisation: rawOrganisation,
         meetingType: inferStagedMeetingType(text, fileName),
@@ -518,7 +544,9 @@ function extractStagedDetailsFromTranscript(transcriptText, fileName = '') {
         source: teamsStructure.speakers.length ? 'microsoft_teams_speaker_turns' : 'explicit_or_fallback',
         speakerCount: teamsSpeakers.length,
         turnCount: teamsStructure.turnCount,
-        eventSpeakerCount: teamsStructure.eventSpeakers.length
+        eventSpeakerCount: teamsStructure.eventSpeakers.length,
+        headerSource: teamsHeader.source || '',
+        dateSource: headerDate ? 'microsoft_teams_header' : 'explicit_or_filename'
       }
     }
   };

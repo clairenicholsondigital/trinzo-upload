@@ -40,14 +40,20 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
 
         self.assertIn("function extractTeamsTranscriptStructure", api)
+        self.assertIn("function extractTeamsTranscriptHeader", api)
         self.assertIn("TEAMS_PERSON_NAME_PATTERN", api)
         self.assertIn("TEAMS_TIMESTAMP_PATTERN", api)
+        self.assertIn("TEAMS_HEADER_DATE_PATTERN", api)
         self.assertIn("speakerTurnCounts", api)
         self.assertIn("eventSpeakers", api)
         self.assertIn("started|stopped", api)
         self.assertIn("microsoft_teams_speaker_turns", api)
+        self.assertIn("microsoft_teams_header", api)
+        self.assertIn("headerDate || normaliseDateInput(rawDate)", api)
+        self.assertIn("durationLine", api)
         self.assertIn("attendeeExtraction", api)
         self.assertIn("turnCount: teamsStructure.turnCount", api)
+        self.assertIn("dateSource: headerDate ? 'microsoft_teams_header' : 'explicit_or_filename'", api)
 
     def test_staged_generation_has_visible_loading_state(self):
         page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
