@@ -91,6 +91,12 @@ input { width:100%; border:1px solid var(--border-strong); border-radius:8px; pa
 .tag { display:inline-flex; width:max-content; border-radius:999px; padding:.2rem .45rem; font-size:.76rem; font-weight:700; color:var(--brand); background:var(--accent-soft); border:1px solid var(--accent-bright); }
 .admin-actions { display:grid; gap:.65rem; }
 .admin-card { display:flex; align-items:center; justify-content:space-between; gap:.75rem; padding:.75rem; border:1px solid var(--border); border-radius:8px; background:var(--soft); }
+.rubric-list { display:grid; gap:.55rem; }
+.rubric-item { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:.75rem; align-items:center; padding:.65rem; border:1px solid var(--border); border-radius:8px; background:var(--soft); }
+.rubric-item strong { color:var(--brand); }
+.rubric-score { font-weight:700; color:var(--accent); white-space:nowrap; }
+.warning-list { display:grid; gap:.55rem; }
+.warning-item { border-left:3px solid var(--warn); padding:.55rem .65rem; background:#fff8eb; border-radius:0 8px 8px 0; }
 @media (max-width:980px) {
   .metric-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
   .hero-metric, .two-col, .quality-grid, .three-col { grid-template-columns:1fr; }
@@ -242,6 +248,30 @@ input { width:100%; border:1px solid var(--border-strong); border-radius:8px; pa
 
   <section class="two-col">
     <article class="panel">
+      <p class="eyebrow">Project record quality</p>
+      <h2>Jacqui-style minutes signals</h2>
+      <p class="muted">These checks reflect the human pattern: maintain the current project record, preserve useful specifics, and avoid turning ordinary discussion into invented risks or actions.</p>
+      <div class="rubric-list">
+        <div class="rubric-item"><strong>Concrete workstream headings</strong><span id="workstreamHeadingScore" class="rubric-score">Static baseline</span></div>
+        <div class="rubric-item"><strong>Status and current-position language</strong><span id="statusLanguageScore" class="rubric-score">Static baseline</span></div>
+        <div class="rubric-item"><strong>Technical detail retained</strong><span id="technicalDetailScore" class="rubric-score">Static baseline</span></div>
+        <div class="rubric-item"><strong>Action concreteness</strong><span id="actionConcreteScore" class="rubric-score">Static baseline</span></div>
+        <div class="rubric-item"><strong>Unsupported risk restraint</strong><span id="riskRestraintScore" class="rubric-score">Static baseline</span></div>
+      </div>
+    </article>
+    <article class="panel">
+      <p class="eyebrow">Improvement queue</p>
+      <h2>Human judgement rules</h2>
+      <div id="projectRecordWarnings" class="warning-list">
+        <div class="warning-item"><strong>Prefer workstreams over themes.</strong><br><span class="muted">Use project-specific headings such as Electrical Compliance testing, SW Versioning, Cybersecurity, QMS or DoC language.</span></div>
+        <div class="warning-item"><strong>Use Current position, not a generic executive summary.</strong><br><span class="muted">Capture where the project stands, what changed, what was agreed and what remains unresolved.</span></div>
+        <div class="warning-item"><strong>Separate open points from actions.</strong><br><span class="muted">Only create an action where a concrete owner/request/follow-up is supported by the transcript.</span></div>
+      </div>
+    </article>
+  </section>
+
+  <section class="two-col">
+    <article class="panel">
       <h2>Most edited sections</h2>
       <div class="edit-list">
         <div class="edit-row"><strong>Summary</strong><div class="edit-bar"><span style="width:42%"></span></div><span>42%</span></div>
@@ -331,8 +361,9 @@ input { width:100%; border:1px solid var(--border-strong); border-radius:8px; pa
     <article class="panel">
       <h2>Prompt improvement queue</h2>
       <div class="admin-actions">
-        <div class="admin-card"><div><strong>Use Client instead of Customer</strong><p class="muted">417 occurrences across approved minutes.</p></div><button class="button secondary" type="button" disabled>Accept default</button></div>
-        <div class="admin-card"><div><strong>Prefer explicit dates</strong><p class="muted">Users often replace relative deadlines before approval.</p></div><button class="button secondary" type="button" disabled>Review rule</button></div>
+        <div class="admin-card"><div><strong>Update the project record</strong><p class="muted">Score drafts against current position, material changes, agreements, unresolved points and next steps.</p></div><span class="tag">Core rule</span></div>
+        <div class="admin-card"><div><strong>Preserve useful specifics</strong><p class="muted">Watch for retained dates, standards, versions, documents, parameters and named deliverables.</p></div><span class="tag">Quality check</span></div>
+        <div class="admin-card"><div><strong>Conservative risk/action wording</strong><p class="muted">Flag inferred risks and vague actions before they reach final approval.</p></div><span class="tag">Guardrail</span></div>
       </div>
     </article>
   </section>
@@ -428,6 +459,111 @@ input { width:100%; border:1px solid var(--border-strong); border-radius:8px; pa
     });
   if (rows.length) {
     breakdownNode.innerHTML = rows.join('');
+  }
+})();
+
+(function initialiseProjectRecordQuality() {
+  var STAGED_DRAFTS_KEY = 'stagedMeetingMinutesJobs';
+  var scoreNodes = {
+    headings: document.getElementById('workstreamHeadingScore'),
+    status: document.getElementById('statusLanguageScore'),
+    detail: document.getElementById('technicalDetailScore'),
+    actions: document.getElementById('actionConcreteScore'),
+    risk: document.getElementById('riskRestraintScore')
+  };
+  var warningNode = document.getElementById('projectRecordWarnings');
+
+  function readDrafts() {
+    try {
+      var parsed = JSON.parse(localStorage.getItem(STAGED_DRAFTS_KEY) || '[]');
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function scorePercent(count, total) {
+    if (!total) return 0;
+    return Math.max(0, Math.min(100, Math.round((count / total) * 100)));
+  }
+
+  function hasAny(text, pattern) {
+    return pattern.test(String(text || ''));
+  }
+
+  function snapshotRows(drafts) {
+    return drafts.flatMap(function (draft) {
+      var snapshot = draft.reviewSnapshot || {};
+      return Array.isArray(snapshot.discussion) ? snapshot.discussion : [];
+    });
+  }
+
+  function snapshotActions(drafts) {
+    return drafts.flatMap(function (draft) {
+      var snapshot = draft.reviewSnapshot || {};
+      return Array.isArray(snapshot.actions) ? snapshot.actions : [];
+    });
+  }
+
+  var drafts = readDrafts().filter(function (draft) { return draft && draft.reviewSnapshot; });
+  if (!drafts.length) return;
+
+  var rows = snapshotRows(drafts);
+  var actions = snapshotActions(drafts);
+  var bulletTexts = rows.flatMap(function (row) { return Array.isArray(row.bullets) ? row.bullets : []; });
+  var abstractHeadingPattern = /\b(readiness|confidence|alignment|strategy|overview|deep dive|discussion|general|analytics)\b/i;
+  var statusPattern = /\b(ongoing|priority|on track|completed|complete|in progress|planned|confirmed|no issues|current position|approved|pending|finali[sz]ed)\b/i;
+  var detailPattern = /\b(\d{1,2}(?:st|nd|rd|th)?\s+[A-Z][a-z]+|20\d{2}|MDR|MDSAP|ISO|IEC|CFR|QMS|SBOM|DoC|UDI|PMS|UL|USB|SW|software|version|parameter|Hz|cyan|yellow|red)\b/;
+  var riskyInferencePattern = /\b(primary risk|significant risk|major blocker|critical blocker|threatens|will delay|has been agreed|decision was made)\b/i;
+  var vagueActionPattern = /\b(aim to|try to|look at|think about|discuss|consider|front-end|sort out|progress)\b/i;
+  var concreteActionPattern = /\b(update|review|send|share|confirm|prepare|complete|finali[sz]e|provide|draft|submit|arrange|follow up|followup)\b/i;
+
+  var concreteHeadings = rows.filter(function (row) {
+    var topic = String(row.topic || '');
+    return topic && !abstractHeadingPattern.test(topic) && topic.split(/\s+/).length <= 6;
+  }).length;
+  var statusBullets = bulletTexts.filter(function (text) { return hasAny(text, statusPattern); }).length;
+  var detailBullets = bulletTexts.filter(function (text) { return hasAny(text, detailPattern); }).length;
+  var concreteActions = actions.filter(function (action) {
+    var text = String(action.action || '');
+    return text && concreteActionPattern.test(text) && !vagueActionPattern.test(text) && String(action.owner || '').trim() && !/^not stated$/i.test(String(action.owner || '').trim());
+  }).length;
+  var riskyBullets = bulletTexts.filter(function (text) { return hasAny(text, riskyInferencePattern); }).length;
+
+  var scores = {
+    headings: scorePercent(concreteHeadings, rows.length),
+    status: scorePercent(statusBullets, Math.max(1, rows.length)),
+    detail: scorePercent(detailBullets, Math.max(1, rows.length)),
+    actions: scorePercent(concreteActions, actions.length || 1),
+    risk: Math.max(0, 100 - riskyBullets * 20)
+  };
+
+  if (scoreNodes.headings) scoreNodes.headings.textContent = scores.headings + '%';
+  if (scoreNodes.status) scoreNodes.status.textContent = scores.status + '%';
+  if (scoreNodes.detail) scoreNodes.detail.textContent = scores.detail + '%';
+  if (scoreNodes.actions) scoreNodes.actions.textContent = scores.actions + '%';
+  if (scoreNodes.risk) scoreNodes.risk.textContent = scores.risk + '%';
+
+  var warnings = [];
+  if (scores.headings < 75) warnings.push('Some headings look thematic rather than project-specific. Prefer named workstreams, documents, systems or deliverables.');
+  if (scores.status < 50) warnings.push('Discussion notes may not be preserving enough current-position language such as ongoing, completed, approved, planned or pending.');
+  if (scores.detail < 45) warnings.push('Few bullets contain concrete details such as dates, standards, versions, documents or technical parameters.');
+  if (actions.length && scores.actions < 70) warnings.push('Some actions may be too vague or missing clear ownership. Keep aspirations and open points separate from committed actions.');
+  if (riskyBullets) warnings.push('Check whether risk/blocker language is directly supported, rather than inferred from ordinary dependencies or questions.');
+
+  if (warningNode && warnings.length) {
+    warningNode.innerHTML = warnings.map(function (warning) {
+      return '<div class="warning-item"><strong>Review signal</strong><br><span class="muted">' + escapeHtml(warning) + '</span></div>';
+    }).join('');
   }
 })();
 </script>

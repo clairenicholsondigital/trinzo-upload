@@ -148,6 +148,26 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("passwordToggle.setAttribute('aria-label', isVisible ? 'Show password' : 'Hide password')", login)
         self.assertIn("passwordInput.focus()", login)
 
+    def test_staged_minutes_analytics_tracks_project_record_quality(self):
+        staged_page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
+        analytics = (REPO_DIR / "views" / "staged-meeting-minutes-analytics.html").read_text(encoding="utf-8")
+
+        self.assertIn("reviewSnapshot", staged_page)
+        self.assertIn("discussionRowsFromReview", staged_page)
+        self.assertIn("actionsFromReview", staged_page)
+        self.assertIn("Project record quality", analytics)
+        self.assertIn("Jacqui-style minutes signals", analytics)
+        self.assertIn("Concrete workstream headings", analytics)
+        self.assertIn("Status and current-position language", analytics)
+        self.assertIn("Technical detail retained", analytics)
+        self.assertIn("Action concreteness", analytics)
+        self.assertIn("Unsupported risk restraint", analytics)
+        self.assertIn("initialiseProjectRecordQuality", analytics)
+        self.assertIn("reviewSnapshot", analytics)
+        self.assertIn("Prefer workstreams over themes", analytics)
+        self.assertIn("Update the project record", analytics)
+        self.assertIn("Preserve useful specifics", analytics)
+
     def test_meeting_minutes_final_queue_and_jobs_page_are_wired(self):
         meeting_minutes_final = (REPO_DIR / "views" / "meeting-minutes-final.html").read_text(encoding="utf-8")
         jobs_page = (REPO_DIR / "views" / "meeting-minutes-jobs.html").read_text(encoding="utf-8")

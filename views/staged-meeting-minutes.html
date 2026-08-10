@@ -993,10 +993,8 @@ Analytics and review confidence</textarea>
     };
   }
 
-  function renderFinalDocument() {
-    if (!finalDocumentPreview) return;
-    var objectives = linesFromTextarea(objectivesInput && objectivesInput.value);
-    var discussionRows = Array.prototype.slice.call(discussionList ? discussionList.querySelectorAll('.discussion-table tbody tr') : []).map(function (row) {
+  function discussionRowsFromReview() {
+    return Array.prototype.slice.call(discussionList ? discussionList.querySelectorAll('.discussion-table tbody tr') : []).map(function (row) {
       var cells = row.querySelectorAll('td');
       var topicInput = cells[0] ? cells[0].querySelector('input, textarea') : null;
       var pointsInput = cells[1] ? cells[1].querySelector('textarea') : null;
@@ -1007,9 +1005,19 @@ Analytics and review confidence</textarea>
           : Array.prototype.slice.call(cells[1] ? cells[1].querySelectorAll('li') : []).map(function (li) { return cleanDiscussionDisplayText(li.textContent); }).filter(Boolean)
       };
     }).filter(function (item) { return item.bullets.length && item.topic !== 'No substantive discussion sections generated'; });
-    var actions = Array.prototype.slice.call(actionsTableBody ? actionsTableBody.querySelectorAll('tr') : []).map(function (row) {
+  }
+
+  function actionsFromReview() {
+    return Array.prototype.slice.call(actionsTableBody ? actionsTableBody.querySelectorAll('tr') : []).map(function (row) {
       return actionFromRow(row);
     }).filter(function (item) { return item.owner || item.action || item.deadline; });
+  }
+
+  function renderFinalDocument() {
+    if (!finalDocumentPreview) return;
+    var objectives = linesFromTextarea(objectivesInput && objectivesInput.value);
+    var discussionRows = discussionRowsFromReview();
+    var actions = actionsFromReview();
 
     finalDocumentPreview.innerHTML =
       '<h2>' + escapeHtml((meetingTitleInput && meetingTitleInput.value) || 'Untitled meeting') + '</h2>' +
@@ -1391,6 +1399,13 @@ Analytics and review confidence</textarea>
       reviewEditCount: reviewEditCount,
       regenerationCount: regenerationEvents.length,
       regenerations: regenerationEvents.slice(-25),
+      reviewSnapshot: {
+        summary: executiveSummaryInput && executiveSummaryInput.value ? executiveSummaryInput.value.trim() : '',
+        objectives: linesFromTextarea(objectivesInput && objectivesInput.value),
+        overallTopics: linesFromTextarea(overallTopicsInput && overallTopicsInput.value),
+        discussion: discussionRowsFromReview(),
+        actions: actionsFromReview()
+      },
       resumeUrl: '/staged-meeting-minutes?draftId=' + encodeURIComponent(id) + '&screen=' + activeIndex,
       statusMessage: activeIndex >= screens.length - 1 ? 'Ready for final review.' : 'Reviewer paused during ' + currentStepLabel() + '.',
       generated: Boolean(lastGeneratedPayload)
