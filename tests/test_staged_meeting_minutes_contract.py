@@ -36,6 +36,19 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("def normalise_action_owner", trooper)
         self.assertIn('use "All" as the owner', trooper)
 
+    def test_teams_speaker_turns_drive_deterministic_attendee_extraction(self):
+        api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+
+        self.assertIn("function extractTeamsTranscriptStructure", api)
+        self.assertIn("TEAMS_PERSON_NAME_PATTERN", api)
+        self.assertIn("TEAMS_TIMESTAMP_PATTERN", api)
+        self.assertIn("speakerTurnCounts", api)
+        self.assertIn("eventSpeakers", api)
+        self.assertIn("started|stopped", api)
+        self.assertIn("microsoft_teams_speaker_turns", api)
+        self.assertIn("attendeeExtraction", api)
+        self.assertIn("turnCount: teamsStructure.turnCount", api)
+
     def test_staged_generation_has_visible_loading_state(self):
         page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
 

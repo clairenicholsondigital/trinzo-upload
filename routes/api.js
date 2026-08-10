@@ -396,7 +396,58 @@ function uniqueNames(names) {
   return unique.slice(0, 40);
 }
 
+const TEAMS_PERSON_NAME_PATTERN = "[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:\\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){1,4}";
+const TEAMS_TIMESTAMP_PATTERN = "(?:\\d{1,2}:)?\\d{1,2}:\\d{2}";
+
+function extractTeamsTranscriptStructure(text) {
+  const transcript = String(text || '');
+  const speakerTurnCounts = new Map();
+  const eventSpeakers = [];
+  let turnCount = 0;
+
+  const addSpeaker = (name, isTurn = false) => {
+    const cleaned = String(name || '').replace(/\s+/g, ' ').trim();
+    if (!isLikelyPersonName(cleaned)) return;
+    if (isTurn) {
+      speakerTurnCounts.set(cleaned, (speakerTurnCounts.get(cleaned) || 0) + 1);
+      turnCount += 1;
+    } else {
+      eventSpeakers.push(cleaned);
+    }
+  };
+
+  const turnLinePattern = new RegExp(`^\\s*(${TEAMS_PERSON_NAME_PATTERN})\\s+${TEAMS_TIMESTAMP_PATTERN}(?=\\s|[A-Za-z*]|$)`, 'i');
+  const eventLinePattern = new RegExp(`^\\s*(${TEAMS_PERSON_NAME_PATTERN})\\s+(?:started|stopped)\\s+transcription\\b`, 'i');
+
+  for (const line of transcript.split(/\r?\n/)) {
+    const turnMatch = line.match(turnLinePattern);
+    if (turnMatch) {
+      addSpeaker(turnMatch[1], true);
+      continue;
+    }
+    const eventMatch = line.match(eventLinePattern);
+    if (eventMatch) {
+      addSpeaker(eventMatch[1], false);
+    }
+  }
+
+  const flattenedPattern = new RegExp(`\\b\\d{4,}\\s+\\d{4,}\\s+(${TEAMS_PERSON_NAME_PATTERN})\\s+${TEAMS_TIMESTAMP_PATTERN}(?=\\s|[A-Za-z*]|$)`, 'g');
+  let match;
+  while ((match = flattenedPattern.exec(transcript)) !== null) {
+    addSpeaker(match[1], true);
+  }
+
+  return {
+    speakers: uniqueNames([...speakerTurnCounts.keys(), ...eventSpeakers]),
+    speakerTurnCounts: Object.fromEntries([...speakerTurnCounts.entries()].sort((a, b) => b[1] - a[1])),
+    eventSpeakers: uniqueNames(eventSpeakers),
+    turnCount
+  };
+}
+
 function extractTeamsSpeakerNames(text) {
+  const structured = extractTeamsTranscriptStructure(text);
+  if (structured.speakers.length) return structured.speakers;
   const transcript = String(text || '');
   const names = [];
   const linePattern = /^\s*([A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){1,4})\s+(?:\d{1,2}:)?\d{1,2}:\d{2}(?=\s|[A-Za-z*]|$)/gm;
@@ -438,7 +489,8 @@ function extractStagedDetailsFromTranscript(transcriptText, fileName = '') {
   const attendeesLine = extractLineAfterLabel(firstChunk, ['attendees', 'participants', 'present']);
   const clientLine = extractLineAfterLabel(firstChunk, ['client attendees', 'client participants']);
   const trinzoLine = extractLineAfterLabel(firstChunk, ['trinzo attendees', 'internal attendees', 'trinzo participants', 'internal participants']);
-  const teamsSpeakers = extractTeamsSpeakerNames(text);
+  const teamsStructure = extractTeamsTranscriptStructure(text);
+  const teamsSpeakers = teamsStructure.speakers.length ? teamsStructure.speakers : extractTeamsSpeakerNames(text);
   const explicitClientAttendees = extractNamesFromLine(clientLine || attendeesLine);
   const explicitInternalAttendees = extractNamesFromLine(trinzoLine);
 
@@ -461,7 +513,13 @@ function extractStagedDetailsFromTranscript(transcriptText, fileName = '') {
     telemetryPreview: {
       stage: 'details',
       transcriptLength: text.length,
-      screenCount: 1
+      screenCount: 1,
+      attendeeExtraction: {
+        source: teamsStructure.speakers.length ? 'microsoft_teams_speaker_turns' : 'explicit_or_fallback',
+        speakerCount: teamsSpeakers.length,
+        turnCount: teamsStructure.turnCount,
+        eventSpeakerCount: teamsStructure.eventSpeakers.length
+      }
     }
   };
 }
