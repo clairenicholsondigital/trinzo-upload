@@ -990,6 +990,7 @@ function buildTranscriptTestPage(config) {
     advancedDetailsPanel.classList.add('hidden');
     jsonPanel.classList.add('hidden');
     debugPanel.classList.add('hidden');
+    let queuedNavigationStarted = false;
 
     try {
       const options = { method: 'POST', credentials: 'same-origin' };
@@ -1020,6 +1021,7 @@ function buildTranscriptTestPage(config) {
       if (config.queuedEndpoint && payload.jobId) {
         const jobUrl = `${config.jobsPageUrl || '/jobs'}/${encodeURIComponent(payload.jobId)}`;
         setMessage(`Queued. Opening job #${payload.jobId} so you can track progress.`, 'success');
+        queuedNavigationStarted = true;
         window.location.assign(jobUrl);
         return;
       }
@@ -1042,7 +1044,7 @@ function buildTranscriptTestPage(config) {
     } catch (error) {
       setMessage(error.message || 'Transcript analysis failed.', 'error');
     } finally {
-      if (!config.queuedEndpoint) setLoading(false);
+      if (!queuedNavigationStarted) setLoading(false);
     }
   }
 
@@ -2283,6 +2285,7 @@ function buildTranscriptMinilmOnlyPage(config) {
     setMessage(config.queuedEndpoint ? 'Queued meeting minutes generation...' : 'Running meeting minutes extraction...', 'info');
     outputPanel.classList.add('hidden');
     diagnosticsPanel.classList.add('hidden');
+    let queuedNavigationStarted = false;
 
     try {
       const options = { method: 'POST' };
@@ -2311,6 +2314,7 @@ function buildTranscriptMinilmOnlyPage(config) {
         state.currentJobId = payload.jobId;
         const jobUrl = `${config.jobsPageUrl || '/jobs'}/${encodeURIComponent(payload.jobId)}`;
         setMessage(`Queued. Opening job #${payload.jobId} so you can track progress.`, 'success');
+        queuedNavigationStarted = true;
         window.location.assign(jobUrl);
         return;
       }
@@ -2327,7 +2331,7 @@ function buildTranscriptMinilmOnlyPage(config) {
     } catch (error) {
       setMessage(error.message || 'Meeting minutes extraction failed.', 'error');
     } finally {
-      if (!config.queuedEndpoint) setLoading(false);
+      if (!queuedNavigationStarted) setLoading(false);
     }
   }
 

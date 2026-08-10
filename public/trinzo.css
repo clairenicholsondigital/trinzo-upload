@@ -333,6 +333,8 @@ tbody tr:last-child td { border-bottom:none; }
 .jobs {
   margin:0 !important;
   border-collapse:collapse !important;
+  table-layout:fixed;
+  width:100%;
   background:var(--surface) !important;
   color:var(--text) !important;
 }
@@ -355,11 +357,30 @@ tbody tr:last-child td { border-bottom:none; }
 .jobs tbody tr:hover td {
   background:var(--brand-050) !important;
 }
-.jobs td:nth-child(1) { width:7.5rem; }
-.jobs td:nth-child(2) { min-width:17rem; }
-.jobs td:nth-child(4) { min-width:12rem; }
+.jobs th:nth-child(1),
+.jobs td:nth-child(1) { width:8%; }
+.jobs th:nth-child(2),
+.jobs td:nth-child(2) {
+  width:13%;
+  max-width:10rem;
+}
+.jobs th:nth-child(3),
+.jobs td:nth-child(3) {
+  width:29%;
+  overflow-wrap:anywhere;
+}
+.jobs th:nth-child(4),
+.jobs td:nth-child(4) { width:13%; }
+.jobs th:nth-child(5),
+.jobs td:nth-child(5) { width:14%; }
+.jobs th:nth-child(6),
+.jobs td:nth-child(6) { width:7%; }
+.jobs th:nth-child(7),
+.jobs td:nth-child(7) { width:8%; }
+.jobs th:nth-child(8),
+.jobs td:nth-child(8) { width:8%; }
 .jobs .progress {
-  min-width:10rem;
+  min-width:0;
   color:var(--text);
 }
 .jobs .track {
@@ -374,7 +395,7 @@ tbody tr:last-child td { border-bottom:none; }
   gap:.45rem;
   flex-wrap:wrap;
   align-items:center;
-  min-width:12rem;
+  min-width:0;
 }
 .jobs .row-actions .button,
 .jobs .row-actions button {

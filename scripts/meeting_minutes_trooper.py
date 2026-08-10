@@ -276,7 +276,7 @@ def string_list(value: Any, limit: int = 20) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
     for item in value:
-        text = clean_text(item)
+        text = first_text(item) if isinstance(item, dict) else clean_text(item)
         if not text:
             continue
         key = text.lower()
@@ -356,7 +356,7 @@ def normalise_action(action: Any) -> dict[str, str] | None:
     )
     if not text or is_placeholder_text(text):
         return None
-    owner = clean_text(action.get("meetingActionPointOwner") or action.get("owner")) or "Not stated"
+    owner = normalise_action_owner(action.get("meetingActionPointOwner") or action.get("owner"))
     deadline = clean_text(action.get("meetingActionPointDeadline") or action.get("deadline")) or "Not stated"
     if deadline.lower() in {"none", "null", "unknown", "no deadline", "no deadline agreed"}:
         deadline = "Not stated"
@@ -376,6 +376,13 @@ def normalise_action(action: Any) -> dict[str, str] | None:
         if confidence:
             normalised["confidence"] = confidence
     return normalised
+
+
+def normalise_action_owner(value: Any) -> str:
+    owner = clean_text(value) or "Not stated"
+    if owner.lower() in {"we", "us", "our team", "the team", "everyone"}:
+        return "All"
+    return owner
 
 
 def normalise_participants(value: Any) -> dict[str, list[str]]:
@@ -1316,6 +1323,7 @@ Operator rules for this task:
 - Do not imitate transcript wording or include speaker labels, timestamps, filler, false starts, transcription artefacts, copied malformed questions, or meta-comments about the transcript.
 - Do not invent facts, dates, attendees, decisions, owners, deadlines, regulations, standards, site names or actions.
 - Deadlines and owners must be explicitly evidenced; otherwise use "Not stated".
+- If an action genuinely belongs to the group and the transcript says "we", "us", "the team" or equivalent, use "All" as the owner. Do not use "We" as an owner label.
 - Preserve relative deadlines exactly when stated, e.g. "next week" or "Wednesday". Do not convert them into calendar dates.
 - Actions must be actual commitments or required follow-ups, not general discussion.
 - Decisions must be actual decisions/confirmations, not every statement.
