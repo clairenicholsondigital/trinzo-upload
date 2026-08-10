@@ -955,6 +955,8 @@ function stagedMiniLMTelemetry(minilmContext) {
     counts: minilmContext?.counts || {},
     evidencePackTopicCount: Number(diagnostics.evidencePackTopicCount || 0),
     workstreamStateCount: Number(diagnostics.workstreamStateCount || 0),
+    missingWorkstreamCount: Number(diagnostics.missingWorkstreamCount || 0),
+    missingWorkstreams: Array.isArray(diagnostics.missingWorkstreams) ? diagnostics.missingWorkstreams : [],
     workstreamQualityFlags: Array.isArray(diagnostics.workstreamQualityFlags) ? diagnostics.workstreamQualityFlags : [],
     timingMs: diagnostics.timingMs || {}
   };
@@ -1209,11 +1211,15 @@ function buildStagedTrooperPrompt(stage, transcript, req, options = {}) {
       'Use CONFIRMED_CONTEXT.workstreamState as the internal project-record object before writing the public discussion table.',
       'The workstreamState object classifies evidence into current status, completed/past activity, future commitment, decision/agreement, open point, dependency, technical detail, general chatter/noise and explicit action buckets.',
       'Render discussion rows from workstreamState first, using topicEvidence only as the supporting evidence backstop.',
+      'Each workstreamState row has already been attribution-scored against competing workstreams. Use only evidence listed under that exact workstream.',
+      'Do not borrow evidence from another workstream simply because both workstreams involve documentation, procedures, submissions, reviews or feedback.',
+      'If qualityFlags include missing_workstream_recovered, include the row when the evidence is substantive because it was recovered after the first semantic clustering pass missed it.',
       'Preserve the current status, changes since last review, decisions, open points, dependencies, technical detail and next steps where evidenced.',
       'Do not convert completed or past activity into a future action.',
       'Keep explicit actions for the actions stage unless they are needed as a clearly evidenced next-step sentence in the discussion row.',
       'If a workstream has qualityFlags such as abstract_workstream_heading or low_heading_evidence_match, prefer a more operational label from the evidence, confirmed topic, document, deliverable, system, standard or process.',
       'If workstreamState contains a substantive evidenced workstream, include it unless it is clearly redundant with another row; this is the omission-risk check.',
+      'Before finalising each row, check: does every bullet belong to this exact workstream rather than a neighbouring topic?',
       'For every confirmed topic that has topicEvidence snippets, return one discussionTopics object unless the snippets are clearly irrelevant.',
       'Do not collapse separate confirmed topics into one combined topic.',
       'Also do not over-segment: if topicEvidence combines overlapping transcript evidence under one topic, keep it as one consolidated topic.',
@@ -1255,7 +1261,7 @@ function buildStagedTrooperPrompt(stage, transcript, req, options = {}) {
     '',
     ...(options.strictTopicCoverage ? [
       'RETRY_NOTE:',
-      'The previous stage 3 response was too thin, duplicated, or collapsed the evidence pack. Re-run the stage methodically, using workstreamState and topicEvidence to produce concise topic rows for the distinct evidenced workstreams.',
+      'The previous stage 3 response was too thin, duplicated, omitted evidenced workstreams, or placed evidence under the wrong workstream. Re-run the stage methodically, using workstreamState and topicEvidence to produce concise topic rows for the distinct evidenced workstreams.',
       ''
     ] : []),
     'STAGE_INSTRUCTIONS:',
@@ -1342,6 +1348,10 @@ async function buildStagedTrooperContext(stage, transcript, req, options = {}) {
     }
     const content = parsedBody?.choices?.[0]?.message?.content || '';
     const output = typeof content === 'object' && content ? content : extractJsonFromText(content);
+    const outputContext = output && typeof output === 'object' ? { ok: true, output } : null;
+    const missingWorkstreams = stage === 'discussion'
+      ? missingStagedWorkstreamsFromOutput(outputContext, options.workstreamState)
+      : [];
     return {
       ok: Boolean(output && typeof output === 'object'),
       output: output && typeof output === 'object' ? output : {},
@@ -1358,6 +1368,8 @@ async function buildStagedTrooperContext(stage, transcript, req, options = {}) {
         strictTopicCoverage: Boolean(options.strictTopicCoverage),
         evidencePackTopicCount: Array.isArray(options.evidencePack) ? options.evidencePack.length : 0,
         workstreamStateCount: Array.isArray(options.workstreamState) ? options.workstreamState.length : 0,
+        missingWorkstreamCount: missingWorkstreams.length,
+        missingWorkstreams,
         workstreamQualityFlags: Array.isArray(options.workstreamState)
           ? [...new Set(options.workstreamState.flatMap((item) => Array.isArray(item.qualityFlags) ? item.qualityFlags : []))].slice(0, 12)
           : [],
@@ -1462,20 +1474,27 @@ async function buildStagedGenerationContext(stage, transcript, req, onProgress =
   if (stage === 'discussion') {
     await onProgress(18, 'Building a semantic evidence pack for the confirmed discussion topics.');
     fastContext = await buildStagedMiniLMContext(transcript);
-    evidencePack = buildStagedMiniLMEvidencePack(fastContext, stagedContextFromRequest(req).overallTopics);
-    workstreamState = buildStagedWorkstreamState(evidencePack, fastContext, stagedContextFromRequest(req).overallTopics);
+    const confirmedTopics = stagedContextFromRequest(req).overallTopics;
+    evidencePack = fillMissingStagedWorkstreamEvidence(
+      buildStagedMiniLMEvidencePack(fastContext, confirmedTopics),
+      transcript,
+      confirmedTopics
+    );
+    workstreamState = buildStagedWorkstreamState(evidencePack, fastContext, confirmedTopics);
   }
 
   await onProgress(25, stage === 'summary'
     ? 'AI is drafting objectives, summary and topics from the confirmed meeting details.'
     : `AI is drafting staged ${stage} content from the confirmed meeting details.`);
   let trooperContext = await buildStagedTrooperContext(stage, transcript, req, { evidencePack, workstreamState });
-  if (stage === 'discussion' && trooperContext.ok && stagedDiscussionCoverageIsThin(trooperContext, req, transcript, evidencePack, workstreamState)) {
+  if (stage === 'discussion' && trooperContext.ok && stagedDiscussionNeedsRetry(trooperContext, req, transcript, evidencePack, workstreamState)) {
     await onProgress(45, 'AI discussion output was too thin, re-running against the semantic topic evidence.');
     const retryContext = await buildStagedTrooperContext(stage, transcript, req, { strictTopicCoverage: true, evidencePack, workstreamState });
     const originalCount = discussionFromStagedMiniLM(trooperContext).length;
     const retryCount = discussionFromStagedMiniLM(retryContext).length;
-    if (retryContext.ok && (!stagedDiscussionCoverageIsThin(retryContext, req, transcript, evidencePack, workstreamState) || retryCount > originalCount)) {
+    const originalMissing = missingStagedWorkstreamsFromOutput(trooperContext, workstreamState).length;
+    const retryMissing = missingStagedWorkstreamsFromOutput(retryContext, workstreamState).length;
+    if (retryContext.ok && (!stagedDiscussionNeedsRetry(retryContext, req, transcript, evidencePack, workstreamState) || retryCount > originalCount || retryMissing < originalMissing)) {
       trooperContext = retryContext;
     }
   }
@@ -1596,7 +1615,7 @@ function topicKeywords(topic) {
 }
 
 function stagedTopicTokenSet(value) {
-  const ignored = new Set(['meeting', 'review', 'update', 'discussion', 'point', 'points', 'status', 'topic', 'project']);
+  const ignored = new Set(['meeting', 'review', 'update', 'discussion', 'point', 'points', 'status', 'topic', 'project', 'document', 'documentation', 'management', 'workstream', 'client']);
   return new Set(
     String(value || '')
       .toLowerCase()
@@ -1672,6 +1691,72 @@ function bestConfirmedTopicForEvidence(item, confirmedTopics) {
   return best.score >= 0.12 ? best.topic : '';
 }
 
+function stagedEvidenceSearchText(item) {
+  return [
+    item?.topic,
+    ...(Array.isArray(item?.points) ? item.points : []),
+    ...(Array.isArray(item?.evidence) ? item.evidence : []),
+    ...(Array.isArray(item?.supportingContext) ? item.supportingContext : []),
+    ...(Array.isArray(item?.decisionsOrAgreements) ? item.decisionsOrAgreements : []),
+    ...(Array.isArray(item?.risksOrDependencies) ? item.risksOrDependencies : []),
+    ...(Array.isArray(item?.actions) ? item.actions : [])
+  ].join(' ');
+}
+
+function workstreamEvidenceFitScore(workstream, item) {
+  const topic = cleanStagedGeneratedLine(workstream);
+  if (!topic || !item) return 0;
+  const searchText = stagedEvidenceSearchText(item);
+  const topicFit = stagedTokenSimilarity(topic, item.topic || '');
+  const evidenceFit = stagedTokenSimilarity(topic, searchText);
+  const topicTokens = stagedTopicTokenSet(topic);
+  const textTokens = stagedTopicTokenSet(searchText);
+  let exactHits = 0;
+  for (const token of topicTokens) {
+    if (textTokens.has(token)) exactHits += 1;
+  }
+  const exactFit = topicTokens.size ? exactHits / topicTokens.size : 0;
+  return Math.max(topicFit * 0.7, evidenceFit, exactFit * 0.85);
+}
+
+function bestWorkstreamForEvidence(item, workstreams = []) {
+  const scored = (Array.isArray(workstreams) ? workstreams : [])
+    .map((topic) => ({ topic: cleanStagedGeneratedLine(topic), score: workstreamEvidenceFitScore(topic, item) }))
+    .filter((entry) => entry.topic)
+    .sort((left, right) => right.score - left.score);
+  return {
+    best: scored[0] || { topic: '', score: 0 },
+    runnerUp: scored[1] || { topic: '', score: 0 }
+  };
+}
+
+function reassignStagedEvidencePackByWorkstream(items, confirmedTopics = []) {
+  const topics = (Array.isArray(confirmedTopics) ? confirmedTopics : [])
+    .map(cleanStagedGeneratedLine)
+    .filter(Boolean);
+  if (!topics.length) return Array.isArray(items) ? items : [];
+  const reassigned = [];
+  for (const item of Array.isArray(items) ? items : []) {
+    if (!item || typeof item !== 'object') continue;
+    const { best, runnerUp } = bestWorkstreamForEvidence(item, topics);
+    const currentScore = workstreamEvidenceFitScore(item.topic, item);
+    const shouldMove = best.topic && best.score >= 0.18 && best.score >= currentScore + 0.08;
+    const next = {
+      ...item,
+      topic: shouldMove ? best.topic : item.topic,
+      originalTopic: shouldMove ? item.topic : item.originalTopic,
+      attribution: {
+        workstreamEvidenceFitScore: Number((shouldMove ? best.score : Math.max(best.score, currentScore)).toFixed(3)),
+        competingWorkstream: runnerUp.topic || '',
+        competingFitScore: Number((runnerUp.score || 0).toFixed(3)),
+        reassignedByWorkstreamFit: Boolean(shouldMove)
+      }
+    };
+    reassigned.push(next);
+  }
+  return mergeStagedDiscussionEvidencePack(reassigned, 8);
+}
+
 function mergeStagedDiscussionEvidencePack(items, limit = 6) {
   const merged = [];
   for (const item of items) {
@@ -1680,8 +1765,8 @@ function mergeStagedDiscussionEvidencePack(items, limit = 6) {
     const sourceTurns = Array.isArray(item.sourceTurnIndices) ? item.sourceTurnIndices : [];
     const existing = merged.find((candidate) => {
       const sharedTurns = sourceTurns.length && candidate.sourceTurnIndices.some((turn) => sourceTurns.includes(turn));
-      if (sharedTurns) return true;
       const similarity = stagedTokenSimilarity(candidate.topic, topic);
+      if (sharedTurns && similarity >= 0.22) return true;
       return similarity >= 0.45 || candidate.topic.toLowerCase().includes(topic.toLowerCase()) || topic.toLowerCase().includes(candidate.topic.toLowerCase());
     });
     const target = existing || {
@@ -1694,7 +1779,10 @@ function mergeStagedDiscussionEvidencePack(items, limit = 6) {
       actions: [],
       sourceTurnIndices: [],
       confidence: 0,
-      source: item.source || 'staged_evidence_pack'
+      source: item.source || 'staged_evidence_pack',
+      originalTopic: item.originalTopic || '',
+      attribution: item.attribution || null,
+      qualityFlags: Array.isArray(item.qualityFlags) ? item.qualityFlags.slice(0, 8) : []
     };
     target.points = uniqueCleanDiscussionItems([...(target.points || []), ...(item.points || [])]).slice(0, 6);
     target.evidence = extractStagedEvidenceTexts([...(target.evidence || []), ...(item.evidence || [])], 6);
@@ -1704,6 +1792,8 @@ function mergeStagedDiscussionEvidencePack(items, limit = 6) {
     target.actions = uniqueCleanDiscussionItems([...(target.actions || []), ...(item.actions || [])]).slice(0, 4);
     target.sourceTurnIndices = [...new Set([...(target.sourceTurnIndices || []), ...sourceTurns])].sort((left, right) => left - right);
     target.confidence = Math.max(Number(target.confidence || 0), Number(item.confidence || 0));
+    target.attribution = target.attribution || item.attribution || null;
+    target.qualityFlags = [...new Set([...(target.qualityFlags || []), ...(Array.isArray(item.qualityFlags) ? item.qualityFlags : [])])].slice(0, 12);
     if (!existing) merged.push(target);
   }
   return merged
@@ -1782,7 +1872,10 @@ function stagedMiniLMEvidenceItems(minilmContext, confirmedTopics = []) {
 
 function buildStagedMiniLMEvidencePack(minilmContext, confirmedTopics = []) {
   if (!minilmContext || !minilmContext.ok) return [];
-  return mergeStagedDiscussionEvidencePack(stagedMiniLMEvidenceItems(minilmContext, confirmedTopics), 6);
+  return reassignStagedEvidencePackByWorkstream(
+    mergeStagedDiscussionEvidencePack(stagedMiniLMEvidenceItems(minilmContext, confirmedTopics), 8),
+    confirmedTopics
+  );
 }
 
 function stagedTextHasPastMarker(value) {
@@ -1882,11 +1975,15 @@ function buildStagedWorkstreamState(evidencePack = [], minilmContext = null, con
       evidence: evidenceTexts.slice(0, 8),
       confidence: Number(item.confidence || 0),
       roleCounts: {},
-      qualityFlags: []
+      qualityFlags: Array.isArray(item.qualityFlags) ? item.qualityFlags.slice(0, 10) : []
     };
 
     if (stagedLooksLikeAbstractWorkstream(item.topic)) state.qualityFlags.push('abstract_workstream_heading');
     if (stagedHeadingEvidenceScore(workstream, evidenceTexts) < 0.08) state.qualityFlags.push('low_heading_evidence_match');
+    if (item.attribution?.reassignedByWorkstreamFit) state.qualityFlags.push('workstream_evidence_reassigned');
+    if (item.attribution?.competingFitScore && item.attribution.competingFitScore >= Math.max(0.16, item.attribution.workstreamEvidenceFitScore - 0.08)) {
+      state.qualityFlags.push('competing_workstream_attribution_close');
+    }
 
     const actionTexts = uniqueCleanDiscussionItems(Array.isArray(item.actions) ? item.actions : []);
     for (const text of evidenceTexts) {
@@ -1951,6 +2048,30 @@ function topicEvidenceForStagedDiscussion(transcript, topics) {
     .filter((item) => item.topic && item.evidence.length);
 }
 
+function fillMissingStagedWorkstreamEvidence(evidencePack = [], transcript, confirmedTopics = []) {
+  const pack = Array.isArray(evidencePack) ? evidencePack : [];
+  const topics = (Array.isArray(confirmedTopics) ? confirmedTopics : [])
+    .map(cleanStagedGeneratedLine)
+    .filter(Boolean)
+    .slice(0, 8);
+  if (!topics.length) return pack;
+  const additions = [];
+  const presentTopics = new Set(pack.map((item) => normaliseTopicKey(item.topic)));
+  for (const topic of topics) {
+    const alreadyPresent = presentTopics.has(normaliseTopicKey(topic)) ||
+      pack.some((item) => stagedTokenSimilarity(item.topic, topic) >= 0.45 || workstreamEvidenceFitScore(topic, item) >= 0.35);
+    if (alreadyPresent) continue;
+    const fallback = topicEvidenceForStagedDiscussion(transcript, [topic])[0];
+    if (!fallback || !Array.isArray(fallback.evidence) || fallback.evidence.length < 1) continue;
+    additions.push({
+      ...fallback,
+      source: 'missing_workstream_keyword_backfill',
+      qualityFlags: ['missing_workstream_recovered']
+    });
+  }
+  return reassignStagedEvidencePackByWorkstream([...pack, ...additions], topics);
+}
+
 function stagedDiscussionCoverageIsThin(minilmContext, req, transcript, evidencePack = [], workstreamState = []) {
   const context = stagedContextFromRequest(req);
   const topicEvidence = Array.isArray(evidencePack) && evidencePack.length
@@ -1964,6 +2085,21 @@ function stagedDiscussionCoverageIsThin(minilmContext, req, transcript, evidence
   const cards = discussionFromStagedMiniLM(minilmContext);
   const expectedMinimum = Math.min(3, expectedWork);
   return cards.length < expectedMinimum;
+}
+
+function stagedDiscussionNeedsRetry(minilmContext, req, transcript, evidencePack = [], workstreamState = []) {
+  if (stagedDiscussionCoverageIsThin(minilmContext, req, transcript, evidencePack, workstreamState)) return true;
+  return missingStagedWorkstreamsFromOutput(minilmContext, workstreamState).length > 0;
+}
+
+function missingStagedWorkstreamsFromOutput(minilmContext, workstreamState = []) {
+  const cards = discussionFromStagedMiniLM(minilmContext);
+  return (Array.isArray(workstreamState) ? workstreamState : [])
+    .filter((state) => state && Array.isArray(state.evidence) && state.evidence.length)
+    .filter((state) => !findDiscussionCardForTopic(cards, state.workstream))
+    .map((state) => state.workstream)
+    .filter(Boolean)
+    .slice(0, 6);
 }
 
 function normaliseTopicKey(value) {
