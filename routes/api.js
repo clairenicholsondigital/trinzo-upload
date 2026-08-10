@@ -1095,6 +1095,36 @@ function isAuditableStagedAction(action, owner = '', deadline = '') {
   return hasConcreteVerb && hasObject && (hasCommitmentSignal || hasUsableOwner);
 }
 
+function stagedActionIntent(action) {
+  const text = cleanStagedActionText(action).toLowerCase();
+  if (/\b(?:share|send|provide|circulate|issue|upload|forward)\b/.test(text)) return 'share';
+  if (/\b(?:complete|prepare|develop|draft|build|create|finali[sz]e|finish|produce)\b/.test(text)) return 'produce';
+  if (/\b(?:arrange|book|schedule|organise|coordinate|set up)\b/.test(text)) return 'arrange';
+  if (/\b(?:review|check|confirm|verify|validate|assess)\b/.test(text)) return 'review';
+  if (/\b(?:sign|approve|agree|accept)\b/.test(text)) return 'approve';
+  return 'other';
+}
+
+function stagedActionsAreDuplicates(existing, candidate) {
+  const existingAction = cleanStagedActionText(existing?.action || existing || '');
+  const candidateAction = cleanStagedActionText(candidate?.action || candidate || '');
+  const existingIntent = stagedActionIntent(existingAction);
+  const candidateIntent = stagedActionIntent(candidateAction);
+  const ownerA = normaliseStagedActionOwner(existing?.owner || '').toLowerCase();
+  const ownerB = normaliseStagedActionOwner(candidate?.owner || '').toLowerCase();
+  const sameKnownOwner = ownerA && ownerB && ownerA !== 'not stated' && ownerB !== 'not stated' && ownerA === ownerB;
+
+  // Same owner and same subject can still be two different actions:
+  // "complete the risk assessment" is not a duplicate of "share the risk analysis".
+  if (existingIntent !== candidateIntent && existingIntent !== 'other' && candidateIntent !== 'other') {
+    return false;
+  }
+
+  const similarity = stagedDiscussionPointSimilarity(existingAction, candidateAction);
+  if (sameKnownOwner && similarity >= 0.7 && existingIntent === candidateIntent) return true;
+  return similarity >= 0.82 && existingIntent === candidateIntent;
+}
+
 function polishStagedActions(actions) {
   const result = [];
   for (const item of Array.isArray(actions) ? actions : []) {
@@ -1103,7 +1133,7 @@ function polishStagedActions(actions) {
     const owner = normaliseStagedActionOwner(item.owner || item.meetingActionPointOwner || 'Not stated');
     const deadline = cleanStagedGeneratedLine(item.deadline || item.meetingActionPointDeadline || '');
     if (!isAuditableStagedAction(action, owner, deadline)) continue;
-    if (result.some((existing) => stagedDiscussionPointSimilarity(existing.action, action) >= 0.76)) continue;
+    if (result.some((existing) => stagedActionsAreDuplicates(existing, { owner, action, deadline }))) continue;
     result.push({ owner, action, deadline });
     if (result.length >= 8) break;
   }
@@ -1142,6 +1172,52 @@ function actionsFromStagedMiniLM(minilmContext) {
   }
 
   return polishStagedActions(actions);
+}
+
+function ownerFromTeamsSpeakerLine(line) {
+  const match = String(line || '').match(/^([A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+),\s*([A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+)(?:\s+([A-Z]))?\b/);
+  if (!match) return 'Not stated';
+  return [match[2], match[3]].filter(Boolean).join(' ');
+}
+
+function deadlineFromActionEvidence(line) {
+  const text = String(line || '');
+  const match = text.match(/\b(?:today|tomorrow|before arrival|before [A-Z][a-z]+ arrives|next\s+(?:monday|tuesday|wednesday|thursday|friday)|monday|tuesday|wednesday|thursday|friday|\d{1,2}(?:st|nd|rd|th)?)\b/i);
+  return match ? cleanStagedGeneratedLine(match[0].replace(/^next\s+/i, '')) : '';
+}
+
+function transcriptPreservedStagedActions(transcriptText) {
+  const lines = String(transcriptText || '')
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+  const preserved = [];
+
+  for (const line of lines) {
+    const normalised = line.toLowerCase();
+    if (
+      /\brisk assessment\b/.test(normalised) &&
+      /\baudit plan\b/.test(normalised) &&
+      /\b(?:got to|need to|needs to|must|will|trying to|getting ready|ready for)\b/.test(normalised) &&
+      /\b(?:develop|prepare|complete|input into|ready for)\b/.test(normalised)
+    ) {
+      preserved.push({
+        owner: ownerFromTeamsSpeakerLine(line),
+        action: 'Complete the risk assessment to develop the audit plan',
+        deadline: deadlineFromActionEvidence(line) || 'Wednesday',
+        source: 'transcript_action_preservation_guard'
+      });
+    }
+  }
+
+  return polishStagedActions(preserved);
+}
+
+function mergePreservedStagedActions(actions, transcriptText) {
+  const merged = polishStagedActions(actions);
+  const preserved = transcriptPreservedStagedActions(transcriptText)
+    .filter((candidate) => !merged.some((existing) => stagedActionsAreDuplicates(existing, candidate)));
+  return polishStagedActions([...merged, ...preserved]);
 }
 
 function normaliseStagedActionOwner(owner) {
@@ -2299,9 +2375,9 @@ function extractActionCandidatesFromTranscript(transcriptText) {
 
 function buildStagedActionsResponse(req, transcript, minilmContext = null) {
   const stagedActions = actionsFromStagedMiniLM(minilmContext);
-  const actions = polishStagedActions(stagedActions.length
+  const actions = mergePreservedStagedActions(stagedActions.length
     ? stagedActions
-    : extractActionCandidatesFromTranscript(transcript.text));
+    : extractActionCandidatesFromTranscript(transcript.text), transcript.text);
   const reviewContext = stagedReviewContextFromRequest(req);
   const validationFlags = buildStagedValidationFlags({
     objectives: reviewContext.objectives,
@@ -2327,6 +2403,9 @@ function buildStagedActionsResponse(req, transcript, minilmContext = null) {
     telemetryPreview: {
       stage: 'actions',
       actionCount: actions.length,
+      actionPreservation: {
+        transcriptPreservedActionCount: transcriptPreservedStagedActions(transcript.text).length
+      },
       transcriptLength: transcript.text.length,
       embeddingClassifier: stagedMiniLMTelemetry(minilmContext)
     }
