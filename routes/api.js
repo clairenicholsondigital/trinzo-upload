@@ -908,7 +908,7 @@ function stagedTrooperSchema(stage) {
     return {
       discussionTopics: [
         {
-          topic: 'Confirmed topic label',
+          topic: 'One of the confirmed overallTopics, in the same order where possible',
           summary: 'Short outcome or context for this topic',
           items: [{ text: 'Evidence-backed discussion point', evidence: 'Short transcript phrase if useful' }]
         }
@@ -952,9 +952,13 @@ function buildStagedTrooperPrompt(stage, transcript, req) {
     ],
     discussion: [
       'Write stage 3 only: discussion points grouped against the confirmed topics.',
+      'Treat CONFIRMED_CONTEXT.overallTopics as the agenda for a methodical transcript pass.',
+      'For each confirmed overall topic, look through the transcript for evidence relevant to that topic before moving to the next topic.',
+      'Return discussionTopics in the same order as the confirmed overallTopics where possible.',
       'Use the confirmed title, meeting type, participants, summary topics and transcript evidence.',
       'Use reviewerGuidance as non-evidence context for emphasis only when supplied.',
-      'Do not create new unrelated topics unless the confirmed topics are empty.',
+      'Do not create new unrelated topics unless the confirmed overallTopics list is empty.',
+      'If a confirmed topic has little evidence, include only cautious, high-confidence points for that topic rather than inventing detail.',
       'Return 3-8 discussionTopics with concise evidence-backed items.'
     ],
     actions: [
@@ -1296,6 +1300,47 @@ function evidenceForTopic(transcriptText, topic) {
   return matches.slice(0, 3).map((line) => line.replace(/\s+/g, ' ').trim());
 }
 
+function normaliseTopicKey(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function findDiscussionCardForTopic(cards, topic) {
+  const topicKey = normaliseTopicKey(topic);
+  if (!topicKey) return null;
+  const topicWords = topicKey.split(/\s+/).filter((word) => word.length >= 4);
+  return cards.find((card) => {
+    const cardKey = normaliseTopicKey(card && card.topic);
+    if (!cardKey) return false;
+    if (cardKey === topicKey || cardKey.includes(topicKey) || topicKey.includes(cardKey)) return true;
+    return topicWords.length && topicWords.some((word) => cardKey.includes(word));
+  }) || null;
+}
+
+function discussionFallbackForTopic(transcript, topic, meetingType, participants) {
+  const evidence = evidenceForTopic(transcript.text, topic);
+  const points = evidence.length ? evidence : [
+    `Review the transcript detail for ${topic.toLowerCase()} in the context of this ${String(meetingType).toLowerCase()}.`,
+    participants.length
+      ? `Check whether the minutes reflect the participants involved: ${participants.slice(0, 5).join(', ')}.`
+      : 'Check whether the minutes reflect who contributed to this topic.'
+  ];
+  return { topic, points };
+}
+
+function alignDiscussionCardsToConfirmedTopics(cards, topics, transcript, meetingType, participants) {
+  if (!topics.length) return cards;
+  return topics.slice(0, 8).map((topic) => {
+    const matched = findDiscussionCardForTopic(cards, topic);
+    if (matched && Array.isArray(matched.points) && matched.points.length) {
+      return { topic, points: matched.points.slice(0, 5) };
+    }
+    return discussionFallbackForTopic(transcript, topic, meetingType, participants);
+  });
+}
+
 function buildStagedDiscussionResponse(req, transcript, minilmContext = null) {
   const context = stagedContextFromRequest(req);
   const miniLmDiscussion = discussionFromStagedMiniLM(minilmContext);
@@ -1305,16 +1350,9 @@ function buildStagedDiscussionResponse(req, transcript, minilmContext = null) {
   const details = stagedDetailsWithConfirmedContext(req, transcript);
   const participants = context.participants.length ? context.participants : details.allAttendees;
   const meetingType = context.meetingType || details.meetingType || 'Project review';
-  const discussion = miniLmDiscussion.length ? miniLmDiscussion : topics.slice(0, 8).map((topic) => {
-    const evidence = evidenceForTopic(transcript.text, topic);
-    const points = evidence.length ? evidence : [
-      `Review the transcript detail for ${topic.toLowerCase()} in the context of this ${String(meetingType).toLowerCase()}.`,
-      participants.length
-        ? `Check whether the minutes reflect the participants involved: ${participants.slice(0, 5).join(', ')}.`
-        : 'Check whether the minutes reflect who contributed to this topic.'
-    ];
-    return { topic, points };
-  });
+  const discussion = miniLmDiscussion.length
+    ? alignDiscussionCardsToConfirmedTopics(miniLmDiscussion, context.overallTopics, transcript, meetingType, participants)
+    : topics.slice(0, 8).map((topic) => discussionFallbackForTopic(transcript, topic, meetingType, participants));
 
   return {
     ok: true,
