@@ -174,6 +174,22 @@ td textarea { min-height:68px; }
   color:#596875;
   font-size:.92rem;
 }
+.stage-decision-guidance {
+  display:grid;
+  gap:.3rem;
+}
+.stage-decision-guidance[hidden] {
+  display:none;
+}
+.stage-decision-guidance label {
+  color:#02173B;
+  font-weight:700;
+  font-size:.9rem;
+}
+.stage-decision-guidance textarea {
+  min-height:5.25rem;
+  resize:vertical;
+}
 .stage-decision-actions {
   display:flex;
   align-items:center;
@@ -663,6 +679,10 @@ Analytics and review confidence</textarea>
           <p id="stageDecisionQuestion" class="stage-decision-question">Want to move onto the next stage?</p>
           <p id="stageDecisionHint" class="stage-decision-hint">If this screen looks right, generate the next stage. If not, keep editing here.</p>
         </div>
+        <div id="stageAdditionalContextWrap" class="stage-decision-guidance" hidden>
+          <label for="stageAdditionalContext">Anything else to add?</label>
+          <textarea id="stageAdditionalContext" placeholder="Optional context for the AI summary, e.g. priorities, nuance, client sensitivities, or what to emphasise."></textarea>
+        </div>
         <div class="stage-decision-actions">
           <div class="secondary-group">
             <button id="previousScreenBtn" class="secondary" type="button">Go back</button>
@@ -701,6 +721,8 @@ Analytics and review confidence</textarea>
   var regenerateButton = document.getElementById('regenerateScreenBtn');
   var stageDecisionQuestion = document.getElementById('stageDecisionQuestion');
   var stageDecisionHint = document.getElementById('stageDecisionHint');
+  var stageAdditionalContextWrap = document.getElementById('stageAdditionalContextWrap');
+  var stageAdditionalContextInput = document.getElementById('stageAdditionalContext');
   var meetingTitleInput = document.getElementById('meetingTitle');
   var meetingDateInput = document.getElementById('meetingDate');
   var meetingLocationInput = document.getElementById('meetingLocation');
@@ -902,6 +924,9 @@ Analytics and review confidence</textarea>
       nextButton.textContent = stageNeedsGeneration(nextIndex) ? 'Yes, generate ' + nextLabel : 'Yes, move to ' + nextLabel;
       nextButton.disabled = !canMoveNext;
     }
+    if (stageAdditionalContextWrap) {
+      stageAdditionalContextWrap.hidden = !(activeIndex === 0 && nextIndex === 1);
+    }
 
     if (previousButton) {
       previousButton.textContent = activeIndex > 0 ? 'Go back to ' + screenLabel(activeIndex - 1) : 'Go back';
@@ -1075,6 +1100,7 @@ Analytics and review confidence</textarea>
     if (meetingTypeInput) formData.append('meetingType', meetingTypeInput.value);
     formData.append('participants', currentParticipants().join('\n'));
     if (overallTopicsInput) formData.append('overallTopics', overallTopicsInput.value);
+    if (stageAdditionalContextInput) formData.append('additionalContext', stageAdditionalContextInput.value);
     return { formData: formData, hasTranscript: Boolean(transcriptText || transcriptFile || storedTranscriptText || stagedSourceJobId || draftId) };
   }
 
@@ -1236,6 +1262,9 @@ Analytics and review confidence</textarea>
     if (existing && existing.sourceJobId && !stagedSourceJobId) {
       stagedSourceJobId = String(existing.sourceJobId);
     }
+    if (existing && stageAdditionalContextInput && existing.additionalContext) {
+      stageAdditionalContextInput.value = existing.additionalContext;
+    }
     if (!storedTranscriptText) {
       storedTranscriptText = loadStoredTranscript(draftId);
     }
@@ -1338,6 +1367,7 @@ Analytics and review confidence</textarea>
       progressPercent: Math.round(((activeIndex + 1) / screens.length) * 100),
       meetingTitle: title,
       meetingLocation: meetingLocationInput && meetingLocationInput.value.trim() ? meetingLocationInput.value.trim() : 'Microsoft Teams',
+      additionalContext: stageAdditionalContextInput && stageAdditionalContextInput.value.trim() ? stageAdditionalContextInput.value.trim() : '',
       fileName: lastGeneratedPayload && lastGeneratedPayload.fileName ? lastGeneratedPayload.fileName : 'Staged review draft',
       transcriptLength: lastGeneratedPayload && lastGeneratedPayload.transcriptLength ? lastGeneratedPayload.transcriptLength : 0,
       sourceJobId: stagedSourceJobId,

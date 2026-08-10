@@ -939,24 +939,28 @@ function buildStagedTrooperPrompt(stage, transcript, req) {
     meetingLocation: details.meetingLocation || context.meetingLocation,
     meetingType: context.meetingType || details.meetingType || 'Project review',
     participants: context.participants.length ? context.participants : details.allAttendees,
-    overallTopics: context.overallTopics
+    overallTopics: context.overallTopics,
+    reviewerGuidance: context.additionalContext
   };
   const stageInstruction = {
     summary: [
       'Write stage 2 only: objectives, executive summary and overall topic labels.',
       'Use the confirmed meeting title, project/meeting type, date, location and participants as the frame.',
+      'Use reviewerGuidance to improve emphasis and framing when supplied, but do not treat it as transcript evidence.',
       'The summary should answer what this meeting was about and what the reviewer should check before the discussion stage.',
       'Return 2-4 objectives, one concise executiveSummary paragraph, and 4-8 overallTopics.'
     ],
     discussion: [
       'Write stage 3 only: discussion points grouped against the confirmed topics.',
       'Use the confirmed title, meeting type, participants, summary topics and transcript evidence.',
+      'Use reviewerGuidance as non-evidence context for emphasis only when supplied.',
       'Do not create new unrelated topics unless the confirmed topics are empty.',
       'Return 3-8 discussionTopics with concise evidence-backed items.'
     ],
     actions: [
       'Write stage 4 only: actions, owners and deadlines.',
       'Use the confirmed title, meeting type, participants and transcript evidence.',
+      'Use reviewerGuidance as non-evidence context for emphasis only when supplied.',
       'Only include real commitments or follow-ups. If the owner or deadline is not explicit, use Not stated.',
       'If the transcript clearly says the group owns an action using we/us/the team, use All as the owner.'
     ]
@@ -1213,7 +1217,8 @@ function stagedContextFromRequest(req) {
     meetingLocation: firstString(req.body?.meetingLocation, req.query?.meetingLocation),
     meetingType: firstString(req.body?.meetingType, req.query?.meetingType, 'Project review'),
     participants: linesFrom(req.body?.participants || req.query?.participants),
-    overallTopics: linesFrom(req.body?.overallTopics || req.query?.overallTopics || req.body?.topics || req.query?.topics)
+    overallTopics: linesFrom(req.body?.overallTopics || req.query?.overallTopics || req.body?.topics || req.query?.topics),
+    additionalContext: firstString(req.body?.additionalContext, req.query?.additionalContext).slice(0, 3000)
   };
 }
 
@@ -1495,7 +1500,8 @@ async function runQueuedStagedMeetingMinutesStage(jobId) {
       meetingLocation: input.confirmedDetails?.meetingLocation || input.meetingLocation || '',
       meetingType: input.meetingType || '',
       participants: input.participants || '',
-      overallTopics: input.overallTopics || ''
+      overallTopics: input.overallTopics || '',
+      additionalContext: input.additionalContext || ''
     }
   };
 
@@ -2306,6 +2312,7 @@ router.post('/staged-meeting-minutes/jobs', requireAuth, withTestUpload(async (r
       meetingType: req.body?.meetingType || '',
       participants: req.body?.participants || '',
       overallTopics: req.body?.overallTopics || '',
+      additionalContext: req.body?.additionalContext || '',
       draftId: req.body?.draftId || '',
       targetScreen: req.body?.targetScreen || 0,
       regenerate: truthyFlag(req.body?.regenerate),

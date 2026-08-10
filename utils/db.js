@@ -1946,6 +1946,7 @@ async function queueStagedMeetingMinutesStage(payload = {}) {
     meetingType: payload.meetingType || '',
     participants: payload.participants || '',
     overallTopics: payload.overallTopics || '',
+    additionalContext: payload.additionalContext || '',
     draftId: payload.draftId || '',
     targetScreen: Number(payload.targetScreen || 0),
     confirmedDetails: {
