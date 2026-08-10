@@ -862,13 +862,13 @@ Analytics and review confidence</textarea>
   }
 
   function stageLoadingMessage(stage, isRegeneration) {
-    var prefix = isRegeneration ? 'Re-running AI generation step: ' : 'Generating with Trooper: ';
-    if (stage === 'details') return prefix + 'meeting details are being refreshed. Please wait.';
+    var prefix = isRegeneration ? 'Re-running AI generation step: ' : 'Generating: ';
+    if (stage === 'details') return prefix + 'meeting details are being refreshed.';
     if (stage === 'summary' && !isRegeneration) return 'Generating summary and topics with AI';
-    if (stage === 'summary') return prefix + 'summary and topics are being written. Please wait.';
-    if (stage === 'discussion') return prefix + 'discussion points are being formatted. Please wait.';
-    if (stage === 'actions') return prefix + 'actions, owners and dates are being checked. Please wait.';
-    return prefix + 'this staged screen is being generated. Please wait.';
+    if (stage === 'summary') return prefix + 'summary and topics are being written.';
+    if (stage === 'discussion') return prefix + 'discussion points are being formatted.';
+    if (stage === 'actions') return prefix + 'actions, owners and dates are being checked.';
+    return prefix + 'this staged screen is being generated.';
   }
 
   function stageReadyMessage(stage, isRegeneration) {
@@ -1091,10 +1091,17 @@ Analytics and review confidence</textarea>
     return new Promise(function (resolve) { window.setTimeout(resolve, ms); });
   }
 
+  function elapsedStageText(startedAt) {
+    var seconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+    if (seconds < 60) return seconds + 's';
+    return Math.floor(seconds / 60) + 'm ' + String(seconds % 60).padStart(2, '0') + 's';
+  }
+
   // Poll a queued stage job until it completes, then apply its screen payload in place so
   // the reviewer stays on the staged flow instead of being bounced to the Jobs list.
   async function pollStageJobUntilDone(jobId, stage, targetScreen) {
     var maxAttempts = 150; // ~5 minutes at 2s intervals
+    var startedAt = Date.now();
     for (var attempt = 0; attempt < maxAttempts; attempt += 1) {
       var payload = await fetchJson('/api/jobs/' + encodeURIComponent(jobId));
       var job = payload.job;
@@ -1108,7 +1115,10 @@ Analytics and review confidence</textarea>
       if (job.status === 'failed' || job.status === 'cancelled') {
         throw new Error(job.errorMessage || ('Staged ' + labelForStage(stage) + ' generation ' + job.status + '.'));
       }
-      setReviewStatus('Generating ' + labelForStage(stage) + '… ' + (job.statusMessage || (job.progressPercent ? job.progressPercent + '%' : job.status || 'working')), false);
+      var progress = Number(job.progressPercent || 0);
+      var status = job.statusMessage || stageLoadingMessage(stage, false);
+      var progressText = progress ? ' ' + progress + '%.' : '';
+      setReviewStatus(status + progressText + ' Elapsed: ' + elapsedStageText(startedAt) + '. You can close this tab and resume from Jobs.', false);
       await delay(2000);
     }
     throw new Error('Staged ' + labelForStage(stage) + ' generation is taking longer than expected. You can track it from Jobs and reopen this draft when it is ready.');

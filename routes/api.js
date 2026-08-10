@@ -824,6 +824,48 @@ async function buildStagedMiniLMContext(transcript) {
   }
 }
 
+function stagedFastContextIsUsable(stage, context) {
+  if (!context || !context.ok) return false;
+  if (stage === 'summary') {
+    const output = stagedMiniLMOutput(context);
+    return Boolean(
+      topicsFromStagedMiniLM(context).length ||
+      cleanStagedGeneratedLine(output.executiveSummary || output.meetingDescription || output.summary)
+    );
+  }
+  if (stage === 'discussion') {
+    return Boolean(discussionFromStagedMiniLM(context).length || topicsFromStagedMiniLM(context).length);
+  }
+  if (stage === 'actions') {
+    return Boolean(actionsFromStagedMiniLM(context).length);
+  }
+  return false;
+}
+
+async function buildStagedGenerationContext(stage, transcript, req, onProgress = async () => {}) {
+  await onProgress(25, stage === 'summary'
+    ? 'Scanning the transcript for objectives, summary and topics.'
+    : `Scanning the transcript for staged ${stage} content.`);
+  const fastContext = await buildStagedMiniLMContext(transcript);
+  if (stagedFastContextIsUsable(stage, fastContext)) {
+    return { context: fastContext, provider: 'fast-staged-analysis', fallbackUsed: false };
+  }
+
+  await onProgress(45, stage === 'summary'
+    ? 'Fast scan did not find enough structure, so AI is drafting the summary.'
+    : `Fast scan did not find enough structure, so AI is drafting ${stage}.`);
+  const trooperContext = await buildStagedTrooperContext(transcript, req);
+  if (trooperContext.ok) {
+    return { context: trooperContext, provider: 'trooper', fallbackUsed: true };
+  }
+
+  return {
+    context: fastContext.ok ? fastContext : trooperContext,
+    provider: fastContext.ok ? 'fast-staged-analysis' : 'trooper',
+    fallbackUsed: true
+  };
+}
+
 function stagedContextFromRequest(req) {
   return {
     meetingTitle: firstString(req.body?.meetingTitle, req.query?.meetingTitle),
@@ -1137,10 +1179,10 @@ async function runQueuedStagedMeetingMinutesStage(jobId) {
         ...extractStagedDetailsFromTranscript(transcript.text, transcript.fileName)
       };
     } else {
-      await updateGenerationJobProgress(jobId, stage, 25, stage === 'summary' ? 'Generating summary and topics with AI' : `Generating staged ${stage} content with AI.`);
-      const trooperContext = await buildStagedTrooperContext(transcript, stagedReq);
-      const fallbackContext = trooperContext.ok ? null : await buildStagedMiniLMContext(transcript);
-      const context = trooperContext.ok ? trooperContext : fallbackContext;
+      const generation = await buildStagedGenerationContext(stage, transcript, stagedReq, (percent, message) => (
+        updateGenerationJobProgress(jobId, stage, percent, message)
+      ));
+      const context = generation.context;
       if (stage === 'summary') payload = buildStagedSummaryResponse(stagedReq, transcript, context);
       else if (stage === 'discussion') payload = buildStagedDiscussionResponse(stagedReq, transcript, context);
       else if (stage === 'actions') payload = buildStagedActionsResponse(stagedReq, transcript, context);

@@ -311,6 +311,8 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("/api/staged-meeting-minutes", staged_page)
         self.assertIn("/api/staged-meeting-minutes/jobs?stage=", staged_page)
         self.assertIn("/api/staged-meeting-minutes/jobs?stage=' + encodeURIComponent(stage)", staged_page)
+        self.assertIn("You can close this tab and resume from Jobs.", staged_page)
+        self.assertIn("elapsedStageText", staged_page)
         self.assertIn('id="meetingLocation" value="Microsoft Teams"', staged_page)
         self.assertIn('id="overallTopics"', staged_page)
         self.assertIn('id="reviewGenerationStatus"', staged_page)

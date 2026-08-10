@@ -6,13 +6,16 @@ REPO_DIR = Path(__file__).resolve().parents[1]
 
 
 class StagedMeetingMinutesContractTest(unittest.TestCase):
-    def test_staged_steps_use_trooper_and_keep_minilm_as_fallback(self):
+    def test_staged_steps_use_fast_analysis_and_keep_trooper_as_fallback(self):
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
 
         self.assertIn("async function buildStagedTrooperContext", api)
         self.assertIn("runPythonTranscriptScript('meeting_minutes_trooper.py'", api)
-        self.assertIn("const fallbackContext = trooperContext.ok ? null : await buildStagedMiniLMContext(transcript)", api)
-        self.assertIn("trooperUsed: trooperContext.rewriterAvailable", api)
+        self.assertIn("async function buildStagedGenerationContext", api)
+        self.assertIn("stagedFastContextIsUsable", api)
+        self.assertIn("const fastContext = await buildStagedMiniLMContext(transcript)", api)
+        self.assertIn("const trooperContext = await buildStagedTrooperContext(transcript, req)", api)
+        self.assertIn("Fast scan did not find enough structure", api)
         self.assertIn("router.post('/staged-meeting-minutes/jobs'", api)
         self.assertIn("queueStagedMeetingMinutesStage", api)
         self.assertIn("updateGenerationJobProgress", api)
@@ -38,8 +41,10 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
 
         self.assertIn(".review-status.is-loading", page)
         self.assertIn("animation:spin", page)
-        self.assertIn("Generating with Trooper:", page)
+        self.assertIn("Generating:", page)
         self.assertIn("Generating summary and topics with AI", page)
+        self.assertIn("Elapsed:", page)
+        self.assertIn("You can close this tab and resume from Jobs.", page)
         self.assertIn("document.body.classList.add('stage-loading')", page)
         self.assertIn("aria-busy", page)
         self.assertIn("https://unpkg.com/lucide@latest/dist/umd/lucide.min.js", page)
