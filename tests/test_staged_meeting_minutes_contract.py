@@ -118,6 +118,9 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
 
         self.assertIn("stage-decision-card", page)
         self.assertIn("Want to move onto the next stage?", page)
+        self.assertIn("Yes, proceed to next step", page)
+        self.assertNotIn("'Yes, generate ' + nextLabel", page)
+        self.assertNotIn("'Yes, move to ' + nextLabel", page)
         self.assertIn("No, keep reviewing", page)
         self.assertIn("function highestReachableScreen", page)
         self.assertIn("function lockedStageMessage", page)
@@ -129,7 +132,7 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("formData.append('additionalContext'", page)
         self.assertIn("existing.additionalContext", page)
         self.assertIn("activeIndex === 0 && nextIndex === 1", page)
-        self.assertIn("stageNeedsGeneration(nextIndex)", page)
+        self.assertIn("stageNeedsGeneration(target)", page)
         self.assertIn("/api/staged-meeting-minutes/jobs?stage=", page)
         self.assertIn("stageJobId", page)
         self.assertIn("sourceJobId", page)

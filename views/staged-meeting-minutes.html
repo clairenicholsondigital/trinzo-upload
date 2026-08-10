@@ -921,7 +921,7 @@ Analytics and review confidence</textarea>
     } else {
       stageDecisionQuestion.textContent = 'Want to move onto ' + nextLabel + '?';
       stageDecisionHint.textContent = 'Choose Yes when ' + currentLabel + ' looks right. Choose No to keep reviewing this stage.';
-      nextButton.textContent = stageNeedsGeneration(nextIndex) ? 'Yes, generate ' + nextLabel : 'Yes, move to ' + nextLabel;
+      nextButton.textContent = 'Yes, proceed to next step';
       nextButton.disabled = !canMoveNext;
     }
     if (stageAdditionalContextWrap) {
