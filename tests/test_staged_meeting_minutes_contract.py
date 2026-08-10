@@ -6,16 +6,24 @@ REPO_DIR = Path(__file__).resolve().parents[1]
 
 
 class StagedMeetingMinutesContractTest(unittest.TestCase):
-    def test_staged_steps_use_fast_analysis_and_keep_trooper_as_fallback(self):
+    def test_later_staged_steps_use_targeted_trooper_and_keep_fast_fallback(self):
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
 
         self.assertIn("async function buildStagedTrooperContext", api)
-        self.assertIn("runPythonTranscriptScript('meeting_minutes_trooper.py'", api)
+        self.assertIn("function buildStagedTrooperPrompt", api)
+        self.assertIn("function stagedTrooperSchema", api)
         self.assertIn("async function buildStagedGenerationContext", api)
         self.assertIn("stagedFastContextIsUsable", api)
+        self.assertIn("const trooperContext = await buildStagedTrooperContext(stage, transcript, req)", api)
         self.assertIn("const fastContext = await buildStagedMiniLMContext(transcript)", api)
-        self.assertIn("const trooperContext = await buildStagedTrooperContext(transcript, req)", api)
-        self.assertIn("Fast scan did not find enough structure", api)
+        self.assertIn("AI stage was unavailable", api)
+        self.assertIn("CONFIRMED_CONTEXT", api)
+        self.assertIn("STAGE_INSTRUCTIONS", api)
+        self.assertIn("staged_${stage}_targeted", api)
+        self.assertIn("Write stage 2 only", api)
+        self.assertIn("Write stage 3 only", api)
+        self.assertIn("Write stage 4 only", api)
+        self.assertIn("response_format: { type: 'json_object' }", api)
         self.assertIn("router.post('/staged-meeting-minutes/jobs'", api)
         self.assertIn("queueStagedMeetingMinutesStage", api)
         self.assertIn("updateGenerationJobProgress", api)

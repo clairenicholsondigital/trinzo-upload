@@ -106,6 +106,8 @@ const MEETING_MINUTES_FINAL_TIMEOUT_MS = Number(process.env.MEETING_MINUTES_FINA
 const MEETING_MINUTES_JOB_PIPELINE = process.env.MEETING_MINUTES_JOB_PIPELINE || 'chunked';
 const STAGED_MINILM_TIMEOUT_MS = Number(process.env.STAGED_MINILM_TIMEOUT_MS || 45000);
 const STAGED_MINILM_WORKER_URL = (process.env.MINUTES_MINILM_WORKER_URL || 'http://127.0.0.1:8767').trim();
+const TROOPER_STAGE_URL_DEFAULT = 'https://eu.router.trooper.ai/v1/chat/completions';
+const TROOPER_STAGE_MODEL_DEFAULT = 'eu_liv_000099';
 
 function safeErrorInfo(error, extra = {}) {
   const details = error && error.details && typeof error.details === 'object' ? error.details : null;
@@ -677,6 +679,9 @@ function stagedMiniLMTelemetry(minilmContext) {
 function topicsFromStagedMiniLM(minilmContext) {
   const output = stagedMiniLMOutput(minilmContext);
   const topics = [];
+  for (const topic of stringListFromAny(output.overallTopics || output.topics, ['topic', 'title', 'text'])) {
+    pushUniqueTopic(topics, topic, 10);
+  }
   const discussionTopics = Array.isArray(output.discussionTopics) ? output.discussionTopics : [];
   const meetingMinutes = Array.isArray(output.meetingMinutes) ? output.meetingMinutes : [];
   const evidenceTopics = Array.isArray(output.evidenceBackedTopics) ? output.evidenceBackedTopics : [];
@@ -717,8 +722,20 @@ function topic_label_from_text(value) {
 function discussionFromStagedMiniLM(minilmContext) {
   const output = stagedMiniLMOutput(minilmContext);
   const discussionTopics = Array.isArray(output.discussionTopics) ? output.discussionTopics : [];
+  const discussionCards = Array.isArray(output.discussion) ? output.discussion : [];
   const minutes = Array.isArray(output.meetingMinutes) ? output.meetingMinutes : [];
   const cards = [];
+
+  for (const card of discussionCards) {
+    if (!card || typeof card !== 'object') continue;
+    const topic = cleanStagedGeneratedLine(card.topic || card.title || card.heading || 'Discussion');
+    const points = stringListFromAny(card.points || card.discussionPoints || card.items, ['text', 'point', 'summary'])
+      .map(cleanStagedGeneratedLine)
+      .filter(Boolean)
+      .slice(0, 5);
+    if (isUsableStagedTopic(topic) && points.length) cards.push({ topic, points });
+    if (cards.length >= 8) return cards;
+  }
 
   for (const topicItem of discussionTopics) {
     if (!topicItem || typeof topicItem !== 'object') continue;
@@ -812,45 +829,190 @@ function normaliseStagedActionOwner(owner) {
   return cleaned;
 }
 
-async function buildStagedTrooperContext(transcript, req) {
-  const requestedPipeline = String(req.query?.pipeline || req.body?.pipeline || '').trim();
-  const scriptArgs = [
-    '--pipeline',
-    ['single', 'chunked', 'auto'].includes(requestedPipeline) ? requestedPipeline : MEETING_MINUTES_JOB_PIPELINE,
-    '--skip-diagnostics'
-  ];
-
-  try {
-    const result = await runPythonTranscriptScript('meeting_minutes_trooper.py', transcript.text, scriptArgs, { timeoutMs: MEETING_MINUTES_FINAL_TIMEOUT_MS });
+function stagedTrooperSchema(stage) {
+  if (stage === 'summary') {
     return {
-      ok: Boolean(result?.output && typeof result.output === 'object'),
-      output: result?.output && typeof result.output === 'object' ? result.output : {},
-      counts: result?.counts || {},
-      rewriterAvailable: Boolean(result?.rewriterAvailable),
-      rewriterReason: result?.rewriterReason || '',
-      diagnostics: {
-        provider: 'trooper',
-        modelAvailable: Boolean(result?.rewriterAvailable),
-        modelName: result?.rewriterModelName || '',
-        modelReason: result?.rewriterReason || '',
-        pipeline: result?.rewriterDiagnosticsSummary?.pipeline || scriptArgs[1],
-        timingMs: result?.timingMs || {}
-      }
+      objectives: ['Project-specific meeting objective'],
+      executiveSummary: 'Client-ready summary grounded in the transcript and confirmed meeting context.',
+      overallTopics: ['Topic label']
     };
-  } catch (error) {
-    safeLogError('[Staged meeting minutes Trooper generation failed]', error);
+  }
+  if (stage === 'discussion') {
+    return {
+      discussionTopics: [
+        {
+          topic: 'Confirmed topic label',
+          summary: 'Short outcome or context for this topic',
+          items: [{ text: 'Evidence-backed discussion point', evidence: 'Short transcript phrase if useful' }]
+        }
+      ]
+    };
+  }
+  if (stage === 'actions') {
+    return {
+      actions: [
+        {
+          owner: 'Named person, All, or Not stated',
+          action: 'Concrete agreed follow-up',
+          deadline: 'Explicit date/relative deadline or Not stated',
+          evidence: 'Short transcript phrase if useful'
+        }
+      ]
+    };
+  }
+  return {};
+}
+
+function buildStagedTrooperPrompt(stage, transcript, req) {
+  const details = stagedDetailsWithConfirmedContext(req, transcript);
+  const context = stagedContextFromRequest(req);
+  const confirmed = {
+    meetingTitle: details.meetingTitle || context.meetingTitle,
+    meetingDate: details.meetingDate || context.meetingDate,
+    meetingLocation: details.meetingLocation || context.meetingLocation,
+    meetingType: context.meetingType || details.meetingType || 'Project review',
+    participants: context.participants.length ? context.participants : details.allAttendees,
+    overallTopics: context.overallTopics
+  };
+  const stageInstruction = {
+    summary: [
+      'Write stage 2 only: objectives, executive summary and overall topic labels.',
+      'Use the confirmed meeting title, project/meeting type, date, location and participants as the frame.',
+      'The summary should answer what this meeting was about and what the reviewer should check before the discussion stage.',
+      'Return 2-4 objectives, one concise executiveSummary paragraph, and 4-8 overallTopics.'
+    ],
+    discussion: [
+      'Write stage 3 only: discussion points grouped against the confirmed topics.',
+      'Use the confirmed title, meeting type, participants, summary topics and transcript evidence.',
+      'Do not create new unrelated topics unless the confirmed topics are empty.',
+      'Return 3-8 discussionTopics with concise evidence-backed items.'
+    ],
+    actions: [
+      'Write stage 4 only: actions, owners and deadlines.',
+      'Use the confirmed title, meeting type, participants and transcript evidence.',
+      'Only include real commitments or follow-ups. If the owner or deadline is not explicit, use Not stated.',
+      'If the transcript clearly says the group owns an action using we/us/the team, use All as the owner.'
+    ]
+  }[stage] || ['Write only the requested staged meeting-minutes section.'];
+
+  return [
+    '[CMD: task=staged_meeting_minutes_section; format=json; evidence=transcript_grounded; style=client_ready_uk_business_english]',
+    '',
+    'CONFIRMED_CONTEXT:',
+    JSON.stringify(confirmed, null, 2),
+    '',
+    'STAGE_INSTRUCTIONS:',
+    stageInstruction.map((line) => `- ${line}`).join('\n'),
+    '',
+    'Return valid JSON only with this shape:',
+    JSON.stringify(stagedTrooperSchema(stage), null, 2),
+    '',
+    'Rules:',
+    '- Do not invent facts, attendees, owners, deadlines, decisions or topics.',
+    '- Prefer fewer high-confidence points over many weak points.',
+    '- Keep wording professional and concise.',
+    '- Use British English spelling.',
+    '',
+    '[TRANSCRIPT]',
+    String(transcript.text || '').slice(0, Number(process.env.STAGED_TROOPER_MAX_TRANSCRIPT_CHARS || 90000)),
+    '[/TRANSCRIPT]'
+  ].join('\n');
+}
+
+async function buildStagedTrooperContext(stage, transcript, req) {
+  const apiKey = String(process.env.TROOPER_API_KEY || '').trim();
+  const model = String(process.env.TROOPER_MODEL || TROOPER_STAGE_MODEL_DEFAULT).trim() || TROOPER_STAGE_MODEL_DEFAULT;
+  const url = String(process.env.TROOPER_CHAT_COMPLETIONS_URL || TROOPER_STAGE_URL_DEFAULT).trim() || TROOPER_STAGE_URL_DEFAULT;
+  if (!apiKey) {
     return {
       ok: false,
       output: {},
       counts: {},
       rewriterAvailable: false,
-      rewriterReason: error?.message || 'Trooper generation failed.',
+      rewriterReason: 'TROOPER_API_KEY is not configured.',
       diagnostics: {
-        provider: 'trooper',
+        provider: 'trooper_stage',
         modelAvailable: false,
-        modelName: '',
-        modelReason: error?.message || 'Trooper generation failed.',
-        pipeline: scriptArgs[1],
+        modelName: model,
+        modelReason: 'TROOPER_API_KEY is not configured.',
+        pipeline: `staged_${stage}_targeted`,
+        timingMs: {}
+      }
+    };
+  }
+
+  try {
+    const startedAt = Date.now();
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          {
+            role: 'system',
+            content: 'You generate one staged meeting-minutes section at a time. Return valid JSON only.'
+          },
+          {
+            role: 'user',
+            content: buildStagedTrooperPrompt(stage, transcript, req)
+          }
+        ],
+        temperature: Number(process.env.STAGED_TROOPER_TEMPERATURE || 0.15),
+        max_tokens: Number(process.env.STAGED_TROOPER_MAX_TOKENS || (stage === 'discussion' ? 2200 : 1400)),
+        response_format: { type: 'json_object' }
+      })
+    });
+    const rawBody = await response.text();
+    if (!response.ok) {
+      const error = new Error(`Trooper staged ${stage} request failed with status ${response.status}.`);
+      error.statusCode = response.status;
+      error.details = { responseBytes: Buffer.byteLength(rawBody || '', 'utf8') };
+      throw error;
+    }
+    let parsedBody;
+    try {
+      parsedBody = rawBody ? JSON.parse(rawBody) : {};
+    } catch (error) {
+      const wrapped = new Error(`Trooper staged ${stage} response was not valid JSON.`);
+      wrapped.details = { responseBytes: Buffer.byteLength(rawBody || '', 'utf8') };
+      throw wrapped;
+    }
+    const content = parsedBody?.choices?.[0]?.message?.content || '';
+    const output = typeof content === 'object' && content ? content : extractJsonFromText(content);
+    return {
+      ok: Boolean(output && typeof output === 'object'),
+      output: output && typeof output === 'object' ? output : {},
+      counts: {},
+      rewriterAvailable: true,
+      rewriterReason: `Trooper targeted staged ${stage} generation used.`,
+      diagnostics: {
+        provider: 'trooper_stage',
+        modelAvailable: true,
+        modelName: model,
+        modelReason: `Trooper targeted staged ${stage} generation used.`,
+        pipeline: `staged_${stage}_targeted`,
+        timingMs: { total: Date.now() - startedAt },
+        usage: parsedBody?.usage || null
+      }
+    };
+  } catch (error) {
+    safeLogError('[Staged meeting minutes targeted Trooper generation failed]', error, { stage });
+    return {
+      ok: false,
+      output: {},
+      counts: {},
+      rewriterAvailable: false,
+      rewriterReason: error?.message || 'Trooper targeted stage generation failed.',
+      diagnostics: {
+        provider: 'trooper_stage',
+        modelAvailable: false,
+        modelName: model,
+        modelReason: error?.message || 'Trooper targeted stage generation failed.',
+        pipeline: `staged_${stage}_targeted`,
         timingMs: {}
       }
     };
@@ -930,19 +1092,19 @@ function stagedFastContextIsUsable(stage, context) {
 
 async function buildStagedGenerationContext(stage, transcript, req, onProgress = async () => {}) {
   await onProgress(25, stage === 'summary'
-    ? 'Scanning the transcript for objectives, summary and topics.'
-    : `Scanning the transcript for staged ${stage} content.`);
-  const fastContext = await buildStagedMiniLMContext(transcript);
-  if (stagedFastContextIsUsable(stage, fastContext)) {
-    return { context: fastContext, provider: 'fast-staged-analysis', fallbackUsed: false };
+    ? 'AI is drafting objectives, summary and topics from the confirmed meeting details.'
+    : `AI is drafting staged ${stage} content from the confirmed meeting details.`);
+  const trooperContext = await buildStagedTrooperContext(stage, transcript, req);
+  if (trooperContext.ok) {
+    return { context: trooperContext, provider: 'trooper-stage', fallbackUsed: false };
   }
 
   await onProgress(45, stage === 'summary'
-    ? 'Fast scan did not find enough structure, so AI is drafting the summary.'
-    : `Fast scan did not find enough structure, so AI is drafting ${stage}.`);
-  const trooperContext = await buildStagedTrooperContext(transcript, req);
-  if (trooperContext.ok) {
-    return { context: trooperContext, provider: 'trooper', fallbackUsed: true };
+    ? 'AI stage was unavailable, using the faster transcript scan for summary and topics.'
+    : `AI stage was unavailable, using the faster transcript scan for ${stage}.`);
+  const fastContext = await buildStagedMiniLMContext(transcript);
+  if (stagedFastContextIsUsable(stage, fastContext)) {
+    return { context: fastContext, provider: 'fast-staged-analysis', fallbackUsed: true };
   }
 
   return {
@@ -1853,7 +2015,7 @@ router.post('/staged-meeting-minutes', requireAuth, withTestUpload(async (req, r
     }
 
     if (requestedStage === 'summary') {
-      const trooperContext = await buildStagedTrooperContext(transcript, req);
+      const trooperContext = await buildStagedTrooperContext('summary', transcript, req);
       const fallbackContext = trooperContext.ok ? null : await buildStagedMiniLMContext(transcript);
       const summaryResponse = buildStagedSummaryResponse(req, transcript, trooperContext.ok ? trooperContext : fallbackContext);
 
@@ -1873,7 +2035,7 @@ router.post('/staged-meeting-minutes', requireAuth, withTestUpload(async (req, r
     }
 
     if (requestedStage === 'discussion') {
-      const trooperContext = await buildStagedTrooperContext(transcript, req);
+      const trooperContext = await buildStagedTrooperContext('discussion', transcript, req);
       const fallbackContext = trooperContext.ok ? null : await buildStagedMiniLMContext(transcript);
       const discussionResponse = buildStagedDiscussionResponse(req, transcript, trooperContext.ok ? trooperContext : fallbackContext);
 
@@ -1894,7 +2056,7 @@ router.post('/staged-meeting-minutes', requireAuth, withTestUpload(async (req, r
     }
 
     if (requestedStage === 'actions') {
-      const trooperContext = await buildStagedTrooperContext(transcript, req);
+      const trooperContext = await buildStagedTrooperContext('actions', transcript, req);
       const fallbackContext = trooperContext.ok ? null : await buildStagedMiniLMContext(transcript);
       const actionsResponse = buildStagedActionsResponse(req, transcript, trooperContext.ok ? trooperContext : fallbackContext);
 
