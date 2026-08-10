@@ -1799,7 +1799,7 @@ ALTER TABLE meeting_jobs ADD COLUMN IF NOT EXISTS status_message TEXT NOT NULL D
 ALTER TABLE meeting_jobs ADD COLUMN IF NOT EXISTS cancel_requested BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE meeting_jobs DROP CONSTRAINT IF EXISTS meeting_jobs_job_type_check;
 ALTER TABLE meeting_jobs ADD CONSTRAINT meeting_jobs_job_type_check
-  CHECK (job_type IN ('agent_extract', 'webhook_send', 'document_generate', 'meeting_minutes_generate', 'project_update_generate'));
+  CHECK (job_type IN ('agent_extract', 'webhook_send', 'document_generate', 'meeting_minutes_generate', 'project_update_generate', 'staged_meeting_minutes_stage'));
 CREATE INDEX IF NOT EXISTS idx_meeting_jobs_status_run_after ON meeting_jobs (status, run_after, created_at);
 CREATE INDEX IF NOT EXISTS idx_meeting_jobs_type_status ON meeting_jobs (job_type, status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_meetings_status_activity ON meetings (status, last_activity_at DESC);
@@ -1847,6 +1847,15 @@ function meetingJobFromRow(row, includeResult = false) {
     inputPayload
   };
   if (includeResult) job.resultPayload = resultPayload;
+  if (job.jobType === 'staged_meeting_minutes_stage') {
+    const stage = String(inputPayload.stage || job.stage || 'details').trim().toLowerCase();
+    const screenByStage = { details: 0, summary: 1, discussion: 2, actions: 3 };
+    const params = new URLSearchParams();
+    if (inputPayload.draftId) params.set('draftId', String(inputPayload.draftId));
+    params.set('screen', String(Number.isFinite(Number(inputPayload.targetScreen)) ? Number(inputPayload.targetScreen) : (screenByStage[stage] || 0)));
+    params.set('stageJobId', String(job.jobId));
+    job.resumeUrl = resultPayload.resumeUrl || `/staged-meeting-minutes?${params.toString()}`;
+  }
   return job;
 }
 
@@ -1913,7 +1922,72 @@ function normaliseGenerationJobType(value) {
   const raw = String(value || '').trim().toLowerCase();
   if (['meeting-minutes', 'meeting_minutes', 'meeting_minutes_generate'].includes(raw)) return 'meeting_minutes_generate';
   if (['project-updates', 'project_update', 'project-updates', 'project_update_generate'].includes(raw)) return 'project_update_generate';
+  if (['staged-meeting-minutes', 'staged_meeting_minutes', 'staged_meeting_minutes_stage'].includes(raw)) return 'staged_meeting_minutes_stage';
   return '';
+}
+
+async function queueStagedMeetingMinutesStage(payload = {}) {
+  await ensureMeetingJobQueueSchema();
+  const transcriptText = String(payload.transcriptText || '');
+  const fileName = String(payload.fileName || '').trim();
+  const stage = String(payload.stage || 'details').trim().toLowerCase();
+  const source = String(payload.source || 'staged-meeting-minutes').slice(0, 100);
+  const title = String(payload.meetingTitle || fileName || 'Staged meeting-minutes stage').trim().slice(0, 500);
+  const inputPayload = {
+    source,
+    fileName,
+    transcriptLength: transcriptText.length,
+    transcriptSha256: payload.transcriptSha256 || '',
+    stage,
+    meetingType: payload.meetingType || '',
+    participants: payload.participants || '',
+    overallTopics: payload.overallTopics || '',
+    draftId: payload.draftId || '',
+    targetScreen: Number(payload.targetScreen || 0),
+    confirmedDetails: {
+      meetingTitle: payload.meetingTitle || '',
+      meetingDate: payload.meetingDate || '',
+      meetingLocation: payload.meetingLocation || '',
+      meetingType: payload.meetingType || '',
+      participants: payload.participants || ''
+    },
+    regenerate: Boolean(payload.regenerate),
+    queuedBy: payload.queuedBy || '',
+    queuedAt: new Date().toISOString()
+  };
+
+  const result = await withTransaction(async (client) => {
+    const meeting = await client.query(
+      `INSERT INTO meetings (meeting_title, meeting_description, source, status, webhook_status, last_activity_at)
+       VALUES ($1, $2, $3, 'queued', 'not_sent', NOW())
+       RETURNING id`,
+      [title, `Queued staged meeting-minutes ${stage} generation.`, source]
+    );
+    const meetingId = meeting.rows[0].id;
+    await client.query(
+      `INSERT INTO meeting_autosaves (meeting_id, transcript_text, transcript_length, payload)
+       VALUES ($1, $2, LENGTH($2), $3::jsonb)`,
+      [meetingId, transcriptText, JSON.stringify({ source, fileName, autosaveKind: 'queued_staged_minutes_stage', stage })]
+    );
+    const job = await client.query(
+      `INSERT INTO meeting_jobs (
+         meeting_id, job_type, status, stage, progress_percent, status_message,
+         attempts, max_attempts, run_after, input_payload, created_at, updated_at
+       )
+       VALUES ($1, 'staged_meeting_minutes_stage', 'queued', $2, 0, $3, 0, 1, NOW(), $4::jsonb, NOW(), NOW())
+       RETURNING id`,
+      [meetingId, stage, `Queued staged ${stage} generation.`, JSON.stringify(inputPayload)]
+    );
+    return { meetingId: Number(meetingId), jobId: Number(job.rows[0].id) };
+  });
+
+  return {
+    ...result,
+    status: 'queued',
+    stage,
+    progressPercent: 0,
+    statusMessage: `Queued staged ${stage} generation.`
+  };
 }
 
 async function queueProjectUpdateGeneration(payload = {}) {
@@ -2000,7 +2074,7 @@ async function listGenerationJobs(limit = 50, filters = {}) {
        ORDER BY saved_at DESC, id DESC
        LIMIT 1
      ) a ON TRUE
-     WHERE j.job_type IN ('meeting_minutes_generate', 'project_update_generate')
+     WHERE j.job_type IN ('meeting_minutes_generate', 'project_update_generate', 'staged_meeting_minutes_stage')
        ${jobType ? 'AND j.job_type = $2' : ''}
      ORDER BY
        CASE j.status WHEN 'running' THEN 0 WHEN 'queued' THEN 1 WHEN 'failed' THEN 2 ELSE 3 END,
@@ -2031,7 +2105,7 @@ async function getGenerationJob(jobId, options = {}) {
        ORDER BY saved_at DESC, id DESC
        LIMIT 1
      ) a ON TRUE
-     WHERE j.id = $1 AND j.job_type IN ('meeting_minutes_generate', 'project_update_generate')
+     WHERE j.id = $1 AND j.job_type IN ('meeting_minutes_generate', 'project_update_generate', 'staged_meeting_minutes_stage')
      LIMIT 1`,
     [Number(jobId)]
   );
@@ -2126,7 +2200,7 @@ async function updateGenerationJobProgress(jobId, stage, progressPercent, status
          progress_percent = LEAST(99, GREATEST(0, $2)),
          status_message = $3,
          updated_at = NOW()
-     WHERE id = $4 AND job_type IN ('meeting_minutes_generate', 'project_update_generate')`,
+     WHERE id = $4 AND job_type IN ('meeting_minutes_generate', 'project_update_generate', 'staged_meeting_minutes_stage')`,
     [String(stage || 'running'), Number(progressPercent || 0), String(statusMessage || ''), Number(jobId)]
   );
 }
@@ -2150,7 +2224,7 @@ async function markGenerationJobCompleted(jobId, meetingId, resultPayload, statu
            locked_by = '',
            completed_at = NOW(),
            updated_at = NOW()
-       WHERE id = $2 AND job_type IN ('meeting_minutes_generate', 'project_update_generate')`,
+       WHERE id = $2 AND job_type IN ('meeting_minutes_generate', 'project_update_generate', 'staged_meeting_minutes_stage')`,
       [JSON.stringify(resultPayload || {}), Number(jobId), String(statusMessage || 'Job result is ready for review.')]
     );
     await client.query(
@@ -2237,7 +2311,7 @@ async function retryGenerationJob(jobId) {
          completed_at = NULL,
          updated_at = NOW()
      WHERE id = $1
-       AND job_type IN ('meeting_minutes_generate', 'project_update_generate')
+       AND job_type IN ('meeting_minutes_generate', 'project_update_generate', 'staged_meeting_minutes_stage')
        AND status IN ('failed','completed','queued')
      RETURNING id`,
     [Number(jobId)]
@@ -2261,7 +2335,7 @@ async function cancelGenerationJob(jobId) {
          status_message = CASE WHEN status = 'queued' THEN 'Cancelled before processing.' ELSE 'Cancellation requested.' END,
          updated_at = NOW()
      WHERE id = $1
-       AND job_type IN ('meeting_minutes_generate', 'project_update_generate')
+       AND job_type IN ('meeting_minutes_generate', 'project_update_generate', 'staged_meeting_minutes_stage')
        AND status IN ('queued','running')
      RETURNING id`,
     [Number(jobId)]
@@ -2282,7 +2356,7 @@ async function deleteGenerationJob(jobId) {
        SELECT meeting_id
        FROM meeting_jobs
        WHERE id = $1
-         AND job_type IN ('meeting_minutes_generate', 'project_update_generate')
+         AND job_type IN ('meeting_minutes_generate', 'project_update_generate', 'staged_meeting_minutes_stage')
          AND status IN ('completed','failed','cancelled')
        LIMIT 1
      )
@@ -3317,6 +3391,7 @@ module.exports = {
   getMeetingStatus,
   ensureMeetingJobQueueSchema,
   queueMeetingMinutesGeneration,
+  queueStagedMeetingMinutesStage,
   queueProjectUpdateGeneration,
   listGenerationJobs,
   listMeetingMinutesJobs,

@@ -41,6 +41,11 @@ button:disabled { opacity:.55; cursor:not-allowed; }
 .status.completed { color:#bbf7d0; border-color:#166534; background:#052e1b; }
 .status.failed, .status.cancelled { color:#fecaca; border-color:#7f1d1d; background:#3a1515; }
 .status.queued, .status.retry_wait { color:#fde68a; border-color:#854d0e; background:#3a2c15; }
+.status.in_review, .status.final_review { color:#e0fffd; border-color:rgba(23,208,196,.65); background:rgba(23,208,196,.1); }
+.staged-detail-card { display:grid; gap:.75rem; border:1px solid var(--border); border-radius:12px; padding:1rem; background:#071126; margin-top:1rem; }
+.staged-step-list { display:grid; gap:.5rem; }
+.staged-step { display:flex; align-items:center; justify-content:space-between; gap:.75rem; border:1px solid var(--border); border-radius:10px; padding:.65rem .75rem; background:#081227; }
+.staged-step.current { border-color:rgba(23,208,196,.65); background:rgba(23,208,196,.1); }
 .progress { min-width:160px; }
 .track { height:9px; border-radius:999px; background:#061022; border:1px solid var(--border); overflow:hidden; margin:.35rem 0; }
 .fill { height:100%; background:linear-gradient(90deg,#17D0C4,#67e8f9); border-radius:999px; }
@@ -165,6 +170,27 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
 }
 </style>
   <link rel="stylesheet" href="/static/trinzo.css">
+<style>
+.staged-detail-card,
+.staged-step {
+  background:#ffffff !important;
+  border-color:#d9e1e8 !important;
+  color:#17222c !important;
+}
+.staged-step.current {
+  background:#e6f7f7 !important;
+  border-color:#8EFFF8 !important;
+}
+.staged-step span {
+  color:#596875 !important;
+}
+.status.in_review,
+.status.final_review {
+  color:#1c5061 !important;
+  border-color:#c3dde5 !important;
+  background:#e6f1f4 !important;
+}
+</style>
   <script defer src="/static/trinzo.js"></script>
 </head>
 <body class="jobs-page">
@@ -172,6 +198,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   <nav class="nav" aria-label="Primary navigation">
     <a href="/dashboard">Dashboard</a>
     <a href="/meeting-minutes-final">Meeting transcript to minutes</a>
+    <a href="/staged-meeting-minutes">Staged minutes</a>
     <a href="/jobs">Jobs</a>
     <a href="/project-update-test">Project Updates</a>
   </nav>
@@ -180,7 +207,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     <div class="jobs-header">
       <div class="jobs-heading">
         <h1>Jobs</h1>
-        <p class="intro">Track queued, running, completed and failed work across the Trinzo tools. Meeting-minutes jobs are live here now; project-update jobs will use this same dashboard once that queue is wired.</p>
+        <p class="intro">Track queued, running, completed and failed work across the Trinzo tools. Live generation jobs appear alongside browser-saved staged review drafts so paused meeting-minute reviews can be resumed.</p>
       </div>
       <div class="jobs-actions">
         <a class="button secondary" href="/meeting-minutes-final">Process new meeting</a>
@@ -190,6 +217,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     <nav class="queue-tabs" aria-label="Job queues">
       <a class="queue-tab" href="/jobs" aria-current="page">All jobs</a>
       <a class="queue-tab" href="/jobs?type=meeting-minutes">Meeting minutes</a>
+      <a class="queue-tab" href="/jobs?type=staged-meeting-minutes">Staged meeting minutes</a>
       <a class="queue-tab" href="/jobs?type=project-updates">Project updates</a>
     </nav>
     <div id="message" class="message" hidden></div>
@@ -232,9 +260,10 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   const resultJson = document.getElementById('resultJson');
   const retryBtn = document.getElementById('retryBtn');
   const cancelBtn = document.getElementById('cancelBtn');
-  const pathMatch = window.location.pathname.match(/(?:\/jobs|\/meeting-minutes-final\/jobs)\/(\d+)(?:\/result)?$/);
-  const resultOnly = /(?:\/jobs|\/meeting-minutes-final\/jobs)\/\d+\/result$/.test(window.location.pathname);
-  let activeJobId = pathMatch ? Number(pathMatch[1]) : null;
+  const pathMatch = window.location.pathname.match(/(?:\/jobs|\/meeting-minutes-final\/jobs)\/([^/]+)(?:\/result)?$/);
+  const resultOnly = /(?:\/jobs|\/meeting-minutes-final\/jobs)\/[^/]+\/result$/.test(window.location.pathname);
+  let activeJobId = pathMatch && /^\d+$/.test(pathMatch[1]) ? Number(pathMatch[1]) : null;
+  let activeStagedDraftId = pathMatch && !/^\d+$/.test(pathMatch[1]) ? decodeURIComponent(pathMatch[1]) : '';
   let latestResultPayload = null;
   let latestResultRows = [];
   let autosaveTimer = null;
@@ -290,6 +319,54 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
 
   function statusClass(status) {
     return String(status || '').toLowerCase().replace(/[^a-z0-9_-]+/g, '_');
+  }
+
+  function readStagedDrafts() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem('stagedMeetingMinutesJobs') || '[]');
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function deleteStagedDraft(jobId) {
+    const drafts = readStagedDrafts().filter((draft) => String(draft.jobId) !== String(jobId));
+    localStorage.setItem('stagedMeetingMinutesJobs', JSON.stringify(drafts));
+  }
+
+  function stagedDraftJob(draft) {
+    return {
+      jobId: draft.jobId,
+      jobType: 'staged_meeting_minutes_review',
+      status: draft.status || 'in_review',
+      stage: draft.stage || 'Details',
+      progressPercent: Number(draft.progressPercent || 20),
+      statusMessage: draft.statusMessage || 'Reviewer paused in the staged review flow.',
+      attempts: 0,
+      maxAttempts: 0,
+      createdAt: draft.createdAt,
+      updatedAt: draft.updatedAt,
+      completedAt: '',
+      startedAt: draft.createdAt,
+      meetingTitle: draft.meetingTitle || 'Staged meeting-minutes review',
+      fileName: draft.fileName || 'Browser-saved staged review draft',
+      transcriptLength: Number(draft.transcriptLength || 0),
+      activeScreen: Number(draft.activeScreen || 0),
+      resumeUrl: draft.resumeUrl || `/staged-meeting-minutes?draftId=${encodeURIComponent(draft.jobId)}&screen=${Number(draft.activeScreen || 0)}`
+    };
+  }
+
+  function stagedJobs() {
+    return readStagedDrafts().map(stagedDraftJob);
+  }
+
+  function isStagedJob(job) {
+    return job && (job.jobType === 'staged_meeting_minutes_review' || job.jobType === 'staged_meeting_minutes_stage');
+  }
+
+  function isLocalStagedDraft(job) {
+    return job && job.jobType === 'staged_meeting_minutes_review';
   }
 
   function friendlyLabel(value) {
@@ -1073,18 +1150,21 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
 
   function jobTypeLabel(job) {
     const type = String(job.jobType || '').toLowerCase();
+    if (type === 'staged_meeting_minutes_review') return 'Staged meeting minutes';
+    if (type === 'staged_meeting_minutes_stage') return 'Staged stage generation';
     if (type === 'project_update_generate') return 'Project update';
     return 'Meeting minutes';
   }
 
   function jobTitle(job) {
     const fallback = job.jobType === 'project_update_generate' ? 'Project update job' : 'Meeting minutes job';
+    if (isStagedJob(job)) return job.meetingTitle || 'Staged meeting-minutes review';
     return job.meetingTitle || fallback;
   }
 
   function currentQueueType() {
     const type = new URLSearchParams(window.location.search).get('type') || '';
-    return ['meeting-minutes', 'project-updates'].includes(type) ? type : '';
+    return ['meeting-minutes', 'project-updates', 'staged-meeting-minutes'].includes(type) ? type : '';
   }
 
   function updateQueueTabs() {
@@ -1129,10 +1209,13 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
                 <td data-label="Runtime">${escapeHtml(runtime(job))}</td>
                 <td data-label="Attempts">${escapeHtml(job.attempts || 0)} / ${escapeHtml(job.maxAttempts || 0)}</td>
                 <td data-label="Actions" class="row-actions">
-                  ${job.status === 'completed' ? `<a class="button" target="_blank" rel="noopener" href="/jobs/${encodeURIComponent(job.jobId)}/result">${job.jobType === 'project_update_generate' ? 'Open job' : 'Open result'}</a>` : ''}
-                  ${job.status === 'failed' ? `<button class="secondary" data-retry="${escapeHtml(job.jobId)}" type="button">Retry</button>` : ''}
-                  ${job.status === 'queued' || job.status === 'running' ? `<button class="danger" data-cancel="${escapeHtml(job.jobId)}" type="button">Cancel</button>` : ''}
-                  ${['completed', 'failed', 'cancelled'].includes(job.status) ? `<button class="danger" data-delete="${escapeHtml(job.jobId)}" type="button">Delete</button>` : ''}
+                  ${isLocalStagedDraft(job) ? `<a class="button" href="${escapeAttribute(job.resumeUrl)}">Resume</a><a class="button secondary" href="/jobs/${encodeURIComponent(job.jobId)}">Details</a><button class="danger" data-delete-staged="${escapeHtml(job.jobId)}" type="button">Remove</button>` : ''}
+                  ${job.jobType === 'staged_meeting_minutes_stage' && job.status === 'completed' ? `<a class="button" href="${escapeAttribute(job.resumeUrl)}">Resume staged review</a>` : ''}
+                  ${job.jobType === 'staged_meeting_minutes_stage' ? `<a class="button secondary" href="/jobs/${encodeURIComponent(job.jobId)}">Details</a>` : ''}
+                  ${!isStagedJob(job) && job.status === 'completed' ? `<a class="button" target="_blank" rel="noopener" href="/jobs/${encodeURIComponent(job.jobId)}/result">${job.jobType === 'project_update_generate' ? 'Open job' : 'Open result'}</a>` : ''}
+                  ${!isStagedJob(job) && job.status === 'failed' ? `<button class="secondary" data-retry="${escapeHtml(job.jobId)}" type="button">Retry</button>` : ''}
+                  ${!isStagedJob(job) && (job.status === 'queued' || job.status === 'running') ? `<button class="danger" data-cancel="${escapeHtml(job.jobId)}" type="button">Cancel</button>` : ''}
+                  ${!isStagedJob(job) && ['completed', 'failed', 'cancelled'].includes(job.status) ? `<button class="danger" data-delete="${escapeHtml(job.jobId)}" type="button">Delete</button>` : ''}
                 </td>
               </tr>
             `).join('')}
@@ -1160,6 +1243,8 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     detailTitle.textContent = `${jobTypeLabel(job)} #${job.jobId}: ${jobTitle(job)}`;
     retryBtn.disabled = job.status !== 'failed' && job.status !== 'completed';
     cancelBtn.disabled = job.status !== 'queued' && job.status !== 'running';
+    retryBtn.style.display = '';
+    cancelBtn.style.display = '';
     detailSummary.innerHTML = [
       summaryItem('Status', friendlyLabel(job.status)),
       summaryItem('Type', jobTypeLabel(job)),
@@ -1189,6 +1274,19 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
           <div class="result-section">
             <h3>Project update ready</h3>
             <p class="muted">${reportId ? 'The draft report was saved and can be reviewed from Reports.' : 'The generation result is stored on this job. Raw result JSON is below for support review.'}</p>
+          </div>
+        `;
+      } else if (job.jobType === 'staged_meeting_minutes_stage') {
+        const resumeUrl = payload.result?.resumeUrl || payload.result?.result?.resumeUrl || job.resumeUrl || `/staged-meeting-minutes?stageJobId=${encodeURIComponent(job.jobId)}`;
+        resultActions.innerHTML = `
+          <a class="button" href="${escapeAttribute(resumeUrl)}">Resume staged review</a>
+          <a class="button secondary" href="/staged-meeting-minutes">Start another staged review</a>
+          <button class="danger" data-delete="${escapeHtml(job.jobId)}" type="button">Delete job</button>
+        `;
+        resultView.innerHTML = `
+          <div class="result-section">
+            <h3>Staged screen ready</h3>
+            <p class="muted">This stage finished in the backend. Resume the staged tool to review the generated screen.</p>
           </div>
         `;
       } else {
@@ -1225,6 +1323,49 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     }
   }
 
+  function renderStagedDetail(job) {
+    if (!job) return;
+    activeStagedDraftId = job.jobId;
+    detailPanel.hidden = false;
+    detailTitle.textContent = `${jobTypeLabel(job)}: ${jobTitle(job)}`;
+    retryBtn.disabled = true;
+    cancelBtn.disabled = true;
+    retryBtn.style.display = 'none';
+    cancelBtn.style.display = 'none';
+    detailSummary.innerHTML = [
+      summaryItem('Status', friendlyLabel(job.status)),
+      summaryItem('Type', jobTypeLabel(job)),
+      summaryItem('Progress', progressSummary(job)),
+      summaryItem('Current screen', job.stage),
+      summaryItem('Created', formatDate(job.createdAt)),
+      summaryItem('Updated', formatDate(job.updatedAt))
+    ].join('');
+    resultMessage.textContent = 'This is a staged review draft. Resume opens the screen where the reviewer last left off.';
+    resultActions.hidden = false;
+    resultActions.innerHTML = `
+      <a class="button" href="${escapeAttribute(job.resumeUrl)}">Resume staged review</a>
+      <a class="button secondary" href="/staged-meeting-minutes">Start another staged review</a>
+      <button class="danger" data-delete-staged-detail="${escapeHtml(job.jobId)}" type="button">Remove draft</button>
+    `;
+    const steps = ['Details', 'Summary', 'Discussion', 'Actions', 'Final review'];
+    resultView.innerHTML = `
+      <section class="staged-detail-card">
+        <h3>Review progress</h3>
+        <div class="staged-step-list">
+          ${steps.map((step, index) => `
+            <div class="staged-step ${index === job.activeScreen ? 'current' : ''}">
+              <strong>${index + 1}. ${escapeHtml(step)}</strong>
+              <span>${index < job.activeScreen ? 'Checked' : index === job.activeScreen ? 'Resume here' : 'Not reached'}</span>
+            </div>
+          `).join('')}
+        </div>
+        <p class="muted">Paused staged reviews are saved in this browser. AI-generated staged screens run as backend jobs, so you can close the tab while a stage is being generated.</p>
+      </section>
+    `;
+    rawResultDetails.hidden = true;
+    resultJson.textContent = '';
+  }
+
   async function fetchJson(url, options) {
     const response = await fetch(url, { credentials: 'same-origin', ...(options || {}) });
     const payload = await response.json().catch(() => null);
@@ -1238,11 +1379,24 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     if (resultOnly) return;
     updateQueueTabs();
     const type = currentQueueType();
-    const payload = await fetchJson(`/api/jobs?limit=100${type ? `&type=${encodeURIComponent(type)}` : ''}`);
-    renderJobs(Array.isArray(payload.jobs) ? payload.jobs : []);
+    const staged = stagedJobs();
+    if (type === 'staged-meeting-minutes') {
+      const payload = await fetchJson('/api/jobs?limit=100&type=staged-meeting-minutes');
+      const jobs = Array.isArray(payload.jobs) ? payload.jobs : [];
+      renderJobs(staged.concat(jobs));
+      return;
+    }
+    const apiType = type === 'meeting-minutes' || type === 'project-updates' ? type : '';
+    const payload = await fetchJson(`/api/jobs?limit=100${apiType ? `&type=${encodeURIComponent(apiType)}` : ''}`);
+    const jobs = Array.isArray(payload.jobs) ? payload.jobs : [];
+    renderJobs(type ? jobs : staged.concat(jobs));
   }
 
   async function loadDetail() {
+    if (activeStagedDraftId) {
+      renderStagedDetail(stagedJobs().find((job) => String(job.jobId) === String(activeStagedDraftId)));
+      return;
+    }
     if (!activeJobId) return;
     if (editDirty || editFocused || autosaveTimer) return;
     const payload = await fetchJson(`/api/jobs/${encodeURIComponent(activeJobId)}`);
@@ -1289,11 +1443,32 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     const retry = event.target.closest('[data-retry]');
     const cancel = event.target.closest('[data-cancel]');
     const deleteButton = event.target.closest('[data-delete]');
+    const deleteStagedButton = event.target.closest('[data-delete-staged]');
     if (retry) act('retry', retry.dataset.retry);
     if (cancel) act('cancel', cancel.dataset.cancel);
     if (deleteButton) deleteJob(deleteButton.dataset.delete);
+    if (deleteStagedButton) {
+      if (!window.confirm('Remove this staged review draft from this browser?')) return;
+      deleteStagedDraft(deleteStagedButton.dataset.deleteStaged);
+      refresh();
+    }
   });
   resultActions.addEventListener('click', (event) => {
+    const deleteBackendJob = event.target.closest('[data-delete]');
+    if (deleteBackendJob) {
+      deleteJob(deleteBackendJob.dataset.delete);
+      return;
+    }
+    const deleteStagedDetail = event.target.closest('[data-delete-staged-detail]');
+    if (deleteStagedDetail) {
+      if (!window.confirm('Remove this staged review draft from this browser?')) return;
+      deleteStagedDraft(deleteStagedDetail.dataset.deleteStagedDetail);
+      activeStagedDraftId = '';
+      detailPanel.hidden = true;
+      history.replaceState(null, '', '/jobs?type=staged-meeting-minutes');
+      refresh();
+      return;
+    }
     if (event.target.closest('#saveEditedResultBtn')) saveEditedResult(false);
     if (event.target.closest('#copyEditedTableBtn')) {
       copyText(editedTextExport());

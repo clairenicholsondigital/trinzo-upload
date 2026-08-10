@@ -61,6 +61,7 @@ const {
   updateMeetingMinutesFeedback,
   deleteMeetingMinutesFeedback,
   queueMeetingMinutesGeneration,
+  queueStagedMeetingMinutesStage,
   queueProjectUpdateGeneration,
   listGenerationJobs,
   listMeetingMinutesJobs,
@@ -73,6 +74,9 @@ const {
   deleteGenerationJob,
   deleteMeetingMinutesJob,
   updateMeetingMinutesJobResult,
+  updateGenerationJobProgress,
+  markGenerationJobCompleted,
+  markGenerationJobFailure,
   getMeetingStatus,
   claimNextJob,
   markJobCompleted,
@@ -81,7 +85,8 @@ const {
   markWebhookSuccess,
   markWebhookFailure,
   hasDatabaseConfig,
-  getDatabaseConfigError
+  getDatabaseConfigError,
+  query
 } = require('../utils/db');
 const { requireAuth } = require('./auth');
 
@@ -99,6 +104,8 @@ const PYTHON_TIMEOUT_MS = Number(process.env.TRANSCRIPT_TEST_TIMEOUT_MS || 30000
 // seconds, so keep the route timeout generous.
 const MEETING_MINUTES_FINAL_TIMEOUT_MS = Number(process.env.MEETING_MINUTES_FINAL_TIMEOUT_MS || 180000);
 const MEETING_MINUTES_JOB_PIPELINE = process.env.MEETING_MINUTES_JOB_PIPELINE || 'chunked';
+const STAGED_MINILM_TIMEOUT_MS = Number(process.env.STAGED_MINILM_TIMEOUT_MS || 45000);
+const STAGED_MINILM_WORKER_URL = (process.env.MINUTES_MINILM_WORKER_URL || 'http://127.0.0.1:8767').trim();
 
 function safeErrorInfo(error, extra = {}) {
   const details = error && error.details && typeof error.details === 'object' ? error.details : null;
@@ -229,6 +236,984 @@ function buildTestTranscriptResponse(req, transcript, result) {
   return response;
 }
 
+function firstString(...values) {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
+function linesFrom(value) {
+  if (Array.isArray(value)) return value.map((item) => asString(item).trim()).filter(Boolean);
+  if (typeof value !== 'string') return [];
+  return value
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^[-*]\s*/, '').trim())
+    .filter(Boolean);
+}
+
+function normaliseDateInput(value) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  const compactMatch = text.match(/\b(20\d{2})(\d{2})(\d{2})\b/);
+  if (compactMatch) {
+    return `${compactMatch[1]}-${compactMatch[2]}-${compactMatch[3]}`;
+  }
+  const isoMatch = text.match(/\b(20\d{2})[-/](\d{1,2})[-/](\d{1,2})\b/);
+  if (isoMatch) {
+    return `${isoMatch[1]}-${isoMatch[2].padStart(2, '0')}-${isoMatch[3].padStart(2, '0')}`;
+  }
+  const ukMatch = text.match(/\b(\d{1,2})[/-](\d{1,2})[/-](20\d{2})\b/);
+  if (ukMatch) {
+    return `${ukMatch[3]}-${ukMatch[2].padStart(2, '0')}-${ukMatch[1].padStart(2, '0')}`;
+  }
+  const namedMatch = text.match(/\b(\d{1,2})\s+(january|february|march|april|may|june|july|august|september|october|november|december)\s+(20\d{2})\b/i);
+  if (namedMatch) {
+    const monthIndex = [
+      'january',
+      'february',
+      'march',
+      'april',
+      'may',
+      'june',
+      'july',
+      'august',
+      'september',
+      'october',
+      'november',
+      'december'
+    ].indexOf(namedMatch[2].toLowerCase());
+    if (monthIndex >= 0) {
+      return `${namedMatch[3]}-${String(monthIndex + 1).padStart(2, '0')}-${namedMatch[1].padStart(2, '0')}`;
+    }
+  }
+  return '';
+}
+
+function formatReadableUkDate(value) {
+  const normalised = normaliseDateInput(value);
+  const match = normalised.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return '';
+  const months = [
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December'
+  ];
+  return `${Number(match[3])} ${months[Number(match[2]) - 1]} ${match[1]}`;
+}
+
+function titleCaseMeetingText(value) {
+  return String(value || '')
+    .split(' ')
+    .map((word) => {
+      if (!word) return '';
+      if (/[A-Z]{2,}|\d/.test(word)) return word;
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    })
+    .join(' ')
+    .replace(/\bApi\b/g, 'API')
+    .replace(/\bPms\b/g, 'PMS');
+}
+
+function cleanStagedMeetingTitleCandidate(value) {
+  let title = String(value || '').trim();
+  if (!title) return '';
+
+  title = title
+    .replace(/\.[A-Za-z0-9]{2,5}$/g, '')
+    .replace(/\b(?:microsoft\s+teams|ms\s+teams)\b/gi, '')
+    .replace(/\b(?:meeting\s+transcript|transcript|recording)\b/gi, '')
+    .replace(/\b(?:started|stopped)\s+transcription\b/gi, '');
+
+  const compactDateMatch = title.match(/\b(20\d{2})(\d{2})(\d{2})(?:[_-]?\d{4,6})?\b/);
+  const readableDate = compactDateMatch ? formatReadableUkDate(`${compactDateMatch[1]}-${compactDateMatch[2]}-${compactDateMatch[3]}`) : '';
+
+  title = title
+    .replace(/\b20\d{6}(?:[_-]?\d{4,6})?\b/g, '')
+    .replace(/\b\d{1,2}[:.]\d{2}(?::\d{2})?\b/g, '')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/\s+\.\s*$/g, '')
+    .trim();
+
+  title = titleCaseMeetingText(title);
+  if (readableDate && !title.includes(readableDate)) {
+    title = `${title} - ${readableDate}`;
+  }
+
+  return title.replace(/\s+-\s+-\s+/g, ' - ').trim();
+}
+
+function inferStagedMeetingType(text, fileName = '') {
+  const combined = `${text || ''}\n${fileName || ''}`;
+  if (/\b(webinar|rehearsal|dry run|run-through|run through)\b/i.test(combined)) return 'Webinar rehearsal';
+  if (/\bworkshop\b/i.test(combined)) return 'Workshop';
+  if (/\bdecision\b/i.test(combined)) return 'Decision meeting';
+  if (/\b(client update|status update)\b/i.test(combined)) return 'Client update';
+  return 'Project review';
+}
+
+function extractLineAfterLabel(text, labels) {
+  const labelPattern = labels.map((label) => label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  const match = String(text || '').match(new RegExp(`(?:^|\\n)\\s*(?:${labelPattern})\\s*[:\\-]\\s*([^\\n]{1,180})`, 'i'));
+  return match ? match[1].trim() : '';
+}
+
+function extractNamesFromLine(value) {
+  return String(value || '')
+    .split(/,|;|\band\b|\/|\|/i)
+    .map((item) => item.trim().replace(/^[-*]\s*/, ''))
+    .filter((item) => item && item.length < 80)
+    .slice(0, 12);
+}
+
+function isLikelyPersonName(value) {
+  const text = String(value || '').trim();
+  if (!text || text.length > 80) return false;
+  if (!/^[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){1,4}$/.test(text)) return false;
+  return !/\b(Meeting|Transcript|Client|Review|Weekly|Started|Stopped|Transcription)\b/i.test(text);
+}
+
+function uniqueNames(names) {
+  const seen = new Set();
+  const unique = [];
+  for (const name of names) {
+    const cleaned = String(name || '').replace(/\s+/g, ' ').trim();
+    const key = cleaned.toLowerCase();
+    if (!isLikelyPersonName(cleaned) || seen.has(key)) continue;
+    seen.add(key);
+    unique.push(cleaned);
+  }
+  return unique.slice(0, 40);
+}
+
+function extractTeamsSpeakerNames(text) {
+  const transcript = String(text || '');
+  const names = [];
+  const linePattern = /^\s*([A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){1,4})\s+(?:\d{1,2}:)?\d{1,2}:\d{2}(?=\s|[A-Za-z*]|$)/gm;
+  const flattenedPattern = /\b\d{4,}\s+\d{4,}\s+([A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){1,4})\s+(?:\d{1,2}:)?\d{1,2}:\d{2}(?=\s|[A-Za-z*]|$)/g;
+  let match;
+
+  while ((match = linePattern.exec(transcript)) !== null) {
+    names.push(match[1]);
+  }
+
+  while ((match = flattenedPattern.exec(transcript)) !== null) {
+    names.push(match[1]);
+  }
+
+  return uniqueNames(names);
+}
+
+function extractStagedDetailsFromTranscript(transcriptText, fileName = '') {
+  const text = String(transcriptText || '');
+  const firstLines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 30);
+  const firstChunk = firstLines.join('\n');
+  const meetingTitle = firstString(
+    cleanStagedMeetingTitleCandidate(extractLineAfterLabel(firstChunk, ['meeting title', 'title', 'subject'])),
+    cleanStagedMeetingTitleCandidate(firstLines.find((line) => /meeting|review|workshop|sync|update|transcript/i.test(line) && !/:$/.test(line))),
+    cleanStagedMeetingTitleCandidate(fileName),
+    'Untitled meeting'
+  );
+  const rawDate = firstString(
+    extractLineAfterLabel(firstChunk, ['meeting date', 'date']),
+    (firstChunk.match(/\b(?:20\d{6}|20\d{2}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[/-]\d{1,2}[/-]20\d{2}|\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+20\d{2})\b/i) || [])[0],
+    (String(fileName || '').match(/\b20\d{6}\b/) || [])[0]
+  );
+  const rawLocation = extractLineAfterLabel(firstChunk, ['location', 'venue', 'platform']);
+  const rawOrganisation = extractLineAfterLabel(firstChunk, ['organisation', 'organization', 'client', 'company']);
+  const attendeesLine = extractLineAfterLabel(firstChunk, ['attendees', 'participants', 'present']);
+  const clientLine = extractLineAfterLabel(firstChunk, ['client attendees', 'client participants']);
+  const trinzoLine = extractLineAfterLabel(firstChunk, ['trinzo attendees', 'internal attendees', 'trinzo participants', 'internal participants']);
+  const teamsSpeakers = extractTeamsSpeakerNames(text);
+  const explicitClientAttendees = extractNamesFromLine(clientLine || attendeesLine);
+  const explicitInternalAttendees = extractNamesFromLine(trinzoLine);
+
+  return {
+    ok: true,
+    staged: true,
+    stagedStage: 'details',
+    screens: {
+      details: {
+        meetingTitle: meetingTitle.slice(0, 180),
+        meetingDate: normaliseDateInput(rawDate),
+        meetingLocation: rawLocation || (/teams|microsoft teams/i.test(text) ? 'Microsoft Teams' : 'Microsoft Teams'),
+        organisation: rawOrganisation,
+        meetingType: inferStagedMeetingType(text, fileName),
+        internalAttendees: explicitInternalAttendees,
+        clientAttendees: explicitClientAttendees.length ? explicitClientAttendees : teamsSpeakers,
+        allAttendees: uniqueNames([...explicitInternalAttendees, ...explicitClientAttendees, ...teamsSpeakers])
+      }
+    },
+    telemetryPreview: {
+      stage: 'details',
+      transcriptLength: text.length,
+      screenCount: 1
+    }
+  };
+}
+
+const STAGED_TOPIC_RULES = [
+  { topic: 'Risk management', patterns: [/risk\b/i, /risk matrix/i, /risk register/i] },
+  { topic: 'Software updates', patterns: [/software/i, /\bAPI\b/i, /system update/i, /platform/i] },
+  { topic: 'Subcontractors', patterns: [/subcontractor/i, /supplier/i, /vendor/i] },
+  { topic: 'Usability', patterns: [/usability/i, /user acceptance/i, /\bUAT\b/i, /user experience/i] },
+  { topic: 'Process maps', patterns: [/process map/i, /workflow/i, /process flow/i] },
+  { topic: 'PMS', patterns: [/\bPMS\b/i, /project management system/i] },
+  { topic: 'Technical file', patterns: [/technical file/i, /tech file/i, /design history file/i] },
+  { topic: 'Compliance testing', patterns: [/compliance/i, /testing/i, /verification/i, /validation/i] },
+  { topic: 'Document updates', patterns: [/document/i, /\bSOP\b/i, /template/i, /report/i] },
+  { topic: 'Actions and ownership', patterns: [/action/i, /owner/i, /follow[- ]?up/i, /deadline/i] }
+];
+
+function pushUniqueTopic(topics, topic, limit = 10) {
+  const cleaned = String(topic || '').replace(/\s+/g, ' ').trim();
+  if (!isUsableStagedTopic(cleaned)) return;
+  if (topics.some((item) => item.toLowerCase() === cleaned.toLowerCase())) return;
+  topics.push(cleaned.slice(0, 80));
+  if (topics.length > limit) topics.length = limit;
+}
+
+function isUsableStagedTopic(topic) {
+  const cleaned = String(topic || '').replace(/\s+/g, ' ').trim();
+  if (!cleaned || cleaned.length < 3 || cleaned.length > 86) return false;
+  const words = cleaned.split(/\s+/);
+  if (words.length > 9) return false;
+  if (/[.?!]/.test(cleaned)) return false;
+  if (/\b(?:said that|and the other|review these topics|evidence-backed discussion|transcript-generated|proper english)\b/i.test(cleaned)) return false;
+  return true;
+}
+
+function cleanTranscriptContentLine(line) {
+  return String(line || '')
+    .replace(/^\s*[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){1,4}\s+(?:\d{1,2}:)?\d{1,2}:\d{2}\s*/, '')
+    .replace(/\b\d{4,}\s+\d{4,}\s+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function extractOverallTopicsFromTranscript(transcriptText) {
+  const text = String(transcriptText || '');
+  const topics = [];
+  for (const rule of STAGED_TOPIC_RULES) {
+    if (rule.patterns.some((pattern) => pattern.test(text))) {
+      pushUniqueTopic(topics, rule.topic);
+    }
+  }
+
+  const candidateLines = text
+    .split(/\r?\n/)
+    .map(cleanTranscriptContentLine)
+    .filter((line) => line.length >= 22 && line.length <= 180)
+    .slice(0, 180);
+
+  for (const line of candidateLines) {
+    const matches = [
+      line.match(/\b(?:around|about|regarding|on|for|with|covering)\s+([A-Za-z][A-Za-z0-9 /&-]{5,54})(?:[,.]|$)/i),
+      line.match(/\b(?:the|this)\s+([A-Za-z][A-Za-z0-9 /&-]{5,54})\s+(?:piece|section|process|update|review|issue|risk)\b/i)
+    ].filter(Boolean);
+
+    for (const match of matches) {
+      const raw = String(match[1] || '')
+        .replace(/\b(?:and|or|the|this|that|with|from|into|then)\s*$/i, '')
+        .trim();
+      if (!raw || raw.split(/\s+/).length > 7) continue;
+      pushUniqueTopic(topics, raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase());
+    }
+    if (topics.length >= 8) break;
+  }
+
+  if (!topics.length) {
+    pushUniqueTopic(topics, 'Meeting context and decisions');
+    pushUniqueTopic(topics, 'Actions and ownership');
+  }
+
+  return topics.slice(0, 8);
+}
+
+function stringListFromAny(value, keys = []) {
+  if (!value) return [];
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => stringListFromAny(item, keys));
+  }
+  if (typeof value === 'string') return linesFrom(value).length ? linesFrom(value) : [value.trim()].filter(Boolean);
+  if (typeof value === 'object') {
+    for (const key of keys) {
+      const nested = stringListFromAny(value[key], keys);
+      if (nested.length) return nested;
+    }
+  }
+  return [];
+}
+
+function cleanStagedGeneratedLine(value) {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .replace(/^[-*]\s*/, '')
+    .trim();
+}
+
+function stagedMiniLMOutput(minilmContext) {
+  return minilmContext && minilmContext.ok && minilmContext.output && typeof minilmContext.output === 'object'
+    ? minilmContext.output
+    : {};
+}
+
+function stagedMiniLMTelemetry(minilmContext) {
+  const diagnostics = minilmContext?.diagnostics || {};
+  return {
+    used: Boolean(minilmContext?.ok),
+    provider: diagnostics.provider || (minilmContext?.rewriterAvailable ? 'trooper' : 'embedding'),
+    rewriterAvailable: Boolean(minilmContext?.rewriterAvailable),
+    rewriterReason: minilmContext?.rewriterReason || diagnostics.rewriterReason || '',
+    pipeline: diagnostics.pipeline || '',
+    modelAvailable: Boolean(diagnostics.modelAvailable),
+    modelName: diagnostics.modelName || '',
+    modelReason: diagnostics.modelReason || '',
+    counts: minilmContext?.counts || {},
+    timingMs: diagnostics.timingMs || {}
+  };
+}
+
+function topicsFromStagedMiniLM(minilmContext) {
+  const output = stagedMiniLMOutput(minilmContext);
+  const topics = [];
+  const discussionTopics = Array.isArray(output.discussionTopics) ? output.discussionTopics : [];
+  const meetingMinutes = Array.isArray(output.meetingMinutes) ? output.meetingMinutes : [];
+  const evidenceTopics = Array.isArray(output.evidenceBackedTopics) ? output.evidenceBackedTopics : [];
+
+  for (const item of discussionTopics) {
+    if (!item || typeof item !== 'object') continue;
+    pushUniqueTopic(topics, item.topic || item.title || item.heading, 10);
+  }
+
+  for (const item of meetingMinutes) {
+    if (!item || typeof item !== 'object') continue;
+    pushUniqueTopic(topics, item.topic || item.topicLabel || item.title, 10);
+  }
+
+  for (const item of evidenceTopics) {
+    if (!item || typeof item !== 'object') continue;
+    pushUniqueTopic(topics, item.themeLabel || item.topicLabel || item.topic, 10);
+    pushUniqueTopic(topics, item.topicLabel || item.topic || item.themeLabel, 10);
+  }
+
+  for (const point of stringListFromAny(output.discussionPoints, ['discussionPoint', 'topicLabel', 'text'])) {
+    const cleaned = cleanStagedGeneratedLine(point);
+    if (!cleaned) continue;
+    pushUniqueTopic(topics, topic_label_from_text(cleaned), 10);
+  }
+
+  return topics.slice(0, 8);
+}
+
+function topic_label_from_text(value) {
+  const text = cleanStagedGeneratedLine(value).replace(/[.?!]\s.*$/, '').replace(/[.?!]$/, '');
+  if (!text) return '';
+  const words = text.split(/\s+/);
+  if (words.length <= 9 && isUsableStagedTopic(text)) return text;
+  return words.slice(0, 8).join(' ');
+}
+
+function discussionFromStagedMiniLM(minilmContext) {
+  const output = stagedMiniLMOutput(minilmContext);
+  const discussionTopics = Array.isArray(output.discussionTopics) ? output.discussionTopics : [];
+  const minutes = Array.isArray(output.meetingMinutes) ? output.meetingMinutes : [];
+  const cards = [];
+
+  for (const topicItem of discussionTopics) {
+    if (!topicItem || typeof topicItem !== 'object') continue;
+    const topic = cleanStagedGeneratedLine(topicItem.topic || topicItem.title || topicItem.heading || 'Discussion');
+    const topicSummary = cleanStagedGeneratedLine(topicItem.summary || topicItem.outcome);
+    const items = Array.isArray(topicItem.items) ? topicItem.items : [];
+    const points = [
+      topicSummary,
+      ...items.map((item) => cleanStagedGeneratedLine(
+        typeof item === 'string'
+          ? item
+          : item?.text || item?.summary || item?.discussionPoint || item?.decision || item?.risk || item?.dependency
+      ))
+    ].filter(Boolean).slice(0, 5);
+    if (isUsableStagedTopic(topic) && points.length) cards.push({ topic, points });
+    if (cards.length >= 8) break;
+  }
+
+  if (cards.length) return cards;
+
+  for (const minute of minutes) {
+    if (!minute || typeof minute !== 'object') continue;
+    const topic = cleanStagedGeneratedLine(minute.topic || minute.topicLabel || 'Evidence-backed discussion');
+    const points = stringListFromAny(minute.discussionPoints, ['discussionPoint', 'text'])
+      .map(cleanStagedGeneratedLine)
+      .filter(Boolean)
+      .slice(0, 5);
+    if (isUsableStagedTopic(topic) && points.length) cards.push({ topic, points });
+    if (cards.length >= 8) break;
+  }
+
+  if (cards.length) return cards;
+
+  const details = Array.isArray(output.discussionPointDetails) ? output.discussionPointDetails : [];
+  for (const detail of details) {
+    if (!detail || typeof detail !== 'object') continue;
+    const point = cleanStagedGeneratedLine(detail.discussionPoint);
+    const supporting = stringListFromAny(detail.supportingContext || detail.directEvidence, ['text'])
+      .map(cleanStagedGeneratedLine)
+      .filter(Boolean)
+      .slice(0, 3);
+    if (!point) continue;
+    const topic = cleanStagedGeneratedLine(detail.topic || detail.topicLabel || topic_label_from_text(point) || 'Discussion');
+    cards.push({
+      topic: isUsableStagedTopic(topic) ? topic : 'Discussion',
+      points: [point, ...supporting].slice(0, 5)
+    });
+    if (cards.length >= 8) break;
+  }
+
+  return cards;
+}
+
+function actionsFromStagedMiniLM(minilmContext) {
+  const output = stagedMiniLMOutput(minilmContext);
+  const actions = [];
+  const actionObjects = Array.isArray(output.actions) ? output.actions : [];
+
+  for (const item of actionObjects) {
+    if (!item || typeof item !== 'object') continue;
+    const action = cleanStagedGeneratedLine(item.action || item.meetingActionPoint);
+    if (!action) continue;
+    actions.push({
+      owner: normaliseStagedActionOwner(item.owner || item.meetingActionPointOwner || 'Not stated'),
+      action,
+      deadline: cleanStagedGeneratedLine(item.deadline || item.meetingActionPointDeadline)
+    });
+    if (actions.length >= 8) return actions;
+  }
+
+  const points = Array.isArray(output.meetingActionPoint) ? output.meetingActionPoint : [];
+  const owners = Array.isArray(output.meetingActionPointOwner) ? output.meetingActionPointOwner : [];
+  const deadlines = Array.isArray(output.meetingActionPointDeadline) ? output.meetingActionPointDeadline : [];
+  for (let index = 0; index < points.length; index += 1) {
+    const action = cleanStagedGeneratedLine(points[index]);
+    if (!action) continue;
+    actions.push({
+      owner: normaliseStagedActionOwner(owners[index] || 'Not stated'),
+      action,
+      deadline: cleanStagedGeneratedLine(deadlines[index] || '')
+    });
+    if (actions.length >= 8) break;
+  }
+
+  return actions;
+}
+
+function normaliseStagedActionOwner(owner) {
+  const cleaned = cleanStagedGeneratedLine(owner || 'Not stated') || 'Not stated';
+  if (/^(?:we|us|our team|the team|everyone)$/i.test(cleaned)) return 'All';
+  return cleaned;
+}
+
+async function buildStagedTrooperContext(transcript, req) {
+  const requestedPipeline = String(req.query?.pipeline || req.body?.pipeline || '').trim();
+  const scriptArgs = [
+    '--pipeline',
+    ['single', 'chunked', 'auto'].includes(requestedPipeline) ? requestedPipeline : MEETING_MINUTES_JOB_PIPELINE,
+    '--skip-diagnostics'
+  ];
+
+  try {
+    const result = await runPythonTranscriptScript('meeting_minutes_trooper.py', transcript.text, scriptArgs, { timeoutMs: MEETING_MINUTES_FINAL_TIMEOUT_MS });
+    return {
+      ok: Boolean(result?.output && typeof result.output === 'object'),
+      output: result?.output && typeof result.output === 'object' ? result.output : {},
+      counts: result?.counts || {},
+      rewriterAvailable: Boolean(result?.rewriterAvailable),
+      rewriterReason: result?.rewriterReason || '',
+      diagnostics: {
+        provider: 'trooper',
+        modelAvailable: Boolean(result?.rewriterAvailable),
+        modelName: result?.rewriterModelName || '',
+        modelReason: result?.rewriterReason || '',
+        pipeline: result?.rewriterDiagnosticsSummary?.pipeline || scriptArgs[1],
+        timingMs: result?.timingMs || {}
+      }
+    };
+  } catch (error) {
+    safeLogError('[Staged meeting minutes Trooper generation failed]', error);
+    return {
+      ok: false,
+      output: {},
+      counts: {},
+      rewriterAvailable: false,
+      rewriterReason: error?.message || 'Trooper generation failed.',
+      diagnostics: {
+        provider: 'trooper',
+        modelAvailable: false,
+        modelName: '',
+        modelReason: error?.message || 'Trooper generation failed.',
+        pipeline: scriptArgs[1],
+        timingMs: {}
+      }
+    };
+  }
+}
+
+async function buildStagedMiniLMContext(transcript) {
+  if (!STAGED_MINILM_WORKER_URL) {
+    return {
+      ok: false,
+      output: {},
+      counts: {},
+      diagnostics: {
+        modelAvailable: false,
+        modelName: '',
+        modelReason: 'No embedding worker URL configured.'
+      }
+    };
+  }
+
+  try {
+    const result = await runPythonTranscriptScript(
+      'meeting_minutes_minilm_only.py',
+      transcript.text,
+      ['--skip-rewrite', '--skip-diagnostics'],
+      {
+        timeoutMs: STAGED_MINILM_TIMEOUT_MS,
+        env: {
+          MINUTES_MINILM_WORKER_URL: STAGED_MINILM_WORKER_URL
+        }
+      }
+    );
+    const output = result?.output && typeof result.output === 'object' ? result.output : {};
+    return {
+      ok: Boolean(result?.executed && result?.modelAvailable && Object.keys(output).length),
+      output,
+      counts: result?.counts || {},
+      diagnostics: {
+        modelAvailable: Boolean(result?.modelAvailable),
+        modelName: result?.modelName || '',
+        modelReason: result?.modelReason || '',
+        timingMs: result?.timingMs || {}
+      }
+    };
+  } catch (error) {
+    safeLogError('[Staged meeting minutes embedding context failed]', error);
+    return {
+      ok: false,
+      output: {},
+      counts: {},
+      diagnostics: {
+        modelAvailable: false,
+        modelName: '',
+        modelReason: error?.message || 'Embedding context failed.'
+      }
+    };
+  }
+}
+
+function stagedContextFromRequest(req) {
+  return {
+    meetingTitle: firstString(req.body?.meetingTitle, req.query?.meetingTitle),
+    meetingDate: firstString(req.body?.meetingDate, req.query?.meetingDate),
+    meetingLocation: firstString(req.body?.meetingLocation, req.query?.meetingLocation),
+    meetingType: firstString(req.body?.meetingType, req.query?.meetingType, 'Project review'),
+    participants: linesFrom(req.body?.participants || req.query?.participants),
+    overallTopics: linesFrom(req.body?.overallTopics || req.query?.overallTopics || req.body?.topics || req.query?.topics)
+  };
+}
+
+function stagedDetailsWithConfirmedContext(req, transcript) {
+  const extracted = extractStagedDetailsFromTranscript(transcript.text, transcript.fileName).screens.details;
+  const context = stagedContextFromRequest(req);
+  return {
+    ...extracted,
+    meetingTitle: context.meetingTitle || extracted.meetingTitle,
+    meetingDate: normaliseDateInput(context.meetingDate) || extracted.meetingDate,
+    meetingLocation: context.meetingLocation || extracted.meetingLocation,
+    meetingType: context.meetingType || extracted.meetingType,
+    allAttendees: context.participants.length ? context.participants : extracted.allAttendees
+  };
+}
+
+function buildStagedSummaryResponse(req, transcript, minilmContext = null) {
+  const details = stagedDetailsWithConfirmedContext(req, transcript);
+  const output = stagedMiniLMOutput(minilmContext);
+  const topics = topicsFromStagedMiniLM(minilmContext).length
+    ? topicsFromStagedMiniLM(minilmContext)
+    : extractOverallTopicsFromTranscript(transcript.text);
+  const objectives = [
+    `Review the ${String(details.meetingType || 'meeting').toLowerCase()} discussion across the main transcript themes.`,
+    'Confirm decisions, risks, follow-ups and ownership before drafting final minutes.',
+    'Keep the detailed discussion review aligned to the actual participants and topics raised.'
+  ];
+  const summary = cleanStagedGeneratedLine(output.executiveSummary || output.meetingDescription || output.summary) ||
+    (topics.length
+      ? `The meeting covered ${topics.map((topic) => topic.toLowerCase()).join(', ')}. Review these topics before asking for the detailed discussion points so the next stage stays focused on the actual conversation.`
+      : 'Review the transcript-generated summary before moving on to detailed discussion points.');
+
+  return {
+    ok: true,
+    source: transcript.source,
+    fileName: transcript.fileName || null,
+    transcriptLength: transcript.text.length,
+    staged: true,
+    stagedStage: 'summary',
+    screens: {
+      summary: {
+        objectives,
+        executiveSummary: summary,
+        overallTopics: topics
+      }
+    },
+    telemetryPreview: {
+      stage: 'summary',
+      topicCount: topics.length,
+      transcriptLength: transcript.text.length,
+      embeddingClassifier: stagedMiniLMTelemetry(minilmContext)
+    }
+  };
+}
+
+function topicKeywords(topic) {
+  return String(topic || '')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((word) => word.length >= 4 && !['meeting', 'review', 'update', 'discussion'].includes(word))
+    .slice(0, 6);
+}
+
+function evidenceForTopic(transcriptText, topic) {
+  const keywords = topicKeywords(topic);
+  const lines = String(transcriptText || '')
+    .split(/\r?\n/)
+    .map(cleanTranscriptContentLine)
+    .filter((line) => line.length >= 35 && line.length <= 260);
+  const matches = lines.filter((line) => {
+    const lower = line.toLowerCase();
+    return keywords.some((keyword) => lower.includes(keyword));
+  });
+
+  return matches.slice(0, 3).map((line) => line.replace(/\s+/g, ' ').trim());
+}
+
+function buildStagedDiscussionResponse(req, transcript, minilmContext = null) {
+  const context = stagedContextFromRequest(req);
+  const miniLmDiscussion = discussionFromStagedMiniLM(minilmContext);
+  const topics = context.overallTopics.length
+    ? context.overallTopics
+    : (topicsFromStagedMiniLM(minilmContext).length ? topicsFromStagedMiniLM(minilmContext) : extractOverallTopicsFromTranscript(transcript.text));
+  const details = stagedDetailsWithConfirmedContext(req, transcript);
+  const participants = context.participants.length ? context.participants : details.allAttendees;
+  const meetingType = context.meetingType || details.meetingType || 'Project review';
+  const discussion = miniLmDiscussion.length ? miniLmDiscussion : topics.slice(0, 8).map((topic) => {
+    const evidence = evidenceForTopic(transcript.text, topic);
+    const points = evidence.length ? evidence : [
+      `Review the transcript detail for ${topic.toLowerCase()} in the context of this ${String(meetingType).toLowerCase()}.`,
+      participants.length
+        ? `Check whether the minutes reflect the participants involved: ${participants.slice(0, 5).join(', ')}.`
+        : 'Check whether the minutes reflect who contributed to this topic.'
+    ];
+    return { topic, points };
+  });
+
+  return {
+    ok: true,
+    source: transcript.source,
+    fileName: transcript.fileName || null,
+    transcriptLength: transcript.text.length,
+    staged: true,
+    stagedStage: 'discussion',
+    screens: {
+      discussion: discussion.length ? discussion : [{
+        topic: 'Discussion',
+        points: ['Review the transcript-generated discussion points before moving on.']
+      }]
+    },
+    contextUsed: {
+      meetingType,
+      participantCount: participants.length,
+      overallTopics: topics
+    },
+    telemetryPreview: {
+      stage: 'discussion',
+      topicCount: topics.length,
+      discussionCards: discussion.length,
+      transcriptLength: transcript.text.length,
+      embeddingClassifier: stagedMiniLMTelemetry(minilmContext)
+    }
+  };
+}
+
+function extractActionCandidatesFromTranscript(transcriptText) {
+  const lines = String(transcriptText || '')
+    .split(/\r?\n/)
+    .map(cleanTranscriptContentLine)
+    .filter((line) => line.length >= 28 && line.length <= 260);
+  const actionPatterns = [
+    /\b(?:action|actions|follow up|follow-up|to do|owner|deadline)\b/i,
+    /\b(?:will|needs to|need to|should|can you|please|going to)\b/i,
+    /\b(?:next monday|next week|friday|monday|tuesday|wednesday|thursday|today|tomorrow|by\s+\d{1,2})\b/i
+  ];
+  const candidates = [];
+
+  for (const line of lines) {
+    if (!actionPatterns.some((pattern) => pattern.test(line))) continue;
+    const ownerMatch = line.match(/^([A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+)(?:\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+)?\b/);
+    const deadlineMatch = line.match(/\b(?:by\s+)?(?:next\s+)?(?:monday|tuesday|wednesday|thursday|friday|next week|today|tomorrow|\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+20\d{2}|\d{1,2}[/-]\d{1,2}[/-]20\d{2})\b/i);
+    candidates.push({
+      owner: ownerMatch && isLikelyPersonName(ownerMatch[0]) ? ownerMatch[0] : 'Not stated',
+      action: line.replace(/\s+/g, ' ').trim(),
+      deadline: deadlineMatch ? deadlineMatch[0].replace(/^by\s+/i, '').trim() : ''
+    });
+    if (candidates.length >= 8) break;
+  }
+
+  return candidates;
+}
+
+function buildStagedActionsResponse(req, transcript, minilmContext = null) {
+  const actions = actionsFromStagedMiniLM(minilmContext).length
+    ? actionsFromStagedMiniLM(minilmContext)
+    : extractActionCandidatesFromTranscript(transcript.text);
+
+  return {
+    ok: true,
+    source: transcript.source,
+    fileName: transcript.fileName || null,
+    transcriptLength: transcript.text.length,
+    staged: true,
+    stagedStage: 'actions',
+    screens: {
+      actions: actions.length ? actions : [{
+        owner: 'Not stated',
+        action: 'Review transcript for agreed actions.',
+        deadline: ''
+      }]
+    },
+    telemetryPreview: {
+      stage: 'actions',
+      actionCount: actions.length,
+      transcriptLength: transcript.text.length,
+      embeddingClassifier: stagedMiniLMTelemetry(minilmContext)
+    }
+  };
+}
+
+function buildStagedMeetingMinutesResponse(req, transcript, result) {
+  const base = buildTestTranscriptResponse(req, transcript, result);
+  const candidate = result?.output && typeof result.output === 'object' ? result.output : result;
+  const reviewData = normalizeReviewData(candidate, transcript.text);
+  const objectives = reviewData.meetingObjectives.length
+    ? reviewData.meetingObjectives
+    : linesFrom(candidate?.meetingObjectives);
+  const summary = firstString(
+    candidate?.executiveSummary,
+    candidate?.summary,
+    candidate?.meetingDescription,
+    reviewData.meetingDescription
+  );
+  const discussion = reviewData.meetingMinutes.map((item) => ({
+    topic: item.topic || 'Discussion',
+    points: item.discussionPoints.length ? item.discussionPoints : ['Review this section against the transcript.']
+  }));
+  const actions = reviewData.nextSteps.map((item) => ({
+    owner: item.owner || 'Not stated',
+    action: item.action || 'Review action wording',
+    deadline: item.deadline || 'Not stated'
+  }));
+  const internalAttendees = reviewData.participants.trinzo;
+  const clientAttendees = reviewData.participants.client;
+
+  return {
+    ...base,
+    staged: true,
+    screens: {
+      details: {
+        meetingTitle: reviewData.meetingTitle || candidate?.title || 'Untitled meeting',
+        meetingDate: reviewData.meetingDate || '',
+        meetingLocation: reviewData.meetingLocation || 'Microsoft Teams',
+        organisation: candidate?.organisation || candidate?.clientName || '',
+        meetingType: candidate?.meetingType || 'Project review',
+        internalAttendees,
+        clientAttendees
+      },
+      summary: {
+        objectives,
+        executiveSummary: summary || 'Review the transcript-generated summary before moving on.'
+      },
+      discussion: discussion.length ? discussion : [{
+        topic: 'Discussion',
+        points: ['Review the transcript-generated discussion points before moving on.']
+      }],
+      actions: actions.length ? actions : [{
+        owner: 'Not stated',
+        action: 'Review transcript for agreed actions.',
+        deadline: 'Not stated'
+      }],
+      finalReview: {
+        signOff: 'Ready for human approval.',
+        generatedAt: new Date().toISOString()
+      }
+    },
+    telemetryPreview: {
+      transcriptLength: transcript.text.length,
+      screenCount: 5,
+      discussionCards: discussion.length,
+      actionCount: actions.length
+    }
+  };
+}
+
+function stagedStageResumeUrl(inputPayload, payload) {
+  const draftId = String(inputPayload?.draftId || '').trim();
+  const stage = String(payload?.stagedStage || inputPayload?.stage || 'details').trim().toLowerCase();
+  const screenByStage = { details: 0, summary: 1, discussion: 2, actions: 3 };
+  const screen = Number.isFinite(Number(inputPayload?.targetScreen))
+    ? Number(inputPayload.targetScreen)
+    : (screenByStage[stage] || 0);
+  const params = new URLSearchParams();
+  if (draftId) params.set('draftId', draftId);
+  params.set('screen', String(screen));
+  params.set('stageJobId', String(inputPayload?.jobId || ''));
+  return `/staged-meeting-minutes?${params.toString()}`;
+}
+
+async function runQueuedStagedMeetingMinutesStage(jobId) {
+  const startedAt = Date.now();
+  const job = await getGenerationJob(jobId, { includeTranscript: true });
+  if (!job || job.jobType !== 'staged_meeting_minutes_stage') return;
+  const input = job.inputPayload || {};
+  const stage = String(input.stage || 'details').trim().toLowerCase();
+  const transcript = {
+    text: job.transcriptText || '',
+    source: input.source || 'staged-meeting-minutes',
+    fileName: input.fileName || ''
+  };
+  const stagedReq = {
+    query: { pipeline: input.pipeline || MEETING_MINUTES_JOB_PIPELINE },
+    body: {
+      stage,
+      meetingTitle: input.confirmedDetails?.meetingTitle || input.meetingTitle || '',
+      meetingDate: input.confirmedDetails?.meetingDate || input.meetingDate || '',
+      meetingLocation: input.confirmedDetails?.meetingLocation || input.meetingLocation || '',
+      meetingType: input.meetingType || '',
+      participants: input.participants || '',
+      overallTopics: input.overallTopics || ''
+    }
+  };
+
+  try {
+    await query(
+      `UPDATE meeting_jobs
+       SET status = 'running',
+           attempts = COALESCE(attempts, 0) + 1,
+           started_at = COALESCE(started_at, NOW()),
+           updated_at = NOW()
+       WHERE id = $1 AND job_type = 'staged_meeting_minutes_stage'`,
+      [Number(jobId)]
+    );
+    await updateGenerationJobProgress(jobId, stage, 10, `Generating staged ${stage} content.`);
+    validateTranscriptText(transcript.text);
+
+    let payload;
+    if (stage === 'details') {
+      payload = {
+        source: transcript.source,
+        fileName: transcript.fileName || null,
+        transcriptLength: transcript.text.length,
+        ...extractStagedDetailsFromTranscript(transcript.text, transcript.fileName)
+      };
+    } else {
+      await updateGenerationJobProgress(jobId, stage, 25, stage === 'summary' ? 'Generating summary and topics with AI' : `Generating staged ${stage} content with AI.`);
+      const trooperContext = await buildStagedTrooperContext(transcript, stagedReq);
+      const fallbackContext = trooperContext.ok ? null : await buildStagedMiniLMContext(transcript);
+      const context = trooperContext.ok ? trooperContext : fallbackContext;
+      if (stage === 'summary') payload = buildStagedSummaryResponse(stagedReq, transcript, context);
+      else if (stage === 'discussion') payload = buildStagedDiscussionResponse(stagedReq, transcript, context);
+      else if (stage === 'actions') payload = buildStagedActionsResponse(stagedReq, transcript, context);
+      else {
+        const error = new Error(`Unsupported staged meeting-minutes stage: ${stage}`);
+        error.statusCode = 400;
+        throw error;
+      }
+    }
+
+    await updateGenerationJobProgress(jobId, stage, 90, `Staged ${stage} content generated. Preparing resume link.`);
+    const resultPayload = {
+      ok: true,
+      staged: true,
+      source: transcript.source,
+      fileName: transcript.fileName || null,
+      transcriptLength: transcript.text.length,
+      meetingId: job.meetingId,
+      jobId,
+      result: {
+        ...payload,
+        jobId,
+        meetingId: job.meetingId,
+        queuedDiagnostics: {
+          jobId,
+          meetingId: job.meetingId,
+          workerMode: 'staged_meeting_minutes_stage',
+          durationMs: Date.now() - startedAt
+        }
+      }
+    };
+    resultPayload.resumeUrl = stagedStageResumeUrl({ ...input, jobId }, payload);
+    resultPayload.result.resumeUrl = resultPayload.resumeUrl;
+    await markGenerationJobCompleted(jobId, job.meetingId, resultPayload, `Staged ${stage} content is ready to review.`);
+  } catch (error) {
+    await markGenerationJobFailure(
+      { ...job, attempts: Number(job.attempts || 0) + 1 },
+      error?.message || `Staged ${stage} generation failed.`,
+      'Staged generation'
+    );
+  }
+}
+
+function launchQueuedStagedMeetingMinutesStage(jobId) {
+  setImmediate(() => {
+    runQueuedStagedMeetingMinutesStage(jobId).catch((error) => {
+      safeLogError('[Queued staged meeting minutes stage failed]', error, { jobId });
+    });
+  });
+}
+
+async function findStagedSourceJobFromRequest(req) {
+  const sourceJobId = Number(req.body?.sourceJobId || req.query?.sourceJobId || 0);
+  if (sourceJobId) {
+    return getGenerationJob(sourceJobId, { includeTranscript: true });
+  }
+
+  const draftId = String(req.body?.draftId || req.query?.draftId || '').trim();
+  if (!draftId) return null;
+  const result = await query(
+    `SELECT id
+     FROM meeting_jobs
+     WHERE job_type = 'staged_meeting_minutes_stage'
+       AND input_payload->>'draftId' = $1
+       AND status IN ('completed','running','queued')
+     ORDER BY id DESC
+     LIMIT 1`,
+    [draftId]
+  );
+  const jobId = result.rows[0]?.id;
+  return jobId ? getGenerationJob(jobId, { includeTranscript: true }) : null;
+}
+
 function validateTranscriptText(text) {
   if (!text || !text.trim()) {
     const error = new Error('Transcript text is empty. Paste text or upload a non-empty transcript file.');
@@ -271,7 +1256,7 @@ async function runPythonTranscriptScript(scriptName, transcriptText, scriptArgs 
     const rawOutput = await new Promise((resolve, reject) => {
       const child = spawn(process.env.PYTHON_BIN || 'python3', [scriptPath, tempPath, ...scriptArgs], {
         cwd: path.join(__dirname, '..'),
-        env: process.env,
+        env: { ...process.env, ...(options.env || {}) },
         stdio: ['ignore', 'pipe', 'pipe']
       });
 
@@ -710,6 +1695,200 @@ router.post('/meeting-minutes-final', requireAuth, withTestUpload(async (req, re
   }
 }));
 
+router.post('/staged-meeting-minutes', requireAuth, withTestUpload(async (req, res) => {
+  const startedAt = Date.now();
+  try {
+    const transcript = await readTestTranscript(req);
+    validateTranscriptText(transcript.text);
+    const requestedStage = String(req.query?.stage || req.body?.stage || '').trim().toLowerCase();
+
+    if (requestedStage === 'details') {
+      const detailsResponse = {
+        source: transcript.source,
+        fileName: transcript.fileName || null,
+        transcriptLength: transcript.text.length,
+        ...extractStagedDetailsFromTranscript(transcript.text, transcript.fileName)
+      };
+
+      console.info(JSON.stringify({
+        event: 'staged_meeting_minutes_details_completed',
+        source: transcript.source,
+        fileName: transcript.fileName || null,
+        transcriptLength: transcript.text.length,
+        durationMs: Date.now() - startedAt
+      }));
+
+      return res.json(detailsResponse);
+    }
+
+    if (requestedStage === 'summary') {
+      const trooperContext = await buildStagedTrooperContext(transcript, req);
+      const fallbackContext = trooperContext.ok ? null : await buildStagedMiniLMContext(transcript);
+      const summaryResponse = buildStagedSummaryResponse(req, transcript, trooperContext.ok ? trooperContext : fallbackContext);
+
+      console.info(JSON.stringify({
+        event: 'staged_meeting_minutes_summary_completed',
+        source: transcript.source,
+        fileName: transcript.fileName || null,
+        transcriptLength: transcript.text.length,
+        topicCount: summaryResponse.telemetryPreview.topicCount,
+        trooperUsed: trooperContext.rewriterAvailable,
+        fallbackUsed: !trooperContext.ok,
+        embeddingClassifierUsed: summaryResponse.telemetryPreview.embeddingClassifier.used && !trooperContext.ok,
+        durationMs: Date.now() - startedAt
+      }));
+
+      return res.json(summaryResponse);
+    }
+
+    if (requestedStage === 'discussion') {
+      const trooperContext = await buildStagedTrooperContext(transcript, req);
+      const fallbackContext = trooperContext.ok ? null : await buildStagedMiniLMContext(transcript);
+      const discussionResponse = buildStagedDiscussionResponse(req, transcript, trooperContext.ok ? trooperContext : fallbackContext);
+
+      console.info(JSON.stringify({
+        event: 'staged_meeting_minutes_discussion_completed',
+        source: transcript.source,
+        fileName: transcript.fileName || null,
+        transcriptLength: transcript.text.length,
+        topicCount: discussionResponse.telemetryPreview.topicCount,
+        discussionCards: discussionResponse.telemetryPreview.discussionCards,
+        trooperUsed: trooperContext.rewriterAvailable,
+        fallbackUsed: !trooperContext.ok,
+        embeddingClassifierUsed: discussionResponse.telemetryPreview.embeddingClassifier.used && !trooperContext.ok,
+        durationMs: Date.now() - startedAt
+      }));
+
+      return res.json(discussionResponse);
+    }
+
+    if (requestedStage === 'actions') {
+      const trooperContext = await buildStagedTrooperContext(transcript, req);
+      const fallbackContext = trooperContext.ok ? null : await buildStagedMiniLMContext(transcript);
+      const actionsResponse = buildStagedActionsResponse(req, transcript, trooperContext.ok ? trooperContext : fallbackContext);
+
+      console.info(JSON.stringify({
+        event: 'staged_meeting_minutes_actions_completed',
+        source: transcript.source,
+        fileName: transcript.fileName || null,
+        transcriptLength: transcript.text.length,
+        actionCount: actionsResponse.telemetryPreview.actionCount,
+        trooperUsed: trooperContext.rewriterAvailable,
+        fallbackUsed: !trooperContext.ok,
+        embeddingClassifierUsed: actionsResponse.telemetryPreview.embeddingClassifier.used && !trooperContext.ok,
+        durationMs: Date.now() - startedAt
+      }));
+
+      return res.json(actionsResponse);
+    }
+
+    const scriptArgs = [];
+    const skipRewrite = truthyFlag(req.query?.skipRewrite) || truthyFlag(req.body?.skipRewrite);
+
+    if (skipRewrite) {
+      scriptArgs.push('--skip-rewrite');
+    }
+
+    const requestedPipeline = String(req.query?.pipeline || req.body?.pipeline || '').trim();
+    scriptArgs.push('--pipeline', ['single', 'chunked', 'auto'].includes(requestedPipeline) ? requestedPipeline : MEETING_MINUTES_JOB_PIPELINE);
+
+    if (truthyFlag(req.query?.includeBaselineReference) || truthyFlag(req.body?.includeBaselineReference)) {
+      scriptArgs.push('--include-baseline-reference');
+    }
+
+    if (truthyFlag(req.query?.includeProjectStatusEvidence) || truthyFlag(req.body?.includeProjectStatusEvidence)) {
+      scriptArgs.push('--include-project-status-evidence');
+    }
+
+    if (!truthyFlag(req.query?.includeDiagnostics) && !truthyFlag(req.body?.includeDiagnostics)) {
+      scriptArgs.push('--skip-diagnostics');
+    }
+
+    const result = await runPythonTranscriptScript('meeting_minutes_trooper.py', transcript.text, scriptArgs, { timeoutMs: MEETING_MINUTES_FINAL_TIMEOUT_MS });
+
+    console.info(JSON.stringify({
+      event: 'staged_meeting_minutes_completed',
+      source: transcript.source,
+      fileName: transcript.fileName || null,
+      transcriptLength: transcript.text.length,
+      skipRewrite,
+      pipeline: scriptArgs.includes('--pipeline') ? scriptArgs[scriptArgs.indexOf('--pipeline') + 1] : null,
+      durationMs: Date.now() - startedAt
+    }));
+
+    return res.json(buildStagedMeetingMinutesResponse(req, transcript, result));
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: 'staged_meeting_minutes_failed',
+      message: error?.message || String(error),
+      statusCode: error?.statusCode || null,
+      details: error?.details || null,
+      durationMs: Date.now() - startedAt
+    }));
+    return sendTestError(res, error);
+  }
+}));
+
+router.post('/staged-meeting-minutes/jobs', requireAuth, withTestUpload(async (req, res) => {
+  try {
+    let transcript;
+    try {
+      transcript = await readTestTranscript(req);
+    } catch (error) {
+      const sourceJob = await findStagedSourceJobFromRequest(req);
+      if (!sourceJob || sourceJob.jobType !== 'staged_meeting_minutes_stage' || !sourceJob.transcriptText) throw error;
+      transcript = {
+        text: sourceJob.transcriptText,
+        source: 'staged-meeting-minutes-job',
+        fileName: sourceJob.fileName || sourceJob.inputPayload?.fileName || ''
+      };
+    }
+    validateTranscriptText(transcript.text);
+    const meta = transcriptMetadata(transcript.text);
+    const requestedStage = String(req.query?.stage || req.body?.stage || 'details').trim().toLowerCase();
+    if (!['details', 'summary', 'discussion', 'actions'].includes(requestedStage)) {
+      const error = new Error('Choose a valid staged meeting-minutes stage.');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const queued = await queueStagedMeetingMinutesStage({
+      transcriptText: transcript.text,
+      source: 'staged-meeting-minutes',
+      fileName: transcript.fileName || '',
+      transcriptSha256: meta.transcriptSha256,
+      stage: requestedStage,
+      meetingTitle: req.body?.meetingTitle || transcript.fileName || '',
+      meetingDate: req.body?.meetingDate || '',
+      meetingLocation: req.body?.meetingLocation || '',
+      meetingType: req.body?.meetingType || '',
+      participants: req.body?.participants || '',
+      overallTopics: req.body?.overallTopics || '',
+      draftId: req.body?.draftId || '',
+      targetScreen: req.body?.targetScreen || 0,
+      regenerate: truthyFlag(req.body?.regenerate),
+      queuedBy: req.authUser?.email || ''
+    });
+    launchQueuedStagedMeetingMinutesStage(queued.jobId);
+
+    return res.status(202).json({
+      ok: true,
+      success: true,
+      ...queued,
+      statusUrl: `/api/jobs/${queued.jobId}`,
+      resultUrl: `/api/jobs/${queued.jobId}`,
+      jobsUrl: `/jobs/${queued.jobId}`,
+      resumeUrl: `/staged-meeting-minutes?${new URLSearchParams({
+        ...(req.body?.draftId ? { draftId: String(req.body.draftId) } : {}),
+        screen: String(Number(req.body?.targetScreen || 0)),
+        stageJobId: String(queued.jobId)
+      }).toString()}`
+    });
+  } catch (error) {
+    return sendTestError(res, error);
+  }
+}));
+
 router.post('/meeting-minutes-final/jobs', requireAuth, withTestUpload(async (req, res) => {
   try {
     const transcript = await readTestTranscript(req);
@@ -818,6 +1997,9 @@ router.post('/jobs/:jobId/retry', requireAuth, async (req, res) => {
   try {
     const job = await retryGenerationJob(req.params.jobId);
     if (!job) return res.status(404).json({ ok: false, success: false, error: 'Retryable job not found.' });
+    if (job.jobType === 'staged_meeting_minutes_stage') {
+      launchQueuedStagedMeetingMinutesStage(job.jobId);
+    }
     return res.json({ ok: true, success: true, job });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ ok: false, success: false, error: error.message || 'Failed to retry job.' });
