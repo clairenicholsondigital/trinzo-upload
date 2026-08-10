@@ -470,6 +470,73 @@ function extractTeamsTranscriptStructure(text) {
   };
 }
 
+function buildPreparedTranscriptForStagedAI(text) {
+  const raw = String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const lines = raw.split('\n');
+  const prepared = [];
+  const removedReasons = {
+    teamsHeader: 0,
+    transcriptionEvent: 0,
+    blankLine: 0,
+    timestampOnly: 0
+  };
+  const turnLinePattern = new RegExp(`^\\s*(${TEAMS_PERSON_NAME_PATTERN})\\s+(${TEAMS_TIMESTAMP_PATTERN})\\s*(.*)$`, 'i');
+  const eventLinePattern = new RegExp(`^\\s*${TEAMS_PERSON_NAME_PATTERN}\\s+(?:started|stopped)\\s+transcription\\b`, 'i');
+
+  lines.forEach((line, index) => {
+    const trimmed = String(line || '').trim();
+    if (!trimmed) {
+      removedReasons.blankLine += 1;
+      return;
+    }
+
+    if (index < 8) {
+      if (/\b(?:meeting transcript|transcript|recording)\b/i.test(trimmed)) {
+        removedReasons.teamsHeader += 1;
+        return;
+      }
+      if (new RegExp(TEAMS_HEADER_DATE_PATTERN, 'i').test(trimmed)) {
+        removedReasons.teamsHeader += 1;
+        return;
+      }
+      if (/^\d+\s*(?:h|hr|hrs|hour|hours|m|min|mins|minute|minutes)(?:\s+\d+\s*(?:m|min|mins|s|sec|secs|second|seconds))?$/i.test(trimmed)) {
+        removedReasons.teamsHeader += 1;
+        return;
+      }
+    }
+
+    if (eventLinePattern.test(trimmed)) {
+      removedReasons.transcriptionEvent += 1;
+      return;
+    }
+
+    if (new RegExp(`^${TEAMS_TIMESTAMP_PATTERN}$`, 'i').test(trimmed)) {
+      removedReasons.timestampOnly += 1;
+      return;
+    }
+
+    const turnMatch = trimmed.match(turnLinePattern);
+    if (turnMatch) {
+      const speaker = turnMatch[1].replace(/\s+/g, ' ').trim();
+      const spoken = String(turnMatch[3] || '').replace(/\s+/g, ' ').trim();
+      prepared.push(spoken ? `${speaker}: ${spoken}` : `${speaker}:`);
+      return;
+    }
+
+    prepared.push(trimmed.replace(/\s+/g, ' '));
+  });
+
+  const preparedText = prepared.join('\n').trim();
+  const removedLineCount = Object.values(removedReasons).reduce((sum, value) => sum + value, 0);
+  return {
+    text: preparedText || raw.trim(),
+    rawLength: raw.length,
+    preparedLength: preparedText.length || raw.trim().length,
+    removedLineCount,
+    removedReasons
+  };
+}
+
 function extractTeamsSpeakerNames(text) {
   const structured = extractTeamsTranscriptStructure(text);
   if (structured.speakers.length) return structured.speakers;
@@ -1114,6 +1181,31 @@ async function buildStagedGenerationContext(stage, transcript, req, onProgress =
   };
 }
 
+function transcriptForStagedAI(transcript, inputPayload = {}) {
+  const prepared = transcript?.preparedTranscript || inputPayload?.preparedTranscript;
+  if (prepared && typeof prepared === 'object' && String(prepared.text || '').trim()) {
+    return {
+      text: String(prepared.text || ''),
+      source: `${transcript.source || 'staged-meeting-minutes'}-prepared`,
+      fileName: transcript.fileName || '',
+      preparedTranscriptTelemetry: transcript.preparedTranscriptTelemetry || inputPayload.preparedTranscriptTelemetry || prepared.telemetry || null
+    };
+  }
+  const generated = buildPreparedTranscriptForStagedAI(transcript.text);
+  return {
+    text: generated.text,
+    source: `${transcript.source || 'staged-meeting-minutes'}-prepared`,
+    fileName: transcript.fileName || '',
+    preparedTranscriptTelemetry: {
+      rawLength: generated.rawLength,
+      preparedLength: generated.preparedLength,
+      removedLineCount: generated.removedLineCount,
+      removedReasons: generated.removedReasons,
+      source: 'deterministic_stage_1_prep_fallback'
+    }
+  };
+}
+
 function stagedContextFromRequest(req) {
   return {
     meetingTitle: firstString(req.body?.meetingTitle, req.query?.meetingTitle),
@@ -1390,7 +1482,9 @@ async function runQueuedStagedMeetingMinutesStage(jobId) {
   const transcript = {
     text: job.transcriptText || '',
     source: input.source || 'staged-meeting-minutes',
-    fileName: input.fileName || ''
+    fileName: input.fileName || '',
+    preparedTranscript: job.preparedTranscript || null,
+    preparedTranscriptTelemetry: job.preparedTranscriptTelemetry || input.preparedTranscriptTelemetry || null
   };
   const stagedReq = {
     query: { pipeline: input.pipeline || MEETING_MINUTES_JOB_PIPELINE },
@@ -1420,25 +1514,35 @@ async function runQueuedStagedMeetingMinutesStage(jobId) {
 
     let payload;
     if (stage === 'details') {
+      const preparedTranscript = buildPreparedTranscriptForStagedAI(transcript.text);
       payload = {
         source: transcript.source,
         fileName: transcript.fileName || null,
         transcriptLength: transcript.text.length,
-        ...extractStagedDetailsFromTranscript(transcript.text, transcript.fileName)
+        ...extractStagedDetailsFromTranscript(transcript.text, transcript.fileName),
+        preparedTranscriptTelemetry: {
+          rawLength: preparedTranscript.rawLength,
+          preparedLength: preparedTranscript.preparedLength,
+          removedLineCount: preparedTranscript.removedLineCount,
+          removedReasons: preparedTranscript.removedReasons,
+          source: 'deterministic_stage_1_prep'
+        }
       };
     } else {
-      const generation = await buildStagedGenerationContext(stage, transcript, stagedReq, (percent, message) => (
+      const aiTranscript = transcriptForStagedAI(transcript, input);
+      const generation = await buildStagedGenerationContext(stage, aiTranscript, stagedReq, (percent, message) => (
         updateGenerationJobProgress(jobId, stage, percent, message)
       ));
       const context = generation.context;
-      if (stage === 'summary') payload = buildStagedSummaryResponse(stagedReq, transcript, context);
-      else if (stage === 'discussion') payload = buildStagedDiscussionResponse(stagedReq, transcript, context);
-      else if (stage === 'actions') payload = buildStagedActionsResponse(stagedReq, transcript, context);
+      if (stage === 'summary') payload = buildStagedSummaryResponse(stagedReq, aiTranscript, context);
+      else if (stage === 'discussion') payload = buildStagedDiscussionResponse(stagedReq, aiTranscript, context);
+      else if (stage === 'actions') payload = buildStagedActionsResponse(stagedReq, aiTranscript, context);
       else {
         const error = new Error(`Unsupported staged meeting-minutes stage: ${stage}`);
         error.statusCode = 400;
         throw error;
       }
+      payload.preparedTranscriptTelemetry = aiTranscript.preparedTranscriptTelemetry || null;
     }
 
     await updateGenerationJobProgress(jobId, stage, 90, `Staged ${stage} content generated. Preparing resume link.`);
@@ -1458,6 +1562,8 @@ async function runQueuedStagedMeetingMinutesStage(jobId) {
           jobId,
           meetingId: job.meetingId,
           workerMode: 'staged_meeting_minutes_stage',
+          rawTranscriptLength: transcript.text.length,
+          preparedTranscriptLength: payload.preparedTranscriptTelemetry?.preparedLength || transcript.text.length,
           durationMs: Date.now() - startedAt
         }
       }
@@ -1994,13 +2100,27 @@ router.post('/staged-meeting-minutes', requireAuth, withTestUpload(async (req, r
     const transcript = await readTestTranscript(req);
     validateTranscriptText(transcript.text);
     const requestedStage = String(req.query?.stage || req.body?.stage || '').trim().toLowerCase();
+    const preparedTranscript = buildPreparedTranscriptForStagedAI(transcript.text);
+    const aiTranscript = {
+      text: preparedTranscript.text,
+      source: `${transcript.source || 'staged-meeting-minutes'}-prepared`,
+      fileName: transcript.fileName || '',
+      preparedTranscriptTelemetry: {
+        rawLength: preparedTranscript.rawLength,
+        preparedLength: preparedTranscript.preparedLength,
+        removedLineCount: preparedTranscript.removedLineCount,
+        removedReasons: preparedTranscript.removedReasons,
+        source: 'deterministic_stage_1_prep'
+      }
+    };
 
     if (requestedStage === 'details') {
       const detailsResponse = {
         source: transcript.source,
         fileName: transcript.fileName || null,
         transcriptLength: transcript.text.length,
-        ...extractStagedDetailsFromTranscript(transcript.text, transcript.fileName)
+        ...extractStagedDetailsFromTranscript(transcript.text, transcript.fileName),
+        preparedTranscriptTelemetry: aiTranscript.preparedTranscriptTelemetry
       };
 
       console.info(JSON.stringify({
@@ -2015,9 +2135,10 @@ router.post('/staged-meeting-minutes', requireAuth, withTestUpload(async (req, r
     }
 
     if (requestedStage === 'summary') {
-      const trooperContext = await buildStagedTrooperContext('summary', transcript, req);
-      const fallbackContext = trooperContext.ok ? null : await buildStagedMiniLMContext(transcript);
-      const summaryResponse = buildStagedSummaryResponse(req, transcript, trooperContext.ok ? trooperContext : fallbackContext);
+      const trooperContext = await buildStagedTrooperContext('summary', aiTranscript, req);
+      const fallbackContext = trooperContext.ok ? null : await buildStagedMiniLMContext(aiTranscript);
+      const summaryResponse = buildStagedSummaryResponse(req, aiTranscript, trooperContext.ok ? trooperContext : fallbackContext);
+      summaryResponse.preparedTranscriptTelemetry = aiTranscript.preparedTranscriptTelemetry;
 
       console.info(JSON.stringify({
         event: 'staged_meeting_minutes_summary_completed',
@@ -2035,9 +2156,10 @@ router.post('/staged-meeting-minutes', requireAuth, withTestUpload(async (req, r
     }
 
     if (requestedStage === 'discussion') {
-      const trooperContext = await buildStagedTrooperContext('discussion', transcript, req);
-      const fallbackContext = trooperContext.ok ? null : await buildStagedMiniLMContext(transcript);
-      const discussionResponse = buildStagedDiscussionResponse(req, transcript, trooperContext.ok ? trooperContext : fallbackContext);
+      const trooperContext = await buildStagedTrooperContext('discussion', aiTranscript, req);
+      const fallbackContext = trooperContext.ok ? null : await buildStagedMiniLMContext(aiTranscript);
+      const discussionResponse = buildStagedDiscussionResponse(req, aiTranscript, trooperContext.ok ? trooperContext : fallbackContext);
+      discussionResponse.preparedTranscriptTelemetry = aiTranscript.preparedTranscriptTelemetry;
 
       console.info(JSON.stringify({
         event: 'staged_meeting_minutes_discussion_completed',
@@ -2056,9 +2178,10 @@ router.post('/staged-meeting-minutes', requireAuth, withTestUpload(async (req, r
     }
 
     if (requestedStage === 'actions') {
-      const trooperContext = await buildStagedTrooperContext('actions', transcript, req);
-      const fallbackContext = trooperContext.ok ? null : await buildStagedMiniLMContext(transcript);
-      const actionsResponse = buildStagedActionsResponse(req, transcript, trooperContext.ok ? trooperContext : fallbackContext);
+      const trooperContext = await buildStagedTrooperContext('actions', aiTranscript, req);
+      const fallbackContext = trooperContext.ok ? null : await buildStagedMiniLMContext(aiTranscript);
+      const actionsResponse = buildStagedActionsResponse(req, aiTranscript, trooperContext.ok ? trooperContext : fallbackContext);
+      actionsResponse.preparedTranscriptTelemetry = aiTranscript.preparedTranscriptTelemetry;
 
       console.info(JSON.stringify({
         event: 'staged_meeting_minutes_actions_completed',
@@ -2133,11 +2256,29 @@ router.post('/staged-meeting-minutes/jobs', requireAuth, withTestUpload(async (r
       transcript = {
         text: sourceJob.transcriptText,
         source: 'staged-meeting-minutes-job',
-        fileName: sourceJob.fileName || sourceJob.inputPayload?.fileName || ''
+        fileName: sourceJob.fileName || sourceJob.inputPayload?.fileName || '',
+        preparedTranscript: sourceJob.preparedTranscript || null,
+        preparedTranscriptTelemetry: sourceJob.preparedTranscriptTelemetry || sourceJob.inputPayload?.preparedTranscriptTelemetry || null
       };
     }
     validateTranscriptText(transcript.text);
     const meta = transcriptMetadata(transcript.text);
+    const preparedTranscript = transcript.preparedTranscript?.text
+      ? {
+          text: String(transcript.preparedTranscript.text || ''),
+          rawLength: Number(transcript.preparedTranscript.rawLength || transcript.text.length),
+          preparedLength: Number(transcript.preparedTranscript.preparedLength || String(transcript.preparedTranscript.text || '').length),
+          removedLineCount: Number(transcript.preparedTranscript.removedLineCount || 0),
+          removedReasons: transcript.preparedTranscript.removedReasons || {}
+        }
+      : buildPreparedTranscriptForStagedAI(transcript.text);
+    const preparedTranscriptTelemetry = transcript.preparedTranscriptTelemetry || {
+      rawLength: preparedTranscript.rawLength,
+      preparedLength: preparedTranscript.preparedLength,
+      removedLineCount: preparedTranscript.removedLineCount,
+      removedReasons: preparedTranscript.removedReasons,
+      source: 'deterministic_stage_1_prep'
+    };
     const requestedStage = String(req.query?.stage || req.body?.stage || 'details').trim().toLowerCase();
     if (!['details', 'summary', 'discussion', 'actions'].includes(requestedStage)) {
       const error = new Error('Choose a valid staged meeting-minutes stage.');
@@ -2150,6 +2291,14 @@ router.post('/staged-meeting-minutes/jobs', requireAuth, withTestUpload(async (r
       source: 'staged-meeting-minutes',
       fileName: transcript.fileName || '',
       transcriptSha256: meta.transcriptSha256,
+      preparedTranscript: {
+        text: preparedTranscript.text,
+        rawLength: preparedTranscript.rawLength,
+        preparedLength: preparedTranscript.preparedLength,
+        removedLineCount: preparedTranscript.removedLineCount,
+        removedReasons: preparedTranscript.removedReasons
+      },
+      preparedTranscriptTelemetry,
       stage: requestedStage,
       meetingTitle: req.body?.meetingTitle || transcript.fileName || '',
       meetingDate: req.body?.meetingDate || '',

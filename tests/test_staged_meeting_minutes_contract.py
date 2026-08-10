@@ -63,6 +63,26 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("turnCount: teamsStructure.turnCount", api)
         self.assertIn("dateSource: headerDate ? 'microsoft_teams_header' : 'explicit_or_filename'", api)
 
+    def test_staged_transcript_prep_is_deterministic_and_keeps_raw_source(self):
+        api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+        db = (REPO_DIR / "utils" / "db.js").read_text(encoding="utf-8")
+
+        self.assertIn("function buildPreparedTranscriptForStagedAI", api)
+        self.assertIn("deterministic_stage_1_prep", api)
+        self.assertIn("transcriptionEvent", api)
+        self.assertIn("timestampOnly", api)
+        self.assertIn("prepared.push(spoken ? `${speaker}: ${spoken}`", api)
+        self.assertIn("function transcriptForStagedAI", api)
+        self.assertIn("sourceJob.preparedTranscript", api)
+        self.assertIn("const aiTranscript = transcriptForStagedAI(transcript, input)", api)
+        self.assertIn("buildStagedGenerationContext(stage, aiTranscript", api)
+        self.assertIn("rawTranscriptLength: transcript.text.length", api)
+        self.assertIn("preparedTranscriptLength", api)
+        self.assertIn("autosavePayload.preparedTranscript", db)
+        self.assertIn("preparedTranscript: payload.preparedTranscript || null", db)
+        self.assertIn("preparedTranscriptTelemetry: payload.preparedTranscriptTelemetry || null", db)
+        self.assertIn("transcript_text, transcript_length", db)
+
     def test_staged_generation_has_visible_loading_state(self):
         page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
 

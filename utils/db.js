@@ -1821,6 +1821,7 @@ function meetingJobFromRow(row, includeResult = false) {
   if (!row) return null;
   const inputPayload = parseJsonObject(row.input_payload || row.inputPayload);
   const resultPayload = parseJsonObject(row.result_payload || row.resultPayload);
+  const autosavePayload = parseJsonObject(row.autosave_payload || row.autosavePayload);
   const job = {
     jobId: Number(row.job_id || row.jobId || row.id),
     meetingId: Number(row.meeting_id || row.meetingId),
@@ -1846,6 +1847,8 @@ function meetingJobFromRow(row, includeResult = false) {
     transcriptLength: Number(row.transcript_length || row.transcriptLength || inputPayload.transcriptLength || 0),
     inputPayload
   };
+  if (autosavePayload.preparedTranscript) job.preparedTranscript = autosavePayload.preparedTranscript;
+  if (autosavePayload.preparedTranscriptTelemetry) job.preparedTranscriptTelemetry = autosavePayload.preparedTranscriptTelemetry;
   if (includeResult) job.resultPayload = resultPayload;
   if (job.jobType === 'staged_meeting_minutes_stage') {
     const stage = String(inputPayload.stage || job.stage || 'details').trim().toLowerCase();
@@ -1938,6 +1941,7 @@ async function queueStagedMeetingMinutesStage(payload = {}) {
     fileName,
     transcriptLength: transcriptText.length,
     transcriptSha256: payload.transcriptSha256 || '',
+    preparedTranscriptTelemetry: payload.preparedTranscriptTelemetry || null,
     stage,
     meetingType: payload.meetingType || '',
     participants: payload.participants || '',
@@ -1967,7 +1971,14 @@ async function queueStagedMeetingMinutesStage(payload = {}) {
     await client.query(
       `INSERT INTO meeting_autosaves (meeting_id, transcript_text, transcript_length, payload)
        VALUES ($1, $2, LENGTH($2), $3::jsonb)`,
-      [meetingId, transcriptText, JSON.stringify({ source, fileName, autosaveKind: 'queued_staged_minutes_stage', stage })]
+      [meetingId, transcriptText, JSON.stringify({
+        source,
+        fileName,
+        autosaveKind: 'queued_staged_minutes_stage',
+        stage,
+        preparedTranscript: payload.preparedTranscript || null,
+        preparedTranscriptTelemetry: payload.preparedTranscriptTelemetry || null
+      })]
     );
     const job = await client.query(
       `INSERT INTO meeting_jobs (
@@ -2095,11 +2106,12 @@ async function getGenerationJob(jobId, options = {}) {
        j.created_at, j.updated_at, j.input_payload, j.result_payload,
        m.meeting_title, m.status AS meeting_status, m.source,
        COALESCE(a.transcript_length, 0) AS transcript_length,
-       ${options.includeTranscript ? 'COALESCE(a.transcript_text, \'\')' : '\'\''} AS transcript_text
+       ${options.includeTranscript ? 'COALESCE(a.transcript_text, \'\')' : '\'\''} AS transcript_text,
+       ${options.includeTranscript ? 'COALESCE(a.payload, \'{}\'::jsonb)' : '\'{}\'::jsonb'} AS autosave_payload
      FROM meeting_jobs j
      JOIN meetings m ON m.id = j.meeting_id
      LEFT JOIN LATERAL (
-       SELECT transcript_text, transcript_length
+       SELECT transcript_text, transcript_length, payload
        FROM meeting_autosaves
        WHERE meeting_id = m.id
        ORDER BY saved_at DESC, id DESC
