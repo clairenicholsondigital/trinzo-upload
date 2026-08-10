@@ -212,7 +212,6 @@ td textarea { min-height:68px; }
 @keyframes spin {
   to { transform:rotate(360deg); }
 }
-.safeguard-banner { margin:.75rem 0; padding:.75rem; border-radius:10px; background:rgba(23,208,196,.08); border:1px solid rgba(23,208,196,.35); color:#dbeafe; }
 .source-panel { border:1px solid #d9e1e8; border-radius:8px; padding:.9rem; margin-bottom:1rem; background:#f8fafc; }
 body:not(.pre-upload) .source-panel {
   display:none !important;
@@ -541,10 +540,6 @@ Analytics and review confidence</textarea>
             </table>
           </div>
         </div>
-        <div class="actions" style="margin-top:.85rem;">
-          <button class="ghost" type="button">Add topic row</button>
-          <button class="ghost" type="button">Reorder topics</button>
-        </div>
       </article>
 
       <article class="screen" data-screen="3">
@@ -570,21 +565,20 @@ Analytics and review confidence</textarea>
                 <td><input value="Claire" /></td>
                 <td><textarea>Update the staged workflow screens for review.</textarea></td>
                 <td><input value="Friday" placeholder="e.g. 14 August 2026 or next Monday" aria-label="Action date or deadline" /></td>
-                <td><button class="secondary" type="button">Duplicate</button></td>
+                <td><button class="secondary" type="button" data-action-row="duplicate">Duplicate</button> <button class="secondary" type="button" data-action-row="delete">Delete</button></td>
               </tr>
               <tr>
                 <td><input value="Amy" /></td>
                 <td><textarea>Review wording and confirm preferred analytics labels.</textarea></td>
                 <td><input value="Monday" placeholder="e.g. 14 August 2026 or next Monday" aria-label="Action date or deadline" /></td>
-                <td><button class="secondary" type="button">Delete</button></td>
+                <td><button class="secondary" type="button" data-action-row="delete">Delete</button></td>
               </tr>
             </tbody>
           </table>
         </div>
         <p class="note">Prefer an actual date where the transcript gives enough context. If the clearest wording is relative, for example next Monday or next week, keep that rather than forcing a guess.</p>
         <div class="actions" style="margin-top:.85rem;">
-          <button type="button">Add action</button>
-          <button class="secondary" type="button">Change owner</button>
+          <button id="addActionRowBtn" type="button">Add action</button>
         </div>
       </article>
 
@@ -626,7 +620,6 @@ Analytics and review confidence</textarea>
         </div>
       </div>
       <div id="reviewGenerationStatus" class="review-status review-only" role="status" aria-live="polite"></div>
-      <div class="safeguard-banner review-only"><strong>Staging note:</strong> transcript generation fills this staged review only. Export, copy, email and final save actions remain disabled until the approval and persistence steps are deliberately wired.</div>
     </section>
   </main>
 </div>
@@ -672,6 +665,7 @@ Analytics and review confidence</textarea>
   var clientAttendeesRow = document.getElementById('clientAttendeesRow');
   var discussionList = document.getElementById('discussionList');
   var actionsTableBody = document.getElementById('actionsTableBody');
+  var addActionRowButton = document.getElementById('addActionRowBtn');
   var finalDocumentPreview = document.getElementById('finalDocumentPreview');
   var lastGeneratedPayload = null;
   var reviewEditStartedAt = null;
@@ -698,6 +692,12 @@ Analytics and review confidence</textarea>
 
   function linesFromTextarea(value) {
     return String(value || '').split(/\r?\n/).map(function (line) {
+      return line.replace(/^[-*]\s*/, '').trim();
+    }).filter(Boolean);
+  }
+
+  function linesFromDiscussionTextarea(value) {
+    return String(value || '').split(/\r?\n/).map(function (line) {
       return cleanDiscussionDisplayText(line).replace(/^[-*]\s*/, '').trim();
     }).filter(Boolean);
   }
@@ -710,14 +710,41 @@ Analytics and review confidence</textarea>
       .replace(/^[-*]\s*/, '')
       .trim()
       .replace(new RegExp('(?:\\[\\s*' + timestampPattern + '\\s*\\]|\\(\\s*' + timestampPattern + '\\s*\\))', 'g'), ' ');
+    var hadSpeakerPrefix = [
+      new RegExp('^\\s*' + speakerPattern + '\\s*:\\s*', 'u'),
+      new RegExp('^\\s*' + speakerPattern + '\\s+' + timestampPattern + '\\s*:?\\s*', 'u'),
+      new RegExp('^\\s*' + timestampPattern + '\\s+' + speakerPattern + '\\s*:?\\s*', 'u')
+    ].some(function (pattern) { return pattern.test(text); });
+    if (hadSpeakerPrefix) return '';
     for (var index = 0; index < 3; index += 1) {
       text = text
+        .replace(new RegExp('^\\s*' + speakerPattern + '\\s*:\\s*', 'u'), '')
         .replace(new RegExp('^\\s*' + speakerPattern + '\\s+' + timestampPattern + '\\s*:?\\s*', 'u'), '')
         .replace(new RegExp('^\\s*' + timestampPattern + '\\s+' + speakerPattern + '\\s*:?\\s*', 'u'), '')
         .replace(new RegExp('^\\s*' + timestampPattern + '\\s*:?\\s*', 'u'), '')
+        .replace(/([.!?])(?=[A-Z])/g, '$1 ')
+        .replace(/\b(\d{1,2})(st|nd|rd|th)?\s+(january|february|march|april|may|june|july|august|september|october|november|december)\b/ig, function (match, day, suffix, month) {
+          var months = {
+            january: 'January',
+            february: 'February',
+            march: 'March',
+            april: 'April',
+            may: 'May',
+            june: 'June',
+            july: 'July',
+            august: 'August',
+            september: 'September',
+            october: 'October',
+            november: 'November',
+            december: 'December'
+          };
+          return day + (suffix || '') + ' ' + (months[String(month).toLowerCase()] || month);
+        })
         .replace(/\s+/g, ' ')
         .trim();
     }
+    if (/^(?:yeah|yes|no|okay|ok|absolutely|presumably|perfect|right)[.!?,\s]*(?:yeah|yes|no|okay|ok|absolutely|presumably|perfect|right)?[.!?,\s]*$/i.test(text)) return '';
+    if (text.split(/\s+/).filter(Boolean).length < 5) return '';
     return text.replace(/^([a-z])/, function (match) { return match.toUpperCase(); });
   }
 
@@ -943,13 +970,27 @@ Analytics and review confidence</textarea>
     if (!actionsTableBody) return;
     var items = Array.isArray(actions) && actions.length ? actions : [{ owner: 'Not stated', action: 'Review transcript for agreed actions.', deadline: '' }];
     actionsTableBody.innerHTML = items.map(function (action) {
-      return '<tr>' +
-        '<td><input value="' + escapeHtml(action.owner || 'Not stated') + '" /></td>' +
-        '<td><textarea>' + escapeHtml(action.action || 'Review action wording') + '</textarea></td>' +
-        '<td><input value="' + escapeHtml(action.deadline || '') + '" placeholder="e.g. 14 August 2026 or next Monday" aria-label="Action date or deadline" /></td>' +
-        '<td><button class="secondary" type="button">Duplicate</button></td>' +
-      '</tr>';
+      return renderActionRow(action);
     }).join('');
+  }
+
+  function renderActionRow(action) {
+    action = action || {};
+    return '<tr>' +
+      '<td><input value="' + escapeHtml(action.owner || 'Not stated') + '" /></td>' +
+      '<td><textarea>' + escapeHtml(action.action || 'Review action wording') + '</textarea></td>' +
+      '<td><input value="' + escapeHtml(action.deadline || '') + '" placeholder="e.g. 14 August 2026 or next Monday" aria-label="Action date or deadline" /></td>' +
+      '<td><button class="secondary" type="button" data-action-row="duplicate">Duplicate</button> <button class="secondary" type="button" data-action-row="delete">Delete</button></td>' +
+    '</tr>';
+  }
+
+  function actionFromRow(row) {
+    var cells = row ? row.querySelectorAll('td') : [];
+    return {
+      owner: cells[0] && cells[0].querySelector('input') ? cells[0].querySelector('input').value.trim() : '',
+      action: cells[1] && cells[1].querySelector('textarea') ? cells[1].querySelector('textarea').value.trim() : '',
+      deadline: cells[2] && cells[2].querySelector('input') ? cells[2].querySelector('input').value.trim() : ''
+    };
   }
 
   function renderFinalDocument() {
@@ -962,17 +1003,12 @@ Analytics and review confidence</textarea>
       return {
         topic: topicInput ? topicInput.value.trim() : (cells[0] ? cells[0].textContent.trim() : 'Discussion'),
         bullets: pointsInput
-          ? linesFromTextarea(pointsInput.value)
+          ? linesFromDiscussionTextarea(pointsInput.value)
           : Array.prototype.slice.call(cells[1] ? cells[1].querySelectorAll('li') : []).map(function (li) { return cleanDiscussionDisplayText(li.textContent); }).filter(Boolean)
       };
     }).filter(function (item) { return item.bullets.length && item.topic !== 'No substantive discussion sections generated'; });
     var actions = Array.prototype.slice.call(actionsTableBody ? actionsTableBody.querySelectorAll('tr') : []).map(function (row) {
-      var cells = row.querySelectorAll('td');
-      return {
-        owner: cells[0] && cells[0].querySelector('input') ? cells[0].querySelector('input').value.trim() : '',
-        action: cells[1] && cells[1].querySelector('textarea') ? cells[1].querySelector('textarea').value.trim() : '',
-        deadline: cells[2] && cells[2].querySelector('input') ? cells[2].querySelector('input').value.trim() : ''
-      };
+      return actionFromRow(row);
     }).filter(function (item) { return item.owner || item.action || item.deadline; });
 
     finalDocumentPreview.innerHTML =
@@ -1418,6 +1454,33 @@ Analytics and review confidence</textarea>
   }
   if (regenerateButton) {
     regenerateButton.addEventListener('click', regenerateCurrentScreen);
+  }
+  if (addActionRowButton && actionsTableBody) {
+    addActionRowButton.addEventListener('click', function () {
+      actionsTableBody.insertAdjacentHTML('beforeend', renderActionRow({
+        owner: 'Not stated',
+        action: '',
+        deadline: ''
+      }));
+      renderFinalDocument();
+      saveDraft();
+    });
+  }
+  if (actionsTableBody) {
+    actionsTableBody.addEventListener('click', function (event) {
+      var button = event.target.closest('[data-action-row]');
+      if (!button) return;
+      var row = button.closest('tr');
+      if (!row) return;
+      var action = button.getAttribute('data-action-row');
+      if (action === 'duplicate') {
+        row.insertAdjacentHTML('afterend', renderActionRow(actionFromRow(row)));
+      } else if (action === 'delete') {
+        row.remove();
+      }
+      renderFinalDocument();
+      saveDraft();
+    });
   }
   nextButton.addEventListener('click', function () {
     if (activeIndex < screens.length - 1) goToScreen(activeIndex + 1);

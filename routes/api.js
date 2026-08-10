@@ -714,14 +714,45 @@ function stringListFromAny(value, keys = []) {
 }
 
 function cleanStagedGeneratedLine(value) {
-  return String(value || '')
+  return capitaliseStagedDateMonths(String(value || '')
     .replace(/\s+/g, ' ')
     .replace(/^[-*]\s*/, '')
-    .trim();
+    .trim());
 }
 
 const STAGED_PUBLIC_TIMESTAMP_PATTERN = '(?:\\d{1,2}:)?\\d{1,2}[:.]\\d{2}(?::\\d{2})?';
 const STAGED_PUBLIC_SPEAKER_PATTERN = "[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]*,?(?:\\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]*,?){0,5}";
+const STAGED_MONTH_NAMES = {
+  january: 'January',
+  february: 'February',
+  march: 'March',
+  april: 'April',
+  may: 'May',
+  june: 'June',
+  july: 'July',
+  august: 'August',
+  september: 'September',
+  october: 'October',
+  november: 'November',
+  december: 'December'
+};
+
+function capitaliseStagedDateMonths(value) {
+  return String(value || '').replace(
+    /\b(\d{1,2})(st|nd|rd|th)?\s+(january|february|march|april|may|june|july|august|september|october|november|december)\b/ig,
+    (match, day, suffix, month) => `${day}${suffix || ''} ${STAGED_MONTH_NAMES[String(month).toLowerCase()] || month}`
+  );
+}
+
+function hasStagedSpeakerTurnPrefix(value) {
+  const text = cleanStagedGeneratedLine(value);
+  if (!text) return false;
+  return [
+    new RegExp(`^\\s*${STAGED_PUBLIC_SPEAKER_PATTERN}\\s*:\\s*`, 'u'),
+    new RegExp(`^\\s*${STAGED_PUBLIC_SPEAKER_PATTERN}\\s+${STAGED_PUBLIC_TIMESTAMP_PATTERN}\\s*:?\\s*`, 'u'),
+    new RegExp(`^\\s*${STAGED_PUBLIC_TIMESTAMP_PATTERN}\\s+${STAGED_PUBLIC_SPEAKER_PATTERN}\\s*:?\\s*`, 'u')
+  ].some((pattern) => pattern.test(text));
+}
 
 function stripStagedTranscriptArtefacts(value) {
   let text = cleanStagedGeneratedLine(value)
@@ -729,9 +760,11 @@ function stripStagedTranscriptArtefacts(value) {
   if (!text) return '';
   for (let index = 0; index < 3; index += 1) {
     text = text
+      .replace(new RegExp(`^\\s*${STAGED_PUBLIC_SPEAKER_PATTERN}\\s*:\\s*`, 'u'), '')
       .replace(new RegExp(`^\\s*${STAGED_PUBLIC_SPEAKER_PATTERN}\\s+${STAGED_PUBLIC_TIMESTAMP_PATTERN}\\s*:?\\s*`, 'u'), '')
       .replace(new RegExp(`^\\s*${STAGED_PUBLIC_TIMESTAMP_PATTERN}\\s+${STAGED_PUBLIC_SPEAKER_PATTERN}\\s*:?\\s*`, 'u'), '')
       .replace(new RegExp(`^\\s*${STAGED_PUBLIC_TIMESTAMP_PATTERN}\\s*:?\\s*`, 'u'), '')
+      .replace(/([.!?])(?=[A-Z])/g, '$1 ')
       .replace(/\s+/g, ' ')
       .trim();
   }
@@ -739,10 +772,12 @@ function stripStagedTranscriptArtefacts(value) {
 }
 
 function cleanStagedDiscussionText(value) {
+  if (hasStagedSpeakerTurnPrefix(value)) return '';
   return stripStagedTranscriptArtefacts(value)
     .replace(/\bNo specific discussion points were explicitly detailed[^.?!]*[.?!]?/ig, '')
     .replace(/\bNo substantive discussion(?: was| points were)?[^.?!]*[.?!]?/ig, '')
     .replace(/\bnot discussed in the transcript[^.?!]*[.?!]?/ig, '')
+    .replace(/\b(?:yeah|yes|no|okay|ok|absolutely|presumably|perfect|right)[.!?,\s]+(?:yeah|yes|no|okay|ok|absolutely|presumably|perfect|right)[.!?,\s]*/ig, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -753,13 +788,21 @@ function isNoEvidenceDiscussionText(value) {
   return /\b(?:no specific discussion points|no substantive discussion|not discussed in the transcript|no transcript evidence|no evidence)\b/i.test(text);
 }
 
+function isLowValueStagedDiscussionText(value) {
+  const text = cleanStagedDiscussionText(value).toLowerCase();
+  if (!text) return true;
+  if (/^(?:yeah|yes|no|okay|ok|absolutely|presumably|perfect|right)[.!?,\s]*(?:yeah|yes|no|okay|ok|absolutely|presumably|perfect|right)?[.!?,\s]*$/.test(text)) return true;
+  if (text.split(/\s+/).length < 5) return true;
+  return false;
+}
+
 function uniqueCleanDiscussionItems(values) {
   const seen = new Set();
   const result = [];
   for (const value of values) {
     const cleaned = cleanStagedDiscussionText(value);
     const key = cleaned.toLowerCase();
-    if (!cleaned || isNoEvidenceDiscussionText(cleaned) || seen.has(key)) continue;
+    if (!cleaned || isNoEvidenceDiscussionText(cleaned) || isLowValueStagedDiscussionText(cleaned) || seen.has(key)) continue;
     seen.add(key);
     result.push(cleaned);
   }
@@ -1393,13 +1436,7 @@ function findDiscussionCardForTopic(cards, topic) {
 }
 
 function discussionFallbackForTopic(transcript, topic, meetingType, participants) {
-  const evidence = evidenceForTopic(transcript.text, topic);
-  if (!evidence.length) return null;
-  return {
-    topic,
-    whatWasDiscussed: evidence[0],
-    points: uniqueCleanDiscussionItems(evidence).slice(0, 4)
-  };
+  return null;
 }
 
 function alignDiscussionCardsToConfirmedTopics(cards, topics, transcript, meetingType, participants) {
@@ -1424,9 +1461,7 @@ function buildStagedDiscussionResponse(req, transcript, minilmContext = null) {
   const meetingType = context.meetingType || details.meetingType || 'Project review';
   const discussion = miniLmDiscussion.length
     ? alignDiscussionCardsToConfirmedTopics(miniLmDiscussion, context.overallTopics, transcript, meetingType, participants)
-    : topics.slice(0, 8)
-      .map((topic) => discussionFallbackForTopic(transcript, topic, meetingType, participants))
-      .filter(Boolean);
+    : [];
   const output = stagedMiniLMOutput(minilmContext);
   const executiveSummaryFromFindings = cleanStagedExecutiveSummary(
     output.executiveSummaryFromFindings || output.summaryFromFindings || output.executiveSummary || ''
