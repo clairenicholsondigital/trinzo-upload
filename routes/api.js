@@ -721,6 +721,14 @@ function cleanStagedGeneratedLine(value) {
     .trim();
 }
 
+function cleanStagedExecutiveSummary(value) {
+  return cleanStagedGeneratedLine(value)
+    .split(/(?<=[.!?])\s+/)
+    .filter((sentence) => !/\bthe reviewer should check\b/i.test(sentence))
+    .join(' ')
+    .trim();
+}
+
 function stagedMiniLMOutput(minilmContext) {
   return minilmContext && minilmContext.ok && minilmContext.output && typeof minilmContext.output === 'object'
     ? minilmContext.output
@@ -899,8 +907,8 @@ function normaliseStagedActionOwner(owner) {
 function stagedTrooperSchema(stage) {
   if (stage === 'summary') {
     return {
-      objectives: ['Project-specific meeting objective'],
-      executiveSummary: 'Client-ready summary grounded in the transcript and confirmed meeting context.',
+      objectives: ['Outcome-led project review objective'],
+      executiveSummary: 'Client-ready status summary covering current project position, changes, agreements, risks and timeline threats.',
       overallTopics: ['Topic label']
     };
   }
@@ -947,7 +955,10 @@ function buildStagedTrooperPrompt(stage, transcript, req) {
       'Write stage 2 only: objectives, executive summary and overall topic labels.',
       'Use the confirmed meeting title, project/meeting type, date, location and participants as the frame.',
       'Use reviewerGuidance to improve emphasis and framing when supplied, but do not treat it as transcript evidence.',
-      'The summary should answer what this meeting was about and what the reviewer should check before the discussion stage.',
+      'Write the executiveSummary as a project-status narrative, not a list of topics covered.',
+      'The executiveSummary must capture where the project actually stands, what changed, what was agreed, and what threatens the timeline.',
+      'Do not write phrases such as "key discussions covered", "the meeting covered", "this meeting focused on", or "the reviewer should check".',
+      'If evidence is limited, state the high-confidence status and open risk plainly rather than padding.',
       'Return 2-4 objectives, one concise executiveSummary paragraph, and 4-8 overallTopics.'
     ],
     discussion: [
@@ -1246,14 +1257,14 @@ function buildStagedSummaryResponse(req, transcript, minilmContext = null) {
     ? topicsFromStagedMiniLM(minilmContext)
     : extractOverallTopicsFromTranscript(transcript.text);
   const objectives = [
-    `Review the ${String(details.meetingType || 'meeting').toLowerCase()} discussion across the main transcript themes.`,
-    'Confirm decisions, risks, follow-ups and ownership before drafting final minutes.',
-    'Keep the detailed discussion review aligned to the actual participants and topics raised.'
+    'Confirm the current project position and what has changed since the last review.',
+    'Capture agreed decisions, follow-ups, owners and unresolved dependencies.',
+    'Identify risks or blockers that could affect the timeline or release readiness.'
   ];
-  const summary = cleanStagedGeneratedLine(output.executiveSummary || output.meetingDescription || output.summary) ||
+  const summary = cleanStagedExecutiveSummary(output.executiveSummary || output.meetingDescription || output.summary) ||
     (topics.length
-      ? `The meeting covered ${topics.map((topic) => topic.toLowerCase()).join(', ')}. Review these topics before asking for the detailed discussion points so the next stage stays focused on the actual conversation.`
-      : 'Review the transcript-generated summary before moving on to detailed discussion points.');
+      ? `The project status needs to be read through ${topics.map((topic) => topic.toLowerCase()).join(', ')}. The next review stage should draw out the agreed changes, unresolved dependencies, timeline pressure and release-readiness implications from the transcript evidence.`
+      : 'The project status, agreed changes, unresolved risks and timeline impact should be confirmed from the transcript before moving to detailed discussion points.');
 
   return {
     ok: true,
