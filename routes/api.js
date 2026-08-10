@@ -861,6 +861,9 @@ function stagedMiniLMTelemetry(minilmContext) {
     modelName: diagnostics.modelName || '',
     modelReason: diagnostics.modelReason || '',
     counts: minilmContext?.counts || {},
+    evidencePackTopicCount: Number(diagnostics.evidencePackTopicCount || 0),
+    workstreamStateCount: Number(diagnostics.workstreamStateCount || 0),
+    workstreamQualityFlags: Array.isArray(diagnostics.workstreamQualityFlags) ? diagnostics.workstreamQualityFlags : [],
     timingMs: diagnostics.timingMs || {}
   };
 }
@@ -1046,6 +1049,9 @@ function buildStagedTrooperPrompt(stage, transcript, req, options = {}) {
       ? options.evidencePack
       : topicEvidenceForStagedDiscussion(transcript, context.overallTopics))
     : [];
+  const discussionWorkstreamState = stage === 'discussion' && Array.isArray(options.workstreamState)
+    ? options.workstreamState
+    : [];
   const confirmed = {
     meetingTitle: details.meetingTitle || context.meetingTitle,
     meetingDate: details.meetingDate || context.meetingDate,
@@ -1054,7 +1060,8 @@ function buildStagedTrooperPrompt(stage, transcript, req, options = {}) {
     participants: context.participants.length ? context.participants : details.allAttendees,
     overallTopics: context.overallTopics,
     reviewerGuidance: context.additionalContext,
-    topicEvidence: discussionEvidencePack
+    topicEvidence: discussionEvidencePack,
+    workstreamState: discussionWorkstreamState
   };
   const stageInstruction = {
     summary: [
@@ -1072,6 +1079,14 @@ function buildStagedTrooperPrompt(stage, transcript, req, options = {}) {
       'Treat CONFIRMED_CONTEXT.overallTopics as the agenda for a methodical transcript pass.',
       'For each confirmed overall topic, look through the transcript for evidence relevant to that topic before moving to the next topic.',
       'Use CONFIRMED_CONTEXT.topicEvidence as the MiniLM semantic evidence pack where present, then cross-check against the transcript.',
+      'Use CONFIRMED_CONTEXT.workstreamState as the internal project-record object before writing the public discussion table.',
+      'The workstreamState object classifies evidence into current status, completed/past activity, future commitment, decision/agreement, open point, dependency, technical detail, general chatter/noise and explicit action buckets.',
+      'Render discussion rows from workstreamState first, using topicEvidence only as the supporting evidence backstop.',
+      'Preserve the current status, changes since last review, decisions, open points, dependencies, technical detail and next steps where evidenced.',
+      'Do not convert completed or past activity into a future action.',
+      'Keep explicit actions for the actions stage unless they are needed as a clearly evidenced next-step sentence in the discussion row.',
+      'If a workstream has qualityFlags such as abstract_workstream_heading or low_heading_evidence_match, prefer a more operational label from the evidence, confirmed topic, document, deliverable, system, standard or process.',
+      'If workstreamState contains a substantive evidenced workstream, include it unless it is clearly redundant with another row; this is the omission-risk check.',
       'For every confirmed topic that has topicEvidence snippets, return one discussionTopics object unless the snippets are clearly irrelevant.',
       'Do not collapse separate confirmed topics into one combined topic.',
       'Also do not over-segment: if topicEvidence combines overlapping transcript evidence under one topic, keep it as one consolidated topic.',
@@ -1107,7 +1122,7 @@ function buildStagedTrooperPrompt(stage, transcript, req, options = {}) {
     '',
     ...(options.strictTopicCoverage ? [
       'RETRY_NOTE:',
-      'The previous stage 3 response was too thin, duplicated, or collapsed the evidence pack. Re-run the stage methodically, using topicEvidence to produce concise topic rows for the distinct evidenced topics.',
+      'The previous stage 3 response was too thin, duplicated, or collapsed the evidence pack. Re-run the stage methodically, using workstreamState and topicEvidence to produce concise topic rows for the distinct evidenced workstreams.',
       ''
     ] : []),
     'STAGE_INSTRUCTIONS:',
@@ -1209,6 +1224,10 @@ async function buildStagedTrooperContext(stage, transcript, req, options = {}) {
         timingMs: { total: Date.now() - startedAt },
         strictTopicCoverage: Boolean(options.strictTopicCoverage),
         evidencePackTopicCount: Array.isArray(options.evidencePack) ? options.evidencePack.length : 0,
+        workstreamStateCount: Array.isArray(options.workstreamState) ? options.workstreamState.length : 0,
+        workstreamQualityFlags: Array.isArray(options.workstreamState)
+          ? [...new Set(options.workstreamState.flatMap((item) => Array.isArray(item.qualityFlags) ? item.qualityFlags : []))].slice(0, 12)
+          : [],
         usage: parsedBody?.usage || null
       }
     };
@@ -1306,22 +1325,24 @@ function stagedFastContextIsUsable(stage, context) {
 async function buildStagedGenerationContext(stage, transcript, req, onProgress = async () => {}) {
   let fastContext = null;
   let evidencePack = [];
+  let workstreamState = [];
   if (stage === 'discussion') {
     await onProgress(18, 'Building a semantic evidence pack for the confirmed discussion topics.');
     fastContext = await buildStagedMiniLMContext(transcript);
     evidencePack = buildStagedMiniLMEvidencePack(fastContext, stagedContextFromRequest(req).overallTopics);
+    workstreamState = buildStagedWorkstreamState(evidencePack, fastContext, stagedContextFromRequest(req).overallTopics);
   }
 
   await onProgress(25, stage === 'summary'
     ? 'AI is drafting objectives, summary and topics from the confirmed meeting details.'
     : `AI is drafting staged ${stage} content from the confirmed meeting details.`);
-  let trooperContext = await buildStagedTrooperContext(stage, transcript, req, { evidencePack });
-  if (stage === 'discussion' && trooperContext.ok && stagedDiscussionCoverageIsThin(trooperContext, req, transcript, evidencePack)) {
+  let trooperContext = await buildStagedTrooperContext(stage, transcript, req, { evidencePack, workstreamState });
+  if (stage === 'discussion' && trooperContext.ok && stagedDiscussionCoverageIsThin(trooperContext, req, transcript, evidencePack, workstreamState)) {
     await onProgress(45, 'AI discussion output was too thin, re-running against the semantic topic evidence.');
-    const retryContext = await buildStagedTrooperContext(stage, transcript, req, { strictTopicCoverage: true, evidencePack });
+    const retryContext = await buildStagedTrooperContext(stage, transcript, req, { strictTopicCoverage: true, evidencePack, workstreamState });
     const originalCount = discussionFromStagedMiniLM(trooperContext).length;
     const retryCount = discussionFromStagedMiniLM(retryContext).length;
-    if (retryContext.ok && (!stagedDiscussionCoverageIsThin(retryContext, req, transcript, evidencePack) || retryCount > originalCount)) {
+    if (retryContext.ok && (!stagedDiscussionCoverageIsThin(retryContext, req, transcript, evidencePack, workstreamState) || retryCount > originalCount)) {
       trooperContext = retryContext;
     }
   }
@@ -1631,6 +1652,141 @@ function buildStagedMiniLMEvidencePack(minilmContext, confirmedTopics = []) {
   return mergeStagedDiscussionEvidencePack(stagedMiniLMEvidenceItems(minilmContext, confirmedTopics), 6);
 }
 
+function stagedTextHasPastMarker(value) {
+  return /\b(?:was|were|had|has been|have been|already|previously|completed|reviewed|checked|approved|submitted|sent|shared|updated|finali[sz]ed|on\s+(?:monday|tuesday|wednesday|thursday|friday)|last\s+(?:week|month|review|meeting))\b/i.test(String(value || ''));
+}
+
+function stagedTextHasFutureCommitmentMarker(value) {
+  return /\b(?:will|shall|to\s+(?:review|send|share|update|complete|prepare|provide|confirm|submit|arrange|follow up|finali[sz]e|check|circulate|draft|issue)|needs?\s+to|should|going\s+to|by\s+(?:next\s+)?(?:monday|tuesday|wednesday|thursday|friday|week|\d{1,2})|before\s+(?:the\s+)?(?:next|release|submission|audit|review)|follow[- ]?up)\b/i.test(String(value || ''));
+}
+
+function classifyStagedEvidenceRoles(value) {
+  const text = cleanStagedDiscussionText(value);
+  if (!text || isLowValueStagedDiscussionText(text)) return ['general chatter/noise'];
+  const roles = new Set();
+  if (/\b(?:ongoing|in progress|current(?:ly)?|status|position|pending|on track|ready|not ready|complete|completed|finali[sz]ed|approved|available|waiting|open|closed|remains|is still|no issues)\b/i.test(text)) {
+    roles.add('current status');
+  }
+  if (stagedTextHasPastMarker(text)) roles.add('completed/past activity');
+  if (stagedTextHasFutureCommitmentMarker(text)) roles.add('future commitment');
+  if (/\b(?:agreed|agreement|confirmed|approved|accepted|decided|decision|signed off|can proceed|acceptable|aligned|resolved)\b/i.test(text)) {
+    roles.add('decision/agreement');
+  }
+  if (/\b(?:open point|outstanding|unclear|question|whether|need to understand|needs? clarification|to clarify|to determine|not yet clear|tbc|to be confirmed)\b/i.test(text)) {
+    roles.add('open point');
+  }
+  if (/\b(?:dependency|depends|dependent|required before|required for|waiting for|blocked|blocker|risk|issue|threat|impact|delay|tight|constraint|missing|gap|cannot proceed)\b/i.test(text)) {
+    roles.add('dependency');
+  }
+  if (/\b(?:\d{1,2}(?:st|nd|rd|th)?\s+[A-Z][a-z]+|20\d{2}|v\d+(?:\.\d+)*|version|document|report|file|plan|protocol|standard|requirement|test|testing|software|release|parameter|specification|scope|contract|minutes|\b[A-Z]{2,}(?:\b|[-/]))\b/.test(text)) {
+    roles.add('technical detail');
+  }
+  if (!roles.size) roles.add('general chatter/noise');
+  return [...roles];
+}
+
+function stagedLooksLikeAbstractWorkstream(value) {
+  return /\b(?:readiness|confidence|alignment|strategy|overview|deep dive|discussion|general|analytics|miscellaneous|updates?|status review)\b/i.test(String(value || ''));
+}
+
+function stagedEvidenceTextsForWorkstream(item) {
+  return uniqueCleanDiscussionItems([
+    ...(Array.isArray(item.points) ? item.points : []),
+    ...(Array.isArray(item.evidence) ? item.evidence : []),
+    ...(Array.isArray(item.supportingContext) ? item.supportingContext : []),
+    ...(Array.isArray(item.decisionsOrAgreements) ? item.decisionsOrAgreements : []),
+    ...(Array.isArray(item.risksOrDependencies) ? item.risksOrDependencies : []),
+    ...(Array.isArray(item.actions) ? item.actions : [])
+  ]).slice(0, 12);
+}
+
+function stagedHeadingEvidenceScore(topic, texts) {
+  if (!topic || !Array.isArray(texts) || !texts.length) return 0;
+  return Math.max(...texts.map((text) => stagedTokenSimilarity(topic, text)));
+}
+
+function stagedOperationalWorkstreamLabel(item, confirmedTopics = []) {
+  const topic = cleanStagedGeneratedLine(item.topic);
+  if (isUsableStagedTopic(topic) && !stagedLooksLikeAbstractWorkstream(topic)) return topic;
+  const confirmed = bestConfirmedTopicForEvidence(item, confirmedTopics);
+  if (confirmed && isUsableStagedTopic(confirmed)) return confirmed;
+  const texts = stagedEvidenceTextsForWorkstream(item).join(' ');
+  const match = texts.match(/\b(?:[A-Z][A-Za-z0-9/&-]+(?:\s+[A-Z][A-Za-z0-9/&-]+){0,4}\s+(?:file|plan|report|protocol|testing|test|review|update|release|contract|scope|documentation|standard|process|assessment|study))\b/);
+  return cleanStagedGeneratedLine(match ? match[0] : topic || 'Project workstream');
+}
+
+function pushStagedRoleValue(target, key, value, limit = 5) {
+  const cleaned = cleanStagedDiscussionText(value);
+  if (!cleaned || isNoEvidenceDiscussionText(cleaned) || isLowValueStagedDiscussionText(cleaned)) return;
+  if (target[key].some((item) => stagedTokenSimilarity(item, cleaned) >= 0.82 || item.toLowerCase() === cleaned.toLowerCase())) return;
+  target[key].push(cleaned);
+  if (target[key].length > limit) target[key].length = limit;
+}
+
+function buildStagedWorkstreamState(evidencePack = [], minilmContext = null, confirmedTopics = []) {
+  const items = Array.isArray(evidencePack) && evidencePack.length
+    ? evidencePack
+    : buildStagedMiniLMEvidencePack(minilmContext, confirmedTopics);
+  const states = [];
+
+  for (const item of items) {
+    if (!item || typeof item !== 'object') continue;
+    const evidenceTexts = stagedEvidenceTextsForWorkstream(item);
+    if (!evidenceTexts.length) continue;
+    const workstream = stagedOperationalWorkstreamLabel(item, confirmedTopics);
+    if (!isUsableStagedTopic(workstream)) continue;
+    const state = {
+      workstream,
+      currentStatus: [],
+      changesSinceLastReview: [],
+      decisionsOrAgreements: [],
+      openPoints: [],
+      dependencies: [],
+      technicalDetails: [],
+      nextSteps: [],
+      explicitActions: [],
+      sourceTurnIndices: Array.isArray(item.sourceTurnIndices) ? item.sourceTurnIndices.slice(0, 12) : [],
+      evidence: evidenceTexts.slice(0, 8),
+      confidence: Number(item.confidence || 0),
+      roleCounts: {},
+      qualityFlags: []
+    };
+
+    if (stagedLooksLikeAbstractWorkstream(item.topic)) state.qualityFlags.push('abstract_workstream_heading');
+    if (stagedHeadingEvidenceScore(workstream, evidenceTexts) < 0.08) state.qualityFlags.push('low_heading_evidence_match');
+
+    const actionTexts = uniqueCleanDiscussionItems(Array.isArray(item.actions) ? item.actions : []);
+    for (const text of evidenceTexts) {
+      const roles = classifyStagedEvidenceRoles(text);
+      for (const role of roles) state.roleCounts[role] = Number(state.roleCounts[role] || 0) + 1;
+      if (roles.includes('current status')) pushStagedRoleValue(state, 'currentStatus', text);
+      if (roles.includes('completed/past activity')) pushStagedRoleValue(state, 'changesSinceLastReview', text);
+      if (roles.includes('decision/agreement')) pushStagedRoleValue(state, 'decisionsOrAgreements', text);
+      if (roles.includes('open point')) pushStagedRoleValue(state, 'openPoints', text);
+      if (roles.includes('dependency')) pushStagedRoleValue(state, 'dependencies', text);
+      if (roles.includes('technical detail')) pushStagedRoleValue(state, 'technicalDetails', text);
+      if (roles.includes('future commitment') && !stagedTextHasPastMarker(text)) pushStagedRoleValue(state, 'nextSteps', text);
+    }
+
+    for (const action of actionTexts) {
+      if (stagedTextHasPastMarker(action) && !stagedTextHasFutureCommitmentMarker(action)) {
+        state.qualityFlags.push('possible_past_activity_as_action');
+        pushStagedRoleValue(state, 'changesSinceLastReview', action);
+        continue;
+      }
+      pushStagedRoleValue(state, stagedTextHasFutureCommitmentMarker(action) ? 'explicitActions' : 'nextSteps', action, 4);
+    }
+
+    if (state.evidence.length && !state.currentStatus.length && !state.technicalDetails.length && !state.decisionsOrAgreements.length) {
+      state.qualityFlags.push('substantive_workstream_omission_risk');
+    }
+    state.qualityFlags = [...new Set(state.qualityFlags)];
+    states.push(state);
+  }
+
+  return states.slice(0, 8);
+}
+
 function evidenceForTopic(transcriptText, topic) {
   const keywords = topicKeywords(topic);
   const lines = String(transcriptText || '')
@@ -1662,14 +1818,18 @@ function topicEvidenceForStagedDiscussion(transcript, topics) {
     .filter((item) => item.topic && item.evidence.length);
 }
 
-function stagedDiscussionCoverageIsThin(minilmContext, req, transcript, evidencePack = []) {
+function stagedDiscussionCoverageIsThin(minilmContext, req, transcript, evidencePack = [], workstreamState = []) {
   const context = stagedContextFromRequest(req);
   const topicEvidence = Array.isArray(evidencePack) && evidencePack.length
     ? evidencePack
     : topicEvidenceForStagedDiscussion(transcript, context.overallTopics);
-  if (topicEvidence.length < 2) return false;
+  const substantiveWorkstreams = Array.isArray(workstreamState)
+    ? workstreamState.filter((item) => item && (Array.isArray(item.evidence) ? item.evidence.length : 0))
+    : [];
+  const expectedWork = substantiveWorkstreams.length || topicEvidence.length;
+  if (expectedWork < 2) return false;
   const cards = discussionFromStagedMiniLM(minilmContext);
-  const expectedMinimum = Math.min(3, topicEvidence.length);
+  const expectedMinimum = Math.min(3, expectedWork);
   return cards.length < expectedMinimum;
 }
 

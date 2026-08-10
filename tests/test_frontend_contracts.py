@@ -162,11 +162,15 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("Technical detail retained", analytics)
         self.assertIn("Action concreteness", analytics)
         self.assertIn("Unsupported risk restraint", analytics)
+        self.assertIn("Heading/evidence match", analytics)
+        self.assertIn("Temporal/action separation", analytics)
+        self.assertIn("Omission risk", analytics)
         self.assertIn("initialiseProjectRecordQuality", analytics)
         self.assertIn("reviewSnapshot", analytics)
         self.assertIn("Prefer workstreams over themes", analytics)
         self.assertIn("Update the project record", analytics)
         self.assertIn("Preserve useful specifics", analytics)
+        self.assertIn("Check topic evidence before writing", analytics)
 
     def test_meeting_minutes_final_queue_and_jobs_page_are_wired(self):
         meeting_minutes_final = (REPO_DIR / "views" / "meeting-minutes-final.html").read_text(encoding="utf-8")

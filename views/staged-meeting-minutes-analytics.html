@@ -257,6 +257,9 @@ input { width:100%; border:1px solid var(--border-strong); border-radius:8px; pa
         <div class="rubric-item"><strong>Technical detail retained</strong><span id="technicalDetailScore" class="rubric-score">Static baseline</span></div>
         <div class="rubric-item"><strong>Action concreteness</strong><span id="actionConcreteScore" class="rubric-score">Static baseline</span></div>
         <div class="rubric-item"><strong>Unsupported risk restraint</strong><span id="riskRestraintScore" class="rubric-score">Static baseline</span></div>
+        <div class="rubric-item"><strong>Heading/evidence match</strong><span id="headingEvidenceScore" class="rubric-score">Static baseline</span></div>
+        <div class="rubric-item"><strong>Temporal/action separation</strong><span id="temporalActionScore" class="rubric-score">Static baseline</span></div>
+        <div class="rubric-item"><strong>Omission risk</strong><span id="omissionRiskScore" class="rubric-score">Static baseline</span></div>
       </div>
     </article>
     <article class="panel">
@@ -266,6 +269,7 @@ input { width:100%; border:1px solid var(--border-strong); border-radius:8px; pa
         <div class="warning-item"><strong>Prefer workstreams over themes.</strong><br><span class="muted">Use project-specific headings such as Electrical Compliance testing, SW Versioning, Cybersecurity, QMS or DoC language.</span></div>
         <div class="warning-item"><strong>Use Current position, not a generic executive summary.</strong><br><span class="muted">Capture where the project stands, what changed, what was agreed and what remains unresolved.</span></div>
         <div class="warning-item"><strong>Separate open points from actions.</strong><br><span class="muted">Only create an action where a concrete owner/request/follow-up is supported by the transcript.</span></div>
+        <div class="warning-item"><strong>Check topic evidence before writing.</strong><br><span class="muted">The embedding classifier should build the workstream state first, then Trooper should write from that evidence rather than raw transcript fragments.</span></div>
       </div>
     </article>
   </section>
@@ -469,7 +473,10 @@ input { width:100%; border:1px solid var(--border-strong); border-radius:8px; pa
     status: document.getElementById('statusLanguageScore'),
     detail: document.getElementById('technicalDetailScore'),
     actions: document.getElementById('actionConcreteScore'),
-    risk: document.getElementById('riskRestraintScore')
+    risk: document.getElementById('riskRestraintScore'),
+    headingEvidence: document.getElementById('headingEvidenceScore'),
+    temporalAction: document.getElementById('temporalActionScore'),
+    omissionRisk: document.getElementById('omissionRiskScore')
   };
   var warningNode = document.getElementById('projectRecordWarnings');
 
@@ -526,6 +533,8 @@ input { width:100%; border:1px solid var(--border-strong); border-radius:8px; pa
   var riskyInferencePattern = /\b(primary risk|significant risk|major blocker|critical blocker|threatens|will delay|has been agreed|decision was made)\b/i;
   var vagueActionPattern = /\b(aim to|try to|look at|think about|discuss|consider|front-end|sort out|progress)\b/i;
   var concreteActionPattern = /\b(update|review|send|share|confirm|prepare|complete|finali[sz]e|provide|draft|submit|arrange|follow up|followup)\b/i;
+  var pastActivityPattern = /\b(was|were|had|has been|already|previously|completed|reviewed|checked|approved|submitted|sent|shared|updated|finali[sz]ed)\b/i;
+  var futureCommitmentPattern = /\b(will|shall|needs? to|should|going to|follow[- ]?up|by next|to (review|send|share|update|complete|prepare|provide|confirm|submit|arrange|finali[sz]e|check|circulate|draft|issue))\b/i;
 
   var concreteHeadings = rows.filter(function (row) {
     var topic = String(row.topic || '');
@@ -533,9 +542,24 @@ input { width:100%; border:1px solid var(--border-strong); border-radius:8px; pa
   }).length;
   var statusBullets = bulletTexts.filter(function (text) { return hasAny(text, statusPattern); }).length;
   var detailBullets = bulletTexts.filter(function (text) { return hasAny(text, detailPattern); }).length;
+  var headingMatchedRows = rows.filter(function (row) {
+    var topic = String(row.topic || '').toLowerCase();
+    var topicWords = topic.split(/[^a-z0-9]+/).filter(function (word) {
+      return word.length >= 4 && !/^(meeting|review|update|status|discussion|project)$/.test(word);
+    });
+    var rowText = (Array.isArray(row.bullets) ? row.bullets : []).join(' ').toLowerCase();
+    return topicWords.length && topicWords.some(function (word) { return rowText.indexOf(word) !== -1; });
+  }).length;
+  var thinRows = rows.filter(function (row) {
+    return (Array.isArray(row.bullets) ? row.bullets : []).length < 2;
+  }).length;
   var concreteActions = actions.filter(function (action) {
     var text = String(action.action || '');
     return text && concreteActionPattern.test(text) && !vagueActionPattern.test(text) && String(action.owner || '').trim() && !/^not stated$/i.test(String(action.owner || '').trim());
+  }).length;
+  var pastActions = actions.filter(function (action) {
+    var text = String(action.action || '');
+    return pastActivityPattern.test(text) && !futureCommitmentPattern.test(text);
   }).length;
   var riskyBullets = bulletTexts.filter(function (text) { return hasAny(text, riskyInferencePattern); }).length;
 
@@ -544,7 +568,10 @@ input { width:100%; border:1px solid var(--border-strong); border-radius:8px; pa
     status: scorePercent(statusBullets, Math.max(1, rows.length)),
     detail: scorePercent(detailBullets, Math.max(1, rows.length)),
     actions: scorePercent(concreteActions, actions.length || 1),
-    risk: Math.max(0, 100 - riskyBullets * 20)
+    risk: Math.max(0, 100 - riskyBullets * 20),
+    headingEvidence: scorePercent(headingMatchedRows, rows.length || 1),
+    temporalAction: Math.max(0, 100 - pastActions * 25),
+    omissionRisk: Math.max(0, 100 - thinRows * 18)
   };
 
   if (scoreNodes.headings) scoreNodes.headings.textContent = scores.headings + '%';
@@ -552,6 +579,9 @@ input { width:100%; border:1px solid var(--border-strong); border-radius:8px; pa
   if (scoreNodes.detail) scoreNodes.detail.textContent = scores.detail + '%';
   if (scoreNodes.actions) scoreNodes.actions.textContent = scores.actions + '%';
   if (scoreNodes.risk) scoreNodes.risk.textContent = scores.risk + '%';
+  if (scoreNodes.headingEvidence) scoreNodes.headingEvidence.textContent = scores.headingEvidence + '%';
+  if (scoreNodes.temporalAction) scoreNodes.temporalAction.textContent = scores.temporalAction + '%';
+  if (scoreNodes.omissionRisk) scoreNodes.omissionRisk.textContent = scores.omissionRisk + '%';
 
   var warnings = [];
   if (scores.headings < 75) warnings.push('Some headings look thematic rather than project-specific. Prefer named workstreams, documents, systems or deliverables.');
@@ -559,6 +589,9 @@ input { width:100%; border:1px solid var(--border-strong); border-radius:8px; pa
   if (scores.detail < 45) warnings.push('Few bullets contain concrete details such as dates, standards, versions, documents or technical parameters.');
   if (actions.length && scores.actions < 70) warnings.push('Some actions may be too vague or missing clear ownership. Keep aspirations and open points separate from committed actions.');
   if (riskyBullets) warnings.push('Check whether risk/blocker language is directly supported, rather than inferred from ordinary dependencies or questions.');
+  if (scores.headingEvidence < 70) warnings.push('Some discussion headings may not match the evidence underneath them. Re-label around the document, deliverable, system, standard or process actually discussed.');
+  if (pastActions) warnings.push('Some action rows look like completed or past activity. Move those into discussion status/change notes unless a future commitment is explicit.');
+  if (thinRows) warnings.push('Some workstreams have only one bullet. Check for omitted current status, changes, open points, decisions, dependencies or technical detail.');
 
   if (warningNode && warnings.length) {
     warningNode.innerHTML = warnings.map(function (warning) {
