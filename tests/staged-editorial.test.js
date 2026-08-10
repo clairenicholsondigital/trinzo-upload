@@ -39,6 +39,30 @@ test('buildTightStagedObjectives replaces boilerplate with topic-specific object
   assert.equal(result.telemetry.objectiveSource, 'topic_objective_reducer');
 });
 
+test('buildTightStagedObjectives can preserve a workstream-style objective list when requested', () => {
+  const result = buildTightStagedObjectives({
+    meetingTitle: 'T761 Eakin Healthcare Tech File SW review',
+    meetingType: 'Project review',
+    maxObjectives: 7,
+    topics: [
+      'Alarm changes',
+      'Language changes',
+      'Software versioning changes',
+      'Electrical safety testing',
+      'Cybersecurity',
+      'Document tracking',
+      'Software workstream timeline delay'
+    ]
+  });
+
+  assert.ok(result.objectives.length >= 5);
+  assert.ok(result.objectives.some((objective) => objective.includes('alarm changes')));
+  assert.ok(result.objectives.some((objective) => objective.includes('language changes')));
+  assert.ok(result.objectives.some((objective) => objective.includes('software versioning changes')));
+  assert.ok(result.objectives.some((objective) => objective.includes('electrical safety testing')));
+  assert.ok(result.objectives.some((objective) => objective.includes('cybersecurity')));
+});
+
 test('compactStagedDiscussionCards keeps stronger topic bullets and removes repetition', () => {
   const result = compactStagedDiscussionCards([
     {

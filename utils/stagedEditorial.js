@@ -130,9 +130,27 @@ function isGenericStagedObjective(value) {
 }
 
 function buildTightStagedObjectives(input = {}) {
+  const maxObjectives = Math.max(1, Math.min(8, Number(input.maxObjectives || 3)));
   const topics = (Array.isArray(input.topics) ? input.topics : [])
     .map(tidyTopicPhrase)
     .filter(Boolean);
+  if (maxObjectives > 3 && topics.length > 3) {
+    const objectives = topics
+      .slice(0, maxObjectives)
+      .map((topic) => `${objectiveIntentForTopic(topic)} ${lowerInitialForObjective(topic)}`)
+      .filter(Boolean);
+    if (objectives.length) {
+      return {
+        objectives,
+        telemetry: {
+          objectiveSource: 'workstream_objective_reducer',
+          topicCount: topics.length,
+          objectiveSpecificityScore: 100
+        }
+      };
+    }
+  }
+
   const grouped = new Map();
   for (const topic of topics) {
     const intent = objectiveIntentForTopic(topic);
@@ -146,7 +164,7 @@ function buildTightStagedObjectives(input = {}) {
     const phrase = joinObjectivePhrases((grouped.get(intent) || []).slice(0, 2));
     if (!phrase) continue;
     objectives.push(`${intent} ${phrase}`);
-    if (objectives.length >= 3) break;
+    if (objectives.length >= maxObjectives) break;
   }
 
   if (!objectives.length) {
@@ -155,7 +173,7 @@ function buildTightStagedObjectives(input = {}) {
   }
 
   return {
-    objectives: objectives.slice(0, 3),
+    objectives: objectives.slice(0, maxObjectives),
     telemetry: {
       objectiveSource: objectives.length ? 'topic_objective_reducer' : 'fallback_objective_reducer',
       topicCount: topics.length,

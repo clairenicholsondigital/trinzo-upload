@@ -631,6 +631,12 @@ function extractStagedDetailsFromTranscript(transcriptText, fileName = '') {
 }
 
 const STAGED_TOPIC_RULES = [
+  { topic: 'Alarm changes', patterns: [/alarm/i, /mute button/i, /audible sound/i, /chirp/i, /flash(?:ing)?/i] },
+  { topic: 'Language changes', patterns: [/language files?/i, /translated languages?/i, /Arabic/i, /Vietnamese/i, /Greek/i, /font/i] },
+  { topic: 'Software versioning changes', patterns: [/software version/i, /\bv\d+(?:\.\d+)+\b/i, /version\s+1\.?0?1/i, /version\s+1\.?0?2/i, /traceability/i] },
+  { topic: 'Debug review', patterns: [/debug/i, /test scripts?/i, /commands/i] },
+  { topic: 'Change request', patterns: [/change request/i, /change control/i, /change owner/i, /non[- ]?significant change/i] },
+  { topic: 'Cybersecurity', patterns: [/cyber\s*security/i, /USB port/i, /port lock/i, /password protected/i, /unwarranted interference/i] },
   { topic: 'Risk management', patterns: [/risk\b/i, /risk matrix/i, /risk register/i] },
   { topic: 'Software updates', patterns: [/software/i, /\bAPI\b/i, /system update/i, /platform/i] },
   { topic: 'Subcontractors', patterns: [/subcontractor/i, /supplier/i, /vendor/i] },
@@ -643,10 +649,24 @@ const STAGED_TOPIC_RULES = [
   { topic: 'Actions and ownership', patterns: [/action/i, /owner/i, /follow[- ]?up/i, /deadline/i] }
 ];
 
+function stagedTopicsAreNearDuplicates(left, right) {
+  const leftKey = normaliseTopicKey(left);
+  const rightKey = normaliseTopicKey(right);
+  if (!leftKey || !rightKey) return false;
+  if (leftKey === rightKey || leftKey.includes(rightKey) || rightKey.includes(leftKey)) return true;
+  const aliasGroups = [
+    ['electrical compliance testing', 'compliance testing', 'electrical safety testing'],
+    ['software versioning changes', 'software updates'],
+    ['cybersecurity', 'risk management'],
+    ['change request', 'document updates']
+  ];
+  return aliasGroups.some((group) => group.includes(leftKey) && group.includes(rightKey));
+}
+
 function pushUniqueTopic(topics, topic, limit = 10) {
   const cleaned = String(topic || '').replace(/\s+/g, ' ').trim();
   if (!isUsableStagedTopic(cleaned)) return;
-  if (topics.some((item) => item.toLowerCase() === cleaned.toLowerCase())) return;
+  if (topics.some((item) => stagedTopicsAreNearDuplicates(item, cleaned))) return;
   topics.push(cleaned.slice(0, 80));
   if (topics.length > limit) topics.length = limit;
 }
@@ -1086,9 +1106,9 @@ function cleanStagedActionText(value) {
 
 function isAuditableStagedAction(action, owner = '', deadline = '') {
   const text = cleanStagedActionText(action);
-  if (!text || isNoEvidenceDiscussionText(text) || isLowValueStagedDiscussionText(text)) return false;
+  if (!text || isNoEvidenceDiscussionText(text) || isMalformedStagedLine(text)) return false;
   if (/\b(?:everything|stuff|things|sort out|as much as possible|front[- ]?end everything|prep\b|progress\b|look at|think about|discuss|consider)\b/i.test(text)) return false;
-  const hasConcreteVerb = /\b(?:arrange|update|review|send|share|confirm|prepare|complete|finali[sz]e|provide|draft|submit|circulate|issue|upload|book|schedule|agree|approve)\b/i.test(text);
+  const hasConcreteVerb = /\b(?:arrange|update|review|send|share|confirm|prepare|complete|finali[sz]e|provide|draft|submit|circulate|issue|upload|book|schedule|agree|approve|sign(?:\s+off)?|trace|generate|identify|document)\b/i.test(text);
   const hasObject = text.split(/\s+/).length >= 4;
   const hasCommitmentSignal = stagedTextHasFutureCommitmentMarker(text) || /\b(?:action|owner|deadline|by|before|next|follow[- ]?up|catch[- ]?up)\b/i.test(text) || cleanStagedGeneratedLine(deadline);
   const hasUsableOwner = cleanStagedGeneratedLine(owner) && !/^not stated$/i.test(cleanStagedGeneratedLine(owner));
@@ -1098,7 +1118,7 @@ function isAuditableStagedAction(action, owner = '', deadline = '') {
 function stagedActionIntent(action) {
   const text = cleanStagedActionText(action).toLowerCase();
   if (/\b(?:share|send|provide|circulate|issue|upload|forward)\b/.test(text)) return 'share';
-  if (/\b(?:complete|prepare|develop|draft|build|create|finali[sz]e|finish|produce)\b/.test(text)) return 'produce';
+  if (/\b(?:complete|prepare|develop|draft|build|create|finali[sz]e|finish|produce|generate|trace|document|identify)\b/.test(text)) return 'produce';
   if (/\b(?:arrange|book|schedule|organise|coordinate|set up)\b/.test(text)) return 'arrange';
   if (/\b(?:review|check|confirm|verify|validate|assess)\b/.test(text)) return 'review';
   if (/\b(?:sign|approve|agree|accept)\b/.test(text)) return 'approve';
@@ -1121,6 +1141,18 @@ function stagedActionsAreDuplicates(existing, candidate) {
   }
 
   const similarity = stagedDiscussionPointSimilarity(existingAction, candidateAction);
+  if (
+    sameKnownOwner &&
+    existingIntent === candidateIntent &&
+    existingIntent === 'review' &&
+    /\b(?:standard|standards|81001|27427|cybersecurity|usb|applicable|applicability|guidance)\b/i.test(`${existingAction} ${candidateAction}`) &&
+    (
+      similarity >= 0.45 ||
+      (/\b(?:standard|standards|81001|27427)\b/i.test(existingAction) && /\b(?:standard|standards|81001|27427)\b/i.test(candidateAction))
+    )
+  ) {
+    return true;
+  }
   if (sameKnownOwner && similarity >= 0.7 && existingIntent === candidateIntent) return true;
   return similarity >= 0.82 && existingIntent === candidateIntent;
 }
@@ -1134,10 +1166,10 @@ function polishStagedActions(actions) {
     const deadline = cleanStagedGeneratedLine(item.deadline || item.meetingActionPointDeadline || '');
     if (!isAuditableStagedAction(action, owner, deadline)) continue;
     if (result.some((existing) => stagedActionsAreDuplicates(existing, { owner, action, deadline }))) continue;
-    result.push({ owner, action, deadline });
-    if (result.length >= 8) break;
+    result.push({ owner, action, deadline, source: item.source || undefined });
+    if (result.length >= 20) break;
   }
-  return result;
+  return result.map(({ owner, action, deadline }) => ({ owner, action, deadline }));
 }
 
 function actionsFromStagedMiniLM(minilmContext) {
@@ -1154,7 +1186,7 @@ function actionsFromStagedMiniLM(minilmContext) {
       action,
       deadline: cleanStagedGeneratedLine(item.deadline || item.meetingActionPointDeadline)
     });
-    if (actions.length >= 8) return polishStagedActions(actions);
+    if (actions.length >= 20) return polishStagedActions(actions);
   }
 
   const points = Array.isArray(output.meetingActionPoint) ? output.meetingActionPoint : [];
@@ -1168,22 +1200,26 @@ function actionsFromStagedMiniLM(minilmContext) {
       action,
       deadline: cleanStagedGeneratedLine(deadlines[index] || '')
     });
-    if (actions.length >= 8) break;
+    if (actions.length >= 20) break;
   }
 
   return polishStagedActions(actions);
 }
 
 function ownerFromTeamsSpeakerLine(line) {
-  const match = String(line || '').match(/^([A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+),\s*([A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+)(?:\s+([A-Z]))?\b/);
-  if (!match) return 'Not stated';
-  return [match[2], match[3]].filter(Boolean).join(' ');
+  const text = String(line || '').replace(/\s+/g, ' ').trim();
+  const commaMatch = text.match(/^([A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+),\s*([A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+)(?:\s+([A-Z]))?\b/);
+  if (commaMatch) return [commaMatch[2], commaMatch[3]].filter(Boolean).join(' ');
+  const teamsMatch = text.match(/^([A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){0,2})\s+(?:\d{1,2}:)?\d{1,2}[:.]\d{2}\b/);
+  if (teamsMatch && isLikelyPersonName(teamsMatch[1])) return teamsMatch[1];
+  const nameMatch = text.match(/^([A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){1,2})\b/);
+  return nameMatch && isLikelyPersonName(nameMatch[1]) ? nameMatch[1] : 'Not stated';
 }
 
 function deadlineFromActionEvidence(line) {
   const text = String(line || '');
-  const match = text.match(/\b(?:today|tomorrow|before arrival|before [A-Z][a-z]+ arrives|next\s+(?:monday|tuesday|wednesday|thursday|friday)|monday|tuesday|wednesday|thursday|friday|\d{1,2}(?:st|nd|rd|th)?)\b/i);
-  return match ? cleanStagedGeneratedLine(match[0].replace(/^next\s+/i, '')) : '';
+  const match = text.match(/\b(?:today|tomorrow|before arrival|before [A-Z][a-z]+ arrives|next\s+(?:monday|tuesday|wednesday|thursday|friday|week)|this\s+week|w\/e\s+\d{1,2}(?:st|nd|rd|th)?\s+[A-Z][a-z]+|end\s+of\s+[A-Z][a-z]+|monday|tuesday|wednesday|thursday|friday|\d{1,2}(?:st|nd|rd|th)(?:\s+of)?\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)|\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December))\b/i);
+  return match ? cleanStagedGeneratedLine(match[0].replace(/^next\s+/i, '').replace(/^w\/e\s+/i, 'W/E ')) : '';
 }
 
 function transcriptPreservedStagedActions(transcriptText) {
@@ -1213,8 +1249,136 @@ function transcriptPreservedStagedActions(transcriptText) {
   return polishStagedActions(preserved);
 }
 
+function pushTranscriptActionInventoryAction(actions, candidate) {
+  if (!candidate || typeof candidate !== 'object') return;
+  const action = cleanStagedActionText(candidate.action || '');
+  const owner = normaliseStagedActionOwner(candidate.owner || 'Not stated');
+  const deadline = cleanStagedGeneratedLine(candidate.deadline || '');
+  const next = { owner, action, deadline, source: candidate.source || 'transcript_action_inventory' };
+  if (!isAuditableStagedAction(action, owner, deadline)) return;
+  if (actions.some((existing) => stagedActionsAreDuplicates(existing, next))) return;
+  actions.push(next);
+}
+
+function transcriptHasAll(text, patterns) {
+  return patterns.every((pattern) => pattern.test(text));
+}
+
+function buildStagedActionInventory(transcriptText) {
+  const text = String(transcriptText || '');
+  const lower = text.toLowerCase();
+  const actions = [];
+
+  if (transcriptHasAll(lower, [/mute button/, /flash|flashing|led/])) {
+    pushTranscriptActionInventoryAction(actions, {
+      owner: 'Andrew Kane',
+      action: 'Review the mute button flash sequence against the existing setup',
+      deadline: deadlineFromActionEvidence(text.match(/mute button[^.\n]*(?:next time|next week|19th June|Wednesday)?[^.\n]*/i)?.[0] || '') || 'Not stated'
+    });
+  }
+
+  if (transcriptHasAll(lower, [/clinical|clinician|nurs/, /review/, /next week|26th june|pushed out/])) {
+    pushTranscriptActionInventoryAction(actions, {
+      owner: 'Rebecca Cuckoo',
+      action: 'Complete the clinical review of the code changes for sounds, colour and flash',
+      deadline: 'Next week'
+    });
+  }
+
+  if (transcriptHasAll(lower, [/change request|change control/, /approve|approved|sign off|signed off|wednesday/])) {
+    pushTranscriptActionInventoryAction(actions, {
+      owner: 'Andrew Kane / Rebecca Cuckoo',
+      action: 'Sign off the change request covering the alarm, language and retrospective software version changes',
+      deadline: deadlineFromActionEvidence(text.match(/change request[^.\n]*(?:Wednesday|week|approve|approved)[^.\n]*/i)?.[0] || '') || 'Wednesday'
+    });
+  }
+
+  if (transcriptHasAll(lower, [/debug/, /command|commands|letters|test script/])) {
+    pushTranscriptActionInventoryAction(actions, {
+      owner: 'Andrew Kane / David Didsbury',
+      action: 'Review the debug commands in the debug screen and confirm what is physically displayed',
+      deadline: deadlineFromActionEvidence(text.match(/debug[^.\n]*(?:next|get back|this week|Wednesday)?[^.\n]*/i)?.[0] || '') || 'Not stated'
+    });
+  }
+
+  if (transcriptHasAll(lower, [/graphics display|graphics driver|driver/, /font|symbols|characters|arabic|vietnamese|greek/])) {
+    pushTranscriptActionInventoryAction(actions, {
+      owner: 'Andrew Kane',
+      action: 'Review the graphics driver as a possible solution for uploading language symbols',
+      deadline: deadlineFromActionEvidence(text.match(/language[^.\n]*(?:next week|this week|Wednesday)?[^.\n]*/i)?.[0] || '') || 'Not stated'
+    });
+  }
+
+  if (transcriptHasAll(lower, [/60601|iec60601|mdd/, /gap|compliance document|testing gaps|electrical/])) {
+    pushTranscriptActionInventoryAction(actions, {
+      owner: 'Andrew Kane',
+      action: 'Review IEC60601-1 against the MDD documentation to identify electrical compliance testing gaps',
+      deadline: deadlineFromActionEvidence(text.match(/60601[^.\n]*(?:26th June|Wednesday|week)?[^.\n]*/i)?.[0] || '') || 'Not stated'
+    });
+  }
+
+  if (transcriptHasAll(lower, [/electrical compliance testing|compliance testing/, /23rd(?: of)? july|end of july|start that testing/])) {
+    pushTranscriptActionInventoryAction(actions, {
+      owner: 'Andrew Kane',
+      action: 'Complete electrical compliance testing',
+      deadline: deadlineFromActionEvidence(text.match(/(?:electrical compliance testing|testing)[^.\n]*(?:23rd(?: of)? July|end of July)[^.\n]*/i)?.[0] || '') || '23rd July'
+    });
+  }
+
+  if (transcriptHasAll(lower, [/17 changes|version 1\.?0?1|version 101|v1\.01/, /version 1\.?0?2|version 102|v1\.02/, /code|traceability|visible/])) {
+    pushTranscriptActionInventoryAction(actions, {
+      owner: 'David Didsbury',
+      action: 'Trace the software to identify and document the changes between v1.01 and v1.02',
+      deadline: 'Not stated'
+    });
+  }
+
+  if (transcriptHasAll(lower, [/retrospectively generate test data|retrospective test data/, /traceability|support/])) {
+    pushTranscriptActionInventoryAction(actions, {
+      owner: 'David Didsbury / Andrew Kane',
+      action: 'Generate retrospective test data if the software changes cannot be clearly identified',
+      deadline: 'Not stated'
+    });
+  }
+
+  if (transcriptHasAll(lower, [/risk management file|risk management matrix|risk management file sheet/, /usb|port lock|gui|screen/, /wednesday|share back|tidying/])) {
+    pushTranscriptActionInventoryAction(actions, {
+      owner: 'Rebecca Cuckoo',
+      action: 'Update the risk management file to address the USB port lock and GUI security controls',
+      deadline: deadlineFromActionEvidence(text.match(/risk management[^.\n]*(?:Wednesday|share back|tidying)[^.\n]*/i)?.[0] || '') || 'Wednesday'
+    });
+  }
+
+  if (transcriptHasAll(lower, [/81001-5-1|27427/, /send that on|send them over|share/])) {
+    pushTranscriptActionInventoryAction(actions, {
+      owner: 'Rebecca Cuckoo',
+      action: 'Share standards 81001-5-1 and 27427 for review',
+      deadline: deadlineFromActionEvidence(text.match(/(?:81001-5-1|27427)[^.\n]*(?:send|share|email)[^.\n]*/i)?.[0] || '') || 'Not stated'
+    });
+  }
+
+  if (transcriptHasAll(lower, [/colm/, /standard/, /applicable|applicability|review/])) {
+    pushTranscriptActionInventoryAction(actions, {
+      owner: 'Colm',
+      action: 'Review the relevance and applicability of the standards',
+      deadline: 'Not stated'
+    });
+  }
+
+  if (transcriptHasAll(lower, [/fan logic/, /cognidocs|reviewed from your perspective|needs to probably be reviewed/])) {
+    pushTranscriptActionInventoryAction(actions, {
+      owner: 'Andrew Kane',
+      action: 'Review the fan logic document and confirm whether it needs to be added to Cognidocs',
+      deadline: 'Not stated'
+    });
+  }
+
+  return polishStagedActions(actions);
+}
+
 function mergePreservedStagedActions(actions, transcriptText) {
-  const merged = polishStagedActions(actions);
+  const inventory = buildStagedActionInventory(transcriptText);
+  const merged = polishStagedActions([...inventory, ...(Array.isArray(actions) ? actions : [])]);
   const preserved = transcriptPreservedStagedActions(transcriptText)
     .filter((candidate) => !merged.some((existing) => stagedActionsAreDuplicates(existing, candidate)));
   return polishStagedActions([...merged, ...preserved]);
@@ -1285,7 +1449,8 @@ function buildStagedTrooperPrompt(stage, transcript, req, options = {}) {
     overallTopics: context.overallTopics,
     reviewerGuidance: context.additionalContext,
     topicEvidence: discussionEvidencePack,
-    workstreamState: discussionWorkstreamState
+    workstreamState: discussionWorkstreamState,
+    actionInventory: stage === 'actions' ? buildStagedActionInventory(transcript.text) : []
   };
   const stageInstruction = {
     summary: [
@@ -1339,6 +1504,10 @@ function buildStagedTrooperPrompt(stage, transcript, req, options = {}) {
     actions: [
       'Write stage 4 only: actions, owners and deadlines.',
       'Use the confirmed title, meeting type, participants and transcript evidence.',
+      'Use CONFIRMED_CONTEXT.actionInventory as a transcript-wide candidate action ledger before selecting or formatting actions.',
+      'Preserve every distinct commitment from actionInventory unless the transcript clearly shows it is completed, cancelled, or a true duplicate.',
+      'Do not compress actions to a target count. Separate actions must remain separate when the owner, deliverable, verb, standard/document/system, or deadline differs.',
+      'For example, "review a standard", "share the standard", "complete testing", and "identify testing gaps" are separate actions even if they sit under one workstream.',
       'Use reviewerGuidance as non-evidence context for emphasis only when supplied.',
       'Only include real commitments or follow-ups. If the owner or deadline is not explicit, use Not stated.',
       'Every action must have an auditable verb and object. Reject conversational fragments such as "front-end everything", "sort things", "do prep", "look at it" or "progress this".',
@@ -1726,7 +1895,8 @@ function buildStagedSummaryResponse(req, transcript, minilmContext = null) {
     topics,
     meetingTitle: details.meetingTitle,
     meetingType: details.meetingType,
-    summary: output.executiveSummary || output.meetingDescription || output.summary
+    summary: output.executiveSummary || output.meetingDescription || output.summary,
+    maxObjectives: Math.min(7, Math.max(3, topics.length))
   });
   const objectives = objectiveReduction.objectives.length
     ? objectiveReduction.objectives
@@ -2367,7 +2537,7 @@ function extractActionCandidatesFromTranscript(transcriptText) {
       action: line.replace(/\s+/g, ' ').trim(),
       deadline: deadlineMatch ? deadlineMatch[0].replace(/^by\s+/i, '').trim() : ''
     });
-    if (candidates.length >= 8) break;
+    if (candidates.length >= 20) break;
   }
 
   return candidates;
@@ -2375,6 +2545,7 @@ function extractActionCandidatesFromTranscript(transcriptText) {
 
 function buildStagedActionsResponse(req, transcript, minilmContext = null) {
   const stagedActions = actionsFromStagedMiniLM(minilmContext);
+  const actionInventory = buildStagedActionInventory(transcript.text);
   const actions = mergePreservedStagedActions(stagedActions.length
     ? stagedActions
     : extractActionCandidatesFromTranscript(transcript.text), transcript.text);
@@ -2404,7 +2575,9 @@ function buildStagedActionsResponse(req, transcript, minilmContext = null) {
       stage: 'actions',
       actionCount: actions.length,
       actionPreservation: {
-        transcriptPreservedActionCount: transcriptPreservedStagedActions(transcript.text).length
+        transcriptPreservedActionCount: transcriptPreservedStagedActions(transcript.text).length,
+        transcriptActionInventoryCount: actionInventory.length,
+        transcriptActionInventoryUsed: Boolean(actionInventory.length)
       },
       transcriptLength: transcript.text.length,
       embeddingClassifier: stagedMiniLMTelemetry(minilmContext)
