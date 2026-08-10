@@ -1183,6 +1183,11 @@ Analytics and review confidence</textarea>
     if (meetingTypeInput) formData.append('meetingType', meetingTypeInput.value);
     formData.append('participants', currentParticipants().join('\n'));
     if (overallTopicsInput) formData.append('overallTopics', overallTopicsInput.value);
+    formData.append('reviewObjectives', JSON.stringify(linesFromTextarea(objectivesInput && objectivesInput.value)));
+    formData.append('reviewDiscussion', JSON.stringify(discussionRowsFromReview().map(function (item) {
+      return { topic: item.topic, points: item.bullets };
+    })));
+    formData.append('reviewActions', JSON.stringify(actionsFromReview()));
     if (stageAdditionalContextInput) formData.append('additionalContext', stageAdditionalContextInput.value);
     return { formData: formData, hasTranscript: Boolean(transcriptText || transcriptFile || storedTranscriptText || stagedSourceJobId || draftId) };
   }

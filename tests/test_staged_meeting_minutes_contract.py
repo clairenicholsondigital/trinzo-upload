@@ -293,6 +293,11 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
 
         # Advisory flags are attached to the staged payloads (never auto-fixed away).
         self.assertIn("validationFlags,", api)
+        self.assertIn("function stagedReviewContextFromRequest", api)
+        self.assertIn("const reviewContext = stagedReviewContextFromRequest(req)", api)
+        self.assertIn("reviewObjectives: input.reviewObjectives || ''", api)
+        self.assertIn("reviewDiscussion: input.reviewDiscussion || ''", api)
+        self.assertIn("reviewActions: input.reviewActions || ''", api)
 
         # The util exposes the mechanical fixers and the advisory flag builder.
         for name in (
@@ -312,6 +317,9 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("id=\"stageValidationFlags\"", page)
         self.assertIn("function renderValidationFlags", page)
         self.assertIn("renderValidationFlags(payload && payload.validationFlags)", page)
+        self.assertIn("formData.append('reviewObjectives'", page)
+        self.assertIn("formData.append('reviewDiscussion'", page)
+        self.assertIn("formData.append('reviewActions'", page)
         self.assertIn("Editorial checks (review before moving on)", page)
 
 

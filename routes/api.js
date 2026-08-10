@@ -1571,6 +1571,44 @@ function stagedContextFromRequest(req) {
   };
 }
 
+function parseStagedReviewArray(value) {
+  if (Array.isArray(value)) return value;
+  const text = String(value || '').trim();
+  if (!text) return [];
+  try {
+    const parsed = JSON.parse(text);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function stagedReviewContextFromRequest(req) {
+  return {
+    objectives: parseStagedReviewArray(req.body?.reviewObjectives || req.query?.reviewObjectives)
+      .map((item) => cleanStagedGeneratedLine(item))
+      .filter(Boolean),
+    discussion: parseStagedReviewArray(req.body?.reviewDiscussion || req.query?.reviewDiscussion)
+      .map((item) => {
+        if (!item || typeof item !== 'object') return null;
+        const points = uniqueCleanDiscussionItems(item.points || item.bullets || item.discussionPoints || []);
+        const topic = cleanStagedGeneratedLine(item.topic || item.title || 'Discussion');
+        return topic && points.length ? { topic, points } : null;
+      })
+      .filter(Boolean),
+    actions: parseStagedReviewArray(req.body?.reviewActions || req.query?.reviewActions)
+      .map((item) => {
+        if (!item || typeof item !== 'object') return null;
+        return {
+          owner: normaliseStagedActionOwner(item.owner || 'Not stated'),
+          action: cleanStagedActionText(item.action || item.meetingActionPoint || ''),
+          deadline: cleanStagedGeneratedLine(item.deadline || item.meetingActionPointDeadline || '')
+        };
+      })
+      .filter((item) => item && item.action)
+  };
+}
+
 function stagedDetailsWithConfirmedContext(req, transcript) {
   const extracted = extractStagedDetailsFromTranscript(transcript.text, transcript.fileName).screens.details;
   const context = stagedContextFromRequest(req);
@@ -2238,6 +2276,12 @@ function buildStagedActionsResponse(req, transcript, minilmContext = null) {
   const actions = polishStagedActions(stagedActions.length
     ? stagedActions
     : extractActionCandidatesFromTranscript(transcript.text));
+  const reviewContext = stagedReviewContextFromRequest(req);
+  const validationFlags = buildStagedValidationFlags({
+    objectives: reviewContext.objectives,
+    discussion: reviewContext.discussion,
+    actions
+  });
 
   return {
     ok: true,
@@ -2246,6 +2290,7 @@ function buildStagedActionsResponse(req, transcript, minilmContext = null) {
     transcriptLength: transcript.text.length,
     staged: true,
     stagedStage: 'actions',
+    validationFlags,
     screens: {
       actions: actions.length ? actions : [{
         owner: 'Not stated',
@@ -2373,6 +2418,9 @@ async function runQueuedStagedMeetingMinutesStage(jobId) {
       meetingType: input.meetingType || '',
       participants: input.participants || '',
       overallTopics: input.overallTopics || '',
+      reviewObjectives: input.reviewObjectives || '',
+      reviewDiscussion: input.reviewDiscussion || '',
+      reviewActions: input.reviewActions || '',
       additionalContext: input.additionalContext || ''
     }
   };
@@ -3183,6 +3231,9 @@ router.post('/staged-meeting-minutes/jobs', requireAuth, withTestUpload(async (r
       meetingType: req.body?.meetingType || '',
       participants: req.body?.participants || '',
       overallTopics: req.body?.overallTopics || '',
+      reviewObjectives: req.body?.reviewObjectives || '',
+      reviewDiscussion: req.body?.reviewDiscussion || '',
+      reviewActions: req.body?.reviewActions || '',
       additionalContext: req.body?.additionalContext || '',
       draftId: req.body?.draftId || '',
       targetScreen: req.body?.targetScreen || 0,
