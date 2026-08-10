@@ -273,6 +273,47 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("pollStageJobUntilDone", page)
         self.assertNotIn("window.location.href = payload.jobsUrl", page)
 
+    def test_post_extraction_editorial_pass_is_wired_in(self):
+        api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+        editorial = (REPO_DIR / "utils" / "stagedEditorial.js").read_text(encoding="utf-8")
+
+        # The editorial helpers live in a dependency-free util so they can be unit
+        # tested without the router/db, and are wired into the staged flow.
+        self.assertIn("require('../utils/stagedEditorial')", api)
+        self.assertIn("isMalformedStagedLine", api)
+        self.assertIn("hasStagedDecisionEvidence", api)
+        self.assertIn("dedupeStagedDiscussionCards", api)
+        self.assertIn("buildStagedValidationFlags", api)
+
+        # Cross-section de-duplication runs after per-card polishing, and the
+        # decision/agreement label is dropped without supporting evidence.
+        self.assertIn("dedupeStagedDiscussionCards(polished)", api)
+        self.assertIn("if (polished.decisionOrAgreement && !hasStagedDecisionEvidence(polished.decisionOrAgreement))", api)
+        self.assertIn("if (isMalformedStagedLine(cleaned)) return true;", api)
+
+        # Advisory flags are attached to the staged payloads (never auto-fixed away).
+        self.assertIn("validationFlags,", api)
+
+        # The util exposes the mechanical fixers and the advisory flag builder.
+        for name in (
+            "function isMalformedStagedLine",
+            "function hasStagedDecisionEvidence",
+            "function dedupeStagedDiscussionCards",
+            "function buildStagedValidationFlags",
+        ):
+            self.assertIn(name, editorial)
+        self.assertIn("duplicate_section", editorial)
+        self.assertIn("malformed_text", editorial)
+        self.assertIn("possible_omitted_workstream", editorial)
+
+    def test_staged_view_renders_advisory_validation_flags(self):
+        page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
+
+        self.assertIn("id=\"stageValidationFlags\"", page)
+        self.assertIn("function renderValidationFlags", page)
+        self.assertIn("renderValidationFlags(payload && payload.validationFlags)", page)
+        self.assertIn("Editorial checks (review before moving on)", page)
+
 
 if __name__ == "__main__":
     unittest.main()

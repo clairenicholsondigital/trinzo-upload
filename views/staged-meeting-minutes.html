@@ -169,6 +169,39 @@ td textarea { min-height:68px; }
   display:grid;
   gap:.75rem;
 }
+.stage-validation-flags {
+  margin-top:1rem;
+  border:1px solid #e3d4a6;
+  border-radius:12px;
+  background:#fdfaf0;
+  padding:.9rem;
+  display:grid;
+  gap:.5rem;
+}
+.stage-validation-heading {
+  margin:0;
+  color:#5c4a13;
+  font-weight:700;
+  font-size:.95rem;
+}
+.stage-validation-flag {
+  display:flex;
+  gap:.5rem;
+  align-items:flex-start;
+  font-size:.92rem;
+  color:#403a2c;
+}
+.stage-validation-tag {
+  flex:0 0 auto;
+  font-size:.72rem;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:.03em;
+  padding:.1rem .4rem;
+  border-radius:6px;
+}
+.stage-validation-warning .stage-validation-tag { background:#f5e2b8; color:#7a5b12; }
+.stage-validation-info .stage-validation-tag { background:#d8ecf2; color:#22697e; }
 .stage-decision-copy { display:grid; gap:.2rem; }
 .stage-decision-question {
   margin:0;
@@ -601,6 +634,8 @@ Analytics and review confidence</textarea>
         </div>
       </article>
 
+      <div id="stageValidationFlags" class="stage-validation-flags review-only" aria-live="polite" hidden></div>
+
       <div class="stage-decision-card review-only" aria-live="polite">
         <div class="stage-decision-copy">
           <p id="stageDecisionQuestion" class="stage-decision-question">Want to move onto the next stage?</p>
@@ -667,6 +702,7 @@ Analytics and review confidence</textarea>
   var actionsTableBody = document.getElementById('actionsTableBody');
   var addActionRowButton = document.getElementById('addActionRowBtn');
   var finalDocumentPreview = document.getElementById('finalDocumentPreview');
+  var stageValidationFlags = document.getElementById('stageValidationFlags');
   var lastGeneratedPayload = null;
   var reviewEditStartedAt = null;
   var reviewEditMs = 0;
@@ -1046,6 +1082,34 @@ Analytics and review confidence</textarea>
     if (Object.prototype.hasOwnProperty.call(screensPayload, 'actions')) generatedStages.actions = true;
   }
 
+  function renderValidationFlags(flags) {
+    if (!stageValidationFlags) return;
+    var list = Array.isArray(flags) ? flags.filter(Boolean) : [];
+    stageValidationFlags.innerHTML = '';
+    if (!list.length) {
+      stageValidationFlags.hidden = true;
+      return;
+    }
+    var heading = document.createElement('p');
+    heading.className = 'stage-validation-heading';
+    heading.textContent = 'Editorial checks (review before moving on)';
+    stageValidationFlags.appendChild(heading);
+    list.forEach(function (flag) {
+      var row = document.createElement('div');
+      var severity = flag && flag.severity === 'warning' ? 'warning' : 'info';
+      row.className = 'stage-validation-flag stage-validation-' + severity;
+      var label = document.createElement('span');
+      label.className = 'stage-validation-tag';
+      label.textContent = severity === 'warning' ? 'Check' : 'Tidied';
+      row.appendChild(label);
+      var text = document.createElement('span');
+      text.textContent = (flag && flag.message) ? String(flag.message) : '';
+      row.appendChild(text);
+      stageValidationFlags.appendChild(row);
+    });
+    stageValidationFlags.hidden = false;
+  }
+
   function applyStagedPayload(payload, targetScreen) {
     var screensPayload = payload && payload.screens ? payload.screens : {};
     var details = screensPayload.details || {};
@@ -1073,6 +1137,7 @@ Analytics and review confidence</textarea>
     if (Object.prototype.hasOwnProperty.call(screensPayload, 'actions')) {
       renderActions(screensPayload.actions);
     }
+    renderValidationFlags(payload && payload.validationFlags);
     markGeneratedStages(payload);
     if (payload && payload.jobId) stagedSourceJobId = String(payload.jobId);
     lastGeneratedPayload = payload;

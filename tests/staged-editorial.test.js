@@ -1,0 +1,100 @@
+const assert = require('node:assert/strict');
+const test = require('node:test');
+
+const {
+  isMalformedStagedLine,
+  hasStagedDecisionEvidence,
+  cardsAreDuplicates,
+  dedupeStagedDiscussionCards,
+  buildStagedValidationFlags
+} = require('../utils/stagedEditorial');
+
+test('isMalformedStagedLine catches the "Potential The ..." transcription-noise gremlin', () => {
+  assert.equal(
+    isMalformedStagedLine('Potential The discussion covered transportation availability if the final is won, requiring contingency planning.'),
+    true
+  );
+});
+
+test('isMalformedStagedLine catches other dangling qualifiers and glued clauses', () => {
+  assert.equal(isMalformedStagedLine('Possible This is a risk to the timeline'), true);
+  assert.equal(isMalformedStagedLine('the plan was agreed They will review it next week'), true);
+});
+
+test('isMalformedStagedLine leaves clean minutes untouched', () => {
+  assert.equal(isMalformedStagedLine('The audit will cover the applicable 21 CFR, MDSAP, MDR and ISO requirements.'), false);
+  assert.equal(isMalformedStagedLine('The SBOM will be available upon arrival on site. The team confirmed the dates.'), false);
+  assert.equal(isMalformedStagedLine('Stuart is finalising the risk assessment to inform the audit plan.'), false);
+});
+
+test('hasStagedDecisionEvidence distinguishes real decisions from bare labels', () => {
+  assert.equal(hasStagedDecisionEvidence('It was agreed that Stuart leads the audit.'), true);
+  assert.equal(hasStagedDecisionEvidence('The scope was confirmed for five days on site.'), true);
+  assert.equal(hasStagedDecisionEvidence('The team talked about the hotel and the travel.'), false);
+});
+
+test('cardsAreDuplicates detects a phantom section that copies another workstream', () => {
+  const auditTraining = {
+    topic: 'Audit training and standards review',
+    points: [
+      'Audit training and preparation commence next Monday.',
+      'The applicable standards will be confirmed once the audit scope is finalised.',
+      'Stuart will build the scope over the next few days.'
+    ]
+  };
+  const phantom = {
+    topic: 'Analytics and review confidence',
+    points: [
+      'Audit training and preparation commence next Monday.',
+      'The applicable standards will be confirmed once the audit scope is finalised.',
+      'Stuart will build the scope over the next few days.'
+    ]
+  };
+  assert.equal(cardsAreDuplicates(auditTraining, phantom), true);
+});
+
+test('cardsAreDuplicates keeps genuinely distinct sections', () => {
+  const siteAccess = { topic: 'Site access', points: ['Five days on site.', 'Shared car travel.', 'Niamh arranging transport.'] };
+  const software = { topic: 'Software management system', points: ['SBOM provided on arrival.', 'Provenance and validation reviewed.'] };
+  assert.equal(cardsAreDuplicates(siteAccess, software), false);
+});
+
+test('dedupeStagedDiscussionCards drops the duplicate and reports the dropped heading', () => {
+  const cards = [
+    { topic: 'Audit training and standards review', points: ['Training starts next Monday.', 'Standards confirmed once scope is finalised.'] },
+    { topic: 'Analytics and review confidence', points: ['Training starts next Monday.', 'Standards confirmed once scope is finalised.'] },
+    { topic: 'Site access', points: ['Five days on site.', 'Niamh arranging transport.'] }
+  ];
+  const { cards: kept, dropped } = dedupeStagedDiscussionCards(cards);
+  assert.equal(kept.length, 2);
+  assert.equal(dropped.length, 1);
+  assert.equal(dropped[0].topic, 'Analytics and review confidence');
+});
+
+test('buildStagedValidationFlags surfaces duplicates, malformed text and omitted workstreams as advisory flags', () => {
+  const flags = buildStagedValidationFlags({
+    objectives: ['Confirm the risk assessment feeding the audit plan.'],
+    actions: [{ owner: 'Stuart', action: 'Finalise the risk assessment to inform the audit plan.' }],
+    discussion: [
+      { topic: 'Site access', points: ['Five days on site.', 'Potential The discussion covered transportation availability if the final is won.'] }
+    ],
+    droppedDuplicates: [{ topic: 'Analytics and review confidence', duplicateOf: 'Audit training and standards review' }]
+  });
+  const types = flags.map((flag) => flag.type);
+  assert.ok(types.includes('duplicate_section'));
+  assert.ok(types.includes('malformed_text'));
+  assert.ok(types.includes('possible_omitted_workstream'));
+});
+
+test('buildStagedValidationFlags stays quiet when the minutes are clean and complete', () => {
+  const flags = buildStagedValidationFlags({
+    objectives: ['Confirm the audit scope and logistics.'],
+    actions: [{ owner: 'Jacqui', action: 'Send the Code of Conduct to Niamh.' }],
+    discussion: [
+      { topic: 'Audit scope and logistics', points: ['The audit scope and logistics were confirmed for the Sylmar site.'] },
+      { topic: 'Code of Conduct', points: ['Jacqui will send the Code of Conduct to Niamh today.'] }
+    ],
+    droppedDuplicates: []
+  });
+  assert.deepEqual(flags, []);
+});

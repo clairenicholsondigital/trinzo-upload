@@ -19,6 +19,13 @@ const {
 const { extractTextFromUpload } = require('../utils/transcript');
 
 const {
+  isMalformedStagedLine,
+  hasStagedDecisionEvidence,
+  dedupeStagedDiscussionCards,
+  buildStagedValidationFlags
+} = require('../utils/stagedEditorial');
+
+const {
   saveMeetingMinutes,
   saveProjectUpdateDraft,
   listProjectReports,
@@ -794,6 +801,7 @@ function isLowValueStagedDiscussionText(value) {
   if (!text) return true;
   if (/^(?:yeah|yes|no|okay|ok|absolutely|presumably|perfect|right)[.!?,\s]*(?:yeah|yes|no|okay|ok|absolutely|presumably|perfect|right)?[.!?,\s]*$/.test(text)) return true;
   if (/\b([A-Z][a-z]+)\s+said\s+that\s+\1\b/.test(cleaned)) return true;
+  if (isMalformedStagedLine(cleaned)) return true;
   if (text.split(/\s+/).length < 5) return true;
   return false;
 }
@@ -893,14 +901,23 @@ function polishStagedDiscussionCard(card) {
   if (polished.dependencyOrRisk && !/\b(?:risk|blocker|blocked|delay|timeline|dependent|dependency|required before|cannot proceed|waiting for|subject to|prerequisite)\b/i.test(polished.dependencyOrRisk)) {
     delete polished.dependencyOrRisk;
   }
+  if (polished.decisionOrAgreement && !hasStagedDecisionEvidence(polished.decisionOrAgreement)) {
+    delete polished.decisionOrAgreement;
+  }
   return polished;
 }
 
 function polishStagedDiscussionCards(cards) {
-  return (Array.isArray(cards) ? cards : [])
+  const polished = (Array.isArray(cards) ? cards : [])
     .map(polishStagedDiscussionCard)
-    .filter(Boolean)
-    .slice(0, 8);
+    .filter(Boolean);
+  // Deduplicate whole sections (not just points within a section) so a phantom
+  // workstream that merely copies another card's evidence is removed before the
+  // reviewer ever sees it. Dropped headings are stashed for the advisory flag.
+  const { cards: deduped, dropped } = dedupeStagedDiscussionCards(polished);
+  const result = deduped.slice(0, 8);
+  result.droppedDuplicates = dropped;
+  return result;
 }
 
 function structuredDiscussionFromItem(item) {
@@ -2162,6 +2179,9 @@ function buildStagedDiscussionResponse(req, transcript, minilmContext = null) {
     };
   }
 
+  const droppedDuplicates = Array.isArray(miniLmDiscussion.droppedDuplicates) ? miniLmDiscussion.droppedDuplicates : [];
+  const validationFlags = buildStagedValidationFlags({ discussion, droppedDuplicates });
+
   return {
     ok: true,
     source: transcript.source,
@@ -2170,6 +2190,7 @@ function buildStagedDiscussionResponse(req, transcript, minilmContext = null) {
     staged: true,
     stagedStage: 'discussion',
     screens,
+    validationFlags,
     contextUsed: {
       meetingType,
       participantCount: participants.length,
@@ -2266,9 +2287,18 @@ function buildStagedMeetingMinutesResponse(req, transcript, result) {
   const internalAttendees = reviewData.participants.trinzo;
   const clientAttendees = reviewData.participants.client;
 
+  const { cards: dedupedDiscussion, dropped: droppedDuplicates } = dedupeStagedDiscussionCards(discussion);
+  const validationFlags = buildStagedValidationFlags({
+    objectives,
+    actions,
+    discussion: dedupedDiscussion,
+    droppedDuplicates
+  });
+
   return {
     ...base,
     staged: true,
+    validationFlags,
     screens: {
       details: {
         meetingTitle: reviewData.meetingTitle || candidate?.title || 'Untitled meeting',
@@ -2283,7 +2313,7 @@ function buildStagedMeetingMinutesResponse(req, transcript, result) {
         objectives,
         executiveSummary: summary || 'Review the transcript-generated summary before moving on.'
       },
-      discussion: discussion.length ? discussion : [{
+      discussion: dedupedDiscussion.length ? dedupedDiscussion : [{
         topic: 'Discussion',
         points: ['Review the transcript-generated discussion points before moving on.']
       }],
