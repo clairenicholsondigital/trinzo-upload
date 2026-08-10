@@ -115,6 +115,7 @@ const MEETING_MINUTES_FINAL_TIMEOUT_MS = Number(process.env.MEETING_MINUTES_FINA
 const MEETING_MINUTES_JOB_PIPELINE = process.env.MEETING_MINUTES_JOB_PIPELINE || 'chunked';
 const STAGED_MINILM_TIMEOUT_MS = Number(process.env.STAGED_MINILM_TIMEOUT_MS || 45000);
 const STAGED_MINILM_WORKER_URL = (process.env.MINUTES_MINILM_WORKER_URL || 'http://127.0.0.1:8767').trim();
+const STAGED_EVIDENCE_CLASSIFIER_TIMEOUT_MS = Number(process.env.STAGED_EVIDENCE_CLASSIFIER_TIMEOUT_MS || 45000);
 const TROOPER_STAGE_URL_DEFAULT = 'https://eu.router.trooper.ai/v1/chat/completions';
 const TROOPER_STAGE_MODEL_DEFAULT = 'eu_liv_000099';
 
@@ -1001,6 +1002,30 @@ function stagedMiniLMTelemetry(minilmContext) {
   };
 }
 
+function stagedEvidenceClassifierContext(context) {
+  return context?.evidenceClassifier && typeof context.evidenceClassifier === 'object'
+    ? context.evidenceClassifier
+    : null;
+}
+
+function stagedEvidenceClassifierTelemetry(context) {
+  const evidenceContext = stagedEvidenceClassifierContext(context);
+  const diagnostics = evidenceContext?.diagnostics || {};
+  return {
+    used: Boolean(evidenceContext?.ok),
+    executed: Boolean(evidenceContext?.executed),
+    modelAvailable: Boolean(evidenceContext?.modelAvailable),
+    modelName: evidenceContext?.modelName || diagnostics.modelName || '',
+    modelPath: diagnostics.modelPath || '',
+    modelReason: evidenceContext?.modelReason || diagnostics.modelReason || '',
+    actionCount: Array.isArray(evidenceContext?.actions) ? evidenceContext.actions.length : 0,
+    itemCount: Array.isArray(evidenceContext?.items) ? evidenceContext.items.length : 0,
+    segmentsScored: Number(evidenceContext?.segmentsScored || 0),
+    counts: evidenceContext?.counts || {},
+    timingMs: diagnostics.timingMs || {}
+  };
+}
+
 function topicsFromStagedMiniLM(minilmContext) {
   const output = stagedMiniLMOutput(minilmContext);
   const topics = [];
@@ -1204,6 +1229,38 @@ function actionsFromStagedMiniLM(minilmContext) {
   }
 
   return polishStagedActions(actions);
+}
+
+function actionsFromEvidenceClassifier(context) {
+  const evidenceContext = stagedEvidenceClassifierContext(context);
+  const actions = Array.isArray(evidenceContext?.actions) ? evidenceContext.actions : [];
+  return polishStagedActions(actions.map((item) => ({
+    owner: item?.owner || 'Not stated',
+    action: item?.action || '',
+    deadline: item?.deadline || '',
+    source: item?.source || 'meeting_minutes_evidence_classifier'
+  })));
+}
+
+function attachStagedEvidenceClassifierContext(context, evidenceContext) {
+  const base = context && typeof context === 'object'
+    ? context
+    : {
+        ok: false,
+        output: {},
+        counts: {},
+        diagnostics: {}
+      };
+  const diagnostics = base.diagnostics && typeof base.diagnostics === 'object' ? base.diagnostics : {};
+  return {
+    ...base,
+    ok: Boolean(base.ok || evidenceContext?.ok),
+    evidenceClassifier: evidenceContext,
+    diagnostics: {
+      ...diagnostics,
+      evidenceClassifier: stagedEvidenceClassifierTelemetry({ evidenceClassifier: evidenceContext })
+    }
+  };
 }
 
 function ownerFromTeamsSpeakerLine(line) {
@@ -1450,7 +1507,18 @@ function buildStagedTrooperPrompt(stage, transcript, req, options = {}) {
     reviewerGuidance: context.additionalContext,
     topicEvidence: discussionEvidencePack,
     workstreamState: discussionWorkstreamState,
-    actionInventory: stage === 'actions' ? buildStagedActionInventory(transcript.text) : []
+    actionInventory: stage === 'actions'
+      ? polishStagedActions([
+        ...buildStagedActionInventory(transcript.text),
+        ...actionsFromEvidenceClassifier({ evidenceClassifier: options.actionEvidenceContext })
+      ])
+      : [],
+    actionEvidenceClassifier: stage === 'actions'
+      ? {
+        actions: actionsFromEvidenceClassifier({ evidenceClassifier: options.actionEvidenceContext }),
+        telemetry: stagedEvidenceClassifierTelemetry({ evidenceClassifier: options.actionEvidenceContext })
+      }
+      : null
   };
   const stageInstruction = {
     summary: [
@@ -1505,6 +1573,7 @@ function buildStagedTrooperPrompt(stage, transcript, req, options = {}) {
       'Write stage 4 only: actions, owners and deadlines.',
       'Use the confirmed title, meeting type, participants and transcript evidence.',
       'Use CONFIRMED_CONTEXT.actionInventory as a transcript-wide candidate action ledger before selecting or formatting actions.',
+      'Use CONFIRMED_CONTEXT.actionEvidenceClassifier as a supporting evidence ledger: keep confirmed action candidates and respect suppression reasons such as completed history, sequence-only wording, record-location wording, hypotheticals without assignment, and low-value logistics.',
       'Preserve every distinct commitment from actionInventory unless the transcript clearly shows it is completed, cancelled, or a true duplicate.',
       'Do not compress actions to a target count. Separate actions must remain separate when the owner, deliverable, verb, standard/document/system, or deadline differs.',
       'For example, "review a standard", "share the standard", "complete testing", and "identify testing gaps" are separate actions even if they sit under one workstream.',
@@ -1713,8 +1782,63 @@ async function buildStagedMiniLMContext(transcript) {
   }
 }
 
+async function buildStagedEvidenceClassifierContext(transcript) {
+  try {
+    const result = await runPythonTranscriptScript(
+      'meeting_minutes_evidence_classifier.py',
+      transcript.text,
+      ['--limit', '20'],
+      { timeoutMs: STAGED_EVIDENCE_CLASSIFIER_TIMEOUT_MS }
+    );
+    return {
+      ok: Boolean(result?.executed && result?.modelAvailable),
+      executed: Boolean(result?.executed),
+      modelAvailable: Boolean(result?.modelAvailable),
+      modelName: result?.modelName || '',
+      modelReason: result?.modelReason || '',
+      counts: result?.counts || {},
+      segmentsConsidered: Number(result?.segmentsConsidered || 0),
+      segmentsScored: Number(result?.segmentsScored || 0),
+      actions: Array.isArray(result?.actions) ? result.actions : [],
+      items: Array.isArray(result?.items) ? result.items : [],
+      diagnostics: {
+        provider: 'meeting_minutes_evidence_classifier',
+        modelAvailable: Boolean(result?.modelAvailable),
+        modelName: result?.modelName || '',
+        modelPath: result?.modelPath || '',
+        modelReason: result?.modelReason || '',
+        timingMs: result?.timingMs || {}
+      }
+    };
+  } catch (error) {
+    safeLogError('[Staged meeting minutes evidence classifier failed]', error);
+    return {
+      ok: false,
+      executed: false,
+      modelAvailable: false,
+      modelName: '',
+      modelReason: error?.message || 'Evidence classifier failed.',
+      counts: {},
+      segmentsConsidered: 0,
+      segmentsScored: 0,
+      actions: [],
+      items: [],
+      diagnostics: {
+        provider: 'meeting_minutes_evidence_classifier',
+        modelAvailable: false,
+        modelName: '',
+        modelPath: '',
+        modelReason: error?.message || 'Evidence classifier failed.',
+        timingMs: {}
+      }
+    };
+  }
+}
+
 function stagedFastContextIsUsable(stage, context) {
-  if (!context || !context.ok) return false;
+  if (!context) return false;
+  if (stage === 'actions' && actionsFromEvidenceClassifier(context).length) return true;
+  if (!context.ok) return false;
   if (stage === 'summary') {
     const output = stagedMiniLMOutput(context);
     return Boolean(
@@ -1726,13 +1850,14 @@ function stagedFastContextIsUsable(stage, context) {
     return Boolean(discussionFromStagedMiniLM(context).length);
   }
   if (stage === 'actions') {
-    return Boolean(actionsFromStagedMiniLM(context).length);
+    return Boolean(actionsFromStagedMiniLM(context).length || actionsFromEvidenceClassifier(context).length);
   }
   return false;
 }
 
 async function buildStagedGenerationContext(stage, transcript, req, onProgress = async () => {}) {
   let fastContext = null;
+  let actionEvidenceContext = null;
   let evidencePack = [];
   let workstreamState = [];
   if (stage === 'discussion') {
@@ -1746,11 +1871,18 @@ async function buildStagedGenerationContext(stage, transcript, req, onProgress =
     );
     workstreamState = buildStagedWorkstreamState(evidencePack, fastContext, confirmedTopics);
   }
+  if (stage === 'actions') {
+    await onProgress(18, 'Building an evidence-led action candidate ledger.');
+    actionEvidenceContext = await buildStagedEvidenceClassifierContext(transcript);
+  }
 
   await onProgress(25, stage === 'summary'
     ? 'AI is drafting objectives, summary and topics from the confirmed meeting details.'
     : `AI is drafting staged ${stage} content from the confirmed meeting details.`);
-  let trooperContext = await buildStagedTrooperContext(stage, transcript, req, { evidencePack, workstreamState });
+  let trooperContext = await buildStagedTrooperContext(stage, transcript, req, { evidencePack, workstreamState, actionEvidenceContext });
+  if (stage === 'actions') {
+    trooperContext = attachStagedEvidenceClassifierContext(trooperContext, actionEvidenceContext);
+  }
   if (stage === 'discussion' && trooperContext.ok && stagedDiscussionNeedsRetry(trooperContext, req, transcript, evidencePack, workstreamState)) {
     await onProgress(45, 'AI discussion output was too thin, re-running against the semantic topic evidence.');
     const retryContext = await buildStagedTrooperContext(stage, transcript, req, { strictTopicCoverage: true, evidencePack, workstreamState });
@@ -1770,6 +1902,9 @@ async function buildStagedGenerationContext(stage, transcript, req, onProgress =
     ? 'AI stage was unavailable, using the faster transcript scan for summary and topics.'
     : `AI stage was unavailable, using the faster transcript scan for ${stage}.`);
   if (!fastContext) fastContext = await buildStagedMiniLMContext(transcript);
+  if (stage === 'actions') {
+    fastContext = attachStagedEvidenceClassifierContext(fastContext, actionEvidenceContext);
+  }
   if (stagedFastContextIsUsable(stage, fastContext)) {
     return { context: fastContext, provider: 'fast-staged-analysis', fallbackUsed: true };
   }
@@ -2545,9 +2680,11 @@ function extractActionCandidatesFromTranscript(transcriptText) {
 
 function buildStagedActionsResponse(req, transcript, minilmContext = null) {
   const stagedActions = actionsFromStagedMiniLM(minilmContext);
+  const evidenceActions = actionsFromEvidenceClassifier(minilmContext);
   const actionInventory = buildStagedActionInventory(transcript.text);
-  const actions = mergePreservedStagedActions(stagedActions.length
-    ? stagedActions
+  const sourceActions = polishStagedActions([...evidenceActions, ...stagedActions, ...actionInventory]);
+  const actions = mergePreservedStagedActions(sourceActions.length
+    ? sourceActions
     : extractActionCandidatesFromTranscript(transcript.text), transcript.text);
   const reviewContext = stagedReviewContextFromRequest(req);
   const validationFlags = buildStagedValidationFlags({
@@ -2577,10 +2714,12 @@ function buildStagedActionsResponse(req, transcript, minilmContext = null) {
       actionPreservation: {
         transcriptPreservedActionCount: transcriptPreservedStagedActions(transcript.text).length,
         transcriptActionInventoryCount: actionInventory.length,
-        transcriptActionInventoryUsed: Boolean(actionInventory.length)
+        evidenceClassifierActionCount: evidenceActions.length,
+        transcriptActionInventoryUsed: Boolean(actionInventory.length || evidenceActions.length)
       },
       transcriptLength: transcript.text.length,
-      embeddingClassifier: stagedMiniLMTelemetry(minilmContext)
+      embeddingClassifier: stagedMiniLMTelemetry(minilmContext),
+      evidenceClassifier: stagedEvidenceClassifierTelemetry(minilmContext)
     }
   };
 }
@@ -3397,9 +3536,8 @@ router.post('/staged-meeting-minutes', requireAuth, withTestUpload(async (req, r
     }
 
     if (requestedStage === 'actions') {
-      const trooperContext = await buildStagedTrooperContext('actions', aiTranscript, req);
-      const fallbackContext = trooperContext.ok ? null : await buildStagedMiniLMContext(aiTranscript);
-      const actionsResponse = buildStagedActionsResponse(req, aiTranscript, trooperContext.ok ? trooperContext : fallbackContext);
+      const generation = await buildStagedGenerationContext('actions', aiTranscript, req);
+      const actionsResponse = buildStagedActionsResponse(req, aiTranscript, generation.context);
       actionsResponse.preparedTranscriptTelemetry = aiTranscript.preparedTranscriptTelemetry;
 
       console.info(JSON.stringify({
@@ -3408,9 +3546,10 @@ router.post('/staged-meeting-minutes', requireAuth, withTestUpload(async (req, r
         fileName: transcript.fileName || null,
         transcriptLength: transcript.text.length,
         actionCount: actionsResponse.telemetryPreview.actionCount,
-        trooperUsed: trooperContext.rewriterAvailable,
-        fallbackUsed: !trooperContext.ok,
-        embeddingClassifierUsed: actionsResponse.telemetryPreview.embeddingClassifier.used && !trooperContext.ok,
+        trooperUsed: generation.provider === 'trooper-stage',
+        fallbackUsed: generation.fallbackUsed,
+        embeddingClassifierUsed: actionsResponse.telemetryPreview.embeddingClassifier.used && generation.fallbackUsed,
+        evidenceClassifierUsed: actionsResponse.telemetryPreview.evidenceClassifier.used,
         durationMs: Date.now() - startedAt
       }));
 
