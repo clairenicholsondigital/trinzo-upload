@@ -1200,12 +1200,15 @@ async function findStagedSourceJobFromRequest(req) {
 
   const draftId = String(req.body?.draftId || req.query?.draftId || '').trim();
   if (!draftId) return null;
+  // Any prior staged stage for this draft still holds the transcript in its autosave, so
+  // include 'failed'/'cancelled' too — the transcript should stay recoverable even if an
+  // earlier stage's generation errored, rather than forcing the reviewer to re-upload.
   const result = await query(
     `SELECT id
      FROM meeting_jobs
      WHERE job_type = 'staged_meeting_minutes_stage'
        AND input_payload->>'draftId' = $1
-       AND status IN ('completed','running','queued')
+       AND status IN ('completed','running','queued','failed','cancelled')
      ORDER BY id DESC
      LIMIT 1`,
     [draftId]

@@ -681,10 +681,16 @@ Analytics and review confidence</textarea>
 <script>
 (function initialiseStagedScreens() {
   var STAGED_DRAFTS_KEY = 'stagedMeetingMinutesJobs';
+  var STAGED_TRANSCRIPTS_KEY = 'stagedMeetingMinutesTranscripts';
   var params = new URLSearchParams(window.location.search);
   var draftId = params.get('draftId') || '';
   var stageJobId = params.get('stageJobId') || '';
   var stagedSourceJobId = stageJobId || '';
+  // The transcript entered on screen 0 is kept in the browser (keyed by draftId) so
+  // every later stage can re-send the real transcript instead of relying on the server
+  // re-finding an earlier job. This is what keeps the transcript available across the
+  // screen-by-screen flow and on reload/resume.
+  var storedTranscriptText = '';
   var requestedScreen = Number(params.get('screen') || 0);
   var activeIndex = 0;
   var screens = Array.prototype.slice.call(document.querySelectorAll('[data-screen]'));
@@ -718,7 +724,11 @@ Analytics and review confidence</textarea>
   var reviewEditCount = 0;
   var reviewTimerId = null;
   var reviewStarted = Boolean(draftId);
-  var generatedStages = { details: Boolean(draftId), summary: false, discussion: false, actions: false };
+  // Stages are only marked generated once a real job payload confirms it (via
+  // markGeneratedStages). We no longer assume "details" is done just because a draftId is
+  // present — otherwise a resumed draft shows placeholder text as if it were generated and
+  // a genuine generation failure stays hidden until a later step.
+  var generatedStages = { details: false, summary: false, discussion: false, actions: false };
   var regenerationEvents = [];
   var stageInFlight = null;
 
@@ -1041,9 +1051,20 @@ Analytics and review confidence</textarea>
     var formData = new FormData();
     var transcriptText = transcriptTextInput ? transcriptTextInput.value.trim() : '';
     var transcriptFile = transcriptFileInput && transcriptFileInput.files ? transcriptFileInput.files[0] : null;
-    if (transcriptText) formData.append('text', transcriptText);
-    if (transcriptFile) formData.append('file', transcriptFile);
-    if (!transcriptText && !transcriptFile && stagedSourceJobId) formData.append('sourceJobId', stagedSourceJobId);
+    // Priority: freshly pasted text, then a freshly chosen file, then the transcript we
+    // stored in the browser for this draft, then a prior job as a last resort. Storing the
+    // pasted text here is what lets every later stage re-send the real transcript after the
+    // textarea has been cleared or the page reloaded.
+    if (transcriptText) {
+      formData.append('text', transcriptText);
+      persistTranscript(transcriptText);
+    } else if (transcriptFile) {
+      formData.append('file', transcriptFile);
+    } else if (storedTranscriptText) {
+      formData.append('text', storedTranscriptText);
+    } else if (stagedSourceJobId) {
+      formData.append('sourceJobId', stagedSourceJobId);
+    }
     formData.append('pipeline', 'chunked');
     formData.append('stage', stage);
     formData.append('draftId', ensureDraftId());
@@ -1054,7 +1075,7 @@ Analytics and review confidence</textarea>
     if (meetingTypeInput) formData.append('meetingType', meetingTypeInput.value);
     formData.append('participants', currentParticipants().join('\n'));
     if (overallTopicsInput) formData.append('overallTopics', overallTopicsInput.value);
-    return { formData: formData, hasTranscript: Boolean(transcriptText || transcriptFile || stagedSourceJobId || draftId) };
+    return { formData: formData, hasTranscript: Boolean(transcriptText || transcriptFile || storedTranscriptText || stagedSourceJobId || draftId) };
   }
 
   async function fetchJson(url, options) {
@@ -1064,6 +1085,33 @@ Analytics and review confidence</textarea>
       throw new Error((payload && payload.error) || 'Request failed.');
     }
     return payload;
+  }
+
+  function delay(ms) {
+    return new Promise(function (resolve) { window.setTimeout(resolve, ms); });
+  }
+
+  // Poll a queued stage job until it completes, then apply its screen payload in place so
+  // the reviewer stays on the staged flow instead of being bounced to the Jobs list.
+  async function pollStageJobUntilDone(jobId, stage, targetScreen) {
+    var maxAttempts = 150; // ~5 minutes at 2s intervals
+    for (var attempt = 0; attempt < maxAttempts; attempt += 1) {
+      var payload = await fetchJson('/api/jobs/' + encodeURIComponent(jobId));
+      var job = payload.job;
+      if (!job) throw new Error('Staged generation job not found.');
+      if (job.status === 'completed') {
+        var result = payload.result && payload.result.result ? payload.result.result : payload.result;
+        if (!result || !result.screens) throw new Error('The completed staged job did not include a screen payload.');
+        applyStagedPayload(result, targetScreen);
+        return result;
+      }
+      if (job.status === 'failed' || job.status === 'cancelled') {
+        throw new Error(job.errorMessage || ('Staged ' + labelForStage(stage) + ' generation ' + job.status + '.'));
+      }
+      setReviewStatus('Generating ' + labelForStage(stage) + '… ' + (job.statusMessage || (job.progressPercent ? job.progressPercent + '%' : job.status || 'working')), false);
+      await delay(2000);
+    }
+    throw new Error('Staged ' + labelForStage(stage) + ' generation is taking longer than expected. You can track it from Jobs and reopen this draft when it is ready.');
   }
 
   function recordRegeneration(stage, screenIndex) {
@@ -1099,9 +1147,12 @@ Analytics and review confidence</textarea>
         body: build.formData
       });
       if (isRegeneration) recordRegeneration(stage, targetScreen);
-      setReviewStatus('Queued staged ' + labelForStage(stage) + ' generation. You can close this tab and track it from Jobs.', false);
+      if (payload && payload.jobId) stagedSourceJobId = String(payload.jobId);
       saveDraft();
-      window.location.href = payload.jobsUrl || ('/jobs/' + encodeURIComponent(payload.jobId));
+      setReviewStatus('Queued staged ' + labelForStage(stage) + ' generation…', false);
+      // Stay on the staged review and stream the result in place instead of redirecting to Jobs.
+      await pollStageJobUntilDone(payload.jobId, stage, targetScreen);
+      setReviewStatus(stageReadyMessage(stage, isRegeneration), false);
       return true;
     } catch (error) {
       setReviewStatus(error && error.message ? error.message : 'This staged screen could not be generated.', true);
@@ -1174,6 +1225,49 @@ Analytics and review confidence</textarea>
     var existing = drafts.find(function (draft) { return String(draft.jobId) === String(draftId); });
     if (existing && existing.sourceJobId && !stagedSourceJobId) {
       stagedSourceJobId = String(existing.sourceJobId);
+    }
+    if (!storedTranscriptText) {
+      storedTranscriptText = loadStoredTranscript(draftId);
+    }
+  }
+
+  // Transcripts are kept in the browser, keyed by draftId, so a reloaded/resumed staged
+  // review can still re-send the full transcript to generate later stages.
+  function readTranscriptStore() {
+    try {
+      var parsed = JSON.parse(localStorage.getItem(STAGED_TRANSCRIPTS_KEY) || '{}');
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function loadStoredTranscript(id) {
+    if (!id) return '';
+    var entry = readTranscriptStore()[id];
+    return entry && typeof entry.text === 'string' ? entry.text : '';
+  }
+
+  function persistTranscript(text) {
+    var id = ensureDraftId();
+    if (!id || !text) return;
+    storedTranscriptText = text;
+    try {
+      var store = readTranscriptStore();
+      store[id] = { text: text, savedAt: new Date().toISOString() };
+      // Keep only the most recent transcripts so the store cannot grow without bound.
+      var ids = Object.keys(store);
+      if (ids.length > 20) {
+        ids.sort(function (a, b) {
+          return String((store[a] && store[a].savedAt) || '').localeCompare(String((store[b] && store[b].savedAt) || ''));
+        });
+        while (ids.length > 20) {
+          delete store[ids.shift()];
+        }
+      }
+      localStorage.setItem(STAGED_TRANSCRIPTS_KEY, JSON.stringify(store));
+    } catch {
+      // Persisting the transcript is best-effort; the in-memory copy still carries this session.
     }
   }
 
@@ -1323,7 +1417,7 @@ Analytics and review confidence</textarea>
         return;
       }
       generateButton.disabled = true;
-      setStatus('Queued meeting details generation. Opening Jobs so you can close this tab if needed.', false);
+      setStatus('Generating meeting details from your transcript…', false);
       var queued = await requestStagedStage('details', 0).catch(function (error) {
         setStatus(error && error.message ? error.message : 'The staged draft could not be queued.', true);
         return false;

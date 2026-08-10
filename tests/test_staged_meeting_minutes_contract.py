@@ -59,7 +59,20 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("/api/staged-meeting-minutes/jobs?stage=", page)
         self.assertIn("stageJobId", page)
         self.assertIn("sourceJobId", page)
-        self.assertIn("transcriptText || transcriptFile || stagedSourceJobId || draftId", page)
+        self.assertIn("transcriptText || transcriptFile || storedTranscriptText || stagedSourceJobId || draftId", page)
+
+    def test_staged_transcript_is_carried_across_stages(self):
+        page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
+
+        # The transcript is stored in the browser (keyed by draftId) and re-sent for every
+        # later stage, and generation streams in place instead of redirecting to Jobs.
+        self.assertIn("STAGED_TRANSCRIPTS_KEY", page)
+        self.assertIn("function persistTranscript", page)
+        self.assertIn("function loadStoredTranscript", page)
+        self.assertIn("storedTranscriptText = loadStoredTranscript(draftId)", page)
+        self.assertIn("else if (storedTranscriptText) {", page)
+        self.assertIn("pollStageJobUntilDone", page)
+        self.assertNotIn("window.location.href = payload.jobsUrl", page)
 
 
 if __name__ == "__main__":
