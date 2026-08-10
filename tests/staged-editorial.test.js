@@ -70,6 +70,48 @@ test('compactStagedDiscussionCards keeps stronger topic bullets and removes repe
   assert.ok(result.cards[1].points.some((point) => point.includes('SBOM')));
 });
 
+test('compactStagedDiscussionCards preserves distinct concrete details inside high-substance topics', () => {
+  const result = compactStagedDiscussionCards([
+    {
+      topic: 'Software management system deep dive',
+      points: [
+        'The team will seek the SBOM to assess software provenance.',
+        'The team will seek the SBOM to review suppliers and determine the nature of the software.',
+        'The deep dive will focus on software development, validation, and associated purchasing controls.',
+        'Access to the SBOM may be restricted until on-site, requiring secure transmission arrangements.',
+        'New version rollouts resulting from complaints or field actions will be reviewed.',
+        'The discussion covered software in general terms.'
+      ]
+    }
+  ], { pointLimit: 4 });
+
+  assert.equal(result.cards[0].points.length, 6);
+  assert.ok(result.cards[0].points.some((point) => point.includes('provenance')));
+  assert.ok(result.cards[0].points.some((point) => point.includes('suppliers')));
+  assert.ok(result.cards[0].points.some((point) => point.includes('on-site')));
+  assert.ok(result.cards[0].points.some((point) => point.includes('field actions')));
+  assert.ok(result.telemetry.detailRetentionScore >= 80);
+  assert.deepEqual(result.telemetry.detailRetentionWarnings, []);
+});
+
+test('compactStagedDiscussionCards gives low-substance logistics less room than technical workstreams', () => {
+  const result = compactStagedDiscussionCards([
+    {
+      topic: 'Hotel and participant arrangements',
+      points: [
+        'Hotel reservation has been made under Stuart\'s name.',
+        'Karen will also be staying at the hotel.',
+        'Travel arrangements were discussed, including travelling together in one car.',
+        'Niamh will arrange transport for herself.',
+        'The team planned to connect after the hotel.'
+      ]
+    }
+  ], { pointLimit: 4 });
+
+  assert.equal(result.cards[0].points.length, 4);
+  assert.equal(result.telemetry.truncatedRemoved, 1);
+});
+
 test('isMalformedStagedLine catches other dangling qualifiers and glued clauses', () => {
   assert.equal(isMalformedStagedLine('Possible This is a risk to the timeline'), true);
   assert.equal(isMalformedStagedLine('the plan was agreed They will review it next week'), true);

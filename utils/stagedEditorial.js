@@ -266,6 +266,91 @@ function stagedPointSpecificityScore(value) {
   return score;
 }
 
+const CONCRETE_DETAIL_PATTERNS = [
+  /\b(?:\d{1,2}(?:st|nd|rd|th)?|20\d{2}|v\d+(?:\.\d+)*)\b/ig,
+  /\b[A-Z]{2,}(?:s)?\b/g,
+  /\b(?:SBOM|MDR|ISO|CFR|MDSAP|MedSAP|SharePoint|Code of Conduct|training attestation|risk assessment|audit plan|on-site|site access|software development|software validation|purchasing controls|supplier|suppliers|provenance|complaints|field actions|new version|rollout|rollouts)\b/ig
+];
+
+function concreteDetailTerms(value) {
+  const text = String(value || '');
+  const terms = new Set();
+  for (const pattern of CONCRETE_DETAIL_PATTERNS) {
+    for (const match of text.matchAll(pattern)) {
+      terms.add(match[0].toLowerCase().replace(/\s+/g, ' ').trim());
+    }
+  }
+  return [...terms].filter(Boolean);
+}
+
+function countConcreteDetails(values) {
+  const terms = new Set();
+  for (const value of Array.isArray(values) ? values : []) {
+    for (const term of concreteDetailTerms(value)) terms.add(term);
+  }
+  return terms.size;
+}
+
+function detailOverlapRatio(left, right) {
+  const leftTerms = new Set(concreteDetailTerms(left));
+  const rightTerms = new Set(concreteDetailTerms(right));
+  if (!leftTerms.size || !rightTerms.size) return null;
+  let overlap = 0;
+  for (const term of leftTerms) {
+    if (rightTerms.has(term)) overlap += 1;
+  }
+  return overlap / Math.min(leftTerms.size, rightTerms.size);
+}
+
+function stagedPointRoles(value) {
+  const text = String(value || '');
+  const roles = new Set();
+  if (/\b(?:current|currently|ongoing|has completed|have completed|is confirmed|was confirmed|status|progress|on track|scheduled|planned|in progress|working on)\b/i.test(text)) {
+    roles.add('status');
+  }
+  if (/\b(?:agreed|agreement|confirmed|approved|decided|will proceed|go[- ]?ahead|sign(?:ed)?[- ]?off|finalis(?:e|ed)|accepted)\b/i.test(text)) {
+    roles.add('decision');
+  }
+  if (/\b(?:risk|dependency|blocked|delay|waiting for|open point|constraint|gap|concern|uncertainty|required before|prerequisite|restricted)\b/i.test(text)) {
+    roles.add('risk');
+  }
+  if (concreteDetailTerms(text).length || /\b(?:document|plan|scope|standard|software|system|site|audit|training|attestation|supplier|provenance|validation|purchasing|complaints|field actions)\b/i.test(text)) {
+    roles.add('detail');
+  }
+  return roles;
+}
+
+function pointHasRole(value, role) {
+  return stagedPointRoles(value).has(role);
+}
+
+function topicIsHighSubstance(topic, points) {
+  const text = `${topic || ''} ${(Array.isArray(points) ? points : []).join(' ')}`;
+  if (/\b(?:software|risk|regulatory|standards?|MDR|CFR|ISO|MDSAP|MedSAP|SBOM|audit plan|technical|validation|compliance|cybersecurity|documentation|attestation)\b/i.test(text)) {
+    return true;
+  }
+  return countConcreteDetails(points) >= 5;
+}
+
+function pointLimitForTopic(topic, points, options = {}) {
+  const baseLimit = options.pointLimit ?? options.defaultPointLimit ?? 4;
+  const highSubstanceLimit = options.highSubstancePointLimit ?? Math.max(baseLimit, 6);
+  const lowSubstanceLimit = options.lowSubstancePointLimit ?? Math.max(3, baseLimit);
+  return topicIsHighSubstance(topic, points) ? highSubstanceLimit : lowSubstanceLimit;
+}
+
+function shouldMergeCompactPoints(existing, candidate) {
+  const similarity = compactPointSimilarity(existing, candidate);
+  const left = normalisePointForCompact(existing);
+  const right = normalisePointForCompact(candidate);
+  const overlap = detailOverlapRatio(existing, candidate);
+
+  if (overlap !== null && overlap <= 0.5 && similarity < 0.9) return false;
+  if (similarity >= 0.72) return true;
+  if (similarity >= 0.62 && overlap !== null && overlap > 0.5) return true;
+  return Boolean(left && right && (left.includes(right) || right.includes(left)));
+}
+
 function betterCompactPoint(left, right) {
   const leftScore = stagedPointSpecificityScore(left);
   const rightScore = stagedPointSpecificityScore(right);
@@ -273,18 +358,43 @@ function betterCompactPoint(left, right) {
   return String(right || '').length < String(left || '').length ? right : left;
 }
 
-function compactStagedDiscussionPointList(points, limit = 4) {
+function selectDetailPreservingPoints(points, limit) {
+  const rows = (Array.isArray(points) ? points : []).map((point, index) => ({
+    point,
+    index,
+    roles: stagedPointRoles(point),
+    score: stagedPointSpecificityScore(point)
+  }));
+  const selected = new Map();
+  const rolesToProtect = ['status', 'decision', 'risk', 'detail'];
+
+  for (const role of rolesToProtect) {
+    const candidate = rows
+      .filter((row) => row.roles.has(role))
+      .sort((left, right) => right.score - left.score || left.index - right.index)[0];
+    if (candidate) selected.set(candidate.index, candidate);
+  }
+
+  for (const row of rows.sort((left, right) => right.score - left.score || left.index - right.index)) {
+    if (selected.size >= limit) break;
+    selected.set(row.index, row);
+  }
+
+  return [...selected.values()]
+    .sort((left, right) => left.index - right.index)
+    .map((row) => row.point);
+}
+
+function compactStagedDiscussionPointList(points, options = {}) {
+  const limit = options.limit ?? options.pointLimit ?? 4;
+  const cleanedInput = [];
   const kept = [];
   let duplicatesRemoved = 0;
   for (const point of Array.isArray(points) ? points : []) {
     const cleaned = String(point || '').replace(/\s+/g, ' ').trim();
     if (!cleaned) continue;
-    const duplicateIndex = kept.findIndex((existing) => {
-      const similarity = compactPointSimilarity(existing, cleaned);
-      const left = normalisePointForCompact(existing);
-      const right = normalisePointForCompact(cleaned);
-      return similarity >= 0.66 || (left && right && (left.includes(right) || right.includes(left)));
-    });
+    cleanedInput.push(cleaned);
+    const duplicateIndex = kept.findIndex((existing) => shouldMergeCompactPoints(existing, cleaned));
     if (duplicateIndex >= 0) {
       kept[duplicateIndex] = betterCompactPoint(kept[duplicateIndex], cleaned);
       duplicatesRemoved += 1;
@@ -293,35 +403,64 @@ function compactStagedDiscussionPointList(points, limit = 4) {
     kept.push(cleaned);
   }
 
-  kept.sort((left, right) => stagedPointSpecificityScore(right) - stagedPointSpecificityScore(left));
+  const selected = selectDetailPreservingPoints(kept, limit);
+  const namedDetailsBefore = countConcreteDetails(cleanedInput);
+  const namedDetailsAfter = countConcreteDetails(selected);
   return {
-    points: kept.slice(0, limit),
-    duplicatesRemoved: duplicatesRemoved + Math.max(0, kept.length - limit)
+    points: selected,
+    duplicatesRemoved,
+    truncatedRemoved: Math.max(0, kept.length - selected.length),
+    namedDetailsBefore,
+    namedDetailsAfter,
+    detailRetentionScore: namedDetailsBefore ? Math.round((namedDetailsAfter / namedDetailsBefore) * 100) : 100,
+    roleCoverage: {
+      status: selected.some((point) => pointHasRole(point, 'status')),
+      decision: selected.some((point) => pointHasRole(point, 'decision')),
+      risk: selected.some((point) => pointHasRole(point, 'risk')),
+      detail: selected.some((point) => pointHasRole(point, 'detail'))
+    }
   };
 }
 
 function compactStagedDiscussionCards(cards, options = {}) {
-  const pointLimit = options.pointLimit ?? 4;
   const compacted = [];
   const telemetry = {
     pointsBefore: 0,
     pointsAfter: 0,
     duplicatesRemoved: 0,
+    truncatedRemoved: 0,
     cardCount: 0
   };
+  let namedDetailsBefore = 0;
+  let namedDetailsAfter = 0;
+  const detailRetentionWarnings = [];
 
   for (const card of Array.isArray(cards) ? cards : []) {
     if (!card || typeof card !== 'object') continue;
     const points = Array.isArray(card.points) ? card.points : [];
     telemetry.pointsBefore += points.length;
-    const compact = compactStagedDiscussionPointList(points, pointLimit);
+    const limit = pointLimitForTopic(card.topic, points, options);
+    const compact = compactStagedDiscussionPointList(points, { ...options, limit });
     telemetry.duplicatesRemoved += compact.duplicatesRemoved;
+    telemetry.truncatedRemoved += compact.truncatedRemoved;
+    namedDetailsBefore += compact.namedDetailsBefore;
+    namedDetailsAfter += compact.namedDetailsAfter;
+    if (compact.detailRetentionScore < 80) {
+      detailRetentionWarnings.push({
+        topic: card.topic || 'Discussion',
+        detailRetentionScore: compact.detailRetentionScore
+      });
+    }
     if (!compact.points.length) continue;
     telemetry.pointsAfter += compact.points.length;
     compacted.push({ ...card, points: compact.points });
   }
 
   telemetry.cardCount = compacted.length;
+  telemetry.namedDetailsBefore = namedDetailsBefore;
+  telemetry.namedDetailsAfter = namedDetailsAfter;
+  telemetry.detailRetentionScore = namedDetailsBefore ? Math.round((namedDetailsAfter / namedDetailsBefore) * 100) : 100;
+  telemetry.detailRetentionWarnings = detailRetentionWarnings;
   return { cards: compacted, telemetry };
 }
 
