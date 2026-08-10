@@ -103,10 +103,13 @@ textarea { min-height:110px; resize:vertical; }
 .chip { display:inline-flex; align-items:center; gap:.35rem; border:1px solid var(--border); border-radius:999px; padding:.35rem .55rem; color:#dbeafe; background:#071126; font-size:.88rem; }
 .chip button { padding:0; width:1.2rem; height:1.2rem; border-radius:999px; background:#132847; color:#dbeafe; border:1px solid var(--border); font-size:.7rem; }
 .discussion-list { display:grid; gap:.75rem; }
-.discussion-card { background:#071126; border:1px solid var(--border); border-radius:12px; padding:.9rem; }
-.discussion-card header { display:flex; justify-content:space-between; gap:.75rem; align-items:flex-start; margin-bottom:.45rem; }
-.card-tools { display:flex; flex-wrap:wrap; gap:.35rem; }
-.card-tools button { padding:.42rem .55rem; border-radius:8px; font-size:.84rem; }
+.discussion-table td ul {
+  margin:.2rem 0;
+  padding-left:1.15rem;
+}
+.discussion-table td li {
+  margin:.25rem 0;
+}
 .table-wrap { overflow-x:auto; border:1px solid var(--border); border-radius:12px; background:#071126; }
 table { width:100%; border-collapse:collapse; min-width:720px; }
 th, td { border-bottom:1px solid var(--border); padding:.65rem; text-align:left; vertical-align:top; }
@@ -117,11 +120,6 @@ td textarea { min-height:68px; }
 .final-document { background:#ffffff; color:#1f2937; border-radius:8px; padding:1.25rem; border:1px solid #d9e1e8; }
 .final-document h2, .final-document h3 { color:#02173B; }
 .final-document .section { border-top:1px solid #d9e1e8; padding-top:.75rem; margin-top:.75rem; }
-.telemetry-panel { background:#071126; border:1px dashed rgba(149,167,203,.55); border-radius:12px; padding:.85rem; margin-top:1rem; }
-.telemetry-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:.6rem; margin-top:.55rem; }
-.telemetry-item { border:1px solid var(--border); border-radius:10px; padding:.6rem; background:#091224; }
-.telemetry-label { color:var(--muted); font-size:.78rem; }
-.telemetry-value { margin-top:.2rem; font-weight:700; color:#e0fffd; }
 .review-status { margin-top:.8rem; min-height:1.5rem; color:var(--muted); font-weight:500; }
 .review-status.error { color:#fecaca; }
 .review-status:not(:empty) {
@@ -347,14 +345,11 @@ button.ghost:hover {
   border-color:#79b1c2 !important;
 }
 .chip,
-.discussion-card,
 .table-wrap {
   background:#ffffff !important;
   border-color:#d9e1e8 !important;
   color:#17222c !important;
 }
-.discussion-card h3,
-.discussion-card p,
 .chip {
   color:#17222c !important;
 }
@@ -375,23 +370,6 @@ td textarea {
   background:#ffffff !important;
   color:#17222c !important;
   border-color:#c3ced8 !important;
-}
-.telemetry-panel strong {
-  color:#02173B !important;
-}
-.telemetry-panel .telemetry-label {
-  color:#596875 !important;
-}
-.telemetry-panel .telemetry-value {
-  color:#02173B !important;
-}
-.telemetry-panel {
-  background:#f8fafc !important;
-  border-color:#c3dde5 !important;
-}
-.telemetry-item {
-  background:#ffffff !important;
-  border-color:#d9e1e8 !important;
 }
 </style>
   <script defer src="/static/trinzo.js"></script>
@@ -490,15 +468,6 @@ td textarea {
             </select>
           </div>
         </div>
-        <div class="telemetry-panel review-only">
-          <strong>Hidden telemetry preview</strong>
-          <div class="telemetry-grid">
-            <div class="telemetry-item"><div class="telemetry-label">Names changed</div><div class="telemetry-value">0</div></div>
-            <div class="telemetry-item"><div class="telemetry-label">Participants added</div><div class="telemetry-value">0</div></div>
-            <div class="telemetry-item"><div class="telemetry-label">Edit time</div><div class="telemetry-value" data-review-time-value>0s</div></div>
-            <div class="telemetry-item"><div class="telemetry-label">Confidence</div><div class="telemetry-value">96%</div></div>
-          </div>
-        </div>
       </article>
 
       <article class="screen" data-screen="1">
@@ -527,15 +496,6 @@ Authentication
 Analytics and review confidence</textarea>
           <small>These topics frame the detailed discussion review on the next screen.</small>
         </div>
-        <div class="telemetry-panel">
-          <strong>Hidden telemetry preview</strong>
-          <div class="telemetry-grid">
-            <div class="telemetry-item"><div class="telemetry-label">Objectives edited</div><div class="telemetry-value">No</div></div>
-            <div class="telemetry-item"><div class="telemetry-label">Summary rewritten</div><div class="telemetry-value">No</div></div>
-            <div class="telemetry-item"><div class="telemetry-label">Words added</div><div class="telemetry-value">0</div></div>
-            <div class="telemetry-item"><div class="telemetry-label">Edit time</div><div class="telemetry-value" data-review-time-value>0s</div></div>
-          </div>
-        </div>
       </article>
 
       <article class="screen" data-screen="2">
@@ -547,52 +507,34 @@ Analytics and review confidence</textarea>
           <span class="progress-pill">3 of 5</span>
         </div>
         <div id="discussionList" class="discussion-list">
-          <section class="discussion-card">
-            <header>
-              <h3>Deployment</h3>
-              <div class="card-tools">
-                <button class="secondary" type="button">Edit</button>
-                <button class="secondary" type="button">Move</button>
-                <button class="secondary" type="button">Split</button>
-              </div>
-            </header>
-            <p>The team reviewed deployment readiness and agreed that the staged flow should remain separate until the generation and approval handoff are confirmed.</p>
-          </section>
-          <section class="discussion-card">
-            <header>
-              <h3>Authentication</h3>
-              <div class="card-tools">
-                <button class="secondary" type="button">Edit</button>
-                <button class="secondary" type="button">Merge</button>
-                <button class="secondary" type="button">Delete</button>
-              </div>
-            </header>
-            <p>The staged screens will stay behind the same login protection as the existing meeting-minutes tool.</p>
-          </section>
-          <section class="discussion-card">
-            <header>
-              <h3>Analytics</h3>
-              <div class="card-tools">
-                <button class="secondary" type="button">Edit</button>
-                <button class="secondary" type="button">Move</button>
-                <button class="secondary" type="button">Delete</button>
-              </div>
-            </header>
-            <p>Future analytics should focus on review effort, changed fields and approval confidence rather than vague AI accuracy claims.</p>
-          </section>
+          <div class="table-wrap">
+            <table class="discussion-table">
+              <thead>
+                <tr>
+                  <th>Topic</th>
+                  <th>Discussion points</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Deployment</td>
+                  <td><ul><li>The team reviewed deployment readiness and agreed that the staged flow should remain separate until the generation and approval handoff are confirmed.</li></ul></td>
+                </tr>
+                <tr>
+                  <td>Authentication</td>
+                  <td><ul><li>The staged screens will stay behind the same login protection as the existing meeting-minutes tool.</li></ul></td>
+                </tr>
+                <tr>
+                  <td>Analytics</td>
+                  <td><ul><li>Future analytics should focus on review effort, changed fields and approval confidence rather than vague AI accuracy claims.</li></ul></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
         <div class="actions" style="margin-top:.85rem;">
-          <button class="ghost" type="button">Add discussion card</button>
-          <button class="ghost" type="button">Reorder cards</button>
-        </div>
-        <div class="telemetry-panel">
-          <strong>Hidden telemetry preview</strong>
-          <div class="telemetry-grid">
-            <div class="telemetry-item"><div class="telemetry-label">Cards edited</div><div class="telemetry-value">0</div></div>
-            <div class="telemetry-item"><div class="telemetry-label">Cards deleted</div><div class="telemetry-value">0</div></div>
-            <div class="telemetry-item"><div class="telemetry-label">Cards added</div><div class="telemetry-value">0</div></div>
-            <div class="telemetry-item"><div class="telemetry-label">Reordering</div><div class="telemetry-value">None</div></div>
-          </div>
+          <button class="ghost" type="button">Add topic row</button>
+          <button class="ghost" type="button">Reorder topics</button>
         </div>
       </article>
 
@@ -635,15 +577,6 @@ Analytics and review confidence</textarea>
           <button type="button">Add action</button>
           <button class="secondary" type="button">Change owner</button>
         </div>
-        <div class="telemetry-panel">
-          <strong>Hidden telemetry preview</strong>
-          <div class="telemetry-grid">
-            <div class="telemetry-item"><div class="telemetry-label">Owner changes</div><div class="telemetry-value">0</div></div>
-            <div class="telemetry-item"><div class="telemetry-label">Deadlines edited</div><div class="telemetry-value">0</div></div>
-            <div class="telemetry-item"><div class="telemetry-label">Actions added</div><div class="telemetry-value">0</div></div>
-            <div class="telemetry-item"><div class="telemetry-label">Actions removed</div><div class="telemetry-value">0</div></div>
-          </div>
-        </div>
       </article>
 
       <article class="screen" data-screen="4">
@@ -656,15 +589,6 @@ Analytics and review confidence</textarea>
         </div>
         <div class="final-document">
           <div id="finalDocumentPreview"></div>
-        </div>
-        <div class="telemetry-panel">
-          <strong>Final report preview</strong>
-          <div class="telemetry-grid">
-            <div class="telemetry-item"><div class="telemetry-label">Review edit time</div><div class="telemetry-value" data-review-time-value>0s</div></div>
-            <div class="telemetry-item"><div class="telemetry-label">Human edits</div><div id="humanEditCountValue" class="telemetry-value">0</div></div>
-            <div class="telemetry-item"><div class="telemetry-label">Words changed</div><div class="telemetry-value">0</div></div>
-            <div class="telemetry-item"><div class="telemetry-label">AI confidence</div><div class="telemetry-value">89%</div></div>
-          </div>
         </div>
         <div class="actions" style="margin-top:.85rem;">
           <button type="button" disabled>Export PDF</button>
@@ -959,28 +883,32 @@ Analytics and review confidence</textarea>
   function renderDiscussionCards(cards) {
     if (!discussionList) return;
     var items = Array.isArray(cards) && cards.length ? cards : [{ topic: 'No substantive discussion sections generated', points: ['No topic had enough transcript evidence to include automatically.'] }];
-    discussionList.innerHTML = items.map(function (card) {
+    var rows = items.map(function (card) {
       var points = Array.isArray(card.points) ? card.points : [];
-      var structuredFields = [
-        ['What was discussed', card.whatWasDiscussed],
-        ['Current position', card.currentPosition],
-        ['Decision or agreement', card.decisionOrAgreement],
-        ['Dependency or risk', card.dependencyOrRisk],
-        ['Next step', card.nextStep]
-      ].filter(function (item) { return item[1]; });
-      var body = structuredFields.length
-        ? structuredFields.map(function (item) {
-          return '<p><strong>' + escapeHtml(item[0]) + ':</strong> ' + escapeHtml(item[1]) + '</p>';
-        }).join('')
-        : points.length ? points.map(function (point) {
-        return '<p>' + escapeHtml(point) + '</p>';
-      }).join('') : '<p>Review this section against the transcript.</p>';
-      return '<section class="discussion-card">' +
-        '<header><h3>' + escapeHtml(card.topic || 'Discussion') + '</h3>' +
-        '<div class="card-tools"><button class="secondary" type="button">Edit</button><button class="secondary" type="button">Move</button><button class="secondary" type="button">Split</button></div></header>' +
-        body +
-      '</section>';
+      var bulletPoints = [
+        card.whatWasDiscussed,
+        card.currentPosition,
+        card.decisionOrAgreement,
+        card.dependencyOrRisk,
+        card.nextStep
+      ].concat(points).filter(Boolean);
+      var seen = {};
+      var bullets = bulletPoints.map(function (point) { return String(point || '').trim(); }).filter(function (point) {
+        var key = point.toLowerCase();
+        if (!point || seen[key]) return false;
+        seen[key] = true;
+        return true;
+      });
+      if (!bullets.length) bullets = ['Review this section against the transcript.'];
+      return '<tr>' +
+        '<td>' + escapeHtml(card.topic || 'Discussion') + '</td>' +
+        '<td><ul>' + bullets.map(function (point) { return '<li>' + escapeHtml(point) + '</li>'; }).join('') + '</ul></td>' +
+      '</tr>';
     }).join('');
+    discussionList.innerHTML =
+      '<div class="table-wrap"><table class="discussion-table"><thead><tr><th>Topic</th><th>Discussion points</th></tr></thead><tbody>' +
+      rows +
+      '</tbody></table></div>';
   }
 
   function renderActions(actions) {
@@ -999,12 +927,13 @@ Analytics and review confidence</textarea>
   function renderFinalDocument() {
     if (!finalDocumentPreview) return;
     var objectives = linesFromTextarea(objectivesInput && objectivesInput.value);
-    var discussionCards = Array.prototype.slice.call(document.querySelectorAll('.discussion-card')).map(function (card) {
+    var discussionRows = Array.prototype.slice.call(discussionList ? discussionList.querySelectorAll('.discussion-table tbody tr') : []).map(function (row) {
+      var cells = row.querySelectorAll('td');
       return {
-        topic: card.querySelector('h3') ? card.querySelector('h3').textContent.trim() : 'Discussion',
-        paragraphs: Array.prototype.slice.call(card.querySelectorAll('p')).map(function (p) { return p.textContent.trim(); }).filter(Boolean)
+        topic: cells[0] ? cells[0].textContent.trim() : 'Discussion',
+        bullets: Array.prototype.slice.call(cells[1] ? cells[1].querySelectorAll('li') : []).map(function (li) { return li.textContent.trim(); }).filter(Boolean)
       };
-    }).filter(function (item) { return item.paragraphs.length && item.topic !== 'No substantive discussion sections generated'; });
+    }).filter(function (item) { return item.bullets.length && item.topic !== 'No substantive discussion sections generated'; });
     var actions = Array.prototype.slice.call(actionsTableBody ? actionsTableBody.querySelectorAll('tr') : []).map(function (row) {
       var cells = row.querySelectorAll('td');
       return {
@@ -1020,9 +949,9 @@ Analytics and review confidence</textarea>
       '<p><strong>Location:</strong> ' + escapeHtml((meetingLocationInput && meetingLocationInput.value) || 'Microsoft Teams') + '</p>' +
       '<div class="section"><h3>Objectives</h3><ul>' + objectives.map(function (item) { return '<li>' + escapeHtml(item) + '</li>'; }).join('') + '</ul></div>' +
       '<div class="section"><h3>Summary</h3><p>' + escapeHtml((executiveSummaryInput && executiveSummaryInput.value) || 'Review the transcript-generated summary before moving on.') + '</p></div>' +
-      '<div class="section"><h3>Key discussion points</h3>' + discussionCards.map(function (item) {
-        return '<h4>' + escapeHtml(item.topic) + '</h4>' + item.paragraphs.map(function (paragraph) { return '<p>' + escapeHtml(paragraph) + '</p>'; }).join('');
-      }).join('') + '</div>' +
+      '<div class="section"><h3>Key discussion points</h3><table class="discussion-table"><thead><tr><th>Topic</th><th>Discussion points</th></tr></thead><tbody>' + discussionRows.map(function (item) {
+        return '<tr><td>' + escapeHtml(item.topic) + '</td><td><ul>' + item.bullets.map(function (point) { return '<li>' + escapeHtml(point) + '</li>'; }).join('') + '</ul></td></tr>';
+      }).join('') + '</tbody></table></div>' +
       '<div class="section"><h3>Actions</h3><table><thead><tr><th>Owner</th><th>Action</th><th>Due</th></tr></thead><tbody>' + actions.map(function (item) {
         return '<tr><td>' + escapeHtml(item.owner || 'Not stated') + '</td><td>' + escapeHtml(item.action || 'Review action wording') + '</td><td>' + escapeHtml(item.deadline || 'Not stated') + '</td></tr>';
       }).join('') + '</tbody></table></div>' +
