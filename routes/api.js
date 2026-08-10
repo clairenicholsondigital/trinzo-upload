@@ -789,9 +789,11 @@ function isNoEvidenceDiscussionText(value) {
 }
 
 function isLowValueStagedDiscussionText(value) {
-  const text = cleanStagedDiscussionText(value).toLowerCase();
+  const cleaned = cleanStagedDiscussionText(value);
+  const text = cleaned.toLowerCase();
   if (!text) return true;
   if (/^(?:yeah|yes|no|okay|ok|absolutely|presumably|perfect|right)[.!?,\s]*(?:yeah|yes|no|okay|ok|absolutely|presumably|perfect|right)?[.!?,\s]*$/.test(text)) return true;
+  if (/\b([A-Z][a-z]+)\s+said\s+that\s+\1\b/.test(cleaned)) return true;
   if (text.split(/\s+/).length < 5) return true;
   return false;
 }
@@ -1036,9 +1038,12 @@ function stagedTrooperSchema(stage) {
   return {};
 }
 
-function buildStagedTrooperPrompt(stage, transcript, req) {
+function buildStagedTrooperPrompt(stage, transcript, req, options = {}) {
   const details = stagedDetailsWithConfirmedContext(req, transcript);
   const context = stagedContextFromRequest(req);
+  const discussionTopicEvidence = stage === 'discussion'
+    ? topicEvidenceForStagedDiscussion(transcript, context.overallTopics)
+    : [];
   const confirmed = {
     meetingTitle: details.meetingTitle || context.meetingTitle,
     meetingDate: details.meetingDate || context.meetingDate,
@@ -1046,7 +1051,8 @@ function buildStagedTrooperPrompt(stage, transcript, req) {
     meetingType: context.meetingType || details.meetingType || 'Project review',
     participants: context.participants.length ? context.participants : details.allAttendees,
     overallTopics: context.overallTopics,
-    reviewerGuidance: context.additionalContext
+    reviewerGuidance: context.additionalContext,
+    topicEvidence: discussionTopicEvidence
   };
   const stageInstruction = {
     summary: [
@@ -1063,6 +1069,9 @@ function buildStagedTrooperPrompt(stage, transcript, req) {
       'Write stage 3 only: discussion points grouped against the confirmed topics.',
       'Treat CONFIRMED_CONTEXT.overallTopics as the agenda for a methodical transcript pass.',
       'For each confirmed overall topic, look through the transcript for evidence relevant to that topic before moving to the next topic.',
+      'Use CONFIRMED_CONTEXT.topicEvidence as the topic-by-topic evidence map, then cross-check against the transcript.',
+      'For every confirmed topic that has topicEvidence snippets, return one discussionTopics object unless the snippets are clearly irrelevant.',
+      'Do not collapse separate confirmed topics into one combined topic.',
       'Return discussionTopics in the same order as the confirmed overallTopics where possible.',
       'Use the confirmed title, meeting type, participants, summary topics and transcript evidence.',
       'Use reviewerGuidance as non-evidence context for emphasis only when supplied.',
@@ -1072,6 +1081,7 @@ function buildStagedTrooperPrompt(stage, transcript, req) {
       'For each included topic, populate only evidenced fields from: whatWasDiscussed, currentPosition, decisionOrAgreement, dependencyOrRisk, nextStep.',
       'Write each field as polished formal-minutes prose, not copied transcript text.',
       'Never include raw speaker names, timestamps, timecodes, glued speaker/timecode prefixes, filler words, false starts, or malformed transcript phrasing in any public field.',
+      'Do not write "Name said that..." narration; write the account in neutral third-person formal minutes style.',
       'Also return executiveSummaryFromFindings: a concise formal-minutes summary synthesised from the included findings, focused on status, changes, agreements, risks, dependencies and time-critical next steps.',
       'Do not describe the meeting itself or list the included topics in executiveSummaryFromFindings.',
       'Return 2-8 discussionTopics with concise evidence-backed fields and no filler.'
@@ -1091,6 +1101,11 @@ function buildStagedTrooperPrompt(stage, transcript, req) {
     'CONFIRMED_CONTEXT:',
     JSON.stringify(confirmed, null, 2),
     '',
+    ...(options.strictTopicCoverage ? [
+      'RETRY_NOTE:',
+      'The previous stage 3 response was too thin or collapsed the confirmed topics. Re-run the stage methodically, using topicEvidence to produce one concise topic row per evidenced topic.',
+      ''
+    ] : []),
     'STAGE_INSTRUCTIONS:',
     stageInstruction.map((line) => `- ${line}`).join('\n'),
     '',
@@ -1103,6 +1118,7 @@ function buildStagedTrooperPrompt(stage, transcript, req) {
     '- Keep wording professional and concise.',
     '- Use British English spelling.',
     '- Do not copy raw transcript turns into public text; rewrite them into clear complete sentences without speaker labels or timestamps.',
+    '- Do not output raw "Name:" or "Name said that..." wording.',
     '',
     '[TRANSCRIPT]',
     String(transcript.text || '').slice(0, Number(process.env.STAGED_TROOPER_MAX_TRANSCRIPT_CHARS || 90000)),
@@ -1110,7 +1126,7 @@ function buildStagedTrooperPrompt(stage, transcript, req) {
   ].join('\n');
 }
 
-async function buildStagedTrooperContext(stage, transcript, req) {
+async function buildStagedTrooperContext(stage, transcript, req, options = {}) {
   const apiKey = String(process.env.TROOPER_API_KEY || '').trim();
   const model = String(process.env.TROOPER_MODEL || TROOPER_STAGE_MODEL_DEFAULT).trim() || TROOPER_STAGE_MODEL_DEFAULT;
   const url = String(process.env.TROOPER_CHAT_COMPLETIONS_URL || TROOPER_STAGE_URL_DEFAULT).trim() || TROOPER_STAGE_URL_DEFAULT;
@@ -1149,7 +1165,7 @@ async function buildStagedTrooperContext(stage, transcript, req) {
           },
           {
             role: 'user',
-            content: buildStagedTrooperPrompt(stage, transcript, req)
+            content: buildStagedTrooperPrompt(stage, transcript, req, options)
           }
         ],
         temperature: Number(process.env.STAGED_TROOPER_TEMPERATURE || 0.15),
@@ -1179,14 +1195,15 @@ async function buildStagedTrooperContext(stage, transcript, req) {
       output: output && typeof output === 'object' ? output : {},
       counts: {},
       rewriterAvailable: true,
-      rewriterReason: `Trooper targeted staged ${stage} generation used.`,
+      rewriterReason: `Trooper targeted staged ${stage} generation used${options.strictTopicCoverage ? ' with strict topic coverage retry' : ''}.`,
       diagnostics: {
         provider: 'trooper_stage',
         modelAvailable: true,
         modelName: model,
-        modelReason: `Trooper targeted staged ${stage} generation used.`,
+        modelReason: `Trooper targeted staged ${stage} generation used${options.strictTopicCoverage ? ' with strict topic coverage retry' : ''}.`,
         pipeline: `staged_${stage}_targeted`,
         timingMs: { total: Date.now() - startedAt },
+        strictTopicCoverage: Boolean(options.strictTopicCoverage),
         usage: parsedBody?.usage || null
       }
     };
@@ -1273,7 +1290,7 @@ function stagedFastContextIsUsable(stage, context) {
     );
   }
   if (stage === 'discussion') {
-    return Boolean(discussionFromStagedMiniLM(context).length || topicsFromStagedMiniLM(context).length);
+    return Boolean(discussionFromStagedMiniLM(context).length);
   }
   if (stage === 'actions') {
     return Boolean(actionsFromStagedMiniLM(context).length);
@@ -1285,7 +1302,16 @@ async function buildStagedGenerationContext(stage, transcript, req, onProgress =
   await onProgress(25, stage === 'summary'
     ? 'AI is drafting objectives, summary and topics from the confirmed meeting details.'
     : `AI is drafting staged ${stage} content from the confirmed meeting details.`);
-  const trooperContext = await buildStagedTrooperContext(stage, transcript, req);
+  let trooperContext = await buildStagedTrooperContext(stage, transcript, req);
+  if (stage === 'discussion' && trooperContext.ok && stagedDiscussionCoverageIsThin(trooperContext, req, transcript)) {
+    await onProgress(45, 'AI discussion output was too thin, re-running against the confirmed topic evidence.');
+    const retryContext = await buildStagedTrooperContext(stage, transcript, req, { strictTopicCoverage: true });
+    const originalCount = discussionFromStagedMiniLM(trooperContext).length;
+    const retryCount = discussionFromStagedMiniLM(retryContext).length;
+    if (retryContext.ok && (!stagedDiscussionCoverageIsThin(retryContext, req, transcript) || retryCount > originalCount)) {
+      trooperContext = retryContext;
+    }
+  }
   if (trooperContext.ok) {
     return { context: trooperContext, provider: 'trooper-stage', fallbackUsed: false };
   }
@@ -1414,6 +1440,25 @@ function evidenceForTopic(transcriptText, topic) {
   });
 
   return matches.slice(0, 3).map((line) => line.replace(/\s+/g, ' ').trim());
+}
+
+function topicEvidenceForStagedDiscussion(transcript, topics) {
+  return (Array.isArray(topics) ? topics : [])
+    .slice(0, 8)
+    .map((topic) => ({
+      topic: cleanStagedGeneratedLine(topic),
+      evidence: evidenceForTopic(transcript.text, topic).slice(0, 5)
+    }))
+    .filter((item) => item.topic && item.evidence.length);
+}
+
+function stagedDiscussionCoverageIsThin(minilmContext, req, transcript) {
+  const context = stagedContextFromRequest(req);
+  const topicEvidence = topicEvidenceForStagedDiscussion(transcript, context.overallTopics);
+  if (topicEvidence.length < 2) return false;
+  const cards = discussionFromStagedMiniLM(minilmContext);
+  const expectedMinimum = Math.min(3, topicEvidence.length);
+  return cards.length < expectedMinimum;
 }
 
 function normaliseTopicKey(value) {
@@ -2317,9 +2362,8 @@ router.post('/staged-meeting-minutes', requireAuth, withTestUpload(async (req, r
     }
 
     if (requestedStage === 'discussion') {
-      const trooperContext = await buildStagedTrooperContext('discussion', aiTranscript, req);
-      const fallbackContext = trooperContext.ok ? null : await buildStagedMiniLMContext(aiTranscript);
-      const discussionResponse = buildStagedDiscussionResponse(req, aiTranscript, trooperContext.ok ? trooperContext : fallbackContext);
+      const generation = await buildStagedGenerationContext('discussion', aiTranscript, req);
+      const discussionResponse = buildStagedDiscussionResponse(req, aiTranscript, generation.context);
       discussionResponse.preparedTranscriptTelemetry = aiTranscript.preparedTranscriptTelemetry;
 
       console.info(JSON.stringify({
@@ -2329,9 +2373,9 @@ router.post('/staged-meeting-minutes', requireAuth, withTestUpload(async (req, r
         transcriptLength: transcript.text.length,
         topicCount: discussionResponse.telemetryPreview.topicCount,
         discussionCards: discussionResponse.telemetryPreview.discussionCards,
-        trooperUsed: trooperContext.rewriterAvailable,
-        fallbackUsed: !trooperContext.ok,
-        embeddingClassifierUsed: discussionResponse.telemetryPreview.embeddingClassifier.used && !trooperContext.ok,
+        trooperUsed: generation.provider === 'trooper-stage',
+        fallbackUsed: generation.fallbackUsed,
+        embeddingClassifierUsed: discussionResponse.telemetryPreview.embeddingClassifier.used && generation.fallbackUsed,
         durationMs: Date.now() - startedAt
       }));
 
