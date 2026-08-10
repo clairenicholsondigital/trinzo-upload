@@ -21,7 +21,9 @@ const { extractTextFromUpload } = require('../utils/transcript');
 const {
   isMalformedStagedLine,
   hasStagedDecisionEvidence,
+  buildTightStagedObjectives,
   dedupeStagedDiscussionCards,
+  compactStagedDiscussionCards,
   buildStagedValidationFlags
 } = require('../utils/stagedEditorial');
 
@@ -1644,11 +1646,15 @@ function buildStagedSummaryResponse(req, transcript, minilmContext = null) {
   const topics = topicsFromStagedMiniLM(minilmContext).length
     ? topicsFromStagedMiniLM(minilmContext)
     : extractOverallTopicsFromTranscript(transcript.text);
-  const objectives = [
-    'Confirm the current project position and what has changed since the last review.',
-    'Capture agreed decisions, follow-ups, owners and unresolved dependencies.',
-    'Identify risks or blockers that could affect the timeline or release readiness.'
-  ];
+  const objectiveReduction = buildTightStagedObjectives({
+    topics,
+    meetingTitle: details.meetingTitle,
+    meetingType: details.meetingType,
+    summary: output.executiveSummary || output.meetingDescription || output.summary
+  });
+  const objectives = objectiveReduction.objectives.length
+    ? objectiveReduction.objectives
+    : ['Review the confirmed meeting topics and agreed follow-up points.'];
   const summary = cleanStagedExecutiveSummary(output.executiveSummary || output.meetingDescription || output.summary) ||
     (topics.length
       ? `The project status needs to be read through ${topics.map((topic) => topic.toLowerCase()).join(', ')}. The next review stage should draw out the agreed changes, unresolved dependencies, timeline pressure and release-readiness implications from the transcript evidence.`
@@ -1672,7 +1678,8 @@ function buildStagedSummaryResponse(req, transcript, minilmContext = null) {
       stage: 'summary',
       topicCount: topics.length,
       transcriptLength: transcript.text.length,
-      embeddingClassifier: stagedMiniLMTelemetry(minilmContext)
+      embeddingClassifier: stagedMiniLMTelemetry(minilmContext),
+      objectiveReducer: objectiveReduction.telemetry
     }
   };
 }
@@ -2216,9 +2223,11 @@ function buildStagedDiscussionResponse(req, transcript, minilmContext = null) {
   const details = stagedDetailsWithConfirmedContext(req, transcript);
   const participants = context.participants.length ? context.participants : details.allAttendees;
   const meetingType = context.meetingType || details.meetingType || 'Project review';
-  const discussion = miniLmDiscussion.length
+  const rawDiscussion = miniLmDiscussion.length
     ? alignDiscussionCardsToConfirmedTopics(miniLmDiscussion, context.overallTopics, transcript, meetingType, participants)
     : [];
+  const discussionCompaction = compactStagedDiscussionCards(rawDiscussion, { pointLimit: 4 });
+  const discussion = discussionCompaction.cards;
   const output = stagedMiniLMOutput(minilmContext);
   const executiveSummaryFromFindings = cleanStagedExecutiveSummary(
     output.executiveSummaryFromFindings || output.summaryFromFindings || output.executiveSummary || ''
@@ -2255,7 +2264,8 @@ function buildStagedDiscussionResponse(req, transcript, minilmContext = null) {
       topicCount: topics.length,
       discussionCards: discussion.length,
       transcriptLength: transcript.text.length,
-      embeddingClassifier: stagedMiniLMTelemetry(minilmContext)
+      embeddingClassifier: stagedMiniLMTelemetry(minilmContext),
+      discussionCompaction: discussionCompaction.telemetry
     }
   };
 }

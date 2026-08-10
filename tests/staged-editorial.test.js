@@ -6,14 +6,68 @@ const {
   hasStagedDecisionEvidence,
   cardsAreDuplicates,
   dedupeStagedDiscussionCards,
+  buildTightStagedObjectives,
+  compactStagedDiscussionCards,
   buildStagedValidationFlags
 } = require('../utils/stagedEditorial');
 
-test('isMalformedStagedLine catches the "Potential The ..." transcription-noise gremlin', () => {
+test('isMalformedStagedLine catches the "Potential The ..." transcription-noise pattern', () => {
   assert.equal(
     isMalformedStagedLine('Potential The discussion covered transportation availability if the final is won, requiring contingency planning.'),
     true
   );
+});
+
+test('buildTightStagedObjectives replaces boilerplate with topic-specific objectives', () => {
+  const result = buildTightStagedObjectives({
+    meetingTitle: 'Client Abbott T796 Audit Kick Off Sylmar',
+    meetingType: 'Project review',
+    topics: [
+      'Hotel and Participant Arrangements',
+      'Audit Timeline and Preparation Schedule',
+      'Regulatory Standards and Compliance (21 CFRs, MDR, ISOs)',
+      'Software Management System Deep Dive',
+      'Site Access and Documentation Sharing'
+    ]
+  });
+
+  assert.deepEqual(result.objectives, [
+    'Confirm regulatory standards and compliance (21 CFRs, MDR, ISOs)',
+    'Review software management system deep dive',
+    'Agree hotel and participant arrangements and audit timeline and preparation schedule'
+  ]);
+  assert.equal(result.telemetry.objectiveSource, 'topic_objective_reducer');
+});
+
+test('compactStagedDiscussionCards keeps stronger topic bullets and removes repetition', () => {
+  const result = compactStagedDiscussionCards([
+    {
+      topic: 'Audit Timeline and Preparation Schedule',
+      points: [
+        'The audit is confirmed as a routine surveillance audit, and the team has prior experience with the facility and its processes.',
+        'The audit is a routine surveillance audit, and prior experience with the facility manufacturing processes is noted.',
+        'The risk assessment must be completed to develop the audit plan, which is scheduled for Wednesday.',
+        'The risk assessment will be shared before arrival, and a catch-up meeting is planned before the audit starts.',
+        'The audit will involve full findings and rating, not an assessment.'
+      ]
+    },
+    {
+      topic: 'Software Management System Deep Dive',
+      points: [
+        'The deep dive will focus on software aspects, including unknown provenance, the Software Bill of Materials (SBOM), and managing new version rollouts.',
+        'The team will prepare the SBOM for the first week, and the focus will be on software development, validation, and associated purchasing controls.',
+        'The team will focus on software development, validation, and purchasing controls related to the device.',
+        'The team will look at suppliers of SBOM information to assess component status.'
+      ]
+    }
+  ], { pointLimit: 4 });
+
+  assert.equal(result.cards.length, 2);
+  assert.equal(result.cards[0].points.length, 4);
+  assert.equal(result.cards[1].points.length, 3);
+  assert.ok(result.telemetry.duplicatesRemoved >= 2);
+  assert.ok(result.cards[0].points.some((point) => point.includes('risk assessment')));
+  assert.ok(result.cards[1].points.some((point) => point.includes('SBOM')));
 });
 
 test('isMalformedStagedLine catches other dangling qualifiers and glued clauses', () => {

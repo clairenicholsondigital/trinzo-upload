@@ -71,6 +71,99 @@ function cardPoints(card) {
     .filter(Boolean);
 }
 
+function tidyTopicPhrase(value) {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .replace(/\b(?:overall|general|key|main)\s+(?:topics?|discussion|points?)\b/ig, '')
+    .replace(/\b(?:discussion|overview|review)\b$/ig, '')
+    .replace(/^\s*[-:;,\s]+|[-:;,\s]+\s*$/g, '')
+    .trim();
+}
+
+function lowerInitialForObjective(value) {
+  const text = tidyTopicPhrase(value);
+  if (!text) return '';
+  return text
+    .split(/(\s+)/)
+    .map((part) => {
+      if (/^\s+$/.test(part)) return part;
+      if (/[A-Z]{2,}|\d/.test(part)) return part;
+      return part.toLowerCase();
+    })
+    .join('')
+    .replace(/\bmedsap\b/g, 'MedSAP')
+    .replace(/\bmdr\b/g, 'MDR')
+    .replace(/\biso\b/g, 'ISO')
+    .replace(/\bsbom\b/g, 'SBOM');
+}
+
+function objectiveIntentForTopic(topic) {
+  const text = String(topic || '').toLowerCase();
+  if (/\b(?:risk|dependency|dependencies|blocker|open point|gap|issue|constraint)\b/.test(text)) return 'Identify';
+  if (/\b(?:access|sharing|arrangement|arrangements|logistics|handover|schedule|timeline|date|deadline|participant|hotel)\b/.test(text)) return 'Agree';
+  if (/\b(?:scope|standard|standards|compliance|requirement|requirements|approval|decision)\b/.test(text)) return 'Confirm';
+  return 'Review';
+}
+
+function joinObjectivePhrases(values) {
+  const phrases = (Array.isArray(values) ? values : [])
+    .map(lowerInitialForObjective)
+    .filter(Boolean);
+  if (!phrases.length) return '';
+  if (phrases.length === 1) return phrases[0];
+  if (phrases.length === 2) return `${phrases[0]} and ${phrases[1]}`;
+  return `${phrases.slice(0, -1).join(', ')} and ${phrases[phrases.length - 1]}`;
+}
+
+const GENERIC_OBJECTIVE_PATTERNS = [
+  /current project position/i,
+  /what has changed since the last review/i,
+  /agreed decisions, follow-ups, owners/i,
+  /unresolved dependencies/i,
+  /risks or blockers/i,
+  /timeline or release readiness/i
+];
+
+function isGenericStagedObjective(value) {
+  const text = String(value || '').trim();
+  return !text || GENERIC_OBJECTIVE_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+function buildTightStagedObjectives(input = {}) {
+  const topics = (Array.isArray(input.topics) ? input.topics : [])
+    .map(tidyTopicPhrase)
+    .filter(Boolean);
+  const grouped = new Map();
+  for (const topic of topics) {
+    const intent = objectiveIntentForTopic(topic);
+    if (!grouped.has(intent)) grouped.set(intent, []);
+    grouped.get(intent).push(topic);
+  }
+
+  const orderedIntents = ['Confirm', 'Review', 'Agree', 'Identify'];
+  const objectives = [];
+  for (const intent of orderedIntents) {
+    const phrase = joinObjectivePhrases((grouped.get(intent) || []).slice(0, 2));
+    if (!phrase) continue;
+    objectives.push(`${intent} ${phrase}`);
+    if (objectives.length >= 3) break;
+  }
+
+  if (!objectives.length) {
+    const fallback = tidyTopicPhrase(input.meetingTitle || input.meetingType || '');
+    if (fallback) objectives.push(`Review ${lowerInitialForObjective(fallback)}`);
+  }
+
+  return {
+    objectives: objectives.slice(0, 3),
+    telemetry: {
+      objectiveSource: objectives.length ? 'topic_objective_reducer' : 'fallback_objective_reducer',
+      topicCount: topics.length,
+      objectiveSpecificityScore: objectives.length ? 100 : 0
+    }
+  };
+}
+
 // --- Malformed / transcription-noise line detection -----------------------
 
 // Leading dangling qualifier glued to a determiner clause, e.g.
@@ -139,6 +232,97 @@ function dedupeStagedDiscussionCards(cards, options = {}) {
     kept.push(card);
   }
   return { cards: kept, dropped };
+}
+
+function normalisePointForCompact(value) {
+  return normaliseForSimilarity(value)
+    .replace(/\b(?:confirmed|noted|discussed|covered|involved|regarding|related|routine|prior|experience)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function compactPointSimilarity(left, right) {
+  const leftTokens = new Set(normalisePointForCompact(left).split(/\s+/).filter((word) => word.length >= 4));
+  const rightTokens = new Set(normalisePointForCompact(right).split(/\s+/).filter((word) => word.length >= 4));
+  if (!leftTokens.size || !rightTokens.size) return 0;
+  let overlap = 0;
+  for (const token of leftTokens) {
+    if (rightTokens.has(token)) overlap += 1;
+  }
+  return overlap / Math.min(leftTokens.size, rightTokens.size);
+}
+
+function stagedPointSpecificityScore(value) {
+  const text = String(value || '');
+  let score = 0;
+  if (/\b(?:agreed|confirmed|approved|decided|will|must|before|by|deadline|action|owner|share|send|prepare|arrange)\b/i.test(text)) score += 4;
+  if (/\b(?:risk|dependency|blocked|delay|required before|waiting for|open point|constraint|gap)\b/i.test(text)) score += 3;
+  if (/\b(?:\d{1,2}(?:st|nd|rd|th)?|20\d{2}|v\d+(?:\.\d+)*|[A-Z]{2,}|SBOM|MDR|ISO|CFR|MDSAP|MedSAP|SharePoint)\b/.test(text)) score += 3;
+  if (/\b(?:document|plan|scope|standard|software|system|site|audit|training|attestation|code of conduct)\b/i.test(text)) score += 2;
+  const wordCount = text.split(/\s+/).filter(Boolean).length;
+  if (wordCount >= 8 && wordCount <= 28) score += 2;
+  if (wordCount > 40) score -= 2;
+  if (/^(?:the discussion|the meeting|it was discussed|there was discussion)\b/i.test(text)) score -= 1;
+  return score;
+}
+
+function betterCompactPoint(left, right) {
+  const leftScore = stagedPointSpecificityScore(left);
+  const rightScore = stagedPointSpecificityScore(right);
+  if (rightScore !== leftScore) return rightScore > leftScore ? right : left;
+  return String(right || '').length < String(left || '').length ? right : left;
+}
+
+function compactStagedDiscussionPointList(points, limit = 4) {
+  const kept = [];
+  let duplicatesRemoved = 0;
+  for (const point of Array.isArray(points) ? points : []) {
+    const cleaned = String(point || '').replace(/\s+/g, ' ').trim();
+    if (!cleaned) continue;
+    const duplicateIndex = kept.findIndex((existing) => {
+      const similarity = compactPointSimilarity(existing, cleaned);
+      const left = normalisePointForCompact(existing);
+      const right = normalisePointForCompact(cleaned);
+      return similarity >= 0.66 || (left && right && (left.includes(right) || right.includes(left)));
+    });
+    if (duplicateIndex >= 0) {
+      kept[duplicateIndex] = betterCompactPoint(kept[duplicateIndex], cleaned);
+      duplicatesRemoved += 1;
+      continue;
+    }
+    kept.push(cleaned);
+  }
+
+  kept.sort((left, right) => stagedPointSpecificityScore(right) - stagedPointSpecificityScore(left));
+  return {
+    points: kept.slice(0, limit),
+    duplicatesRemoved: duplicatesRemoved + Math.max(0, kept.length - limit)
+  };
+}
+
+function compactStagedDiscussionCards(cards, options = {}) {
+  const pointLimit = options.pointLimit ?? 4;
+  const compacted = [];
+  const telemetry = {
+    pointsBefore: 0,
+    pointsAfter: 0,
+    duplicatesRemoved: 0,
+    cardCount: 0
+  };
+
+  for (const card of Array.isArray(cards) ? cards : []) {
+    if (!card || typeof card !== 'object') continue;
+    const points = Array.isArray(card.points) ? card.points : [];
+    telemetry.pointsBefore += points.length;
+    const compact = compactStagedDiscussionPointList(points, pointLimit);
+    telemetry.duplicatesRemoved += compact.duplicatesRemoved;
+    if (!compact.points.length) continue;
+    telemetry.pointsAfter += compact.points.length;
+    compacted.push({ ...card, points: compact.points });
+  }
+
+  telemetry.cardCount = compacted.length;
+  return { cards: compacted, telemetry };
 }
 
 // --- Advisory completeness / editorial flags ------------------------------
@@ -223,9 +407,11 @@ module.exports = {
   normaliseForSimilarity,
   pointSimilarity,
   cardPoints,
+  buildTightStagedObjectives,
   isMalformedStagedLine,
   hasStagedDecisionEvidence,
   cardsAreDuplicates,
   dedupeStagedDiscussionCards,
+  compactStagedDiscussionCards,
   buildStagedValidationFlags
 };
