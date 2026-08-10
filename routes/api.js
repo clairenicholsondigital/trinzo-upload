@@ -1041,8 +1041,10 @@ function stagedTrooperSchema(stage) {
 function buildStagedTrooperPrompt(stage, transcript, req, options = {}) {
   const details = stagedDetailsWithConfirmedContext(req, transcript);
   const context = stagedContextFromRequest(req);
-  const discussionTopicEvidence = stage === 'discussion'
-    ? topicEvidenceForStagedDiscussion(transcript, context.overallTopics)
+  const discussionEvidencePack = stage === 'discussion'
+    ? (Array.isArray(options.evidencePack) && options.evidencePack.length
+      ? options.evidencePack
+      : topicEvidenceForStagedDiscussion(transcript, context.overallTopics))
     : [];
   const confirmed = {
     meetingTitle: details.meetingTitle || context.meetingTitle,
@@ -1052,7 +1054,7 @@ function buildStagedTrooperPrompt(stage, transcript, req, options = {}) {
     participants: context.participants.length ? context.participants : details.allAttendees,
     overallTopics: context.overallTopics,
     reviewerGuidance: context.additionalContext,
-    topicEvidence: discussionTopicEvidence
+    topicEvidence: discussionEvidencePack
   };
   const stageInstruction = {
     summary: [
@@ -1069,9 +1071,11 @@ function buildStagedTrooperPrompt(stage, transcript, req, options = {}) {
       'Write stage 3 only: discussion points grouped against the confirmed topics.',
       'Treat CONFIRMED_CONTEXT.overallTopics as the agenda for a methodical transcript pass.',
       'For each confirmed overall topic, look through the transcript for evidence relevant to that topic before moving to the next topic.',
-      'Use CONFIRMED_CONTEXT.topicEvidence as the topic-by-topic evidence map, then cross-check against the transcript.',
+      'Use CONFIRMED_CONTEXT.topicEvidence as the MiniLM semantic evidence pack where present, then cross-check against the transcript.',
       'For every confirmed topic that has topicEvidence snippets, return one discussionTopics object unless the snippets are clearly irrelevant.',
       'Do not collapse separate confirmed topics into one combined topic.',
+      'Also do not over-segment: if topicEvidence combines overlapping transcript evidence under one topic, keep it as one consolidated topic.',
+      'Prefer consolidation over coverage: include the distinct points a reviewer needs to understand the meeting outcome, not every detectable phrase.',
       'Return discussionTopics in the same order as the confirmed overallTopics where possible.',
       'Use the confirmed title, meeting type, participants, summary topics and transcript evidence.',
       'Use reviewerGuidance as non-evidence context for emphasis only when supplied.',
@@ -1103,7 +1107,7 @@ function buildStagedTrooperPrompt(stage, transcript, req, options = {}) {
     '',
     ...(options.strictTopicCoverage ? [
       'RETRY_NOTE:',
-      'The previous stage 3 response was too thin or collapsed the confirmed topics. Re-run the stage methodically, using topicEvidence to produce one concise topic row per evidenced topic.',
+      'The previous stage 3 response was too thin, duplicated, or collapsed the evidence pack. Re-run the stage methodically, using topicEvidence to produce concise topic rows for the distinct evidenced topics.',
       ''
     ] : []),
     'STAGE_INSTRUCTIONS:',
@@ -1204,6 +1208,7 @@ async function buildStagedTrooperContext(stage, transcript, req, options = {}) {
         pipeline: `staged_${stage}_targeted`,
         timingMs: { total: Date.now() - startedAt },
         strictTopicCoverage: Boolean(options.strictTopicCoverage),
+        evidencePackTopicCount: Array.isArray(options.evidencePack) ? options.evidencePack.length : 0,
         usage: parsedBody?.usage || null
       }
     };
@@ -1299,16 +1304,24 @@ function stagedFastContextIsUsable(stage, context) {
 }
 
 async function buildStagedGenerationContext(stage, transcript, req, onProgress = async () => {}) {
+  let fastContext = null;
+  let evidencePack = [];
+  if (stage === 'discussion') {
+    await onProgress(18, 'Building a semantic evidence pack for the confirmed discussion topics.');
+    fastContext = await buildStagedMiniLMContext(transcript);
+    evidencePack = buildStagedMiniLMEvidencePack(fastContext, stagedContextFromRequest(req).overallTopics);
+  }
+
   await onProgress(25, stage === 'summary'
     ? 'AI is drafting objectives, summary and topics from the confirmed meeting details.'
     : `AI is drafting staged ${stage} content from the confirmed meeting details.`);
-  let trooperContext = await buildStagedTrooperContext(stage, transcript, req);
-  if (stage === 'discussion' && trooperContext.ok && stagedDiscussionCoverageIsThin(trooperContext, req, transcript)) {
-    await onProgress(45, 'AI discussion output was too thin, re-running against the confirmed topic evidence.');
-    const retryContext = await buildStagedTrooperContext(stage, transcript, req, { strictTopicCoverage: true });
+  let trooperContext = await buildStagedTrooperContext(stage, transcript, req, { evidencePack });
+  if (stage === 'discussion' && trooperContext.ok && stagedDiscussionCoverageIsThin(trooperContext, req, transcript, evidencePack)) {
+    await onProgress(45, 'AI discussion output was too thin, re-running against the semantic topic evidence.');
+    const retryContext = await buildStagedTrooperContext(stage, transcript, req, { strictTopicCoverage: true, evidencePack });
     const originalCount = discussionFromStagedMiniLM(trooperContext).length;
     const retryCount = discussionFromStagedMiniLM(retryContext).length;
-    if (retryContext.ok && (!stagedDiscussionCoverageIsThin(retryContext, req, transcript) || retryCount > originalCount)) {
+    if (retryContext.ok && (!stagedDiscussionCoverageIsThin(retryContext, req, transcript, evidencePack) || retryCount > originalCount)) {
       trooperContext = retryContext;
     }
   }
@@ -1319,7 +1332,7 @@ async function buildStagedGenerationContext(stage, transcript, req, onProgress =
   await onProgress(45, stage === 'summary'
     ? 'AI stage was unavailable, using the faster transcript scan for summary and topics.'
     : `AI stage was unavailable, using the faster transcript scan for ${stage}.`);
-  const fastContext = await buildStagedMiniLMContext(transcript);
+  if (!fastContext) fastContext = await buildStagedMiniLMContext(transcript);
   if (stagedFastContextIsUsable(stage, fastContext)) {
     return { context: fastContext, provider: 'fast-staged-analysis', fallbackUsed: true };
   }
@@ -1428,6 +1441,196 @@ function topicKeywords(topic) {
     .slice(0, 6);
 }
 
+function stagedTopicTokenSet(value) {
+  const ignored = new Set(['meeting', 'review', 'update', 'discussion', 'point', 'points', 'status', 'topic', 'project']);
+  return new Set(
+    String(value || '')
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter((word) => word.length >= 4 && !ignored.has(word))
+  );
+}
+
+function stagedTokenSimilarity(left, right) {
+  const leftTokens = stagedTopicTokenSet(left);
+  const rightTokens = stagedTopicTokenSet(right);
+  if (!leftTokens.size || !rightTokens.size) return 0;
+  let overlap = 0;
+  for (const token of leftTokens) {
+    if (rightTokens.has(token)) overlap += 1;
+  }
+  return overlap / Math.max(leftTokens.size, rightTokens.size);
+}
+
+function cleanStagedEvidenceSnippet(value) {
+  const cleaned = stripStagedTranscriptArtefacts(value);
+  if (!cleaned || isNoEvidenceDiscussionText(cleaned) || isLowValueStagedDiscussionText(cleaned)) return '';
+  const words = cleaned.split(/\s+/);
+  if (words.length < 5) return '';
+  return cleaned;
+}
+
+function extractStagedEvidenceTexts(values, limit = 6) {
+  const result = [];
+  const seen = new Set();
+  for (const value of Array.isArray(values) ? values : []) {
+    const raw = value && typeof value === 'object' ? value.text : value;
+    const cleaned = cleanStagedEvidenceSnippet(raw);
+    const key = cleaned.toLowerCase();
+    if (!cleaned || seen.has(key)) continue;
+    seen.add(key);
+    result.push(cleaned);
+    if (result.length >= limit) break;
+  }
+  return result;
+}
+
+function extractStagedSourceTurns(values) {
+  const turns = new Set();
+  for (const value of Array.isArray(values) ? values : []) {
+    if (!value || typeof value !== 'object') continue;
+    const candidates = Array.isArray(value.sourceTurnIndices) ? value.sourceTurnIndices : [value.sourceTurnIndex, value.turnIndex, value.index];
+    for (const candidate of candidates) {
+      const number = Number(candidate);
+      if (Number.isFinite(number) && number >= 0) turns.add(number);
+    }
+  }
+  return [...turns].sort((left, right) => left - right);
+}
+
+function bestConfirmedTopicForEvidence(item, confirmedTopics) {
+  const topics = Array.isArray(confirmedTopics) ? confirmedTopics.map(cleanStagedGeneratedLine).filter(Boolean) : [];
+  if (!topics.length) return '';
+  const searchable = [
+    item.topic,
+    ...(item.points || []),
+    ...(item.evidence || []),
+    ...(item.supportingContext || [])
+  ].join(' ');
+  let best = { topic: '', score: 0 };
+  for (const topic of topics) {
+    const score = Math.max(
+      stagedTokenSimilarity(topic, item.topic),
+      stagedTokenSimilarity(topic, searchable)
+    );
+    if (score > best.score) best = { topic, score };
+  }
+  return best.score >= 0.12 ? best.topic : '';
+}
+
+function mergeStagedDiscussionEvidencePack(items, limit = 6) {
+  const merged = [];
+  for (const item of items) {
+    const topic = cleanStagedGeneratedLine(item.topic);
+    if (!topic || !isUsableStagedTopic(topic)) continue;
+    const sourceTurns = Array.isArray(item.sourceTurnIndices) ? item.sourceTurnIndices : [];
+    const existing = merged.find((candidate) => {
+      const sharedTurns = sourceTurns.length && candidate.sourceTurnIndices.some((turn) => sourceTurns.includes(turn));
+      if (sharedTurns) return true;
+      const similarity = stagedTokenSimilarity(candidate.topic, topic);
+      return similarity >= 0.45 || candidate.topic.toLowerCase().includes(topic.toLowerCase()) || topic.toLowerCase().includes(candidate.topic.toLowerCase());
+    });
+    const target = existing || {
+      topic,
+      points: [],
+      evidence: [],
+      supportingContext: [],
+      decisionsOrAgreements: [],
+      risksOrDependencies: [],
+      actions: [],
+      sourceTurnIndices: [],
+      confidence: 0,
+      source: item.source || 'staged_evidence_pack'
+    };
+    target.points = uniqueCleanDiscussionItems([...(target.points || []), ...(item.points || [])]).slice(0, 6);
+    target.evidence = extractStagedEvidenceTexts([...(target.evidence || []), ...(item.evidence || [])], 6);
+    target.supportingContext = extractStagedEvidenceTexts([...(target.supportingContext || []), ...(item.supportingContext || [])], 4);
+    target.decisionsOrAgreements = uniqueCleanDiscussionItems([...(target.decisionsOrAgreements || []), ...(item.decisionsOrAgreements || [])]).slice(0, 4);
+    target.risksOrDependencies = uniqueCleanDiscussionItems([...(target.risksOrDependencies || []), ...(item.risksOrDependencies || [])]).slice(0, 4);
+    target.actions = uniqueCleanDiscussionItems([...(target.actions || []), ...(item.actions || [])]).slice(0, 4);
+    target.sourceTurnIndices = [...new Set([...(target.sourceTurnIndices || []), ...sourceTurns])].sort((left, right) => left - right);
+    target.confidence = Math.max(Number(target.confidence || 0), Number(item.confidence || 0));
+    if (!existing) merged.push(target);
+  }
+  return merged
+    .filter((item) => item.evidence.length || item.points.length)
+    .sort((left, right) => {
+      const leftScore = left.evidence.length * 2 + left.points.length + left.sourceTurnIndices.length * 0.3 + left.confidence;
+      const rightScore = right.evidence.length * 2 + right.points.length + right.sourceTurnIndices.length * 0.3 + right.confidence;
+      return rightScore - leftScore;
+    })
+    .slice(0, limit);
+}
+
+function stagedMiniLMEvidenceItems(minilmContext, confirmedTopics = []) {
+  const output = stagedMiniLMOutput(minilmContext);
+  const items = [];
+  for (const topic of Array.isArray(output.evidenceBackedTopics) ? output.evidenceBackedTopics : []) {
+    if (!topic || typeof topic !== 'object') continue;
+    const evidence = extractStagedEvidenceTexts(topic.directEvidence, 6);
+    const supportingContext = extractStagedEvidenceTexts(topic.supportingContext, 4);
+    const topicLabel = cleanStagedGeneratedLine(topic.topicLabel);
+    const themeLabel = cleanStagedGeneratedLine(topic.themeLabel);
+    const points = uniqueCleanDiscussionItems([
+      topicLabel,
+      ...(Array.isArray(topic.attributedDetailPoints) ? topic.attributedDetailPoints : [])
+    ]).slice(0, 6);
+    if (!evidence.length && !points.length) continue;
+    const item = {
+      topic: isUsableStagedTopic(themeLabel) ? themeLabel : topic_label_from_text(topicLabel || points[0] || 'Discussion'),
+      points,
+      evidence,
+      supportingContext,
+      decisionsOrAgreements: [],
+      risksOrDependencies: uniqueCleanDiscussionItems([
+        ...(Array.isArray(topic.candidateOpenQuestions) ? topic.candidateOpenQuestions : []),
+        ...(Array.isArray(topic.candidateResponsibilitiesMentioned) ? topic.candidateResponsibilitiesMentioned : [])
+      ]).slice(0, 4),
+      actions: uniqueCleanDiscussionItems(
+        (Array.isArray(topic.candidateActionsOnlyIfExplicitlyStated) ? topic.candidateActionsOnlyIfExplicitlyStated : [])
+          .map((action) => action && typeof action === 'object' ? action.action || action.meetingActionPoint : action)
+      ).slice(0, 4),
+      sourceTurnIndices: Array.isArray(topic.sourceTurnIndices) && topic.sourceTurnIndices.length
+        ? topic.sourceTurnIndices
+        : extractStagedSourceTurns([...(Array.isArray(topic.directEvidence) ? topic.directEvidence : []), ...(Array.isArray(topic.supportingContext) ? topic.supportingContext : [])]),
+      confidence: Number(topic.confidence || 0),
+      source: 'minilm_evidence_backed_topic'
+    };
+    item.topic = bestConfirmedTopicForEvidence(item, confirmedTopics) || item.topic || topic_label_from_text(points[0] || 'Discussion');
+    items.push(item);
+  }
+
+  for (const detail of Array.isArray(output.discussionPointDetails) ? output.discussionPointDetails : []) {
+    if (!detail || typeof detail !== 'object') continue;
+    const evidence = extractStagedEvidenceTexts(detail.directEvidence || detail.evidence || detail._evidence, 5);
+    const supportingContext = extractStagedEvidenceTexts(detail.supportingContext, 3);
+    const points = uniqueCleanDiscussionItems([detail.discussionPoint, detail.topicLabel, ...(Array.isArray(detail.cleanedCandidateSentences) ? detail.cleanedCandidateSentences : [])]).slice(0, 5);
+    if (!evidence.length && !points.length) continue;
+    const item = {
+      topic: cleanStagedGeneratedLine(detail.topic || detail.topicLabel || topic_label_from_text(detail.discussionPoint || 'Discussion')),
+      points,
+      evidence,
+      supportingContext,
+      decisionsOrAgreements: [],
+      risksOrDependencies: [],
+      actions: [],
+      sourceTurnIndices: Array.isArray(detail.sourceTurnIndices) && detail.sourceTurnIndices.length
+        ? detail.sourceTurnIndices
+        : extractStagedSourceTurns([...(Array.isArray(detail.directEvidence) ? detail.directEvidence : []), ...(Array.isArray(detail.supportingContext) ? detail.supportingContext : [])]),
+      confidence: Number(detail.evidenceScore || 0),
+      source: 'minilm_discussion_detail'
+    };
+    item.topic = bestConfirmedTopicForEvidence(item, confirmedTopics) || item.topic;
+    items.push(item);
+  }
+  return items;
+}
+
+function buildStagedMiniLMEvidencePack(minilmContext, confirmedTopics = []) {
+  if (!minilmContext || !minilmContext.ok) return [];
+  return mergeStagedDiscussionEvidencePack(stagedMiniLMEvidenceItems(minilmContext, confirmedTopics), 6);
+}
+
 function evidenceForTopic(transcriptText, topic) {
   const keywords = topicKeywords(topic);
   const lines = String(transcriptText || '')
@@ -1447,14 +1650,23 @@ function topicEvidenceForStagedDiscussion(transcript, topics) {
     .slice(0, 8)
     .map((topic) => ({
       topic: cleanStagedGeneratedLine(topic),
-      evidence: evidenceForTopic(transcript.text, topic).slice(0, 5)
+      evidence: evidenceForTopic(transcript.text, topic).slice(0, 5),
+      points: [],
+      supportingContext: [],
+      decisionsOrAgreements: [],
+      risksOrDependencies: [],
+      actions: [],
+      sourceTurnIndices: [],
+      source: 'keyword_topic_evidence'
     }))
     .filter((item) => item.topic && item.evidence.length);
 }
 
-function stagedDiscussionCoverageIsThin(minilmContext, req, transcript) {
+function stagedDiscussionCoverageIsThin(minilmContext, req, transcript, evidencePack = []) {
   const context = stagedContextFromRequest(req);
-  const topicEvidence = topicEvidenceForStagedDiscussion(transcript, context.overallTopics);
+  const topicEvidence = Array.isArray(evidencePack) && evidencePack.length
+    ? evidencePack
+    : topicEvidenceForStagedDiscussion(transcript, context.overallTopics);
   if (topicEvidence.length < 2) return false;
   const cards = discussionFromStagedMiniLM(minilmContext);
   const expectedMinimum = Math.min(3, topicEvidence.length);
