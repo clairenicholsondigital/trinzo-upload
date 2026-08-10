@@ -958,10 +958,21 @@ Analytics and review confidence</textarea>
 
   function renderDiscussionCards(cards) {
     if (!discussionList) return;
-    var items = Array.isArray(cards) && cards.length ? cards : [{ topic: 'Discussion', points: ['Review the transcript-generated discussion points before moving on.'] }];
+    var items = Array.isArray(cards) && cards.length ? cards : [{ topic: 'No substantive discussion sections generated', points: ['No topic had enough transcript evidence to include automatically.'] }];
     discussionList.innerHTML = items.map(function (card) {
       var points = Array.isArray(card.points) ? card.points : [];
-      var body = points.length ? points.map(function (point) {
+      var structuredFields = [
+        ['What was discussed', card.whatWasDiscussed],
+        ['Current position', card.currentPosition],
+        ['Decision or agreement', card.decisionOrAgreement],
+        ['Dependency or risk', card.dependencyOrRisk],
+        ['Next step', card.nextStep]
+      ].filter(function (item) { return item[1]; });
+      var body = structuredFields.length
+        ? structuredFields.map(function (item) {
+          return '<p><strong>' + escapeHtml(item[0]) + ':</strong> ' + escapeHtml(item[1]) + '</p>';
+        }).join('')
+        : points.length ? points.map(function (point) {
         return '<p>' + escapeHtml(point) + '</p>';
       }).join('') : '<p>Review this section against the transcript.</p>';
       return '<section class="discussion-card">' +
@@ -988,13 +999,12 @@ Analytics and review confidence</textarea>
   function renderFinalDocument() {
     if (!finalDocumentPreview) return;
     var objectives = linesFromTextarea(objectivesInput && objectivesInput.value);
-    var overallTopics = linesFromTextarea(overallTopicsInput && overallTopicsInput.value);
     var discussionCards = Array.prototype.slice.call(document.querySelectorAll('.discussion-card')).map(function (card) {
       return {
         topic: card.querySelector('h3') ? card.querySelector('h3').textContent.trim() : 'Discussion',
-        text: Array.prototype.slice.call(card.querySelectorAll('p')).map(function (p) { return p.textContent.trim(); }).join(' ')
+        paragraphs: Array.prototype.slice.call(card.querySelectorAll('p')).map(function (p) { return p.textContent.trim(); }).filter(Boolean)
       };
-    });
+    }).filter(function (item) { return item.paragraphs.length && item.topic !== 'No substantive discussion sections generated'; });
     var actions = Array.prototype.slice.call(actionsTableBody ? actionsTableBody.querySelectorAll('tr') : []).map(function (row) {
       var cells = row.querySelectorAll('td');
       return {
@@ -1010,9 +1020,12 @@ Analytics and review confidence</textarea>
       '<p><strong>Location:</strong> ' + escapeHtml((meetingLocationInput && meetingLocationInput.value) || 'Microsoft Teams') + '</p>' +
       '<div class="section"><h3>Objectives</h3><ul>' + objectives.map(function (item) { return '<li>' + escapeHtml(item) + '</li>'; }).join('') + '</ul></div>' +
       '<div class="section"><h3>Summary</h3><p>' + escapeHtml((executiveSummaryInput && executiveSummaryInput.value) || 'Review the transcript-generated summary before moving on.') + '</p></div>' +
-      '<div class="section"><h3>Topics discussed</h3><ul>' + overallTopics.map(function (item) { return '<li>' + escapeHtml(item) + '</li>'; }).join('') + '</ul></div>' +
-      '<div class="section"><h3>Key discussion points</h3>' + discussionCards.map(function (item) { return '<p><strong>' + escapeHtml(item.topic) + ':</strong> ' + escapeHtml(item.text) + '</p>'; }).join('') + '</div>' +
-      '<div class="section"><h3>Actions</h3><ul>' + actions.map(function (item) { return '<li>' + escapeHtml(item.owner || 'Not stated') + ' to ' + escapeHtml(item.action || 'review action wording') + (item.deadline ? ' by ' + escapeHtml(item.deadline) : ' with no date stated') + '.</li>'; }).join('') + '</ul></div>' +
+      '<div class="section"><h3>Key discussion points</h3>' + discussionCards.map(function (item) {
+        return '<h4>' + escapeHtml(item.topic) + '</h4>' + item.paragraphs.map(function (paragraph) { return '<p>' + escapeHtml(paragraph) + '</p>'; }).join('');
+      }).join('') + '</div>' +
+      '<div class="section"><h3>Actions</h3><table><thead><tr><th>Owner</th><th>Action</th><th>Due</th></tr></thead><tbody>' + actions.map(function (item) {
+        return '<tr><td>' + escapeHtml(item.owner || 'Not stated') + '</td><td>' + escapeHtml(item.action || 'Review action wording') + '</td><td>' + escapeHtml(item.deadline || 'Not stated') + '</td></tr>';
+      }).join('') + '</tbody></table></div>' +
       '<div class="section"><h3>Sign-off</h3><p>Ready for human approval.</p></div>';
   }
 

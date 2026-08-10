@@ -721,6 +721,58 @@ function cleanStagedGeneratedLine(value) {
     .trim();
 }
 
+function cleanStagedDiscussionText(value) {
+  return cleanStagedGeneratedLine(value)
+    .replace(/\bNo specific discussion points were explicitly detailed[^.?!]*[.?!]?/ig, '')
+    .replace(/\bNo substantive discussion(?: was| points were)?[^.?!]*[.?!]?/ig, '')
+    .replace(/\bnot discussed in the transcript[^.?!]*[.?!]?/ig, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isNoEvidenceDiscussionText(value) {
+  const text = cleanStagedGeneratedLine(value);
+  if (!text) return true;
+  return /\b(?:no specific discussion points|no substantive discussion|not discussed in the transcript|no transcript evidence|no evidence)\b/i.test(text);
+}
+
+function uniqueCleanDiscussionItems(values) {
+  const seen = new Set();
+  const result = [];
+  for (const value of values) {
+    const cleaned = cleanStagedDiscussionText(value);
+    const key = cleaned.toLowerCase();
+    if (!cleaned || isNoEvidenceDiscussionText(cleaned) || seen.has(key)) continue;
+    seen.add(key);
+    result.push(cleaned);
+  }
+  return result;
+}
+
+function structuredDiscussionFromItem(item) {
+  if (!item || typeof item !== 'object') return null;
+  const topic = cleanStagedGeneratedLine(item.topic || item.title || item.heading || 'Discussion');
+  if (!isUsableStagedTopic(topic)) return null;
+  const fields = {
+    whatWasDiscussed: cleanStagedDiscussionText(item.whatWasDiscussed || item.discussed || item.summary),
+    currentPosition: cleanStagedDiscussionText(item.currentPosition || item.position || item.status || item.outcome),
+    decisionOrAgreement: cleanStagedDiscussionText(item.decisionOrAgreement || item.decision || item.agreement),
+    dependencyOrRisk: cleanStagedDiscussionText(item.dependencyOrRisk || item.dependency || item.risk),
+    nextStep: cleanStagedDiscussionText(item.nextStep || item.nextAction || item.followUp)
+  };
+  const itemPoints = Array.isArray(item.items) ? item.items : [];
+  const points = uniqueCleanDiscussionItems([
+    ...Object.values(fields),
+    ...stringListFromAny(item.points || item.discussionPoints || itemPoints, ['text', 'point', 'summary', 'decision', 'risk', 'dependency'])
+  ]).slice(0, 6);
+
+  const cleanFields = Object.fromEntries(
+    Object.entries(fields).filter(([, value]) => value && !isNoEvidenceDiscussionText(value))
+  );
+  if (!Object.keys(cleanFields).length && !points.length) return null;
+  return { topic, ...cleanFields, points };
+}
+
 function cleanStagedExecutiveSummary(value) {
   return cleanStagedGeneratedLine(value)
     .split(/(?<=[.!?])\s+/)
@@ -802,43 +854,26 @@ function discussionFromStagedMiniLM(minilmContext) {
   const cards = [];
 
   for (const card of discussionCards) {
-    if (!card || typeof card !== 'object') continue;
-    const topic = cleanStagedGeneratedLine(card.topic || card.title || card.heading || 'Discussion');
-    const points = stringListFromAny(card.points || card.discussionPoints || card.items, ['text', 'point', 'summary'])
-      .map(cleanStagedGeneratedLine)
-      .filter(Boolean)
-      .slice(0, 5);
-    if (isUsableStagedTopic(topic) && points.length) cards.push({ topic, points });
+    const structured = structuredDiscussionFromItem(card);
+    if (structured) cards.push(structured);
     if (cards.length >= 8) return cards;
   }
 
   for (const topicItem of discussionTopics) {
-    if (!topicItem || typeof topicItem !== 'object') continue;
-    const topic = cleanStagedGeneratedLine(topicItem.topic || topicItem.title || topicItem.heading || 'Discussion');
-    const topicSummary = cleanStagedGeneratedLine(topicItem.summary || topicItem.outcome);
-    const items = Array.isArray(topicItem.items) ? topicItem.items : [];
-    const points = [
-      topicSummary,
-      ...items.map((item) => cleanStagedGeneratedLine(
-        typeof item === 'string'
-          ? item
-          : item?.text || item?.summary || item?.discussionPoint || item?.decision || item?.risk || item?.dependency
-      ))
-    ].filter(Boolean).slice(0, 5);
-    if (isUsableStagedTopic(topic) && points.length) cards.push({ topic, points });
+    const structured = structuredDiscussionFromItem(topicItem);
+    if (structured) cards.push(structured);
     if (cards.length >= 8) break;
   }
 
   if (cards.length) return cards;
 
   for (const minute of minutes) {
-    if (!minute || typeof minute !== 'object') continue;
-    const topic = cleanStagedGeneratedLine(minute.topic || minute.topicLabel || 'Evidence-backed discussion');
-    const points = stringListFromAny(minute.discussionPoints, ['discussionPoint', 'text'])
-      .map(cleanStagedGeneratedLine)
-      .filter(Boolean)
-      .slice(0, 5);
-    if (isUsableStagedTopic(topic) && points.length) cards.push({ topic, points });
+    const structured = structuredDiscussionFromItem({
+      ...minute,
+      topic: minute?.topic || minute?.topicLabel,
+      points: minute?.discussionPoints
+    });
+    if (structured) cards.push(structured);
     if (cards.length >= 8) break;
   }
 
@@ -847,16 +882,14 @@ function discussionFromStagedMiniLM(minilmContext) {
   const details = Array.isArray(output.discussionPointDetails) ? output.discussionPointDetails : [];
   for (const detail of details) {
     if (!detail || typeof detail !== 'object') continue;
-    const point = cleanStagedGeneratedLine(detail.discussionPoint);
-    const supporting = stringListFromAny(detail.supportingContext || detail.directEvidence, ['text'])
-      .map(cleanStagedGeneratedLine)
-      .filter(Boolean)
-      .slice(0, 3);
-    if (!point) continue;
+    const point = cleanStagedDiscussionText(detail.discussionPoint);
+    const supporting = uniqueCleanDiscussionItems(stringListFromAny(detail.supportingContext || detail.directEvidence, ['text'])).slice(0, 3);
+    if (!point || isNoEvidenceDiscussionText(point)) continue;
     const topic = cleanStagedGeneratedLine(detail.topic || detail.topicLabel || topic_label_from_text(point) || 'Discussion');
     cards.push({
       topic: isUsableStagedTopic(topic) ? topic : 'Discussion',
-      points: [point, ...supporting].slice(0, 5)
+      whatWasDiscussed: point,
+      points: uniqueCleanDiscussionItems([point, ...supporting]).slice(0, 5)
     });
     if (cards.length >= 8) break;
   }
@@ -914,11 +947,16 @@ function stagedTrooperSchema(stage) {
   }
   if (stage === 'discussion') {
     return {
+      executiveSummaryFromFindings: 'Optional concise minutes summary synthesised from the included evidence-backed discussion findings',
       discussionTopics: [
         {
           topic: 'One of the confirmed overallTopics, in the same order where possible',
-          summary: 'Short outcome or context for this topic',
-          items: [{ text: 'Evidence-backed discussion point', evidence: 'Short transcript phrase if useful' }]
+          whatWasDiscussed: 'What was materially discussed for this topic, if evidenced',
+          currentPosition: 'Current project position or status for this topic, if evidenced',
+          decisionOrAgreement: 'Decision, agreement, or changed position, if evidenced',
+          dependencyOrRisk: 'Dependency, blocker, risk, or timeline threat, if evidenced',
+          nextStep: 'Next step or follow-up, if evidenced',
+          items: [{ text: 'Additional evidence-backed discussion point only if useful', evidence: 'Short transcript phrase if useful' }]
         }
       ]
     };
@@ -969,8 +1007,12 @@ function buildStagedTrooperPrompt(stage, transcript, req) {
       'Use the confirmed title, meeting type, participants, summary topics and transcript evidence.',
       'Use reviewerGuidance as non-evidence context for emphasis only when supplied.',
       'Do not create new unrelated topics unless the confirmed overallTopics list is empty.',
-      'If a confirmed topic has little evidence, include only cautious, high-confidence points for that topic rather than inventing detail.',
-      'Return 3-8 discussionTopics with concise evidence-backed items.'
+      'Only include a topic if there is substantive transcript evidence for it.',
+      'If a confirmed topic has little or no evidence, omit that topic entirely. Do not write that there was no discussion.',
+      'For each included topic, populate only evidenced fields from: whatWasDiscussed, currentPosition, decisionOrAgreement, dependencyOrRisk, nextStep.',
+      'Also return executiveSummaryFromFindings: a concise formal-minutes summary synthesised from the included findings, focused on status, changes, agreements, risks, dependencies and time-critical next steps.',
+      'Do not describe the meeting itself or list the included topics in executiveSummaryFromFindings.',
+      'Return 2-8 discussionTopics with concise evidence-backed fields and no filler.'
     ],
     actions: [
       'Write stage 4 only: actions, owners and deadlines.',
@@ -1332,13 +1374,12 @@ function findDiscussionCardForTopic(cards, topic) {
 
 function discussionFallbackForTopic(transcript, topic, meetingType, participants) {
   const evidence = evidenceForTopic(transcript.text, topic);
-  const points = evidence.length ? evidence : [
-    `Review the transcript detail for ${topic.toLowerCase()} in the context of this ${String(meetingType).toLowerCase()}.`,
-    participants.length
-      ? `Check whether the minutes reflect the participants involved: ${participants.slice(0, 5).join(', ')}.`
-      : 'Check whether the minutes reflect who contributed to this topic.'
-  ];
-  return { topic, points };
+  if (!evidence.length) return null;
+  return {
+    topic,
+    whatWasDiscussed: evidence[0],
+    points: uniqueCleanDiscussionItems(evidence).slice(0, 4)
+  };
 }
 
 function alignDiscussionCardsToConfirmedTopics(cards, topics, transcript, meetingType, participants) {
@@ -1346,10 +1387,10 @@ function alignDiscussionCardsToConfirmedTopics(cards, topics, transcript, meetin
   return topics.slice(0, 8).map((topic) => {
     const matched = findDiscussionCardForTopic(cards, topic);
     if (matched && Array.isArray(matched.points) && matched.points.length) {
-      return { topic, points: matched.points.slice(0, 5) };
+      return { ...matched, topic, points: uniqueCleanDiscussionItems(matched.points).slice(0, 5) };
     }
     return discussionFallbackForTopic(transcript, topic, meetingType, participants);
-  });
+  }).filter(Boolean);
 }
 
 function buildStagedDiscussionResponse(req, transcript, minilmContext = null) {
@@ -1363,7 +1404,22 @@ function buildStagedDiscussionResponse(req, transcript, minilmContext = null) {
   const meetingType = context.meetingType || details.meetingType || 'Project review';
   const discussion = miniLmDiscussion.length
     ? alignDiscussionCardsToConfirmedTopics(miniLmDiscussion, context.overallTopics, transcript, meetingType, participants)
-    : topics.slice(0, 8).map((topic) => discussionFallbackForTopic(transcript, topic, meetingType, participants));
+    : topics.slice(0, 8)
+      .map((topic) => discussionFallbackForTopic(transcript, topic, meetingType, participants))
+      .filter(Boolean);
+  const output = stagedMiniLMOutput(minilmContext);
+  const executiveSummaryFromFindings = cleanStagedExecutiveSummary(
+    output.executiveSummaryFromFindings || output.summaryFromFindings || output.executiveSummary || ''
+  );
+  const screens = {
+    discussion: discussion.length ? discussion : []
+  };
+  if (executiveSummaryFromFindings) {
+    screens.summary = {
+      executiveSummary: executiveSummaryFromFindings,
+      overallTopics: topics
+    };
+  }
 
   return {
     ok: true,
@@ -1372,12 +1428,7 @@ function buildStagedDiscussionResponse(req, transcript, minilmContext = null) {
     transcriptLength: transcript.text.length,
     staged: true,
     stagedStage: 'discussion',
-    screens: {
-      discussion: discussion.length ? discussion : [{
-        topic: 'Discussion',
-        points: ['Review the transcript-generated discussion points before moving on.']
-      }]
-    },
+    screens,
     contextUsed: {
       meetingType,
       participantCount: participants.length,
