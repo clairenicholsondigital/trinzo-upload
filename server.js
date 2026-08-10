@@ -37,6 +37,10 @@ app.get('/staged-meeting-minutes', authRoutes.requireAuth, (req, res) => {
   sendView(res, 'staged-meeting-minutes.html').catch((error) => res.status(404).send(error.message));
 });
 
+app.get('/staged-meeting-minutes-analytics', authRoutes.requireAuth, (req, res) => {
+  sendView(res, 'staged-meeting-minutes-analytics.html').catch((error) => res.status(404).send(error.message));
+});
+
 app.get('/jobs', authRoutes.requireAuth, (req, res) => {
   sendView(res, 'meeting-minutes-jobs.html').catch((error) => res.status(404).send(error.message));
 });

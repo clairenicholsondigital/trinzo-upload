@@ -196,6 +196,7 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("app.get('/jobs'", server)
         self.assertIn("app.get('/jobs/:jobId'", server)
         self.assertIn("app.get('/jobs/:jobId/result'", server)
+        self.assertIn("app.get('/staged-meeting-minutes-analytics'", server)
         self.assertIn("router.post('/meeting-minutes-final/jobs'", api)
         self.assertIn("router.post('/staged-meeting-minutes'", api)
         self.assertIn("buildStagedMeetingMinutesResponse", api)
