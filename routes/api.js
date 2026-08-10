@@ -811,6 +811,98 @@ function uniqueCleanDiscussionItems(values) {
   return result;
 }
 
+function normaliseStagedPointForSimilarity(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/\b(?:the|a|an|and|or|to|be|been|being|will|must|should|before|after|first|then|both|required|requires|requirement)\b/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function stagedDiscussionPointSimilarity(left, right) {
+  const leftTokens = new Set(normaliseStagedPointForSimilarity(left).split(/\s+/).filter((word) => word.length >= 4));
+  const rightTokens = new Set(normaliseStagedPointForSimilarity(right).split(/\s+/).filter((word) => word.length >= 4));
+  if (!leftTokens.size || !rightTokens.size) return 0;
+  let overlap = 0;
+  for (const token of leftTokens) {
+    if (rightTokens.has(token)) overlap += 1;
+  }
+  return overlap / Math.min(leftTokens.size, rightTokens.size);
+}
+
+function challengeUnsupportedStagedLabels(value) {
+  let text = cleanStagedDiscussionText(value);
+  if (!text) return '';
+  const hasHardRiskEvidence = /\b(?:blocker|blocked|delay|delayed|cannot proceed|threatens|impact(?:ing)? the timeline|critical|significant risk|major risk)\b/i.test(text);
+  if (!hasHardRiskEvidence) {
+    text = text
+      .replace(/\bRisk exists regarding\b/ig, 'The discussion covered')
+      .replace(/\bThis creates a risk regarding\b/ig, 'The discussion covered')
+      .replace(/\bThere is a risk that\b/ig, 'It was noted that');
+  }
+  const hasHardDependencyEvidence = /\b(?:required before|cannot proceed until|blocked until|dependent on approval|waiting for|subject to|prerequisite)\b/i.test(text);
+  if (!hasHardDependencyEvidence) {
+    text = text
+      .replace(/\bis dependent on\b/ig, 'will be aligned with')
+      .replace(/\bdepends on\b/ig, 'will be aligned with')
+      .replace(/\bdependency\b/ig, 'related point');
+  }
+  return cleanStagedDiscussionText(text);
+}
+
+function consolidateStagedDiscussionPoints(values, limit = 4) {
+  const result = [];
+  for (const value of values) {
+    const cleaned = challengeUnsupportedStagedLabels(value);
+    if (!cleaned || isNoEvidenceDiscussionText(cleaned) || isLowValueStagedDiscussionText(cleaned)) continue;
+    const duplicateIndex = result.findIndex((existing) => {
+      const similarity = stagedDiscussionPointSimilarity(existing, cleaned);
+      return similarity >= 0.72 ||
+        normaliseStagedPointForSimilarity(existing).includes(normaliseStagedPointForSimilarity(cleaned)) ||
+        normaliseStagedPointForSimilarity(cleaned).includes(normaliseStagedPointForSimilarity(existing));
+    });
+    if (duplicateIndex >= 0) {
+      if (cleaned.length < result[duplicateIndex].length || classifyStagedEvidenceRoles(cleaned).length > classifyStagedEvidenceRoles(result[duplicateIndex]).length) {
+        result[duplicateIndex] = cleaned;
+      }
+      continue;
+    }
+    result.push(cleaned);
+    if (result.length >= limit) break;
+  }
+  return result;
+}
+
+function polishStagedDiscussionCard(card) {
+  if (!card || typeof card !== 'object') return null;
+  const pointCandidates = [
+    card.currentPosition,
+    card.whatWasDiscussed,
+    card.decisionOrAgreement,
+    card.dependencyOrRisk,
+    card.nextStep,
+    ...(Array.isArray(card.points) ? card.points : [])
+  ];
+  const points = consolidateStagedDiscussionPoints(pointCandidates, 4);
+  if (!points.length) return null;
+  const polished = { ...card, points };
+  for (const key of ['whatWasDiscussed', 'currentPosition', 'decisionOrAgreement', 'dependencyOrRisk', 'nextStep']) {
+    if (polished[key]) polished[key] = challengeUnsupportedStagedLabels(polished[key]);
+  }
+  if (polished.dependencyOrRisk && !/\b(?:risk|blocker|blocked|delay|timeline|dependent|dependency|required before|cannot proceed|waiting for|subject to|prerequisite)\b/i.test(polished.dependencyOrRisk)) {
+    delete polished.dependencyOrRisk;
+  }
+  return polished;
+}
+
+function polishStagedDiscussionCards(cards) {
+  return (Array.isArray(cards) ? cards : [])
+    .map(polishStagedDiscussionCard)
+    .filter(Boolean)
+    .slice(0, 8);
+}
+
 function structuredDiscussionFromItem(item) {
   if (!item || typeof item !== 'object') return null;
   const topic = cleanStagedGeneratedLine(item.topic || item.title || item.heading || 'Discussion');
@@ -921,7 +1013,7 @@ function discussionFromStagedMiniLM(minilmContext) {
   for (const card of discussionCards) {
     const structured = structuredDiscussionFromItem(card);
     if (structured) cards.push(structured);
-    if (cards.length >= 8) return cards;
+    if (cards.length >= 8) return polishStagedDiscussionCards(cards);
   }
 
   for (const topicItem of discussionTopics) {
@@ -930,7 +1022,7 @@ function discussionFromStagedMiniLM(minilmContext) {
     if (cards.length >= 8) break;
   }
 
-  if (cards.length) return cards;
+  if (cards.length) return polishStagedDiscussionCards(cards);
 
   for (const minute of minutes) {
     const structured = structuredDiscussionFromItem({
@@ -942,7 +1034,7 @@ function discussionFromStagedMiniLM(minilmContext) {
     if (cards.length >= 8) break;
   }
 
-  if (cards.length) return cards;
+  if (cards.length) return polishStagedDiscussionCards(cards);
 
   const details = Array.isArray(output.discussionPointDetails) ? output.discussionPointDetails : [];
   for (const detail of details) {
@@ -959,7 +1051,42 @@ function discussionFromStagedMiniLM(minilmContext) {
     if (cards.length >= 8) break;
   }
 
-  return cards;
+  return polishStagedDiscussionCards(cards);
+}
+
+function cleanStagedActionText(value) {
+  let action = cleanStagedGeneratedLine(value)
+    .replace(/\s+/g, ' ')
+    .trim();
+  action = action.replace(/^have a catch[- ]?up meeting\b/i, 'Arrange a catch-up meeting');
+  action = action.replace(/^catch up\b/i, 'Arrange a catch-up');
+  return action;
+}
+
+function isAuditableStagedAction(action, owner = '', deadline = '') {
+  const text = cleanStagedActionText(action);
+  if (!text || isNoEvidenceDiscussionText(text) || isLowValueStagedDiscussionText(text)) return false;
+  if (/\b(?:everything|stuff|things|sort out|as much as possible|front[- ]?end everything|prep\b|progress\b|look at|think about|discuss|consider)\b/i.test(text)) return false;
+  const hasConcreteVerb = /\b(?:arrange|update|review|send|share|confirm|prepare|complete|finali[sz]e|provide|draft|submit|circulate|issue|upload|book|schedule|agree|approve)\b/i.test(text);
+  const hasObject = text.split(/\s+/).length >= 4;
+  const hasCommitmentSignal = stagedTextHasFutureCommitmentMarker(text) || /\b(?:action|owner|deadline|by|before|next|follow[- ]?up|catch[- ]?up)\b/i.test(text) || cleanStagedGeneratedLine(deadline);
+  const hasUsableOwner = cleanStagedGeneratedLine(owner) && !/^not stated$/i.test(cleanStagedGeneratedLine(owner));
+  return hasConcreteVerb && hasObject && (hasCommitmentSignal || hasUsableOwner);
+}
+
+function polishStagedActions(actions) {
+  const result = [];
+  for (const item of Array.isArray(actions) ? actions : []) {
+    if (!item || typeof item !== 'object') continue;
+    const action = cleanStagedActionText(item.action || item.meetingActionPoint);
+    const owner = normaliseStagedActionOwner(item.owner || item.meetingActionPointOwner || 'Not stated');
+    const deadline = cleanStagedGeneratedLine(item.deadline || item.meetingActionPointDeadline || '');
+    if (!isAuditableStagedAction(action, owner, deadline)) continue;
+    if (result.some((existing) => stagedDiscussionPointSimilarity(existing.action, action) >= 0.76)) continue;
+    result.push({ owner, action, deadline });
+    if (result.length >= 8) break;
+  }
+  return result;
 }
 
 function actionsFromStagedMiniLM(minilmContext) {
@@ -969,21 +1096,21 @@ function actionsFromStagedMiniLM(minilmContext) {
 
   for (const item of actionObjects) {
     if (!item || typeof item !== 'object') continue;
-    const action = cleanStagedGeneratedLine(item.action || item.meetingActionPoint);
+    const action = cleanStagedActionText(item.action || item.meetingActionPoint);
     if (!action) continue;
     actions.push({
       owner: normaliseStagedActionOwner(item.owner || item.meetingActionPointOwner || 'Not stated'),
       action,
       deadline: cleanStagedGeneratedLine(item.deadline || item.meetingActionPointDeadline)
     });
-    if (actions.length >= 8) return actions;
+    if (actions.length >= 8) return polishStagedActions(actions);
   }
 
   const points = Array.isArray(output.meetingActionPoint) ? output.meetingActionPoint : [];
   const owners = Array.isArray(output.meetingActionPointOwner) ? output.meetingActionPointOwner : [];
   const deadlines = Array.isArray(output.meetingActionPointDeadline) ? output.meetingActionPointDeadline : [];
   for (let index = 0; index < points.length; index += 1) {
-    const action = cleanStagedGeneratedLine(points[index]);
+    const action = cleanStagedActionText(points[index]);
     if (!action) continue;
     actions.push({
       owner: normaliseStagedActionOwner(owners[index] || 'Not stated'),
@@ -993,7 +1120,7 @@ function actionsFromStagedMiniLM(minilmContext) {
     if (actions.length >= 8) break;
   }
 
-  return actions;
+  return polishStagedActions(actions);
 }
 
 function normaliseStagedActionOwner(owner) {
@@ -1091,6 +1218,9 @@ function buildStagedTrooperPrompt(stage, transcript, req, options = {}) {
       'Do not collapse separate confirmed topics into one combined topic.',
       'Also do not over-segment: if topicEvidence combines overlapping transcript evidence under one topic, keep it as one consolidated topic.',
       'Prefer consolidation over coverage: include the distinct points a reviewer needs to understand the meeting outcome, not every detectable phrase.',
+      'Merge repeated prerequisites, repeated status statements and repeated next-step statements into one stronger bullet.',
+      'Before using labels such as risk, dependency, agreed, confirmed, will or must, check that the transcript evidence actually supports that label.',
+      'Do not describe scope control, regulatory breadth or ordinary sequencing as a risk or dependency unless the evidence frames it as a blocker, threat, required-before condition or unresolved constraint.',
       'Return discussionTopics in the same order as the confirmed overallTopics where possible.',
       'Use the confirmed title, meeting type, participants, summary topics and transcript evidence.',
       'Use reviewerGuidance as non-evidence context for emphasis only when supplied.',
@@ -1110,6 +1240,9 @@ function buildStagedTrooperPrompt(stage, transcript, req, options = {}) {
       'Use the confirmed title, meeting type, participants and transcript evidence.',
       'Use reviewerGuidance as non-evidence context for emphasis only when supplied.',
       'Only include real commitments or follow-ups. If the owner or deadline is not explicit, use Not stated.',
+      'Every action must have an auditable verb and object. Reject conversational fragments such as "front-end everything", "sort things", "do prep", "look at it" or "progress this".',
+      'Rewrite catch-up commitments as concrete scheduling actions, for example "Arrange a catch-up meeting with [person]" where the transcript supports the object.',
+      'Do not turn completed work, general intentions, ongoing workstreams or open points into actions.',
       'If the transcript clearly says the group owns an action using we/us/the team, use All as the owner.'
     ]
   }[stage] || ['Write only the requested staged meeting-minutes section.'];
@@ -1944,9 +2077,10 @@ function extractActionCandidatesFromTranscript(transcriptText) {
 }
 
 function buildStagedActionsResponse(req, transcript, minilmContext = null) {
-  const actions = actionsFromStagedMiniLM(minilmContext).length
-    ? actionsFromStagedMiniLM(minilmContext)
-    : extractActionCandidatesFromTranscript(transcript.text);
+  const stagedActions = actionsFromStagedMiniLM(minilmContext);
+  const actions = polishStagedActions(stagedActions.length
+    ? stagedActions
+    : extractActionCandidatesFromTranscript(transcript.text));
 
   return {
     ok: true,
