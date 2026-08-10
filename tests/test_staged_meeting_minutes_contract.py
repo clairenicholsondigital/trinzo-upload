@@ -146,6 +146,12 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("runQueuedStagedMeetingMinutesStage", api)
         self.assertIn("findStagedSourceJobFromRequest", api)
         self.assertIn("input_payload->>'draftId'", api)
+        self.assertIn("confirmedDetails", api)
+        self.assertIn("confirmedSummary", api)
+        self.assertIn("confirmedDiscussion", api)
+        self.assertIn("confirmedActions", api)
+        self.assertIn("parseStagedJsonObject", api)
+        self.assertIn("parseStagedJsonArray", api)
 
     def test_staged_topic_and_owner_cleanup_is_wired(self):
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")

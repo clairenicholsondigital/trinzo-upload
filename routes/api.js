@@ -1560,27 +1560,43 @@ function transcriptForStagedAI(transcript, inputPayload = {}) {
 }
 
 function stagedContextFromRequest(req) {
+  const confirmedDetails = parseStagedJsonObject(req.body?.confirmedDetails || req.query?.confirmedDetails);
+  const confirmedSummary = parseStagedJsonObject(req.body?.confirmedSummary || req.query?.confirmedSummary);
   return {
-    meetingTitle: firstString(req.body?.meetingTitle, req.query?.meetingTitle),
-    meetingDate: firstString(req.body?.meetingDate, req.query?.meetingDate),
-    meetingLocation: firstString(req.body?.meetingLocation, req.query?.meetingLocation),
-    meetingType: firstString(req.body?.meetingType, req.query?.meetingType, 'Project review'),
-    participants: linesFrom(req.body?.participants || req.query?.participants),
-    overallTopics: linesFrom(req.body?.overallTopics || req.query?.overallTopics || req.body?.topics || req.query?.topics),
+    meetingTitle: firstString(confirmedDetails.meetingTitle, req.body?.meetingTitle, req.query?.meetingTitle),
+    meetingDate: firstString(confirmedDetails.meetingDate, req.body?.meetingDate, req.query?.meetingDate),
+    meetingLocation: firstString(confirmedDetails.meetingLocation, req.body?.meetingLocation, req.query?.meetingLocation),
+    meetingType: firstString(confirmedDetails.meetingType, req.body?.meetingType, req.query?.meetingType, 'Project review'),
+    participants: linesFrom(confirmedDetails.participants || req.body?.participants || req.query?.participants),
+    overallTopics: linesFrom(confirmedSummary.overallTopics || req.body?.overallTopics || req.query?.overallTopics || req.body?.topics || req.query?.topics),
     additionalContext: firstString(req.body?.additionalContext, req.query?.additionalContext).slice(0, 3000)
   };
 }
 
-function parseStagedReviewArray(value) {
-  if (Array.isArray(value)) return value;
-  const text = String(value || '').trim();
-  if (!text) return [];
+function parseStagedJsonObject(value) {
+  if (!value) return {};
+  if (typeof value === 'object' && !Array.isArray(value)) return value;
   try {
-    const parsed = JSON.parse(text);
+    const parsed = JSON.parse(String(value));
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function parseStagedJsonArray(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  try {
+    const parsed = JSON.parse(String(value));
     return Array.isArray(parsed) ? parsed : [];
-  } catch (_) {
+  } catch {
     return [];
   }
+}
+
+function parseStagedReviewArray(value) {
+  return parseStagedJsonArray(value);
 }
 
 function stagedReviewContextFromRequest(req) {
@@ -2416,12 +2432,16 @@ async function runQueuedStagedMeetingMinutesStage(jobId) {
       meetingDate: input.confirmedDetails?.meetingDate || input.meetingDate || '',
       meetingLocation: input.confirmedDetails?.meetingLocation || input.meetingLocation || '',
       meetingType: input.meetingType || '',
-      participants: input.participants || '',
-      overallTopics: input.overallTopics || '',
+      participants: Array.isArray(input.confirmedDetails?.participants) ? input.confirmedDetails.participants.join('\n') : input.participants || '',
+      overallTopics: Array.isArray(input.confirmedSummary?.overallTopics) ? input.confirmedSummary.overallTopics.join('\n') : input.overallTopics || '',
       reviewObjectives: input.reviewObjectives || '',
       reviewDiscussion: input.reviewDiscussion || '',
       reviewActions: input.reviewActions || '',
-      additionalContext: input.additionalContext || ''
+      additionalContext: input.additionalContext || '',
+      confirmedDetails: input.confirmedDetails || {},
+      confirmedSummary: input.confirmedSummary || {},
+      confirmedDiscussion: input.confirmedDiscussion || [],
+      confirmedActions: input.confirmedActions || []
     }
   };
 
@@ -2469,6 +2489,18 @@ async function runQueuedStagedMeetingMinutesStage(jobId) {
         throw error;
       }
       payload.preparedTranscriptTelemetry = aiTranscript.preparedTranscriptTelemetry || null;
+    }
+
+    const priorScreens = {};
+    if (input.confirmedDetails && Object.keys(input.confirmedDetails).length) priorScreens.details = input.confirmedDetails;
+    if (input.confirmedSummary && Object.keys(input.confirmedSummary).length) priorScreens.summary = input.confirmedSummary;
+    if (Array.isArray(input.confirmedDiscussion) && input.confirmedDiscussion.length) priorScreens.discussion = input.confirmedDiscussion;
+    if (Array.isArray(input.confirmedActions) && input.confirmedActions.length) priorScreens.actions = input.confirmedActions;
+    if (Object.keys(priorScreens).length) {
+      payload.screens = {
+        ...priorScreens,
+        ...(payload.screens || {})
+      };
     }
 
     await updateGenerationJobProgress(jobId, stage, 90, `Staged ${stage} content generated. Preparing resume link.`);
@@ -3210,6 +3242,10 @@ router.post('/staged-meeting-minutes/jobs', requireAuth, withTestUpload(async (r
       error.statusCode = 400;
       throw error;
     }
+    const confirmedDetails = parseStagedJsonObject(req.body?.confirmedDetails);
+    const confirmedSummary = parseStagedJsonObject(req.body?.confirmedSummary);
+    const confirmedDiscussion = parseStagedJsonArray(req.body?.confirmedDiscussion);
+    const confirmedActions = parseStagedJsonArray(req.body?.confirmedActions);
 
     const queued = await queueStagedMeetingMinutesStage({
       transcriptText: transcript.text,
@@ -3225,16 +3261,20 @@ router.post('/staged-meeting-minutes/jobs', requireAuth, withTestUpload(async (r
       },
       preparedTranscriptTelemetry,
       stage: requestedStage,
-      meetingTitle: req.body?.meetingTitle || transcript.fileName || '',
-      meetingDate: req.body?.meetingDate || '',
-      meetingLocation: req.body?.meetingLocation || '',
-      meetingType: req.body?.meetingType || '',
-      participants: req.body?.participants || '',
-      overallTopics: req.body?.overallTopics || '',
+      meetingTitle: confirmedDetails.meetingTitle || req.body?.meetingTitle || transcript.fileName || '',
+      meetingDate: confirmedDetails.meetingDate || req.body?.meetingDate || '',
+      meetingLocation: confirmedDetails.meetingLocation || req.body?.meetingLocation || '',
+      meetingType: confirmedDetails.meetingType || req.body?.meetingType || '',
+      participants: Array.isArray(confirmedDetails.participants) ? confirmedDetails.participants.join('\n') : req.body?.participants || '',
+      overallTopics: Array.isArray(confirmedSummary.overallTopics) ? confirmedSummary.overallTopics.join('\n') : req.body?.overallTopics || '',
       reviewObjectives: req.body?.reviewObjectives || '',
       reviewDiscussion: req.body?.reviewDiscussion || '',
       reviewActions: req.body?.reviewActions || '',
       additionalContext: req.body?.additionalContext || '',
+      confirmedDetails,
+      confirmedSummary,
+      confirmedDiscussion,
+      confirmedActions,
       draftId: req.body?.draftId || '',
       targetScreen: req.body?.targetScreen || 0,
       regenerate: truthyFlag(req.body?.regenerate),

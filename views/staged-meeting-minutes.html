@@ -472,29 +472,25 @@ td textarea {
         <div class="form-grid review-only">
           <div class="field">
             <label for="meetingTitle">Meeting title</label>
-            <input id="meetingTitle" value="API progress and client feedback review" />
+            <input id="meetingTitle" placeholder="Meeting title" />
           </div>
           <div class="field">
             <label for="meetingDate">Date</label>
-            <input id="meetingDate" type="date" value="2026-08-07" />
+            <input id="meetingDate" type="date" />
           </div>
           <div class="field">
             <label for="meetingLocation">Location</label>
-            <input id="meetingLocation" value="Microsoft Teams" />
+            <input id="meetingLocation" placeholder="Microsoft Teams" />
           </div>
           <div class="field full">
             <label>Internal attendees</label>
             <div id="internalAttendeesRow" class="chip-row">
-              <span class="chip">Claire Nicholson <button type="button" aria-label="Remove Claire Nicholson">x</button></span>
-              <span class="chip">Delivery lead <button type="button" aria-label="Remove Delivery lead">x</button></span>
               <button class="ghost" type="button">Add attendee</button>
             </div>
           </div>
           <div class="field full">
             <label>Client attendees</label>
             <div id="clientAttendeesRow" class="chip-row">
-              <span class="chip">Amy Roberts <button type="button" aria-label="Remove Amy Roberts">x</button></span>
-              <span class="chip">Conor Kelly <button type="button" aria-label="Remove Conor Kelly">x</button></span>
               <button class="ghost" type="button">Add attendee</button>
             </div>
           </div>
@@ -521,20 +517,16 @@ td textarea {
         </div>
         <div class="field">
           <label for="objectives">Meeting objectives</label>
-          <textarea id="objectives">Review API progress
-Confirm deployment date
-Discuss client feedback</textarea>
+          <textarea id="objectives" placeholder="Meeting objectives will appear here after generation."></textarea>
           <small>Usually 2-5 bullets. Keep only the intended outcomes of the meeting.</small>
         </div>
         <div class="field">
           <label for="executiveSummary">Executive summary</label>
-          <textarea id="executiveSummary">The meeting reviewed current API progress, deployment readiness and client feedback. The group agreed to keep the staged review workflow separate from the live generation route while the approval screens and analytics model are shaped.</textarea>
+          <textarea id="executiveSummary" placeholder="Executive summary will appear here after generation."></textarea>
         </div>
         <div class="field">
           <label for="overallTopics">Overall topics discussed</label>
-          <textarea id="overallTopics">Deployment readiness
-Authentication
-Analytics and review confidence</textarea>
+          <textarea id="overallTopics" placeholder="Overall topics will appear here after generation."></textarea>
           <small>These topics frame the detailed discussion review on the next screen.</small>
         </div>
       </article>
@@ -547,32 +539,7 @@ Analytics and review confidence</textarea>
           </div>
           <span class="progress-pill">3 of 5</span>
         </div>
-        <div id="discussionList" class="discussion-list">
-          <div class="table-wrap">
-            <table class="discussion-table">
-              <thead>
-                <tr>
-                  <th>Topic</th>
-                  <th>Discussion points</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td><input class="discussion-topic-input" value="Deployment" aria-label="Discussion topic" /></td>
-                  <td><textarea class="discussion-points-input" aria-label="Discussion points">- The team reviewed deployment readiness and agreed that the staged flow should remain separate until the generation and approval handoff are confirmed.</textarea></td>
-                </tr>
-                <tr>
-                  <td><input class="discussion-topic-input" value="Authentication" aria-label="Discussion topic" /></td>
-                  <td><textarea class="discussion-points-input" aria-label="Discussion points">- The staged screens will stay behind the same login protection as the existing meeting-minutes tool.</textarea></td>
-                </tr>
-                <tr>
-                  <td><input class="discussion-topic-input" value="Analytics" aria-label="Discussion topic" /></td>
-                  <td><textarea class="discussion-points-input" aria-label="Discussion points">- Future analytics should focus on review effort, changed fields and approval confidence rather than vague AI accuracy claims.</textarea></td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <div id="discussionList" class="discussion-list"></div>
       </article>
 
       <article class="screen" data-screen="3">
@@ -593,20 +560,7 @@ Analytics and review confidence</textarea>
                 <th>Tools</th>
               </tr>
             </thead>
-            <tbody id="actionsTableBody">
-              <tr>
-                <td><input value="Claire" /></td>
-                <td><textarea>Update the staged workflow screens for review.</textarea></td>
-                <td><input value="Friday" placeholder="e.g. 14 August 2026 or next Monday" aria-label="Action date or deadline" /></td>
-                <td><button class="secondary" type="button" data-action-row="duplicate">Duplicate</button> <button class="secondary" type="button" data-action-row="delete">Delete</button></td>
-              </tr>
-              <tr>
-                <td><input value="Amy" /></td>
-                <td><textarea>Review wording and confirm preferred analytics labels.</textarea></td>
-                <td><input value="Monday" placeholder="e.g. 14 August 2026 or next Monday" aria-label="Action date or deadline" /></td>
-                <td><button class="secondary" type="button" data-action-row="delete">Delete</button></td>
-              </tr>
-            </tbody>
+            <tbody id="actionsTableBody"></tbody>
           </table>
         </div>
         <p class="note">Prefer an actual date where the transcript gives enough context. If the clearest wording is relative, for example next Monday or next week, keep that rather than forcing a guess.</p>
@@ -714,6 +668,7 @@ Analytics and review confidence</textarea>
   // present — otherwise a resumed draft shows placeholder text as if it were generated and
   // a genuine generation failure stays hidden until a later step.
   var generatedStages = { details: false, summary: false, discussion: false, actions: false };
+  var stagedState = { details: null, summary: null, discussion: null, actions: null };
   var regenerationEvents = [];
   var stageInFlight = null;
 
@@ -971,6 +926,78 @@ Analytics and review confidence</textarea>
     }).filter(Boolean);
   }
 
+  function actionsFromDom() {
+    return Array.prototype.slice.call(actionsTableBody ? actionsTableBody.querySelectorAll('tr') : []).map(function (row) {
+      var cells = row.querySelectorAll('td');
+      return {
+        owner: cells[0] && cells[0].querySelector('input') ? cells[0].querySelector('input').value.trim() : '',
+        action: cells[1] && cells[1].querySelector('textarea') ? cells[1].querySelector('textarea').value.trim() : '',
+        deadline: cells[2] && cells[2].querySelector('input') ? cells[2].querySelector('input').value.trim() : ''
+      };
+    }).filter(function (item) { return item.owner || item.action || item.deadline; });
+  }
+
+  function detailsFromDom() {
+    return {
+      meetingTitle: meetingTitleInput && meetingTitleInput.value ? meetingTitleInput.value.trim() : '',
+      meetingDate: meetingDateInput && meetingDateInput.value ? meetingDateInput.value.trim() : '',
+      meetingLocation: meetingLocationInput && meetingLocationInput.value ? meetingLocationInput.value.trim() : '',
+      meetingType: meetingTypeInput && meetingTypeInput.value ? meetingTypeInput.value.trim() : '',
+      internalAttendees: attendeesFromRow(internalAttendeesRow),
+      allAttendees: attendeesFromRow(clientAttendeesRow),
+      participants: currentParticipants()
+    };
+  }
+
+  function summaryFromDom() {
+    return {
+      objectives: linesFromTextarea(objectivesInput && objectivesInput.value),
+      executiveSummary: executiveSummaryInput && executiveSummaryInput.value ? executiveSummaryInput.value.trim() : '',
+      overallTopics: linesFromTextarea(overallTopicsInput && overallTopicsInput.value)
+    };
+  }
+
+  function commitStageState(stage) {
+    if (!stage || !generatedStages[stage]) return;
+    if (stage === 'details') stagedState.details = detailsFromDom();
+    if (stage === 'summary') stagedState.summary = summaryFromDom();
+    if (stage === 'discussion') stagedState.discussion = discussionRowsFromReview().map(function (item) {
+      return { topic: item.topic, points: item.bullets };
+    });
+    if (stage === 'actions') stagedState.actions = actionsFromReview();
+  }
+
+  function applySavedStageState(state) {
+    if (!state || typeof state !== 'object') return;
+    if (state.details && typeof state.details === 'object') {
+      stagedState.details = state.details;
+      generatedStages.details = true;
+      if (meetingTitleInput) meetingTitleInput.value = state.details.meetingTitle || '';
+      if (meetingDateInput) meetingDateInput.value = state.details.meetingDate || '';
+      if (meetingLocationInput) meetingLocationInput.value = state.details.meetingLocation || '';
+      if (meetingTypeInput && state.details.meetingType) meetingTypeInput.value = state.details.meetingType;
+      renderAttendees(internalAttendeesRow, state.details.internalAttendees);
+      renderAttendees(clientAttendeesRow, state.details.allAttendees || state.details.clientAttendees);
+    }
+    if (state.summary && typeof state.summary === 'object') {
+      stagedState.summary = state.summary;
+      generatedStages.summary = true;
+      if (objectivesInput) objectivesInput.value = Array.isArray(state.summary.objectives) ? state.summary.objectives.join('\n') : '';
+      if (executiveSummaryInput) executiveSummaryInput.value = state.summary.executiveSummary || '';
+      if (overallTopicsInput) overallTopicsInput.value = Array.isArray(state.summary.overallTopics) ? state.summary.overallTopics.join('\n') : '';
+    }
+    if (Array.isArray(state.discussion)) {
+      stagedState.discussion = state.discussion;
+      generatedStages.discussion = true;
+      renderDiscussionCards(state.discussion);
+    }
+    if (Array.isArray(state.actions)) {
+      stagedState.actions = state.actions;
+      generatedStages.actions = true;
+      renderActions(state.actions);
+    }
+  }
+
   function renderDiscussionCards(cards) {
     if (!discussionList) return;
     var items = Array.isArray(cards) && cards.length ? cards : [{ topic: 'No substantive discussion sections generated', points: ['No topic had enough transcript evidence to include automatically.'] }];
@@ -1051,16 +1078,23 @@ Analytics and review confidence</textarea>
 
   function renderFinalDocument() {
     if (!finalDocumentPreview) return;
-    var objectives = linesFromTextarea(objectivesInput && objectivesInput.value);
-    var discussionRows = discussionRowsFromReview();
-    var actions = actionsFromReview();
+    commitStageState(stageForScreen(activeIndex));
+    var details = stagedState.details || detailsFromDom();
+    var summary = stagedState.summary || summaryFromDom();
+    var objectives = Array.isArray(summary.objectives) ? summary.objectives : [];
+    var discussionRows = Array.isArray(stagedState.discussion)
+      ? stagedState.discussion.map(function (item) {
+        return { topic: item.topic || 'Discussion', bullets: Array.isArray(item.points) ? item.points : item.bullets || [] };
+      }).filter(function (item) { return item.bullets.length; })
+      : discussionRowsFromReview();
+    var actions = Array.isArray(stagedState.actions) ? stagedState.actions : actionsFromReview();
 
     finalDocumentPreview.innerHTML =
-      '<h2>' + escapeHtml((meetingTitleInput && meetingTitleInput.value) || 'Untitled meeting') + '</h2>' +
-      '<p><strong>Date:</strong> ' + escapeHtml(formatUkDate(meetingDateInput && meetingDateInput.value)) + '</p>' +
-      '<p><strong>Location:</strong> ' + escapeHtml((meetingLocationInput && meetingLocationInput.value) || 'Microsoft Teams') + '</p>' +
+      '<h2>' + escapeHtml(details.meetingTitle || 'Untitled meeting') + '</h2>' +
+      '<p><strong>Date:</strong> ' + escapeHtml(formatUkDate(details.meetingDate)) + '</p>' +
+      '<p><strong>Location:</strong> ' + escapeHtml(details.meetingLocation || 'Not stated') + '</p>' +
       '<div class="section"><h3>Objectives</h3><ul>' + objectives.map(function (item) { return '<li>' + escapeHtml(item) + '</li>'; }).join('') + '</ul></div>' +
-      '<div class="section"><h3>Summary</h3><p>' + escapeHtml((executiveSummaryInput && executiveSummaryInput.value) || 'Review the transcript-generated summary before moving on.') + '</p></div>' +
+      '<div class="section"><h3>Summary</h3><p>' + escapeHtml(summary.executiveSummary || 'Review the transcript-generated summary before moving on.') + '</p></div>' +
       '<div class="section"><h3>Key discussion points</h3><table class="discussion-table"><thead><tr><th>Topic</th><th>Discussion points</th></tr></thead><tbody>' + discussionRows.map(function (item) {
         return '<tr><td>' + escapeHtml(item.topic) + '</td><td><ul>' + item.bullets.map(function (point) { return '<li>' + escapeHtml(point) + '</li>'; }).join('') + '</ul></td></tr>';
       }).join('') + '</tbody></table></div>' +
@@ -1121,6 +1155,7 @@ Analytics and review confidence</textarea>
       if (meetingTypeInput && details.meetingType) meetingTypeInput.value = details.meetingType;
       renderAttendees(internalAttendeesRow, details.internalAttendees);
       renderAttendees(clientAttendeesRow, details.allAttendees || details.clientAttendees);
+      stagedState.details = detailsFromDom();
     }
     if (Object.prototype.hasOwnProperty.call(screensPayload, 'summary')) {
       if (objectivesInput) objectivesInput.value = Array.isArray(summary.objectives) && summary.objectives.length ? summary.objectives.join('\n') : objectivesInput.value;
@@ -1130,12 +1165,17 @@ Analytics and review confidence</textarea>
           ? summary.overallTopics.join('\n')
           : overallTopicsInput.value;
       }
+      stagedState.summary = summaryFromDom();
     }
     if (Object.prototype.hasOwnProperty.call(screensPayload, 'discussion')) {
       renderDiscussionCards(screensPayload.discussion);
+      stagedState.discussion = discussionRowsFromReview().map(function (item) {
+        return { topic: item.topic, points: item.bullets };
+      });
     }
     if (Object.prototype.hasOwnProperty.call(screensPayload, 'actions')) {
       renderActions(screensPayload.actions);
+      stagedState.actions = actionsFromReview();
     }
     renderValidationFlags(payload && payload.validationFlags);
     markGeneratedStages(payload);
@@ -1177,17 +1217,25 @@ Analytics and review confidence</textarea>
     formData.append('stage', stage);
     formData.append('draftId', ensureDraftId());
     formData.append('targetScreen', String(stage === 'details' ? 0 : stage === 'summary' ? 1 : stage === 'discussion' ? 2 : stage === 'actions' ? 3 : activeIndex));
-    formData.append('meetingTitle', meetingTitleInput && meetingTitleInput.value ? meetingTitleInput.value : '');
-    formData.append('meetingDate', meetingDateInput && meetingDateInput.value ? meetingDateInput.value : '');
-    formData.append('meetingLocation', meetingLocationInput && meetingLocationInput.value ? meetingLocationInput.value : '');
-    if (meetingTypeInput) formData.append('meetingType', meetingTypeInput.value);
-    formData.append('participants', currentParticipants().join('\n'));
-    if (overallTopicsInput) formData.append('overallTopics', overallTopicsInput.value);
-    formData.append('reviewObjectives', JSON.stringify(linesFromTextarea(objectivesInput && objectivesInput.value)));
-    formData.append('reviewDiscussion', JSON.stringify(discussionRowsFromReview().map(function (item) {
+    if (stagedState.details) {
+      formData.append('confirmedDetails', JSON.stringify(stagedState.details));
+      formData.append('meetingTitle', stagedState.details.meetingTitle || '');
+      formData.append('meetingDate', stagedState.details.meetingDate || '');
+      formData.append('meetingLocation', stagedState.details.meetingLocation || '');
+      formData.append('meetingType', stagedState.details.meetingType || '');
+      formData.append('participants', (stagedState.details.participants || currentParticipants()).join('\n'));
+    }
+    if (stagedState.summary) {
+      formData.append('confirmedSummary', JSON.stringify(stagedState.summary));
+      formData.append('overallTopics', (stagedState.summary.overallTopics || []).join('\n'));
+    }
+    if (stagedState.discussion) formData.append('confirmedDiscussion', JSON.stringify(stagedState.discussion));
+    if (stagedState.actions) formData.append('confirmedActions', JSON.stringify(stagedState.actions));
+    formData.append('reviewObjectives', JSON.stringify(stagedState.summary && Array.isArray(stagedState.summary.objectives) ? stagedState.summary.objectives : linesFromTextarea(objectivesInput && objectivesInput.value)));
+    formData.append('reviewDiscussion', JSON.stringify(stagedState.discussion || discussionRowsFromReview().map(function (item) {
       return { topic: item.topic, points: item.bullets };
     })));
-    formData.append('reviewActions', JSON.stringify(actionsFromReview()));
+    formData.append('reviewActions', JSON.stringify(stagedState.actions || actionsFromReview()));
     if (stageAdditionalContextInput) formData.append('additionalContext', stageAdditionalContextInput.value);
     return { formData: formData, hasTranscript: Boolean(transcriptText || transcriptFile || storedTranscriptText || stagedSourceJobId || draftId) };
   }
@@ -1322,6 +1370,10 @@ Analytics and review confidence</textarea>
       setReviewStatus(lockedStageMessage(target), true);
       return;
     }
+    if (target > activeIndex) {
+      commitStageState(stageForScreen(activeIndex));
+      saveDraft();
+    }
     if (stageNeedsGeneration(target)) {
       await requestStagedStage(stageForScreen(target), target);
       return;
@@ -1355,6 +1407,14 @@ Analytics and review confidence</textarea>
     }
     if (!storedTranscriptText) {
       storedTranscriptText = loadStoredTranscript(draftId);
+    }
+    if (existing && existing.stagedState) {
+      applySavedStageState(existing.stagedState);
+    }
+    if (existing && existing.generatedStages && typeof existing.generatedStages === 'object') {
+      Object.keys(generatedStages).forEach(function (stage) {
+        generatedStages[stage] = Boolean(existing.generatedStages[stage] || generatedStages[stage]);
+      });
     }
   }
 
@@ -1439,6 +1499,7 @@ Analytics and review confidence</textarea>
 
   function saveDraft() {
     if (!reviewStarted && !lastGeneratedPayload) return;
+    commitStageState(stageForScreen(activeIndex));
     var id = ensureDraftId();
     var drafts = readDrafts();
     var now = new Date().toISOString();
@@ -1467,6 +1528,8 @@ Analytics and review confidence</textarea>
       reviewEditStartedAt: reviewEditStartedAt ? new Date(reviewEditStartedAt).toISOString() : null,
       reviewEditMs: currentReviewEditMs(),
       reviewEditCount: reviewEditCount,
+      generatedStages: generatedStages,
+      stagedState: stagedState,
       regenerationCount: regenerationEvents.length,
       regenerations: regenerationEvents.slice(-25),
       reviewSnapshot: {
@@ -1593,6 +1656,7 @@ Analytics and review confidence</textarea>
         reviewEditCount += 1;
         startReviewEditTimer();
       }
+      commitStageState(stageForScreen(activeIndex));
       renderFinalDocument();
       saveDraft();
     }

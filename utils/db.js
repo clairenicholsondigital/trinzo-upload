@@ -1947,15 +1947,21 @@ async function queueStagedMeetingMinutesStage(payload = {}) {
     participants: payload.participants || '',
     overallTopics: payload.overallTopics || '',
     additionalContext: payload.additionalContext || '',
+    reviewObjectives: payload.reviewObjectives || '',
+    reviewDiscussion: payload.reviewDiscussion || '',
+    reviewActions: payload.reviewActions || '',
     draftId: payload.draftId || '',
     targetScreen: Number(payload.targetScreen || 0),
-    confirmedDetails: {
+    confirmedDetails: payload.confirmedDetails && Object.keys(payload.confirmedDetails).length ? payload.confirmedDetails : {
       meetingTitle: payload.meetingTitle || '',
       meetingDate: payload.meetingDate || '',
       meetingLocation: payload.meetingLocation || '',
       meetingType: payload.meetingType || '',
       participants: payload.participants || ''
     },
+    confirmedSummary: payload.confirmedSummary && Object.keys(payload.confirmedSummary).length ? payload.confirmedSummary : {},
+    confirmedDiscussion: Array.isArray(payload.confirmedDiscussion) ? payload.confirmedDiscussion : [],
+    confirmedActions: Array.isArray(payload.confirmedActions) ? payload.confirmedActions : [],
     regenerate: Boolean(payload.regenerate),
     queuedBy: payload.queuedBy || '',
     queuedAt: new Date().toISOString()
