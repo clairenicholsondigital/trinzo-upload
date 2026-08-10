@@ -653,8 +653,7 @@ function isUsableStagedTopic(topic) {
 }
 
 function cleanTranscriptContentLine(line) {
-  return String(line || '')
-    .replace(/^\s*[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){1,4}\s+(?:\d{1,2}:)?\d{1,2}:\d{2}\s*/, '')
+  return stripStagedTranscriptArtefacts(line)
     .replace(/\b\d{4,}\s+\d{4,}\s+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -721,8 +720,26 @@ function cleanStagedGeneratedLine(value) {
     .trim();
 }
 
+const STAGED_PUBLIC_TIMESTAMP_PATTERN = '(?:\\d{1,2}:)?\\d{1,2}[:.]\\d{2}(?::\\d{2})?';
+const STAGED_PUBLIC_SPEAKER_PATTERN = "[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]*,?(?:\\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]*,?){0,5}";
+
+function stripStagedTranscriptArtefacts(value) {
+  let text = cleanStagedGeneratedLine(value)
+    .replace(new RegExp(`(?:\\[\\s*${STAGED_PUBLIC_TIMESTAMP_PATTERN}\\s*\\]|\\(\\s*${STAGED_PUBLIC_TIMESTAMP_PATTERN}\\s*\\))`, 'g'), ' ');
+  if (!text) return '';
+  for (let index = 0; index < 3; index += 1) {
+    text = text
+      .replace(new RegExp(`^\\s*${STAGED_PUBLIC_SPEAKER_PATTERN}\\s+${STAGED_PUBLIC_TIMESTAMP_PATTERN}\\s*:?\\s*`, 'u'), '')
+      .replace(new RegExp(`^\\s*${STAGED_PUBLIC_TIMESTAMP_PATTERN}\\s+${STAGED_PUBLIC_SPEAKER_PATTERN}\\s*:?\\s*`, 'u'), '')
+      .replace(new RegExp(`^\\s*${STAGED_PUBLIC_TIMESTAMP_PATTERN}\\s*:?\\s*`, 'u'), '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+  return text.replace(/^([a-z])/, (match) => match.toUpperCase());
+}
+
 function cleanStagedDiscussionText(value) {
-  return cleanStagedGeneratedLine(value)
+  return stripStagedTranscriptArtefacts(value)
     .replace(/\bNo specific discussion points were explicitly detailed[^.?!]*[.?!]?/ig, '')
     .replace(/\bNo substantive discussion(?: was| points were)?[^.?!]*[.?!]?/ig, '')
     .replace(/\bnot discussed in the transcript[^.?!]*[.?!]?/ig, '')
@@ -1010,6 +1027,8 @@ function buildStagedTrooperPrompt(stage, transcript, req) {
       'Only include a topic if there is substantive transcript evidence for it.',
       'If a confirmed topic has little or no evidence, omit that topic entirely. Do not write that there was no discussion.',
       'For each included topic, populate only evidenced fields from: whatWasDiscussed, currentPosition, decisionOrAgreement, dependencyOrRisk, nextStep.',
+      'Write each field as polished formal-minutes prose, not copied transcript text.',
+      'Never include raw speaker names, timestamps, timecodes, glued speaker/timecode prefixes, filler words, false starts, or malformed transcript phrasing in any public field.',
       'Also return executiveSummaryFromFindings: a concise formal-minutes summary synthesised from the included findings, focused on status, changes, agreements, risks, dependencies and time-critical next steps.',
       'Do not describe the meeting itself or list the included topics in executiveSummaryFromFindings.',
       'Return 2-8 discussionTopics with concise evidence-backed fields and no filler.'
@@ -1040,6 +1059,7 @@ function buildStagedTrooperPrompt(stage, transcript, req) {
     '- Prefer fewer high-confidence points over many weak points.',
     '- Keep wording professional and concise.',
     '- Use British English spelling.',
+    '- Do not copy raw transcript turns into public text; rewrite them into clear complete sentences without speaker labels or timestamps.',
     '',
     '[TRANSCRIPT]',
     String(transcript.text || '').slice(0, Number(process.env.STAGED_TROOPER_MAX_TRANSCRIPT_CHARS || 90000)),

@@ -110,6 +110,15 @@ textarea { min-height:110px; resize:vertical; }
 .discussion-table td li {
   margin:.25rem 0;
 }
+.discussion-table input,
+.discussion-table textarea {
+  background:#ffffff;
+  color:#17222c;
+  border-color:#c3ced8;
+}
+.discussion-table textarea {
+  min-height:92px;
+}
 .table-wrap { overflow-x:auto; border:1px solid var(--border); border-radius:12px; background:#071126; }
 table { width:100%; border-collapse:collapse; min-width:720px; }
 th, td { border-bottom:1px solid var(--border); padding:.65rem; text-align:left; vertical-align:top; }
@@ -517,16 +526,16 @@ Analytics and review confidence</textarea>
               </thead>
               <tbody>
                 <tr>
-                  <td>Deployment</td>
-                  <td><ul><li>The team reviewed deployment readiness and agreed that the staged flow should remain separate until the generation and approval handoff are confirmed.</li></ul></td>
+                  <td><input class="discussion-topic-input" value="Deployment" aria-label="Discussion topic" /></td>
+                  <td><textarea class="discussion-points-input" aria-label="Discussion points">- The team reviewed deployment readiness and agreed that the staged flow should remain separate until the generation and approval handoff are confirmed.</textarea></td>
                 </tr>
                 <tr>
-                  <td>Authentication</td>
-                  <td><ul><li>The staged screens will stay behind the same login protection as the existing meeting-minutes tool.</li></ul></td>
+                  <td><input class="discussion-topic-input" value="Authentication" aria-label="Discussion topic" /></td>
+                  <td><textarea class="discussion-points-input" aria-label="Discussion points">- The staged screens will stay behind the same login protection as the existing meeting-minutes tool.</textarea></td>
                 </tr>
                 <tr>
-                  <td>Analytics</td>
-                  <td><ul><li>Future analytics should focus on review effort, changed fields and approval confidence rather than vague AI accuracy claims.</li></ul></td>
+                  <td><input class="discussion-topic-input" value="Analytics" aria-label="Discussion topic" /></td>
+                  <td><textarea class="discussion-points-input" aria-label="Discussion points">- Future analytics should focus on review effort, changed fields and approval confidence rather than vague AI accuracy claims.</textarea></td>
                 </tr>
               </tbody>
             </table>
@@ -689,8 +698,27 @@ Analytics and review confidence</textarea>
 
   function linesFromTextarea(value) {
     return String(value || '').split(/\r?\n/).map(function (line) {
-      return line.replace(/^[-*]\s*/, '').trim();
+      return cleanDiscussionDisplayText(line).replace(/^[-*]\s*/, '').trim();
     }).filter(Boolean);
+  }
+
+  function cleanDiscussionDisplayText(value) {
+    var timestampPattern = '(?:\\d{1,2}:)?\\d{1,2}[:.]\\d{2}(?::\\d{2})?';
+    var speakerPattern = "[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]*,?(?:\\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]*,?){0,5}";
+    var text = String(value == null ? '' : value)
+      .replace(/\s+/g, ' ')
+      .replace(/^[-*]\s*/, '')
+      .trim()
+      .replace(new RegExp('(?:\\[\\s*' + timestampPattern + '\\s*\\]|\\(\\s*' + timestampPattern + '\\s*\\))', 'g'), ' ');
+    for (var index = 0; index < 3; index += 1) {
+      text = text
+        .replace(new RegExp('^\\s*' + speakerPattern + '\\s+' + timestampPattern + '\\s*:?\\s*', 'u'), '')
+        .replace(new RegExp('^\\s*' + timestampPattern + '\\s+' + speakerPattern + '\\s*:?\\s*', 'u'), '')
+        .replace(new RegExp('^\\s*' + timestampPattern + '\\s*:?\\s*', 'u'), '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+    return text.replace(/^([a-z])/, function (match) { return match.toUpperCase(); });
   }
 
   function setStatus(message, isError) {
@@ -893,7 +921,7 @@ Analytics and review confidence</textarea>
         card.nextStep
       ].concat(points).filter(Boolean);
       var seen = {};
-      var bullets = bulletPoints.map(function (point) { return String(point || '').trim(); }).filter(function (point) {
+      var bullets = bulletPoints.map(cleanDiscussionDisplayText).filter(function (point) {
         var key = point.toLowerCase();
         if (!point || seen[key]) return false;
         seen[key] = true;
@@ -901,8 +929,8 @@ Analytics and review confidence</textarea>
       });
       if (!bullets.length) bullets = ['Review this section against the transcript.'];
       return '<tr>' +
-        '<td>' + escapeHtml(card.topic || 'Discussion') + '</td>' +
-        '<td><ul>' + bullets.map(function (point) { return '<li>' + escapeHtml(point) + '</li>'; }).join('') + '</ul></td>' +
+        '<td><input class="discussion-topic-input" value="' + escapeHtml(card.topic || 'Discussion') + '" aria-label="Discussion topic" /></td>' +
+        '<td><textarea class="discussion-points-input" aria-label="Discussion points">' + escapeHtml(bullets.map(function (point) { return '- ' + point; }).join('\n')) + '</textarea></td>' +
       '</tr>';
     }).join('');
     discussionList.innerHTML =
@@ -929,9 +957,13 @@ Analytics and review confidence</textarea>
     var objectives = linesFromTextarea(objectivesInput && objectivesInput.value);
     var discussionRows = Array.prototype.slice.call(discussionList ? discussionList.querySelectorAll('.discussion-table tbody tr') : []).map(function (row) {
       var cells = row.querySelectorAll('td');
+      var topicInput = cells[0] ? cells[0].querySelector('input, textarea') : null;
+      var pointsInput = cells[1] ? cells[1].querySelector('textarea') : null;
       return {
-        topic: cells[0] ? cells[0].textContent.trim() : 'Discussion',
-        bullets: Array.prototype.slice.call(cells[1] ? cells[1].querySelectorAll('li') : []).map(function (li) { return li.textContent.trim(); }).filter(Boolean)
+        topic: topicInput ? topicInput.value.trim() : (cells[0] ? cells[0].textContent.trim() : 'Discussion'),
+        bullets: pointsInput
+          ? linesFromTextarea(pointsInput.value)
+          : Array.prototype.slice.call(cells[1] ? cells[1].querySelectorAll('li') : []).map(function (li) { return cleanDiscussionDisplayText(li.textContent); }).filter(Boolean)
       };
     }).filter(function (item) { return item.bullets.length && item.topic !== 'No substantive discussion sections generated'; });
     var actions = Array.prototype.slice.call(actionsTableBody ? actionsTableBody.querySelectorAll('tr') : []).map(function (row) {
