@@ -99,6 +99,22 @@ test('compactStagedDiscussionCards keeps stronger topic bullets and removes repe
   assert.ok(result.cards[1].points.some((point) => point.includes('SBOM')));
 });
 
+test('dedupe keeps separate workstreams that share only review timing boilerplate', () => {
+  const result = dedupeStagedDiscussionCards([
+    {
+      topic: 'Clinical review timing for Wednesday was discussed',
+      points: ['Clinical review timing for Wednesday was discussed.']
+    },
+    {
+      topic: 'Change request review and approval timing for Wednesday was discussed',
+      points: ['Change request review and approval timing for Wednesday was discussed.']
+    }
+  ]);
+
+  assert.equal(result.cards.length, 2);
+  assert.deepEqual(result.dropped, []);
+});
+
 test('compactStagedDiscussionCards preserves distinct concrete details inside high-substance topics', () => {
   const result = compactStagedDiscussionCards([
     {
@@ -182,23 +198,22 @@ test('reshapeStagedDiscussionCardsForHumanMinutes normalises client-facing DITA 
   assert.ok(result[0].points.some((point) => point.includes('DoCs for sunglasses')));
 });
 
-test('finaliseDiscussionPointForMinutes removes raw transcript fragments from the wrong topic', () => {
+test('finaliseDiscussionPointForMinutes removes raw transcript fragments without inventing a replacement', () => {
   const raw = 'Well, it should confirm what the first change was, because the documentation that we have currently from going from version one to 102.';
   assert.equal(isRawTranscriptDiscussionPoint(raw), true);
   assert.equal(finaliseDiscussionPointForMinutes(raw, 'Language File Updates and Character Support'), '');
-  assert.equal(
-    finaliseDiscussionPointForMinutes('The clinical review of the audible sound was deferred until next week.', 'Cybersecurity Review of USB Port Controls'),
-    ''
-  );
+  assert.equal(finaliseDiscussionPointForMinutes('Priya Shah 12:41 We were going to look at that one next.', 'Delivery plan'), '');
+  assert.equal(finaliseDiscussionPointForMinutes('I mean, you know, we were kind of waiting for that.', 'Delivery plan'), '');
 });
 
-test('reshapeStagedDiscussionCardsForHumanMinutes flags removed raw and mismatched discussion points', () => {
+test('reshapeStagedDiscussionCardsForHumanMinutes flags removed raw and malformed discussion points', () => {
   const result = reshapeStagedDiscussionCardsForHumanMinutes([
     {
       topic: 'Language File Updates and Character Support',
       points: [
         'The language-file work focused on confirming character and symbol support for Arabic, Vietnamese and Greek.',
         'Well, it should confirm what the first change was, because the documentation that we have currently from going from version one to 102.',
+        'the review was complete They would share it after the meeting',
         'Confirm the LED flash behaviour upon mute activation.'
       ]
     }
@@ -208,8 +223,22 @@ test('reshapeStagedDiscussionCardsForHumanMinutes flags removed raw and mismatch
   assert.deepEqual(result[0].points, [
     'The language-file work focused on confirming character and symbol support for Arabic, Vietnamese and Greek.'
   ]);
-  assert.ok(result[0].qualityFlags.includes('topic_mismatch_discussion_points_removed'));
+  assert.ok(result[0].qualityFlags.includes('raw_transcript_discussion_points_removed'));
+  assert.ok(result[0].qualityFlags.includes('malformed_discussion_points_removed'));
   assert.ok(result[0].qualityFlags.includes('action_only_discussion_points_removed'));
+});
+
+test('client-clean discussion filtering is topic-agnostic and preserves formal minutes', () => {
+  const cases = [
+    ['Finance review', 'Okay, so we were sort of going to check that one.', ''],
+    ['Warehouse operations', '[12:04] Morgan Lee: I think you had some questions about that.', ''],
+    ['Clinical review', 'The the assessment remains open.', ''],
+    ['Finance review', 'The budget review remains open pending the supplier estimate.', 'The budget review remains open pending the supplier estimate.'],
+    ['Warehouse operations', 'Morgan Lee confirmed that barcode scanning is used during picking.', 'Morgan Lee confirmed that barcode scanning is used during picking.']
+  ];
+  for (const [topic, input, expected] of cases) {
+    assert.equal(finaliseDiscussionPointForMinutes(input, topic), expected, input);
+  }
 });
 
 test('isMalformedStagedLine catches other dangling qualifiers and glued clauses', () => {
@@ -290,13 +319,13 @@ test('buildStagedValidationFlags surfaces discussion finaliser cleanup', () => {
       {
         topic: 'Language File Updates and Character Support',
         points: ['The language-file work focused on character support.'],
-        qualityFlags: ['raw_transcript_discussion_points_removed', 'topic_mismatch_discussion_points_removed']
+        qualityFlags: ['raw_transcript_discussion_points_removed', 'malformed_discussion_points_removed']
       }
     ]
   });
   const types = flags.map((flag) => flag.type);
   assert.ok(types.includes('raw_transcript_discussion_points_removed'));
-  assert.ok(types.includes('topic_mismatch_discussion_points_removed'));
+  assert.ok(types.includes('malformed_discussion_points_removed'));
 });
 
 test('buildStagedValidationFlags stays quiet when the minutes are clean and complete', () => {
@@ -340,14 +369,14 @@ test('normaliseFinalStagedActionCandidate rewrites transcript-shaped opportunity
   });
 });
 
-test('stagedFinalActionQualityIssue rejects vague or non-owned action fragments', () => {
+test('stagedFinalActionQualityIssue rejects vague fragments while permitting an unstated owner', () => {
   assert.equal(
     stagedFinalActionQualityIssue({ owner: 'Jacqui Fox', action: 'Then review the outputs of that testing and update any final documents' }),
     'transcript_debris'
   );
   assert.equal(
-    stagedFinalActionQualityIssue({ owner: 'Not stated', action: 'Review the final documents' }),
-    'missing_owner'
+    stagedFinalActionQualityIssue({ owner: 'Not stated', action: 'Review electrical compliance testing outputs' }),
+    null
   );
   assert.equal(
     stagedFinalActionQualityIssue({ owner: 'All', action: 'Discuss this next time' }),

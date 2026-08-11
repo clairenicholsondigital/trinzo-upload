@@ -622,12 +622,31 @@ def run_live_endpoint(base_url: str, case: Path, timeout: int) -> tuple[dict[str
     return result.get("output") or {}, _rewriter_meta(result)
 
 
+def run_precomputed_output(precomputed_dir: Path, case: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+    output_path = precomputed_dir / f"{case.name}.json"
+    if not output_path.exists():
+        raise RuntimeError(f"precomputed staged output is missing: {output_path}")
+    payload = load_json(output_path)
+    output = payload.get("visibleOutput") if isinstance(payload.get("visibleOutput"), dict) else payload
+    if not isinstance(output, dict):
+        raise RuntimeError(f"precomputed staged output is not an object: {output_path}")
+    return output, {
+        "rewriterAvailable": None,
+        "rewriterReason": "Precomputed staged sequence output.",
+        "rewriterTokenUsage": None,
+    }
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the /meeting-minutes-final golden transcript evaluation pack.")
     parser.add_argument("--pack-dir", default=str(PACK_DIR))
     parser.add_argument("--cases", nargs="+", help="Specific case folder names to run.")
     parser.add_argument("--dry-run", action="store_true", help="Validate fixture/schema/scoring criteria without loading MiniLM.")
     parser.add_argument("--base-url", help="Score the deployed web-app /api/meeting-minutes-final endpoint instead of the local extractor.")
+    parser.add_argument(
+        "--precomputed-dir",
+        help="Score one <case-name>.json staged output per case instead of invoking an extractor or live endpoint.",
+    )
     parser.add_argument(
         "--extractor",
         default=DEFAULT_EXTRACTOR_NAME,
@@ -667,7 +686,11 @@ def main(argv: list[str]) -> int:
     global SEMANTIC_MATCHING_ENABLED
     args = parse_args(argv)
     SEMANTIC_MATCHING_ENABLED = not args.literal_only
+    if args.base_url and args.precomputed_dir:
+        print("--base-url and --precomputed-dir cannot be used together.", file=sys.stderr)
+        return 2
     pack_dir = Path(args.pack_dir)
+    precomputed_dir = Path(args.precomputed_dir).resolve() if args.precomputed_dir else None
     extractor = Path(args.extractor)
     if not extractor.is_absolute():
         extractor = ROOT / extractor
@@ -680,7 +703,7 @@ def main(argv: list[str]) -> int:
         return 2
 
     precomputed_evidence_paths: dict[str, Path] = {}
-    if args.precompute_project_status_evidence and not args.dry_run and not args.base_url:
+    if args.precompute_project_status_evidence and not args.dry_run and not args.base_url and not precomputed_dir:
         if extractor.name != DEFAULT_EXTRACTOR_NAME:
             print("--precompute-project-status-evidence is only supported with the default meeting_minutes_trooper.py extractor.", file=sys.stderr)
             return 2
@@ -713,7 +736,7 @@ def main(argv: list[str]) -> int:
 
     case_reports = []
     validation_failures: list[str] = []
-    is_live = not args.dry_run and not args.skip_rewrite
+    is_live = not args.dry_run and not args.skip_rewrite and not precomputed_dir
     for index, case in enumerate(cases):
         expected = load_json(case / "expected.json")
         schema_failures = validate_expected(case, expected)
@@ -727,7 +750,9 @@ def main(argv: list[str]) -> int:
         }
         if not args.dry_run and not schema_failures:
             try:
-                if args.base_url:
+                if precomputed_dir:
+                    output, rewriter_meta = run_precomputed_output(precomputed_dir, case)
+                elif args.base_url:
                     output, rewriter_meta = run_live_endpoint(args.base_url, case, args.timeout)
                 else:
                     output, rewriter_meta = run_extractor(
@@ -758,10 +783,11 @@ def main(argv: list[str]) -> int:
     )
     summary = {
         "packDir": str(pack_dir),
-        "mode": "dry-run" if args.dry_run else ("live-api" if args.base_url else "extractor"),
-        "rewriteMode": "skip-rewrite" if args.skip_rewrite else ("live" if is_live else "n/a"),
-        "extractor": None if (args.dry_run or args.base_url) else extractor.name,
+        "mode": "dry-run" if args.dry_run else ("precomputed-staged" if precomputed_dir else ("live-api" if args.base_url else "extractor")),
+        "rewriteMode": "precomputed" if precomputed_dir else ("skip-rewrite" if args.skip_rewrite else ("live" if is_live else "n/a")),
+        "extractor": None if (args.dry_run or args.base_url or precomputed_dir) else extractor.name,
         "baseUrl": args.base_url,
+        "precomputedDir": str(precomputed_dir) if precomputed_dir else None,
         "totalCases": len(cases),
         "schemaFailures": validation_failures,
         "executedCases": len(executed_reports),

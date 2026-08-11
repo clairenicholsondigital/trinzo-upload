@@ -124,6 +124,31 @@ Important failure categories:
 - `abstention`: too much or too little output for the evidence available.
 - `quality`: Notion-checklist issues such as bad title, first-person wording, timestamps, emoji, conversational leakage, or bad action/deadline formatting.
 
+## Staged seven-case product-flow evaluation
+
+Run the seven real fixtures through the same details, summary, discussion and actions builders used by the staged review flow:
+
+```bash
+node scripts/run_staged_meeting_minutes_eval.js --mode extractor
+```
+
+Use `--mode extractor` for the deterministic local development loop. It runs the production Trooper extractor once per fixture, carries the confirmed state through each staged builder, and scores the assembled client-visible output with this golden scorer.
+
+Use `--mode targeted` in an environment with the staged Trooper and embedding-worker configuration to exercise the production targeted-generation path:
+
+```bash
+node scripts/run_staged_meeting_minutes_eval.js --mode targeted --json
+```
+
+Useful options:
+
+```bash
+node scripts/run_staged_meeting_minutes_eval.js --cases 025_real_t761_eakin_sw_weekly_transcript
+node scripts/run_staged_meeting_minutes_eval.js --output /tmp/staged-seven-report.json
+```
+
+The report includes per-stage providers, topic/card/point/action counts, validation flags, generation diagnostics, the client-visible scored output, and the raw-transcript grounded action-inventory count. A non-zero exit status means one or more fixtures failed their existing quality contract.
+
 ## Current Baseline
 
 Current local Trooper extractor alignment run (2026-07-28, against `meeting_minutes_trooper.py`, matching the live route in `routes/api.js`):

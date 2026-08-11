@@ -209,9 +209,12 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("EUDAMED", staged_editorial)
         self.assertIn("function finaliseDiscussionPointForMinutes", staged_editorial)
         self.assertIn("raw_transcript_discussion_points_removed", staged_editorial)
-        self.assertIn("topic_mismatch_discussion_points_removed", staged_editorial)
+        self.assertIn("malformed_discussion_points_removed", staged_editorial)
         self.assertIn("action_only_discussion_points_removed", staged_editorial)
-        self.assertIn("clinician|clinical|audible sound", staged_editorial)
+        self.assertIn("STAGED_SPEAKER_TURN_PREFIX", staged_editorial)
+        self.assertIn("FIRST_PERSON_TRANSCRIPT_VOICE", staged_editorial)
+        self.assertNotIn("clinician|clinical|audible sound", staged_editorial)
+        self.assertNotIn("version 1.01 and 1.02", staged_editorial)
         self.assertIn("objectives: context.objectives", api)
 
     def test_staged_topic_and_owner_cleanup_is_wired(self):
@@ -236,13 +239,30 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("before (?:the )?(?:audit|site visit|next review|client call|meeting)", api)
         self.assertIn("return enrichStagedActionDeadlinesFromTranscript([...merged, ...preserved], transcriptText);", api)
 
+    def test_staged_eval_replays_real_stage_builders_and_keeps_raw_recovery_text(self):
+        api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+        runner = (REPO_DIR / "scripts" / "run_staged_meeting_minutes_eval.js").read_text(encoding="utf-8")
+        scorer = (REPO_DIR / "scripts" / "run_meeting_minutes_final_golden_eval.py").read_text(encoding="utf-8")
+
+        self.assertIn("async function runStagedSequenceForEvaluation", api)
+        self.assertIn("stagedEvaluationVisibleOutput", api)
+        self.assertIn("recoveryTranscriptText = transcript.text", api)
+        self.assertIn("buildStagedActionsResponse(stagedReq, aiTranscript, context, transcript.text)", api)
+        self.assertIn("buildStagedActionsResponse(req, aiTranscript, generation.context, transcript.text)", api)
+        self.assertIn("runSequence(transcript", runner)
+        self.assertIn("deterministicActionInventoryCount", runner)
+        self.assertIn("--precomputed-dir", scorer)
+        self.assertIn("function attachStagedDecisionsToDiscussionCards", api)
+        self.assertIn("card?.decisionOrAgreement", api)
+
     def test_staged_actions_have_final_quality_gate(self):
         staged_editorial = (REPO_DIR / "utils" / "stagedEditorial.js").read_text(encoding="utf-8")
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
 
         self.assertIn("function normaliseFinalStagedActionCandidate", staged_editorial)
         self.assertIn("function stagedFinalActionQualityIssue", staged_editorial)
-        self.assertIn("missing_owner", staged_editorial)
+        self.assertNotIn("missing_owner", staged_editorial)
+        self.assertIn("owner: normaliseFinalActionOwner(rewritten.owner)", staged_editorial)
         self.assertIn("missing_actionable_verb", staged_editorial)
         self.assertIn("missing_concrete_object", staged_editorial)
         self.assertIn("transcript_debris", staged_editorial)

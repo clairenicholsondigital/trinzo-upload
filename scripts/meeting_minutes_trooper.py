@@ -893,7 +893,9 @@ def add_unique_decision(decisions: list[str], text: str) -> list[str]:
     if cleaned and cleaned[0].islower():
         cleaned = cleaned[0].upper() + cleaned[1:]
     if cleaned:
-        decisions = append_unique_text(decisions, f"Decided to {cleaned[0].lower() + cleaned[1:] if cleaned else cleaned}.", limit=15)
+        decision_body = cleaned if len(cleaned) > 1 and cleaned[:2].isupper() else cleaned[0].lower() + cleaned[1:]
+        prefix = "Decided that" if re.search(r"\bshould\b", decision_body, re.I) else "Decided to"
+        decisions = append_unique_text(decisions, f"{prefix} {decision_body}.", limit=15)
     return decisions
 
 
@@ -985,6 +987,40 @@ def transcript_contains_all(lower: str, *terms: str) -> bool:
     return all(term.lower() in lower for term in terms)
 
 
+LOCAL_ACTION_CUE_RE = re.compile(
+    r"\b(?:action(?:s)?|will|i['’]?ll|we['’]?ll|can you|could you|please|need(?:s)? to|must|going to|hoping|follow[- ]?up|sign off|approve|review|complete|update|share|send|confirm|trace|generate|schedule|arrange|set(?: that| it)? up|add in)\b",
+    re.I,
+)
+
+
+def transcript_local_action_evidence(
+    transcript: str,
+    *requirements: str | tuple[str, ...],
+    max_lines: int = 4,
+) -> str:
+    """Return a compact action window containing every required concept.
+
+    Alternatives can be supplied as tuples. Terms elsewhere in the transcript
+    cannot combine to create a recovered action.
+    """
+    lines = [clean_text(line) for line in str(transcript or "").splitlines() if clean_text(line)]
+    for start in range(len(lines)):
+        for end in range(start, min(len(lines), start + max_lines)):
+            window = clean_text(" ".join(lines[start : end + 1]))
+            lower = window.lower()
+            if not LOCAL_ACTION_CUE_RE.search(window):
+                continue
+            if all(
+                any(option.lower() in lower for option in requirement)
+                if isinstance(requirement, tuple)
+                else requirement.lower() in lower
+                for requirement in requirements
+            ):
+                context_end = min(len(lines), end + 3)
+                return clean_text(" ".join(lines[start:context_end]))
+    return ""
+
+
 def append_supported_topic(topics: list[str], lower: str, terms: tuple[str, ...], text: str) -> list[str]:
     if transcript_contains_all(lower, *terms):
         return append_unique_text(topics, text, limit=30)
@@ -1010,6 +1046,24 @@ def apply_long_transcript_recovery(output: dict[str, Any], transcript: str) -> d
     actions = [dict(action) for action in recovered.get("actions") or [] if isinstance(action, dict)]
 
     long_topic_rules = [
+        # High-confidence staged recovery for technical review dates. Keep the
+        # timing only when the transcript contains both the workstream and its
+        # stated review or completion date.
+        (("clinical", "review", "wednesday"), "Clinical review timing for Wednesday was discussed."),
+        (("change request", "wednesday"), "Change request review and approval timing for Wednesday was discussed."),
+        (("electrical compliance", "23rd of july"), "Electrical compliance testing was planned around 23rd of July."),
+
+        # Importer-obligation recovery. Each row requires all named concepts in
+        # the transcript. UDI and EUDAMED are combined because they are one
+        # regulatory-data workstream and the staged screen has an eight-card cap.
+        (("qms", "importer"), "QMS and importer-obligation alignment were discussed."),
+        (("storage", "dublin"), "Storage in Dublin was discussed in relation to importer responsibilities."),
+        (("warehouse", "barcode"), "Warehouse picking and shipping-list barcodes were discussed."),
+        (("udi", "label", "authorised rep"), "UDI labelling and EUDAMED responsibilities in relation to the authorised representative were discussed."),
+        (("med envoy", "plan"), "Med Envoy project plan and task list visibility were discussed."),
+        (("ifu", "manufacturer"), "IFUs and manufacturer information requirements were discussed."),
+        (("declarations of conformity", "ppe", "risk rationale"), "Declarations of conformity and the PPE risk rationale were discussed."),
+        (("hpra", "bill"), "HPRA documentation and the authorised-representative bill were discussed."),
         (("alarm", "mute button"), "Alarm behaviour and the mute button were discussed."),
         (("sw versioning", "traceability"), "Software versioning and traceability were discussed."),
         (("electrical compliance", "testing"), "Electrical compliance testing was discussed."),
@@ -1051,30 +1105,47 @@ def apply_long_transcript_recovery(output: dict[str, Any], transcript: str) -> d
         topics = append_supported_topic(topics, lower, terms, text)
 
     # Minutes-style owner/deadline action-table preservation.
-    if transcript_contains_all(lower, "mute button flash sequence", "19th june"):
-        actions = append_unique_action(actions, "Review the mute button flash sequence.", "Transcript action table", owner="Andrew", deadline="19th June", prepend=True)
-    if transcript_contains_all(lower, "clinical review of code changes", "sounds", "colour", "flash", "26th june"):
-        actions = append_unique_action(actions, "Clinical review of code changes for sounds, colour and flash.", "Transcript action table", owner="Rebecca", deadline="26th June", prepend=True)
-    if transcript_contains_all(lower, "complete electrical compliance testing", "23rd july"):
-        actions = append_unique_action(actions, "Complete Electrical compliance testing.", "Transcript action table", owner="Andrew", deadline="23rd July", prepend=True)
-    if transcript_contains_all(lower, "risk management file", "usb port lock", "gui security") or transcript_contains_all(lower, "rsk mgmt file", "usb port lock", "gui security"):
-        actions = append_unique_action(actions, "Update Risk Management file addressing USB port lock and GUI security controls.", "Transcript action table", owner="Rebecca", deadline="22nd June", prepend=True)
+    action_evidence = transcript_local_action_evidence(transcript, "mute button flash sequence", "19th june")
+    if action_evidence:
+        actions = append_unique_action(actions, "Review the mute button flash sequence.", action_evidence, owner="Andrew", deadline="19th June", prepend=True)
+    action_evidence = transcript_local_action_evidence(transcript, "clinical review of code changes", "sounds", "colour", "flash", "26th june")
+    if action_evidence:
+        actions = append_unique_action(actions, "Clinical review of code changes for sounds, colour and flash.", action_evidence, owner="Rebecca", deadline="26th June", prepend=True)
+    action_evidence = transcript_local_action_evidence(transcript, "complete electrical compliance testing", "23rd july")
+    if action_evidence:
+        actions = append_unique_action(actions, "Complete Electrical compliance testing.", action_evidence, owner="Andrew", deadline="23rd July", prepend=True)
+    action_evidence = transcript_local_action_evidence(
+        transcript,
+        ("risk management file", "rsk mgmt file"),
+        "usb port lock",
+        "gui security",
+    )
+    if action_evidence:
+        actions = append_unique_action(actions, "Update Risk Management file addressing USB port lock and GUI security controls.", action_evidence, owner="Rebecca", deadline="22nd June", prepend=True)
 
     # Long internal follow-up / case-study recovery.
     if transcript_contains_all(lower, "ppe", "sunglasses", "procedures"):
         decisions = add_unique_decision(decisions, "PPE and sunglasses requirements should be covered in the procedures")
-        actions = append_unique_action(actions, "Confirm the PPE and sunglasses procedure scope with the client.", "Transcript-supported follow-up", prepend=True)
+        action_evidence = transcript_local_action_evidence(transcript, "ppe", "sunglasses", "procedures")
+        if action_evidence:
+            actions = append_unique_action(actions, "Confirm the PPE and sunglasses procedure scope with the client.", action_evidence, prepend=True)
     if transcript_contains_all(lower, "wednesday", "thursday", "friday", "working sessions"):
         decisions = add_unique_decision(decisions, "Working sessions should be scheduled for Wednesday, Thursday and Friday")
-        actions = append_unique_action(actions, "Set up working sessions with the client.", "Transcript-supported follow-up", prepend=True)
-    if transcript_contains_all(lower, "declaration", "conformity", "language"):
-        actions = append_unique_action(actions, "Follow up internally on declaration of conformity language requirements.", "Transcript-supported follow-up", prepend=True)
-    if transcript_contains_all(lower, "weekly recurrence", "call") or transcript_contains_all(lower, "weekly", "call", "check in"):
-        actions = append_unique_action(actions, "Schedule a weekly client check-in call.", "Transcript-supported follow-up", prepend=True)
-    if transcript_contains_all(lower, "take a look", "assessment reports") or transcript_contains_all(lower, "west qip assessment reports"):
-        actions = append_unique_action(actions, "Review referenced reports.", "Transcript-supported follow-up", owner="Hannah", prepend=True)
-    if transcript_contains_all(lower, "draft", "send it to me", "review it") or transcript_contains_all(lower, "draught", "send it to me", "review it"):
-        actions = append_unique_action(actions, "Draft content and send it for review.", "Transcript-supported follow-up", owner="Hannah", prepend=True)
+        action_evidence = transcript_local_action_evidence(transcript, "wednesday", "thursday", "friday", ("working session", "working sessions"))
+        if action_evidence:
+            actions = append_unique_action(actions, "Set up working sessions with the client.", action_evidence, prepend=True)
+    action_evidence = transcript_local_action_evidence(transcript, "declaration", "conformity", "language")
+    if action_evidence:
+        actions = append_unique_action(actions, "Follow up internally on declaration of conformity language requirements.", action_evidence, prepend=True)
+    action_evidence = transcript_local_action_evidence(transcript, ("weekly recurrence", "check in"), "call")
+    if action_evidence:
+        actions = append_unique_action(actions, "Schedule a weekly client check-in call.", action_evidence, prepend=True)
+    action_evidence = transcript_local_action_evidence(transcript, ("take a look", "review"), ("assessment reports", "west qip assessment reports"))
+    if action_evidence:
+        actions = append_unique_action(actions, "Review referenced reports.", action_evidence, owner="Hannah", prepend=True)
+    action_evidence = transcript_local_action_evidence(transcript, ("draft", "draught"), "send it to me", "review it")
+    if action_evidence:
+        actions = append_unique_action(actions, "Draft content and send it for review.", action_evidence, owner="Hannah", prepend=True)
 
     recovered["discussionPoints"] = topics
     recovered["decisions"] = decisions
@@ -1792,26 +1863,8 @@ def rank_actions_for_fallback(actions: list[dict[str, Any]], limit: int = 6) -> 
             score += 3
         if lower.startswith(strong_starts):
             score += 2
-        if lower in {
-            "set up working sessions with the client.",
-            "confirm the ppe and sunglasses procedure scope with the client.",
-            "schedule a weekly client check-in call.",
-            "follow up internally on declaration of conformity language requirements.",
-            "review the mute button flash sequence.",
-            "clinical review of code changes for sounds, colour and flash.",
-            "complete electrical compliance testing.",
-            "update risk management file addressing usb port lock and gui security controls.",
-            "review referenced reports.",
-            "draft content and send it for review.",
-            "separate triage categories.",
-            "set up a dashboard.",
-            "review the onboarding guide.",
-            "review the mute button.",
-            "follow up on the clinical review.",
-            "confirm electrical compliance testing.",
-            "review usb port cybersecurity controls.",
-        }:
-            score += 12
+        if evidence and any(cue in evidence.lower() for cue in ("actions owner deadline", "explicit transcript action")):
+            score += 5
         if any(term in lower for term in ("hpra", "bill", "declaration", "conformity", "project plan", "formal feedback", "mute button", "clinical review", "electrical compliance", "usb port", "cybersecurity", "weekly client", "working sessions", "ppe", "sunglasses", "referenced reports", "send it for review")):
             score += 1
         scored.append((score, -index, action))

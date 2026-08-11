@@ -42,7 +42,7 @@ function tokenSet(value, minLength = 4) {
   return new Set(
     normaliseForSimilarity(value)
       .split(/\s+/)
-      .filter((word) => word.length >= minLength)
+      .filter((word) => word.length >= minLength && !STOPWORDS.has(word))
   );
 }
 
@@ -520,20 +520,28 @@ function humaniseDiscussionPoint(value) {
 }
 
 const RAW_TRANSCRIPT_DISCUSSION_PATTERNS = [
-  /^(?:well|yeah|yes|no|okay|ok|right|so|and then|and that|but I know|I know that)\b/i,
-  /^(?:one of the things|the other thing|what I was|what was)\b/i,
-  /\b(?:I know that|you had some questions|what you were, what was|what was)\b/i,
-  /\b(?:gives it, but it gives it|within the on a)\b/i
+  /^(?:well|yeah|yes|no|okay|ok|right|so|anyway|basically|actually|and then|and that|but)\b/i,
+  /^(?:one of the things|the other thing|what I was|what we were|what was)\b/i,
+  /\b(?:you know|I mean|sort of|kind of|as I say|like I said)\b/i,
+  /\b(?:what you were,?\s+what was|\b\w+\s+it,?\s+but\s+\w+\s+it)\b/i
 ];
+
+const STAGED_SPEAKER_TURN_PREFIX = /^(?:\[?\d{1,2}:\d{2}(?::\d{2})?\]?\s*)?(?:[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){0,3})\s+(?:\d{1,2}:\d{2}(?::\d{2})?|said\s*:)|^\[?\d{1,2}:\d{2}(?::\d{2})?\]?\s*/;
+const FIRST_PERSON_TRANSCRIPT_VOICE = /\b(?:I|I'm|I’m|I've|I’ve|I'd|I’d|we|we're|we’re|we've|we’ve|we'd|we’d|us|our|ours|you|you're|you’re|you've|you’ve|your|yours)\b/i;
+const STANDALONE_MINUTES_SUBJECT = /^(?:the\s+(?:team|group|meeting|discussion|review|project|client|supplier|process|system|document|audit|work|risk|scope)|[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){0,3}\s+(?:said|noted|confirmed|explained|reported|asked|agreed)|[A-Z0-9][A-Za-z0-9'’()./&+-]+\s+(?:is|are|was|were|has|have|will|would|remains?|requires?|includes?|covers?|supports?|uses?|needs?))/;
 
 const DISCUSSION_ACTION_ONLY = /^(?:arrange|book|schedule|organise|coordinate|set\s+up|update|review|check|verify|validate|assess|send|share|provide|circulate|issue|upload|forward|confirm|prepare|complete|develop|build|create|finali[sz]e|finish|produce|draft|submit|approve|agree|accept|sign(?:\s+off)?|trace|generate|identify|document|follow[- ]?up|begin)\b/i;
 
 function isRawTranscriptDiscussionPoint(value) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();
   if (!text) return false;
+  if (STAGED_SPEAKER_TURN_PREFIX.test(text)) return true;
   if (RAW_TRANSCRIPT_DISCUSSION_PATTERNS.some((pattern) => pattern.test(text))) return true;
   const firstWord = text.split(/\s+/)[0] || '';
   if (/^(?:And|But|So)$/i.test(firstWord) && !/\b(?:agreed|confirmed|reviewed|noted|discussed|identified)\b/i.test(text)) return true;
+  if (FIRST_PERSON_TRANSCRIPT_VOICE.test(text) && !STANDALONE_MINUTES_SUBJECT.test(text)) return true;
+  if (/\b(?:is|was|were|has|have|will|would|could|should)\s*,\s*(?:is|was|were|has|have|will|would|could|should)\b/i.test(text)) return true;
+  if (/\b(\w+)\s+\1\b/i.test(text) && !/\b(?:had had|that that)\b/i.test(text)) return true;
   return false;
 }
 
@@ -543,50 +551,10 @@ function discussionPointIsActionOnly(value) {
   return !/\b(?:was|were|has been|have been|is|are|the team|discussion|outstanding|confirmed|agreed|noted|identified|raised|explored)\b/i.test(text);
 }
 
-function discussionPointDoesNotFitTopic(point, topic) {
-  const text = `${point || ''}`.toLowerCase();
-  const heading = `${topic || ''}`.toLowerCase();
-  if (!text || !heading) return false;
-  if (/\blanguage\b/.test(heading)) {
-    const languageEvidence = /\b(?:language|font|symbol|symbols|character|characters|arabic|vietnamese|greek|translation|translated)\b/.test(text);
-    const otherWorkstream = /\b(?:version|v1\.?0?1|v1\.?0?2|102|debug|change request|change control|mdr device file history)\b/.test(text);
-    return otherWorkstream && !languageEvidence;
-  }
-  if (/\bcyber\s*security|usb\b/.test(heading)) {
-    return /\b(?:language|font|symbols|arabic|vietnamese|greek|version 1|version 102|change request|clinician|clinical|audible sound|acceptability of the audible)\b/.test(text) &&
-      !/\b(?:usb|port lock|gui|cyber|security|unwarranted interference|password|81001|27427)\b/.test(text);
-  }
-  if (/\b(?:electrical|compliance testing)\b/.test(heading)) {
-    return /\b(?:language|arabic|vietnamese|greek|font|usb port lock)\b/.test(text) &&
-      !/\b(?:electrical|60601|testing|mdd|compliance)\b/.test(text);
-  }
-  return false;
-}
-
-function rewriteRawDiscussionFragment(value, topic = '') {
-  const text = String(value || '').replace(/\s+/g, ' ').trim();
-  const combined = `${topic || ''} ${text}`;
-  if (!text || discussionPointDoesNotFitTopic(text, topic)) return '';
-  if (/\b(?:version one|version 1|version 101|v1\.?0?1|102|v1\.?0?2)\b/i.test(text)) {
-    return 'The team discussed the need to confirm the first software change and document the transition between software versions 1.01 and 1.02.';
-  }
-  if (/\bdebug\b/i.test(text)) {
-    return 'The debug screen and commands were discussed as part of confirming the visible software behaviour and supporting traceability.';
-  }
-  if (/\bchange request|change control\b/i.test(text)) {
-    return 'The change request documentation was discussed as the route for capturing alarm, language and software-version changes.';
-  }
-  if (/\blanguage|font|symbol|symbols|character|characters|arabic|vietnamese|greek\b/i.test(combined)) {
-    return 'The language-file work focused on confirming character and symbol support for the additional languages, including Arabic, Vietnamese and Greek.';
-  }
-  return '';
-}
-
 function finaliseDiscussionPointForMinutes(point, topic = '') {
   const human = humaniseDiscussionPoint(point);
   if (!human) return '';
-  if (discussionPointDoesNotFitTopic(human, topic)) return '';
-  if (isRawTranscriptDiscussionPoint(human)) return rewriteRawDiscussionFragment(human, topic);
+  if (isMalformedStagedLine(human) || isRawTranscriptDiscussionPoint(human)) return '';
   if (discussionPointIsActionOnly(human)) return '';
   return human;
 }
@@ -635,13 +603,13 @@ function reshapeStagedDiscussionCardsForHumanMinutes(cards, options = {}) {
     const seen = new Set();
     const points = [];
     let rawTranscriptPointsRemoved = 0;
-    let topicMismatchPointsRemoved = 0;
+    let malformedDiscussionPointsRemoved = 0;
     let actionOnlyPointsRemoved = 0;
     for (const point of orderHumanDiscussionPoints(Array.isArray(card.points) ? card.points : cardPoints(card), topic)) {
       const before = humaniseDiscussionPoint(point);
       const human = finaliseDiscussionPointForMinutes(point, topic);
       if (!human && before) {
-        if (discussionPointDoesNotFitTopic(before, topic)) topicMismatchPointsRemoved += 1;
+        if (isMalformedStagedLine(before)) malformedDiscussionPointsRemoved += 1;
         else if (isRawTranscriptDiscussionPoint(before)) rawTranscriptPointsRemoved += 1;
         else if (discussionPointIsActionOnly(before)) actionOnlyPointsRemoved += 1;
       }
@@ -655,7 +623,7 @@ function reshapeStagedDiscussionCardsForHumanMinutes(cards, options = {}) {
     const qualityFlags = [
       ...(Array.isArray(card.qualityFlags) ? card.qualityFlags : []),
       ...(rawTranscriptPointsRemoved ? ['raw_transcript_discussion_points_removed'] : []),
-      ...(topicMismatchPointsRemoved ? ['topic_mismatch_discussion_points_removed'] : []),
+      ...(malformedDiscussionPointsRemoved ? ['malformed_discussion_points_removed'] : []),
       ...(actionOnlyPointsRemoved ? ['action_only_discussion_points_removed'] : [])
     ];
     result.push({
@@ -723,11 +691,11 @@ function buildStagedValidationFlags(screens = {}) {
         message: `Removed raw transcript-style wording under "${card.topic || 'Discussion'}" before final review.`
       });
     }
-    if (qualityFlags.includes('topic_mismatch_discussion_points_removed')) {
+    if (qualityFlags.includes('malformed_discussion_points_removed')) {
       flags.push({
-        type: 'topic_mismatch_discussion_points_removed',
+        type: 'malformed_discussion_points_removed',
         severity: 'warning',
-        message: `Removed discussion point(s) under "${card.topic || 'Discussion'}" because they fitted another workstream better.`
+        message: `Removed malformed generated wording under "${card.topic || 'Discussion'}" before final review.`
       });
     }
     for (const point of cardPoints(card)) {
@@ -772,7 +740,6 @@ function buildStagedValidationFlags(screens = {}) {
 
 // --- Final action quality gate --------------------------------------------
 
-const FINAL_ACTION_OWNERLESS = /^(?:not stated|unknown|tbc|tbd|n\/a|-)?$/i;
 const FINAL_ACTION_VERB = /^(?:arrange|book|schedule|organise|coordinate|set\s+up|update|review|check|verify|validate|assess|send|share|provide|circulate|issue|upload|forward|confirm|prepare|complete|develop|build|create|finali[sz]e|finish|produce|draft|submit|approve|agree|accept|sign(?:\s+off)?|trace|generate|identify|document|follow[- ]?up)\b/i;
 const FINAL_ACTION_DEBRIS = [
   /^\s*(?:and\s+)?then\b/i,
@@ -795,11 +762,6 @@ function normaliseFinalActionOwner(owner) {
   const cleaned = cleanFinalActionValue(owner) || 'Not stated';
   if (/^(?:we|us|our team|the team|everyone)$/i.test(cleaned)) return 'All';
   return cleaned;
-}
-
-function ownerIsUsableForFinalAction(owner) {
-  const cleaned = normaliseFinalActionOwner(owner);
-  return cleaned === 'All' || !FINAL_ACTION_OWNERLESS.test(cleaned);
 }
 
 function finalActionObjectText(action) {
@@ -851,9 +813,7 @@ function stagedFinalActionQualityIssue(candidate = {}) {
     candidate.evidence || candidate.sourceText || candidate.contextText || ''
   );
   const action = cleanFinalActionValue(rewritten.action);
-  const owner = normaliseFinalActionOwner(rewritten.owner);
   if (!action) return 'missing_action';
-  if (!ownerIsUsableForFinalAction(owner)) return 'missing_owner';
   if (isMalformedStagedLine(action)) return 'malformed_action';
   if (FINAL_ACTION_DEBRIS.some((pattern) => pattern.test(action))) return 'transcript_debris';
   if (!FINAL_ACTION_VERB.test(action)) return 'missing_actionable_verb';
