@@ -242,10 +242,12 @@ test('buildStagedValidationFlags surfaces duplicates, malformed text and omitted
     discussion: [
       { topic: 'Site access', points: ['Five days on site.', 'Potential The discussion covered transportation availability if the final is won.'] }
     ],
-    droppedDuplicates: [{ topic: 'Analytics and review confidence', duplicateOf: 'Audit training and standards review' }]
+    droppedDuplicates: [{ topic: 'Analytics and review confidence', duplicateOf: 'Audit training and standards review' }],
+    droppedMisattributed: [{ topic: 'Cybersecurity Review of USB Port', droppedPointCount: 5 }]
   });
   const types = flags.map((flag) => flag.type);
   assert.ok(types.includes('duplicate_section'));
+  assert.ok(types.includes('misattributed_discussion_evidence'));
   assert.ok(types.includes('malformed_text'));
   assert.ok(types.includes('possible_omitted_workstream'));
 });

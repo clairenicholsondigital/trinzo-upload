@@ -1858,6 +1858,7 @@ async function buildStagedTrooperContext(stage, transcript, req, options = {}) {
       ok: Boolean(output && typeof output === 'object'),
       output: output && typeof output === 'object' ? output : {},
       counts: {},
+      workstreamState: stage === 'discussion' && Array.isArray(options.workstreamState) ? options.workstreamState : [],
       rewriterAvailable: true,
       rewriterReason: `Trooper targeted staged ${stage} generation used${options.strictTopicCoverage ? ' with strict topic coverage retry' : ''}.`,
       diagnostics: {
@@ -2721,7 +2722,7 @@ function stagedDiscussionNeedsRetry(minilmContext, req, transcript, evidencePack
 }
 
 function missingStagedWorkstreamsFromOutput(minilmContext, workstreamState = []) {
-  const cards = discussionFromStagedMiniLM(minilmContext);
+  const cards = filterDiscussionCardsByWorkstreamEvidence(discussionFromStagedMiniLM(minilmContext), workstreamState);
   return (Array.isArray(workstreamState) ? workstreamState : [])
     .filter((state) => state && Array.isArray(state.evidence) && state.evidence.length)
     .filter((state) => !findDiscussionCardForTopic(cards, state.workstream))
@@ -2749,18 +2750,113 @@ function findDiscussionCardForTopic(cards, topic) {
   }) || null;
 }
 
-function discussionFallbackForTopic(transcript, topic, meetingType, participants) {
-  return null;
+function findWorkstreamStateForTopic(workstreamState = [], topic = '') {
+  const topicKey = normaliseTopicKey(topic);
+  if (!topicKey) return null;
+  const states = Array.isArray(workstreamState) ? workstreamState : [];
+  return states.find((state) => {
+    const stateKey = normaliseTopicKey(state && state.workstream);
+    if (!stateKey) return false;
+    if (stateKey === topicKey || stateKey.includes(topicKey) || topicKey.includes(stateKey)) return true;
+    return stagedTokenSimilarity(state.workstream, topic) >= 0.34;
+  }) || null;
 }
 
-function alignDiscussionCardsToConfirmedTopics(cards, topics, transcript, meetingType, participants) {
+function stagedWorkstreamStateEvidenceTexts(state) {
+  if (!state || typeof state !== 'object') return [];
+  return uniqueCleanDiscussionItems([
+    state.workstream,
+    ...(Array.isArray(state.currentStatus) ? state.currentStatus : []),
+    ...(Array.isArray(state.changesSinceLastReview) ? state.changesSinceLastReview : []),
+    ...(Array.isArray(state.decisionsOrAgreements) ? state.decisionsOrAgreements : []),
+    ...(Array.isArray(state.openPoints) ? state.openPoints : []),
+    ...(Array.isArray(state.dependencies) ? state.dependencies : []),
+    ...(Array.isArray(state.technicalDetails) ? state.technicalDetails : []),
+    ...(Array.isArray(state.nextSteps) ? state.nextSteps : []),
+    ...(Array.isArray(state.explicitActions) ? state.explicitActions : []),
+    ...(Array.isArray(state.evidence) ? state.evidence : [])
+  ]).slice(0, 24);
+}
+
+function discussionPointEvidenceFitScore(point, state) {
+  const cleaned = cleanStagedDiscussionText(point);
+  if (!cleaned || !state) return 0;
+  const topicScore = stagedTokenSimilarity(cleaned, state.workstream || '');
+  const evidenceScores = stagedWorkstreamStateEvidenceTexts(state)
+    .filter((text) => text && text !== state.workstream)
+    .map((text) => stagedTokenSimilarity(cleaned, text));
+  const evidenceScore = evidenceScores.length ? Math.max(...evidenceScores) : 0;
+  return Math.max(topicScore * 0.82, evidenceScore);
+}
+
+function filterDiscussionCardsByWorkstreamEvidence(cards = [], workstreamState = [], options = {}) {
+  const threshold = Number(options.threshold ?? 0.18);
+  const filtered = [];
+  const droppedMisattributed = [];
+  for (const card of Array.isArray(cards) ? cards : []) {
+    if (!card || typeof card !== 'object') continue;
+    const state = findWorkstreamStateForTopic(workstreamState, card.topic);
+    const points = uniqueCleanDiscussionItems(card.points || card.bullets || []);
+    if (!state || !Array.isArray(state.evidence) || !state.evidence.length || !points.length) {
+      filtered.push(card);
+      continue;
+    }
+    const kept = points.filter((point) => discussionPointEvidenceFitScore(point, state) >= threshold);
+    if (kept.length) {
+      filtered.push({ ...card, points: kept });
+      if (kept.length < points.length) {
+        droppedMisattributed.push({
+          topic: card.topic || 'Discussion',
+          droppedPointCount: points.length - kept.length,
+          reason: 'low_workstream_evidence_fit'
+        });
+      }
+      continue;
+    }
+    droppedMisattributed.push({
+      topic: card.topic || 'Discussion',
+      droppedPointCount: points.length,
+      reason: 'misattributed_discussion_evidence'
+    });
+  }
+  filtered.droppedMisattributed = droppedMisattributed;
+  return filtered;
+}
+
+function discussionFallbackForWorkstreamState(state, topic = '') {
+  if (!state || typeof state !== 'object') return null;
+  const points = uniqueCleanDiscussionItems([
+    ...(Array.isArray(state.currentStatus) ? state.currentStatus : []),
+    ...(Array.isArray(state.changesSinceLastReview) ? state.changesSinceLastReview : []),
+    ...(Array.isArray(state.technicalDetails) ? state.technicalDetails : []),
+    ...(Array.isArray(state.decisionsOrAgreements) ? state.decisionsOrAgreements : []),
+    ...(Array.isArray(state.openPoints) ? state.openPoints : []),
+    ...(Array.isArray(state.dependencies) ? state.dependencies : []),
+    ...(Array.isArray(state.nextSteps) ? state.nextSteps : []),
+    ...(Array.isArray(state.evidence) ? state.evidence : [])
+  ])
+    .filter((point) => discussionPointEvidenceFitScore(point, state) >= 0.12 || classifyStagedEvidenceRoles(point).includes('technical detail'))
+    .slice(0, 6);
+  if (!points.length) return null;
+  return {
+    topic: cleanStagedGeneratedLine(topic || state.workstream || 'Discussion'),
+    points,
+    source: 'workstream_state_discussion_fallback'
+  };
+}
+
+function discussionFallbackForTopic(transcript, topic, meetingType, participants, workstreamState = []) {
+  return discussionFallbackForWorkstreamState(findWorkstreamStateForTopic(workstreamState, topic), topic);
+}
+
+function alignDiscussionCardsToConfirmedTopics(cards, topics, transcript, meetingType, participants, workstreamState = []) {
   if (!topics.length) return cards;
   return topics.slice(0, 8).map((topic) => {
     const matched = findDiscussionCardForTopic(cards, topic);
     if (matched && Array.isArray(matched.points) && matched.points.length) {
       return { ...matched, topic, points: uniqueCleanDiscussionItems(matched.points).slice(0, 5) };
     }
-    return discussionFallbackForTopic(transcript, topic, meetingType, participants);
+    return discussionFallbackForTopic(transcript, topic, meetingType, participants, workstreamState);
   }).filter(Boolean);
 }
 
@@ -2773,9 +2869,21 @@ function buildStagedDiscussionResponse(req, transcript, minilmContext = null) {
   const details = stagedDetailsWithConfirmedContext(req, transcript);
   const participants = context.participants.length ? context.participants : details.allAttendees;
   const meetingType = context.meetingType || details.meetingType || 'Project review';
-  const rawDiscussion = miniLmDiscussion.length
-    ? alignDiscussionCardsToConfirmedTopics(miniLmDiscussion, context.overallTopics, transcript, meetingType, participants)
+  const confirmedWorkstreamState = minilmContext?.workstreamState || [];
+  const evidenceFilteredDiscussion = filterDiscussionCardsByWorkstreamEvidence(miniLmDiscussion, confirmedWorkstreamState);
+  const droppedMisattributed = Array.isArray(evidenceFilteredDiscussion.droppedMisattributed)
+    ? evidenceFilteredDiscussion.droppedMisattributed
     : [];
+  const rawDiscussion = context.overallTopics.length
+    ? alignDiscussionCardsToConfirmedTopics(
+      evidenceFilteredDiscussion,
+      context.overallTopics,
+      transcript,
+      meetingType,
+      participants,
+      confirmedWorkstreamState
+    )
+    : evidenceFilteredDiscussion;
   const discussionCompaction = compactStagedDiscussionCards(rawDiscussion, { pointLimit: 4 });
   const discussion = reshapeStagedDiscussionCardsForHumanMinutes(discussionCompaction.cards, { pointLimit: 6, processDetailPointLimit: 8 });
   const output = stagedMiniLMOutput(minilmContext);
@@ -2793,7 +2901,7 @@ function buildStagedDiscussionResponse(req, transcript, minilmContext = null) {
   }
 
   const droppedDuplicates = Array.isArray(miniLmDiscussion.droppedDuplicates) ? miniLmDiscussion.droppedDuplicates : [];
-  const validationFlags = buildStagedValidationFlags({ discussion, droppedDuplicates });
+  const validationFlags = buildStagedValidationFlags({ discussion, droppedDuplicates, droppedMisattributed });
 
   return {
     ok: true,
@@ -2813,6 +2921,7 @@ function buildStagedDiscussionResponse(req, transcript, minilmContext = null) {
       stage: 'discussion',
       topicCount: topics.length,
       discussionCards: discussion.length,
+      droppedMisattributedDiscussionPoints: droppedMisattributed.length,
       transcriptLength: transcript.text.length,
       embeddingClassifier: stagedMiniLMTelemetry(minilmContext),
       discussionCompaction: discussionCompaction.telemetry

@@ -612,6 +612,14 @@ function buildStagedValidationFlags(screens = {}) {
     });
   }
 
+  for (const dropped of Array.isArray(screens.droppedMisattributed) ? screens.droppedMisattributed : []) {
+    flags.push({
+      type: 'misattributed_discussion_evidence',
+      severity: 'warning',
+      message: `Removed ${dropped.droppedPointCount || 'some'} discussion point(s) under "${dropped.topic}" because they did not fit that workstream's evidence.`
+    });
+  }
+
   // Malformed text should already be filtered upstream; flag anything that
   // survives so it is never silently published.
   for (const card of discussion) {
