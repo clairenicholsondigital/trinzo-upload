@@ -424,7 +424,9 @@ function stagedKnownAttendeeKey(value) {
 const STAGED_KNOWN_INTERNAL_ATTENDEES = [
   'Colm O’Rourke',
   'Jacqui Fox',
-  'David Didsbury'
+  'David Didsbury',
+  'Conor Flynn',
+  'Claire Nicholson'
 ];
 
 const STAGED_KNOWN_CLIENT_ATTENDEES = [
@@ -435,6 +437,7 @@ const STAGED_KNOWN_CLIENT_ATTENDEES = [
   'Adil Kauim',
   'Kevin Beattie',
   'Andrew Kane',
+  'Rebecca Cuckoo',
   'Christina Cargan',
   'Ciaran Ryan',
   'Claire Doherty',
