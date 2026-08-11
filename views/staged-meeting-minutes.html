@@ -946,7 +946,8 @@ td textarea {
       meetingLocation: meetingLocationInput && meetingLocationInput.value ? meetingLocationInput.value.trim() : '',
       meetingType: meetingTypeInput && meetingTypeInput.value ? meetingTypeInput.value.trim() : '',
       internalAttendees: attendeesFromRow(internalAttendeesRow),
-      allAttendees: attendeesFromRow(clientAttendeesRow),
+      clientAttendees: attendeesFromRow(clientAttendeesRow),
+      allAttendees: currentParticipants(),
       participants: currentParticipants()
     };
   }
@@ -979,7 +980,7 @@ td textarea {
       if (meetingLocationInput) meetingLocationInput.value = state.details.meetingLocation || '';
       if (meetingTypeInput && state.details.meetingType) meetingTypeInput.value = state.details.meetingType;
       renderAttendees(internalAttendeesRow, state.details.internalAttendees);
-      renderAttendees(clientAttendeesRow, state.details.allAttendees || state.details.clientAttendees);
+      renderAttendees(clientAttendeesRow, state.details.clientAttendees || state.details.allAttendees);
     }
     if (state.summary && typeof state.summary === 'object') {
       stagedState.summary = state.summary;
@@ -1156,7 +1157,7 @@ td textarea {
       if (meetingLocationInput) meetingLocationInput.value = details.meetingLocation || 'Microsoft Teams';
       if (meetingTypeInput && details.meetingType) meetingTypeInput.value = details.meetingType;
       renderAttendees(internalAttendeesRow, details.internalAttendees);
-      renderAttendees(clientAttendeesRow, details.allAttendees || details.clientAttendees);
+      renderAttendees(clientAttendeesRow, details.clientAttendees || details.allAttendees);
       stagedState.details = detailsFromDom();
     }
     if (Object.prototype.hasOwnProperty.call(screensPayload, 'summary')) {

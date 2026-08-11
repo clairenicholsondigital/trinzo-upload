@@ -331,7 +331,7 @@ tr { page-break-inside:avoid; }
     var actions = actionsFromState(state);
     var title = details.meetingTitle || draft.meetingTitle || 'Meeting minutes';
     var internal = normaliseList(details.internalAttendees);
-    var client = normaliseList(details.allAttendees || details.clientAttendees);
+    var client = normaliseList(details.clientAttendees || details.allAttendees);
     document.title = title + ' | Client meeting minutes';
     if (backToReviewLink) {
       backToReviewLink.href = '/staged-meeting-minutes?draftId=' + encodeURIComponent(draft.jobId || draftId) + '&screen=4';

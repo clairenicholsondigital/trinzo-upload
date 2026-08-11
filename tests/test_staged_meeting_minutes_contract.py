@@ -254,6 +254,7 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
 
     def test_staged_attendee_known_name_mapping_is_wired(self):
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+        page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
 
         self.assertIn("STAGED_KNOWN_INTERNAL_ATTENDEES", api)
         self.assertIn("STAGED_KNOWN_CLIENT_ATTENDEES", api)
@@ -276,6 +277,14 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("...(explicitClientAttendees.length ? [] : speakerBuckets.unknown)", api)
         self.assertIn("knownInternalAttendeeCount", api)
         self.assertIn("knownClientAttendeeCount", api)
+        self.assertIn("clientAttendees: attendeesFromRow(clientAttendeesRow)", page)
+        self.assertIn("allAttendees: currentParticipants()", page)
+        self.assertIn("renderAttendees(clientAttendeesRow, details.clientAttendees || details.allAttendees)", page)
+        self.assertNotIn("renderAttendees(clientAttendeesRow, details.allAttendees || details.clientAttendees)", page)
+
+        client_output = (REPO_DIR / "views" / "staged-meeting-minutes-client-output.html").read_text(encoding="utf-8")
+        self.assertIn("normaliseList(details.clientAttendees || details.allAttendees)", client_output)
+        self.assertNotIn("normaliseList(details.allAttendees || details.clientAttendees)", client_output)
 
     def test_staged_transcript_prep_is_deterministic_and_keeps_raw_source(self):
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
