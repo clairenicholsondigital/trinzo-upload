@@ -410,6 +410,65 @@ function uniqueNames(names) {
   return unique.slice(0, 40);
 }
 
+function stagedKnownAttendeeKey(value) {
+  return String(value || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[’‘`]/g, "'")
+    .replace(/[^a-z'\s-]/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+const STAGED_KNOWN_INTERNAL_ATTENDEES = [
+  'Colm O’Rourke',
+  'Jacqui Fox',
+  'David Didsbury'
+];
+
+const STAGED_KNOWN_CLIENT_ATTENDEES = [
+  'Grace McGroogan',
+  'Rebecca Gill',
+  'Patrick Stewart',
+  'Jonny Dobbin',
+  'Adil Kauim',
+  'Kevin Beattie',
+  'Andrew Kane',
+  'Christina Cargan',
+  'Ciaran Ryan',
+  'Claire Doherty',
+  'Luke Speers',
+  'Janine Thomas',
+  'Abby Lennon'
+];
+
+const STAGED_ATTENDEE_BUCKET_BY_NAME = new Map([
+  ...STAGED_KNOWN_INTERNAL_ATTENDEES.map((name) => [stagedKnownAttendeeKey(name), { bucket: 'internal', name }]),
+  ...STAGED_KNOWN_CLIENT_ATTENDEES.map((name) => [stagedKnownAttendeeKey(name), { bucket: 'client', name }])
+]);
+
+function bucketKnownStagedAttendees(names) {
+  const internal = [];
+  const client = [];
+  const unknown = [];
+  for (const rawName of uniqueNames(names)) {
+    const known = STAGED_ATTENDEE_BUCKET_BY_NAME.get(stagedKnownAttendeeKey(rawName));
+    if (known?.bucket === 'internal') {
+      internal.push(known.name);
+    } else if (known?.bucket === 'client') {
+      client.push(known.name);
+    } else {
+      unknown.push(rawName);
+    }
+  }
+  return {
+    internal: uniqueNames(internal),
+    client: uniqueNames(client),
+    unknown: uniqueNames(unknown)
+  };
+}
+
 const TEAMS_PERSON_NAME_PATTERN = "[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:\\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){1,4}";
 const TEAMS_TIMESTAMP_PATTERN = "(?:\\d{1,2}:)?\\d{1,2}:\\d{2}";
 const TEAMS_HEADER_DATE_PATTERN = "\\b(?:20\\d{6}|20\\d{2}[-/]\\d{1,2}[-/]\\d{1,2}|\\d{1,2}[/-]\\d{1,2}[/-]20\\d{2}|\\d{1,2}\\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\\s+20\\d{2})\\b";
@@ -598,6 +657,22 @@ function extractStagedDetailsFromTranscript(transcriptText, fileName = '') {
   const teamsSpeakers = teamsStructure.speakers.length ? teamsStructure.speakers : extractTeamsSpeakerNames(text);
   const explicitClientAttendees = extractNamesFromLine(clientLine || attendeesLine);
   const explicitInternalAttendees = extractNamesFromLine(trinzoLine);
+  const explicitClientBuckets = bucketKnownStagedAttendees(explicitClientAttendees);
+  const explicitInternalBuckets = bucketKnownStagedAttendees(explicitInternalAttendees);
+  const speakerBuckets = bucketKnownStagedAttendees(teamsSpeakers);
+  const internalAttendees = uniqueNames([
+    ...explicitInternalBuckets.internal,
+    ...explicitInternalBuckets.unknown,
+    ...explicitClientBuckets.internal,
+    ...speakerBuckets.internal
+  ]);
+  const clientAttendees = uniqueNames([
+    ...explicitClientBuckets.client,
+    ...explicitClientBuckets.unknown,
+    ...explicitInternalBuckets.client,
+    ...speakerBuckets.client,
+    ...(explicitClientAttendees.length ? [] : speakerBuckets.unknown)
+  ]);
   const headerDate = teamsHeader.meetingDate || '';
   const headerTitle = teamsHeader.meetingTitle || '';
 
@@ -612,9 +687,9 @@ function extractStagedDetailsFromTranscript(transcriptText, fileName = '') {
         meetingLocation: rawLocation || (/teams|microsoft teams/i.test(text) ? 'Microsoft Teams' : 'Microsoft Teams'),
         organisation: rawOrganisation,
         meetingType: inferStagedMeetingType(text, fileName),
-        internalAttendees: explicitInternalAttendees,
-        clientAttendees: explicitClientAttendees.length ? explicitClientAttendees : teamsSpeakers,
-        allAttendees: uniqueNames([...explicitInternalAttendees, ...explicitClientAttendees, ...teamsSpeakers])
+        internalAttendees,
+        clientAttendees,
+        allAttendees: uniqueNames([...internalAttendees, ...clientAttendees, ...teamsSpeakers])
       }
     },
     telemetryPreview: {
@@ -626,6 +701,8 @@ function extractStagedDetailsFromTranscript(transcriptText, fileName = '') {
         speakerCount: teamsSpeakers.length,
         turnCount: teamsStructure.turnCount,
         eventSpeakerCount: teamsStructure.eventSpeakers.length,
+        knownInternalAttendeeCount: internalAttendees.length,
+        knownClientAttendeeCount: clientAttendees.filter((name) => STAGED_ATTENDEE_BUCKET_BY_NAME.get(stagedKnownAttendeeKey(name))?.bucket === 'client').length,
         headerSource: teamsHeader.source || '',
         dateSource: headerDate ? 'microsoft_teams_header' : 'explicit_or_filename'
       }

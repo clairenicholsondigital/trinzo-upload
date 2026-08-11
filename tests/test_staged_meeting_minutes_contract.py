@@ -252,6 +252,24 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("turnCount: teamsStructure.turnCount", api)
         self.assertIn("dateSource: headerDate ? 'microsoft_teams_header' : 'explicit_or_filename'", api)
 
+    def test_staged_attendee_known_name_mapping_is_wired(self):
+        api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+
+        self.assertIn("STAGED_KNOWN_INTERNAL_ATTENDEES", api)
+        self.assertIn("STAGED_KNOWN_CLIENT_ATTENDEES", api)
+        self.assertIn("function bucketKnownStagedAttendees", api)
+        self.assertIn("Colm O’Rourke", api)
+        self.assertIn("Jacqui Fox", api)
+        self.assertIn("David Didsbury", api)
+        self.assertIn("Grace McGroogan", api)
+        self.assertIn("Andrew Kane", api)
+        self.assertIn("Abby Lennon", api)
+        self.assertIn("...explicitClientBuckets.internal", api)
+        self.assertIn("...speakerBuckets.internal", api)
+        self.assertIn("...(explicitClientAttendees.length ? [] : speakerBuckets.unknown)", api)
+        self.assertIn("knownInternalAttendeeCount", api)
+        self.assertIn("knownClientAttendeeCount", api)
+
     def test_staged_transcript_prep_is_deterministic_and_keeps_raw_source(self):
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
         db = (REPO_DIR / "utils" / "db.js").read_text(encoding="utf-8")
