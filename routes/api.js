@@ -2996,10 +2996,14 @@ function buildStagedMeetingMinutesResponse(req, transcript, result) {
   const clientAttendees = reviewData.participants.client;
 
   const { cards: dedupedDiscussion, dropped: droppedDuplicates } = dedupeStagedDiscussionCards(discussion);
+  const clientCleanDiscussion = reshapeStagedDiscussionCardsForHumanMinutes(dedupedDiscussion, {
+    pointLimit: 6,
+    processDetailPointLimit: 8
+  });
   const validationFlags = buildStagedValidationFlags({
     objectives,
     actions,
-    discussion: dedupedDiscussion,
+    discussion: clientCleanDiscussion,
     droppedDuplicates
   });
 
@@ -3021,7 +3025,7 @@ function buildStagedMeetingMinutesResponse(req, transcript, result) {
         objectives,
         executiveSummary: summary || 'Review the transcript-generated summary before moving on.'
       },
-      discussion: dedupedDiscussion.length ? dedupedDiscussion : [{
+      discussion: clientCleanDiscussion.length ? clientCleanDiscussion : [{
         topic: 'Discussion',
         points: ['Review the transcript-generated discussion points before moving on.']
       }],

@@ -209,9 +209,12 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("EUDAMED", staged_editorial)
         self.assertIn("function finaliseDiscussionPointForMinutes", staged_editorial)
         self.assertIn("raw_transcript_discussion_points_removed", staged_editorial)
-        self.assertIn("topic_mismatch_discussion_points_removed", staged_editorial)
+        self.assertIn("malformed_discussion_points_removed", staged_editorial)
         self.assertIn("action_only_discussion_points_removed", staged_editorial)
-        self.assertIn("clinician|clinical|audible sound", staged_editorial)
+        self.assertIn("STAGED_SPEAKER_TURN_PREFIX", staged_editorial)
+        self.assertIn("FIRST_PERSON_TRANSCRIPT_VOICE", staged_editorial)
+        self.assertNotIn("clinician|clinical|audible sound", staged_editorial)
+        self.assertNotIn("version 1.01 and 1.02", staged_editorial)
         self.assertIn("objectives: context.objectives", api)
 
     def test_staged_topic_and_owner_cleanup_is_wired(self):
