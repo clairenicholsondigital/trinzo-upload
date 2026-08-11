@@ -17,6 +17,10 @@ const {
 } = require('../utils/copilot');
 
 const { extractTextFromUpload } = require('../utils/transcript');
+const {
+  assertStagedSourceIdentity,
+  assertStagedTranscriptHash
+} = require('../utils/stagedIdentity');
 
 const {
   isMalformedStagedLine,
@@ -3205,6 +3209,12 @@ async function runQueuedStagedMeetingMinutesStage(jobId) {
     );
     await updateGenerationJobProgress(jobId, stage, 10, `Generating staged ${stage} content.`);
     validateTranscriptText(transcript.text);
+    const transcriptIdentity = transcriptMetadata(transcript.text);
+    assertStagedTranscriptHash(
+      input.transcriptSha256,
+      transcriptIdentity.transcriptSha256,
+      'queued job transcript'
+    );
 
     let payload;
     if (stage === 'details') {
@@ -3258,17 +3268,20 @@ async function runQueuedStagedMeetingMinutesStage(jobId) {
       source: transcript.source,
       fileName: transcript.fileName || null,
       transcriptLength: transcript.text.length,
+      transcriptSha256: transcriptIdentity.transcriptSha256,
       meetingId: job.meetingId,
       jobId,
       result: {
         ...payload,
         jobId,
         meetingId: job.meetingId,
+        transcriptSha256: transcriptIdentity.transcriptSha256,
         queuedDiagnostics: {
           jobId,
           meetingId: job.meetingId,
           workerMode: 'staged_meeting_minutes_stage',
           rawTranscriptLength: transcript.text.length,
+          transcriptSha256: transcriptIdentity.transcriptSha256,
           preparedTranscriptLength: payload.preparedTranscriptTelemetry?.preparedLength || transcript.text.length,
           durationMs: Date.now() - startedAt
         }
@@ -3277,6 +3290,15 @@ async function runQueuedStagedMeetingMinutesStage(jobId) {
     resultPayload.resumeUrl = stagedStageResumeUrl({ ...input, jobId }, payload);
     resultPayload.result.resumeUrl = resultPayload.resumeUrl;
     await markGenerationJobCompleted(jobId, job.meetingId, resultPayload, `Staged ${stage} content is ready to review.`);
+    console.info(JSON.stringify({
+      event: 'staged_meeting_minutes_stage_completed',
+      jobId: Number(jobId),
+      draftId: String(input.draftId || ''),
+      stage,
+      transcriptSha256: transcriptIdentity.transcriptSha256,
+      transcriptLength: transcript.text.length,
+      durationMs: Date.now() - startedAt
+    }));
   } catch (error) {
     await markGenerationJobFailure(
       { ...job, attempts: Number(job.attempts || 0) + 1 },
@@ -3297,7 +3319,20 @@ function launchQueuedStagedMeetingMinutesStage(jobId) {
 async function findStagedSourceJobFromRequest(req) {
   const sourceJobId = Number(req.body?.sourceJobId || req.query?.sourceJobId || 0);
   if (sourceJobId) {
-    return getGenerationJob(sourceJobId, { includeTranscript: true });
+    const sourceJob = await getGenerationJob(sourceJobId, { includeTranscript: true });
+    if (sourceJob) {
+      assertStagedSourceIdentity(
+        {
+          draftId: req.body?.draftId || req.query?.draftId || '',
+          transcriptSha256: req.body?.transcriptSha256 || req.query?.transcriptSha256 || ''
+        },
+        {
+          draftId: sourceJob.inputPayload?.draftId || '',
+          transcriptSha256: sourceJob.inputPayload?.transcriptSha256 || ''
+        }
+      );
+    }
+    return sourceJob;
   }
 
   const draftId = String(req.body?.draftId || req.query?.draftId || '').trim();
@@ -3316,7 +3351,20 @@ async function findStagedSourceJobFromRequest(req) {
     [draftId]
   );
   const jobId = result.rows[0]?.id;
-  return jobId ? getGenerationJob(jobId, { includeTranscript: true }) : null;
+  const sourceJob = jobId ? await getGenerationJob(jobId, { includeTranscript: true }) : null;
+  if (sourceJob) {
+    assertStagedSourceIdentity(
+      {
+        draftId,
+        transcriptSha256: req.body?.transcriptSha256 || req.query?.transcriptSha256 || ''
+      },
+      {
+        draftId: sourceJob.inputPayload?.draftId || '',
+        transcriptSha256: sourceJob.inputPayload?.transcriptSha256 || ''
+      }
+    );
+  }
+  return sourceJob;
 }
 
 function validateTranscriptText(text) {
@@ -3968,6 +4016,11 @@ router.post('/staged-meeting-minutes/jobs', requireAuth, withTestUpload(async (r
     }
     validateTranscriptText(transcript.text);
     const meta = transcriptMetadata(transcript.text);
+    assertStagedTranscriptHash(
+      req.body?.transcriptSha256 || req.query?.transcriptSha256 || '',
+      meta.transcriptSha256,
+      'submitted transcript'
+    );
     const preparedTranscript = transcript.preparedTranscript?.text
       ? {
           text: String(transcript.preparedTranscript.text || ''),
@@ -4028,12 +4081,21 @@ router.post('/staged-meeting-minutes/jobs', requireAuth, withTestUpload(async (r
       regenerate: truthyFlag(req.body?.regenerate),
       queuedBy: req.authUser?.email || ''
     });
+    console.info(JSON.stringify({
+      event: 'staged_meeting_minutes_stage_queued',
+      jobId: Number(queued.jobId),
+      draftId: String(req.body?.draftId || ''),
+      stage: requestedStage,
+      transcriptSha256: meta.transcriptSha256,
+      transcriptLength: transcript.text.length
+    }));
     launchQueuedStagedMeetingMinutesStage(queued.jobId);
 
     return res.status(202).json({
       ok: true,
       success: true,
       ...queued,
+      transcriptSha256: meta.transcriptSha256,
       statusUrl: `/api/jobs/${queued.jobId}`,
       resultUrl: `/api/jobs/${queued.jobId}`,
       jobsUrl: `/jobs/${queued.jobId}`,

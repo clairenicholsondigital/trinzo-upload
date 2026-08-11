@@ -402,6 +402,24 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("pollStageJobUntilDone", page)
         self.assertNotIn("window.location.href = payload.jobsUrl", page)
 
+    def test_staged_transcript_identity_isolated_between_drafts(self):
+        api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+        page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
+        identity = (REPO_DIR / "utils" / "stagedIdentity.js").read_text(encoding="utf-8")
+
+        self.assertIn("assertStagedSourceIdentity", api)
+        self.assertIn("assertStagedTranscriptHash", api)
+        self.assertIn("input.transcriptSha256", api)
+        self.assertIn("transcriptIdentity.transcriptSha256", api)
+        self.assertIn("sourceJob.inputPayload?.draftId", api)
+        self.assertIn("sourceJob.inputPayload?.transcriptSha256", api)
+        self.assertIn("STAGED_TRANSCRIPT_IDENTITY_MISMATCH", identity)
+        self.assertIn("function resetStagedWorkflowForNewTranscript", page)
+        self.assertIn("resetStagedWorkflowForNewTranscript();", page)
+        self.assertIn("draftTranscriptSha256", page)
+        self.assertIn("formData.append('transcriptSha256'", page)
+        self.assertIn("window.crypto.randomUUID", page)
+
     def test_post_extraction_editorial_pass_is_wired_in(self):
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
         editorial = (REPO_DIR / "utils" / "stagedEditorial.js").read_text(encoding="utf-8")

@@ -627,6 +627,7 @@ td textarea {
   // re-finding an earlier job. This is what keeps the transcript available across the
   // screen-by-screen flow and on reload/resume.
   var storedTranscriptText = '';
+  var draftTranscriptSha256 = '';
   var requestedScreen = Number(params.get('screen') || 0);
   var activeIndex = 0;
   var screens = Array.prototype.slice.call(document.querySelectorAll('[data-screen]'));
@@ -1148,6 +1149,15 @@ td textarea {
   }
 
   function applyStagedPayload(payload, targetScreen) {
+    var payloadTranscriptSha256 = String(
+      (payload && payload.transcriptSha256) ||
+      (payload && payload.queuedDiagnostics && payload.queuedDiagnostics.transcriptSha256) ||
+      ''
+    ).trim();
+    if (draftTranscriptSha256 && payloadTranscriptSha256 && draftTranscriptSha256 !== payloadTranscriptSha256) {
+      throw new Error('This result belongs to a different transcript. Start a new staged draft from the transcript upload step.');
+    }
+    if (payloadTranscriptSha256) draftTranscriptSha256 = payloadTranscriptSha256;
     var screensPayload = payload && payload.screens ? payload.screens : {};
     var details = screensPayload.details || {};
     var summary = screensPayload.summary || {};
@@ -1219,6 +1229,7 @@ td textarea {
     formData.append('pipeline', 'chunked');
     formData.append('stage', stage);
     formData.append('draftId', ensureDraftId());
+    if (draftTranscriptSha256) formData.append('transcriptSha256', draftTranscriptSha256);
     formData.append('targetScreen', String(stage === 'details' ? 0 : stage === 'summary' ? 1 : stage === 'discussion' ? 2 : stage === 'actions' ? 3 : activeIndex));
     if (stagedState.details) {
       formData.append('confirmedDetails', JSON.stringify(stagedState.details));
@@ -1321,6 +1332,7 @@ td textarea {
         method: 'POST',
         body: build.formData
       });
+      if (payload && payload.transcriptSha256) draftTranscriptSha256 = String(payload.transcriptSha256);
       if (isRegeneration) recordRegeneration(stage, targetScreen);
       if (payload && payload.jobId) stagedSourceJobId = String(payload.jobId);
       saveDraft();
@@ -1404,6 +1416,9 @@ td textarea {
     var existing = drafts.find(function (draft) { return String(draft.jobId) === String(draftId); });
     if (existing && existing.sourceJobId && !stagedSourceJobId) {
       stagedSourceJobId = String(existing.sourceJobId);
+    }
+    if (existing && existing.transcriptSha256) {
+      draftTranscriptSha256 = String(existing.transcriptSha256);
     }
     if (existing && stageAdditionalContextInput && existing.additionalContext) {
       stageAdditionalContextInput.value = existing.additionalContext;
@@ -1493,11 +1508,68 @@ td textarea {
 
   function ensureDraftId() {
     if (draftId) return draftId;
-    draftId = 'staged-review-' + Date.now().toString(36);
+    var randomId = window.crypto && typeof window.crypto.randomUUID === 'function'
+      ? window.crypto.randomUUID()
+      : Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 12);
+    draftId = 'staged-review-' + randomId;
     params.set('draftId', draftId);
     var nextUrl = window.location.pathname + '?' + params.toString();
     replaceUrl(nextUrl);
     return draftId;
+  }
+
+  function hasExistingStagedTranscriptSource() {
+    return Boolean(
+      draftId ||
+      stagedSourceJobId ||
+      draftTranscriptSha256 ||
+      reviewStarted ||
+      Object.keys(generatedStages).some(function (stage) { return generatedStages[stage]; })
+    );
+  }
+
+  function resetStagedWorkflowForNewTranscript() {
+    if (!hasExistingStagedTranscriptSource()) return;
+
+    // Preserve the old draft under its existing id before detaching this page from it.
+    saveDraft();
+    draftId = '';
+    stageJobId = '';
+    stagedSourceJobId = '';
+    storedTranscriptText = '';
+    draftTranscriptSha256 = '';
+    requestedScreen = 0;
+    activeIndex = 0;
+    lastGeneratedPayload = null;
+    stagedState = { details: null, summary: null, discussion: null, actions: null };
+    generatedStages = { details: false, summary: false, discussion: false, actions: false };
+    regenerationEvents = [];
+    reviewEditStartedAt = null;
+    reviewEditMs = 0;
+    reviewEditCount = 0;
+
+    if (meetingTitleInput) meetingTitleInput.value = '';
+    if (meetingDateInput) meetingDateInput.value = '';
+    if (meetingLocationInput) meetingLocationInput.value = 'Microsoft Teams';
+    if (meetingTypeInput) meetingTypeInput.value = '';
+    if (objectivesInput) objectivesInput.value = '';
+    if (executiveSummaryInput) executiveSummaryInput.value = '';
+    if (overallTopicsInput) overallTopicsInput.value = '';
+    if (stageAdditionalContextInput) stageAdditionalContextInput.value = '';
+    if (internalAttendeesRow) internalAttendeesRow.innerHTML = '';
+    if (clientAttendeesRow) clientAttendeesRow.innerHTML = '';
+    if (discussionList) discussionList.innerHTML = '';
+    if (actionsTableBody) actionsTableBody.innerHTML = '';
+    renderValidationFlags([]);
+
+    params.delete('draftId');
+    params.delete('stageJobId');
+    params.delete('screen');
+    replaceUrl(window.location.pathname);
+    setReviewStarted(false);
+    showScreen(0);
+    renderFinalDocument();
+    setStatus('New transcript selected. Generate meeting details to begin a separate staged draft.', false);
   }
 
   function saveDraft() {
@@ -1523,6 +1595,7 @@ td textarea {
       fileName: lastGeneratedPayload && lastGeneratedPayload.fileName ? lastGeneratedPayload.fileName : 'Staged review draft',
       transcriptLength: lastGeneratedPayload && lastGeneratedPayload.transcriptLength ? lastGeneratedPayload.transcriptLength : 0,
       sourceJobId: stagedSourceJobId,
+      transcriptSha256: draftTranscriptSha256,
       attempts: 0,
       maxAttempts: 0,
       createdAt: existing ? existing.createdAt : now,
@@ -1671,6 +1744,20 @@ td textarea {
         return false;
       });
       if (!queued) generateButton.disabled = false;
+    });
+  }
+  if (transcriptFileInput) {
+    transcriptFileInput.addEventListener('change', function () {
+      if (transcriptFileInput.files && transcriptFileInput.files[0]) {
+        resetStagedWorkflowForNewTranscript();
+      }
+    });
+  }
+  if (transcriptTextInput) {
+    transcriptTextInput.addEventListener('input', function () {
+      if (transcriptTextInput.value.trim()) {
+        resetStagedWorkflowForNewTranscript();
+      }
     });
   }
   document.addEventListener('input', function (event) {
