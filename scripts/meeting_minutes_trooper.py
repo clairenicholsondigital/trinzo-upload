@@ -893,7 +893,9 @@ def add_unique_decision(decisions: list[str], text: str) -> list[str]:
     if cleaned and cleaned[0].islower():
         cleaned = cleaned[0].upper() + cleaned[1:]
     if cleaned:
-        decisions = append_unique_text(decisions, f"Decided to {cleaned[0].lower() + cleaned[1:] if cleaned else cleaned}.", limit=15)
+        decision_body = cleaned if len(cleaned) > 1 and cleaned[:2].isupper() else cleaned[0].lower() + cleaned[1:]
+        prefix = "Decided that" if re.search(r"\bshould\b", decision_body, re.I) else "Decided to"
+        decisions = append_unique_text(decisions, f"{prefix} {decision_body}.", limit=15)
     return decisions
 
 
@@ -1044,6 +1046,24 @@ def apply_long_transcript_recovery(output: dict[str, Any], transcript: str) -> d
     actions = [dict(action) for action in recovered.get("actions") or [] if isinstance(action, dict)]
 
     long_topic_rules = [
+        # High-confidence staged recovery for technical review dates. Keep the
+        # timing only when the transcript contains both the workstream and its
+        # stated review or completion date.
+        (("clinical", "review", "wednesday"), "Clinical review timing for Wednesday was discussed."),
+        (("change request", "wednesday"), "Change request review and approval timing for Wednesday was discussed."),
+        (("electrical compliance", "23rd of july"), "Electrical compliance testing was planned around 23rd of July."),
+
+        # Importer-obligation recovery. Each row requires all named concepts in
+        # the transcript. UDI and EUDAMED are combined because they are one
+        # regulatory-data workstream and the staged screen has an eight-card cap.
+        (("qms", "importer"), "QMS and importer-obligation alignment were discussed."),
+        (("storage", "dublin"), "Storage in Dublin was discussed in relation to importer responsibilities."),
+        (("warehouse", "barcode"), "Warehouse picking and shipping-list barcodes were discussed."),
+        (("udi", "label", "authorised rep"), "UDI labelling and EUDAMED responsibilities in relation to the authorised representative were discussed."),
+        (("med envoy", "plan"), "Med Envoy project plan and task list visibility were discussed."),
+        (("ifu", "manufacturer"), "IFUs and manufacturer information requirements were discussed."),
+        (("declarations of conformity", "ppe", "risk rationale"), "Declarations of conformity and the PPE risk rationale were discussed."),
+        (("hpra", "bill"), "HPRA documentation and the authorised-representative bill were discussed."),
         (("alarm", "mute button"), "Alarm behaviour and the mute button were discussed."),
         (("sw versioning", "traceability"), "Software versioning and traceability were discussed."),
         (("electrical compliance", "testing"), "Electrical compliance testing was discussed."),

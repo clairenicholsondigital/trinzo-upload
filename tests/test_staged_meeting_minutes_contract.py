@@ -252,6 +252,8 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("runSequence(transcript", runner)
         self.assertIn("deterministicActionInventoryCount", runner)
         self.assertIn("--precomputed-dir", scorer)
+        self.assertIn("function attachStagedDecisionsToDiscussionCards", api)
+        self.assertIn("card?.decisionOrAgreement", api)
 
     def test_staged_actions_have_final_quality_gate(self):
         staged_editorial = (REPO_DIR / "utils" / "stagedEditorial.js").read_text(encoding="utf-8")

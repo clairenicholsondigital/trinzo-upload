@@ -99,6 +99,22 @@ test('compactStagedDiscussionCards keeps stronger topic bullets and removes repe
   assert.ok(result.cards[1].points.some((point) => point.includes('SBOM')));
 });
 
+test('dedupe keeps separate workstreams that share only review timing boilerplate', () => {
+  const result = dedupeStagedDiscussionCards([
+    {
+      topic: 'Clinical review timing for Wednesday was discussed',
+      points: ['Clinical review timing for Wednesday was discussed.']
+    },
+    {
+      topic: 'Change request review and approval timing for Wednesday was discussed',
+      points: ['Change request review and approval timing for Wednesday was discussed.']
+    }
+  ]);
+
+  assert.equal(result.cards.length, 2);
+  assert.deepEqual(result.dropped, []);
+});
+
 test('compactStagedDiscussionCards preserves distinct concrete details inside high-substance topics', () => {
   const result = compactStagedDiscussionCards([
     {

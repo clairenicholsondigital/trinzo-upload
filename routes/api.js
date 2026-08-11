@@ -779,7 +779,7 @@ function stagedTopicsAreNearDuplicates(left, right) {
 
 function pushUniqueTopic(topics, topic, limit = 10) {
   const cleaned = String(topic || '').replace(/\s+/g, ' ').trim();
-  if (!isUsableStagedTopic(cleaned)) return;
+  if (!isUsableStagedTopic(cleaned) || isNoEvidenceDiscussionText(cleaned)) return;
   if (topics.some((item) => stagedTopicsAreNearDuplicates(item, cleaned))) return;
   topics.push(cleaned.slice(0, 80));
   if (topics.length > limit) topics.length = limit;
@@ -928,7 +928,7 @@ function cleanStagedDiscussionText(value) {
 function isNoEvidenceDiscussionText(value) {
   const text = cleanStagedGeneratedLine(value);
   if (!text) return true;
-  return /\b(?:no specific discussion points|no substantive discussion|not discussed in the transcript|no transcript evidence|no evidence|generation issue|api key is not configured|rewriter is not configured)\b/i.test(text);
+  return /\b(?:no specific discussion points|no substantive discussion|not discussed in the transcript|no transcript evidence|no evidence|generation issue|(?:trooper[_ ]?)?api[_ ]key is not configured|rewriter is not configured)\b/i.test(text);
 }
 
 function isLowValueStagedDiscussionText(value) {
@@ -1081,11 +1081,12 @@ function structuredDiscussionFromItem(item) {
 }
 
 function cleanStagedExecutiveSummary(value) {
-  return cleanStagedGeneratedLine(value)
+  const cleaned = cleanStagedGeneratedLine(value)
     .split(/(?<=[.!?])\s+/)
     .filter((sentence) => !/\bthe reviewer should check\b/i.test(sentence))
     .join(' ')
     .trim();
+  return isNoEvidenceDiscussionText(cleaned) ? '' : cleaned;
 }
 
 function stagedMiniLMOutput(minilmContext) {
@@ -1167,7 +1168,7 @@ function topicsFromStagedMiniLM(minilmContext) {
 
   for (const point of stringListFromAny(output.discussionPoints, ['discussionPoint', 'topicLabel', 'text'])) {
     const cleaned = cleanStagedGeneratedLine(point);
-    if (!cleaned) continue;
+    if (!cleaned || isNoEvidenceDiscussionText(cleaned)) continue;
     pushUniqueTopic(topics, topic_label_from_text(cleaned), 10);
   }
 
@@ -1182,6 +1183,33 @@ function topic_label_from_text(value) {
   return words.slice(0, 8).join(' ');
 }
 
+function attachStagedDecisionsToDiscussionCards(cards, output = {}) {
+  const result = (Array.isArray(cards) ? cards : []).map((card) => ({
+    ...card,
+    points: Array.isArray(card?.points) ? [...card.points] : []
+  }));
+  const decisions = stringListFromAny(output.decisions, ['text', 'decision', 'summary'])
+    .map(cleanStagedDiscussionText)
+    .filter((decision) => decision && hasStagedDecisionEvidence(decision));
+  for (const decision of decisions) {
+    const ranked = result
+      .map((card, index) => ({
+        index,
+        score: stagedTokenSimilarity(decision, `${card.topic || ''} ${(card.points || []).join(' ')}`)
+      }))
+      .sort((left, right) => right.score - left.score);
+    const target = result[ranked[0]?.index];
+    if (!target || Number(ranked[0]?.score || 0) < 0.12) continue;
+    target.decisionOrAgreement = decision;
+    target.points = uniqueCleanDiscussionItems([...(target.points || []), decision]).slice(0, 6);
+  }
+  return result;
+}
+
+function finaliseStagedMiniLMDiscussion(cards, output) {
+  return attachStagedDecisionsToDiscussionCards(polishStagedDiscussionCards(cards), output);
+}
+
 function discussionFromStagedMiniLM(minilmContext) {
   const output = stagedMiniLMOutput(minilmContext);
   const discussionTopics = Array.isArray(output.discussionTopics) ? output.discussionTopics : [];
@@ -1192,7 +1220,7 @@ function discussionFromStagedMiniLM(minilmContext) {
   for (const card of discussionCards) {
     const structured = structuredDiscussionFromItem(card);
     if (structured) cards.push(structured);
-    if (cards.length >= 8) return polishStagedDiscussionCards(cards);
+    if (cards.length >= 8) return finaliseStagedMiniLMDiscussion(cards, output);
   }
 
   for (const topicItem of discussionTopics) {
@@ -1201,7 +1229,7 @@ function discussionFromStagedMiniLM(minilmContext) {
     if (cards.length >= 8) break;
   }
 
-  if (cards.length) return polishStagedDiscussionCards(cards);
+  if (cards.length) return finaliseStagedMiniLMDiscussion(cards, output);
 
   for (const minute of minutes) {
     const structured = structuredDiscussionFromItem({
@@ -1213,7 +1241,7 @@ function discussionFromStagedMiniLM(minilmContext) {
     if (cards.length >= 8) break;
   }
 
-  if (cards.length) return polishStagedDiscussionCards(cards);
+  if (cards.length) return finaliseStagedMiniLMDiscussion(cards, output);
 
   const details = Array.isArray(output.discussionPointDetails) ? output.discussionPointDetails : [];
   for (const detail of details) {
@@ -1255,7 +1283,7 @@ function discussionFromStagedMiniLM(minilmContext) {
     }
   }
 
-  return polishStagedDiscussionCards(cards);
+  return finaliseStagedMiniLMDiscussion(cards, output);
 }
 
 function cleanStagedActionText(value) {
@@ -1271,7 +1299,7 @@ function isAuditableStagedAction(action, owner = '', deadline = '') {
   const text = cleanStagedActionText(action);
   if (!text || isNoEvidenceDiscussionText(text) || isMalformedStagedLine(text)) return false;
   if (/\b(?:everything|stuff|things|sort out|as much as possible|front[- ]?end everything|prep\b|progress\b|look at|think about|discuss|consider)\b/i.test(text)) return false;
-  const hasConcreteVerb = /\b(?:arrange|update|review|send|share|confirm|prepare|complete|finali[sz]e|provide|draft|submit|circulate|issue|upload|book|schedule|agree|approve|sign(?:\s+off)?|trace|generate|identify|document|follow[- ]?up)\b/i.test(text);
+  const hasConcreteVerb = /\b(?:arrange|book|schedule|organise|coordinate|set\s+up|update|review|send|share|confirm|prepare|complete|finali[sz]e|provide|draft|submit|circulate|issue|upload|agree|approve|sign(?:\s+off)?|trace|generate|identify|document|follow[- ]?up)\b/i.test(text);
   const hasObject = text.split(/\s+/).length >= 4;
   const hasCommitmentSignal = stagedTextHasFutureCommitmentMarker(text) || /\b(?:action|owner|deadline|by|before|next|follow[- ]?up|catch[- ]?up)\b/i.test(text) || cleanStagedGeneratedLine(deadline);
   const hasUsableOwner = cleanStagedGeneratedLine(owner) && !/^not stated$/i.test(cleanStagedGeneratedLine(owner));
@@ -2196,7 +2224,7 @@ function buildStagedSummaryResponse(req, transcript, minilmContext = null) {
     : ['Review the confirmed meeting topics and agreed follow-up points.'];
   const summary = cleanStagedExecutiveSummary(output.executiveSummary || output.meetingDescription || output.summary) ||
     (topics.length
-      ? `The project status needs to be read through ${topics.map((topic) => topic.toLowerCase()).join(', ')}. The next review stage should draw out the agreed changes, unresolved dependencies, timeline pressure and release-readiness implications from the transcript evidence.`
+      ? 'The transcript contains substantive project, technical and follow-up evidence for structured review. The discussion stage should confirm current positions, agreed changes, unresolved dependencies and time-critical actions before approval.'
       : 'The project status, agreed changes, unresolved risks and timeline impact should be confirmed from the transcript before moving to detailed discussion points.');
 
   return {
@@ -2729,13 +2757,30 @@ function normaliseTopicKey(value) {
 function findDiscussionCardForTopic(cards, topic) {
   const topicKey = normaliseTopicKey(topic);
   if (!topicKey) return null;
-  const topicWords = topicKey.split(/\s+/).filter((word) => word.length >= 4);
-  return cards.find((card) => {
+  const exact = cards.find((card) => {
     const cardKey = normaliseTopicKey(card && card.topic);
     if (!cardKey) return false;
-    if (cardKey === topicKey || cardKey.includes(topicKey) || topicKey.includes(cardKey)) return true;
-    return topicWords.length && topicWords.some((word) => cardKey.includes(word));
-  }) || null;
+    return cardKey === topicKey || cardKey.includes(topicKey) || topicKey.includes(cardKey);
+  });
+  if (exact) return exact;
+  const genericTopicWords = new Set([
+    'discussion', 'discussed', 'review', 'reviewed', 'timing', 'requirements',
+    'process', 'project', 'meeting', 'status', 'update', 'updates', 'planned'
+  ]);
+  const topicWords = topicKey
+    .split(/\s+/)
+    .filter((word) => word.length >= 4 && !genericTopicWords.has(word));
+  if (!topicWords.length) return null;
+  const ranked = cards
+    .map((card) => {
+      const cardKey = normaliseTopicKey(card && card.topic);
+      const cardWords = cardKey.split(/\s+/);
+      const overlap = topicWords.filter((word) => cardWords.includes(word)).length;
+      return { card, overlap, similarity: stagedTokenSimilarity(cardKey, topicKey) };
+    })
+    .filter((item) => item.overlap > 0)
+    .sort((left, right) => right.overlap - left.overlap || right.similarity - left.similarity);
+  return ranked[0]?.card || null;
 }
 
 function findWorkstreamStateForTopic(workstreamState = [], topic = '') {
@@ -3123,7 +3168,9 @@ function stagedEvaluationVisibleOutput(state = {}) {
         .map((point) => `${topic}: ${cleanStagedDiscussionText(point)}`)
         .filter((point) => point && !point.endsWith(': '));
     }),
-    decisions: [],
+    decisions: discussion
+      .map((card) => cleanStagedDiscussionText(card?.decisionOrAgreement || ''))
+      .filter(Boolean),
     actions: actions.map((item) => ({
       meetingActionPointOwner: item?.owner || 'Not stated',
       meetingActionPoint: item?.action || '',

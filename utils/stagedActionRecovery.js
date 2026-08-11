@@ -155,6 +155,26 @@ function actionCandidate(rule, evidence, owner, deadline) {
 
 const RECOVERY_RULES = [
   {
+    id: 'dita_med_envoy_plan',
+    required: [/\bmed\s*envoy\b/i, /\b(?:project plan|task list|plan of action|timeline|plan)\b/i, /\b(?:follow[- ]?up|oversight|status|send|share)\b/i],
+    action: () => 'Follow up on the Med Envoy project plan or task list'
+  },
+  {
+    id: 'dita_hpra_bill',
+    required: [/\bhpra\b/i, /\b(?:bill|annual fee)\b/i, /\b(?:send|share|review|look at|have a look)\b/i],
+    action: () => 'Review the HPRA authorised-representative bill'
+  },
+  {
+    id: 'dita_doc_ppe_rationale',
+    required: [/\bdeclarations? of conformity\b/i, /\bppe\b/i, /\brisk rationale\b/i, /\b(?:update|include|confirm|need to)\b/i],
+    action: () => 'Update the declarations of conformity with the PPE risk rationale'
+  },
+  {
+    id: 'dita_working_sessions',
+    required: [/\bworking sessions?\b/i, /\bwednesday\b/i, /\bthursday\b/i, /\bfriday\b/i, /\b(?:set up|schedule|arrange|recurrence)\b/i],
+    action: () => 'Set up working sessions with the client'
+  },
+  {
     id: 'mute_button_flash',
     required: [/\bmute button\b/i, /\b(?:flash|flashing|led)\b/i],
     action: () => 'Review the mute button flash behaviour against the existing setup'

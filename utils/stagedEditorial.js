@@ -42,7 +42,7 @@ function tokenSet(value, minLength = 4) {
   return new Set(
     normaliseForSimilarity(value)
       .split(/\s+/)
-      .filter((word) => word.length >= minLength)
+      .filter((word) => word.length >= minLength && !STOPWORDS.has(word))
   );
 }
 

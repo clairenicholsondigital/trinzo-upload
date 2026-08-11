@@ -100,3 +100,32 @@ test('recovers multiple evidence-bound actions from the real T761 fixture withou
   assert.equal(fanLogic.owner, 'Not stated');
   assert.equal(clinical.owner, 'Not stated');
 });
+
+test('recovers DITA follow-ups only from the real DITA evidence windows', () => {
+  const dita = fs.readFileSync(path.join(
+    REPO_DIR,
+    'scripts/meeting-minutes-final-golden/021_real_dita_importer_obligations_transcript/transcript.txt'
+  ), 'utf8');
+  const abbott = fs.readFileSync(path.join(
+    REPO_DIR,
+    'scripts/meeting-minutes-final-golden/027_real_abbott_audit_kickoff_transcript/transcript.txt'
+  ), 'utf8');
+
+  const ditaActions = buildEvidenceBoundStagedActionInventory(dita).map((item) => item.action);
+  const abbottActions = buildEvidenceBoundStagedActionInventory(abbott).map((item) => item.action);
+
+  assert.ok(ditaActions.includes('Follow up on the Med Envoy project plan or task list'));
+  assert.ok(ditaActions.includes('Review the HPRA authorised-representative bill'));
+  assert.ok(ditaActions.includes('Update the declarations of conformity with the PPE risk rationale'));
+  assert.ok(!abbottActions.some((action) => /Med Envoy|HPRA|PPE risk rationale/i.test(action)));
+});
+
+test('recovers the DITA working-session action from locally grouped scheduling evidence', () => {
+  const ditaInternal = fs.readFileSync(path.join(
+    REPO_DIR,
+    'scripts/meeting-minutes-final-golden/024_real_dita_internal_followup_transcript/transcript.txt'
+  ), 'utf8');
+  const actions = buildEvidenceBoundStagedActionInventory(ditaInternal).map((item) => item.action);
+
+  assert.ok(actions.includes('Set up working sessions with the client'));
+});
