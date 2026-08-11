@@ -199,6 +199,7 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
 
     def test_staged_discussion_has_human_minutes_reshaper(self):
         staged_editorial = (REPO_DIR / "utils" / "stagedEditorial.js").read_text(encoding="utf-8")
+        api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
 
         self.assertIn("function reshapeStagedDiscussionCardsForHumanMinutes", staged_editorial)
         self.assertIn("function orderHumanDiscussionPoints", staged_editorial)
@@ -206,6 +207,12 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("processDetailPointLimit", staged_editorial)
         self.assertIn("UDI and regulatory data", staged_editorial)
         self.assertIn("EUDAMED", staged_editorial)
+        self.assertIn("function finaliseDiscussionPointForMinutes", staged_editorial)
+        self.assertIn("raw_transcript_discussion_points_removed", staged_editorial)
+        self.assertIn("topic_mismatch_discussion_points_removed", staged_editorial)
+        self.assertIn("action_only_discussion_points_removed", staged_editorial)
+        self.assertIn("clinician|clinical|audible sound", staged_editorial)
+        self.assertIn("objectives: context.objectives", api)
 
     def test_staged_topic_and_owner_cleanup_is_wired(self):
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
@@ -224,12 +231,14 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("function enrichStagedActionDeadlinesFromTranscript", api)
         self.assertIn("function inferredDeadlineForStagedAction", api)
         self.assertIn("function stagedDeadlineEvidenceWindows", api)
-        self.assertIn("overlap >= 2", api)
+        self.assertIn("overlap >= 3", api)
+        self.assertIn("function stagedDeadlineIsSupportedByActionEvidence", api)
         self.assertIn("before (?:the )?(?:audit|site visit|next review|client call|meeting)", api)
         self.assertIn("return enrichStagedActionDeadlinesFromTranscript([...merged, ...preserved], transcriptText);", api)
 
     def test_staged_actions_have_final_quality_gate(self):
         staged_editorial = (REPO_DIR / "utils" / "stagedEditorial.js").read_text(encoding="utf-8")
+        api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
 
         self.assertIn("function normaliseFinalStagedActionCandidate", staged_editorial)
         self.assertIn("function stagedFinalActionQualityIssue", staged_editorial)
@@ -238,6 +247,11 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("missing_concrete_object", staged_editorial)
         self.assertIn("transcript_debris", staged_editorial)
         self.assertIn("Review electrical compliance testing outputs and update the final compliance documentation", staged_editorial)
+        self.assertIn("function canonicalKnownStagedPersonName", api)
+        self.assertIn("STAGED_KNOWN_PERSON_BY_FIRST_NAME", api)
+        self.assertIn("function stagedDeadlineIsSupportedByActionEvidence", api)
+        self.assertIn("normaliseDeadlineKey", api)
+        self.assertIn("mute", api)
 
     def test_teams_speaker_turns_drive_deterministic_attendee_extraction(self):
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")

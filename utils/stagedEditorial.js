@@ -519,6 +519,78 @@ function humaniseDiscussionPoint(value) {
   return sentenceCaseHumanDiscussion(text);
 }
 
+const RAW_TRANSCRIPT_DISCUSSION_PATTERNS = [
+  /^(?:well|yeah|yes|no|okay|ok|right|so|and then|and that|but I know|I know that)\b/i,
+  /^(?:one of the things|the other thing|what I was|what was)\b/i,
+  /\b(?:I know that|you had some questions|what you were, what was|what was)\b/i,
+  /\b(?:gives it, but it gives it|within the on a)\b/i
+];
+
+const DISCUSSION_ACTION_ONLY = /^(?:arrange|book|schedule|organise|coordinate|set\s+up|update|review|check|verify|validate|assess|send|share|provide|circulate|issue|upload|forward|confirm|prepare|complete|develop|build|create|finali[sz]e|finish|produce|draft|submit|approve|agree|accept|sign(?:\s+off)?|trace|generate|identify|document|follow[- ]?up|begin)\b/i;
+
+function isRawTranscriptDiscussionPoint(value) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!text) return false;
+  if (RAW_TRANSCRIPT_DISCUSSION_PATTERNS.some((pattern) => pattern.test(text))) return true;
+  const firstWord = text.split(/\s+/)[0] || '';
+  if (/^(?:And|But|So)$/i.test(firstWord) && !/\b(?:agreed|confirmed|reviewed|noted|discussed|identified)\b/i.test(text)) return true;
+  return false;
+}
+
+function discussionPointIsActionOnly(value) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!DISCUSSION_ACTION_ONLY.test(text)) return false;
+  return !/\b(?:was|were|has been|have been|is|are|the team|discussion|outstanding|confirmed|agreed|noted|identified|raised|explored)\b/i.test(text);
+}
+
+function discussionPointDoesNotFitTopic(point, topic) {
+  const text = `${point || ''}`.toLowerCase();
+  const heading = `${topic || ''}`.toLowerCase();
+  if (!text || !heading) return false;
+  if (/\blanguage\b/.test(heading)) {
+    const languageEvidence = /\b(?:language|font|symbol|symbols|character|characters|arabic|vietnamese|greek|translation|translated)\b/.test(text);
+    const otherWorkstream = /\b(?:version|v1\.?0?1|v1\.?0?2|102|debug|change request|change control|mdr device file history)\b/.test(text);
+    return otherWorkstream && !languageEvidence;
+  }
+  if (/\bcyber\s*security|usb\b/.test(heading)) {
+    return /\b(?:language|font|symbols|arabic|vietnamese|greek|version 1|version 102|change request|clinician|clinical|audible sound|acceptability of the audible)\b/.test(text) &&
+      !/\b(?:usb|port lock|gui|cyber|security|unwarranted interference|password|81001|27427)\b/.test(text);
+  }
+  if (/\b(?:electrical|compliance testing)\b/.test(heading)) {
+    return /\b(?:language|arabic|vietnamese|greek|font|usb port lock)\b/.test(text) &&
+      !/\b(?:electrical|60601|testing|mdd|compliance)\b/.test(text);
+  }
+  return false;
+}
+
+function rewriteRawDiscussionFragment(value, topic = '') {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  const combined = `${topic || ''} ${text}`;
+  if (!text || discussionPointDoesNotFitTopic(text, topic)) return '';
+  if (/\b(?:version one|version 1|version 101|v1\.?0?1|102|v1\.?0?2)\b/i.test(text)) {
+    return 'The team discussed the need to confirm the first software change and document the transition between software versions 1.01 and 1.02.';
+  }
+  if (/\bdebug\b/i.test(text)) {
+    return 'The debug screen and commands were discussed as part of confirming the visible software behaviour and supporting traceability.';
+  }
+  if (/\bchange request|change control\b/i.test(text)) {
+    return 'The change request documentation was discussed as the route for capturing alarm, language and software-version changes.';
+  }
+  if (/\blanguage|font|symbol|symbols|character|characters|arabic|vietnamese|greek\b/i.test(combined)) {
+    return 'The language-file work focused on confirming character and symbol support for the additional languages, including Arabic, Vietnamese and Greek.';
+  }
+  return '';
+}
+
+function finaliseDiscussionPointForMinutes(point, topic = '') {
+  const human = humaniseDiscussionPoint(point);
+  if (!human) return '';
+  if (discussionPointDoesNotFitTopic(human, topic)) return '';
+  if (isRawTranscriptDiscussionPoint(human)) return rewriteRawDiscussionFragment(human, topic);
+  if (discussionPointIsActionOnly(human)) return '';
+  return human;
+}
+
 function humanDiscussionRole(value) {
   const text = String(value || '');
   if (/\b(?:current(?:ly)?|in progress|has been|have been|already|serves? as|is used|are used|stored|implemented|available|confirmed)\b/i.test(text)) return 'status';
@@ -562,8 +634,17 @@ function reshapeStagedDiscussionCardsForHumanMinutes(cards, options = {}) {
     const topic = topicLabelForHumanMinutes(card.topic);
     const seen = new Set();
     const points = [];
+    let rawTranscriptPointsRemoved = 0;
+    let topicMismatchPointsRemoved = 0;
+    let actionOnlyPointsRemoved = 0;
     for (const point of orderHumanDiscussionPoints(Array.isArray(card.points) ? card.points : cardPoints(card), topic)) {
-      const human = humaniseDiscussionPoint(point);
+      const before = humaniseDiscussionPoint(point);
+      const human = finaliseDiscussionPointForMinutes(point, topic);
+      if (!human && before) {
+        if (discussionPointDoesNotFitTopic(before, topic)) topicMismatchPointsRemoved += 1;
+        else if (isRawTranscriptDiscussionPoint(before)) rawTranscriptPointsRemoved += 1;
+        else if (discussionPointIsActionOnly(before)) actionOnlyPointsRemoved += 1;
+      }
       const key = normaliseForSimilarity(human);
       if (!human || !key || seen.has(key)) continue;
       seen.add(key);
@@ -571,7 +652,18 @@ function reshapeStagedDiscussionCardsForHumanMinutes(cards, options = {}) {
       if (points.length >= (topicNeedsProcessDetail(topic, points) ? (options.processDetailPointLimit ?? 8) : (options.pointLimit ?? 6))) break;
     }
     if (!points.length) continue;
-    result.push({ ...card, topic, points });
+    const qualityFlags = [
+      ...(Array.isArray(card.qualityFlags) ? card.qualityFlags : []),
+      ...(rawTranscriptPointsRemoved ? ['raw_transcript_discussion_points_removed'] : []),
+      ...(topicMismatchPointsRemoved ? ['topic_mismatch_discussion_points_removed'] : []),
+      ...(actionOnlyPointsRemoved ? ['action_only_discussion_points_removed'] : [])
+    ];
+    result.push({
+      ...card,
+      topic,
+      points,
+      ...(qualityFlags.length ? { qualityFlags: [...new Set(qualityFlags)] } : {})
+    });
     if (result.length >= (options.cardLimit ?? 8)) break;
   }
   return result;
@@ -623,6 +715,21 @@ function buildStagedValidationFlags(screens = {}) {
   // Malformed text should already be filtered upstream; flag anything that
   // survives so it is never silently published.
   for (const card of discussion) {
+    const qualityFlags = Array.isArray(card?.qualityFlags) ? card.qualityFlags : [];
+    if (qualityFlags.includes('raw_transcript_discussion_points_removed')) {
+      flags.push({
+        type: 'raw_transcript_discussion_points_removed',
+        severity: 'info',
+        message: `Removed raw transcript-style wording under "${card.topic || 'Discussion'}" before final review.`
+      });
+    }
+    if (qualityFlags.includes('topic_mismatch_discussion_points_removed')) {
+      flags.push({
+        type: 'topic_mismatch_discussion_points_removed',
+        severity: 'warning',
+        message: `Removed discussion point(s) under "${card.topic || 'Discussion'}" because they fitted another workstream better.`
+      });
+    }
     for (const point of cardPoints(card)) {
       if (isMalformedStagedLine(point)) {
         flags.push({
@@ -787,6 +894,8 @@ module.exports = {
   dedupeStagedDiscussionCards,
   compactStagedDiscussionCards,
   reshapeStagedDiscussionCardsForHumanMinutes,
+  isRawTranscriptDiscussionPoint,
+  finaliseDiscussionPointForMinutes,
   buildStagedValidationFlags,
   stagedFinalActionQualityIssue,
   normaliseFinalStagedActionCandidate

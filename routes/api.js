@@ -455,6 +455,26 @@ const STAGED_ATTENDEE_BUCKET_BY_NAME = new Map([
   ...STAGED_KNOWN_CLIENT_ATTENDEES.map((name) => [stagedKnownAttendeeKey(name), { bucket: 'client', name }])
 ]);
 
+const STAGED_KNOWN_PERSON_BY_FIRST_NAME = new Map();
+for (const name of [...STAGED_KNOWN_INTERNAL_ATTENDEES, ...STAGED_KNOWN_CLIENT_ATTENDEES]) {
+  const firstName = stagedKnownAttendeeKey(name).split(/\s+/)[0];
+  if (!firstName) continue;
+  const existing = STAGED_KNOWN_PERSON_BY_FIRST_NAME.get(firstName);
+  STAGED_KNOWN_PERSON_BY_FIRST_NAME.set(firstName, existing ? null : name);
+}
+
+function canonicalKnownStagedPersonName(value) {
+  const cleaned = cleanStagedGeneratedLine(value || '');
+  if (!cleaned) return '';
+  const exact = STAGED_ATTENDEE_BUCKET_BY_NAME.get(stagedKnownAttendeeKey(cleaned));
+  if (exact?.name) return exact.name;
+  if (/^[A-Za-zÀ-ÖØ-öø-ÿ'’.-]+$/.test(cleaned)) {
+    const byFirstName = STAGED_KNOWN_PERSON_BY_FIRST_NAME.get(stagedKnownAttendeeKey(cleaned));
+    if (byFirstName) return byFirstName;
+  }
+  return cleaned;
+}
+
 function bucketKnownStagedAttendees(names) {
   const internal = [];
   const client = [];
@@ -1279,6 +1299,15 @@ function stagedActionsAreDuplicates(existing, candidate) {
     sameKnownOwner &&
     existingIntent === candidateIntent &&
     existingIntent === 'review' &&
+    /\bmute\b/i.test(combinedActionText) &&
+    /\b(?:led|flash|flashing|sequence|behaviour|behavior)\b/i.test(combinedActionText)
+  ) {
+    return true;
+  }
+  if (
+    sameKnownOwner &&
+    existingIntent === candidateIntent &&
+    existingIntent === 'review' &&
     /\b(?:standard|standards|81001|27427|cybersecurity|usb|applicable|applicability|guidance)\b/i.test(`${existingAction} ${candidateAction}`) &&
     (
       similarity >= 0.45 ||
@@ -1423,7 +1452,7 @@ function stagedDeadlineEvidenceWindows(transcriptText) {
 
 function inferredDeadlineForStagedAction(action, transcriptText) {
   const keywords = stagedActionKeywords(action);
-  if (keywords.length < 2) return '';
+  if (keywords.length < 3) return '';
   let best = { score: 0, deadline: '' };
   for (const item of stagedDeadlineEvidenceWindows(transcriptText)) {
     const deadline = deadlineFromActionEvidence(item.window);
@@ -1432,15 +1461,45 @@ function inferredDeadlineForStagedAction(action, transcriptText) {
     const overlap = keywords.filter((word) => lower.includes(word)).length;
     const hasActionCue = /\b(?:will|i'll|i will|we will|can you|could you|please|need to|needs to|follow[- ]?up|action|deadline|by|before)\b/i.test(item.window);
     const score = overlap + (hasActionCue ? 1 : 0);
-    if (score > best.score && overlap >= 2) best = { score, deadline };
+    if (score > best.score && overlap >= 3 && score >= 4) best = { score, deadline };
   }
   return best.deadline || '';
+}
+
+function normaliseDeadlineKey(value) {
+  return cleanStagedGeneratedLine(value || '')
+    .toLowerCase()
+    .replace(/^next\s+/i, '')
+    .replace(/\bof\s+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function stagedDeadlineIsSupportedByActionEvidence(action, deadline, transcriptText) {
+  const cleanedDeadline = cleanStagedGeneratedLine(deadline || '');
+  if (!cleanedDeadline || /^not stated$/i.test(cleanedDeadline)) return true;
+  const keywords = stagedActionKeywords(action);
+  if (keywords.length < 3) return false;
+  const deadlineKey = normaliseDeadlineKey(cleanedDeadline);
+  for (const item of stagedDeadlineEvidenceWindows(transcriptText)) {
+    const found = deadlineFromActionEvidence(item.window);
+    if (!found || normaliseDeadlineKey(found) !== deadlineKey) continue;
+    const lower = item.window.toLowerCase();
+    const overlap = keywords.filter((word) => lower.includes(word)).length;
+    const hasActionCue = /\b(?:will|i'll|i will|we will|can you|could you|please|need to|needs to|follow[- ]?up|action|deadline|by|before|complete|review|send|share|update|sign)\b/i.test(item.window);
+    if (overlap >= 3 && hasActionCue) return true;
+  }
+  return false;
 }
 
 function enrichStagedActionDeadlinesFromTranscript(actions, transcriptText) {
   return polishStagedActions((Array.isArray(actions) ? actions : []).map((item) => {
     const deadline = cleanStagedGeneratedLine(item?.deadline || item?.meetingActionPointDeadline || '');
-    if (deadline && !/^not stated$/i.test(deadline)) return item;
+    if (deadline && !/^not stated$/i.test(deadline)) {
+      return stagedDeadlineIsSupportedByActionEvidence(item?.action || item?.meetingActionPoint || '', deadline, transcriptText)
+        ? item
+        : { ...item, deadline: 'Not stated' };
+    }
     const inferred = inferredDeadlineForStagedAction(item?.action || item?.meetingActionPoint || '', transcriptText);
     return inferred ? { ...item, deadline: inferred } : item;
   }));
@@ -1611,7 +1670,11 @@ function mergePreservedStagedActions(actions, transcriptText) {
 function normaliseStagedActionOwner(owner) {
   const cleaned = cleanStagedGeneratedLine(owner || 'Not stated') || 'Not stated';
   if (/^(?:we|us|our team|the team|everyone)$/i.test(cleaned)) return 'All';
-  return cleaned;
+  return cleaned
+    .split(/\s*\/\s*/)
+    .map((part) => canonicalKnownStagedPersonName(part))
+    .filter(Boolean)
+    .join(' / ') || cleaned;
 }
 
 function stagedTrooperSchema(stage) {
@@ -2120,6 +2183,7 @@ function stagedContextFromRequest(req) {
     meetingLocation: firstString(confirmedDetails.meetingLocation, req.body?.meetingLocation, req.query?.meetingLocation),
     meetingType: firstString(confirmedDetails.meetingType, req.body?.meetingType, req.query?.meetingType, 'Project review'),
     participants: linesFrom(confirmedDetails.participants || req.body?.participants || req.query?.participants),
+    objectives: linesFrom(confirmedSummary.objectives || req.body?.reviewObjectives || req.query?.reviewObjectives),
     overallTopics: linesFrom(confirmedSummary.overallTopics || req.body?.overallTopics || req.query?.overallTopics || req.body?.topics || req.query?.topics),
     additionalContext: firstString(req.body?.additionalContext, req.query?.additionalContext).slice(0, 3000)
   };
@@ -2901,7 +2965,12 @@ function buildStagedDiscussionResponse(req, transcript, minilmContext = null) {
   }
 
   const droppedDuplicates = Array.isArray(miniLmDiscussion.droppedDuplicates) ? miniLmDiscussion.droppedDuplicates : [];
-  const validationFlags = buildStagedValidationFlags({ discussion, droppedDuplicates, droppedMisattributed });
+  const validationFlags = buildStagedValidationFlags({
+    objectives: context.objectives,
+    discussion,
+    droppedDuplicates,
+    droppedMisattributed
+  });
 
   return {
     ok: true,

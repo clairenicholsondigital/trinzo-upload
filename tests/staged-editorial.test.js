@@ -9,6 +9,8 @@ const {
   buildTightStagedObjectives,
   compactStagedDiscussionCards,
   reshapeStagedDiscussionCardsForHumanMinutes,
+  isRawTranscriptDiscussionPoint,
+  finaliseDiscussionPointForMinutes,
   buildStagedValidationFlags,
   stagedFinalActionQualityIssue,
   normaliseFinalStagedActionCandidate
@@ -180,6 +182,36 @@ test('reshapeStagedDiscussionCardsForHumanMinutes normalises client-facing DITA 
   assert.ok(result[0].points.some((point) => point.includes('DoCs for sunglasses')));
 });
 
+test('finaliseDiscussionPointForMinutes removes raw transcript fragments from the wrong topic', () => {
+  const raw = 'Well, it should confirm what the first change was, because the documentation that we have currently from going from version one to 102.';
+  assert.equal(isRawTranscriptDiscussionPoint(raw), true);
+  assert.equal(finaliseDiscussionPointForMinutes(raw, 'Language File Updates and Character Support'), '');
+  assert.equal(
+    finaliseDiscussionPointForMinutes('The clinical review of the audible sound was deferred until next week.', 'Cybersecurity Review of USB Port Controls'),
+    ''
+  );
+});
+
+test('reshapeStagedDiscussionCardsForHumanMinutes flags removed raw and mismatched discussion points', () => {
+  const result = reshapeStagedDiscussionCardsForHumanMinutes([
+    {
+      topic: 'Language File Updates and Character Support',
+      points: [
+        'The language-file work focused on confirming character and symbol support for Arabic, Vietnamese and Greek.',
+        'Well, it should confirm what the first change was, because the documentation that we have currently from going from version one to 102.',
+        'Confirm the LED flash behaviour upon mute activation.'
+      ]
+    }
+  ]);
+
+  assert.equal(result.length, 1);
+  assert.deepEqual(result[0].points, [
+    'The language-file work focused on confirming character and symbol support for Arabic, Vietnamese and Greek.'
+  ]);
+  assert.ok(result[0].qualityFlags.includes('topic_mismatch_discussion_points_removed'));
+  assert.ok(result[0].qualityFlags.includes('action_only_discussion_points_removed'));
+});
+
 test('isMalformedStagedLine catches other dangling qualifiers and glued clauses', () => {
   assert.equal(isMalformedStagedLine('Possible This is a risk to the timeline'), true);
   assert.equal(isMalformedStagedLine('the plan was agreed They will review it next week'), true);
@@ -250,6 +282,21 @@ test('buildStagedValidationFlags surfaces duplicates, malformed text and omitted
   assert.ok(types.includes('misattributed_discussion_evidence'));
   assert.ok(types.includes('malformed_text'));
   assert.ok(types.includes('possible_omitted_workstream'));
+});
+
+test('buildStagedValidationFlags surfaces discussion finaliser cleanup', () => {
+  const flags = buildStagedValidationFlags({
+    discussion: [
+      {
+        topic: 'Language File Updates and Character Support',
+        points: ['The language-file work focused on character support.'],
+        qualityFlags: ['raw_transcript_discussion_points_removed', 'topic_mismatch_discussion_points_removed']
+      }
+    ]
+  });
+  const types = flags.map((flag) => flag.type);
+  assert.ok(types.includes('raw_transcript_discussion_points_removed'));
+  assert.ok(types.includes('topic_mismatch_discussion_points_removed'));
 });
 
 test('buildStagedValidationFlags stays quiet when the minutes are clean and complete', () => {
