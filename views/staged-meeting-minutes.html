@@ -527,6 +527,7 @@ td textarea {
         <div class="field">
           <label for="overallTopics">Overall topics discussed</label>
           <textarea id="overallTopics" placeholder="Overall topics will appear here after generation."></textarea>
+          <small>The AI has detected that these meeting topics were discussed, these will be used to pull out discussion points from the meeting on the next stage.</small>
           <small>These topics frame the detailed discussion review on the next screen.</small>
         </div>
       </article>
@@ -581,7 +582,7 @@ td textarea {
           <div id="finalDocumentPreview"></div>
         </div>
         <div class="actions" style="margin-top:.85rem;">
-          <button type="button" disabled>Export PDF</button>
+          <button id="exportClientPdfBtn" type="button" disabled>Export PDF</button>
           <button class="secondary" type="button" disabled>Copy</button>
           <button class="secondary" type="button" disabled>Email</button>
           <button class="secondary" type="button" disabled>Save draft</button>
@@ -655,6 +656,7 @@ td textarea {
   var discussionList = document.getElementById('discussionList');
   var actionsTableBody = document.getElementById('actionsTableBody');
   var addActionRowButton = document.getElementById('addActionRowBtn');
+  var exportClientPdfButton = document.getElementById('exportClientPdfBtn');
   var finalDocumentPreview = document.getElementById('finalDocumentPreview');
   var stageValidationFlags = document.getElementById('stageValidationFlags');
   var lastGeneratedPayload = null;
@@ -885,7 +887,7 @@ td textarea {
 
     if (activeIndex >= screens.length - 1) {
       stageDecisionQuestion.textContent = 'Ready to finish the staged review?';
-      stageDecisionHint.textContent = 'This assembles the approved screens. Export, email and save are still disabled until final persistence is wired.';
+      stageDecisionHint.textContent = 'This assembles the approved screens. Export opens a clean client-facing copy without the review controls.';
       nextButton.textContent = 'Review complete';
       nextButton.disabled = true;
     } else {
@@ -1547,6 +1549,20 @@ td textarea {
     writeDrafts(drafts);
   }
 
+  function openClientPdfExport() {
+    commitStageState(stageForScreen(activeIndex));
+    renderFinalDocument();
+    saveDraft();
+    var id = ensureDraftId();
+    var outputUrl = '/staged-meeting-minutes/client-output?draftId=' + encodeURIComponent(id) + '&print=1';
+    var printWindow = window.open(outputUrl, '_blank', 'width=1100,height=800');
+    if (!printWindow) {
+      window.location.href = outputUrl;
+      return;
+    }
+    printWindow.focus();
+  }
+
   function showScreen(index) {
     if (!reviewStarted && index > 0) index = 0;
     if (index > highestReachableScreen()) index = highestReachableScreen();
@@ -1581,6 +1597,9 @@ td textarea {
       nextButton.disabled = true;
       if (regenerateButton) regenerateButton.disabled = true;
     }
+    if (exportClientPdfButton) {
+      exportClientPdfButton.disabled = activeIndex !== screens.length - 1;
+    }
     updateDecisionPanel();
     renderFinalDocument();
     params.set('screen', String(activeIndex));
@@ -1613,6 +1632,9 @@ td textarea {
       renderFinalDocument();
       saveDraft();
     });
+  }
+  if (exportClientPdfButton) {
+    exportClientPdfButton.addEventListener('click', openClientPdfExport);
   }
   if (actionsTableBody) {
     actionsTableBody.addEventListener('click', function (event) {

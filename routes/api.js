@@ -1133,7 +1133,7 @@ function isAuditableStagedAction(action, owner = '', deadline = '') {
   const text = cleanStagedActionText(action);
   if (!text || isNoEvidenceDiscussionText(text) || isMalformedStagedLine(text)) return false;
   if (/\b(?:everything|stuff|things|sort out|as much as possible|front[- ]?end everything|prep\b|progress\b|look at|think about|discuss|consider)\b/i.test(text)) return false;
-  const hasConcreteVerb = /\b(?:arrange|update|review|send|share|confirm|prepare|complete|finali[sz]e|provide|draft|submit|circulate|issue|upload|book|schedule|agree|approve|sign(?:\s+off)?|trace|generate|identify|document)\b/i.test(text);
+  const hasConcreteVerb = /\b(?:arrange|update|review|send|share|confirm|prepare|complete|finali[sz]e|provide|draft|submit|circulate|issue|upload|book|schedule|agree|approve|sign(?:\s+off)?|trace|generate|identify|document|follow[- ]?up)\b/i.test(text);
   const hasObject = text.split(/\s+/).length >= 4;
   const hasCommitmentSignal = stagedTextHasFutureCommitmentMarker(text) || /\b(?:action|owner|deadline|by|before|next|follow[- ]?up|catch[- ]?up)\b/i.test(text) || cleanStagedGeneratedLine(deadline);
   const hasUsableOwner = cleanStagedGeneratedLine(owner) && !/^not stated$/i.test(cleanStagedGeneratedLine(owner));
@@ -1158,6 +1158,19 @@ function stagedActionsAreDuplicates(existing, candidate) {
   const ownerA = normaliseStagedActionOwner(existing?.owner || '').toLowerCase();
   const ownerB = normaliseStagedActionOwner(candidate?.owner || '').toLowerCase();
   const sameKnownOwner = ownerA && ownerB && ownerA !== 'not stated' && ownerB !== 'not stated' && ownerA === ownerB;
+  const combinedActionText = `${existingAction} ${candidateAction}`;
+
+  if (
+    /\bhpra\b/i.test(combinedActionText) &&
+    /\b(?:invoice|bill|fee)\b/i.test(existingAction) &&
+    /\b(?:invoice|bill|fee)\b/i.test(candidateAction) &&
+    (
+      (existingIntent === 'review' && candidateIntent === 'share') ||
+      (existingIntent === 'share' && candidateIntent === 'review')
+    )
+  ) {
+    return true;
+  }
 
   // Same owner and same subject can still be two different actions:
   // "complete the risk assessment" is not a duplicate of "share the risk analysis".
@@ -1166,6 +1179,16 @@ function stagedActionsAreDuplicates(existing, candidate) {
   }
 
   const similarity = stagedDiscussionPointSimilarity(existingAction, candidateAction);
+  if (
+    existingIntent === 'share' &&
+    candidateIntent === 'share' &&
+    /\bhpra\b/i.test(combinedActionText) &&
+    /\b(?:invoice|bill|fee)\b/i.test(existingAction) &&
+    /\b(?:invoice|bill|fee)\b/i.test(candidateAction) &&
+    /\bemail\b/i.test(combinedActionText)
+  ) {
+    return true;
+  }
   if (
     sameKnownOwner &&
     existingIntent === candidateIntent &&
@@ -1275,8 +1298,59 @@ function ownerFromTeamsSpeakerLine(line) {
 
 function deadlineFromActionEvidence(line) {
   const text = String(line || '');
-  const match = text.match(/\b(?:today|tomorrow|before arrival|before [A-Z][a-z]+ arrives|next\s+(?:monday|tuesday|wednesday|thursday|friday|week)|this\s+week|w\/e\s+\d{1,2}(?:st|nd|rd|th)?\s+[A-Z][a-z]+|end\s+of\s+[A-Z][a-z]+|monday|tuesday|wednesday|thursday|friday|\d{1,2}(?:st|nd|rd|th)(?:\s+of)?\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)|\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December))\b/i);
-  return match ? cleanStagedGeneratedLine(match[0].replace(/^next\s+/i, '').replace(/^w\/e\s+/i, 'W/E ')) : '';
+  const match = text.match(/\b(?:today|tomorrow|before arrival|before [A-Z][a-z]+ arrives|before (?:the )?(?:audit|site visit|next review|client call|meeting)|next\s+(?:monday|tuesday|wednesday|thursday|friday|week|meeting)|this\s+week|end\s+of\s+(?:this\s+)?week|w\/e\s+\d{1,2}(?:st|nd|rd|th)?\s+[A-Z][a-z]+|end\s+of\s+[A-Z][a-z]+|monday|tuesday|wednesday|thursday|friday|\d{1,2}(?:st|nd|rd|th)(?:\s+of)?\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)|\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December))\b/i);
+  return match ? cleanStagedGeneratedLine(match[0].replace(/^next\s+/i, 'Next ').replace(/^w\/e\s+/i, 'W/E ')) : '';
+}
+
+function stagedActionKeywords(action) {
+  const stopWords = new Set([
+    'the', 'and', 'for', 'with', 'from', 'into', 'onto', 'that', 'this', 'copy',
+    'review', 'share', 'send', 'follow', 'complete', 'confirm', 'prepare', 'update',
+    'provide', 'draft', 'arrange', 'schedule', 'sign', 'off'
+  ]);
+  return cleanStagedActionText(action)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .split(/\s+/)
+    .map((word) => word.trim())
+    .filter((word) => word.length >= 4 && !stopWords.has(word))
+    .slice(0, 8);
+}
+
+function stagedDeadlineEvidenceWindows(transcriptText) {
+  const lines = String(transcriptText || '')
+    .split(/\r?\n/)
+    .map(cleanTranscriptContentLine)
+    .filter(Boolean);
+  return lines.map((line, index) => ({
+    line,
+    window: [lines[index - 1], line, lines[index + 1]].filter(Boolean).join(' ')
+  }));
+}
+
+function inferredDeadlineForStagedAction(action, transcriptText) {
+  const keywords = stagedActionKeywords(action);
+  if (keywords.length < 2) return '';
+  let best = { score: 0, deadline: '' };
+  for (const item of stagedDeadlineEvidenceWindows(transcriptText)) {
+    const deadline = deadlineFromActionEvidence(item.window);
+    if (!deadline) continue;
+    const lower = item.window.toLowerCase();
+    const overlap = keywords.filter((word) => lower.includes(word)).length;
+    const hasActionCue = /\b(?:will|i'll|i will|we will|can you|could you|please|need to|needs to|follow[- ]?up|action|deadline|by|before)\b/i.test(item.window);
+    const score = overlap + (hasActionCue ? 1 : 0);
+    if (score > best.score && overlap >= 2) best = { score, deadline };
+  }
+  return best.deadline || '';
+}
+
+function enrichStagedActionDeadlinesFromTranscript(actions, transcriptText) {
+  return polishStagedActions((Array.isArray(actions) ? actions : []).map((item) => {
+    const deadline = cleanStagedGeneratedLine(item?.deadline || item?.meetingActionPointDeadline || '');
+    if (deadline && !/^not stated$/i.test(deadline)) return item;
+    const inferred = inferredDeadlineForStagedAction(item?.action || item?.meetingActionPoint || '', transcriptText);
+    return inferred ? { ...item, deadline: inferred } : item;
+  }));
 }
 
 function transcriptPreservedStagedActions(transcriptText) {
@@ -1438,7 +1512,7 @@ function mergePreservedStagedActions(actions, transcriptText) {
   const merged = polishStagedActions([...inventory, ...(Array.isArray(actions) ? actions : [])]);
   const preserved = transcriptPreservedStagedActions(transcriptText)
     .filter((candidate) => !merged.some((existing) => stagedActionsAreDuplicates(existing, candidate)));
-  return polishStagedActions([...merged, ...preserved]);
+  return enrichStagedActionDeadlinesFromTranscript([...merged, ...preserved], transcriptText);
 }
 
 function normaliseStagedActionOwner(owner) {

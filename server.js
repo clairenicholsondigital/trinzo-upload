@@ -37,7 +37,15 @@ app.get('/staged-meeting-minutes', authRoutes.requireAuth, (req, res) => {
   sendView(res, 'staged-meeting-minutes.html').catch((error) => res.status(404).send(error.message));
 });
 
+app.get('/staged-meeting-minutes/client-output', authRoutes.requireAuth, (req, res) => {
+  sendView(res, 'staged-meeting-minutes-client-output.html').catch((error) => res.status(404).send(error.message));
+});
+
 app.get('/staged-meeting-minutes-analytics', authRoutes.requireAuth, (req, res) => {
+  sendView(res, 'staged-meeting-minutes-analytics.html').catch((error) => res.status(404).send(error.message));
+});
+
+app.get('/staged-meeting-minutes/analytics', authRoutes.requireAuth, (req, res) => {
   sendView(res, 'staged-meeting-minutes-analytics.html').catch((error) => res.status(404).send(error.message));
 });
 

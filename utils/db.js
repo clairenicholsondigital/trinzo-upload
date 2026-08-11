@@ -34,29 +34,60 @@ async function query(sql, params = []) {
   if (!hasDatabaseConfig()) {
     throw new Error(getDatabaseConfigError());
   }
-  return getPgPool().query(sql, params);
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await getPgPool().query(sql, params);
+    } catch (error) {
+      if (attempt < maxAttempts && isTransientPgError(error)) {
+        await transientPgDelay(attempt);
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw new Error('Database query failed after retry.');
+}
+
+function isTransientPgError(error) {
+  const code = String(error && error.code || '');
+  return code === '40P01' || code === '40001';
+}
+
+function transientPgDelay(attempt) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, 75 * Math.max(1, attempt));
+  });
 }
 
 // pg's parameterized (extended) query protocol only allows a single statement
 // per call, so anything needing more than one parameterized statement in one
 // atomic unit (e.g. updating two tables together) must go through a real
 // transaction like this rather than a semicolon-joined multi-statement string.
-async function withTransaction(fn) {
+async function withTransaction(fn, options = {}) {
   if (!hasDatabaseConfig()) {
     throw new Error(getDatabaseConfigError());
   }
-  const client = await getPgPool().connect();
-  try {
-    await client.query('BEGIN');
-    const result = await fn(client);
-    await client.query('COMMIT');
-    return result;
-  } catch (error) {
-    await client.query('ROLLBACK').catch(() => {});
-    throw error;
-  } finally {
-    client.release();
+  const maxAttempts = Math.max(1, Number(options.maxAttempts || 3));
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const client = await getPgPool().connect();
+    try {
+      await client.query('BEGIN');
+      const result = await fn(client);
+      await client.query('COMMIT');
+      return result;
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      if (attempt < maxAttempts && isTransientPgError(error)) {
+        await transientPgDelay(attempt);
+        continue;
+      }
+      throw error;
+    } finally {
+      client.release();
+    }
   }
+  throw new Error('Transaction failed after retry.');
 }
 
 function formatPgValue(value) {

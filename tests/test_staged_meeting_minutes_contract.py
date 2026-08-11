@@ -8,6 +8,7 @@ REPO_DIR = Path(__file__).resolve().parents[1]
 class StagedMeetingMinutesContractTest(unittest.TestCase):
     def test_later_staged_steps_use_targeted_trooper_and_keep_fast_fallback(self):
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+        db = (REPO_DIR / "utils" / "db.js").read_text(encoding="utf-8")
 
         self.assertIn("async function buildStagedTrooperContext", api)
         self.assertIn("function buildStagedTrooperPrompt", api)
@@ -172,6 +173,10 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("markGenerationJobFailure", api)
         self.assertIn("runQueuedStagedMeetingMinutesStage", api)
         self.assertIn("findStagedSourceJobFromRequest", api)
+        self.assertIn("function isTransientPgError", db)
+        self.assertIn("code === '40P01' || code === '40001'", db)
+        self.assertIn("Database query failed after retry.", db)
+        self.assertIn("withTransaction(fn, options = {})", db)
         self.assertIn("input_payload->>'draftId'", api)
         self.assertIn("confirmedDetails", api)
         self.assertIn("confirmedSummary", api)
@@ -190,6 +195,16 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("return 'All';", api)
         self.assertIn("def normalise_action_owner", trooper)
         self.assertIn('use "All" as the owner', trooper)
+
+    def test_staged_actions_enrich_deadlines_from_grounded_transcript_windows(self):
+        api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+
+        self.assertIn("function enrichStagedActionDeadlinesFromTranscript", api)
+        self.assertIn("function inferredDeadlineForStagedAction", api)
+        self.assertIn("function stagedDeadlineEvidenceWindows", api)
+        self.assertIn("overlap >= 2", api)
+        self.assertIn("before (?:the )?(?:audit|site visit|next review|client call|meeting)", api)
+        self.assertIn("return enrichStagedActionDeadlinesFromTranscript([...merged, ...preserved], transcriptText);", api)
 
     def test_teams_speaker_turns_drive_deterministic_attendee_extraction(self):
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
@@ -354,6 +369,28 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("formData.append('reviewDiscussion'", page)
         self.assertIn("formData.append('reviewActions'", page)
         self.assertIn("Editorial checks (review before moving on)", page)
+
+    def test_staged_export_uses_clean_client_output_view(self):
+        server = (REPO_DIR / "server.js").read_text(encoding="utf-8")
+        page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
+        output = (REPO_DIR / "views" / "staged-meeting-minutes-client-output.html").read_text(encoding="utf-8")
+
+        self.assertIn("app.get('/staged-meeting-minutes/client-output'", server)
+        self.assertIn('id="exportClientPdfBtn"', page)
+        self.assertIn("function openClientPdfExport", page)
+        self.assertIn("/staged-meeting-minutes/client-output?draftId=", page)
+        self.assertIn("Export opens a clean client-facing copy without the review controls.", page)
+        self.assertNotIn("Export, email and save are still disabled", page)
+
+        self.assertIn("STAGED_DRAFTS_KEY = 'stagedMeetingMinutesJobs'", output)
+        self.assertIn("Meeting minutes", output)
+        self.assertIn("trinzologo", output.replace("-", "").lower())
+        self.assertIn("@media print", output)
+        self.assertIn(".toolbar", output)
+        self.assertIn("window.print()", output)
+        self.assertIn("Review and approve before sharing externally.", output)
+        self.assertNotIn("stage-decision-card", output)
+        self.assertNotIn("status-strip", output)
 
 
 if __name__ == "__main__":

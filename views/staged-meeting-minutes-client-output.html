@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Client meeting minutes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+:root {
+  --brand:#02173B;
+  --accent:#8EFFF8;
+  --border:#d9e1e8;
+  --muted:#596875;
+  --text:#17222c;
+}
+* { box-sizing:border-box; }
+body {
+  margin:0;
+  background:#eef3f6;
+  color:var(--text);
+  font-family:Roboto, Arial, Helvetica, sans-serif;
+  line-height:1.45;
+}
+.toolbar {
+  display:flex;
+  gap:.5rem;
+  align-items:center;
+  justify-content:flex-end;
+  max-width:960px;
+  margin:1rem auto;
+  padding:0 .8rem;
+}
+button,
+.button {
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border:1px solid transparent;
+  border-radius:8px;
+  background:var(--brand);
+  color:#ffffff;
+  font:inherit;
+  font-weight:700;
+  padding:.58rem .8rem;
+  text-decoration:none;
+  cursor:pointer;
+}
+.button.secondary,
+button.secondary {
+  background:#ffffff;
+  color:var(--brand);
+  border-color:#b9c7d3;
+}
+.page {
+  max-width:960px;
+  margin:0 auto 2rem;
+  background:#ffffff;
+  border:1px solid var(--border);
+  box-shadow:0 16px 40px rgba(2,23,59,.12);
+  min-height:calc(100vh - 5rem);
+}
+.document {
+  padding:28mm 18mm 22mm;
+}
+.brand-bar {
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:1rem;
+  border-bottom:3px solid var(--accent);
+  padding-bottom:8mm;
+  margin-bottom:9mm;
+}
+.brand-title {
+  color:var(--brand);
+}
+.brand-title p {
+  margin:0 0 2mm;
+  color:var(--muted);
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:.05em;
+  font-size:8pt;
+}
+h1 {
+  margin:0;
+  color:var(--brand);
+  font-size:19pt;
+  line-height:1.14;
+  letter-spacing:0;
+}
+.logo {
+  width:34mm;
+  height:auto;
+  background:var(--brand);
+  border-radius:4px;
+  padding:4mm;
+}
+.meta-grid {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:2.5mm 7mm;
+  margin-bottom:8mm;
+}
+.meta-item {
+  border-bottom:1px solid var(--border);
+  padding-bottom:2mm;
+}
+.meta-label {
+  color:var(--muted);
+  display:block;
+  font-size:8pt;
+  font-weight:700;
+  text-transform:uppercase;
+}
+.meta-value {
+  color:var(--text);
+  display:block;
+  font-size:10pt;
+  margin-top:1mm;
+}
+h2 {
+  margin:7mm 0 3mm;
+  color:var(--brand);
+  font-size:12pt;
+  line-height:1.2;
+  letter-spacing:0;
+}
+p {
+  margin:0 0 3mm;
+  font-size:10pt;
+}
+ul {
+  margin:0 0 3mm;
+  padding-left:5mm;
+}
+li {
+  margin:0 0 1.7mm;
+  font-size:10pt;
+}
+table {
+  width:100%;
+  border-collapse:collapse;
+  margin:2mm 0 4mm;
+  page-break-inside:auto;
+}
+th,
+td {
+  border:1px solid var(--border);
+  padding:2.2mm 2.5mm;
+  text-align:left;
+  vertical-align:top;
+  font-size:9pt;
+}
+th {
+  background:#e8fbfb;
+  color:var(--brand);
+  font-weight:700;
+}
+tr { page-break-inside:avoid; }
+.footer-note {
+  margin-top:10mm;
+  border-top:1px solid var(--border);
+  padding-top:3mm;
+  color:var(--muted);
+  font-size:8pt;
+}
+.empty-state {
+  max-width:720px;
+  margin:3rem auto;
+  background:#ffffff;
+  border:1px solid var(--border);
+  border-radius:8px;
+  padding:1rem;
+}
+@page {
+  size:A4;
+  margin:12mm;
+}
+@media print {
+  body {
+    background:#ffffff;
+    print-color-adjust:exact;
+    -webkit-print-color-adjust:exact;
+  }
+  .toolbar,
+  .empty-state .button {
+    display:none !important;
+  }
+  .page {
+    max-width:none;
+    margin:0;
+    border:none;
+    box-shadow:none;
+    min-height:0;
+  }
+  .document {
+    padding:0;
+  }
+}
+@media (max-width:720px) {
+  .document { padding:1rem; }
+  .brand-bar,
+  .meta-grid {
+    grid-template-columns:1fr;
+    display:grid;
+  }
+  .logo { width:120px; }
+  table,
+  thead,
+  tbody,
+  tr,
+  th,
+  td {
+    display:block;
+    width:100%;
+  }
+  thead {
+    position:absolute;
+    width:1px;
+    height:1px;
+    overflow:hidden;
+    clip:rect(0 0 0 0);
+  }
+  tr { border:1px solid var(--border); margin-bottom:.65rem; }
+  td { border:none; border-bottom:1px solid var(--border); }
+  td:last-child { border-bottom:none; }
+  td::before {
+    display:block;
+    color:var(--muted);
+    font-size:.72rem;
+    font-weight:700;
+    text-transform:uppercase;
+    margin-bottom:.2rem;
+  }
+  .discussion-table td:nth-child(1)::before { content:"Topic"; }
+  .discussion-table td:nth-child(2)::before { content:"Discussion points"; }
+  .actions-table td:nth-child(1)::before { content:"Owner"; }
+  .actions-table td:nth-child(2)::before { content:"Action"; }
+  .actions-table td:nth-child(3)::before { content:"Due"; }
+}
+</style>
+</head>
+<body>
+<div class="toolbar">
+  <a class="button secondary" id="backToReviewLink" href="/staged-meeting-minutes">Back to review</a>
+  <button id="printBtn" type="button">Print / save PDF</button>
+</div>
+<main id="outputRoot"></main>
+<script>
+(function initialiseClientOutput() {
+  var STAGED_DRAFTS_KEY = 'stagedMeetingMinutesJobs';
+  var params = new URLSearchParams(window.location.search);
+  var draftId = params.get('draftId') || '';
+  var shouldPrint = params.get('print') === '1';
+  var outputRoot = document.getElementById('outputRoot');
+  var printButton = document.getElementById('printBtn');
+  var backToReviewLink = document.getElementById('backToReviewLink');
+
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function readDrafts() {
+    try {
+      var parsed = JSON.parse(localStorage.getItem(STAGED_DRAFTS_KEY) || '[]');
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function formatUkDate(value) {
+    var text = String(value || '').trim();
+    var match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return text || 'Not stated';
+    var date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+    return new Intl.DateTimeFormat('en-GB', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      timeZone: 'UTC'
+    }).format(date);
+  }
+
+  function normaliseList(value) {
+    if (Array.isArray(value)) return value.map(function (item) { return String(item || '').trim(); }).filter(Boolean);
+    if (!value) return [];
+    return String(value).split(/\r?\n/).map(function (item) {
+      return item.replace(/^[-*]\s*/, '').trim();
+    }).filter(Boolean);
+  }
+
+  function actionsFromState(state) {
+    return Array.isArray(state && state.actions) ? state.actions.map(function (item) {
+      return {
+        owner: item.owner || item.meetingActionPointOwner || 'Not stated',
+        action: item.action || item.meetingActionPoint || 'Review action wording',
+        deadline: item.deadline || item.meetingActionPointDeadline || 'Not stated'
+      };
+    }).filter(function (item) { return item.owner || item.action || item.deadline; }) : [];
+  }
+
+  function discussionFromState(state) {
+    return Array.isArray(state && state.discussion) ? state.discussion.map(function (item) {
+      return {
+        topic: item.topic || 'Discussion',
+        bullets: normaliseList(item.points || item.bullets)
+      };
+    }).filter(function (item) { return item.bullets.length; }) : [];
+  }
+
+  function renderList(items, emptyText) {
+    var list = normaliseList(items);
+    if (!list.length) list = [emptyText || 'Not stated'];
+    return '<ul>' + list.map(function (item) { return '<li>' + escapeHtml(item) + '</li>'; }).join('') + '</ul>';
+  }
+
+  function renderDraft(draft) {
+    var state = draft.stagedState || {};
+    var details = state.details || {};
+    var summary = state.summary || {};
+    var discussion = discussionFromState(state);
+    var actions = actionsFromState(state);
+    var title = details.meetingTitle || draft.meetingTitle || 'Meeting minutes';
+    var internal = normaliseList(details.internalAttendees);
+    var client = normaliseList(details.allAttendees || details.clientAttendees);
+    document.title = title + ' | Client meeting minutes';
+    if (backToReviewLink) {
+      backToReviewLink.href = '/staged-meeting-minutes?draftId=' + encodeURIComponent(draft.jobId || draftId) + '&screen=4';
+    }
+    outputRoot.innerHTML =
+      '<article class="page"><div class="document">' +
+        '<header class="brand-bar">' +
+          '<div class="brand-title"><p>Meeting minutes</p><h1>' + escapeHtml(title) + '</h1></div>' +
+          '<img class="logo" src="/static/trinzo-logo.svg" alt="Trinzo" />' +
+        '</header>' +
+        '<section class="meta-grid" aria-label="Meeting details">' +
+          '<div class="meta-item"><span class="meta-label">Date</span><span class="meta-value">' + escapeHtml(formatUkDate(details.meetingDate)) + '</span></div>' +
+          '<div class="meta-item"><span class="meta-label">Location</span><span class="meta-value">' + escapeHtml(details.meetingLocation || draft.meetingLocation || 'Not stated') + '</span></div>' +
+          '<div class="meta-item"><span class="meta-label">Internal attendees</span><span class="meta-value">' + escapeHtml(internal.length ? internal.join(', ') : 'Not stated') + '</span></div>' +
+          '<div class="meta-item"><span class="meta-label">Client attendees</span><span class="meta-value">' + escapeHtml(client.length ? client.join(', ') : 'Not stated') + '</span></div>' +
+        '</section>' +
+        '<section><h2>Objectives</h2>' + renderList(summary.objectives, 'Not stated') + '</section>' +
+        '<section><h2>Executive summary</h2><p>' + escapeHtml(summary.executiveSummary || 'Not stated') + '</p></section>' +
+        '<section><h2>Key discussion points</h2><table class="discussion-table"><thead><tr><th>Topic</th><th>Discussion points</th></tr></thead><tbody>' +
+          (discussion.length ? discussion.map(function (item) {
+            return '<tr><td>' + escapeHtml(item.topic) + '</td><td>' + renderList(item.bullets, 'Not stated') + '</td></tr>';
+          }).join('') : '<tr><td>Discussion</td><td>Not stated</td></tr>') +
+        '</tbody></table></section>' +
+        '<section><h2>Actions</h2><table class="actions-table"><thead><tr><th>Owner</th><th>Action</th><th>Due</th></tr></thead><tbody>' +
+          (actions.length ? actions.map(function (item) {
+            return '<tr><td>' + escapeHtml(item.owner || 'Not stated') + '</td><td>' + escapeHtml(item.action || 'Review action wording') + '</td><td>' + escapeHtml(item.deadline || 'Not stated') + '</td></tr>';
+          }).join('') : '<tr><td>Not stated</td><td>No actions recorded.</td><td>Not stated</td></tr>') +
+        '</tbody></table></section>' +
+        '<p class="footer-note">Generated by Trinzo meeting minutes workflow. Review and approve before sharing externally.</p>' +
+      '</div></article>';
+  }
+
+  function renderMissingDraft() {
+    outputRoot.innerHTML =
+      '<section class="empty-state">' +
+        '<h1>Draft not found</h1>' +
+        '<p>This browser does not have the staged review draft needed for the clean client output.</p>' +
+        '<a class="button" href="/staged-meeting-minutes">Back to staged review</a>' +
+      '</section>';
+  }
+
+  var draft = readDrafts().find(function (item) { return String(item.jobId) === String(draftId); });
+  if (draft) {
+    renderDraft(draft);
+    if (shouldPrint) {
+      window.addEventListener('load', function () {
+        window.focus();
+        window.setTimeout(function () { window.print(); }, 350);
+      });
+    }
+  } else {
+    renderMissingDraft();
+  }
+
+  if (printButton) {
+    printButton.addEventListener('click', function () {
+      window.print();
+    });
+  }
+})();
+</script>
+</body>
+</html>
