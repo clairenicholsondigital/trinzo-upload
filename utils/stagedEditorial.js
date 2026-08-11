@@ -740,7 +740,6 @@ function buildStagedValidationFlags(screens = {}) {
 
 // --- Final action quality gate --------------------------------------------
 
-const FINAL_ACTION_OWNERLESS = /^(?:not stated|unknown|tbc|tbd|n\/a|-)?$/i;
 const FINAL_ACTION_VERB = /^(?:arrange|book|schedule|organise|coordinate|set\s+up|update|review|check|verify|validate|assess|send|share|provide|circulate|issue|upload|forward|confirm|prepare|complete|develop|build|create|finali[sz]e|finish|produce|draft|submit|approve|agree|accept|sign(?:\s+off)?|trace|generate|identify|document|follow[- ]?up)\b/i;
 const FINAL_ACTION_DEBRIS = [
   /^\s*(?:and\s+)?then\b/i,
@@ -763,11 +762,6 @@ function normaliseFinalActionOwner(owner) {
   const cleaned = cleanFinalActionValue(owner) || 'Not stated';
   if (/^(?:we|us|our team|the team|everyone)$/i.test(cleaned)) return 'All';
   return cleaned;
-}
-
-function ownerIsUsableForFinalAction(owner) {
-  const cleaned = normaliseFinalActionOwner(owner);
-  return cleaned === 'All' || !FINAL_ACTION_OWNERLESS.test(cleaned);
 }
 
 function finalActionObjectText(action) {
@@ -819,9 +813,7 @@ function stagedFinalActionQualityIssue(candidate = {}) {
     candidate.evidence || candidate.sourceText || candidate.contextText || ''
   );
   const action = cleanFinalActionValue(rewritten.action);
-  const owner = normaliseFinalActionOwner(rewritten.owner);
   if (!action) return 'missing_action';
-  if (!ownerIsUsableForFinalAction(owner)) return 'missing_owner';
   if (isMalformedStagedLine(action)) return 'malformed_action';
   if (FINAL_ACTION_DEBRIS.some((pattern) => pattern.test(action))) return 'transcript_debris';
   if (!FINAL_ACTION_VERB.test(action)) return 'missing_actionable_verb';

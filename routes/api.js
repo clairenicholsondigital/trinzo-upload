@@ -928,7 +928,7 @@ function cleanStagedDiscussionText(value) {
 function isNoEvidenceDiscussionText(value) {
   const text = cleanStagedGeneratedLine(value);
   if (!text) return true;
-  return /\b(?:no specific discussion points|no substantive discussion|not discussed in the transcript|no transcript evidence|no evidence)\b/i.test(text);
+  return /\b(?:no specific discussion points|no substantive discussion|not discussed in the transcript|no transcript evidence|no evidence|generation issue|api key is not configured|rewriter is not configured)\b/i.test(text);
 }
 
 function isLowValueStagedDiscussionText(value) {
@@ -1228,6 +1228,31 @@ function discussionFromStagedMiniLM(minilmContext) {
       points: uniqueCleanDiscussionItems([point, ...supporting]).slice(0, 5)
     });
     if (cards.length >= 8) break;
+  }
+
+  if (!cards.length) {
+    const plainPoints = stringListFromAny(output.discussionPoints, ['discussionPoint', 'text', 'summary']);
+    for (const point of plainPoints) {
+      const cleaned = cleanStagedDiscussionText(point);
+      if (!cleaned || isNoEvidenceDiscussionText(cleaned) || isLowValueStagedDiscussionText(cleaned)) continue;
+      const structured = structuredDiscussionFromItem({
+        topic: topic_label_from_text(cleaned),
+        points: [cleaned]
+      });
+      if (!structured) continue;
+      if (cards.length < 8) {
+        cards.push(structured);
+        continue;
+      }
+      const ranked = cards
+        .map((card, index) => ({
+          index,
+          score: stagedDiscussionPointSimilarity(cleaned, `${card.topic || ''} ${(card.points || []).join(' ')}`)
+        }))
+        .sort((left, right) => right.score - left.score);
+      const target = cards[ranked[0]?.index ?? (cards.length - 1)];
+      if (target && Array.isArray(target.points) && target.points.length < 6) target.points.push(cleaned);
+    }
   }
 
   return polishStagedDiscussionCards(cards);
@@ -2814,13 +2839,29 @@ function discussionFallbackForTopic(transcript, topic, meetingType, participants
 
 function alignDiscussionCardsToConfirmedTopics(cards, topics, transcript, meetingType, participants, workstreamState = []) {
   if (!topics.length) return cards;
-  return topics.slice(0, 8).map((topic) => {
-    const matched = findDiscussionCardForTopic(cards, topic);
+  const aligned = [];
+  const used = new Set();
+  for (const topic of topics.slice(0, 8)) {
+    const matched = findDiscussionCardForTopic(
+      (Array.isArray(cards) ? cards : []).filter((card) => !used.has(card)),
+      topic
+    );
     if (matched && Array.isArray(matched.points) && matched.points.length) {
-      return { ...matched, topic, points: uniqueCleanDiscussionItems(matched.points).slice(0, 5) };
+      used.add(matched);
+      aligned.push({ ...matched, topic, points: uniqueCleanDiscussionItems(matched.points).slice(0, 5) });
+      continue;
     }
-    return discussionFallbackForTopic(transcript, topic, meetingType, participants, workstreamState);
-  }).filter(Boolean);
+    const fallback = discussionFallbackForTopic(transcript, topic, meetingType, participants, workstreamState);
+    if (fallback) aligned.push(fallback);
+  }
+  if (!Array.isArray(workstreamState) || !workstreamState.length) {
+    for (const card of Array.isArray(cards) ? cards : []) {
+      if (used.has(card) || !Array.isArray(card?.points) || !card.points.length) continue;
+      aligned.push(card);
+      if (aligned.length >= 8) break;
+    }
+  }
+  return aligned.slice(0, 8);
 }
 
 function buildStagedDiscussionResponse(req, transcript, minilmContext = null) {
@@ -2924,14 +2965,15 @@ function extractActionCandidatesFromTranscript(transcriptText) {
   return candidates;
 }
 
-function buildStagedActionsResponse(req, transcript, minilmContext = null) {
+function buildStagedActionsResponse(req, transcript, minilmContext = null, recoveryTranscriptText = transcript.text) {
   const stagedActions = actionsFromStagedMiniLM(minilmContext);
   const evidenceActions = actionsFromEvidenceClassifier(minilmContext);
-  const actionInventory = buildStagedActionInventory(transcript.text);
+  const groundedTranscriptText = String(recoveryTranscriptText || transcript.text || '');
+  const actionInventory = buildStagedActionInventory(groundedTranscriptText);
   const sourceActions = polishStagedActions([...evidenceActions, ...stagedActions, ...actionInventory]);
   const actions = mergePreservedStagedActions(sourceActions.length
     ? sourceActions
-    : extractActionCandidatesFromTranscript(transcript.text), transcript.text);
+    : extractActionCandidatesFromTranscript(groundedTranscriptText), groundedTranscriptText);
   const reviewContext = stagedReviewContextFromRequest(req);
   const validationFlags = buildStagedValidationFlags({
     objectives: reviewContext.objectives,
@@ -2958,7 +3000,7 @@ function buildStagedActionsResponse(req, transcript, minilmContext = null) {
       stage: 'actions',
       actionCount: actions.length,
       actionPreservation: {
-        transcriptPreservedActionCount: transcriptPreservedStagedActions(transcript.text).length,
+        transcriptPreservedActionCount: transcriptPreservedStagedActions(groundedTranscriptText).length,
         transcriptActionInventoryCount: actionInventory.length,
         evidenceClassifierActionCount: evidenceActions.length,
         transcriptActionInventoryUsed: Boolean(actionInventory.length || evidenceActions.length)
@@ -3045,6 +3087,143 @@ function buildStagedMeetingMinutesResponse(req, transcript, result) {
       discussionCards: discussion.length,
       actionCount: actions.length
     }
+  };
+}
+
+function stagedEvaluationRequest(stage, state = {}) {
+  return {
+    query: { pipeline: MEETING_MINUTES_JOB_PIPELINE },
+    body: {
+      stage,
+      confirmedDetails: state.details || {},
+      confirmedSummary: state.summary || {},
+      confirmedDiscussion: Array.isArray(state.discussion) ? state.discussion : [],
+      confirmedActions: Array.isArray(state.actions) ? state.actions : [],
+      reviewObjectives: Array.isArray(state.summary?.objectives) ? state.summary.objectives : [],
+      reviewDiscussion: Array.isArray(state.discussion) ? state.discussion : [],
+      reviewActions: Array.isArray(state.actions) ? state.actions : []
+    }
+  };
+}
+
+function stagedEvaluationVisibleOutput(state = {}) {
+  const discussion = Array.isArray(state.discussion) ? state.discussion : [];
+  const actions = Array.isArray(state.actions) ? state.actions : [];
+  return {
+    meetingTitle: state.details?.meetingTitle || 'Untitled meeting',
+    participants: {
+      trinzo: Array.isArray(state.details?.internalAttendees) ? state.details.internalAttendees : [],
+      client: Array.isArray(state.details?.clientAttendees) ? state.details.clientAttendees : []
+    },
+    meetingObjectives: Array.isArray(state.summary?.objectives) ? state.summary.objectives : [],
+    executiveSummary: state.summary?.executiveSummary || '',
+    discussionPoints: discussion.flatMap((card) => {
+      const topic = cleanStagedGeneratedLine(card?.topic || 'Discussion');
+      return (Array.isArray(card?.points) ? card.points : [])
+        .map((point) => `${topic}: ${cleanStagedDiscussionText(point)}`)
+        .filter((point) => point && !point.endsWith(': '));
+    }),
+    decisions: [],
+    actions: actions.map((item) => ({
+      meetingActionPointOwner: item?.owner || 'Not stated',
+      meetingActionPoint: item?.action || '',
+      meetingActionPointDeadline: item?.deadline || 'Not stated'
+    })).filter((item) => item.meetingActionPoint)
+  };
+}
+
+async function runStagedSequenceForEvaluation(transcriptText, options = {}) {
+  validateTranscriptText(transcriptText);
+  const rawTranscript = {
+    text: String(transcriptText || ''),
+    source: 'staged-seven-case-evaluation',
+    fileName: String(options.fileName || 'transcript.txt')
+  };
+  const prepared = buildPreparedTranscriptForStagedAI(rawTranscript.text);
+  const aiTranscript = {
+    text: prepared.text,
+    source: `${rawTranscript.source}-prepared`,
+    fileName: rawTranscript.fileName,
+    preparedTranscriptTelemetry: {
+      rawLength: prepared.rawLength,
+      preparedLength: prepared.preparedLength,
+      removedLineCount: prepared.removedLineCount,
+      removedReasons: prepared.removedReasons,
+      source: 'deterministic_stage_1_prep'
+    }
+  };
+  const detailsResponse = extractStagedDetailsFromTranscript(rawTranscript.text, rawTranscript.fileName);
+  const state = {
+    details: detailsResponse.screens.details,
+    summary: null,
+    discussion: [],
+    actions: []
+  };
+  const trace = [{
+    stage: 'details',
+    provider: 'deterministic_stage_1_prep',
+    outputCount: 1,
+    telemetry: detailsResponse.telemetryPreview,
+    preparedTranscriptTelemetry: aiTranscript.preparedTranscriptTelemetry
+  }];
+
+  let deterministicContext = null;
+  if (options.contextMode === 'extractor') {
+    const result = await runPythonTranscriptScript(
+      'meeting_minutes_trooper.py',
+      aiTranscript.text,
+      ['--skip-rewrite', '--skip-diagnostics'],
+      { timeoutMs: Number(options.timeoutMs || MEETING_MINUTES_FINAL_TIMEOUT_MS) }
+    );
+    deterministicContext = {
+      ok: Boolean(result?.output && typeof result.output === 'object'),
+      output: result?.output || {},
+      counts: result?.counts || {},
+      diagnostics: {
+        provider: 'deterministic_trooper_extractor',
+        modelAvailable: Boolean(result?.modelAvailable),
+        modelName: result?.modelName || '',
+        modelReason: result?.modelReason || '',
+        timingMs: result?.timingMs || {}
+      }
+    };
+  }
+
+  for (const stage of ['summary', 'discussion', 'actions']) {
+    const req = stagedEvaluationRequest(stage, state);
+    const generation = deterministicContext
+      ? { context: deterministicContext, provider: 'deterministic-trooper-extractor', fallbackUsed: true }
+      : await buildStagedGenerationContext(stage, aiTranscript, req);
+    let response;
+    if (stage === 'summary') response = buildStagedSummaryResponse(req, aiTranscript, generation.context);
+    else if (stage === 'discussion') response = buildStagedDiscussionResponse(req, aiTranscript, generation.context);
+    else response = buildStagedActionsResponse(req, aiTranscript, generation.context, rawTranscript.text);
+    const value = response.screens?.[stage];
+    state[stage] = stage === 'summary'
+      ? (value || {})
+      : (Array.isArray(value) ? value : []);
+    trace.push({
+      stage,
+      provider: generation.provider,
+      fallbackUsed: Boolean(generation.fallbackUsed),
+      inputTopicCount: Array.isArray(state.summary?.overallTopics) ? state.summary.overallTopics.length : 0,
+      outputCount: stage === 'summary'
+        ? (Array.isArray(state.summary?.overallTopics) ? state.summary.overallTopics.length : 0)
+        : state[stage].length,
+      outputPointCount: stage === 'discussion'
+        ? state.discussion.reduce((sum, card) => sum + (Array.isArray(card?.points) ? card.points.length : 0), 0)
+        : undefined,
+      validationFlags: Array.isArray(response.validationFlags) ? response.validationFlags : [],
+      telemetry: response.telemetryPreview || {},
+      generationDiagnostics: generation.context?.diagnostics || {}
+    });
+  }
+
+  return {
+    state,
+    visibleOutput: stagedEvaluationVisibleOutput(state),
+    trace,
+    deterministicActionInventoryCount: buildEvidenceBoundStagedActionInventory(rawTranscript.text).length
   };
 }
 
@@ -3139,7 +3318,7 @@ async function runQueuedStagedMeetingMinutesStage(jobId) {
       const context = generation.context;
       if (stage === 'summary') payload = buildStagedSummaryResponse(stagedReq, aiTranscript, context);
       else if (stage === 'discussion') payload = buildStagedDiscussionResponse(stagedReq, aiTranscript, context);
-      else if (stage === 'actions') payload = buildStagedActionsResponse(stagedReq, aiTranscript, context);
+      else if (stage === 'actions') payload = buildStagedActionsResponse(stagedReq, aiTranscript, context, transcript.text);
       else {
         const error = new Error(`Unsupported staged meeting-minutes stage: ${stage}`);
         error.statusCode = 400;
@@ -3831,7 +4010,7 @@ router.post('/staged-meeting-minutes', requireAuth, withTestUpload(async (req, r
 
     if (requestedStage === 'actions') {
       const generation = await buildStagedGenerationContext('actions', aiTranscript, req);
-      const actionsResponse = buildStagedActionsResponse(req, aiTranscript, generation.context);
+      const actionsResponse = buildStagedActionsResponse(req, aiTranscript, generation.context, transcript.text);
       actionsResponse.preparedTranscriptTelemetry = aiTranscript.preparedTranscriptTelemetry;
 
       console.info(JSON.stringify({
@@ -5268,5 +5447,9 @@ router.post('/copilot-chat', async (req, res) => {
     return res.status(500).json({ ok: false, error: error.message || 'Chat test failed.' });
   }
 });
+
+router.stagedEvaluation = {
+  runStagedSequenceForEvaluation
+};
 
 module.exports = router;

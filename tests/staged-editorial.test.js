@@ -353,14 +353,14 @@ test('normaliseFinalStagedActionCandidate rewrites transcript-shaped opportunity
   });
 });
 
-test('stagedFinalActionQualityIssue rejects vague or non-owned action fragments', () => {
+test('stagedFinalActionQualityIssue rejects vague fragments while permitting an unstated owner', () => {
   assert.equal(
     stagedFinalActionQualityIssue({ owner: 'Jacqui Fox', action: 'Then review the outputs of that testing and update any final documents' }),
     'transcript_debris'
   );
   assert.equal(
-    stagedFinalActionQualityIssue({ owner: 'Not stated', action: 'Review the final documents' }),
-    'missing_owner'
+    stagedFinalActionQualityIssue({ owner: 'Not stated', action: 'Review electrical compliance testing outputs' }),
+    null
   );
   assert.equal(
     stagedFinalActionQualityIssue({ owner: 'All', action: 'Discuss this next time' }),
