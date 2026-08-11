@@ -8,7 +8,9 @@ const {
   dedupeStagedDiscussionCards,
   buildTightStagedObjectives,
   compactStagedDiscussionCards,
-  buildStagedValidationFlags
+  buildStagedValidationFlags,
+  stagedFinalActionQualityIssue,
+  normaliseFinalStagedActionCandidate
 } = require('../utils/stagedEditorial');
 
 test('isMalformedStagedLine catches the "Potential The ..." transcription-noise pattern', () => {
@@ -217,4 +219,51 @@ test('buildStagedValidationFlags stays quiet when the minutes are clean and comp
     droppedDuplicates: []
   });
   assert.deepEqual(flags, []);
+});
+
+test('normaliseFinalStagedActionCandidate keeps the DITA action set client-ready', () => {
+  const actions = [
+    { owner: 'Orla Skally', action: 'Review the QMS Manual', deadline: 'Not stated' },
+    { owner: 'Orla Skally', action: 'Follow up with Cody for the MedEnvoy project plan or task list', deadline: 'Not stated' },
+    { owner: 'Orla Skally', action: 'Share a copy of the new label with Jenny for review', deadline: 'Not stated' },
+    { owner: 'Orla Skally', action: 'Share the country and language list for the Declarations of Conformity', deadline: 'Not stated' },
+    { owner: 'John-Paul Hughes', action: 'Review the DoCs for sunglasses for MDR and PPE compliance', deadline: 'Not stated' },
+    { owner: 'Jacqui Fox', action: 'Review the HPRA invoice fee', deadline: 'Not stated' }
+  ];
+
+  assert.deepEqual(actions.map(normaliseFinalStagedActionCandidate), actions);
+});
+
+test('normaliseFinalStagedActionCandidate rewrites transcript-shaped opportunity wording', () => {
+  const action = normaliseFinalStagedActionCandidate({
+    owner: 'Not stated',
+    action: 'Then give David the opportunity to review the outputs of that testing and update any final documents',
+    deadline: 'Not stated',
+    evidence: 'Electrical compliance testing is expected to complete by the end of July.'
+  });
+
+  assert.deepEqual(action, {
+    owner: 'David',
+    action: 'Review electrical compliance testing outputs and update the final compliance documentation',
+    deadline: 'Not stated'
+  });
+});
+
+test('stagedFinalActionQualityIssue rejects vague or non-owned action fragments', () => {
+  assert.equal(
+    stagedFinalActionQualityIssue({ owner: 'Jacqui Fox', action: 'Then review the outputs of that testing and update any final documents' }),
+    'transcript_debris'
+  );
+  assert.equal(
+    stagedFinalActionQualityIssue({ owner: 'Not stated', action: 'Review the final documents' }),
+    'missing_owner'
+  );
+  assert.equal(
+    stagedFinalActionQualityIssue({ owner: 'All', action: 'Discuss this next time' }),
+    'missing_actionable_verb'
+  );
+  assert.equal(
+    stagedFinalActionQualityIssue({ owner: 'All', action: 'Update it' }),
+    'missing_concrete_object'
+  );
 });

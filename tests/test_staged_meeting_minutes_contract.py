@@ -9,6 +9,7 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
     def test_later_staged_steps_use_targeted_trooper_and_keep_fast_fallback(self):
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
         db = (REPO_DIR / "utils" / "db.js").read_text(encoding="utf-8")
+        staged_editorial = (REPO_DIR / "utils" / "stagedEditorial.js").read_text(encoding="utf-8")
 
         self.assertIn("async function buildStagedTrooperContext", api)
         self.assertIn("function buildStagedTrooperPrompt", api)
@@ -52,6 +53,8 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("function polishStagedActions", api)
         self.assertIn("function stagedActionIntent", api)
         self.assertIn("function stagedActionsAreDuplicates", api)
+        self.assertIn("normaliseFinalStagedActionCandidate", api)
+        self.assertIn("stagedFinalActionQualityIssue", staged_editorial)
         self.assertIn("function transcriptPreservedStagedActions", api)
         self.assertIn("function mergePreservedStagedActions", api)
         self.assertIn("function buildStagedActionInventory", api)
@@ -205,6 +208,17 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("overlap >= 2", api)
         self.assertIn("before (?:the )?(?:audit|site visit|next review|client call|meeting)", api)
         self.assertIn("return enrichStagedActionDeadlinesFromTranscript([...merged, ...preserved], transcriptText);", api)
+
+    def test_staged_actions_have_final_quality_gate(self):
+        staged_editorial = (REPO_DIR / "utils" / "stagedEditorial.js").read_text(encoding="utf-8")
+
+        self.assertIn("function normaliseFinalStagedActionCandidate", staged_editorial)
+        self.assertIn("function stagedFinalActionQualityIssue", staged_editorial)
+        self.assertIn("missing_owner", staged_editorial)
+        self.assertIn("missing_actionable_verb", staged_editorial)
+        self.assertIn("missing_concrete_object", staged_editorial)
+        self.assertIn("transcript_debris", staged_editorial)
+        self.assertIn("Review electrical compliance testing outputs and update the final compliance documentation", staged_editorial)
 
     def test_teams_speaker_turns_drive_deterministic_attendee_extraction(self):
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")

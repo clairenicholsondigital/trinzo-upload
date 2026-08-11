@@ -560,6 +560,119 @@ function buildStagedValidationFlags(screens = {}) {
   return flags;
 }
 
+// --- Final action quality gate --------------------------------------------
+
+const FINAL_ACTION_OWNERLESS = /^(?:not stated|unknown|tbc|tbd|n\/a|-)?$/i;
+const FINAL_ACTION_VERB = /^(?:arrange|book|schedule|organise|coordinate|set\s+up|update|review|check|verify|validate|assess|send|share|provide|circulate|issue|upload|forward|confirm|prepare|complete|develop|build|create|finali[sz]e|finish|produce|draft|submit|approve|agree|accept|sign(?:\s+off)?|trace|generate|identify|document|follow[- ]?up)\b/i;
+const FINAL_ACTION_DEBRIS = [
+  /^\s*(?:and\s+)?then\b/i,
+  /^\s*(?:i|we)\s+(?:think|suppose|guess)\b/i,
+  /^\s*(?:maybe|probably|possibly|just)\b/i,
+  /\b(?:would|could)\s+(?:be\s+)?(?:nice|good|useful)\s+to\b/i,
+  /\bgive\s+(?:him|her|them|[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)?)\s+the\s+opportunity\s+to\b/i,
+  /\bthe\s+opportunity\s+to\s+review\b/i
+];
+const FINAL_ACTION_WEAK_OBJECT = /^(?:it|this|that|these|those|them|everything|stuff|things|outputs?|documents?|final documents?|any final documents?|the outputs?|the documents?)$/i;
+
+function cleanFinalActionValue(value) {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .replace(/\s+([,.;:])/g, '$1')
+    .trim();
+}
+
+function normaliseFinalActionOwner(owner) {
+  const cleaned = cleanFinalActionValue(owner) || 'Not stated';
+  if (/^(?:we|us|our team|the team|everyone)$/i.test(cleaned)) return 'All';
+  return cleaned;
+}
+
+function ownerIsUsableForFinalAction(owner) {
+  const cleaned = normaliseFinalActionOwner(owner);
+  return cleaned === 'All' || !FINAL_ACTION_OWNERLESS.test(cleaned);
+}
+
+function finalActionObjectText(action) {
+  const text = cleanFinalActionValue(action);
+  const followUp = text.match(/^follow[- ]?up\s+with\s+.+?\s+(?:for|on|about|regarding)\s+(.+)$/i);
+  if (followUp) return cleanFinalActionValue(followUp[1]);
+  const signOff = text.match(/^sign\s+off\s+(.+)$/i);
+  if (signOff) return cleanFinalActionValue(signOff[1]);
+  const verb = text.match(FINAL_ACTION_VERB);
+  if (!verb) return '';
+  return cleanFinalActionValue(text.slice(verb[0].length));
+}
+
+function finalActionHasConcreteObject(action) {
+  const object = finalActionObjectText(action)
+    .replace(/^(?:the|a|an|to|on|for|with|about|regarding)\s+/i, '')
+    .replace(/\s+(?:for\s+review|with\s+.+|to\s+.+)$/i, '')
+    .trim();
+  if (!object || FINAL_ACTION_WEAK_OBJECT.test(object)) return false;
+  const words = object.split(/\s+/).filter(Boolean);
+  if (words.length >= 2) return true;
+  return /\b(?:qms|hpra|mdr|ppe|doc|docs?|docx|sbom|medenvoy|iec60601|81001|27427|v1\.01|v1\.02|usb|gui)\b/i.test(object);
+}
+
+function rewriteTranscriptShapedFinalAction(action, owner, evidence = '') {
+  const text = cleanFinalActionValue(action);
+  const combined = `${text} ${evidence || ''}`;
+  const opportunity = text.match(/\bgive\s+([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)?)\s+the\s+opportunity\s+to\s+review\s+(?:the\s+)?outputs?\s+of\s+that\s+testing\s+and\s+update\s+(?:any\s+)?final\s+documents?\b/i);
+  if (opportunity) {
+    const mentionedOwner = opportunity[1];
+    const fullName = new RegExp(`\\b(${mentionedOwner}\\s+[A-Z][A-Za-z]+)\\b`).exec(combined)?.[1] || mentionedOwner;
+    return {
+      owner: fullName,
+      action: /\belectrical\s+compliance\b/i.test(combined)
+        ? 'Review electrical compliance testing outputs and update the final compliance documentation'
+        : 'Review testing outputs and update the final documentation'
+    };
+  }
+  return {
+    owner: normaliseFinalActionOwner(owner),
+    action: text
+  };
+}
+
+function stagedFinalActionQualityIssue(candidate = {}) {
+  const rewritten = rewriteTranscriptShapedFinalAction(
+    candidate.action || candidate.meetingActionPoint || '',
+    candidate.owner || candidate.meetingActionPointOwner || 'Not stated',
+    candidate.evidence || candidate.sourceText || candidate.contextText || ''
+  );
+  const action = cleanFinalActionValue(rewritten.action);
+  const owner = normaliseFinalActionOwner(rewritten.owner);
+  if (!action) return 'missing_action';
+  if (!ownerIsUsableForFinalAction(owner)) return 'missing_owner';
+  if (isMalformedStagedLine(action)) return 'malformed_action';
+  if (FINAL_ACTION_DEBRIS.some((pattern) => pattern.test(action))) return 'transcript_debris';
+  if (!FINAL_ACTION_VERB.test(action)) return 'missing_actionable_verb';
+  if (!finalActionHasConcreteObject(action)) return 'missing_concrete_object';
+  if (/\b(?:someone|somebody|they|we)\s+(?:will|should|need to|needs to)\b/i.test(action)) return 'unclear_actor';
+  if (/\b(?:look at|think about|discuss|consider|progress|sort out|stuff|things|everything)\b/i.test(action)) return 'vague_action';
+  return null;
+}
+
+function normaliseFinalStagedActionCandidate(candidate = {}) {
+  const rewritten = rewriteTranscriptShapedFinalAction(
+    candidate.action || candidate.meetingActionPoint || '',
+    candidate.owner || candidate.meetingActionPointOwner || 'Not stated',
+    candidate.evidence || candidate.sourceText || candidate.contextText || ''
+  );
+  const deadline = cleanFinalActionValue(candidate.deadline || candidate.meetingActionPointDeadline || 'Not stated') || 'Not stated';
+  const issue = stagedFinalActionQualityIssue({
+    ...candidate,
+    owner: rewritten.owner,
+    action: rewritten.action
+  });
+  if (issue) return null;
+  return {
+    owner: normaliseFinalActionOwner(rewritten.owner),
+    action: cleanFinalActionValue(rewritten.action),
+    deadline
+  };
+}
+
 module.exports = {
   normaliseForSimilarity,
   pointSimilarity,
@@ -570,5 +683,7 @@ module.exports = {
   cardsAreDuplicates,
   dedupeStagedDiscussionCards,
   compactStagedDiscussionCards,
-  buildStagedValidationFlags
+  buildStagedValidationFlags,
+  stagedFinalActionQualityIssue,
+  normaliseFinalStagedActionCandidate
 };

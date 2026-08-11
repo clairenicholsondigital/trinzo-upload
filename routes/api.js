@@ -24,7 +24,8 @@ const {
   buildTightStagedObjectives,
   dedupeStagedDiscussionCards,
   compactStagedDiscussionCards,
-  buildStagedValidationFlags
+  buildStagedValidationFlags,
+  normaliseFinalStagedActionCandidate
 } = require('../utils/stagedEditorial');
 
 const {
@@ -1212,9 +1213,16 @@ function polishStagedActions(actions) {
     const action = cleanStagedActionText(item.action || item.meetingActionPoint);
     const owner = normaliseStagedActionOwner(item.owner || item.meetingActionPointOwner || 'Not stated');
     const deadline = cleanStagedGeneratedLine(item.deadline || item.meetingActionPointDeadline || '');
-    if (!isAuditableStagedAction(action, owner, deadline)) continue;
-    if (result.some((existing) => stagedActionsAreDuplicates(existing, { owner, action, deadline }))) continue;
-    result.push({ owner, action, deadline, source: item.source || undefined });
+    const finalAction = normaliseFinalStagedActionCandidate({
+      owner,
+      action,
+      deadline,
+      evidence: item.evidence || item.sourceText || item.contextText || ''
+    });
+    if (!finalAction) continue;
+    if (!isAuditableStagedAction(finalAction.action, finalAction.owner, finalAction.deadline)) continue;
+    if (result.some((existing) => stagedActionsAreDuplicates(existing, finalAction))) continue;
+    result.push({ ...finalAction, source: item.source || undefined });
     if (result.length >= 20) break;
   }
   return result.map(({ owner, action, deadline }) => ({ owner, action, deadline }));
