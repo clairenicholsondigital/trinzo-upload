@@ -21,6 +21,9 @@ const {
   assertStagedSourceIdentity,
   assertStagedTranscriptHash
 } = require('../utils/stagedIdentity');
+const {
+  buildEvidenceBoundStagedActionInventory
+} = require('../utils/stagedActionRecovery');
 
 const {
   isMalformedStagedLine,
@@ -1547,119 +1550,11 @@ function pushTranscriptActionInventoryAction(actions, candidate) {
   actions.push(next);
 }
 
-function transcriptHasAll(text, patterns) {
-  return patterns.every((pattern) => pattern.test(text));
-}
-
 function buildStagedActionInventory(transcriptText) {
-  const text = String(transcriptText || '');
-  const lower = text.toLowerCase();
   const actions = [];
-
-  if (transcriptHasAll(lower, [/mute button/, /flash|flashing|led/])) {
-    pushTranscriptActionInventoryAction(actions, {
-      owner: 'Andrew Kane',
-      action: 'Review the mute button flash sequence against the existing setup',
-      deadline: deadlineFromActionEvidence(text.match(/mute button[^.\n]*(?:next time|next week|19th June|Wednesday)?[^.\n]*/i)?.[0] || '') || 'Not stated'
-    });
+  for (const candidate of buildEvidenceBoundStagedActionInventory(transcriptText)) {
+    pushTranscriptActionInventoryAction(actions, candidate);
   }
-
-  if (transcriptHasAll(lower, [/clinical|clinician|nurs/, /review/, /next week|26th june|pushed out/])) {
-    pushTranscriptActionInventoryAction(actions, {
-      owner: 'Rebecca Cuckoo',
-      action: 'Complete the clinical review of the code changes for sounds, colour and flash',
-      deadline: 'Next week'
-    });
-  }
-
-  if (transcriptHasAll(lower, [/change request|change control/, /approve|approved|sign off|signed off|wednesday/])) {
-    pushTranscriptActionInventoryAction(actions, {
-      owner: 'Andrew Kane / Rebecca Cuckoo',
-      action: 'Sign off the change request covering the alarm, language and retrospective software version changes',
-      deadline: deadlineFromActionEvidence(text.match(/change request[^.\n]*(?:Wednesday|week|approve|approved)[^.\n]*/i)?.[0] || '') || 'Wednesday'
-    });
-  }
-
-  if (transcriptHasAll(lower, [/debug/, /command|commands|letters|test script/])) {
-    pushTranscriptActionInventoryAction(actions, {
-      owner: 'Andrew Kane / David Didsbury',
-      action: 'Review the debug commands in the debug screen and confirm what is physically displayed',
-      deadline: deadlineFromActionEvidence(text.match(/debug[^.\n]*(?:next|get back|this week|Wednesday)?[^.\n]*/i)?.[0] || '') || 'Not stated'
-    });
-  }
-
-  if (transcriptHasAll(lower, [/graphics display|graphics driver|driver/, /font|symbols|characters|arabic|vietnamese|greek/])) {
-    pushTranscriptActionInventoryAction(actions, {
-      owner: 'Andrew Kane',
-      action: 'Review the graphics driver as a possible solution for uploading language symbols',
-      deadline: deadlineFromActionEvidence(text.match(/language[^.\n]*(?:next week|this week|Wednesday)?[^.\n]*/i)?.[0] || '') || 'Not stated'
-    });
-  }
-
-  if (transcriptHasAll(lower, [/60601|iec60601|mdd/, /gap|compliance document|testing gaps|electrical/])) {
-    pushTranscriptActionInventoryAction(actions, {
-      owner: 'Andrew Kane',
-      action: 'Review IEC60601-1 against the MDD documentation to identify electrical compliance testing gaps',
-      deadline: deadlineFromActionEvidence(text.match(/60601[^.\n]*(?:26th June|Wednesday|week)?[^.\n]*/i)?.[0] || '') || 'Not stated'
-    });
-  }
-
-  if (transcriptHasAll(lower, [/electrical compliance testing|compliance testing/, /23rd(?: of)? july|end of july|start that testing/])) {
-    pushTranscriptActionInventoryAction(actions, {
-      owner: 'Andrew Kane',
-      action: 'Complete electrical compliance testing',
-      deadline: deadlineFromActionEvidence(text.match(/(?:electrical compliance testing|testing)[^.\n]*(?:23rd(?: of)? July|end of July)[^.\n]*/i)?.[0] || '') || '23rd July'
-    });
-  }
-
-  if (transcriptHasAll(lower, [/17 changes|version 1\.?0?1|version 101|v1\.01/, /version 1\.?0?2|version 102|v1\.02/, /code|traceability|visible/])) {
-    pushTranscriptActionInventoryAction(actions, {
-      owner: 'David Didsbury',
-      action: 'Trace the software to identify and document the changes between v1.01 and v1.02',
-      deadline: 'Not stated'
-    });
-  }
-
-  if (transcriptHasAll(lower, [/retrospectively generate test data|retrospective test data/, /traceability|support/])) {
-    pushTranscriptActionInventoryAction(actions, {
-      owner: 'David Didsbury / Andrew Kane',
-      action: 'Generate retrospective test data if the software changes cannot be clearly identified',
-      deadline: 'Not stated'
-    });
-  }
-
-  if (transcriptHasAll(lower, [/risk management file|risk management matrix|risk management file sheet/, /usb|port lock|gui|screen/, /wednesday|share back|tidying/])) {
-    pushTranscriptActionInventoryAction(actions, {
-      owner: 'Rebecca Cuckoo',
-      action: 'Update the risk management file to address the USB port lock and GUI security controls',
-      deadline: deadlineFromActionEvidence(text.match(/risk management[^.\n]*(?:Wednesday|share back|tidying)[^.\n]*/i)?.[0] || '') || 'Wednesday'
-    });
-  }
-
-  if (transcriptHasAll(lower, [/81001-5-1|27427/, /send that on|send them over|share/])) {
-    pushTranscriptActionInventoryAction(actions, {
-      owner: 'Rebecca Cuckoo',
-      action: 'Share standards 81001-5-1 and 27427 for review',
-      deadline: deadlineFromActionEvidence(text.match(/(?:81001-5-1|27427)[^.\n]*(?:send|share|email)[^.\n]*/i)?.[0] || '') || 'Not stated'
-    });
-  }
-
-  if (transcriptHasAll(lower, [/colm/, /standard/, /applicable|applicability|review/])) {
-    pushTranscriptActionInventoryAction(actions, {
-      owner: 'Colm',
-      action: 'Review the relevance and applicability of the standards',
-      deadline: 'Not stated'
-    });
-  }
-
-  if (transcriptHasAll(lower, [/fan logic/, /cognidocs|reviewed from your perspective|needs to probably be reviewed/])) {
-    pushTranscriptActionInventoryAction(actions, {
-      owner: 'Andrew Kane',
-      action: 'Review the fan logic document and confirm whether it needs to be added to Cognidocs',
-      deadline: 'Not stated'
-    });
-  }
-
   return polishStagedActions(actions);
 }
 

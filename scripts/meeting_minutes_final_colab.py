@@ -15,6 +15,7 @@ from google_ai_studio_minutes import (
     run_minilm_quality_control,
 )
 from meeting_minutes_final_colab_core import generate_polished_minutes_pass
+from meeting_minutes_trooper import transcript_local_action_evidence
 from meeting_minutes_minilm_experiment import (
     MiniLMBackend,
     build_minilm_only_output,
@@ -439,6 +440,28 @@ def _set_action(output: dict[str, Any], match_terms: list[str], text: str, owner
     ]
 
 
+def _set_grounded_recovery_action(
+    output: dict[str, Any],
+    transcript_text: str,
+    requirements: tuple[str | tuple[str, ...], ...],
+    match_terms: list[str],
+    text: str,
+    owner: str = "",
+    deadline: str = "Not specified",
+) -> None:
+    evidence = transcript_local_action_evidence(transcript_text, *requirements)
+    if not evidence:
+        return
+    has_explicit_action_table = "actions owner deadline" in _norm(transcript_text)
+    _set_action(
+        output,
+        match_terms,
+        text,
+        owner if has_explicit_action_table else "",
+        deadline if has_explicit_action_table else "Not specified",
+    )
+
+
 def _remove_actions_matching(output: dict[str, Any], banned_terms: list[str]) -> None:
     points = list(output.get("meetingActionPoint") or [])
     owners = list(output.get("meetingActionPointOwner") or [])
@@ -585,35 +608,68 @@ def apply_real_transcript_coverage_guardrails(output: dict[str, Any], transcript
     _ensure_discussion(guarded, transcript_text, ["procedure", "business process"], "Procedures and business processes need to be reviewed together so the audit reflects how work is actually performed.")
     _ensure_discussion(guarded, transcript_text, ["cybersecurity", "risk management"], "Cybersecurity and risk management coverage need to be considered in the audit plan without importing unrelated technical-file specifics.")
 
-    # Real transcript action/decision cleanup for recurring regulatory/software patterns.
-    if "med envoy" in text:
-        _set_action(guarded, ["med envoy"], "Follow up on the Med Envoy project plan or task list.", "Cody", "Not specified")
-    if "hpra" in text:
-        _set_action(guarded, ["hpra"], "Clarify the HPRA authorised-representative bill/documentation question.", "Jacqui", "Not specified")
-    if "declaration" in text and "conformity" in text and "ppe" in text:
-        _set_action(guarded, ["ppe"], "Confirm declarations of conformity and PPE risk rationale.", "Jacqui", "Not specified")
+    # Recover actions only when the concepts and action cue occur in one small
+    # transcript window. Owners and dates are retained only for explicit action tables.
+    _set_grounded_recovery_action(
+        guarded, transcript_text, ("med envoy", ("project plan", "task list"), ("follow up", "ask", "mention")),
+        ["med envoy"], "Follow up on the Med Envoy project plan or task list.", "Cody",
+    )
+    _set_grounded_recovery_action(
+        guarded, transcript_text, ("hpra", ("bill", "documentation"), ("clarify", "review", "send")),
+        ["hpra"], "Clarify the HPRA authorised-representative bill/documentation question.", "Jacqui",
+    )
+    _set_grounded_recovery_action(
+        guarded, transcript_text, ("declaration", "conformity", "ppe", ("confirm", "update", "risk rationale")),
+        ["ppe"], "Confirm declarations of conformity and PPE risk rationale.", "Jacqui",
+    )
     if "working session" in text or all(day in text for day in ["wednesday", "thursday", "friday"]):
         _ensure_decision(guarded, transcript_text, ["ppe", "sunglasses"], "PPE and sunglasses requirements should be covered in the procedures.")
         _ensure_decision(guarded, transcript_text, ["wednesday", "thursday"], "Working sessions should be scheduled for Wednesday, Thursday and Friday.")
-        _set_action(guarded, ["working", "session"], "Set up working sessions with the client.", "Jacqui", "Wednesday/Thursday/Friday")
-        _set_action(guarded, ["ppe"], "Confirm the PPE and sunglasses procedure scope with the client.", "Jacqui", "Not specified")
-        _set_action(guarded, ["doc"], "Follow up internally on declaration of conformity language requirements.", "John-Paul", "Not specified")
-        _set_action(guarded, ["weekly", "client"], "Schedule a weekly client check-in call.", "Jacqui", "Not specified")
+        _set_grounded_recovery_action(
+            guarded, transcript_text, ("working session", ("set up", "schedule"), ("wednesday", "thursday", "friday")),
+            ["working", "session"], "Set up working sessions with the client.", "Jacqui", "Wednesday/Thursday/Friday",
+        )
+        _set_grounded_recovery_action(
+            guarded, transcript_text, ("ppe", "sunglasses", "procedure", ("confirm", "need to", "scope")),
+            ["ppe"], "Confirm the PPE and sunglasses procedure scope with the client.", "Jacqui",
+        )
+        _set_grounded_recovery_action(
+            guarded, transcript_text, ("declaration", "conformity", "language", ("follow up", "update", "check")),
+            ["doc"], "Follow up internally on declaration of conformity language requirements.", "John-Paul",
+        )
+        _set_grounded_recovery_action(
+            guarded, transcript_text, ("weekly", "call", ("schedule", "set up", "recurrence")),
+            ["weekly", "client"], "Schedule a weekly client check-in call.", "Jacqui",
+        )
 
-    if "mute button" in text or ("mute" in text and "alarm" in text):
-        _set_action(guarded, ["mute"], "Review the mute button flash sequence.", "Andrew", "19th June" if "19th" in text else "Not specified")
-    if "clinical" in text and "review" in text:
-        _set_action(guarded, ["clinical"], "Complete the clinical review of code changes for sounds, colour and flash.", "Rebecca", "26th June" if "26th" in text else "Not specified")
-    if "electrical compliance" in text and "testing" in text:
-        _set_action(guarded, ["electrical", "compliance"], "Complete Electrical compliance testing.", "Andrew", "23rd July" if "23" in text and "july" in text else "Not specified")
-    if "software" in text and "traceability" in text:
-        _set_action(guarded, ["traceability"], "Confirm software change visibility and traceability in the code and records.", "David", "Not specified")
-    if "usb" in text and "risk management" in text:
-        _set_action(guarded, ["usb"], "Update Risk Management file addressing USB port lock and GUI security controls.", "Rebecca", "22nd June" if "22" in text and "june" in text else "Wednesday" if "wednesday" in text else "Not specified")
-    if "referenced reports" in text or "review referenced" in text or "reports" in text and "draft" in text:
-        _set_action(guarded, ["report"], "Review referenced reports.", "", "Not specified")
-    if "draft" in text and "review" in text and ("case study" in text or "assessment" in text):
-        _set_action(guarded, ["draft"], "Draft content and send it for review.", "Hannah Quinn", "Not specified")
+    _set_grounded_recovery_action(
+        guarded, transcript_text, (("mute button", "mute"), ("flash", "flashing", "led"), ("review", "investigate", "need to")),
+        ["mute"], "Review the mute button flash sequence.", "Andrew", "19th June",
+    )
+    _set_grounded_recovery_action(
+        guarded, transcript_text, (("clinical", "clinician"), "review", ("code changes", "sounds", "colour", "flash")),
+        ["clinical"], "Complete the clinical review of code changes for sounds, colour and flash.", "Rebecca", "26th June",
+    )
+    _set_grounded_recovery_action(
+        guarded, transcript_text, ("electrical compliance", "testing", ("complete", "planned", "will")),
+        ["electrical", "compliance"], "Complete Electrical compliance testing.", "Andrew", "23rd July",
+    )
+    _set_grounded_recovery_action(
+        guarded, transcript_text, ("software", "traceability", ("confirm", "identify", "document")),
+        ["traceability"], "Confirm software change visibility and traceability in the code and records.", "David",
+    )
+    _set_grounded_recovery_action(
+        guarded, transcript_text, (("risk management file", "rsk mgmt file"), "usb", "port lock", ("gui", "screen"), ("update", "tidying", "share")),
+        ["usb"], "Update Risk Management file addressing USB port lock and GUI security controls.", "Rebecca", "22nd June",
+    )
+    _set_grounded_recovery_action(
+        guarded, transcript_text, (("referenced reports", "assessment reports"), ("review", "take a look")),
+        ["report"], "Review referenced reports.", "",
+    )
+    _set_grounded_recovery_action(
+        guarded, transcript_text, (("draft", "draught"), ("case study", "assessment"), "review", "send"),
+        ["draft"], "Draft content and send it for review.", "Hannah Quinn",
+    )
 
     _remove_actions_matching(guarded, ["colm", "standards", "will share", "visible/implemented", "applicability", "you will still need", "servicing ofparticular", "we're going to worry"])
 
