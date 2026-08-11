@@ -8,6 +8,7 @@ const {
   dedupeStagedDiscussionCards,
   buildTightStagedObjectives,
   compactStagedDiscussionCards,
+  reshapeStagedDiscussionCardsForHumanMinutes,
   buildStagedValidationFlags,
   stagedFinalActionQualityIssue,
   normaliseFinalStagedActionCandidate
@@ -136,6 +137,47 @@ test('compactStagedDiscussionCards gives low-substance logistics less room than 
 
   assert.equal(result.cards[0].points.length, 4);
   assert.equal(result.telemetry.truncatedRemoved, 1);
+});
+
+test('reshapeStagedDiscussionCardsForHumanMinutes preserves process-heavy detail in a minutes order', () => {
+  const result = reshapeStagedDiscussionCardsForHumanMinutes([
+    {
+      topic: 'Process Overview',
+      points: [
+        'The discussion covered movement of goods from Japanese suppliers into Europe.',
+        'Products are purchased by DITA Inc directly from Japanese suppliers.',
+        'Goods are shipped to the Netherlands as the first point of entry into the EU.',
+        'Goods are released and transported to Ireland.',
+        'Products are stored in the warehouse on site in Park West.',
+        'Customer orders are entered in NetSuite and reviewed by Customer Service.',
+        'Operators pick items using handheld barcode scanners.',
+        'DHL is used as the courier for direct customer-store shipments.'
+      ]
+    }
+  ]);
+
+  assert.equal(result.length, 1);
+  assert.equal(result[0].points.length, 8);
+  assert.ok(result[0].points[0].startsWith('Products are purchased'));
+  assert.ok(result[0].points.some((point) => point.includes('NetSuite')));
+  assert.ok(result[0].points.some((point) => point.includes('DHL')));
+  assert.ok(!result[0].points.some((point) => /^The discussion covered/i.test(point)));
+});
+
+test('reshapeStagedDiscussionCardsForHumanMinutes normalises client-facing DITA terminology', () => {
+  const result = reshapeStagedDiscussionCardsForHumanMinutes([
+    {
+      topic: 'UDI and Udimed Responsibilities',
+      points: [
+        'The discussion covered Udimed registration responsibilities for existing products.',
+        'John-Paul noted the DoC\'s for sunglasses need to include MDR and PPE compliance.'
+      ]
+    }
+  ]);
+
+  assert.equal(result[0].topic, 'UDI and regulatory data');
+  assert.ok(result[0].points.some((point) => point.includes('EUDAMED registration responsibilities')));
+  assert.ok(result[0].points.some((point) => point.includes('DoCs for sunglasses')));
 });
 
 test('isMalformedStagedLine catches other dangling qualifiers and glued clauses', () => {

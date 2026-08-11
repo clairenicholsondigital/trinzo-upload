@@ -350,10 +350,17 @@ function topicIsHighSubstance(topic, points) {
   return countConcreteDetails(points) >= 5;
 }
 
+function topicNeedsProcessDetail(topic, points) {
+  const text = `${topic || ''} ${(Array.isArray(points) ? points : []).join(' ')}`;
+  return /\b(?:process overview|goods movement|warehouse|warehousing|packaging|packing|customer orders?|order picking|shipping|dispatch|storage|courier|barcode|barcodes|label|labels|UDI|EUDAMED|Udimed|UDAMED|regulatory data)\b/i.test(text);
+}
+
 function pointLimitForTopic(topic, points, options = {}) {
   const baseLimit = options.pointLimit ?? options.defaultPointLimit ?? 4;
   const highSubstanceLimit = options.highSubstancePointLimit ?? Math.max(baseLimit, 6);
+  const processDetailLimit = options.processDetailPointLimit ?? Math.max(highSubstanceLimit, 8);
   const lowSubstanceLimit = options.lowSubstancePointLimit ?? Math.max(3, baseLimit);
+  if (topicNeedsProcessDetail(topic, points)) return processDetailLimit;
   return topicIsHighSubstance(topic, points) ? highSubstanceLimit : lowSubstanceLimit;
 }
 
@@ -480,6 +487,94 @@ function compactStagedDiscussionCards(cards, options = {}) {
   telemetry.detailRetentionScore = namedDetailsBefore ? Math.round((namedDetailsAfter / namedDetailsBefore) * 100) : 100;
   telemetry.detailRetentionWarnings = detailRetentionWarnings;
   return { cards: compacted, telemetry };
+}
+
+function normaliseHumanDiscussionTerm(value) {
+  return String(value || '')
+    .replace(/\b(?:Udimed|UDAMED|Eudamed)\b/g, 'EUDAMED')
+    .replace(/\bDoC's\b/g, 'DoCs')
+    .replace(/\bWhse\b/g, 'Warehouse')
+    .replace(/\bfront[- ]?end everything\b/ig, 'front-end work')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function sentenceCaseHumanDiscussion(value) {
+  const text = normaliseHumanDiscussionTerm(value);
+  return text.replace(/^([a-z])/, (match) => match.toUpperCase());
+}
+
+function humaniseDiscussionPoint(value) {
+  let text = sentenceCaseHumanDiscussion(value);
+  if (!text) return '';
+  text = text
+    .replace(/^(?:the\s+)?(?:discussion|meeting)\s+(?:covered|focused on|looked at)\s+/i, 'The team reviewed ')
+    .replace(/^it\s+was\s+discussed\s+that\s+/i, '')
+    .replace(/^it\s+was\s+noted\s+that\s+/i, '')
+    .replace(/^the\s+team\s+discussed\s+/i, 'The team reviewed ')
+    .replace(/\b(?:key discussions covered|as discussed in the meeting)\b/ig, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (text && !/[.!?]$/.test(text)) text += '.';
+  return sentenceCaseHumanDiscussion(text);
+}
+
+function humanDiscussionRole(value) {
+  const text = String(value || '');
+  if (/\b(?:current(?:ly)?|in progress|has been|have been|already|serves? as|is used|are used|stored|implemented|available|confirmed)\b/i.test(text)) return 'status';
+  if (/\b(?:purchased|shipped|released|transported|stored|orders?|picking|packing|label(?:led)?|barcode|scanner|courier|invoice|dispatch|delivery|warehouse|NetSuite|DHL)\b/i.test(text)) return 'process';
+  if (/\b(?:agreed|confirmed|decided|approved|will proceed|recommendation|responsibility|responsible)\b/i.test(text)) return 'decision';
+  if (/\b(?:risk|dependency|blocker|gap|impact|deadline|timeline|outstanding|challenge|unclear|waiting for|required before)\b/i.test(text)) return 'risk';
+  if (/\b(?:will|to\s+(?:review|share|send|update|complete|prepare|confirm|follow up)|needs?\s+to|should)\b/i.test(text)) return 'next';
+  return 'detail';
+}
+
+function orderHumanDiscussionPoints(points, topic = '') {
+  const priority = { status: 0, process: 1, detail: 2, decision: 3, risk: 4, next: 5 };
+  const processHeavy = topicNeedsProcessDetail(topic, points);
+  return (Array.isArray(points) ? points : [])
+    .map((point, index) => ({
+      point,
+      index,
+      role: humanDiscussionRole(point),
+      broadOverview: /^(?:the\s+)?(?:discussion|meeting|team)\s+(?:covered|reviewed|focused on|looked at)\b/i.test(String(point || '')) ? 1 : 0,
+      specificity: stagedPointSpecificityScore(point)
+    }))
+    .sort((left, right) => {
+      if (processHeavy) return left.broadOverview - right.broadOverview || left.index - right.index;
+      return (priority[left.role] ?? 9) - (priority[right.role] ?? 9) || left.broadOverview - right.broadOverview || right.specificity - left.specificity || left.index - right.index;
+    })
+    .map((item) => item.point);
+}
+
+function topicLabelForHumanMinutes(topic) {
+  const cleaned = sentenceCaseHumanDiscussion(topic || 'Discussion')
+    .replace(/\bUDI\s+and\s+EUDAMED\s+Responsibilities\b/i, 'UDI and regulatory data')
+    .replace(/\bDeclarations?\s+of\s+Conformity\b/i, 'DoCs')
+    .trim();
+  return cleaned || 'Discussion';
+}
+
+function reshapeStagedDiscussionCardsForHumanMinutes(cards, options = {}) {
+  const result = [];
+  for (const card of Array.isArray(cards) ? cards : []) {
+    if (!card || typeof card !== 'object') continue;
+    const topic = topicLabelForHumanMinutes(card.topic);
+    const seen = new Set();
+    const points = [];
+    for (const point of orderHumanDiscussionPoints(Array.isArray(card.points) ? card.points : cardPoints(card), topic)) {
+      const human = humaniseDiscussionPoint(point);
+      const key = normaliseForSimilarity(human);
+      if (!human || !key || seen.has(key)) continue;
+      seen.add(key);
+      points.push(human);
+      if (points.length >= (topicNeedsProcessDetail(topic, points) ? (options.processDetailPointLimit ?? 8) : (options.pointLimit ?? 6))) break;
+    }
+    if (!points.length) continue;
+    result.push({ ...card, topic, points });
+    if (result.length >= (options.cardLimit ?? 8)) break;
+  }
+  return result;
 }
 
 // --- Advisory completeness / editorial flags ------------------------------
@@ -683,6 +778,7 @@ module.exports = {
   cardsAreDuplicates,
   dedupeStagedDiscussionCards,
   compactStagedDiscussionCards,
+  reshapeStagedDiscussionCardsForHumanMinutes,
   buildStagedValidationFlags,
   stagedFinalActionQualityIssue,
   normaliseFinalStagedActionCandidate

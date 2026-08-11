@@ -24,6 +24,7 @@ const {
   buildTightStagedObjectives,
   dedupeStagedDiscussionCards,
   compactStagedDiscussionCards,
+  reshapeStagedDiscussionCardsForHumanMinutes,
   buildStagedValidationFlags,
   normaliseFinalStagedActionCandidate
 } = require('../utils/stagedEditorial');
@@ -1625,6 +1626,8 @@ function buildStagedTrooperPrompt(stage, transcript, req, options = {}) {
       'Do not borrow evidence from another workstream simply because both workstreams involve documentation, procedures, submissions, reviews or feedback.',
       'If qualityFlags include missing_workstream_recovered, include the row when the evidence is substantive because it was recovered after the first semantic clustering pass missed it.',
       'Preserve the current status, changes since last review, decisions, open points, dependencies, technical detail and next steps where evidenced.',
+      'For process-heavy topics, preserve the operational sequence as short concrete bullets rather than compressing it into one generic paragraph.',
+      'Human-style discussion rows should read like minutes: current position first, then process/detail, then decisions, dependencies/risks and next step if evidenced.',
       'Do not convert completed or past activity into a future action.',
       'Keep explicit actions for the actions stage unless they are needed as a clearly evidenced next-step sentence in the discussion row.',
       'If a workstream has qualityFlags such as abstract_workstream_heading or low_heading_evidence_match, prefer a more operational label from the evidence, confirmed topic, document, deliverable, system, standard or process.',
@@ -2690,7 +2693,7 @@ function buildStagedDiscussionResponse(req, transcript, minilmContext = null) {
     ? alignDiscussionCardsToConfirmedTopics(miniLmDiscussion, context.overallTopics, transcript, meetingType, participants)
     : [];
   const discussionCompaction = compactStagedDiscussionCards(rawDiscussion, { pointLimit: 4 });
-  const discussion = discussionCompaction.cards;
+  const discussion = reshapeStagedDiscussionCardsForHumanMinutes(discussionCompaction.cards, { pointLimit: 6, processDetailPointLimit: 8 });
   const output = stagedMiniLMOutput(minilmContext);
   const executiveSummaryFromFindings = cleanStagedExecutiveSummary(
     output.executiveSummaryFromFindings || output.summaryFromFindings || output.executiveSummary || ''

@@ -50,6 +50,7 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("function consolidateStagedDiscussionPoints", api)
         self.assertIn("function challengeUnsupportedStagedLabels", api)
         self.assertIn("function polishStagedDiscussionCards", api)
+        self.assertIn("reshapeStagedDiscussionCardsForHumanMinutes", api)
         self.assertIn("function polishStagedActions", api)
         self.assertIn("function stagedActionIntent", api)
         self.assertIn("function stagedActionsAreDuplicates", api)
@@ -122,6 +123,8 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("reassignedByWorkstreamFit", api)
         self.assertIn("Prefer consolidation over coverage", api)
         self.assertIn("Merge repeated prerequisites", api)
+        self.assertIn("For process-heavy topics, preserve the operational sequence", api)
+        self.assertIn("Human-style discussion rows should read like minutes", api)
         self.assertIn("Before using labels such as risk, dependency, agreed, confirmed, will or must", api)
         self.assertIn("ordinary sequencing as a risk or dependency", api)
         self.assertIn("auditable verb and object", api)
@@ -187,6 +190,16 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("confirmedActions", api)
         self.assertIn("parseStagedJsonObject", api)
         self.assertIn("parseStagedJsonArray", api)
+
+    def test_staged_discussion_has_human_minutes_reshaper(self):
+        staged_editorial = (REPO_DIR / "utils" / "stagedEditorial.js").read_text(encoding="utf-8")
+
+        self.assertIn("function reshapeStagedDiscussionCardsForHumanMinutes", staged_editorial)
+        self.assertIn("function orderHumanDiscussionPoints", staged_editorial)
+        self.assertIn("function topicNeedsProcessDetail", staged_editorial)
+        self.assertIn("processDetailPointLimit", staged_editorial)
+        self.assertIn("UDI and regulatory data", staged_editorial)
+        self.assertIn("EUDAMED", staged_editorial)
 
     def test_staged_topic_and_owner_cleanup_is_wired(self):
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
