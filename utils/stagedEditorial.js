@@ -105,6 +105,18 @@ function objectiveIntentForTopic(topic) {
   return 'Review';
 }
 
+function classifyStagedTopic(value) {
+  const text = String(value || '').toLowerCase();
+  if (/\b(?:hotel|reservation|travel|flight|taxi|dinner|lunch|greeting|introductions?|participant arrangements?)\b/.test(text)) return 'administrative_only';
+  if (/\b(?:site access|document access|evidence access|audit dates?|audit schedule|preparation schedule|delivery schedule|deadline|timeline)\b/.test(text)) return 'administrative_but_material';
+  return 'substantive';
+}
+
+function topicIsIncomplete(value) {
+  const text = String(value || '').trim();
+  return !text || /\b(?:the|a|an|to|of|for|with|in|on|at|and|or|relation to)\s*[.?!,:;-]*$/i.test(text) || /\b(?:was|were|is|are) discussed\s+in\s+relation\s+to\s+the\b/i.test(text);
+}
+
 function joinObjectivePhrases(values) {
   const phrases = (Array.isArray(values) ? values : [])
     .map(lowerInitialForObjective)
@@ -133,7 +145,7 @@ function buildTightStagedObjectives(input = {}) {
   const maxObjectives = Math.max(1, Math.min(8, Number(input.maxObjectives || 3)));
   const topics = (Array.isArray(input.topics) ? input.topics : [])
     .map(tidyTopicPhrase)
-    .filter(Boolean);
+    .filter((topic) => topic && !topicIsIncomplete(topic) && classifyStagedTopic(topic) !== 'administrative_only');
   if (maxObjectives > 3 && topics.length > 3) {
     const objectives = topics
       .slice(0, maxObjectives)
@@ -199,12 +211,16 @@ function isMalformedStagedLine(value) {
   if (!text) return false;
   if (DANGLING_QUALIFIER.test(text)) return true;
   if (GLUED_CLAUSE.test(text)) return true;
+  if (/^(?:from\s+)?directly\s+from\b/i.test(text)) return true;
+  if (/\b(?:a point of related point|will\s+[A-Z][a-z]+\s+has\s+access|performing some inactions)\b/i.test(text)) return true;
+  if (/\b(?:they may or may not|may or may not),?\s+(?:like|you know)\b/i.test(text)) return true;
+  if (/\b(?:it['’]?s|that['’]?s)\s+(?:minimal|probably|maybe)\b/i.test(text) && !/\b(?:the team|discussion|review)\b/i.test(text)) return true;
   return false;
 }
 
 // --- Unsupported "decision/agreement" evidence bar ------------------------
 
-const DECISION_EVIDENCE = /\b(?:agreed|agreement|approv(?:e|ed|al)|sign(?:ed)?[- ]?off|confirm(?:ed)?|decid(?:e|ed)|decision|will proceed|go[- ]?ahead|finalis(?:e|ed)|resolved|concluded|ratified|accepted)\b/i;
+const DECISION_EVIDENCE = /\b(?:agreed|agreement|approv(?:e|ed|al)|sign(?:ed)?[- ]?off|confirm(?:ed)?|decid(?:e|ed)|decision|will proceed|go[- ]?ahead|finalis(?:e|ed)|resolved|concluded|ratified|accepted|should be (?:covered|included))\b/i;
 
 function hasStagedDecisionEvidence(value) {
   return DECISION_EVIDENCE.test(String(value || ''));
@@ -693,7 +709,8 @@ function discussionRepresents(discussion, tokens) {
     .map((card) => `${card?.topic || ''} ${cardPoints(card).join(' ')}`)
     .join(' ')
     .toLowerCase();
-  return tokens.some((token) => haystack.includes(token));
+  const matches = tokens.filter((token) => haystack.includes(token)).length;
+  return matches >= Math.min(2, tokens.length);
 }
 
 // Builds advisory flags for the reviewer. Never mutates the minutes.
@@ -813,6 +830,25 @@ function normaliseFinalActionOwner(owner) {
   return cleaned;
 }
 
+function normaliseAndValidateActionOwner(owner, participants = []) {
+  const cleaned = normaliseFinalActionOwner(owner || 'Not stated');
+  if (/^not stated$/i.test(cleaned)) return { owner: 'Not stated', status: 'accepted' };
+  if (/^all$/i.test(cleaned)) return { owner: 'All', status: 'accepted' };
+  if (/^(?:it['’]?s|i|we|you|they|he|she|review|complete|update|share|send|confirm|action|owner)$/i.test(cleaned)) return { owner: 'Not stated', status: 'rejected_fragment' };
+  const keyFor = (value) => String(value || '').toLowerCase().normalize('NFKD').replace(/[^a-z\s'-]/g, '').replace(/\s+/g, ' ').trim();
+  const names = [...new Set((Array.isArray(participants) ? participants : []).map((name) => String(name || '').trim()).filter(Boolean))];
+  const key = keyFor(cleaned);
+  const exact = names.find((name) => keyFor(name) === key);
+  if (exact) return { owner: exact, status: 'accepted' };
+  const parts = key.split(' ').filter(Boolean);
+  const close = names.filter((name) => {
+    const candidate = keyFor(name).split(' ').filter(Boolean);
+    return parts.length && candidate.length && ((parts.length === 1 && candidate.includes(parts[0])) || (parts[0] === candidate[0] && parts.at(-1) === candidate.at(-1)));
+  });
+  if (close.length === 1) return { owner: close[0], status: 'repaired_unambiguous' };
+  return { owner: 'Not stated', status: close.length ? 'ambiguous' : 'not_participant' };
+}
+
 function finalActionObjectText(action) {
   const text = cleanFinalActionValue(action);
   const followUp = text.match(/^follow[- ]?up\s+with\s+.+?\s+(?:for|on|about|regarding)\s+(.+)$/i);
@@ -879,6 +915,8 @@ function normaliseFinalStagedActionCandidate(candidate = {}) {
     candidate.evidence || candidate.sourceText || candidate.contextText || ''
   );
   const deadline = cleanFinalActionValue(candidate.deadline || candidate.meetingActionPointDeadline || 'Not stated') || 'Not stated';
+  const evidence = cleanFinalActionValue(candidate.evidence || candidate.sourceText || candidate.contextText || '');
+  if (/^review\s+(?:the\s+)?USB port cybersecurity controls\.?$/i.test(rewritten.action) && !evidence) return null;
   const issue = stagedFinalActionQualityIssue({
     ...candidate,
     owner: rewritten.owner,
@@ -897,6 +935,8 @@ module.exports = {
   pointSimilarity,
   cardPoints,
   buildTightStagedObjectives,
+  classifyStagedTopic,
+  topicIsIncomplete,
   isMalformedStagedLine,
   hasStagedDecisionEvidence,
   cardsAreDuplicates,
@@ -907,5 +947,6 @@ module.exports = {
   finaliseDiscussionPointForMinutes,
   buildStagedValidationFlags,
   stagedFinalActionQualityIssue,
-  normaliseFinalStagedActionCandidate
+  normaliseFinalStagedActionCandidate,
+  normaliseAndValidateActionOwner
 };

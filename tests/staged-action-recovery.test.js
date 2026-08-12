@@ -7,8 +7,16 @@ const path = require('node:path');
 
 const {
   buildEvidenceBoundStagedActionInventory,
+  parseDeadlineEvidence,
   parseTranscriptTurns
 } = require('../utils/stagedActionRecovery');
+
+test('deadline parser rejects incomplete relative-date fragments', () => {
+  assert.equal(parseDeadlineEvidence('Complete this by the end of the'), null);
+  assert.equal(parseDeadlineEvidence('Complete this by end of next'), null);
+  assert.equal(parseDeadlineEvidence('Complete this by next week').normalised, 'Next week');
+  assert.equal(parseDeadlineEvidence('Complete this by the end of next week').normalised, 'End of next week');
+});
 
 const REPO_DIR = path.resolve(__dirname, '..');
 
@@ -23,11 +31,12 @@ test('parses Teams speaker blocks into attributed turns', () => {
 
   assert.deepEqual(turns, [
     {
+      turnIndex: 0,
       speaker: 'Rebecca Cuckoo',
       text: 'I am updating the risk file. I will share it on Wednesday.',
       segments: ['I am updating the risk file.', 'I will share it on Wednesday.']
     },
-    { speaker: 'Jacqui Fox', text: 'Thanks.', segments: ['Thanks.'] }
+    { turnIndex: 1, speaker: 'Jacqui Fox', text: 'Thanks.', segments: ['Thanks.'] }
   ]);
 });
 
@@ -46,6 +55,7 @@ test('recovers the T761 risk action only from one grounded speaker turn', () => 
     deadline: 'Wednesday',
     source: 'evidence_bound_transcript_action',
     evidence: 'We are looking at one port lock for the USB on the back of the device. The screen element can also be accessed, so a control is needed on the screen. I am tidying up the risk management file sheet to share back and I am hoping to get that done for Wednesday.',
+    sourceTurnIds: [0],
     recoveryRule: 'risk_controls'
   }]);
 });

@@ -24,7 +24,7 @@ function parseTranscriptTurns(transcriptText) {
     if (!current) return;
     const segments = current.lines.map(cleanLine).filter(Boolean);
     const text = cleanLine(segments.join(' '));
-    if (text) turns.push({ speaker: current.speaker || 'Not stated', text, segments });
+    if (text) turns.push({ turnIndex: turns.length, speaker: current.speaker || 'Not stated', text, segments });
     current = null;
   }
 
@@ -44,22 +44,44 @@ function parseTranscriptTurns(transcriptText) {
   return turns;
 }
 
+const COMPLETE_DEADLINE = /\b(?:today|tomorrow|before arrival|before [A-Z][a-z]+ arrives|before (?:the )?(?:audit|site visit|next review|client call|meeting)|next\s+(?:monday|tuesday|wednesday|thursday|friday|week|meeting)|this\s+week|(?:by\s+)?(?:the\s+)?end\s+of\s+(?:this|next)\s+week|w\/e\s+\d{1,2}(?:st|nd|rd|th)?\s+[A-Z][a-z]+|(?:by\s+)?(?:the\s+)?end\s+of\s+[A-Z][a-z]+|monday|tuesday|wednesday|thursday|friday|\d{1,2}(?:st|nd|rd|th)(?:\s+of)?\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)|\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December))\b/i;
+
+function parseDeadlineEvidence(text, options = {}) {
+  const source = String(text || '');
+  if (/\b(?:end of (?:the|next)|(?:the|next|this) week of)\s*[.?!,;:]?\s*$/i.test(source)) return null;
+  const match = source.match(COMPLETE_DEADLINE);
+  if (!match) return null;
+  const raw = cleanLine(match[0]);
+  const normalised = raw
+    .replace(/^by\s+(?:the\s+)?/i, '')
+    .replace(/^the\s+/i, '')
+    .replace(/^next\s+/i, 'Next ')
+    .replace(/^end\s+/i, 'End ')
+    .replace(/^w\/e\s+/i, 'W/E ')
+    .replace(/^(monday|tuesday|wednesday|thursday|friday)$/i, (day) => day[0].toUpperCase() + day.slice(1).toLowerCase());
+  return {
+    raw,
+    normalised,
+    type: /\d{1,2}/.test(raw) ? 'calendar_date' : 'relative_date',
+    complete: true,
+    sourceTurnIndex: Number.isInteger(options.sourceTurnIndex) ? options.sourceTurnIndex : null,
+    index: Number(match.index)
+  };
+}
+
 function deadlineFromEvidence(text, requiredPatterns = []) {
   const source = String(text || '');
-  const match = source.match(/\b(?:today|tomorrow|before arrival|before [A-Z][a-z]+ arrives|before (?:the )?(?:audit|site visit|next review|client call|meeting)|next\s+(?:monday|tuesday|wednesday|thursday|friday|week|meeting)|this\s+week|end\s+of\s+(?:this\s+)?week|w\/e\s+\d{1,2}(?:st|nd|rd|th)?\s+[A-Z][a-z]+|end\s+of\s+[A-Z][a-z]+|monday|tuesday|wednesday|thursday|friday|\d{1,2}(?:st|nd|rd|th)(?:\s+of)?\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)|\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December))\b/i);
-  if (!match) return 'Not stated';
+  const parsed = parseDeadlineEvidence(source);
+  if (!parsed) return 'Not stated';
   const actionCue = source.match(ACTION_CUE);
-  const deadlineBeforeAction = actionCue && Number(match.index) < Number(actionCue.index);
-  const explicitlyPrefixed = /\b(?:by|before|deadline(?: is| of|:)?|due(?: by| on)?)\s*$/i.test(source.slice(Math.max(0, Number(match.index) - 18), Number(match.index)));
+  const deadlineBeforeAction = actionCue && parsed.index < Number(actionCue.index);
+  const explicitlyPrefixed = /\b(?:by|before|deadline(?: is| of|:)?|due(?: by| on)?)\s*$/i.test(source.slice(Math.max(0, parsed.index - 18), parsed.index));
   if (deadlineBeforeAction && !explicitlyPrefixed) return 'Not stated';
   const requiredIndexes = requiredPatterns
     .map((pattern) => source.search(pattern))
     .filter((index) => index >= 0);
-  if (requiredIndexes.length && Number(match.index) < Math.max(...requiredIndexes) && !explicitlyPrefixed) return 'Not stated';
-  return cleanLine(match[0])
-    .replace(/^next\s+/i, 'Next ')
-    .replace(/^w\/e\s+/i, 'W/E ')
-    .replace(/^(monday|tuesday|wednesday|thursday|friday)$/i, (day) => day[0].toUpperCase() + day.slice(1).toLowerCase());
+  if (requiredIndexes.length && parsed.index < Math.max(...requiredIndexes) && !explicitlyPrefixed) return 'Not stated';
+  return parsed.normalised;
 }
 
 function directAssignedOwner(text) {
@@ -149,7 +171,7 @@ function deadlineFromTurnGroup(turns, rule) {
   return 'Not stated';
 }
 
-function actionCandidate(rule, evidence, owner, deadline) {
+function actionCandidate(rule, evidence, owner, deadline, sourceTurnIds = []) {
   const action = cleanLine(rule.action(evidence)).replace(/[.]+$/, '');
   if (!action) return null;
   const candidate = {
@@ -158,6 +180,7 @@ function actionCandidate(rule, evidence, owner, deadline) {
     deadline,
     source: 'evidence_bound_transcript_action',
     evidence,
+    sourceTurnIds,
     recoveryRule: rule.id
   };
   candidate.score = evidenceCandidateScore(candidate);
@@ -260,7 +283,8 @@ function buildEvidenceBoundStagedActionInventory(transcriptText) {
         rule,
         evidence,
         ownerFromEvidence({ speaker: turn.speaker, text: evidence }),
-        deadlineFromEvidence(evidence, rule.required)
+        deadlineFromEvidence(evidence, rule.required),
+        [turn.turnIndex]
       );
       if (!candidate) continue;
       if (!best || candidate.score > best.score) best = candidate;
@@ -274,7 +298,8 @@ function buildEvidenceBoundStagedActionInventory(transcriptText) {
           rule,
           evidence,
           ownerFromTurnGroup(group, rule),
-          deadlineFromTurnGroup(group, rule)
+          deadlineFromTurnGroup(group, rule),
+          group.map((turn) => turn.turnIndex)
         );
         if (candidate) candidate.score -= ((group.length - 1) * 2) + Math.floor(evidence.length / 600);
         if (candidate && (!best || candidate.score > best.score)) best = candidate;
@@ -291,6 +316,7 @@ function buildEvidenceBoundStagedActionInventory(transcriptText) {
 module.exports = {
   buildEvidenceBoundStagedActionInventory,
   deadlineFromEvidence,
+  parseDeadlineEvidence,
   ownerFromEvidence,
   parseTranscriptTurns
 };

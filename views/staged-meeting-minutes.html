@@ -676,6 +676,7 @@ td textarea {
   var stagedState = { details: null, summary: null, discussion: null, actions: null };
   var regenerationEvents = [];
   var stageInFlight = null;
+  var unresolvedWorkstreamFlags = {};
 
   function escapeHtml(value) {
     return String(value == null ? '' : value)
@@ -1125,6 +1126,11 @@ td textarea {
   function renderValidationFlags(flags) {
     if (!stageValidationFlags) return;
     var list = Array.isArray(flags) ? flags.filter(Boolean) : [];
+    list.forEach(function (flag) {
+      if (flag && flag.blocking && flag.resolutionKey && !unresolvedWorkstreamFlags[flag.resolutionKey]) {
+        unresolvedWorkstreamFlags[flag.resolutionKey] = flag;
+      }
+    });
     stageValidationFlags.innerHTML = '';
     if (!list.length) {
       stageValidationFlags.hidden = true;
@@ -1146,7 +1152,7 @@ td textarea {
       text.className = 'stage-validation-message';
       text.textContent = (flag && flag.message) ? String(flag.message) : '';
       row.appendChild(text);
-      if (flag && flag.type === 'possible_omitted_workstream' && flag.discussionSuggestion) {
+      if (flag && (flag.type === 'possible_omitted_workstream' || flag.type === 'unresolved_substantive_workstream') && flag.discussionSuggestion) {
         var addButton = document.createElement('button');
         addButton.type = 'button';
         addButton.className = 'secondary stage-validation-add';
@@ -1155,6 +1161,26 @@ td textarea {
           addValidationSuggestionToDiscussion(flag, addButton);
         });
         row.appendChild(addButton);
+      }
+      if (flag && flag.type === 'unresolved_substantive_workstream' && flag.resolutionKey) {
+        var omitButton = document.createElement('button');
+        omitButton.type = 'button';
+        omitButton.className = 'secondary stage-validation-add';
+        omitButton.textContent = 'Intentionally omit';
+        omitButton.addEventListener('click', function () {
+          delete unresolvedWorkstreamFlags[flag.resolutionKey];
+          omitButton.disabled = true;
+          omitButton.textContent = 'Omitted by reviewer';
+          setReviewStatus('Recorded as intentionally omitted by the reviewer.', false);
+          saveDraft();
+        });
+        row.appendChild(omitButton);
+        var summaryButton = document.createElement('button');
+        summaryButton.type = 'button';
+        summaryButton.className = 'secondary stage-validation-add';
+        summaryButton.textContent = 'Return to summary topics';
+        summaryButton.addEventListener('click', function () { showScreen(1); });
+        row.appendChild(summaryButton);
       }
       stageValidationFlags.appendChild(row);
     });
@@ -1186,6 +1212,7 @@ td textarea {
     renderDiscussionCards(cards);
     stagedState.discussion = cards;
     generatedStages.discussion = true;
+    if (flag && flag.resolutionKey) delete unresolvedWorkstreamFlags[flag.resolutionKey];
     if (button) {
       button.disabled = true;
       button.textContent = 'Added';
@@ -1467,6 +1494,9 @@ td textarea {
     if (!draftId) return;
     var drafts = readDrafts();
     var existing = drafts.find(function (draft) { return String(draft.jobId) === String(draftId); });
+    if (existing && existing.unresolvedWorkstreamFlags && typeof existing.unresolvedWorkstreamFlags === 'object') {
+      unresolvedWorkstreamFlags = existing.unresolvedWorkstreamFlags;
+    }
     if (existing && existing.sourceJobId && !stagedSourceJobId) {
       stagedSourceJobId = String(existing.sourceJobId);
     }
@@ -1658,6 +1688,7 @@ td textarea {
       reviewEditMs: currentReviewEditMs(),
       reviewEditCount: reviewEditCount,
       generatedStages: generatedStages,
+      unresolvedWorkstreamFlags: unresolvedWorkstreamFlags,
       stagedState: stagedState,
       regenerationCount: regenerationEvents.length,
       regenerations: regenerationEvents.slice(-25),
@@ -1780,6 +1811,10 @@ td textarea {
     });
   }
   nextButton.addEventListener('click', function () {
+    if (activeIndex === 2 && Object.keys(unresolvedWorkstreamFlags).length) {
+      setReviewStatus('Resolve each missing substantive workstream before moving on: add it, intentionally omit it, or return to summary topics.', true);
+      return;
+    }
     if (activeIndex < screens.length - 1) goToScreen(activeIndex + 1);
   });
   if (generateButton) {

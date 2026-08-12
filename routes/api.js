@@ -22,18 +22,22 @@ const {
   assertStagedTranscriptHash
 } = require('../utils/stagedIdentity');
 const {
-  buildEvidenceBoundStagedActionInventory
+  buildEvidenceBoundStagedActionInventory,
+  parseDeadlineEvidence
 } = require('../utils/stagedActionRecovery');
 
 const {
   isMalformedStagedLine,
   hasStagedDecisionEvidence,
   buildTightStagedObjectives,
+  classifyStagedTopic,
+  topicIsIncomplete,
   dedupeStagedDiscussionCards,
   compactStagedDiscussionCards,
   reshapeStagedDiscussionCardsForHumanMinutes,
   buildStagedValidationFlags,
-  normaliseFinalStagedActionCandidate
+  normaliseFinalStagedActionCandidate,
+  normaliseAndValidateActionOwner
 } = require('../utils/stagedEditorial');
 
 const {
@@ -1196,12 +1200,17 @@ function attachStagedDecisionsToDiscussionCards(cards, output = {}) {
     const ranked = result
       .map((card, index) => ({
         index,
-        score: stagedTokenSimilarity(decision, `${card.topic || ''} ${(card.points || []).join(' ')}`)
+        score: stagedTokenSimilarity(decision, `${card.topic || ''} ${(card.points || []).join(' ')}`),
+        occupied: Boolean(card.decisionOrAgreement)
       }))
-      .sort((left, right) => right.score - left.score);
-    const target = result[ranked[0]?.index];
-    if (!target || Number(ranked[0]?.score || 0) < 0.12) continue;
-    target.decisionOrAgreement = decision;
+      .sort((left, right) => left.occupied - right.occupied || right.score - left.score);
+    let selected = ranked.find((item) => !item.occupied && item.score >= 0.12);
+    if (!selected) selected = ranked.slice().sort((left, right) => right.score - left.score)[0];
+    const target = result[selected?.index];
+    if (!target || Number(selected?.score || 0) < 0.12) continue;
+    target.decisionOrAgreement = target.decisionOrAgreement
+      ? uniqueCleanDiscussionItems([target.decisionOrAgreement, decision]).join(' ')
+      : decision;
     target.points = uniqueCleanDiscussionItems([...(target.points || []), decision]).slice(0, 6);
   }
   return result;
@@ -1326,6 +1335,23 @@ function stagedActionsAreDuplicates(existing, candidate) {
   const ownerB = normaliseStagedActionOwner(candidate?.owner || '').toLowerCase();
   const sameKnownOwner = ownerA && ownerB && ownerA !== 'not stated' && ownerB !== 'not stated' && ownerA === ownerB;
   const combinedActionText = `${existingAction} ${candidateAction}`;
+  const evidenceA = new Set(Array.isArray(existing?.sourceTurnIds) ? existing.sourceTurnIds : []);
+  const evidenceOverlap = (Array.isArray(candidate?.sourceTurnIds) ? candidate.sourceTurnIds : []).some((turnId) => evidenceA.has(turnId));
+  const sharedConcept = [
+    /\b(?:usb|cybersecurity|port-lock)\b/i,
+    /\belectrical compliance\b/i,
+    /\bclinical review\b/i,
+    /\bfan logic\b/i,
+    /\bmute button\b/i
+  ].some((pattern) => pattern.test(existingAction) && pattern.test(candidateAction));
+
+  if (sharedConcept && (evidenceOverlap || existingIntent === candidateIntent || Math.min(existingAction.length, candidateAction.length) < 65)) {
+    return true;
+  }
+
+  if (/\bfan logic\b/i.test(existingAction) && /\bfan logic\b/i.test(candidateAction) && /\bcognidocs\b/i.test(combinedActionText)) {
+    return existingIntent === candidateIntent || evidenceOverlap;
+  }
 
   if (
     /\bhpra\b/i.test(combinedActionText) &&
@@ -1400,10 +1426,15 @@ function polishStagedActions(actions) {
     if (!finalAction) continue;
     if (!isAuditableStagedAction(finalAction.action, finalAction.owner, finalAction.deadline)) continue;
     if (result.some((existing) => stagedActionsAreDuplicates(existing, finalAction))) continue;
-    result.push({ ...finalAction, source: item.source || undefined });
+    result.push({
+      ...finalAction,
+      source: item.source || undefined,
+      evidence: item.evidence || item.sourceText || item.contextText || '',
+      sourceTurnIds: Array.isArray(item.sourceTurnIds) ? item.sourceTurnIds : []
+    });
     if (result.length >= 20) break;
   }
-  return result.map(({ owner, action, deadline, source }) => ({ owner, action, deadline, ...(source ? { source } : {}) }));
+  return result;
 }
 
 function actionsFromStagedMiniLM(minilmContext) {
@@ -1483,9 +1514,7 @@ function ownerFromTeamsSpeakerLine(line) {
 }
 
 function deadlineFromActionEvidence(line) {
-  const text = String(line || '');
-  const match = text.match(/\b(?:today|tomorrow|before arrival|before [A-Z][a-z]+ arrives|before (?:the )?(?:audit|site visit|next review|client call|meeting)|next\s+(?:monday|tuesday|wednesday|thursday|friday|week|meeting)|this\s+week|end\s+of\s+(?:this\s+)?week|w\/e\s+\d{1,2}(?:st|nd|rd|th)?\s+[A-Z][a-z]+|end\s+of\s+[A-Z][a-z]+|monday|tuesday|wednesday|thursday|friday|\d{1,2}(?:st|nd|rd|th)(?:\s+of)?\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)|\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December))\b/i);
-  return match ? cleanStagedGeneratedLine(match[0].replace(/^next\s+/i, 'Next ').replace(/^w\/e\s+/i, 'W/E ')) : '';
+  return parseDeadlineEvidence(line)?.normalised || '';
 }
 
 function stagedActionKeywords(action) {
@@ -1559,12 +1588,14 @@ function stagedDeadlineIsSupportedByActionEvidence(action, deadline, transcriptT
 function enrichStagedActionDeadlinesFromTranscript(actions, transcriptText) {
   return polishStagedActions((Array.isArray(actions) ? actions : []).map((item) => {
     const deadline = cleanStagedGeneratedLine(item?.deadline || item?.meetingActionPointDeadline || '');
+    const evidence = String(item?.evidence || item?.sourceText || item?.contextText || '');
     if (deadline && !/^not stated$/i.test(deadline)) {
-      return stagedDeadlineIsSupportedByActionEvidence(item?.action || item?.meetingActionPoint || '', deadline, transcriptText)
+      const parsed = parseDeadlineEvidence(evidence);
+      return parsed && normaliseDeadlineKey(parsed.normalised) === normaliseDeadlineKey(deadline)
         ? item
         : { ...item, deadline: 'Not stated' };
     }
-    const inferred = inferredDeadlineForStagedAction(item?.action || item?.meetingActionPoint || '', transcriptText);
+    const inferred = deadlineFromActionEvidence(evidence);
     return inferred ? { ...item, deadline: inferred } : item;
   }));
 }
@@ -1588,6 +1619,7 @@ function transcriptPreservedStagedActions(transcriptText) {
         owner: ownerFromTeamsSpeakerLine(line),
         action: 'Complete the risk assessment to develop the audit plan',
         deadline: deadlineFromActionEvidence(line) || 'Wednesday',
+        evidence: line,
         source: 'transcript_action_preservation_guard'
       });
     }
@@ -2329,15 +2361,20 @@ function bestConfirmedTopicForEvidence(item, confirmedTopics) {
     ...(item.evidence || []),
     ...(item.supportingContext || [])
   ].join(' ');
-  let best = { topic: '', score: 0 };
-  for (const topic of topics) {
-    const score = Math.max(
-      stagedTokenSimilarity(topic, item.topic),
-      stagedTokenSimilarity(topic, searchable)
-    );
-    if (score > best.score) best = { topic, score };
-  }
-  return best.score >= 0.12 ? best.topic : '';
+  const ranked = topics.map((topic) => ({
+    topic,
+    score: Math.max(stagedTokenSimilarity(topic, item.topic), stagedTokenSimilarity(topic, searchable)),
+    distinctiveHits: distinctiveWorkstreamTokens(topic).filter((token) => searchable.toLowerCase().includes(token)).length
+  })).sort((left, right) => right.score - left.score || right.distinctiveHits - left.distinctiveHits);
+  const best = ranked[0] || { topic: '', score: 0, distinctiveHits: 0 };
+  const runnerUp = ranked[1] || { score: 0 };
+  return best.score >= 0.26 && best.score - runnerUp.score >= 0.1 && best.distinctiveHits > 0 ? best.topic : '';
+}
+
+const GENERIC_WORKSTREAM_TOKENS = new Set(['process', 'review', 'product', 'products', 'document', 'documentation', 'requirement', 'requirements', 'status', 'update', 'discussion', 'project', 'meeting', 'current', 'position', 'workstream', 'business']);
+
+function distinctiveWorkstreamTokens(value) {
+  return [...stagedTopicTokenSet(value)].filter((token) => token.length >= 4 && !GENERIC_WORKSTREAM_TOKENS.has(token));
 }
 
 function stagedEvidenceSearchText(item) {
@@ -2365,7 +2402,10 @@ function workstreamEvidenceFitScore(workstream, item) {
     if (textTokens.has(token)) exactHits += 1;
   }
   const exactFit = topicTokens.size ? exactHits / topicTokens.size : 0;
-  return Math.max(topicFit * 0.7, evidenceFit, exactFit * 0.85);
+  const distinctive = distinctiveWorkstreamTokens(topic);
+  const distinctiveHits = distinctive.filter((token) => textTokens.has(token)).length;
+  const distinctiveFit = distinctive.length ? distinctiveHits / distinctive.length : 0;
+  return Math.max(topicFit * 0.55, evidenceFit * 0.75, exactFit * 0.65, distinctiveFit);
 }
 
 function bestWorkstreamForEvidence(item, workstreams = []) {
@@ -2389,17 +2429,23 @@ function reassignStagedEvidencePackByWorkstream(items, confirmedTopics = []) {
     if (!item || typeof item !== 'object') continue;
     const { best, runnerUp } = bestWorkstreamForEvidence(item, topics);
     const currentScore = workstreamEvidenceFitScore(item.topic, item);
-    const shouldMove = best.topic && best.score >= 0.18 && best.score >= currentScore + 0.08;
+    const searchText = stagedEvidenceSearchText(item).toLowerCase();
+    const distinctiveHits = distinctiveWorkstreamTokens(best.topic).filter((token) => searchText.includes(token)).length;
+    const decisive = best.score >= 0.28 && best.score - runnerUp.score >= 0.12 && distinctiveHits > 0;
+    const shouldMove = best.topic && decisive && best.score >= currentScore + 0.1;
+    const uncertain = !shouldMove && currentScore < 0.18 && (!decisive || best.score - runnerUp.score < 0.12);
     const next = {
       ...item,
-      topic: shouldMove ? best.topic : item.topic,
+      topic: shouldMove ? best.topic : (uncertain ? 'Unassigned evidence (review)' : item.topic),
       originalTopic: shouldMove ? item.topic : item.originalTopic,
       attribution: {
         workstreamEvidenceFitScore: Number((shouldMove ? best.score : Math.max(best.score, currentScore)).toFixed(3)),
         competingWorkstream: runnerUp.topic || '',
         competingFitScore: Number((runnerUp.score || 0).toFixed(3)),
-        reassignedByWorkstreamFit: Boolean(shouldMove)
-      }
+        reassignedByWorkstreamFit: Boolean(shouldMove),
+        uncertain: Boolean(uncertain)
+      },
+      qualityFlags: [...new Set([...(Array.isArray(item.qualityFlags) ? item.qualityFlags : []), ...(uncertain ? ['unassigned_workstream_evidence'] : [])])]
     };
     reassigned.push(next);
   }
@@ -2860,6 +2906,60 @@ function filterDiscussionCardsByWorkstreamEvidence(cards = [], workstreamState =
   return filtered;
 }
 
+function repairDiscussionPointWorkstreamLeakage(cards = [], workstreamState = []) {
+  const states = Array.isArray(workstreamState) ? workstreamState.filter((state) => state?.workstream) : [];
+  const repaired = (Array.isArray(cards) ? cards : []).map((card) => ({ ...card, points: [] }));
+  const moved = [];
+  const dropped = [];
+  for (let cardIndex = 0; cardIndex < (Array.isArray(cards) ? cards : []).length; cardIndex += 1) {
+    const card = cards[cardIndex];
+    const currentState = findWorkstreamStateForTopic(states, card.topic);
+    for (const point of uniqueCleanDiscussionItems(card.points || card.bullets || [])) {
+      const headingRanked = repaired.map((candidate, index) => ({ index, topic: candidate.topic, score: stagedTokenSimilarity(point, candidate.topic) }))
+        .sort((left, right) => right.score - left.score);
+      const bestHeading = headingRanked[0] || { index: cardIndex, score: 0 };
+      const runnerHeading = headingRanked[1] || { score: 0 };
+      const currentHeadingScore = stagedTokenSimilarity(point, card.topic);
+      if (bestHeading.index !== cardIndex && bestHeading.score >= 0.28 && bestHeading.score - runnerHeading.score >= 0.1 && bestHeading.score >= currentHeadingScore + 0.12) {
+        repaired[bestHeading.index].points.push(point);
+        moved.push({ point, from: card.topic, to: repaired[bestHeading.index].topic });
+        continue;
+      }
+      if (currentHeadingScore < 0.12 && /\b(?:were|was)\s+(?:discussed|reviewed)\b/i.test(point) && point.split(/\s+/).length <= 12) {
+        const derivedTopic = cleanStagedGeneratedLine(point.replace(/\b(?:were|was)\s+(?:discussed|reviewed)\b.*$/i, '').replace(/[.!?]+$/, '').trim());
+        if (derivedTopic && isUsableStagedTopic(derivedTopic) && !repaired.some((candidate) => stagedTokenSimilarity(candidate.topic, derivedTopic) >= 0.45)) {
+          repaired.push({ topic: derivedTopic, points: [point], source: 'unassigned_evidence_review' });
+          moved.push({ point, from: card.topic, to: derivedTopic });
+          continue;
+        }
+      }
+      if (states.length < 2) {
+        repaired[cardIndex].points.push(point);
+        continue;
+      }
+      const ranked = states.map((state) => ({ state, score: discussionPointEvidenceFitScore(point, state) }))
+        .sort((left, right) => right.score - left.score);
+      const best = ranked[0] || { state: null, score: 0 };
+      const runnerUp = ranked[1] || { score: 0 };
+      const currentScore = currentState ? discussionPointEvidenceFitScore(point, currentState) : 0;
+      if (best.state && best.score >= 0.28 && best.score - runnerUp.score >= 0.12 && best.state !== currentState && best.score >= currentScore + 0.12) {
+        const targetIndex = repaired.findIndex((candidate) => findWorkstreamStateForTopic([best.state], candidate.topic));
+        if (targetIndex >= 0) {
+          repaired[targetIndex].points.push(point);
+          moved.push({ point, from: card.topic, to: repaired[targetIndex].topic });
+          continue;
+        }
+      }
+      if (currentScore < 0.1 && best.score >= 0.22) {
+        dropped.push({ point, from: card.topic, competingWorkstream: best.state?.workstream || '' });
+        continue;
+      }
+      repaired[cardIndex].points.push(point);
+    }
+  }
+  return { cards: repaired.filter((card) => card.points.length), moved, dropped };
+}
+
 function discussionFallbackForWorkstreamState(state, topic = '') {
   if (!state || typeof state !== 'object') return null;
   const points = uniqueCleanDiscussionItems([
@@ -2872,7 +2972,7 @@ function discussionFallbackForWorkstreamState(state, topic = '') {
     ...(Array.isArray(state.nextSteps) ? state.nextSteps : []),
     ...(Array.isArray(state.evidence) ? state.evidence : [])
   ])
-    .filter((point) => discussionPointEvidenceFitScore(point, state) >= 0.12 || classifyStagedEvidenceRoles(point).includes('technical detail'))
+    .filter((point) => discussionPointEvidenceFitScore(point, state) >= 0.18)
     .slice(0, 6);
   if (!points.length) return null;
   return {
@@ -2913,21 +3013,45 @@ function alignDiscussionCardsToConfirmedTopics(cards, topics, transcript, meetin
   return aligned.slice(0, 8);
 }
 
+function buildStagedWorkstreamCoverage(topics = [], discussion = [], workstreamState = []) {
+  return (Array.isArray(topics) ? topics : []).map((topic) => {
+    const classification = classifyStagedTopic(topic);
+    const state = findWorkstreamStateForTopic(workstreamState, topic);
+    const card = findDiscussionCardForTopic(discussion, topic);
+    const evidenceCount = Array.isArray(state?.evidence) ? state.evidence.length : 0;
+    const pointCount = Array.isArray(card?.points) ? card.points.length : 0;
+    let status = classification === 'administrative_only' ? 'administrative' : 'missing';
+    if (status !== 'administrative' && pointCount >= 2) status = 'covered';
+    else if (status !== 'administrative' && pointCount === 1) status = 'thin';
+    return {
+      topic,
+      classification,
+      evidenceCount,
+      discussionCardCount: card ? 1 : 0,
+      assignedTurnIds: Array.isArray(state?.sourceTurnIndices) ? state.sourceTurnIndices : [],
+      status
+    };
+  });
+}
+
 function buildStagedDiscussionResponse(req, transcript, minilmContext = null) {
   const context = stagedContextFromRequest(req);
   const miniLmDiscussion = discussionFromStagedMiniLM(minilmContext);
-  const topics = context.overallTopics.length
+  const topicCandidates = context.overallTopics.length
     ? context.overallTopics
     : (topicsFromStagedMiniLM(minilmContext).length ? topicsFromStagedMiniLM(minilmContext) : extractOverallTopicsFromTranscript(transcript.text));
+  const topics = topicCandidates.map(cleanStagedGeneratedLine).filter((topic) => topic && !topicIsIncomplete(topic) && classifyStagedTopic(topic) !== 'administrative_only')
+    .filter((topic, index, all) => all.findIndex((candidate) => stagedTokenSimilarity(candidate, topic) >= 0.78) === index)
+    .slice(0, 8);
   const details = stagedDetailsWithConfirmedContext(req, transcript);
   const participants = context.participants.length ? context.participants : details.allAttendees;
   const meetingType = context.meetingType || details.meetingType || 'Project review';
   const confirmedWorkstreamState = minilmContext?.workstreamState || [];
   const evidenceFilteredDiscussion = filterDiscussionCardsByWorkstreamEvidence(miniLmDiscussion, confirmedWorkstreamState);
-  const droppedMisattributed = Array.isArray(evidenceFilteredDiscussion.droppedMisattributed)
+  const initiallyDroppedMisattributed = Array.isArray(evidenceFilteredDiscussion.droppedMisattributed)
     ? evidenceFilteredDiscussion.droppedMisattributed
     : [];
-  const rawDiscussion = context.overallTopics.length
+  const alignedDiscussion = context.overallTopics.length
     ? alignDiscussionCardsToConfirmedTopics(
       evidenceFilteredDiscussion,
       context.overallTopics,
@@ -2937,8 +3061,16 @@ function buildStagedDiscussionResponse(req, transcript, minilmContext = null) {
       confirmedWorkstreamState
     )
     : evidenceFilteredDiscussion;
+  const leakageRepair = repairDiscussionPointWorkstreamLeakage(alignedDiscussion, confirmedWorkstreamState);
+  const rawDiscussion = leakageRepair.cards;
+  const droppedMisattributed = [
+    ...initiallyDroppedMisattributed,
+    ...leakageRepair.moved.map((item) => ({ topic: item.from, droppedPointCount: 1, reason: `reassigned_to:${item.to}` })),
+    ...leakageRepair.dropped.map((item) => ({ topic: item.from, droppedPointCount: 1, reason: 'wrong_section_leakage' }))
+  ];
   const discussionCompaction = compactStagedDiscussionCards(rawDiscussion, { pointLimit: 4 });
   const discussion = reshapeStagedDiscussionCardsForHumanMinutes(discussionCompaction.cards, { pointLimit: 6, processDetailPointLimit: 8 });
+  const workstreamCoverage = buildStagedWorkstreamCoverage(topics, discussion, confirmedWorkstreamState);
   const output = stagedMiniLMOutput(minilmContext);
   const executiveSummaryFromFindings = cleanStagedExecutiveSummary(
     output.executiveSummaryFromFindings || output.summaryFromFindings || output.executiveSummary || ''
@@ -2960,6 +3092,25 @@ function buildStagedDiscussionResponse(req, transcript, minilmContext = null) {
     droppedDuplicates,
     droppedMisattributed
   });
+  for (const coverage of workstreamCoverage) {
+    if (!['missing', 'thin'].includes(coverage.status)) continue;
+    validationFlags.push({
+      type: coverage.status === 'missing' ? 'unresolved_substantive_workstream' : 'thin_substantive_workstream',
+      severity: 'warning',
+      blocking: coverage.status === 'missing',
+      resolutionKey: `workstream:${normaliseTopicKey(coverage.topic)}`,
+      message: coverage.status === 'missing'
+        ? `"${coverage.topic}" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.`
+        : `"${coverage.topic}" has only one retained discussion point. Review whether more evidence is needed.`,
+      discussionSuggestion: coverage.status === 'missing' && Array.isArray(confirmedWorkstreamState)
+        ? (() => {
+            const state = findWorkstreamStateForTopic(confirmedWorkstreamState, coverage.topic);
+            const point = discussionFallbackForWorkstreamState(state, coverage.topic)?.points?.[0] || '';
+            return point ? { topic: coverage.topic, point, source: 'workstream_evidence' } : null;
+          })()
+        : null
+    });
+  }
 
   return {
     ok: true,
@@ -2970,6 +3121,7 @@ function buildStagedDiscussionResponse(req, transcript, minilmContext = null) {
     stagedStage: 'discussion',
     screens,
     validationFlags,
+    workstreamCoverage,
     contextUsed: {
       meetingType,
       participantCount: participants.length,
@@ -2980,6 +3132,7 @@ function buildStagedDiscussionResponse(req, transcript, minilmContext = null) {
       topicCount: topics.length,
       discussionCards: discussion.length,
       droppedMisattributedDiscussionPoints: droppedMisattributed.length,
+      workstreamCoverage,
       transcriptLength: transcript.text.length,
       embeddingClassifier: stagedMiniLMTelemetry(minilmContext),
       discussionCompaction: discussionCompaction.telemetry
@@ -3020,15 +3173,32 @@ function buildStagedActionsResponse(req, transcript, minilmContext = null, recov
   const groundedTranscriptText = String(recoveryTranscriptText || transcript.text || '');
   const actionInventory = buildStagedActionInventory(groundedTranscriptText);
   const sourceActions = polishStagedActions([...evidenceActions, ...stagedActions, ...actionInventory]);
-  const actions = mergePreservedStagedActions(sourceActions.length
+  const mergedActions = mergePreservedStagedActions(sourceActions.length
     ? sourceActions
     : extractActionCandidatesFromTranscript(groundedTranscriptText), groundedTranscriptText);
+  const details = stagedDetailsWithConfirmedContext(req, transcript);
+  const participants = uniqueNames([
+    ...(Array.isArray(details.allAttendees) ? details.allAttendees : []),
+    ...extractTeamsSpeakerNames(groundedTranscriptText)
+  ]);
+  const ownerValidationFlags = [];
+  const actions = mergedActions.map((item) => {
+    const validation = normaliseAndValidateActionOwner(item.owner, participants);
+    if (!['accepted', 'repaired_unambiguous'].includes(validation.status)) {
+      ownerValidationFlags.push({
+        type: 'uncertain_action_owner',
+        severity: 'warning',
+        message: `Changed unsupported action owner "${item.owner}" to Not stated. Confirm the owner against the transcript.`
+      });
+    }
+    return { owner: validation.owner, action: item.action, deadline: item.deadline || 'Not stated', ...(item.source ? { source: item.source } : {}) };
+  });
   const reviewContext = stagedReviewContextFromRequest(req);
-  const validationFlags = buildStagedValidationFlags({
+  const validationFlags = [...buildStagedValidationFlags({
     objectives: reviewContext.objectives,
     discussion: reviewContext.discussion,
     actions
-  });
+  }), ...ownerValidationFlags];
 
   return {
     ok: true,
@@ -3172,9 +3342,10 @@ function stagedEvaluationVisibleOutput(state = {}) {
         .map((point) => `${topic}: ${cleanStagedDiscussionText(point)}`)
         .filter((point) => point && !point.endsWith(': '));
     }),
-    decisions: discussion
-      .map((card) => cleanStagedDiscussionText(card?.decisionOrAgreement || ''))
-      .filter(Boolean),
+    decisions: discussion.flatMap((card) => uniqueCleanDiscussionItems([
+      card?.decisionOrAgreement || '',
+      ...(Array.isArray(card?.points) ? card.points.filter((point) => hasStagedDecisionEvidence(point)) : [])
+    ])).filter(Boolean),
     actions: actions.map((item) => ({
       meetingActionPointOwner: item?.owner || 'Not stated',
       meetingActionPoint: item?.action || '',

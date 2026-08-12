@@ -13,8 +13,17 @@ const {
   finaliseDiscussionPointForMinutes,
   buildStagedValidationFlags,
   stagedFinalActionQualityIssue,
-  normaliseFinalStagedActionCandidate
+  normaliseFinalStagedActionCandidate,
+  normaliseAndValidateActionOwner
 } = require('../utils/stagedEditorial');
+
+test('action owners must resolve to a transcript participant', () => {
+  const participants = ['Rebecca Gill', 'Andrew Kane'];
+  assert.deepEqual(normaliseAndValidateActionOwner("It's", participants), { owner: 'Not stated', status: 'rejected_fragment' });
+  assert.deepEqual(normaliseAndValidateActionOwner('Rebecca Cuckoo', participants), { owner: 'Not stated', status: 'not_participant' });
+  assert.deepEqual(normaliseAndValidateActionOwner('Andrew', participants), { owner: 'Andrew Kane', status: 'repaired_unambiguous' });
+  assert.deepEqual(normaliseAndValidateActionOwner('Not stated', participants), { owner: 'Not stated', status: 'accepted' });
+});
 
 test('isMalformedStagedLine catches the "Potential The ..." transcription-noise pattern', () => {
   assert.equal(
@@ -39,8 +48,9 @@ test('buildTightStagedObjectives replaces boilerplate with topic-specific object
   assert.deepEqual(result.objectives, [
     'Confirm regulatory standards and compliance (21 CFRs, MDR, ISOs)',
     'Review software management system deep dive',
-    'Agree hotel and participant arrangements and audit timeline and preparation schedule'
+    'Agree audit timeline and preparation schedule and site access and documentation sharing'
   ]);
+  assert.ok(result.objectives.every((objective) => !/hotel|participant arrangements/i.test(objective)));
   assert.equal(result.telemetry.objectiveSource, 'topic_objective_reducer');
 });
 
@@ -265,6 +275,12 @@ test('client-clean discussion filtering is topic-agnostic and preserves formal m
 test('isMalformedStagedLine catches other dangling qualifiers and glued clauses', () => {
   assert.equal(isMalformedStagedLine('Possible This is a risk to the timeline'), true);
   assert.equal(isMalformedStagedLine('the plan was agreed They will review it next week'), true);
+});
+
+test('isMalformedStagedLine rejects browser-observed QMS transcript fragments', () => {
+  assert.equal(isMalformedStagedLine('From directly from the supplier in Japan, and there is a buy-sell.'), true);
+  assert.equal(isMalformedStagedLine("It's minimal impact to the organization when these are rolled out."), true);
+  assert.equal(isMalformedStagedLine('The QMS procedures reflect the applicable regulatory requirements.'), false);
 });
 
 test('isMalformedStagedLine leaves clean minutes untouched', () => {

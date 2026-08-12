@@ -136,7 +136,8 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("Arrange a catch-up meeting", api)
         self.assertIn("Do not turn completed work, general intentions, ongoing workstreams or open points into actions", api)
         self.assertIn("const stagedActions = actionsFromStagedMiniLM", api)
-        self.assertIn("const actions = mergePreservedStagedActions", api)
+        self.assertIn("const mergedActions = mergePreservedStagedActions", api)
+        self.assertIn("normaliseAndValidateActionOwner", api)
         self.assertIn("polishStagedDiscussionCards(cards)", api)
         self.assertIn("stagedDiscussionPointSimilarity", api)
         self.assertIn("stagedDiscussionNeedsRetry", api)
@@ -228,15 +229,16 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("def normalise_action_owner", trooper)
         self.assertIn('use "All" as the owner', trooper)
 
-    def test_staged_actions_enrich_deadlines_from_grounded_transcript_windows(self):
+    def test_staged_actions_keep_deadlines_bound_to_source_evidence(self):
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+        recovery = (REPO_DIR / "utils" / "stagedActionRecovery.js").read_text(encoding="utf-8")
 
         self.assertIn("function enrichStagedActionDeadlinesFromTranscript", api)
-        self.assertIn("function inferredDeadlineForStagedAction", api)
-        self.assertIn("function stagedDeadlineEvidenceWindows", api)
-        self.assertIn("overlap >= 3", api)
-        self.assertIn("function stagedDeadlineIsSupportedByActionEvidence", api)
-        self.assertIn("before (?:the )?(?:audit|site visit|next review|client call|meeting)", api)
+        self.assertIn("const evidence = String(item?.evidence", api)
+        self.assertIn("parseDeadlineEvidence(evidence)", api)
+        self.assertIn("sourceTurnIds", recovery)
+        self.assertIn("function parseDeadlineEvidence", recovery)
+        self.assertIn("end of (?:the|next)", recovery)
         self.assertIn("return enrichStagedActionDeadlinesFromTranscript([...merged, ...preserved], transcriptText);", api)
 
     def test_staged_eval_replays_real_stage_builders_and_keeps_raw_recovery_text(self):
