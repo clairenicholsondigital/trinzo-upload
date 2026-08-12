@@ -1,0 +1,37 @@
+{
+  "meeting_type": "",
+  "attendees": [
+    "Amina Yusuf",
+    "Rob Chen",
+    "George Bell",
+    "Keira Long"
+  ],
+  "client_attendees": [],
+  "actions": [
+    {
+      "owner": "George Bell",
+      "action": "Publish the status page",
+      "deadline": "at nine thirty Thursday",
+      "due_evidence": "at nine thirty Thursday"
+    },
+    {
+      "owner": "Keira Long",
+      "action": "Watch the error dashboard for the first hour and alert Amina if it crosses two per cent",
+      "deadline": "Not stated",
+      "due_evidence": "Not stated"
+    },
+    {
+      "owner": "George Bell",
+      "action": "Send Susan the launch confirmation",
+      "deadline": "today",
+      "due_evidence": "today"
+    }
+  ],
+  "decisions": [
+    "Launch Thursday at ten",
+    "Yes, I'll send Susan the launch confirmation today"
+  ],
+  "risks": [
+    "Launch error rate may exceed the two per cent pause threshold"
+  ]
+}

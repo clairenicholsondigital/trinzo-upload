@@ -1,0 +1,34 @@
+{
+  "meeting_type": "",
+  "attendees": [
+    "Elaine Voss",
+    "Martin Okoro",
+    "Sana Iqbal"
+  ],
+  "client_attendees": [],
+  "actions": [],
+  "decisions": [
+    "I confirmed the labelling change with the team and it's in",
+    "Yeah, agreed, approve it",
+    "The validation report for release",
+    "Agreed, no need",
+    "Do not carry out a further round of testing",
+    "So the residual risk there is low, and we'd already agreed it's acceptable, so we're just formally accepting it, there's nothing to action",
+    "The residual risk on the temperature excursion",
+    "That's confirmed, the paperwork's already signed",
+    "Good, so that's a closed decision, supplier B, and there's nothing left to do on it",
+    "Yes, that's a watch item, agreed, but no action, we just monitor it as normal",
+    "Okay, so we've approved the report, accepted the residual risk, confirmed supplier B, and there's nothing for anyone to go away and do",
+    "Agreed, approve it",
+    "So decision, we accept the residual risk on the temperature excursion",
+    "So we've approved the report, accepted the residual risk, confirmed supplier B, and there's nothing for anyone to go away and do"
+  ],
+  "risks": [
+    "Residual temperature-excursion risk is accepted and documented",
+    "Yes, that's a watch item, agreed, but no action, we just monitor it as normal",
+    "Next, the temperature excursion thing on the residual risk register.",
+    "The residual risk there is low, and the team'd already agreed it's acceptable, so the team're just formally accepting it, there's nothing to action.",
+    "So decision, the team accept the residual risk on the temperature excursion.",
+    "So the team has approved the report, accepted the residual risk, confirmed supplier B, and there's nothing for anyone to go away and do."
+  ]
+}

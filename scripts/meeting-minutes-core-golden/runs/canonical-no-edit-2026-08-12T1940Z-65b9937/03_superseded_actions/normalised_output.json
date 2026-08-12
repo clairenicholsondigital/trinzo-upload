@@ -1,0 +1,34 @@
+{
+  "meeting_type": "",
+  "attendees": [
+    "Helen Ward",
+    "Omar Khan",
+    "Lucy Price"
+  ],
+  "client_attendees": [],
+  "actions": [
+    {
+      "owner": "Lucy Price",
+      "action": "Draft and send the release note by",
+      "deadline": "Wednesday morning",
+      "due_evidence": "Wednesday morning"
+    },
+    {
+      "owner": "Omar Khan",
+      "action": "Draft it ?",
+      "deadline": "Tuesday",
+      "due_evidence": "Tuesday"
+    },
+    {
+      "owner": "Lucy Price",
+      "action": "Take the release note instead and send it",
+      "deadline": "Wednesday morning",
+      "due_evidence": "Wednesday morning"
+    }
+  ],
+  "decisions": [
+    "I'll take the release note instead and send it by Wednesday morning",
+    "Keep the release scheduled for Friday, provided Lucy's note is ready"
+  ],
+  "risks": []
+}

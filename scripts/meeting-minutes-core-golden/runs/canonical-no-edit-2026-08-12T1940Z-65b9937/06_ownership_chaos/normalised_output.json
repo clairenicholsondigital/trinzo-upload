@@ -1,0 +1,50 @@
+{
+  "meeting_type": "",
+  "attendees": [
+    "Chloe Green",
+    "Dan Wu",
+    "Marta Silva",
+    "Neil Foster"
+  ],
+  "client_attendees": [],
+  "actions": [
+    {
+      "owner": "Marta Silva",
+      "action": "Call the venue",
+      "deadline": "today",
+      "due_evidence": "today"
+    },
+    {
+      "owner": "Dan Wu",
+      "action": "Update the run sheet after I confirm access?",
+      "deadline": "Not stated",
+      "due_evidence": "Not stated"
+    },
+    {
+      "owner": "Dan Wu",
+      "action": "Update the run sheet once Marta confirms",
+      "deadline": "tomorrow morning",
+      "due_evidence": "tomorrow morning"
+    },
+    {
+      "owner": "Neil Foster",
+      "action": "Send both of you the latest attendee count by",
+      "deadline": "four today",
+      "due_evidence": "four today"
+    },
+    {
+      "owner": "Dan Wu",
+      "action": "Sort it",
+      "deadline": "Not stated",
+      "due_evidence": "Not stated"
+    },
+    {
+      "owner": "Neil Foster",
+      "action": "Send both of you the latest attendee count",
+      "deadline": "four today",
+      "due_evidence": "four today"
+    }
+  ],
+  "decisions": [],
+  "risks": []
+}

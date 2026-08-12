@@ -1,0 +1,32 @@
+{
+  "meeting_type": "",
+  "attendees": [
+    "Imogen Hart",
+    "Ravi Shah",
+    "Peter Doyle"
+  ],
+  "client_attendees": [],
+  "actions": [
+    {
+      "owner": "Ravi Shah",
+      "action": "Request the renewal quote by",
+      "deadline": "Friday",
+      "due_evidence": "Friday"
+    },
+    {
+      "owner": "Ravi Shah",
+      "action": "Request the renewal quote",
+      "deadline": "Friday",
+      "due_evidence": "Friday"
+    }
+  ],
+  "decisions": [
+    "I'd recommend exploring Matomo, but we haven't approved a migration",
+    "The current platform",
+    "I'll request the renewal quote by Friday",
+    "Stay with the current platform"
+  ],
+  "risks": [
+    "A future licence-price increase could prompt a platform review"
+  ]
+}
