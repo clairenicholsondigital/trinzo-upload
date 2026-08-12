@@ -6,7 +6,7 @@ const fs = require('fs');
 const os = require('os');
 
 function evidencePayload(evidence) {
-  return { events: evidence.events.map(({ id, turnId, turnIndex, speaker, text }) => ({ id, turnId, turnIndex, speaker, text })) };
+  return { events: evidence.events.map(({ id, turnId, turnIndex, speaker, text, previousText, nextText, contextText }) => ({ id, turnId, turnIndex, speaker, text, previousText, nextText, contextText })) };
 }
 
 function loadMiniLMProfileSync(evidence, options = {}) {

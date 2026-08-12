@@ -79,6 +79,11 @@ function prepareEvidence(transcriptText) {
       structuredSource: turn.structuredSource || null
     }));
   }
+  events.forEach((event, index) => {
+    event.previousText = index > 0 ? events[index - 1].text : '';
+    event.nextText = index + 1 < events.length ? events[index + 1].text : '';
+    event.contextText = `[PREVIOUS]\n${event.previousText}\n[CURRENT]\n${event.text}\n[NEXT]\n${event.nextText}`;
+  });
   return { turns, participants, events };
 }
 

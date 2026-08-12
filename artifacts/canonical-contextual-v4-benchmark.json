@@ -1,0 +1,893 @@
+{
+  "baseline": {
+    "totals": {
+      "expected": {
+        "actions": 26,
+        "decisions": 14,
+        "risks": 11
+      },
+      "actual": {
+        "actions": 48,
+        "decisions": 35,
+        "risks": 16
+      },
+      "matched": {
+        "actions": 25,
+        "decisions": 11,
+        "risks": 9
+      },
+      "extras": {
+        "actions": 23,
+        "decisions": 24,
+        "risks": 7
+      },
+      "missing": {
+        "actions": 1,
+        "decisions": 3,
+        "risks": 2
+      },
+      "deadlineMatches": 18,
+      "canonicalRecall": 0.8824,
+      "canonicalPrecision": 0.4545
+    },
+    "cases": {
+      "01_explicit_action_recap": {
+        "expected": {
+          "actions": 8,
+          "decisions": 3,
+          "risks": 4
+        },
+        "actual": {
+          "actions": 14,
+          "decisions": 4,
+          "risks": 3
+        },
+        "matched": {
+          "actions": 8,
+          "decisions": 2,
+          "risks": 3
+        },
+        "extras": {
+          "actions": 6,
+          "decisions": 2,
+          "risks": 0
+        },
+        "missing": {
+          "actions": 0,
+          "decisions": 1,
+          "risks": 1
+        },
+        "deadlineMatches": 4,
+        "extraActionRows": [
+          {
+            "owner": "Callum Reid",
+            "action": "Putting the animation back on the three-things slide",
+            "deadline": "Not stated"
+          },
+          {
+            "owner": "Callum Reid",
+            "action": "Building the closing slide with the QR code and the link",
+            "deadline": "Not stated"
+          },
+          {
+            "owner": "Nadia Okonkwo",
+            "action": "Doing the planted questions and grouping the chat on the day",
+            "deadline": "Not stated"
+          },
+          {
+            "owner": "Tom Whitfield",
+            "action": "Find that little clock top right",
+            "deadline": "Not stated"
+          },
+          {
+            "owner": "Nadia Okonkwo",
+            "action": "Still message you at five minutes",
+            "deadline": "Not stated"
+          },
+          {
+            "owner": "Priya Sethi",
+            "action": "The open, the housekeeping, tap-the-speech-bubble line, and covering any dead air on the handovers",
+            "deadline": "Not stated"
+          }
+        ],
+        "extraDecisionRows": [
+          "Agreed, yeah",
+          "Just the open and the first handover, we don't need the whole thing again"
+        ]
+      },
+      "02_scattered_actions": {
+        "expected": {
+          "actions": 4,
+          "decisions": 1,
+          "risks": 1
+        },
+        "actual": {
+          "actions": 7,
+          "decisions": 3,
+          "risks": 2
+        },
+        "matched": {
+          "actions": 3,
+          "decisions": 1,
+          "risks": 1
+        },
+        "extras": {
+          "actions": 4,
+          "decisions": 2,
+          "risks": 1
+        },
+        "missing": {
+          "actions": 1,
+          "decisions": 0,
+          "risks": 0
+        },
+        "deadlineMatches": 2,
+        "extraActionRows": [
+          {
+            "owner": "Fern Whitlock",
+            "action": "Ring the hosting people and get the SSL renewed, they can do it same day usually",
+            "deadline": "tomorrow morning"
+          },
+          {
+            "owner": "Aisha Rahman",
+            "action": "Sort it after",
+            "deadline": "lunch"
+          },
+          {
+            "owner": "Marcus Bell",
+            "action": "Get the revised quote over to Bellamy's , I just need to run the figures past, past *** first",
+            "deadline": "end of play Thursday"
+          },
+          {
+            "owner": "Marcus Bell",
+            "action": "Sort it",
+            "deadline": "Not stated"
+          }
+        ],
+        "extraDecisionRows": [
+          "Agreed, the dropdown",
+          "Option B, the simple dropdown"
+        ]
+      },
+      "03_superseded_actions": {
+        "expected": {
+          "actions": 1,
+          "decisions": 1,
+          "risks": 0
+        },
+        "actual": {
+          "actions": 3,
+          "decisions": 2,
+          "risks": 0
+        },
+        "matched": {
+          "actions": 1,
+          "decisions": 1,
+          "risks": 0
+        },
+        "extras": {
+          "actions": 2,
+          "decisions": 1,
+          "risks": 0
+        },
+        "missing": {
+          "actions": 0,
+          "decisions": 0,
+          "risks": 0
+        },
+        "deadlineMatches": 1,
+        "extraActionRows": [
+          {
+            "owner": "Omar Khan",
+            "action": "Draft it ?",
+            "deadline": "Tuesday"
+          },
+          {
+            "owner": "Lucy Price",
+            "action": "Take the release note instead and send it",
+            "deadline": "Wednesday morning"
+          }
+        ],
+        "extraDecisionRows": [
+          "I'll take the release note instead and send it by Wednesday morning"
+        ]
+      },
+      "04_completed_vs_outstanding": {
+        "expected": {
+          "actions": 1,
+          "decisions": 1,
+          "risks": 0
+        },
+        "actual": {
+          "actions": 2,
+          "decisions": 3,
+          "risks": 0
+        },
+        "matched": {
+          "actions": 1,
+          "decisions": 1,
+          "risks": 0
+        },
+        "extras": {
+          "actions": 1,
+          "decisions": 2,
+          "risks": 0
+        },
+        "missing": {
+          "actions": 0,
+          "decisions": 0,
+          "risks": 0
+        },
+        "deadlineMatches": 1,
+        "extraActionRows": [
+          {
+            "owner": "Ben Morris",
+            "action": "Upload the signed response to the controlled folder by",
+            "deadline": "close tomorrow"
+          }
+        ],
+        "extraDecisionRows": [
+          "Agreed, I'll do that by close tomorrow",
+          "Decision: the supplier remains approved"
+        ]
+      },
+      "05_hypothetical_language": {
+        "expected": {
+          "actions": 1,
+          "decisions": 1,
+          "risks": 1
+        },
+        "actual": {
+          "actions": 2,
+          "decisions": 4,
+          "risks": 1
+        },
+        "matched": {
+          "actions": 1,
+          "decisions": 1,
+          "risks": 1
+        },
+        "extras": {
+          "actions": 1,
+          "decisions": 3,
+          "risks": 0
+        },
+        "missing": {
+          "actions": 0,
+          "decisions": 0,
+          "risks": 0
+        },
+        "deadlineMatches": 1,
+        "extraActionRows": [
+          {
+            "owner": "Ravi Shah",
+            "action": "Request the renewal quote by",
+            "deadline": "Friday"
+          }
+        ],
+        "extraDecisionRows": [
+          "I'd recommend exploring Matomo, but we haven't approved a migration",
+          "The current platform",
+          "I'll request the renewal quote by Friday"
+        ]
+      },
+      "06_ownership_chaos": {
+        "expected": {
+          "actions": 3,
+          "decisions": 0,
+          "risks": 0
+        },
+        "actual": {
+          "actions": 6,
+          "decisions": 0,
+          "risks": 0
+        },
+        "matched": {
+          "actions": 3,
+          "decisions": 0,
+          "risks": 0
+        },
+        "extras": {
+          "actions": 3,
+          "decisions": 0,
+          "risks": 0
+        },
+        "missing": {
+          "actions": 0,
+          "decisions": 0,
+          "risks": 0
+        },
+        "deadlineMatches": 3,
+        "extraActionRows": [
+          {
+            "owner": "Dan Wu",
+            "action": "Update the run sheet after I confirm access?",
+            "deadline": "Not stated"
+          },
+          {
+            "owner": "Neil Foster",
+            "action": "Send both of you the latest attendee count by",
+            "deadline": "four today"
+          },
+          {
+            "owner": "Dan Wu",
+            "action": "Sort it",
+            "deadline": "Not stated"
+          }
+        ],
+        "extraDecisionRows": []
+      },
+      "07_deadline_torture": {
+        "expected": {
+          "actions": 3,
+          "decisions": 0,
+          "risks": 1
+        },
+        "actual": {
+          "actions": 5,
+          "decisions": 1,
+          "risks": 1
+        },
+        "matched": {
+          "actions": 3,
+          "decisions": 0,
+          "risks": 1
+        },
+        "extras": {
+          "actions": 2,
+          "decisions": 1,
+          "risks": 0
+        },
+        "missing": {
+          "actions": 0,
+          "decisions": 0,
+          "risks": 0
+        },
+        "deadlineMatches": 3,
+        "extraActionRows": [
+          {
+            "owner": "Kate Evans",
+            "action": "Review it",
+            "deadline": "within two working days of receiving it"
+          },
+          {
+            "owner": "Grace Lin",
+            "action": "Submit it",
+            "deadline": "the next working day after Kate's approval"
+          }
+        ],
+        "extraDecisionRows": [
+          "Agreed, Thursday close"
+        ]
+      },
+      "08_attendee_provenance": {
+        "expected": {
+          "actions": 2,
+          "decisions": 1,
+          "risks": 1
+        },
+        "actual": {
+          "actions": 6,
+          "decisions": 2,
+          "risks": 2
+        },
+        "matched": {
+          "actions": 2,
+          "decisions": 1,
+          "risks": 1
+        },
+        "extras": {
+          "actions": 4,
+          "decisions": 1,
+          "risks": 1
+        },
+        "missing": {
+          "actions": 0,
+          "decisions": 0,
+          "risks": 0
+        },
+        "deadlineMatches": 2,
+        "extraActionRows": [
+          {
+            "owner": "Raj Patel",
+            "action": "Send the artwork proofs to Kettleby Print by",
+            "deadline": "Wednesday"
+          },
+          {
+            "owner": "Raj Patel",
+            "action": "Get the artwork proofs over to Kettleby ?",
+            "deadline": "Wednesday"
+          },
+          {
+            "owner": "Gemma Ashworth",
+            "action": "Reply to Marguerite and tell her the realistic date is the twentieth, not the fifteenth, and manage her expectations",
+            "deadline": "today"
+          },
+          {
+            "owner": "Gemma Ashworth",
+            "action": "Square Marguerite off today",
+            "deadline": "Wednesday"
+          }
+        ],
+        "extraDecisionRows": [
+          "We're deciding, we move the launch to the twentieth"
+        ]
+      },
+      "09_no_action_meeting": {
+        "expected": {
+          "actions": 0,
+          "decisions": 4,
+          "risks": 2
+        },
+        "actual": {
+          "actions": 0,
+          "decisions": 14,
+          "risks": 6
+        },
+        "matched": {
+          "actions": 0,
+          "decisions": 3,
+          "risks": 1
+        },
+        "extras": {
+          "actions": 0,
+          "decisions": 11,
+          "risks": 5
+        },
+        "missing": {
+          "actions": 0,
+          "decisions": 1,
+          "risks": 1
+        },
+        "deadlineMatches": 0,
+        "extraActionRows": [],
+        "extraDecisionRows": [
+          "I confirmed the labelling change with the team and it's in",
+          "Yeah, agreed, approve it",
+          "Agreed, no need",
+          "So the residual risk there is low, and we'd already agreed it's acceptable, so we're just formally accepting it, there's nothing to action",
+          "That's confirmed, the paperwork's already signed",
+          "Good, so that's a closed decision, supplier B, and there's nothing left to do on it",
+          "Yes, that's a watch item, agreed, but no action, we just monitor it as normal",
+          "Okay, so we've approved the report, accepted the residual risk, confirmed supplier B, and there's nothing for anyone to go away and do",
+          "Agreed, approve it",
+          "So decision, we accept the residual risk on the temperature excursion",
+          "So we've approved the report, accepted the residual risk, confirmed supplier B, and there's nothing for anyone to go away and do"
+        ]
+      },
+      "10_chaos_goblin": {
+        "expected": {
+          "actions": 3,
+          "decisions": 2,
+          "risks": 1
+        },
+        "actual": {
+          "actions": 3,
+          "decisions": 2,
+          "risks": 1
+        },
+        "matched": {
+          "actions": 3,
+          "decisions": 1,
+          "risks": 1
+        },
+        "extras": {
+          "actions": 0,
+          "decisions": 1,
+          "risks": 0
+        },
+        "missing": {
+          "actions": 0,
+          "decisions": 1,
+          "risks": 0
+        },
+        "deadlineMatches": 1,
+        "extraActionRows": [],
+        "extraDecisionRows": [
+          "Yes, I'll send Susan the launch confirmation today"
+        ]
+      }
+    }
+  },
+  "enriched": {
+    "totals": {
+      "expected": {
+        "actions": 26,
+        "decisions": 14,
+        "risks": 11
+      },
+      "actual": {
+        "actions": 34,
+        "decisions": 23,
+        "risks": 16
+      },
+      "matched": {
+        "actions": 25,
+        "decisions": 10,
+        "risks": 9
+      },
+      "extras": {
+        "actions": 9,
+        "decisions": 13,
+        "risks": 7
+      },
+      "missing": {
+        "actions": 1,
+        "decisions": 4,
+        "risks": 2
+      },
+      "deadlineMatches": 18,
+      "canonicalRecall": 0.8627,
+      "canonicalPrecision": 0.6027
+    },
+    "cases": {
+      "01_explicit_action_recap": {
+        "expected": {
+          "actions": 8,
+          "decisions": 3,
+          "risks": 4
+        },
+        "actual": {
+          "actions": 11,
+          "decisions": 4,
+          "risks": 3
+        },
+        "matched": {
+          "actions": 8,
+          "decisions": 2,
+          "risks": 3
+        },
+        "extras": {
+          "actions": 3,
+          "decisions": 2,
+          "risks": 0
+        },
+        "missing": {
+          "actions": 0,
+          "decisions": 1,
+          "risks": 1
+        },
+        "deadlineMatches": 4,
+        "extraActionRows": [
+          {
+            "owner": "Nadia Okonkwo",
+            "action": "Doing the planted questions and grouping the chat on the day",
+            "deadline": "Not stated"
+          },
+          {
+            "owner": "Tom Whitfield",
+            "action": "Find that little clock top right",
+            "deadline": "Not stated"
+          },
+          {
+            "owner": "Nadia Okonkwo",
+            "action": "Still message you at five minutes",
+            "deadline": "Not stated"
+          }
+        ],
+        "extraDecisionRows": [
+          "Agreed, yeah",
+          "Just the open and the first handover, we don't need the whole thing again"
+        ]
+      },
+      "02_scattered_actions": {
+        "expected": {
+          "actions": 4,
+          "decisions": 1,
+          "risks": 1
+        },
+        "actual": {
+          "actions": 6,
+          "decisions": 1,
+          "risks": 2
+        },
+        "matched": {
+          "actions": 3,
+          "decisions": 1,
+          "risks": 1
+        },
+        "extras": {
+          "actions": 3,
+          "decisions": 0,
+          "risks": 1
+        },
+        "missing": {
+          "actions": 1,
+          "decisions": 0,
+          "risks": 0
+        },
+        "deadlineMatches": 2,
+        "extraActionRows": [
+          {
+            "owner": "Fern Whitlock",
+            "action": "Ring the hosting people and get the SSL renewed, they can do it same day usually",
+            "deadline": "tomorrow morning"
+          },
+          {
+            "owner": "Aisha Rahman",
+            "action": "Sort it after",
+            "deadline": "lunch"
+          },
+          {
+            "owner": "Marcus Bell",
+            "action": "Sort it",
+            "deadline": "Thursday"
+          }
+        ],
+        "extraDecisionRows": []
+      },
+      "03_superseded_actions": {
+        "expected": {
+          "actions": 1,
+          "decisions": 1,
+          "risks": 0
+        },
+        "actual": {
+          "actions": 1,
+          "decisions": 1,
+          "risks": 0
+        },
+        "matched": {
+          "actions": 1,
+          "decisions": 1,
+          "risks": 0
+        },
+        "extras": {
+          "actions": 0,
+          "decisions": 0,
+          "risks": 0
+        },
+        "missing": {
+          "actions": 0,
+          "decisions": 0,
+          "risks": 0
+        },
+        "deadlineMatches": 1,
+        "extraActionRows": [],
+        "extraDecisionRows": []
+      },
+      "04_completed_vs_outstanding": {
+        "expected": {
+          "actions": 1,
+          "decisions": 1,
+          "risks": 0
+        },
+        "actual": {
+          "actions": 1,
+          "decisions": 1,
+          "risks": 0
+        },
+        "matched": {
+          "actions": 1,
+          "decisions": 1,
+          "risks": 0
+        },
+        "extras": {
+          "actions": 0,
+          "decisions": 0,
+          "risks": 0
+        },
+        "missing": {
+          "actions": 0,
+          "decisions": 0,
+          "risks": 0
+        },
+        "deadlineMatches": 1,
+        "extraActionRows": [],
+        "extraDecisionRows": []
+      },
+      "05_hypothetical_language": {
+        "expected": {
+          "actions": 1,
+          "decisions": 1,
+          "risks": 1
+        },
+        "actual": {
+          "actions": 1,
+          "decisions": 2,
+          "risks": 1
+        },
+        "matched": {
+          "actions": 1,
+          "decisions": 1,
+          "risks": 1
+        },
+        "extras": {
+          "actions": 0,
+          "decisions": 1,
+          "risks": 0
+        },
+        "missing": {
+          "actions": 0,
+          "decisions": 0,
+          "risks": 0
+        },
+        "deadlineMatches": 1,
+        "extraActionRows": [],
+        "extraDecisionRows": [
+          "I'd recommend exploring Matomo, but we haven't approved a migration"
+        ]
+      },
+      "06_ownership_chaos": {
+        "expected": {
+          "actions": 3,
+          "decisions": 0,
+          "risks": 0
+        },
+        "actual": {
+          "actions": 4,
+          "decisions": 0,
+          "risks": 0
+        },
+        "matched": {
+          "actions": 3,
+          "decisions": 0,
+          "risks": 0
+        },
+        "extras": {
+          "actions": 1,
+          "decisions": 0,
+          "risks": 0
+        },
+        "missing": {
+          "actions": 0,
+          "decisions": 0,
+          "risks": 0
+        },
+        "deadlineMatches": 3,
+        "extraActionRows": [
+          {
+            "owner": "Dan Wu",
+            "action": "Sort it",
+            "deadline": "today"
+          }
+        ],
+        "extraDecisionRows": []
+      },
+      "07_deadline_torture": {
+        "expected": {
+          "actions": 3,
+          "decisions": 0,
+          "risks": 1
+        },
+        "actual": {
+          "actions": 3,
+          "decisions": 1,
+          "risks": 1
+        },
+        "matched": {
+          "actions": 3,
+          "decisions": 0,
+          "risks": 1
+        },
+        "extras": {
+          "actions": 0,
+          "decisions": 1,
+          "risks": 0
+        },
+        "missing": {
+          "actions": 0,
+          "decisions": 0,
+          "risks": 0
+        },
+        "deadlineMatches": 3,
+        "extraActionRows": [],
+        "extraDecisionRows": [
+          "Agreed, Thursday close"
+        ]
+      },
+      "08_attendee_provenance": {
+        "expected": {
+          "actions": 2,
+          "decisions": 1,
+          "risks": 1
+        },
+        "actual": {
+          "actions": 4,
+          "decisions": 1,
+          "risks": 2
+        },
+        "matched": {
+          "actions": 2,
+          "decisions": 0,
+          "risks": 1
+        },
+        "extras": {
+          "actions": 2,
+          "decisions": 1,
+          "risks": 1
+        },
+        "missing": {
+          "actions": 0,
+          "decisions": 1,
+          "risks": 0
+        },
+        "deadlineMatches": 2,
+        "extraActionRows": [
+          {
+            "owner": "Gemma Ashworth",
+            "action": "Reply to Marguerite and tell her the realistic date is the twentieth, not the fifteenth, and manage her expectations",
+            "deadline": "today"
+          },
+          {
+            "owner": "Gemma Ashworth",
+            "action": "Square Marguerite off today",
+            "deadline": "Wednesday"
+          }
+        ],
+        "extraDecisionRows": [
+          "We're deciding, we move the launch to the twentieth"
+        ]
+      },
+      "09_no_action_meeting": {
+        "expected": {
+          "actions": 0,
+          "decisions": 4,
+          "risks": 2
+        },
+        "actual": {
+          "actions": 0,
+          "decisions": 11,
+          "risks": 6
+        },
+        "matched": {
+          "actions": 0,
+          "decisions": 3,
+          "risks": 1
+        },
+        "extras": {
+          "actions": 0,
+          "decisions": 8,
+          "risks": 5
+        },
+        "missing": {
+          "actions": 0,
+          "decisions": 1,
+          "risks": 1
+        },
+        "deadlineMatches": 0,
+        "extraActionRows": [],
+        "extraDecisionRows": [
+          "I confirmed the labelling change with the team and it's in",
+          "Yeah, agreed, approve it",
+          "Agreed, no need",
+          "So the residual risk there is low, and we'd already agreed it's acceptable, so we're just formally accepting it, there's nothing to action",
+          "That's confirmed, the paperwork's already signed",
+          "Good, so that's a closed decision, supplier B, and there's nothing left to do on it",
+          "Yes, that's a watch item, agreed, but no action, we just monitor it as normal",
+          "Okay, so we've approved the report, accepted the residual risk, confirmed supplier B, and there's nothing for anyone to go away and do"
+        ]
+      },
+      "10_chaos_goblin": {
+        "expected": {
+          "actions": 3,
+          "decisions": 2,
+          "risks": 1
+        },
+        "actual": {
+          "actions": 3,
+          "decisions": 1,
+          "risks": 1
+        },
+        "matched": {
+          "actions": 3,
+          "decisions": 1,
+          "risks": 1
+        },
+        "extras": {
+          "actions": 0,
+          "decisions": 0,
+          "risks": 0
+        },
+        "missing": {
+          "actions": 0,
+          "decisions": 1,
+          "risks": 0
+        },
+        "deadlineMatches": 1,
+        "extraActionRows": [],
+        "extraDecisionRows": []
+      }
+    }
+  }
+}
