@@ -3,6 +3,10 @@ const path = require('path');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const CORE_GOLDEN_ROOT = path.join(REPO_ROOT, 'scripts', 'meeting-minutes-core-golden');
+const REQUIRED_EDIT_BASELINE = {
+  label: 'Earlier 12 August run',
+  count: 115
+};
 
 function normaliseText(value) {
   return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -463,6 +467,12 @@ async function getMeetingMinutesCoreGoldenStatus() {
   const averageWeightedScore = weightedCases.length
     ? Math.round((weightedCases.reduce((sum, item) => sum + item.latestResult.weightedAssessment.weightedScore, 0) / weightedCases.length) * 10) / 10
     : null;
+  const currentRequiredEdits = weightedCases.length
+    ? weightedCases.reduce((sum, item) => sum + item.latestResult.weightedAssessment.errorCount, 0)
+    : null;
+  const requiredEditReduction = typeof currentRequiredEdits === 'number'
+    ? REQUIRED_EDIT_BASELINE.count - currentRequiredEdits
+    : null;
   const statusCounts = cases.reduce((counts, item) => {
     counts[item.status.key] = (counts[item.status.key] || 0) + 1;
     return counts;
@@ -491,7 +501,14 @@ async function getMeetingMinutesCoreGoldenStatus() {
       averageWeightedScore,
       humanPerfectGap: averageWeightedScore == null ? null : Math.round((100 - averageWeightedScore) * 10) / 10,
       coverageScore: averageScore,
-      coverageGap: averageScore == null ? null : Math.round((100 - averageScore) * 10) / 10
+      coverageGap: averageScore == null ? null : Math.round((100 - averageScore) * 10) / 10,
+      requiredEditBaselineLabel: REQUIRED_EDIT_BASELINE.label,
+      previousRequiredEdits: REQUIRED_EDIT_BASELINE.count,
+      currentRequiredEdits,
+      requiredEditReduction,
+      requiredEditReductionPercent: typeof requiredEditReduction === 'number'
+        ? Math.round((requiredEditReduction / REQUIRED_EDIT_BASELINE.count) * 1000) / 10
+        : null
     },
     cases,
     benchmarks

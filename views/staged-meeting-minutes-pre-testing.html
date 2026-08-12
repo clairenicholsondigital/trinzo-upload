@@ -86,6 +86,17 @@ p { margin:.25rem 0; }
 .metric-label { color:var(--muted); font-size:.78rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
 .metric-value { margin-top:.35rem; color:var(--text); font-size:1.6rem; line-height:1.05; font-weight:700; overflow-wrap:anywhere; }
 .metric-note { margin-top:.3rem; color:var(--muted); font-size:.82rem; }
+.edit-progress {
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:1rem;
+  align-items:center;
+  margin:1rem 0;
+  border-left:4px solid var(--good);
+}
+.edit-progress-main { min-width:0; }
+.edit-progress-value { color:var(--good); font-size:2rem; line-height:1; font-weight:700; white-space:nowrap; }
+.edit-progress strong { color:var(--heading); }
 .split { display:grid; grid-template-columns:1.5fr .9fr; gap:1rem; align-items:start; }
 .split > * { min-width:0; }
 .filters { display:grid; grid-template-columns:minmax(220px,1fr) 12rem 11rem; gap:.6rem; margin-top:.85rem; }
@@ -175,6 +186,8 @@ input, select {
   .metric-grid, .filters { grid-template-columns:1fr; }
   .metric { min-height:0; }
   .case-card { gap:.7rem; padding:.9rem; }
+  .edit-progress { grid-template-columns:1fr; }
+  .edit-progress-value { white-space:normal; }
   .case-title { gap:.4rem; }
   .counts { gap:.3rem; }
   .pill { max-width:100%; white-space:normal; }
@@ -242,6 +255,15 @@ input, select {
       <div class="metric-value" id="humanPerfectGap">-</div>
       <div class="metric-note">Severity-weighted Human-perfect gap</div>
     </article>
+  </section>
+
+  <section class="panel edit-progress" aria-label="Real edit count progress">
+    <div class="edit-progress-main">
+      <p class="eyebrow">Real edits across the 10-case suite</p>
+      <h2 id="requiredEditTitle">Required edits loading</h2>
+      <p class="muted" id="requiredEditBody">Reading latest weighted issue count.</p>
+    </div>
+    <div class="edit-progress-value" id="requiredEditDelta">-</div>
   </section>
 
   <section class="split">
@@ -337,6 +359,15 @@ input, select {
     setText('needsWorkCount', summary.needsWorkCount == null ? '-' : summary.needsWorkCount);
     setText('humanPerfectGap', typeof summary.humanPerfectGap === 'number' ? summary.humanPerfectGap.toFixed(1) + '%' : 'Awaiting run');
     setText('generatedAt', payload.generatedAt ? new Date(payload.generatedAt).toLocaleString() : 'Loaded');
+    if (typeof summary.previousRequiredEdits === 'number' && typeof summary.currentRequiredEdits === 'number') {
+      setText('requiredEditTitle', 'Required edits reduced from ' + summary.previousRequiredEdits + ' to ' + summary.currentRequiredEdits);
+      setText('requiredEditBody', (summary.requiredEditBaselineLabel || 'Earlier run') + ' needed ' + summary.previousRequiredEdits + ' real edits across the 10-case suite. The latest canonical run needs ' + summary.currentRequiredEdits + '.');
+      setText('requiredEditDelta', '-' + (summary.requiredEditReduction || 0) + ' edits');
+    } else {
+      setText('requiredEditTitle', 'Required edits awaiting latest run');
+      setText('requiredEditBody', 'Run the full core golden suite to calculate the latest real-edit count.');
+      setText('requiredEditDelta', '-');
+    }
   }
 
   function renderValidation(payload) {
