@@ -124,6 +124,21 @@ Important failure categories:
 - `abstention`: too much or too little output for the evidence available.
 - `quality`: Notion-checklist issues such as bad title, first-person wording, timestamps, emoji, conversational leakage, or bad action/deadline formatting.
 
+## No-edit staged API pass
+
+`POST /api/staged-meeting-minutes/no-edit-pass` runs the production staged builders in browser order and accepts every generated screen unchanged before generating the next one. Submit either multipart `text`, a transcript `file`, or the same supported transcript input used by the staged tool.
+
+The response contains:
+
+- `screens`: details, summary, discussion, actions and final-review readiness.
+- `visibleOutput`: the assembled client-visible minutes fields.
+- `reviewExperience.stages`: the status message and editorial checks the browser would show at each screen.
+- `reviewExperience.requiredReviewerActions`: unresolved blocking checks and the UI-equivalent choices.
+- `reviewExperience.readyForFinalApproval`: false when the unchanged pass would be blocked in the browser.
+- `trace`: generation provider, validation flags and telemetry for every stage.
+
+This endpoint deliberately does not auto-resolve a warning, add a suggested discussion point, or treat a warning as a human edit.
+
 ## Staged seven-case product-flow evaluation
 
 Run the seven real fixtures through the same details, summary, discussion and actions builders used by the staged review flow:

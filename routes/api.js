@@ -3354,6 +3354,72 @@ function stagedEvaluationVisibleOutput(state = {}) {
   };
 }
 
+function stagedNoEditStageMessage(stage) {
+  if (stage === 'details') return 'Meeting details generated. Review or edit this screen before continuing.';
+  if (stage === 'summary') return 'Topics generated. Review or edit them before continuing.';
+  if (stage === 'discussion') return 'Discussion points generated from the topic context.';
+  if (stage === 'actions') return 'Actions generated. Check owners and dates before continuing.';
+  return 'This staged screen has been generated.';
+}
+
+function stagedReviewerChoicesForFlag(flag = {}) {
+  if (flag.type === 'unresolved_substantive_workstream') {
+    return ['add_to_discussion', 'intentionally_omit', 'return_to_summary_topics'];
+  }
+  if (flag.discussionSuggestion) return ['add_to_discussion', 'review_manually'];
+  return ['review_manually'];
+}
+
+function stagedNoEditReviewExperience(trace = []) {
+  const stageLabels = {
+    details: 'Meeting details',
+    summary: 'Summary and topics',
+    discussion: 'Discussion points',
+    actions: 'Actions'
+  };
+  const stages = (Array.isArray(trace) ? trace : []).map((item) => {
+    const flags = (Array.isArray(item.validationFlags) ? item.validationFlags : []).map((flag) => ({
+      type: flag.type || 'editorial_check',
+      severity: flag.severity || 'info',
+      blocking: Boolean(flag.blocking),
+      resolutionKey: flag.resolutionKey || null,
+      message: flag.message || '',
+      uiLabel: flag.severity === 'warning' ? 'Check' : 'Tidied',
+      reviewerChoices: stagedReviewerChoicesForFlag(flag),
+      discussionSuggestion: flag.discussionSuggestion || null
+    }));
+    return {
+      stage: item.stage,
+      screenLabel: stageLabels[item.stage] || item.stage,
+      statusMessage: stagedNoEditStageMessage(item.stage),
+      editorialHeading: flags.length ? 'Editorial checks (review before moving on)' : null,
+      flags,
+      blocking: flags.some((flag) => flag.blocking)
+    };
+  });
+  const flags = stages.flatMap((stage) => stage.flags.map((flag) => ({ ...flag, stage: stage.stage })));
+  const blockingFlags = flags.filter((flag) => flag.blocking);
+  return {
+    mode: 'no_human_edits',
+    description: 'The generated output from each screen was accepted unchanged and passed into the next screen.',
+    stages,
+    flags,
+    warningCount: flags.filter((flag) => flag.severity === 'warning').length,
+    blockingCount: blockingFlags.length,
+    readyForFinalApproval: blockingFlags.length === 0,
+    finalReviewMessage: blockingFlags.length
+      ? 'Final review would remain locked until every substantive workstream is resolved.'
+      : 'All generated screens can proceed to final human approval.',
+    requiredReviewerActions: blockingFlags.map((flag) => ({
+      stage: flag.stage,
+      resolutionKey: flag.resolutionKey,
+      message: flag.message,
+      choices: flag.reviewerChoices,
+      discussionSuggestion: flag.discussionSuggestion
+    }))
+  };
+}
+
 async function runStagedSequenceForEvaluation(transcriptText, options = {}) {
   validateTranscriptText(transcriptText);
   const rawTranscript = {
@@ -4142,6 +4208,57 @@ router.post('/meeting-minutes-final', requireAuth, withTestUpload(async (req, re
       message: error?.message || String(error),
       statusCode: error?.statusCode || null,
       details: error?.details || null,
+      durationMs: Date.now() - startedAt
+    }));
+    return sendTestError(res, error);
+  }
+}));
+
+router.post('/staged-meeting-minutes/no-edit-pass', requireAuth, withTestUpload(async (req, res) => {
+  const startedAt = Date.now();
+  try {
+    const transcript = await readTestTranscript(req);
+    validateTranscriptText(transcript.text);
+    const sequence = await runStagedSequenceForEvaluation(transcript.text, {
+      fileName: transcript.fileName || 'transcript.txt'
+    });
+    const reviewExperience = stagedNoEditReviewExperience(sequence.trace);
+    console.info(JSON.stringify({
+      event: 'staged_meeting_minutes_no_edit_pass_completed',
+      source: transcript.source,
+      fileName: transcript.fileName || null,
+      transcriptLength: transcript.text.length,
+      warningCount: reviewExperience.warningCount,
+      blockingCount: reviewExperience.blockingCount,
+      readyForFinalApproval: reviewExperience.readyForFinalApproval,
+      durationMs: Date.now() - startedAt
+    }));
+    return res.json({
+      ok: true,
+      staged: true,
+      mode: 'no_human_edits',
+      source: transcript.source,
+      fileName: transcript.fileName || null,
+      transcriptLength: transcript.text.length,
+      screens: {
+        details: sequence.state.details,
+        summary: sequence.state.summary,
+        discussion: sequence.state.discussion,
+        actions: sequence.state.actions,
+        finalReview: {
+          readyForFinalApproval: reviewExperience.readyForFinalApproval,
+          message: reviewExperience.finalReviewMessage
+        }
+      },
+      visibleOutput: sequence.visibleOutput,
+      reviewExperience,
+      trace: sequence.trace
+    });
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: 'staged_meeting_minutes_no_edit_pass_failed',
+      message: error?.message || String(error),
+      statusCode: error?.statusCode || null,
       durationMs: Date.now() - startedAt
     }));
     return sendTestError(res, error);
@@ -5671,7 +5788,8 @@ router.post('/copilot-chat', async (req, res) => {
 });
 
 router.stagedEvaluation = {
-  runStagedSequenceForEvaluation
+  runStagedSequenceForEvaluation,
+  stagedNoEditReviewExperience
 };
 
 module.exports = router;

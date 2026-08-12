@@ -257,6 +257,21 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("function attachStagedDecisionsToDiscussionCards", api)
         self.assertIn("card?.decisionOrAgreement", api)
 
+    def test_staged_no_edit_endpoint_returns_browser_review_messages(self):
+        api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+
+        self.assertIn("router.post('/staged-meeting-minutes/no-edit-pass'", api)
+        self.assertIn("mode: 'no_human_edits'", api)
+        self.assertIn("function stagedNoEditReviewExperience", api)
+        self.assertIn("Editorial checks (review before moving on)", api)
+        self.assertIn("readyForFinalApproval", api)
+        self.assertIn("requiredReviewerActions", api)
+        self.assertIn("add_to_discussion", api)
+        self.assertIn("intentionally_omit", api)
+        self.assertIn("return_to_summary_topics", api)
+        self.assertIn("Final review would remain locked", api)
+        self.assertIn("staged_meeting_minutes_no_edit_pass_completed", api)
+
     def test_staged_actions_have_final_quality_gate(self):
         staged_editorial = (REPO_DIR / "utils" / "stagedEditorial.js").read_text(encoding="utf-8")
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
