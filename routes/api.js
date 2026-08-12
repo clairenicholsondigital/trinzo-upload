@@ -25,6 +25,7 @@ const {
   buildEvidenceBoundStagedActionInventory,
   parseDeadlineEvidence
 } = require('../utils/stagedActionRecovery');
+const { buildStagedEvidenceLedger } = require('../utils/stagedEvidenceLedger');
 
 const {
   isMalformedStagedLine,
@@ -1413,6 +1414,7 @@ function polishStagedActions(actions) {
   for (const item of Array.isArray(actions) ? actions : []) {
     if (!item || typeof item !== 'object') continue;
     const action = cleanStagedActionText(item.action || item.meetingActionPoint);
+    if (/\b(?:world and his wife|every regulation under the sun|you know|or whatever)\b/i.test(action)) continue;
     const rawOwner = cleanStagedGeneratedLine(item.owner || item.meetingActionPointOwner || 'Not stated') || 'Not stated';
     const owner = /^\p{Lu}[\p{L}'’.-]+$/u.test(rawOwner)
       ? rawOwner
@@ -3172,18 +3174,25 @@ function buildStagedActionsResponse(req, transcript, minilmContext = null, recov
   const stagedActions = actionsFromStagedMiniLM(minilmContext);
   const evidenceActions = actionsFromEvidenceClassifier(minilmContext);
   const groundedTranscriptText = String(recoveryTranscriptText || transcript.text || '');
+  const evidenceLedger = buildStagedEvidenceLedger(groundedTranscriptText);
   const actionInventory = buildStagedActionInventory(groundedTranscriptText);
   const sourceActions = polishStagedActions([...evidenceActions, ...stagedActions, ...actionInventory]);
   const mergedActions = mergePreservedStagedActions(sourceActions.length
     ? sourceActions
     : extractActionCandidatesFromTranscript(groundedTranscriptText), groundedTranscriptText);
+  // The ledger repairs sparse/fallback extraction. Once the established pipeline
+  // already has a substantive inventory, do not let a second extractor inflate it.
+  const ledgerRepairs = mergedActions.length < 4 ? evidenceLedger.actions : [];
+  const evidenceMergedActions = [...ledgerRepairs, ...mergedActions].filter((candidate, index, all) =>
+    all.findIndex((existing) => stagedActionsAreDuplicates(existing, candidate)) === index
+  );
   const details = stagedDetailsWithConfirmedContext(req, transcript);
   const participants = uniqueNames([
     ...(Array.isArray(details.allAttendees) ? details.allAttendees : []),
     ...extractTeamsSpeakerNames(groundedTranscriptText)
   ]);
   const ownerValidationFlags = [];
-  const actions = mergedActions.map((item) => {
+  const actions = evidenceMergedActions.map((item) => {
     const validation = normaliseAndValidateActionOwner(item.owner, participants);
     if (!['accepted', 'repaired_unambiguous'].includes(validation.status)) {
       ownerValidationFlags.push({
@@ -3200,6 +3209,12 @@ function buildStagedActionsResponse(req, transcript, minilmContext = null, recov
     discussion: reviewContext.discussion,
     actions
   }), ...ownerValidationFlags];
+  if (!actions.length) validationFlags.push({
+    type: 'no_actions_detected',
+    severity: 'info',
+    blocking: false,
+    message: 'No transcript-supported actions were detected. Confirm that this meeting genuinely ended without actions.'
+  });
 
   return {
     ok: true,
@@ -3210,11 +3225,7 @@ function buildStagedActionsResponse(req, transcript, minilmContext = null, recov
     stagedStage: 'actions',
     validationFlags,
     screens: {
-      actions: actions.length ? actions : [{
-        owner: 'Not stated',
-        action: 'Review transcript for agreed actions.',
-        deadline: ''
-      }]
+      actions
     },
     telemetryPreview: {
       stage: 'actions',
@@ -3222,6 +3233,7 @@ function buildStagedActionsResponse(req, transcript, minilmContext = null, recov
       actionPreservation: {
         transcriptPreservedActionCount: transcriptPreservedStagedActions(groundedTranscriptText).length,
         transcriptActionInventoryCount: actionInventory.length,
+        evidenceLedgerActionCount: evidenceLedger.actions.length,
         evidenceClassifierActionCount: evidenceActions.length,
         transcriptActionInventoryUsed: Boolean(actionInventory.length || evidenceActions.length)
       },
@@ -3343,10 +3355,11 @@ function stagedEvaluationVisibleOutput(state = {}) {
         .map((point) => `${topic}: ${cleanStagedDiscussionText(point)}`)
         .filter((point) => point && !point.endsWith(': '));
     }),
-    decisions: discussion.flatMap((card) => uniqueCleanDiscussionItems([
+    decisions: uniqueCleanDiscussionItems([...(Array.isArray(state.decisions) ? state.decisions.map((item) => item?.text || item) : []), ...discussion.flatMap((card) => uniqueCleanDiscussionItems([
       card?.decisionOrAgreement || '',
       ...(Array.isArray(card?.points) ? card.points.filter((point) => hasStagedDecisionEvidence(point)) : [])
-    ])).filter(Boolean),
+    ]))]).filter(Boolean),
+    risks: uniqueCleanDiscussionItems(Array.isArray(state.risks) ? state.risks.map((item) => item?.text || item) : []).filter(Boolean),
     actions: actions.map((item) => ({
       meetingActionPointOwner: item?.owner || 'Not stated',
       meetingActionPoint: item?.action || '',
@@ -3368,6 +3381,7 @@ function stagedReviewerChoicesForFlag(flag = {}) {
     return ['add_to_discussion', 'intentionally_omit', 'return_to_summary_topics'];
   }
   if (flag.discussionSuggestion) return ['add_to_discussion', 'review_manually'];
+  if (flag.repairCandidates) return ['approve_repair', 'reject_candidate', 'review_evidence'];
   return ['review_manually'];
 }
 
@@ -3387,7 +3401,8 @@ function stagedNoEditReviewExperience(trace = []) {
       message: flag.message || '',
       uiLabel: flag.severity === 'warning' ? 'Check' : 'Tidied',
       reviewerChoices: stagedReviewerChoicesForFlag(flag),
-      discussionSuggestion: flag.discussionSuggestion || null
+      discussionSuggestion: flag.discussionSuggestion || null,
+      repairCandidates: Array.isArray(flag.repairCandidates) ? flag.repairCandidates : null
     }));
     return {
       stage: item.stage,
@@ -3416,7 +3431,8 @@ function stagedNoEditReviewExperience(trace = []) {
       resolutionKey: flag.resolutionKey,
       message: flag.message,
       choices: flag.reviewerChoices,
-      discussionSuggestion: flag.discussionSuggestion
+      discussionSuggestion: flag.discussionSuggestion,
+      repairCandidates: flag.repairCandidates
     }))
   };
 }
@@ -3442,11 +3458,14 @@ async function runStagedSequenceForEvaluation(transcriptText, options = {}) {
     }
   };
   const detailsResponse = extractStagedDetailsFromTranscript(rawTranscript.text, rawTranscript.fileName);
+  const evidenceLedger = buildStagedEvidenceLedger(rawTranscript.text);
   const state = {
     details: detailsResponse.screens.details,
     summary: null,
     discussion: [],
-    actions: []
+    actions: [],
+    decisions: evidenceLedger.decisions,
+    risks: evidenceLedger.risks
   };
   const trace = [{
     stage: 'details',
@@ -3491,6 +3510,16 @@ async function runStagedSequenceForEvaluation(transcriptText, options = {}) {
     state[stage] = stage === 'summary'
       ? (value || {})
       : (Array.isArray(value) ? value : []);
+    const validationFlags = Array.isArray(response.validationFlags) ? [...response.validationFlags] : [];
+    if (stage === 'actions') {
+      const surfaced = new Set(state.actions.map((item) => cleanStagedActionText(item?.action).toLowerCase()));
+      const missing = evidenceLedger.actions.filter((item) => ![...surfaced].some((text) => stagedTokenSimilarity(text, cleanStagedActionText(item.action).toLowerCase()) >= 0.55));
+      if (missing.length) validationFlags.push({
+        type: 'detected_actions_not_surfaced', severity: 'warning', blocking: true,
+        message: `${missing.length} transcript-supported action candidate${missing.length === 1 ? ' was' : 's were'} not surfaced. Review and approve or reject each candidate.`,
+        repairCandidates: missing
+      });
+    }
     trace.push({
       stage,
       provider: generation.provider,
@@ -3502,7 +3531,7 @@ async function runStagedSequenceForEvaluation(transcriptText, options = {}) {
       outputPointCount: stage === 'discussion'
         ? state.discussion.reduce((sum, card) => sum + (Array.isArray(card?.points) ? card.points.length : 0), 0)
         : undefined,
-      validationFlags: Array.isArray(response.validationFlags) ? response.validationFlags : [],
+      validationFlags,
       telemetry: response.telemetryPreview || {},
       generationDiagnostics: generation.context?.diagnostics || {}
     });
@@ -4255,6 +4284,8 @@ router.post('/staged-meeting-minutes/no-edit-pass', requireAuth, withTestUpload(
         summary: sequence.state.summary,
         discussion: sequence.state.discussion,
         actions: sequence.state.actions,
+        decisions: sequence.state.decisions,
+        risks: sequence.state.risks,
         finalReview: {
           readyForFinalApproval: reviewExperience.readyForFinalApproval,
           message: reviewExperience.finalReviewMessage

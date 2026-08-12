@@ -1039,7 +1039,11 @@ td textarea {
 
   function renderActions(actions) {
     if (!actionsTableBody) return;
-    var items = Array.isArray(actions) && actions.length ? actions : [{ owner: 'Not stated', action: 'Review transcript for agreed actions.', deadline: '' }];
+    var items = Array.isArray(actions) ? actions : [];
+    if (!items.length) {
+      actionsTableBody.innerHTML = '<tr><td colspan="4" class="empty-state">No transcript-supported actions were detected. Confirm this before final approval, or add an action manually.</td></tr>';
+      return;
+    }
     actionsTableBody.innerHTML = items.map(function (action) {
       return renderActionRow(action);
     }).join('');
