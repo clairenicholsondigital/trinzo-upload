@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const {
+  assessWeightedErrors,
   getMeetingMinutesCoreGoldenStatus,
   scoreCaseOutput
 } = require('../utils/meetingMinutesCoreGolden');
@@ -38,4 +39,35 @@ test('core golden scorer reports human-perfect gap from normalised output', () =
 
   assert.equal(score.score, 100);
   assert.equal(score.actionRecall, 1);
+});
+
+test('weighted scorer treats client split as minor and unsafe actions as blockers', () => {
+  const manifest = {
+    expected_attendees: ['Priya Sethi', 'Tom Whitfield'],
+    expected_client_attendees: [],
+    expected_actions: [{ owner: 'Priya Sethi', action: 'Send the final deck' }],
+    completed_history_not_action: [{ owner: 'Tom Whitfield', detail: 'Uploaded the draft deck yesterday' }],
+    expected_decisions: [],
+    expected_risks: ['Recording could miss the opening']
+  };
+  const output = {
+    attendees: ['Priya Sethi', 'Tom Whitfield'],
+    client_attendees: ['Priya Sethi'],
+    actions: [
+      { owner: 'Priya Sethi', action: 'Send the final deck' },
+      { owner: 'Tom Whitfield', action: 'Uploaded the draft deck yesterday' }
+    ],
+    decisions: [],
+    risks: ['Extra room-noise risk']
+  };
+
+  const assessment = assessWeightedErrors(manifest, output);
+
+  assert.equal(assessment.errorTypeCounts.incorrect_client_attendee, 1);
+  assert.equal(assessment.errorTypeCounts.non_action_promoted_from_completed_history_not_action, 1);
+  assert.equal(assessment.errorTypeCounts.missing_key_risk, 1);
+  assert.equal(assessment.errorTypeCounts.extra_risk, 1);
+  assert.equal(assessment.blockingCount, 2);
+  assert.equal(assessment.penalty, 34);
+  assert.equal(assessment.weightedScore, 66);
 });

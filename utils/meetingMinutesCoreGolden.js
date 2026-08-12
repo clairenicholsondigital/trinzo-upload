@@ -60,6 +60,211 @@ function scoreCaseOutput(manifest, output) {
   };
 }
 
+function actionLabel(item) {
+  if (!item || typeof item !== 'object') return String(item || '');
+  const owner = item.owner || 'Owner not stated';
+  const action = item.action || item.detail || '';
+  const due = item.due_evidence || item.deadline || '';
+  return `${owner}: ${action}${due ? ` [due/evidence: ${due}]` : ''}`;
+}
+
+function actionOwner(item) {
+  return item && typeof item === 'object' ? String(item.owner || '') : '';
+}
+
+function actionText(item) {
+  return item && typeof item === 'object' ? String(item.action || item.detail || '') : String(item || '');
+}
+
+function actionDue(item) {
+  return item && typeof item === 'object' ? String(item.due_evidence || item.deadline || '') : '';
+}
+
+function addWeightedError(errors, type, category, penalty, blocking, aiOutput, expected, notes = '') {
+  errors.push({
+    type,
+    category,
+    penalty,
+    blocking: Boolean(blocking),
+    aiOutput: aiOutput || '',
+    expected: expected || '',
+    notes
+  });
+}
+
+function assessWeightedErrors(manifest, output) {
+  const errors = [];
+  const expectedClientAttendees = new Set((manifest.expected_client_attendees || []).map(normaliseText));
+  const actualClientAttendees = output?.client_attendees || [];
+  for (const attendee of actualClientAttendees) {
+    if (!expectedClientAttendees.has(normaliseText(attendee))) {
+      addWeightedError(
+        errors,
+        'incorrect_client_attendee',
+        'attendees',
+        1,
+        false,
+        attendee,
+        (manifest.expected_client_attendees || []).join(', ') || 'No client attendees expected',
+        'Minor split/classification issue; attendee was present but put in the client list.'
+      );
+    }
+  }
+  for (const attendee of manifest.expected_client_attendees || []) {
+    if (!new Set(actualClientAttendees.map(normaliseText)).has(normaliseText(attendee))) {
+      addWeightedError(errors, 'missing_client_attendee', 'attendees', 4, false, actualClientAttendees.join(', '), attendee);
+    }
+  }
+
+  const expectedActions = manifest.expected_actions || [];
+  const actualActions = output?.actions || [];
+  const matchedActualActions = new Set();
+  for (const expectedAction of expectedActions) {
+    let best = null;
+    for (let index = 0; index < actualActions.length; index += 1) {
+      const actualAction = actualActions[index];
+      const ownerScore = similarity(expectedAction.owner, actualAction?.owner);
+      const actionScore = similarity(expectedAction.action, actualAction?.action);
+      const total = (ownerScore * 0.35) + (actionScore * 0.65);
+      if (!best || total > best.total) best = { index, actualAction, ownerScore, actionScore, total };
+    }
+    if (!best || best.actionScore < 0.55) {
+      addWeightedError(
+        errors,
+        'missing_key_action',
+        'actions',
+        12,
+        true,
+        best ? actionLabel(best.actualAction) : actualActions.map(actionLabel).join(' | '),
+        actionLabel(expectedAction),
+        best ? `Nearest action score ${Math.round(best.actionScore * 100)}%.` : 'No AI action available.'
+      );
+      continue;
+    }
+    if (best.ownerScore < 0.75) {
+      addWeightedError(errors, 'wrong_action_owner', 'actions', 12, true, actionLabel(best.actualAction), actionLabel(expectedAction));
+      continue;
+    }
+    matchedActualActions.add(best.index);
+    const expectedDue = actionDue(expectedAction);
+    const actualDue = actionDue(best.actualAction);
+    if (expectedDue && (!actualDue || normaliseText(actualDue) === 'not stated' || similarity(expectedDue, actualDue) < 0.45)) {
+      addWeightedError(errors, 'missing_or_wrong_due_evidence', 'actions', 4, false, actionLabel(best.actualAction), actionLabel(expectedAction));
+    }
+    if (!expectedDue && actualDue && normaliseText(actualDue) !== 'not stated') {
+      addWeightedError(errors, 'invented_due_evidence', 'actions', 8, true, actionLabel(best.actualAction), actionLabel(expectedAction));
+    }
+  }
+
+  for (let index = 0; index < actualActions.length; index += 1) {
+    if (matchedActualActions.has(index)) continue;
+    addWeightedError(errors, 'extra_or_unsupported_action', 'actions', 8, true, actionLabel(actualActions[index]), 'No unmatched action should be included.');
+  }
+
+  const nonActionGroups = [
+    ['completed_history_not_action', manifest.completed_history_not_action || []],
+    ['hypotheticals_not_action', manifest.hypotheticals_not_action || []],
+    ['rejected_actions', manifest.rejected_actions || []]
+  ];
+  for (const [groupName, nonActions] of nonActionGroups) {
+    for (const nonAction of nonActions) {
+      for (const actualAction of actualActions) {
+        if (similarity(actionText(nonAction), actionLabel(actualAction)) >= 0.5) {
+          addWeightedError(
+            errors,
+            `non_action_promoted_from_${groupName}`,
+            'actions',
+            15,
+            true,
+            actionLabel(actualAction),
+            `Do not include as action: ${actionLabel(nonAction)}`
+          );
+        }
+      }
+    }
+  }
+
+  for (const [category, expectedItems, actualItems] of [
+    ['decisions', manifest.expected_decisions || [], output?.decisions || []],
+    ['risks', manifest.expected_risks || [], output?.risks || []]
+  ]) {
+    const matchedActual = new Set();
+    for (const expected of expectedItems) {
+      let bestIndex = -1;
+      let bestScore = 0;
+      for (let index = 0; index < actualItems.length; index += 1) {
+        const score = similarity(expected, actualItems[index]);
+        if (score > bestScore) {
+          bestIndex = index;
+          bestScore = score;
+        }
+      }
+      if (bestScore < 0.6) {
+        addWeightedError(
+          errors,
+          category === 'risks' ? 'missing_key_risk' : 'missing_key_decision',
+          category,
+          category === 'risks' ? 8 : 6,
+          false,
+          bestIndex >= 0 ? actualItems[bestIndex] : actualItems.join(' | '),
+          expected
+        );
+      } else {
+        matchedActual.add(bestIndex);
+      }
+    }
+    for (let index = 0; index < actualItems.length; index += 1) {
+      if (matchedActual.has(index)) continue;
+      addWeightedError(
+        errors,
+        category === 'risks' ? 'extra_risk' : 'extra_or_unsupported_decision',
+        category,
+        category === 'risks' ? 2 : 4,
+        false,
+        actualItems[index],
+        category === 'risks' ? 'Extra supported risks are low impact; review support before treating as wrong.' : 'No unmatched decision should be included.'
+      );
+    }
+  }
+
+  const visibleText = [
+    ...(output?.attendees || []),
+    ...(output?.client_attendees || []),
+    ...actualActions.map(actionLabel),
+    ...(output?.decisions || []),
+    ...(output?.risks || [])
+  ];
+  for (const forbidden of manifest.forbidden_claims || []) {
+    let best = { text: '', score: 0 };
+    for (const text of visibleText) {
+      const score = similarity(forbidden, text);
+      if (score > best.score) best = { text, score };
+    }
+    if (best.score >= 0.58) {
+      addWeightedError(errors, 'forbidden_or_unsupported_claim', 'unsupported_claims', 12, true, best.text, `Do not claim: ${forbidden}`);
+    }
+  }
+
+  const penalty = Math.round(errors.reduce((sum, item) => sum + item.penalty, 0) * 10) / 10;
+  const weightedScore = Math.max(0, Math.round((100 - penalty) * 10) / 10);
+  const blockingCount = errors.filter((item) => item.blocking).length;
+  return {
+    weightedScore,
+    weightedGap: Math.round((100 - weightedScore) * 10) / 10,
+    penalty,
+    blockingCount,
+    errorCount: errors.length,
+    topErrors: errors
+      .slice()
+      .sort((left, right) => Number(right.blocking) - Number(left.blocking) || right.penalty - left.penalty)
+      .slice(0, 8),
+    errorTypeCounts: errors.reduce((counts, item) => {
+      counts[item.type] = (counts[item.type] || 0) + 1;
+      return counts;
+    }, {})
+  };
+}
+
 async function readJson(filePath) {
   return JSON.parse(await fs.readFile(filePath, 'utf8'));
 }
@@ -116,10 +321,13 @@ async function readRunRecords() {
 
 function statusFromResult(result) {
   if (!result) return { key: 'not_run', label: 'Not run', tone: 'muted' };
-  if (result.hardFail) return { key: 'needs_work', label: 'Needs work', tone: 'bad' };
-  if (typeof result.score !== 'number') return { key: 'review', label: 'Review', tone: 'warn' };
-  if (result.score >= 90) return { key: 'working', label: 'Working', tone: 'good' };
-  if (result.score >= 70) return { key: 'close', label: 'Close', tone: 'warn' };
+  const assessment = result.weightedAssessment;
+  const score = assessment && typeof assessment.weightedScore === 'number' ? assessment.weightedScore : result.score;
+  if (result.hardFail || (assessment && assessment.blockingCount)) return { key: 'needs_work', label: 'Needs work', tone: 'bad' };
+  if (typeof score !== 'number') return { key: 'review', label: 'Review', tone: 'warn' };
+  if (score >= 90) return { key: 'working', label: 'Working', tone: 'good' };
+  if (score >= 75) return { key: 'close', label: 'Close', tone: 'warn' };
+  if (score >= 60) return { key: 'review', label: 'Review', tone: 'warn' };
   return { key: 'needs_work', label: 'Needs work', tone: 'bad' };
 }
 
@@ -140,17 +348,25 @@ async function resultFromRecord(record, manifest) {
   if (!record) return null;
   let score = Number(record.baseline_score);
   let scoreBreakdown = null;
+  let weightedAssessment = null;
   const outputPath = String(record.output_path || '').trim();
   if (outputPath) {
     const candidates = [
       path.resolve(CORE_GOLDEN_ROOT, outputPath),
       path.resolve(REPO_ROOT, outputPath)
     ];
-    const resolvedOutput = candidates.find((candidate) => !path.relative(REPO_ROOT, candidate).startsWith('..'));
+    let resolvedOutput = null;
+    for (const candidate of candidates) {
+      if (!path.relative(REPO_ROOT, candidate).startsWith('..') && await exists(candidate)) {
+        resolvedOutput = candidate;
+        break;
+      }
+    }
     if (resolvedOutput && await exists(resolvedOutput)) {
       try {
         const output = await readJson(resolvedOutput);
         scoreBreakdown = scoreCaseOutput(manifest, output);
+        weightedAssessment = assessWeightedErrors(manifest, output);
         score = scoreBreakdown.score;
       } catch {
         // Keep the recorded score if the output cannot be parsed.
@@ -169,7 +385,8 @@ async function resultFromRecord(record, manifest) {
     hardFail,
     reviewer: record.reviewer || '',
     notes: record.notes || '',
-    scoreBreakdown
+    scoreBreakdown,
+    weightedAssessment
   };
 }
 
@@ -242,6 +459,10 @@ async function getMeetingMinutesCoreGoldenStatus() {
   const averageScore = recordedCases.length
     ? Math.round((recordedCases.reduce((sum, item) => sum + item.latestResult.score, 0) / recordedCases.length) * 10) / 10
     : null;
+  const weightedCases = cases.filter((item) => item.latestResult?.weightedAssessment && typeof item.latestResult.weightedAssessment.weightedScore === 'number');
+  const averageWeightedScore = weightedCases.length
+    ? Math.round((weightedCases.reduce((sum, item) => sum + item.latestResult.weightedAssessment.weightedScore, 0) / weightedCases.length) * 10) / 10
+    : null;
   const statusCounts = cases.reduce((counts, item) => {
     counts[item.status.key] = (counts[item.status.key] || 0) + 1;
     return counts;
@@ -263,10 +484,14 @@ async function getMeetingMinutesCoreGoldenStatus() {
       recordedCaseCount: recordedCases.length,
       workingCount: statusCounts.working || 0,
       closeCount: statusCounts.close || 0,
+      reviewCount: statusCounts.review || 0,
       needsWorkCount: statusCounts.needs_work || 0,
       notRunCount: statusCounts.not_run || 0,
       averageScore,
-      humanPerfectGap: averageScore == null ? null : Math.round((100 - averageScore) * 10) / 10
+      averageWeightedScore,
+      humanPerfectGap: averageWeightedScore == null ? null : Math.round((100 - averageWeightedScore) * 10) / 10,
+      coverageScore: averageScore,
+      coverageGap: averageScore == null ? null : Math.round((100 - averageScore) * 10) / 10
     },
     cases,
     benchmarks
@@ -276,5 +501,6 @@ async function getMeetingMinutesCoreGoldenStatus() {
 module.exports = {
   CORE_GOLDEN_ROOT,
   getMeetingMinutesCoreGoldenStatus,
+  assessWeightedErrors,
   scoreCaseOutput
 };
