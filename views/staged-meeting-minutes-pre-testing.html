@@ -97,6 +97,47 @@ p { margin:.25rem 0; }
 .edit-progress-main { min-width:0; }
 .edit-progress-value { color:var(--good); font-size:2rem; line-height:1; font-weight:700; white-space:nowrap; }
 .edit-progress strong { color:var(--heading); }
+.edit-chart {
+  grid-column:1 / -1;
+  min-width:0;
+  border-top:1px solid var(--border);
+  padding-top:.85rem;
+}
+.edit-chart-bars {
+  display:grid;
+  grid-auto-flow:column;
+  grid-auto-columns:minmax(7rem,1fr);
+  gap:.65rem;
+  align-items:end;
+  min-height:170px;
+  overflow-x:auto;
+  padding:.35rem .15rem .1rem;
+}
+.edit-bar-column {
+  display:grid;
+  grid-template-rows:1fr auto auto;
+  gap:.35rem;
+  min-width:0;
+  height:170px;
+}
+.edit-bar-track {
+  display:flex;
+  align-items:flex-end;
+  min-height:110px;
+  border:1px solid var(--border);
+  border-radius:8px;
+  background:linear-gradient(180deg,#f8fbfc,#e9f1f4);
+  overflow:hidden;
+}
+.edit-bar-fill {
+  width:100%;
+  min-height:.35rem;
+  background:linear-gradient(180deg,#0fb5ab,var(--good));
+}
+.edit-bar-column.previous .edit-bar-fill { background:linear-gradient(180deg,#f2b84b,var(--warn)); }
+.edit-bar-column.latest .edit-bar-fill { background:linear-gradient(180deg,#23c7bd,var(--good)); }
+.edit-bar-value { color:var(--heading); font-weight:700; line-height:1.1; }
+.edit-bar-label { color:var(--muted); font-size:.76rem; line-height:1.25; overflow-wrap:anywhere; }
 .split { display:grid; grid-template-columns:1.5fr .9fr; gap:1rem; align-items:start; }
 .split > * { min-width:0; }
 .filters { display:grid; grid-template-columns:minmax(220px,1fr) 12rem 11rem; gap:.6rem; margin-top:.85rem; }
@@ -264,6 +305,9 @@ input, select {
       <p class="muted" id="requiredEditBody">Reading latest weighted issue count.</p>
     </div>
     <div class="edit-progress-value" id="requiredEditDelta">-</div>
+    <div class="edit-chart" id="requiredEditChart">
+      <div class="empty">Loading required edit trend.</div>
+    </div>
   </section>
 
   <section class="split">
@@ -350,6 +394,34 @@ input, select {
     return Math.max(0, Math.min(100, value));
   }
 
+  function shortRunLabel(point, index) {
+    if (point && point.label) return point.label;
+    if (point && point.runDate) return new Date(point.runDate).toLocaleString();
+    return 'Run ' + (index + 1);
+  }
+
+  function renderRequiredEditChart(trend) {
+    var chart = document.getElementById('requiredEditChart');
+    if (!chart) return;
+    if (!Array.isArray(trend) || !trend.length) {
+      chart.innerHTML = '<div class="empty">No complete suite runs have been recorded yet.</div>';
+      return;
+    }
+    var maxEdits = Math.max.apply(null, trend.map(function (point) { return Number(point.requiredEdits || 0); }).concat([1]));
+    chart.innerHTML = '<div class="edit-chart-bars" role="img" aria-label="Required edit count trend">' + trend.map(function (point, index) {
+      var edits = Number(point.requiredEdits || 0);
+      var height = Math.max(4, Math.round((edits / maxEdits) * 100));
+      var className = 'edit-bar-column' + (index === trend.length - 1 ? ' latest' : (index === trend.length - 2 ? ' previous' : ''));
+      var date = point.runDate ? new Date(point.runDate).toLocaleString() : '';
+      var title = shortRunLabel(point, index) + ': ' + edits + ' required edits' + (date ? ' on ' + date : '');
+      return '<div class="' + className + '" title="' + escapeHtml(title) + '">' +
+        '<div class="edit-bar-track"><span class="edit-bar-fill" style="height:' + height + '%"></span></div>' +
+        '<div class="edit-bar-value">' + escapeHtml(edits) + '</div>' +
+        '<div class="edit-bar-label">' + escapeHtml(shortRunLabel(point, index)) + '</div>' +
+      '</div>';
+    }).join('') + '</div>';
+  }
+
   function renderSummary(payload) {
     var summary = payload.summary || {};
     setText('caseCount', summary.caseCount == null ? '-' : summary.caseCount);
@@ -361,13 +433,14 @@ input, select {
     setText('generatedAt', payload.generatedAt ? new Date(payload.generatedAt).toLocaleString() : 'Loaded');
     if (typeof summary.previousRequiredEdits === 'number' && typeof summary.currentRequiredEdits === 'number') {
       setText('requiredEditTitle', 'Required edits reduced from ' + summary.previousRequiredEdits + ' to ' + summary.currentRequiredEdits);
-      setText('requiredEditBody', (summary.requiredEditBaselineLabel || 'Earlier run') + ' needed ' + summary.previousRequiredEdits + ' real edits across the 10-case suite. The latest canonical run needs ' + summary.currentRequiredEdits + '.');
+      setText('requiredEditBody', (summary.requiredEditBaselineLabel || 'Previous run') + ' needed ' + summary.previousRequiredEdits + ' real edits across the 10-case suite. The latest canonical run needs ' + summary.currentRequiredEdits + '. Future full-suite runs will add new points to the graph below.');
       setText('requiredEditDelta', '-' + (summary.requiredEditReduction || 0) + ' edits');
     } else {
       setText('requiredEditTitle', 'Required edits awaiting latest run');
       setText('requiredEditBody', 'Run the full core golden suite to calculate the latest real-edit count.');
       setText('requiredEditDelta', '-');
     }
+    renderRequiredEditChart(summary.requiredEditTrend || []);
   }
 
   function renderValidation(payload) {

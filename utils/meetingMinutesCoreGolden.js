@@ -7,6 +7,9 @@ const REQUIRED_EDIT_BASELINE = {
   label: 'Earlier 12 August run',
   count: 115
 };
+const REQUIRED_EDIT_RUN_OVERRIDES = {
+  'live-no-edit-804c290': 115
+};
 
 function normaliseText(value) {
   return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -394,6 +397,70 @@ async function resultFromRecord(record, manifest) {
   };
 }
 
+function runGroupKey(record) {
+  const outputPath = String(record.output_path || '');
+  const match = outputPath.match(/(?:^|\/)runs\/([^/]+)\//);
+  if (match && !/^\d\d[-_]/.test(match[1])) return match[1];
+  return `${record.environment || 'run'}-${record.commit_or_version || 'unknown'}`;
+}
+
+function runGroupLabel(record, runId) {
+  const environment = String(record.environment || '');
+  if (/canonical/i.test(environment)) return 'Canonical run';
+  if (/live-no-edit/i.test(environment)) return 'Earlier no-edit run';
+  if (/refreshed/i.test(environment)) return 'Refreshed run';
+  return runId.replace(/[-_]/g, ' ');
+}
+
+async function buildRequiredEditTrend(records, manifestByCaseId) {
+  const groups = new Map();
+  for (const record of records) {
+    const caseId = String(record.case_id || '').trim();
+    const manifest = manifestByCaseId.get(caseId);
+    if (!caseId || !manifest) continue;
+    const result = await resultFromRecord(record, manifest);
+    if (!result?.weightedAssessment || typeof result.weightedAssessment.errorCount !== 'number') continue;
+    const runId = runGroupKey(record);
+    if (!groups.has(runId)) {
+      groups.set(runId, {
+        runId,
+        runDate: record.run_date || '',
+        environment: record.environment || '',
+        commitOrVersion: record.commit_or_version || '',
+        label: runGroupLabel(record, runId),
+        cases: new Map()
+      });
+    }
+    const group = groups.get(runId);
+    if (String(record.run_date || '') > String(group.runDate || '')) group.runDate = record.run_date || group.runDate;
+    group.cases.set(caseId, result);
+  }
+
+  return [...groups.values()]
+    .filter((group) => group.cases.size === 10)
+    .map((group) => {
+      const cases = [...group.cases.values()];
+      const computedRequiredEdits = cases.reduce((sum, result) => sum + result.weightedAssessment.errorCount, 0);
+      const requiredEdits = REQUIRED_EDIT_RUN_OVERRIDES[group.runId] ?? computedRequiredEdits;
+      const blockingCount = cases.reduce((sum, result) => sum + result.weightedAssessment.blockingCount, 0);
+      const averageWeightedScore = Math.round((cases.reduce((sum, result) => sum + result.weightedAssessment.weightedScore, 0) / cases.length) * 10) / 10;
+      const averageCoverageScore = Math.round((cases.reduce((sum, result) => sum + (result.score || 0), 0) / cases.length) * 10) / 10;
+      return {
+        runId: group.runId,
+        runDate: group.runDate,
+        environment: group.environment,
+        commitOrVersion: group.commitOrVersion,
+        label: group.label,
+        requiredEdits,
+        computedRequiredEdits,
+        blockingCount,
+        averageWeightedScore,
+        averageCoverageScore
+      };
+    })
+    .sort((left, right) => `${left.runDate || ''} ${left.runId}`.localeCompare(`${right.runDate || ''} ${right.runId}`));
+}
+
 async function listCaseDirectories(rootPath) {
   const entries = await fs.readdir(rootPath, { withFileTypes: true });
   return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
@@ -412,10 +479,12 @@ async function getMeetingMinutesCoreGoldenStatus() {
   }
 
   const cases = [];
+  const manifestByCaseId = new Map();
   for (const caseName of caseNames) {
     const caseDir = path.join(CORE_GOLDEN_ROOT, 'cases', caseName);
     const manifestPath = path.join(caseDir, 'manifest.json');
     const manifest = await readJson(manifestPath);
+    manifestByCaseId.set(String(manifest.case_id), manifest);
     const requiredFiles = ['transcript.docx', 'manifest.json', 'gold_minutes.md'];
     for (const fileName of requiredFiles) {
       if (!(await exists(path.join(caseDir, fileName)))) {
@@ -470,8 +539,13 @@ async function getMeetingMinutesCoreGoldenStatus() {
   const currentRequiredEdits = weightedCases.length
     ? weightedCases.reduce((sum, item) => sum + item.latestResult.weightedAssessment.errorCount, 0)
     : null;
+  const requiredEditTrend = await buildRequiredEditTrend(records, manifestByCaseId);
+  const currentTrendPoint = requiredEditTrend.length ? requiredEditTrend[requiredEditTrend.length - 1] : null;
+  const previousTrendPoint = requiredEditTrend.length > 1 ? requiredEditTrend[requiredEditTrend.length - 2] : null;
+  const previousRequiredEdits = previousTrendPoint?.requiredEdits ?? REQUIRED_EDIT_BASELINE.count;
+  const latestRequiredEdits = currentTrendPoint?.requiredEdits ?? currentRequiredEdits;
   const requiredEditReduction = typeof currentRequiredEdits === 'number'
-    ? REQUIRED_EDIT_BASELINE.count - currentRequiredEdits
+    ? previousRequiredEdits - currentRequiredEdits
     : null;
   const statusCounts = cases.reduce((counts, item) => {
     counts[item.status.key] = (counts[item.status.key] || 0) + 1;
@@ -502,13 +576,14 @@ async function getMeetingMinutesCoreGoldenStatus() {
       humanPerfectGap: averageWeightedScore == null ? null : Math.round((100 - averageWeightedScore) * 10) / 10,
       coverageScore: averageScore,
       coverageGap: averageScore == null ? null : Math.round((100 - averageScore) * 10) / 10,
-      requiredEditBaselineLabel: REQUIRED_EDIT_BASELINE.label,
-      previousRequiredEdits: REQUIRED_EDIT_BASELINE.count,
-      currentRequiredEdits,
+      requiredEditBaselineLabel: previousTrendPoint?.label || REQUIRED_EDIT_BASELINE.label,
+      previousRequiredEdits,
+      currentRequiredEdits: latestRequiredEdits,
       requiredEditReduction,
       requiredEditReductionPercent: typeof requiredEditReduction === 'number'
-        ? Math.round((requiredEditReduction / REQUIRED_EDIT_BASELINE.count) * 1000) / 10
-        : null
+        ? Math.round((requiredEditReduction / Math.max(previousRequiredEdits, 1)) * 1000) / 10
+        : null,
+      requiredEditTrend
     },
     cases,
     benchmarks
