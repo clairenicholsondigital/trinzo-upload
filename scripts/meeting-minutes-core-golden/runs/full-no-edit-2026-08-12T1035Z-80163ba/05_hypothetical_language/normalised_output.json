@@ -1,0 +1,22 @@
+{
+  "meeting_type": "Workshop",
+  "attendees": [
+    "Imogen Hart",
+    "Ravi Shah",
+    "Peter Doyle"
+  ],
+  "client_attendees": [
+    "Imogen Hart",
+    "Ravi Shah",
+    "Peter Doyle"
+  ],
+  "actions": [
+    {
+      "owner": "Not stated",
+      "action": "Review transcript for agreed actions.",
+      "due_evidence": "Not stated"
+    }
+  ],
+  "decisions": [],
+  "risks": []
+}

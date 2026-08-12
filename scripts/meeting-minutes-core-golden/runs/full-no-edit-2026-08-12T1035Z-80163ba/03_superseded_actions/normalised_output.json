@@ -1,0 +1,22 @@
+{
+  "meeting_type": "Project review",
+  "attendees": [
+    "Helen Ward",
+    "Omar Khan",
+    "Lucy Price"
+  ],
+  "client_attendees": [
+    "Helen Ward",
+    "Omar Khan",
+    "Lucy Price"
+  ],
+  "actions": [
+    {
+      "owner": "Not stated",
+      "action": "Review transcript for agreed actions.",
+      "due_evidence": "Not stated"
+    }
+  ],
+  "decisions": [],
+  "risks": []
+}

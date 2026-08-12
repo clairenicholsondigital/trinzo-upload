@@ -1,0 +1,27 @@
+{
+  "meeting_type": "Decision meeting",
+  "attendees": [
+    "Amina Yusuf",
+    "Rob Chen",
+    "George Bell",
+    "Keira Long"
+  ],
+  "client_attendees": [
+    "Amina Yusuf",
+    "Rob Chen",
+    "George Bell",
+    "Keira Long"
+  ],
+  "actions": [
+    {
+      "owner": "Not stated",
+      "action": "Review transcript for agreed actions.",
+      "due_evidence": "Not stated"
+    }
+  ],
+  "decisions": [
+    "Decision is launch Thursday at ten.",
+    "Decision is launch Thursday at ten. We only pause if the error rate exceeds two per cent. I'll publish the status page at nine thirty Thursday."
+  ],
+  "risks": []
+}

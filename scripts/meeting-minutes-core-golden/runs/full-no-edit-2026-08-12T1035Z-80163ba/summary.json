@@ -1,0 +1,121 @@
+{
+  "runId": "full-no-edit-2026-08-12T1035Z-80163ba",
+  "generatedAt": "2026-08-12T10:37:39.108Z",
+  "environment": "live-direct-no-edit-engine",
+  "caseCount": 10,
+  "averageScore": 21,
+  "readyCount": 0,
+  "lockedCount": 10,
+  "summaries": [
+    {
+      "case": "01_explicit_action_recap",
+      "score": 15,
+      "humanPerfectGap": 85,
+      "readyForFinalApproval": false,
+      "blockingCount": 2,
+      "warningCount": 2,
+      "actions": 1,
+      "decisions": 0,
+      "durationMs": 14331
+    },
+    {
+      "case": "02_scattered_actions",
+      "score": 15,
+      "humanPerfectGap": 85,
+      "readyForFinalApproval": false,
+      "blockingCount": 6,
+      "warningCount": 14,
+      "actions": 1,
+      "decisions": 0,
+      "durationMs": 13698
+    },
+    {
+      "case": "03_superseded_actions",
+      "score": 30,
+      "humanPerfectGap": 70,
+      "readyForFinalApproval": false,
+      "blockingCount": 5,
+      "warningCount": 13,
+      "actions": 1,
+      "decisions": 0,
+      "durationMs": 13184
+    },
+    {
+      "case": "04_completed_vs_outstanding",
+      "score": 30,
+      "humanPerfectGap": 70,
+      "readyForFinalApproval": false,
+      "blockingCount": 1,
+      "warningCount": 2,
+      "actions": 1,
+      "decisions": 0,
+      "durationMs": 17754
+    },
+    {
+      "case": "05_hypothetical_language",
+      "score": 15,
+      "humanPerfectGap": 85,
+      "readyForFinalApproval": false,
+      "blockingCount": 4,
+      "warningCount": 8,
+      "actions": 1,
+      "decisions": 0,
+      "durationMs": 14475
+    },
+    {
+      "case": "06_ownership_chaos",
+      "score": 45,
+      "humanPerfectGap": 55,
+      "readyForFinalApproval": false,
+      "blockingCount": 1,
+      "warningCount": 3,
+      "actions": 1,
+      "decisions": 0,
+      "durationMs": 12640
+    },
+    {
+      "case": "07_deadline_torture",
+      "score": 15,
+      "humanPerfectGap": 85,
+      "readyForFinalApproval": false,
+      "blockingCount": 1,
+      "warningCount": 4,
+      "actions": 1,
+      "decisions": 1,
+      "durationMs": 11671
+    },
+    {
+      "case": "08_attendee_provenance",
+      "score": 15,
+      "humanPerfectGap": 85,
+      "readyForFinalApproval": false,
+      "blockingCount": 1,
+      "warningCount": 3,
+      "actions": 1,
+      "decisions": 0,
+      "durationMs": 15556
+    },
+    {
+      "case": "09_no_action_meeting",
+      "score": 15,
+      "humanPerfectGap": 85,
+      "readyForFinalApproval": false,
+      "blockingCount": 3,
+      "warningCount": 7,
+      "actions": 1,
+      "decisions": 0,
+      "durationMs": 13116
+    },
+    {
+      "case": "10_chaos_goblin",
+      "score": 15,
+      "humanPerfectGap": 85,
+      "readyForFinalApproval": false,
+      "blockingCount": 1,
+      "warningCount": 3,
+      "actions": 1,
+      "decisions": 2,
+      "durationMs": 12666
+    }
+  ]
+}

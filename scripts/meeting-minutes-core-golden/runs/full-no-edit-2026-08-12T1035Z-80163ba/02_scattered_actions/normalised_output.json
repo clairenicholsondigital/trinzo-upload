@@ -1,0 +1,24 @@
+{
+  "meeting_type": "Webinar rehearsal",
+  "attendees": [
+    "Marcus Bell",
+    "Aisha Rahman",
+    "Deniz Yilmaz",
+    "Fern Whitlock"
+  ],
+  "client_attendees": [
+    "Marcus Bell",
+    "Aisha Rahman",
+    "Deniz Yilmaz",
+    "Fern Whitlock"
+  ],
+  "actions": [
+    {
+      "owner": "Not stated",
+      "action": "Review transcript for agreed actions.",
+      "due_evidence": "Not stated"
+    }
+  ],
+  "decisions": [],
+  "risks": []
+}

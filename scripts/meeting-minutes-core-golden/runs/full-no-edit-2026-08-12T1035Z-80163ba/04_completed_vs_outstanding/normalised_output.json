@@ -1,0 +1,22 @@
+{
+  "meeting_type": "Project review",
+  "attendees": [
+    "Samira Cole",
+    "Ben Morris",
+    "Eva Novak"
+  ],
+  "client_attendees": [
+    "Samira Cole",
+    "Ben Morris",
+    "Eva Novak"
+  ],
+  "actions": [
+    {
+      "owner": "Not stated",
+      "action": "Review transcript for agreed actions.",
+      "due_evidence": "Not stated"
+    }
+  ],
+  "decisions": [],
+  "risks": []
+}

@@ -1,0 +1,24 @@
+{
+  "meeting_type": "Project review",
+  "attendees": [
+    "Priya Sethi",
+    "Tom Whitfield",
+    "Nadia Okonkwo",
+    "Callum Reid"
+  ],
+  "client_attendees": [
+    "Priya Sethi",
+    "Tom Whitfield",
+    "Nadia Okonkwo",
+    "Callum Reid"
+  ],
+  "actions": [
+    {
+      "owner": "Not stated",
+      "action": "Review transcript for agreed actions.",
+      "due_evidence": "Not stated"
+    }
+  ],
+  "decisions": [],
+  "risks": []
+}

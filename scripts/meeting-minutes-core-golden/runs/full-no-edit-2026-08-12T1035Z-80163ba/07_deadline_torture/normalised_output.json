@@ -1,0 +1,24 @@
+{
+  "meeting_type": "Project review",
+  "attendees": [
+    "Grace Lin",
+    "Idris Moore",
+    "Kate Evans"
+  ],
+  "client_attendees": [
+    "Grace Lin",
+    "Idris Moore",
+    "Kate Evans"
+  ],
+  "actions": [
+    {
+      "owner": "Kate Evans",
+      "action": "Review it within two working days of receiving it",
+      "due_evidence": "Not stated"
+    }
+  ],
+  "decisions": [
+    "It will be aligned with Kate's approval. The previous draft went in last month and is closed."
+  ],
+  "risks": []
+}
