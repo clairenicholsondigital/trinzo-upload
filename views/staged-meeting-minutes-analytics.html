@@ -97,9 +97,32 @@ input { width:100%; border:1px solid var(--border-strong); border-radius:8px; pa
 .rubric-score { font-weight:700; color:var(--accent); white-space:nowrap; }
 .warning-list { display:grid; gap:.55rem; }
 .warning-item { border-left:3px solid var(--warn); padding:.55rem .65rem; background:#fff8eb; border-radius:0 8px 8px 0; }
+.prototype-banner { display:flex; gap:.8rem; align-items:flex-start; margin-top:1rem; padding:.85rem 1rem; border:1px solid #79b1c2; border-radius:10px; background:#eefbfb; color:var(--brand); }
+.prototype-banner strong { display:block; margin-bottom:.15rem; }
+.capture-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.75rem; }
+.capture-card { padding:.9rem; border:1px solid var(--border); border-radius:10px; background:var(--soft); }
+.capture-card h3 { margin-bottom:.5rem; }
+.capture-list { display:grid; gap:.35rem; margin:.55rem 0 0; padding:0; list-style:none; }
+.capture-list li { display:flex; justify-content:space-between; gap:.6rem; padding-top:.35rem; border-top:1px solid var(--border); font-size:.86rem; }
+.capture-status { font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em; white-space:nowrap; }
+.capture-status.live { color:var(--good); }
+.capture-status.planned { color:var(--warn); }
+.prototype-section-label { margin:1rem 0 .65rem; padding:.55rem .75rem; border-left:3px solid var(--accent); background:var(--accent-soft); color:var(--brand); font-size:.88rem; }
+.approval-list, .ledger-list { display:grid; gap:.7rem; }
+.approval-item, .ledger-item { padding:.9rem; border:1px solid var(--border); border-radius:10px; background:var(--soft); }
+.approval-top, .ledger-top { display:flex; align-items:flex-start; justify-content:space-between; gap:.75rem; }
+.approval-actions { display:flex; flex-wrap:wrap; gap:.45rem; margin-top:.7rem; }
+.approval-actions button { cursor:pointer; }
+.approval-actions button:disabled { cursor:default; opacity:.72; }
+.status.pending { color:#6b4f00; background:#fff0c2; }
+.status.approved { color:var(--good); background:#e7f5ec; }
+.status.hold { color:#7a263a; background:#fdecef; }
+.status.deployed { color:#164e63; background:#dff7fb; }
+.metric-source { display:block; margin-top:.25rem; color:var(--accent); font-size:.72rem; font-weight:700; }
 @media (max-width:980px) {
   .metric-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
   .hero-metric, .two-col, .quality-grid, .three-col { grid-template-columns:1fr; }
+  .capture-grid { grid-template-columns:1fr; }
   .meeting-row { grid-template-columns:1fr 1fr; }
 }
 @media (max-width:620px) {
@@ -134,44 +157,90 @@ input { width:100%; border:1px solid var(--border-strong); border-radius:8px; pa
   <section class="panel hero">
     <div class="hero-top">
       <div>
-        <p class="eyebrow">Meeting intelligence</p>
-        <h1>Analytics dashboard</h1>
-        <p class="intro">Business-focused review metrics showing time saved, approval confidence and where future meeting-minute drafts can improve.</p>
+        <p class="eyebrow">Meeting intelligence prototype</p>
+        <h1>Minutes quality and improvement dashboard</h1>
+        <p class="intro">A prototype layout for metrics that Trinzo can capture across generation, human review, approval and controlled system improvement.</p>
       </div>
-      <span class="period-pill">July 2026</span>
+      <span class="period-pill">Prototype · local review data</span>
+    </div>
+    <div class="prototype-banner" role="note">
+      <div><strong>This is a prototype metrics layout.</strong>The live figures at the top are calculated from staged reviews stored in this browser. Sections marked illustrative show the proposed reporting experience; organisation-wide reporting will require server-side review-event storage.</div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <p class="eyebrow">Measurement design</p>
+    <h2>What we can capture</h2>
+    <div class="capture-grid">
+      <article class="capture-card">
+        <h3>Generation quality</h3>
+        <p class="muted">Signals produced before a reviewer changes anything.</p>
+        <ul class="capture-list">
+          <li><span>Workstream coverage</span><span class="capture-status live">Available now</span></li>
+          <li><span>Misattributed points removed</span><span class="capture-status live">Available now</span></li>
+          <li><span>Owner and deadline safety</span><span class="capture-status live">Available now</span></li>
+          <li><span>First-pass acceptance</span><span class="capture-status planned">Needs version store</span></li>
+        </ul>
+      </article>
+      <article class="capture-card">
+        <h3>Human review effort</h3>
+        <p class="muted">Where reviewers spend time and exercise judgement.</p>
+        <ul class="capture-list">
+          <li><span>Review time and input events</span><span class="capture-status live">Local now</span></li>
+          <li><span>Regeneration by stage</span><span class="capture-status live">Local now</span></li>
+          <li><span>Semantic edit type</span><span class="capture-status planned">Needs event store</span></li>
+          <li><span>Generated-to-approved diff</span><span class="capture-status planned">Needs version store</span></li>
+        </ul>
+      </article>
+      <article class="capture-card">
+        <h3>Improvement governance</h3>
+        <p class="muted">A human-controlled route from repeated edits to tested changes.</p>
+        <ul class="capture-list">
+          <li><span>Candidate improvement queue</span><span class="capture-status live">Prototype below</span></li>
+          <li><span>Human approval or hold</span><span class="capture-status live">Prototype below</span></li>
+          <li><span>Regression-test result</span><span class="capture-status planned">Needs release link</span></li>
+          <li><span>Implemented-change ledger</span><span class="capture-status live">Shown below</span></li>
+        </ul>
+      </article>
     </div>
   </section>
 
   <section class="metric-grid" aria-label="Meeting intelligence overview">
     <article class="metric">
       <div class="metric-label">Meetings processed</div>
-      <div class="metric-value">218</div>
-      <div class="metric-note">This month</div>
+      <div id="capturedReviewCount" class="metric-value">0</div>
+      <div class="metric-note">Staged reviews in this browser</div>
+      <span class="metric-source">Captured locally</span>
     </article>
     <article class="metric">
       <div class="metric-label">Minutes approved</div>
-      <div class="metric-value">216</div>
-      <div class="metric-note">2 saved as drafts</div>
+      <div id="capturedApprovalCount" class="metric-value">0</div>
+      <div class="metric-note">Drafts reaching final review</div>
+      <span class="metric-source">Captured locally</span>
     </article>
     <article class="metric">
       <div class="metric-label">Approval rate</div>
-      <div class="metric-value">99.1%</div>
-      <div class="metric-note">After human review</div>
+      <div id="capturedApprovalRate" class="metric-value">0%</div>
+      <div class="metric-note">Final review ÷ staged reviews</div>
+      <span class="metric-source">Prototype proxy</span>
     </article>
     <article class="metric">
       <div class="metric-label">Average review time</div>
-      <div class="metric-value">2m 34s</div>
-      <div class="metric-note">Down from 3m 41s</div>
+      <div id="capturedReviewTime" class="metric-value">0s</div>
+      <div class="metric-note">Active edit time per local draft</div>
+      <span class="metric-source">Captured locally</span>
     </article>
     <article class="metric">
-      <div class="metric-label">Estimated time saved</div>
-      <div class="metric-value">87h</div>
-      <div class="metric-note">Against manual creation</div>
+      <div class="metric-label">Human input events</div>
+      <div id="capturedEditCount" class="metric-value">0</div>
+      <div class="metric-note">Keystroke-level today; semantic edits planned</div>
+      <span class="metric-source">Captured locally</span>
     </article>
     <article class="metric">
-      <div class="metric-label">Average confidence</div>
-      <div class="metric-value">92%</div>
-      <div class="metric-note">Based on reviewer edits</div>
+      <div class="metric-label">Unresolved workstreams</div>
+      <div id="capturedUnresolvedCount" class="metric-value">0</div>
+      <div class="metric-note">Still blocking final progression</div>
+      <span class="metric-source">Captured locally</span>
     </article>
     <article class="metric">
       <div class="metric-label">Manual regenerations</div>
@@ -179,6 +248,36 @@ input { width:100%; border:1px solid var(--border-strong); border-radius:8px; pa
       <div id="manualRegenerationNote" class="metric-note">AI generation re-run events from staged reviews</div>
     </article>
   </section>
+
+  <section class="two-col">
+    <article class="panel">
+      <p class="eyebrow">Human approval gate</p>
+      <h2>Candidate improvements</h2>
+      <p class="muted">Repeated edit patterns should become candidate rules—not automatic training data. A human can approve investigation or place an item on hold. Prototype decisions remain in this browser and do not change production.</p>
+      <div id="improvementApprovalQueue" class="approval-list"></div>
+    </article>
+    <article class="panel">
+      <p class="eyebrow">Controlled change record</p>
+      <h2>Approved improvements in the system</h2>
+      <p class="muted">This ledger separates deployed safeguards from ideas waiting for evidence, implementation and regression testing.</p>
+      <div class="ledger-list">
+        <article class="ledger-item">
+          <div class="ledger-top"><div><strong>Evidence-bound owners and deadlines</strong><p class="muted">Unsupported owners become Not stated; incomplete and cross-action deadlines are withheld.</p></div><span class="status deployed">Deployed</span></div>
+          <small>Commit e9b0019 · regression-tested · 12 August 2026</small>
+        </article>
+        <article class="ledger-item">
+          <div class="ledger-top"><div><strong>Workstream coverage approval gate</strong><p class="muted">Missing substantive topics must be added, intentionally omitted or returned to summary review.</p></div><span class="status deployed">Deployed</span></div>
+          <small>Commit e9b0019 · regression-tested · 12 August 2026</small>
+        </article>
+        <article class="ledger-item">
+          <div class="ledger-top"><div><strong>Discussion attribution and leakage repair</strong><p class="muted">Ambiguous evidence is withheld and strongly misattributed points are moved or removed.</p></div><span class="status deployed">Deployed</span></div>
+          <small>Commit e9b0019 · seven-case evaluator 6/7 · mean score 0.9543</small>
+        </article>
+      </div>
+    </article>
+  </section>
+
+  <div class="prototype-section-label"><strong>Illustrative reporting below.</strong> These charts demonstrate the metrics layout and are not yet organisation-wide production figures unless a card explicitly says it uses local staged-review data.</div>
 
   <section class="hero-metric">
     <article class="saving-card">
@@ -408,6 +507,107 @@ input { width:100%; border:1px solid var(--border-strong); border-radius:8px; pa
   </section>
 </main>
 <script>
+(function initialisePrototypeMetricsAndApprovalQueue() {
+  var STAGED_DRAFTS_KEY = 'stagedMeetingMinutesJobs';
+  var APPROVALS_KEY = 'stagedMinutesImprovementApprovals';
+
+  function readJson(key, fallback) {
+    try {
+      var parsed = JSON.parse(localStorage.getItem(key) || 'null');
+      return parsed == null ? fallback : parsed;
+    } catch {
+      return fallback;
+    }
+  }
+
+  function formatDuration(ms) {
+    var seconds = Math.max(0, Math.round(Number(ms || 0) / 1000));
+    var minutes = Math.floor(seconds / 60);
+    return minutes ? minutes + 'm ' + String(seconds % 60).padStart(2, '0') + 's' : seconds + 's';
+  }
+
+  function setText(id, value) {
+    var node = document.getElementById(id);
+    if (node) node.textContent = String(value);
+  }
+
+  var drafts = readJson(STAGED_DRAFTS_KEY, []);
+  if (!Array.isArray(drafts)) drafts = [];
+  var finalReviews = drafts.filter(function (draft) { return draft && draft.status === 'final_review'; });
+  var totalReviewMs = drafts.reduce(function (sum, draft) { return sum + Number(draft && draft.reviewEditMs || 0); }, 0);
+  var totalEdits = drafts.reduce(function (sum, draft) { return sum + Number(draft && draft.reviewEditCount || 0); }, 0);
+  var unresolved = drafts.reduce(function (sum, draft) {
+    var flags = draft && draft.unresolvedWorkstreamFlags;
+    return sum + (flags && typeof flags === 'object' ? Object.keys(flags).length : 0);
+  }, 0);
+  setText('capturedReviewCount', drafts.length);
+  setText('capturedApprovalCount', finalReviews.length);
+  setText('capturedApprovalRate', drafts.length ? Math.round((finalReviews.length / drafts.length) * 100) + '%' : '0%');
+  setText('capturedReviewTime', formatDuration(drafts.length ? totalReviewMs / drafts.length : 0));
+  setText('capturedEditCount', totalEdits);
+  setText('capturedUnresolvedCount', unresolved);
+
+  var candidates = [
+    {
+      id: 'semantic-edit-events',
+      title: 'Capture semantic edit events',
+      signal: 'Input counts cannot distinguish wording edits from factual owner, deadline or workstream corrections.',
+      proposal: 'Store stable item IDs and typed before/after events for every approved review.'
+    },
+    {
+      id: 'generated-approved-versions',
+      title: 'Store generated and approved versions',
+      signal: 'The current local snapshot contains the reviewed result, but not an immutable generated baseline.',
+      proposal: 'Persist both versions server-side so edit distance and first-pass acceptance are measurable.'
+    },
+    {
+      id: 'regeneration-reasons',
+      title: 'Ask why a screen was regenerated',
+      signal: 'We know which stage was rerun, but not whether the issue was coverage, accuracy, structure or tone.',
+      proposal: 'Add a short reason selector before regeneration and aggregate reasons by stage.'
+    }
+  ];
+  var approvals = readJson(APPROVALS_KEY, {});
+  if (!approvals || typeof approvals !== 'object' || Array.isArray(approvals)) approvals = {};
+  var queue = document.getElementById('improvementApprovalQueue');
+
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function renderQueue() {
+    if (!queue) return;
+    queue.innerHTML = candidates.map(function (candidate) {
+      var decision = approvals[candidate.id] && approvals[candidate.id].decision || 'pending';
+      var label = decision === 'approved' ? 'Approved for investigation' : (decision === 'hold' ? 'On hold' : 'Awaiting decision');
+      return '<article class="approval-item" data-candidate-id="' + escapeHtml(candidate.id) + '">' +
+        '<div class="approval-top"><div><strong>' + escapeHtml(candidate.title) + '</strong><p class="muted">' + escapeHtml(candidate.signal) + '</p></div><span class="status ' + decision + '">' + label + '</span></div>' +
+        '<p><strong>Proposed:</strong> ' + escapeHtml(candidate.proposal) + '</p>' +
+        '<div class="approval-actions"><button class="button" type="button" data-decision="approved">Approve for improvement work</button><button class="button secondary" type="button" data-decision="hold">Hold for more evidence</button></div>' +
+        '<small>Approval creates a prototype governance decision only; code still requires implementation, regression testing and deployment.</small>' +
+      '</article>';
+    }).join('');
+  }
+
+  if (queue) {
+    queue.addEventListener('click', function (event) {
+      var button = event.target.closest('[data-decision]');
+      var item = event.target.closest('[data-candidate-id]');
+      if (!button || !item) return;
+      var id = item.getAttribute('data-candidate-id');
+      approvals[id] = { decision: button.getAttribute('data-decision'), decidedAt: new Date().toISOString() };
+      try { localStorage.setItem(APPROVALS_KEY, JSON.stringify(approvals)); } catch {}
+      renderQueue();
+    });
+  }
+  renderQueue();
+})();
+
 (function initialiseRegenerationAnalytics() {
   var STAGED_DRAFTS_KEY = 'stagedMeetingMinutesJobs';
   var countNode = document.getElementById('manualRegenerationCount');

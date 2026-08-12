@@ -172,6 +172,20 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("Preserve useful specifics", analytics)
         self.assertIn("Check topic evidence before writing", analytics)
 
+    def test_staged_minutes_analytics_labels_prototype_and_human_improvement_gate(self):
+        analytics = (REPO_DIR / "views" / "staged-meeting-minutes-analytics.html").read_text(encoding="utf-8")
+
+        self.assertIn("This is a prototype metrics layout", analytics)
+        self.assertIn("What we can capture", analytics)
+        self.assertIn("Captured locally", analytics)
+        self.assertIn("Human approval gate", analytics)
+        self.assertIn("Approve for improvement work", analytics)
+        self.assertIn("Hold for more evidence", analytics)
+        self.assertIn("Approved improvements in the system", analytics)
+        self.assertIn("Commit e9b0019", analytics)
+        self.assertIn("stagedMinutesImprovementApprovals", analytics)
+        self.assertIn("generated and approved versions", analytics)
+
     def test_meeting_minutes_final_queue_and_jobs_page_are_wired(self):
         meeting_minutes_final = (REPO_DIR / "views" / "meeting-minutes-final.html").read_text(encoding="utf-8")
         jobs_page = (REPO_DIR / "views" / "meeting-minutes-jobs.html").read_text(encoding="utf-8")
