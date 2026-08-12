@@ -186,6 +186,31 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("stagedMinutesImprovementApprovals", analytics)
         self.assertIn("generated and approved versions", analytics)
 
+    def test_staged_minutes_pre_testing_dashboard_is_wired_to_core_golden_set(self):
+        server = (REPO_DIR / "server.js").read_text(encoding="utf-8")
+        api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+        helper = (REPO_DIR / "utils" / "meetingMinutesCoreGolden.js").read_text(encoding="utf-8")
+        page = (REPO_DIR / "views" / "staged-meeting-minutes-pre-testing.html").read_text(encoding="utf-8")
+        dashboard = (REPO_DIR / "views" / "dashboard.html").read_text(encoding="utf-8")
+        staged = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
+        analytics = (REPO_DIR / "views" / "staged-meeting-minutes-analytics.html").read_text(encoding="utf-8")
+
+        self.assertIn("app.get('/staged-meeting-minutes/pre-testing', authRoutes.requireAuth", server)
+        self.assertIn("router.get('/staged-meeting-minutes/pre-testing', requireAuth", api)
+        self.assertIn("getMeetingMinutesCoreGoldenStatus", api)
+        self.assertIn("scripts', 'meeting-minutes-core-golden", helper)
+        self.assertIn("scoreCaseOutput", helper)
+        self.assertIn("humanPerfectGap", helper)
+        self.assertIn("Staged minutes pre-testing", page)
+        self.assertIn("/api/staged-meeting-minutes/pre-testing", page)
+        self.assertIn("Working", page)
+        self.assertIn("Needs work", page)
+        self.assertIn("Human-perfect gap", page)
+        self.assertIn("Benchmark pairs", page)
+        self.assertIn('href="/staged-meeting-minutes/pre-testing"', dashboard)
+        self.assertIn('href="/staged-meeting-minutes/pre-testing"', staged)
+        self.assertIn('href="/staged-meeting-minutes/pre-testing"', analytics)
+
     def test_meeting_minutes_final_queue_and_jobs_page_are_wired(self):
         meeting_minutes_final = (REPO_DIR / "views" / "meeting-minutes-final.html").read_text(encoding="utf-8")
         jobs_page = (REPO_DIR / "views" / "meeting-minutes-jobs.html").read_text(encoding="utf-8")

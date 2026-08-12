@@ -39,6 +39,7 @@ const {
   normaliseFinalStagedActionCandidate,
   normaliseAndValidateActionOwner
 } = require('../utils/stagedEditorial');
+const { getMeetingMinutesCoreGoldenStatus } = require('../utils/meetingMinutesCoreGolden');
 
 const {
   saveMeetingMinutes,
@@ -4213,6 +4214,15 @@ router.post('/meeting-minutes-final', requireAuth, withTestUpload(async (req, re
     return sendTestError(res, error);
   }
 }));
+
+router.get('/staged-meeting-minutes/pre-testing', requireAuth, async (req, res, next) => {
+  try {
+    const status = await getMeetingMinutesCoreGoldenStatus();
+    res.json(status);
+  } catch (error) {
+    next(error);
+  }
+});
 
 router.post('/staged-meeting-minutes/no-edit-pass', requireAuth, withTestUpload(async (req, res) => {
   const startedAt = Date.now();
