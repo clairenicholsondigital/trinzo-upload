@@ -206,6 +206,27 @@ test('finaliseDiscussionPointForMinutes removes raw transcript fragments without
   assert.equal(finaliseDiscussionPointForMinutes('I mean, you know, we were kind of waiting for that.', 'Delivery plan'), '');
 });
 
+test('finaliseDiscussionPointForMinutes rejects the leaked T761 reported-speech fragments', () => {
+  const topic = 'Language File Updates and Character Support';
+  assert.equal(finaliseDiscussionPointForMinutes(
+    "David said that They, they ask for the devices to the device, and the team has changed the software versions and we don't really have, the current documentation.",
+    topic
+  ), '');
+  assert.equal(finaliseDiscussionPointForMinutes(
+    'David said that it gives it, but it gives it the degree of granularity that it needs for the MDR device file history.',
+    topic
+  ), '');
+});
+
+test('finaliseDiscussionPointForMinutes neutralises safe reported speech and drops incomplete DITA fragments', () => {
+  const topic = 'Regulatory documentation and DoCs';
+  assert.equal(finaliseDiscussionPointForMinutes('Jenny said that new products have to go into EUDAMED immediately.', topic), 'New products have to go into EUDAMED immediately.');
+  assert.equal(finaliseDiscussionPointForMinutes('Jenny asked whether the warehouse was automated or fully manual.', topic), 'The discussion considered whether the warehouse was automated or fully manual.');
+  assert.equal(finaliseDiscussionPointForMinutes('Jacqui said that as the team worked through the process, they probably identified some key questions that they.', topic), '');
+  assert.equal(finaliseDiscussionPointForMinutes('Jacqui said that in the work that the team is doing.', topic), '');
+  assert.equal(finaliseDiscussionPointForMinutes('Jenny said that , Jenny know what, as an importer, there should be a link between the two.', topic), '');
+});
+
 test('reshapeStagedDiscussionCardsForHumanMinutes flags removed raw and malformed discussion points', () => {
   const result = reshapeStagedDiscussionCardsForHumanMinutes([
     {

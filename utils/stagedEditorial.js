@@ -519,6 +519,41 @@ function humaniseDiscussionPoint(value) {
   return sentenceCaseHumanDiscussion(text);
 }
 
+const REPORTED_SPEECH_DISCUSSION_PREFIX = /^([A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){0,3})\s+(said|explained|reported)\s+that\s+(.+)$/i;
+const REPORTED_QUESTION_DISCUSSION_PREFIX = /^([A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){0,3})\s+asked\s+whether\s+(.+)$/i;
+const INCOMPLETE_DISCUSSION_ENDING = /\b(?:and|or|but|because|although|though|if|when|while|that|which|who|whose|where|whether|with|without|from|to|for|of|the|a|an)\s*[.!?]?$/i;
+const REPORTED_SPEECH_DISFLUENCY = /^(?:[,;:]|and\b|but\b|so\b)|\b(?:you know|know what|I mean|sort of|kind of|like\s+[A-Z]|we don't really|we do not really)\b|\b([A-Za-z]+)\s*,\s*\1\b|\b([A-Za-z]+\s+it),\s+but\s+it\s+\2\b/i;
+
+function discussionPointIsCompleteSentence(value) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!text || text.split(/\s+/).length < 5) return false;
+  if (INCOMPLETE_DISCUSSION_ENDING.test(text)) return false;
+  if (/[,;:]\s*[.!?]?$/.test(text)) return false;
+  if (/\b(?:that|which|who)\s+(?:they|we|it|the team)\s*[.!?]?$/i.test(text)) return false;
+  if (/^(?:in|as|for|with|from|to)\b/i.test(text) && !/\b(?:is|are|was|were|has|have|will|would|requires?|includes?|covers?|supports?|uses?|needs?)\b/i.test(text)) return false;
+  if (/^in\s+the\s+(?:work|process|discussion|meeting)\s+that\b/i.test(text)) return false;
+  return true;
+}
+
+function neutraliseReportedDiscussion(value) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  const statement = text.match(REPORTED_SPEECH_DISCUSSION_PREFIX);
+  if (statement) {
+    const body = statement[3].replace(/^[,;:\s]+/, '').trim();
+    if (!body || REPORTED_SPEECH_DISFLUENCY.test(statement[3]) || FIRST_PERSON_TRANSCRIPT_VOICE.test(body)) return '';
+    if (!discussionPointIsCompleteSentence(body)) return '';
+    return sentenceCaseHumanDiscussion(body);
+  }
+  const question = text.match(REPORTED_QUESTION_DISCUSSION_PREFIX);
+  if (question) {
+    const body = question[2].replace(/^[,;:\s]+/, '').trim();
+    if (!body || REPORTED_SPEECH_DISFLUENCY.test(body) || FIRST_PERSON_TRANSCRIPT_VOICE.test(body)) return '';
+    if (!discussionPointIsCompleteSentence(body)) return '';
+    return 'The discussion considered whether ' + body.replace(/[.?!]+$/, '') + '.';
+  }
+  return text;
+}
+
 const RAW_TRANSCRIPT_DISCUSSION_PATTERNS = [
   /^(?:well|yeah|yes|no|okay|ok|right|so|anyway|basically|actually|and then|and that|but)\b/i,
   /^(?:one of the things|the other thing|what I was|what we were|what was)\b/i,
@@ -528,7 +563,7 @@ const RAW_TRANSCRIPT_DISCUSSION_PATTERNS = [
 
 const STAGED_SPEAKER_TURN_PREFIX = /^(?:\[?\d{1,2}:\d{2}(?::\d{2})?\]?\s*)?(?:[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){0,3})\s+(?:\d{1,2}:\d{2}(?::\d{2})?|said\s*:)|^\[?\d{1,2}:\d{2}(?::\d{2})?\]?\s*/;
 const FIRST_PERSON_TRANSCRIPT_VOICE = /\b(?:I|I'm|I’m|I've|I’ve|I'd|I’d|we|we're|we’re|we've|we’ve|we'd|we’d|us|our|ours|you|you're|you’re|you've|you’ve|your|yours)\b/i;
-const STANDALONE_MINUTES_SUBJECT = /^(?:the\s+(?:team|group|meeting|discussion|review|project|client|supplier|process|system|document|audit|work|risk|scope)|[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){0,3}\s+(?:said|noted|confirmed|explained|reported|asked|agreed)|[A-Z0-9][A-Za-z0-9'’()./&+-]+\s+(?:is|are|was|were|has|have|will|would|remains?|requires?|includes?|covers?|supports?|uses?|needs?))/;
+const STANDALONE_MINUTES_SUBJECT = /^(?:the\s+(?:team|group|meeting|discussion|review|project|client|supplier|process|system|document|audit|work|risk|scope)|[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){0,3}\s+(?:noted|confirmed|agreed)|[A-Z0-9][A-Za-z0-9'’()./&+-]+\s+(?:is|are|was|were|has|have|will|would|remains?|requires?|includes?|covers?|supports?|uses?|needs?))/;
 
 const DISCUSSION_ACTION_ONLY = /^(?:arrange|book|schedule|organise|coordinate|set\s+up|update|review|check|verify|validate|assess|send|share|provide|circulate|issue|upload|forward|confirm|prepare|complete|develop|build|create|finali[sz]e|finish|produce|draft|submit|approve|agree|accept|sign(?:\s+off)?|trace|generate|identify|document|follow[- ]?up|begin)\b/i;
 
@@ -552,9 +587,12 @@ function discussionPointIsActionOnly(value) {
 }
 
 function finaliseDiscussionPointForMinutes(point, topic = '') {
-  const human = humaniseDiscussionPoint(point);
+  const neutral = neutraliseReportedDiscussion(point);
+  if (!neutral) return '';
+  const human = humaniseDiscussionPoint(neutral);
   if (!human) return '';
   if (isMalformedStagedLine(human) || isRawTranscriptDiscussionPoint(human)) return '';
+  if (!discussionPointIsCompleteSentence(human)) return '';
   if (discussionPointIsActionOnly(human)) return '';
   return human;
 }

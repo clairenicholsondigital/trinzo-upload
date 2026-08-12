@@ -41,5 +41,20 @@ class MeetingMinutesGoldenQualityTest(unittest.TestCase):
         self.assertIn("action item is too long/unclear", failure_blob)
 
 
+    def test_reported_speech_and_incomplete_discussion_are_flagged(self):
+        output = {
+            "discussionPoints": [
+                "David said that it gives it the granularity required for the device history.",
+                "The team identified several questions that they.",
+            ]
+        }
+
+        failures = universal_quality_failures(output)
+        failure_blob = "\n".join(failures)
+
+        self.assertIn("transcript-style reported speech", failure_blob)
+        self.assertIn("not a complete standalone sentence", failure_blob)
+
+
 if __name__ == "__main__":
     unittest.main()

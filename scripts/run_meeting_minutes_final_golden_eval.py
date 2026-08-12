@@ -48,6 +48,14 @@ US_SPELLINGS = {
 }
 FIRST_PERSON_RE = re.compile(r"\b(?:i['’]?ll|i\s+will|i['’]?m|i\s+am|i\s+can|i\s+need|my|mine)\b", re.I)
 SECOND_PERSON_TRANSCRIPT_RE = re.compile(r"\b(?:you['’]?ve\s+got|you\s+have\s+got|your\s+business|you\s+know)\b", re.I)
+MALFORMED_REPORTED_SPEECH_RE = re.compile(
+    r"\b[A-Z][A-Za-z'’.-]+(?:\s+[A-Z][A-Za-z'’.-]+){0,3}\s+(?:said|explained|reported)\s+that\b",
+    re.I,
+)
+INCOMPLETE_DISCUSSION_RE = re.compile(
+    r"(?:\b(?:and|or|but|because|although|if|when|while|that|which|who|where|whether|with|from|to|for|of|the|a|an)|[,;:]|\b(?:that|which|who)\s+(?:they|we|it|the team))\s*[.!?]?$",
+    re.I,
+)
 TIMECODE_RE = re.compile(r"\b(?:\d{1,2}:\d{2}(?::\d{2})?|\d{1,2}\.\d{2}\.\d{2})\b")
 EMOJI_RE = re.compile(r"[\U0001F300-\U0001FAFF]")
 DATE_IN_ACTION_RE = re.compile(
@@ -405,6 +413,13 @@ def universal_quality_failures(output: dict[str, Any]) -> list[str]:
     for objective in output.get("meetingObjectives", []) or []:
         if len(words(objective)) > 28:
             failures.append(f"quality: objective is too long/transcript-like {objective!r}")
+
+    for discussion in output.get("discussionPoints", []) or []:
+        discussion_text = str(discussion or "").strip()
+        if MALFORMED_REPORTED_SPEECH_RE.search(discussion_text):
+            failures.append(f"quality: discussion uses transcript-style reported speech {discussion_text!r}")
+        if INCOMPLETE_DISCUSSION_RE.search(discussion_text):
+            failures.append(f"quality: discussion is not a complete standalone sentence {discussion_text!r}")
 
     return failures
 
