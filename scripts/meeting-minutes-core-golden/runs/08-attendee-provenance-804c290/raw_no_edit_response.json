@@ -1,0 +1,609 @@
+{
+  "ok": true,
+  "staged": true,
+  "mode": "no_human_edits",
+  "source": "file",
+  "fileName": "transcript.docx",
+  "transcriptLength": 3238,
+  "screens": {
+    "details": {
+      "meetingTitle": "Voss & Delaney Launch Weekly",
+      "meetingDate": "2026-08-11",
+      "meetingLocation": "Microsoft Teams",
+      "organisation": "",
+      "meetingType": "Project review",
+      "internalAttendees": [],
+      "clientAttendees": [
+        "Gemma Ashworth",
+        "Raj Patel",
+        "Louise Corrigan",
+        "Tobias Frank"
+      ],
+      "allAttendees": [
+        "Gemma Ashworth",
+        "Raj Patel",
+        "Louise Corrigan",
+        "Tobias Frank"
+      ]
+    },
+    "summary": {
+      "objectives": [
+        "Agree voss & delaney launch date adjustment",
+        "Review print lead time and artwork submission",
+        "Review website case study completion",
+        "Review contract finalisation"
+      ],
+      "executiveSummary": "The Voss & Delaney launch date has been formally moved from the fifteenth to the twentieth due to a ten-day lead time required by Kettleby Print for the brochures. Artwork proofs are scheduled to be sent to the printer by Wednesday to meet this revised deadline. The website case study is complete, and the contract with Voss & Delaney has been returned. The primary risk remains the print lead time, as any delay from the printer could impact the twentieth launch date.",
+      "overallTopics": [
+        "Voss & Delaney Launch Date Adjustment",
+        "Print Lead Time and Artwork Submission",
+        "Website Case Study Completion",
+        "Contract Finalisation"
+      ]
+    },
+    "discussion": [
+      {
+        "topic": "Voss & Delaney Launch Date Adjustment",
+        "whatWasDiscussed": "Discussion centred on adjusting the launch date following an inquiry from Marguerite regarding the original fifteenth. It was agreed to move the launch to the twentieth.",
+        "currentPosition": "The launch date is confirmed as the twentieth.",
+        "dependencyOrRisk": "Risk identified regarding print lead times; a delay of even two days could cause a miss of the twentieth date.",
+        "nextStep": "The responsible party will reply to Marguerite today to manage expectations regarding the revised date.",
+        "points": [
+          "The decision was made to move the launch date to the twentieth.",
+          "The responsible party will reply to Marguerite today to manage expectations regarding the revised date."
+        ]
+      },
+      {
+        "topic": "Print Lead Time and Artwork Submission",
+        "whatWasDiscussed": "The print lead time was discussed, noting that the fifteenth date was unachievable due to print constraints. A ten-day lead time was quoted for brochures, suggesting the twentieth as the earliest possible date.",
+        "currentPosition": "The print lead time dictates that artwork must be submitted by Wednesday to meet the earliest launch date.",
+        "decisionOrAgreement": "Agreed to make the submission deadline firm.",
+        "nextStep": "Raj Patel is tasked with sending the artwork proofs to Kettleby Print by Wednesday.",
+        "points": [
+          "The print lead time dictates that artwork must be submitted by Wednesday to meet the earliest launch date.",
+          "Related point on Raj to deliver artwork proofs to Kettleby Print by Wednesday.",
+          "The print lead time was discussed, noting that the fifteenth date was unachievable due to print constraints. A ten-day lead time was quoted for brochures, suggesting the twentieth as the earliest possible date.",
+          "Agreed to make the submission deadline firm."
+        ]
+      },
+      {
+        "topic": "Website Case Study Completion",
+        "whatWasDiscussed": "The status of the website case study was reviewed, confirming that the draft had been sent out previously.",
+        "currentPosition": "The case study is essentially complete, with the draft sent out last week.",
+        "decisionOrAgreement": "No formal decision recorded, but status confirmed.",
+        "nextStep": "No immediate next step was assigned for this item.",
+        "points": [
+          "The case study is essentially complete, with the draft sent out last week.",
+          "The status of the website case study was reviewed, confirming that the draft had been sent out previously."
+        ]
+      },
+      {
+        "topic": "Contract Finalisation",
+        "whatWasDiscussed": "The status of the contract finalisation was confirmed.",
+        "currentPosition": "The contract has been reviewed and signed, and the signed copy has been sent back to Voss and Delaney, concluding that aspect.",
+        "nextStep": "None identified.",
+        "points": [
+          "The status of the contract finalisation was confirmed.",
+          "The contract has been reviewed and the signed copy has been sent to Voss and Delaney.",
+          "The contract finalisation is closed off."
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "owner": "Tobias Frank",
+        "action": "Kettleby Print quoted us a ten day lead time on the brochures, so if we send artwork this week we're looking at, what, the twentieth at the earliest",
+        "deadline": "Not stated",
+        "source": "staged_evidence_ledger"
+      },
+      {
+        "owner": "Raj Patel",
+        "action": "Send the artwork proofs to Kettleby Print",
+        "deadline": "Wednesday",
+        "source": "staged_evidence_ledger"
+      },
+      {
+        "owner": "Gemma Ashworth",
+        "action": "Reply to Marguerite confirming the revised launch date is the 20th",
+        "deadline": "today",
+        "source": "staged_evidence_ledger"
+      }
+    ],
+    "decisions": [
+      {
+        "text": "Move the launch date from the 15th to the 20th",
+        "evidence": "And I'll reply to Marguerite today and tell her the realistic date is the twentieth, not the fifteenth, and manage her expectations.",
+        "sourceTurnIds": [
+          11
+        ]
+      }
+    ],
+    "risks": [
+      {
+        "text": "Kettleby Print has slipped timings before; a two-day slip also risks the 20th",
+        "evidence": "One risk on the print, and Tobias flag if I'm wrong, but Kettleby have let us down on timings before, haven't they.",
+        "sourceTurnIds": [
+          24
+        ],
+        "status": "open"
+      }
+    ],
+    "finalReview": {
+      "readyForFinalApproval": true,
+      "message": "All generated screens can proceed to final human approval."
+    }
+  },
+  "visibleOutput": {
+    "meetingTitle": "Voss & Delaney Launch Weekly",
+    "participants": {
+      "trinzo": [],
+      "client": [
+        "Gemma Ashworth",
+        "Raj Patel",
+        "Louise Corrigan",
+        "Tobias Frank"
+      ]
+    },
+    "meetingObjectives": [
+      "Agree voss & delaney launch date adjustment",
+      "Review print lead time and artwork submission",
+      "Review website case study completion",
+      "Review contract finalisation"
+    ],
+    "executiveSummary": "The Voss & Delaney launch date has been formally moved from the fifteenth to the twentieth due to a ten-day lead time required by Kettleby Print for the brochures. Artwork proofs are scheduled to be sent to the printer by Wednesday to meet this revised deadline. The website case study is complete, and the contract with Voss & Delaney has been returned. The primary risk remains the print lead time, as any delay from the printer could impact the twentieth launch date.",
+    "discussionPoints": [
+      "Voss & Delaney Launch Date Adjustment: The decision was made to move the launch date to the twentieth.",
+      "Voss & Delaney Launch Date Adjustment: The responsible party will reply to Marguerite today to manage expectations regarding the revised date.",
+      "Print Lead Time and Artwork Submission: The print lead time dictates that artwork must be submitted by Wednesday to meet the earliest launch date.",
+      "Print Lead Time and Artwork Submission: Related point on Raj to deliver artwork proofs to Kettleby Print by Wednesday.",
+      "Print Lead Time and Artwork Submission: The print lead time was discussed, noting that the fifteenth date was unachievable due to print constraints. A ten-day lead time was quoted for brochures, suggesting the twentieth as the earliest possible date.",
+      "Print Lead Time and Artwork Submission: Agreed to make the submission deadline firm.",
+      "Website Case Study Completion: The case study is essentially complete, with the draft sent out last week.",
+      "Website Case Study Completion: The status of the website case study was reviewed, confirming that the draft had been sent out previously.",
+      "Contract Finalisation: The status of the contract finalisation was confirmed.",
+      "Contract Finalisation: The contract has been reviewed and the signed copy has been sent to Voss and Delaney.",
+      "Contract Finalisation: The contract finalisation is closed off."
+    ],
+    "decisions": [
+      "Move the launch date from the 15th to the 20th",
+      "The decision was made to move the launch date to the twentieth.",
+      "Agreed to make the submission deadline firm.",
+      "No formal decision recorded, but status confirmed.",
+      "The status of the contract finalisation was confirmed."
+    ],
+    "risks": [
+      "Kettleby Print has slipped timings before; a two-day slip also risks the 20th"
+    ],
+    "actions": [
+      {
+        "meetingActionPointOwner": "Tobias Frank",
+        "meetingActionPoint": "Kettleby Print quoted us a ten day lead time on the brochures, so if we send artwork this week we're looking at, what, the twentieth at the earliest",
+        "meetingActionPointDeadline": "Not stated"
+      },
+      {
+        "meetingActionPointOwner": "Raj Patel",
+        "meetingActionPoint": "Send the artwork proofs to Kettleby Print",
+        "meetingActionPointDeadline": "Wednesday"
+      },
+      {
+        "meetingActionPointOwner": "Gemma Ashworth",
+        "meetingActionPoint": "Reply to Marguerite confirming the revised launch date is the 20th",
+        "meetingActionPointDeadline": "today"
+      }
+    ]
+  },
+  "reviewExperience": {
+    "mode": "no_human_edits",
+    "description": "The generated output from each screen was accepted unchanged and passed into the next screen.",
+    "stages": [
+      {
+        "stage": "details",
+        "screenLabel": "Meeting details",
+        "statusMessage": "Meeting details generated. Review or edit this screen before continuing.",
+        "editorialHeading": null,
+        "flags": [],
+        "blocking": false
+      },
+      {
+        "stage": "summary",
+        "screenLabel": "Summary and topics",
+        "statusMessage": "Topics generated. Review or edit them before continuing.",
+        "editorialHeading": null,
+        "flags": [],
+        "blocking": false
+      },
+      {
+        "stage": "discussion",
+        "screenLabel": "Discussion points",
+        "statusMessage": "Discussion points generated from the topic context.",
+        "editorialHeading": "Editorial checks (review before moving on)",
+        "flags": [
+          {
+            "type": "misattributed_discussion_evidence",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "Removed 1 discussion point(s) under \"Voss & Delaney Launch Date Adjustment\" because they did not fit that workstream's evidence.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "review_manually"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          },
+          {
+            "type": "misattributed_discussion_evidence",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "Removed 2 discussion point(s) under \"Website Case Study Completion\" because they did not fit that workstream's evidence.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "review_manually"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          }
+        ],
+        "blocking": false
+      },
+      {
+        "stage": "actions",
+        "screenLabel": "Actions",
+        "statusMessage": "Actions generated. Check owners and dates before continuing.",
+        "editorialHeading": null,
+        "flags": [],
+        "blocking": false
+      }
+    ],
+    "flags": [
+      {
+        "type": "misattributed_discussion_evidence",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "Removed 1 discussion point(s) under \"Voss & Delaney Launch Date Adjustment\" because they did not fit that workstream's evidence.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "review_manually"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "misattributed_discussion_evidence",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "Removed 2 discussion point(s) under \"Website Case Study Completion\" because they did not fit that workstream's evidence.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "review_manually"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      }
+    ],
+    "warningCount": 2,
+    "blockingCount": 0,
+    "readyForFinalApproval": true,
+    "finalReviewMessage": "All generated screens can proceed to final human approval.",
+    "requiredReviewerActions": []
+  },
+  "trace": [
+    {
+      "stage": "details",
+      "provider": "deterministic_stage_1_prep",
+      "outputCount": 1,
+      "telemetry": {
+        "stage": "details",
+        "transcriptLength": 3238,
+        "screenCount": 1,
+        "attendeeExtraction": {
+          "source": "microsoft_teams_speaker_turns",
+          "speakerCount": 4,
+          "turnCount": 34,
+          "eventSpeakerCount": 1,
+          "knownInternalAttendeeCount": 0,
+          "knownClientAttendeeCount": 0,
+          "headerSource": "microsoft_teams_header",
+          "dateSource": "microsoft_teams_header"
+        }
+      },
+      "preparedTranscriptTelemetry": {
+        "rawLength": 3238,
+        "preparedLength": 2788,
+        "removedLineCount": 79,
+        "removedReasons": {
+          "teamsHeader": 3,
+          "transcriptionEvent": 2,
+          "blankLine": 74,
+          "timestampOnly": 0
+        },
+        "source": "deterministic_stage_1_prep"
+      }
+    },
+    {
+      "stage": "summary",
+      "provider": "trooper-stage",
+      "fallbackUsed": false,
+      "inputTopicCount": 4,
+      "outputCount": 4,
+      "validationFlags": [],
+      "telemetry": {
+        "stage": "summary",
+        "topicCount": 4,
+        "transcriptLength": 2788,
+        "embeddingClassifier": {
+          "used": true,
+          "provider": "trooper_stage",
+          "rewriterAvailable": true,
+          "rewriterReason": "Trooper targeted staged summary generation used.",
+          "pipeline": "staged_summary_targeted",
+          "modelAvailable": true,
+          "modelName": "eu_liv_000099",
+          "modelReason": "Trooper targeted staged summary generation used.",
+          "counts": {},
+          "evidencePackTopicCount": 0,
+          "workstreamStateCount": 0,
+          "missingWorkstreamCount": 0,
+          "missingWorkstreams": [],
+          "workstreamQualityFlags": [],
+          "timingMs": {
+            "total": 4770
+          }
+        },
+        "objectiveReducer": {
+          "objectiveSource": "workstream_objective_reducer",
+          "topicCount": 4,
+          "objectiveSpecificityScore": 100
+        }
+      },
+      "generationDiagnostics": {
+        "provider": "trooper_stage",
+        "modelAvailable": true,
+        "modelName": "eu_liv_000099",
+        "modelReason": "Trooper targeted staged summary generation used.",
+        "pipeline": "staged_summary_targeted",
+        "timingMs": {
+          "total": 4770
+        },
+        "strictTopicCoverage": false,
+        "evidencePackTopicCount": 0,
+        "workstreamStateCount": 0,
+        "missingWorkstreamCount": 0,
+        "missingWorkstreams": [],
+        "workstreamQualityFlags": [],
+        "usage": {
+          "prompt_tokens": 1970,
+          "completion_tokens": 217,
+          "total_tokens": 2187
+        }
+      }
+    },
+    {
+      "stage": "discussion",
+      "provider": "trooper-stage",
+      "fallbackUsed": false,
+      "inputTopicCount": 4,
+      "outputCount": 4,
+      "outputPointCount": 11,
+      "validationFlags": [
+        {
+          "type": "misattributed_discussion_evidence",
+          "severity": "warning",
+          "message": "Removed 1 discussion point(s) under \"Voss & Delaney Launch Date Adjustment\" because they did not fit that workstream's evidence."
+        },
+        {
+          "type": "misattributed_discussion_evidence",
+          "severity": "warning",
+          "message": "Removed 2 discussion point(s) under \"Website Case Study Completion\" because they did not fit that workstream's evidence."
+        }
+      ],
+      "telemetry": {
+        "stage": "discussion",
+        "topicCount": 4,
+        "discussionCards": 4,
+        "droppedMisattributedDiscussionPoints": 2,
+        "workstreamCoverage": [
+          {
+            "topic": "Voss & Delaney Launch Date Adjustment",
+            "classification": "substantive",
+            "evidenceCount": 3,
+            "discussionCardCount": 1,
+            "assignedTurnIds": [],
+            "status": "covered"
+          },
+          {
+            "topic": "Print Lead Time and Artwork Submission",
+            "classification": "substantive",
+            "evidenceCount": 3,
+            "discussionCardCount": 1,
+            "assignedTurnIds": [],
+            "status": "covered"
+          },
+          {
+            "topic": "Website Case Study Completion",
+            "classification": "substantive",
+            "evidenceCount": 2,
+            "discussionCardCount": 1,
+            "assignedTurnIds": [],
+            "status": "covered"
+          },
+          {
+            "topic": "Contract Finalisation",
+            "classification": "substantive",
+            "evidenceCount": 1,
+            "discussionCardCount": 1,
+            "assignedTurnIds": [],
+            "status": "covered"
+          }
+        ],
+        "transcriptLength": 2788,
+        "embeddingClassifier": {
+          "used": true,
+          "provider": "trooper_stage",
+          "rewriterAvailable": true,
+          "rewriterReason": "Trooper targeted staged discussion generation used.",
+          "pipeline": "staged_discussion_targeted",
+          "modelAvailable": true,
+          "modelName": "eu_liv_000099",
+          "modelReason": "Trooper targeted staged discussion generation used.",
+          "counts": {},
+          "evidencePackTopicCount": 4,
+          "workstreamStateCount": 4,
+          "missingWorkstreamCount": 0,
+          "missingWorkstreams": [],
+          "workstreamQualityFlags": [
+            "missing_workstream_recovered",
+            "substantive_workstream_omission_risk",
+            "low_heading_evidence_match"
+          ],
+          "timingMs": {
+            "total": 10784
+          }
+        },
+        "discussionCompaction": {
+          "pointsBefore": 11,
+          "pointsAfter": 11,
+          "duplicatesRemoved": 0,
+          "truncatedRemoved": 0,
+          "cardCount": 4,
+          "namedDetailsBefore": 0,
+          "namedDetailsAfter": 0,
+          "detailRetentionScore": 100,
+          "detailRetentionWarnings": []
+        }
+      },
+      "generationDiagnostics": {
+        "provider": "trooper_stage",
+        "modelAvailable": true,
+        "modelName": "eu_liv_000099",
+        "modelReason": "Trooper targeted staged discussion generation used.",
+        "pipeline": "staged_discussion_targeted",
+        "timingMs": {
+          "total": 10784
+        },
+        "strictTopicCoverage": false,
+        "evidencePackTopicCount": 4,
+        "workstreamStateCount": 4,
+        "missingWorkstreamCount": 0,
+        "missingWorkstreams": [],
+        "workstreamQualityFlags": [
+          "missing_workstream_recovered",
+          "substantive_workstream_omission_risk",
+          "low_heading_evidence_match"
+        ],
+        "usage": {
+          "prompt_tokens": 5006,
+          "completion_tokens": 1070,
+          "total_tokens": 6076
+        }
+      }
+    },
+    {
+      "stage": "actions",
+      "provider": "trooper-stage",
+      "fallbackUsed": false,
+      "inputTopicCount": 4,
+      "outputCount": 3,
+      "validationFlags": [],
+      "telemetry": {
+        "stage": "actions",
+        "actionCount": 3,
+        "actionPreservation": {
+          "transcriptPreservedActionCount": 0,
+          "transcriptActionInventoryCount": 0,
+          "evidenceLedgerActionCount": 3,
+          "evidenceClassifierActionCount": 1,
+          "transcriptActionInventoryUsed": true
+        },
+        "transcriptLength": 2788,
+        "embeddingClassifier": {
+          "used": true,
+          "provider": "trooper_stage",
+          "rewriterAvailable": true,
+          "rewriterReason": "Trooper targeted staged actions generation used.",
+          "pipeline": "staged_actions_targeted",
+          "modelAvailable": true,
+          "modelName": "eu_liv_000099",
+          "modelReason": "Trooper targeted staged actions generation used.",
+          "counts": {},
+          "evidencePackTopicCount": 0,
+          "workstreamStateCount": 0,
+          "missingWorkstreamCount": 0,
+          "missingWorkstreams": [],
+          "workstreamQualityFlags": [],
+          "timingMs": {
+            "total": 4886
+          }
+        },
+        "evidenceClassifier": {
+          "used": true,
+          "executed": true,
+          "modelAvailable": true,
+          "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+          "modelPath": "/root/meeting-minutes-evidence-model/runs/multitask-rework-20260812T140735Z/model_bundle",
+          "modelReason": "Evidence classifier completed.",
+          "actionCount": 4,
+          "itemCount": 32,
+          "segmentsScored": 32,
+          "counts": {
+            "low_value_noise": 19,
+            "action_commitment": 8,
+            "background_context": 3,
+            "risk_dependency": 1,
+            "discussion_topic": 1
+          },
+          "timingMs": {
+            "total": 8242
+          }
+        }
+      },
+      "generationDiagnostics": {
+        "provider": "trooper_stage",
+        "modelAvailable": true,
+        "modelName": "eu_liv_000099",
+        "modelReason": "Trooper targeted staged actions generation used.",
+        "pipeline": "staged_actions_targeted",
+        "timingMs": {
+          "total": 4886
+        },
+        "strictTopicCoverage": false,
+        "evidencePackTopicCount": 0,
+        "workstreamStateCount": 0,
+        "missingWorkstreamCount": 0,
+        "missingWorkstreams": [],
+        "workstreamQualityFlags": [],
+        "usage": {
+          "prompt_tokens": 2247,
+          "completion_tokens": 161,
+          "total_tokens": 2408
+        },
+        "evidenceClassifier": {
+          "used": true,
+          "executed": true,
+          "modelAvailable": true,
+          "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+          "modelPath": "/root/meeting-minutes-evidence-model/runs/multitask-rework-20260812T140735Z/model_bundle",
+          "modelReason": "Evidence classifier completed.",
+          "actionCount": 4,
+          "itemCount": 32,
+          "segmentsScored": 32,
+          "counts": {
+            "low_value_noise": 19,
+            "action_commitment": 8,
+            "background_context": 3,
+            "risk_dependency": 1,
+            "discussion_topic": 1
+          },
+          "timingMs": {
+            "total": 8242
+          }
+        }
+      }
+    }
+  ]
+}

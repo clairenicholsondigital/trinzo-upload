@@ -1,0 +1,27 @@
+{
+  "meeting_type": "Project review",
+  "attendees": [
+    "Helen Ward",
+    "Omar Khan",
+    "Lucy Price"
+  ],
+  "client_attendees": [
+    "Helen Ward",
+    "Omar Khan",
+    "Lucy Price"
+  ],
+  "actions": [
+    {
+      "owner": "Lucy Price",
+      "action": "Draft and send the release note",
+      "due_evidence": "Wednesday morning"
+    }
+  ],
+  "decisions": [
+    "Keep the release scheduled for Friday",
+    "The release is confirmed for Friday, conditional on the release note being ready.",
+    "The review status was confirmed as complete.",
+    "The security review has been completed and signed off."
+  ],
+  "risks": []
+}

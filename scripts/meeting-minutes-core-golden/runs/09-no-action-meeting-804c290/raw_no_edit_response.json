@@ -1,0 +1,878 @@
+{
+  "ok": true,
+  "staged": true,
+  "mode": "no_human_edits",
+  "source": "file",
+  "fileName": "transcript.docx",
+  "transcriptLength": 3505,
+  "screens": {
+    "details": {
+      "meetingTitle": "Validation Close Out Review",
+      "meetingDate": "2026-08-12",
+      "meetingLocation": "Microsoft Teams",
+      "organisation": "",
+      "meetingType": "Decision meeting",
+      "internalAttendees": [],
+      "clientAttendees": [
+        "Elaine Voss",
+        "Martin Okoro",
+        "Sana Iqbal"
+      ],
+      "allAttendees": [
+        "Elaine Voss",
+        "Martin Okoro",
+        "Sana Iqbal"
+      ]
+    },
+    "summary": {
+      "objectives": [
+        "Confirm validation report approval",
+        "Identify residual risk acceptance (temperature excursion)",
+        "Review component supplier selection",
+        "Review validation closure status"
+      ],
+      "executiveSummary": "The validation close-out review confirmed that all primary validation tasks are complete, with the validation report approved for release following confirmation that acceptance criteria were met. The residual risk concerning the temperature excursion has been formally accepted as low. Furthermore, the selection of component supplier B has been confirmed and documented. There are no outstanding actions identified, and the team agreed against further testing or immediate action on noted batch variation.",
+      "overallTopics": [
+        "Validation Report Approval",
+        "Residual Risk Acceptance (Temperature Excursion)",
+        "Component Supplier Selection",
+        "Validation Closure Status"
+      ]
+    },
+    "discussion": [
+      {
+        "topic": "Validation Report Approval",
+        "whatWasDiscussed": "Discussion focused on the final approval of the validation report for release, confirming that all acceptance criteria were met and the dataset was deemed sufficient.",
+        "currentPosition": "The validation report is approved for release.",
+        "decisionOrAgreement": "Decision made to approve the validation report for release.",
+        "nextStep": "None identified; the process is closed.",
+        "points": [
+          "None identified; the process is closed."
+        ],
+        "qualityFlags": [
+          "raw_transcript_discussion_points_removed"
+        ]
+      },
+      {
+        "topic": "Residual Risk Acceptance (Temperature Excursion)",
+        "whatWasDiscussed": "The residual risk concerning the temperature excursion was reviewed, confirming that the risk level was low and that the team formally accepted this residual risk.",
+        "currentPosition": "The residual risk on the temperature excursion has been formally accepted.",
+        "decisionOrAgreement": "Decision made to formally accept the residual risk on the temperature excursion.",
+        "nextStep": "None identified; the matter is documented and closed.",
+        "points": [
+          "None identified; the matter is documented and closed."
+        ],
+        "qualityFlags": [
+          "raw_transcript_discussion_points_removed"
+        ]
+      },
+      {
+        "topic": "Component Supplier Selection",
+        "whatWasDiscussed": "The selection process for the component supplier was reviewed, confirming the decision to proceed with Supplier B based on better tolerances.",
+        "currentPosition": "Supplier B has been confirmed as the selected component supplier.",
+        "decisionOrAgreement": "Decision made to select Supplier B.",
+        "nextStep": "Monitor batch variation on Supplier B; no immediate action is required.",
+        "points": [
+          "Supplier B has been confirmed as the selected component supplier.",
+          "Decision made to select Supplier B."
+        ]
+      },
+      {
+        "topic": "Validation Closure Status",
+        "whatWasDiscussed": "The overall status of the validation closure was reviewed, confirming that all preceding items were closed and no outstanding actions remained.",
+        "currentPosition": "Validation closure is complete; all previous items are closed.",
+        "decisionOrAgreement": "No new decisions were required; confirmation that all previous steps were finalised.",
+        "nextStep": "None identified; the process is concluded.",
+        "points": [
+          "Validation closure is complete; all previous items are closed.",
+          "None identified; the process is concluded.",
+          "The overall status of the validation closure was reviewed, confirming that all preceding items were closed and no outstanding actions remained."
+        ],
+        "qualityFlags": [
+          "raw_transcript_discussion_points_removed"
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "owner": "All",
+        "action": "Approve the validation report for release",
+        "deadline": "Not stated"
+      }
+    ],
+    "decisions": [
+      {
+        "text": "Approve the validation report for release",
+        "evidence": "So the real question today is just, are we happy to approve the validation report for release.",
+        "sourceTurnIds": [
+          7
+        ]
+      },
+      {
+        "text": "Do not carry out a further round of testing",
+        "evidence": "No further testing then.",
+        "sourceTurnIds": [
+          14
+        ]
+      },
+      {
+        "text": "Accept the residual risk on the temperature excursion",
+        "evidence": "So the residual risk there is low, and we'd already agreed it's acceptable, so we're just formally accepting it, there's nothing to action.",
+        "sourceTurnIds": [
+          16
+        ]
+      },
+      {
+        "text": "Confirm supplier B as the component supplier",
+        "evidence": "Okay, so we've approved the report, accepted the residual risk, confirmed supplier B, and there's nothing for anyone to go away and do.",
+        "sourceTurnIds": [
+          28
+        ]
+      }
+    ],
+    "risks": [
+      {
+        "text": "Next, the temperature excursion thing on the residual risk register",
+        "evidence": "Next, the temperature excursion thing on the residual risk register.",
+        "sourceTurnIds": [
+          15
+        ],
+        "status": "open"
+      },
+      {
+        "text": "Residual temperature-excursion risk accepted and documented",
+        "evidence": "So the residual risk there is low, and we'd already agreed it's acceptable, so we're just formally accepting it, there's nothing to action.",
+        "sourceTurnIds": [
+          16
+        ],
+        "status": "accepted_or_monitored"
+      },
+      {
+        "text": "Yes, that's a watch item, agreed, but no action, we just monitor it as normal",
+        "evidence": "Yes, that's a watch item, agreed, but no action, we just monitor it as normal.",
+        "sourceTurnIds": [
+          23
+        ],
+        "status": "accepted_or_monitored"
+      },
+      {
+        "text": "Exactly, it's within spec, just worth noting",
+        "evidence": "Exactly, it's within spec, just worth noting.",
+        "sourceTurnIds": [
+          24
+        ],
+        "status": "open"
+      }
+    ],
+    "finalReview": {
+      "readyForFinalApproval": true,
+      "message": "All generated screens can proceed to final human approval."
+    }
+  },
+  "visibleOutput": {
+    "meetingTitle": "Validation Close Out Review",
+    "participants": {
+      "trinzo": [],
+      "client": [
+        "Elaine Voss",
+        "Martin Okoro",
+        "Sana Iqbal"
+      ]
+    },
+    "meetingObjectives": [
+      "Confirm validation report approval",
+      "Identify residual risk acceptance (temperature excursion)",
+      "Review component supplier selection",
+      "Review validation closure status"
+    ],
+    "executiveSummary": "The validation close-out review confirmed that all primary validation tasks are complete, with the validation report approved for release following confirmation that acceptance criteria were met. The residual risk concerning the temperature excursion has been formally accepted as low. Furthermore, the selection of component supplier B has been confirmed and documented. There are no outstanding actions identified, and the team agreed against further testing or immediate action on noted batch variation.",
+    "discussionPoints": [
+      "Validation Report Approval: None identified; the process is closed.",
+      "Residual Risk Acceptance (Temperature Excursion): None identified; the matter is documented and closed.",
+      "Component Supplier Selection: Supplier B has been confirmed as the selected component supplier.",
+      "Component Supplier Selection: Decision made to select Supplier B.",
+      "Validation Closure Status: Validation closure is complete; all previous items are closed.",
+      "Validation Closure Status: None identified; the process is concluded.",
+      "Validation Closure Status: The overall status of the validation closure was reviewed, confirming that all preceding items were closed and no outstanding actions remained."
+    ],
+    "decisions": [
+      "Approve the validation report for release",
+      "Do not carry out a further round of testing",
+      "Accept the residual risk on the temperature excursion",
+      "Confirm supplier B as the component supplier",
+      "Decision made to approve the validation report for release.",
+      "Decision made to formally accept the residual risk on the temperature excursion.",
+      "Decision made to select Supplier B.",
+      "Supplier B has been confirmed as the selected component supplier.",
+      "No new decisions were required; confirmation that all previous steps were finalised.",
+      "None identified; the process is concluded."
+    ],
+    "risks": [
+      "Next, the temperature excursion thing on the residual risk register",
+      "Residual temperature-excursion risk accepted and documented",
+      "Yes, that's a watch item, agreed, but no action, we just monitor it as normal",
+      "Exactly, it's within spec, just worth noting"
+    ],
+    "actions": [
+      {
+        "meetingActionPointOwner": "All",
+        "meetingActionPoint": "Approve the validation report for release",
+        "meetingActionPointDeadline": "Not stated"
+      }
+    ]
+  },
+  "reviewExperience": {
+    "mode": "no_human_edits",
+    "description": "The generated output from each screen was accepted unchanged and passed into the next screen.",
+    "stages": [
+      {
+        "stage": "details",
+        "screenLabel": "Meeting details",
+        "statusMessage": "Meeting details generated. Review or edit this screen before continuing.",
+        "editorialHeading": null,
+        "flags": [],
+        "blocking": false
+      },
+      {
+        "stage": "summary",
+        "screenLabel": "Summary and topics",
+        "statusMessage": "Topics generated. Review or edit them before continuing.",
+        "editorialHeading": null,
+        "flags": [],
+        "blocking": false
+      },
+      {
+        "stage": "discussion",
+        "screenLabel": "Discussion points",
+        "statusMessage": "Discussion points generated from the topic context.",
+        "editorialHeading": "Editorial checks (review before moving on)",
+        "flags": [
+          {
+            "type": "misattributed_discussion_evidence",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "Removed 1 discussion point(s) under \"Component Supplier Selection\" because they did not fit that workstream's evidence.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "review_manually"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          },
+          {
+            "type": "misattributed_discussion_evidence",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "Removed 1 discussion point(s) under \"Validation Report Approval\" because they did not fit that workstream's evidence.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "review_manually"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          },
+          {
+            "type": "misattributed_discussion_evidence",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "Removed 1 discussion point(s) under \"Residual Risk Acceptance (Temperature Excursion)\" because they did not fit that workstream's evidence.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "review_manually"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          },
+          {
+            "type": "misattributed_discussion_evidence",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "Removed 1 discussion point(s) under \"Residual Risk Acceptance (Temperature Excursion)\" because they did not fit that workstream's evidence.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "review_manually"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          },
+          {
+            "type": "raw_transcript_discussion_points_removed",
+            "severity": "info",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "Removed raw transcript-style wording under \"Validation Report Approval\" before final review.",
+            "uiLabel": "Tidied",
+            "reviewerChoices": [
+              "review_manually"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          },
+          {
+            "type": "raw_transcript_discussion_points_removed",
+            "severity": "info",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "Removed raw transcript-style wording under \"Residual Risk Acceptance (Temperature Excursion)\" before final review.",
+            "uiLabel": "Tidied",
+            "reviewerChoices": [
+              "review_manually"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          },
+          {
+            "type": "raw_transcript_discussion_points_removed",
+            "severity": "info",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "Removed raw transcript-style wording under \"Validation Closure Status\" before final review.",
+            "uiLabel": "Tidied",
+            "reviewerChoices": [
+              "review_manually"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          },
+          {
+            "type": "thin_substantive_workstream",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": "workstream:validation report approval",
+            "message": "\"Validation Report Approval\" has only one retained discussion point. Review whether more evidence is needed.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "review_manually"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          },
+          {
+            "type": "thin_substantive_workstream",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": "workstream:residual risk acceptance temperature excursion",
+            "message": "\"Residual Risk Acceptance (Temperature Excursion)\" has only one retained discussion point. Review whether more evidence is needed.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "review_manually"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          }
+        ],
+        "blocking": false
+      },
+      {
+        "stage": "actions",
+        "screenLabel": "Actions",
+        "statusMessage": "Actions generated. Check owners and dates before continuing.",
+        "editorialHeading": null,
+        "flags": [],
+        "blocking": false
+      }
+    ],
+    "flags": [
+      {
+        "type": "misattributed_discussion_evidence",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "Removed 1 discussion point(s) under \"Component Supplier Selection\" because they did not fit that workstream's evidence.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "review_manually"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "misattributed_discussion_evidence",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "Removed 1 discussion point(s) under \"Validation Report Approval\" because they did not fit that workstream's evidence.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "review_manually"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "misattributed_discussion_evidence",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "Removed 1 discussion point(s) under \"Residual Risk Acceptance (Temperature Excursion)\" because they did not fit that workstream's evidence.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "review_manually"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "misattributed_discussion_evidence",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "Removed 1 discussion point(s) under \"Residual Risk Acceptance (Temperature Excursion)\" because they did not fit that workstream's evidence.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "review_manually"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "raw_transcript_discussion_points_removed",
+        "severity": "info",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "Removed raw transcript-style wording under \"Validation Report Approval\" before final review.",
+        "uiLabel": "Tidied",
+        "reviewerChoices": [
+          "review_manually"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "raw_transcript_discussion_points_removed",
+        "severity": "info",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "Removed raw transcript-style wording under \"Residual Risk Acceptance (Temperature Excursion)\" before final review.",
+        "uiLabel": "Tidied",
+        "reviewerChoices": [
+          "review_manually"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "raw_transcript_discussion_points_removed",
+        "severity": "info",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "Removed raw transcript-style wording under \"Validation Closure Status\" before final review.",
+        "uiLabel": "Tidied",
+        "reviewerChoices": [
+          "review_manually"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "thin_substantive_workstream",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": "workstream:validation report approval",
+        "message": "\"Validation Report Approval\" has only one retained discussion point. Review whether more evidence is needed.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "review_manually"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "thin_substantive_workstream",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": "workstream:residual risk acceptance temperature excursion",
+        "message": "\"Residual Risk Acceptance (Temperature Excursion)\" has only one retained discussion point. Review whether more evidence is needed.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "review_manually"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      }
+    ],
+    "warningCount": 6,
+    "blockingCount": 0,
+    "readyForFinalApproval": true,
+    "finalReviewMessage": "All generated screens can proceed to final human approval.",
+    "requiredReviewerActions": []
+  },
+  "trace": [
+    {
+      "stage": "details",
+      "provider": "deterministic_stage_1_prep",
+      "outputCount": 1,
+      "telemetry": {
+        "stage": "details",
+        "transcriptLength": 3505,
+        "screenCount": 1,
+        "attendeeExtraction": {
+          "source": "microsoft_teams_speaker_turns",
+          "speakerCount": 3,
+          "turnCount": 31,
+          "eventSpeakerCount": 1,
+          "knownInternalAttendeeCount": 0,
+          "knownClientAttendeeCount": 0,
+          "headerSource": "microsoft_teams_header",
+          "dateSource": "microsoft_teams_header"
+        }
+      },
+      "preparedTranscriptTelemetry": {
+        "rawLength": 3505,
+        "preparedLength": 3088,
+        "removedLineCount": 73,
+        "removedReasons": {
+          "teamsHeader": 3,
+          "transcriptionEvent": 2,
+          "blankLine": 68,
+          "timestampOnly": 0
+        },
+        "source": "deterministic_stage_1_prep"
+      }
+    },
+    {
+      "stage": "summary",
+      "provider": "trooper-stage",
+      "fallbackUsed": false,
+      "inputTopicCount": 4,
+      "outputCount": 4,
+      "validationFlags": [],
+      "telemetry": {
+        "stage": "summary",
+        "topicCount": 4,
+        "transcriptLength": 3088,
+        "embeddingClassifier": {
+          "used": true,
+          "provider": "trooper_stage",
+          "rewriterAvailable": true,
+          "rewriterReason": "Trooper targeted staged summary generation used.",
+          "pipeline": "staged_summary_targeted",
+          "modelAvailable": true,
+          "modelName": "eu_liv_000099",
+          "modelReason": "Trooper targeted staged summary generation used.",
+          "counts": {},
+          "evidencePackTopicCount": 0,
+          "workstreamStateCount": 0,
+          "missingWorkstreamCount": 0,
+          "missingWorkstreams": [],
+          "workstreamQualityFlags": [],
+          "timingMs": {
+            "total": 5044
+          }
+        },
+        "objectiveReducer": {
+          "objectiveSource": "workstream_objective_reducer",
+          "topicCount": 4,
+          "objectiveSpecificityScore": 100
+        }
+      },
+      "generationDiagnostics": {
+        "provider": "trooper_stage",
+        "modelAvailable": true,
+        "modelName": "eu_liv_000099",
+        "modelReason": "Trooper targeted staged summary generation used.",
+        "pipeline": "staged_summary_targeted",
+        "timingMs": {
+          "total": 5044
+        },
+        "strictTopicCoverage": false,
+        "evidencePackTopicCount": 0,
+        "workstreamStateCount": 0,
+        "missingWorkstreamCount": 0,
+        "missingWorkstreams": [],
+        "workstreamQualityFlags": [],
+        "usage": {
+          "prompt_tokens": 1720,
+          "completion_tokens": 203,
+          "total_tokens": 1923
+        }
+      }
+    },
+    {
+      "stage": "discussion",
+      "provider": "trooper-stage",
+      "fallbackUsed": false,
+      "inputTopicCount": 4,
+      "outputCount": 4,
+      "outputPointCount": 7,
+      "validationFlags": [
+        {
+          "type": "misattributed_discussion_evidence",
+          "severity": "warning",
+          "message": "Removed 1 discussion point(s) under \"Component Supplier Selection\" because they did not fit that workstream's evidence."
+        },
+        {
+          "type": "misattributed_discussion_evidence",
+          "severity": "warning",
+          "message": "Removed 1 discussion point(s) under \"Validation Report Approval\" because they did not fit that workstream's evidence."
+        },
+        {
+          "type": "misattributed_discussion_evidence",
+          "severity": "warning",
+          "message": "Removed 1 discussion point(s) under \"Residual Risk Acceptance (Temperature Excursion)\" because they did not fit that workstream's evidence."
+        },
+        {
+          "type": "misattributed_discussion_evidence",
+          "severity": "warning",
+          "message": "Removed 1 discussion point(s) under \"Residual Risk Acceptance (Temperature Excursion)\" because they did not fit that workstream's evidence."
+        },
+        {
+          "type": "raw_transcript_discussion_points_removed",
+          "severity": "info",
+          "message": "Removed raw transcript-style wording under \"Validation Report Approval\" before final review."
+        },
+        {
+          "type": "raw_transcript_discussion_points_removed",
+          "severity": "info",
+          "message": "Removed raw transcript-style wording under \"Residual Risk Acceptance (Temperature Excursion)\" before final review."
+        },
+        {
+          "type": "raw_transcript_discussion_points_removed",
+          "severity": "info",
+          "message": "Removed raw transcript-style wording under \"Validation Closure Status\" before final review."
+        },
+        {
+          "type": "thin_substantive_workstream",
+          "severity": "warning",
+          "blocking": false,
+          "resolutionKey": "workstream:validation report approval",
+          "message": "\"Validation Report Approval\" has only one retained discussion point. Review whether more evidence is needed.",
+          "discussionSuggestion": null
+        },
+        {
+          "type": "thin_substantive_workstream",
+          "severity": "warning",
+          "blocking": false,
+          "resolutionKey": "workstream:residual risk acceptance temperature excursion",
+          "message": "\"Residual Risk Acceptance (Temperature Excursion)\" has only one retained discussion point. Review whether more evidence is needed.",
+          "discussionSuggestion": null
+        }
+      ],
+      "telemetry": {
+        "stage": "discussion",
+        "topicCount": 4,
+        "discussionCards": 4,
+        "droppedMisattributedDiscussionPoints": 4,
+        "workstreamCoverage": [
+          {
+            "topic": "Validation Report Approval",
+            "classification": "substantive",
+            "evidenceCount": 0,
+            "discussionCardCount": 1,
+            "assignedTurnIds": [],
+            "status": "thin"
+          },
+          {
+            "topic": "Residual Risk Acceptance (Temperature Excursion)",
+            "classification": "substantive",
+            "evidenceCount": 0,
+            "discussionCardCount": 1,
+            "assignedTurnIds": [],
+            "status": "thin"
+          },
+          {
+            "topic": "Component Supplier Selection",
+            "classification": "substantive",
+            "evidenceCount": 3,
+            "discussionCardCount": 1,
+            "assignedTurnIds": [],
+            "status": "covered"
+          },
+          {
+            "topic": "Validation Closure Status",
+            "classification": "substantive",
+            "evidenceCount": 0,
+            "discussionCardCount": 1,
+            "assignedTurnIds": [],
+            "status": "covered"
+          }
+        ],
+        "transcriptLength": 3088,
+        "embeddingClassifier": {
+          "used": true,
+          "provider": "trooper_stage",
+          "rewriterAvailable": true,
+          "rewriterReason": "Trooper targeted staged discussion generation used.",
+          "pipeline": "staged_discussion_targeted",
+          "modelAvailable": true,
+          "modelName": "eu_liv_000099",
+          "modelReason": "Trooper targeted staged discussion generation used.",
+          "counts": {},
+          "evidencePackTopicCount": 4,
+          "workstreamStateCount": 4,
+          "missingWorkstreamCount": 3,
+          "missingWorkstreams": [
+            "Labelling and IFU considerations",
+            "Declaration of Conformity language requirements",
+            "Elaine asked whether Martin, that went out, didn't it"
+          ],
+          "workstreamQualityFlags": [
+            "low_heading_evidence_match",
+            "missing_workstream_recovered"
+          ],
+          "timingMs": {
+            "total": 11135
+          }
+        },
+        "discussionCompaction": {
+          "pointsBefore": 11,
+          "pointsAfter": 10,
+          "duplicatesRemoved": 1,
+          "truncatedRemoved": 0,
+          "cardCount": 4,
+          "namedDetailsBefore": 1,
+          "namedDetailsAfter": 1,
+          "detailRetentionScore": 100,
+          "detailRetentionWarnings": []
+        }
+      },
+      "generationDiagnostics": {
+        "provider": "trooper_stage",
+        "modelAvailable": true,
+        "modelName": "eu_liv_000099",
+        "modelReason": "Trooper targeted staged discussion generation used.",
+        "pipeline": "staged_discussion_targeted",
+        "timingMs": {
+          "total": 11135
+        },
+        "strictTopicCoverage": false,
+        "evidencePackTopicCount": 4,
+        "workstreamStateCount": 4,
+        "missingWorkstreamCount": 3,
+        "missingWorkstreams": [
+          "Labelling and IFU considerations",
+          "Declaration of Conformity language requirements",
+          "Elaine asked whether Martin, that went out, didn't it"
+        ],
+        "workstreamQualityFlags": [
+          "low_heading_evidence_match",
+          "missing_workstream_recovered"
+        ],
+        "usage": {
+          "prompt_tokens": 6208,
+          "completion_tokens": 1034,
+          "total_tokens": 7242
+        }
+      }
+    },
+    {
+      "stage": "actions",
+      "provider": "trooper-stage",
+      "fallbackUsed": false,
+      "inputTopicCount": 4,
+      "outputCount": 1,
+      "validationFlags": [],
+      "telemetry": {
+        "stage": "actions",
+        "actionCount": 1,
+        "actionPreservation": {
+          "transcriptPreservedActionCount": 0,
+          "transcriptActionInventoryCount": 0,
+          "evidenceLedgerActionCount": 0,
+          "evidenceClassifierActionCount": 0,
+          "transcriptActionInventoryUsed": false
+        },
+        "transcriptLength": 3088,
+        "embeddingClassifier": {
+          "used": true,
+          "provider": "trooper_stage",
+          "rewriterAvailable": true,
+          "rewriterReason": "Trooper targeted staged actions generation used.",
+          "pipeline": "staged_actions_targeted",
+          "modelAvailable": true,
+          "modelName": "eu_liv_000099",
+          "modelReason": "Trooper targeted staged actions generation used.",
+          "counts": {},
+          "evidencePackTopicCount": 0,
+          "workstreamStateCount": 0,
+          "missingWorkstreamCount": 0,
+          "missingWorkstreams": [],
+          "workstreamQualityFlags": [],
+          "timingMs": {
+            "total": 4493
+          }
+        },
+        "evidenceClassifier": {
+          "used": true,
+          "executed": true,
+          "modelAvailable": true,
+          "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+          "modelPath": "/root/meeting-minutes-evidence-model/runs/multitask-rework-20260812T140735Z/model_bundle",
+          "modelReason": "Evidence classifier completed.",
+          "actionCount": 0,
+          "itemCount": 43,
+          "segmentsScored": 43,
+          "counts": {
+            "low_value_noise": 17,
+            "process_overview": 4,
+            "discussion_topic": 7,
+            "decision_agreement": 7,
+            "risk_dependency": 4,
+            "action_commitment": 2,
+            "background_context": 2
+          },
+          "timingMs": {
+            "total": 9477
+          }
+        }
+      },
+      "generationDiagnostics": {
+        "provider": "trooper_stage",
+        "modelAvailable": true,
+        "modelName": "eu_liv_000099",
+        "modelReason": "Trooper targeted staged actions generation used.",
+        "pipeline": "staged_actions_targeted",
+        "timingMs": {
+          "total": 4493
+        },
+        "strictTopicCoverage": false,
+        "evidencePackTopicCount": 0,
+        "workstreamStateCount": 0,
+        "missingWorkstreamCount": 0,
+        "missingWorkstreams": [],
+        "workstreamQualityFlags": [],
+        "usage": {
+          "prompt_tokens": 2196,
+          "completion_tokens": 123,
+          "total_tokens": 2319
+        },
+        "evidenceClassifier": {
+          "used": true,
+          "executed": true,
+          "modelAvailable": true,
+          "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+          "modelPath": "/root/meeting-minutes-evidence-model/runs/multitask-rework-20260812T140735Z/model_bundle",
+          "modelReason": "Evidence classifier completed.",
+          "actionCount": 0,
+          "itemCount": 43,
+          "segmentsScored": 43,
+          "counts": {
+            "low_value_noise": 17,
+            "process_overview": 4,
+            "discussion_topic": 7,
+            "decision_agreement": 7,
+            "risk_dependency": 4,
+            "action_commitment": 2,
+            "background_context": 2
+          },
+          "timingMs": {
+            "total": 9477
+          }
+        }
+      }
+    }
+  ]
+}

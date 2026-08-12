@@ -1,0 +1,1176 @@
+{
+  "ok": true,
+  "staged": true,
+  "mode": "no_human_edits",
+  "source": "file",
+  "fileName": "transcript.docx",
+  "transcriptLength": 16565,
+  "screens": {
+    "details": {
+      "meetingTitle": "Client M204 Larkfield MK Thursday Session",
+      "meetingDate": "2026-08-06",
+      "meetingLocation": "Microsoft Teams",
+      "organisation": "",
+      "meetingType": "Project review",
+      "internalAttendees": [],
+      "clientAttendees": [
+        "Priya Sethi",
+        "Tom Whitfield",
+        "Nadia Okonkwo",
+        "Callum Reid"
+      ],
+      "allAttendees": [
+        "Priya Sethi",
+        "Tom Whitfield",
+        "Nadia Okonkwo",
+        "Callum Reid"
+      ]
+    },
+    "summary": {
+      "objectives": [
+        "Review presentation structure and flow",
+        "Agree presenter handover protocols",
+        "Review audience q&a management",
+        "Review technical contingency planning"
+      ],
+      "executiveSummary": "The project review session confirmed the structure for the client presentation, focusing heavily on refining the presentation flow, particularly the handover between speakers and managing audience interaction. Key agreements include a defined timing structure (35 minutes for content, 20 minutes for questions) and specific roles for managing live audience queries. A primary risk identified is the potential for dead air during transitions, which is mitigated by pre-planned ad-lib strategies and technical contingency plans, such as having a backup sharing mechanism. Actions are set for updating slide animations, creating the closing slide with a QR code, and preparing backup questions.",
+      "overallTopics": [
+        "Presentation Structure and Flow",
+        "Presenter Handover Protocols",
+        "Audience Q&A Management",
+        "Technical Contingency Planning"
+      ]
+    },
+    "discussion": [
+      {
+        "topic": "Presentation Structure and Flow",
+        "whatWasDiscussed": "Discussion centred on whether to run the entire presentation or spot-check difficult sections, and the structure of the introduction and handover.",
+        "currentPosition": "Agreed to spot-check tricky bits to avoid overrunning, focusing on nailing the joins and questions section.",
+        "decisionOrAgreement": "Agreed to spot-check tricky bits; the introduction will be brief (around thirty seconds) and the main content will be structured around three key areas.",
+        "dependencyOrRisk": "Risk identified regarding the animation on the three-things slide being stripped when pasted as plain text.",
+        "nextStep": "Callum is to put the animation back on the three-things slide.",
+        "points": [
+          "Risk identified regarding the animation on the three-things slide being stripped when pasted as plain text."
+        ]
+      },
+      {
+        "topic": "Presenter Handover Protocols",
+        "whatWasDiscussed": "Protocols for the opening, housekeeping, dead air management during handovers, and the process for swapping screen sharing.",
+        "currentPosition": "Agreed on a streamlined handover process, including specific actions for managing transitions and technical issues.",
+        "decisionOrAgreement": "Agreed to practise the handover fully; the process involves the presenter opening, housekeeping, covering dead air, and closing.",
+        "dependencyOrRisk": "Risk identified regarding dead air during transitions, which was deemed significant.",
+        "nextStep": "The team will practise the handover, and the presenter will cover dead air by talking over the gap.",
+        "points": [
+          "Protocols for the opening, housekeeping, dead air management during handovers, and the process for swapping screen sharing.",
+          "Agreed to practise the handover fully; the process involves the presenter opening, housekeeping, covering dead air, and closing."
+        ]
+      },
+      {
+        "topic": "Audience Q&A Management",
+        "points": [
+          "That's clever, yeah. So the audience just sees Priya reading out a nice tidy question."
+        ],
+        "source": "workstream_state_discussion_fallback"
+      },
+      {
+        "topic": "Technical Contingency Planning",
+        "whatWasDiscussed": "Plans for technical failures, including recording, connection issues, and screen sharing loss.",
+        "currentPosition": "Robust contingency plans are in place for recording, connection loss, and presenter drop-offs.",
+        "decisionOrAgreement": "Agreed on specific actions for recording proof and managing presenter drop-offs.",
+        "dependencyOrRisk": "Risk identified regarding the loss of the initial recording segment.",
+        "nextStep": "Callum is responsible for hitting the record button upon the presenter starting, taking a screenshot, and monitoring the recording status.",
+        "points": [
+          "Robust contingency plans are in place for recording, connection loss, and presenter drop-offs.",
+          "Plans for technical failures, including recording, connection issues, and screen sharing loss.",
+          "Agreed on specific actions for recording proof and managing presenter drop-offs.",
+          "Risk identified regarding the loss of the initial recording segment."
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "owner": "Priya Sethi",
+        "action": "Thirty seconds on you, don't do the whole CV",
+        "deadline": "Not stated",
+        "source": "staged_evidence_ledger"
+      },
+      {
+        "owner": "Priya Sethi",
+        "action": "Cover it, I'll say something like, right, while Tom gets that back up, and just talk over the gap",
+        "deadline": "Not stated",
+        "source": "staged_evidence_ledger"
+      },
+      {
+        "owner": "Nadia Okonkwo",
+        "action": "Put five mins in the chat to you, just to you",
+        "deadline": "Not stated",
+        "source": "staged_evidence_ledger"
+      },
+      {
+        "owner": "Nadia Okonkwo",
+        "action": "Put that as an actual slide, the how to reach us, don't just say it, because half of them will have wandered off by then",
+        "deadline": "Not stated",
+        "source": "staged_evidence_ledger"
+      },
+      {
+        "owner": "Callum Reid",
+        "action": "I watch the little red dot the whole time",
+        "deadline": "Not stated",
+        "source": "staged_evidence_ledger"
+      },
+      {
+        "owner": "Callum Reid",
+        "action": "Putting the animation back on the three-things slide",
+        "deadline": "Not stated",
+        "source": "staged_evidence_ledger"
+      },
+      {
+        "owner": "Callum Reid",
+        "action": "Building the closing slide with the QR code and the link",
+        "deadline": "Not stated",
+        "source": "staged_evidence_ledger"
+      },
+      {
+        "owner": "Nadia Okonkwo",
+        "action": "Doing the planted questions and grouping the chat on the day",
+        "deadline": "Not stated",
+        "source": "staged_evidence_ledger"
+      },
+      {
+        "owner": "Tom Whitfield",
+        "action": "Thirty seconds on yourself, thirty seconds per answer, and dropping the not-see-you joke",
+        "deadline": "Not stated",
+        "source": "staged_evidence_ledger"
+      },
+      {
+        "owner": "Priya Sethi",
+        "action": "The open, the housekeeping, tap-the-speech-bubble line, and covering any dead air on the handovers",
+        "deadline": "Not stated",
+        "source": "staged_evidence_ledger"
+      }
+    ],
+    "decisions": [
+      {
+        "text": "Finish content by 35 minutes and reserve 20 minutes for questions",
+        "evidence": "So can we say, the content is done by thirty-five minutes, hard stop, and then the last, we've got a full twenty for questions.",
+        "sourceTurnIds": [
+          63
+        ]
+      },
+      {
+        "text": "Hold a short warm-up at 08:30 before the 11:00 live session",
+        "evidence": "So, half eight tomorrow for the warm-up, and then we're on at, it's eleven, isn't it, the live one.",
+        "sourceTurnIds": [
+          163
+        ]
+      }
+    ],
+    "risks": [
+      {
+        "text": "Screen-share transfer can create dead air",
+        "evidence": "Okay yeah that took about, what, six seconds of dead air.",
+        "sourceTurnIds": [
+          42
+        ],
+        "status": "open"
+      },
+      {
+        "text": "Tom's connection could drop",
+        "evidence": "And Callum, you're the safety net on the tech, so if the whole thing drops, if Tom's connection dies, you're the one who comes on and says bear with us.",
+        "sourceTurnIds": [
+          54
+        ],
+        "status": "open"
+      },
+      {
+        "text": "Recording could miss the opening or stop",
+        "evidence": "Callum, one thing, when do we hit record, because last time we lost the first four minutes.",
+        "sourceTurnIds": [
+          130
+        ],
+        "status": "open"
+      },
+      {
+        "text": "So I jump in straight away, I go, looks like we've lost Tom for a second, he'll be right back, and I just fill, I talk about, I don't know, I'll ad lib",
+        "evidence": "So I jump in straight away, I go, looks like we've lost Tom for a second, he'll be right back, and I just fill, I talk about, I don't know, I'll ad lib.",
+        "sourceTurnIds": [
+          137
+        ],
+        "status": "open"
+      }
+    ],
+    "finalReview": {
+      "readyForFinalApproval": true,
+      "message": "All generated screens can proceed to final human approval."
+    }
+  },
+  "visibleOutput": {
+    "meetingTitle": "Client M204 Larkfield MK Thursday Session",
+    "participants": {
+      "trinzo": [],
+      "client": [
+        "Priya Sethi",
+        "Tom Whitfield",
+        "Nadia Okonkwo",
+        "Callum Reid"
+      ]
+    },
+    "meetingObjectives": [
+      "Review presentation structure and flow",
+      "Agree presenter handover protocols",
+      "Review audience q&a management",
+      "Review technical contingency planning"
+    ],
+    "executiveSummary": "The project review session confirmed the structure for the client presentation, focusing heavily on refining the presentation flow, particularly the handover between speakers and managing audience interaction. Key agreements include a defined timing structure (35 minutes for content, 20 minutes for questions) and specific roles for managing live audience queries. A primary risk identified is the potential for dead air during transitions, which is mitigated by pre-planned ad-lib strategies and technical contingency plans, such as having a backup sharing mechanism. Actions are set for updating slide animations, creating the closing slide with a QR code, and preparing backup questions.",
+    "discussionPoints": [
+      "Presentation Structure and Flow: Risk identified regarding the animation on the three-things slide being stripped when pasted as plain text.",
+      "Presenter Handover Protocols: Protocols for the opening, housekeeping, dead air management during handovers, and the process for swapping screen sharing.",
+      "Presenter Handover Protocols: Agreed to practise the handover fully; the process involves the presenter opening, housekeeping, covering dead air, and closing.",
+      "Audience Q&A Management: That's clever, yeah. So the audience just sees Priya reading out a nice tidy question.",
+      "Technical Contingency Planning: Robust contingency plans are in place for recording, connection loss, and presenter drop-offs.",
+      "Technical Contingency Planning: Plans for technical failures, including recording, connection issues, and screen sharing loss.",
+      "Technical Contingency Planning: Agreed on specific actions for recording proof and managing presenter drop-offs.",
+      "Technical Contingency Planning: Risk identified regarding the loss of the initial recording segment."
+    ],
+    "decisions": [
+      "Finish content by 35 minutes and reserve 20 minutes for questions",
+      "Hold a short warm-up at 08:30 before the 11:00 live session",
+      "Agreed to spot-check tricky bits; the introduction will be brief (around thirty seconds) and the main content will be structured around three key areas.",
+      "Agreed to practise the handover fully; the process involves the presenter opening, housekeeping, covering dead air, and closing.",
+      "Agreed on specific actions for recording proof and managing presenter drop-offs."
+    ],
+    "risks": [
+      "Screen-share transfer can create dead air",
+      "Recording could miss the opening or stop",
+      "So I jump in straight away, I go, looks like we've lost Tom for a second, he'll be right back, and I just fill, I talk about, I don't know, I'll ad lib"
+    ],
+    "actions": [
+      {
+        "meetingActionPointOwner": "Priya Sethi",
+        "meetingActionPoint": "Thirty seconds on you, don't do the whole CV",
+        "meetingActionPointDeadline": "Not stated"
+      },
+      {
+        "meetingActionPointOwner": "Priya Sethi",
+        "meetingActionPoint": "Cover it, I'll say something like, right, while Tom gets that back up, and just talk over the gap",
+        "meetingActionPointDeadline": "Not stated"
+      },
+      {
+        "meetingActionPointOwner": "Nadia Okonkwo",
+        "meetingActionPoint": "Put five mins in the chat to you, just to you",
+        "meetingActionPointDeadline": "Not stated"
+      },
+      {
+        "meetingActionPointOwner": "Nadia Okonkwo",
+        "meetingActionPoint": "Put that as an actual slide, the how to reach us, don't just say it, because half of them will have wandered off by then",
+        "meetingActionPointDeadline": "Not stated"
+      },
+      {
+        "meetingActionPointOwner": "Callum Reid",
+        "meetingActionPoint": "I watch the little red dot the whole time",
+        "meetingActionPointDeadline": "Not stated"
+      },
+      {
+        "meetingActionPointOwner": "Callum Reid",
+        "meetingActionPoint": "Putting the animation back on the three-things slide",
+        "meetingActionPointDeadline": "Not stated"
+      },
+      {
+        "meetingActionPointOwner": "Callum Reid",
+        "meetingActionPoint": "Building the closing slide with the QR code and the link",
+        "meetingActionPointDeadline": "Not stated"
+      },
+      {
+        "meetingActionPointOwner": "Nadia Okonkwo",
+        "meetingActionPoint": "Doing the planted questions and grouping the chat on the day",
+        "meetingActionPointDeadline": "Not stated"
+      },
+      {
+        "meetingActionPointOwner": "Tom Whitfield",
+        "meetingActionPoint": "Thirty seconds on yourself, thirty seconds per answer, and dropping the not-see-you joke",
+        "meetingActionPointDeadline": "Not stated"
+      },
+      {
+        "meetingActionPointOwner": "Priya Sethi",
+        "meetingActionPoint": "The open, the housekeeping, tap-the-speech-bubble line, and covering any dead air on the handovers",
+        "meetingActionPointDeadline": "Not stated"
+      }
+    ]
+  },
+  "reviewExperience": {
+    "mode": "no_human_edits",
+    "description": "The generated output from each screen was accepted unchanged and passed into the next screen.",
+    "stages": [
+      {
+        "stage": "details",
+        "screenLabel": "Meeting details",
+        "statusMessage": "Meeting details generated. Review or edit this screen before continuing.",
+        "editorialHeading": null,
+        "flags": [],
+        "blocking": false
+      },
+      {
+        "stage": "summary",
+        "screenLabel": "Summary and topics",
+        "statusMessage": "Topics generated. Review or edit them before continuing.",
+        "editorialHeading": null,
+        "flags": [],
+        "blocking": false
+      },
+      {
+        "stage": "discussion",
+        "screenLabel": "Discussion points",
+        "statusMessage": "Discussion points generated from the topic context.",
+        "editorialHeading": "Editorial checks (review before moving on)",
+        "flags": [
+          {
+            "type": "misattributed_discussion_evidence",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "Removed 2 discussion point(s) under \"Presenter Handover Protocols\" because they did not fit that workstream's evidence.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "review_manually"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          },
+          {
+            "type": "misattributed_discussion_evidence",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "Removed 4 discussion point(s) under \"Audience Q&A Management\" because they did not fit that workstream's evidence.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "review_manually"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          },
+          {
+            "type": "misattributed_discussion_evidence",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "Removed 1 discussion point(s) under \"Presentation Structure and Flow\" because they did not fit that workstream's evidence.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "review_manually"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          },
+          {
+            "type": "misattributed_discussion_evidence",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "Removed 1 discussion point(s) under \"Presentation Structure and Flow\" because they did not fit that workstream's evidence.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "review_manually"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          },
+          {
+            "type": "misattributed_discussion_evidence",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "Removed 1 discussion point(s) under \"Presentation Structure and Flow\" because they did not fit that workstream's evidence.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "review_manually"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          },
+          {
+            "type": "thin_substantive_workstream",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": "workstream:presentation structure and flow",
+            "message": "\"Presentation Structure and Flow\" has only one retained discussion point. Review whether more evidence is needed.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "review_manually"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          },
+          {
+            "type": "thin_substantive_workstream",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": "workstream:audience q a management",
+            "message": "\"Audience Q&A Management\" has only one retained discussion point. Review whether more evidence is needed.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "review_manually"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          }
+        ],
+        "blocking": false
+      },
+      {
+        "stage": "actions",
+        "screenLabel": "Actions",
+        "statusMessage": "Actions generated. Check owners and dates before continuing.",
+        "editorialHeading": "Editorial checks (review before moving on)",
+        "flags": [
+          {
+            "type": "possible_omitted_workstream",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "\"Thirty seconds on you, don't do the whole CV\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "review_manually"
+            ],
+            "discussionSuggestion": {
+              "topic": "Thirty seconds on you, don't do the whole CV",
+              "point": "Thirty seconds on you, don't do the whole CV",
+              "source": "action"
+            },
+            "repairCandidates": null
+          },
+          {
+            "type": "possible_omitted_workstream",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "\"Cover it, I'll say something like, right, while Tom gets that back up, and just talk over the gap\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "review_manually"
+            ],
+            "discussionSuggestion": {
+              "topic": "Cover it, I'll say something like, right, while Tom gets that back up, and just talk over the gap",
+              "point": "Cover it, I'll say something like, right, while Tom gets that back up, and just talk over the gap",
+              "source": "action"
+            },
+            "repairCandidates": null
+          },
+          {
+            "type": "possible_omitted_workstream",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "\"Put that as an actual slide, the how to reach us, don't just say it, because half of them will have wandered off by then\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "review_manually"
+            ],
+            "discussionSuggestion": {
+              "topic": "Put that as an actual slide, the how to reach us, don't just say it, because half of them will have wandered off by then",
+              "point": "Put that as an actual slide, the how to reach us, don't just say it, because half of them will have wandered off by then",
+              "source": "action"
+            },
+            "repairCandidates": null
+          },
+          {
+            "type": "possible_omitted_workstream",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "\"I watch the little red dot the whole time\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "review_manually"
+            ],
+            "discussionSuggestion": {
+              "topic": "I watch the little red dot the whole time",
+              "point": "I watch the little red dot the whole time",
+              "source": "action"
+            },
+            "repairCandidates": null
+          },
+          {
+            "type": "possible_omitted_workstream",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "\"Doing the planted questions and grouping the chat on the day\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "review_manually"
+            ],
+            "discussionSuggestion": {
+              "topic": "Doing the planted questions and grouping the chat on the day",
+              "point": "Doing the planted questions and grouping the chat on the day",
+              "source": "action"
+            },
+            "repairCandidates": null
+          },
+          {
+            "type": "possible_omitted_workstream",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "\"Thirty seconds on yourself, thirty seconds per answer, and dropping the not-see-you joke\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "review_manually"
+            ],
+            "discussionSuggestion": {
+              "topic": "Thirty seconds on yourself, thirty seconds per answer, and dropping the not-see-you joke",
+              "point": "Thirty seconds on yourself, thirty seconds per answer, and dropping the not-see-you joke",
+              "source": "action"
+            },
+            "repairCandidates": null
+          }
+        ],
+        "blocking": false
+      }
+    ],
+    "flags": [
+      {
+        "type": "misattributed_discussion_evidence",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "Removed 2 discussion point(s) under \"Presenter Handover Protocols\" because they did not fit that workstream's evidence.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "review_manually"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "misattributed_discussion_evidence",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "Removed 4 discussion point(s) under \"Audience Q&A Management\" because they did not fit that workstream's evidence.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "review_manually"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "misattributed_discussion_evidence",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "Removed 1 discussion point(s) under \"Presentation Structure and Flow\" because they did not fit that workstream's evidence.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "review_manually"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "misattributed_discussion_evidence",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "Removed 1 discussion point(s) under \"Presentation Structure and Flow\" because they did not fit that workstream's evidence.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "review_manually"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "misattributed_discussion_evidence",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "Removed 1 discussion point(s) under \"Presentation Structure and Flow\" because they did not fit that workstream's evidence.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "review_manually"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "thin_substantive_workstream",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": "workstream:presentation structure and flow",
+        "message": "\"Presentation Structure and Flow\" has only one retained discussion point. Review whether more evidence is needed.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "review_manually"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "thin_substantive_workstream",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": "workstream:audience q a management",
+        "message": "\"Audience Q&A Management\" has only one retained discussion point. Review whether more evidence is needed.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "review_manually"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "possible_omitted_workstream",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "\"Thirty seconds on you, don't do the whole CV\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "review_manually"
+        ],
+        "discussionSuggestion": {
+          "topic": "Thirty seconds on you, don't do the whole CV",
+          "point": "Thirty seconds on you, don't do the whole CV",
+          "source": "action"
+        },
+        "repairCandidates": null,
+        "stage": "actions"
+      },
+      {
+        "type": "possible_omitted_workstream",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "\"Cover it, I'll say something like, right, while Tom gets that back up, and just talk over the gap\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "review_manually"
+        ],
+        "discussionSuggestion": {
+          "topic": "Cover it, I'll say something like, right, while Tom gets that back up, and just talk over the gap",
+          "point": "Cover it, I'll say something like, right, while Tom gets that back up, and just talk over the gap",
+          "source": "action"
+        },
+        "repairCandidates": null,
+        "stage": "actions"
+      },
+      {
+        "type": "possible_omitted_workstream",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "\"Put that as an actual slide, the how to reach us, don't just say it, because half of them will have wandered off by then\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "review_manually"
+        ],
+        "discussionSuggestion": {
+          "topic": "Put that as an actual slide, the how to reach us, don't just say it, because half of them will have wandered off by then",
+          "point": "Put that as an actual slide, the how to reach us, don't just say it, because half of them will have wandered off by then",
+          "source": "action"
+        },
+        "repairCandidates": null,
+        "stage": "actions"
+      },
+      {
+        "type": "possible_omitted_workstream",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "\"I watch the little red dot the whole time\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "review_manually"
+        ],
+        "discussionSuggestion": {
+          "topic": "I watch the little red dot the whole time",
+          "point": "I watch the little red dot the whole time",
+          "source": "action"
+        },
+        "repairCandidates": null,
+        "stage": "actions"
+      },
+      {
+        "type": "possible_omitted_workstream",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "\"Doing the planted questions and grouping the chat on the day\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "review_manually"
+        ],
+        "discussionSuggestion": {
+          "topic": "Doing the planted questions and grouping the chat on the day",
+          "point": "Doing the planted questions and grouping the chat on the day",
+          "source": "action"
+        },
+        "repairCandidates": null,
+        "stage": "actions"
+      },
+      {
+        "type": "possible_omitted_workstream",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "\"Thirty seconds on yourself, thirty seconds per answer, and dropping the not-see-you joke\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "review_manually"
+        ],
+        "discussionSuggestion": {
+          "topic": "Thirty seconds on yourself, thirty seconds per answer, and dropping the not-see-you joke",
+          "point": "Thirty seconds on yourself, thirty seconds per answer, and dropping the not-see-you joke",
+          "source": "action"
+        },
+        "repairCandidates": null,
+        "stage": "actions"
+      }
+    ],
+    "warningCount": 13,
+    "blockingCount": 0,
+    "readyForFinalApproval": true,
+    "finalReviewMessage": "All generated screens can proceed to final human approval.",
+    "requiredReviewerActions": []
+  },
+  "trace": [
+    {
+      "stage": "details",
+      "provider": "deterministic_stage_1_prep",
+      "outputCount": 1,
+      "telemetry": {
+        "stage": "details",
+        "transcriptLength": 16565,
+        "screenCount": 1,
+        "attendeeExtraction": {
+          "source": "microsoft_teams_speaker_turns",
+          "speakerCount": 4,
+          "turnCount": 174,
+          "eventSpeakerCount": 1,
+          "knownInternalAttendeeCount": 0,
+          "knownClientAttendeeCount": 0,
+          "headerSource": "microsoft_teams_header",
+          "dateSource": "microsoft_teams_header"
+        }
+      },
+      "preparedTranscriptTelemetry": {
+        "rawLength": 16565,
+        "preparedLength": 14935,
+        "removedLineCount": 366,
+        "removedReasons": {
+          "teamsHeader": 3,
+          "transcriptionEvent": 2,
+          "blankLine": 361,
+          "timestampOnly": 0
+        },
+        "source": "deterministic_stage_1_prep"
+      }
+    },
+    {
+      "stage": "summary",
+      "provider": "trooper-stage",
+      "fallbackUsed": false,
+      "inputTopicCount": 4,
+      "outputCount": 4,
+      "validationFlags": [],
+      "telemetry": {
+        "stage": "summary",
+        "topicCount": 4,
+        "transcriptLength": 14935,
+        "embeddingClassifier": {
+          "used": true,
+          "provider": "trooper_stage",
+          "rewriterAvailable": true,
+          "rewriterReason": "Trooper targeted staged summary generation used.",
+          "pipeline": "staged_summary_targeted",
+          "modelAvailable": true,
+          "modelName": "eu_liv_000099",
+          "modelReason": "Trooper targeted staged summary generation used.",
+          "counts": {},
+          "evidencePackTopicCount": 0,
+          "workstreamStateCount": 0,
+          "missingWorkstreamCount": 0,
+          "missingWorkstreams": [],
+          "workstreamQualityFlags": [],
+          "timingMs": {
+            "total": 5500
+          }
+        },
+        "objectiveReducer": {
+          "objectiveSource": "workstream_objective_reducer",
+          "topicCount": 4,
+          "objectiveSpecificityScore": 100
+        }
+      },
+      "generationDiagnostics": {
+        "provider": "trooper_stage",
+        "modelAvailable": true,
+        "modelName": "eu_liv_000099",
+        "modelReason": "Trooper targeted staged summary generation used.",
+        "pipeline": "staged_summary_targeted",
+        "timingMs": {
+          "total": 5500
+        },
+        "strictTopicCoverage": false,
+        "evidencePackTopicCount": 0,
+        "workstreamStateCount": 0,
+        "missingWorkstreamCount": 0,
+        "missingWorkstreams": [],
+        "workstreamQualityFlags": [],
+        "usage": {
+          "prompt_tokens": 5776,
+          "completion_tokens": 257,
+          "total_tokens": 6033
+        }
+      }
+    },
+    {
+      "stage": "discussion",
+      "provider": "trooper-stage",
+      "fallbackUsed": false,
+      "inputTopicCount": 4,
+      "outputCount": 4,
+      "outputPointCount": 8,
+      "validationFlags": [
+        {
+          "type": "misattributed_discussion_evidence",
+          "severity": "warning",
+          "message": "Removed 2 discussion point(s) under \"Presenter Handover Protocols\" because they did not fit that workstream's evidence."
+        },
+        {
+          "type": "misattributed_discussion_evidence",
+          "severity": "warning",
+          "message": "Removed 4 discussion point(s) under \"Audience Q&A Management\" because they did not fit that workstream's evidence."
+        },
+        {
+          "type": "misattributed_discussion_evidence",
+          "severity": "warning",
+          "message": "Removed 1 discussion point(s) under \"Presentation Structure and Flow\" because they did not fit that workstream's evidence."
+        },
+        {
+          "type": "misattributed_discussion_evidence",
+          "severity": "warning",
+          "message": "Removed 1 discussion point(s) under \"Presentation Structure and Flow\" because they did not fit that workstream's evidence."
+        },
+        {
+          "type": "misattributed_discussion_evidence",
+          "severity": "warning",
+          "message": "Removed 1 discussion point(s) under \"Presentation Structure and Flow\" because they did not fit that workstream's evidence."
+        },
+        {
+          "type": "thin_substantive_workstream",
+          "severity": "warning",
+          "blocking": false,
+          "resolutionKey": "workstream:presentation structure and flow",
+          "message": "\"Presentation Structure and Flow\" has only one retained discussion point. Review whether more evidence is needed.",
+          "discussionSuggestion": null
+        },
+        {
+          "type": "thin_substantive_workstream",
+          "severity": "warning",
+          "blocking": false,
+          "resolutionKey": "workstream:audience q a management",
+          "message": "\"Audience Q&A Management\" has only one retained discussion point. Review whether more evidence is needed.",
+          "discussionSuggestion": null
+        }
+      ],
+      "telemetry": {
+        "stage": "discussion",
+        "topicCount": 4,
+        "discussionCards": 4,
+        "droppedMisattributedDiscussionPoints": 5,
+        "workstreamCoverage": [
+          {
+            "topic": "Presentation Structure and Flow",
+            "classification": "substantive",
+            "evidenceCount": 0,
+            "discussionCardCount": 1,
+            "assignedTurnIds": [],
+            "status": "thin"
+          },
+          {
+            "topic": "Presenter Handover Protocols",
+            "classification": "substantive",
+            "evidenceCount": 3,
+            "discussionCardCount": 1,
+            "assignedTurnIds": [],
+            "status": "covered"
+          },
+          {
+            "topic": "Audience Q&A Management",
+            "classification": "substantive",
+            "evidenceCount": 1,
+            "discussionCardCount": 1,
+            "assignedTurnIds": [],
+            "status": "thin"
+          },
+          {
+            "topic": "Technical Contingency Planning",
+            "classification": "substantive",
+            "evidenceCount": 0,
+            "discussionCardCount": 1,
+            "assignedTurnIds": [],
+            "status": "covered"
+          }
+        ],
+        "transcriptLength": 14935,
+        "embeddingClassifier": {
+          "used": true,
+          "provider": "trooper_stage",
+          "rewriterAvailable": true,
+          "rewriterReason": "Trooper targeted staged discussion generation used.",
+          "pipeline": "staged_discussion_targeted",
+          "modelAvailable": true,
+          "modelName": "eu_liv_000099",
+          "modelReason": "Trooper targeted staged discussion generation used.",
+          "counts": {},
+          "evidencePackTopicCount": 5,
+          "workstreamStateCount": 5,
+          "missingWorkstreamCount": 4,
+          "missingWorkstreams": [
+            "Preparation for client workshops",
+            "And keep it to thirty, because on the",
+            "Priya asked whether the team is all, can",
+            "Audience Q&A Management"
+          ],
+          "workstreamQualityFlags": [
+            "low_heading_evidence_match",
+            "missing_workstream_recovered",
+            "substantive_workstream_omission_risk"
+          ],
+          "timingMs": {
+            "total": 14660
+          }
+        },
+        "discussionCompaction": {
+          "pointsBefore": 8,
+          "pointsAfter": 8,
+          "duplicatesRemoved": 0,
+          "truncatedRemoved": 0,
+          "cardCount": 4,
+          "namedDetailsBefore": 0,
+          "namedDetailsAfter": 0,
+          "detailRetentionScore": 100,
+          "detailRetentionWarnings": []
+        }
+      },
+      "generationDiagnostics": {
+        "provider": "trooper_stage",
+        "modelAvailable": true,
+        "modelName": "eu_liv_000099",
+        "modelReason": "Trooper targeted staged discussion generation used.",
+        "pipeline": "staged_discussion_targeted",
+        "timingMs": {
+          "total": 14660
+        },
+        "strictTopicCoverage": false,
+        "evidencePackTopicCount": 5,
+        "workstreamStateCount": 5,
+        "missingWorkstreamCount": 4,
+        "missingWorkstreams": [
+          "Preparation for client workshops",
+          "And keep it to thirty, because on the",
+          "Priya asked whether the team is all, can",
+          "Audience Q&A Management"
+        ],
+        "workstreamQualityFlags": [
+          "low_heading_evidence_match",
+          "missing_workstream_recovered",
+          "substantive_workstream_omission_risk"
+        ],
+        "usage": {
+          "prompt_tokens": 10641,
+          "completion_tokens": 1333,
+          "total_tokens": 11974
+        }
+      }
+    },
+    {
+      "stage": "actions",
+      "provider": "trooper-stage",
+      "fallbackUsed": false,
+      "inputTopicCount": 4,
+      "outputCount": 10,
+      "validationFlags": [
+        {
+          "type": "possible_omitted_workstream",
+          "severity": "warning",
+          "message": "\"Thirty seconds on you, don't do the whole CV\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+          "discussionSuggestion": {
+            "topic": "Thirty seconds on you, don't do the whole CV",
+            "point": "Thirty seconds on you, don't do the whole CV",
+            "source": "action"
+          }
+        },
+        {
+          "type": "possible_omitted_workstream",
+          "severity": "warning",
+          "message": "\"Cover it, I'll say something like, right, while Tom gets that back up, and just talk over the gap\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+          "discussionSuggestion": {
+            "topic": "Cover it, I'll say something like, right, while Tom gets that back up, and just talk over the gap",
+            "point": "Cover it, I'll say something like, right, while Tom gets that back up, and just talk over the gap",
+            "source": "action"
+          }
+        },
+        {
+          "type": "possible_omitted_workstream",
+          "severity": "warning",
+          "message": "\"Put that as an actual slide, the how to reach us, don't just say it, because half of them will have wandered off by then\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+          "discussionSuggestion": {
+            "topic": "Put that as an actual slide, the how to reach us, don't just say it, because half of them will have wandered off by then",
+            "point": "Put that as an actual slide, the how to reach us, don't just say it, because half of them will have wandered off by then",
+            "source": "action"
+          }
+        },
+        {
+          "type": "possible_omitted_workstream",
+          "severity": "warning",
+          "message": "\"I watch the little red dot the whole time\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+          "discussionSuggestion": {
+            "topic": "I watch the little red dot the whole time",
+            "point": "I watch the little red dot the whole time",
+            "source": "action"
+          }
+        },
+        {
+          "type": "possible_omitted_workstream",
+          "severity": "warning",
+          "message": "\"Doing the planted questions and grouping the chat on the day\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+          "discussionSuggestion": {
+            "topic": "Doing the planted questions and grouping the chat on the day",
+            "point": "Doing the planted questions and grouping the chat on the day",
+            "source": "action"
+          }
+        },
+        {
+          "type": "possible_omitted_workstream",
+          "severity": "warning",
+          "message": "\"Thirty seconds on yourself, thirty seconds per answer, and dropping the not-see-you joke\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+          "discussionSuggestion": {
+            "topic": "Thirty seconds on yourself, thirty seconds per answer, and dropping the not-see-you joke",
+            "point": "Thirty seconds on yourself, thirty seconds per answer, and dropping the not-see-you joke",
+            "source": "action"
+          }
+        }
+      ],
+      "telemetry": {
+        "stage": "actions",
+        "actionCount": 10,
+        "actionPreservation": {
+          "transcriptPreservedActionCount": 0,
+          "transcriptActionInventoryCount": 0,
+          "evidenceLedgerActionCount": 10,
+          "evidenceClassifierActionCount": 0,
+          "transcriptActionInventoryUsed": false
+        },
+        "transcriptLength": 14935,
+        "embeddingClassifier": {
+          "used": true,
+          "provider": "trooper_stage",
+          "rewriterAvailable": true,
+          "rewriterReason": "Trooper targeted staged actions generation used.",
+          "pipeline": "staged_actions_targeted",
+          "modelAvailable": true,
+          "modelName": "eu_liv_000099",
+          "modelReason": "Trooper targeted staged actions generation used.",
+          "counts": {},
+          "evidencePackTopicCount": 0,
+          "workstreamStateCount": 0,
+          "missingWorkstreamCount": 0,
+          "missingWorkstreams": [],
+          "workstreamQualityFlags": [],
+          "timingMs": {
+            "total": 9887
+          }
+        },
+        "evidenceClassifier": {
+          "used": true,
+          "executed": true,
+          "modelAvailable": true,
+          "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+          "modelPath": "/root/meeting-minutes-evidence-model/runs/multitask-rework-20260812T140735Z/model_bundle",
+          "modelReason": "Evidence classifier completed.",
+          "actionCount": 3,
+          "itemCount": 60,
+          "segmentsScored": 167,
+          "counts": {
+            "low_value_noise": 156,
+            "action_commitment": 5,
+            "discussion_topic": 2,
+            "risk_dependency": 1,
+            "process_overview": 2,
+            "document_control_task": 1
+          },
+          "timingMs": {
+            "total": 8838
+          }
+        }
+      },
+      "generationDiagnostics": {
+        "provider": "trooper_stage",
+        "modelAvailable": true,
+        "modelName": "eu_liv_000099",
+        "modelReason": "Trooper targeted staged actions generation used.",
+        "pipeline": "staged_actions_targeted",
+        "timingMs": {
+          "total": 9887
+        },
+        "strictTopicCoverage": false,
+        "evidencePackTopicCount": 0,
+        "workstreamStateCount": 0,
+        "missingWorkstreamCount": 0,
+        "missingWorkstreams": [],
+        "workstreamQualityFlags": [],
+        "usage": {
+          "prompt_tokens": 6255,
+          "completion_tokens": 697,
+          "total_tokens": 6952
+        },
+        "evidenceClassifier": {
+          "used": true,
+          "executed": true,
+          "modelAvailable": true,
+          "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+          "modelPath": "/root/meeting-minutes-evidence-model/runs/multitask-rework-20260812T140735Z/model_bundle",
+          "modelReason": "Evidence classifier completed.",
+          "actionCount": 3,
+          "itemCount": 60,
+          "segmentsScored": 167,
+          "counts": {
+            "low_value_noise": 156,
+            "action_commitment": 5,
+            "discussion_topic": 2,
+            "risk_dependency": 1,
+            "process_overview": 2,
+            "document_control_task": 1
+          },
+          "timingMs": {
+            "total": 8838
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,519 @@
+{
+  "ok": true,
+  "staged": true,
+  "mode": "no_human_edits",
+  "source": "file",
+  "fileName": "transcript.docx",
+  "transcriptLength": 684,
+  "screens": {
+    "details": {
+      "meetingTitle": "Kingswell Launch Recovery",
+      "meetingDate": "2026-08-11",
+      "meetingLocation": "Microsoft Teams",
+      "organisation": "",
+      "meetingType": "Project review",
+      "internalAttendees": [],
+      "clientAttendees": [
+        "Chloe Green",
+        "Dan Wu",
+        "Marta Silva",
+        "Neil Foster"
+      ],
+      "allAttendees": [
+        "Chloe Green",
+        "Dan Wu",
+        "Marta Silva",
+        "Neil Foster"
+      ]
+    },
+    "summary": {
+      "objectives": [
+        "Review venue coordination",
+        "Review run sheet updates",
+        "Review attendee count confirmation",
+        "Review dietary list status"
+      ],
+      "executiveSummary": "Progress on the Kingswell launch recovery is focused on immediate logistical confirmations. Marta Silva is responsible for contacting the venue today to secure access, after which Dan Wu will update the run sheet tomorrow morning. Neil Foster has already provided the dietary list and is tasked with sending the latest attendee count by four o'clock today.",
+      "overallTopics": [
+        "Venue Coordination",
+        "Run Sheet Updates",
+        "Attendee Count Confirmation",
+        "Dietary List Status"
+      ]
+    },
+    "discussion": [
+      {
+        "topic": "Venue Coordination",
+        "whatWasDiscussed": "The need to contact the venue was raised, and responsibilities were assigned for the coordination process.",
+        "currentPosition": "Marta is responsible for calling the venue today.",
+        "nextStep": "Dan is to update the run sheet once access is confirmed following the venue call.",
+        "points": [
+          "Dan is to update the run sheet once access is confirmed following the venue call.",
+          "Marta owns the venue call.",
+          "Marta is responsible for calling the venue today.",
+          "The need to contact the venue was raised, and responsibilities were assigned for the coordination process."
+        ]
+      },
+      {
+        "topic": "Run Sheet Updates",
+        "whatWasDiscussed": "The process for updating the run sheet was confirmed following venue access.",
+        "currentPosition": "The run sheet update is pending confirmation from the venue call.",
+        "nextStep": "Dan will update the run sheet tomorrow morning once Marta confirms access.",
+        "points": [
+          "The process for updating the run sheet was confirmed following venue access.",
+          "The run sheet update is pending confirmation from the venue call.",
+          "Dan is assigned the task of updating the run sheet.",
+          "Dan will update the run sheet tomorrow morning once Marta confirms access."
+        ]
+      },
+      {
+        "topic": "Attendee Count Confirmation",
+        "whatWasDiscussed": "The timeline for providing the latest attendee count was established.",
+        "currentPosition": "The latest attendee count is due by four today.",
+        "nextStep": "Neil to send the latest attendee count by four today.",
+        "points": [
+          "Neil is responsible for sending the attendee count.",
+          "The timeline for providing the latest attendee count was established.",
+          "The latest attendee count will be sent by four today."
+        ]
+      },
+      {
+        "topic": "Dietary List Status",
+        "whatWasDiscussed": "The status of the dietary list submission was confirmed.",
+        "currentPosition": "The dietary list has already been sent.",
+        "decisionOrAgreement": "The dietary list status is confirmed as complete.",
+        "nextStep": "None stated.",
+        "points": [
+          "The dietary list status is confirmed as complete.",
+          "The dietary list has already been sent."
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "owner": "Marta Silva",
+        "action": "Call the venue",
+        "deadline": "today",
+        "source": "staged_evidence_ledger"
+      },
+      {
+        "owner": "Dan Wu",
+        "action": "Update the run sheet once Marta confirms",
+        "deadline": "tomorrow morning",
+        "source": "staged_evidence_ledger"
+      },
+      {
+        "owner": "Neil Foster",
+        "action": "Send both of you the latest attendee count by four",
+        "deadline": "today",
+        "source": "staged_evidence_ledger"
+      }
+    ],
+    "decisions": [],
+    "risks": [],
+    "finalReview": {
+      "readyForFinalApproval": true,
+      "message": "All generated screens can proceed to final human approval."
+    }
+  },
+  "visibleOutput": {
+    "meetingTitle": "Kingswell Launch Recovery",
+    "participants": {
+      "trinzo": [],
+      "client": [
+        "Chloe Green",
+        "Dan Wu",
+        "Marta Silva",
+        "Neil Foster"
+      ]
+    },
+    "meetingObjectives": [
+      "Review venue coordination",
+      "Review run sheet updates",
+      "Review attendee count confirmation",
+      "Review dietary list status"
+    ],
+    "executiveSummary": "Progress on the Kingswell launch recovery is focused on immediate logistical confirmations. Marta Silva is responsible for contacting the venue today to secure access, after which Dan Wu will update the run sheet tomorrow morning. Neil Foster has already provided the dietary list and is tasked with sending the latest attendee count by four o'clock today.",
+    "discussionPoints": [
+      "Venue Coordination: Dan is to update the run sheet once access is confirmed following the venue call.",
+      "Venue Coordination: Marta owns the venue call.",
+      "Venue Coordination: Marta is responsible for calling the venue today.",
+      "Venue Coordination: The need to contact the venue was raised, and responsibilities were assigned for the coordination process.",
+      "Run Sheet Updates: The process for updating the run sheet was confirmed following venue access.",
+      "Run Sheet Updates: The run sheet update is pending confirmation from the venue call.",
+      "Run Sheet Updates: Dan is assigned the task of updating the run sheet.",
+      "Run Sheet Updates: Dan will update the run sheet tomorrow morning once Marta confirms access.",
+      "Attendee Count Confirmation: Neil is responsible for sending the attendee count.",
+      "Attendee Count Confirmation: The timeline for providing the latest attendee count was established.",
+      "Attendee Count Confirmation: The latest attendee count will be sent by four today.",
+      "Dietary List Status: The dietary list status is confirmed as complete.",
+      "Dietary List Status: The dietary list has already been sent."
+    ],
+    "decisions": [
+      "Dan is to update the run sheet once access is confirmed following the venue call.",
+      "The process for updating the run sheet was confirmed following venue access.",
+      "The dietary list status is confirmed as complete."
+    ],
+    "risks": [],
+    "actions": [
+      {
+        "meetingActionPointOwner": "Marta Silva",
+        "meetingActionPoint": "Call the venue",
+        "meetingActionPointDeadline": "today"
+      },
+      {
+        "meetingActionPointOwner": "Dan Wu",
+        "meetingActionPoint": "Update the run sheet once Marta confirms",
+        "meetingActionPointDeadline": "tomorrow morning"
+      },
+      {
+        "meetingActionPointOwner": "Neil Foster",
+        "meetingActionPoint": "Send both of you the latest attendee count by four",
+        "meetingActionPointDeadline": "today"
+      }
+    ]
+  },
+  "reviewExperience": {
+    "mode": "no_human_edits",
+    "description": "The generated output from each screen was accepted unchanged and passed into the next screen.",
+    "stages": [
+      {
+        "stage": "details",
+        "screenLabel": "Meeting details",
+        "statusMessage": "Meeting details generated. Review or edit this screen before continuing.",
+        "editorialHeading": null,
+        "flags": [],
+        "blocking": false
+      },
+      {
+        "stage": "summary",
+        "screenLabel": "Summary and topics",
+        "statusMessage": "Topics generated. Review or edit them before continuing.",
+        "editorialHeading": null,
+        "flags": [],
+        "blocking": false
+      },
+      {
+        "stage": "discussion",
+        "screenLabel": "Discussion points",
+        "statusMessage": "Discussion points generated from the topic context.",
+        "editorialHeading": null,
+        "flags": [],
+        "blocking": false
+      },
+      {
+        "stage": "actions",
+        "screenLabel": "Actions",
+        "statusMessage": "Actions generated. Check owners and dates before continuing.",
+        "editorialHeading": null,
+        "flags": [],
+        "blocking": false
+      }
+    ],
+    "flags": [],
+    "warningCount": 0,
+    "blockingCount": 0,
+    "readyForFinalApproval": true,
+    "finalReviewMessage": "All generated screens can proceed to final human approval.",
+    "requiredReviewerActions": []
+  },
+  "trace": [
+    {
+      "stage": "details",
+      "provider": "deterministic_stage_1_prep",
+      "outputCount": 1,
+      "telemetry": {
+        "stage": "details",
+        "transcriptLength": 684,
+        "screenCount": 1,
+        "attendeeExtraction": {
+          "source": "microsoft_teams_speaker_turns",
+          "speakerCount": 4,
+          "turnCount": 7,
+          "eventSpeakerCount": 0,
+          "knownInternalAttendeeCount": 0,
+          "knownClientAttendeeCount": 0,
+          "headerSource": "microsoft_teams_header",
+          "dateSource": "microsoft_teams_header"
+        }
+      },
+      "preparedTranscriptTelemetry": {
+        "rawLength": 684,
+        "preparedLength": 574,
+        "removedLineCount": 12,
+        "removedReasons": {
+          "teamsHeader": 1,
+          "transcriptionEvent": 0,
+          "blankLine": 11,
+          "timestampOnly": 0
+        },
+        "source": "deterministic_stage_1_prep"
+      }
+    },
+    {
+      "stage": "summary",
+      "provider": "trooper-stage",
+      "fallbackUsed": false,
+      "inputTopicCount": 4,
+      "outputCount": 4,
+      "validationFlags": [],
+      "telemetry": {
+        "stage": "summary",
+        "topicCount": 4,
+        "transcriptLength": 574,
+        "embeddingClassifier": {
+          "used": true,
+          "provider": "trooper_stage",
+          "rewriterAvailable": true,
+          "rewriterReason": "Trooper targeted staged summary generation used.",
+          "pipeline": "staged_summary_targeted",
+          "modelAvailable": true,
+          "modelName": "eu_liv_000099",
+          "modelReason": "Trooper targeted staged summary generation used.",
+          "counts": {},
+          "evidencePackTopicCount": 0,
+          "workstreamStateCount": 0,
+          "missingWorkstreamCount": 0,
+          "missingWorkstreams": [],
+          "workstreamQualityFlags": [],
+          "timingMs": {
+            "total": 4614
+          }
+        },
+        "objectiveReducer": {
+          "objectiveSource": "workstream_objective_reducer",
+          "topicCount": 4,
+          "objectiveSpecificityScore": 100
+        }
+      },
+      "generationDiagnostics": {
+        "provider": "trooper_stage",
+        "modelAvailable": true,
+        "modelName": "eu_liv_000099",
+        "modelReason": "Trooper targeted staged summary generation used.",
+        "pipeline": "staged_summary_targeted",
+        "timingMs": {
+          "total": 4614
+        },
+        "strictTopicCoverage": false,
+        "evidencePackTopicCount": 0,
+        "workstreamStateCount": 0,
+        "missingWorkstreamCount": 0,
+        "missingWorkstreams": [],
+        "workstreamQualityFlags": [],
+        "usage": {
+          "prompt_tokens": 987,
+          "completion_tokens": 166,
+          "total_tokens": 1153
+        }
+      }
+    },
+    {
+      "stage": "discussion",
+      "provider": "trooper-stage",
+      "fallbackUsed": false,
+      "inputTopicCount": 4,
+      "outputCount": 4,
+      "outputPointCount": 13,
+      "validationFlags": [],
+      "telemetry": {
+        "stage": "discussion",
+        "topicCount": 4,
+        "discussionCards": 4,
+        "droppedMisattributedDiscussionPoints": 0,
+        "workstreamCoverage": [
+          {
+            "topic": "Venue Coordination",
+            "classification": "substantive",
+            "evidenceCount": 2,
+            "discussionCardCount": 1,
+            "assignedTurnIds": [],
+            "status": "covered"
+          },
+          {
+            "topic": "Run Sheet Updates",
+            "classification": "substantive",
+            "evidenceCount": 3,
+            "discussionCardCount": 1,
+            "assignedTurnIds": [],
+            "status": "covered"
+          },
+          {
+            "topic": "Attendee Count Confirmation",
+            "classification": "substantive",
+            "evidenceCount": 2,
+            "discussionCardCount": 1,
+            "assignedTurnIds": [],
+            "status": "covered"
+          },
+          {
+            "topic": "Dietary List Status",
+            "classification": "substantive",
+            "evidenceCount": 1,
+            "discussionCardCount": 1,
+            "assignedTurnIds": [],
+            "status": "covered"
+          }
+        ],
+        "transcriptLength": 574,
+        "embeddingClassifier": {
+          "used": true,
+          "provider": "trooper_stage",
+          "rewriterAvailable": true,
+          "rewriterReason": "Trooper targeted staged discussion generation used.",
+          "pipeline": "staged_discussion_targeted",
+          "modelAvailable": true,
+          "modelName": "eu_liv_000099",
+          "modelReason": "Trooper targeted staged discussion generation used.",
+          "counts": {},
+          "evidencePackTopicCount": 4,
+          "workstreamStateCount": 4,
+          "missingWorkstreamCount": 0,
+          "missingWorkstreams": [],
+          "workstreamQualityFlags": [
+            "missing_workstream_recovered",
+            "abstract_workstream_heading",
+            "substantive_workstream_omission_risk"
+          ],
+          "timingMs": {
+            "total": 7656
+          }
+        },
+        "discussionCompaction": {
+          "pointsBefore": 13,
+          "pointsAfter": 13,
+          "duplicatesRemoved": 0,
+          "truncatedRemoved": 0,
+          "cardCount": 4,
+          "namedDetailsBefore": 0,
+          "namedDetailsAfter": 0,
+          "detailRetentionScore": 100,
+          "detailRetentionWarnings": []
+        }
+      },
+      "generationDiagnostics": {
+        "provider": "trooper_stage",
+        "modelAvailable": true,
+        "modelName": "eu_liv_000099",
+        "modelReason": "Trooper targeted staged discussion generation used.",
+        "pipeline": "staged_discussion_targeted",
+        "timingMs": {
+          "total": 7656
+        },
+        "strictTopicCoverage": false,
+        "evidencePackTopicCount": 4,
+        "workstreamStateCount": 4,
+        "missingWorkstreamCount": 0,
+        "missingWorkstreams": [],
+        "workstreamQualityFlags": [
+          "missing_workstream_recovered",
+          "abstract_workstream_heading",
+          "substantive_workstream_omission_risk"
+        ],
+        "usage": {
+          "prompt_tokens": 3853,
+          "completion_tokens": 682,
+          "total_tokens": 4535
+        }
+      }
+    },
+    {
+      "stage": "actions",
+      "provider": "trooper-stage",
+      "fallbackUsed": false,
+      "inputTopicCount": 4,
+      "outputCount": 3,
+      "validationFlags": [],
+      "telemetry": {
+        "stage": "actions",
+        "actionCount": 3,
+        "actionPreservation": {
+          "transcriptPreservedActionCount": 0,
+          "transcriptActionInventoryCount": 0,
+          "evidenceLedgerActionCount": 3,
+          "evidenceClassifierActionCount": 0,
+          "transcriptActionInventoryUsed": false
+        },
+        "transcriptLength": 574,
+        "embeddingClassifier": {
+          "used": true,
+          "provider": "trooper_stage",
+          "rewriterAvailable": true,
+          "rewriterReason": "Trooper targeted staged actions generation used.",
+          "pipeline": "staged_actions_targeted",
+          "modelAvailable": true,
+          "modelName": "eu_liv_000099",
+          "modelReason": "Trooper targeted staged actions generation used.",
+          "counts": {},
+          "evidencePackTopicCount": 0,
+          "workstreamStateCount": 0,
+          "missingWorkstreamCount": 0,
+          "missingWorkstreams": [],
+          "workstreamQualityFlags": [],
+          "timingMs": {
+            "total": 4875
+          }
+        },
+        "evidenceClassifier": {
+          "used": true,
+          "executed": true,
+          "modelAvailable": true,
+          "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+          "modelPath": "/root/meeting-minutes-evidence-model/runs/multitask-rework-20260812T140735Z/model_bundle",
+          "modelReason": "Evidence classifier completed.",
+          "actionCount": 1,
+          "itemCount": 9,
+          "segmentsScored": 9,
+          "counts": {
+            "document_control_task": 2,
+            "low_value_noise": 5,
+            "action_commitment": 2
+          },
+          "timingMs": {
+            "total": 8305
+          }
+        }
+      },
+      "generationDiagnostics": {
+        "provider": "trooper_stage",
+        "modelAvailable": true,
+        "modelName": "eu_liv_000099",
+        "modelReason": "Trooper targeted staged actions generation used.",
+        "pipeline": "staged_actions_targeted",
+        "timingMs": {
+          "total": 4875
+        },
+        "strictTopicCoverage": false,
+        "evidencePackTopicCount": 0,
+        "workstreamStateCount": 0,
+        "missingWorkstreamCount": 0,
+        "missingWorkstreams": [],
+        "workstreamQualityFlags": [],
+        "usage": {
+          "prompt_tokens": 1418,
+          "completion_tokens": 179,
+          "total_tokens": 1597
+        },
+        "evidenceClassifier": {
+          "used": true,
+          "executed": true,
+          "modelAvailable": true,
+          "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+          "modelPath": "/root/meeting-minutes-evidence-model/runs/multitask-rework-20260812T140735Z/model_bundle",
+          "modelReason": "Evidence classifier completed.",
+          "actionCount": 1,
+          "itemCount": 9,
+          "segmentsScored": 9,
+          "counts": {
+            "document_control_task": 2,
+            "low_value_noise": 5,
+            "action_commitment": 2
+          },
+          "timingMs": {
+            "total": 8305
+          }
+        }
+      }
+    }
+  ]
+}

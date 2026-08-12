@@ -1,0 +1,51 @@
+{
+  "meeting_type": "Webinar rehearsal",
+  "attendees": [
+    "Marcus Bell",
+    "Aisha Rahman",
+    "Deniz Yilmaz",
+    "Fern Whitlock"
+  ],
+  "client_attendees": [
+    "Marcus Bell",
+    "Aisha Rahman",
+    "Deniz Yilmaz",
+    "Fern Whitlock"
+  ],
+  "actions": [
+    {
+      "owner": "Aisha Rahman",
+      "action": "Fix the staging config by swapping the connection string to the correct database",
+      "due_evidence": "Not stated"
+    },
+    {
+      "owner": "Marcus Bell",
+      "action": "Get the revised quote over to Bellamy's before",
+      "due_evidence": "end of play Thursday"
+    },
+    {
+      "owner": "Marcus Bell",
+      "action": "Sort it",
+      "due_evidence": "Not stated"
+    },
+    {
+      "owner": "Deniz Yilmaz",
+      "action": "Rewrite the onboarding email and drop it in the shared folder for you two to check before it goes anywhere",
+      "due_evidence": "Not stated"
+    },
+    {
+      "owner": "Fern Whitlock",
+      "action": "Ring the hosting people and get the SSL renewed",
+      "due_evidence": "tomorrow morning"
+    }
+  ],
+  "decisions": [
+    "Adopt the simple dropdown navigation (option B) over the mega-menu",
+    "Agreed to resolve the issue by swapping the connection string.",
+    "Agreed to proceed with the simple dropdown option (Option B).",
+    "A decision was made between two options for the top menu: a mega-menu or a simple dropdown. The mega-menu was deemed unsuitable due to poor mobile usability.",
+    "Agreed to provide the revised quote to Bellamy's by Thursday.",
+    "Agreed that the certificate must be renewed promptly."
+  ],
+  "risks": []
+}

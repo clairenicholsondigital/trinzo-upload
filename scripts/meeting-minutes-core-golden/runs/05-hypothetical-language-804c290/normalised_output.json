@@ -1,0 +1,30 @@
+{
+  "meeting_type": "Workshop",
+  "attendees": [
+    "Imogen Hart",
+    "Ravi Shah",
+    "Peter Doyle"
+  ],
+  "client_attendees": [
+    "Imogen Hart",
+    "Ravi Shah",
+    "Peter Doyle"
+  ],
+  "actions": [
+    {
+      "owner": "Ravi Shah",
+      "action": "Request the renewal quote",
+      "due_evidence": "Friday"
+    }
+  ],
+  "decisions": [
+    "Stay with the current analytics platform for now",
+    "No migration decision was made; the current platform is to be retained.",
+    "The decision is to remain with the current platform.",
+    "The possibility of migrating analytics platforms next year was discussed, contingent upon a potential licence price increase. Exploration of Matomo was suggested, but a migration has not been approved.",
+    "No decision was made regarding migration based on licensing.",
+    "No approval for migration to Matomo was granted.",
+    "Exploration is pending formal approval."
+  ],
+  "risks": []
+}

@@ -1,0 +1,742 @@
+{
+  "ok": true,
+  "staged": true,
+  "mode": "no_human_edits",
+  "source": "file",
+  "fileName": "transcript.docx",
+  "transcriptLength": 653,
+  "screens": {
+    "details": {
+      "meetingTitle": "Alder Product Submission",
+      "meetingDate": "2026-08-12",
+      "meetingLocation": "Microsoft Teams",
+      "organisation": "",
+      "meetingType": "Project review",
+      "internalAttendees": [],
+      "clientAttendees": [
+        "Grace Lin",
+        "Idris Moore",
+        "Kate Evans"
+      ],
+      "allAttendees": [
+        "Grace Lin",
+        "Idris Moore",
+        "Kate Evans"
+      ]
+    },
+    "summary": {
+      "objectives": [
+        "Review final submission contingency",
+        "Agree draft submission deadline and review timeline"
+      ],
+      "executiveSummary": "The project is progressing with a defined sequence for the product submission. The draft submission is scheduled for close by Thursday. Following receipt, Kate Evans will conduct a review within two working days. The final submission date is contingent upon Kate's approval, with the submission occurring on the next working day after approval, avoiding the manufacture of a specific calendar date.",
+      "overallTopics": [
+        "Draft Submission Deadline",
+        "Review Timeline",
+        "Final Submission Contingency"
+      ]
+    },
+    "discussion": [
+      {
+        "topic": "Draft Submission Deadline",
+        "whatWasDiscussed": "The draft submission was requested by the end of the following day, and the submission timeline was discussed.",
+        "currentPosition": "The previous draft submission was completed last month and is now closed.",
+        "nextStep": "Idris to send the draft by the end of the following day.",
+        "points": [
+          "The draft is to be sent by the end of the following day.",
+          "The previous draft submission was completed last month and is now closed.",
+          "The draft submission was requested by the end of the following day, and the submission timeline was discussed."
+        ]
+      },
+      {
+        "topic": "Final Submission Contingency",
+        "whatWasDiscussed": "The contingency plan for the final submission was implicitly linked to the approval process.",
+        "currentPosition": "No specific contingency plan was detailed, but the process relies on receiving approval.",
+        "decisionOrAgreement": "The submission timing is contingent on receiving approval from Kate Evans.",
+        "nextStep": "Awaiting Kate Evans' review.",
+        "points": [
+          "The contingency plan for the final submission was implicitly linked to the approval process."
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "owner": "Idris Moore",
+        "action": "Send the draft",
+        "deadline": "end of day tomorrow",
+        "source": "staged_evidence_ledger"
+      },
+      {
+        "owner": "Kate Evans",
+        "action": "Review the draft",
+        "deadline": "within two working days of receiving it",
+        "source": "staged_evidence_ledger"
+      },
+      {
+        "owner": "Grace Lin",
+        "action": "Submit the approved draft",
+        "deadline": "the next working day after Kate's approval",
+        "source": "staged_evidence_ledger"
+      },
+      {
+        "owner": "Kate Evans",
+        "action": "Review it within two working days of receiving it",
+        "deadline": "Not stated",
+        "source": "meeting_minutes_evidence_classifier"
+      }
+    ],
+    "decisions": [],
+    "risks": [
+      {
+        "text": "Submission timing depends on the review and approval sequence",
+        "evidence": "It depends on Kate's approval.",
+        "sourceTurnIds": [
+          5
+        ],
+        "status": "open"
+      }
+    ],
+    "finalReview": {
+      "readyForFinalApproval": false,
+      "message": "Final review would remain locked until every substantive workstream is resolved."
+    }
+  },
+  "visibleOutput": {
+    "meetingTitle": "Alder Product Submission",
+    "participants": {
+      "trinzo": [],
+      "client": [
+        "Grace Lin",
+        "Idris Moore",
+        "Kate Evans"
+      ]
+    },
+    "meetingObjectives": [
+      "Review final submission contingency",
+      "Agree draft submission deadline and review timeline"
+    ],
+    "executiveSummary": "The project is progressing with a defined sequence for the product submission. The draft submission is scheduled for close by Thursday. Following receipt, Kate Evans will conduct a review within two working days. The final submission date is contingent upon Kate's approval, with the submission occurring on the next working day after approval, avoiding the manufacture of a specific calendar date.",
+    "discussionPoints": [
+      "Draft Submission Deadline: The draft is to be sent by the end of the following day.",
+      "Draft Submission Deadline: The previous draft submission was completed last month and is now closed.",
+      "Draft Submission Deadline: The draft submission was requested by the end of the following day, and the submission timeline was discussed.",
+      "Final Submission Contingency: The contingency plan for the final submission was implicitly linked to the approval process."
+    ],
+    "decisions": [
+      "The submission timing is contingent on receiving approval from Kate Evans.",
+      "The contingency plan for the final submission was implicitly linked to the approval process."
+    ],
+    "risks": [
+      "Submission timing depends on the review and approval sequence"
+    ],
+    "actions": [
+      {
+        "meetingActionPointOwner": "Idris Moore",
+        "meetingActionPoint": "Send the draft",
+        "meetingActionPointDeadline": "end of day tomorrow"
+      },
+      {
+        "meetingActionPointOwner": "Kate Evans",
+        "meetingActionPoint": "Review the draft",
+        "meetingActionPointDeadline": "within two working days of receiving it"
+      },
+      {
+        "meetingActionPointOwner": "Grace Lin",
+        "meetingActionPoint": "Submit the approved draft",
+        "meetingActionPointDeadline": "the next working day after Kate's approval"
+      },
+      {
+        "meetingActionPointOwner": "Kate Evans",
+        "meetingActionPoint": "Review it within two working days of receiving it",
+        "meetingActionPointDeadline": "Not stated"
+      }
+    ]
+  },
+  "reviewExperience": {
+    "mode": "no_human_edits",
+    "description": "The generated output from each screen was accepted unchanged and passed into the next screen.",
+    "stages": [
+      {
+        "stage": "details",
+        "screenLabel": "Meeting details",
+        "statusMessage": "Meeting details generated. Review or edit this screen before continuing.",
+        "editorialHeading": null,
+        "flags": [],
+        "blocking": false
+      },
+      {
+        "stage": "summary",
+        "screenLabel": "Summary and topics",
+        "statusMessage": "Topics generated. Review or edit them before continuing.",
+        "editorialHeading": null,
+        "flags": [],
+        "blocking": false
+      },
+      {
+        "stage": "discussion",
+        "screenLabel": "Discussion points",
+        "statusMessage": "Discussion points generated from the topic context.",
+        "editorialHeading": "Editorial checks (review before moving on)",
+        "flags": [
+          {
+            "type": "misattributed_discussion_evidence",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "Removed 1 discussion point(s) under \"Draft Submission Deadline\" because they did not fit that workstream's evidence.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "review_manually"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          },
+          {
+            "type": "misattributed_discussion_evidence",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "Removed 3 discussion point(s) under \"Final Submission Contingency\" because they did not fit that workstream's evidence.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "review_manually"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          },
+          {
+            "type": "unresolved_substantive_workstream",
+            "severity": "warning",
+            "blocking": true,
+            "resolutionKey": "workstream:review timeline",
+            "message": "\"Review Timeline\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "intentionally_omit",
+              "return_to_summary_topics"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          },
+          {
+            "type": "thin_substantive_workstream",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": "workstream:final submission contingency",
+            "message": "\"Final Submission Contingency\" has only one retained discussion point. Review whether more evidence is needed.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "review_manually"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          }
+        ],
+        "blocking": true
+      },
+      {
+        "stage": "actions",
+        "screenLabel": "Actions",
+        "statusMessage": "Actions generated. Check owners and dates before continuing.",
+        "editorialHeading": "Editorial checks (review before moving on)",
+        "flags": [
+          {
+            "type": "possible_omitted_workstream",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "\"Submit the approved draft\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "review_manually"
+            ],
+            "discussionSuggestion": {
+              "topic": "the approved draft",
+              "point": "Submit the approved draft",
+              "source": "action"
+            },
+            "repairCandidates": null
+          },
+          {
+            "type": "possible_omitted_workstream",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "\"Review it within two working days of receiving it\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "review_manually"
+            ],
+            "discussionSuggestion": {
+              "topic": "it within two working days of receiving it",
+              "point": "Review it within two working days of receiving it",
+              "source": "action"
+            },
+            "repairCandidates": null
+          }
+        ],
+        "blocking": false
+      }
+    ],
+    "flags": [
+      {
+        "type": "misattributed_discussion_evidence",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "Removed 1 discussion point(s) under \"Draft Submission Deadline\" because they did not fit that workstream's evidence.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "review_manually"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "misattributed_discussion_evidence",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "Removed 3 discussion point(s) under \"Final Submission Contingency\" because they did not fit that workstream's evidence.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "review_manually"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "unresolved_substantive_workstream",
+        "severity": "warning",
+        "blocking": true,
+        "resolutionKey": "workstream:review timeline",
+        "message": "\"Review Timeline\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "intentionally_omit",
+          "return_to_summary_topics"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "thin_substantive_workstream",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": "workstream:final submission contingency",
+        "message": "\"Final Submission Contingency\" has only one retained discussion point. Review whether more evidence is needed.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "review_manually"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "possible_omitted_workstream",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "\"Submit the approved draft\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "review_manually"
+        ],
+        "discussionSuggestion": {
+          "topic": "the approved draft",
+          "point": "Submit the approved draft",
+          "source": "action"
+        },
+        "repairCandidates": null,
+        "stage": "actions"
+      },
+      {
+        "type": "possible_omitted_workstream",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "\"Review it within two working days of receiving it\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "review_manually"
+        ],
+        "discussionSuggestion": {
+          "topic": "it within two working days of receiving it",
+          "point": "Review it within two working days of receiving it",
+          "source": "action"
+        },
+        "repairCandidates": null,
+        "stage": "actions"
+      }
+    ],
+    "warningCount": 6,
+    "blockingCount": 1,
+    "readyForFinalApproval": false,
+    "finalReviewMessage": "Final review would remain locked until every substantive workstream is resolved.",
+    "requiredReviewerActions": [
+      {
+        "stage": "discussion",
+        "resolutionKey": "workstream:review timeline",
+        "message": "\"Review Timeline\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+        "choices": [
+          "add_to_discussion",
+          "intentionally_omit",
+          "return_to_summary_topics"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null
+      }
+    ]
+  },
+  "trace": [
+    {
+      "stage": "details",
+      "provider": "deterministic_stage_1_prep",
+      "outputCount": 1,
+      "telemetry": {
+        "stage": "details",
+        "transcriptLength": 653,
+        "screenCount": 1,
+        "attendeeExtraction": {
+          "source": "microsoft_teams_speaker_turns",
+          "speakerCount": 3,
+          "turnCount": 7,
+          "eventSpeakerCount": 0,
+          "knownInternalAttendeeCount": 0,
+          "knownClientAttendeeCount": 0,
+          "headerSource": "microsoft_teams_header",
+          "dateSource": "microsoft_teams_header"
+        }
+      },
+      "preparedTranscriptTelemetry": {
+        "rawLength": 653,
+        "preparedLength": 543,
+        "removedLineCount": 12,
+        "removedReasons": {
+          "teamsHeader": 1,
+          "transcriptionEvent": 0,
+          "blankLine": 11,
+          "timestampOnly": 0
+        },
+        "source": "deterministic_stage_1_prep"
+      }
+    },
+    {
+      "stage": "summary",
+      "provider": "trooper-stage",
+      "fallbackUsed": false,
+      "inputTopicCount": 3,
+      "outputCount": 3,
+      "validationFlags": [],
+      "telemetry": {
+        "stage": "summary",
+        "topicCount": 3,
+        "transcriptLength": 543,
+        "embeddingClassifier": {
+          "used": true,
+          "provider": "trooper_stage",
+          "rewriterAvailable": true,
+          "rewriterReason": "Trooper targeted staged summary generation used.",
+          "pipeline": "staged_summary_targeted",
+          "modelAvailable": true,
+          "modelName": "eu_liv_000099",
+          "modelReason": "Trooper targeted staged summary generation used.",
+          "counts": {},
+          "evidencePackTopicCount": 0,
+          "workstreamStateCount": 0,
+          "missingWorkstreamCount": 0,
+          "missingWorkstreams": [],
+          "workstreamQualityFlags": [],
+          "timingMs": {
+            "total": 4559
+          }
+        },
+        "objectiveReducer": {
+          "objectiveSource": "topic_objective_reducer",
+          "topicCount": 3,
+          "objectiveSpecificityScore": 100
+        }
+      },
+      "generationDiagnostics": {
+        "provider": "trooper_stage",
+        "modelAvailable": true,
+        "modelName": "eu_liv_000099",
+        "modelReason": "Trooper targeted staged summary generation used.",
+        "pipeline": "staged_summary_targeted",
+        "timingMs": {
+          "total": 4559
+        },
+        "strictTopicCoverage": false,
+        "evidencePackTopicCount": 0,
+        "workstreamStateCount": 0,
+        "missingWorkstreamCount": 0,
+        "missingWorkstreams": [],
+        "workstreamQualityFlags": [],
+        "usage": {
+          "prompt_tokens": 975,
+          "completion_tokens": 162,
+          "total_tokens": 1137
+        }
+      }
+    },
+    {
+      "stage": "discussion",
+      "provider": "trooper-stage",
+      "fallbackUsed": false,
+      "inputTopicCount": 3,
+      "outputCount": 2,
+      "outputPointCount": 4,
+      "validationFlags": [
+        {
+          "type": "misattributed_discussion_evidence",
+          "severity": "warning",
+          "message": "Removed 1 discussion point(s) under \"Draft Submission Deadline\" because they did not fit that workstream's evidence."
+        },
+        {
+          "type": "misattributed_discussion_evidence",
+          "severity": "warning",
+          "message": "Removed 3 discussion point(s) under \"Final Submission Contingency\" because they did not fit that workstream's evidence."
+        },
+        {
+          "type": "unresolved_substantive_workstream",
+          "severity": "warning",
+          "blocking": true,
+          "resolutionKey": "workstream:review timeline",
+          "message": "\"Review Timeline\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+          "discussionSuggestion": null
+        },
+        {
+          "type": "thin_substantive_workstream",
+          "severity": "warning",
+          "blocking": false,
+          "resolutionKey": "workstream:final submission contingency",
+          "message": "\"Final Submission Contingency\" has only one retained discussion point. Review whether more evidence is needed.",
+          "discussionSuggestion": null
+        }
+      ],
+      "telemetry": {
+        "stage": "discussion",
+        "topicCount": 3,
+        "discussionCards": 2,
+        "droppedMisattributedDiscussionPoints": 2,
+        "workstreamCoverage": [
+          {
+            "topic": "Draft Submission Deadline",
+            "classification": "administrative_but_material",
+            "evidenceCount": 3,
+            "discussionCardCount": 1,
+            "assignedTurnIds": [],
+            "status": "covered"
+          },
+          {
+            "topic": "Review Timeline",
+            "classification": "administrative_but_material",
+            "evidenceCount": 0,
+            "discussionCardCount": 0,
+            "assignedTurnIds": [],
+            "status": "missing"
+          },
+          {
+            "topic": "Final Submission Contingency",
+            "classification": "substantive",
+            "evidenceCount": 1,
+            "discussionCardCount": 1,
+            "assignedTurnIds": [],
+            "status": "thin"
+          }
+        ],
+        "transcriptLength": 543,
+        "embeddingClassifier": {
+          "used": true,
+          "provider": "trooper_stage",
+          "rewriterAvailable": true,
+          "rewriterReason": "Trooper targeted staged discussion generation used.",
+          "pipeline": "staged_discussion_targeted",
+          "modelAvailable": true,
+          "modelName": "eu_liv_000099",
+          "modelReason": "Trooper targeted staged discussion generation used.",
+          "counts": {},
+          "evidencePackTopicCount": 3,
+          "workstreamStateCount": 3,
+          "missingWorkstreamCount": 0,
+          "missingWorkstreams": [],
+          "workstreamQualityFlags": [
+            "missing_workstream_recovered",
+            "substantive_workstream_omission_risk"
+          ],
+          "timingMs": {
+            "total": 7612
+          }
+        },
+        "discussionCompaction": {
+          "pointsBefore": 4,
+          "pointsAfter": 4,
+          "duplicatesRemoved": 0,
+          "truncatedRemoved": 0,
+          "cardCount": 2,
+          "namedDetailsBefore": 0,
+          "namedDetailsAfter": 0,
+          "detailRetentionScore": 100,
+          "detailRetentionWarnings": []
+        }
+      },
+      "generationDiagnostics": {
+        "provider": "trooper_stage",
+        "modelAvailable": true,
+        "modelName": "eu_liv_000099",
+        "modelReason": "Trooper targeted staged discussion generation used.",
+        "pipeline": "staged_discussion_targeted",
+        "timingMs": {
+          "total": 7612
+        },
+        "strictTopicCoverage": false,
+        "evidencePackTopicCount": 3,
+        "workstreamStateCount": 3,
+        "missingWorkstreamCount": 0,
+        "missingWorkstreams": [],
+        "workstreamQualityFlags": [
+          "missing_workstream_recovered",
+          "substantive_workstream_omission_risk"
+        ],
+        "usage": {
+          "prompt_tokens": 3593,
+          "completion_tokens": 676,
+          "total_tokens": 4269
+        }
+      }
+    },
+    {
+      "stage": "actions",
+      "provider": "trooper-stage",
+      "fallbackUsed": false,
+      "inputTopicCount": 3,
+      "outputCount": 4,
+      "validationFlags": [
+        {
+          "type": "possible_omitted_workstream",
+          "severity": "warning",
+          "message": "\"Submit the approved draft\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+          "discussionSuggestion": {
+            "topic": "the approved draft",
+            "point": "Submit the approved draft",
+            "source": "action"
+          }
+        },
+        {
+          "type": "possible_omitted_workstream",
+          "severity": "warning",
+          "message": "\"Review it within two working days of receiving it\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+          "discussionSuggestion": {
+            "topic": "it within two working days of receiving it",
+            "point": "Review it within two working days of receiving it",
+            "source": "action"
+          }
+        }
+      ],
+      "telemetry": {
+        "stage": "actions",
+        "actionCount": 4,
+        "actionPreservation": {
+          "transcriptPreservedActionCount": 0,
+          "transcriptActionInventoryCount": 0,
+          "evidenceLedgerActionCount": 3,
+          "evidenceClassifierActionCount": 1,
+          "transcriptActionInventoryUsed": true
+        },
+        "transcriptLength": 543,
+        "embeddingClassifier": {
+          "used": true,
+          "provider": "trooper_stage",
+          "rewriterAvailable": true,
+          "rewriterReason": "Trooper targeted staged actions generation used.",
+          "pipeline": "staged_actions_targeted",
+          "modelAvailable": true,
+          "modelName": "eu_liv_000099",
+          "modelReason": "Trooper targeted staged actions generation used.",
+          "counts": {},
+          "evidencePackTopicCount": 0,
+          "workstreamStateCount": 0,
+          "missingWorkstreamCount": 0,
+          "missingWorkstreams": [],
+          "workstreamQualityFlags": [],
+          "timingMs": {
+            "total": 4461
+          }
+        },
+        "evidenceClassifier": {
+          "used": true,
+          "executed": true,
+          "modelAvailable": true,
+          "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+          "modelPath": "/root/meeting-minutes-evidence-model/runs/multitask-rework-20260812T140735Z/model_bundle",
+          "modelReason": "Evidence classifier completed.",
+          "actionCount": 4,
+          "itemCount": 9,
+          "segmentsScored": 9,
+          "counts": {
+            "action_commitment": 4,
+            "document_control_task": 1,
+            "background_context": 1,
+            "risk_dependency": 1,
+            "discussion_topic": 2
+          },
+          "timingMs": {
+            "total": 7830
+          }
+        }
+      },
+      "generationDiagnostics": {
+        "provider": "trooper_stage",
+        "modelAvailable": true,
+        "modelName": "eu_liv_000099",
+        "modelReason": "Trooper targeted staged actions generation used.",
+        "pipeline": "staged_actions_targeted",
+        "timingMs": {
+          "total": 4461
+        },
+        "strictTopicCoverage": false,
+        "evidencePackTopicCount": 0,
+        "workstreamStateCount": 0,
+        "missingWorkstreamCount": 0,
+        "missingWorkstreams": [],
+        "workstreamQualityFlags": [],
+        "usage": {
+          "prompt_tokens": 1559,
+          "completion_tokens": 131,
+          "total_tokens": 1690
+        },
+        "evidenceClassifier": {
+          "used": true,
+          "executed": true,
+          "modelAvailable": true,
+          "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+          "modelPath": "/root/meeting-minutes-evidence-model/runs/multitask-rework-20260812T140735Z/model_bundle",
+          "modelReason": "Evidence classifier completed.",
+          "actionCount": 4,
+          "itemCount": 9,
+          "segmentsScored": 9,
+          "counts": {
+            "action_commitment": 4,
+            "document_control_task": 1,
+            "background_context": 1,
+            "risk_dependency": 1,
+            "discussion_topic": 2
+          },
+          "timingMs": {
+            "total": 7830
+          }
+        }
+      }
+    }
+  ]
+}

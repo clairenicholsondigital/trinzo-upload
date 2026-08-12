@@ -1,0 +1,38 @@
+{
+  "meeting_type": "Decision meeting",
+  "attendees": [
+    "Elaine Voss",
+    "Martin Okoro",
+    "Sana Iqbal"
+  ],
+  "client_attendees": [
+    "Elaine Voss",
+    "Martin Okoro",
+    "Sana Iqbal"
+  ],
+  "actions": [
+    {
+      "owner": "All",
+      "action": "Approve the validation report for release",
+      "due_evidence": "Not stated"
+    }
+  ],
+  "decisions": [
+    "Approve the validation report for release",
+    "Do not carry out a further round of testing",
+    "Accept the residual risk on the temperature excursion",
+    "Confirm supplier B as the component supplier",
+    "Decision made to approve the validation report for release.",
+    "Decision made to formally accept the residual risk on the temperature excursion.",
+    "Decision made to select Supplier B.",
+    "Supplier B has been confirmed as the selected component supplier.",
+    "No new decisions were required; confirmation that all previous steps were finalised.",
+    "None identified; the process is concluded."
+  ],
+  "risks": [
+    "Removed 1 discussion point(s) under \"Residual Risk Acceptance (Temperature Excursion)\" because they did not fit that workstream's evidence.",
+    "Removed 1 discussion point(s) under \"Residual Risk Acceptance (Temperature Excursion)\" because they did not fit that workstream's evidence.",
+    "Removed raw transcript-style wording under \"Residual Risk Acceptance (Temperature Excursion)\" before final review.",
+    "\"Residual Risk Acceptance (Temperature Excursion)\" has only one retained discussion point. Review whether more evidence is needed."
+  ]
+}

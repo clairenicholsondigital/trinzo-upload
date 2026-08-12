@@ -1,0 +1,22 @@
+{
+  "meeting_type": "Project review",
+  "attendees": [
+    "Samira Cole",
+    "Ben Morris",
+    "Eva Novak"
+  ],
+  "client_attendees": [
+    "Samira Cole",
+    "Ben Morris",
+    "Eva Novak"
+  ],
+  "actions": [
+    {
+      "owner": "Ben Morris",
+      "action": "Upload the signed response to the controlled folder",
+      "due_evidence": "close tomorrow"
+    }
+  ],
+  "decisions": [],
+  "risks": []
+}

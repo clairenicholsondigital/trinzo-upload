@@ -1,0 +1,781 @@
+{
+  "ok": true,
+  "staged": true,
+  "mode": "no_human_edits",
+  "source": "file",
+  "fileName": "transcript.docx",
+  "transcriptLength": 1217,
+  "screens": {
+    "details": {
+      "meetingTitle": "Westmere Incident And Launch Call",
+      "meetingDate": "2026-08-12",
+      "meetingLocation": "Microsoft Teams",
+      "organisation": "",
+      "meetingType": "Decision meeting",
+      "internalAttendees": [],
+      "clientAttendees": [
+        "Amina Yusuf",
+        "Rob Chen",
+        "George Bell",
+        "Keira Long"
+      ],
+      "allAttendees": [
+        "Amina Yusuf",
+        "Rob Chen",
+        "George Bell",
+        "Keira Long"
+      ]
+    },
+    "summary": {
+      "objectives": [
+        "Review outage resolution status",
+        "Agree launch schedule confirmation",
+        "Review error rate monitoring protocol",
+        "Review communication and status updates"
+      ],
+      "executiveSummary": "The project is proceeding with a confirmed launch scheduled for Thursday at ten. The outage fix has been implemented and monitoring has been clean overnight. The agreed protocol is to launch unless the error rate exceeds two per cent, at which point a pause will be considered. George Bell will publish the status page at nine thirty on Thursday, and Keira Long will monitor the error dashboard for the initial hour to alert Amina Yusuf if the threshold is breached. George Bell will also send the launch confirmation to Susan today.",
+      "overallTopics": [
+        "Outage Resolution Status",
+        "Launch Schedule Confirmation",
+        "Error Rate Monitoring Protocol",
+        "Communication and Status Updates"
+      ]
+    },
+    "discussion": [
+      {
+        "topic": "Outage Resolution Status",
+        "whatWasDiscussed": "The outage fix was live, and monitoring was clean overnight. Rob Chen confirmed the fix was complete.",
+        "currentPosition": "The outage resolution is complete.",
+        "decisionOrAgreement": "No explicit decision recorded, but the fix status was confirmed.",
+        "nextStep": "George Bell is scheduled to publish the status page at 09:30 Thursday.",
+        "points": [
+          "The outage fix was live, and monitoring was clean overnight. Rob Chen confirmed the fix was complete.",
+          "George Bell is scheduled to publish the status page at 09:30 Thursday.",
+          "The outage resolution is complete."
+        ]
+      },
+      {
+        "topic": "Launch Schedule Confirmation",
+        "whatWasDiscussed": "A query was raised regarding delaying the launch to Friday if traffic conditions appeared risky. This was countered by a firm decision on the launch time.",
+        "currentPosition": "The decision is to proceed with the launch on Thursday at ten.",
+        "decisionOrAgreement": "Decision is launch Thursday at ten. The launch will only be paused if the error rate exceeds two per cent.",
+        "nextStep": "George Bell will send the launch confirmation to Susan today.",
+        "points": [
+          "A query was raised regarding delaying the launch to Friday if traffic conditions appeared risky. This was countered by a firm decision on the launch time."
+        ]
+      },
+      {
+        "topic": "Error Rate Monitoring Protocol",
+        "whatWasDiscussed": "The protocol dictates that the launch will only be paused if the error rate surpasses two per cent. A monitoring action was assigned.",
+        "currentPosition": "Monitoring is in place, with an alert mechanism established.",
+        "nextStep": "Keira Long will monitor the error dashboard for the first hour and alert Amina if the threshold is crossed.",
+        "points": [
+          "The launch is conditional on the error rate remaining below two per cent.",
+          "The threshold for pausing the launch is set at two per cent error rate.",
+          "If the error rate crosses two per cent, the launch will be paused.",
+          "Keira Long will monitor the error dashboard for the first hour and alert Amina if the threshold is crossed."
+        ]
+      },
+      {
+        "topic": "Communication and Status Updates",
+        "whatWasDiscussed": "Confirmation was provided regarding status page distribution and attendee lists.",
+        "currentPosition": "Status page distribution and communication channels have been confirmed.",
+        "decisionOrAgreement": "Confirmed that George has the status page and Susan has an email. Keira is monitoring.",
+        "nextStep": "George Bell will send the launch confirmation to Susan today.",
+        "points": [
+          "Status page distribution and communication channels have been confirmed.",
+          "Confirmed that George has the status page and Susan has an email. Keira is monitoring.",
+          "George Bell will send the launch confirmation to Susan today."
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "owner": "George Bell",
+        "action": "Publish the status page at nine thirty",
+        "deadline": "Thursday",
+        "source": "staged_evidence_ledger"
+      },
+      {
+        "owner": "Keira Long",
+        "action": "Watch the error dashboard for the first hour and alert Amina if it crosses two per cent",
+        "deadline": "Not stated",
+        "source": "staged_evidence_ledger"
+      },
+      {
+        "owner": "George Bell",
+        "action": "Send Susan the launch confirmation",
+        "deadline": "today",
+        "source": "staged_evidence_ledger"
+      }
+    ],
+    "decisions": [
+      {
+        "text": "Launch Thursday at 10:00",
+        "evidence": "Decision is launch Thursday at ten.",
+        "sourceTurnIds": [
+          5
+        ]
+      },
+      {
+        "text": "Pause only if the error rate exceeds two per cent",
+        "evidence": "We only pause if the error rate exceeds two per cent.",
+        "sourceTurnIds": [
+          5
+        ]
+      }
+    ],
+    "risks": [
+      {
+        "text": "Launch error rate may exceed the two per cent pause threshold",
+        "evidence": "We only pause if the error rate exceeds two per cent.",
+        "sourceTurnIds": [
+          5
+        ],
+        "status": "open"
+      }
+    ],
+    "finalReview": {
+      "readyForFinalApproval": true,
+      "message": "All generated screens can proceed to final human approval."
+    }
+  },
+  "visibleOutput": {
+    "meetingTitle": "Westmere Incident And Launch Call",
+    "participants": {
+      "trinzo": [],
+      "client": [
+        "Amina Yusuf",
+        "Rob Chen",
+        "George Bell",
+        "Keira Long"
+      ]
+    },
+    "meetingObjectives": [
+      "Review outage resolution status",
+      "Agree launch schedule confirmation",
+      "Review error rate monitoring protocol",
+      "Review communication and status updates"
+    ],
+    "executiveSummary": "The project is proceeding with a confirmed launch scheduled for Thursday at ten. The outage fix has been implemented and monitoring has been clean overnight. The agreed protocol is to launch unless the error rate exceeds two per cent, at which point a pause will be considered. George Bell will publish the status page at nine thirty on Thursday, and Keira Long will monitor the error dashboard for the initial hour to alert Amina Yusuf if the threshold is breached. George Bell will also send the launch confirmation to Susan today.",
+    "discussionPoints": [
+      "Outage Resolution Status: The outage fix was live, and monitoring was clean overnight. Rob Chen confirmed the fix was complete.",
+      "Outage Resolution Status: George Bell is scheduled to publish the status page at 09:30 Thursday.",
+      "Outage Resolution Status: The outage resolution is complete.",
+      "Launch Schedule Confirmation: A query was raised regarding delaying the launch to Friday if traffic conditions appeared risky. This was countered by a firm decision on the launch time.",
+      "Error Rate Monitoring Protocol: The launch is conditional on the error rate remaining below two per cent.",
+      "Error Rate Monitoring Protocol: The threshold for pausing the launch is set at two per cent error rate.",
+      "Error Rate Monitoring Protocol: If the error rate crosses two per cent, the launch will be paused.",
+      "Error Rate Monitoring Protocol: Keira Long will monitor the error dashboard for the first hour and alert Amina if the threshold is crossed.",
+      "Communication and Status Updates: Status page distribution and communication channels have been confirmed.",
+      "Communication and Status Updates: Confirmed that George has the status page and Susan has an email. Keira is monitoring.",
+      "Communication and Status Updates: George Bell will send the launch confirmation to Susan today."
+    ],
+    "decisions": [
+      "Pause only if the error rate exceeds two per cent",
+      "No explicit decision recorded, but the fix status was confirmed.",
+      "The outage fix was live, and monitoring was clean overnight. Rob Chen confirmed the fix was complete.",
+      "Decision is launch Thursday at ten. The launch will only be paused if the error rate exceeds two per cent.",
+      "A query was raised regarding delaying the launch to Friday if traffic conditions appeared risky. This was countered by a firm decision on the launch time.",
+      "Confirmed that George has the status page and Susan has an email. Keira is monitoring.",
+      "Status page distribution and communication channels have been confirmed."
+    ],
+    "risks": [
+      "Launch error rate may exceed the two per cent pause threshold"
+    ],
+    "actions": [
+      {
+        "meetingActionPointOwner": "George Bell",
+        "meetingActionPoint": "Publish the status page at nine thirty",
+        "meetingActionPointDeadline": "Thursday"
+      },
+      {
+        "meetingActionPointOwner": "Keira Long",
+        "meetingActionPoint": "Watch the error dashboard for the first hour and alert Amina if it crosses two per cent",
+        "meetingActionPointDeadline": "Not stated"
+      },
+      {
+        "meetingActionPointOwner": "George Bell",
+        "meetingActionPoint": "Send Susan the launch confirmation",
+        "meetingActionPointDeadline": "today"
+      }
+    ]
+  },
+  "reviewExperience": {
+    "mode": "no_human_edits",
+    "description": "The generated output from each screen was accepted unchanged and passed into the next screen.",
+    "stages": [
+      {
+        "stage": "details",
+        "screenLabel": "Meeting details",
+        "statusMessage": "Meeting details generated. Review or edit this screen before continuing.",
+        "editorialHeading": null,
+        "flags": [],
+        "blocking": false
+      },
+      {
+        "stage": "summary",
+        "screenLabel": "Summary and topics",
+        "statusMessage": "Topics generated. Review or edit them before continuing.",
+        "editorialHeading": null,
+        "flags": [],
+        "blocking": false
+      },
+      {
+        "stage": "discussion",
+        "screenLabel": "Discussion points",
+        "statusMessage": "Discussion points generated from the topic context.",
+        "editorialHeading": "Editorial checks (review before moving on)",
+        "flags": [
+          {
+            "type": "misattributed_discussion_evidence",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "Removed 1 discussion point(s) under \"Outage Resolution Status\" because they did not fit that workstream's evidence.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "review_manually"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          },
+          {
+            "type": "misattributed_discussion_evidence",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "Removed 1 discussion point(s) under \"Error Rate Monitoring Protocol\" because they did not fit that workstream's evidence.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "review_manually"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          },
+          {
+            "type": "misattributed_discussion_evidence",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "Removed 1 discussion point(s) under \"Communication and Status Updates\" because they did not fit that workstream's evidence.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "review_manually"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          },
+          {
+            "type": "misattributed_discussion_evidence",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "Removed 1 discussion point(s) under \"Launch Schedule Confirmation\" because they did not fit that workstream's evidence.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "review_manually"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          },
+          {
+            "type": "misattributed_discussion_evidence",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "Removed 1 discussion point(s) under \"Launch Schedule Confirmation\" because they did not fit that workstream's evidence.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "review_manually"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          },
+          {
+            "type": "misattributed_discussion_evidence",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "Removed 1 discussion point(s) under \"Launch Schedule Confirmation\" because they did not fit that workstream's evidence.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "review_manually"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          },
+          {
+            "type": "thin_substantive_workstream",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": "workstream:launch schedule confirmation",
+            "message": "\"Launch Schedule Confirmation\" has only one retained discussion point. Review whether more evidence is needed.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "review_manually"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          }
+        ],
+        "blocking": false
+      },
+      {
+        "stage": "actions",
+        "screenLabel": "Actions",
+        "statusMessage": "Actions generated. Check owners and dates before continuing.",
+        "editorialHeading": null,
+        "flags": [],
+        "blocking": false
+      }
+    ],
+    "flags": [
+      {
+        "type": "misattributed_discussion_evidence",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "Removed 1 discussion point(s) under \"Outage Resolution Status\" because they did not fit that workstream's evidence.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "review_manually"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "misattributed_discussion_evidence",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "Removed 1 discussion point(s) under \"Error Rate Monitoring Protocol\" because they did not fit that workstream's evidence.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "review_manually"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "misattributed_discussion_evidence",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "Removed 1 discussion point(s) under \"Communication and Status Updates\" because they did not fit that workstream's evidence.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "review_manually"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "misattributed_discussion_evidence",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "Removed 1 discussion point(s) under \"Launch Schedule Confirmation\" because they did not fit that workstream's evidence.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "review_manually"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "misattributed_discussion_evidence",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "Removed 1 discussion point(s) under \"Launch Schedule Confirmation\" because they did not fit that workstream's evidence.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "review_manually"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "misattributed_discussion_evidence",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "Removed 1 discussion point(s) under \"Launch Schedule Confirmation\" because they did not fit that workstream's evidence.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "review_manually"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "thin_substantive_workstream",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": "workstream:launch schedule confirmation",
+        "message": "\"Launch Schedule Confirmation\" has only one retained discussion point. Review whether more evidence is needed.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "review_manually"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      }
+    ],
+    "warningCount": 7,
+    "blockingCount": 0,
+    "readyForFinalApproval": true,
+    "finalReviewMessage": "All generated screens can proceed to final human approval.",
+    "requiredReviewerActions": []
+  },
+  "trace": [
+    {
+      "stage": "details",
+      "provider": "deterministic_stage_1_prep",
+      "outputCount": 1,
+      "telemetry": {
+        "stage": "details",
+        "transcriptLength": 1217,
+        "screenCount": 1,
+        "attendeeExtraction": {
+          "source": "microsoft_teams_speaker_turns",
+          "speakerCount": 4,
+          "turnCount": 12,
+          "eventSpeakerCount": 0,
+          "knownInternalAttendeeCount": 0,
+          "knownClientAttendeeCount": 0,
+          "headerSource": "microsoft_teams_header",
+          "dateSource": "microsoft_teams_header"
+        }
+      },
+      "preparedTranscriptTelemetry": {
+        "rawLength": 1217,
+        "preparedLength": 1077,
+        "removedLineCount": 17,
+        "removedReasons": {
+          "teamsHeader": 1,
+          "transcriptionEvent": 0,
+          "blankLine": 16,
+          "timestampOnly": 0
+        },
+        "source": "deterministic_stage_1_prep"
+      }
+    },
+    {
+      "stage": "summary",
+      "provider": "trooper-stage",
+      "fallbackUsed": false,
+      "inputTopicCount": 4,
+      "outputCount": 4,
+      "validationFlags": [],
+      "telemetry": {
+        "stage": "summary",
+        "topicCount": 4,
+        "transcriptLength": 1077,
+        "embeddingClassifier": {
+          "used": true,
+          "provider": "trooper_stage",
+          "rewriterAvailable": true,
+          "rewriterReason": "Trooper targeted staged summary generation used.",
+          "pipeline": "staged_summary_targeted",
+          "modelAvailable": true,
+          "modelName": "eu_liv_000099",
+          "modelReason": "Trooper targeted staged summary generation used.",
+          "counts": {},
+          "evidencePackTopicCount": 0,
+          "workstreamStateCount": 0,
+          "missingWorkstreamCount": 0,
+          "missingWorkstreams": [],
+          "workstreamQualityFlags": [],
+          "timingMs": {
+            "total": 4874
+          }
+        },
+        "objectiveReducer": {
+          "objectiveSource": "workstream_objective_reducer",
+          "topicCount": 4,
+          "objectiveSpecificityScore": 100
+        }
+      },
+      "generationDiagnostics": {
+        "provider": "trooper_stage",
+        "modelAvailable": true,
+        "modelName": "eu_liv_000099",
+        "modelReason": "Trooper targeted staged summary generation used.",
+        "pipeline": "staged_summary_targeted",
+        "timingMs": {
+          "total": 4874
+        },
+        "strictTopicCoverage": false,
+        "evidencePackTopicCount": 0,
+        "workstreamStateCount": 0,
+        "missingWorkstreamCount": 0,
+        "missingWorkstreams": [],
+        "workstreamQualityFlags": [],
+        "usage": {
+          "prompt_tokens": 1118,
+          "completion_tokens": 202,
+          "total_tokens": 1320
+        }
+      }
+    },
+    {
+      "stage": "discussion",
+      "provider": "trooper-stage",
+      "fallbackUsed": false,
+      "inputTopicCount": 4,
+      "outputCount": 4,
+      "outputPointCount": 11,
+      "validationFlags": [
+        {
+          "type": "misattributed_discussion_evidence",
+          "severity": "warning",
+          "message": "Removed 1 discussion point(s) under \"Outage Resolution Status\" because they did not fit that workstream's evidence."
+        },
+        {
+          "type": "misattributed_discussion_evidence",
+          "severity": "warning",
+          "message": "Removed 1 discussion point(s) under \"Error Rate Monitoring Protocol\" because they did not fit that workstream's evidence."
+        },
+        {
+          "type": "misattributed_discussion_evidence",
+          "severity": "warning",
+          "message": "Removed 1 discussion point(s) under \"Communication and Status Updates\" because they did not fit that workstream's evidence."
+        },
+        {
+          "type": "misattributed_discussion_evidence",
+          "severity": "warning",
+          "message": "Removed 1 discussion point(s) under \"Launch Schedule Confirmation\" because they did not fit that workstream's evidence."
+        },
+        {
+          "type": "misattributed_discussion_evidence",
+          "severity": "warning",
+          "message": "Removed 1 discussion point(s) under \"Launch Schedule Confirmation\" because they did not fit that workstream's evidence."
+        },
+        {
+          "type": "misattributed_discussion_evidence",
+          "severity": "warning",
+          "message": "Removed 1 discussion point(s) under \"Launch Schedule Confirmation\" because they did not fit that workstream's evidence."
+        },
+        {
+          "type": "thin_substantive_workstream",
+          "severity": "warning",
+          "blocking": false,
+          "resolutionKey": "workstream:launch schedule confirmation",
+          "message": "\"Launch Schedule Confirmation\" has only one retained discussion point. Review whether more evidence is needed.",
+          "discussionSuggestion": null
+        }
+      ],
+      "telemetry": {
+        "stage": "discussion",
+        "topicCount": 4,
+        "discussionCards": 4,
+        "droppedMisattributedDiscussionPoints": 6,
+        "workstreamCoverage": [
+          {
+            "topic": "Outage Resolution Status",
+            "classification": "substantive",
+            "evidenceCount": 3,
+            "discussionCardCount": 1,
+            "assignedTurnIds": [],
+            "status": "covered"
+          },
+          {
+            "topic": "Launch Schedule Confirmation",
+            "classification": "substantive",
+            "evidenceCount": 0,
+            "discussionCardCount": 1,
+            "assignedTurnIds": [],
+            "status": "thin"
+          },
+          {
+            "topic": "Error Rate Monitoring Protocol",
+            "classification": "substantive",
+            "evidenceCount": 3,
+            "discussionCardCount": 1,
+            "assignedTurnIds": [],
+            "status": "covered"
+          },
+          {
+            "topic": "Communication and Status Updates",
+            "classification": "substantive",
+            "evidenceCount": 2,
+            "discussionCardCount": 1,
+            "assignedTurnIds": [],
+            "status": "covered"
+          }
+        ],
+        "transcriptLength": 1077,
+        "embeddingClassifier": {
+          "used": true,
+          "provider": "trooper_stage",
+          "rewriterAvailable": true,
+          "rewriterReason": "Trooper targeted staged discussion generation used.",
+          "pipeline": "staged_discussion_targeted",
+          "modelAvailable": true,
+          "modelName": "eu_liv_000099",
+          "modelReason": "Trooper targeted staged discussion generation used.",
+          "counts": {},
+          "evidencePackTopicCount": 4,
+          "workstreamStateCount": 4,
+          "missingWorkstreamCount": 0,
+          "missingWorkstreams": [],
+          "workstreamQualityFlags": [
+            "missing_workstream_recovered",
+            "abstract_workstream_heading",
+            "low_heading_evidence_match"
+          ],
+          "timingMs": {
+            "total": 9617
+          }
+        },
+        "discussionCompaction": {
+          "pointsBefore": 12,
+          "pointsAfter": 11,
+          "duplicatesRemoved": 1,
+          "truncatedRemoved": 0,
+          "cardCount": 4,
+          "namedDetailsBefore": 2,
+          "namedDetailsAfter": 2,
+          "detailRetentionScore": 100,
+          "detailRetentionWarnings": []
+        }
+      },
+      "generationDiagnostics": {
+        "provider": "trooper_stage",
+        "modelAvailable": true,
+        "modelName": "eu_liv_000099",
+        "modelReason": "Trooper targeted staged discussion generation used.",
+        "pipeline": "staged_discussion_targeted",
+        "timingMs": {
+          "total": 9617
+        },
+        "strictTopicCoverage": false,
+        "evidencePackTopicCount": 4,
+        "workstreamStateCount": 4,
+        "missingWorkstreamCount": 0,
+        "missingWorkstreams": [],
+        "workstreamQualityFlags": [
+          "missing_workstream_recovered",
+          "abstract_workstream_heading",
+          "low_heading_evidence_match"
+        ],
+        "usage": {
+          "prompt_tokens": 4391,
+          "completion_tokens": 980,
+          "total_tokens": 5371
+        }
+      }
+    },
+    {
+      "stage": "actions",
+      "provider": "trooper-stage",
+      "fallbackUsed": false,
+      "inputTopicCount": 4,
+      "outputCount": 3,
+      "validationFlags": [],
+      "telemetry": {
+        "stage": "actions",
+        "actionCount": 3,
+        "actionPreservation": {
+          "transcriptPreservedActionCount": 0,
+          "transcriptActionInventoryCount": 0,
+          "evidenceLedgerActionCount": 3,
+          "evidenceClassifierActionCount": 1,
+          "transcriptActionInventoryUsed": true
+        },
+        "transcriptLength": 1077,
+        "embeddingClassifier": {
+          "used": true,
+          "provider": "trooper_stage",
+          "rewriterAvailable": true,
+          "rewriterReason": "Trooper targeted staged actions generation used.",
+          "pipeline": "staged_actions_targeted",
+          "modelAvailable": true,
+          "modelName": "eu_liv_000099",
+          "modelReason": "Trooper targeted staged actions generation used.",
+          "counts": {},
+          "evidencePackTopicCount": 0,
+          "workstreamStateCount": 0,
+          "missingWorkstreamCount": 0,
+          "missingWorkstreams": [],
+          "workstreamQualityFlags": [],
+          "timingMs": {
+            "total": 4783
+          }
+        },
+        "evidenceClassifier": {
+          "used": true,
+          "executed": true,
+          "modelAvailable": true,
+          "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+          "modelPath": "/root/meeting-minutes-evidence-model/runs/multitask-rework-20260812T140735Z/model_bundle",
+          "modelReason": "Evidence classifier completed.",
+          "actionCount": 5,
+          "itemCount": 18,
+          "segmentsScored": 18,
+          "counts": {
+            "background_context": 3,
+            "action_commitment": 5,
+            "low_value_noise": 8,
+            "risk_dependency": 1,
+            "document_control_task": 1
+          },
+          "timingMs": {
+            "total": 8562
+          }
+        }
+      },
+      "generationDiagnostics": {
+        "provider": "trooper_stage",
+        "modelAvailable": true,
+        "modelName": "eu_liv_000099",
+        "modelReason": "Trooper targeted staged actions generation used.",
+        "pipeline": "staged_actions_targeted",
+        "timingMs": {
+          "total": 4783
+        },
+        "strictTopicCoverage": false,
+        "evidencePackTopicCount": 0,
+        "workstreamStateCount": 0,
+        "missingWorkstreamCount": 0,
+        "missingWorkstreams": [],
+        "workstreamQualityFlags": [],
+        "usage": {
+          "prompt_tokens": 1708,
+          "completion_tokens": 148,
+          "total_tokens": 1856
+        },
+        "evidenceClassifier": {
+          "used": true,
+          "executed": true,
+          "modelAvailable": true,
+          "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+          "modelPath": "/root/meeting-minutes-evidence-model/runs/multitask-rework-20260812T140735Z/model_bundle",
+          "modelReason": "Evidence classifier completed.",
+          "actionCount": 5,
+          "itemCount": 18,
+          "segmentsScored": 18,
+          "counts": {
+            "background_context": 3,
+            "action_commitment": 5,
+            "low_value_noise": 8,
+            "risk_dependency": 1,
+            "document_control_task": 1
+          },
+          "timingMs": {
+            "total": 8562
+          }
+        }
+      }
+    }
+  ]
+}

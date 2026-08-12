@@ -1,0 +1,571 @@
+{
+  "ok": true,
+  "staged": true,
+  "mode": "no_human_edits",
+  "source": "file",
+  "fileName": "transcript.docx",
+  "transcriptLength": 785,
+  "screens": {
+    "details": {
+      "meetingTitle": "Northbridge Release Planning",
+      "meetingDate": "2026-08-10",
+      "meetingLocation": "Microsoft Teams",
+      "organisation": "",
+      "meetingType": "Project review",
+      "internalAttendees": [],
+      "clientAttendees": [
+        "Helen Ward",
+        "Omar Khan",
+        "Lucy Price"
+      ],
+      "allAttendees": [
+        "Helen Ward",
+        "Omar Khan",
+        "Lucy Price"
+      ]
+    },
+    "summary": {
+      "objectives": [
+        "Review release note ownership and security review status",
+        "Agree release date confirmation"
+      ],
+      "executiveSummary": "The Northbridge release planning review confirmed that Lucy Price will take ownership of drafting the final release note, with a submission deadline of Wednesday morning. This decision supersedes Omar Khan's previous assignment for the note. The release date remains scheduled for Friday, contingent upon the timely delivery of Lucy's finalised documentation. No immediate timeline threats were identified.",
+      "overallTopics": [
+        "Release Note Ownership",
+        "Security Review Status",
+        "Release Date Confirmation"
+      ]
+    },
+    "discussion": [
+      {
+        "topic": "Release Note Ownership",
+        "whatWasDiscussed": "Discussions centred on drafting and ownership of the release note.",
+        "currentPosition": "Lucy Price has taken ownership of the final release note.",
+        "nextStep": "Lucy Price is responsible for sending the final note by Wednesday morning.",
+        "points": [
+          "The release is confirmed for Friday, conditional on the release note being ready.",
+          "The initial request was for Omar to draft the note by Tuesday.",
+          "Lucy Price has taken ownership of the final release note.",
+          "Lucy Price is responsible for sending the final note by Wednesday morning."
+        ]
+      },
+      {
+        "topic": "Security Review Status",
+        "whatWasDiscussed": "The status of the security review was confirmed.",
+        "currentPosition": "The security review has been completed and signed off.",
+        "decisionOrAgreement": "The review status was confirmed as complete.",
+        "nextStep": "None stated.",
+        "points": [
+          "The security review has been completed and signed off."
+        ]
+      },
+      {
+        "topic": "Release Date Confirmation",
+        "whatWasDiscussed": "The final release date was discussed in relation to the release note readiness.",
+        "currentPosition": "The release date is provisionally set for Friday.",
+        "decisionOrAgreement": "The release is confirmed for Friday, conditional on the release note being ready.",
+        "nextStep": "None stated.",
+        "points": [
+          "The release date is provisionally set for Friday.",
+          "The final release date was discussed in relation to the release note readiness.",
+          "The release date will be aligned with Lucy's note being ready."
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "owner": "Lucy Price",
+        "action": "Draft and send the release note",
+        "deadline": "Wednesday morning",
+        "source": "staged_evidence_ledger"
+      }
+    ],
+    "decisions": [
+      {
+        "text": "Keep the release scheduled for Friday",
+        "evidence": "Decision: release stays on Friday, provided Lucy's note is ready.",
+        "sourceTurnIds": [
+          7
+        ]
+      }
+    ],
+    "risks": [],
+    "finalReview": {
+      "readyForFinalApproval": true,
+      "message": "All generated screens can proceed to final human approval."
+    }
+  },
+  "visibleOutput": {
+    "meetingTitle": "Northbridge Release Planning",
+    "participants": {
+      "trinzo": [],
+      "client": [
+        "Helen Ward",
+        "Omar Khan",
+        "Lucy Price"
+      ]
+    },
+    "meetingObjectives": [
+      "Review release note ownership and security review status",
+      "Agree release date confirmation"
+    ],
+    "executiveSummary": "The Northbridge release planning review confirmed that Lucy Price will take ownership of drafting the final release note, with a submission deadline of Wednesday morning. This decision supersedes Omar Khan's previous assignment for the note. The release date remains scheduled for Friday, contingent upon the timely delivery of Lucy's finalised documentation. No immediate timeline threats were identified.",
+    "discussionPoints": [
+      "Release Note Ownership: The release is confirmed for Friday, conditional on the release note being ready.",
+      "Release Note Ownership: The initial request was for Omar to draft the note by Tuesday.",
+      "Release Note Ownership: Lucy Price has taken ownership of the final release note.",
+      "Release Note Ownership: Lucy Price is responsible for sending the final note by Wednesday morning.",
+      "Security Review Status: The security review has been completed and signed off.",
+      "Release Date Confirmation: The release date is provisionally set for Friday.",
+      "Release Date Confirmation: The final release date was discussed in relation to the release note readiness.",
+      "Release Date Confirmation: The release date will be aligned with Lucy's note being ready."
+    ],
+    "decisions": [
+      "Keep the release scheduled for Friday",
+      "The release is confirmed for Friday, conditional on the release note being ready.",
+      "The review status was confirmed as complete.",
+      "The security review has been completed and signed off."
+    ],
+    "risks": [],
+    "actions": [
+      {
+        "meetingActionPointOwner": "Lucy Price",
+        "meetingActionPoint": "Draft and send the release note",
+        "meetingActionPointDeadline": "Wednesday morning"
+      }
+    ]
+  },
+  "reviewExperience": {
+    "mode": "no_human_edits",
+    "description": "The generated output from each screen was accepted unchanged and passed into the next screen.",
+    "stages": [
+      {
+        "stage": "details",
+        "screenLabel": "Meeting details",
+        "statusMessage": "Meeting details generated. Review or edit this screen before continuing.",
+        "editorialHeading": null,
+        "flags": [],
+        "blocking": false
+      },
+      {
+        "stage": "summary",
+        "screenLabel": "Summary and topics",
+        "statusMessage": "Topics generated. Review or edit them before continuing.",
+        "editorialHeading": null,
+        "flags": [],
+        "blocking": false
+      },
+      {
+        "stage": "discussion",
+        "screenLabel": "Discussion points",
+        "statusMessage": "Discussion points generated from the topic context.",
+        "editorialHeading": "Editorial checks (review before moving on)",
+        "flags": [
+          {
+            "type": "misattributed_discussion_evidence",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "Removed 1 discussion point(s) under \"Security Review Status\" because they did not fit that workstream's evidence.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "review_manually"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          },
+          {
+            "type": "misattributed_discussion_evidence",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "Removed 1 discussion point(s) under \"Release Date Confirmation\" because they did not fit that workstream's evidence.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "review_manually"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          },
+          {
+            "type": "thin_substantive_workstream",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": "workstream:security review status",
+            "message": "\"Security Review Status\" has only one retained discussion point. Review whether more evidence is needed.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "review_manually"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          }
+        ],
+        "blocking": false
+      },
+      {
+        "stage": "actions",
+        "screenLabel": "Actions",
+        "statusMessage": "Actions generated. Check owners and dates before continuing.",
+        "editorialHeading": null,
+        "flags": [],
+        "blocking": false
+      }
+    ],
+    "flags": [
+      {
+        "type": "misattributed_discussion_evidence",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "Removed 1 discussion point(s) under \"Security Review Status\" because they did not fit that workstream's evidence.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "review_manually"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "misattributed_discussion_evidence",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "Removed 1 discussion point(s) under \"Release Date Confirmation\" because they did not fit that workstream's evidence.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "review_manually"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "thin_substantive_workstream",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": "workstream:security review status",
+        "message": "\"Security Review Status\" has only one retained discussion point. Review whether more evidence is needed.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "review_manually"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      }
+    ],
+    "warningCount": 3,
+    "blockingCount": 0,
+    "readyForFinalApproval": true,
+    "finalReviewMessage": "All generated screens can proceed to final human approval.",
+    "requiredReviewerActions": []
+  },
+  "trace": [
+    {
+      "stage": "details",
+      "provider": "deterministic_stage_1_prep",
+      "outputCount": 1,
+      "telemetry": {
+        "stage": "details",
+        "transcriptLength": 785,
+        "screenCount": 1,
+        "attendeeExtraction": {
+          "source": "microsoft_teams_speaker_turns",
+          "speakerCount": 3,
+          "turnCount": 8,
+          "eventSpeakerCount": 0,
+          "knownInternalAttendeeCount": 0,
+          "knownClientAttendeeCount": 0,
+          "headerSource": "microsoft_teams_header",
+          "dateSource": "microsoft_teams_header"
+        }
+      },
+      "preparedTranscriptTelemetry": {
+        "rawLength": 785,
+        "preparedLength": 669,
+        "removedLineCount": 13,
+        "removedReasons": {
+          "teamsHeader": 1,
+          "transcriptionEvent": 0,
+          "blankLine": 12,
+          "timestampOnly": 0
+        },
+        "source": "deterministic_stage_1_prep"
+      }
+    },
+    {
+      "stage": "summary",
+      "provider": "trooper-stage",
+      "fallbackUsed": false,
+      "inputTopicCount": 3,
+      "outputCount": 3,
+      "validationFlags": [],
+      "telemetry": {
+        "stage": "summary",
+        "topicCount": 3,
+        "transcriptLength": 669,
+        "embeddingClassifier": {
+          "used": true,
+          "provider": "trooper_stage",
+          "rewriterAvailable": true,
+          "rewriterReason": "Trooper targeted staged summary generation used.",
+          "pipeline": "staged_summary_targeted",
+          "modelAvailable": true,
+          "modelName": "eu_liv_000099",
+          "modelReason": "Trooper targeted staged summary generation used.",
+          "counts": {},
+          "evidencePackTopicCount": 0,
+          "workstreamStateCount": 0,
+          "missingWorkstreamCount": 0,
+          "missingWorkstreams": [],
+          "workstreamQualityFlags": [],
+          "timingMs": {
+            "total": 4942
+          }
+        },
+        "objectiveReducer": {
+          "objectiveSource": "topic_objective_reducer",
+          "topicCount": 3,
+          "objectiveSpecificityScore": 100
+        }
+      },
+      "generationDiagnostics": {
+        "provider": "trooper_stage",
+        "modelAvailable": true,
+        "modelName": "eu_liv_000099",
+        "modelReason": "Trooper targeted staged summary generation used.",
+        "pipeline": "staged_summary_targeted",
+        "timingMs": {
+          "total": 4942
+        },
+        "strictTopicCoverage": false,
+        "evidencePackTopicCount": 0,
+        "workstreamStateCount": 0,
+        "missingWorkstreamCount": 0,
+        "missingWorkstreams": [],
+        "workstreamQualityFlags": [],
+        "usage": {
+          "prompt_tokens": 997,
+          "completion_tokens": 155,
+          "total_tokens": 1152
+        }
+      }
+    },
+    {
+      "stage": "discussion",
+      "provider": "trooper-stage",
+      "fallbackUsed": false,
+      "inputTopicCount": 3,
+      "outputCount": 3,
+      "outputPointCount": 8,
+      "validationFlags": [
+        {
+          "type": "misattributed_discussion_evidence",
+          "severity": "warning",
+          "message": "Removed 1 discussion point(s) under \"Security Review Status\" because they did not fit that workstream's evidence."
+        },
+        {
+          "type": "misattributed_discussion_evidence",
+          "severity": "warning",
+          "message": "Removed 1 discussion point(s) under \"Release Date Confirmation\" because they did not fit that workstream's evidence."
+        },
+        {
+          "type": "thin_substantive_workstream",
+          "severity": "warning",
+          "blocking": false,
+          "resolutionKey": "workstream:security review status",
+          "message": "\"Security Review Status\" has only one retained discussion point. Review whether more evidence is needed.",
+          "discussionSuggestion": null
+        }
+      ],
+      "telemetry": {
+        "stage": "discussion",
+        "topicCount": 3,
+        "discussionCards": 3,
+        "droppedMisattributedDiscussionPoints": 2,
+        "workstreamCoverage": [
+          {
+            "topic": "Release Note Ownership",
+            "classification": "substantive",
+            "evidenceCount": 3,
+            "discussionCardCount": 1,
+            "assignedTurnIds": [],
+            "status": "covered"
+          },
+          {
+            "topic": "Security Review Status",
+            "classification": "substantive",
+            "evidenceCount": 1,
+            "discussionCardCount": 1,
+            "assignedTurnIds": [],
+            "status": "thin"
+          },
+          {
+            "topic": "Release Date Confirmation",
+            "classification": "substantive",
+            "evidenceCount": 3,
+            "discussionCardCount": 1,
+            "assignedTurnIds": [],
+            "status": "covered"
+          }
+        ],
+        "transcriptLength": 669,
+        "embeddingClassifier": {
+          "used": true,
+          "provider": "trooper_stage",
+          "rewriterAvailable": true,
+          "rewriterReason": "Trooper targeted staged discussion generation used.",
+          "pipeline": "staged_discussion_targeted",
+          "modelAvailable": true,
+          "modelName": "eu_liv_000099",
+          "modelReason": "Trooper targeted staged discussion generation used.",
+          "counts": {},
+          "evidencePackTopicCount": 3,
+          "workstreamStateCount": 3,
+          "missingWorkstreamCount": 0,
+          "missingWorkstreams": [],
+          "workstreamQualityFlags": [
+            "missing_workstream_recovered"
+          ],
+          "timingMs": {
+            "total": 7780
+          }
+        },
+        "discussionCompaction": {
+          "pointsBefore": 9,
+          "pointsAfter": 8,
+          "duplicatesRemoved": 0,
+          "truncatedRemoved": 1,
+          "cardCount": 3,
+          "namedDetailsBefore": 0,
+          "namedDetailsAfter": 0,
+          "detailRetentionScore": 100,
+          "detailRetentionWarnings": []
+        }
+      },
+      "generationDiagnostics": {
+        "provider": "trooper_stage",
+        "modelAvailable": true,
+        "modelName": "eu_liv_000099",
+        "modelReason": "Trooper targeted staged discussion generation used.",
+        "pipeline": "staged_discussion_targeted",
+        "timingMs": {
+          "total": 7780
+        },
+        "strictTopicCoverage": false,
+        "evidencePackTopicCount": 3,
+        "workstreamStateCount": 3,
+        "missingWorkstreamCount": 0,
+        "missingWorkstreams": [],
+        "workstreamQualityFlags": [
+          "missing_workstream_recovered"
+        ],
+        "usage": {
+          "prompt_tokens": 3750,
+          "completion_tokens": 601,
+          "total_tokens": 4351
+        }
+      }
+    },
+    {
+      "stage": "actions",
+      "provider": "trooper-stage",
+      "fallbackUsed": false,
+      "inputTopicCount": 3,
+      "outputCount": 1,
+      "validationFlags": [],
+      "telemetry": {
+        "stage": "actions",
+        "actionCount": 1,
+        "actionPreservation": {
+          "transcriptPreservedActionCount": 0,
+          "transcriptActionInventoryCount": 0,
+          "evidenceLedgerActionCount": 1,
+          "evidenceClassifierActionCount": 0,
+          "transcriptActionInventoryUsed": false
+        },
+        "transcriptLength": 669,
+        "embeddingClassifier": {
+          "used": true,
+          "provider": "trooper_stage",
+          "rewriterAvailable": true,
+          "rewriterReason": "Trooper targeted staged actions generation used.",
+          "pipeline": "staged_actions_targeted",
+          "modelAvailable": true,
+          "modelName": "eu_liv_000099",
+          "modelReason": "Trooper targeted staged actions generation used.",
+          "counts": {},
+          "evidencePackTopicCount": 0,
+          "workstreamStateCount": 0,
+          "missingWorkstreamCount": 0,
+          "missingWorkstreams": [],
+          "workstreamQualityFlags": [],
+          "timingMs": {
+            "total": 4021
+          }
+        },
+        "evidenceClassifier": {
+          "used": true,
+          "executed": true,
+          "modelAvailable": true,
+          "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+          "modelPath": "/root/meeting-minutes-evidence-model/runs/multitask-rework-20260812T140735Z/model_bundle",
+          "modelReason": "Evidence classifier completed.",
+          "actionCount": 0,
+          "itemCount": 11,
+          "segmentsScored": 11,
+          "counts": {
+            "background_context": 4,
+            "low_value_noise": 5,
+            "discussion_topic": 2
+          },
+          "timingMs": {
+            "total": 7951
+          }
+        }
+      },
+      "generationDiagnostics": {
+        "provider": "trooper_stage",
+        "modelAvailable": true,
+        "modelName": "eu_liv_000099",
+        "modelReason": "Trooper targeted staged actions generation used.",
+        "pipeline": "staged_actions_targeted",
+        "timingMs": {
+          "total": 4021
+        },
+        "strictTopicCoverage": false,
+        "evidencePackTopicCount": 0,
+        "workstreamStateCount": 0,
+        "missingWorkstreamCount": 0,
+        "missingWorkstreams": [],
+        "workstreamQualityFlags": [],
+        "usage": {
+          "prompt_tokens": 1421,
+          "completion_tokens": 77,
+          "total_tokens": 1498
+        },
+        "evidenceClassifier": {
+          "used": true,
+          "executed": true,
+          "modelAvailable": true,
+          "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+          "modelPath": "/root/meeting-minutes-evidence-model/runs/multitask-rework-20260812T140735Z/model_bundle",
+          "modelReason": "Evidence classifier completed.",
+          "actionCount": 0,
+          "itemCount": 11,
+          "segmentsScored": 11,
+          "counts": {
+            "background_context": 4,
+            "low_value_noise": 5,
+            "discussion_topic": 2
+          },
+          "timingMs": {
+            "total": 7951
+          }
+        }
+      }
+    }
+  ]
+}

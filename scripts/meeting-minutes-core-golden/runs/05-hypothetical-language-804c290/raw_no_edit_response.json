@@ -1,0 +1,769 @@
+{
+  "ok": true,
+  "staged": true,
+  "mode": "no_human_edits",
+  "source": "file",
+  "fileName": "transcript.docx",
+  "transcriptLength": 677,
+  "screens": {
+    "details": {
+      "meetingTitle": "Elmstead Options Workshop",
+      "meetingDate": "2026-08-11",
+      "meetingLocation": "Microsoft Teams",
+      "organisation": "",
+      "meetingType": "Workshop",
+      "internalAttendees": [],
+      "clientAttendees": [
+        "Imogen Hart",
+        "Ravi Shah",
+        "Peter Doyle"
+      ],
+      "allAttendees": [
+        "Imogen Hart",
+        "Ravi Shah",
+        "Peter Doyle"
+      ]
+    },
+    "summary": {
+      "objectives": [
+        "Review analytics platform migration strategy",
+        "Review platform licensing",
+        "Review matomo exploration",
+        "Review cookie audit status"
+      ],
+      "executiveSummary": "The workshop confirmed the decision to maintain the current analytics platform, deferring any migration plans until potential licence cost increases are confirmed. A concrete action was established for Ravi Shah to request the renewal quote by Friday. Furthermore, the cookie audit has been completed.",
+      "overallTopics": [
+        "Analytics Platform Migration Strategy",
+        "Platform Licensing Review",
+        "Matomo Exploration",
+        "Cookie Audit Status"
+      ]
+    },
+    "discussion": [
+      {
+        "topic": "Analytics Platform Migration Strategy",
+        "whatWasDiscussed": "The possibility of migrating analytics platforms next year was discussed, contingent upon a potential licence price increase. Exploration of Matomo was suggested, but a migration has not been approved.",
+        "currentPosition": "The decision is to remain with the current platform.",
+        "decisionOrAgreement": "No migration decision was made; the current platform is to be retained.",
+        "nextStep": "No immediate action was assigned for migration planning.",
+        "points": [
+          "The decision is to remain with the current platform.",
+          "The possibility of migrating analytics platforms next year was discussed, contingent upon a potential licence price increase. Exploration of Matomo was suggested, but a migration has not been approved.",
+          "Migration will be aligned with the licence rising again."
+        ],
+        "qualityFlags": [
+          "raw_transcript_discussion_points_removed"
+        ]
+      },
+      {
+        "topic": "Platform Licensing Review",
+        "whatWasDiscussed": "The potential for platform migration was linked to the status of licence costs.",
+        "currentPosition": "The current platform is being maintained.",
+        "decisionOrAgreement": "No decision was made regarding migration based on licensing.",
+        "nextStep": "Ravi Shah is responsible for requesting the renewal quote by Friday.",
+        "points": [
+          "The current platform is being maintained."
+        ]
+      },
+      {
+        "topic": "Matomo Exploration",
+        "whatWasDiscussed": "Matomo was recommended as an alternative platform to explore.",
+        "currentPosition": "No migration to Matomo has been approved.",
+        "decisionOrAgreement": "No approval for migration to Matomo was granted.",
+        "nextStep": "None explicitly assigned.",
+        "points": [
+          "Exploration is pending formal approval."
+        ],
+        "qualityFlags": [
+          "raw_transcript_discussion_points_removed"
+        ]
+      },
+      {
+        "topic": "Cookie Audit Status",
+        "whatWasDiscussed": "The status of the cookie audit was reviewed.",
+        "currentPosition": "The audit has been completed.",
+        "nextStep": "N/A",
+        "points": [
+          "The audit has been completed.",
+          "The status of the cookie audit was reviewed.",
+          "The cookie audit was finished last week."
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "owner": "Ravi Shah",
+        "action": "Request the renewal quote",
+        "deadline": "Friday",
+        "source": "staged_evidence_ledger"
+      }
+    ],
+    "decisions": [
+      {
+        "text": "Stay with the current analytics platform for now",
+        "evidence": "We stay with the current platform.",
+        "sourceTurnIds": [
+          3
+        ]
+      }
+    ],
+    "risks": [
+      {
+        "text": "A future licence-price increase could prompt a platform review",
+        "evidence": "We could migrate analytics platforms next year if the licence rises again.",
+        "sourceTurnIds": [
+          0
+        ],
+        "status": "open"
+      }
+    ],
+    "finalReview": {
+      "readyForFinalApproval": true,
+      "message": "All generated screens can proceed to final human approval."
+    }
+  },
+  "visibleOutput": {
+    "meetingTitle": "Elmstead Options Workshop",
+    "participants": {
+      "trinzo": [],
+      "client": [
+        "Imogen Hart",
+        "Ravi Shah",
+        "Peter Doyle"
+      ]
+    },
+    "meetingObjectives": [
+      "Review analytics platform migration strategy",
+      "Review platform licensing",
+      "Review matomo exploration",
+      "Review cookie audit status"
+    ],
+    "executiveSummary": "The workshop confirmed the decision to maintain the current analytics platform, deferring any migration plans until potential licence cost increases are confirmed. A concrete action was established for Ravi Shah to request the renewal quote by Friday. Furthermore, the cookie audit has been completed.",
+    "discussionPoints": [
+      "Analytics Platform Migration Strategy: The decision is to remain with the current platform.",
+      "Analytics Platform Migration Strategy: The possibility of migrating analytics platforms next year was discussed, contingent upon a potential licence price increase. Exploration of Matomo was suggested, but a migration has not been approved.",
+      "Analytics Platform Migration Strategy: Migration will be aligned with the licence rising again.",
+      "Platform Licensing Review: The current platform is being maintained.",
+      "Matomo Exploration: Exploration is pending formal approval.",
+      "Cookie Audit Status: The audit has been completed.",
+      "Cookie Audit Status: The status of the cookie audit was reviewed.",
+      "Cookie Audit Status: The cookie audit was finished last week."
+    ],
+    "decisions": [
+      "Stay with the current analytics platform for now",
+      "No migration decision was made; the current platform is to be retained.",
+      "The decision is to remain with the current platform.",
+      "The possibility of migrating analytics platforms next year was discussed, contingent upon a potential licence price increase. Exploration of Matomo was suggested, but a migration has not been approved.",
+      "No decision was made regarding migration based on licensing.",
+      "No approval for migration to Matomo was granted.",
+      "Exploration is pending formal approval."
+    ],
+    "risks": [
+      "A future licence-price increase could prompt a platform review"
+    ],
+    "actions": [
+      {
+        "meetingActionPointOwner": "Ravi Shah",
+        "meetingActionPoint": "Request the renewal quote",
+        "meetingActionPointDeadline": "Friday"
+      }
+    ]
+  },
+  "reviewExperience": {
+    "mode": "no_human_edits",
+    "description": "The generated output from each screen was accepted unchanged and passed into the next screen.",
+    "stages": [
+      {
+        "stage": "details",
+        "screenLabel": "Meeting details",
+        "statusMessage": "Meeting details generated. Review or edit this screen before continuing.",
+        "editorialHeading": null,
+        "flags": [],
+        "blocking": false
+      },
+      {
+        "stage": "summary",
+        "screenLabel": "Summary and topics",
+        "statusMessage": "Topics generated. Review or edit them before continuing.",
+        "editorialHeading": null,
+        "flags": [],
+        "blocking": false
+      },
+      {
+        "stage": "discussion",
+        "screenLabel": "Discussion points",
+        "statusMessage": "Discussion points generated from the topic context.",
+        "editorialHeading": "Editorial checks (review before moving on)",
+        "flags": [
+          {
+            "type": "misattributed_discussion_evidence",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "Removed 3 discussion point(s) under \"Platform Licensing Review\" because they did not fit that workstream's evidence.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "review_manually"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          },
+          {
+            "type": "misattributed_discussion_evidence",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "Removed 1 discussion point(s) under \"Matomo Exploration\" because they did not fit that workstream's evidence.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "review_manually"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          },
+          {
+            "type": "raw_transcript_discussion_points_removed",
+            "severity": "info",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "Removed raw transcript-style wording under \"Analytics Platform Migration Strategy\" before final review.",
+            "uiLabel": "Tidied",
+            "reviewerChoices": [
+              "review_manually"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          },
+          {
+            "type": "raw_transcript_discussion_points_removed",
+            "severity": "info",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "Removed raw transcript-style wording under \"Matomo Exploration\" before final review.",
+            "uiLabel": "Tidied",
+            "reviewerChoices": [
+              "review_manually"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          },
+          {
+            "type": "thin_substantive_workstream",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": "workstream:platform licensing review",
+            "message": "\"Platform Licensing Review\" has only one retained discussion point. Review whether more evidence is needed.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "review_manually"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          },
+          {
+            "type": "thin_substantive_workstream",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": "workstream:matomo exploration",
+            "message": "\"Matomo Exploration\" has only one retained discussion point. Review whether more evidence is needed.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "review_manually"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          }
+        ],
+        "blocking": false
+      },
+      {
+        "stage": "actions",
+        "screenLabel": "Actions",
+        "statusMessage": "Actions generated. Check owners and dates before continuing.",
+        "editorialHeading": "Editorial checks (review before moving on)",
+        "flags": [
+          {
+            "type": "possible_omitted_workstream",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "\"Request the renewal quote\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "review_manually"
+            ],
+            "discussionSuggestion": {
+              "topic": "Request the renewal quote",
+              "point": "Request the renewal quote",
+              "source": "action"
+            },
+            "repairCandidates": null
+          }
+        ],
+        "blocking": false
+      }
+    ],
+    "flags": [
+      {
+        "type": "misattributed_discussion_evidence",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "Removed 3 discussion point(s) under \"Platform Licensing Review\" because they did not fit that workstream's evidence.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "review_manually"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "misattributed_discussion_evidence",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "Removed 1 discussion point(s) under \"Matomo Exploration\" because they did not fit that workstream's evidence.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "review_manually"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "raw_transcript_discussion_points_removed",
+        "severity": "info",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "Removed raw transcript-style wording under \"Analytics Platform Migration Strategy\" before final review.",
+        "uiLabel": "Tidied",
+        "reviewerChoices": [
+          "review_manually"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "raw_transcript_discussion_points_removed",
+        "severity": "info",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "Removed raw transcript-style wording under \"Matomo Exploration\" before final review.",
+        "uiLabel": "Tidied",
+        "reviewerChoices": [
+          "review_manually"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "thin_substantive_workstream",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": "workstream:platform licensing review",
+        "message": "\"Platform Licensing Review\" has only one retained discussion point. Review whether more evidence is needed.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "review_manually"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "thin_substantive_workstream",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": "workstream:matomo exploration",
+        "message": "\"Matomo Exploration\" has only one retained discussion point. Review whether more evidence is needed.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "review_manually"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "possible_omitted_workstream",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "\"Request the renewal quote\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "review_manually"
+        ],
+        "discussionSuggestion": {
+          "topic": "Request the renewal quote",
+          "point": "Request the renewal quote",
+          "source": "action"
+        },
+        "repairCandidates": null,
+        "stage": "actions"
+      }
+    ],
+    "warningCount": 5,
+    "blockingCount": 0,
+    "readyForFinalApproval": true,
+    "finalReviewMessage": "All generated screens can proceed to final human approval.",
+    "requiredReviewerActions": []
+  },
+  "trace": [
+    {
+      "stage": "details",
+      "provider": "deterministic_stage_1_prep",
+      "outputCount": 1,
+      "telemetry": {
+        "stage": "details",
+        "transcriptLength": 677,
+        "screenCount": 1,
+        "attendeeExtraction": {
+          "source": "microsoft_teams_speaker_turns",
+          "speakerCount": 3,
+          "turnCount": 7,
+          "eventSpeakerCount": 0,
+          "knownInternalAttendeeCount": 0,
+          "knownClientAttendeeCount": 0,
+          "headerSource": "microsoft_teams_header",
+          "dateSource": "microsoft_teams_header"
+        }
+      },
+      "preparedTranscriptTelemetry": {
+        "rawLength": 677,
+        "preparedLength": 567,
+        "removedLineCount": 12,
+        "removedReasons": {
+          "teamsHeader": 1,
+          "transcriptionEvent": 0,
+          "blankLine": 11,
+          "timestampOnly": 0
+        },
+        "source": "deterministic_stage_1_prep"
+      }
+    },
+    {
+      "stage": "summary",
+      "provider": "trooper-stage",
+      "fallbackUsed": false,
+      "inputTopicCount": 4,
+      "outputCount": 4,
+      "validationFlags": [],
+      "telemetry": {
+        "stage": "summary",
+        "topicCount": 4,
+        "transcriptLength": 567,
+        "embeddingClassifier": {
+          "used": true,
+          "provider": "trooper_stage",
+          "rewriterAvailable": true,
+          "rewriterReason": "Trooper targeted staged summary generation used.",
+          "pipeline": "staged_summary_targeted",
+          "modelAvailable": true,
+          "modelName": "eu_liv_000099",
+          "modelReason": "Trooper targeted staged summary generation used.",
+          "counts": {},
+          "evidencePackTopicCount": 0,
+          "workstreamStateCount": 0,
+          "missingWorkstreamCount": 0,
+          "missingWorkstreams": [],
+          "workstreamQualityFlags": [],
+          "timingMs": {
+            "total": 4667
+          }
+        },
+        "objectiveReducer": {
+          "objectiveSource": "workstream_objective_reducer",
+          "topicCount": 4,
+          "objectiveSpecificityScore": 100
+        }
+      },
+      "generationDiagnostics": {
+        "provider": "trooper_stage",
+        "modelAvailable": true,
+        "modelName": "eu_liv_000099",
+        "modelReason": "Trooper targeted staged summary generation used.",
+        "pipeline": "staged_summary_targeted",
+        "timingMs": {
+          "total": 4667
+        },
+        "strictTopicCoverage": false,
+        "evidencePackTopicCount": 0,
+        "workstreamStateCount": 0,
+        "missingWorkstreamCount": 0,
+        "missingWorkstreams": [],
+        "workstreamQualityFlags": [],
+        "usage": {
+          "prompt_tokens": 982,
+          "completion_tokens": 142,
+          "total_tokens": 1124
+        }
+      }
+    },
+    {
+      "stage": "discussion",
+      "provider": "trooper-stage",
+      "fallbackUsed": false,
+      "inputTopicCount": 4,
+      "outputCount": 4,
+      "outputPointCount": 8,
+      "validationFlags": [
+        {
+          "type": "misattributed_discussion_evidence",
+          "severity": "warning",
+          "message": "Removed 3 discussion point(s) under \"Platform Licensing Review\" because they did not fit that workstream's evidence."
+        },
+        {
+          "type": "misattributed_discussion_evidence",
+          "severity": "warning",
+          "message": "Removed 1 discussion point(s) under \"Matomo Exploration\" because they did not fit that workstream's evidence."
+        },
+        {
+          "type": "raw_transcript_discussion_points_removed",
+          "severity": "info",
+          "message": "Removed raw transcript-style wording under \"Analytics Platform Migration Strategy\" before final review."
+        },
+        {
+          "type": "raw_transcript_discussion_points_removed",
+          "severity": "info",
+          "message": "Removed raw transcript-style wording under \"Matomo Exploration\" before final review."
+        },
+        {
+          "type": "thin_substantive_workstream",
+          "severity": "warning",
+          "blocking": false,
+          "resolutionKey": "workstream:platform licensing review",
+          "message": "\"Platform Licensing Review\" has only one retained discussion point. Review whether more evidence is needed.",
+          "discussionSuggestion": null
+        },
+        {
+          "type": "thin_substantive_workstream",
+          "severity": "warning",
+          "blocking": false,
+          "resolutionKey": "workstream:matomo exploration",
+          "message": "\"Matomo Exploration\" has only one retained discussion point. Review whether more evidence is needed.",
+          "discussionSuggestion": null
+        }
+      ],
+      "telemetry": {
+        "stage": "discussion",
+        "topicCount": 4,
+        "discussionCards": 4,
+        "droppedMisattributedDiscussionPoints": 2,
+        "workstreamCoverage": [
+          {
+            "topic": "Analytics Platform Migration Strategy",
+            "classification": "substantive",
+            "evidenceCount": 3,
+            "discussionCardCount": 1,
+            "assignedTurnIds": [],
+            "status": "covered"
+          },
+          {
+            "topic": "Platform Licensing Review",
+            "classification": "substantive",
+            "evidenceCount": 2,
+            "discussionCardCount": 1,
+            "assignedTurnIds": [],
+            "status": "thin"
+          },
+          {
+            "topic": "Matomo Exploration",
+            "classification": "substantive",
+            "evidenceCount": 1,
+            "discussionCardCount": 1,
+            "assignedTurnIds": [],
+            "status": "thin"
+          },
+          {
+            "topic": "Cookie Audit Status",
+            "classification": "substantive",
+            "evidenceCount": 1,
+            "discussionCardCount": 1,
+            "assignedTurnIds": [],
+            "status": "covered"
+          }
+        ],
+        "transcriptLength": 567,
+        "embeddingClassifier": {
+          "used": true,
+          "provider": "trooper_stage",
+          "rewriterAvailable": true,
+          "rewriterReason": "Trooper targeted staged discussion generation used.",
+          "pipeline": "staged_discussion_targeted",
+          "modelAvailable": true,
+          "modelName": "eu_liv_000099",
+          "modelReason": "Trooper targeted staged discussion generation used.",
+          "counts": {},
+          "evidencePackTopicCount": 4,
+          "workstreamStateCount": 4,
+          "missingWorkstreamCount": 0,
+          "missingWorkstreams": [],
+          "workstreamQualityFlags": [
+            "missing_workstream_recovered",
+            "abstract_workstream_heading",
+            "substantive_workstream_omission_risk"
+          ],
+          "timingMs": {
+            "total": 7361
+          }
+        },
+        "discussionCompaction": {
+          "pointsBefore": 11,
+          "pointsAfter": 11,
+          "duplicatesRemoved": 0,
+          "truncatedRemoved": 0,
+          "cardCount": 4,
+          "namedDetailsBefore": 0,
+          "namedDetailsAfter": 0,
+          "detailRetentionScore": 100,
+          "detailRetentionWarnings": []
+        }
+      },
+      "generationDiagnostics": {
+        "provider": "trooper_stage",
+        "modelAvailable": true,
+        "modelName": "eu_liv_000099",
+        "modelReason": "Trooper targeted staged discussion generation used.",
+        "pipeline": "staged_discussion_targeted",
+        "timingMs": {
+          "total": 7361
+        },
+        "strictTopicCoverage": false,
+        "evidencePackTopicCount": 4,
+        "workstreamStateCount": 4,
+        "missingWorkstreamCount": 0,
+        "missingWorkstreams": [],
+        "workstreamQualityFlags": [
+          "missing_workstream_recovered",
+          "abstract_workstream_heading",
+          "substantive_workstream_omission_risk"
+        ],
+        "usage": {
+          "prompt_tokens": 3886,
+          "completion_tokens": 689,
+          "total_tokens": 4575
+        }
+      }
+    },
+    {
+      "stage": "actions",
+      "provider": "trooper-stage",
+      "fallbackUsed": false,
+      "inputTopicCount": 4,
+      "outputCount": 1,
+      "validationFlags": [
+        {
+          "type": "possible_omitted_workstream",
+          "severity": "warning",
+          "message": "\"Request the renewal quote\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+          "discussionSuggestion": {
+            "topic": "Request the renewal quote",
+            "point": "Request the renewal quote",
+            "source": "action"
+          }
+        }
+      ],
+      "telemetry": {
+        "stage": "actions",
+        "actionCount": 1,
+        "actionPreservation": {
+          "transcriptPreservedActionCount": 0,
+          "transcriptActionInventoryCount": 0,
+          "evidenceLedgerActionCount": 1,
+          "evidenceClassifierActionCount": 0,
+          "transcriptActionInventoryUsed": false
+        },
+        "transcriptLength": 567,
+        "embeddingClassifier": {
+          "used": true,
+          "provider": "trooper_stage",
+          "rewriterAvailable": true,
+          "rewriterReason": "Trooper targeted staged actions generation used.",
+          "pipeline": "staged_actions_targeted",
+          "modelAvailable": true,
+          "modelName": "eu_liv_000099",
+          "modelReason": "Trooper targeted staged actions generation used.",
+          "counts": {},
+          "evidencePackTopicCount": 0,
+          "workstreamStateCount": 0,
+          "missingWorkstreamCount": 0,
+          "missingWorkstreams": [],
+          "workstreamQualityFlags": [],
+          "timingMs": {
+            "total": 3962
+          }
+        },
+        "evidenceClassifier": {
+          "used": true,
+          "executed": true,
+          "modelAvailable": true,
+          "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+          "modelPath": "/root/meeting-minutes-evidence-model/runs/multitask-rework-20260812T140735Z/model_bundle",
+          "modelReason": "Evidence classifier completed.",
+          "actionCount": 2,
+          "itemCount": 10,
+          "segmentsScored": 10,
+          "counts": {
+            "action_commitment": 2,
+            "discussion_topic": 1,
+            "low_value_noise": 3,
+            "background_context": 3,
+            "process_overview": 1
+          },
+          "timingMs": {
+            "total": 8106
+          }
+        }
+      },
+      "generationDiagnostics": {
+        "provider": "trooper_stage",
+        "modelAvailable": true,
+        "modelName": "eu_liv_000099",
+        "modelReason": "Trooper targeted staged actions generation used.",
+        "pipeline": "staged_actions_targeted",
+        "timingMs": {
+          "total": 3962
+        },
+        "strictTopicCoverage": false,
+        "evidencePackTopicCount": 0,
+        "workstreamStateCount": 0,
+        "missingWorkstreamCount": 0,
+        "missingWorkstreams": [],
+        "workstreamQualityFlags": [],
+        "usage": {
+          "prompt_tokens": 1434,
+          "completion_tokens": 69,
+          "total_tokens": 1503
+        },
+        "evidenceClassifier": {
+          "used": true,
+          "executed": true,
+          "modelAvailable": true,
+          "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+          "modelPath": "/root/meeting-minutes-evidence-model/runs/multitask-rework-20260812T140735Z/model_bundle",
+          "modelReason": "Evidence classifier completed.",
+          "actionCount": 2,
+          "itemCount": 10,
+          "segmentsScored": 10,
+          "counts": {
+            "action_commitment": 2,
+            "discussion_topic": 1,
+            "low_value_noise": 3,
+            "background_context": 3,
+            "process_overview": 1
+          },
+          "timingMs": {
+            "total": 8106
+          }
+        }
+      }
+    }
+  ]
+}

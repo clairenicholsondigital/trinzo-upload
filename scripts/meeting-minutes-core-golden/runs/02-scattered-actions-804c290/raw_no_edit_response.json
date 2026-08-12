@@ -1,0 +1,789 @@
+{
+  "ok": true,
+  "staged": true,
+  "mode": "no_human_edits",
+  "source": "file",
+  "fileName": "transcript.docx",
+  "transcriptLength": 4142,
+  "screens": {
+    "details": {
+      "meetingTitle": "Hartwell Site Catch Up",
+      "meetingDate": "2026-08-10",
+      "meetingLocation": "Microsoft Teams",
+      "organisation": "",
+      "meetingType": "Webinar rehearsal",
+      "internalAttendees": [],
+      "clientAttendees": [
+        "Marcus Bell",
+        "Aisha Rahman",
+        "Deniz Yilmaz",
+        "Fern Whitlock"
+      ],
+      "allAttendees": [
+        "Marcus Bell",
+        "Aisha Rahman",
+        "Deniz Yilmaz",
+        "Fern Whitlock"
+      ]
+    },
+    "summary": {
+      "objectives": [
+        "Review staging environment configuration",
+        "Review caching fix implementation",
+        "Confirm navigation structure decision",
+        "Review bellamy's quote revision",
+        "Review SSL certificate renewal"
+      ],
+      "executiveSummary": "The project is progressing with several immediate technical fixes completed, including a caching resolution and the decision to adopt a simple dropdown menu for the navigation structure. The staging environment variable issue is being addressed by Aisha after lunch. A revised quote for Bellamy's is scheduled for delivery by Thursday. A critical risk identified is the impending SSL certificate expiry, which Fern is actioning to ensure site security is maintained.",
+      "overallTopics": [
+        "Staging Environment Configuration",
+        "Caching Fix Implementation",
+        "Navigation Structure Decision",
+        "Bellamy's Quote Revision",
+        "SSL Certificate Renewal"
+      ]
+    },
+    "discussion": [
+      {
+        "topic": "Staging Environment Configuration",
+        "whatWasDiscussed": "The client experienced a login error on staging, traced to environment variables pointing to an old database. A fix involving swapping the connection string was identified as a quick resolution.",
+        "currentPosition": "The configuration issue is being addressed.",
+        "decisionOrAgreement": "Agreed to resolve the issue by swapping the connection string.",
+        "nextStep": "The configuration change will be completed after lunch.",
+        "points": [
+          "The configuration issue is being addressed.",
+          "The client experienced a login error on staging, traced to environment variables pointing to an old database. A fix involving swapping the connection string was identified as a quick resolution.",
+          "The fix is considered a five-minute task."
+        ]
+      },
+      {
+        "topic": "Caching Fix Implementation",
+        "whatWasDiscussed": "Confirmation that the caching fix had been deployed the previous night, resolving issues with hanging pages.",
+        "currentPosition": "The fix is live and implemented.",
+        "decisionOrAgreement": "Confirmed as complete.",
+        "nextStep": "None.",
+        "points": [
+          "Confirmation that the caching fix had been deployed the previous night, resolving issues with hanging pages.",
+          "The caching fix was pushed last night, and the affected pages are now live."
+        ]
+      },
+      {
+        "topic": "Navigation Structure Decision",
+        "whatWasDiscussed": "A decision was made between two options for the top menu: a mega-menu or a simple dropdown. The mega-menu was deemed unsuitable due to poor mobile usability.",
+        "currentPosition": "The simple dropdown option has been selected.",
+        "decisionOrAgreement": "Agreed to proceed with the simple dropdown option (Option B).",
+        "nextStep": "None.",
+        "points": [
+          "The simple dropdown option has been selected.",
+          "A decision was made between two options for the top menu: a mega-menu or a simple dropdown. The mega-menu was deemed unsuitable due to poor mobile usability.",
+          "The mega-menu was rejected because users could not find content on mobile devices."
+        ]
+      },
+      {
+        "topic": "Bellamy's Quote Revision",
+        "whatWasDiscussed": "Follow-up was required regarding the revised quotation following the addition of two extra pages.",
+        "currentPosition": "The revised quote is being prepared.",
+        "decisionOrAgreement": "Agreed to provide the revised quote to Bellamy's by Thursday.",
+        "nextStep": "The revised quote will be sent to Bellamy's before the end of play on Thursday.",
+        "points": [
+          "Follow-up was required regarding the revised quotation following the addition of two extra pages.",
+          "The revised quote is being prepared.",
+          "Agreed to provide the revised quote to Bellamy's by Thursday.",
+          "The final figures need to be verified before submission."
+        ]
+      },
+      {
+        "topic": "SSL Certificate Renewal",
+        "whatWasDiscussed": "The SSL certificate is due to expire at the end of the month, posing a risk of the site displaying a security warning if it lapses.",
+        "currentPosition": "Renewal is required.",
+        "decisionOrAgreement": "Agreed that the certificate must be renewed promptly.",
+        "nextStep": "The hosting team will be contacted tomorrow morning to arrange the renewal.",
+        "points": [
+          "The SSL certificate is due to expire at the end of the month, posing a risk of the site displaying a security warning if it lapses.",
+          "Lapse of the certificate will result in a 'not-secure' warning for the entire site."
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "owner": "Aisha Rahman",
+        "action": "Fix the staging config by swapping the connection string to the correct database",
+        "deadline": "Not stated",
+        "source": "staged_evidence_ledger"
+      },
+      {
+        "owner": "Marcus Bell",
+        "action": "Get the revised quote over to Bellamy's before",
+        "deadline": "end of play Thursday",
+        "source": "staged_evidence_ledger"
+      },
+      {
+        "owner": "Marcus Bell",
+        "action": "Sort it",
+        "deadline": "Not stated",
+        "source": "staged_evidence_ledger"
+      },
+      {
+        "owner": "Deniz Yilmaz",
+        "action": "Rewrite the onboarding email and drop it in the shared folder for you two to check before it goes anywhere",
+        "deadline": "Not stated",
+        "source": "staged_evidence_ledger"
+      },
+      {
+        "owner": "Fern Whitlock",
+        "action": "Ring the hosting people and get the SSL renewed",
+        "deadline": "tomorrow morning",
+        "source": "staged_evidence_ledger"
+      }
+    ],
+    "decisions": [
+      {
+        "text": "Adopt the simple dropdown navigation (option B) over the mega-menu",
+        "evidence": "Okay, so we're decided, we go with option B, the simple dropdown.",
+        "sourceTurnIds": [
+          20
+        ]
+      }
+    ],
+    "risks": [
+      {
+        "text": "It expires at the end of the month, and if it lapses the whole site goes to that scary not-secure warning",
+        "evidence": "It expires at the end of the month, and if it lapses the whole site goes to that scary not-secure warning.",
+        "sourceTurnIds": [
+          38
+        ],
+        "status": "open"
+      }
+    ],
+    "finalReview": {
+      "readyForFinalApproval": true,
+      "message": "All generated screens can proceed to final human approval."
+    }
+  },
+  "visibleOutput": {
+    "meetingTitle": "Hartwell Site Catch Up",
+    "participants": {
+      "trinzo": [],
+      "client": [
+        "Marcus Bell",
+        "Aisha Rahman",
+        "Deniz Yilmaz",
+        "Fern Whitlock"
+      ]
+    },
+    "meetingObjectives": [
+      "Review staging environment configuration",
+      "Review caching fix implementation",
+      "Confirm navigation structure decision",
+      "Review bellamy's quote revision",
+      "Review SSL certificate renewal"
+    ],
+    "executiveSummary": "The project is progressing with several immediate technical fixes completed, including a caching resolution and the decision to adopt a simple dropdown menu for the navigation structure. The staging environment variable issue is being addressed by Aisha after lunch. A revised quote for Bellamy's is scheduled for delivery by Thursday. A critical risk identified is the impending SSL certificate expiry, which Fern is actioning to ensure site security is maintained.",
+    "discussionPoints": [
+      "Staging Environment Configuration: The configuration issue is being addressed.",
+      "Staging Environment Configuration: The client experienced a login error on staging, traced to environment variables pointing to an old database. A fix involving swapping the connection string was identified as a quick resolution.",
+      "Staging Environment Configuration: The fix is considered a five-minute task.",
+      "Caching Fix Implementation: Confirmation that the caching fix had been deployed the previous night, resolving issues with hanging pages.",
+      "Caching Fix Implementation: The caching fix was pushed last night, and the affected pages are now live.",
+      "Navigation Structure Decision: The simple dropdown option has been selected.",
+      "Navigation Structure Decision: A decision was made between two options for the top menu: a mega-menu or a simple dropdown. The mega-menu was deemed unsuitable due to poor mobile usability.",
+      "Navigation Structure Decision: The mega-menu was rejected because users could not find content on mobile devices.",
+      "Bellamy's Quote Revision: Follow-up was required regarding the revised quotation following the addition of two extra pages.",
+      "Bellamy's Quote Revision: The revised quote is being prepared.",
+      "Bellamy's Quote Revision: Agreed to provide the revised quote to Bellamy's by Thursday.",
+      "Bellamy's Quote Revision: The final figures need to be verified before submission.",
+      "SSL Certificate Renewal: The SSL certificate is due to expire at the end of the month, posing a risk of the site displaying a security warning if it lapses.",
+      "SSL Certificate Renewal: Lapse of the certificate will result in a 'not-secure' warning for the entire site."
+    ],
+    "decisions": [
+      "Adopt the simple dropdown navigation (option B) over the mega-menu",
+      "Agreed to resolve the issue by swapping the connection string.",
+      "Agreed to proceed with the simple dropdown option (Option B).",
+      "A decision was made between two options for the top menu: a mega-menu or a simple dropdown. The mega-menu was deemed unsuitable due to poor mobile usability.",
+      "Agreed to provide the revised quote to Bellamy's by Thursday.",
+      "Agreed that the certificate must be renewed promptly."
+    ],
+    "risks": [
+      "It expires at the end of the month, and if it lapses the whole site goes to that scary not-secure warning"
+    ],
+    "actions": [
+      {
+        "meetingActionPointOwner": "Aisha Rahman",
+        "meetingActionPoint": "Fix the staging config by swapping the connection string to the correct database",
+        "meetingActionPointDeadline": "Not stated"
+      },
+      {
+        "meetingActionPointOwner": "Marcus Bell",
+        "meetingActionPoint": "Get the revised quote over to Bellamy's before",
+        "meetingActionPointDeadline": "end of play Thursday"
+      },
+      {
+        "meetingActionPointOwner": "Marcus Bell",
+        "meetingActionPoint": "Sort it",
+        "meetingActionPointDeadline": "Not stated"
+      },
+      {
+        "meetingActionPointOwner": "Deniz Yilmaz",
+        "meetingActionPoint": "Rewrite the onboarding email and drop it in the shared folder for you two to check before it goes anywhere",
+        "meetingActionPointDeadline": "Not stated"
+      },
+      {
+        "meetingActionPointOwner": "Fern Whitlock",
+        "meetingActionPoint": "Ring the hosting people and get the SSL renewed",
+        "meetingActionPointDeadline": "tomorrow morning"
+      }
+    ]
+  },
+  "reviewExperience": {
+    "mode": "no_human_edits",
+    "description": "The generated output from each screen was accepted unchanged and passed into the next screen.",
+    "stages": [
+      {
+        "stage": "details",
+        "screenLabel": "Meeting details",
+        "statusMessage": "Meeting details generated. Review or edit this screen before continuing.",
+        "editorialHeading": null,
+        "flags": [],
+        "blocking": false
+      },
+      {
+        "stage": "summary",
+        "screenLabel": "Summary and topics",
+        "statusMessage": "Topics generated. Review or edit them before continuing.",
+        "editorialHeading": null,
+        "flags": [],
+        "blocking": false
+      },
+      {
+        "stage": "discussion",
+        "screenLabel": "Discussion points",
+        "statusMessage": "Discussion points generated from the topic context.",
+        "editorialHeading": "Editorial checks (review before moving on)",
+        "flags": [
+          {
+            "type": "misattributed_discussion_evidence",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "Removed 1 discussion point(s) under \"Staging Environment Configuration\" because they did not fit that workstream's evidence.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "review_manually"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          },
+          {
+            "type": "misattributed_discussion_evidence",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "Removed 1 discussion point(s) under \"Caching Fix Implementation\" because they did not fit that workstream's evidence.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "review_manually"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          },
+          {
+            "type": "misattributed_discussion_evidence",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "Removed 2 discussion point(s) under \"SSL Certificate Renewal\" because they did not fit that workstream's evidence.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "review_manually"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          }
+        ],
+        "blocking": false
+      },
+      {
+        "stage": "actions",
+        "screenLabel": "Actions",
+        "statusMessage": "Actions generated. Check owners and dates before continuing.",
+        "editorialHeading": "Editorial checks (review before moving on)",
+        "flags": [
+          {
+            "type": "possible_omitted_workstream",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "\"Rewrite the onboarding email and drop it in the shared folder for you two to check before it goes anywhere\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "review_manually"
+            ],
+            "discussionSuggestion": {
+              "topic": "Rewrite the onboarding email and drop it in the shared folder for you two to check before it goes anywhere",
+              "point": "Rewrite the onboarding email and drop it in the shared folder for you two to check before it goes anywhere",
+              "source": "action"
+            },
+            "repairCandidates": null
+          },
+          {
+            "type": "possible_omitted_workstream",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "\"Ring the hosting people and get the SSL renewed\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "review_manually"
+            ],
+            "discussionSuggestion": {
+              "topic": "Ring the hosting people and get the SSL renewed",
+              "point": "Ring the hosting people and get the SSL renewed",
+              "source": "action"
+            },
+            "repairCandidates": null
+          }
+        ],
+        "blocking": false
+      }
+    ],
+    "flags": [
+      {
+        "type": "misattributed_discussion_evidence",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "Removed 1 discussion point(s) under \"Staging Environment Configuration\" because they did not fit that workstream's evidence.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "review_manually"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "misattributed_discussion_evidence",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "Removed 1 discussion point(s) under \"Caching Fix Implementation\" because they did not fit that workstream's evidence.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "review_manually"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "misattributed_discussion_evidence",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "Removed 2 discussion point(s) under \"SSL Certificate Renewal\" because they did not fit that workstream's evidence.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "review_manually"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "possible_omitted_workstream",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "\"Rewrite the onboarding email and drop it in the shared folder for you two to check before it goes anywhere\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "review_manually"
+        ],
+        "discussionSuggestion": {
+          "topic": "Rewrite the onboarding email and drop it in the shared folder for you two to check before it goes anywhere",
+          "point": "Rewrite the onboarding email and drop it in the shared folder for you two to check before it goes anywhere",
+          "source": "action"
+        },
+        "repairCandidates": null,
+        "stage": "actions"
+      },
+      {
+        "type": "possible_omitted_workstream",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "\"Ring the hosting people and get the SSL renewed\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "review_manually"
+        ],
+        "discussionSuggestion": {
+          "topic": "Ring the hosting people and get the SSL renewed",
+          "point": "Ring the hosting people and get the SSL renewed",
+          "source": "action"
+        },
+        "repairCandidates": null,
+        "stage": "actions"
+      }
+    ],
+    "warningCount": 5,
+    "blockingCount": 0,
+    "readyForFinalApproval": true,
+    "finalReviewMessage": "All generated screens can proceed to final human approval.",
+    "requiredReviewerActions": []
+  },
+  "trace": [
+    {
+      "stage": "details",
+      "provider": "deterministic_stage_1_prep",
+      "outputCount": 1,
+      "telemetry": {
+        "stage": "details",
+        "transcriptLength": 4142,
+        "screenCount": 1,
+        "attendeeExtraction": {
+          "source": "microsoft_teams_speaker_turns",
+          "speakerCount": 4,
+          "turnCount": 48,
+          "eventSpeakerCount": 1,
+          "knownInternalAttendeeCount": 0,
+          "knownClientAttendeeCount": 0,
+          "headerSource": "microsoft_teams_header",
+          "dateSource": "microsoft_teams_header"
+        }
+      },
+      "preparedTranscriptTelemetry": {
+        "rawLength": 4142,
+        "preparedLength": 3594,
+        "removedLineCount": 107,
+        "removedReasons": {
+          "teamsHeader": 3,
+          "transcriptionEvent": 2,
+          "blankLine": 102,
+          "timestampOnly": 0
+        },
+        "source": "deterministic_stage_1_prep"
+      }
+    },
+    {
+      "stage": "summary",
+      "provider": "trooper-stage",
+      "fallbackUsed": false,
+      "inputTopicCount": 5,
+      "outputCount": 5,
+      "validationFlags": [],
+      "telemetry": {
+        "stage": "summary",
+        "topicCount": 5,
+        "transcriptLength": 3594,
+        "embeddingClassifier": {
+          "used": true,
+          "provider": "trooper_stage",
+          "rewriterAvailable": true,
+          "rewriterReason": "Trooper targeted staged summary generation used.",
+          "pipeline": "staged_summary_targeted",
+          "modelAvailable": true,
+          "modelName": "eu_liv_000099",
+          "modelReason": "Trooper targeted staged summary generation used.",
+          "counts": {},
+          "evidencePackTopicCount": 0,
+          "workstreamStateCount": 0,
+          "missingWorkstreamCount": 0,
+          "missingWorkstreams": [],
+          "workstreamQualityFlags": [],
+          "timingMs": {
+            "total": 5030
+          }
+        },
+        "objectiveReducer": {
+          "objectiveSource": "workstream_objective_reducer",
+          "topicCount": 5,
+          "objectiveSpecificityScore": 100
+        }
+      },
+      "generationDiagnostics": {
+        "provider": "trooper_stage",
+        "modelAvailable": true,
+        "modelName": "eu_liv_000099",
+        "modelReason": "Trooper targeted staged summary generation used.",
+        "pipeline": "staged_summary_targeted",
+        "timingMs": {
+          "total": 5030
+        },
+        "strictTopicCoverage": false,
+        "evidencePackTopicCount": 0,
+        "workstreamStateCount": 0,
+        "missingWorkstreamCount": 0,
+        "missingWorkstreams": [],
+        "workstreamQualityFlags": [],
+        "usage": {
+          "prompt_tokens": 1895,
+          "completion_tokens": 206,
+          "total_tokens": 2101
+        }
+      }
+    },
+    {
+      "stage": "discussion",
+      "provider": "trooper-stage",
+      "fallbackUsed": false,
+      "inputTopicCount": 5,
+      "outputCount": 5,
+      "outputPointCount": 14,
+      "validationFlags": [
+        {
+          "type": "misattributed_discussion_evidence",
+          "severity": "warning",
+          "message": "Removed 1 discussion point(s) under \"Staging Environment Configuration\" because they did not fit that workstream's evidence."
+        },
+        {
+          "type": "misattributed_discussion_evidence",
+          "severity": "warning",
+          "message": "Removed 1 discussion point(s) under \"Caching Fix Implementation\" because they did not fit that workstream's evidence."
+        },
+        {
+          "type": "misattributed_discussion_evidence",
+          "severity": "warning",
+          "message": "Removed 2 discussion point(s) under \"SSL Certificate Renewal\" because they did not fit that workstream's evidence."
+        }
+      ],
+      "telemetry": {
+        "stage": "discussion",
+        "topicCount": 5,
+        "discussionCards": 5,
+        "droppedMisattributedDiscussionPoints": 3,
+        "workstreamCoverage": [
+          {
+            "topic": "Staging Environment Configuration",
+            "classification": "substantive",
+            "evidenceCount": 3,
+            "discussionCardCount": 1,
+            "assignedTurnIds": [],
+            "status": "covered"
+          },
+          {
+            "topic": "Caching Fix Implementation",
+            "classification": "substantive",
+            "evidenceCount": 1,
+            "discussionCardCount": 1,
+            "assignedTurnIds": [],
+            "status": "covered"
+          },
+          {
+            "topic": "Navigation Structure Decision",
+            "classification": "substantive",
+            "evidenceCount": 0,
+            "discussionCardCount": 1,
+            "assignedTurnIds": [],
+            "status": "covered"
+          },
+          {
+            "topic": "Bellamy's Quote Revision",
+            "classification": "substantive",
+            "evidenceCount": 2,
+            "discussionCardCount": 1,
+            "assignedTurnIds": [],
+            "status": "covered"
+          },
+          {
+            "topic": "SSL Certificate Renewal",
+            "classification": "substantive",
+            "evidenceCount": 1,
+            "discussionCardCount": 1,
+            "assignedTurnIds": [],
+            "status": "covered"
+          }
+        ],
+        "transcriptLength": 3594,
+        "embeddingClassifier": {
+          "used": true,
+          "provider": "trooper_stage",
+          "rewriterAvailable": true,
+          "rewriterReason": "Trooper targeted staged discussion generation used.",
+          "pipeline": "staged_discussion_targeted",
+          "modelAvailable": true,
+          "modelName": "eu_liv_000099",
+          "modelReason": "Trooper targeted staged discussion generation used.",
+          "counts": {},
+          "evidencePackTopicCount": 4,
+          "workstreamStateCount": 4,
+          "missingWorkstreamCount": 0,
+          "missingWorkstreams": [],
+          "workstreamQualityFlags": [
+            "missing_workstream_recovered",
+            "substantive_workstream_omission_risk"
+          ],
+          "timingMs": {
+            "total": 10060
+          }
+        },
+        "discussionCompaction": {
+          "pointsBefore": 14,
+          "pointsAfter": 14,
+          "duplicatesRemoved": 0,
+          "truncatedRemoved": 0,
+          "cardCount": 5,
+          "namedDetailsBefore": 1,
+          "namedDetailsAfter": 1,
+          "detailRetentionScore": 100,
+          "detailRetentionWarnings": []
+        }
+      },
+      "generationDiagnostics": {
+        "provider": "trooper_stage",
+        "modelAvailable": true,
+        "modelName": "eu_liv_000099",
+        "modelReason": "Trooper targeted staged discussion generation used.",
+        "pipeline": "staged_discussion_targeted",
+        "timingMs": {
+          "total": 10060
+        },
+        "strictTopicCoverage": false,
+        "evidencePackTopicCount": 4,
+        "workstreamStateCount": 4,
+        "missingWorkstreamCount": 0,
+        "missingWorkstreams": [],
+        "workstreamQualityFlags": [
+          "missing_workstream_recovered",
+          "substantive_workstream_omission_risk"
+        ],
+        "usage": {
+          "prompt_tokens": 4990,
+          "completion_tokens": 995,
+          "total_tokens": 5985
+        }
+      }
+    },
+    {
+      "stage": "actions",
+      "provider": "trooper-stage",
+      "fallbackUsed": false,
+      "inputTopicCount": 5,
+      "outputCount": 5,
+      "validationFlags": [
+        {
+          "type": "possible_omitted_workstream",
+          "severity": "warning",
+          "message": "\"Rewrite the onboarding email and drop it in the shared folder for you two to check before it goes anywhere\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+          "discussionSuggestion": {
+            "topic": "Rewrite the onboarding email and drop it in the shared folder for you two to check before it goes anywhere",
+            "point": "Rewrite the onboarding email and drop it in the shared folder for you two to check before it goes anywhere",
+            "source": "action"
+          }
+        },
+        {
+          "type": "possible_omitted_workstream",
+          "severity": "warning",
+          "message": "\"Ring the hosting people and get the SSL renewed\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+          "discussionSuggestion": {
+            "topic": "Ring the hosting people and get the SSL renewed",
+            "point": "Ring the hosting people and get the SSL renewed",
+            "source": "action"
+          }
+        }
+      ],
+      "telemetry": {
+        "stage": "actions",
+        "actionCount": 5,
+        "actionPreservation": {
+          "transcriptPreservedActionCount": 0,
+          "transcriptActionInventoryCount": 0,
+          "evidenceLedgerActionCount": 5,
+          "evidenceClassifierActionCount": 0,
+          "transcriptActionInventoryUsed": false
+        },
+        "transcriptLength": 3594,
+        "embeddingClassifier": {
+          "used": true,
+          "provider": "trooper_stage",
+          "rewriterAvailable": true,
+          "rewriterReason": "Trooper targeted staged actions generation used.",
+          "pipeline": "staged_actions_targeted",
+          "modelAvailable": true,
+          "modelName": "eu_liv_000099",
+          "modelReason": "Trooper targeted staged actions generation used.",
+          "counts": {},
+          "evidencePackTopicCount": 0,
+          "workstreamStateCount": 0,
+          "missingWorkstreamCount": 0,
+          "missingWorkstreams": [],
+          "workstreamQualityFlags": [],
+          "timingMs": {
+            "total": 6351
+          }
+        },
+        "evidenceClassifier": {
+          "used": true,
+          "executed": true,
+          "modelAvailable": true,
+          "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+          "modelPath": "/root/meeting-minutes-evidence-model/runs/multitask-rework-20260812T140735Z/model_bundle",
+          "modelReason": "Evidence classifier completed.",
+          "actionCount": 1,
+          "itemCount": 48,
+          "segmentsScored": 48,
+          "counts": {
+            "low_value_noise": 37,
+            "risk_dependency": 3,
+            "discussion_topic": 2,
+            "decision_agreement": 2,
+            "action_commitment": 2,
+            "background_context": 1,
+            "regulatory_obligation": 1
+          },
+          "timingMs": {
+            "total": 8318
+          }
+        }
+      },
+      "generationDiagnostics": {
+        "provider": "trooper_stage",
+        "modelAvailable": true,
+        "modelName": "eu_liv_000099",
+        "modelReason": "Trooper targeted staged actions generation used.",
+        "pipeline": "staged_actions_targeted",
+        "timingMs": {
+          "total": 6351
+        },
+        "strictTopicCoverage": false,
+        "evidencePackTopicCount": 0,
+        "workstreamStateCount": 0,
+        "missingWorkstreamCount": 0,
+        "missingWorkstreams": [],
+        "workstreamQualityFlags": [],
+        "usage": {
+          "prompt_tokens": 2707,
+          "completion_tokens": 364,
+          "total_tokens": 3071
+        },
+        "evidenceClassifier": {
+          "used": true,
+          "executed": true,
+          "modelAvailable": true,
+          "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+          "modelPath": "/root/meeting-minutes-evidence-model/runs/multitask-rework-20260812T140735Z/model_bundle",
+          "modelReason": "Evidence classifier completed.",
+          "actionCount": 1,
+          "itemCount": 48,
+          "segmentsScored": 48,
+          "counts": {
+            "low_value_noise": 37,
+            "risk_dependency": 3,
+            "discussion_topic": 2,
+            "decision_agreement": 2,
+            "action_commitment": 2,
+            "background_context": 1,
+            "regulatory_obligation": 1
+          },
+          "timingMs": {
+            "total": 8318
+          }
+        }
+      }
+    }
+  ]
+}

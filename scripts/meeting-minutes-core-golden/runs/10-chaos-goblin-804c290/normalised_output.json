@@ -1,0 +1,42 @@
+{
+  "meeting_type": "Decision meeting",
+  "attendees": [
+    "Amina Yusuf",
+    "Rob Chen",
+    "George Bell",
+    "Keira Long"
+  ],
+  "client_attendees": [
+    "Amina Yusuf",
+    "Rob Chen",
+    "George Bell",
+    "Keira Long"
+  ],
+  "actions": [
+    {
+      "owner": "George Bell",
+      "action": "Publish the status page at nine thirty",
+      "due_evidence": "Thursday"
+    },
+    {
+      "owner": "Keira Long",
+      "action": "Watch the error dashboard for the first hour and alert Amina if it crosses two per cent",
+      "due_evidence": "Not stated"
+    },
+    {
+      "owner": "George Bell",
+      "action": "Send Susan the launch confirmation",
+      "due_evidence": "today"
+    }
+  ],
+  "decisions": [
+    "Pause only if the error rate exceeds two per cent",
+    "No explicit decision recorded, but the fix status was confirmed.",
+    "The outage fix was live, and monitoring was clean overnight. Rob Chen confirmed the fix was complete.",
+    "Decision is launch Thursday at ten. The launch will only be paused if the error rate exceeds two per cent.",
+    "A query was raised regarding delaying the launch to Friday if traffic conditions appeared risky. This was countered by a firm decision on the launch time.",
+    "Confirmed that George has the status page and Susan has an email. Keira is monitoring.",
+    "Status page distribution and communication channels have been confirmed."
+  ],
+  "risks": []
+}
