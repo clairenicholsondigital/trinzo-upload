@@ -8,6 +8,7 @@ const { finalMinutes } = require('../utils/canonicalMinutes/stages');
 const { prepareEvidence } = require('../utils/canonicalMinutes/evidence');
 const { assessEvidenceTopology } = require('../utils/canonicalMinutes/topology');
 const { runCanonicalLiveStage, buildConfirmedState } = require('../utils/canonicalMinutes/liveStages');
+const semanticStages = require('../utils/canonicalMinutes/semanticStages');
 
 test('canonical no-edit pass preserves accepted semantics', () => {
   const transcript = [
@@ -139,8 +140,22 @@ test('evidence parsing supports single-name timestamps and glued colon turns', (
   assert.deepEqual(timestampEvidence.participants, ['Maya', 'Liam']);
   const colonEvidence = prepareEvidence('James: Status update.Rachel: The work is complete.Mark: Agreed.');
   assert.deepEqual(colonEvidence.participants, ['James', 'Rachel', 'Mark']);
+  assert.equal(timestampEvidence.events[0].previousText, '');
+  assert.equal(timestampEvidence.events[0].nextText, 'Agreed.');
+  assert.match(timestampEvidence.events[0].contextText, /\[CURRENT\]\nI will notify support/);
 });
 
+
+test('enriched lifecycle and worthiness suppress non-canonical actions behind the feature flag', () => {
+  const evidence = prepareEvidence(['Amina Khan  00:01', "I'll send the report."].join('\n'));
+  const event = evidence.events[0];
+  const profile = { events: { [event.id]: { scores: { commitment: 0.9 }, actionProbabilities: { confirmed_action: 0.9 }, lifecycleProbabilities: { completed: 0.9, active: 0.05 }, canonicalWorthinessProbabilities: { canonical_item: 0.9 } } } };
+  const previous = process.env.MEETING_MINUTES_ENRICHED_EVIDENCE;
+  process.env.MEETING_MINUTES_ENRICHED_EVIDENCE = '1';
+  try { assert.deepEqual(semanticStages.actionsStage(evidence, {}, profile, { mode: 'standard' }).actions, []); } finally {
+    if (previous === undefined) delete process.env.MEETING_MINUTES_ENRICHED_EVIDENCE; else process.env.MEETING_MINUTES_ENRICHED_EVIDENCE = previous;
+  }
+});
 
 test('live staged state locks reviewer-confirmed input for downstream stages', () => {
   const transcript = [

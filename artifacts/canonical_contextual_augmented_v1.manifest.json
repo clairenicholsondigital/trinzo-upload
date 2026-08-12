@@ -1,0 +1,21 @@
+{
+  "rows": 1627,
+  "baseRows": 1307,
+  "contextualRows": 320,
+  "groups": 173,
+  "splitCounts": {
+    "train": 1163,
+    "test": 247,
+    "validation": 217
+  },
+  "reviewStatusCounts": {
+    "human_approved": 1127,
+    "assistant_reviewed_candidate": 500
+  },
+  "contextualLabelCounts": {
+    "lifecycle_state": 320,
+    "context_dependency": 320,
+    "canonical_worthiness": 320,
+    "temporal_role": 320
+  }
+}
