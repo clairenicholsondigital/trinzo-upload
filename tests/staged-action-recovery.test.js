@@ -101,6 +101,26 @@ test('recovers multiple evidence-bound actions from the real T761 fixture withou
   assert.equal(clinical.owner, 'Not stated');
 });
 
+test('reads trailing owners from a minutes-style action table', () => {
+  const minutes = fs.readFileSync(path.join(
+    REPO_DIR,
+    'scripts/meeting-minutes-final-golden/022_real_eakin_sw_minutes_pdf/transcript.txt'
+  ), 'utf8');
+  const inventory = buildEvidenceBoundStagedActionInventory(minutes);
+  const mute = inventory.find((item) => /mute button flash sequence/i.test(item.action));
+  const clinical = inventory.find((item) => /clinical review of code changes/i.test(item.action));
+  const electrical = inventory.find((item) => /^Complete Electrical compliance testing$/i.test(item.action));
+  const retrospective = inventory.find((item) => /retrospective test data/i.test(item.action));
+
+  assert.equal(mute.owner, 'Andrew');
+  assert.equal(mute.deadline, '19th June');
+  assert.equal(clinical.owner, 'Rebecca');
+  assert.equal(clinical.deadline, '26th June');
+  assert.equal(electrical.owner, 'Andrew');
+  assert.equal(electrical.deadline, '23rd July');
+  assert.equal(retrospective.owner, 'Not stated');
+});
+
 test('recovers DITA follow-ups only from the real DITA evidence windows', () => {
   const dita = fs.readFileSync(path.join(
     REPO_DIR,

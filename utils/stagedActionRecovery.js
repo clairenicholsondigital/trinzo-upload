@@ -69,14 +69,25 @@ function directAssignedOwner(text) {
   ];
   for (const pattern of patterns) {
     const match = String(text || '').match(pattern);
-    if (match) return match[1];
+    if (match && !/^(?:purpose|review|complete|update|share|meeting|action|actions|deadline|owner)$/i.test(cleanLine(match[1]))) {
+      return match[1];
+    }
   }
   return '';
+}
+
+function trailingActionTableOwner(text) {
+  const month = '(?:January|February|March|April|May|June|July|August|September|October|November|December)';
+  const deadline = `\\d{1,2}(?:st|nd|rd|th)?(?:\\s+of)?\\s+${month}`;
+  const match = String(text || '').match(new RegExp(`\\b(${PERSON_NAME}(?:\\s*\\/\\s*${PERSON_NAME})?)\\s+${deadline}\\b`));
+  return match ? cleanLine(match[1]) : '';
 }
 
 function ownerFromEvidence(turn) {
   const assigned = directAssignedOwner(turn.text);
   if (assigned) return assigned;
+  const tableOwner = trailingActionTableOwner(turn.text);
+  if (tableOwner) return tableOwner;
   if (turn.speaker !== 'Not stated' && FIRST_PERSON_COMMITMENT.test(turn.text)) return turn.speaker;
   return 'Not stated';
 }
@@ -177,12 +188,12 @@ const RECOVERY_RULES = [
   {
     id: 'mute_button_flash',
     required: [/\bmute button\b/i, /\b(?:flash|flashing|led)\b/i],
-    action: () => 'Review the mute button flash behaviour against the existing setup'
+    action: () => 'Review the mute button flash sequence against the existing setup'
   },
   {
     id: 'clinical_code_review',
     required: [/\b(?:clinical|clinician|nurs\w*)\b/i, /\breview\b/i, /\b(?:code|coding|sound|colour|flash)\b/i],
-    action: () => 'Complete the clinical review of the code changes'
+    action: () => 'Complete clinical review of code changes for sounds, colour and flash'
   },
   {
     id: 'change_request',
@@ -207,7 +218,7 @@ const RECOVERY_RULES = [
   {
     id: 'electrical_testing',
     required: [/\belectrical compliance testing\b/i, /\b(?:start|started|complete|within|by|date)\b/i],
-    action: () => 'Complete the electrical compliance testing'
+    action: () => 'Complete Electrical compliance testing'
   },
   {
     id: 'software_version_traceability',
