@@ -1,0 +1,665 @@
+{
+  "ok": true,
+  "staged": true,
+  "mode": "no_human_edits",
+  "source": "direct-live-route-engine",
+  "fileName": "transcript.docx",
+  "transcriptLength": 653,
+  "screens": {
+    "details": {
+      "meetingTitle": "Alder Product Submission",
+      "meetingDate": "2026-08-12",
+      "meetingLocation": "Microsoft Teams",
+      "organisation": "",
+      "meetingType": "Project review",
+      "internalAttendees": [],
+      "clientAttendees": [
+        "Grace Lin",
+        "Idris Moore",
+        "Kate Evans"
+      ],
+      "allAttendees": [
+        "Grace Lin",
+        "Idris Moore",
+        "Kate Evans"
+      ]
+    },
+    "summary": {
+      "objectives": [
+        "Review idris asked whether the team should say monday"
+      ],
+      "executiveSummary": "The transcript contains substantive project, technical and follow-up evidence for structured review. The discussion stage should confirm current positions, agreed changes, unresolved dependencies and time-critical actions before approval.",
+      "overallTopics": [
+        "Idris asked whether the team should say Monday"
+      ]
+    },
+    "discussion": [
+      {
+        "topic": "Discussion",
+        "whatWasDiscussed": "Kate said that the previous draft went in last month and is closed.",
+        "points": [
+          "It will be aligned with Kate's approval. The previous draft went in last month and is closed."
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "owner": "Idris Moore",
+        "action": "Send the draft",
+        "deadline": "end of day tomorrow",
+        "source": "staged_evidence_ledger"
+      },
+      {
+        "owner": "Kate Evans",
+        "action": "Review the draft",
+        "deadline": "within two working days of receiving it",
+        "source": "staged_evidence_ledger"
+      },
+      {
+        "owner": "Grace Lin",
+        "action": "Submit the approved draft",
+        "deadline": "the next working day after Kate's approval",
+        "source": "staged_evidence_ledger"
+      },
+      {
+        "owner": "Kate Evans",
+        "action": "Review it within two working days of receiving it",
+        "deadline": "Not stated",
+        "source": "meeting_minutes_evidence_classifier"
+      }
+    ],
+    "finalReview": {
+      "readyForFinalApproval": false,
+      "message": "Final review would remain locked until every substantive workstream is resolved."
+    }
+  },
+  "visibleOutput": {
+    "meetingTitle": "Alder Product Submission",
+    "participants": {
+      "trinzo": [],
+      "client": [
+        "Grace Lin",
+        "Idris Moore",
+        "Kate Evans"
+      ]
+    },
+    "meetingObjectives": [
+      "Review idris asked whether the team should say monday"
+    ],
+    "executiveSummary": "The transcript contains substantive project, technical and follow-up evidence for structured review. The discussion stage should confirm current positions, agreed changes, unresolved dependencies and time-critical actions before approval.",
+    "discussionPoints": [
+      "Discussion: It will be aligned with Kate's approval. The previous draft went in last month and is closed."
+    ],
+    "decisions": [
+      "It will be aligned with Kate's approval. The previous draft went in last month and is closed."
+    ],
+    "risks": [
+      "Submission timing depends on the review and approval sequence"
+    ],
+    "actions": [
+      {
+        "meetingActionPointOwner": "Idris Moore",
+        "meetingActionPoint": "Send the draft",
+        "meetingActionPointDeadline": "end of day tomorrow"
+      },
+      {
+        "meetingActionPointOwner": "Kate Evans",
+        "meetingActionPoint": "Review the draft",
+        "meetingActionPointDeadline": "within two working days of receiving it"
+      },
+      {
+        "meetingActionPointOwner": "Grace Lin",
+        "meetingActionPoint": "Submit the approved draft",
+        "meetingActionPointDeadline": "the next working day after Kate's approval"
+      },
+      {
+        "meetingActionPointOwner": "Kate Evans",
+        "meetingActionPoint": "Review it within two working days of receiving it",
+        "meetingActionPointDeadline": "Not stated"
+      }
+    ]
+  },
+  "reviewExperience": {
+    "mode": "no_human_edits",
+    "description": "The generated output from each screen was accepted unchanged and passed into the next screen.",
+    "stages": [
+      {
+        "stage": "details",
+        "screenLabel": "Meeting details",
+        "statusMessage": "Meeting details generated. Review or edit this screen before continuing.",
+        "editorialHeading": null,
+        "flags": [],
+        "blocking": false
+      },
+      {
+        "stage": "summary",
+        "screenLabel": "Summary and topics",
+        "statusMessage": "Topics generated. Review or edit them before continuing.",
+        "editorialHeading": null,
+        "flags": [],
+        "blocking": false
+      },
+      {
+        "stage": "discussion",
+        "screenLabel": "Discussion points",
+        "statusMessage": "Discussion points generated from the topic context.",
+        "editorialHeading": "Editorial checks (review before moving on)",
+        "flags": [
+          {
+            "type": "possible_omitted_workstream",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "\"Review idris asked whether the team should say monday\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "review_manually"
+            ],
+            "discussionSuggestion": {
+              "topic": "idris asked whether the team should say monday",
+              "point": "Review idris asked whether the team should say monday",
+              "source": "objective"
+            },
+            "repairCandidates": null
+          },
+          {
+            "type": "unresolved_substantive_workstream",
+            "severity": "warning",
+            "blocking": true,
+            "resolutionKey": "workstream:idris asked whether the team should say monday",
+            "message": "\"Idris asked whether the team should say Monday\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "intentionally_omit",
+              "return_to_summary_topics"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          }
+        ],
+        "blocking": true
+      },
+      {
+        "stage": "actions",
+        "screenLabel": "Actions",
+        "statusMessage": "Actions generated. Check owners and dates before continuing.",
+        "editorialHeading": "Editorial checks (review before moving on)",
+        "flags": [
+          {
+            "type": "possible_omitted_workstream",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "\"Review idris asked whether the team should say monday\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "review_manually"
+            ],
+            "discussionSuggestion": {
+              "topic": "idris asked whether the team should say monday",
+              "point": "Review idris asked whether the team should say monday",
+              "source": "objective"
+            },
+            "repairCandidates": null
+          },
+          {
+            "type": "possible_omitted_workstream",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "\"Submit the approved draft\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "review_manually"
+            ],
+            "discussionSuggestion": {
+              "topic": "the approved draft",
+              "point": "Submit the approved draft",
+              "source": "action"
+            },
+            "repairCandidates": null
+          },
+          {
+            "type": "possible_omitted_workstream",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "\"Review it within two working days of receiving it\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "review_manually"
+            ],
+            "discussionSuggestion": {
+              "topic": "it within two working days of receiving it",
+              "point": "Review it within two working days of receiving it",
+              "source": "action"
+            },
+            "repairCandidates": null
+          }
+        ],
+        "blocking": false
+      }
+    ],
+    "flags": [
+      {
+        "type": "possible_omitted_workstream",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "\"Review idris asked whether the team should say monday\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "review_manually"
+        ],
+        "discussionSuggestion": {
+          "topic": "idris asked whether the team should say monday",
+          "point": "Review idris asked whether the team should say monday",
+          "source": "objective"
+        },
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "unresolved_substantive_workstream",
+        "severity": "warning",
+        "blocking": true,
+        "resolutionKey": "workstream:idris asked whether the team should say monday",
+        "message": "\"Idris asked whether the team should say Monday\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "intentionally_omit",
+          "return_to_summary_topics"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "possible_omitted_workstream",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "\"Review idris asked whether the team should say monday\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "review_manually"
+        ],
+        "discussionSuggestion": {
+          "topic": "idris asked whether the team should say monday",
+          "point": "Review idris asked whether the team should say monday",
+          "source": "objective"
+        },
+        "repairCandidates": null,
+        "stage": "actions"
+      },
+      {
+        "type": "possible_omitted_workstream",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "\"Submit the approved draft\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "review_manually"
+        ],
+        "discussionSuggestion": {
+          "topic": "the approved draft",
+          "point": "Submit the approved draft",
+          "source": "action"
+        },
+        "repairCandidates": null,
+        "stage": "actions"
+      },
+      {
+        "type": "possible_omitted_workstream",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "\"Review it within two working days of receiving it\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "review_manually"
+        ],
+        "discussionSuggestion": {
+          "topic": "it within two working days of receiving it",
+          "point": "Review it within two working days of receiving it",
+          "source": "action"
+        },
+        "repairCandidates": null,
+        "stage": "actions"
+      }
+    ],
+    "warningCount": 5,
+    "blockingCount": 1,
+    "readyForFinalApproval": false,
+    "finalReviewMessage": "Final review would remain locked until every substantive workstream is resolved.",
+    "requiredReviewerActions": [
+      {
+        "stage": "discussion",
+        "resolutionKey": "workstream:idris asked whether the team should say monday",
+        "message": "\"Idris asked whether the team should say Monday\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+        "choices": [
+          "add_to_discussion",
+          "intentionally_omit",
+          "return_to_summary_topics"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null
+      }
+    ]
+  },
+  "trace": [
+    {
+      "stage": "details",
+      "provider": "deterministic_stage_1_prep",
+      "outputCount": 1,
+      "telemetry": {
+        "stage": "details",
+        "transcriptLength": 653,
+        "screenCount": 1,
+        "attendeeExtraction": {
+          "source": "microsoft_teams_speaker_turns",
+          "speakerCount": 3,
+          "turnCount": 7,
+          "eventSpeakerCount": 0,
+          "knownInternalAttendeeCount": 0,
+          "knownClientAttendeeCount": 0,
+          "headerSource": "microsoft_teams_header",
+          "dateSource": "microsoft_teams_header"
+        }
+      },
+      "preparedTranscriptTelemetry": {
+        "rawLength": 653,
+        "preparedLength": 543,
+        "removedLineCount": 12,
+        "removedReasons": {
+          "teamsHeader": 1,
+          "transcriptionEvent": 0,
+          "blankLine": 11,
+          "timestampOnly": 0
+        },
+        "source": "deterministic_stage_1_prep"
+      }
+    },
+    {
+      "stage": "summary",
+      "provider": "fast-staged-analysis",
+      "fallbackUsed": true,
+      "inputTopicCount": 1,
+      "outputCount": 1,
+      "validationFlags": [],
+      "telemetry": {
+        "stage": "summary",
+        "topicCount": 1,
+        "transcriptLength": 543,
+        "embeddingClassifier": {
+          "used": true,
+          "provider": "embedding",
+          "rewriterAvailable": false,
+          "rewriterReason": "",
+          "pipeline": "",
+          "modelAvailable": true,
+          "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+          "modelReason": "",
+          "counts": {
+            "discussionPoints": 2,
+            "decisions": 0,
+            "actions": 0
+          },
+          "evidencePackTopicCount": 0,
+          "workstreamStateCount": 0,
+          "missingWorkstreamCount": 0,
+          "missingWorkstreams": [],
+          "workstreamQualityFlags": [],
+          "timingMs": {
+            "baseline": 0,
+            "context": 19.82,
+            "minilm": 766.13,
+            "rewrite": 0,
+            "total": 785.95
+          }
+        },
+        "objectiveReducer": {
+          "objectiveSource": "topic_objective_reducer",
+          "topicCount": 1,
+          "objectiveSpecificityScore": 100
+        }
+      },
+      "generationDiagnostics": {
+        "modelAvailable": true,
+        "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+        "modelReason": "",
+        "timingMs": {
+          "baseline": 0,
+          "context": 19.82,
+          "minilm": 766.13,
+          "rewrite": 0,
+          "total": 785.95
+        }
+      }
+    },
+    {
+      "stage": "discussion",
+      "provider": "fast-staged-analysis",
+      "fallbackUsed": true,
+      "inputTopicCount": 1,
+      "outputCount": 1,
+      "outputPointCount": 1,
+      "validationFlags": [
+        {
+          "type": "possible_omitted_workstream",
+          "severity": "warning",
+          "message": "\"Review idris asked whether the team should say monday\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+          "discussionSuggestion": {
+            "topic": "idris asked whether the team should say monday",
+            "point": "Review idris asked whether the team should say monday",
+            "source": "objective"
+          }
+        },
+        {
+          "type": "unresolved_substantive_workstream",
+          "severity": "warning",
+          "blocking": true,
+          "resolutionKey": "workstream:idris asked whether the team should say monday",
+          "message": "\"Idris asked whether the team should say Monday\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+          "discussionSuggestion": null
+        }
+      ],
+      "telemetry": {
+        "stage": "discussion",
+        "topicCount": 1,
+        "discussionCards": 1,
+        "droppedMisattributedDiscussionPoints": 0,
+        "workstreamCoverage": [
+          {
+            "topic": "Idris asked whether the team should say Monday",
+            "classification": "substantive",
+            "evidenceCount": 0,
+            "discussionCardCount": 0,
+            "assignedTurnIds": [],
+            "status": "missing"
+          }
+        ],
+        "transcriptLength": 543,
+        "embeddingClassifier": {
+          "used": true,
+          "provider": "embedding",
+          "rewriterAvailable": false,
+          "rewriterReason": "",
+          "pipeline": "",
+          "modelAvailable": true,
+          "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+          "modelReason": "",
+          "counts": {
+            "discussionPoints": 2,
+            "decisions": 0,
+            "actions": 0
+          },
+          "evidencePackTopicCount": 0,
+          "workstreamStateCount": 0,
+          "missingWorkstreamCount": 0,
+          "missingWorkstreams": [],
+          "workstreamQualityFlags": [],
+          "timingMs": {
+            "baseline": 0,
+            "context": 26.37,
+            "minilm": 152.7,
+            "rewrite": 0,
+            "total": 179.07
+          }
+        },
+        "discussionCompaction": {
+          "pointsBefore": 1,
+          "pointsAfter": 1,
+          "duplicatesRemoved": 0,
+          "truncatedRemoved": 0,
+          "cardCount": 1,
+          "namedDetailsBefore": 0,
+          "namedDetailsAfter": 0,
+          "detailRetentionScore": 100,
+          "detailRetentionWarnings": []
+        }
+      },
+      "generationDiagnostics": {
+        "modelAvailable": true,
+        "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+        "modelReason": "",
+        "timingMs": {
+          "baseline": 0,
+          "context": 26.37,
+          "minilm": 152.7,
+          "rewrite": 0,
+          "total": 179.07
+        }
+      }
+    },
+    {
+      "stage": "actions",
+      "provider": "trooper-stage",
+      "fallbackUsed": false,
+      "inputTopicCount": 1,
+      "outputCount": 4,
+      "validationFlags": [
+        {
+          "type": "possible_omitted_workstream",
+          "severity": "warning",
+          "message": "\"Review idris asked whether the team should say monday\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+          "discussionSuggestion": {
+            "topic": "idris asked whether the team should say monday",
+            "point": "Review idris asked whether the team should say monday",
+            "source": "objective"
+          }
+        },
+        {
+          "type": "possible_omitted_workstream",
+          "severity": "warning",
+          "message": "\"Submit the approved draft\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+          "discussionSuggestion": {
+            "topic": "the approved draft",
+            "point": "Submit the approved draft",
+            "source": "action"
+          }
+        },
+        {
+          "type": "possible_omitted_workstream",
+          "severity": "warning",
+          "message": "\"Review it within two working days of receiving it\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+          "discussionSuggestion": {
+            "topic": "it within two working days of receiving it",
+            "point": "Review it within two working days of receiving it",
+            "source": "action"
+          }
+        }
+      ],
+      "telemetry": {
+        "stage": "actions",
+        "actionCount": 4,
+        "actionPreservation": {
+          "transcriptPreservedActionCount": 0,
+          "transcriptActionInventoryCount": 0,
+          "evidenceLedgerActionCount": 3,
+          "evidenceClassifierActionCount": 1,
+          "transcriptActionInventoryUsed": true
+        },
+        "transcriptLength": 543,
+        "embeddingClassifier": {
+          "used": true,
+          "provider": "trooper_stage",
+          "rewriterAvailable": false,
+          "rewriterReason": "TROOPER_API_KEY is not configured.",
+          "pipeline": "staged_actions_targeted",
+          "modelAvailable": false,
+          "modelName": "eu_liv_000099",
+          "modelReason": "TROOPER_API_KEY is not configured.",
+          "counts": {},
+          "evidencePackTopicCount": 0,
+          "workstreamStateCount": 0,
+          "missingWorkstreamCount": 0,
+          "missingWorkstreams": [],
+          "workstreamQualityFlags": [],
+          "timingMs": {}
+        },
+        "evidenceClassifier": {
+          "used": true,
+          "executed": true,
+          "modelAvailable": true,
+          "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+          "modelPath": "/root/meeting-minutes-evidence-model/runs/owner-framing-20260810T224329Z/model_bundle/classifier.joblib",
+          "modelReason": "Evidence classifier completed.",
+          "actionCount": 4,
+          "itemCount": 9,
+          "segmentsScored": 9,
+          "counts": {
+            "document_control_task": 4,
+            "low_value_noise": 1,
+            "action_commitment": 1,
+            "discussion_topic": 2,
+            "background_context": 1
+          },
+          "timingMs": {
+            "total": 9003
+          }
+        }
+      },
+      "generationDiagnostics": {
+        "provider": "trooper_stage",
+        "modelAvailable": false,
+        "modelName": "eu_liv_000099",
+        "modelReason": "TROOPER_API_KEY is not configured.",
+        "pipeline": "staged_actions_targeted",
+        "timingMs": {},
+        "evidenceClassifier": {
+          "used": true,
+          "executed": true,
+          "modelAvailable": true,
+          "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+          "modelPath": "/root/meeting-minutes-evidence-model/runs/owner-framing-20260810T224329Z/model_bundle/classifier.joblib",
+          "modelReason": "Evidence classifier completed.",
+          "actionCount": 4,
+          "itemCount": 9,
+          "segmentsScored": 9,
+          "counts": {
+            "document_control_task": 4,
+            "low_value_noise": 1,
+            "action_commitment": 1,
+            "discussion_topic": 2,
+            "background_context": 1
+          },
+          "timingMs": {
+            "total": 9003
+          }
+        }
+      }
+    }
+  ]
+}

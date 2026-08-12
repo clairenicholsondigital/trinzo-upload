@@ -1,0 +1,40 @@
+{
+  "meeting_type": "Decision meeting",
+  "attendees": [
+    "Amina Yusuf",
+    "Rob Chen",
+    "George Bell",
+    "Keira Long"
+  ],
+  "client_attendees": [
+    "Amina Yusuf",
+    "Rob Chen",
+    "George Bell",
+    "Keira Long"
+  ],
+  "actions": [
+    {
+      "owner": "George Bell",
+      "action": "Publish the status page at nine thirty",
+      "due_evidence": "Thursday"
+    },
+    {
+      "owner": "Keira Long",
+      "action": "Watch the error dashboard for the first hour and alert Amina if it crosses two per cent",
+      "due_evidence": "Not stated"
+    },
+    {
+      "owner": "George Bell",
+      "action": "Send Susan the launch confirmation",
+      "due_evidence": "today"
+    }
+  ],
+  "decisions": [
+    "Pause only if the error rate exceeds two per cent",
+    "Decision is launch Thursday at ten.",
+    "Decision is launch Thursday at ten. We only pause if the error rate exceeds two per cent. I'll publish the status page at nine thirty Thursday."
+  ],
+  "risks": [
+    "Launch error rate may exceed the two per cent pause threshold"
+  ]
+}

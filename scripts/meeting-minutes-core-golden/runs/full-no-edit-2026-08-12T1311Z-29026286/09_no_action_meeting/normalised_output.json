@@ -1,0 +1,26 @@
+{
+  "meeting_type": "Decision meeting",
+  "attendees": [
+    "Elaine Voss",
+    "Martin Okoro",
+    "Sana Iqbal"
+  ],
+  "client_attendees": [
+    "Elaine Voss",
+    "Martin Okoro",
+    "Sana Iqbal"
+  ],
+  "actions": [],
+  "decisions": [
+    "Approve the validation report for release",
+    "Do not carry out a further round of testing",
+    "Accept the residual risk on the temperature excursion",
+    "Confirm supplier B as the component supplier"
+  ],
+  "risks": [
+    "Next, the temperature excursion thing on the residual risk register",
+    "Residual temperature-excursion risk accepted and documented",
+    "Yes, that's a watch item, agreed, but no action, we just monitor it as normal",
+    "Exactly, it's within spec, just worth noting"
+  ]
+}

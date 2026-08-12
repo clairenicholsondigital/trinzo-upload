@@ -1,0 +1,818 @@
+{
+  "ok": true,
+  "staged": true,
+  "mode": "no_human_edits",
+  "source": "direct-live-route-engine",
+  "fileName": "transcript.docx",
+  "transcriptLength": 677,
+  "screens": {
+    "details": {
+      "meetingTitle": "Elmstead Options Workshop",
+      "meetingDate": "2026-08-11",
+      "meetingLocation": "Microsoft Teams",
+      "organisation": "",
+      "meetingType": "Workshop",
+      "internalAttendees": [],
+      "clientAttendees": [
+        "Imogen Hart",
+        "Ravi Shah",
+        "Peter Doyle"
+      ],
+      "allAttendees": [
+        "Imogen Hart",
+        "Ravi Shah",
+        "Peter Doyle"
+      ]
+    },
+    "summary": {
+      "objectives": [
+        "Review software updates",
+        "Review actions and ownership",
+        "Review that today",
+        "Review friday"
+      ],
+      "executiveSummary": "The transcript contains substantive project, technical and follow-up evidence for structured review. The discussion stage should confirm current positions, agreed changes, unresolved dependencies and time-critical actions before approval.",
+      "overallTopics": [
+        "Software updates",
+        "Actions and ownership",
+        "That today",
+        "Friday"
+      ]
+    },
+    "discussion": [
+      {
+        "topic": "Discussion",
+        "whatWasDiscussed": "Ravi said that there is one concrete follow-up.",
+        "points": [
+          "There is one concrete follow-up. I'll request the renewal quote by Friday.",
+          "There is one concrete follow-up."
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "owner": "Ravi Shah",
+        "action": "Request the renewal quote",
+        "deadline": "Friday",
+        "source": "staged_evidence_ledger"
+      }
+    ],
+    "finalReview": {
+      "readyForFinalApproval": false,
+      "message": "Final review would remain locked until every substantive workstream is resolved."
+    }
+  },
+  "visibleOutput": {
+    "meetingTitle": "Elmstead Options Workshop",
+    "participants": {
+      "trinzo": [],
+      "client": [
+        "Imogen Hart",
+        "Ravi Shah",
+        "Peter Doyle"
+      ]
+    },
+    "meetingObjectives": [
+      "Review software updates",
+      "Review actions and ownership",
+      "Review that today",
+      "Review friday"
+    ],
+    "executiveSummary": "The transcript contains substantive project, technical and follow-up evidence for structured review. The discussion stage should confirm current positions, agreed changes, unresolved dependencies and time-critical actions before approval.",
+    "discussionPoints": [
+      "Discussion: There is one concrete follow-up. I'll request the renewal quote by Friday.",
+      "Discussion: There is one concrete follow-up."
+    ],
+    "decisions": [
+      "Stay with the current analytics platform for now"
+    ],
+    "risks": [
+      "A future licence-price increase could prompt a platform review"
+    ],
+    "actions": [
+      {
+        "meetingActionPointOwner": "Ravi Shah",
+        "meetingActionPoint": "Request the renewal quote",
+        "meetingActionPointDeadline": "Friday"
+      }
+    ]
+  },
+  "reviewExperience": {
+    "mode": "no_human_edits",
+    "description": "The generated output from each screen was accepted unchanged and passed into the next screen.",
+    "stages": [
+      {
+        "stage": "details",
+        "screenLabel": "Meeting details",
+        "statusMessage": "Meeting details generated. Review or edit this screen before continuing.",
+        "editorialHeading": null,
+        "flags": [],
+        "blocking": false
+      },
+      {
+        "stage": "summary",
+        "screenLabel": "Summary and topics",
+        "statusMessage": "Topics generated. Review or edit them before continuing.",
+        "editorialHeading": null,
+        "flags": [],
+        "blocking": false
+      },
+      {
+        "stage": "discussion",
+        "screenLabel": "Discussion points",
+        "statusMessage": "Discussion points generated from the topic context.",
+        "editorialHeading": "Editorial checks (review before moving on)",
+        "flags": [
+          {
+            "type": "possible_omitted_workstream",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "\"Review software updates\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "review_manually"
+            ],
+            "discussionSuggestion": {
+              "topic": "software updates",
+              "point": "Review software updates",
+              "source": "objective"
+            },
+            "repairCandidates": null
+          },
+          {
+            "type": "possible_omitted_workstream",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "\"Review actions and ownership\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "review_manually"
+            ],
+            "discussionSuggestion": {
+              "topic": "actions and ownership",
+              "point": "Review actions and ownership",
+              "source": "objective"
+            },
+            "repairCandidates": null
+          },
+          {
+            "type": "unresolved_substantive_workstream",
+            "severity": "warning",
+            "blocking": true,
+            "resolutionKey": "workstream:software updates",
+            "message": "\"Software updates\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "intentionally_omit",
+              "return_to_summary_topics"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          },
+          {
+            "type": "unresolved_substantive_workstream",
+            "severity": "warning",
+            "blocking": true,
+            "resolutionKey": "workstream:actions and ownership",
+            "message": "\"Actions and ownership\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "intentionally_omit",
+              "return_to_summary_topics"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          },
+          {
+            "type": "unresolved_substantive_workstream",
+            "severity": "warning",
+            "blocking": true,
+            "resolutionKey": "workstream:that today",
+            "message": "\"That today\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "intentionally_omit",
+              "return_to_summary_topics"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          },
+          {
+            "type": "unresolved_substantive_workstream",
+            "severity": "warning",
+            "blocking": true,
+            "resolutionKey": "workstream:friday",
+            "message": "\"Friday\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "intentionally_omit",
+              "return_to_summary_topics"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          }
+        ],
+        "blocking": true
+      },
+      {
+        "stage": "actions",
+        "screenLabel": "Actions",
+        "statusMessage": "Actions generated. Check owners and dates before continuing.",
+        "editorialHeading": "Editorial checks (review before moving on)",
+        "flags": [
+          {
+            "type": "possible_omitted_workstream",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "\"Review software updates\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "review_manually"
+            ],
+            "discussionSuggestion": {
+              "topic": "software updates",
+              "point": "Review software updates",
+              "source": "objective"
+            },
+            "repairCandidates": null
+          },
+          {
+            "type": "possible_omitted_workstream",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "\"Review actions and ownership\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "review_manually"
+            ],
+            "discussionSuggestion": {
+              "topic": "actions and ownership",
+              "point": "Review actions and ownership",
+              "source": "objective"
+            },
+            "repairCandidates": null
+          }
+        ],
+        "blocking": false
+      }
+    ],
+    "flags": [
+      {
+        "type": "possible_omitted_workstream",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "\"Review software updates\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "review_manually"
+        ],
+        "discussionSuggestion": {
+          "topic": "software updates",
+          "point": "Review software updates",
+          "source": "objective"
+        },
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "possible_omitted_workstream",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "\"Review actions and ownership\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "review_manually"
+        ],
+        "discussionSuggestion": {
+          "topic": "actions and ownership",
+          "point": "Review actions and ownership",
+          "source": "objective"
+        },
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "unresolved_substantive_workstream",
+        "severity": "warning",
+        "blocking": true,
+        "resolutionKey": "workstream:software updates",
+        "message": "\"Software updates\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "intentionally_omit",
+          "return_to_summary_topics"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "unresolved_substantive_workstream",
+        "severity": "warning",
+        "blocking": true,
+        "resolutionKey": "workstream:actions and ownership",
+        "message": "\"Actions and ownership\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "intentionally_omit",
+          "return_to_summary_topics"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "unresolved_substantive_workstream",
+        "severity": "warning",
+        "blocking": true,
+        "resolutionKey": "workstream:that today",
+        "message": "\"That today\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "intentionally_omit",
+          "return_to_summary_topics"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "unresolved_substantive_workstream",
+        "severity": "warning",
+        "blocking": true,
+        "resolutionKey": "workstream:friday",
+        "message": "\"Friday\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "intentionally_omit",
+          "return_to_summary_topics"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "possible_omitted_workstream",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "\"Review software updates\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "review_manually"
+        ],
+        "discussionSuggestion": {
+          "topic": "software updates",
+          "point": "Review software updates",
+          "source": "objective"
+        },
+        "repairCandidates": null,
+        "stage": "actions"
+      },
+      {
+        "type": "possible_omitted_workstream",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "\"Review actions and ownership\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "review_manually"
+        ],
+        "discussionSuggestion": {
+          "topic": "actions and ownership",
+          "point": "Review actions and ownership",
+          "source": "objective"
+        },
+        "repairCandidates": null,
+        "stage": "actions"
+      }
+    ],
+    "warningCount": 8,
+    "blockingCount": 4,
+    "readyForFinalApproval": false,
+    "finalReviewMessage": "Final review would remain locked until every substantive workstream is resolved.",
+    "requiredReviewerActions": [
+      {
+        "stage": "discussion",
+        "resolutionKey": "workstream:software updates",
+        "message": "\"Software updates\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+        "choices": [
+          "add_to_discussion",
+          "intentionally_omit",
+          "return_to_summary_topics"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null
+      },
+      {
+        "stage": "discussion",
+        "resolutionKey": "workstream:actions and ownership",
+        "message": "\"Actions and ownership\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+        "choices": [
+          "add_to_discussion",
+          "intentionally_omit",
+          "return_to_summary_topics"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null
+      },
+      {
+        "stage": "discussion",
+        "resolutionKey": "workstream:that today",
+        "message": "\"That today\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+        "choices": [
+          "add_to_discussion",
+          "intentionally_omit",
+          "return_to_summary_topics"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null
+      },
+      {
+        "stage": "discussion",
+        "resolutionKey": "workstream:friday",
+        "message": "\"Friday\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+        "choices": [
+          "add_to_discussion",
+          "intentionally_omit",
+          "return_to_summary_topics"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null
+      }
+    ]
+  },
+  "trace": [
+    {
+      "stage": "details",
+      "provider": "deterministic_stage_1_prep",
+      "outputCount": 1,
+      "telemetry": {
+        "stage": "details",
+        "transcriptLength": 677,
+        "screenCount": 1,
+        "attendeeExtraction": {
+          "source": "microsoft_teams_speaker_turns",
+          "speakerCount": 3,
+          "turnCount": 7,
+          "eventSpeakerCount": 0,
+          "knownInternalAttendeeCount": 0,
+          "knownClientAttendeeCount": 0,
+          "headerSource": "microsoft_teams_header",
+          "dateSource": "microsoft_teams_header"
+        }
+      },
+      "preparedTranscriptTelemetry": {
+        "rawLength": 677,
+        "preparedLength": 567,
+        "removedLineCount": 12,
+        "removedReasons": {
+          "teamsHeader": 1,
+          "transcriptionEvent": 0,
+          "blankLine": 11,
+          "timestampOnly": 0
+        },
+        "source": "deterministic_stage_1_prep"
+      }
+    },
+    {
+      "stage": "summary",
+      "provider": "fast-staged-analysis",
+      "fallbackUsed": true,
+      "inputTopicCount": 4,
+      "outputCount": 4,
+      "validationFlags": [],
+      "telemetry": {
+        "stage": "summary",
+        "topicCount": 4,
+        "transcriptLength": 567,
+        "embeddingClassifier": {
+          "used": true,
+          "provider": "embedding",
+          "rewriterAvailable": false,
+          "rewriterReason": "",
+          "pipeline": "",
+          "modelAvailable": true,
+          "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+          "modelReason": "",
+          "counts": {
+            "discussionPoints": 1,
+            "decisions": 0,
+            "actions": 1
+          },
+          "evidencePackTopicCount": 0,
+          "workstreamStateCount": 0,
+          "missingWorkstreamCount": 0,
+          "missingWorkstreams": [],
+          "workstreamQualityFlags": [],
+          "timingMs": {
+            "baseline": 0,
+            "context": 17.47,
+            "minilm": 2052.63,
+            "rewrite": 0,
+            "total": 2070.1
+          }
+        },
+        "objectiveReducer": {
+          "objectiveSource": "workstream_objective_reducer",
+          "topicCount": 4,
+          "objectiveSpecificityScore": 100
+        }
+      },
+      "generationDiagnostics": {
+        "modelAvailable": true,
+        "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+        "modelReason": "",
+        "timingMs": {
+          "baseline": 0,
+          "context": 17.47,
+          "minilm": 2052.63,
+          "rewrite": 0,
+          "total": 2070.1
+        }
+      }
+    },
+    {
+      "stage": "discussion",
+      "provider": "fast-staged-analysis",
+      "fallbackUsed": true,
+      "inputTopicCount": 4,
+      "outputCount": 1,
+      "outputPointCount": 2,
+      "validationFlags": [
+        {
+          "type": "possible_omitted_workstream",
+          "severity": "warning",
+          "message": "\"Review software updates\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+          "discussionSuggestion": {
+            "topic": "software updates",
+            "point": "Review software updates",
+            "source": "objective"
+          }
+        },
+        {
+          "type": "possible_omitted_workstream",
+          "severity": "warning",
+          "message": "\"Review actions and ownership\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+          "discussionSuggestion": {
+            "topic": "actions and ownership",
+            "point": "Review actions and ownership",
+            "source": "objective"
+          }
+        },
+        {
+          "type": "unresolved_substantive_workstream",
+          "severity": "warning",
+          "blocking": true,
+          "resolutionKey": "workstream:software updates",
+          "message": "\"Software updates\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+          "discussionSuggestion": null
+        },
+        {
+          "type": "unresolved_substantive_workstream",
+          "severity": "warning",
+          "blocking": true,
+          "resolutionKey": "workstream:actions and ownership",
+          "message": "\"Actions and ownership\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+          "discussionSuggestion": null
+        },
+        {
+          "type": "unresolved_substantive_workstream",
+          "severity": "warning",
+          "blocking": true,
+          "resolutionKey": "workstream:that today",
+          "message": "\"That today\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+          "discussionSuggestion": null
+        },
+        {
+          "type": "unresolved_substantive_workstream",
+          "severity": "warning",
+          "blocking": true,
+          "resolutionKey": "workstream:friday",
+          "message": "\"Friday\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+          "discussionSuggestion": null
+        }
+      ],
+      "telemetry": {
+        "stage": "discussion",
+        "topicCount": 4,
+        "discussionCards": 1,
+        "droppedMisattributedDiscussionPoints": 0,
+        "workstreamCoverage": [
+          {
+            "topic": "Software updates",
+            "classification": "substantive",
+            "evidenceCount": 0,
+            "discussionCardCount": 0,
+            "assignedTurnIds": [],
+            "status": "missing"
+          },
+          {
+            "topic": "Actions and ownership",
+            "classification": "substantive",
+            "evidenceCount": 0,
+            "discussionCardCount": 0,
+            "assignedTurnIds": [],
+            "status": "missing"
+          },
+          {
+            "topic": "That today",
+            "classification": "substantive",
+            "evidenceCount": 0,
+            "discussionCardCount": 0,
+            "assignedTurnIds": [],
+            "status": "missing"
+          },
+          {
+            "topic": "Friday",
+            "classification": "substantive",
+            "evidenceCount": 0,
+            "discussionCardCount": 0,
+            "assignedTurnIds": [],
+            "status": "missing"
+          }
+        ],
+        "transcriptLength": 567,
+        "embeddingClassifier": {
+          "used": true,
+          "provider": "embedding",
+          "rewriterAvailable": false,
+          "rewriterReason": "",
+          "pipeline": "",
+          "modelAvailable": true,
+          "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+          "modelReason": "",
+          "counts": {
+            "discussionPoints": 1,
+            "decisions": 0,
+            "actions": 1
+          },
+          "evidencePackTopicCount": 0,
+          "workstreamStateCount": 0,
+          "missingWorkstreamCount": 0,
+          "missingWorkstreams": [],
+          "workstreamQualityFlags": [],
+          "timingMs": {
+            "baseline": 0,
+            "context": 17.37,
+            "minilm": 157.66,
+            "rewrite": 0,
+            "total": 175.03
+          }
+        },
+        "discussionCompaction": {
+          "pointsBefore": 2,
+          "pointsAfter": 2,
+          "duplicatesRemoved": 0,
+          "truncatedRemoved": 0,
+          "cardCount": 1,
+          "namedDetailsBefore": 0,
+          "namedDetailsAfter": 0,
+          "detailRetentionScore": 100,
+          "detailRetentionWarnings": []
+        }
+      },
+      "generationDiagnostics": {
+        "modelAvailable": true,
+        "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+        "modelReason": "",
+        "timingMs": {
+          "baseline": 0,
+          "context": 17.37,
+          "minilm": 157.66,
+          "rewrite": 0,
+          "total": 175.03
+        }
+      }
+    },
+    {
+      "stage": "actions",
+      "provider": "trooper-stage",
+      "fallbackUsed": false,
+      "inputTopicCount": 4,
+      "outputCount": 1,
+      "validationFlags": [
+        {
+          "type": "possible_omitted_workstream",
+          "severity": "warning",
+          "message": "\"Review software updates\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+          "discussionSuggestion": {
+            "topic": "software updates",
+            "point": "Review software updates",
+            "source": "objective"
+          }
+        },
+        {
+          "type": "possible_omitted_workstream",
+          "severity": "warning",
+          "message": "\"Review actions and ownership\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+          "discussionSuggestion": {
+            "topic": "actions and ownership",
+            "point": "Review actions and ownership",
+            "source": "objective"
+          }
+        }
+      ],
+      "telemetry": {
+        "stage": "actions",
+        "actionCount": 1,
+        "actionPreservation": {
+          "transcriptPreservedActionCount": 0,
+          "transcriptActionInventoryCount": 0,
+          "evidenceLedgerActionCount": 1,
+          "evidenceClassifierActionCount": 0,
+          "transcriptActionInventoryUsed": false
+        },
+        "transcriptLength": 567,
+        "embeddingClassifier": {
+          "used": true,
+          "provider": "trooper_stage",
+          "rewriterAvailable": false,
+          "rewriterReason": "TROOPER_API_KEY is not configured.",
+          "pipeline": "staged_actions_targeted",
+          "modelAvailable": false,
+          "modelName": "eu_liv_000099",
+          "modelReason": "TROOPER_API_KEY is not configured.",
+          "counts": {},
+          "evidencePackTopicCount": 0,
+          "workstreamStateCount": 0,
+          "missingWorkstreamCount": 0,
+          "missingWorkstreams": [],
+          "workstreamQualityFlags": [],
+          "timingMs": {}
+        },
+        "evidenceClassifier": {
+          "used": true,
+          "executed": true,
+          "modelAvailable": true,
+          "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+          "modelPath": "/root/meeting-minutes-evidence-model/runs/owner-framing-20260810T224329Z/model_bundle/classifier.joblib",
+          "modelReason": "Evidence classifier completed.",
+          "actionCount": 0,
+          "itemCount": 10,
+          "segmentsScored": 10,
+          "counts": {
+            "action_commitment": 3,
+            "discussion_topic": 1,
+            "low_value_noise": 5,
+            "background_context": 1
+          },
+          "timingMs": {
+            "total": 8780
+          }
+        }
+      },
+      "generationDiagnostics": {
+        "provider": "trooper_stage",
+        "modelAvailable": false,
+        "modelName": "eu_liv_000099",
+        "modelReason": "TROOPER_API_KEY is not configured.",
+        "pipeline": "staged_actions_targeted",
+        "timingMs": {},
+        "evidenceClassifier": {
+          "used": true,
+          "executed": true,
+          "modelAvailable": true,
+          "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+          "modelPath": "/root/meeting-minutes-evidence-model/runs/owner-framing-20260810T224329Z/model_bundle/classifier.joblib",
+          "modelReason": "Evidence classifier completed.",
+          "actionCount": 0,
+          "itemCount": 10,
+          "segmentsScored": 10,
+          "counts": {
+            "action_commitment": 3,
+            "discussion_topic": 1,
+            "low_value_noise": 5,
+            "background_context": 1
+          },
+          "timingMs": {
+            "total": 8780
+          }
+        }
+      }
+    }
+  ]
+}

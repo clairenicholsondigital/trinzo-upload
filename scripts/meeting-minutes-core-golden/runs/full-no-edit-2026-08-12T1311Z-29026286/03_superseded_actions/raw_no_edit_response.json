@@ -1,0 +1,1099 @@
+{
+  "ok": true,
+  "staged": true,
+  "mode": "no_human_edits",
+  "source": "direct-live-route-engine",
+  "fileName": "transcript.docx",
+  "transcriptLength": 785,
+  "screens": {
+    "details": {
+      "meetingTitle": "Northbridge Release Planning",
+      "meetingDate": "2026-08-10",
+      "meetingLocation": "Microsoft Teams",
+      "organisation": "",
+      "meetingType": "Project review",
+      "internalAttendees": [],
+      "clientAttendees": [
+        "Helen Ward",
+        "Omar Khan",
+        "Lucy Price"
+      ],
+      "allAttendees": [
+        "Helen Ward",
+        "Omar Khan",
+        "Lucy Price"
+      ]
+    },
+    "summary": {
+      "objectives": [
+        "Review actions and ownership",
+        "Review wednesday morning",
+        "Review the help centre this week",
+        "Review security",
+        "Review friday"
+      ],
+      "executiveSummary": "The transcript contains substantive project, technical and follow-up evidence for structured review. The discussion stage should confirm current positions, agreed changes, unresolved dependencies and time-critical actions before approval.",
+      "overallTopics": [
+        "Actions and ownership",
+        "Wednesday morning",
+        "The help centre this week",
+        "Security",
+        "Friday"
+      ]
+    },
+    "discussion": [],
+    "actions": [
+      {
+        "owner": "Lucy Price",
+        "action": "Draft and send the release note",
+        "deadline": "Wednesday morning",
+        "source": "staged_evidence_ledger"
+      }
+    ],
+    "finalReview": {
+      "readyForFinalApproval": false,
+      "message": "Final review would remain locked until every substantive workstream is resolved."
+    }
+  },
+  "visibleOutput": {
+    "meetingTitle": "Northbridge Release Planning",
+    "participants": {
+      "trinzo": [],
+      "client": [
+        "Helen Ward",
+        "Omar Khan",
+        "Lucy Price"
+      ]
+    },
+    "meetingObjectives": [
+      "Review actions and ownership",
+      "Review wednesday morning",
+      "Review the help centre this week",
+      "Review security",
+      "Review friday"
+    ],
+    "executiveSummary": "The transcript contains substantive project, technical and follow-up evidence for structured review. The discussion stage should confirm current positions, agreed changes, unresolved dependencies and time-critical actions before approval.",
+    "discussionPoints": [],
+    "decisions": [
+      "Keep the release scheduled for Friday"
+    ],
+    "risks": [],
+    "actions": [
+      {
+        "meetingActionPointOwner": "Lucy Price",
+        "meetingActionPoint": "Draft and send the release note",
+        "meetingActionPointDeadline": "Wednesday morning"
+      }
+    ]
+  },
+  "reviewExperience": {
+    "mode": "no_human_edits",
+    "description": "The generated output from each screen was accepted unchanged and passed into the next screen.",
+    "stages": [
+      {
+        "stage": "details",
+        "screenLabel": "Meeting details",
+        "statusMessage": "Meeting details generated. Review or edit this screen before continuing.",
+        "editorialHeading": null,
+        "flags": [],
+        "blocking": false
+      },
+      {
+        "stage": "summary",
+        "screenLabel": "Summary and topics",
+        "statusMessage": "Topics generated. Review or edit them before continuing.",
+        "editorialHeading": null,
+        "flags": [],
+        "blocking": false
+      },
+      {
+        "stage": "discussion",
+        "screenLabel": "Discussion points",
+        "statusMessage": "Discussion points generated from the topic context.",
+        "editorialHeading": "Editorial checks (review before moving on)",
+        "flags": [
+          {
+            "type": "possible_omitted_workstream",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "\"Review actions and ownership\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "review_manually"
+            ],
+            "discussionSuggestion": {
+              "topic": "actions and ownership",
+              "point": "Review actions and ownership",
+              "source": "objective"
+            },
+            "repairCandidates": null
+          },
+          {
+            "type": "possible_omitted_workstream",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "\"Review wednesday morning\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "review_manually"
+            ],
+            "discussionSuggestion": {
+              "topic": "wednesday morning",
+              "point": "Review wednesday morning",
+              "source": "objective"
+            },
+            "repairCandidates": null
+          },
+          {
+            "type": "possible_omitted_workstream",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "\"Review the help centre this week\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "review_manually"
+            ],
+            "discussionSuggestion": {
+              "topic": "the help centre this week",
+              "point": "Review the help centre this week",
+              "source": "objective"
+            },
+            "repairCandidates": null
+          },
+          {
+            "type": "possible_omitted_workstream",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "\"Review security\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "review_manually"
+            ],
+            "discussionSuggestion": {
+              "topic": "security",
+              "point": "Review security",
+              "source": "objective"
+            },
+            "repairCandidates": null
+          },
+          {
+            "type": "unresolved_substantive_workstream",
+            "severity": "warning",
+            "blocking": true,
+            "resolutionKey": "workstream:actions and ownership",
+            "message": "\"Actions and ownership\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "intentionally_omit",
+              "return_to_summary_topics"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          },
+          {
+            "type": "unresolved_substantive_workstream",
+            "severity": "warning",
+            "blocking": true,
+            "resolutionKey": "workstream:wednesday morning",
+            "message": "\"Wednesday morning\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "intentionally_omit",
+              "return_to_summary_topics"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          },
+          {
+            "type": "unresolved_substantive_workstream",
+            "severity": "warning",
+            "blocking": true,
+            "resolutionKey": "workstream:the help centre this week",
+            "message": "\"The help centre this week\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "intentionally_omit",
+              "return_to_summary_topics"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          },
+          {
+            "type": "unresolved_substantive_workstream",
+            "severity": "warning",
+            "blocking": true,
+            "resolutionKey": "workstream:security",
+            "message": "\"Security\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "intentionally_omit",
+              "return_to_summary_topics"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          },
+          {
+            "type": "unresolved_substantive_workstream",
+            "severity": "warning",
+            "blocking": true,
+            "resolutionKey": "workstream:friday",
+            "message": "\"Friday\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "intentionally_omit",
+              "return_to_summary_topics"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          }
+        ],
+        "blocking": true
+      },
+      {
+        "stage": "actions",
+        "screenLabel": "Actions",
+        "statusMessage": "Actions generated. Check owners and dates before continuing.",
+        "editorialHeading": "Editorial checks (review before moving on)",
+        "flags": [
+          {
+            "type": "possible_omitted_workstream",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "\"Review actions and ownership\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "review_manually"
+            ],
+            "discussionSuggestion": {
+              "topic": "actions and ownership",
+              "point": "Review actions and ownership",
+              "source": "objective"
+            },
+            "repairCandidates": null
+          },
+          {
+            "type": "possible_omitted_workstream",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "\"Review wednesday morning\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "review_manually"
+            ],
+            "discussionSuggestion": {
+              "topic": "wednesday morning",
+              "point": "Review wednesday morning",
+              "source": "objective"
+            },
+            "repairCandidates": null
+          },
+          {
+            "type": "possible_omitted_workstream",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "\"Review the help centre this week\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "review_manually"
+            ],
+            "discussionSuggestion": {
+              "topic": "the help centre this week",
+              "point": "Review the help centre this week",
+              "source": "objective"
+            },
+            "repairCandidates": null
+          },
+          {
+            "type": "possible_omitted_workstream",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "\"Review security\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "review_manually"
+            ],
+            "discussionSuggestion": {
+              "topic": "security",
+              "point": "Review security",
+              "source": "objective"
+            },
+            "repairCandidates": null
+          },
+          {
+            "type": "possible_omitted_workstream",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "\"Draft and send the release note\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "review_manually"
+            ],
+            "discussionSuggestion": {
+              "topic": "and send the release note",
+              "point": "Draft and send the release note",
+              "source": "action"
+            },
+            "repairCandidates": null
+          }
+        ],
+        "blocking": false
+      }
+    ],
+    "flags": [
+      {
+        "type": "possible_omitted_workstream",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "\"Review actions and ownership\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "review_manually"
+        ],
+        "discussionSuggestion": {
+          "topic": "actions and ownership",
+          "point": "Review actions and ownership",
+          "source": "objective"
+        },
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "possible_omitted_workstream",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "\"Review wednesday morning\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "review_manually"
+        ],
+        "discussionSuggestion": {
+          "topic": "wednesday morning",
+          "point": "Review wednesday morning",
+          "source": "objective"
+        },
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "possible_omitted_workstream",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "\"Review the help centre this week\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "review_manually"
+        ],
+        "discussionSuggestion": {
+          "topic": "the help centre this week",
+          "point": "Review the help centre this week",
+          "source": "objective"
+        },
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "possible_omitted_workstream",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "\"Review security\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "review_manually"
+        ],
+        "discussionSuggestion": {
+          "topic": "security",
+          "point": "Review security",
+          "source": "objective"
+        },
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "unresolved_substantive_workstream",
+        "severity": "warning",
+        "blocking": true,
+        "resolutionKey": "workstream:actions and ownership",
+        "message": "\"Actions and ownership\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "intentionally_omit",
+          "return_to_summary_topics"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "unresolved_substantive_workstream",
+        "severity": "warning",
+        "blocking": true,
+        "resolutionKey": "workstream:wednesday morning",
+        "message": "\"Wednesday morning\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "intentionally_omit",
+          "return_to_summary_topics"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "unresolved_substantive_workstream",
+        "severity": "warning",
+        "blocking": true,
+        "resolutionKey": "workstream:the help centre this week",
+        "message": "\"The help centre this week\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "intentionally_omit",
+          "return_to_summary_topics"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "unresolved_substantive_workstream",
+        "severity": "warning",
+        "blocking": true,
+        "resolutionKey": "workstream:security",
+        "message": "\"Security\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "intentionally_omit",
+          "return_to_summary_topics"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "unresolved_substantive_workstream",
+        "severity": "warning",
+        "blocking": true,
+        "resolutionKey": "workstream:friday",
+        "message": "\"Friday\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "intentionally_omit",
+          "return_to_summary_topics"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "possible_omitted_workstream",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "\"Review actions and ownership\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "review_manually"
+        ],
+        "discussionSuggestion": {
+          "topic": "actions and ownership",
+          "point": "Review actions and ownership",
+          "source": "objective"
+        },
+        "repairCandidates": null,
+        "stage": "actions"
+      },
+      {
+        "type": "possible_omitted_workstream",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "\"Review wednesday morning\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "review_manually"
+        ],
+        "discussionSuggestion": {
+          "topic": "wednesday morning",
+          "point": "Review wednesday morning",
+          "source": "objective"
+        },
+        "repairCandidates": null,
+        "stage": "actions"
+      },
+      {
+        "type": "possible_omitted_workstream",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "\"Review the help centre this week\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "review_manually"
+        ],
+        "discussionSuggestion": {
+          "topic": "the help centre this week",
+          "point": "Review the help centre this week",
+          "source": "objective"
+        },
+        "repairCandidates": null,
+        "stage": "actions"
+      },
+      {
+        "type": "possible_omitted_workstream",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "\"Review security\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "review_manually"
+        ],
+        "discussionSuggestion": {
+          "topic": "security",
+          "point": "Review security",
+          "source": "objective"
+        },
+        "repairCandidates": null,
+        "stage": "actions"
+      },
+      {
+        "type": "possible_omitted_workstream",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "\"Draft and send the release note\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "review_manually"
+        ],
+        "discussionSuggestion": {
+          "topic": "and send the release note",
+          "point": "Draft and send the release note",
+          "source": "action"
+        },
+        "repairCandidates": null,
+        "stage": "actions"
+      }
+    ],
+    "warningCount": 14,
+    "blockingCount": 5,
+    "readyForFinalApproval": false,
+    "finalReviewMessage": "Final review would remain locked until every substantive workstream is resolved.",
+    "requiredReviewerActions": [
+      {
+        "stage": "discussion",
+        "resolutionKey": "workstream:actions and ownership",
+        "message": "\"Actions and ownership\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+        "choices": [
+          "add_to_discussion",
+          "intentionally_omit",
+          "return_to_summary_topics"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null
+      },
+      {
+        "stage": "discussion",
+        "resolutionKey": "workstream:wednesday morning",
+        "message": "\"Wednesday morning\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+        "choices": [
+          "add_to_discussion",
+          "intentionally_omit",
+          "return_to_summary_topics"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null
+      },
+      {
+        "stage": "discussion",
+        "resolutionKey": "workstream:the help centre this week",
+        "message": "\"The help centre this week\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+        "choices": [
+          "add_to_discussion",
+          "intentionally_omit",
+          "return_to_summary_topics"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null
+      },
+      {
+        "stage": "discussion",
+        "resolutionKey": "workstream:security",
+        "message": "\"Security\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+        "choices": [
+          "add_to_discussion",
+          "intentionally_omit",
+          "return_to_summary_topics"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null
+      },
+      {
+        "stage": "discussion",
+        "resolutionKey": "workstream:friday",
+        "message": "\"Friday\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+        "choices": [
+          "add_to_discussion",
+          "intentionally_omit",
+          "return_to_summary_topics"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null
+      }
+    ]
+  },
+  "trace": [
+    {
+      "stage": "details",
+      "provider": "deterministic_stage_1_prep",
+      "outputCount": 1,
+      "telemetry": {
+        "stage": "details",
+        "transcriptLength": 785,
+        "screenCount": 1,
+        "attendeeExtraction": {
+          "source": "microsoft_teams_speaker_turns",
+          "speakerCount": 3,
+          "turnCount": 8,
+          "eventSpeakerCount": 0,
+          "knownInternalAttendeeCount": 0,
+          "knownClientAttendeeCount": 0,
+          "headerSource": "microsoft_teams_header",
+          "dateSource": "microsoft_teams_header"
+        }
+      },
+      "preparedTranscriptTelemetry": {
+        "rawLength": 785,
+        "preparedLength": 669,
+        "removedLineCount": 13,
+        "removedReasons": {
+          "teamsHeader": 1,
+          "transcriptionEvent": 0,
+          "blankLine": 12,
+          "timestampOnly": 0
+        },
+        "source": "deterministic_stage_1_prep"
+      }
+    },
+    {
+      "stage": "summary",
+      "provider": "fast-staged-analysis",
+      "fallbackUsed": true,
+      "inputTopicCount": 5,
+      "outputCount": 5,
+      "validationFlags": [],
+      "telemetry": {
+        "stage": "summary",
+        "topicCount": 5,
+        "transcriptLength": 669,
+        "embeddingClassifier": {
+          "used": true,
+          "provider": "embedding",
+          "rewriterAvailable": false,
+          "rewriterReason": "",
+          "pipeline": "",
+          "modelAvailable": true,
+          "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+          "modelReason": "",
+          "counts": {
+            "discussionPoints": 2,
+            "decisions": 0,
+            "actions": 2
+          },
+          "evidencePackTopicCount": 0,
+          "workstreamStateCount": 0,
+          "missingWorkstreamCount": 0,
+          "missingWorkstreams": [],
+          "workstreamQualityFlags": [],
+          "timingMs": {
+            "baseline": 0,
+            "context": 21.57,
+            "minilm": 2129.18,
+            "rewrite": 0,
+            "total": 2150.75
+          }
+        },
+        "objectiveReducer": {
+          "objectiveSource": "workstream_objective_reducer",
+          "topicCount": 5,
+          "objectiveSpecificityScore": 100
+        }
+      },
+      "generationDiagnostics": {
+        "modelAvailable": true,
+        "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+        "modelReason": "",
+        "timingMs": {
+          "baseline": 0,
+          "context": 21.57,
+          "minilm": 2129.18,
+          "rewrite": 0,
+          "total": 2150.75
+        }
+      }
+    },
+    {
+      "stage": "discussion",
+      "provider": "fast-staged-analysis",
+      "fallbackUsed": true,
+      "inputTopicCount": 5,
+      "outputCount": 0,
+      "outputPointCount": 0,
+      "validationFlags": [
+        {
+          "type": "possible_omitted_workstream",
+          "severity": "warning",
+          "message": "\"Review actions and ownership\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+          "discussionSuggestion": {
+            "topic": "actions and ownership",
+            "point": "Review actions and ownership",
+            "source": "objective"
+          }
+        },
+        {
+          "type": "possible_omitted_workstream",
+          "severity": "warning",
+          "message": "\"Review wednesday morning\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+          "discussionSuggestion": {
+            "topic": "wednesday morning",
+            "point": "Review wednesday morning",
+            "source": "objective"
+          }
+        },
+        {
+          "type": "possible_omitted_workstream",
+          "severity": "warning",
+          "message": "\"Review the help centre this week\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+          "discussionSuggestion": {
+            "topic": "the help centre this week",
+            "point": "Review the help centre this week",
+            "source": "objective"
+          }
+        },
+        {
+          "type": "possible_omitted_workstream",
+          "severity": "warning",
+          "message": "\"Review security\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+          "discussionSuggestion": {
+            "topic": "security",
+            "point": "Review security",
+            "source": "objective"
+          }
+        },
+        {
+          "type": "unresolved_substantive_workstream",
+          "severity": "warning",
+          "blocking": true,
+          "resolutionKey": "workstream:actions and ownership",
+          "message": "\"Actions and ownership\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+          "discussionSuggestion": null
+        },
+        {
+          "type": "unresolved_substantive_workstream",
+          "severity": "warning",
+          "blocking": true,
+          "resolutionKey": "workstream:wednesday morning",
+          "message": "\"Wednesday morning\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+          "discussionSuggestion": null
+        },
+        {
+          "type": "unresolved_substantive_workstream",
+          "severity": "warning",
+          "blocking": true,
+          "resolutionKey": "workstream:the help centre this week",
+          "message": "\"The help centre this week\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+          "discussionSuggestion": null
+        },
+        {
+          "type": "unresolved_substantive_workstream",
+          "severity": "warning",
+          "blocking": true,
+          "resolutionKey": "workstream:security",
+          "message": "\"Security\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+          "discussionSuggestion": null
+        },
+        {
+          "type": "unresolved_substantive_workstream",
+          "severity": "warning",
+          "blocking": true,
+          "resolutionKey": "workstream:friday",
+          "message": "\"Friday\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+          "discussionSuggestion": null
+        }
+      ],
+      "telemetry": {
+        "stage": "discussion",
+        "topicCount": 5,
+        "discussionCards": 0,
+        "droppedMisattributedDiscussionPoints": 0,
+        "workstreamCoverage": [
+          {
+            "topic": "Actions and ownership",
+            "classification": "substantive",
+            "evidenceCount": 0,
+            "discussionCardCount": 0,
+            "assignedTurnIds": [],
+            "status": "missing"
+          },
+          {
+            "topic": "Wednesday morning",
+            "classification": "substantive",
+            "evidenceCount": 0,
+            "discussionCardCount": 0,
+            "assignedTurnIds": [],
+            "status": "missing"
+          },
+          {
+            "topic": "The help centre this week",
+            "classification": "substantive",
+            "evidenceCount": 0,
+            "discussionCardCount": 0,
+            "assignedTurnIds": [],
+            "status": "missing"
+          },
+          {
+            "topic": "Security",
+            "classification": "substantive",
+            "evidenceCount": 0,
+            "discussionCardCount": 0,
+            "assignedTurnIds": [],
+            "status": "missing"
+          },
+          {
+            "topic": "Friday",
+            "classification": "substantive",
+            "evidenceCount": 0,
+            "discussionCardCount": 0,
+            "assignedTurnIds": [],
+            "status": "missing"
+          }
+        ],
+        "transcriptLength": 669,
+        "embeddingClassifier": {
+          "used": true,
+          "provider": "embedding",
+          "rewriterAvailable": false,
+          "rewriterReason": "",
+          "pipeline": "",
+          "modelAvailable": true,
+          "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+          "modelReason": "",
+          "counts": {
+            "discussionPoints": 2,
+            "decisions": 0,
+            "actions": 2
+          },
+          "evidencePackTopicCount": 0,
+          "workstreamStateCount": 0,
+          "missingWorkstreamCount": 0,
+          "missingWorkstreams": [],
+          "workstreamQualityFlags": [],
+          "timingMs": {
+            "baseline": 0,
+            "context": 24.87,
+            "minilm": 227.36,
+            "rewrite": 0,
+            "total": 252.23
+          }
+        },
+        "discussionCompaction": {
+          "pointsBefore": 1,
+          "pointsAfter": 1,
+          "duplicatesRemoved": 0,
+          "truncatedRemoved": 0,
+          "cardCount": 1,
+          "namedDetailsBefore": 0,
+          "namedDetailsAfter": 0,
+          "detailRetentionScore": 100,
+          "detailRetentionWarnings": []
+        }
+      },
+      "generationDiagnostics": {
+        "modelAvailable": true,
+        "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+        "modelReason": "",
+        "timingMs": {
+          "baseline": 0,
+          "context": 24.87,
+          "minilm": 227.36,
+          "rewrite": 0,
+          "total": 252.23
+        }
+      }
+    },
+    {
+      "stage": "actions",
+      "provider": "trooper-stage",
+      "fallbackUsed": false,
+      "inputTopicCount": 5,
+      "outputCount": 1,
+      "validationFlags": [
+        {
+          "type": "possible_omitted_workstream",
+          "severity": "warning",
+          "message": "\"Review actions and ownership\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+          "discussionSuggestion": {
+            "topic": "actions and ownership",
+            "point": "Review actions and ownership",
+            "source": "objective"
+          }
+        },
+        {
+          "type": "possible_omitted_workstream",
+          "severity": "warning",
+          "message": "\"Review wednesday morning\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+          "discussionSuggestion": {
+            "topic": "wednesday morning",
+            "point": "Review wednesday morning",
+            "source": "objective"
+          }
+        },
+        {
+          "type": "possible_omitted_workstream",
+          "severity": "warning",
+          "message": "\"Review the help centre this week\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+          "discussionSuggestion": {
+            "topic": "the help centre this week",
+            "point": "Review the help centre this week",
+            "source": "objective"
+          }
+        },
+        {
+          "type": "possible_omitted_workstream",
+          "severity": "warning",
+          "message": "\"Review security\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+          "discussionSuggestion": {
+            "topic": "security",
+            "point": "Review security",
+            "source": "objective"
+          }
+        },
+        {
+          "type": "possible_omitted_workstream",
+          "severity": "warning",
+          "message": "\"Draft and send the release note\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+          "discussionSuggestion": {
+            "topic": "and send the release note",
+            "point": "Draft and send the release note",
+            "source": "action"
+          }
+        }
+      ],
+      "telemetry": {
+        "stage": "actions",
+        "actionCount": 1,
+        "actionPreservation": {
+          "transcriptPreservedActionCount": 0,
+          "transcriptActionInventoryCount": 0,
+          "evidenceLedgerActionCount": 1,
+          "evidenceClassifierActionCount": 0,
+          "transcriptActionInventoryUsed": false
+        },
+        "transcriptLength": 669,
+        "embeddingClassifier": {
+          "used": true,
+          "provider": "trooper_stage",
+          "rewriterAvailable": false,
+          "rewriterReason": "TROOPER_API_KEY is not configured.",
+          "pipeline": "staged_actions_targeted",
+          "modelAvailable": false,
+          "modelName": "eu_liv_000099",
+          "modelReason": "TROOPER_API_KEY is not configured.",
+          "counts": {},
+          "evidencePackTopicCount": 0,
+          "workstreamStateCount": 0,
+          "missingWorkstreamCount": 0,
+          "missingWorkstreams": [],
+          "workstreamQualityFlags": [],
+          "timingMs": {}
+        },
+        "evidenceClassifier": {
+          "used": true,
+          "executed": true,
+          "modelAvailable": true,
+          "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+          "modelPath": "/root/meeting-minutes-evidence-model/runs/owner-framing-20260810T224329Z/model_bundle/classifier.joblib",
+          "modelReason": "Evidence classifier completed.",
+          "actionCount": 0,
+          "itemCount": 11,
+          "segmentsScored": 11,
+          "counts": {
+            "background_context": 4,
+            "low_value_noise": 5,
+            "discussion_topic": 2
+          },
+          "timingMs": {
+            "total": 9626
+          }
+        }
+      },
+      "generationDiagnostics": {
+        "provider": "trooper_stage",
+        "modelAvailable": false,
+        "modelName": "eu_liv_000099",
+        "modelReason": "TROOPER_API_KEY is not configured.",
+        "pipeline": "staged_actions_targeted",
+        "timingMs": {},
+        "evidenceClassifier": {
+          "used": true,
+          "executed": true,
+          "modelAvailable": true,
+          "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+          "modelPath": "/root/meeting-minutes-evidence-model/runs/owner-framing-20260810T224329Z/model_bundle/classifier.joblib",
+          "modelReason": "Evidence classifier completed.",
+          "actionCount": 0,
+          "itemCount": 11,
+          "segmentsScored": 11,
+          "counts": {
+            "background_context": 4,
+            "low_value_noise": 5,
+            "discussion_topic": 2
+          },
+          "timingMs": {
+            "total": 9626
+          }
+        }
+      }
+    }
+  ]
+}

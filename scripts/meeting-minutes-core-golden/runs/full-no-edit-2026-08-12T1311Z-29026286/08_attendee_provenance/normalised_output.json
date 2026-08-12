@@ -1,0 +1,38 @@
+{
+  "meeting_type": "Project review",
+  "attendees": [
+    "Gemma Ashworth",
+    "Raj Patel",
+    "Louise Corrigan",
+    "Tobias Frank"
+  ],
+  "client_attendees": [
+    "Gemma Ashworth",
+    "Raj Patel",
+    "Louise Corrigan",
+    "Tobias Frank"
+  ],
+  "actions": [
+    {
+      "owner": "Tobias Frank",
+      "action": "Kettleby Print quoted us a ten day lead time on the brochures, so if we send artwork this week we're looking at, what, the twentieth at the earliest",
+      "due_evidence": "Not stated"
+    },
+    {
+      "owner": "Raj Patel",
+      "action": "Send the artwork proofs to Kettleby Print",
+      "due_evidence": "Wednesday"
+    },
+    {
+      "owner": "Gemma Ashworth",
+      "action": "Reply to Marguerite confirming the revised launch date is the 20th",
+      "due_evidence": "today"
+    }
+  ],
+  "decisions": [
+    "Move the launch date from the 15th to the 20th"
+  ],
+  "risks": [
+    "Kettleby Print has slipped timings before; a two-day slip also risks the 20th"
+  ]
+}

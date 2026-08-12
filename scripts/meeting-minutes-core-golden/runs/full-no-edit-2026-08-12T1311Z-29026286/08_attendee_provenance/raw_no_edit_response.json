@@ -1,0 +1,694 @@
+{
+  "ok": true,
+  "staged": true,
+  "mode": "no_human_edits",
+  "source": "direct-live-route-engine",
+  "fileName": "transcript.docx",
+  "transcriptLength": 3238,
+  "screens": {
+    "details": {
+      "meetingTitle": "Voss & Delaney Launch Weekly",
+      "meetingDate": "2026-08-11",
+      "meetingLocation": "Microsoft Teams",
+      "organisation": "",
+      "meetingType": "Project review",
+      "internalAttendees": [],
+      "clientAttendees": [
+        "Gemma Ashworth",
+        "Raj Patel",
+        "Louise Corrigan",
+        "Tobias Frank"
+      ],
+      "allAttendees": [
+        "Gemma Ashworth",
+        "Raj Patel",
+        "Louise Corrigan",
+        "Tobias Frank"
+      ]
+    },
+    "summary": {
+      "objectives": [
+        "Review gemma ashworth"
+      ],
+      "executiveSummary": "The transcript contains substantive project, technical and follow-up evidence for structured review. The discussion stage should confirm current positions, agreed changes, unresolved dependencies and time-critical actions before approval.",
+      "overallTopics": [
+        "Gemma Ashworth"
+      ]
+    },
+    "discussion": [],
+    "actions": [
+      {
+        "owner": "Tobias Frank",
+        "action": "Kettleby Print quoted us a ten day lead time on the brochures, so if we send artwork this week we're looking at, what, the twentieth at the earliest",
+        "deadline": "Not stated",
+        "source": "staged_evidence_ledger"
+      },
+      {
+        "owner": "Raj Patel",
+        "action": "Send the artwork proofs to Kettleby Print",
+        "deadline": "Wednesday",
+        "source": "staged_evidence_ledger"
+      },
+      {
+        "owner": "Gemma Ashworth",
+        "action": "Reply to Marguerite confirming the revised launch date is the 20th",
+        "deadline": "today",
+        "source": "staged_evidence_ledger"
+      }
+    ],
+    "finalReview": {
+      "readyForFinalApproval": false,
+      "message": "Final review would remain locked until every substantive workstream is resolved."
+    }
+  },
+  "visibleOutput": {
+    "meetingTitle": "Voss & Delaney Launch Weekly",
+    "participants": {
+      "trinzo": [],
+      "client": [
+        "Gemma Ashworth",
+        "Raj Patel",
+        "Louise Corrigan",
+        "Tobias Frank"
+      ]
+    },
+    "meetingObjectives": [
+      "Review gemma ashworth"
+    ],
+    "executiveSummary": "The transcript contains substantive project, technical and follow-up evidence for structured review. The discussion stage should confirm current positions, agreed changes, unresolved dependencies and time-critical actions before approval.",
+    "discussionPoints": [],
+    "decisions": [
+      "Move the launch date from the 15th to the 20th"
+    ],
+    "risks": [
+      "Kettleby Print has slipped timings before; a two-day slip also risks the 20th"
+    ],
+    "actions": [
+      {
+        "meetingActionPointOwner": "Tobias Frank",
+        "meetingActionPoint": "Kettleby Print quoted us a ten day lead time on the brochures, so if we send artwork this week we're looking at, what, the twentieth at the earliest",
+        "meetingActionPointDeadline": "Not stated"
+      },
+      {
+        "meetingActionPointOwner": "Raj Patel",
+        "meetingActionPoint": "Send the artwork proofs to Kettleby Print",
+        "meetingActionPointDeadline": "Wednesday"
+      },
+      {
+        "meetingActionPointOwner": "Gemma Ashworth",
+        "meetingActionPoint": "Reply to Marguerite confirming the revised launch date is the 20th",
+        "meetingActionPointDeadline": "today"
+      }
+    ]
+  },
+  "reviewExperience": {
+    "mode": "no_human_edits",
+    "description": "The generated output from each screen was accepted unchanged and passed into the next screen.",
+    "stages": [
+      {
+        "stage": "details",
+        "screenLabel": "Meeting details",
+        "statusMessage": "Meeting details generated. Review or edit this screen before continuing.",
+        "editorialHeading": null,
+        "flags": [],
+        "blocking": false
+      },
+      {
+        "stage": "summary",
+        "screenLabel": "Summary and topics",
+        "statusMessage": "Topics generated. Review or edit them before continuing.",
+        "editorialHeading": null,
+        "flags": [],
+        "blocking": false
+      },
+      {
+        "stage": "discussion",
+        "screenLabel": "Discussion points",
+        "statusMessage": "Discussion points generated from the topic context.",
+        "editorialHeading": "Editorial checks (review before moving on)",
+        "flags": [
+          {
+            "type": "possible_omitted_workstream",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "\"Review gemma ashworth\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "review_manually"
+            ],
+            "discussionSuggestion": {
+              "topic": "gemma ashworth",
+              "point": "Review gemma ashworth",
+              "source": "objective"
+            },
+            "repairCandidates": null
+          },
+          {
+            "type": "unresolved_substantive_workstream",
+            "severity": "warning",
+            "blocking": true,
+            "resolutionKey": "workstream:gemma ashworth",
+            "message": "\"Gemma Ashworth\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "intentionally_omit",
+              "return_to_summary_topics"
+            ],
+            "discussionSuggestion": null,
+            "repairCandidates": null
+          }
+        ],
+        "blocking": true
+      },
+      {
+        "stage": "actions",
+        "screenLabel": "Actions",
+        "statusMessage": "Actions generated. Check owners and dates before continuing.",
+        "editorialHeading": "Editorial checks (review before moving on)",
+        "flags": [
+          {
+            "type": "possible_omitted_workstream",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "\"Review gemma ashworth\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "review_manually"
+            ],
+            "discussionSuggestion": {
+              "topic": "gemma ashworth",
+              "point": "Review gemma ashworth",
+              "source": "objective"
+            },
+            "repairCandidates": null
+          },
+          {
+            "type": "possible_omitted_workstream",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "\"Kettleby Print quoted us a ten day lead time on the brochures, so if we send artwork this week we're looking at, what, t\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "review_manually"
+            ],
+            "discussionSuggestion": {
+              "topic": "Kettleby Print quoted us a ten day lead time on the brochures, so if we send artwork this week we're looking at, what, t",
+              "point": "Kettleby Print quoted us a ten day lead time on the brochures, so if we send artwork this week we're looking at, what, the twentieth at the earliest",
+              "source": "action"
+            },
+            "repairCandidates": null
+          },
+          {
+            "type": "possible_omitted_workstream",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "\"Send the artwork proofs to Kettleby Print\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "review_manually"
+            ],
+            "discussionSuggestion": {
+              "topic": "the artwork proofs to Kettleby Print",
+              "point": "Send the artwork proofs to Kettleby Print",
+              "source": "action"
+            },
+            "repairCandidates": null
+          },
+          {
+            "type": "possible_omitted_workstream",
+            "severity": "warning",
+            "blocking": false,
+            "resolutionKey": null,
+            "message": "\"Reply to Marguerite confirming the revised launch date is the 20th\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+            "uiLabel": "Check",
+            "reviewerChoices": [
+              "add_to_discussion",
+              "review_manually"
+            ],
+            "discussionSuggestion": {
+              "topic": "Reply to Marguerite confirming the revised launch date is the 20th",
+              "point": "Reply to Marguerite confirming the revised launch date is the 20th",
+              "source": "action"
+            },
+            "repairCandidates": null
+          }
+        ],
+        "blocking": false
+      }
+    ],
+    "flags": [
+      {
+        "type": "possible_omitted_workstream",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "\"Review gemma ashworth\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "review_manually"
+        ],
+        "discussionSuggestion": {
+          "topic": "gemma ashworth",
+          "point": "Review gemma ashworth",
+          "source": "objective"
+        },
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "unresolved_substantive_workstream",
+        "severity": "warning",
+        "blocking": true,
+        "resolutionKey": "workstream:gemma ashworth",
+        "message": "\"Gemma Ashworth\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "intentionally_omit",
+          "return_to_summary_topics"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null,
+        "stage": "discussion"
+      },
+      {
+        "type": "possible_omitted_workstream",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "\"Review gemma ashworth\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "review_manually"
+        ],
+        "discussionSuggestion": {
+          "topic": "gemma ashworth",
+          "point": "Review gemma ashworth",
+          "source": "objective"
+        },
+        "repairCandidates": null,
+        "stage": "actions"
+      },
+      {
+        "type": "possible_omitted_workstream",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "\"Kettleby Print quoted us a ten day lead time on the brochures, so if we send artwork this week we're looking at, what, t\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "review_manually"
+        ],
+        "discussionSuggestion": {
+          "topic": "Kettleby Print quoted us a ten day lead time on the brochures, so if we send artwork this week we're looking at, what, t",
+          "point": "Kettleby Print quoted us a ten day lead time on the brochures, so if we send artwork this week we're looking at, what, the twentieth at the earliest",
+          "source": "action"
+        },
+        "repairCandidates": null,
+        "stage": "actions"
+      },
+      {
+        "type": "possible_omitted_workstream",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "\"Send the artwork proofs to Kettleby Print\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "review_manually"
+        ],
+        "discussionSuggestion": {
+          "topic": "the artwork proofs to Kettleby Print",
+          "point": "Send the artwork proofs to Kettleby Print",
+          "source": "action"
+        },
+        "repairCandidates": null,
+        "stage": "actions"
+      },
+      {
+        "type": "possible_omitted_workstream",
+        "severity": "warning",
+        "blocking": false,
+        "resolutionKey": null,
+        "message": "\"Reply to Marguerite confirming the revised launch date is the 20th\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+        "uiLabel": "Check",
+        "reviewerChoices": [
+          "add_to_discussion",
+          "review_manually"
+        ],
+        "discussionSuggestion": {
+          "topic": "Reply to Marguerite confirming the revised launch date is the 20th",
+          "point": "Reply to Marguerite confirming the revised launch date is the 20th",
+          "source": "action"
+        },
+        "repairCandidates": null,
+        "stage": "actions"
+      }
+    ],
+    "warningCount": 6,
+    "blockingCount": 1,
+    "readyForFinalApproval": false,
+    "finalReviewMessage": "Final review would remain locked until every substantive workstream is resolved.",
+    "requiredReviewerActions": [
+      {
+        "stage": "discussion",
+        "resolutionKey": "workstream:gemma ashworth",
+        "message": "\"Gemma Ashworth\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+        "choices": [
+          "add_to_discussion",
+          "intentionally_omit",
+          "return_to_summary_topics"
+        ],
+        "discussionSuggestion": null,
+        "repairCandidates": null
+      }
+    ]
+  },
+  "trace": [
+    {
+      "stage": "details",
+      "provider": "deterministic_stage_1_prep",
+      "outputCount": 1,
+      "telemetry": {
+        "stage": "details",
+        "transcriptLength": 3238,
+        "screenCount": 1,
+        "attendeeExtraction": {
+          "source": "microsoft_teams_speaker_turns",
+          "speakerCount": 4,
+          "turnCount": 34,
+          "eventSpeakerCount": 1,
+          "knownInternalAttendeeCount": 0,
+          "knownClientAttendeeCount": 0,
+          "headerSource": "microsoft_teams_header",
+          "dateSource": "microsoft_teams_header"
+        }
+      },
+      "preparedTranscriptTelemetry": {
+        "rawLength": 3238,
+        "preparedLength": 2788,
+        "removedLineCount": 79,
+        "removedReasons": {
+          "teamsHeader": 3,
+          "transcriptionEvent": 2,
+          "blankLine": 74,
+          "timestampOnly": 0
+        },
+        "source": "deterministic_stage_1_prep"
+      }
+    },
+    {
+      "stage": "summary",
+      "provider": "fast-staged-analysis",
+      "fallbackUsed": true,
+      "inputTopicCount": 1,
+      "outputCount": 1,
+      "validationFlags": [],
+      "telemetry": {
+        "stage": "summary",
+        "topicCount": 1,
+        "transcriptLength": 2788,
+        "embeddingClassifier": {
+          "used": true,
+          "provider": "embedding",
+          "rewriterAvailable": false,
+          "rewriterReason": "",
+          "pipeline": "",
+          "modelAvailable": true,
+          "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+          "modelReason": "",
+          "counts": {
+            "discussionPoints": 0,
+            "decisions": 0,
+            "actions": 1
+          },
+          "evidencePackTopicCount": 0,
+          "workstreamStateCount": 0,
+          "missingWorkstreamCount": 0,
+          "missingWorkstreams": [],
+          "workstreamQualityFlags": [],
+          "timingMs": {
+            "baseline": 0,
+            "context": 73.26,
+            "minilm": 5240.23,
+            "rewrite": 0,
+            "total": 5313.49
+          }
+        },
+        "objectiveReducer": {
+          "objectiveSource": "topic_objective_reducer",
+          "topicCount": 1,
+          "objectiveSpecificityScore": 100
+        }
+      },
+      "generationDiagnostics": {
+        "modelAvailable": true,
+        "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+        "modelReason": "",
+        "timingMs": {
+          "baseline": 0,
+          "context": 73.26,
+          "minilm": 5240.23,
+          "rewrite": 0,
+          "total": 5313.49
+        }
+      }
+    },
+    {
+      "stage": "discussion",
+      "provider": "fast-staged-analysis",
+      "fallbackUsed": true,
+      "inputTopicCount": 1,
+      "outputCount": 0,
+      "outputPointCount": 0,
+      "validationFlags": [
+        {
+          "type": "possible_omitted_workstream",
+          "severity": "warning",
+          "message": "\"Review gemma ashworth\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+          "discussionSuggestion": {
+            "topic": "gemma ashworth",
+            "point": "Review gemma ashworth",
+            "source": "objective"
+          }
+        },
+        {
+          "type": "unresolved_substantive_workstream",
+          "severity": "warning",
+          "blocking": true,
+          "resolutionKey": "workstream:gemma ashworth",
+          "message": "\"Gemma Ashworth\" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.",
+          "discussionSuggestion": null
+        }
+      ],
+      "telemetry": {
+        "stage": "discussion",
+        "topicCount": 1,
+        "discussionCards": 0,
+        "droppedMisattributedDiscussionPoints": 0,
+        "workstreamCoverage": [
+          {
+            "topic": "Gemma Ashworth",
+            "classification": "substantive",
+            "evidenceCount": 0,
+            "discussionCardCount": 0,
+            "assignedTurnIds": [],
+            "status": "missing"
+          }
+        ],
+        "transcriptLength": 2788,
+        "embeddingClassifier": {
+          "used": true,
+          "provider": "embedding",
+          "rewriterAvailable": false,
+          "rewriterReason": "",
+          "pipeline": "",
+          "modelAvailable": true,
+          "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+          "modelReason": "",
+          "counts": {
+            "discussionPoints": 0,
+            "decisions": 0,
+            "actions": 1
+          },
+          "evidencePackTopicCount": 0,
+          "workstreamStateCount": 0,
+          "missingWorkstreamCount": 0,
+          "missingWorkstreams": [],
+          "workstreamQualityFlags": [],
+          "timingMs": {
+            "baseline": 0,
+            "context": 68.13,
+            "minilm": 435.72,
+            "rewrite": 0,
+            "total": 503.85
+          }
+        },
+        "discussionCompaction": {
+          "pointsBefore": 0,
+          "pointsAfter": 0,
+          "duplicatesRemoved": 0,
+          "truncatedRemoved": 0,
+          "cardCount": 0,
+          "namedDetailsBefore": 0,
+          "namedDetailsAfter": 0,
+          "detailRetentionScore": 100,
+          "detailRetentionWarnings": []
+        }
+      },
+      "generationDiagnostics": {
+        "modelAvailable": true,
+        "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+        "modelReason": "",
+        "timingMs": {
+          "baseline": 0,
+          "context": 68.13,
+          "minilm": 435.72,
+          "rewrite": 0,
+          "total": 503.85
+        }
+      }
+    },
+    {
+      "stage": "actions",
+      "provider": "trooper-stage",
+      "fallbackUsed": false,
+      "inputTopicCount": 1,
+      "outputCount": 3,
+      "validationFlags": [
+        {
+          "type": "possible_omitted_workstream",
+          "severity": "warning",
+          "message": "\"Review gemma ashworth\" appears in the objective but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+          "discussionSuggestion": {
+            "topic": "gemma ashworth",
+            "point": "Review gemma ashworth",
+            "source": "objective"
+          }
+        },
+        {
+          "type": "possible_omitted_workstream",
+          "severity": "warning",
+          "message": "\"Kettleby Print quoted us a ten day lead time on the brochures, so if we send artwork this week we're looking at, what, t\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+          "discussionSuggestion": {
+            "topic": "Kettleby Print quoted us a ten day lead time on the brochures, so if we send artwork this week we're looking at, what, t",
+            "point": "Kettleby Print quoted us a ten day lead time on the brochures, so if we send artwork this week we're looking at, what, the twentieth at the earliest",
+            "source": "action"
+          }
+        },
+        {
+          "type": "possible_omitted_workstream",
+          "severity": "warning",
+          "message": "\"Send the artwork proofs to Kettleby Print\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+          "discussionSuggestion": {
+            "topic": "the artwork proofs to Kettleby Print",
+            "point": "Send the artwork proofs to Kettleby Print",
+            "source": "action"
+          }
+        },
+        {
+          "type": "possible_omitted_workstream",
+          "severity": "warning",
+          "message": "\"Reply to Marguerite confirming the revised launch date is the 20th\" appears in the action but has no matching discussion section. Confirm it is covered or intentionally omitted.",
+          "discussionSuggestion": {
+            "topic": "Reply to Marguerite confirming the revised launch date is the 20th",
+            "point": "Reply to Marguerite confirming the revised launch date is the 20th",
+            "source": "action"
+          }
+        }
+      ],
+      "telemetry": {
+        "stage": "actions",
+        "actionCount": 3,
+        "actionPreservation": {
+          "transcriptPreservedActionCount": 0,
+          "transcriptActionInventoryCount": 0,
+          "evidenceLedgerActionCount": 3,
+          "evidenceClassifierActionCount": 0,
+          "transcriptActionInventoryUsed": false
+        },
+        "transcriptLength": 2788,
+        "embeddingClassifier": {
+          "used": true,
+          "provider": "trooper_stage",
+          "rewriterAvailable": false,
+          "rewriterReason": "TROOPER_API_KEY is not configured.",
+          "pipeline": "staged_actions_targeted",
+          "modelAvailable": false,
+          "modelName": "eu_liv_000099",
+          "modelReason": "TROOPER_API_KEY is not configured.",
+          "counts": {},
+          "evidencePackTopicCount": 0,
+          "workstreamStateCount": 0,
+          "missingWorkstreamCount": 0,
+          "missingWorkstreams": [],
+          "workstreamQualityFlags": [],
+          "timingMs": {}
+        },
+        "evidenceClassifier": {
+          "used": true,
+          "executed": true,
+          "modelAvailable": true,
+          "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+          "modelPath": "/root/meeting-minutes-evidence-model/runs/owner-framing-20260810T224329Z/model_bundle/classifier.joblib",
+          "modelReason": "Evidence classifier completed.",
+          "actionCount": 0,
+          "itemCount": 32,
+          "segmentsScored": 32,
+          "counts": {
+            "low_value_noise": 23,
+            "background_context": 4,
+            "discussion_topic": 3,
+            "action_commitment": 1,
+            "document_control_task": 1
+          },
+          "timingMs": {
+            "total": 9237
+          }
+        }
+      },
+      "generationDiagnostics": {
+        "provider": "trooper_stage",
+        "modelAvailable": false,
+        "modelName": "eu_liv_000099",
+        "modelReason": "TROOPER_API_KEY is not configured.",
+        "pipeline": "staged_actions_targeted",
+        "timingMs": {},
+        "evidenceClassifier": {
+          "used": true,
+          "executed": true,
+          "modelAvailable": true,
+          "modelName": "sentence-transformers/all-MiniLM-L6-v2",
+          "modelPath": "/root/meeting-minutes-evidence-model/runs/owner-framing-20260810T224329Z/model_bundle/classifier.joblib",
+          "modelReason": "Evidence classifier completed.",
+          "actionCount": 0,
+          "itemCount": 32,
+          "segmentsScored": 32,
+          "counts": {
+            "low_value_noise": 23,
+            "background_context": 4,
+            "discussion_topic": 3,
+            "action_commitment": 1,
+            "document_control_task": 1
+          },
+          "timingMs": {
+            "total": 9237
+          }
+        }
+      }
+    }
+  ]
+}

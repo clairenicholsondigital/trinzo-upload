@@ -1,0 +1,24 @@
+{
+  "meeting_type": "Project review",
+  "attendees": [
+    "Helen Ward",
+    "Omar Khan",
+    "Lucy Price"
+  ],
+  "client_attendees": [
+    "Helen Ward",
+    "Omar Khan",
+    "Lucy Price"
+  ],
+  "actions": [
+    {
+      "owner": "Lucy Price",
+      "action": "Draft and send the release note",
+      "due_evidence": "Wednesday morning"
+    }
+  ],
+  "decisions": [
+    "Keep the release scheduled for Friday"
+  ],
+  "risks": []
+}

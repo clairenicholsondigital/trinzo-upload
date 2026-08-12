@@ -1,0 +1,26 @@
+{
+  "meeting_type": "Workshop",
+  "attendees": [
+    "Imogen Hart",
+    "Ravi Shah",
+    "Peter Doyle"
+  ],
+  "client_attendees": [
+    "Imogen Hart",
+    "Ravi Shah",
+    "Peter Doyle"
+  ],
+  "actions": [
+    {
+      "owner": "Ravi Shah",
+      "action": "Request the renewal quote",
+      "due_evidence": "Friday"
+    }
+  ],
+  "decisions": [
+    "Stay with the current analytics platform for now"
+  ],
+  "risks": [
+    "A future licence-price increase could prompt a platform review"
+  ]
+}

@@ -1,0 +1,76 @@
+{
+  "meeting_type": "Project review",
+  "attendees": [
+    "Priya Sethi",
+    "Tom Whitfield",
+    "Nadia Okonkwo",
+    "Callum Reid"
+  ],
+  "client_attendees": [
+    "Priya Sethi",
+    "Tom Whitfield",
+    "Nadia Okonkwo",
+    "Callum Reid"
+  ],
+  "actions": [
+    {
+      "owner": "Priya Sethi",
+      "action": "Thirty seconds on you, don't do the whole CV",
+      "due_evidence": "Not stated"
+    },
+    {
+      "owner": "Priya Sethi",
+      "action": "Cover it, I'll say something like, right, while Tom gets that back up, and just talk over the gap",
+      "due_evidence": "Not stated"
+    },
+    {
+      "owner": "Nadia Okonkwo",
+      "action": "Put five mins in the chat to you, just to you",
+      "due_evidence": "Not stated"
+    },
+    {
+      "owner": "Nadia Okonkwo",
+      "action": "Put that as an actual slide, the how to reach us, don't just say it, because half of them will have wandered off by then",
+      "due_evidence": "Not stated"
+    },
+    {
+      "owner": "Callum Reid",
+      "action": "I watch the little red dot the whole time",
+      "due_evidence": "Not stated"
+    },
+    {
+      "owner": "Callum Reid",
+      "action": "Putting the animation back on the three-things slide",
+      "due_evidence": "Not stated"
+    },
+    {
+      "owner": "Callum Reid",
+      "action": "Building the closing slide with the QR code and the link",
+      "due_evidence": "Not stated"
+    },
+    {
+      "owner": "Nadia Okonkwo",
+      "action": "Doing the planted questions and grouping the chat on the day",
+      "due_evidence": "Not stated"
+    },
+    {
+      "owner": "Tom Whitfield",
+      "action": "Thirty seconds on yourself, thirty seconds per answer, and dropping the not-see-you joke",
+      "due_evidence": "Not stated"
+    },
+    {
+      "owner": "Priya Sethi",
+      "action": "The open, the housekeeping, tap-the-speech-bubble line, and covering any dead air on the handovers",
+      "due_evidence": "Not stated"
+    }
+  ],
+  "decisions": [
+    "Finish content by 35 minutes and reserve 20 minutes for questions",
+    "Hold a short warm-up at 08:30 before the 11:00 live session"
+  ],
+  "risks": [
+    "Screen-share transfer can create dead air",
+    "Recording could miss the opening or stop",
+    "So I jump in straight away, I go, looks like we've lost Tom for a second, he'll be right back, and I just fill, I talk about, I don't know, I'll ad lib"
+  ]
+}

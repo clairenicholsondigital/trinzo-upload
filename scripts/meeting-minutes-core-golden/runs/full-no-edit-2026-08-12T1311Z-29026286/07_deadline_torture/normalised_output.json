@@ -1,0 +1,41 @@
+{
+  "meeting_type": "Project review",
+  "attendees": [
+    "Grace Lin",
+    "Idris Moore",
+    "Kate Evans"
+  ],
+  "client_attendees": [
+    "Grace Lin",
+    "Idris Moore",
+    "Kate Evans"
+  ],
+  "actions": [
+    {
+      "owner": "Idris Moore",
+      "action": "Send the draft",
+      "due_evidence": "end of day tomorrow"
+    },
+    {
+      "owner": "Kate Evans",
+      "action": "Review the draft",
+      "due_evidence": "within two working days of receiving it"
+    },
+    {
+      "owner": "Grace Lin",
+      "action": "Submit the approved draft",
+      "due_evidence": "the next working day after Kate's approval"
+    },
+    {
+      "owner": "Kate Evans",
+      "action": "Review it within two working days of receiving it",
+      "due_evidence": "Not stated"
+    }
+  ],
+  "decisions": [
+    "It will be aligned with Kate's approval. The previous draft went in last month and is closed."
+  ],
+  "risks": [
+    "Submission timing depends on the review and approval sequence"
+  ]
+}
