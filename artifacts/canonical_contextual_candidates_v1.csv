@@ -1,0 +1,1921 @@
+row_id,text,current_text,context_text,speech_act,domain,group_id,recommended_split,source,review_status,review_confidence,review_notes,canonical_group_id,gold_include,previous_text,next_text,lifecycle_state,context_dependency,canonical_worthiness,temporal_role,gold_section,evidence_type,action_state,signals
+ctx_001_01,I'll reconcile the warehouse count.,I'll reconcile the warehouse count.,"[PREVIOUS]
+We need someone to handle this.
+[CURRENT]
+I'll reconcile the warehouse count.
+[NEXT]
+Can it be done by Friday?",contextual_curriculum,inventory,context_001_inventory,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_001,True,We need someone to handle this.,Can it be done by Friday?,active,needs_previous,canonical_item,none,action,action_commitment,confirmed_action,
+ctx_001_02,Before Friday.,Before Friday.,"[PREVIOUS]
+I'll reconcile the warehouse count.
+[CURRENT]
+Before Friday.
+[NEXT]
+Yes, that works.",contextual_curriculum,inventory,context_001_inventory,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_001,True,I'll reconcile the warehouse count.,"Yes, that works.",none,needs_previous,context_only,deadline_previous,action,action_commitment,not_action,deadline_or_sequence
+ctx_001_03,"Yes, I'll take that.","Yes, I'll take that.","[PREVIOUS]
+Could you reconcile the warehouse count?
+[CURRENT]
+Yes, I'll take that.
+[NEXT]
+Please finish by Friday.",contextual_curriculum,inventory,context_001_inventory,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_001,True,Could you reconcile the warehouse count?,Please finish by Friday.,active,accepts_previous,canonical_item,none,action,action_commitment,confirmed_action,
+ctx_001_04,Marta will reconcile the warehouse count by Friday.,Marta will reconcile the warehouse count by Friday.,"[PREVIOUS]
+The work is on the list.
+[CURRENT]
+Marta will reconcile the warehouse count by Friday.
+[NEXT]
+Let's move on.",contextual_curriculum,inventory,context_001_inventory,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_001,True,The work is on the list.,Let's move on.,active,standalone,canonical_item,deadline_current,action,action_commitment,confirmed_action,deadline_or_sequence
+ctx_001_05,I completed the work to reconcile the warehouse count yesterday.,I completed the work to reconcile the warehouse count yesterday.,"[PREVIOUS]
+Here is the status.
+[CURRENT]
+I completed the work to reconcile the warehouse count yesterday.
+[NEXT]
+Nothing remains open.",contextual_curriculum,inventory,context_001_inventory,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,Here is the status.,Nothing remains open.,completed,standalone,context_only,historical,,background_context,completed_history,
+ctx_001_06,I might reconcile the warehouse count if capacity allows.,I might reconcile the warehouse count if capacity allows.,"[PREVIOUS]
+We may need help.
+[CURRENT]
+I might reconcile the warehouse count if capacity allows.
+[NEXT]
+No action was agreed.",contextual_curriculum,inventory,context_001_inventory,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We may need help.,No action was agreed.,tentative,needs_next,context_only,other,,background_context,not_action,
+ctx_001_07,"Actually, another owner will reconcile the warehouse count instead.","Actually, another owner will reconcile the warehouse count instead.","[PREVIOUS]
+Marta will reconcile the warehouse count.
+[CURRENT]
+Actually, another owner will reconcile the warehouse count instead.
+[NEXT]
+Use the new owner.",contextual_curriculum,inventory,context_001_inventory,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_001,True,Marta will reconcile the warehouse count.,Use the new owner.,superseded,modifies_previous,canonical_item,none,action,action_commitment,not_action,
+ctx_001_08,Do not proceed with that action.,Do not proceed with that action.,"[PREVIOUS]
+Please reconcile the warehouse count.
+[CURRENT]
+Do not proceed with that action.
+[NEXT]
+It is no longer required.",contextual_curriculum,inventory,context_001_inventory,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,Please reconcile the warehouse count.,It is no longer required.,inactive,modifies_previous,context_only,none,,background_context,not_action,
+ctx_001_09,We agreed to use barcode scanning for the next stocktake.,We agreed to use barcode scanning for the next stocktake.,"[PREVIOUS]
+We should choose an approach.
+[CURRENT]
+We agreed to use barcode scanning for the next stocktake.
+[NEXT]
+That is the final position.",contextual_curriculum,inventory,context_001_inventory,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_001,True,We should choose an approach.,That is the final position.,none,standalone,canonical_item,none,decision,decision_agreement,not_action,decision_language
+ctx_001_10,Agreed.,Agreed.,"[PREVIOUS]
+The proposal is to use barcode scanning for the next stocktake.
+[CURRENT]
+Agreed.
+[NEXT]
+Let's use that approach.",contextual_curriculum,inventory,context_001_inventory,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_001,True,The proposal is to use barcode scanning for the next stocktake.,Let's use that approach.,none,accepts_previous,supporting_detail,none,decision,decision_agreement,not_action,decision_language
+ctx_001_11,"Yes, that is the decision.","Yes, that is the decision.","[PREVIOUS]
+We agreed to use barcode scanning for the next stocktake.
+[CURRENT]
+Yes, that is the decision.
+[NEXT]
+Next topic.",contextual_curriculum,inventory,context_001_inventory,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_001,True,We agreed to use barcode scanning for the next stocktake.,Next topic.,none,needs_previous,duplicate_expression,none,decision,decision_agreement,not_action,decision_language
+ctx_001_12,The team identified that late supplier files could delay reconciliation.,The team identified that late supplier files could delay reconciliation.,"[PREVIOUS]
+We should review delivery exposure.
+[CURRENT]
+The team identified that late supplier files could delay reconciliation.
+[NEXT]
+The exposure remains open.",contextual_curriculum,inventory,context_001_inventory,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,RISK_001,True,We should review delivery exposure.,The exposure remains open.,active,standalone,canonical_item,none,risk,risk_dependency,not_action,risk_language
+ctx_001_13,"Yes, we should monitor that.","Yes, we should monitor that.","[PREVIOUS]
+The risk is that late supplier files could delay reconciliation.
+[CURRENT]
+Yes, we should monitor that.
+[NEXT]
+Add it to the register.",contextual_curriculum,inventory,context_001_inventory,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,RISK_001,True,The risk is that late supplier files could delay reconciliation.,Add it to the register.,active,accepts_previous,supporting_detail,none,risk,risk_dependency,not_action,risk_language
+ctx_001_14,That exposure was closed last week.,That exposure was closed last week.,"[PREVIOUS]
+We previously worried that late supplier files could delay reconciliation.
+[CURRENT]
+That exposure was closed last week.
+[NEXT]
+No monitoring is required.",contextual_curriculum,inventory,context_001_inventory,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We previously worried that late supplier files could delay reconciliation.,No monitoring is required.,completed,modifies_previous,context_only,historical,,background_context,completed_history,
+ctx_001_15,Can everyone see my screen?,Can everyone see my screen?,"[PREVIOUS]
+The meeting is starting.
+[CURRENT]
+Can everyone see my screen?
+[NEXT]
+We will continue in a moment.",contextual_curriculum,inventory,context_001_inventory,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,The meeting is starting.,We will continue in a moment.,none,standalone,none,other,,background_context,not_action,
+ctx_001_16,The inventory work remains in progress.,The inventory work remains in progress.,"[PREVIOUS]
+We reviewed the background.
+[CURRENT]
+The inventory work remains in progress.
+[NEXT]
+No commitment was made.",contextual_curriculum,inventory,context_001_inventory,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We reviewed the background.,No commitment was made.,none,standalone,supporting_detail,none,,background_context,not_action,
+ctx_002_01,I'll patch the mobile login redirect.,I'll patch the mobile login redirect.,"[PREVIOUS]
+We need someone to handle this.
+[CURRENT]
+I'll patch the mobile login redirect.
+[NEXT]
+Can it be done by today?",contextual_curriculum,mobile_release,context_002_mobile_release,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_002,True,We need someone to handle this.,Can it be done by today?,active,needs_previous,canonical_item,none,action,action_commitment,confirmed_action,
+ctx_002_02,Before today.,Before today.,"[PREVIOUS]
+I'll patch the mobile login redirect.
+[CURRENT]
+Before today.
+[NEXT]
+Yes, that works.",contextual_curriculum,mobile_release,context_002_mobile_release,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_002,True,I'll patch the mobile login redirect.,"Yes, that works.",none,needs_previous,context_only,deadline_previous,action,action_commitment,not_action,deadline_or_sequence
+ctx_002_03,"Yes, I'll take that.","Yes, I'll take that.","[PREVIOUS]
+Could you patch the mobile login redirect?
+[CURRENT]
+Yes, I'll take that.
+[NEXT]
+Please finish by today.",contextual_curriculum,mobile_release,context_002_mobile_release,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_002,True,Could you patch the mobile login redirect?,Please finish by today.,active,accepts_previous,canonical_item,none,action,action_commitment,confirmed_action,
+ctx_002_04,Elliot will patch the mobile login redirect by today.,Elliot will patch the mobile login redirect by today.,"[PREVIOUS]
+The work is on the list.
+[CURRENT]
+Elliot will patch the mobile login redirect by today.
+[NEXT]
+Let's move on.",contextual_curriculum,mobile_release,context_002_mobile_release,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_002,True,The work is on the list.,Let's move on.,active,standalone,canonical_item,deadline_current,action,action_commitment,confirmed_action,deadline_or_sequence
+ctx_002_05,I completed the work to patch the mobile login redirect yesterday.,I completed the work to patch the mobile login redirect yesterday.,"[PREVIOUS]
+Here is the status.
+[CURRENT]
+I completed the work to patch the mobile login redirect yesterday.
+[NEXT]
+Nothing remains open.",contextual_curriculum,mobile_release,context_002_mobile_release,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,Here is the status.,Nothing remains open.,completed,standalone,context_only,historical,,background_context,completed_history,
+ctx_002_06,I might patch the mobile login redirect if capacity allows.,I might patch the mobile login redirect if capacity allows.,"[PREVIOUS]
+We may need help.
+[CURRENT]
+I might patch the mobile login redirect if capacity allows.
+[NEXT]
+No action was agreed.",contextual_curriculum,mobile_release,context_002_mobile_release,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We may need help.,No action was agreed.,tentative,needs_next,context_only,other,,background_context,not_action,
+ctx_002_07,"Actually, another owner will patch the mobile login redirect instead.","Actually, another owner will patch the mobile login redirect instead.","[PREVIOUS]
+Elliot will patch the mobile login redirect.
+[CURRENT]
+Actually, another owner will patch the mobile login redirect instead.
+[NEXT]
+Use the new owner.",contextual_curriculum,mobile_release,context_002_mobile_release,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_002,True,Elliot will patch the mobile login redirect.,Use the new owner.,superseded,modifies_previous,canonical_item,none,action,action_commitment,not_action,
+ctx_002_08,Do not proceed with that action.,Do not proceed with that action.,"[PREVIOUS]
+Please patch the mobile login redirect.
+[CURRENT]
+Do not proceed with that action.
+[NEXT]
+It is no longer required.",contextual_curriculum,mobile_release,context_002_mobile_release,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,Please patch the mobile login redirect.,It is no longer required.,inactive,modifies_previous,context_only,none,,background_context,not_action,
+ctx_002_09,We agreed to hold the release until smoke testing passes.,We agreed to hold the release until smoke testing passes.,"[PREVIOUS]
+We should choose an approach.
+[CURRENT]
+We agreed to hold the release until smoke testing passes.
+[NEXT]
+That is the final position.",contextual_curriculum,mobile_release,context_002_mobile_release,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_002,True,We should choose an approach.,That is the final position.,none,standalone,canonical_item,none,decision,decision_agreement,not_action,decision_language
+ctx_002_10,Agreed.,Agreed.,"[PREVIOUS]
+The proposal is to hold the release until smoke testing passes.
+[CURRENT]
+Agreed.
+[NEXT]
+Let's use that approach.",contextual_curriculum,mobile_release,context_002_mobile_release,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_002,True,The proposal is to hold the release until smoke testing passes.,Let's use that approach.,none,accepts_previous,supporting_detail,none,decision,decision_agreement,not_action,decision_language
+ctx_002_11,"Yes, that is the decision.","Yes, that is the decision.","[PREVIOUS]
+We agreed to hold the release until smoke testing passes.
+[CURRENT]
+Yes, that is the decision.
+[NEXT]
+Next topic.",contextual_curriculum,mobile_release,context_002_mobile_release,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_002,True,We agreed to hold the release until smoke testing passes.,Next topic.,none,needs_previous,duplicate_expression,none,decision,decision_agreement,not_action,decision_language
+ctx_002_12,The team identified that the redirect defect could block customer access.,The team identified that the redirect defect could block customer access.,"[PREVIOUS]
+We should review delivery exposure.
+[CURRENT]
+The team identified that the redirect defect could block customer access.
+[NEXT]
+The exposure remains open.",contextual_curriculum,mobile_release,context_002_mobile_release,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,RISK_002,True,We should review delivery exposure.,The exposure remains open.,active,standalone,canonical_item,none,risk,risk_dependency,not_action,risk_language
+ctx_002_13,"Yes, we should monitor that.","Yes, we should monitor that.","[PREVIOUS]
+The risk is that the redirect defect could block customer access.
+[CURRENT]
+Yes, we should monitor that.
+[NEXT]
+Add it to the register.",contextual_curriculum,mobile_release,context_002_mobile_release,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,RISK_002,True,The risk is that the redirect defect could block customer access.,Add it to the register.,active,accepts_previous,supporting_detail,none,risk,risk_dependency,not_action,risk_language
+ctx_002_14,That exposure was closed last week.,That exposure was closed last week.,"[PREVIOUS]
+We previously worried that the redirect defect could block customer access.
+[CURRENT]
+That exposure was closed last week.
+[NEXT]
+No monitoring is required.",contextual_curriculum,mobile_release,context_002_mobile_release,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We previously worried that the redirect defect could block customer access.,No monitoring is required.,completed,modifies_previous,context_only,historical,,background_context,completed_history,
+ctx_002_15,Can everyone see my screen?,Can everyone see my screen?,"[PREVIOUS]
+The meeting is starting.
+[CURRENT]
+Can everyone see my screen?
+[NEXT]
+We will continue in a moment.",contextual_curriculum,mobile_release,context_002_mobile_release,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,The meeting is starting.,We will continue in a moment.,none,standalone,none,other,,background_context,not_action,
+ctx_002_16,The mobile release work remains in progress.,The mobile release work remains in progress.,"[PREVIOUS]
+We reviewed the background.
+[CURRENT]
+The mobile release work remains in progress.
+[NEXT]
+No commitment was made.",contextual_curriculum,mobile_release,context_002_mobile_release,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We reviewed the background.,No commitment was made.,none,standalone,supporting_detail,none,,background_context,not_action,
+ctx_003_01,I'll invite the shortlisted engineer to a technical interview.,I'll invite the shortlisted engineer to a technical interview.,"[PREVIOUS]
+We need someone to handle this.
+[CURRENT]
+I'll invite the shortlisted engineer to a technical interview.
+[NEXT]
+Can it be done by tomorrow?",contextual_curriculum,recruitment,context_003_recruitment,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_003,True,We need someone to handle this.,Can it be done by tomorrow?,active,needs_previous,canonical_item,none,action,action_commitment,confirmed_action,
+ctx_003_02,Before tomorrow.,Before tomorrow.,"[PREVIOUS]
+I'll invite the shortlisted engineer to a technical interview.
+[CURRENT]
+Before tomorrow.
+[NEXT]
+Yes, that works.",contextual_curriculum,recruitment,context_003_recruitment,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_003,True,I'll invite the shortlisted engineer to a technical interview.,"Yes, that works.",none,needs_previous,context_only,deadline_previous,action,action_commitment,not_action,deadline_or_sequence
+ctx_003_03,"Yes, I'll take that.","Yes, I'll take that.","[PREVIOUS]
+Could you invite the shortlisted engineer to a technical interview?
+[CURRENT]
+Yes, I'll take that.
+[NEXT]
+Please finish by tomorrow.",contextual_curriculum,recruitment,context_003_recruitment,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_003,True,Could you invite the shortlisted engineer to a technical interview?,Please finish by tomorrow.,active,accepts_previous,canonical_item,none,action,action_commitment,confirmed_action,
+ctx_003_04,Sana will invite the shortlisted engineer to a technical interview by tomorrow.,Sana will invite the shortlisted engineer to a technical interview by tomorrow.,"[PREVIOUS]
+The work is on the list.
+[CURRENT]
+Sana will invite the shortlisted engineer to a technical interview by tomorrow.
+[NEXT]
+Let's move on.",contextual_curriculum,recruitment,context_003_recruitment,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_003,True,The work is on the list.,Let's move on.,active,standalone,canonical_item,deadline_current,action,action_commitment,confirmed_action,deadline_or_sequence
+ctx_003_05,I completed the work to invite the shortlisted engineer to a technical interview yesterday.,I completed the work to invite the shortlisted engineer to a technical interview yesterday.,"[PREVIOUS]
+Here is the status.
+[CURRENT]
+I completed the work to invite the shortlisted engineer to a technical interview yesterday.
+[NEXT]
+Nothing remains open.",contextual_curriculum,recruitment,context_003_recruitment,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,Here is the status.,Nothing remains open.,completed,standalone,context_only,historical,,background_context,completed_history,
+ctx_003_06,I might invite the shortlisted engineer to a technical interview if capacity allows.,I might invite the shortlisted engineer to a technical interview if capacity allows.,"[PREVIOUS]
+We may need help.
+[CURRENT]
+I might invite the shortlisted engineer to a technical interview if capacity allows.
+[NEXT]
+No action was agreed.",contextual_curriculum,recruitment,context_003_recruitment,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We may need help.,No action was agreed.,tentative,needs_next,context_only,other,,background_context,not_action,
+ctx_003_07,"Actually, another owner will invite the shortlisted engineer to a technical interview instead.","Actually, another owner will invite the shortlisted engineer to a technical interview instead.","[PREVIOUS]
+Sana will invite the shortlisted engineer to a technical interview.
+[CURRENT]
+Actually, another owner will invite the shortlisted engineer to a technical interview instead.
+[NEXT]
+Use the new owner.",contextual_curriculum,recruitment,context_003_recruitment,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_003,True,Sana will invite the shortlisted engineer to a technical interview.,Use the new owner.,superseded,modifies_previous,canonical_item,none,action,action_commitment,not_action,
+ctx_003_08,Do not proceed with that action.,Do not proceed with that action.,"[PREVIOUS]
+Please invite the shortlisted engineer to a technical interview.
+[CURRENT]
+Do not proceed with that action.
+[NEXT]
+It is no longer required.",contextual_curriculum,recruitment,context_003_recruitment,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,Please invite the shortlisted engineer to a technical interview.,It is no longer required.,inactive,modifies_previous,context_only,none,,background_context,not_action,
+ctx_003_09,We agreed to progress one candidate to the final round.,We agreed to progress one candidate to the final round.,"[PREVIOUS]
+We should choose an approach.
+[CURRENT]
+We agreed to progress one candidate to the final round.
+[NEXT]
+That is the final position.",contextual_curriculum,recruitment,context_003_recruitment,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_003,True,We should choose an approach.,That is the final position.,none,standalone,canonical_item,none,decision,decision_agreement,not_action,decision_language
+ctx_003_10,Agreed.,Agreed.,"[PREVIOUS]
+The proposal is to progress one candidate to the final round.
+[CURRENT]
+Agreed.
+[NEXT]
+Let's use that approach.",contextual_curriculum,recruitment,context_003_recruitment,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_003,True,The proposal is to progress one candidate to the final round.,Let's use that approach.,none,accepts_previous,supporting_detail,none,decision,decision_agreement,not_action,decision_language
+ctx_003_11,"Yes, that is the decision.","Yes, that is the decision.","[PREVIOUS]
+We agreed to progress one candidate to the final round.
+[CURRENT]
+Yes, that is the decision.
+[NEXT]
+Next topic.",contextual_curriculum,recruitment,context_003_recruitment,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_003,True,We agreed to progress one candidate to the final round.,Next topic.,none,needs_previous,duplicate_expression,none,decision,decision_agreement,not_action,decision_language
+ctx_003_12,The team identified that interviewer availability may delay the final round.,The team identified that interviewer availability may delay the final round.,"[PREVIOUS]
+We should review delivery exposure.
+[CURRENT]
+The team identified that interviewer availability may delay the final round.
+[NEXT]
+The exposure remains open.",contextual_curriculum,recruitment,context_003_recruitment,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,RISK_003,True,We should review delivery exposure.,The exposure remains open.,active,standalone,canonical_item,none,risk,risk_dependency,not_action,risk_language
+ctx_003_13,"Yes, we should monitor that.","Yes, we should monitor that.","[PREVIOUS]
+The risk is that interviewer availability may delay the final round.
+[CURRENT]
+Yes, we should monitor that.
+[NEXT]
+Add it to the register.",contextual_curriculum,recruitment,context_003_recruitment,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,RISK_003,True,The risk is that interviewer availability may delay the final round.,Add it to the register.,active,accepts_previous,supporting_detail,none,risk,risk_dependency,not_action,risk_language
+ctx_003_14,That exposure was closed last week.,That exposure was closed last week.,"[PREVIOUS]
+We previously worried that interviewer availability may delay the final round.
+[CURRENT]
+That exposure was closed last week.
+[NEXT]
+No monitoring is required.",contextual_curriculum,recruitment,context_003_recruitment,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We previously worried that interviewer availability may delay the final round.,No monitoring is required.,completed,modifies_previous,context_only,historical,,background_context,completed_history,
+ctx_003_15,Can everyone see my screen?,Can everyone see my screen?,"[PREVIOUS]
+The meeting is starting.
+[CURRENT]
+Can everyone see my screen?
+[NEXT]
+We will continue in a moment.",contextual_curriculum,recruitment,context_003_recruitment,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,The meeting is starting.,We will continue in a moment.,none,standalone,none,other,,background_context,not_action,
+ctx_003_16,The recruitment work remains in progress.,The recruitment work remains in progress.,"[PREVIOUS]
+We reviewed the background.
+[CURRENT]
+The recruitment work remains in progress.
+[NEXT]
+No commitment was made.",contextual_curriculum,recruitment,context_003_recruitment,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We reviewed the background.,No commitment was made.,none,standalone,supporting_detail,none,,background_context,not_action,
+ctx_004_01,I'll circulate the revised department forecast.,I'll circulate the revised department forecast.,"[PREVIOUS]
+We need someone to handle this.
+[CURRENT]
+I'll circulate the revised department forecast.
+[NEXT]
+Can it be done by before lunch?",contextual_curriculum,budget,context_004_budget,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_004,True,We need someone to handle this.,Can it be done by before lunch?,active,needs_previous,canonical_item,none,action,action_commitment,confirmed_action,
+ctx_004_02,Before before lunch.,Before before lunch.,"[PREVIOUS]
+I'll circulate the revised department forecast.
+[CURRENT]
+Before before lunch.
+[NEXT]
+Yes, that works.",contextual_curriculum,budget,context_004_budget,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_004,True,I'll circulate the revised department forecast.,"Yes, that works.",none,needs_previous,context_only,deadline_previous,action,action_commitment,not_action,deadline_or_sequence
+ctx_004_03,"Yes, I'll take that.","Yes, I'll take that.","[PREVIOUS]
+Could you circulate the revised department forecast?
+[CURRENT]
+Yes, I'll take that.
+[NEXT]
+Please finish by before lunch.",contextual_curriculum,budget,context_004_budget,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_004,True,Could you circulate the revised department forecast?,Please finish by before lunch.,active,accepts_previous,canonical_item,none,action,action_commitment,confirmed_action,
+ctx_004_04,Theo will circulate the revised department forecast by before lunch.,Theo will circulate the revised department forecast by before lunch.,"[PREVIOUS]
+The work is on the list.
+[CURRENT]
+Theo will circulate the revised department forecast by before lunch.
+[NEXT]
+Let's move on.",contextual_curriculum,budget,context_004_budget,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_004,True,The work is on the list.,Let's move on.,active,standalone,canonical_item,deadline_current,action,action_commitment,confirmed_action,deadline_or_sequence
+ctx_004_05,I completed the work to circulate the revised department forecast yesterday.,I completed the work to circulate the revised department forecast yesterday.,"[PREVIOUS]
+Here is the status.
+[CURRENT]
+I completed the work to circulate the revised department forecast yesterday.
+[NEXT]
+Nothing remains open.",contextual_curriculum,budget,context_004_budget,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,Here is the status.,Nothing remains open.,completed,standalone,context_only,historical,,background_context,completed_history,
+ctx_004_06,I might circulate the revised department forecast if capacity allows.,I might circulate the revised department forecast if capacity allows.,"[PREVIOUS]
+We may need help.
+[CURRENT]
+I might circulate the revised department forecast if capacity allows.
+[NEXT]
+No action was agreed.",contextual_curriculum,budget,context_004_budget,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We may need help.,No action was agreed.,tentative,needs_next,context_only,other,,background_context,not_action,
+ctx_004_07,"Actually, another owner will circulate the revised department forecast instead.","Actually, another owner will circulate the revised department forecast instead.","[PREVIOUS]
+Theo will circulate the revised department forecast.
+[CURRENT]
+Actually, another owner will circulate the revised department forecast instead.
+[NEXT]
+Use the new owner.",contextual_curriculum,budget,context_004_budget,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_004,True,Theo will circulate the revised department forecast.,Use the new owner.,superseded,modifies_previous,canonical_item,none,action,action_commitment,not_action,
+ctx_004_08,Do not proceed with that action.,Do not proceed with that action.,"[PREVIOUS]
+Please circulate the revised department forecast.
+[CURRENT]
+Do not proceed with that action.
+[NEXT]
+It is no longer required.",contextual_curriculum,budget,context_004_budget,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,Please circulate the revised department forecast.,It is no longer required.,inactive,modifies_previous,context_only,none,,background_context,not_action,
+ctx_004_09,We agreed to defer the contractor extension.,We agreed to defer the contractor extension.,"[PREVIOUS]
+We should choose an approach.
+[CURRENT]
+We agreed to defer the contractor extension.
+[NEXT]
+That is the final position.",contextual_curriculum,budget,context_004_budget,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_004,True,We should choose an approach.,That is the final position.,none,standalone,canonical_item,none,decision,decision_agreement,not_action,decision_language
+ctx_004_10,Agreed.,Agreed.,"[PREVIOUS]
+The proposal is to defer the contractor extension.
+[CURRENT]
+Agreed.
+[NEXT]
+Let's use that approach.",contextual_curriculum,budget,context_004_budget,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_004,True,The proposal is to defer the contractor extension.,Let's use that approach.,none,accepts_previous,supporting_detail,none,decision,decision_agreement,not_action,decision_language
+ctx_004_11,"Yes, that is the decision.","Yes, that is the decision.","[PREVIOUS]
+We agreed to defer the contractor extension.
+[CURRENT]
+Yes, that is the decision.
+[NEXT]
+Next topic.",contextual_curriculum,budget,context_004_budget,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_004,True,We agreed to defer the contractor extension.,Next topic.,none,needs_previous,duplicate_expression,none,decision,decision_agreement,not_action,decision_language
+ctx_004_12,The team identified that exchange-rate movement could exceed the travel budget.,The team identified that exchange-rate movement could exceed the travel budget.,"[PREVIOUS]
+We should review delivery exposure.
+[CURRENT]
+The team identified that exchange-rate movement could exceed the travel budget.
+[NEXT]
+The exposure remains open.",contextual_curriculum,budget,context_004_budget,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,RISK_004,True,We should review delivery exposure.,The exposure remains open.,active,standalone,canonical_item,none,risk,risk_dependency,not_action,risk_language
+ctx_004_13,"Yes, we should monitor that.","Yes, we should monitor that.","[PREVIOUS]
+The risk is that exchange-rate movement could exceed the travel budget.
+[CURRENT]
+Yes, we should monitor that.
+[NEXT]
+Add it to the register.",contextual_curriculum,budget,context_004_budget,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,RISK_004,True,The risk is that exchange-rate movement could exceed the travel budget.,Add it to the register.,active,accepts_previous,supporting_detail,none,risk,risk_dependency,not_action,risk_language
+ctx_004_14,That exposure was closed last week.,That exposure was closed last week.,"[PREVIOUS]
+We previously worried that exchange-rate movement could exceed the travel budget.
+[CURRENT]
+That exposure was closed last week.
+[NEXT]
+No monitoring is required.",contextual_curriculum,budget,context_004_budget,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We previously worried that exchange-rate movement could exceed the travel budget.,No monitoring is required.,completed,modifies_previous,context_only,historical,,background_context,completed_history,
+ctx_004_15,Can everyone see my screen?,Can everyone see my screen?,"[PREVIOUS]
+The meeting is starting.
+[CURRENT]
+Can everyone see my screen?
+[NEXT]
+We will continue in a moment.",contextual_curriculum,budget,context_004_budget,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,The meeting is starting.,We will continue in a moment.,none,standalone,none,other,,background_context,not_action,
+ctx_004_16,The budget work remains in progress.,The budget work remains in progress.,"[PREVIOUS]
+We reviewed the background.
+[CURRENT]
+The budget work remains in progress.
+[NEXT]
+No commitment was made.",contextual_curriculum,budget,context_004_budget,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We reviewed the background.,No commitment was made.,none,standalone,supporting_detail,none,,background_context,not_action,
+ctx_005_01,I'll create separate queues for complex support cases.,I'll create separate queues for complex support cases.,"[PREVIOUS]
+We need someone to handle this.
+[CURRENT]
+I'll create separate queues for complex support cases.
+[NEXT]
+Can it be done by next Tuesday?",contextual_curriculum,customer_support,context_005_customer_support,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_005,True,We need someone to handle this.,Can it be done by next Tuesday?,active,needs_previous,canonical_item,none,action,action_commitment,confirmed_action,
+ctx_005_02,Before next Tuesday.,Before next Tuesday.,"[PREVIOUS]
+I'll create separate queues for complex support cases.
+[CURRENT]
+Before next Tuesday.
+[NEXT]
+Yes, that works.",contextual_curriculum,customer_support,context_005_customer_support,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_005,True,I'll create separate queues for complex support cases.,"Yes, that works.",none,needs_previous,context_only,deadline_previous,action,action_commitment,not_action,deadline_or_sequence
+ctx_005_03,"Yes, I'll take that.","Yes, I'll take that.","[PREVIOUS]
+Could you create separate queues for complex support cases?
+[CURRENT]
+Yes, I'll take that.
+[NEXT]
+Please finish by next Tuesday.",contextual_curriculum,customer_support,context_005_customer_support,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_005,True,Could you create separate queues for complex support cases?,Please finish by next Tuesday.,active,accepts_previous,canonical_item,none,action,action_commitment,confirmed_action,
+ctx_005_04,Inez will create separate queues for complex support cases by next Tuesday.,Inez will create separate queues for complex support cases by next Tuesday.,"[PREVIOUS]
+The work is on the list.
+[CURRENT]
+Inez will create separate queues for complex support cases by next Tuesday.
+[NEXT]
+Let's move on.",contextual_curriculum,customer_support,context_005_customer_support,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_005,True,The work is on the list.,Let's move on.,active,standalone,canonical_item,deadline_current,action,action_commitment,confirmed_action,deadline_or_sequence
+ctx_005_05,I completed the work to create separate queues for complex support cases yesterday.,I completed the work to create separate queues for complex support cases yesterday.,"[PREVIOUS]
+Here is the status.
+[CURRENT]
+I completed the work to create separate queues for complex support cases yesterday.
+[NEXT]
+Nothing remains open.",contextual_curriculum,customer_support,context_005_customer_support,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,Here is the status.,Nothing remains open.,completed,standalone,context_only,historical,,background_context,completed_history,
+ctx_005_06,I might create separate queues for complex support cases if capacity allows.,I might create separate queues for complex support cases if capacity allows.,"[PREVIOUS]
+We may need help.
+[CURRENT]
+I might create separate queues for complex support cases if capacity allows.
+[NEXT]
+No action was agreed.",contextual_curriculum,customer_support,context_005_customer_support,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We may need help.,No action was agreed.,tentative,needs_next,context_only,other,,background_context,not_action,
+ctx_005_07,"Actually, another owner will create separate queues for complex support cases instead.","Actually, another owner will create separate queues for complex support cases instead.","[PREVIOUS]
+Inez will create separate queues for complex support cases.
+[CURRENT]
+Actually, another owner will create separate queues for complex support cases instead.
+[NEXT]
+Use the new owner.",contextual_curriculum,customer_support,context_005_customer_support,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_005,True,Inez will create separate queues for complex support cases.,Use the new owner.,superseded,modifies_previous,canonical_item,none,action,action_commitment,not_action,
+ctx_005_08,Do not proceed with that action.,Do not proceed with that action.,"[PREVIOUS]
+Please create separate queues for complex support cases.
+[CURRENT]
+Do not proceed with that action.
+[NEXT]
+It is no longer required.",contextual_curriculum,customer_support,context_005_customer_support,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,Please create separate queues for complex support cases.,It is no longer required.,inactive,modifies_previous,context_only,none,,background_context,not_action,
+ctx_005_09,We agreed to pilot specialist triage for one month.,We agreed to pilot specialist triage for one month.,"[PREVIOUS]
+We should choose an approach.
+[CURRENT]
+We agreed to pilot specialist triage for one month.
+[NEXT]
+That is the final position.",contextual_curriculum,customer_support,context_005_customer_support,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_005,True,We should choose an approach.,That is the final position.,none,standalone,canonical_item,none,decision,decision_agreement,not_action,decision_language
+ctx_005_10,Agreed.,Agreed.,"[PREVIOUS]
+The proposal is to pilot specialist triage for one month.
+[CURRENT]
+Agreed.
+[NEXT]
+Let's use that approach.",contextual_curriculum,customer_support,context_005_customer_support,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_005,True,The proposal is to pilot specialist triage for one month.,Let's use that approach.,none,accepts_previous,supporting_detail,none,decision,decision_agreement,not_action,decision_language
+ctx_005_11,"Yes, that is the decision.","Yes, that is the decision.","[PREVIOUS]
+We agreed to pilot specialist triage for one month.
+[CURRENT]
+Yes, that is the decision.
+[NEXT]
+Next topic.",contextual_curriculum,customer_support,context_005_customer_support,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_005,True,We agreed to pilot specialist triage for one month.,Next topic.,none,needs_previous,duplicate_expression,none,decision,decision_agreement,not_action,decision_language
+ctx_005_12,The team identified that urgent cases may remain hidden in the general queue.,The team identified that urgent cases may remain hidden in the general queue.,"[PREVIOUS]
+We should review delivery exposure.
+[CURRENT]
+The team identified that urgent cases may remain hidden in the general queue.
+[NEXT]
+The exposure remains open.",contextual_curriculum,customer_support,context_005_customer_support,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,RISK_005,True,We should review delivery exposure.,The exposure remains open.,active,standalone,canonical_item,none,risk,risk_dependency,not_action,risk_language
+ctx_005_13,"Yes, we should monitor that.","Yes, we should monitor that.","[PREVIOUS]
+The risk is that urgent cases may remain hidden in the general queue.
+[CURRENT]
+Yes, we should monitor that.
+[NEXT]
+Add it to the register.",contextual_curriculum,customer_support,context_005_customer_support,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,RISK_005,True,The risk is that urgent cases may remain hidden in the general queue.,Add it to the register.,active,accepts_previous,supporting_detail,none,risk,risk_dependency,not_action,risk_language
+ctx_005_14,That exposure was closed last week.,That exposure was closed last week.,"[PREVIOUS]
+We previously worried that urgent cases may remain hidden in the general queue.
+[CURRENT]
+That exposure was closed last week.
+[NEXT]
+No monitoring is required.",contextual_curriculum,customer_support,context_005_customer_support,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We previously worried that urgent cases may remain hidden in the general queue.,No monitoring is required.,completed,modifies_previous,context_only,historical,,background_context,completed_history,
+ctx_005_15,Can everyone see my screen?,Can everyone see my screen?,"[PREVIOUS]
+The meeting is starting.
+[CURRENT]
+Can everyone see my screen?
+[NEXT]
+We will continue in a moment.",contextual_curriculum,customer_support,context_005_customer_support,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,The meeting is starting.,We will continue in a moment.,none,standalone,none,other,,background_context,not_action,
+ctx_005_16,The customer support work remains in progress.,The customer support work remains in progress.,"[PREVIOUS]
+We reviewed the background.
+[CURRENT]
+The customer support work remains in progress.
+[NEXT]
+No commitment was made.",contextual_curriculum,customer_support,context_005_customer_support,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We reviewed the background.,No commitment was made.,none,standalone,supporting_detail,none,,background_context,not_action,
+ctx_006_01,I'll request the supplier insurance certificate.,I'll request the supplier insurance certificate.,"[PREVIOUS]
+We need someone to handle this.
+[CURRENT]
+I'll request the supplier insurance certificate.
+[NEXT]
+Can it be done by Thursday?",contextual_curriculum,supplier,context_006_supplier,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_006,True,We need someone to handle this.,Can it be done by Thursday?,active,needs_previous,canonical_item,none,action,action_commitment,confirmed_action,
+ctx_006_02,Before Thursday.,Before Thursday.,"[PREVIOUS]
+I'll request the supplier insurance certificate.
+[CURRENT]
+Before Thursday.
+[NEXT]
+Yes, that works.",contextual_curriculum,supplier,context_006_supplier,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_006,True,I'll request the supplier insurance certificate.,"Yes, that works.",none,needs_previous,context_only,deadline_previous,action,action_commitment,not_action,deadline_or_sequence
+ctx_006_03,"Yes, I'll take that.","Yes, I'll take that.","[PREVIOUS]
+Could you request the supplier insurance certificate?
+[CURRENT]
+Yes, I'll take that.
+[NEXT]
+Please finish by Thursday.",contextual_curriculum,supplier,context_006_supplier,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_006,True,Could you request the supplier insurance certificate?,Please finish by Thursday.,active,accepts_previous,canonical_item,none,action,action_commitment,confirmed_action,
+ctx_006_04,Ravi will request the supplier insurance certificate by Thursday.,Ravi will request the supplier insurance certificate by Thursday.,"[PREVIOUS]
+The work is on the list.
+[CURRENT]
+Ravi will request the supplier insurance certificate by Thursday.
+[NEXT]
+Let's move on.",contextual_curriculum,supplier,context_006_supplier,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_006,True,The work is on the list.,Let's move on.,active,standalone,canonical_item,deadline_current,action,action_commitment,confirmed_action,deadline_or_sequence
+ctx_006_05,I completed the work to request the supplier insurance certificate yesterday.,I completed the work to request the supplier insurance certificate yesterday.,"[PREVIOUS]
+Here is the status.
+[CURRENT]
+I completed the work to request the supplier insurance certificate yesterday.
+[NEXT]
+Nothing remains open.",contextual_curriculum,supplier,context_006_supplier,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,Here is the status.,Nothing remains open.,completed,standalone,context_only,historical,,background_context,completed_history,
+ctx_006_06,I might request the supplier insurance certificate if capacity allows.,I might request the supplier insurance certificate if capacity allows.,"[PREVIOUS]
+We may need help.
+[CURRENT]
+I might request the supplier insurance certificate if capacity allows.
+[NEXT]
+No action was agreed.",contextual_curriculum,supplier,context_006_supplier,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We may need help.,No action was agreed.,tentative,needs_next,context_only,other,,background_context,not_action,
+ctx_006_07,"Actually, another owner will request the supplier insurance certificate instead.","Actually, another owner will request the supplier insurance certificate instead.","[PREVIOUS]
+Ravi will request the supplier insurance certificate.
+[CURRENT]
+Actually, another owner will request the supplier insurance certificate instead.
+[NEXT]
+Use the new owner.",contextual_curriculum,supplier,context_006_supplier,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_006,True,Ravi will request the supplier insurance certificate.,Use the new owner.,superseded,modifies_previous,canonical_item,none,action,action_commitment,not_action,
+ctx_006_08,Do not proceed with that action.,Do not proceed with that action.,"[PREVIOUS]
+Please request the supplier insurance certificate.
+[CURRENT]
+Do not proceed with that action.
+[NEXT]
+It is no longer required.",contextual_curriculum,supplier,context_006_supplier,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,Please request the supplier insurance certificate.,It is no longer required.,inactive,modifies_previous,context_only,none,,background_context,not_action,
+ctx_006_09,We agreed to approve onboarding only after due diligence.,We agreed to approve onboarding only after due diligence.,"[PREVIOUS]
+We should choose an approach.
+[CURRENT]
+We agreed to approve onboarding only after due diligence.
+[NEXT]
+That is the final position.",contextual_curriculum,supplier,context_006_supplier,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_006,True,We should choose an approach.,That is the final position.,none,standalone,canonical_item,none,decision,decision_agreement,not_action,decision_language
+ctx_006_10,Agreed.,Agreed.,"[PREVIOUS]
+The proposal is to approve onboarding only after due diligence.
+[CURRENT]
+Agreed.
+[NEXT]
+Let's use that approach.",contextual_curriculum,supplier,context_006_supplier,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_006,True,The proposal is to approve onboarding only after due diligence.,Let's use that approach.,none,accepts_previous,supporting_detail,none,decision,decision_agreement,not_action,decision_language
+ctx_006_11,"Yes, that is the decision.","Yes, that is the decision.","[PREVIOUS]
+We agreed to approve onboarding only after due diligence.
+[CURRENT]
+Yes, that is the decision.
+[NEXT]
+Next topic.",contextual_curriculum,supplier,context_006_supplier,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_006,True,We agreed to approve onboarding only after due diligence.,Next topic.,none,needs_previous,duplicate_expression,none,decision,decision_agreement,not_action,decision_language
+ctx_006_12,The team identified that missing insurance evidence could postpone onboarding.,The team identified that missing insurance evidence could postpone onboarding.,"[PREVIOUS]
+We should review delivery exposure.
+[CURRENT]
+The team identified that missing insurance evidence could postpone onboarding.
+[NEXT]
+The exposure remains open.",contextual_curriculum,supplier,context_006_supplier,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,RISK_006,True,We should review delivery exposure.,The exposure remains open.,active,standalone,canonical_item,none,risk,risk_dependency,not_action,risk_language
+ctx_006_13,"Yes, we should monitor that.","Yes, we should monitor that.","[PREVIOUS]
+The risk is that missing insurance evidence could postpone onboarding.
+[CURRENT]
+Yes, we should monitor that.
+[NEXT]
+Add it to the register.",contextual_curriculum,supplier,context_006_supplier,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,RISK_006,True,The risk is that missing insurance evidence could postpone onboarding.,Add it to the register.,active,accepts_previous,supporting_detail,none,risk,risk_dependency,not_action,risk_language
+ctx_006_14,That exposure was closed last week.,That exposure was closed last week.,"[PREVIOUS]
+We previously worried that missing insurance evidence could postpone onboarding.
+[CURRENT]
+That exposure was closed last week.
+[NEXT]
+No monitoring is required.",contextual_curriculum,supplier,context_006_supplier,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We previously worried that missing insurance evidence could postpone onboarding.,No monitoring is required.,completed,modifies_previous,context_only,historical,,background_context,completed_history,
+ctx_006_15,Can everyone see my screen?,Can everyone see my screen?,"[PREVIOUS]
+The meeting is starting.
+[CURRENT]
+Can everyone see my screen?
+[NEXT]
+We will continue in a moment.",contextual_curriculum,supplier,context_006_supplier,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,The meeting is starting.,We will continue in a moment.,none,standalone,none,other,,background_context,not_action,
+ctx_006_16,The supplier work remains in progress.,The supplier work remains in progress.,"[PREVIOUS]
+We reviewed the background.
+[CURRENT]
+The supplier work remains in progress.
+[NEXT]
+No commitment was made.",contextual_curriculum,supplier,context_006_supplier,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We reviewed the background.,No commitment was made.,none,standalone,supporting_detail,none,,background_context,not_action,
+ctx_007_01,I'll shorten the product demonstration.,I'll shorten the product demonstration.,"[PREVIOUS]
+We need someone to handle this.
+[CURRENT]
+I'll shorten the product demonstration.
+[NEXT]
+Can it be done by Wednesday?",contextual_curriculum,webinar,context_007_webinar,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_007,True,We need someone to handle this.,Can it be done by Wednesday?,active,needs_previous,canonical_item,none,action,action_commitment,confirmed_action,
+ctx_007_02,Before Wednesday.,Before Wednesday.,"[PREVIOUS]
+I'll shorten the product demonstration.
+[CURRENT]
+Before Wednesday.
+[NEXT]
+Yes, that works.",contextual_curriculum,webinar,context_007_webinar,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_007,True,I'll shorten the product demonstration.,"Yes, that works.",none,needs_previous,context_only,deadline_previous,action,action_commitment,not_action,deadline_or_sequence
+ctx_007_03,"Yes, I'll take that.","Yes, I'll take that.","[PREVIOUS]
+Could you shorten the product demonstration?
+[CURRENT]
+Yes, I'll take that.
+[NEXT]
+Please finish by Wednesday.",contextual_curriculum,webinar,context_007_webinar,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_007,True,Could you shorten the product demonstration?,Please finish by Wednesday.,active,accepts_previous,canonical_item,none,action,action_commitment,confirmed_action,
+ctx_007_04,Chloe will shorten the product demonstration by Wednesday.,Chloe will shorten the product demonstration by Wednesday.,"[PREVIOUS]
+The work is on the list.
+[CURRENT]
+Chloe will shorten the product demonstration by Wednesday.
+[NEXT]
+Let's move on.",contextual_curriculum,webinar,context_007_webinar,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_007,True,The work is on the list.,Let's move on.,active,standalone,canonical_item,deadline_current,action,action_commitment,confirmed_action,deadline_or_sequence
+ctx_007_05,I completed the work to shorten the product demonstration yesterday.,I completed the work to shorten the product demonstration yesterday.,"[PREVIOUS]
+Here is the status.
+[CURRENT]
+I completed the work to shorten the product demonstration yesterday.
+[NEXT]
+Nothing remains open.",contextual_curriculum,webinar,context_007_webinar,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,Here is the status.,Nothing remains open.,completed,standalone,context_only,historical,,background_context,completed_history,
+ctx_007_06,I might shorten the product demonstration if capacity allows.,I might shorten the product demonstration if capacity allows.,"[PREVIOUS]
+We may need help.
+[CURRENT]
+I might shorten the product demonstration if capacity allows.
+[NEXT]
+No action was agreed.",contextual_curriculum,webinar,context_007_webinar,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We may need help.,No action was agreed.,tentative,needs_next,context_only,other,,background_context,not_action,
+ctx_007_07,"Actually, another owner will shorten the product demonstration instead.","Actually, another owner will shorten the product demonstration instead.","[PREVIOUS]
+Chloe will shorten the product demonstration.
+[CURRENT]
+Actually, another owner will shorten the product demonstration instead.
+[NEXT]
+Use the new owner.",contextual_curriculum,webinar,context_007_webinar,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_007,True,Chloe will shorten the product demonstration.,Use the new owner.,superseded,modifies_previous,canonical_item,none,action,action_commitment,not_action,
+ctx_007_08,Do not proceed with that action.,Do not proceed with that action.,"[PREVIOUS]
+Please shorten the product demonstration.
+[CURRENT]
+Do not proceed with that action.
+[NEXT]
+It is no longer required.",contextual_curriculum,webinar,context_007_webinar,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,Please shorten the product demonstration.,It is no longer required.,inactive,modifies_previous,context_only,none,,background_context,not_action,
+ctx_007_09,We agreed to reserve the final fifteen minutes for questions.,We agreed to reserve the final fifteen minutes for questions.,"[PREVIOUS]
+We should choose an approach.
+[CURRENT]
+We agreed to reserve the final fifteen minutes for questions.
+[NEXT]
+That is the final position.",contextual_curriculum,webinar,context_007_webinar,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_007,True,We should choose an approach.,That is the final position.,none,standalone,canonical_item,none,decision,decision_agreement,not_action,decision_language
+ctx_007_10,Agreed.,Agreed.,"[PREVIOUS]
+The proposal is to reserve the final fifteen minutes for questions.
+[CURRENT]
+Agreed.
+[NEXT]
+Let's use that approach.",contextual_curriculum,webinar,context_007_webinar,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_007,True,The proposal is to reserve the final fifteen minutes for questions.,Let's use that approach.,none,accepts_previous,supporting_detail,none,decision,decision_agreement,not_action,decision_language
+ctx_007_11,"Yes, that is the decision.","Yes, that is the decision.","[PREVIOUS]
+We agreed to reserve the final fifteen minutes for questions.
+[CURRENT]
+Yes, that is the decision.
+[NEXT]
+Next topic.",contextual_curriculum,webinar,context_007_webinar,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_007,True,We agreed to reserve the final fifteen minutes for questions.,Next topic.,none,needs_previous,duplicate_expression,none,decision,decision_agreement,not_action,decision_language
+ctx_007_12,The team identified that a long demonstration could crowd out questions.,The team identified that a long demonstration could crowd out questions.,"[PREVIOUS]
+We should review delivery exposure.
+[CURRENT]
+The team identified that a long demonstration could crowd out questions.
+[NEXT]
+The exposure remains open.",contextual_curriculum,webinar,context_007_webinar,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,RISK_007,True,We should review delivery exposure.,The exposure remains open.,active,standalone,canonical_item,none,risk,risk_dependency,not_action,risk_language
+ctx_007_13,"Yes, we should monitor that.","Yes, we should monitor that.","[PREVIOUS]
+The risk is that a long demonstration could crowd out questions.
+[CURRENT]
+Yes, we should monitor that.
+[NEXT]
+Add it to the register.",contextual_curriculum,webinar,context_007_webinar,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,RISK_007,True,The risk is that a long demonstration could crowd out questions.,Add it to the register.,active,accepts_previous,supporting_detail,none,risk,risk_dependency,not_action,risk_language
+ctx_007_14,That exposure was closed last week.,That exposure was closed last week.,"[PREVIOUS]
+We previously worried that a long demonstration could crowd out questions.
+[CURRENT]
+That exposure was closed last week.
+[NEXT]
+No monitoring is required.",contextual_curriculum,webinar,context_007_webinar,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We previously worried that a long demonstration could crowd out questions.,No monitoring is required.,completed,modifies_previous,context_only,historical,,background_context,completed_history,
+ctx_007_15,Can everyone see my screen?,Can everyone see my screen?,"[PREVIOUS]
+The meeting is starting.
+[CURRENT]
+Can everyone see my screen?
+[NEXT]
+We will continue in a moment.",contextual_curriculum,webinar,context_007_webinar,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,The meeting is starting.,We will continue in a moment.,none,standalone,none,other,,background_context,not_action,
+ctx_007_16,The webinar work remains in progress.,The webinar work remains in progress.,"[PREVIOUS]
+We reviewed the background.
+[CURRENT]
+The webinar work remains in progress.
+[NEXT]
+No commitment was made.",contextual_curriculum,webinar,context_007_webinar,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We reviewed the background.,No commitment was made.,none,standalone,supporting_detail,none,,background_context,not_action,
+ctx_008_01,I'll disable the legacy file-transfer account.,I'll disable the legacy file-transfer account.,"[PREVIOUS]
+We need someone to handle this.
+[CURRENT]
+I'll disable the legacy file-transfer account.
+[NEXT]
+Can it be done by end of day?",contextual_curriculum,security,context_008_security,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_008,True,We need someone to handle this.,Can it be done by end of day?,active,needs_previous,canonical_item,none,action,action_commitment,confirmed_action,
+ctx_008_02,Before end of day.,Before end of day.,"[PREVIOUS]
+I'll disable the legacy file-transfer account.
+[CURRENT]
+Before end of day.
+[NEXT]
+Yes, that works.",contextual_curriculum,security,context_008_security,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_008,True,I'll disable the legacy file-transfer account.,"Yes, that works.",none,needs_previous,context_only,deadline_previous,action,action_commitment,not_action,deadline_or_sequence
+ctx_008_03,"Yes, I'll take that.","Yes, I'll take that.","[PREVIOUS]
+Could you disable the legacy file-transfer account?
+[CURRENT]
+Yes, I'll take that.
+[NEXT]
+Please finish by end of day.",contextual_curriculum,security,context_008_security,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_008,True,Could you disable the legacy file-transfer account?,Please finish by end of day.,active,accepts_previous,canonical_item,none,action,action_commitment,confirmed_action,
+ctx_008_04,Jonah will disable the legacy file-transfer account by end of day.,Jonah will disable the legacy file-transfer account by end of day.,"[PREVIOUS]
+The work is on the list.
+[CURRENT]
+Jonah will disable the legacy file-transfer account by end of day.
+[NEXT]
+Let's move on.",contextual_curriculum,security,context_008_security,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_008,True,The work is on the list.,Let's move on.,active,standalone,canonical_item,deadline_current,action,action_commitment,confirmed_action,deadline_or_sequence
+ctx_008_05,I completed the work to disable the legacy file-transfer account yesterday.,I completed the work to disable the legacy file-transfer account yesterday.,"[PREVIOUS]
+Here is the status.
+[CURRENT]
+I completed the work to disable the legacy file-transfer account yesterday.
+[NEXT]
+Nothing remains open.",contextual_curriculum,security,context_008_security,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,Here is the status.,Nothing remains open.,completed,standalone,context_only,historical,,background_context,completed_history,
+ctx_008_06,I might disable the legacy file-transfer account if capacity allows.,I might disable the legacy file-transfer account if capacity allows.,"[PREVIOUS]
+We may need help.
+[CURRENT]
+I might disable the legacy file-transfer account if capacity allows.
+[NEXT]
+No action was agreed.",contextual_curriculum,security,context_008_security,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We may need help.,No action was agreed.,tentative,needs_next,context_only,other,,background_context,not_action,
+ctx_008_07,"Actually, another owner will disable the legacy file-transfer account instead.","Actually, another owner will disable the legacy file-transfer account instead.","[PREVIOUS]
+Jonah will disable the legacy file-transfer account.
+[CURRENT]
+Actually, another owner will disable the legacy file-transfer account instead.
+[NEXT]
+Use the new owner.",contextual_curriculum,security,context_008_security,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_008,True,Jonah will disable the legacy file-transfer account.,Use the new owner.,superseded,modifies_previous,canonical_item,none,action,action_commitment,not_action,
+ctx_008_08,Do not proceed with that action.,Do not proceed with that action.,"[PREVIOUS]
+Please disable the legacy file-transfer account.
+[CURRENT]
+Do not proceed with that action.
+[NEXT]
+It is no longer required.",contextual_curriculum,security,context_008_security,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,Please disable the legacy file-transfer account.,It is no longer required.,inactive,modifies_previous,context_only,none,,background_context,not_action,
+ctx_008_09,We agreed to require multifactor authentication for external access.,We agreed to require multifactor authentication for external access.,"[PREVIOUS]
+We should choose an approach.
+[CURRENT]
+We agreed to require multifactor authentication for external access.
+[NEXT]
+That is the final position.",contextual_curriculum,security,context_008_security,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_008,True,We should choose an approach.,That is the final position.,none,standalone,canonical_item,none,decision,decision_agreement,not_action,decision_language
+ctx_008_10,Agreed.,Agreed.,"[PREVIOUS]
+The proposal is to require multifactor authentication for external access.
+[CURRENT]
+Agreed.
+[NEXT]
+Let's use that approach.",contextual_curriculum,security,context_008_security,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_008,True,The proposal is to require multifactor authentication for external access.,Let's use that approach.,none,accepts_previous,supporting_detail,none,decision,decision_agreement,not_action,decision_language
+ctx_008_11,"Yes, that is the decision.","Yes, that is the decision.","[PREVIOUS]
+We agreed to require multifactor authentication for external access.
+[CURRENT]
+Yes, that is the decision.
+[NEXT]
+Next topic.",contextual_curriculum,security,context_008_security,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_008,True,We agreed to require multifactor authentication for external access.,Next topic.,none,needs_previous,duplicate_expression,none,decision,decision_agreement,not_action,decision_language
+ctx_008_12,The team identified that the legacy account creates an unauthorised-access risk.,The team identified that the legacy account creates an unauthorised-access risk.,"[PREVIOUS]
+We should review delivery exposure.
+[CURRENT]
+The team identified that the legacy account creates an unauthorised-access risk.
+[NEXT]
+The exposure remains open.",contextual_curriculum,security,context_008_security,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,RISK_008,True,We should review delivery exposure.,The exposure remains open.,active,standalone,canonical_item,none,risk,risk_dependency,not_action,risk_language
+ctx_008_13,"Yes, we should monitor that.","Yes, we should monitor that.","[PREVIOUS]
+The risk is that the legacy account creates an unauthorised-access risk.
+[CURRENT]
+Yes, we should monitor that.
+[NEXT]
+Add it to the register.",contextual_curriculum,security,context_008_security,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,RISK_008,True,The risk is that the legacy account creates an unauthorised-access risk.,Add it to the register.,active,accepts_previous,supporting_detail,none,risk,risk_dependency,not_action,risk_language
+ctx_008_14,That exposure was closed last week.,That exposure was closed last week.,"[PREVIOUS]
+We previously worried that the legacy account creates an unauthorised-access risk.
+[CURRENT]
+That exposure was closed last week.
+[NEXT]
+No monitoring is required.",contextual_curriculum,security,context_008_security,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We previously worried that the legacy account creates an unauthorised-access risk.,No monitoring is required.,completed,modifies_previous,context_only,historical,,background_context,completed_history,
+ctx_008_15,Can everyone see my screen?,Can everyone see my screen?,"[PREVIOUS]
+The meeting is starting.
+[CURRENT]
+Can everyone see my screen?
+[NEXT]
+We will continue in a moment.",contextual_curriculum,security,context_008_security,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,The meeting is starting.,We will continue in a moment.,none,standalone,none,other,,background_context,not_action,
+ctx_008_16,The security work remains in progress.,The security work remains in progress.,"[PREVIOUS]
+We reviewed the background.
+[CURRENT]
+The security work remains in progress.
+[NEXT]
+No commitment was made.",contextual_curriculum,security,context_008_security,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We reviewed the background.,No commitment was made.,none,standalone,supporting_detail,none,,background_context,not_action,
+ctx_009_01,I'll redline the termination wording.,I'll redline the termination wording.,"[PREVIOUS]
+We need someone to handle this.
+[CURRENT]
+I'll redline the termination wording.
+[NEXT]
+Can it be done by Monday?",contextual_curriculum,contract,context_009_contract,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_009,True,We need someone to handle this.,Can it be done by Monday?,active,needs_previous,canonical_item,none,action,action_commitment,confirmed_action,
+ctx_009_02,Before Monday.,Before Monday.,"[PREVIOUS]
+I'll redline the termination wording.
+[CURRENT]
+Before Monday.
+[NEXT]
+Yes, that works.",contextual_curriculum,contract,context_009_contract,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_009,True,I'll redline the termination wording.,"Yes, that works.",none,needs_previous,context_only,deadline_previous,action,action_commitment,not_action,deadline_or_sequence
+ctx_009_03,"Yes, I'll take that.","Yes, I'll take that.","[PREVIOUS]
+Could you redline the termination wording?
+[CURRENT]
+Yes, I'll take that.
+[NEXT]
+Please finish by Monday.",contextual_curriculum,contract,context_009_contract,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_009,True,Could you redline the termination wording?,Please finish by Monday.,active,accepts_previous,canonical_item,none,action,action_commitment,confirmed_action,
+ctx_009_04,Amara will redline the termination wording by Monday.,Amara will redline the termination wording by Monday.,"[PREVIOUS]
+The work is on the list.
+[CURRENT]
+Amara will redline the termination wording by Monday.
+[NEXT]
+Let's move on.",contextual_curriculum,contract,context_009_contract,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_009,True,The work is on the list.,Let's move on.,active,standalone,canonical_item,deadline_current,action,action_commitment,confirmed_action,deadline_or_sequence
+ctx_009_05,I completed the work to redline the termination wording yesterday.,I completed the work to redline the termination wording yesterday.,"[PREVIOUS]
+Here is the status.
+[CURRENT]
+I completed the work to redline the termination wording yesterday.
+[NEXT]
+Nothing remains open.",contextual_curriculum,contract,context_009_contract,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,Here is the status.,Nothing remains open.,completed,standalone,context_only,historical,,background_context,completed_history,
+ctx_009_06,I might redline the termination wording if capacity allows.,I might redline the termination wording if capacity allows.,"[PREVIOUS]
+We may need help.
+[CURRENT]
+I might redline the termination wording if capacity allows.
+[NEXT]
+No action was agreed.",contextual_curriculum,contract,context_009_contract,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We may need help.,No action was agreed.,tentative,needs_next,context_only,other,,background_context,not_action,
+ctx_009_07,"Actually, another owner will redline the termination wording instead.","Actually, another owner will redline the termination wording instead.","[PREVIOUS]
+Amara will redline the termination wording.
+[CURRENT]
+Actually, another owner will redline the termination wording instead.
+[NEXT]
+Use the new owner.",contextual_curriculum,contract,context_009_contract,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_009,True,Amara will redline the termination wording.,Use the new owner.,superseded,modifies_previous,canonical_item,none,action,action_commitment,not_action,
+ctx_009_08,Do not proceed with that action.,Do not proceed with that action.,"[PREVIOUS]
+Please redline the termination wording.
+[CURRENT]
+Do not proceed with that action.
+[NEXT]
+It is no longer required.",contextual_curriculum,contract,context_009_contract,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,Please redline the termination wording.,It is no longer required.,inactive,modifies_previous,context_only,none,,background_context,not_action,
+ctx_009_09,We agreed to offer a twelve-month renewal.,We agreed to offer a twelve-month renewal.,"[PREVIOUS]
+We should choose an approach.
+[CURRENT]
+We agreed to offer a twelve-month renewal.
+[NEXT]
+That is the final position.",contextual_curriculum,contract,context_009_contract,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_009,True,We should choose an approach.,That is the final position.,none,standalone,canonical_item,none,decision,decision_agreement,not_action,decision_language
+ctx_009_10,Agreed.,Agreed.,"[PREVIOUS]
+The proposal is to offer a twelve-month renewal.
+[CURRENT]
+Agreed.
+[NEXT]
+Let's use that approach.",contextual_curriculum,contract,context_009_contract,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_009,True,The proposal is to offer a twelve-month renewal.,Let's use that approach.,none,accepts_previous,supporting_detail,none,decision,decision_agreement,not_action,decision_language
+ctx_009_11,"Yes, that is the decision.","Yes, that is the decision.","[PREVIOUS]
+We agreed to offer a twelve-month renewal.
+[CURRENT]
+Yes, that is the decision.
+[NEXT]
+Next topic.",contextual_curriculum,contract,context_009_contract,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_009,True,We agreed to offer a twelve-month renewal.,Next topic.,none,needs_previous,duplicate_expression,none,decision,decision_agreement,not_action,decision_language
+ctx_009_12,The team identified that unclear termination wording could prolong negotiation.,The team identified that unclear termination wording could prolong negotiation.,"[PREVIOUS]
+We should review delivery exposure.
+[CURRENT]
+The team identified that unclear termination wording could prolong negotiation.
+[NEXT]
+The exposure remains open.",contextual_curriculum,contract,context_009_contract,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,RISK_009,True,We should review delivery exposure.,The exposure remains open.,active,standalone,canonical_item,none,risk,risk_dependency,not_action,risk_language
+ctx_009_13,"Yes, we should monitor that.","Yes, we should monitor that.","[PREVIOUS]
+The risk is that unclear termination wording could prolong negotiation.
+[CURRENT]
+Yes, we should monitor that.
+[NEXT]
+Add it to the register.",contextual_curriculum,contract,context_009_contract,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,RISK_009,True,The risk is that unclear termination wording could prolong negotiation.,Add it to the register.,active,accepts_previous,supporting_detail,none,risk,risk_dependency,not_action,risk_language
+ctx_009_14,That exposure was closed last week.,That exposure was closed last week.,"[PREVIOUS]
+We previously worried that unclear termination wording could prolong negotiation.
+[CURRENT]
+That exposure was closed last week.
+[NEXT]
+No monitoring is required.",contextual_curriculum,contract,context_009_contract,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We previously worried that unclear termination wording could prolong negotiation.,No monitoring is required.,completed,modifies_previous,context_only,historical,,background_context,completed_history,
+ctx_009_15,Can everyone see my screen?,Can everyone see my screen?,"[PREVIOUS]
+The meeting is starting.
+[CURRENT]
+Can everyone see my screen?
+[NEXT]
+We will continue in a moment.",contextual_curriculum,contract,context_009_contract,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,The meeting is starting.,We will continue in a moment.,none,standalone,none,other,,background_context,not_action,
+ctx_009_16,The contract work remains in progress.,The contract work remains in progress.,"[PREVIOUS]
+We reviewed the background.
+[CURRENT]
+The contract work remains in progress.
+[NEXT]
+No commitment was made.",contextual_curriculum,contract,context_009_contract,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We reviewed the background.,No commitment was made.,none,standalone,supporting_detail,none,,background_context,not_action,
+ctx_010_01,I'll prepare the audit evidence index.,I'll prepare the audit evidence index.,"[PREVIOUS]
+We need someone to handle this.
+[CURRENT]
+I'll prepare the audit evidence index.
+[NEXT]
+Can it be done by next week?",contextual_curriculum,audit,context_010_audit,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_010,True,We need someone to handle this.,Can it be done by next week?,active,needs_previous,canonical_item,none,action,action_commitment,confirmed_action,
+ctx_010_02,Before next week.,Before next week.,"[PREVIOUS]
+I'll prepare the audit evidence index.
+[CURRENT]
+Before next week.
+[NEXT]
+Yes, that works.",contextual_curriculum,audit,context_010_audit,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_010,True,I'll prepare the audit evidence index.,"Yes, that works.",none,needs_previous,context_only,deadline_previous,action,action_commitment,not_action,deadline_or_sequence
+ctx_010_03,"Yes, I'll take that.","Yes, I'll take that.","[PREVIOUS]
+Could you prepare the audit evidence index?
+[CURRENT]
+Yes, I'll take that.
+[NEXT]
+Please finish by next week.",contextual_curriculum,audit,context_010_audit,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_010,True,Could you prepare the audit evidence index?,Please finish by next week.,active,accepts_previous,canonical_item,none,action,action_commitment,confirmed_action,
+ctx_010_04,Louis will prepare the audit evidence index by next week.,Louis will prepare the audit evidence index by next week.,"[PREVIOUS]
+The work is on the list.
+[CURRENT]
+Louis will prepare the audit evidence index by next week.
+[NEXT]
+Let's move on.",contextual_curriculum,audit,context_010_audit,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_010,True,The work is on the list.,Let's move on.,active,standalone,canonical_item,deadline_current,action,action_commitment,confirmed_action,deadline_or_sequence
+ctx_010_05,I completed the work to prepare the audit evidence index yesterday.,I completed the work to prepare the audit evidence index yesterday.,"[PREVIOUS]
+Here is the status.
+[CURRENT]
+I completed the work to prepare the audit evidence index yesterday.
+[NEXT]
+Nothing remains open.",contextual_curriculum,audit,context_010_audit,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,Here is the status.,Nothing remains open.,completed,standalone,context_only,historical,,background_context,completed_history,
+ctx_010_06,I might prepare the audit evidence index if capacity allows.,I might prepare the audit evidence index if capacity allows.,"[PREVIOUS]
+We may need help.
+[CURRENT]
+I might prepare the audit evidence index if capacity allows.
+[NEXT]
+No action was agreed.",contextual_curriculum,audit,context_010_audit,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We may need help.,No action was agreed.,tentative,needs_next,context_only,other,,background_context,not_action,
+ctx_010_07,"Actually, another owner will prepare the audit evidence index instead.","Actually, another owner will prepare the audit evidence index instead.","[PREVIOUS]
+Louis will prepare the audit evidence index.
+[CURRENT]
+Actually, another owner will prepare the audit evidence index instead.
+[NEXT]
+Use the new owner.",contextual_curriculum,audit,context_010_audit,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_010,True,Louis will prepare the audit evidence index.,Use the new owner.,superseded,modifies_previous,canonical_item,none,action,action_commitment,not_action,
+ctx_010_08,Do not proceed with that action.,Do not proceed with that action.,"[PREVIOUS]
+Please prepare the audit evidence index.
+[CURRENT]
+Do not proceed with that action.
+[NEXT]
+It is no longer required.",contextual_curriculum,audit,context_010_audit,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,Please prepare the audit evidence index.,It is no longer required.,inactive,modifies_previous,context_only,none,,background_context,not_action,
+ctx_010_09,We agreed to sample two additional operational processes.,We agreed to sample two additional operational processes.,"[PREVIOUS]
+We should choose an approach.
+[CURRENT]
+We agreed to sample two additional operational processes.
+[NEXT]
+That is the final position.",contextual_curriculum,audit,context_010_audit,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_010,True,We should choose an approach.,That is the final position.,none,standalone,canonical_item,none,decision,decision_agreement,not_action,decision_language
+ctx_010_10,Agreed.,Agreed.,"[PREVIOUS]
+The proposal is to sample two additional operational processes.
+[CURRENT]
+Agreed.
+[NEXT]
+Let's use that approach.",contextual_curriculum,audit,context_010_audit,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_010,True,The proposal is to sample two additional operational processes.,Let's use that approach.,none,accepts_previous,supporting_detail,none,decision,decision_agreement,not_action,decision_language
+ctx_010_11,"Yes, that is the decision.","Yes, that is the decision.","[PREVIOUS]
+We agreed to sample two additional operational processes.
+[CURRENT]
+Yes, that is the decision.
+[NEXT]
+Next topic.",contextual_curriculum,audit,context_010_audit,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_010,True,We agreed to sample two additional operational processes.,Next topic.,none,needs_previous,duplicate_expression,none,decision,decision_agreement,not_action,decision_language
+ctx_010_12,The team identified that missing records could prevent completion of the audit plan.,The team identified that missing records could prevent completion of the audit plan.,"[PREVIOUS]
+We should review delivery exposure.
+[CURRENT]
+The team identified that missing records could prevent completion of the audit plan.
+[NEXT]
+The exposure remains open.",contextual_curriculum,audit,context_010_audit,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,RISK_010,True,We should review delivery exposure.,The exposure remains open.,active,standalone,canonical_item,none,risk,risk_dependency,not_action,risk_language
+ctx_010_13,"Yes, we should monitor that.","Yes, we should monitor that.","[PREVIOUS]
+The risk is that missing records could prevent completion of the audit plan.
+[CURRENT]
+Yes, we should monitor that.
+[NEXT]
+Add it to the register.",contextual_curriculum,audit,context_010_audit,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,RISK_010,True,The risk is that missing records could prevent completion of the audit plan.,Add it to the register.,active,accepts_previous,supporting_detail,none,risk,risk_dependency,not_action,risk_language
+ctx_010_14,That exposure was closed last week.,That exposure was closed last week.,"[PREVIOUS]
+We previously worried that missing records could prevent completion of the audit plan.
+[CURRENT]
+That exposure was closed last week.
+[NEXT]
+No monitoring is required.",contextual_curriculum,audit,context_010_audit,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We previously worried that missing records could prevent completion of the audit plan.,No monitoring is required.,completed,modifies_previous,context_only,historical,,background_context,completed_history,
+ctx_010_15,Can everyone see my screen?,Can everyone see my screen?,"[PREVIOUS]
+The meeting is starting.
+[CURRENT]
+Can everyone see my screen?
+[NEXT]
+We will continue in a moment.",contextual_curriculum,audit,context_010_audit,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,The meeting is starting.,We will continue in a moment.,none,standalone,none,other,,background_context,not_action,
+ctx_010_16,The audit work remains in progress.,The audit work remains in progress.,"[PREVIOUS]
+We reviewed the background.
+[CURRENT]
+The audit work remains in progress.
+[NEXT]
+No commitment was made.",contextual_curriculum,audit,context_010_audit,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We reviewed the background.,No commitment was made.,none,standalone,supporting_detail,none,,background_context,not_action,
+ctx_011_01,I'll update the campaign launch schedule.,I'll update the campaign launch schedule.,"[PREVIOUS]
+We need someone to handle this.
+[CURRENT]
+I'll update the campaign launch schedule.
+[NEXT]
+Can it be done by Tuesday?",contextual_curriculum,marketing,context_011_marketing,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_011,True,We need someone to handle this.,Can it be done by Tuesday?,active,needs_previous,canonical_item,none,action,action_commitment,confirmed_action,
+ctx_011_02,Before Tuesday.,Before Tuesday.,"[PREVIOUS]
+I'll update the campaign launch schedule.
+[CURRENT]
+Before Tuesday.
+[NEXT]
+Yes, that works.",contextual_curriculum,marketing,context_011_marketing,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_011,True,I'll update the campaign launch schedule.,"Yes, that works.",none,needs_previous,context_only,deadline_previous,action,action_commitment,not_action,deadline_or_sequence
+ctx_011_03,"Yes, I'll take that.","Yes, I'll take that.","[PREVIOUS]
+Could you update the campaign launch schedule?
+[CURRENT]
+Yes, I'll take that.
+[NEXT]
+Please finish by Tuesday.",contextual_curriculum,marketing,context_011_marketing,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_011,True,Could you update the campaign launch schedule?,Please finish by Tuesday.,active,accepts_previous,canonical_item,none,action,action_commitment,confirmed_action,
+ctx_011_04,Mei will update the campaign launch schedule by Tuesday.,Mei will update the campaign launch schedule by Tuesday.,"[PREVIOUS]
+The work is on the list.
+[CURRENT]
+Mei will update the campaign launch schedule by Tuesday.
+[NEXT]
+Let's move on.",contextual_curriculum,marketing,context_011_marketing,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_011,True,The work is on the list.,Let's move on.,active,standalone,canonical_item,deadline_current,action,action_commitment,confirmed_action,deadline_or_sequence
+ctx_011_05,I completed the work to update the campaign launch schedule yesterday.,I completed the work to update the campaign launch schedule yesterday.,"[PREVIOUS]
+Here is the status.
+[CURRENT]
+I completed the work to update the campaign launch schedule yesterday.
+[NEXT]
+Nothing remains open.",contextual_curriculum,marketing,context_011_marketing,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,Here is the status.,Nothing remains open.,completed,standalone,context_only,historical,,background_context,completed_history,
+ctx_011_06,I might update the campaign launch schedule if capacity allows.,I might update the campaign launch schedule if capacity allows.,"[PREVIOUS]
+We may need help.
+[CURRENT]
+I might update the campaign launch schedule if capacity allows.
+[NEXT]
+No action was agreed.",contextual_curriculum,marketing,context_011_marketing,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We may need help.,No action was agreed.,tentative,needs_next,context_only,other,,background_context,not_action,
+ctx_011_07,"Actually, another owner will update the campaign launch schedule instead.","Actually, another owner will update the campaign launch schedule instead.","[PREVIOUS]
+Mei will update the campaign launch schedule.
+[CURRENT]
+Actually, another owner will update the campaign launch schedule instead.
+[NEXT]
+Use the new owner.",contextual_curriculum,marketing,context_011_marketing,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_011,True,Mei will update the campaign launch schedule.,Use the new owner.,superseded,modifies_previous,canonical_item,none,action,action_commitment,not_action,
+ctx_011_08,Do not proceed with that action.,Do not proceed with that action.,"[PREVIOUS]
+Please update the campaign launch schedule.
+[CURRENT]
+Do not proceed with that action.
+[NEXT]
+It is no longer required.",contextual_curriculum,marketing,context_011_marketing,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,Please update the campaign launch schedule.,It is no longer required.,inactive,modifies_previous,context_only,none,,background_context,not_action,
+ctx_011_09,We agreed to move the regional campaign into September.,We agreed to move the regional campaign into September.,"[PREVIOUS]
+We should choose an approach.
+[CURRENT]
+We agreed to move the regional campaign into September.
+[NEXT]
+That is the final position.",contextual_curriculum,marketing,context_011_marketing,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_011,True,We should choose an approach.,That is the final position.,none,standalone,canonical_item,none,decision,decision_agreement,not_action,decision_language
+ctx_011_10,Agreed.,Agreed.,"[PREVIOUS]
+The proposal is to move the regional campaign into September.
+[CURRENT]
+Agreed.
+[NEXT]
+Let's use that approach.",contextual_curriculum,marketing,context_011_marketing,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_011,True,The proposal is to move the regional campaign into September.,Let's use that approach.,none,accepts_previous,supporting_detail,none,decision,decision_agreement,not_action,decision_language
+ctx_011_11,"Yes, that is the decision.","Yes, that is the decision.","[PREVIOUS]
+We agreed to move the regional campaign into September.
+[CURRENT]
+Yes, that is the decision.
+[NEXT]
+Next topic.",contextual_curriculum,marketing,context_011_marketing,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_011,True,We agreed to move the regional campaign into September.,Next topic.,none,needs_previous,duplicate_expression,none,decision,decision_agreement,not_action,decision_language
+ctx_011_12,The team identified that creative approval may slip beyond the media booking date.,The team identified that creative approval may slip beyond the media booking date.,"[PREVIOUS]
+We should review delivery exposure.
+[CURRENT]
+The team identified that creative approval may slip beyond the media booking date.
+[NEXT]
+The exposure remains open.",contextual_curriculum,marketing,context_011_marketing,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,RISK_011,True,We should review delivery exposure.,The exposure remains open.,active,standalone,canonical_item,none,risk,risk_dependency,not_action,risk_language
+ctx_011_13,"Yes, we should monitor that.","Yes, we should monitor that.","[PREVIOUS]
+The risk is that creative approval may slip beyond the media booking date.
+[CURRENT]
+Yes, we should monitor that.
+[NEXT]
+Add it to the register.",contextual_curriculum,marketing,context_011_marketing,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,RISK_011,True,The risk is that creative approval may slip beyond the media booking date.,Add it to the register.,active,accepts_previous,supporting_detail,none,risk,risk_dependency,not_action,risk_language
+ctx_011_14,That exposure was closed last week.,That exposure was closed last week.,"[PREVIOUS]
+We previously worried that creative approval may slip beyond the media booking date.
+[CURRENT]
+That exposure was closed last week.
+[NEXT]
+No monitoring is required.",contextual_curriculum,marketing,context_011_marketing,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We previously worried that creative approval may slip beyond the media booking date.,No monitoring is required.,completed,modifies_previous,context_only,historical,,background_context,completed_history,
+ctx_011_15,Can everyone see my screen?,Can everyone see my screen?,"[PREVIOUS]
+The meeting is starting.
+[CURRENT]
+Can everyone see my screen?
+[NEXT]
+We will continue in a moment.",contextual_curriculum,marketing,context_011_marketing,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,The meeting is starting.,We will continue in a moment.,none,standalone,none,other,,background_context,not_action,
+ctx_011_16,The marketing work remains in progress.,The marketing work remains in progress.,"[PREVIOUS]
+We reviewed the background.
+[CURRENT]
+The marketing work remains in progress.
+[NEXT]
+No commitment was made.",contextual_curriculum,marketing,context_011_marketing,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We reviewed the background.,No commitment was made.,none,standalone,supporting_detail,none,,background_context,not_action,
+ctx_012_01,I'll update the weekend duty rota.,I'll update the weekend duty rota.,"[PREVIOUS]
+We need someone to handle this.
+[CURRENT]
+I'll update the weekend duty rota.
+[NEXT]
+Can it be done by this afternoon?",contextual_curriculum,operations,context_012_operations,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_012,True,We need someone to handle this.,Can it be done by this afternoon?,active,needs_previous,canonical_item,none,action,action_commitment,confirmed_action,
+ctx_012_02,Before this afternoon.,Before this afternoon.,"[PREVIOUS]
+I'll update the weekend duty rota.
+[CURRENT]
+Before this afternoon.
+[NEXT]
+Yes, that works.",contextual_curriculum,operations,context_012_operations,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_012,True,I'll update the weekend duty rota.,"Yes, that works.",none,needs_previous,context_only,deadline_previous,action,action_commitment,not_action,deadline_or_sequence
+ctx_012_03,"Yes, I'll take that.","Yes, I'll take that.","[PREVIOUS]
+Could you update the weekend duty rota?
+[CURRENT]
+Yes, I'll take that.
+[NEXT]
+Please finish by this afternoon.",contextual_curriculum,operations,context_012_operations,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_012,True,Could you update the weekend duty rota?,Please finish by this afternoon.,active,accepts_previous,canonical_item,none,action,action_commitment,confirmed_action,
+ctx_012_04,Declan will update the weekend duty rota by this afternoon.,Declan will update the weekend duty rota by this afternoon.,"[PREVIOUS]
+The work is on the list.
+[CURRENT]
+Declan will update the weekend duty rota by this afternoon.
+[NEXT]
+Let's move on.",contextual_curriculum,operations,context_012_operations,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_012,True,The work is on the list.,Let's move on.,active,standalone,canonical_item,deadline_current,action,action_commitment,confirmed_action,deadline_or_sequence
+ctx_012_05,I completed the work to update the weekend duty rota yesterday.,I completed the work to update the weekend duty rota yesterday.,"[PREVIOUS]
+Here is the status.
+[CURRENT]
+I completed the work to update the weekend duty rota yesterday.
+[NEXT]
+Nothing remains open.",contextual_curriculum,operations,context_012_operations,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,Here is the status.,Nothing remains open.,completed,standalone,context_only,historical,,background_context,completed_history,
+ctx_012_06,I might update the weekend duty rota if capacity allows.,I might update the weekend duty rota if capacity allows.,"[PREVIOUS]
+We may need help.
+[CURRENT]
+I might update the weekend duty rota if capacity allows.
+[NEXT]
+No action was agreed.",contextual_curriculum,operations,context_012_operations,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We may need help.,No action was agreed.,tentative,needs_next,context_only,other,,background_context,not_action,
+ctx_012_07,"Actually, another owner will update the weekend duty rota instead.","Actually, another owner will update the weekend duty rota instead.","[PREVIOUS]
+Declan will update the weekend duty rota.
+[CURRENT]
+Actually, another owner will update the weekend duty rota instead.
+[NEXT]
+Use the new owner.",contextual_curriculum,operations,context_012_operations,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_012,True,Declan will update the weekend duty rota.,Use the new owner.,superseded,modifies_previous,canonical_item,none,action,action_commitment,not_action,
+ctx_012_08,Do not proceed with that action.,Do not proceed with that action.,"[PREVIOUS]
+Please update the weekend duty rota.
+[CURRENT]
+Do not proceed with that action.
+[NEXT]
+It is no longer required.",contextual_curriculum,operations,context_012_operations,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,Please update the weekend duty rota.,It is no longer required.,inactive,modifies_previous,context_only,none,,background_context,not_action,
+ctx_012_09,We agreed to keep weekend support within the internal team.,We agreed to keep weekend support within the internal team.,"[PREVIOUS]
+We should choose an approach.
+[CURRENT]
+We agreed to keep weekend support within the internal team.
+[NEXT]
+That is the final position.",contextual_curriculum,operations,context_012_operations,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_012,True,We should choose an approach.,That is the final position.,none,standalone,canonical_item,none,decision,decision_agreement,not_action,decision_language
+ctx_012_10,Agreed.,Agreed.,"[PREVIOUS]
+The proposal is to keep weekend support within the internal team.
+[CURRENT]
+Agreed.
+[NEXT]
+Let's use that approach.",contextual_curriculum,operations,context_012_operations,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_012,True,The proposal is to keep weekend support within the internal team.,Let's use that approach.,none,accepts_previous,supporting_detail,none,decision,decision_agreement,not_action,decision_language
+ctx_012_11,"Yes, that is the decision.","Yes, that is the decision.","[PREVIOUS]
+We agreed to keep weekend support within the internal team.
+[CURRENT]
+Yes, that is the decision.
+[NEXT]
+Next topic.",contextual_curriculum,operations,context_012_operations,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_012,True,We agreed to keep weekend support within the internal team.,Next topic.,none,needs_previous,duplicate_expression,none,decision,decision_agreement,not_action,decision_language
+ctx_012_12,The team identified that insufficient weekend cover could delay incident response.,The team identified that insufficient weekend cover could delay incident response.,"[PREVIOUS]
+We should review delivery exposure.
+[CURRENT]
+The team identified that insufficient weekend cover could delay incident response.
+[NEXT]
+The exposure remains open.",contextual_curriculum,operations,context_012_operations,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,RISK_012,True,We should review delivery exposure.,The exposure remains open.,active,standalone,canonical_item,none,risk,risk_dependency,not_action,risk_language
+ctx_012_13,"Yes, we should monitor that.","Yes, we should monitor that.","[PREVIOUS]
+The risk is that insufficient weekend cover could delay incident response.
+[CURRENT]
+Yes, we should monitor that.
+[NEXT]
+Add it to the register.",contextual_curriculum,operations,context_012_operations,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,RISK_012,True,The risk is that insufficient weekend cover could delay incident response.,Add it to the register.,active,accepts_previous,supporting_detail,none,risk,risk_dependency,not_action,risk_language
+ctx_012_14,That exposure was closed last week.,That exposure was closed last week.,"[PREVIOUS]
+We previously worried that insufficient weekend cover could delay incident response.
+[CURRENT]
+That exposure was closed last week.
+[NEXT]
+No monitoring is required.",contextual_curriculum,operations,context_012_operations,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We previously worried that insufficient weekend cover could delay incident response.,No monitoring is required.,completed,modifies_previous,context_only,historical,,background_context,completed_history,
+ctx_012_15,Can everyone see my screen?,Can everyone see my screen?,"[PREVIOUS]
+The meeting is starting.
+[CURRENT]
+Can everyone see my screen?
+[NEXT]
+We will continue in a moment.",contextual_curriculum,operations,context_012_operations,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,The meeting is starting.,We will continue in a moment.,none,standalone,none,other,,background_context,not_action,
+ctx_012_16,The operations work remains in progress.,The operations work remains in progress.,"[PREVIOUS]
+We reviewed the background.
+[CURRENT]
+The operations work remains in progress.
+[NEXT]
+No commitment was made.",contextual_curriculum,operations,context_012_operations,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We reviewed the background.,No commitment was made.,none,standalone,supporting_detail,none,,background_context,not_action,
+ctx_013_01,I'll rewrite the account-permissions guide.,I'll rewrite the account-permissions guide.,"[PREVIOUS]
+We need someone to handle this.
+[CURRENT]
+I'll rewrite the account-permissions guide.
+[NEXT]
+Can it be done by Friday?",contextual_curriculum,documentation,context_013_documentation,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_013,True,We need someone to handle this.,Can it be done by Friday?,active,needs_previous,canonical_item,none,action,action_commitment,confirmed_action,
+ctx_013_02,Before Friday.,Before Friday.,"[PREVIOUS]
+I'll rewrite the account-permissions guide.
+[CURRENT]
+Before Friday.
+[NEXT]
+Yes, that works.",contextual_curriculum,documentation,context_013_documentation,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_013,True,I'll rewrite the account-permissions guide.,"Yes, that works.",none,needs_previous,context_only,deadline_previous,action,action_commitment,not_action,deadline_or_sequence
+ctx_013_03,"Yes, I'll take that.","Yes, I'll take that.","[PREVIOUS]
+Could you rewrite the account-permissions guide?
+[CURRENT]
+Yes, I'll take that.
+[NEXT]
+Please finish by Friday.",contextual_curriculum,documentation,context_013_documentation,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_013,True,Could you rewrite the account-permissions guide?,Please finish by Friday.,active,accepts_previous,canonical_item,none,action,action_commitment,confirmed_action,
+ctx_013_04,Nora will rewrite the account-permissions guide by Friday.,Nora will rewrite the account-permissions guide by Friday.,"[PREVIOUS]
+The work is on the list.
+[CURRENT]
+Nora will rewrite the account-permissions guide by Friday.
+[NEXT]
+Let's move on.",contextual_curriculum,documentation,context_013_documentation,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_013,True,The work is on the list.,Let's move on.,active,standalone,canonical_item,deadline_current,action,action_commitment,confirmed_action,deadline_or_sequence
+ctx_013_05,I completed the work to rewrite the account-permissions guide yesterday.,I completed the work to rewrite the account-permissions guide yesterday.,"[PREVIOUS]
+Here is the status.
+[CURRENT]
+I completed the work to rewrite the account-permissions guide yesterday.
+[NEXT]
+Nothing remains open.",contextual_curriculum,documentation,context_013_documentation,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,Here is the status.,Nothing remains open.,completed,standalone,context_only,historical,,background_context,completed_history,
+ctx_013_06,I might rewrite the account-permissions guide if capacity allows.,I might rewrite the account-permissions guide if capacity allows.,"[PREVIOUS]
+We may need help.
+[CURRENT]
+I might rewrite the account-permissions guide if capacity allows.
+[NEXT]
+No action was agreed.",contextual_curriculum,documentation,context_013_documentation,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We may need help.,No action was agreed.,tentative,needs_next,context_only,other,,background_context,not_action,
+ctx_013_07,"Actually, another owner will rewrite the account-permissions guide instead.","Actually, another owner will rewrite the account-permissions guide instead.","[PREVIOUS]
+Nora will rewrite the account-permissions guide.
+[CURRENT]
+Actually, another owner will rewrite the account-permissions guide instead.
+[NEXT]
+Use the new owner.",contextual_curriculum,documentation,context_013_documentation,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_013,True,Nora will rewrite the account-permissions guide.,Use the new owner.,superseded,modifies_previous,canonical_item,none,action,action_commitment,not_action,
+ctx_013_08,Do not proceed with that action.,Do not proceed with that action.,"[PREVIOUS]
+Please rewrite the account-permissions guide.
+[CURRENT]
+Do not proceed with that action.
+[NEXT]
+It is no longer required.",contextual_curriculum,documentation,context_013_documentation,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,Please rewrite the account-permissions guide.,It is no longer required.,inactive,modifies_previous,context_only,none,,background_context,not_action,
+ctx_013_09,We agreed to publish one combined onboarding guide.,We agreed to publish one combined onboarding guide.,"[PREVIOUS]
+We should choose an approach.
+[CURRENT]
+We agreed to publish one combined onboarding guide.
+[NEXT]
+That is the final position.",contextual_curriculum,documentation,context_013_documentation,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_013,True,We should choose an approach.,That is the final position.,none,standalone,canonical_item,none,decision,decision_agreement,not_action,decision_language
+ctx_013_10,Agreed.,Agreed.,"[PREVIOUS]
+The proposal is to publish one combined onboarding guide.
+[CURRENT]
+Agreed.
+[NEXT]
+Let's use that approach.",contextual_curriculum,documentation,context_013_documentation,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_013,True,The proposal is to publish one combined onboarding guide.,Let's use that approach.,none,accepts_previous,supporting_detail,none,decision,decision_agreement,not_action,decision_language
+ctx_013_11,"Yes, that is the decision.","Yes, that is the decision.","[PREVIOUS]
+We agreed to publish one combined onboarding guide.
+[CURRENT]
+Yes, that is the decision.
+[NEXT]
+Next topic.",contextual_curriculum,documentation,context_013_documentation,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_013,True,We agreed to publish one combined onboarding guide.,Next topic.,none,needs_previous,duplicate_expression,none,decision,decision_agreement,not_action,decision_language
+ctx_013_12,The team identified that ambiguous permissions guidance is increasing support demand.,The team identified that ambiguous permissions guidance is increasing support demand.,"[PREVIOUS]
+We should review delivery exposure.
+[CURRENT]
+The team identified that ambiguous permissions guidance is increasing support demand.
+[NEXT]
+The exposure remains open.",contextual_curriculum,documentation,context_013_documentation,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,RISK_013,True,We should review delivery exposure.,The exposure remains open.,active,standalone,canonical_item,none,risk,risk_dependency,not_action,risk_language
+ctx_013_13,"Yes, we should monitor that.","Yes, we should monitor that.","[PREVIOUS]
+The risk is that ambiguous permissions guidance is increasing support demand.
+[CURRENT]
+Yes, we should monitor that.
+[NEXT]
+Add it to the register.",contextual_curriculum,documentation,context_013_documentation,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,RISK_013,True,The risk is that ambiguous permissions guidance is increasing support demand.,Add it to the register.,active,accepts_previous,supporting_detail,none,risk,risk_dependency,not_action,risk_language
+ctx_013_14,That exposure was closed last week.,That exposure was closed last week.,"[PREVIOUS]
+We previously worried that ambiguous permissions guidance is increasing support demand.
+[CURRENT]
+That exposure was closed last week.
+[NEXT]
+No monitoring is required.",contextual_curriculum,documentation,context_013_documentation,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We previously worried that ambiguous permissions guidance is increasing support demand.,No monitoring is required.,completed,modifies_previous,context_only,historical,,background_context,completed_history,
+ctx_013_15,Can everyone see my screen?,Can everyone see my screen?,"[PREVIOUS]
+The meeting is starting.
+[CURRENT]
+Can everyone see my screen?
+[NEXT]
+We will continue in a moment.",contextual_curriculum,documentation,context_013_documentation,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,The meeting is starting.,We will continue in a moment.,none,standalone,none,other,,background_context,not_action,
+ctx_013_16,The documentation work remains in progress.,The documentation work remains in progress.,"[PREVIOUS]
+We reviewed the background.
+[CURRENT]
+The documentation work remains in progress.
+[NEXT]
+No commitment was made.",contextual_curriculum,documentation,context_013_documentation,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We reviewed the background.,No commitment was made.,none,standalone,supporting_detail,none,,background_context,not_action,
+ctx_014_01,I'll refresh the quarterly sales forecast.,I'll refresh the quarterly sales forecast.,"[PREVIOUS]
+We need someone to handle this.
+[CURRENT]
+I'll refresh the quarterly sales forecast.
+[NEXT]
+Can it be done by Tuesday morning?",contextual_curriculum,analytics,context_014_analytics,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_014,True,We need someone to handle this.,Can it be done by Tuesday morning?,active,needs_previous,canonical_item,none,action,action_commitment,confirmed_action,
+ctx_014_02,Before Tuesday morning.,Before Tuesday morning.,"[PREVIOUS]
+I'll refresh the quarterly sales forecast.
+[CURRENT]
+Before Tuesday morning.
+[NEXT]
+Yes, that works.",contextual_curriculum,analytics,context_014_analytics,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_014,True,I'll refresh the quarterly sales forecast.,"Yes, that works.",none,needs_previous,context_only,deadline_previous,action,action_commitment,not_action,deadline_or_sequence
+ctx_014_03,"Yes, I'll take that.","Yes, I'll take that.","[PREVIOUS]
+Could you refresh the quarterly sales forecast?
+[CURRENT]
+Yes, I'll take that.
+[NEXT]
+Please finish by Tuesday morning.",contextual_curriculum,analytics,context_014_analytics,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_014,True,Could you refresh the quarterly sales forecast?,Please finish by Tuesday morning.,active,accepts_previous,canonical_item,none,action,action_commitment,confirmed_action,
+ctx_014_04,Omar will refresh the quarterly sales forecast by Tuesday morning.,Omar will refresh the quarterly sales forecast by Tuesday morning.,"[PREVIOUS]
+The work is on the list.
+[CURRENT]
+Omar will refresh the quarterly sales forecast by Tuesday morning.
+[NEXT]
+Let's move on.",contextual_curriculum,analytics,context_014_analytics,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_014,True,The work is on the list.,Let's move on.,active,standalone,canonical_item,deadline_current,action,action_commitment,confirmed_action,deadline_or_sequence
+ctx_014_05,I completed the work to refresh the quarterly sales forecast yesterday.,I completed the work to refresh the quarterly sales forecast yesterday.,"[PREVIOUS]
+Here is the status.
+[CURRENT]
+I completed the work to refresh the quarterly sales forecast yesterday.
+[NEXT]
+Nothing remains open.",contextual_curriculum,analytics,context_014_analytics,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,Here is the status.,Nothing remains open.,completed,standalone,context_only,historical,,background_context,completed_history,
+ctx_014_06,I might refresh the quarterly sales forecast if capacity allows.,I might refresh the quarterly sales forecast if capacity allows.,"[PREVIOUS]
+We may need help.
+[CURRENT]
+I might refresh the quarterly sales forecast if capacity allows.
+[NEXT]
+No action was agreed.",contextual_curriculum,analytics,context_014_analytics,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We may need help.,No action was agreed.,tentative,needs_next,context_only,other,,background_context,not_action,
+ctx_014_07,"Actually, another owner will refresh the quarterly sales forecast instead.","Actually, another owner will refresh the quarterly sales forecast instead.","[PREVIOUS]
+Omar will refresh the quarterly sales forecast.
+[CURRENT]
+Actually, another owner will refresh the quarterly sales forecast instead.
+[NEXT]
+Use the new owner.",contextual_curriculum,analytics,context_014_analytics,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_014,True,Omar will refresh the quarterly sales forecast.,Use the new owner.,superseded,modifies_previous,canonical_item,none,action,action_commitment,not_action,
+ctx_014_08,Do not proceed with that action.,Do not proceed with that action.,"[PREVIOUS]
+Please refresh the quarterly sales forecast.
+[CURRENT]
+Do not proceed with that action.
+[NEXT]
+It is no longer required.",contextual_curriculum,analytics,context_014_analytics,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,Please refresh the quarterly sales forecast.,It is no longer required.,inactive,modifies_previous,context_only,none,,background_context,not_action,
+ctx_014_09,We agreed to focus pipeline reviews on logistics and healthcare.,We agreed to focus pipeline reviews on logistics and healthcare.,"[PREVIOUS]
+We should choose an approach.
+[CURRENT]
+We agreed to focus pipeline reviews on logistics and healthcare.
+[NEXT]
+That is the final position.",contextual_curriculum,analytics,context_014_analytics,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_014,True,We should choose an approach.,That is the final position.,none,standalone,canonical_item,none,decision,decision_agreement,not_action,decision_language
+ctx_014_10,Agreed.,Agreed.,"[PREVIOUS]
+The proposal is to focus pipeline reviews on logistics and healthcare.
+[CURRENT]
+Agreed.
+[NEXT]
+Let's use that approach.",contextual_curriculum,analytics,context_014_analytics,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_014,True,The proposal is to focus pipeline reviews on logistics and healthcare.,Let's use that approach.,none,accepts_previous,supporting_detail,none,decision,decision_agreement,not_action,decision_language
+ctx_014_11,"Yes, that is the decision.","Yes, that is the decision.","[PREVIOUS]
+We agreed to focus pipeline reviews on logistics and healthcare.
+[CURRENT]
+Yes, that is the decision.
+[NEXT]
+Next topic.",contextual_curriculum,analytics,context_014_analytics,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_014,True,We agreed to focus pipeline reviews on logistics and healthcare.,Next topic.,none,needs_previous,duplicate_expression,none,decision,decision_agreement,not_action,decision_language
+ctx_014_12,The team identified that two unqualified opportunities may distort the forecast.,The team identified that two unqualified opportunities may distort the forecast.,"[PREVIOUS]
+We should review delivery exposure.
+[CURRENT]
+The team identified that two unqualified opportunities may distort the forecast.
+[NEXT]
+The exposure remains open.",contextual_curriculum,analytics,context_014_analytics,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,RISK_014,True,We should review delivery exposure.,The exposure remains open.,active,standalone,canonical_item,none,risk,risk_dependency,not_action,risk_language
+ctx_014_13,"Yes, we should monitor that.","Yes, we should monitor that.","[PREVIOUS]
+The risk is that two unqualified opportunities may distort the forecast.
+[CURRENT]
+Yes, we should monitor that.
+[NEXT]
+Add it to the register.",contextual_curriculum,analytics,context_014_analytics,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,RISK_014,True,The risk is that two unqualified opportunities may distort the forecast.,Add it to the register.,active,accepts_previous,supporting_detail,none,risk,risk_dependency,not_action,risk_language
+ctx_014_14,That exposure was closed last week.,That exposure was closed last week.,"[PREVIOUS]
+We previously worried that two unqualified opportunities may distort the forecast.
+[CURRENT]
+That exposure was closed last week.
+[NEXT]
+No monitoring is required.",contextual_curriculum,analytics,context_014_analytics,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We previously worried that two unqualified opportunities may distort the forecast.,No monitoring is required.,completed,modifies_previous,context_only,historical,,background_context,completed_history,
+ctx_014_15,Can everyone see my screen?,Can everyone see my screen?,"[PREVIOUS]
+The meeting is starting.
+[CURRENT]
+Can everyone see my screen?
+[NEXT]
+We will continue in a moment.",contextual_curriculum,analytics,context_014_analytics,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,The meeting is starting.,We will continue in a moment.,none,standalone,none,other,,background_context,not_action,
+ctx_014_16,The analytics work remains in progress.,The analytics work remains in progress.,"[PREVIOUS]
+We reviewed the background.
+[CURRENT]
+The analytics work remains in progress.
+[NEXT]
+No commitment was made.",contextual_curriculum,analytics,context_014_analytics,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We reviewed the background.,No commitment was made.,none,standalone,supporting_detail,none,,background_context,not_action,
+ctx_015_01,I'll upload the signed corrective-action response.,I'll upload the signed corrective-action response.,"[PREVIOUS]
+We need someone to handle this.
+[CURRENT]
+I'll upload the signed corrective-action response.
+[NEXT]
+Can it be done by close tomorrow?",contextual_curriculum,quality,context_015_quality,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_015,True,We need someone to handle this.,Can it be done by close tomorrow?,active,needs_previous,canonical_item,none,action,action_commitment,confirmed_action,
+ctx_015_02,Before close tomorrow.,Before close tomorrow.,"[PREVIOUS]
+I'll upload the signed corrective-action response.
+[CURRENT]
+Before close tomorrow.
+[NEXT]
+Yes, that works.",contextual_curriculum,quality,context_015_quality,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_015,True,I'll upload the signed corrective-action response.,"Yes, that works.",none,needs_previous,context_only,deadline_previous,action,action_commitment,not_action,deadline_or_sequence
+ctx_015_03,"Yes, I'll take that.","Yes, I'll take that.","[PREVIOUS]
+Could you upload the signed corrective-action response?
+[CURRENT]
+Yes, I'll take that.
+[NEXT]
+Please finish by close tomorrow.",contextual_curriculum,quality,context_015_quality,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_015,True,Could you upload the signed corrective-action response?,Please finish by close tomorrow.,active,accepts_previous,canonical_item,none,action,action_commitment,confirmed_action,
+ctx_015_04,Priya will upload the signed corrective-action response by close tomorrow.,Priya will upload the signed corrective-action response by close tomorrow.,"[PREVIOUS]
+The work is on the list.
+[CURRENT]
+Priya will upload the signed corrective-action response by close tomorrow.
+[NEXT]
+Let's move on.",contextual_curriculum,quality,context_015_quality,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_015,True,The work is on the list.,Let's move on.,active,standalone,canonical_item,deadline_current,action,action_commitment,confirmed_action,deadline_or_sequence
+ctx_015_05,I completed the work to upload the signed corrective-action response yesterday.,I completed the work to upload the signed corrective-action response yesterday.,"[PREVIOUS]
+Here is the status.
+[CURRENT]
+I completed the work to upload the signed corrective-action response yesterday.
+[NEXT]
+Nothing remains open.",contextual_curriculum,quality,context_015_quality,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,Here is the status.,Nothing remains open.,completed,standalone,context_only,historical,,background_context,completed_history,
+ctx_015_06,I might upload the signed corrective-action response if capacity allows.,I might upload the signed corrective-action response if capacity allows.,"[PREVIOUS]
+We may need help.
+[CURRENT]
+I might upload the signed corrective-action response if capacity allows.
+[NEXT]
+No action was agreed.",contextual_curriculum,quality,context_015_quality,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We may need help.,No action was agreed.,tentative,needs_next,context_only,other,,background_context,not_action,
+ctx_015_07,"Actually, another owner will upload the signed corrective-action response instead.","Actually, another owner will upload the signed corrective-action response instead.","[PREVIOUS]
+Priya will upload the signed corrective-action response.
+[CURRENT]
+Actually, another owner will upload the signed corrective-action response instead.
+[NEXT]
+Use the new owner.",contextual_curriculum,quality,context_015_quality,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_015,True,Priya will upload the signed corrective-action response.,Use the new owner.,superseded,modifies_previous,canonical_item,none,action,action_commitment,not_action,
+ctx_015_08,Do not proceed with that action.,Do not proceed with that action.,"[PREVIOUS]
+Please upload the signed corrective-action response.
+[CURRENT]
+Do not proceed with that action.
+[NEXT]
+It is no longer required.",contextual_curriculum,quality,context_015_quality,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,Please upload the signed corrective-action response.,It is no longer required.,inactive,modifies_previous,context_only,none,,background_context,not_action,
+ctx_015_09,We agreed to retain the supplier on the approved list.,We agreed to retain the supplier on the approved list.,"[PREVIOUS]
+We should choose an approach.
+[CURRENT]
+We agreed to retain the supplier on the approved list.
+[NEXT]
+That is the final position.",contextual_curriculum,quality,context_015_quality,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_015,True,We should choose an approach.,That is the final position.,none,standalone,canonical_item,none,decision,decision_agreement,not_action,decision_language
+ctx_015_10,Agreed.,Agreed.,"[PREVIOUS]
+The proposal is to retain the supplier on the approved list.
+[CURRENT]
+Agreed.
+[NEXT]
+Let's use that approach.",contextual_curriculum,quality,context_015_quality,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_015,True,The proposal is to retain the supplier on the approved list.,Let's use that approach.,none,accepts_previous,supporting_detail,none,decision,decision_agreement,not_action,decision_language
+ctx_015_11,"Yes, that is the decision.","Yes, that is the decision.","[PREVIOUS]
+We agreed to retain the supplier on the approved list.
+[CURRENT]
+Yes, that is the decision.
+[NEXT]
+Next topic.",contextual_curriculum,quality,context_015_quality,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_015,True,We agreed to retain the supplier on the approved list.,Next topic.,none,needs_previous,duplicate_expression,none,decision,decision_agreement,not_action,decision_language
+ctx_015_12,The team identified that an overdue corrective action could affect supplier approval.,The team identified that an overdue corrective action could affect supplier approval.,"[PREVIOUS]
+We should review delivery exposure.
+[CURRENT]
+The team identified that an overdue corrective action could affect supplier approval.
+[NEXT]
+The exposure remains open.",contextual_curriculum,quality,context_015_quality,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,RISK_015,True,We should review delivery exposure.,The exposure remains open.,active,standalone,canonical_item,none,risk,risk_dependency,not_action,risk_language
+ctx_015_13,"Yes, we should monitor that.","Yes, we should monitor that.","[PREVIOUS]
+The risk is that an overdue corrective action could affect supplier approval.
+[CURRENT]
+Yes, we should monitor that.
+[NEXT]
+Add it to the register.",contextual_curriculum,quality,context_015_quality,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,RISK_015,True,The risk is that an overdue corrective action could affect supplier approval.,Add it to the register.,active,accepts_previous,supporting_detail,none,risk,risk_dependency,not_action,risk_language
+ctx_015_14,That exposure was closed last week.,That exposure was closed last week.,"[PREVIOUS]
+We previously worried that an overdue corrective action could affect supplier approval.
+[CURRENT]
+That exposure was closed last week.
+[NEXT]
+No monitoring is required.",contextual_curriculum,quality,context_015_quality,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We previously worried that an overdue corrective action could affect supplier approval.,No monitoring is required.,completed,modifies_previous,context_only,historical,,background_context,completed_history,
+ctx_015_15,Can everyone see my screen?,Can everyone see my screen?,"[PREVIOUS]
+The meeting is starting.
+[CURRENT]
+Can everyone see my screen?
+[NEXT]
+We will continue in a moment.",contextual_curriculum,quality,context_015_quality,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,The meeting is starting.,We will continue in a moment.,none,standalone,none,other,,background_context,not_action,
+ctx_015_16,The quality work remains in progress.,The quality work remains in progress.,"[PREVIOUS]
+We reviewed the background.
+[CURRENT]
+The quality work remains in progress.
+[NEXT]
+No commitment was made.",contextual_curriculum,quality,context_015_quality,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We reviewed the background.,No commitment was made.,none,standalone,supporting_detail,none,,background_context,not_action,
+ctx_016_01,I'll reschedule the programme check-in.,I'll reschedule the programme check-in.,"[PREVIOUS]
+We need someone to handle this.
+[CURRENT]
+I'll reschedule the programme check-in.
+[NEXT]
+Can it be done by today?",contextual_curriculum,planning,context_016_planning,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_016,True,We need someone to handle this.,Can it be done by today?,active,needs_previous,canonical_item,none,action,action_commitment,confirmed_action,
+ctx_016_02,Before today.,Before today.,"[PREVIOUS]
+I'll reschedule the programme check-in.
+[CURRENT]
+Before today.
+[NEXT]
+Yes, that works.",contextual_curriculum,planning,context_016_planning,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_016,True,I'll reschedule the programme check-in.,"Yes, that works.",none,needs_previous,context_only,deadline_previous,action,action_commitment,not_action,deadline_or_sequence
+ctx_016_03,"Yes, I'll take that.","Yes, I'll take that.","[PREVIOUS]
+Could you reschedule the programme check-in?
+[CURRENT]
+Yes, I'll take that.
+[NEXT]
+Please finish by today.",contextual_curriculum,planning,context_016_planning,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_016,True,Could you reschedule the programme check-in?,Please finish by today.,active,accepts_previous,canonical_item,none,action,action_commitment,confirmed_action,
+ctx_016_04,David will reschedule the programme check-in by today.,David will reschedule the programme check-in by today.,"[PREVIOUS]
+The work is on the list.
+[CURRENT]
+David will reschedule the programme check-in by today.
+[NEXT]
+Let's move on.",contextual_curriculum,planning,context_016_planning,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_016,True,The work is on the list.,Let's move on.,active,standalone,canonical_item,deadline_current,action,action_commitment,confirmed_action,deadline_or_sequence
+ctx_016_05,I completed the work to reschedule the programme check-in yesterday.,I completed the work to reschedule the programme check-in yesterday.,"[PREVIOUS]
+Here is the status.
+[CURRENT]
+I completed the work to reschedule the programme check-in yesterday.
+[NEXT]
+Nothing remains open.",contextual_curriculum,planning,context_016_planning,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,Here is the status.,Nothing remains open.,completed,standalone,context_only,historical,,background_context,completed_history,
+ctx_016_06,I might reschedule the programme check-in if capacity allows.,I might reschedule the programme check-in if capacity allows.,"[PREVIOUS]
+We may need help.
+[CURRENT]
+I might reschedule the programme check-in if capacity allows.
+[NEXT]
+No action was agreed.",contextual_curriculum,planning,context_016_planning,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We may need help.,No action was agreed.,tentative,needs_next,context_only,other,,background_context,not_action,
+ctx_016_07,"Actually, another owner will reschedule the programme check-in instead.","Actually, another owner will reschedule the programme check-in instead.","[PREVIOUS]
+David will reschedule the programme check-in.
+[CURRENT]
+Actually, another owner will reschedule the programme check-in instead.
+[NEXT]
+Use the new owner.",contextual_curriculum,planning,context_016_planning,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_016,True,David will reschedule the programme check-in.,Use the new owner.,superseded,modifies_previous,canonical_item,none,action,action_commitment,not_action,
+ctx_016_08,Do not proceed with that action.,Do not proceed with that action.,"[PREVIOUS]
+Please reschedule the programme check-in.
+[CURRENT]
+Do not proceed with that action.
+[NEXT]
+It is no longer required.",contextual_curriculum,planning,context_016_planning,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,Please reschedule the programme check-in.,It is no longer required.,inactive,modifies_previous,context_only,none,,background_context,not_action,
+ctx_016_09,We agreed to hold the check-in on Friday at noon.,We agreed to hold the check-in on Friday at noon.,"[PREVIOUS]
+We should choose an approach.
+[CURRENT]
+We agreed to hold the check-in on Friday at noon.
+[NEXT]
+That is the final position.",contextual_curriculum,planning,context_016_planning,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_016,True,We should choose an approach.,That is the final position.,none,standalone,canonical_item,none,decision,decision_agreement,not_action,decision_language
+ctx_016_10,Agreed.,Agreed.,"[PREVIOUS]
+The proposal is to hold the check-in on Friday at noon.
+[CURRENT]
+Agreed.
+[NEXT]
+Let's use that approach.",contextual_curriculum,planning,context_016_planning,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_016,True,The proposal is to hold the check-in on Friday at noon.,Let's use that approach.,none,accepts_previous,supporting_detail,none,decision,decision_agreement,not_action,decision_language
+ctx_016_11,"Yes, that is the decision.","Yes, that is the decision.","[PREVIOUS]
+We agreed to hold the check-in on Friday at noon.
+[CURRENT]
+Yes, that is the decision.
+[NEXT]
+Next topic.",contextual_curriculum,planning,context_016_planning,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_016,True,We agreed to hold the check-in on Friday at noon.,Next topic.,none,needs_previous,duplicate_expression,none,decision,decision_agreement,not_action,decision_language
+ctx_016_12,The team identified that the proposed time may conflict with the client workshop.,The team identified that the proposed time may conflict with the client workshop.,"[PREVIOUS]
+We should review delivery exposure.
+[CURRENT]
+The team identified that the proposed time may conflict with the client workshop.
+[NEXT]
+The exposure remains open.",contextual_curriculum,planning,context_016_planning,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,RISK_016,True,We should review delivery exposure.,The exposure remains open.,active,standalone,canonical_item,none,risk,risk_dependency,not_action,risk_language
+ctx_016_13,"Yes, we should monitor that.","Yes, we should monitor that.","[PREVIOUS]
+The risk is that the proposed time may conflict with the client workshop.
+[CURRENT]
+Yes, we should monitor that.
+[NEXT]
+Add it to the register.",contextual_curriculum,planning,context_016_planning,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,RISK_016,True,The risk is that the proposed time may conflict with the client workshop.,Add it to the register.,active,accepts_previous,supporting_detail,none,risk,risk_dependency,not_action,risk_language
+ctx_016_14,That exposure was closed last week.,That exposure was closed last week.,"[PREVIOUS]
+We previously worried that the proposed time may conflict with the client workshop.
+[CURRENT]
+That exposure was closed last week.
+[NEXT]
+No monitoring is required.",contextual_curriculum,planning,context_016_planning,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We previously worried that the proposed time may conflict with the client workshop.,No monitoring is required.,completed,modifies_previous,context_only,historical,,background_context,completed_history,
+ctx_016_15,Can everyone see my screen?,Can everyone see my screen?,"[PREVIOUS]
+The meeting is starting.
+[CURRENT]
+Can everyone see my screen?
+[NEXT]
+We will continue in a moment.",contextual_curriculum,planning,context_016_planning,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,The meeting is starting.,We will continue in a moment.,none,standalone,none,other,,background_context,not_action,
+ctx_016_16,The planning work remains in progress.,The planning work remains in progress.,"[PREVIOUS]
+We reviewed the background.
+[CURRENT]
+The planning work remains in progress.
+[NEXT]
+No commitment was made.",contextual_curriculum,planning,context_016_planning,validation,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We reviewed the background.,No commitment was made.,none,standalone,supporting_detail,none,,background_context,not_action,
+ctx_017_01,I'll verify the customer mapping file.,I'll verify the customer mapping file.,"[PREVIOUS]
+We need someone to handle this.
+[CURRENT]
+I'll verify the customer mapping file.
+[NEXT]
+Can it be done by Thursday?",contextual_curriculum,data_migration,context_017_data_migration,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_017,True,We need someone to handle this.,Can it be done by Thursday?,active,needs_previous,canonical_item,none,action,action_commitment,confirmed_action,
+ctx_017_02,Before Thursday.,Before Thursday.,"[PREVIOUS]
+I'll verify the customer mapping file.
+[CURRENT]
+Before Thursday.
+[NEXT]
+Yes, that works.",contextual_curriculum,data_migration,context_017_data_migration,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_017,True,I'll verify the customer mapping file.,"Yes, that works.",none,needs_previous,context_only,deadline_previous,action,action_commitment,not_action,deadline_or_sequence
+ctx_017_03,"Yes, I'll take that.","Yes, I'll take that.","[PREVIOUS]
+Could you verify the customer mapping file?
+[CURRENT]
+Yes, I'll take that.
+[NEXT]
+Please finish by Thursday.",contextual_curriculum,data_migration,context_017_data_migration,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_017,True,Could you verify the customer mapping file?,Please finish by Thursday.,active,accepts_previous,canonical_item,none,action,action_commitment,confirmed_action,
+ctx_017_04,Fatima will verify the customer mapping file by Thursday.,Fatima will verify the customer mapping file by Thursday.,"[PREVIOUS]
+The work is on the list.
+[CURRENT]
+Fatima will verify the customer mapping file by Thursday.
+[NEXT]
+Let's move on.",contextual_curriculum,data_migration,context_017_data_migration,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_017,True,The work is on the list.,Let's move on.,active,standalone,canonical_item,deadline_current,action,action_commitment,confirmed_action,deadline_or_sequence
+ctx_017_05,I completed the work to verify the customer mapping file yesterday.,I completed the work to verify the customer mapping file yesterday.,"[PREVIOUS]
+Here is the status.
+[CURRENT]
+I completed the work to verify the customer mapping file yesterday.
+[NEXT]
+Nothing remains open.",contextual_curriculum,data_migration,context_017_data_migration,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,Here is the status.,Nothing remains open.,completed,standalone,context_only,historical,,background_context,completed_history,
+ctx_017_06,I might verify the customer mapping file if capacity allows.,I might verify the customer mapping file if capacity allows.,"[PREVIOUS]
+We may need help.
+[CURRENT]
+I might verify the customer mapping file if capacity allows.
+[NEXT]
+No action was agreed.",contextual_curriculum,data_migration,context_017_data_migration,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We may need help.,No action was agreed.,tentative,needs_next,context_only,other,,background_context,not_action,
+ctx_017_07,"Actually, another owner will verify the customer mapping file instead.","Actually, another owner will verify the customer mapping file instead.","[PREVIOUS]
+Fatima will verify the customer mapping file.
+[CURRENT]
+Actually, another owner will verify the customer mapping file instead.
+[NEXT]
+Use the new owner.",contextual_curriculum,data_migration,context_017_data_migration,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_017,True,Fatima will verify the customer mapping file.,Use the new owner.,superseded,modifies_previous,canonical_item,none,action,action_commitment,not_action,
+ctx_017_08,Do not proceed with that action.,Do not proceed with that action.,"[PREVIOUS]
+Please verify the customer mapping file.
+[CURRENT]
+Do not proceed with that action.
+[NEXT]
+It is no longer required.",contextual_curriculum,data_migration,context_017_data_migration,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,Please verify the customer mapping file.,It is no longer required.,inactive,modifies_previous,context_only,none,,background_context,not_action,
+ctx_017_09,We agreed to run a phased migration by region.,We agreed to run a phased migration by region.,"[PREVIOUS]
+We should choose an approach.
+[CURRENT]
+We agreed to run a phased migration by region.
+[NEXT]
+That is the final position.",contextual_curriculum,data_migration,context_017_data_migration,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_017,True,We should choose an approach.,That is the final position.,none,standalone,canonical_item,none,decision,decision_agreement,not_action,decision_language
+ctx_017_10,Agreed.,Agreed.,"[PREVIOUS]
+The proposal is to run a phased migration by region.
+[CURRENT]
+Agreed.
+[NEXT]
+Let's use that approach.",contextual_curriculum,data_migration,context_017_data_migration,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_017,True,The proposal is to run a phased migration by region.,Let's use that approach.,none,accepts_previous,supporting_detail,none,decision,decision_agreement,not_action,decision_language
+ctx_017_11,"Yes, that is the decision.","Yes, that is the decision.","[PREVIOUS]
+We agreed to run a phased migration by region.
+[CURRENT]
+Yes, that is the decision.
+[NEXT]
+Next topic.",contextual_curriculum,data_migration,context_017_data_migration,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_017,True,We agreed to run a phased migration by region.,Next topic.,none,needs_previous,duplicate_expression,none,decision,decision_agreement,not_action,decision_language
+ctx_017_12,The team identified that duplicate customer identifiers could corrupt the import.,The team identified that duplicate customer identifiers could corrupt the import.,"[PREVIOUS]
+We should review delivery exposure.
+[CURRENT]
+The team identified that duplicate customer identifiers could corrupt the import.
+[NEXT]
+The exposure remains open.",contextual_curriculum,data_migration,context_017_data_migration,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,RISK_017,True,We should review delivery exposure.,The exposure remains open.,active,standalone,canonical_item,none,risk,risk_dependency,not_action,risk_language
+ctx_017_13,"Yes, we should monitor that.","Yes, we should monitor that.","[PREVIOUS]
+The risk is that duplicate customer identifiers could corrupt the import.
+[CURRENT]
+Yes, we should monitor that.
+[NEXT]
+Add it to the register.",contextual_curriculum,data_migration,context_017_data_migration,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,RISK_017,True,The risk is that duplicate customer identifiers could corrupt the import.,Add it to the register.,active,accepts_previous,supporting_detail,none,risk,risk_dependency,not_action,risk_language
+ctx_017_14,That exposure was closed last week.,That exposure was closed last week.,"[PREVIOUS]
+We previously worried that duplicate customer identifiers could corrupt the import.
+[CURRENT]
+That exposure was closed last week.
+[NEXT]
+No monitoring is required.",contextual_curriculum,data_migration,context_017_data_migration,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We previously worried that duplicate customer identifiers could corrupt the import.,No monitoring is required.,completed,modifies_previous,context_only,historical,,background_context,completed_history,
+ctx_017_15,Can everyone see my screen?,Can everyone see my screen?,"[PREVIOUS]
+The meeting is starting.
+[CURRENT]
+Can everyone see my screen?
+[NEXT]
+We will continue in a moment.",contextual_curriculum,data_migration,context_017_data_migration,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,The meeting is starting.,We will continue in a moment.,none,standalone,none,other,,background_context,not_action,
+ctx_017_16,The data migration work remains in progress.,The data migration work remains in progress.,"[PREVIOUS]
+We reviewed the background.
+[CURRENT]
+The data migration work remains in progress.
+[NEXT]
+No commitment was made.",contextual_curriculum,data_migration,context_017_data_migration,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We reviewed the background.,No commitment was made.,none,standalone,supporting_detail,none,,background_context,not_action,
+ctx_018_01,I'll remove two fields from the registration form.,I'll remove two fields from the registration form.,"[PREVIOUS]
+We need someone to handle this.
+[CURRENT]
+I'll remove two fields from the registration form.
+[NEXT]
+Can it be done by before release?",contextual_curriculum,product,context_018_product,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_018,True,We need someone to handle this.,Can it be done by before release?,active,needs_previous,canonical_item,none,action,action_commitment,confirmed_action,
+ctx_018_02,Before before release.,Before before release.,"[PREVIOUS]
+I'll remove two fields from the registration form.
+[CURRENT]
+Before before release.
+[NEXT]
+Yes, that works.",contextual_curriculum,product,context_018_product,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_018,True,I'll remove two fields from the registration form.,"Yes, that works.",none,needs_previous,context_only,deadline_previous,action,action_commitment,not_action,deadline_or_sequence
+ctx_018_03,"Yes, I'll take that.","Yes, I'll take that.","[PREVIOUS]
+Could you remove two fields from the registration form?
+[CURRENT]
+Yes, I'll take that.
+[NEXT]
+Please finish by before release.",contextual_curriculum,product,context_018_product,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_018,True,Could you remove two fields from the registration form?,Please finish by before release.,active,accepts_previous,canonical_item,none,action,action_commitment,confirmed_action,
+ctx_018_04,Gabriel will remove two fields from the registration form by before release.,Gabriel will remove two fields from the registration form by before release.,"[PREVIOUS]
+The work is on the list.
+[CURRENT]
+Gabriel will remove two fields from the registration form by before release.
+[NEXT]
+Let's move on.",contextual_curriculum,product,context_018_product,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_018,True,The work is on the list.,Let's move on.,active,standalone,canonical_item,deadline_current,action,action_commitment,confirmed_action,deadline_or_sequence
+ctx_018_05,I completed the work to remove two fields from the registration form yesterday.,I completed the work to remove two fields from the registration form yesterday.,"[PREVIOUS]
+Here is the status.
+[CURRENT]
+I completed the work to remove two fields from the registration form yesterday.
+[NEXT]
+Nothing remains open.",contextual_curriculum,product,context_018_product,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,Here is the status.,Nothing remains open.,completed,standalone,context_only,historical,,background_context,completed_history,
+ctx_018_06,I might remove two fields from the registration form if capacity allows.,I might remove two fields from the registration form if capacity allows.,"[PREVIOUS]
+We may need help.
+[CURRENT]
+I might remove two fields from the registration form if capacity allows.
+[NEXT]
+No action was agreed.",contextual_curriculum,product,context_018_product,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We may need help.,No action was agreed.,tentative,needs_next,context_only,other,,background_context,not_action,
+ctx_018_07,"Actually, another owner will remove two fields from the registration form instead.","Actually, another owner will remove two fields from the registration form instead.","[PREVIOUS]
+Gabriel will remove two fields from the registration form.
+[CURRENT]
+Actually, another owner will remove two fields from the registration form instead.
+[NEXT]
+Use the new owner.",contextual_curriculum,product,context_018_product,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_018,True,Gabriel will remove two fields from the registration form.,Use the new owner.,superseded,modifies_previous,canonical_item,none,action,action_commitment,not_action,
+ctx_018_08,Do not proceed with that action.,Do not proceed with that action.,"[PREVIOUS]
+Please remove two fields from the registration form.
+[CURRENT]
+Do not proceed with that action.
+[NEXT]
+It is no longer required.",contextual_curriculum,product,context_018_product,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,Please remove two fields from the registration form.,It is no longer required.,inactive,modifies_previous,context_only,none,,background_context,not_action,
+ctx_018_09,We agreed to use the shorter registration journey.,We agreed to use the shorter registration journey.,"[PREVIOUS]
+We should choose an approach.
+[CURRENT]
+We agreed to use the shorter registration journey.
+[NEXT]
+That is the final position.",contextual_curriculum,product,context_018_product,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_018,True,We should choose an approach.,That is the final position.,none,standalone,canonical_item,none,decision,decision_agreement,not_action,decision_language
+ctx_018_10,Agreed.,Agreed.,"[PREVIOUS]
+The proposal is to use the shorter registration journey.
+[CURRENT]
+Agreed.
+[NEXT]
+Let's use that approach.",contextual_curriculum,product,context_018_product,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_018,True,The proposal is to use the shorter registration journey.,Let's use that approach.,none,accepts_previous,supporting_detail,none,decision,decision_agreement,not_action,decision_language
+ctx_018_11,"Yes, that is the decision.","Yes, that is the decision.","[PREVIOUS]
+We agreed to use the shorter registration journey.
+[CURRENT]
+Yes, that is the decision.
+[NEXT]
+Next topic.",contextual_curriculum,product,context_018_product,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_018,True,We agreed to use the shorter registration journey.,Next topic.,none,needs_previous,duplicate_expression,none,decision,decision_agreement,not_action,decision_language
+ctx_018_12,The team identified that removing mandatory fields could weaken reporting.,The team identified that removing mandatory fields could weaken reporting.,"[PREVIOUS]
+We should review delivery exposure.
+[CURRENT]
+The team identified that removing mandatory fields could weaken reporting.
+[NEXT]
+The exposure remains open.",contextual_curriculum,product,context_018_product,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,RISK_018,True,We should review delivery exposure.,The exposure remains open.,active,standalone,canonical_item,none,risk,risk_dependency,not_action,risk_language
+ctx_018_13,"Yes, we should monitor that.","Yes, we should monitor that.","[PREVIOUS]
+The risk is that removing mandatory fields could weaken reporting.
+[CURRENT]
+Yes, we should monitor that.
+[NEXT]
+Add it to the register.",contextual_curriculum,product,context_018_product,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,RISK_018,True,The risk is that removing mandatory fields could weaken reporting.,Add it to the register.,active,accepts_previous,supporting_detail,none,risk,risk_dependency,not_action,risk_language
+ctx_018_14,That exposure was closed last week.,That exposure was closed last week.,"[PREVIOUS]
+We previously worried that removing mandatory fields could weaken reporting.
+[CURRENT]
+That exposure was closed last week.
+[NEXT]
+No monitoring is required.",contextual_curriculum,product,context_018_product,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We previously worried that removing mandatory fields could weaken reporting.,No monitoring is required.,completed,modifies_previous,context_only,historical,,background_context,completed_history,
+ctx_018_15,Can everyone see my screen?,Can everyone see my screen?,"[PREVIOUS]
+The meeting is starting.
+[CURRENT]
+Can everyone see my screen?
+[NEXT]
+We will continue in a moment.",contextual_curriculum,product,context_018_product,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,The meeting is starting.,We will continue in a moment.,none,standalone,none,other,,background_context,not_action,
+ctx_018_16,The product work remains in progress.,The product work remains in progress.,"[PREVIOUS]
+We reviewed the background.
+[CURRENT]
+The product work remains in progress.
+[NEXT]
+No commitment was made.",contextual_curriculum,product,context_018_product,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We reviewed the background.,No commitment was made.,none,standalone,supporting_detail,none,,background_context,not_action,
+ctx_019_01,I'll confirm the laboratory access list.,I'll confirm the laboratory access list.,"[PREVIOUS]
+We need someone to handle this.
+[CURRENT]
+I'll confirm the laboratory access list.
+[NEXT]
+Can it be done by Monday?",contextual_curriculum,facilities,context_019_facilities,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_019,True,We need someone to handle this.,Can it be done by Monday?,active,needs_previous,canonical_item,none,action,action_commitment,confirmed_action,
+ctx_019_02,Before Monday.,Before Monday.,"[PREVIOUS]
+I'll confirm the laboratory access list.
+[CURRENT]
+Before Monday.
+[NEXT]
+Yes, that works.",contextual_curriculum,facilities,context_019_facilities,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_019,True,I'll confirm the laboratory access list.,"Yes, that works.",none,needs_previous,context_only,deadline_previous,action,action_commitment,not_action,deadline_or_sequence
+ctx_019_03,"Yes, I'll take that.","Yes, I'll take that.","[PREVIOUS]
+Could you confirm the laboratory access list?
+[CURRENT]
+Yes, I'll take that.
+[NEXT]
+Please finish by Monday.",contextual_curriculum,facilities,context_019_facilities,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_019,True,Could you confirm the laboratory access list?,Please finish by Monday.,active,accepts_previous,canonical_item,none,action,action_commitment,confirmed_action,
+ctx_019_04,Anika will confirm the laboratory access list by Monday.,Anika will confirm the laboratory access list by Monday.,"[PREVIOUS]
+The work is on the list.
+[CURRENT]
+Anika will confirm the laboratory access list by Monday.
+[NEXT]
+Let's move on.",contextual_curriculum,facilities,context_019_facilities,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_019,True,The work is on the list.,Let's move on.,active,standalone,canonical_item,deadline_current,action,action_commitment,confirmed_action,deadline_or_sequence
+ctx_019_05,I completed the work to confirm the laboratory access list yesterday.,I completed the work to confirm the laboratory access list yesterday.,"[PREVIOUS]
+Here is the status.
+[CURRENT]
+I completed the work to confirm the laboratory access list yesterday.
+[NEXT]
+Nothing remains open.",contextual_curriculum,facilities,context_019_facilities,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,Here is the status.,Nothing remains open.,completed,standalone,context_only,historical,,background_context,completed_history,
+ctx_019_06,I might confirm the laboratory access list if capacity allows.,I might confirm the laboratory access list if capacity allows.,"[PREVIOUS]
+We may need help.
+[CURRENT]
+I might confirm the laboratory access list if capacity allows.
+[NEXT]
+No action was agreed.",contextual_curriculum,facilities,context_019_facilities,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We may need help.,No action was agreed.,tentative,needs_next,context_only,other,,background_context,not_action,
+ctx_019_07,"Actually, another owner will confirm the laboratory access list instead.","Actually, another owner will confirm the laboratory access list instead.","[PREVIOUS]
+Anika will confirm the laboratory access list.
+[CURRENT]
+Actually, another owner will confirm the laboratory access list instead.
+[NEXT]
+Use the new owner.",contextual_curriculum,facilities,context_019_facilities,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_019,True,Anika will confirm the laboratory access list.,Use the new owner.,superseded,modifies_previous,canonical_item,none,action,action_commitment,not_action,
+ctx_019_08,Do not proceed with that action.,Do not proceed with that action.,"[PREVIOUS]
+Please confirm the laboratory access list.
+[CURRENT]
+Do not proceed with that action.
+[NEXT]
+It is no longer required.",contextual_curriculum,facilities,context_019_facilities,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,Please confirm the laboratory access list.,It is no longer required.,inactive,modifies_previous,context_only,none,,background_context,not_action,
+ctx_019_09,We agreed to limit after-hours access to trained staff.,We agreed to limit after-hours access to trained staff.,"[PREVIOUS]
+We should choose an approach.
+[CURRENT]
+We agreed to limit after-hours access to trained staff.
+[NEXT]
+That is the final position.",contextual_curriculum,facilities,context_019_facilities,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_019,True,We should choose an approach.,That is the final position.,none,standalone,canonical_item,none,decision,decision_agreement,not_action,decision_language
+ctx_019_10,Agreed.,Agreed.,"[PREVIOUS]
+The proposal is to limit after-hours access to trained staff.
+[CURRENT]
+Agreed.
+[NEXT]
+Let's use that approach.",contextual_curriculum,facilities,context_019_facilities,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_019,True,The proposal is to limit after-hours access to trained staff.,Let's use that approach.,none,accepts_previous,supporting_detail,none,decision,decision_agreement,not_action,decision_language
+ctx_019_11,"Yes, that is the decision.","Yes, that is the decision.","[PREVIOUS]
+We agreed to limit after-hours access to trained staff.
+[CURRENT]
+Yes, that is the decision.
+[NEXT]
+Next topic.",contextual_curriculum,facilities,context_019_facilities,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_019,True,We agreed to limit after-hours access to trained staff.,Next topic.,none,needs_previous,duplicate_expression,none,decision,decision_agreement,not_action,decision_language
+ctx_019_12,The team identified that unapproved access could breach safety controls.,The team identified that unapproved access could breach safety controls.,"[PREVIOUS]
+We should review delivery exposure.
+[CURRENT]
+The team identified that unapproved access could breach safety controls.
+[NEXT]
+The exposure remains open.",contextual_curriculum,facilities,context_019_facilities,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,RISK_019,True,We should review delivery exposure.,The exposure remains open.,active,standalone,canonical_item,none,risk,risk_dependency,not_action,risk_language
+ctx_019_13,"Yes, we should monitor that.","Yes, we should monitor that.","[PREVIOUS]
+The risk is that unapproved access could breach safety controls.
+[CURRENT]
+Yes, we should monitor that.
+[NEXT]
+Add it to the register.",contextual_curriculum,facilities,context_019_facilities,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,RISK_019,True,The risk is that unapproved access could breach safety controls.,Add it to the register.,active,accepts_previous,supporting_detail,none,risk,risk_dependency,not_action,risk_language
+ctx_019_14,That exposure was closed last week.,That exposure was closed last week.,"[PREVIOUS]
+We previously worried that unapproved access could breach safety controls.
+[CURRENT]
+That exposure was closed last week.
+[NEXT]
+No monitoring is required.",contextual_curriculum,facilities,context_019_facilities,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We previously worried that unapproved access could breach safety controls.,No monitoring is required.,completed,modifies_previous,context_only,historical,,background_context,completed_history,
+ctx_019_15,Can everyone see my screen?,Can everyone see my screen?,"[PREVIOUS]
+The meeting is starting.
+[CURRENT]
+Can everyone see my screen?
+[NEXT]
+We will continue in a moment.",contextual_curriculum,facilities,context_019_facilities,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,The meeting is starting.,We will continue in a moment.,none,standalone,none,other,,background_context,not_action,
+ctx_019_16,The facilities work remains in progress.,The facilities work remains in progress.,"[PREVIOUS]
+We reviewed the background.
+[CURRENT]
+The facilities work remains in progress.
+[NEXT]
+No commitment was made.",contextual_curriculum,facilities,context_019_facilities,test,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We reviewed the background.,No commitment was made.,none,standalone,supporting_detail,none,,background_context,not_action,
+ctx_020_01,I'll send the revised facilitator pack.,I'll send the revised facilitator pack.,"[PREVIOUS]
+We need someone to handle this.
+[CURRENT]
+I'll send the revised facilitator pack.
+[NEXT]
+Can it be done by tomorrow morning?",contextual_curriculum,training,context_020_training,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_020,True,We need someone to handle this.,Can it be done by tomorrow morning?,active,needs_previous,canonical_item,none,action,action_commitment,confirmed_action,
+ctx_020_02,Before tomorrow morning.,Before tomorrow morning.,"[PREVIOUS]
+I'll send the revised facilitator pack.
+[CURRENT]
+Before tomorrow morning.
+[NEXT]
+Yes, that works.",contextual_curriculum,training,context_020_training,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_020,True,I'll send the revised facilitator pack.,"Yes, that works.",none,needs_previous,context_only,deadline_previous,action,action_commitment,not_action,deadline_or_sequence
+ctx_020_03,"Yes, I'll take that.","Yes, I'll take that.","[PREVIOUS]
+Could you send the revised facilitator pack?
+[CURRENT]
+Yes, I'll take that.
+[NEXT]
+Please finish by tomorrow morning.",contextual_curriculum,training,context_020_training,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_020,True,Could you send the revised facilitator pack?,Please finish by tomorrow morning.,active,accepts_previous,canonical_item,none,action,action_commitment,confirmed_action,
+ctx_020_04,Marcus will send the revised facilitator pack by tomorrow morning.,Marcus will send the revised facilitator pack by tomorrow morning.,"[PREVIOUS]
+The work is on the list.
+[CURRENT]
+Marcus will send the revised facilitator pack by tomorrow morning.
+[NEXT]
+Let's move on.",contextual_curriculum,training,context_020_training,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_020,True,The work is on the list.,Let's move on.,active,standalone,canonical_item,deadline_current,action,action_commitment,confirmed_action,deadline_or_sequence
+ctx_020_05,I completed the work to send the revised facilitator pack yesterday.,I completed the work to send the revised facilitator pack yesterday.,"[PREVIOUS]
+Here is the status.
+[CURRENT]
+I completed the work to send the revised facilitator pack yesterday.
+[NEXT]
+Nothing remains open.",contextual_curriculum,training,context_020_training,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,Here is the status.,Nothing remains open.,completed,standalone,context_only,historical,,background_context,completed_history,
+ctx_020_06,I might send the revised facilitator pack if capacity allows.,I might send the revised facilitator pack if capacity allows.,"[PREVIOUS]
+We may need help.
+[CURRENT]
+I might send the revised facilitator pack if capacity allows.
+[NEXT]
+No action was agreed.",contextual_curriculum,training,context_020_training,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We may need help.,No action was agreed.,tentative,needs_next,context_only,other,,background_context,not_action,
+ctx_020_07,"Actually, another owner will send the revised facilitator pack instead.","Actually, another owner will send the revised facilitator pack instead.","[PREVIOUS]
+Marcus will send the revised facilitator pack.
+[CURRENT]
+Actually, another owner will send the revised facilitator pack instead.
+[NEXT]
+Use the new owner.",contextual_curriculum,training,context_020_training,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,ACTION_020,True,Marcus will send the revised facilitator pack.,Use the new owner.,superseded,modifies_previous,canonical_item,none,action,action_commitment,not_action,
+ctx_020_08,Do not proceed with that action.,Do not proceed with that action.,"[PREVIOUS]
+Please send the revised facilitator pack.
+[CURRENT]
+Do not proceed with that action.
+[NEXT]
+It is no longer required.",contextual_curriculum,training,context_020_training,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,Please send the revised facilitator pack.,It is no longer required.,inactive,modifies_previous,context_only,none,,background_context,not_action,
+ctx_020_09,We agreed to replace the lecture with two practical exercises.,We agreed to replace the lecture with two practical exercises.,"[PREVIOUS]
+We should choose an approach.
+[CURRENT]
+We agreed to replace the lecture with two practical exercises.
+[NEXT]
+That is the final position.",contextual_curriculum,training,context_020_training,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_020,True,We should choose an approach.,That is the final position.,none,standalone,canonical_item,none,decision,decision_agreement,not_action,decision_language
+ctx_020_10,Agreed.,Agreed.,"[PREVIOUS]
+The proposal is to replace the lecture with two practical exercises.
+[CURRENT]
+Agreed.
+[NEXT]
+Let's use that approach.",contextual_curriculum,training,context_020_training,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_020,True,The proposal is to replace the lecture with two practical exercises.,Let's use that approach.,none,accepts_previous,supporting_detail,none,decision,decision_agreement,not_action,decision_language
+ctx_020_11,"Yes, that is the decision.","Yes, that is the decision.","[PREVIOUS]
+We agreed to replace the lecture with two practical exercises.
+[CURRENT]
+Yes, that is the decision.
+[NEXT]
+Next topic.",contextual_curriculum,training,context_020_training,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,DECISION_020,True,We agreed to replace the lecture with two practical exercises.,Next topic.,none,needs_previous,duplicate_expression,none,decision,decision_agreement,not_action,decision_language
+ctx_020_12,The team identified that late materials could leave facilitators unprepared.,The team identified that late materials could leave facilitators unprepared.,"[PREVIOUS]
+We should review delivery exposure.
+[CURRENT]
+The team identified that late materials could leave facilitators unprepared.
+[NEXT]
+The exposure remains open.",contextual_curriculum,training,context_020_training,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,RISK_020,True,We should review delivery exposure.,The exposure remains open.,active,standalone,canonical_item,none,risk,risk_dependency,not_action,risk_language
+ctx_020_13,"Yes, we should monitor that.","Yes, we should monitor that.","[PREVIOUS]
+The risk is that late materials could leave facilitators unprepared.
+[CURRENT]
+Yes, we should monitor that.
+[NEXT]
+Add it to the register.",contextual_curriculum,training,context_020_training,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,RISK_020,True,The risk is that late materials could leave facilitators unprepared.,Add it to the register.,active,accepts_previous,supporting_detail,none,risk,risk_dependency,not_action,risk_language
+ctx_020_14,That exposure was closed last week.,That exposure was closed last week.,"[PREVIOUS]
+We previously worried that late materials could leave facilitators unprepared.
+[CURRENT]
+That exposure was closed last week.
+[NEXT]
+No monitoring is required.",contextual_curriculum,training,context_020_training,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We previously worried that late materials could leave facilitators unprepared.,No monitoring is required.,completed,modifies_previous,context_only,historical,,background_context,completed_history,
+ctx_020_15,Can everyone see my screen?,Can everyone see my screen?,"[PREVIOUS]
+The meeting is starting.
+[CURRENT]
+Can everyone see my screen?
+[NEXT]
+We will continue in a moment.",contextual_curriculum,training,context_020_training,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,The meeting is starting.,We will continue in a moment.,none,standalone,none,other,,background_context,not_action,
+ctx_020_16,The training work remains in progress.,The training work remains in progress.,"[PREVIOUS]
+We reviewed the background.
+[CURRENT]
+The training work remains in progress.
+[NEXT]
+No commitment was made.",contextual_curriculum,training,context_020_training,train,ai_authored_canonical_error_curriculum_v1,human_approved,high,Human reviewed and approved for contextual-head training.,,False,We reviewed the background.,No commitment was made.,none,standalone,supporting_detail,none,,background_context,not_action,

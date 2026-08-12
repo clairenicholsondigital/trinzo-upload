@@ -157,6 +157,15 @@ def main() -> None:
         action_classes = list(trained["action_state_label_encoder"].classes_)
         signal_matrix = trained["signal_classifier"].predict_proba(matrix)
         signal_classes = list(trained["signal_binarizer"].classes_)
+        context_texts = [normalise(event.get("contextText") or f"[PREVIOUS]\n{event.get('previousText', '')}\n[CURRENT]\n{event.get('text', '')}\n[NEXT]\n{event.get('nextText', '')}") for event in events]
+        context_embeddings = backend.encode_many(context_texts)
+        context_matrix = np.asarray([context_embeddings.get(text, []) for text in context_texts])
+        contextual_predictions = {}
+        for prefix, output_key in (("lifecycle", "lifecycleProbabilities"), ("context_dependency", "contextDependencyProbabilities"), ("canonical_worthiness", "canonicalWorthinessProbabilities"), ("temporal_role", "temporalRoleProbabilities")):
+            classifier = trained.get(f"{prefix}_classifier")
+            encoder = trained.get(f"{prefix}_label_encoder")
+            if classifier is not None and encoder is not None:
+                contextual_predictions[output_key] = (classifier.predict_proba(context_matrix), list(encoder.classes_))
 
     records = []
     event_output = {}
@@ -182,9 +191,15 @@ def main() -> None:
                 "substantive": round(1 - evidence_probs.get("low_value_noise", 0) - (0.45 * evidence_probs.get("background_context", 0)), 4),
             })
             trained_details = {
+                **{key: {label: round(float(values[event_index][idx]), 4) for idx, label in enumerate(labels)} for key, (values, labels) in contextual_predictions.items()},
                 "evidenceProbabilities": {key: round(value, 4) for key, value in evidence_probs.items()},
                 "actionProbabilities": {key: round(value, 4) for key, value in action_probs.items()},
                 "signalProbabilities": {key: round(value, 4) for key, value in signal_probs.items()},
+            }
+            trained_details["derivedLabels"] = {
+                key.removesuffix("Probabilities"): max(probabilities, key=probabilities.get)
+                for key, probabilities in trained_details.items()
+                if key in contextual_predictions and probabilities
             }
         ranked = sorted(scores.items(), key=lambda item: item[1], reverse=True)
         record = {"id": event["id"], "text": text, "turnIndex": event.get("turnIndex", 0), "scores": scores}
@@ -198,6 +213,8 @@ def main() -> None:
         }
     print(json.dumps({
         "available": True,
+        "profileSchemaVersion": 2,
+        "shadow": {"enabled": bool(os.environ.get("MEETING_MINUTES_ENRICHED_SHADOW", "1") != "0"), "bundleSchemaVersion": int(trained.get("bundle_schema_version", 3)) if trained else None, "headsAvailable": sorted(contextual_predictions.keys()) if trained else []},
         "modelName": backend.model_name,
         "classifierModel": str(classifier_path) if trained is not None else "prototype_only",
         "events": event_output,

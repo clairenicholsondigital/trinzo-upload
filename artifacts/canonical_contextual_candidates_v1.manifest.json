@@ -1,0 +1,42 @@
+{
+  "rows": 320,
+  "groups": 20,
+  "splitCounts": {
+    "train": 224,
+    "validation": 48,
+    "test": 48
+  },
+  "labelCounts": {
+    "lifecycle_state": {
+      "active": 100,
+      "none": 120,
+      "completed": 40,
+      "tentative": 20,
+      "superseded": 20,
+      "inactive": 20
+    },
+    "context_dependency": {
+      "needs_previous": 60,
+      "accepts_previous": 60,
+      "standalone": 120,
+      "needs_next": 20,
+      "modifies_previous": 60
+    },
+    "canonical_worthiness": {
+      "canonical_item": 120,
+      "context_only": 100,
+      "supporting_detail": 60,
+      "duplicate_expression": 20,
+      "none": 20
+    },
+    "temporal_role": {
+      "none": 200,
+      "deadline_previous": 20,
+      "deadline_current": 20,
+      "historical": 40,
+      "other": 40
+    }
+  },
+  "groupLeakage": {},
+  "errors": []
+}

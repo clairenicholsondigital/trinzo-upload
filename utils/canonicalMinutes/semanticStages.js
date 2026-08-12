@@ -35,6 +35,27 @@ function trainedProbability(profile, event, group, label) {
   return Number(semanticFor(profile, event)?.[group]?.[label] || 0);
 }
 
+function enrichedEvidenceEnabled() {
+  return process.env.MEETING_MINUTES_ENRICHED_EVIDENCE === '1';
+}
+
+function enrichedProbability(profile, event, group, label) {
+  return enrichedEvidenceEnabled() ? trainedProbability(profile, event, group, label) : 0;
+}
+
+function enrichedLabel(profile, event, group) {
+  if (!enrichedEvidenceEnabled()) return '';
+  const probabilities = semanticFor(profile, event)?.[group] || {};
+  return Object.entries(probabilities).sort((left, right) => right[1] - left[1])[0]?.[0] || '';
+}
+
+function independentlyCanonical(profile, event) {
+  const dependency = Math.max(enrichedProbability(profile, event, 'contextDependencyProbabilities', 'needs_previous'), enrichedProbability(profile, event, 'contextDependencyProbabilities', 'accepts_previous'));
+  const noncanonical = Math.max(enrichedProbability(profile, event, 'canonicalWorthinessProbabilities', 'supporting_detail'), enrichedProbability(profile, event, 'canonicalWorthinessProbabilities', 'duplicate_expression'), enrichedProbability(profile, event, 'canonicalWorthinessProbabilities', 'context_only'));
+  const canonical = enrichedProbability(profile, event, 'canonicalWorthinessProbabilities', 'canonical_item');
+  return !((dependency >= 0.65 || noncanonical >= 0.65) && canonical < 0.5);
+}
+
 function participantByFirstName(value, participants) {
   const matches = participants.filter((name) => name.split(/\s+/)[0].toLowerCase() === clean(value).toLowerCase());
   return matches.length === 1 ? matches[0] : '';
@@ -354,7 +375,7 @@ function contentStage(evidence, state, profile) {
     const evidenceProbabilities = semanticFor(profile, event).evidenceProbabilities || {};
     const evidenceRank = Object.entries(evidenceProbabilities).sort((left, right) => right[1] - left[1]);
     const decisionSignal = trainedProbability(profile, event, 'signalProbabilities', 'decision_language');
-    if (event.roles.includes('decision_candidate') && ((evidenceRank[0]?.[0] === 'decision_agreement' && evidenceRank[0][1] >= 0.22) || decisionSignal >= 0.72)) {
+    if (event.roles.includes('decision_candidate') && independentlyCanonical(profile, event) && ((evidenceRank[0]?.[0] === 'decision_agreement' && evidenceRank[0][1] >= 0.22) || decisionSignal >= 0.72)) {
       let text = clean(event.text).replace(/^(?:yeah|yes|okay|right|so)[,;:\s]+/i, '').replace(/[.]+$/, '');
       if (/\b(?:move|reschedule|change|replace)\s+it\s+to\s+/i.test(text)) {
         const eventIndex = evidence.events.findIndex((item) => item.id === event.id);
@@ -365,12 +386,13 @@ function contentStage(evidence, state, profile) {
       if (text.length >= 8 && text.length <= 240) decisions.push({ text: text.charAt(0).toUpperCase() + text.slice(1), evidenceIds: [event.id], semanticConfidence: score(profile, event, 'decision') });
     }
     const riskSignal = trainedProbability(profile, event, 'signalProbabilities', 'risk_language');
-    if (event.roles.includes('risk_candidate') && !event.roles.includes('hypothetical') && ((evidenceRank[0]?.[0] === 'risk_dependency' && evidenceRank[0][1] >= 0.22) || riskSignal >= 0.72)) {
+    if (event.roles.includes('risk_candidate') && independentlyCanonical(profile, event) && !event.roles.includes('hypothetical') && ((evidenceRank[0]?.[0] === 'risk_dependency' && evidenceRank[0][1] >= 0.22) || riskSignal >= 0.72)) {
       const text = minutesPoint(event.text);
       if (text) risks.push({ text, evidenceIds: [event.id], semanticConfidence: score(profile, event, 'risk') });
     }
   }
-  return { discussion, decisions: unique(decisions, decisionDedupKey), risks: unique(risks, (item) => item.text), warnings: [] };
+  const resolvedRisks = unique(risks, (item) => item.text);
+  return { discussion, decisions: resolveEnrichedDecisions(decisions, evidence, profile), risks: resolvedRisks, warnings: [] };
 }
 
 function resolveActionReferent(item, evidence) {
@@ -451,6 +473,78 @@ function decisionDedupKey(item) {
     .trim();
 }
 
+function contentTokens(value) {
+  const stop = new Set(['the', 'a', 'an', 'and', 'or', 'to', 'for', 'of', 'on', 'in', 'by', 'it', 'that', 'this', 'we', 'i', 'will', 'shall', 'do', 'take', 'agreed', 'decision']);
+  return new Set(clean(value).toLowerCase().match(/[a-z0-9]+/g)?.filter((token) => token.length > 2 && !stop.has(token)) || []);
+}
+
+function tokenOverlap(left, right) {
+  const a = contentTokens(left); const b = contentTokens(right);
+  if (!a.size || !b.size) return 0;
+  const shared = [...a].filter((token) => b.has(token)).length;
+  return shared / Math.min(a.size, b.size);
+}
+
+function canonicaliseCandidates(items, textOf, qualityOf) {
+  const groups = [];
+  for (const item of items) {
+    const group = groups.find((existing) => existing.some((candidate) => tokenOverlap(textOf(candidate), textOf(item)) >= 0.55));
+    if (group) group.push(item); else groups.push([item]);
+  }
+  return groups.map((group) => {
+    const representative = [...group].sort((left, right) => qualityOf(right) - qualityOf(left))[0];
+    return { ...representative, evidenceIds: [...new Set(group.flatMap((item) => item.evidenceIds || []))] };
+  });
+}
+
+function resolveEnrichedDecisions(items, evidence, profile) {
+  if (!enrichedEvidenceEnabled()) return unique(items, decisionDedupKey);
+  const eligible = items.filter((item) => {
+    const sources = (item.evidenceIds || []).map((id) => evidence.events.find((event) => event.id === id)).filter(Boolean);
+    if (sources.some((event) => /\bI\s*(?:['’]ll|will|shall|can|need to|am going to)\b/i.test(event.text))) return false;
+    return sources.some((event) => independentlyCanonical(profile, event));
+  });
+  return canonicaliseCandidates(eligible, (item) => item.text, (item) => {
+    const sources = (item.evidenceIds || []).map((id) => evidence.events.find((event) => event.id === id)).filter(Boolean);
+    const canonical = Math.max(...sources.map((event) => enrichedProbability(profile, event, 'canonicalWorthinessProbabilities', 'canonical_item')), 0);
+    return canonical + (/^decision:/i.test(clean(item.text)) ? 0.2 : 0) + Math.min(clean(item.text).length, 120) / 1000;
+  });
+}
+
+function actionIsSuperseded(item, evidence, profile) {
+  const indices = (item.evidenceIds || []).map((id) => evidence.events.findIndex((event) => event.id === id)).filter((index) => index >= 0);
+  if (!indices.length || !item.owner || item.owner === 'Not stated') return false;
+  const end = Math.max(...indices);
+  const ownerFirst = clean(item.owner).split(/\s+/)[0];
+  return evidence.events.slice(end + 1, end + 7).some((event) => {
+    const modifies = enrichedProbability(profile, event, 'contextDependencyProbabilities', 'modifies_previous');
+    const lifecycle = Math.max(enrichedProbability(profile, event, 'lifecycleProbabilities', 'superseded'), enrichedProbability(profile, event, 'lifecycleProbabilities', 'inactive'));
+    const explicit = new RegExp(`\\b${ownerFirst.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b.*\\b(?:cancelled|withdrawn|reassigned|no longer)\\b`, 'i').test(event.text)
+      || new RegExp(`\\b(?:cancelled|withdrawn|reassigned|no longer)\\b.*\\b${ownerFirst.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(event.text);
+    return explicit || (modifies >= 0.3 && lifecycle >= 0.25 && new RegExp(`\\b${ownerFirst}\\b`, 'i').test(event.text));
+  });
+}
+
+function resolveEnrichedActions(items, evidence, profile) {
+  if (!enrichedEvidenceEnabled()) return items;
+  const eligible = items.filter((item) => !actionIsSuperseded(item, evidence, profile)).filter((item) => {
+    const sources = (item.evidenceIds || []).map((id) => evidence.events.find((event) => event.id === id)).filter(Boolean);
+    const inactive = Math.max(...sources.flatMap((event) => ['completed', 'inactive', 'superseded'].map((label) => enrichedProbability(profile, event, 'lifecycleProbabilities', label))), 0);
+    const active = Math.max(...sources.map((event) => enrichedProbability(profile, event, 'lifecycleProbabilities', 'active')), 0);
+    return sources.some((event) => independentlyCanonical(profile, event)) && !(inactive >= 0.65 && inactive > active);
+  });
+  const groups = [];
+  for (const item of eligible) {
+    const group = groups.find((existing) => existing.some((candidate) => clean(candidate.owner).toLowerCase() === clean(item.owner).toLowerCase() && tokenOverlap(candidate.action, item.action) >= 0.5));
+    if (group) group.push(item); else groups.push([item]);
+  }
+  return groups.map((group) => {
+    const quality = (item) => actionPublishability(item, evidence, profile) + (item.deadline !== 'Not stated' ? 0.2 : 0) - (/\?|\b(?:it|that)\b/i.test(item.action) ? 0.25 : 0);
+    const representative = [...group].sort((left, right) => quality(right) - quality(left))[0];
+    return { ...representative, evidenceIds: [...new Set(group.flatMap((item) => item.evidenceIds || []))] };
+  });
+}
+
 function actionPublishability(item, evidence, profile) {
   const source = (item.evidenceIds || []).map((id) => evidence.events.find((event) => event.id === id)).filter(Boolean);
   const semantics = source.map((event) => semanticFor(profile, event));
@@ -483,6 +577,14 @@ function actionsStage(evidence, state, profile, topology) {
     ...acceptedCollectiveActions(evidence),
     ...explicitObligationActions(evidence)
   ].map((item) => resolveActionReferent(item, evidence)), (item) => `${item.owner}|${item.action}`);
+  if (enrichedEvidenceEnabled()) {
+    actions = resolveEnrichedActions(actions, evidence, profile).map((item) => {
+      if (item.deadline && item.deadline !== 'Not stated') return item;
+      const lastIndex = Math.max(...(item.evidenceIds || []).map((id) => evidence.events.findIndex((event) => event.id === id)), -1);
+      const deadlineEvent = evidence.events.slice(lastIndex + 1, lastIndex + 3).find((event) => enrichedLabel(profile, event, 'temporalRoleProbabilities') === 'deadline_previous' && deadlineFrom(event.text) !== 'Not stated');
+      return deadlineEvent ? { ...item, deadline: deadlineFrom(deadlineEvent.text), evidenceIds: [...new Set([...(item.evidenceIds || []), deadlineEvent.id])] } : item;
+    });
+  }
   const structuredEvidenceIds = new Set(evidence.events.filter((event) => event.structuredSource === 'actions_owner_deadline_table').map((event) => event.id));
   if (structuredEvidenceIds.size) {
     actions = unique(actions.filter((item) => (item.evidenceIds || []).some((id) => structuredEvidenceIds.has(id))).map((item) => ({

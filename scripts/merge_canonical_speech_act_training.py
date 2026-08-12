@@ -29,6 +29,9 @@ def main() -> int:
         "domain": master["dataset_family"], "group_id": master["group_id"], "recommended_split": master["recommended_split"],
         "source": master["source"], "review_status": "human_approved",
     })
+    for column in ("previous_text", "current_text", "next_text", "context_text", "lifecycle_state", "context_dependency", "canonical_worthiness", "temporal_role", "canonical_group_id"):
+        if column in master:
+            base[column] = master[column]
     candidates = pd.read_csv(args.candidates).fillna("")
     combined = pd.concat([base, candidates], ignore_index=True)
     combined = combined.drop_duplicates(subset=["text", "evidence_type", "action_state"], keep="first")
