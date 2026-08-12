@@ -362,6 +362,7 @@ function cleanStagedMeetingTitleCandidate(value, options = {}) {
     .replace(/\b20\d{6}(?:[_-]?\d{4,6})?\b/g, '')
     .replace(/\b\d{1,2}[:.]\d{2}(?::\d{2})?\b/g, '')
     .replace(/[_-]+/g, ' ')
+    .replace(/\b(?:meeting\s+transcript|transcript|recording)\b/gi, ' ')
     .replace(/\s+/g, ' ')
     .replace(/\s+\.\s*$/g, '')
     .trim();
@@ -1300,7 +1301,7 @@ function isAuditableStagedAction(action, owner = '', deadline = '') {
   if (!text || isNoEvidenceDiscussionText(text) || isMalformedStagedLine(text)) return false;
   if (/\b(?:everything|stuff|things|sort out|as much as possible|front[- ]?end everything|prep\b|progress\b|look at|think about|discuss|consider)\b/i.test(text)) return false;
   const hasConcreteVerb = /\b(?:arrange|book|schedule|organise|coordinate|set\s+up|update|review|send|share|confirm|prepare|complete|finali[sz]e|provide|draft|submit|circulate|issue|upload|agree|approve|sign(?:\s+off)?|trace|generate|identify|document|follow[- ]?up)\b/i.test(text);
-  const hasObject = text.split(/\s+/).length >= 4;
+  const hasObject = text.split(/\s+/).length >= 3;
   const hasCommitmentSignal = stagedTextHasFutureCommitmentMarker(text) || /\b(?:action|owner|deadline|by|before|next|follow[- ]?up|catch[- ]?up)\b/i.test(text) || cleanStagedGeneratedLine(deadline);
   const hasUsableOwner = cleanStagedGeneratedLine(owner) && !/^not stated$/i.test(cleanStagedGeneratedLine(owner));
   return hasConcreteVerb && hasObject && (hasCommitmentSignal || hasUsableOwner);
@@ -1385,7 +1386,10 @@ function polishStagedActions(actions) {
   for (const item of Array.isArray(actions) ? actions : []) {
     if (!item || typeof item !== 'object') continue;
     const action = cleanStagedActionText(item.action || item.meetingActionPoint);
-    const owner = normaliseStagedActionOwner(item.owner || item.meetingActionPointOwner || 'Not stated');
+    const rawOwner = cleanStagedGeneratedLine(item.owner || item.meetingActionPointOwner || 'Not stated') || 'Not stated';
+    const owner = /^\p{Lu}[\p{L}'’.-]+$/u.test(rawOwner)
+      ? rawOwner
+      : normaliseStagedActionOwner(rawOwner);
     const deadline = cleanStagedGeneratedLine(item.deadline || item.meetingActionPointDeadline || '');
     const finalAction = normaliseFinalStagedActionCandidate({
       owner,
@@ -1399,7 +1403,7 @@ function polishStagedActions(actions) {
     result.push({ ...finalAction, source: item.source || undefined });
     if (result.length >= 20) break;
   }
-  return result.map(({ owner, action, deadline }) => ({ owner, action, deadline }));
+  return result.map(({ owner, action, deadline, source }) => ({ owner, action, deadline, ...(source ? { source } : {}) }));
 }
 
 function actionsFromStagedMiniLM(minilmContext) {
@@ -1595,7 +1599,7 @@ function transcriptPreservedStagedActions(transcriptText) {
 function pushTranscriptActionInventoryAction(actions, candidate) {
   if (!candidate || typeof candidate !== 'object') return;
   const action = cleanStagedActionText(candidate.action || '');
-  const owner = normaliseStagedActionOwner(candidate.owner || 'Not stated');
+  const owner = cleanStagedGeneratedLine(candidate.owner || 'Not stated') || 'Not stated';
   const deadline = cleanStagedGeneratedLine(candidate.deadline || '');
   const next = { owner, action, deadline, source: candidate.source || 'transcript_action_inventory' };
   if (!isAuditableStagedAction(action, owner, deadline)) return;
