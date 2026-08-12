@@ -1,0 +1,1385 @@
+{
+  "summary": {
+    "packDir": "/root/Documents/Codex/2026-08-12-can-you-for-the-trinzo-upload/scripts/meeting-minutes-final-golden",
+    "mode": "precomputed-staged",
+    "rewriteMode": "precomputed",
+    "extractor": null,
+    "baseUrl": null,
+    "precomputedDir": "/tmp/canonical-final-reviewed-v3",
+    "totalCases": 27,
+    "schemaFailures": [],
+    "executedCases": 27,
+    "passedCases": 3,
+    "failedCases": 24,
+    "rewriterUsedCases": null,
+    "precomputedProjectStatusEvidence": false,
+    "coverage": {
+      "meetingTypes": {
+        "audit_kickoff": 1,
+        "board_update": 1,
+        "client_onboarding": 1,
+        "client_status_review": 6,
+        "client_vendor_review": 1,
+        "contract_negotiation": 1,
+        "customer_complaint_review": 1,
+        "document_review": 2,
+        "finance_budget_review": 1,
+        "hr_interview_debrief": 1,
+        "importer_obligations_review": 2,
+        "incident_bug_triage": 1,
+        "internal_followup_review": 1,
+        "leadership_internal": 1,
+        "leadership_update": 1,
+        "low_substance": 1,
+        "operations_review": 2,
+        "planning_check_in": 1,
+        "policy_briefing": 1,
+        "project_status_review": 1,
+        "project_status_update": 3,
+        "quality_assessment_case_study": 1,
+        "real_client_minutes_pdf": 1,
+        "real_client_transcript": 6,
+        "risk_review": 1,
+        "sales_pipeline_review": 1,
+        "software_technical_file_review": 2,
+        "supplier_onboarding_review": 1,
+        "support_metrics_review": 1,
+        "technical_file_review": 1,
+        "webinar_rehearsal": 1
+      },
+      "behaviours": {
+        "action_heavy": 4,
+        "admin_logistics_filtering": 1,
+        "budget_tradeoff": 1,
+        "candidate_assessment": 1,
+        "compressed_transcript": 1,
+        "concrete_actions": 4,
+        "conditional_chatter_filtering": 1,
+        "cross_transcript_hallucination_guard": 1,
+        "deadline_capture": 7,
+        "decision_only": 1,
+        "discussion_coverage": 1,
+        "discussion_only": 5,
+        "explicit_abstention": 1,
+        "full_abstention": 1,
+        "generic_topic_filtering": 2,
+        "hidden_decision": 2,
+        "human_minutes_coverage": 1,
+        "internal_review": 1,
+        "messy_speaker_timestamp": 1,
+        "minutes_pdf_input": 1,
+        "no_actions": 5,
+        "no_decisions": 5,
+        "noise_filtering": 1,
+        "owner_action": 9,
+        "owner_deadline_table": 1,
+        "pending_approval_filtering": 1,
+        "question_clarification_capture": 1,
+        "raw_meeting_chatter_filtering": 5,
+        "raw_transcript_leakage_filtering": 1,
+        "real_docx_extraction": 5,
+        "real_pdf_extraction": 2,
+        "rehearsal": 1,
+        "rejected_alternative": 6,
+        "risk_not_blocker": 1,
+        "single_action": 1,
+        "sparse_transcript": 1,
+        "speaker_label_filtering": 2,
+        "suggestion_not_decision": 1,
+        "supported_decision": 10,
+        "technical_review": 3,
+        "timestamp_filtering": 2,
+        "unsupported_action_abstention": 2,
+        "working_session_planning": 1
+      },
+      "sourceFixtures": [
+        "custom-derived-from scripts/transcript-tests/072_action_free_information_briefing",
+        "scripts/transcript-tests/018_sales_pipeline_review",
+        "scripts/transcript-tests/020_contract_negotiation",
+        "scripts/transcript-tests/021_hiring_interview_debrief",
+        "scripts/transcript-tests/023_finance_budget_review",
+        "scripts/transcript-tests/027_customer_complaint_review",
+        "scripts/transcript-tests/030_webinar_rehearsal",
+        "scripts/transcript-tests/041_operations_review",
+        "scripts/transcript-tests/045_board_launch_delay",
+        "scripts/transcript-tests/046_customer_onboarding_split_rollout",
+        "scripts/transcript-tests/048_status_review_pending_leadership",
+        "scripts/transcript-tests/052_status_update_meeting",
+        "scripts/transcript-tests/053_hidden_decision_meeting",
+        "scripts/transcript-tests/054_document_review_meeting",
+        "scripts/transcript-tests/055_dependency_risk_meeting",
+        "scripts/transcript-tests/068_noisy_low_substance_sparse",
+        "scripts/transcript-tests/069_decision_heavy_internal",
+        "scripts/transcript-tests/070_incident_bug_triage",
+        "scripts/transcript-tests/071_messy_speaker_timestamp_formats",
+        "scripts/transcript-tests/073_support_metrics_actions",
+        "uploaded DOCX/PDF: Client_DITA_T819_-_Importer_Obligations_-_Client_connect",
+        "uploaded DOCX: Client_Abbott_T796_-_Audit_kick_off_Sylmar_NEW.docx",
+        "uploaded DOCX: Client_Eakin_T733_Consultancy_Retainer_Tech_File_review_week---37b36c13-51f7-4767-840c-9e45c97ded5d.docx",
+        "uploaded DOCX: Client_T761_Eakin_Tech_File_SW_-_Weekly_checkin---fb906d45-e67d-46b0-816c-9c8d264ef05e.docx",
+        "uploaded DOCX: QIP_Assessment_Tool_Case_Study_Transcript_Nov_2024.docx",
+        "uploaded PDF benchmark: T819_Dita_Eyewear_Importer_Obligations_Trinzo_Minutes_intern---ca1a2cfa-68ad-4d9d-8dca-3e4a97c9c6ce.pdf",
+        "uploaded PDF: T761_Eakin_Tech_File_SW_Trinzo_Minutes_SW_Weekly_Checkin_202---568af969-71b7-45e1-aca9-3a65a07f7ede.pdf"
+      ]
+    }
+  },
+  "cases": [
+    {
+      "case": "001_decision_heavy_no_actions",
+      "description": "Decision-heavy internal meeting where no concrete owner/action should be invented.",
+      "coverage": {
+        "sourceFixture": "scripts/transcript-tests/069_decision_heavy_internal",
+        "meetingTypes": [
+          "leadership_internal"
+        ],
+        "behaviours": [
+          "decision_only",
+          "no_actions",
+          "unsupported_action_abstention"
+        ]
+      },
+      "dryRunValidated": true,
+      "rewriter": {
+        "rewriterAvailable": null,
+        "rewriterReason": "Precomputed staged sequence output.",
+        "rewriterTokenUsage": null
+      },
+      "evaluation": {
+        "case": "001_decision_heavy_no_actions",
+        "score": 0.9,
+        "passThreshold": 0.9,
+        "passed": false,
+        "categoryScores": {
+          "decisions": 0.6666666666666666,
+          "actions": 1.0,
+          "hallucinations": 1.0,
+          "abstention": 1.0
+        },
+        "failures": [
+          "decisions: missing 'legacy portal read-only for four weeks'"
+        ],
+        "counts": {
+          "decisions": 2,
+          "actions": 0,
+          "discussionPoints": 7
+        }
+      }
+    },
+    {
+      "case": "002_incident_actions_decision",
+      "description": "Incident meeting with concrete actions, owner evidence, a deadline, and one supported decision.",
+      "coverage": {
+        "sourceFixture": "scripts/transcript-tests/070_incident_bug_triage",
+        "meetingTypes": [
+          "incident_bug_triage"
+        ],
+        "behaviours": [
+          "concrete_actions",
+          "supported_decision",
+          "deadline_capture"
+        ]
+      },
+      "dryRunValidated": true,
+      "rewriter": {
+        "rewriterAvailable": null,
+        "rewriterReason": "Precomputed staged sequence output.",
+        "rewriterTokenUsage": null
+      },
+      "evaluation": {
+        "case": "002_incident_actions_decision",
+        "score": 0.8833,
+        "passThreshold": 0.85,
+        "passed": false,
+        "categoryScores": {
+          "decisions": 1.0,
+          "actions": 0.6666666666666666,
+          "hallucinations": 1.0,
+          "abstention": 1.0
+        },
+        "failures": [
+          "actions: missing {'text': 'patch the mapper', 'owner': 'Liam', 'deadline': 'Today'}",
+          "quality: visible output contains first-person wording"
+        ],
+        "counts": {
+          "decisions": 1,
+          "actions": 2,
+          "discussionPoints": 5
+        }
+      }
+    },
+    {
+      "case": "003_low_substance_noise_abstention",
+      "description": "Low-substance call where the extractor should abstain from creating decisions, actions, or business topics.",
+      "coverage": {
+        "sourceFixture": "scripts/transcript-tests/068_noisy_low_substance_sparse",
+        "meetingTypes": [
+          "low_substance"
+        ],
+        "behaviours": [
+          "sparse_transcript",
+          "full_abstention",
+          "noise_filtering"
+        ]
+      },
+      "dryRunValidated": true,
+      "rewriter": {
+        "rewriterAvailable": null,
+        "rewriterReason": "Precomputed staged sequence output.",
+        "rewriterTokenUsage": null
+      },
+      "evaluation": {
+        "case": "003_low_substance_noise_abstention",
+        "score": 0.84,
+        "passThreshold": 1.0,
+        "passed": false,
+        "categoryScores": {
+          "decisions": 1.0,
+          "actions": 1.0,
+          "hallucinations": 0.8,
+          "abstention": 0.6666666666666666
+        },
+        "failures": [
+          "hallucinations: forbidden content present 'project update'",
+          "abstention: expected discussion <= 0, got 1"
+        ],
+        "counts": {
+          "decisions": 0,
+          "actions": 0,
+          "discussionPoints": 1
+        }
+      }
+    },
+    {
+      "case": "004_action_free_information_briefing",
+      "description": "Information-only briefing with valid discussion topics but explicit decision/action abstention.",
+      "coverage": {
+        "sourceFixture": "custom-derived-from scripts/transcript-tests/072_action_free_information_briefing",
+        "meetingTypes": [
+          "policy_briefing"
+        ],
+        "behaviours": [
+          "discussion_only",
+          "no_actions",
+          "no_decisions",
+          "explicit_abstention"
+        ]
+      },
+      "dryRunValidated": true,
+      "rewriter": {
+        "rewriterAvailable": null,
+        "rewriterReason": "Precomputed staged sequence output.",
+        "rewriterTokenUsage": null
+      },
+      "evaluation": {
+        "case": "004_action_free_information_briefing",
+        "score": 0.7417,
+        "passThreshold": 0.9,
+        "passed": false,
+        "categoryScores": {
+          "decisions": 0.0,
+          "actions": 1.0,
+          "hallucinations": 1.0,
+          "abstention": 0.8333333333333334
+        },
+        "failures": [
+          "decisions: expected at most 0 items, got 1",
+          "abstention: expected decisions <= 0, got 1"
+        ],
+        "counts": {
+          "decisions": 1,
+          "actions": 0,
+          "discussionPoints": 5
+        }
+      }
+    },
+    {
+      "case": "005_project_status_pending_leadership",
+      "description": "Project status review with several concrete follow-ups, pending leadership approval, and no supported decision.",
+      "coverage": {
+        "sourceFixture": "scripts/transcript-tests/048_status_review_pending_leadership",
+        "meetingTypes": [
+          "project_status_review"
+        ],
+        "behaviours": [
+          "action_heavy",
+          "no_decisions",
+          "pending_approval_filtering"
+        ]
+      },
+      "dryRunValidated": true,
+      "rewriter": {
+        "rewriterAvailable": null,
+        "rewriterReason": "Precomputed staged sequence output.",
+        "rewriterTokenUsage": null
+      },
+      "evaluation": {
+        "case": "005_project_status_pending_leadership",
+        "score": 0.4,
+        "passThreshold": 0.85,
+        "passed": false,
+        "categoryScores": {
+          "decisions": 0.0,
+          "actions": 0.0,
+          "hallucinations": 1.0,
+          "abstention": 0.75
+        },
+        "failures": [
+          "decisions: expected at most 0 items, got 1",
+          "actions: expected at least 4 items, got 0",
+          "actions: missing 'review stage gate templates'",
+          "actions: missing 'provide sales input for the AI pipeline dependency map'",
+          "actions: missing 'draft vendor strategy document'",
+          "actions: missing 'follow up innovation grant feedback'",
+          "abstention: expected decisions <= 0, got 1"
+        ],
+        "counts": {
+          "decisions": 1,
+          "actions": 0,
+          "discussionPoints": 5
+        }
+      }
+    },
+    {
+      "case": "006_client_onboarding_split_rollout",
+      "description": "Client onboarding review where finance can start but warehouse must wait for missing mapping fields.",
+      "coverage": {
+        "sourceFixture": "scripts/transcript-tests/046_customer_onboarding_split_rollout",
+        "meetingTypes": [
+          "client_onboarding",
+          "client_status_review"
+        ],
+        "behaviours": [
+          "supported_decision",
+          "owner_action",
+          "rejected_alternative"
+        ]
+      },
+      "dryRunValidated": true,
+      "rewriter": {
+        "rewriterAvailable": null,
+        "rewriterReason": "Precomputed staged sequence output.",
+        "rewriterTokenUsage": null
+      },
+      "evaluation": {
+        "case": "006_client_onboarding_split_rollout",
+        "score": 0.4,
+        "passThreshold": 0.85,
+        "passed": false,
+        "categoryScores": {
+          "decisions": 0.0,
+          "actions": 0.0,
+          "hallucinations": 1.0,
+          "abstention": 1.0
+        },
+        "failures": [
+          "decisions: expected at least 1 items, got 0",
+          "decisions: missing 'start onboarding with finance first'",
+          "actions: expected at least 1 items, got 0",
+          "actions: missing {'text': 'send the missing-field list', 'owner': 'Mina', 'deadline': 'Today'}"
+        ],
+        "counts": {
+          "decisions": 0,
+          "actions": 0,
+          "discussionPoints": 3
+        }
+      }
+    },
+    {
+      "case": "007_operations_review_internal_cover",
+      "description": "Operations review covering backlog ageing and rota fatigue with an internal-cover decision.",
+      "coverage": {
+        "sourceFixture": "scripts/transcript-tests/041_operations_review",
+        "meetingTypes": [
+          "operations_review"
+        ],
+        "behaviours": [
+          "supported_decision",
+          "single_action",
+          "rejected_alternative"
+        ]
+      },
+      "dryRunValidated": true,
+      "rewriter": {
+        "rewriterAvailable": null,
+        "rewriterReason": "Precomputed staged sequence output.",
+        "rewriterTokenUsage": null
+      },
+      "evaluation": {
+        "case": "007_operations_review_internal_cover",
+        "score": 0.9167,
+        "passThreshold": 0.85,
+        "passed": false,
+        "categoryScores": {
+          "decisions": 1.0,
+          "actions": 1.0,
+          "hallucinations": 0.6666666666666666,
+          "abstention": 1.0
+        },
+        "failures": [
+          "hallucinations: forbidden content present 'hire temporary cover'"
+        ],
+        "counts": {
+          "decisions": 1,
+          "actions": 1,
+          "discussionPoints": 3
+        }
+      }
+    },
+    {
+      "case": "008_sales_pipeline_review",
+      "description": "Sales pipeline meeting with a focus decision, a forecast action, and a rejected healthcare prospect option.",
+      "coverage": {
+        "sourceFixture": "scripts/transcript-tests/018_sales_pipeline_review",
+        "meetingTypes": [
+          "sales_pipeline_review"
+        ],
+        "behaviours": [
+          "supported_decision",
+          "deadline_capture",
+          "rejected_alternative"
+        ]
+      },
+      "dryRunValidated": true,
+      "rewriter": {
+        "rewriterAvailable": null,
+        "rewriterReason": "Precomputed staged sequence output.",
+        "rewriterTokenUsage": null
+      },
+      "evaluation": {
+        "case": "008_sales_pipeline_review",
+        "score": 0.55,
+        "passThreshold": 0.85,
+        "passed": false,
+        "categoryScores": {
+          "decisions": 0.0,
+          "actions": 0.5,
+          "hallucinations": 1.0,
+          "abstention": 1.0
+        },
+        "failures": [
+          "decisions: expected at least 1 items, got 0",
+          "decisions: missing 'focus on the retail and logistics accounts'",
+          "actions: missing {'text': 'update the forecast', 'owner': 'Omar', 'deadline': 'Tuesday'}"
+        ],
+        "counts": {
+          "decisions": 0,
+          "actions": 1,
+          "discussionPoints": 5
+        }
+      }
+    },
+    {
+      "case": "009_board_launch_delay",
+      "description": "Board update where a launch delay is agreed because partner paperwork is unfinished.",
+      "coverage": {
+        "sourceFixture": "scripts/transcript-tests/045_board_launch_delay",
+        "meetingTypes": [
+          "board_update",
+          "leadership_update"
+        ],
+        "behaviours": [
+          "supported_decision",
+          "owner_action",
+          "rejected_alternative"
+        ]
+      },
+      "dryRunValidated": true,
+      "rewriter": {
+        "rewriterAvailable": null,
+        "rewriterReason": "Precomputed staged sequence output.",
+        "rewriterTokenUsage": null
+      },
+      "evaluation": {
+        "case": "009_board_launch_delay",
+        "score": 0.9167,
+        "passThreshold": 0.85,
+        "passed": false,
+        "categoryScores": {
+          "decisions": 1.0,
+          "actions": 1.0,
+          "hallucinations": 0.6666666666666666,
+          "abstention": 1.0
+        },
+        "failures": [
+          "hallucinations: forbidden content present 'announce the Spain launch in July'"
+        ],
+        "counts": {
+          "decisions": 3,
+          "actions": 1,
+          "discussionPoints": 4
+        }
+      }
+    },
+    {
+      "case": "010_webinar_rehearsal_trim",
+      "description": "Webinar rehearsal with presentation-content discussion, a demo-duration decision, and a slide-trimming action.",
+      "coverage": {
+        "sourceFixture": "scripts/transcript-tests/030_webinar_rehearsal",
+        "meetingTypes": [
+          "webinar_rehearsal"
+        ],
+        "behaviours": [
+          "rehearsal",
+          "supported_decision",
+          "owner_action"
+        ]
+      },
+      "dryRunValidated": true,
+      "rewriter": {
+        "rewriterAvailable": null,
+        "rewriterReason": "Precomputed staged sequence output.",
+        "rewriterTokenUsage": null
+      },
+      "evaluation": {
+        "case": "010_webinar_rehearsal_trim",
+        "score": 0.85,
+        "passThreshold": 0.85,
+        "passed": false,
+        "categoryScores": {
+          "decisions": 0.5,
+          "actions": 1.0,
+          "hallucinations": 1.0,
+          "abstention": 1.0
+        },
+        "failures": [
+          "decisions: missing 'keep the live demo to seven minutes'"
+        ],
+        "counts": {
+          "decisions": 1,
+          "actions": 1,
+          "discussionPoints": 3
+        }
+      }
+    },
+    {
+      "case": "011_finance_budget_review",
+      "description": "Finance budget review with a backfill deferral decision and a revised-forecast action.",
+      "coverage": {
+        "sourceFixture": "scripts/transcript-tests/023_finance_budget_review",
+        "meetingTypes": [
+          "finance_budget_review"
+        ],
+        "behaviours": [
+          "supported_decision",
+          "deadline_capture",
+          "budget_tradeoff"
+        ]
+      },
+      "dryRunValidated": true,
+      "rewriter": {
+        "rewriterAvailable": null,
+        "rewriterReason": "Precomputed staged sequence output.",
+        "rewriterTokenUsage": null
+      },
+      "evaluation": {
+        "case": "011_finance_budget_review",
+        "score": 0.55,
+        "passThreshold": 0.85,
+        "passed": false,
+        "categoryScores": {
+          "decisions": 0.0,
+          "actions": 0.5,
+          "hallucinations": 1.0,
+          "abstention": 1.0
+        },
+        "failures": [
+          "decisions: expected at least 1 items, got 0",
+          "decisions: missing 'defer the support analyst backfill'",
+          "actions: missing {'text': 'send the revised forecast', 'owner': 'Hannah', 'deadline': 'Before lunch'}",
+          "quality: visible output contains first-person wording"
+        ],
+        "counts": {
+          "decisions": 0,
+          "actions": 1,
+          "discussionPoints": 2
+        }
+      }
+    },
+    {
+      "case": "012_hiring_interview_debrief",
+      "description": "Hiring interview debrief with a final-interview decision that is also a practical follow-up action.",
+      "coverage": {
+        "sourceFixture": "scripts/transcript-tests/021_hiring_interview_debrief",
+        "meetingTypes": [
+          "hr_interview_debrief"
+        ],
+        "behaviours": [
+          "supported_decision",
+          "owner_action",
+          "candidate_assessment"
+        ]
+      },
+      "dryRunValidated": true,
+      "rewriter": {
+        "rewriterAvailable": null,
+        "rewriterReason": "Precomputed staged sequence output.",
+        "rewriterTokenUsage": null
+      },
+      "evaluation": {
+        "case": "012_hiring_interview_debrief",
+        "score": 0.45,
+        "passThreshold": 0.9,
+        "passed": false,
+        "categoryScores": {
+          "decisions": 0.0,
+          "actions": 0.0,
+          "hallucinations": 1.0,
+          "abstention": 1.0
+        },
+        "failures": [
+          "decisions: expected at least 1 items, got 0",
+          "decisions: missing 'invite Maya to the final interview'",
+          "actions: expected at least 1 items, got 0",
+          "actions: missing {'text': 'invite Maya to the final interview', 'owner': 'Lena'}"
+        ],
+        "counts": {
+          "decisions": 0,
+          "actions": 0,
+          "discussionPoints": 3
+        }
+      }
+    },
+    {
+      "case": "013_messy_speaker_timestamp_formats",
+      "description": "Messy transcript with attendee lines, inconsistent speaker labels, timestamps, one owner action, and one conditional decision.",
+      "coverage": {
+        "sourceFixture": "scripts/transcript-tests/071_messy_speaker_timestamp_formats",
+        "meetingTypes": [
+          "supplier_onboarding_review"
+        ],
+        "behaviours": [
+          "messy_speaker_timestamp",
+          "owner_action",
+          "timestamp_filtering"
+        ]
+      },
+      "dryRunValidated": true,
+      "rewriter": {
+        "rewriterAvailable": null,
+        "rewriterReason": "Precomputed staged sequence output.",
+        "rewriterTokenUsage": null
+      },
+      "evaluation": {
+        "case": "013_messy_speaker_timestamp_formats",
+        "score": 0.65,
+        "passThreshold": 0.85,
+        "passed": false,
+        "categoryScores": {
+          "decisions": 1.0,
+          "actions": 0.0,
+          "hallucinations": 1.0,
+          "abstention": 0.6666666666666666
+        },
+        "failures": [
+          "actions: expected at least 1 items, got 0",
+          "actions: missing {'text': 'request the insurance certificate', 'owner': 'Ravi', 'deadline': 'Friday'}",
+          "abstention: missing discussion topic concepts ['due diligence', 'insurance']"
+        ],
+        "counts": {
+          "decisions": 1,
+          "actions": 0,
+          "discussionPoints": 2
+        }
+      }
+    },
+    {
+      "case": "014_status_update_discussion_only",
+      "description": "Status update with useful discussion points but no decisions or actions.",
+      "coverage": {
+        "sourceFixture": "scripts/transcript-tests/052_status_update_meeting",
+        "meetingTypes": [
+          "project_status_update"
+        ],
+        "behaviours": [
+          "discussion_only",
+          "no_actions",
+          "no_decisions"
+        ]
+      },
+      "dryRunValidated": true,
+      "rewriter": {
+        "rewriterAvailable": null,
+        "rewriterReason": "Precomputed staged sequence output.",
+        "rewriterTokenUsage": null
+      },
+      "evaluation": {
+        "case": "014_status_update_discussion_only",
+        "score": 1.0,
+        "passThreshold": 0.9,
+        "passed": true,
+        "categoryScores": {
+          "decisions": 1.0,
+          "actions": 1.0,
+          "hallucinations": 1.0,
+          "abstention": 1.0
+        },
+        "failures": [],
+        "counts": {
+          "decisions": 0,
+          "actions": 0,
+          "discussionPoints": 4
+        }
+      }
+    },
+    {
+      "case": "015_hidden_decision_meeting",
+      "description": "Planning conversation where the final agreed option is embedded after rejected possibilities.",
+      "coverage": {
+        "sourceFixture": "scripts/transcript-tests/053_hidden_decision_meeting",
+        "meetingTypes": [
+          "planning_check_in"
+        ],
+        "behaviours": [
+          "hidden_decision",
+          "owner_action",
+          "rejected_alternative"
+        ]
+      },
+      "dryRunValidated": true,
+      "rewriter": {
+        "rewriterAvailable": null,
+        "rewriterReason": "Precomputed staged sequence output.",
+        "rewriterTokenUsage": null
+      },
+      "evaluation": {
+        "case": "015_hidden_decision_meeting",
+        "score": 0.8,
+        "passThreshold": 0.85,
+        "passed": false,
+        "categoryScores": {
+          "decisions": 0.5,
+          "actions": 1.0,
+          "hallucinations": 1.0,
+          "abstention": 0.6666666666666666
+        },
+        "failures": [
+          "decisions: missing 'move the weekly check-in to Friday at noon'",
+          "abstention: missing discussion topic concepts ['Grace', 'offsite']"
+        ],
+        "counts": {
+          "decisions": 1,
+          "actions": 3,
+          "discussionPoints": 4
+        }
+      }
+    },
+    {
+      "case": "016_document_review_discussion_only",
+      "description": "Document review with improvement suggestions but no agreed decision or owner action.",
+      "coverage": {
+        "sourceFixture": "scripts/transcript-tests/054_document_review_meeting",
+        "meetingTypes": [
+          "document_review"
+        ],
+        "behaviours": [
+          "discussion_only",
+          "no_actions",
+          "no_decisions",
+          "suggestion_not_decision"
+        ]
+      },
+      "dryRunValidated": true,
+      "rewriter": {
+        "rewriterAvailable": null,
+        "rewriterReason": "Precomputed staged sequence output.",
+        "rewriterTokenUsage": null
+      },
+      "evaluation": {
+        "case": "016_document_review_discussion_only",
+        "score": 0.4833,
+        "passThreshold": 0.9,
+        "passed": false,
+        "categoryScores": {
+          "decisions": 0.0,
+          "actions": 0.0,
+          "hallucinations": 1.0,
+          "abstention": 0.6666666666666666
+        },
+        "failures": [
+          "decisions: expected at most 0 items, got 1",
+          "actions: expected at most 0 items, got 1",
+          "abstention: expected decisions <= 0, got 1",
+          "abstention: expected actions <= 0, got 1"
+        ],
+        "counts": {
+          "decisions": 1,
+          "actions": 1,
+          "discussionPoints": 4
+        }
+      }
+    },
+    {
+      "case": "017_dependency_risk_discussion_only",
+      "description": "Dependency risk check where timelines remain unaffected and no decision/action should be inferred.",
+      "coverage": {
+        "sourceFixture": "scripts/transcript-tests/055_dependency_risk_meeting",
+        "meetingTypes": [
+          "risk_review",
+          "project_status_update"
+        ],
+        "behaviours": [
+          "discussion_only",
+          "no_actions",
+          "no_decisions",
+          "risk_not_blocker"
+        ]
+      },
+      "dryRunValidated": true,
+      "rewriter": {
+        "rewriterAvailable": null,
+        "rewriterReason": "Precomputed staged sequence output.",
+        "rewriterTokenUsage": null
+      },
+      "evaluation": {
+        "case": "017_dependency_risk_discussion_only",
+        "score": 1.0,
+        "passThreshold": 0.9,
+        "passed": true,
+        "categoryScores": {
+          "decisions": 1.0,
+          "actions": 1.0,
+          "hallucinations": 1.0,
+          "abstention": 1.0
+        },
+        "failures": [],
+        "counts": {
+          "decisions": 0,
+          "actions": 0,
+          "discussionPoints": 4
+        }
+      }
+    },
+    {
+      "case": "018_support_metrics_action_heavy",
+      "description": "Action-heavy support metrics review with compressed speaker text and several follow-up commitments.",
+      "coverage": {
+        "sourceFixture": "scripts/transcript-tests/073_support_metrics_actions",
+        "meetingTypes": [
+          "support_metrics_review",
+          "operations_review"
+        ],
+        "behaviours": [
+          "action_heavy",
+          "compressed_transcript",
+          "speaker_label_filtering"
+        ]
+      },
+      "dryRunValidated": true,
+      "rewriter": {
+        "rewriterAvailable": null,
+        "rewriterReason": "Precomputed staged sequence output.",
+        "rewriterTokenUsage": null
+      },
+      "evaluation": {
+        "case": "018_support_metrics_action_heavy",
+        "score": 0.4625,
+        "passThreshold": 0.85,
+        "passed": false,
+        "categoryScores": {
+          "decisions": 1.0,
+          "actions": 0.0,
+          "hallucinations": 1.0,
+          "abstention": 0.25
+        },
+        "failures": [
+          "actions: expected at least 3 items, got 2",
+          "actions: missing 'separate triage categories'",
+          "actions: missing 'set up a dashboard'",
+          "actions: missing 'review the onboarding guide'",
+          "abstention: missing discussion topic concepts ['support metrics']",
+          "abstention: missing discussion topic concepts ['complex cases', 'simple requests']",
+          "abstention: missing discussion topic concepts ['triage', 'categories']"
+        ],
+        "counts": {
+          "decisions": 0,
+          "actions": 2,
+          "discussionPoints": 2
+        }
+      }
+    },
+    {
+      "case": "019_contract_negotiation_review",
+      "description": "Contract negotiation with a one-year-extension decision and an exit-clause redline action.",
+      "coverage": {
+        "sourceFixture": "scripts/transcript-tests/020_contract_negotiation",
+        "meetingTypes": [
+          "contract_negotiation",
+          "client_vendor_review"
+        ],
+        "behaviours": [
+          "supported_decision",
+          "deadline_capture",
+          "rejected_alternative"
+        ]
+      },
+      "dryRunValidated": true,
+      "rewriter": {
+        "rewriterAvailable": null,
+        "rewriterReason": "Precomputed staged sequence output.",
+        "rewriterTokenUsage": null
+      },
+      "evaluation": {
+        "case": "019_contract_negotiation_review",
+        "score": 1.0,
+        "passThreshold": 0.85,
+        "passed": true,
+        "categoryScores": {
+          "decisions": 1.0,
+          "actions": 1.0,
+          "hallucinations": 1.0,
+          "abstention": 1.0
+        },
+        "failures": [],
+        "counts": {
+          "decisions": 2,
+          "actions": 1,
+          "discussionPoints": 4
+        }
+      }
+    },
+    {
+      "case": "020_customer_complaint_review",
+      "description": "Customer complaint review with a refund decision and a named customer-call action.",
+      "coverage": {
+        "sourceFixture": "scripts/transcript-tests/027_customer_complaint_review",
+        "meetingTypes": [
+          "customer_complaint_review",
+          "client_status_review"
+        ],
+        "behaviours": [
+          "supported_decision",
+          "owner_action",
+          "deadline_capture"
+        ]
+      },
+      "dryRunValidated": true,
+      "rewriter": {
+        "rewriterAvailable": null,
+        "rewriterReason": "Precomputed staged sequence output.",
+        "rewriterTokenUsage": null
+      },
+      "evaluation": {
+        "case": "020_customer_complaint_review",
+        "score": 0.55,
+        "passThreshold": 0.85,
+        "passed": false,
+        "categoryScores": {
+          "decisions": 0.0,
+          "actions": 0.5,
+          "hallucinations": 1.0,
+          "abstention": 1.0
+        },
+        "failures": [
+          "decisions: expected at least 1 items, got 0",
+          "decisions: missing 'refund the last invoice'",
+          "actions: missing {'text': 'call the customer', 'owner': 'Dan', 'deadline': 'Noon'}"
+        ],
+        "counts": {
+          "decisions": 0,
+          "actions": 1,
+          "discussionPoints": 3
+        }
+      }
+    },
+    {
+      "case": "021_real_dita_importer_obligations_transcript",
+      "description": "Real Trinzo client Teams transcript covering DITA importer obligations, QMS alignment, storage/logistics flow, UDI/UDAMED responsibilities, Med Envoy role boundaries, IFU/MIN context, PPE declarations and HPRA follow-up. This case guards against raw transcript leakage while requiring enough substantive coverage from a long real discussion.",
+      "coverage": {
+        "sourceFixture": "uploaded DOCX/PDF: Client_DITA_T819_-_Importer_Obligations_-_Client_connect",
+        "meetingTypes": [
+          "client_status_review",
+          "document_review",
+          "importer_obligations_review",
+          "real_client_transcript"
+        ],
+        "behaviours": [
+          "real_pdf_extraction",
+          "raw_transcript_leakage_filtering",
+          "discussion_coverage",
+          "concrete_actions",
+          "timestamp_filtering",
+          "speaker_label_filtering"
+        ]
+      },
+      "dryRunValidated": true,
+      "rewriter": {
+        "rewriterAvailable": null,
+        "rewriterReason": "Precomputed staged sequence output.",
+        "rewriterTokenUsage": null
+      },
+      "evaluation": {
+        "case": "021_real_dita_importer_obligations_transcript",
+        "score": 0.2917,
+        "passThreshold": 0.9,
+        "passed": false,
+        "categoryScores": {
+          "decisions": 0.0,
+          "actions": 0.0,
+          "hallucinations": 0.875,
+          "abstention": 0.08333333333333333
+        },
+        "failures": [
+          "decisions: expected at most 1 items, got 12",
+          "actions: expected at most 6 items, got 9",
+          "actions: missing 'follow up on the Med Envoy project plan or task list'",
+          "actions: missing 'HPRA authorised-representative bill'",
+          "actions: missing 'declarations of conformity and PPE risk rationale'",
+          "hallucinations: forbidden content present 'your business works again'",
+          "abstention: expected decisions <= 1, got 12",
+          "abstention: expected actions <= 6, got 9",
+          "abstention: missing discussion topic concepts ['QMS', 'importer-obligation']",
+          "abstention: missing discussion topic concepts ['storage', 'Dublin']",
+          "abstention: missing discussion topic concepts ['warehouse', 'barcodes']",
+          "abstention: missing discussion topic concepts ['UDI', 'labelling']",
+          "abstention: missing discussion topic concepts ['UDAMED', 'authorised representative']",
+          "abstention: missing discussion topic concepts ['Med Envoy', 'project plan']",
+          "abstention: missing discussion topic concepts ['IFUs', 'manufacturer information']",
+          "abstention: missing discussion topic concepts ['declarations of conformity', 'PPE']",
+          "abstention: missing discussion topic concepts ['HPRA', 'documentation']",
+          "quality: visible output contains first-person wording",
+          "quality: visible output contains second-person transcript wording",
+          "quality: conversational leakage present 'i guess'",
+          "quality: action item is too long/unclear \"Go back to Cody of course and ask, but I wouldn't be up to date or in those meetings\""
+        ],
+        "counts": {
+          "decisions": 12,
+          "actions": 9,
+          "discussionPoints": 12
+        }
+      }
+    },
+    {
+      "case": "022_real_eakin_sw_minutes_pdf",
+      "description": "Real Trinzo minutes PDF text for an Eakin Healthcare technical file software review, used as a minutes-style input regression with owner/deadline-heavy next steps.",
+      "coverage": {
+        "sourceFixture": "uploaded PDF: T761_Eakin_Tech_File_SW_Trinzo_Minutes_SW_Weekly_Checkin_202---568af969-71b7-45e1-aca9-3a65a07f7ede.pdf",
+        "meetingTypes": [
+          "client_status_review",
+          "software_technical_file_review",
+          "real_client_minutes_pdf"
+        ],
+        "behaviours": [
+          "real_pdf_extraction",
+          "minutes_pdf_input",
+          "action_heavy",
+          "owner_action",
+          "deadline_capture",
+          "technical_review",
+          "owner_deadline_table"
+        ]
+      },
+      "dryRunValidated": true,
+      "rewriter": {
+        "rewriterAvailable": null,
+        "rewriterReason": "Precomputed staged sequence output.",
+        "rewriterTokenUsage": null
+      },
+      "evaluation": {
+        "case": "022_real_eakin_sw_minutes_pdf",
+        "score": 0.5,
+        "passThreshold": 0.9,
+        "passed": false,
+        "categoryScores": {
+          "decisions": 1.0,
+          "actions": 0.0,
+          "hallucinations": 1.0,
+          "abstention": 0.6666666666666666
+        },
+        "failures": [
+          "actions: expected at least 6 items, got 0",
+          "actions: missing {'text': 'review the mute button flash sequence', 'owner': 'Andrew', 'deadline': '19th June'}",
+          "actions: missing {'text': 'Clinical review of code changes for sounds, colour and flash', 'owner': 'Rebecca', 'deadline': '26th June'}",
+          "actions: missing {'text': 'Complete Electrical compliance testing', 'owner': 'Andrew', 'deadline': '23rd July'}",
+          "actions: missing {'text': 'Update Risk Management file addressing USB port lock and GUI security controls', 'owner': 'Rebecca', 'deadline': '22nd June'}",
+          "abstention: missing discussion topic concepts ['software versioning', 'traceability']",
+          "abstention: missing discussion topic concepts ['cybersecurity', 'USB port']"
+        ],
+        "counts": {
+          "decisions": 0,
+          "actions": 0,
+          "discussionPoints": 13
+        }
+      }
+    },
+    {
+      "case": "023_real_eakin_t733_weekly_transcript",
+      "description": "Real Eakin T733 weekly technical file review transcript covering tracker movement, risk/software focus, alarm and language software changes, electrical compliance testing, and submission timing.",
+      "coverage": {
+        "sourceFixture": "uploaded DOCX: Client_Eakin_T733_Consultancy_Retainer_Tech_File_review_week---37b36c13-51f7-4767-840c-9e45c97ded5d.docx",
+        "meetingTypes": [
+          "client_status_review",
+          "project_status_update",
+          "technical_file_review",
+          "real_client_transcript"
+        ],
+        "behaviours": [
+          "real_docx_extraction",
+          "raw_meeting_chatter_filtering",
+          "technical_review",
+          "discussion_only",
+          "concrete_actions"
+        ]
+      },
+      "dryRunValidated": true,
+      "rewriter": {
+        "rewriterAvailable": null,
+        "rewriterReason": "Precomputed staged sequence output.",
+        "rewriterTokenUsage": null
+      },
+      "evaluation": {
+        "case": "023_real_eakin_t733_weekly_transcript",
+        "score": 0.8857,
+        "passThreshold": 0.88,
+        "passed": false,
+        "categoryScores": {
+          "decisions": 1.0,
+          "actions": 1.0,
+          "hallucinations": 1.0,
+          "abstention": 0.7142857142857143
+        },
+        "failures": [
+          "abstention: missing discussion topic concepts ['risk', 'cybersecurity']",
+          "abstention: missing discussion topic concepts ['electrical compliance', 'testing']",
+          "quality: visible output contains first-person wording",
+          "quality: use British English spelling 'finalised' instead of 'finalized'"
+        ],
+        "counts": {
+          "decisions": 0,
+          "actions": 3,
+          "discussionPoints": 21
+        }
+      }
+    },
+    {
+      "case": "024_real_dita_internal_followup_transcript",
+      "description": "Real internal DITA T819 follow-up transcript after a client call, benchmarked against the human internal minutes PDF for objective, working-session plan, regulatory scope questions and concrete follow-up actions.",
+      "coverage": {
+        "sourceFixture": "uploaded PDF benchmark: T819_Dita_Eyewear_Importer_Obligations_Trinzo_Minutes_intern---ca1a2cfa-68ad-4d9d-8dca-3e4a97c9c6ce.pdf",
+        "meetingTypes": [
+          "internal_followup_review",
+          "importer_obligations_review",
+          "real_client_transcript"
+        ],
+        "behaviours": [
+          "real_docx_extraction",
+          "raw_meeting_chatter_filtering",
+          "hidden_decision",
+          "concrete_actions",
+          "working_session_planning",
+          "internal_review",
+          "question_clarification_capture",
+          "human_minutes_coverage"
+        ]
+      },
+      "dryRunValidated": true,
+      "rewriter": {
+        "rewriterAvailable": null,
+        "rewriterReason": "Precomputed staged sequence output.",
+        "rewriterTokenUsage": null
+      },
+      "evaluation": {
+        "case": "024_real_dita_internal_followup_transcript",
+        "score": 0.2888,
+        "passThreshold": 0.9,
+        "passed": false,
+        "categoryScores": {
+          "decisions": 0.0,
+          "actions": 0.0,
+          "hallucinations": 0.875,
+          "abstention": 0.2
+        },
+        "failures": [
+          "decisions: expected at most 3 items, got 5",
+          "decisions: missing 'PPE and sunglasses requirements should be covered in the procedures'",
+          "decisions: missing 'Working sessions should be scheduled for Wednesday, Thursday and Friday'",
+          "actions: expected at most 6 items, got 11",
+          "actions: missing 'Set up working sessions with the client'",
+          "actions: missing 'Confirm the PPE and sunglasses procedure scope with the client'",
+          "actions: missing 'Follow up internally on declaration of conformity language requirements'",
+          "actions: missing 'Schedule a weekly client check-in call'",
+          "hallucinations: forbidden content present '1/2 an hour'",
+          "abstention: expected decisions <= 3, got 5",
+          "abstention: expected actions <= 6, got 11",
+          "abstention: missing discussion topic concepts ['working sessions', 'business works']",
+          "abstention: missing discussion topic concepts ['PPE', 'sunglasses', 'procedures']",
+          "abstention: missing discussion topic concepts ['conformity', 'language', 'markets']",
+          "abstention: missing discussion topic concepts ['MDR', 'PPE', 'declarations of conformity']",
+          "abstention: missing discussion topic concepts ['site visit', 'process works']",
+          "abstention: missing discussion topic concepts ['quality manuals', 'generic']",
+          "quality: visible output contains first-person wording",
+          "quality: conversational leakage present 'i guess'",
+          "quality: action item is too long/unclear \"Go and do my mum's shopping for her and deliver it and spend a bit of time with her because mum's housebound\"",
+          "quality: action item is too long/unclear 'Get a weekly recurrence call in with oral adjusting overall, aside from the working sessions, just to check in as well'"
+        ],
+        "counts": {
+          "decisions": 5,
+          "actions": 11,
+          "discussionPoints": 18
+        }
+      }
+    },
+    {
+      "case": "025_real_t761_eakin_sw_weekly_transcript",
+      "description": "Real T761 Eakin software weekly check-in transcript corresponding to the uploaded T761 minutes PDF, covering alarm code changes, clinical review timing, change request review, electrical compliance testing, and cybersecurity/USB controls.",
+      "coverage": {
+        "sourceFixture": "uploaded DOCX: Client_T761_Eakin_Tech_File_SW_-_Weekly_checkin---fb906d45-e67d-46b0-816c-9c8d264ef05e.docx",
+        "meetingTypes": [
+          "client_status_review",
+          "software_technical_file_review",
+          "real_client_transcript"
+        ],
+        "behaviours": [
+          "real_docx_extraction",
+          "raw_meeting_chatter_filtering",
+          "action_heavy",
+          "owner_action",
+          "deadline_capture",
+          "technical_review"
+        ]
+      },
+      "dryRunValidated": true,
+      "rewriter": {
+        "rewriterAvailable": null,
+        "rewriterReason": "Precomputed staged sequence output.",
+        "rewriterTokenUsage": null
+      },
+      "evaluation": {
+        "case": "025_real_t761_eakin_sw_weekly_transcript",
+        "score": 0.4,
+        "passThreshold": 0.88,
+        "passed": false,
+        "categoryScores": {
+          "decisions": 0.0,
+          "actions": 0.16666666666666666,
+          "hallucinations": 1.0,
+          "abstention": 0.2857142857142857
+        },
+        "failures": [
+          "decisions: expected at most 2 items, got 5",
+          "actions: expected at most 10 items, got 14",
+          "actions: missing 'review the mute button'",
+          "actions: missing 'clinical review'",
+          "actions: missing 'electrical compliance testing'",
+          "actions: missing 'USB port'",
+          "abstention: expected decisions <= 2, got 5",
+          "abstention: missing discussion topic concepts ['alarm', 'mute button']",
+          "abstention: missing discussion topic concepts ['clinical', 'review']",
+          "abstention: missing discussion topic concepts ['electrical compliance', '23rd of July']",
+          "abstention: missing discussion topic concepts ['cybersecurity', 'USB port']",
+          "quality: visible output contains first-person wording",
+          "quality: visible output contains second-person transcript wording",
+          "quality: conversational leakage present 'i suppose'",
+          "quality: action text repeats deadline column \"Get that, I'm hoping done for because I'm focusing on risk at the minute for our Wednesday meeting\"",
+          "quality: action item is too long/unclear \"Just, well, I'll go try and drop them into chat, but I don't think it's going to let me,\""
+        ],
+        "counts": {
+          "decisions": 5,
+          "actions": 14,
+          "discussionPoints": 19
+        }
+      }
+    },
+    {
+      "case": "026_real_qip_assessment_tool_case_study_transcript",
+      "description": "Real QIP assessment tool case-study interview transcript, covering a site quality assessment/improvement-planning tool, quality-system and quality-culture maturity, radar-chart scoring, site interviews/audit/gemba evidence, previous West/Korza examples, and content follow-up actions.",
+      "coverage": {
+        "sourceFixture": "uploaded DOCX: QIP_Assessment_Tool_Case_Study_Transcript_Nov_2024.docx",
+        "meetingTypes": [
+          "quality_assessment_case_study",
+          "real_client_transcript"
+        ],
+        "behaviours": [
+          "real_docx_extraction",
+          "generic_topic_filtering",
+          "conditional_chatter_filtering",
+          "raw_meeting_chatter_filtering",
+          "unsupported_action_abstention"
+        ]
+      },
+      "dryRunValidated": true,
+      "rewriter": {
+        "rewriterAvailable": null,
+        "rewriterReason": "Precomputed staged sequence output.",
+        "rewriterTokenUsage": null
+      },
+      "evaluation": {
+        "case": "026_real_qip_assessment_tool_case_study_transcript",
+        "score": 0.4639,
+        "passThreshold": 0.85,
+        "passed": false,
+        "categoryScores": {
+          "decisions": 0.0,
+          "actions": 0.5,
+          "hallucinations": 1.0,
+          "abstention": 0.2222222222222222
+        },
+        "failures": [
+          "decisions: expected at most 1 items, got 6",
+          "actions: missing 'Review referenced reports'",
+          "actions: missing 'Draft content and send it for review'",
+          "abstention: expected decisions <= 1, got 6",
+          "abstention: expected discussion <= 16, got 20",
+          "abstention: missing discussion topic concepts ['assessment tool', 'improvement plan', 'site']",
+          "abstention: missing discussion topic concepts ['quality-system', 'quality-culture']",
+          "abstention: missing discussion topic concepts ['radar-chart', 'prioritise']",
+          "abstention: missing discussion topic concepts ['interviews', 'audit', 'gemba']",
+          "abstention: missing discussion topic concepts ['follow-up', 'site assessment']"
+        ],
+        "counts": {
+          "decisions": 6,
+          "actions": 2,
+          "discussionPoints": 20
+        }
+      }
+    },
+    {
+      "case": "027_real_abbott_audit_kickoff_transcript",
+      "description": "Real Trinzo audit-kickoff Teams transcript (Abbott T796, Sylmar site) covering audit scope/type, standards to be assessed, site logistics (hotel, travel, site access), training attestation/code of conduct timing, risk-analysis and SBOM handling, and how a two-person audit team will split coverage. This case guards against catalogue topic/action profiles written for a different (software technical-file) transcript firing on an unrelated meeting type, and against hotel/travel logistics chatter leaking into published discussion points.",
+      "coverage": {
+        "sourceFixture": "uploaded DOCX: Client_Abbott_T796_-_Audit_kick_off_Sylmar_NEW.docx",
+        "meetingTypes": [
+          "audit_kickoff",
+          "real_client_transcript"
+        ],
+        "behaviours": [
+          "real_docx_extraction",
+          "admin_logistics_filtering",
+          "generic_topic_filtering",
+          "raw_meeting_chatter_filtering",
+          "cross_transcript_hallucination_guard"
+        ]
+      },
+      "dryRunValidated": true,
+      "rewriter": {
+        "rewriterAvailable": null,
+        "rewriterReason": "Precomputed staged sequence output.",
+        "rewriterTokenUsage": null
+      },
+      "evaluation": {
+        "case": "027_real_abbott_audit_kickoff_transcript",
+        "score": 0.59,
+        "passThreshold": 0.85,
+        "passed": false,
+        "categoryScores": {
+          "decisions": 1.0,
+          "actions": 0.0,
+          "hallucinations": 1.0,
+          "abstention": 0.4
+        },
+        "failures": [
+          "actions: expected at most 6 items, got 13",
+          "abstention: missing discussion topic concepts ['gemba', 'audit evidence']",
+          "abstention: missing discussion topic concepts ['procedures', 'business processes']",
+          "abstention: missing discussion topic concepts ['cybersecurity', 'risk management']",
+          "quality: visible output contains first-person wording",
+          "quality: action item is too long/unclear \"Run it through the site in advance to make sure they're in alignment with it.And any other requirements, but I think that's the plan\""
+        ],
+        "counts": {
+          "decisions": 1,
+          "actions": 13,
+          "discussionPoints": 16
+        }
+      }
+    }
+  ]
+}

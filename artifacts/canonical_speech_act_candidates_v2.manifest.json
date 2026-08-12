@@ -1,0 +1,56 @@
+{
+  "rows": 500,
+  "groups": 20,
+  "duplicateTexts": [],
+  "groupLeakage": {},
+  "missingSpeechActs": [],
+  "splitCounts": {
+    "train": 350,
+    "validation": 75,
+    "test": 75
+  },
+  "speechActCounts": {
+    "commitment": 20,
+    "volunteer_commitment": 20,
+    "request_acceptance_thread": 20,
+    "distributed_request_acceptance": 20,
+    "minutes_assignment": 20,
+    "recap_assignment": 20,
+    "contextual_volunteer": 20,
+    "ownerless_need": 20,
+    "unassigned_suggestion": 20,
+    "hypothetical": 20,
+    "explicitly_uncommitted": 20,
+    "completed_history": 20,
+    "completed_correction": 20,
+    "rejection": 20,
+    "superseded_action": 20,
+    "decision": 20,
+    "decision_after_alternative": 20,
+    "proposal_acceptance_decision": 20,
+    "unconfirmed_option": 20,
+    "risk": 20,
+    "conditional_risk": 20,
+    "closed_risk_negative": 20,
+    "informational": 20,
+    "administrative": 20,
+    "social_false_commitment": 20
+  },
+  "evidenceTypeCounts": {
+    "action_commitment": 140,
+    "discussion_topic": 100,
+    "background_context": 80,
+    "decision_agreement": 100,
+    "risk_dependency": 40,
+    "low_value_noise": 40
+  },
+  "actionStateCounts": {
+    "confirmed_action": 140,
+    "possible_action": 40,
+    "not_action": 280,
+    "completed_history": 40
+  },
+  "seed": 761819,
+  "frozenGoldenTextUsed": false,
+  "generation": "AI-authored semantic contrast families"
+}

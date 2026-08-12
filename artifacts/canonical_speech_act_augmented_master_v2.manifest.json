@@ -1,0 +1,29 @@
+{
+  "rows": 1307,
+  "reviewedMasterRows": 807,
+  "candidateRows": 500,
+  "groups": 153,
+  "splitCounts": {
+    "train": 939,
+    "test": 199,
+    "validation": 169
+  },
+  "evidenceTypeCounts": {
+    "discussion_topic": 279,
+    "background_context": 215,
+    "document_control_task": 208,
+    "action_commitment": 204,
+    "decision_agreement": 137,
+    "low_value_noise": 82,
+    "risk_dependency": 77,
+    "process_overview": 61,
+    "regulatory_obligation": 44
+  },
+  "actionStateCounts": {
+    "not_action": 616,
+    "confirmed_action": 362,
+    "completed_history": 177,
+    "possible_action": 152
+  },
+  "groupLeakage": false
+}

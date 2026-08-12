@@ -41,6 +41,8 @@ const {
   normaliseAndValidateActionOwner
 } = require('../utils/stagedEditorial');
 const { getMeetingMinutesCoreGoldenStatus } = require('../utils/meetingMinutesCoreGolden');
+const { runCanonicalNoEditPass } = require('../utils/canonicalMinutes/runner');
+const { runCanonicalLiveStage } = require('../utils/canonicalMinutes/liveStages');
 
 const {
   saveMeetingMinutes,
@@ -3545,6 +3547,32 @@ async function runStagedSequenceForEvaluation(transcriptText, options = {}) {
   };
 }
 
+function canonicalConfirmedStages(input = {}) {
+  return {
+    details: input.confirmedDetails || {},
+    summary: input.confirmedSummary || {},
+    discussion: Array.isArray(input.confirmedDiscussion) ? input.confirmedDiscussion : [],
+    actions: Array.isArray(input.confirmedActions) ? input.confirmedActions : [],
+    decisions: Array.isArray(input.confirmedDecisions) ? input.confirmedDecisions : [],
+    risks: Array.isArray(input.confirmedRisks) ? input.confirmedRisks : []
+  };
+}
+
+function canonicalStagedResponse(stage, transcript, input = {}) {
+  const payload = runCanonicalLiveStage(transcript.text, {
+    stage,
+    fileName: transcript.fileName || 'transcript.txt',
+    confirmed: canonicalConfirmedStages(input)
+  });
+  return {
+    source: transcript.source,
+    fileName: transcript.fileName || null,
+    transcriptLength: transcript.text.length,
+    ...payload,
+    preparedTranscriptTelemetry: transcript.preparedTranscriptTelemetry || null
+  };
+}
+
 function stagedStageResumeUrl(inputPayload, payload) {
   const draftId = String(inputPayload?.draftId || '').trim();
   const stage = String(payload?.stagedStage || inputPayload?.stage || 'details').trim().toLowerCase();
@@ -3629,20 +3657,8 @@ async function runQueuedStagedMeetingMinutesStage(jobId) {
         }
       };
     } else {
-      const aiTranscript = transcriptForStagedAI(transcript, input);
-      const generation = await buildStagedGenerationContext(stage, aiTranscript, stagedReq, (percent, message) => (
-        updateGenerationJobProgress(jobId, stage, percent, message)
-      ));
-      const context = generation.context;
-      if (stage === 'summary') payload = buildStagedSummaryResponse(stagedReq, aiTranscript, context);
-      else if (stage === 'discussion') payload = buildStagedDiscussionResponse(stagedReq, aiTranscript, context);
-      else if (stage === 'actions') payload = buildStagedActionsResponse(stagedReq, aiTranscript, context, transcript.text);
-      else {
-        const error = new Error(`Unsupported staged meeting-minutes stage: ${stage}`);
-        error.statusCode = 400;
-        throw error;
-      }
-      payload.preparedTranscriptTelemetry = aiTranscript.preparedTranscriptTelemetry || null;
+      await updateGenerationJobProgress(jobId, stage, 35, `Running canonical ${stage} evidence classification.`);
+      payload = canonicalStagedResponse(stage, transcript, input);
     }
 
     const priorScreens = {};
@@ -4306,6 +4322,28 @@ router.post('/staged-meeting-minutes/no-edit-pass', requireAuth, withTestUpload(
   }
 }));
 
+router.post('/staged-meeting-minutes/canonical-no-edit-pass', requireAuth, withTestUpload(async (req, res) => {
+  const startedAt = Date.now();
+  try {
+    const transcript = await readTestTranscript(req);
+    validateTranscriptText(transcript.text);
+    const strategy = String(req.query?.strategy || req.body?.strategy || 'semantic_v2').trim();
+    const result = runCanonicalNoEditPass(transcript.text, { fileName: transcript.fileName || 'transcript.txt', strategy });
+    console.info(JSON.stringify({
+      event: 'canonical_staged_minutes_no_edit_pass_completed',
+      fileName: transcript.fileName || null,
+      transcriptLength: transcript.text.length,
+      warningCount: result.reviewExperience.warningCount,
+      semanticLockPassed: result.audits.semanticLock.passed,
+      durationMs: Date.now() - startedAt
+    }));
+    return res.json({ ...result, source: transcript.source, fileName: transcript.fileName || null, transcriptLength: transcript.text.length });
+  } catch (error) {
+    console.error(JSON.stringify({ event: 'canonical_staged_minutes_no_edit_pass_failed', message: error?.message || String(error), durationMs: Date.now() - startedAt }));
+    return sendTestError(res, error);
+  }
+}));
+
 router.post('/staged-meeting-minutes', requireAuth, withTestUpload(async (req, res) => {
   const startedAt = Date.now();
   try {
@@ -4346,67 +4384,29 @@ router.post('/staged-meeting-minutes', requireAuth, withTestUpload(async (req, r
       return res.json(detailsResponse);
     }
 
-    if (requestedStage === 'summary') {
-      const trooperContext = await buildStagedTrooperContext('summary', aiTranscript, req);
-      const fallbackContext = trooperContext.ok ? null : await buildStagedMiniLMContext(aiTranscript);
-      const summaryResponse = buildStagedSummaryResponse(req, aiTranscript, trooperContext.ok ? trooperContext : fallbackContext);
-      summaryResponse.preparedTranscriptTelemetry = aiTranscript.preparedTranscriptTelemetry;
-
+    if (['summary', 'discussion', 'actions'].includes(requestedStage)) {
+      const confirmed = {
+        confirmedDetails: parseStagedJsonObject(req.body?.confirmedDetails),
+        confirmedSummary: parseStagedJsonObject(req.body?.confirmedSummary),
+        confirmedDiscussion: parseStagedJsonArray(req.body?.confirmedDiscussion),
+        confirmedActions: parseStagedJsonArray(req.body?.confirmedActions)
+      };
+      const response = canonicalStagedResponse(requestedStage, {
+        ...transcript,
+        preparedTranscriptTelemetry: aiTranscript.preparedTranscriptTelemetry
+      }, confirmed);
       console.info(JSON.stringify({
-        event: 'staged_meeting_minutes_summary_completed',
+        event: 'canonical_staged_meeting_minutes_stage_completed',
+        stage: requestedStage,
         source: transcript.source,
         fileName: transcript.fileName || null,
         transcriptLength: transcript.text.length,
-        topicCount: summaryResponse.telemetryPreview.topicCount,
-        trooperUsed: trooperContext.rewriterAvailable,
-        fallbackUsed: !trooperContext.ok,
-        embeddingClassifierUsed: summaryResponse.telemetryPreview.embeddingClassifier.used && !trooperContext.ok,
+        pipeline: response.pipeline,
+        inputStateVersion: response.canonicalDiagnostics?.inputStateVersion,
+        humanConfirmedInputIsAuthoritative: true,
         durationMs: Date.now() - startedAt
       }));
-
-      return res.json(summaryResponse);
-    }
-
-    if (requestedStage === 'discussion') {
-      const generation = await buildStagedGenerationContext('discussion', aiTranscript, req);
-      const discussionResponse = buildStagedDiscussionResponse(req, aiTranscript, generation.context);
-      discussionResponse.preparedTranscriptTelemetry = aiTranscript.preparedTranscriptTelemetry;
-
-      console.info(JSON.stringify({
-        event: 'staged_meeting_minutes_discussion_completed',
-        source: transcript.source,
-        fileName: transcript.fileName || null,
-        transcriptLength: transcript.text.length,
-        topicCount: discussionResponse.telemetryPreview.topicCount,
-        discussionCards: discussionResponse.telemetryPreview.discussionCards,
-        trooperUsed: generation.provider === 'trooper-stage',
-        fallbackUsed: generation.fallbackUsed,
-        embeddingClassifierUsed: discussionResponse.telemetryPreview.embeddingClassifier.used && generation.fallbackUsed,
-        durationMs: Date.now() - startedAt
-      }));
-
-      return res.json(discussionResponse);
-    }
-
-    if (requestedStage === 'actions') {
-      const generation = await buildStagedGenerationContext('actions', aiTranscript, req);
-      const actionsResponse = buildStagedActionsResponse(req, aiTranscript, generation.context, transcript.text);
-      actionsResponse.preparedTranscriptTelemetry = aiTranscript.preparedTranscriptTelemetry;
-
-      console.info(JSON.stringify({
-        event: 'staged_meeting_minutes_actions_completed',
-        source: transcript.source,
-        fileName: transcript.fileName || null,
-        transcriptLength: transcript.text.length,
-        actionCount: actionsResponse.telemetryPreview.actionCount,
-        trooperUsed: generation.provider === 'trooper-stage',
-        fallbackUsed: generation.fallbackUsed,
-        embeddingClassifierUsed: actionsResponse.telemetryPreview.embeddingClassifier.used && generation.fallbackUsed,
-        evidenceClassifierUsed: actionsResponse.telemetryPreview.evidenceClassifier.used,
-        durationMs: Date.now() - startedAt
-      }));
-
-      return res.json(actionsResponse);
+      return res.json(response);
     }
 
     const scriptArgs = [];

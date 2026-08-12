@@ -1,0 +1,490 @@
+{
+  "rows": 1307,
+  "groups": 153,
+  "evidenceType": {
+    "validation": {
+      "macroF1": 0.5858581594990104,
+      "report": {
+        "action_commitment": {
+          "precision": 0.8571428571428571,
+          "recall": 0.5,
+          "f1-score": 0.631578947368421,
+          "support": 36.0
+        },
+        "background_context": {
+          "precision": 0.75,
+          "recall": 0.5294117647058824,
+          "f1-score": 0.6206896551724138,
+          "support": 34.0
+        },
+        "decision_agreement": {
+          "precision": 0.4857142857142857,
+          "recall": 0.8095238095238095,
+          "f1-score": 0.6071428571428571,
+          "support": 21.0
+        },
+        "discussion_topic": {
+          "precision": 0.9090909090909091,
+          "recall": 0.5,
+          "f1-score": 0.6451612903225806,
+          "support": 40.0
+        },
+        "document_control_task": {
+          "precision": 0.28,
+          "recall": 0.5384615384615384,
+          "f1-score": 0.3684210526315789,
+          "support": 13.0
+        },
+        "low_value_noise": {
+          "precision": 0.6923076923076923,
+          "recall": 1.0,
+          "f1-score": 0.8181818181818182,
+          "support": 9.0
+        },
+        "process_overview": {
+          "precision": 0.25,
+          "recall": 0.75,
+          "f1-score": 0.375,
+          "support": 4.0
+        },
+        "regulatory_obligation": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1-score": 0.0,
+          "support": 0.0
+        },
+        "risk_dependency": {
+          "precision": 0.5294117647058824,
+          "recall": 0.75,
+          "f1-score": 0.6206896551724138,
+          "support": 12.0
+        },
+        "accuracy": 0.5976331360946746,
+        "macro avg": {
+          "precision": 0.5281852787735141,
+          "recall": 0.5974885680768033,
+          "f1-score": 0.5207628084435648,
+          "support": 169.0
+        },
+        "weighted avg": {
+          "precision": 0.7109141398107636,
+          "recall": 0.5976331360946746,
+          "f1-score": 0.6124149580115048,
+          "support": 169.0
+        }
+      },
+      "confusionMatrix": [
+        [
+          18,
+          3,
+          6,
+          0,
+          3,
+          2,
+          1,
+          0,
+          3
+        ],
+        [
+          0,
+          18,
+          4,
+          1,
+          9,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          17,
+          0,
+          0,
+          0,
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          6,
+          20,
+          6,
+          1,
+          2,
+          0,
+          3
+        ],
+        [
+          1,
+          0,
+          1,
+          1,
+          7,
+          0,
+          3,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          9,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          3,
+          0,
+          1
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          1,
+          0,
+          0,
+          0,
+          1,
+          0,
+          9
+        ]
+      ]
+    },
+    "test": {
+      "macroF1": 0.5591643325627547,
+      "report": {
+        "action_commitment": {
+          "precision": 0.7307692307692307,
+          "recall": 0.5135135135135135,
+          "f1-score": 0.6031746031746031,
+          "support": 37.0
+        },
+        "background_context": {
+          "precision": 0.84375,
+          "recall": 0.7714285714285715,
+          "f1-score": 0.8059701492537313,
+          "support": 35.0
+        },
+        "decision_agreement": {
+          "precision": 0.7727272727272727,
+          "recall": 0.68,
+          "f1-score": 0.723404255319149,
+          "support": 25.0
+        },
+        "discussion_topic": {
+          "precision": 0.8620689655172413,
+          "recall": 0.5952380952380952,
+          "f1-score": 0.704225352112676,
+          "support": 42.0
+        },
+        "document_control_task": {
+          "precision": 0.22727272727272727,
+          "recall": 0.3333333333333333,
+          "f1-score": 0.2702702702702703,
+          "support": 15.0
+        },
+        "low_value_noise": {
+          "precision": 0.5555555555555556,
+          "recall": 1.0,
+          "f1-score": 0.7142857142857143,
+          "support": 10.0
+        },
+        "process_overview": {
+          "precision": 0.2,
+          "recall": 0.7142857142857143,
+          "f1-score": 0.3125,
+          "support": 7.0
+        },
+        "regulatory_obligation": {
+          "precision": 0.2,
+          "recall": 0.3333333333333333,
+          "f1-score": 0.25,
+          "support": 6.0
+        },
+        "risk_dependency": {
+          "precision": 0.8,
+          "recall": 0.5454545454545454,
+          "f1-score": 0.6486486486486487,
+          "support": 22.0
+        },
+        "accuracy": 0.6130653266331658,
+        "macro avg": {
+          "precision": 0.5769048613157808,
+          "recall": 0.6096207896207895,
+          "f1-score": 0.5591643325627547,
+          "support": 199.0
+        },
+        "weighted avg": {
+          "precision": 0.7098464139347435,
+          "recall": 0.6130653266331658,
+          "f1-score": 0.6399179305539372,
+          "support": 199.0
+        }
+      },
+      "confusionMatrix": [
+        [
+          19,
+          0,
+          2,
+          0,
+          11,
+          3,
+          2,
+          0,
+          0
+        ],
+        [
+          2,
+          27,
+          0,
+          0,
+          3,
+          0,
+          1,
+          2,
+          0
+        ],
+        [
+          1,
+          0,
+          17,
+          2,
+          0,
+          0,
+          2,
+          1,
+          2
+        ],
+        [
+          0,
+          4,
+          2,
+          25,
+          2,
+          2,
+          3,
+          4,
+          0
+        ],
+        [
+          2,
+          1,
+          0,
+          0,
+          5,
+          2,
+          3,
+          1,
+          1
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          10,
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          5,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          0,
+          1,
+          0,
+          2,
+          2,
+          0
+        ],
+        [
+          1,
+          0,
+          0,
+          1,
+          0,
+          1,
+          7,
+          0,
+          12
+        ]
+      ]
+    }
+  },
+  "actionState": {
+    "validation": {
+      "macroF1": 0.633984428124575,
+      "report": {
+        "completed_history": {
+          "precision": 0.7777777777777778,
+          "recall": 0.7,
+          "f1-score": 0.7368421052631579,
+          "support": 30.0
+        },
+        "confirmed_action": {
+          "precision": 0.6190476190476191,
+          "recall": 0.5909090909090909,
+          "f1-score": 0.6046511627906976,
+          "support": 44.0
+        },
+        "not_action": {
+          "precision": 0.7159090909090909,
+          "recall": 0.7875,
+          "f1-score": 0.75,
+          "support": 80.0
+        },
+        "possible_action": {
+          "precision": 0.5,
+          "recall": 0.4,
+          "f1-score": 0.4444444444444444,
+          "support": 15.0
+        },
+        "accuracy": 0.6863905325443787,
+        "macro avg": {
+          "precision": 0.6531836219336219,
+          "recall": 0.6196022727272728,
+          "f1-score": 0.633984428124575,
+          "support": 169.0
+        },
+        "weighted avg": {
+          "precision": 0.6825097978944132,
+          "recall": 0.6863905325443787,
+          "f1-score": 0.6827016626470539,
+          "support": 169.0
+        }
+      },
+      "confusionMatrix": [
+        [
+          21,
+          6,
+          3,
+          0
+        ],
+        [
+          1,
+          26,
+          17,
+          0
+        ],
+        [
+          4,
+          7,
+          63,
+          6
+        ],
+        [
+          1,
+          3,
+          5,
+          6
+        ]
+      ]
+    },
+    "test": {
+      "macroF1": 0.6814004098966807,
+      "report": {
+        "completed_history": {
+          "precision": 0.875,
+          "recall": 0.6363636363636364,
+          "f1-score": 0.7368421052631579,
+          "support": 33.0
+        },
+        "confirmed_action": {
+          "precision": 0.6557377049180327,
+          "recall": 0.8888888888888888,
+          "f1-score": 0.7547169811320755,
+          "support": 45.0
+        },
+        "not_action": {
+          "precision": 0.782608695652174,
+          "recall": 0.75,
+          "f1-score": 0.7659574468085106,
+          "support": 96.0
+        },
+        "possible_action": {
+          "precision": 0.5,
+          "recall": 0.44,
+          "f1-score": 0.46808510638297873,
+          "support": 25.0
+        },
+        "accuracy": 0.7236180904522613,
+        "macro avg": {
+          "precision": 0.7033366001425516,
+          "recall": 0.6788131313131313,
+          "f1-score": 0.6814004098966807,
+          "support": 199.0
+        },
+        "weighted avg": {
+          "precision": 0.7337368417282422,
+          "recall": 0.7236180904522613,
+          "f1-score": 0.7211663124513523,
+          "support": 199.0
+        }
+      },
+      "confusionMatrix": [
+        [
+          21,
+          5,
+          7,
+          0
+        ],
+        [
+          0,
+          40,
+          4,
+          1
+        ],
+        [
+          3,
+          11,
+          72,
+          10
+        ],
+        [
+          0,
+          5,
+          9,
+          11
+        ]
+      ]
+    }
+  }
+}

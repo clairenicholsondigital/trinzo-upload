@@ -6,7 +6,7 @@ REPO_DIR = Path(__file__).resolve().parents[1]
 
 
 class StagedMeetingMinutesContractTest(unittest.TestCase):
-    def test_later_staged_steps_use_targeted_trooper_and_keep_fast_fallback(self):
+    def test_later_staged_steps_use_canonical_pipeline_and_confirmed_state(self):
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
         db = (REPO_DIR / "utils" / "db.js").read_text(encoding="utf-8")
         staged_editorial = (REPO_DIR / "utils" / "stagedEditorial.js").read_text(encoding="utf-8")
@@ -155,7 +155,9 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("workstream_state_discussion_fallback", api)
         self.assertIn("droppedMisattributedDiscussionPoints", api)
         self.assertIn("retryCount > originalCount", api)
-        self.assertIn("buildStagedGenerationContext('discussion'", api)
+        self.assertIn("runCanonicalLiveStage", api)
+        self.assertIn("canonicalStagedResponse", api)
+        self.assertIn("humanConfirmedInputIsAuthoritative", api)
         self.assertIn("return null;", api)
         self.assertIn("const evidenceFilteredDiscussion = filterDiscussionCardsByWorkstreamEvidence", api)
         self.assertIn("compactStagedDiscussionCards(rawDiscussion", api)
@@ -248,9 +250,9 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
 
         self.assertIn("async function runStagedSequenceForEvaluation", api)
         self.assertIn("stagedEvaluationVisibleOutput", api)
-        self.assertIn("recoveryTranscriptText = transcript.text", api)
-        self.assertIn("buildStagedActionsResponse(stagedReq, aiTranscript, context, transcript.text)", api)
-        self.assertIn("buildStagedActionsResponse(req, aiTranscript, generation.context, transcript.text)", api)
+        self.assertIn("runCanonicalLiveStage", api)
+        self.assertIn("canonicalConfirmedStages", api)
+        self.assertIn("confirmedDiscussion", api)
         self.assertIn("runSequence(transcript", runner)
         self.assertIn("deterministicActionInventoryCount", runner)
         self.assertIn("--precomputed-dir", scorer)
@@ -354,8 +356,8 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("prepared.push(spoken ? `${speaker}: ${spoken}`", api)
         self.assertIn("function transcriptForStagedAI", api)
         self.assertIn("sourceJob.preparedTranscript", api)
-        self.assertIn("const aiTranscript = transcriptForStagedAI(transcript, input)", api)
-        self.assertIn("buildStagedGenerationContext(stage, aiTranscript", api)
+        self.assertIn("canonicalStagedResponse(stage, transcript, input)", api)
+        self.assertIn("runCanonicalLiveStage(transcript.text", api)
         self.assertIn("rawTranscriptLength: transcript.text.length", api)
         self.assertIn("preparedTranscriptLength", api)
         self.assertIn("autosavePayload.preparedTranscript", db)
