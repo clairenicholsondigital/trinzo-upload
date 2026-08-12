@@ -1,0 +1,42 @@
+{
+  "attendees": [
+    "Gemma Ashworth",
+    "Raj Patel",
+    "Louise Corrigan",
+    "Tobias Frank"
+  ],
+  "client_attendees": [],
+  "actions": [
+    {
+      "owner": "Raj Patel",
+      "action": "Send the artwork proofs to Kettleby Print by",
+      "deadline": "Wednesday",
+      "due_evidence": "Wednesday"
+    },
+    {
+      "owner": "Gemma Ashworth",
+      "action": "Reply to Marguerite confirming the revised launch date is the 20th",
+      "deadline": "today",
+      "due_evidence": "today"
+    },
+    {
+      "owner": "Gemma Ashworth",
+      "action": "Reply to Marguerite and tell her the realistic date is the twentieth, not the fifteenth, and manage her expectations",
+      "deadline": "today",
+      "due_evidence": "today"
+    },
+    {
+      "owner": "Gemma Ashworth",
+      "action": "Square Marguerite off today",
+      "deadline": "Wednesday",
+      "due_evidence": "Wednesday"
+    }
+  ],
+  "decisions": [
+    "We're deciding, we move the launch to the twentieth"
+  ],
+  "risks": [
+    "Kettleby Print has slipped timings before; a two-day slip risks the revised launch date",
+    "If they slip even two days the team miss the twentieth as well, so it's tight."
+  ]
+}

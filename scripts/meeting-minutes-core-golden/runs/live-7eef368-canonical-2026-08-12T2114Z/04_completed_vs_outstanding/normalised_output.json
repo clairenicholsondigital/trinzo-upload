@@ -1,0 +1,20 @@
+{
+  "attendees": [
+    "Samira Cole",
+    "Ben Morris",
+    "Eva Novak"
+  ],
+  "client_attendees": [],
+  "actions": [
+    {
+      "owner": "Ben Morris",
+      "action": "Upload the signed response to the controlled folder by",
+      "deadline": "close tomorrow",
+      "due_evidence": "close tomorrow"
+    }
+  ],
+  "decisions": [
+    "Decision: the supplier remains approved"
+  ],
+  "risks": []
+}

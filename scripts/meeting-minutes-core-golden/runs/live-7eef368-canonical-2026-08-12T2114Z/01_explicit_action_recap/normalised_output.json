@@ -1,0 +1,88 @@
+{
+  "attendees": [
+    "Priya Sethi",
+    "Tom Whitfield",
+    "Nadia Okonkwo",
+    "Callum Reid"
+  ],
+  "client_attendees": [],
+  "actions": [
+    {
+      "owner": "Callum Reid",
+      "action": "Building the closing slide with the QR code and the link",
+      "deadline": "Not stated",
+      "due_evidence": "Not stated"
+    },
+    {
+      "owner": "Nadia Okonkwo",
+      "action": "Group chat questions and privately cue the presenter during the live session",
+      "deadline": "during the live session",
+      "due_evidence": "during the live session"
+    },
+    {
+      "owner": "Tom Whitfield",
+      "action": "Keep self-introduction and answers to roughly thirty seconds and omit the opening joke",
+      "deadline": "during the live session",
+      "due_evidence": "during the live session"
+    },
+    {
+      "owner": "Priya Sethi",
+      "action": "Handle the opening, the housekeeping, tap-the-speech-bubble line; Cover any dead air on the handovers",
+      "deadline": "Not stated",
+      "due_evidence": "Not stated"
+    },
+    {
+      "owner": "Callum Reid",
+      "action": "Restore the animation on the three-things slide",
+      "deadline": "Not stated",
+      "due_evidence": "Not stated"
+    },
+    {
+      "owner": "Nadia Okonkwo",
+      "action": "Write and circulate three backup questions",
+      "deadline": "tonight",
+      "due_evidence": "tonight"
+    },
+    {
+      "owner": "Callum Reid",
+      "action": "Start and monitor the recording, verify the red dot and take a screenshot",
+      "deadline": "Not stated",
+      "due_evidence": "Not stated"
+    },
+    {
+      "owner": "all attendees",
+      "action": "Run a short opening and first-handover warm-up",
+      "deadline": "08:30 tomorrow",
+      "due_evidence": "08:30 tomorrow"
+    },
+    {
+      "owner": "Nadia Okonkwo",
+      "action": "Doing the planted questions and grouping the chat on the day",
+      "deadline": "Not stated",
+      "due_evidence": "Not stated"
+    },
+    {
+      "owner": "Tom Whitfield",
+      "action": "Find that little clock top right",
+      "deadline": "Not stated",
+      "due_evidence": "Not stated"
+    },
+    {
+      "owner": "Nadia Okonkwo",
+      "action": "Still message you at five minutes",
+      "deadline": "Not stated",
+      "due_evidence": "Not stated"
+    }
+  ],
+  "decisions": [
+    "Agreed, yeah",
+    "Just the open and the first handover, we don't need the whole thing again",
+    "Finish content by 35 minutes and reserve 20 minutes for questions",
+    "Hold a short warm-up at 08:30 before the live session"
+  ],
+  "risks": [
+    "Screen-share transfer can create dead air",
+    "Presenter connection could drop",
+    "Recording could miss the opening or stop"
+  ]
+}

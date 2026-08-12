@@ -1,0 +1,54 @@
+{
+  "attendees": [
+    "Marcus Bell",
+    "Aisha Rahman",
+    "Deniz Yilmaz",
+    "Fern Whitlock"
+  ],
+  "client_attendees": [],
+  "actions": [
+    {
+      "owner": "Aisha Rahman",
+      "action": "Fix the staging config by swapping the connection string to the correct database",
+      "deadline": "lunch",
+      "due_evidence": "lunch"
+    },
+    {
+      "owner": "Marcus Bell",
+      "action": "Get the revised quote over to Bellamy's before",
+      "deadline": "end of play Thursday",
+      "due_evidence": "end of play Thursday"
+    },
+    {
+      "owner": "Deniz Yilmaz",
+      "action": "Rewrite the onboarding email and drop it in the shared folder for you two to check before it goes anywhere",
+      "deadline": "Not stated",
+      "due_evidence": "Not stated"
+    },
+    {
+      "owner": "Fern Whitlock",
+      "action": "Ring the hosting people and get the SSL renewed, they can do it same day usually",
+      "deadline": "tomorrow morning",
+      "due_evidence": "tomorrow morning"
+    },
+    {
+      "owner": "Aisha Rahman",
+      "action": "Sort it after",
+      "deadline": "lunch",
+      "due_evidence": "lunch"
+    },
+    {
+      "owner": "Marcus Bell",
+      "action": "Sort it",
+      "deadline": "Thursday",
+      "due_evidence": "Thursday"
+    }
+  ],
+  "decisions": [
+    "Adopt the simple dropdown navigation (option B) over the mega-menu"
+  ],
+  "risks": [
+    "SSL certificate expiry could cause a not-secure site warning",
+    "It expires at the end of the month, and if it lapses the whole site goes to that scary not-secure warning."
+  ]
+}
