@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "case_id": 0,
+  "case_slug": "replace_me",
+  "meeting_type": "internal",
+  "test_focus": "replace me",
+  "expected_attendees": [],
+  "expected_client_attendees": [],
+  "mentioned_but_not_attendees": [],
+  "expected_actions": [],
+  "rejected_actions": [],
+  "completed_history_not_action": [],
+  "hypotheticals_not_action": [],
+  "expected_decisions": [],
+  "expected_risks": [],
+  "forbidden_claims": [],
+  "scoring_notes": "replace me"
+}

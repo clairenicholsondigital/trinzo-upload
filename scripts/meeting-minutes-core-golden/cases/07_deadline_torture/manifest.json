@@ -1,0 +1,55 @@
+{
+  "schema_version": "1.0",
+  "case_id": 7,
+  "case_slug": "deadline_torture",
+  "meeting_type": "internal",
+  "test_focus": "relative, conditional and absent deadlines without invention",
+  "expected_attendees": [
+    "Grace Lin",
+    "Idris Moore",
+    "Kate Evans"
+  ],
+  "expected_client_attendees": [],
+  "mentioned_but_not_attendees": [],
+  "expected_actions": [
+    {
+      "owner": "Idris Moore",
+      "action": "Send the draft",
+      "due_evidence": "end of day tomorrow / Thursday 13 August 2026"
+    },
+    {
+      "owner": "Kate Evans",
+      "action": "Review the draft",
+      "due_evidence": "within two working days of receipt"
+    },
+    {
+      "owner": "Grace Lin",
+      "action": "Submit the approved draft",
+      "due_evidence": "next working day after Kate's approval"
+    }
+  ],
+  "rejected_actions": [
+    {
+      "owner": "Grace Lin",
+      "action": "Submit on Monday",
+      "resolution": "Monday was proposed then explicitly rejected as an invented fixed date"
+    }
+  ],
+  "completed_history_not_action": [
+    {
+      "owner": "Kate Evans",
+      "detail": "Previous draft submitted last month and closed"
+    }
+  ],
+  "hypotheticals_not_action": [],
+  "expected_decisions": [],
+  "expected_risks": [
+    "Submission timing depends on the review and approval sequence"
+  ],
+  "forbidden_claims": [
+    "A fixed Monday deadline for Grace",
+    "A due date invented for any action beyond stated evidence",
+    "Previous draft as outstanding"
+  ],
+  "scoring_notes": "Score semantic equivalence, not exact wording. Any forbidden action or attendee is a hard-failure flag. Never infer an unstated owner or deadline."
+}

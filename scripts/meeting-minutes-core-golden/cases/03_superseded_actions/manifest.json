@@ -1,0 +1,50 @@
+{
+  "schema_version": "1.0",
+  "case_id": 3,
+  "case_slug": "superseded_actions",
+  "meeting_type": "internal",
+  "test_focus": "superseded and reassigned actions; only the final agreed state should survive",
+  "expected_attendees": [
+    "Helen Ward",
+    "Omar Khan",
+    "Lucy Price"
+  ],
+  "expected_client_attendees": [],
+  "mentioned_but_not_attendees": [],
+  "expected_actions": [
+    {
+      "owner": "Lucy Price",
+      "action": "Draft and send the release note",
+      "due_evidence": "Wednesday morning"
+    }
+  ],
+  "rejected_actions": [
+    {
+      "owner": "Omar Khan",
+      "action": "Draft the release note by Tuesday",
+      "resolution": "Superseded and reassigned to Lucy"
+    }
+  ],
+  "completed_history_not_action": [
+    {
+      "owner": "Lucy Price",
+      "detail": "Security review completed and signed off yesterday"
+    }
+  ],
+  "hypotheticals_not_action": [
+    {
+      "owner": "Omar Khan",
+      "detail": "Help-centre update was suggested conditionally and explicitly parked"
+    }
+  ],
+  "expected_decisions": [
+    "Keep the release scheduled for Friday"
+  ],
+  "expected_risks": [],
+  "forbidden_claims": [
+    "Omar's superseded release-note action",
+    "Help-centre update as an action",
+    "Security review as outstanding"
+  ],
+  "scoring_notes": "Score semantic equivalence, not exact wording. Any forbidden action or attendee is a hard-failure flag. Never infer an unstated owner or deadline."
+}

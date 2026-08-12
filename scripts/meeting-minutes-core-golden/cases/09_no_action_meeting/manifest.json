@@ -1,0 +1,60 @@
+{
+  "meeting_type": "internal",
+  "test_focus": "action-absence; the tool must not manufacture actions to fill the table",
+  "expected_attendees": [
+    "Elaine Voss",
+    "Martin Okoro",
+    "Sana Iqbal"
+  ],
+  "expected_client_attendees": [],
+  "expected_actions": [],
+  "expected_actions_wording_when_empty": "No agreed outstanding actions identified.",
+  "rejected_actions": [
+    {
+      "owner": "Sana Iqbal",
+      "action": "Run another round of testing on the validation",
+      "resolution": "Rejected by the group as unnecessary; would only cause delay"
+    }
+  ],
+  "completed_history_not_action": [
+    {
+      "owner": "Martin Okoro",
+      "detail": "Validation report issued Monday"
+    },
+    {
+      "owner": "Sana Iqbal",
+      "detail": "Finding two (labelling change) signed off last week and implemented"
+    },
+    {
+      "owner": "Martin Okoro",
+      "detail": "Supplier B paperwork already signed"
+    }
+  ],
+  "hypotheticals_not_action": [
+    {
+      "owner": null,
+      "detail": "Batch variation on supplier B is a watch item to monitor as normal; explicitly no action"
+    }
+  ],
+  "expected_decisions": [
+    "Approve the validation report for release",
+    "Accept the residual risk on the temperature excursion",
+    "Confirm supplier B as the component supplier",
+    "Do not carry out a further round of testing"
+  ],
+  "expected_risks": [
+    "Residual temperature-excursion risk accepted and documented",
+    "Batch variation on supplier B within spec; monitor only (no action)"
+  ],
+  "forbidden_claims": [
+    "Any populated action in the actions table",
+    "'Run another round of testing' promoted to an action (it was rejected)",
+    "The batch-variation watch item promoted to an action",
+    "Any completed item (report issued, finding two, supplier paperwork) promoted to an action",
+    "A placeholder action such as 'Review transcript for agreed actions'"
+  ],
+  "scoring_notes": "Pass condition: actions list is EMPTY and rendered with the agreed empty-state wording. This is the counterweight to Rogue #1 (explicit recap). Any manufactured, placeholder, rejected, completed or watch-item action is a hard fail. Decisions and risks should be rich and correctly captured.",
+  "schema_version": "1.0",
+  "case_id": 9,
+  "case_slug": "no_action_meeting"
+}

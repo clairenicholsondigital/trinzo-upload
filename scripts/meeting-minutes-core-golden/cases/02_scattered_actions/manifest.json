@@ -1,0 +1,67 @@
+{
+  "meeting_type": "internal",
+  "test_focus": "scattered actions with no closing recap; action understanding not summary-recognition",
+  "expected_attendees": [
+    "Marcus Bell",
+    "Aisha Rahman",
+    "Deniz Yilmaz",
+    "Fern Whitlock"
+  ],
+  "expected_client_attendees": [],
+  "expected_actions": [
+    {
+      "owner": "Aisha Rahman",
+      "action": "Fix the staging config (swap the connection string to the correct database)",
+      "due_evidence": "after lunch"
+    },
+    {
+      "owner": "Marcus Bell",
+      "action": "Send the revised quote to Bellamy's",
+      "due_evidence": "end of play Thursday"
+    },
+    {
+      "owner": "Deniz Yilmaz",
+      "action": "Rewrite the onboarding email and put it in the shared folder for review",
+      "due_evidence": null
+    },
+    {
+      "owner": "Fern Whitlock",
+      "action": "Call the hosting provider to renew the SSL certificate",
+      "due_evidence": "tomorrow morning"
+    }
+  ],
+  "rejected_actions": [],
+  "completed_history_not_action": [
+    {
+      "owner": "Deniz Yilmaz",
+      "detail": "Pushed the caching fix last night; already live"
+    }
+  ],
+  "hypotheticals_not_action": [
+    {
+      "owner": "Aisha Rahman",
+      "detail": "Could look at the analytics dashboard 'if we've got time'; parked to a future sprint"
+    },
+    {
+      "owner": "Marcus Bell",
+      "detail": "Should tidy up old feature branches 'at some point'; no owner commitment, explicitly not today"
+    }
+  ],
+  "expected_decisions": [
+    "Adopt the simple dropdown navigation (option B) over the mega-menu"
+  ],
+  "expected_risks": [
+    "SSL certificate expires end of month; lapse causes a not-secure site warning"
+  ],
+  "forbidden_claims": [
+    "Any action with no owner (e.g. 'tidy up old feature branches')",
+    "The caching fix listed as an outstanding action",
+    "The analytics dashboard listed as an action",
+    "A manufactured closing action-recap that was never spoken",
+    "Any client attendees"
+  ],
+  "scoring_notes": "Full recall = all 4 actions with correct owners. Deniz's action legitimately has no due date; manufacturing one is a failure. Penalise any of the 3 non-actions promoted into the actions table.",
+  "schema_version": "1.0",
+  "case_id": 2,
+  "case_slug": "scattered_actions"
+}

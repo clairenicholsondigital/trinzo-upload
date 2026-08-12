@@ -1,0 +1,50 @@
+{
+  "schema_version": "1.0",
+  "case_id": 5,
+  "case_slug": "hypothetical_language",
+  "meeting_type": "internal",
+  "test_focus": "hypotheticals, recommendations and conditional language must not become actions",
+  "expected_attendees": [
+    "Imogen Hart",
+    "Ravi Shah",
+    "Peter Doyle"
+  ],
+  "expected_client_attendees": [],
+  "mentioned_but_not_attendees": [],
+  "expected_actions": [
+    {
+      "owner": "Ravi Shah",
+      "action": "Request the analytics renewal quote",
+      "due_evidence": "Friday"
+    }
+  ],
+  "rejected_actions": [],
+  "completed_history_not_action": [
+    {
+      "owner": "Peter Doyle",
+      "detail": "Cookie audit completed last week"
+    }
+  ],
+  "hypotheticals_not_action": [
+    {
+      "owner": null,
+      "detail": "Possible migration next year"
+    },
+    {
+      "owner": "Peter Doyle",
+      "detail": "Conditional Matomo trial dependent on legal sign-off"
+    }
+  ],
+  "expected_decisions": [
+    "Stay with the current analytics platform for now"
+  ],
+  "expected_risks": [
+    "Future licence-price increase could prompt a platform review"
+  ],
+  "forbidden_claims": [
+    "Platform migration as an action",
+    "Matomo trial as an action",
+    "Cookie audit as outstanding"
+  ],
+  "scoring_notes": "Score semantic equivalence, not exact wording. Any forbidden action or attendee is a hard-failure flag. Never infer an unstated owner or deadline."
+}

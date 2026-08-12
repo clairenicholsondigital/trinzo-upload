@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Trinzo evaluation manifest",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "case_id",
+    "case_slug",
+    "meeting_type",
+    "test_focus",
+    "expected_attendees",
+    "expected_client_attendees",
+    "expected_actions",
+    "expected_decisions",
+    "expected_risks",
+    "forbidden_claims"
+  ]
+}

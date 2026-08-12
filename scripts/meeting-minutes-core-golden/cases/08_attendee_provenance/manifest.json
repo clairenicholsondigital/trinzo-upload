@@ -1,0 +1,76 @@
+{
+  "meeting_type": "internal",
+  "test_focus": "attendee provenance; mentioned externals must not become attendees; internal must not be classified as client-facing",
+  "expected_attendees": [
+    "Gemma Ashworth",
+    "Raj Patel",
+    "Louise Corrigan",
+    "Tobias Frank"
+  ],
+  "expected_client_attendees": [],
+  "mentioned_but_not_attendees": [
+    {
+      "name": "Marguerite",
+      "relation": "client contact at Voss & Delaney"
+    },
+    {
+      "name": "Kettleby Print",
+      "relation": "supplier / printer"
+    },
+    {
+      "name": "David",
+      "relation": "director (asked about progress; not present)"
+    },
+    {
+      "name": "Colin",
+      "relation": "attended the previous meeting; absent this week"
+    },
+    {
+      "name": "Hannah",
+      "relation": "finance; expected at next week's meeting"
+    }
+  ],
+  "expected_actions": [
+    {
+      "owner": "Raj Patel",
+      "action": "Send the artwork proofs to Kettleby Print",
+      "due_evidence": "by Wednesday"
+    },
+    {
+      "owner": "Gemma Ashworth",
+      "action": "Reply to Marguerite (client) confirming the revised launch date is the 20th",
+      "due_evidence": "today"
+    }
+  ],
+  "rejected_actions": [],
+  "completed_history_not_action": [
+    {
+      "owner": "Tobias Frank",
+      "detail": "Case study draft already circulated last week"
+    },
+    {
+      "owner": "Louise Corrigan",
+      "detail": "Signed contract already returned to Voss & Delaney"
+    }
+  ],
+  "hypotheticals_not_action": [],
+  "expected_decisions": [
+    "Move the launch date from the 15th to the 20th"
+  ],
+  "expected_risks": [
+    "Kettleby Print has slipped timings before; a two-day slip also risks the 20th"
+  ],
+  "forbidden_claims": [
+    "Marguerite listed as an attendee",
+    "David listed as an attendee",
+    "Colin listed as an attendee",
+    "Hannah listed as an attendee",
+    "Kettleby Print listed as an attendee",
+    "Any of the four speakers placed under 'Client attendees'",
+    "Meeting classified as client-facing / external"
+  ],
+  "scoring_notes": "Primary pass condition: attendees == the four speakers, meeting_type == internal, client_attendees empty, and zero mentioned parties promoted to attendees. Secondary: the two clean actions extracted (note both reference external parties as the OBJECT of the action, which must not leak them into attendees).",
+  "schema_version": "1.0",
+  "case_id": 8,
+  "case_slug": "attendee_provenance"
+}

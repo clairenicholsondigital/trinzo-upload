@@ -1,0 +1,82 @@
+{
+  "schema_version": "1.0",
+  "case_id": 1,
+  "case_slug": "explicit_action_recap",
+  "meeting_type": "internal",
+  "test_focus": "explicit closing action recap plus completed history, operational risks and presenter handovers",
+  "expected_attendees": [
+    "Priya Sethi",
+    "Tom Whitfield",
+    "Nadia Okonkwo",
+    "Callum Reid"
+  ],
+  "expected_client_attendees": [],
+  "mentioned_but_not_attendees": [],
+  "expected_actions": [
+    {
+      "owner": "Callum Reid",
+      "action": "Restore the animation on the three-things slide",
+      "due_evidence": "before the live session"
+    },
+    {
+      "owner": "Callum Reid",
+      "action": "Build the closing slide with QR code and booking link, then re-share the deck",
+      "due_evidence": "before the live session"
+    },
+    {
+      "owner": "Nadia Okonkwo",
+      "action": "Write and circulate three backup questions",
+      "due_evidence": "tonight"
+    },
+    {
+      "owner": "Nadia Okonkwo",
+      "action": "Group chat questions and privately cue Priya during the live session",
+      "due_evidence": "during the live session"
+    },
+    {
+      "owner": "Tom Whitfield",
+      "action": "Keep self-introduction and answers to roughly thirty seconds and omit the opening joke",
+      "due_evidence": "during the live session"
+    },
+    {
+      "owner": "Priya Sethi",
+      "action": "Handle the opening, housekeeping, mobile chat instruction, handover dead air and close",
+      "due_evidence": "during the live session"
+    },
+    {
+      "owner": "Callum Reid",
+      "action": "Start and monitor the recording, verify the red dot and take a screenshot",
+      "due_evidence": "from Priya's first words"
+    },
+    {
+      "owner": "all attendees",
+      "action": "Run a short opening and first-handover warm-up",
+      "due_evidence": "08:30 tomorrow"
+    }
+  ],
+  "rejected_actions": [],
+  "completed_history_not_action": [
+    {
+      "owner": "team",
+      "detail": "Practised the screen-share handover during this rehearsal"
+    }
+  ],
+  "hypotheticals_not_action": [],
+  "expected_decisions": [
+    "Finish content by 35 minutes and reserve 20 minutes for questions",
+    "Use Priya as host and closer",
+    "Hold a short warm-up at 08:30 before the 11:00 live session"
+  ],
+  "expected_risks": [
+    "Screen-share transfer can create dead air",
+    "Recording could miss the opening or stop",
+    "Tom's connection could drop",
+    "The session could overrun and crowd out questions"
+  ],
+  "forbidden_claims": [
+    "Client attendees",
+    "The practised handover as an outstanding action",
+    "Invented calendar dates not present in the transcript"
+  ],
+  "scoring_notes": "Actions should be routed to the action section, not left only in discussion. Compound Callum work may appear as one or two semantically equivalent actions."
+}

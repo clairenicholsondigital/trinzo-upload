@@ -1,0 +1,8 @@
+{
+  "schema_version": "1.0",
+  "benchmark_id": "T819_dita_client",
+  "transcript": "transcript.docx",
+  "human_minutes": "human_minutes.pdf",
+  "evaluation_mode": "human-reference semantic review",
+  "notes": "Use the PDF as the human-authored content and interpretation standard. Score section coverage, action fidelity, attendee provenance, decision/risk capture and absence of invented claims."
+}
