@@ -332,6 +332,12 @@ test('buildStagedValidationFlags surfaces duplicates, malformed text and omitted
   assert.ok(types.includes('misattributed_discussion_evidence'));
   assert.ok(types.includes('malformed_text'));
   assert.ok(types.includes('possible_omitted_workstream'));
+  const omitted = flags.find((flag) => flag.type === 'possible_omitted_workstream');
+  assert.deepEqual(omitted.discussionSuggestion, {
+    topic: 'the risk assessment feeding the audit plan',
+    point: 'Confirm the risk assessment feeding the audit plan.',
+    source: 'objective'
+  });
 });
 
 test('buildStagedValidationFlags surfaces discussion finaliser cleanup', () => {

@@ -191,6 +191,8 @@ td textarea { min-height:68px; }
   font-size:.92rem;
   color:#403a2c;
 }
+.stage-validation-message { flex:1 1 auto; }
+.stage-validation-add { flex:0 0 auto; white-space:nowrap; }
 .stage-validation-tag {
   flex:0 0 auto;
   font-size:.72rem;
@@ -1141,11 +1143,62 @@ td textarea {
       label.textContent = severity === 'warning' ? 'Check' : 'Tidied';
       row.appendChild(label);
       var text = document.createElement('span');
+      text.className = 'stage-validation-message';
       text.textContent = (flag && flag.message) ? String(flag.message) : '';
       row.appendChild(text);
+      if (flag && flag.type === 'possible_omitted_workstream' && flag.discussionSuggestion) {
+        var addButton = document.createElement('button');
+        addButton.type = 'button';
+        addButton.className = 'secondary stage-validation-add';
+        addButton.textContent = 'Add to discussion';
+        addButton.addEventListener('click', function () {
+          addValidationSuggestionToDiscussion(flag, addButton);
+        });
+        row.appendChild(addButton);
+      }
       stageValidationFlags.appendChild(row);
     });
     stageValidationFlags.hidden = false;
+  }
+
+  function addValidationSuggestionToDiscussion(flag, button) {
+    var suggestion = flag && flag.discussionSuggestion ? flag.discussionSuggestion : {};
+    var topic = String(suggestion.topic || 'Discussion point to review').trim();
+    var point = cleanDiscussionDisplayText(String(suggestion.point || '').trim());
+    if (!point) return;
+
+    var cards = discussionRowsFromReview().map(function (item) {
+      return { topic: item.topic, points: item.bullets.slice() };
+    });
+    var normalizedTopic = topic.toLowerCase();
+    var targetIndex = cards.findIndex(function (card) {
+      return String(card.topic || '').trim().toLowerCase() === normalizedTopic;
+    });
+    if (targetIndex < 0) {
+      cards.push({ topic: topic, points: [point] });
+      targetIndex = cards.length - 1;
+    } else if (!cards[targetIndex].points.some(function (existingPoint) {
+      return cleanDiscussionDisplayText(existingPoint).toLowerCase() === point.toLowerCase();
+    })) {
+      cards[targetIndex].points.push(point);
+    }
+
+    renderDiscussionCards(cards);
+    stagedState.discussion = cards;
+    generatedStages.discussion = true;
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Added';
+    }
+    showScreen(2);
+    var rows = discussionList ? discussionList.querySelectorAll('.discussion-table tbody tr') : [];
+    var targetRow = rows[targetIndex];
+    var targetInput = targetRow ? targetRow.querySelector('.discussion-points-input') : null;
+    if (targetInput) {
+      targetInput.focus();
+      targetInput.setSelectionRange(targetInput.value.length, targetInput.value.length);
+    }
+    setReviewStatus('Added to the discussion table. Review and edit the wording before moving on.', false);
   }
 
   function applyStagedPayload(payload, targetScreen) {

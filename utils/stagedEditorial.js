@@ -765,10 +765,21 @@ function buildStagedValidationFlags(screens = {}) {
     if (seen.has(key)) continue;
     seen.add(key);
     if (!discussionRepresents(discussion, tokens)) {
+      const suggestionText = subject.text.trim().slice(0, 240);
+      const suggestionTopic = suggestionText
+        .replace(/^(?:arrange|book|schedule|organise|coordinate|set\s+up|update|review|check|verify|validate|assess|send|share|provide|circulate|issue|upload|forward|confirm|prepare|complete|develop|build|create|finali[sz]e|finish|produce|draft|submit|approve|agree|accept|trace|generate|identify|document|follow[- ]?up)\s+/i, '')
+        .replace(/[.!?]+$/, '')
+        .trim()
+        .slice(0, 120);
       flags.push({
         type: 'possible_omitted_workstream',
         severity: 'warning',
-        message: `"${subject.text.trim().slice(0, 120)}" appears in the ${subject.source} but has no matching discussion section. Confirm it is covered or intentionally omitted.`
+        message: `"${subject.text.trim().slice(0, 120)}" appears in the ${subject.source} but has no matching discussion section. Confirm it is covered or intentionally omitted.`,
+        discussionSuggestion: {
+          topic: suggestionTopic || 'Discussion point to review',
+          point: suggestionText,
+          source: subject.source
+        }
       });
     }
   }
