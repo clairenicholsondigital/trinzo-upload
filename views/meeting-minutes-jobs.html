@@ -369,6 +369,12 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     return job && job.jobType === 'staged_meeting_minutes_review';
   }
 
+  function isStaleStagedJob(job) {
+    if (!job || job.jobType !== 'staged_meeting_minutes_stage' || !['queued', 'running'].includes(job.status)) return false;
+    const updatedAt = new Date(job.updatedAt || job.createdAt || 0).getTime();
+    return Number.isFinite(updatedAt) && updatedAt > 0 && Date.now() - updatedAt > 15 * 60 * 1000;
+  }
+
   function friendlyLabel(value) {
     const text = String(value || '').replace(/[_-]+/g, ' ').trim();
     if (!text) return '—';
@@ -1210,7 +1216,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
                 <td data-label="Attempts">${escapeHtml(job.attempts || 0)} / ${escapeHtml(job.maxAttempts || 0)}</td>
                 <td data-label="Actions" class="row-actions">
                   ${isLocalStagedDraft(job) ? `<a class="button" href="${escapeAttribute(job.resumeUrl)}">Resume</a><a class="button secondary" href="/jobs/${encodeURIComponent(job.jobId)}">Details</a><button class="danger" data-delete-staged="${escapeHtml(job.jobId)}" type="button">Remove</button>` : ''}
-                  ${job.jobType === 'staged_meeting_minutes_stage' && job.status === 'completed' ? `<a class="button" href="${escapeAttribute(job.resumeUrl)}">Resume staged review</a>` : ''}
+                  ${job.jobType === 'staged_meeting_minutes_stage' ? `<a class="button" href="${escapeAttribute(job.resumeUrl)}">Resume staged review</a>` : ''}
                   ${job.jobType === 'staged_meeting_minutes_stage' ? `<a class="button secondary" href="/jobs/${encodeURIComponent(job.jobId)}">Details</a>` : ''}
                   ${!isStagedJob(job) && job.status === 'completed' ? `<a class="button" target="_blank" rel="noopener" href="/jobs/${encodeURIComponent(job.jobId)}/result">${job.jobType === 'project_update_generate' ? 'Open job' : 'Open result'}</a>` : ''}
                   ${!isStagedJob(job) && job.status === 'failed' ? `<button class="secondary" data-retry="${escapeHtml(job.jobId)}" type="button">Retry</button>` : ''}
@@ -1241,7 +1247,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     activeJobId = job.jobId;
     detailPanel.hidden = false;
     detailTitle.textContent = `${jobTypeLabel(job)} #${job.jobId}: ${jobTitle(job)}`;
-    retryBtn.disabled = job.status !== 'failed' && job.status !== 'completed';
+    retryBtn.disabled = job.status !== 'failed' && job.status !== 'completed' && !isStaleStagedJob(job);
     cancelBtn.disabled = job.status !== 'queued' && job.status !== 'running';
     retryBtn.style.display = '';
     cancelBtn.style.display = '';
@@ -1255,6 +1261,21 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
       summaryItem('Created', formatDate(job.createdAt)),
       summaryItem('Updated', formatDate(job.updatedAt))
     ].join('');
+
+    if (job.jobType === 'staged_meeting_minutes_stage' && job.status !== 'completed') {
+      resultMessage.textContent = isStaleStagedJob(job)
+        ? 'This staged generation appears stalled. Resume will safely requeue the stage and return you to the review screen.'
+        : 'This staged generation is still in progress. Resume opens the staged review and keeps checking for the completed screen.';
+      resultActions.hidden = false;
+      resultActions.innerHTML = `
+        <a class="button" href="${escapeAttribute(job.resumeUrl)}">Resume staged review</a>
+        <a class="button secondary" href="/staged-meeting-minutes">Start another staged review</a>
+      `;
+      resultView.innerHTML = '';
+      rawResultDetails.hidden = true;
+      resultJson.textContent = '';
+      return;
+    }
 
     if (job.status === 'completed' && payload.result) {
       if (timer) {

@@ -1353,6 +1353,12 @@ td textarea {
     return Math.floor(seconds / 60) + 'm ' + String(seconds % 60).padStart(2, '0') + 's';
   }
 
+  function stagedJobIsStale(job) {
+    if (!job || !['queued', 'running'].includes(job.status)) return false;
+    var updatedAt = new Date(job.updatedAt || job.createdAt || 0).getTime();
+    return Number.isFinite(updatedAt) && updatedAt > 0 && Date.now() - updatedAt > 15 * 60 * 1000;
+  }
+
   // Poll a queued stage job until it completes, then apply its screen payload in place so
   // the reviewer stays on the staged flow instead of being bounced to the Jobs list.
   async function pollStageJobUntilDone(jobId, stage, targetScreen) {
@@ -1437,24 +1443,50 @@ td textarea {
 
   async function loadQueuedStageResult() {
     if (!stageJobId) return;
+    var resumedStage = '';
     try {
       setReviewStarted(true);
-      setReviewStatus('Loading completed staged generation from Jobs...', false);
+      setReviewStatus('Loading staged generation from Jobs...', false);
       var payload = await fetchJson('/api/jobs/' + encodeURIComponent(stageJobId));
       if (!payload.job) throw new Error('Staged generation job not found.');
-      if (payload.job.status !== 'completed') {
-        setReviewStatus('That staged generation is still ' + (payload.job.status || 'running') + '. Opening the job tracker.', false);
-        window.location.href = '/jobs/' + encodeURIComponent(stageJobId);
+      var targetScreen = Number(params.get('screen') || requestedScreen || payload.job.inputPayload?.targetScreen || 0);
+      resumedStage = String(payload.job.inputPayload?.stage || stageForScreen(targetScreen) || 'details');
+      stagedSourceJobId = String(stageJobId);
+      if (payload.job.status === 'queued' || payload.job.status === 'running') {
+        if (stagedJobIsStale(payload.job)) {
+          setReviewStatus('This staged generation had stalled. Requeuing it safely before resuming…', false);
+          payload = await fetchJson('/api/jobs/' + encodeURIComponent(stageJobId) + '/retry', { method: 'POST' });
+        }
+        stageInFlight = resumedStage;
+        document.body.classList.add('stage-loading');
+        nextButton.disabled = true;
+        previousButton.disabled = true;
+        if (regenerateButton) regenerateButton.disabled = true;
+        setReviewStatus('Resumed staged ' + labelForStage(resumedStage) + ' generation. Waiting for the review screen…', false);
+        await pollStageJobUntilDone(stageJobId, resumedStage, targetScreen);
+        params.delete('stageJobId');
+        replaceUrl(window.location.pathname + '?' + params.toString());
+        setReviewStatus(stageReadyMessage(resumedStage, false), false);
         return;
+      }
+      if (payload.job.status === 'failed' || payload.job.status === 'cancelled') {
+        throw new Error(payload.job.errorMessage || 'This staged generation is ' + payload.job.status + '. Retry it from the job detail page.');
       }
       var result = payload.result && payload.result.result ? payload.result.result : payload.result;
       if (!result || !result.screens) throw new Error('The completed staged job did not include a screen payload.');
-      applyStagedPayload(result, Number(params.get('screen') || requestedScreen || 0));
+      applyStagedPayload(result, targetScreen);
       params.delete('stageJobId');
       replaceUrl(window.location.pathname + '?' + params.toString());
       setReviewStatus(stageReadyMessage(result.stagedStage || stageForScreen(activeIndex), false), false);
     } catch (error) {
       setReviewStatus(error && error.message ? error.message : 'Could not load the staged job result.', true);
+    } finally {
+      stageInFlight = null;
+      document.body.classList.remove('stage-loading');
+      previousButton.disabled = activeIndex === 0;
+      nextButton.disabled = false;
+      if (regenerateButton) regenerateButton.disabled = activeIndex >= screens.length - 1;
+      updateDecisionPanel();
     }
   }
 

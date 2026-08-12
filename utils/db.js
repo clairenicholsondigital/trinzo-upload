@@ -2362,7 +2362,14 @@ async function retryGenerationJob(jobId) {
          updated_at = NOW()
      WHERE id = $1
        AND job_type IN ('meeting_minutes_generate', 'project_update_generate', 'staged_meeting_minutes_stage')
-       AND status IN ('failed','completed','queued')
+       AND (
+         status IN ('failed','completed','queued')
+         OR (
+           job_type = 'staged_meeting_minutes_stage'
+           AND status = 'running'
+           AND updated_at < NOW() - INTERVAL '15 minutes'
+         )
+       )
      RETURNING id`,
     [Number(jobId)]
   );
