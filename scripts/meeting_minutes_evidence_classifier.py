@@ -18,6 +18,7 @@ from pathlib import Path
 
 DEFAULT_MODEL_PATH = "/root/meeting-minutes-evidence-model/runs/owner-framing-20260810T224329Z/model_bundle/classifier.joblib"
 SIGNAL_THRESHOLD = 0.45
+DEFAULT_EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
 TURN_RE = re.compile(r"^\s*(?:\d{1,2}:\d{2}(?::\d{2})?\s+)?([A-Z][A-Za-z .'\-]{1,60}):\s+(.+)$")
 TEAMS_TURN_RE = re.compile(r"^\s*([A-Z][A-Za-z .,'\-]{1,70})\s+(\d{1,2}:\d{2}(?::\d{2})?)(.+)$")
@@ -346,12 +347,53 @@ def top_prob(classes, probs):
     return str(classes[idx]), float(probs[idx])
 
 
-def classify(model_path: Path, segments: list[dict], limit: int) -> dict:
+def load_model_bundle(model_path: Path) -> dict:
     import joblib
+
+    if model_path.is_file():
+        return joblib.load(model_path)
+
+    evidence_path = model_path / "evidence_type_classifier.joblib"
+    if not evidence_path.exists():
+        raise FileNotFoundError(f"Evidence classifier not found in {model_path}")
+
+    evidence_bundle = joblib.load(evidence_path)
+    action_bundle = joblib.load(model_path / "action_state_classifier.joblib") if (model_path / "action_state_classifier.joblib").exists() else {}
+    signal_bundle = joblib.load(model_path / "signals_classifier.joblib") if (model_path / "signals_classifier.joblib").exists() else {}
+
+    embedding_model = DEFAULT_EMBEDDING_MODEL
+    metrics_path = model_path / "metrics.json"
+    if metrics_path.exists():
+        try:
+            metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+            embedding_model = metrics.get("embedding_model") or embedding_model
+        except (OSError, json.JSONDecodeError):
+            embedding_model = DEFAULT_EMBEDDING_MODEL
+
+    thresholds = signal_bundle.get("thresholds") if isinstance(signal_bundle, dict) else None
+    signal_threshold = SIGNAL_THRESHOLD
+    if isinstance(thresholds, dict) and thresholds:
+        signal_threshold = min(float(value) for value in thresholds.values())
+
+    return {
+        "embedding_model": embedding_model,
+        "status_classifier": evidence_bundle.get("classifier"),
+        "status_label_encoder": evidence_bundle.get("label_encoder"),
+        "action_state_classifier": action_bundle.get("classifier"),
+        "action_state_label_encoder": action_bundle.get("label_encoder"),
+        "signal_classifier": signal_bundle.get("classifier"),
+        "signal_binarizer": signal_bundle.get("binarizer"),
+        "signal_threshold": signal_threshold,
+        "signal_thresholds": thresholds if isinstance(thresholds, dict) else {},
+        "bundle_format": "multitask_directory",
+    }
+
+
+def classify(model_path: Path, segments: list[dict], limit: int) -> dict:
     import numpy as np
     from sentence_transformers import SentenceTransformer
 
-    bundle = joblib.load(model_path)
+    bundle = load_model_bundle(model_path)
     embedder = SentenceTransformer(bundle["embedding_model"])
     texts = [segment.get("classificationText") or segment["text"] for segment in segments]
     if not texts:
@@ -378,8 +420,10 @@ def classify(model_path: Path, segments: list[dict], limit: int) -> dict:
             order = np.argsort(-signal_probs[idx])
             for signal_idx in order[:8]:
                 score = float(signal_probs[idx][signal_idx])
-                if score >= SIGNAL_THRESHOLD:
-                    signals.append({"label": str(signal_mlb.classes_[signal_idx]), "score": round(score, 3)})
+                label = str(signal_mlb.classes_[signal_idx])
+                threshold = float(bundle.get("signal_thresholds", {}).get(label, bundle.get("signal_threshold", SIGNAL_THRESHOLD)))
+                if score >= threshold:
+                    signals.append({"label": label, "score": round(score, 3)})
         counts[evidence_type] = counts.get(evidence_type, 0) + 1
         row = {
             **segment,
@@ -432,6 +476,7 @@ def classify(model_path: Path, segments: list[dict], limit: int) -> dict:
         "counts": counts,
         "segmentsScored": len(rows),
         "modelName": bundle.get("embedding_model", ""),
+        "bundleFormat": bundle.get("bundle_format", "combined_joblib"),
     }
 
 
