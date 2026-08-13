@@ -10,6 +10,7 @@ function unresolvedReference(value) {
   const text = clean(value);
   return /\b(?:flick|send|share|bring|discuss|review|do|handle|sort|progress|go through)\s+(?:it|that|this)\b/i.test(text)
     || /\b(?:discuss|review|progress|handle)\s+(?:the\s+)?(?:matter|topic|issue)\b/i.test(text)
+    || /\b(?:the|this)\s+(?:matter|topic|issue)\b/i.test(text)
     || /\b(?:flick|send|share|bring|review|forward|escalate)\s+(?:the\s+)?(?:document|file|item|matter|topic|issue)(?:\s+(?:over|to)\b|[.!?]*$)/i.test(text)
     || /\b(?:it|that|this)\s+(?:over|through|with)\b/i.test(text)
     || /\bkind of\b|\bsort of\b|\byeah\b|\byep\b|\bunspecified\b|\[[^\]]+\]/i.test(text);
