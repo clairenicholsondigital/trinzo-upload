@@ -112,3 +112,27 @@ test('real T819 client transcript is covered by the staged importer-obligations 
   assert.ok(plan.topics.some((item) => item.text === 'Manufacturer, importer and authorised-representative roles'));
   assert.ok(plan.objectives.every((item) => !/^(?:Review )?(?:Who|Mm|OK|Makes sense)\b/i.test(item.text)));
 });
+
+test('internal follow-up intent composes reusable evidence dimensions', () => {
+  const plan = purposePlan({ type: 'Project review', title: 'Internal Follow-up and Review From Client Call' }, evidence([
+    'We need working sessions to understand how the business works and develop usable procedures.',
+    'Schedule Wednesday, Thursday and Friday sessions for the relevant team members.',
+    'Confirm whether PPE and sunglasses are included in the scope.',
+    'We need clarification on declaration of conformity language requirements.'
+  ]));
+  assert.equal(plan.profileId, 'internal_follow_up');
+  assert.ok(plan.topics.some((item) => item.text === 'Client working sessions and internal coordination'));
+  assert.ok(plan.topics.some((item) => item.text === 'Declarations and language requirements'));
+});
+
+test('real T819 internal transcript is covered by the staged internal-follow-up policy', async () => {
+  const documentPath = path.join(__dirname, '..', 'scripts', 'meeting-minutes-core-golden', 'human_benchmarks', 'T819_dita_internal', 'transcript.docx');
+  const buffer = await fs.readFile(documentPath);
+  const extracted = await mammoth.extractRawText({ buffer });
+  const evidence = prepareEvidence(extracted.value);
+  const plan = purposePlan({ type: 'Project review', title: 'Internal Follow-up and Review From Client Call' }, evidence);
+  assert.equal(plan.profileId, 'internal_follow_up');
+  assert.ok(plan.topics.length >= 4);
+  assert.ok(plan.topics.some((item) => item.text === 'Scope and regulatory coverage'));
+  assert.ok(plan.objectives.every((item) => !/^(?:Review )?(?:As well|Mm|OK|Wednesday)\b/i.test(item.text)));
+});

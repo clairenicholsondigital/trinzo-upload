@@ -190,6 +190,47 @@ const MEETING_PROFILES = [
         evidence: /\b(?:hpra|audit|annual fees?|invoice fee|registration preparation|regulatory documentation)\b/i
       }
     ]
+  },
+  {
+    id: 'internal_follow_up',
+    matches: (type, title) => /\binternal\b.*\b(?:follow[ -]?up|review|debrief)\b|\b(?:follow[ -]?up|debrief)\b.*\b(?:client call|client meeting)\b/i.test(`${type} ${title}`),
+    dimensions: [
+      {
+        id: 'client_findings',
+        topic: 'Client-call findings and information gaps',
+        objective: 'Review the client-call findings and identify the information needed to progress the work',
+        summary: 'The team reviewed the client discussion and identified gaps in its understanding of business processes, systems, responsibilities and existing documentation.',
+        evidence: /\b(?:client call|business works|business processes|on the ground|information gaps?|outstanding questions?|quality manuals?|procedures?|systems?|responsibilities)\b/i
+      },
+      {
+        id: 'working_sessions',
+        topic: 'Client working sessions and internal coordination',
+        objective: 'Plan focused client working sessions and internal coordination',
+        summary: 'Focused client working sessions and internal preparation were planned, with attendance limited to the people relevant to each topic.',
+        evidence: /\b(?:working sessions?|internal sessions?|weekly recurrence|weekly client|check[ -]?in|wednesday|thursday|friday|availability|questions? for her)\b/i
+      },
+      {
+        id: 'scope',
+        topic: 'Scope and regulatory coverage',
+        objective: 'Confirm unresolved scope and regulatory-coverage questions',
+        summary: 'The team reviewed whether the documented scope should cover both medical-device and other applicable product requirements, and agreed to confirm any ambiguity with the client.',
+        evidence: /\b(?:scope|statement of work|\bsow\b|regulatory|\bmdr\b|\bppe\b|sunglasses|opticals?|procedures?)\b/i
+      },
+      {
+        id: 'documents',
+        topic: 'Declarations and language requirements',
+        objective: 'Clarify declaration-of-conformity and language requirements',
+        summary: 'The team compared experience of declaration and language requirements across regulations, markets, competent authorities and audits, with further clarification still required.',
+        evidence: /\b(?:declarations? of conformity|\bdoc['’]?s?\b|languages?|translation|competent authority|markets?|audit finding|official eu language)\b/i
+      },
+      {
+        id: 'site_followup',
+        topic: 'Site understanding and follow-up',
+        objective: 'Confirm the follow-up needed to understand and document current site processes',
+        summary: 'The team considered further client clarification and a possible site visit to ensure procedures reflect how work is performed in practice.',
+        evidence: /\b(?:site visit|visit the site|how .* works|process works|current process|follow up with .*client|follow up with .*orla)\b/i
+      }
+    ]
   }
 ];
 

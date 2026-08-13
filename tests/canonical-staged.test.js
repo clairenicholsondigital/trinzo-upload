@@ -10,6 +10,13 @@ const { assessEvidenceTopology } = require('../utils/canonicalMinutes/topology')
 const { runCanonicalLiveStage, buildConfirmedState } = require('../utils/canonicalMinutes/liveStages');
 const semanticStages = require('../utils/canonicalMinutes/semanticStages');
 
+test('generic action gate rejects unresolved conversational references', () => {
+  ['Send that out now', 'Copy her this time', 'Do it at the same time', 'Be there for really', 'Probably tomorrow?']
+    .forEach((action) => assert.equal(semanticStages.isUnderspecifiedAction({ action }), true, action));
+  ['Review the labels for regulatory compliance', 'Prepare a list of questions for the client', 'Schedule the weekly client call']
+    .forEach((action) => assert.equal(semanticStages.isUnderspecifiedAction({ action }), false, action));
+});
+
 test('canonical no-edit pass preserves accepted semantics', () => {
   const transcript = [
     'Amina Khan  00:01',

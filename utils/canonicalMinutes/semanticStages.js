@@ -393,7 +393,7 @@ function contentStage(evidence, state, profile) {
   const deterministic = deterministicStages.contentStage(evidence, state);
   // Preserve the immediately preceding rationale/proposal for an explicit
   // decision even when clustering keeps only the short acceptance turn.
-  for (const decision of deterministic.decisions) {
+  for (const decision of purpose ? [] : deterministic.decisions) {
     const decisionIndex = evidence.events.findIndex((event) => (decision.evidenceIds || []).includes(event.id));
     const prior = decisionIndex > 0 ? evidence.events[decisionIndex - 1] : null;
     const point = prior && !isSupersededBackground(prior, evidence) ? minutesPoint(prior.text) : '';
@@ -582,6 +582,7 @@ function resolveEnrichedDecisions(items, evidence, profile) {
 function resolveEnrichedRisks(items, evidence, profile) {
   if (!enrichedEvidenceEnabled()) return unique(items, (item) => item.text);
   const eligible = items.filter((item) => {
+    if (/^(?:but\s+)?(?:that|this|it)(?:\s+is|'s)\s+(?:their|the|a)\s+risk[.!?]*$/i.test(clean(item.text))) return false;
     const sources = (item.evidenceIds || []).map((id) => evidence.events.find((event) => event.id === id)).filter(Boolean);
     return sources.some((event) => independentlyCanonical(profile, event));
   });
@@ -670,11 +671,21 @@ function actionPublishability(item, evidence, profile) {
   if (item.deadline && item.deadline !== 'Not stated') quality += 0.12;
   if (words.length >= 4 && words.length <= 20) quality += 0.12;
   if (/\b(?:review|send|share|confirm|complete|prepare|update|provide|request|schedule|draft|test|submit|follow up|investigate|create|develop|finalise)\b/i.test(item.action)) quality += 0.1;
-  if (/\b(?:share my screen|book a holiday|mum['’]?s shopping|talk to you soon|speak to you next week)\b/i.test(item.action)) quality -= 1;
+  if (/\b(?:share my screen|book a holiday|(?:mum|mother)['’]?s shopping|shopping for (?:my|their) (?:mum|mother)|housebound|weekend plans?|talk to you soon|speak to you next week|get down the road)\b/i.test(item.action)) quality -= 2;
+  if (/^(?:be|stay) there\b|\b(?:free|available|availability)\b/i.test(item.action)) quality -= 1.2;
   if (/^(?:be|go|do|take|get|send|share|review|add|put|time)\s+(?:it|that|this|there|right|out|you)?[.!?]?$/i.test(item.action)) quality -= 0.8;
   if (/\?|\b(?:probably|maybe|I['’]?ll|I am|I think|I don['’]?t|wouldn['’]?t)\b/i.test(item.action)) quality -= 0.45;
   if (words.length < 3 || words.length > 28) quality -= 0.6;
   return quality;
+}
+
+function isUnderspecifiedAction(item) {
+  const action = clean(item?.action);
+  return /^(?:send|share|copy|give|take|put|sort|start|follow\s+up)\s+(?:it|that|this|her|him|them|here|there)\b/i.test(action)
+    || /^(?:do|handle|take)\s+(?:it|that|this)\b/i.test(action)
+    || /^(?:be|stay)\s+there(?:\s+for\s+\w+)?[.!?]*$/i.test(action)
+    || /^(?:start|continue|finish)\s+with\s+(?:it|that|this|order)(?:\s+from\s+.+)?[.!?]*$/i.test(action)
+    || /\?\s*$/.test(action);
 }
 
 function actionsStage(evidence, state, profile, topology) {
@@ -709,6 +720,7 @@ function actionsStage(evidence, state, profile, topology) {
     })), (item) => `${item.owner}|${item.action}`);
   } else if (evidence.events.length >= 100 && topology.mode === 'standard') {
     const ranked = actions
+      .filter((item) => !isUnderspecifiedAction(item))
       .map((item, index) => ({ item, index, publishability: actionPublishability(item, evidence, profile), explicitObligation: (item.evidenceIds || []).some((id) => {
         const event = evidence.events.find((candidate) => candidate.id === id);
         return event?.roles.includes('action_candidate') && !event.roles.includes('hypothetical') && !/\?\s*$/.test(event.text) && /\bI\s+(?:need to|must|have to)\b/i.test(event.text);
@@ -737,4 +749,4 @@ function actionsStage(evidence, state, profile, topology) {
   };
 }
 
-module.exports = { contextStage, contentStage, actionsStage, buildCommitmentThreads, actionsFromThread, hasSemanticRole, learnedSlotActions, resolveEnrichedActions };
+module.exports = { contextStage, contentStage, actionsStage, buildCommitmentThreads, actionsFromThread, hasSemanticRole, learnedSlotActions, resolveEnrichedActions, isUnderspecifiedAction };
