@@ -1,16 +1,16 @@
 {
-  "asOf": "2026-08-13T09:53:08.000Z",
+  "asOf": "2026-08-13T11:58:35.000Z",
   "deployed": {
-    "applicationCommit": "341369b956a3",
-    "benchmarkCommit": "9ada407955b5",
-    "modelBundle": "canonical-speech-act-model-v4",
-    "issues": 11,
-    "blockingIssues": 5,
-    "averageWeightedScore": 93.8,
+    "applicationCommit": "7dc16a84ac83",
+    "benchmarkCommit": "7dc16a84ac83",
+    "modelBundle": "canonical-speech-act-model-v9 plus generic canonical resolver",
+    "issues": 2,
+    "blockingIssues": 0,
+    "averageWeightedScore": 95.5,
     "casesBelowFiveIssues": 10,
     "caseCount": 10,
     "status": "deployed",
-    "note": "Latest recorded deployed-behaviour benchmark. This result includes resolver rules as well as MiniLM evidence heads."
+    "note": "Deployed release benchmark. Nine cases have no weighted issues; the two residual flags describe one supported risk that the evaluator fails to match semantically."
   },
   "cleanAudit": {
     "branch": "codex/minilm-ceiling",
@@ -20,8 +20,8 @@
     "maximumIssuesPerCase": 2,
     "casesBelowFiveIssues": 10,
     "caseCount": 10,
-    "status": "release_candidate",
-    "note": "Release benchmark: 95.5 mean score and all ten semantic locks. Both residual flags describe one supported risk that the evaluator fails to match semantically.",
+    "status": "deployed",
+    "note": "Deployed benchmark: 95.5 mean score and all ten semantic locks. Both residual flags describe one supported risk that the evaluator fails to match semantically.",
     "cases": [
       { "id": "1", "issues": 0, "blockingIssues": 0 },
       { "id": "2", "issues": 0, "blockingIssues": 0 },
@@ -41,7 +41,7 @@
     { "name": "Canonical worthiness", "bundle": "v4", "state": "trained", "note": "Contextual head; canonical item, supporting detail, duplicate and context-only evidence." },
     { "name": "Temporal role", "bundle": "v4", "state": "trained", "note": "Contextual head; deadline attachment, historical and other temporal evidence." },
     { "name": "Discourse role", "bundle": "v9 release", "state": "trained", "note": "Consumed by the generic resolver; release benchmark is 2 issues and 0 blockers." },
-    { "name": "Generic canonical resolver", "bundle": "runtime", "state": "release_candidate", "note": "Consolidates evidence and attaches owner, temporal and lifecycle context without case-specific rules." },
+    { "name": "Generic canonical resolver", "bundle": "runtime", "state": "deployed", "note": "Consolidates evidence and attaches owner, temporal and lifecycle context without case-specific rules." },
     { "name": "Canonical relation", "bundle": "v5 candidate", "state": "experimental", "note": "Pairwise grouping head rejected for deployment after over-grouping real conversational evidence." }
   ],
   "nextGate": {
