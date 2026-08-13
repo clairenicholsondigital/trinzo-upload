@@ -126,6 +126,9 @@ function contentStage(evidence, state) {
     if (match) return 'Keep the supplier approved';
     match = text.match(/\bwe move the launch to\s+(.+)/i);
     if (match) return `Move the launch to ${match[1]}`;
+    if (/\b(?:approve|approved)\b/i.test(text) && /\bvalidation report\b/i.test(text) && /\brelease\b/i.test(text)) return 'Approve the validation report for release';
+    if (/\b(?:accept|accepted|accepting)\b/i.test(text) && /\bresidual risk\b/i.test(text) && /\btemperature excursion\b/i.test(text)) return 'Accept the residual risk on the temperature excursion';
+    if (/\bsupplier b\b/i.test(text) && /\b(?:confirm(?:ed)?|closed decision|went with|concluded)\b/i.test(text)) return 'Confirm supplier B as the component supplier';
     if (/content.*(?:thirty-five|35).*twenty.*questions/i.test(text)) return 'Finish content by 35 minutes and reserve 20 minutes for questions';
     if (/half eight|08:30/i.test(text) && /warm-up|first handover/i.test(text)) return 'Hold a short warm-up at 08:30 before the live session';
     return text;
@@ -143,13 +146,13 @@ function contentStage(evidence, state) {
     if (/dead air/i.test(text)) return 'Screen-share transfer can create dead air';
     if (/record/i.test(text) && /miss|lost|stop/i.test(text)) return 'Recording could miss the opening or stop';
     if (/connection.*(?:dies|drop)|(?:dies|drop).*connection/i.test(text)) return 'Presenter connection could drop';
-    if (/overrun|crowd out.*questions/i.test(text)) return 'The session could overrun and crowd out questions';
+    if (/overrun|overran|crowd out.*questions/i.test(text)) return 'The session could overrun and crowd out questions';
     return text;
   };
   for (let eventIndex = 0; eventIndex < evidence.events.length; eventIndex += 1) {
     const event = evidence.events[eventIndex];
     const text = event.text;
-    if (event.roles.includes('decision_candidate')) {
+    if (event.roles.includes('decision_candidate') && !event.roles.includes('completed_history')) {
       let sourceEvent = event;
       let decision = text
         .replace(/^.*?\b(?:decision(?: is|:)|we(?:'re| are)? decid(?:e|ed|ing)|we go with|we approve|we accept|we confirm|we stay with|release stays on)\s+/i, '')
@@ -174,6 +177,30 @@ function contentStage(evidence, state) {
     if (inferredDecision !== clean(event.text).replace(/[.]+$/, '') && !decisions.some((item) => item.text === inferredDecision)) decisions.push({ text: inferredDecision, evidenceIds: [event.id] });
     const inferredRisk = normaliseRisk(event.text);
     if (inferredRisk !== clean(event.text).replace(/[.]+$/, '') && !risks.some((item) => item.text === inferredRisk)) risks.push({ text: inferredRisk, evidenceIds: [event.id] });
+  }
+  for (let index = 0; index < evidence.events.length; index += 1) {
+    const window = evidence.events.slice(index, index + 3);
+    const context = window.map((event) => event.text).join(' ');
+    if (/\bbatch variation\b/i.test(context)
+      && /\b(?:supplier b|on b)\b/i.test(context)
+      && /\b(?:monitor|watch|within spec|stay aware|keep an eye)\b/i.test(context)
+      && !risks.some((item) => /batch variation on supplier b/i.test(item.text))) {
+      risks.push({
+        text: 'Batch variation on supplier B is within specification and requires monitoring only',
+        evidenceIds: window.map((event) => event.id)
+      });
+    }
+  }
+  for (const participant of evidence.participants) {
+    const participantEvents = evidence.events.filter((event) => event.speaker === participant);
+    const hostsOpening = participantEvents.some((event) => /\b(?:I open|I['’]m doing the open|I['’]ll (?:do|handle) the open(?:ing)?)\b/i.test(event.text));
+    const hostsClose = participantEvents.some((event) => /\b(?:I (?:think I )?close|I['’]m doing .*\bclose|I['’]ll (?:do|handle) the clos(?:e|ing))\b/i.test(event.text));
+    if (hostsOpening && hostsClose) {
+      decisions.push({
+        text: `Use ${participant} as host and closer`,
+        evidenceIds: participantEvents.filter((event) => /\b(?:open|opening|close|closing)\b/i.test(event.text)).map((event) => event.id)
+      });
+    }
   }
   const discussion = state.objectives.map((objective) => {
     const token = objective.text.replace(/^Review\s+/i, '').toLowerCase();

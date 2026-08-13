@@ -71,3 +71,50 @@ test('weighted scorer treats client split as minor and unsafe actions as blocker
   assert.equal(assessment.penalty, 34);
   assert.equal(assessment.weightedScore, 66);
 });
+
+test('weighted scorer recognises action paraphrases without hiding unmatched actions', () => {
+  const manifest = {
+    expected_client_attendees: [],
+    expected_actions: [
+      { owner: 'Fern Whitlock', action: 'Call the hosting provider to renew the SSL certificate' },
+      { owner: 'Dan Wu', action: 'Update the run sheet after venue access is confirmed' }
+    ],
+    expected_decisions: [],
+    expected_risks: []
+  };
+  const output = {
+    client_attendees: [],
+    actions: [
+      { owner: 'Fern Whitlock', action: 'Ring the hosting people and get the SSL renewed' },
+      { owner: 'Dan Wu', action: 'Update the run sheet once Marta confirms' },
+      { owner: 'Tom Whitfield', action: 'Find that little clock top right' }
+    ],
+    decisions: [],
+    risks: []
+  };
+
+  const assessment = assessWeightedErrors(manifest, output);
+
+  assert.equal(assessment.errorTypeCounts.missing_key_action || 0, 0);
+  assert.equal(assessment.errorTypeCounts.extra_or_unsupported_action, 1);
+});
+
+test('weighted scorer uses one output item only once', () => {
+  const manifest = {
+    expected_client_attendees: [],
+    expected_actions: [],
+    expected_decisions: ['Approve supplier B', 'Approve the final report'],
+    expected_risks: []
+  };
+  const output = {
+    client_attendees: [],
+    actions: [],
+    decisions: ['To recap, approve supplier B and the final report'],
+    risks: []
+  };
+
+  const assessment = assessWeightedErrors(manifest, output);
+
+  assert.equal(assessment.errorTypeCounts.missing_key_decision, 1);
+  assert.equal(assessment.errorTypeCounts.extra_or_unsupported_decision || 0, 0);
+});

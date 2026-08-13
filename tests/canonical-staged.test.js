@@ -36,6 +36,47 @@ test('no-action meeting remains empty', () => {
   assert.ok(result.reviewExperience.warnings.some((warning) => warning.type === 'no_actions_detected'));
 });
 
+test('enriched resolution consolidates repeated decision and risk evidence', () => {
+  const previousFlag = process.env.MEETING_MINUTES_ENRICHED_EVIDENCE;
+  process.env.MEETING_MINUTES_ENRICHED_EVIDENCE = '1';
+  try {
+    const evidence = prepareEvidence([
+      'Elaine Voss  00:01',
+      'We approve the validation report for release.',
+      'Martin Okoro  00:05',
+      'Yeah, agreed, approve it.',
+      'Elaine Voss  00:09',
+      'So decision, we accept the residual risk on the temperature excursion.',
+      'Martin Okoro  00:13',
+      "The residual risk there is low and already accepted, so there's nothing to action.",
+      'Elaine Voss  00:17',
+      'We went with supplier B. That is confirmed and the paperwork is already signed.',
+      'Martin Okoro  00:21',
+      'There is batch variation on B. It is within spec, just monitor it as normal.'
+    ].join('\n'));
+    const semanticProfile = {
+      available: true,
+      events: Object.fromEntries(evidence.events.map((event) => [event.id, {
+        scores: { decision: 0.8, risk: 0.8 },
+        canonicalWorthinessProbabilities: { canonical_item: 0.85 },
+        contextDependencyProbabilities: { standalone: 0.8 },
+        lifecycleProbabilities: { none: 0.8 }
+      }]))
+    };
+
+    const proposal = semanticStages.contentStage(evidence, { objectives: [] }, semanticProfile);
+
+    assert.equal(proposal.decisions.filter((item) => /validation report/i.test(item.text)).length, 1);
+    assert.equal(proposal.decisions.filter((item) => /residual risk/i.test(item.text)).length, 1);
+    assert.equal(proposal.decisions.filter((item) => /supplier B/i.test(item.text)).length, 1);
+    assert.equal(proposal.risks.filter((item) => /temperature-excursion/i.test(item.text)).length, 1);
+    assert.equal(proposal.risks.filter((item) => /batch variation on supplier B/i.test(item.text)).length, 1);
+  } finally {
+    if (previousFlag === undefined) delete process.env.MEETING_MINUTES_ENRICHED_EVIDENCE;
+    else process.env.MEETING_MINUTES_ENRICHED_EVIDENCE = previousFlag;
+  }
+});
+
 test('acceptance creates locked authoritative state', () => {
   const initial = createCanonicalState({ transcriptText: 'test' });
   const accepted = acceptProposal(initial, { decisions: [{ text: 'Use option B', evidenceIds: ['evt_1'] }] });

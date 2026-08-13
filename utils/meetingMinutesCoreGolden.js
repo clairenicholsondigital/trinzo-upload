@@ -15,7 +15,58 @@ function normaliseText(value) {
   return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
-function similarity(a, b) {
+const SEMANTIC_TOKEN_ALIASES = new Map(Object.entries({
+  rang: 'call',
+  ring: 'call',
+  phoned: 'call',
+  phone: 'call',
+  people: 'provider',
+  supplier: 'provider',
+  renewed: 'renew',
+  renewing: 'renew',
+  confirms: 'confirm',
+  confirmed: 'confirm',
+  confirming: 'confirm',
+  revised: 'update',
+  updated: 'update',
+  updating: 'update',
+  restores: 'restore',
+  restored: 'restore',
+  restoring: 'restore',
+  sends: 'send',
+  sent: 'send',
+  sending: 'send',
+  approved: 'approve',
+  approving: 'approve',
+  accepted: 'accept',
+  accepting: 'accept',
+  agreed: 'agree',
+  warning: 'warning',
+  warnings: 'warning',
+  fifteen: '15',
+  fifteenth: '15',
+  twenty: '20',
+  twentieth: '20',
+  nine: '9',
+  thirty: '30'
+}));
+
+const SEMANTIC_STOP_WORDS = new Set([
+  'a', 'an', 'and', 'at', 'be', 'for', 'from', 'get', 'got', 'in', 'into', 'it',
+  'of', 'on', 'once', 're', 'the', 'their', 'them', 'then', 'to', 'we', 'were',
+  'with', 'deciding'
+]);
+
+function semanticTokens(value) {
+  return normaliseText(value)
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((token) => SEMANTIC_TOKEN_ALIASES.get(token)
+      || token.replace(/^(\d+)(?:st|nd|rd|th)$/, '$1').replace(/^0+(?=\d)/, ''))
+    .filter((token) => !SEMANTIC_STOP_WORDS.has(token));
+}
+
+function legacySimilarity(a, b) {
   const left = normaliseText(a);
   const right = normaliseText(b);
   if (!left && !right) return 1;
@@ -28,12 +79,51 @@ function similarity(a, b) {
   return overlap / Math.max(leftTokens.size, rightTokens.size, 1);
 }
 
+function similarity(a, b) {
+  const left = normaliseText(a);
+  const right = normaliseText(b);
+  if (!left && !right) return 1;
+  if (!left || !right) return 0;
+  if (left === right) return 1;
+  if (left.includes(right) || right.includes(left)) return 0.82;
+  const leftTokens = new Set(semanticTokens(left));
+  const rightTokens = new Set(semanticTokens(right));
+  const overlap = [...leftTokens].filter((token) => rightTokens.has(token)).length;
+  const dice = (2 * overlap) / Math.max(leftTokens.size + rightTokens.size, 1);
+  return Math.max(dice, legacySimilarity(left, right));
+}
+
+function oneToOneMatches(expectedItems, actualItems, scorePair, threshold) {
+  const candidates = [];
+  for (let expectedIndex = 0; expectedIndex < expectedItems.length; expectedIndex += 1) {
+    for (let actualIndex = 0; actualIndex < actualItems.length; actualIndex += 1) {
+      const score = scorePair(expectedItems[expectedIndex], actualItems[actualIndex]);
+      if (score >= threshold) candidates.push({ expectedIndex, actualIndex, score });
+    }
+  }
+  candidates.sort((left, right) => right.score - left.score);
+  const matchedExpected = new Set();
+  const matchedActual = new Set();
+  const matches = [];
+  for (const candidate of candidates) {
+    if (matchedExpected.has(candidate.expectedIndex) || matchedActual.has(candidate.actualIndex)) continue;
+    matchedExpected.add(candidate.expectedIndex);
+    matchedActual.add(candidate.actualIndex);
+    matches.push(candidate);
+  }
+  return { matches, matchedExpected, matchedActual };
+}
+
+function actionSimilarityThreshold(ownerScore) {
+  return ownerScore >= 0.99 ? 0.44 : 0.55;
+}
+
 function listRecall(expected, actual) {
   const expectedItems = Array.isArray(expected) ? expected : [];
   const actualItems = Array.isArray(actual) ? actual : [];
   if (!expectedItems.length) return actualItems.length ? 0 : 1;
-  const matched = expectedItems.filter((item) => Math.max(...actualItems.map((candidate) => similarity(item, candidate)), 0) >= 0.6);
-  return matched.length / expectedItems.length;
+  const matched = oneToOneMatches(expectedItems, actualItems, similarity, 0.6);
+  return matched.matches.length / expectedItems.length;
 }
 
 function scoreCaseOutput(manifest, output) {
@@ -44,14 +134,14 @@ function scoreCaseOutput(manifest, output) {
   const actualClientAttendees = new Set((output?.client_attendees || []).map(normaliseText));
   const clientSplit = expectedClientAttendees.size === actualClientAttendees.size
     && [...expectedClientAttendees].every((item) => actualClientAttendees.has(item)) ? 1 : 0;
-  let matchedActions = 0;
-  for (const expectedAction of expectedActions) {
-    const match = actualActions.some((actualAction) => {
-      return similarity(expectedAction.owner, actualAction?.owner) >= 0.75
-        && similarity(expectedAction.action, actualAction?.action) >= 0.55;
-    });
-    if (match) matchedActions += 1;
-  }
+  const actionMatches = oneToOneMatches(expectedActions, actualActions, (expectedAction, actualAction) => {
+    const ownerScore = similarity(expectedAction.owner, actualAction?.owner);
+    const actionScore = similarity(expectedAction.action, actualAction?.action);
+    return ownerScore >= 0.75 && actionScore >= actionSimilarityThreshold(ownerScore)
+      ? (ownerScore * 0.35) + (actionScore * 0.65)
+      : 0;
+  }, 0.62);
+  const matchedActions = actionMatches.matches.length;
   const actionRecall = expectedActions.length ? matchedActions / expectedActions.length : (actualActions.length ? 0 : 1);
   const decisionRecall = listRecall(manifest.expected_decisions, output?.decisions);
   const riskRecall = listRecall(manifest.expected_risks, output?.risks);
@@ -125,17 +215,26 @@ function assessWeightedErrors(manifest, output) {
 
   const expectedActions = manifest.expected_actions || [];
   const actualActions = output?.actions || [];
+  const pairedActions = oneToOneMatches(expectedActions, actualActions, (expectedAction, actualAction) => {
+    const ownerScore = similarity(expectedAction.owner, actualAction?.owner);
+    const actionScore = similarity(expectedAction.action, actualAction?.action);
+    return (ownerScore * 0.35) + (actionScore * 0.65);
+  }, 0);
+  const actionMatchByExpected = new Map(pairedActions.matches.map((match) => [match.expectedIndex, match]));
   const matchedActualActions = new Set();
-  for (const expectedAction of expectedActions) {
+  for (let expectedIndex = 0; expectedIndex < expectedActions.length; expectedIndex += 1) {
+    const expectedAction = expectedActions[expectedIndex];
+    const assigned = actionMatchByExpected.get(expectedIndex);
     let best = null;
-    for (let index = 0; index < actualActions.length; index += 1) {
+    if (assigned) {
+      const index = assigned.actualIndex;
       const actualAction = actualActions[index];
       const ownerScore = similarity(expectedAction.owner, actualAction?.owner);
       const actionScore = similarity(expectedAction.action, actualAction?.action);
       const total = (ownerScore * 0.35) + (actionScore * 0.65);
-      if (!best || total > best.total) best = { index, actualAction, ownerScore, actionScore, total };
+      best = { index, actualAction, ownerScore, actionScore, total };
     }
-    if (!best || best.actionScore < 0.55) {
+    if (!best || best.actionScore < actionSimilarityThreshold(best.ownerScore)) {
       addWeightedError(
         errors,
         'missing_key_action',
@@ -176,7 +275,9 @@ function assessWeightedErrors(manifest, output) {
   for (const [groupName, nonActions] of nonActionGroups) {
     for (const nonAction of nonActions) {
       for (const actualAction of actualActions) {
-        if (similarity(actionText(nonAction), actionLabel(actualAction)) >= 0.5) {
+        const ownerMatches = !actionOwner(nonAction)
+          || similarity(actionOwner(nonAction), actionOwner(actualAction)) >= 0.75;
+        if (ownerMatches && similarity(actionText(nonAction), actionText(actualAction)) >= 0.5) {
           addWeightedError(
             errors,
             `non_action_promoted_from_${groupName}`,
@@ -195,18 +296,19 @@ function assessWeightedErrors(manifest, output) {
     ['decisions', manifest.expected_decisions || [], output?.decisions || []],
     ['risks', manifest.expected_risks || [], output?.risks || []]
   ]) {
-    const matchedActual = new Set();
-    for (const expected of expectedItems) {
-      let bestIndex = -1;
-      let bestScore = 0;
-      for (let index = 0; index < actualItems.length; index += 1) {
-        const score = similarity(expected, actualItems[index]);
-        if (score > bestScore) {
-          bestIndex = index;
-          bestScore = score;
+    const itemMatches = oneToOneMatches(expectedItems, actualItems, similarity, 0.6);
+    for (let expectedIndex = 0; expectedIndex < expectedItems.length; expectedIndex += 1) {
+      if (!itemMatches.matchedExpected.has(expectedIndex)) {
+        const expected = expectedItems[expectedIndex];
+        let bestIndex = -1;
+        let bestScore = 0;
+        for (let index = 0; index < actualItems.length; index += 1) {
+          const score = similarity(expected, actualItems[index]);
+          if (score > bestScore) {
+            bestIndex = index;
+            bestScore = score;
+          }
         }
-      }
-      if (bestScore < 0.6) {
         addWeightedError(
           errors,
           category === 'risks' ? 'missing_key_risk' : 'missing_key_decision',
@@ -216,12 +318,10 @@ function assessWeightedErrors(manifest, output) {
           bestIndex >= 0 ? actualItems[bestIndex] : actualItems.join(' | '),
           expected
         );
-      } else {
-        matchedActual.add(bestIndex);
       }
     }
     for (let index = 0; index < actualItems.length; index += 1) {
-      if (matchedActual.has(index)) continue;
+      if (itemMatches.matchedActual.has(index)) continue;
       addWeightedError(
         errors,
         category === 'risks' ? 'extra_risk' : 'extra_or_unsupported_decision',
