@@ -85,6 +85,55 @@ const MEETING_PROFILES = [
         evidence: /\b(?:reports?|spreadsheets?|sharepoint|presentation|source material|testimonial|draft|review it|another call|follow[ -]?up)\b/i
       }
     ]
+  },
+  {
+    id: 'technical_file_review',
+    matches: (type, title) => /\b(?:tech(?:nical)? file|technical documentation)\b.*\b(?:review|weekly|status|check-?in)\b/i.test(`${type} ${title}`),
+    riskEvidence: /\b(?:outstanding (?:point|issue)|issue remains|incompatib|unresolved|missing|cannot|can't|delay|block|gap(?:s)? (?:that|which|remain)|high-risk area)\b/i,
+    dimensions: [
+      {
+        id: 'status',
+        topic: 'Technical-file status and priorities',
+        objective: 'Review technical-file remediation status, priorities and outstanding deliverables',
+        summary: 'The team reviewed technical-file progress, current priorities, document ownership and outstanding deliverables.',
+        evidence: /\b(?:tech(?:nical)? file|tracker|status|progress|deliverables?|documents?|remediation|priorit(?:y|ies))\b/i
+      },
+      {
+        id: 'risk',
+        topic: 'Risk management and cybersecurity',
+        objective: 'Confirm progress on risk-management and cybersecurity documentation',
+        summary: 'Risk-management documentation, the risk matrix and cybersecurity hazards and mitigations were reviewed.',
+        evidence: /\b(?:risk management|risk matrix|hazards?|cybersecurity|usb port|fmea|mitigation)\b/i
+      },
+      {
+        id: 'software',
+        topic: 'Software changes and review',
+        objective: 'Review software changes, verification status and remaining approvals',
+        summary: 'Software changes were reviewed, including alarm behaviour, language support, verification and clinical or usability approval.',
+        evidence: /\b(?:software|alarms?|mute button|languages?|translations?|code changes?|change request|memory capacity)\b/i
+      },
+      {
+        id: 'electrical',
+        topic: 'Electrical compliance testing',
+        objective: 'Confirm electrical-compliance testing, timing and downstream document updates',
+        summary: 'The team reviewed in-house electrical-compliance testing, its planned completion and the resulting document updates.',
+        evidence: /\b(?:electrical compliance|compliance testing|testing in house|test results?|electrical testing)\b/i
+      },
+      {
+        id: 'submission',
+        topic: 'Submission timing and dependencies',
+        objective: 'Align remaining technical-file work with submission and review milestones',
+        summary: 'Remaining work and dependencies were considered against the planned submission and notified-body review dates.',
+        evidence: /\b(?:submission|mdr|notified body|\bNB\b|review date|end of august|nov(?:ember)?['’]?\d*)\b/i
+      },
+      {
+        id: 'other_workstreams',
+        topic: 'Other technical-file workstreams',
+        objective: 'Review progress across supplier, usability, biocompatibility and post-market documentation',
+        summary: 'Progress and dependencies across supplier documentation, usability, biocompatibility and post-market documentation were reviewed.',
+        evidence: /\b(?:subcontractor|contract manufacturing|usability|formative stud|biocomp|biocompatibility|pms|post-market|process maps?)\b/i
+      }
+    ]
   }
 ];
 

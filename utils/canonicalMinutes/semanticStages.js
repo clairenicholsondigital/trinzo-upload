@@ -432,7 +432,7 @@ function contentStage(evidence, state, profile) {
   }
   let resolvedRisks = resolveEnrichedRisks(risks, evidence, profile);
   if (purpose?.riskEvidence) {
-    resolvedRisks = resolvedRisks.filter((item) => (item.evidenceIds || []).some((id) => purpose.riskEvidence.test(clean(byId.get(id)?.text))));
+    resolvedRisks = resolvedRisks.filter((item) => purpose.riskEvidence.test(clean(item.text)));
   }
   return { discussion, decisions: resolveEnrichedDecisions(decisions, evidence, profile), risks: resolvedRisks, warnings: [] };
 }

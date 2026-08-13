@@ -2,8 +2,12 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs/promises');
+const path = require('node:path');
+const mammoth = require('mammoth');
 const { purposePlan } = require('../utils/canonicalMinutes/meetingPurpose');
 const { capitaliseInitial } = require('../utils/canonicalMinutes/liveStages');
+const { prepareEvidence } = require('../utils/canonicalMinutes/evidence');
 
 function evidence(lines) {
   return { events: lines.map((text, index) => ({ id: `evt_${index}`, text })) };
@@ -48,4 +52,35 @@ test('action grammar capitalises the first letter without changing the remaining
   assert.equal(capitaliseInitial('before the live session'), 'Before the live session');
   assert.equal(capitaliseInitial('09:30 thursday'), '09:30 Thursday');
   assert.equal(capitaliseInitial('build the QR code slide'), 'Build the QR code slide');
+});
+
+test('technical-file title activates grounded workstream framing', () => {
+  const plan = purposePlan({ type: 'Project review', title: 'Client T733 Tech File Review Weekly' }, evidence([
+    'The focus remains on risk management and cybersecurity mitigations.',
+    'The alarm software change and additional languages need clinical review.',
+    'Electrical compliance testing will be completed in house before the MDR submission.'
+  ]));
+  assert.equal(plan.profileId, 'technical_file_review');
+  assert.deepEqual(plan.topics.map((item) => item.text), [
+    'Risk management and cybersecurity',
+    'Software changes and review',
+    'Electrical compliance testing',
+    'Submission timing and dependencies'
+  ]);
+  assert.ok(plan.discussion.every((card) => card.points[0].evidenceIds.length));
+  assert.equal(plan.riskEvidence.test('Risk and electrical compliance remain the main focus.'), false);
+  assert.equal(plan.riskEvidence.test('One outstanding issue remains around the mute-button behaviour.'), true);
+});
+
+test('real T733 transcript is covered by the staged technical-file purpose policy', async () => {
+  const documentPath = path.join(__dirname, '..', 'scripts', 'meeting-minutes-core-golden', 'human_benchmarks', 'T733_eakin_tech_file', 'transcript.docx');
+  const buffer = await fs.readFile(documentPath);
+  const extracted = await mammoth.extractRawText({ buffer });
+  const evidence = prepareEvidence(extracted.value);
+  const plan = purposePlan({ type: 'Project review', title: 'Client Eakin T733 Tech File Review Weekly' }, evidence);
+  assert.equal(plan.profileId, 'technical_file_review');
+  assert.ok(plan.topics.length >= 5);
+  assert.ok(plan.topics.some((item) => item.text === 'Risk management and cybersecurity'));
+  assert.ok(plan.topics.some((item) => item.text === 'Electrical compliance testing'));
+  assert.ok(plan.objectives.every((item) => !/^(?:Review )?(?:That|And|No|Emma\b)/i.test(item.text)));
 });
