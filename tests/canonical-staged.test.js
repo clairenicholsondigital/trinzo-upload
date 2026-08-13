@@ -11,7 +11,7 @@ const { runCanonicalLiveStage, buildConfirmedState } = require('../utils/canonic
 const semanticStages = require('../utils/canonicalMinutes/semanticStages');
 
 test('generic action gate rejects unresolved conversational references', () => {
-  ['Send that out now', 'Copy her this time', 'Do it at the same time', 'Be there for really', 'Probably tomorrow?']
+  ['Send that out now', 'Copy her this time', 'Do it at the same time', 'Be there for really', 'Probably tomorrow?', 'Need before the audit starts', 'Be mid audit at that point', 'Run it through the site', 'Try and do is limit your stream', 'Quickly share so we can review it']
     .forEach((action) => assert.equal(semanticStages.isUnderspecifiedAction({ action }), true, action));
   ['Review the labels for regulatory compliance', 'Prepare a list of questions for the client', 'Schedule the weekly client call']
     .forEach((action) => assert.equal(semanticStages.isUnderspecifiedAction({ action }), false, action));

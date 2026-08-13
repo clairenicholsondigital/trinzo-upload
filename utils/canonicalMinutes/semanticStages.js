@@ -241,6 +241,15 @@ function titleFromRepresentative(text) {
   return words ? words.charAt(0).toUpperCase() + words.slice(1) : 'Substantive discussion';
 }
 
+function publishableTopicRepresentative(text) {
+  const value = clean(text);
+  const words = value.split(/\s+/).filter(Boolean);
+  if (words.length < 4) return false;
+  if (/^(?:and|but|because|when|presumably|interesting|so|well|yeah|yes|okay|right)\b/i.test(value)) return false;
+  if (/(?:\b(?:and|but|because|that|which|with|from|to|for|of|the|a|an)|[,;:])$/i.test(value)) return false;
+  return /\b(?:audit|scope|standard|risk|software|document|training|schedule|plan|process|access|decision|action|requirement|testing|review|client|customer|supplier|regulatory|project|timeline|delivery|design|quality|system)\b/i.test(value);
+}
+
 function minutesPoint(text) {
   let value = clean(text).replace(/[.]+$/, '')
     .replace(/\bTrace SW to identify the change in the SW between\b/gi, 'Document software versioning traceability between');
@@ -274,7 +283,7 @@ function contextStage(evidence, profile, state = {}) {
     };
   }
   const byId = new Map(evidence.events.map((event) => [event.id, event]));
-  const topics = (profile.topics || []).filter((topic) => !/\b(?:no project update today|do not have a project update today|can everyone hear me|red light|webcam)\b/i.test(topic.representativeText || '') && !topic.evidenceIds.every((id) => { const event = byId.get(id); return event ? isSupersededBackground(event, evidence) : false; })).slice(0, 8);
+  const topics = (profile.topics || []).filter((topic) => publishableTopicRepresentative(topic.representativeText) && !/\b(?:no project update today|do not have a project update today|can everyone hear me|red light|webcam)\b/i.test(topic.representativeText || '') && !topic.evidenceIds.every((id) => { const event = byId.get(id); return event ? isSupersededBackground(event, evidence) : false; })).slice(0, 8);
   return {
     meeting: { participants: evidence.participants },
     objectives: topics.slice(0, 6).map((topic) => ({ text: `Review ${titleFromRepresentative(topic.representativeText)}`, evidenceIds: topic.evidenceIds, topicId: topic.id })),
@@ -582,7 +591,11 @@ function resolveEnrichedDecisions(items, evidence, profile) {
 function resolveEnrichedRisks(items, evidence, profile) {
   if (!enrichedEvidenceEnabled()) return unique(items, (item) => item.text);
   const eligible = items.filter((item) => {
-    if (/^(?:but\s+)?(?:that|this|it)(?:\s+is|'s)\s+(?:their|the|a)\s+risk[.!?]*$/i.test(clean(item.text))) return false;
+    const text = clean(item.text);
+    if (/^(?:but\s+)?(?:that|this|it)(?:\s+is|'s)\s+(?:their|the|a)\s+risk[.!?]*$/i.test(text)) return false;
+    if (/\brisk assessment\b.*\b(?:forms?\s+an?\s+input|feeds?\s+(?:in)?to|audit plan|sequential)\b/i.test(text)) return false;
+    if (/\b(?:risk analysis|risk assessment|risk management)\b/i.test(text) && !/\b(?:risks?\s+(?:is|are|that|of)|could|may|might|concern|issue|missing|delay|fail|unable|unavailable|dependency|block)\b/i.test(text)) return false;
+    if (/\byou know\b/i.test(text) || /\b(?:a|an|the|and|or|but|of|for|to|in|with)\s*[.!?]*$/i.test(text)) return false;
     const sources = (item.evidenceIds || []).map((id) => evidence.events.find((event) => event.id === id)).filter(Boolean);
     return sources.some((event) => independentlyCanonical(profile, event));
   });
@@ -600,7 +613,11 @@ function resolveEnrichedRisks(items, evidence, profile) {
     lexicalThreshold: 0.3,
     anchorGrouping: true,
     anchorTurnDistance: 8
-  }).map((item) => ({ ...item, text: composeRisk(item, evidence, profile) }));
+  }).map((item) => ({
+    ...item,
+    text: clean(composeRisk(item, evidence, profile))
+      .replace(/^.*?\bthe risk is that\s+/i, 'There is a risk that ')
+  }));
 }
 
 function actionIsSuperseded(item, evidence, profile) {
@@ -683,7 +700,15 @@ function isUnderspecifiedAction(item) {
   const action = clean(item?.action);
   return /^(?:send|share|copy|give|take|put|sort|start|follow\s+up)\s+(?:it|that|this|her|him|them|here|there)\b/i.test(action)
     || /^(?:do|handle|take)\s+(?:it|that|this)\b/i.test(action)
+    || /^(?:run|get)\s+(?:it|that|this)\b/i.test(action)
     || /^(?:be|stay)\s+there(?:\s+for\s+\w+)?[.!?]*$/i.test(action)
+    || /^be\s+(?:mid|in|at|on)\b/i.test(action)
+    || /^need\s+(?:before|after|by|for|when)\b/i.test(action)
+    || /^try\s+and\s+do\s+is\b/i.test(action)
+    || /^quickly\s+share\s+(?:so|if|when)\b/i.test(action)
+    || /^know\s+(?:some|more|the|that)\b/i.test(action)
+    || /^guarantee\s+if\b/i.test(action)
+    || /\b(?:in terms of|that transmits)\s*[.!?]*$/i.test(action)
     || /^(?:start|continue|finish)\s+with\s+(?:it|that|this|order)(?:\s+from\s+.+)?[.!?]*$/i.test(action)
     || /\?\s*$/.test(action);
 }

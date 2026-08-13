@@ -231,6 +231,57 @@ const MEETING_PROFILES = [
         evidence: /\b(?:site visit|visit the site|how .* works|process works|current process|follow up with .*client|follow up with .*orla)\b/i
       }
     ]
+  },
+  {
+    // Evidence-gated meeting frame: applies to audit planning generally, not
+    // to a client, project code or fixture title.
+    id: 'audit_planning',
+    matches: (type, title) => /\baudit\b/i.test(`${type} ${title}`) && /\b(?:kick[ -]?off|planning|preparation|readiness|scope)\b/i.test(`${type} ${title}`),
+    riskEvidence: /\b(?:risk|missing|unavailable|access|delay|confidential|cybersecurity|software|version|transmission|dependency)\b/i,
+    dimensions: [
+      {
+        id: 'scope',
+        topic: 'Audit scope, type and applicable standards',
+        objective: 'Confirm the audit scope, approach and applicable standards',
+        summary: 'The team confirmed the audit type, intended scope, applicable regulatory frameworks and the standards to be assessed.',
+        evidence: /\b(?:audit scope|scope is determined|normal audit|routine audit|surveillance|full compliance|standards?|regulations?|21 cfr|mdr|mdsap)\b/i
+      },
+      {
+        id: 'schedule',
+        topic: 'Audit schedule and preparation milestones',
+        objective: 'Agree the audit preparation, on-site and reporting timetable',
+        summary: 'Preparation, training, on-site work and report-writing milestones were reviewed against auditor availability and dependencies.',
+        evidence: /\b(?:key dates?|prep(?:aration)? work|training and prep|on site|report writing|audit formally starts|audit preparation meeting|timeline|mid audit)\b/i
+      },
+      {
+        id: 'roles',
+        topic: 'Audit-team roles and coverage',
+        objective: 'Clarify auditor roles, specialist coverage and coordination',
+        summary: 'Lead, co-auditor and specialist responsibilities were discussed, including how coverage would be divided and coordinated during the audit.',
+        evidence: /\b(?:lead auditor|co-auditor|audit team|deep dive|separate track|combined skill|software expertise|handle all the other|split coverage)\b/i
+      },
+      {
+        id: 'access',
+        topic: 'Training, document access and confidentiality',
+        objective: 'Confirm prerequisite training, document access and confidentiality arrangements',
+        summary: 'The team reviewed prerequisite attestations and conduct requirements, together with secure access to audit evidence and shared working records.',
+        evidence: /\b(?:training attestation|code of conduct|confidentiality|sharepoint|external access|securely transmitting|document access|share anything|tracker)\b/i
+      },
+      {
+        id: 'technical_focus',
+        topic: 'Software, cybersecurity and risk-management focus',
+        objective: 'Define the software, cybersecurity and risk-management evidence to examine',
+        summary: 'The proposed audit focus included software development and validation, version control, cybersecurity, risk management and software-bill-of-materials evidence.',
+        evidence: /\b(?:software development|software validation|cybersecurity|risk analysis|risk management|s-?bom|software bill of materials|versions?|threat model|cves?)\b/i
+      },
+      {
+        id: 'execution',
+        topic: 'On-site evidence gathering and audit execution',
+        objective: 'Plan the on-site evidence-gathering and audit execution approach',
+        summary: 'The team discussed site observation, record sampling, findings management and how the audit tracks would operate in practice.',
+        evidence: /\b(?:site walkthrough|gemba|record sampling|findings tracker|audit findings|production process|design owner|manufacturing site|on a separate track)\b/i
+      }
+    ]
   }
 ];
 

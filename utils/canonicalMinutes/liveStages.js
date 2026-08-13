@@ -88,7 +88,7 @@ function summaryScreen(proposal) {
     executiveSummary: /webinar/.test(meetingType) && /rehearsal|practice|run[ -]?through/.test(meetingType)
       ? `The webinar rehearsal reviewed ${overallTopics.join('; ').replace(/; ([^;]+)$/, '; and $1').toLowerCase()}.`
       : overallTopics.length
-      ? `The meeting reviewed ${overallTopics.join('; ')}.`
+      ? `The meeting reviewed ${overallTopics.join('; ').toLowerCase()}.`
       : 'No substantive meeting topics were identified automatically.'
   };
 }

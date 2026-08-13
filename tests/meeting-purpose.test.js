@@ -136,3 +136,14 @@ test('real T819 internal transcript is covered by the staged internal-follow-up 
   assert.ok(plan.topics.some((item) => item.text === 'Scope and regulatory coverage'));
   assert.ok(plan.objectives.every((item) => !/^(?:Review )?(?:As well|Mm|OK|Wednesday)\b/i.test(item.text)));
 });
+
+test('real Abbott transcript activates a reusable audit-planning frame', async () => {
+  const documentPath = path.join(__dirname, '..', 'scripts', 'meeting-minutes-final-golden', '027_real_abbott_audit_kickoff_transcript', 'transcript.txt');
+  const transcript = await fs.readFile(documentPath, 'utf8');
+  const plan = purposePlan({ type: 'Project review', title: 'Client Audit Kick Off' }, prepareEvidence(transcript));
+  assert.equal(plan.profileId, 'audit_planning');
+  assert.ok(plan.topics.some((item) => item.text === 'Audit scope, type and applicable standards'));
+  assert.ok(plan.topics.some((item) => item.text === 'Software, cybersecurity and risk-management focus'));
+  assert.ok(plan.topics.some((item) => item.text === 'On-site evidence gathering and audit execution'));
+  assert.ok(plan.objectives.every((item) => !/\b(?:Abbott|T796|Sylmar)\b/i.test(item.text)));
+});
