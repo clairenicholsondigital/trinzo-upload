@@ -43,7 +43,7 @@ const {
 const { getMeetingMinutesCoreGoldenStatus } = require('../utils/meetingMinutesCoreGolden');
 const { runCanonicalNoEditPass } = require('../utils/canonicalMinutes/runner');
 const { runCanonicalLiveStage } = require('../utils/canonicalMinutes/liveStages');
-const { polishCanonicalStage, canonicalFallback } = require('../utils/canonicalMinutes/trooperPolish');
+const { polishCanonicalStage, canonicalFallback, addRecoveredActionCandidates } = require('../utils/canonicalMinutes/trooperPolish');
 
 const {
   saveMeetingMinutes,
@@ -3560,16 +3560,17 @@ function canonicalConfirmedStages(input = {}) {
 }
 
 async function canonicalStagedResponse(stage, transcript, input = {}) {
-  const payload = runCanonicalLiveStage(transcript.text, {
+  let payload = runCanonicalLiveStage(transcript.text, {
     stage,
     fileName: transcript.fileName || 'transcript.txt',
     confirmed: canonicalConfirmedStages(input),
     includeEvidencePack: ['discussion', 'actions'].includes(stage)
   });
+  if (stage === 'actions') payload = addRecoveredActionCandidates(payload, buildEvidenceBoundStagedActionInventory(transcript.text));
   let polished = { payload, used: false, reason: 'Trooper is not used for this stage.' };
   if (['discussion', 'actions'].includes(stage)) {
     try {
-      polished = await polishCanonicalStage(payload);
+      polished = await polishCanonicalStage(payload, { reviewerGuidance: input.additionalContext || '' });
     } catch (error) {
       safeLogError('[Canonical staged Trooper polish failed]', error, { stage });
       const fallback = canonicalFallback(payload);
@@ -4406,7 +4407,8 @@ router.post('/staged-meeting-minutes', requireAuth, withTestUpload(async (req, r
         confirmedDetails: parseStagedJsonObject(req.body?.confirmedDetails),
         confirmedSummary: parseStagedJsonObject(req.body?.confirmedSummary),
         confirmedDiscussion: parseStagedJsonArray(req.body?.confirmedDiscussion),
-        confirmedActions: parseStagedJsonArray(req.body?.confirmedActions)
+        confirmedActions: parseStagedJsonArray(req.body?.confirmedActions),
+        additionalContext: firstString(req.body?.additionalContext, req.query?.additionalContext)
       };
       const response = await canonicalStagedResponse(requestedStage, {
         ...transcript,

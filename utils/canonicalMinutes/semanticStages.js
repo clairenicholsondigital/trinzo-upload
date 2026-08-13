@@ -755,6 +755,7 @@ function actionsStage(evidence, state, profile, topology) {
       return item;
     }), evidence, profile, deadlineFrom), evidence, topology);
   }
+  let actionCandidates = actions;
   const structuredEvidenceIds = new Set(evidence.events.filter((event) => event.structuredSource === 'actions_owner_deadline_table').map((event) => event.id));
   if (structuredEvidenceIds.size) {
     actions = unique(actions.filter((item) => item.learnedSlot || (item.evidenceIds || []).some((id) => structuredEvidenceIds.has(id)) || actionPublishability(item, evidence, profile) >= 0.45).map((item) => ({
@@ -776,6 +777,9 @@ function actionsStage(evidence, state, profile, topology) {
     const mandatory = ranked.filter((candidate) => candidate.explicitObligation);
     const optional = ranked.filter((candidate) => !candidate.explicitObligation)
       .sort((left, right) => right.publishability - left.publishability || left.index - right.index);
+    actionCandidates = [...mandatory, ...optional]
+      .sort((left, right) => left.index - right.index)
+      .map((candidate) => candidate.item);
     actions = [...mandatory, ...optional.slice(0, Math.max(0, 6 - mandatory.length))]
       .sort((left, right) => left.index - right.index)
       .map((candidate) => candidate.item);
@@ -786,6 +790,7 @@ function actionsStage(evidence, state, profile, topology) {
   }));
   return {
     actions: actions.map((item) => ({ ...item, action: canonicalActionText(item.action) })),
+    actionCandidates: actionCandidates.slice(0, 18).map((item) => ({ ...item, action: canonicalActionText(item.action) })),
     extractionMode: 'minilm_commitment_threads',
     commitmentThreads: threads,
     unresolvedThreads,

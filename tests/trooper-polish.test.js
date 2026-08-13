@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { polishCanonicalStage, promptFor, unresolvedReference, nonActionState, nearDuplicate } = require('../utils/canonicalMinutes/trooperPolish');
+const { polishCanonicalStage, promptFor, unresolvedReference, nonActionState, nearDuplicate, addRecoveredActionCandidates } = require('../utils/canonicalMinutes/trooperPolish');
 
 function actionPayload() {
   return {
@@ -22,6 +22,7 @@ test('Trooper prompt contains bounded MiniLM context and no full transcript bloc
   assert.match(prompt, /BOUNDED_MINILM_EVIDENCE/);
   assert.match(prompt, /QMS manual is ready for review/);
   assert.doesNotMatch(prompt, /\[TRANSCRIPT\]/);
+  assert.match(promptFor('actions', payload, payload._canonicalEvidencePack, { reviewerGuidance: 'Emphasise regulatory deadlines.' }), /Emphasise regulatory deadlines/);
 });
 
 test('Trooper action rewrite resolves a deictic action from cited context', async () => {
@@ -69,4 +70,13 @@ test('post-Trooper checks reject availability states and repeated discussion pro
     'The team reviewed technical-file progress, current priorities and outstanding deliverables.',
     'Technical-file progress, current priorities and outstanding deliverables were reviewed.'
   ), true);
+});
+
+test('evidence-bound recovery candidates join the Trooper pack without entering the UI directly', () => {
+  const payload = actionPayload();
+  const enriched = addRecoveredActionCandidates(payload, [{ owner: 'Andrew Kane', action: 'Review the mute-button flash sequence', deadline: 'Friday', evidence: 'Andrew said he needed to review the mute-button LED behaviour.' }]);
+  assert.equal(enriched.screens.actions.length, 1);
+  assert.equal(enriched._canonicalEvidencePack.length, 2);
+  assert.equal(enriched._canonicalEvidencePack[1].action, 'Review the mute-button flash sequence');
+  assert.equal(enriched._canonicalEvidencePack[1].evidence[0].current.includes('mute-button LED'), true);
 });

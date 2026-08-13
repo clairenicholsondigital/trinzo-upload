@@ -12,6 +12,7 @@ function unresolvedReference(value) {
     || /\b(?:discuss|review|progress|handle)\s+(?:the\s+)?(?:matter|topic|issue)\b/i.test(text)
     || /\b(?:the|this)\s+(?:matter|topic|issue)\b/i.test(text)
     || /\b(?:flick|send|share|bring|review|forward|escalate)\s+(?:the\s+)?(?:document|file|item|matter|topic|issue)(?:\s+(?:over|to)\b|[.!?]*$)/i.test(text)
+    || /\b(?:overview|summary|details?)\s+of\s+(?:the\s+)?(?:products?|documents?|items?|things?)\b/i.test(text)
     || /\b(?:it|that|this)\s+(?:over|through|with)\b/i.test(text)
     || /\bkind of\b|\bsort of\b|\byeah\b|\byep\b|\bunspecified\b|\[[^\]]+\]/i.test(text);
 }
@@ -40,7 +41,31 @@ function canonicalFallback(payload) {
   return base;
 }
 
-function promptFor(stage, payload, evidencePack) {
+function addRecoveredActionCandidates(payload, recovered = []) {
+  if (clean(payload?.stagedStage).toLowerCase() !== 'actions') return payload;
+  const pack = Array.isArray(payload._canonicalEvidencePack) ? [...payload._canonicalEvidencePack] : [];
+  const signatures = new Set(pack.map((item) => `${clean(item.owner).toLowerCase()}|${clean(item.action).toLowerCase()}`));
+  for (const item of Array.isArray(recovered) ? recovered : []) {
+    const action = clean(item?.action);
+    if (!action || nonActionState(action)) continue;
+    let owner = clean(item?.owner) || 'Not stated';
+    if (!/^(?:Not stated|All|[A-Z][\p{L}'’.-]+(?:[ ,/-]+[A-Z][\p{L}'’.-]+)+)$/u.test(owner)) owner = 'Not stated';
+    const signature = `${owner.toLowerCase()}|${action.toLowerCase()}`;
+    if (signatures.has(signature)) continue;
+    const id = `recovered_${pack.length + 1}`;
+    pack.push({
+      itemIndex: pack.length,
+      topic: '', owner, action,
+      deadline: clean(item.deadline) || 'Not stated',
+      currentPoints: [],
+      evidence: [{ id, speaker: owner, previous: '', current: clean(item.evidence).slice(0, 1800), next: '', contextWindow: [], labels: { evidenceType: 'action_candidate', actionState: 'possible_action', lifecycle: 'active', canonicalWorthiness: 'review_required', temporalRole: '' } }]
+    });
+    signatures.add(signature);
+  }
+  return { ...payload, _canonicalEvidencePack: pack.map((item, index) => ({ ...item, itemIndex: index })) };
+}
+
+function promptFor(stage, payload, evidencePack, options = {}) {
   const contract = stage === 'actions'
     ? {
       actions: [{ itemIndex: 0, owner: 'exact supplied owner', action: 'complete action with explicit verb and object', deadline: 'exact supplied deadline', evidenceIds: ['supplied evidence id'] }]
@@ -49,7 +74,8 @@ function promptFor(stage, payload, evidencePack) {
       discussion: [{ itemIndex: 0, topic: 'exact supplied topic', points: ['formal, self-contained minutes point'], evidenceIds: ['supplied evidence id'] }]
     };
   const instructions = stage === 'actions' ? [
-    'Rewrite each supplied canonical action into one complete, grammatical action with an explicit verb and object.',
+    'Review every supplied MiniLM action candidate. Return each candidate that is a real prospective, minute-worthy commitment; omit completed work, status, availability, hypotheticals, suggestions without assignment, and conversational noise.',
+    'Rewrite each retained action into one complete, grammatical action with an explicit verb, specific object and supported purpose where the evidence establishes it.',
     'Resolve words such as it, this and that only from the supplied bounded context window.',
     'Replace the reference with the most specific supported workstream, document, deliverable or task. Generic substitutes such as "the matter", "the topic" or "the issue" are not acceptable.',
     'The object must distinguish the record from other documents or issues: retain supported names, acronyms, subject matter and purpose. For an email, state its supported subject; for an escalation, state the exact supported issue and system or team.',
@@ -74,7 +100,7 @@ function promptFor(stage, payload, evidencePack) {
     '- Return valid JSON only.',
     '',
     'CONFIRMED_STATE:',
-    JSON.stringify({ stagedStage: stage }, null, 2),
+    JSON.stringify({ stagedStage: stage, reviewerGuidance: clean(options.reviewerGuidance) }, null, 2),
     '',
     'BOUNDED_MINILM_EVIDENCE:',
     JSON.stringify(evidencePack, null, 2),
@@ -95,7 +121,6 @@ function validReferences(candidate, source) {
 }
 
 function applyActionRewrite(payload, output, evidencePack) {
-  const sourceActions = payload.screens?.actions || [];
   const candidates = Array.isArray(output?.actions) ? output.actions : [];
   const byIndex = new Map();
   for (const candidate of candidates) {
@@ -103,9 +128,14 @@ function applyActionRewrite(payload, output, evidencePack) {
     if (!byIndex.has(index)) byIndex.set(index, []);
     byIndex.get(index).push(candidate);
   }
-  const actions = sourceActions.flatMap((source, index) => {
-    const pack = evidencePack[index];
+  const actions = evidencePack.flatMap((pack, index) => {
     if (!pack) return [];
+    const source = {
+      owner: pack.owner || 'Not stated',
+      action: pack.action,
+      deadline: pack.deadline || 'Not stated',
+      evidenceIds: (pack.evidence || []).map((item) => item.id).filter(Boolean)
+    };
     return (byIndex.get(index) || []).slice(0, 3).flatMap((candidate) => {
       if (!validReferences(candidate, pack)) return [];
       const action = clean(candidate.action);
@@ -152,7 +182,7 @@ async function polishCanonicalStage(payload, options = {}) {
       model: clean(options.model ?? process.env.TROOPER_MODEL) || DEFAULT_MODEL,
       messages: [
         { role: 'system', content: 'Rewrite bounded MiniLM evidence into client-ready canonical meeting records. Return valid JSON only.' },
-        { role: 'user', content: promptFor(stage, base, evidencePack) }
+        { role: 'user', content: promptFor(stage, base, evidencePack, options) }
       ],
       temperature: 0.1,
       max_tokens: stage === 'discussion' ? 2200 : 1400,
@@ -167,4 +197,4 @@ async function polishCanonicalStage(payload, options = {}) {
   return { payload: rewritten, used: true, reason: 'Trooper rewrote bounded MiniLM evidence.', usage: body?.usage || null };
 }
 
-module.exports = { promptFor, polishCanonicalStage, applyActionRewrite, applyDiscussionRewrite, unresolvedReference, canonicalFallback, nonActionState, nearDuplicate };
+module.exports = { promptFor, polishCanonicalStage, applyActionRewrite, applyDiscussionRewrite, unresolvedReference, canonicalFallback, nonActionState, nearDuplicate, addRecoveredActionCandidates };

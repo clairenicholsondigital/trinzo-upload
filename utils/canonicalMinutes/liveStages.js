@@ -214,7 +214,10 @@ function runCanonicalLiveStage(transcriptText, options = {}) {
     }
   };
   if (options.includeEvidencePack && ['discussion', 'actions'].includes(stage)) {
-    result._canonicalEvidencePack = boundedEvidencePack(screen, evidence, profile, stage);
+    const packItems = stage === 'actions' && Array.isArray(proposal.actionCandidates) && proposal.actionCandidates.length
+      ? proposal.actionCandidates
+      : screen;
+    result._canonicalEvidencePack = boundedEvidencePack(packItems, evidence, profile, stage);
   }
   return result;
 }
