@@ -595,6 +595,7 @@ function resolveEnrichedRisks(items, evidence, profile) {
     if (/^(?:but\s+)?(?:that|this|it)(?:\s+is|'s)\s+(?:their|the|a)\s+risk[.!?]*$/i.test(text)) return false;
     if (/\brisk assessment\b.*\b(?:forms?\s+an?\s+input|feeds?\s+(?:in)?to|audit plan|sequential)\b/i.test(text)) return false;
     if (/\b(?:risk analysis|risk assessment|risk management)\b/i.test(text) && !/\b(?:risks?\s+(?:is|are|that|of)|could|may|might|concern|issue|missing|delay|fail|unable|unavailable|dependency|block)\b/i.test(text)) return false;
+    if (/\b(?:yeah|yep|okay|right)(?:[,.!?\s]+(?:yeah|yep|okay|right))*[.!?]*$/i.test(text)) return false;
     if (/\byou know\b/i.test(text) || /\b(?:a|an|the|and|or|but|of|for|to|in|with)\s*[.!?]*$/i.test(text)) return false;
     const sources = (item.evidenceIds || []).map((id) => evidence.events.find((event) => event.id === id)).filter(Boolean);
     return sources.some((event) => independentlyCanonical(profile, event));
@@ -615,9 +616,17 @@ function resolveEnrichedRisks(items, evidence, profile) {
     anchorTurnDistance: 8
   }).map((item) => ({
     ...item,
-    text: clean(composeRisk(item, evidence, profile))
-      .replace(/^.*?\bthe risk is that\s+/i, 'There is a risk that ')
-  }));
+    text: canonicalRiskText(composeRisk(item, evidence, profile))
+  })).filter((item) => item.text);
+}
+
+function canonicalRiskText(value) {
+  const text = clean(value).replace(/^.*?\bthe risk is that\s+/i, 'There is a risk that ');
+  if (/\bthere(?:'s| is) always a risk\b.*\bplan for (?:it|that)\b/i.test(text)) return '';
+  if (/^There is a risk that .*\breali[sz]e something is missing\b.*\bnot there to help\b/i.test(text)) {
+    return 'Required information or actions may be missed while the responsible team member is unavailable.';
+  }
+  return text;
 }
 
 function actionIsSuperseded(item, evidence, profile) {
@@ -713,6 +722,19 @@ function isUnderspecifiedAction(item) {
     || /\?\s*$/.test(action);
 }
 
+function canonicalActionText(value) {
+  const text = clean(value);
+  const provideOverview = text.match(/^(?:also\s+)?give\s+(?:you|them|him|her)\s+the\s+(.+?)\s+and\s+an?\s+overall\s+view\s+of\s+the\s+(.+?)(?:\s+themselves)?[.!?]*$/i);
+  if (provideOverview) {
+    const subject = clean(provideOverview[1]).replace(/\s+need$/i, '');
+    const object = clean(provideOverview[2]).replace(/\s+themselves$/i, '');
+    return `Provide the applicable ${subject} and an overview of the ${object}`;
+  }
+  const frontLoad = text.match(/^front[ -]?end\s+everything\s+for\s+(.+?)\s+as\s+much\s+as\s+possible[.!?]*$/i);
+  if (frontLoad) return `Complete as much preparation as possible during ${frontLoad[1]}`;
+  return text;
+}
+
 function actionsStage(evidence, state, profile, topology) {
   const threads = buildCommitmentThreads(evidence, profile, topology);
   const deterministic = deterministicStages.actionsStage(evidence, state, topology).actions;
@@ -763,7 +785,7 @@ function actionsStage(evidence, state, profile, topology) {
     reason: 'Semantic candidate could not be safely converted into an owner/action record.'
   }));
   return {
-    actions,
+    actions: actions.map((item) => ({ ...item, action: canonicalActionText(item.action) })),
     extractionMode: 'minilm_commitment_threads',
     commitmentThreads: threads,
     unresolvedThreads,
@@ -774,4 +796,4 @@ function actionsStage(evidence, state, profile, topology) {
   };
 }
 
-module.exports = { contextStage, contentStage, actionsStage, buildCommitmentThreads, actionsFromThread, hasSemanticRole, learnedSlotActions, resolveEnrichedActions, isUnderspecifiedAction };
+module.exports = { contextStage, contentStage, actionsStage, buildCommitmentThreads, actionsFromThread, hasSemanticRole, learnedSlotActions, resolveEnrichedActions, isUnderspecifiedAction, canonicalActionText, canonicalRiskText };

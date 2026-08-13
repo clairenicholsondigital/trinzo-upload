@@ -17,6 +17,22 @@ test('generic action gate rejects unresolved conversational references', () => {
     .forEach((action) => assert.equal(semanticStages.isUnderspecifiedAction({ action }), false, action));
 });
 
+test('canonical record wording converts transcript speech into client-ready grammar', () => {
+  assert.equal(
+    semanticStages.canonicalActionText('Also give you the classifications need and an overall view of the products themselves'),
+    'Provide the applicable classifications and an overview of the products'
+  );
+  assert.equal(
+    semanticStages.canonicalActionText('Front end everything for the first week as much as possible'),
+    'Complete as much preparation as possible during the first week'
+  );
+  assert.equal(
+    semanticStages.canonicalRiskText("There is a risk that we don't realise something is missing or you need to do something and I'm not there to help"),
+    'Required information or actions may be missed while the responsible team member is unavailable.'
+  );
+  assert.equal(semanticStages.canonicalRiskText("There's always a risk, so you always have to plan for it; Yeah"), '');
+});
+
 test('canonical no-edit pass preserves accepted semantics', () => {
   const transcript = [
     'Amina Khan  00:01',
