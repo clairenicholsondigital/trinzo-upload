@@ -5,6 +5,7 @@ const { semanticFor } = require('./minilm');
 const deterministicStages = require('./stages');
 const { deadlineFrom } = deterministicStages;
 const { actionHasConcreteObject, applyOperationalPhaseTiming, attachTemporalContext, composeDecision, composeRisk, consolidate, deriveRoleDecisions, tokenOverlap } = require('./canonicalResolver');
+const { purposePlan } = require('./meetingPurpose');
 
 function unique(items, key) {
   const seen = new Set();
@@ -261,7 +262,17 @@ function minutesPoint(text) {
   return value ? `${value.charAt(0).toUpperCase()}${value.slice(1)}.` : '';
 }
 
-function contextStage(evidence, profile) {
+function contextStage(evidence, profile, state = {}) {
+  const purpose = purposePlan(state.meeting, evidence);
+  if (purpose) {
+    return {
+      meeting: state.meeting,
+      objectives: purpose.objectives,
+      topics: purpose.topics,
+      purposeProfile: purpose.profileId,
+      warnings: []
+    };
+  }
   const byId = new Map(evidence.events.map((event) => [event.id, event]));
   const topics = (profile.topics || []).filter((topic) => !/\b(?:no project update today|do not have a project update today|can everyone hear me|red light|webcam)\b/i.test(topic.representativeText || '') && !topic.evidenceIds.every((id) => { const event = byId.get(id); return event ? isSupersededBackground(event, evidence) : false; })).slice(0, 8);
   return {
@@ -333,6 +344,7 @@ function isSupersededBackground(event, evidence) {
 }
 
 function contentStage(evidence, state, profile) {
+  const purpose = purposePlan(state.meeting, evidence);
   const byId = new Map(evidence.events.map((event) => [event.id, event]));
   const longTranscript = evidence.events.length >= 100;
   const selectedTopics = selectLongDiscussionTopics(profile.topics || [], evidence, byId, profile);
@@ -343,7 +355,7 @@ function contentStage(evidence, state, profile) {
   }));
   if (!longTranscript) topicCandidates.sort((left, right) => Number(right.explicitEvidence) - Number(left.explicitEvidence) || left.index - right.index);
   const discussionLimit = longTranscript ? 16 : evidence.events.length >= 25 ? 10 : 8;
-  let discussion = topicCandidates.slice(0, discussionLimit).map(({ topic }) => {
+  let discussion = purpose?.discussion || topicCandidates.slice(0, discussionLimit).map(({ topic }) => {
     const source = topic.evidenceIds.map((id) => byId.get(id)).filter(Boolean).filter((event) => !isSupersededBackground(event, evidence) && (score(profile, event, 'administrative') < 0.55 || /\b(?:offsite|absent|unavailable|miss)\b.*\b(?:meeting|check-in|call|session)\b|\b(?:meeting|check-in|call|session)\b.*\b(?:offsite|absent|unavailable|miss)\b/i.test(event.text)));
     const minuteEvidence = source.map((event) => {
       let text = minutesPoint(event.text);

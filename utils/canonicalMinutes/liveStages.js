@@ -74,11 +74,16 @@ function buildConfirmedState(transcriptText, fileName, confirmed = {}) {
 
 function summaryScreen(proposal) {
   const objectives = proposal.objectives.map((item) => item.text);
-  const overallTopics = objectives.map((text) => clean(text).replace(/^Review\s+/i, '')).filter(Boolean);
+  const overallTopics = (Array.isArray(proposal.topics) && proposal.topics.length
+    ? proposal.topics.map((item) => item.text)
+    : objectives.map((text) => clean(text).replace(/^Review\s+/i, ''))).filter(Boolean);
+  const meetingType = clean(proposal.meeting?.type).toLowerCase();
   return {
     objectives,
     overallTopics,
-    executiveSummary: overallTopics.length
+    executiveSummary: /webinar/.test(meetingType) && /rehearsal|practice|run[ -]?through/.test(meetingType)
+      ? `The webinar rehearsal reviewed ${overallTopics.join('; ').replace(/; ([^;]+)$/, '; and $1').toLowerCase()}.`
+      : overallTopics.length
       ? `The meeting reviewed ${overallTopics.join('; ')}.`
       : 'No substantive meeting topics were identified automatically.'
   };
@@ -117,7 +122,7 @@ function runCanonicalLiveStage(transcriptText, options = {}) {
   const confirmed = options.confirmed || {};
   let state = buildConfirmedState(transcriptText, options.fileName || 'transcript.txt', confirmed);
   let proposal;
-  if (stage === 'summary') proposal = semanticStages.contextStage(evidence, profile);
+  if (stage === 'summary') proposal = semanticStages.contextStage(evidence, profile, state);
   if (stage === 'discussion') proposal = semanticStages.contentStage(evidence, state, profile);
   if (stage === 'actions') proposal = semanticStages.actionsStage(evidence, state, profile, topology);
   const screen = stage === 'summary' ? summaryScreen(proposal)
