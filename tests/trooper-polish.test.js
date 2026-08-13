@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { polishCanonicalStage, promptFor, unresolvedReference } = require('../utils/canonicalMinutes/trooperPolish');
+const { polishCanonicalStage, promptFor, unresolvedReference, nonActionState, nearDuplicate } = require('../utils/canonicalMinutes/trooperPolish');
 
 function actionPayload() {
   return {
@@ -60,4 +60,13 @@ test('missing Trooper configuration safely suppresses unresolved actions without
   assert.equal(result.used, false);
   assert.deepEqual(result.payload.screens.actions, []);
   assert.equal('_canonicalEvidencePack' in result.payload, false);
+});
+
+test('post-Trooper checks reject availability states and repeated discussion prose', () => {
+  assert.equal(nonActionState('Be out for the next couple of days'), true);
+  assert.equal(nonActionState('Review the mute-button flash sequence'), false);
+  assert.equal(nearDuplicate(
+    'The team reviewed technical-file progress, current priorities and outstanding deliverables.',
+    'Technical-file progress, current priorities and outstanding deliverables were reviewed.'
+  ), true);
 });

@@ -91,6 +91,15 @@ test('real T733 transcript is covered by the staged technical-file purpose polic
   assert.ok(plan.objectives.every((item) => !/^(?:Review )?(?:That|And|No|Emma\b)/i.test(item.text)));
 });
 
+test('real T761 software weekly transcript uses the technical-file evidence frame', async () => {
+  const transcript = await fs.readFile(path.join(__dirname, '..', 'scripts', 'meeting-minutes-final-golden', '025_real_t761_eakin_sw_weekly_transcript', 'transcript.txt'), 'utf8');
+  const plan = purposePlan({ type: 'Project review', title: 'Client T761 Eakin SW Weekly Checkin' }, prepareEvidence(transcript));
+  assert.equal(plan.profileId, 'technical_file_review');
+  assert.ok(plan.topics.some((item) => item.text === 'Software changes and review'));
+  assert.ok(plan.topics.some((item) => item.text === 'Electrical compliance testing'));
+  assert.ok(plan.topics.every((item) => !/\b(?:I can't|I presume|you know|kind of)\b/i.test(item.text)));
+});
+
 test('importer-obligations title activates grounded regulatory workstreams', () => {
   const plan = purposePlan({ type: 'Project review', title: 'Importer Obligations Review Plan' }, evidence([
     'The QMS manual will support the importer obligations and compliance procedures.',

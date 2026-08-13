@@ -88,7 +88,8 @@ const MEETING_PROFILES = [
   },
   {
     id: 'technical_file_review',
-    matches: (type, title) => /\b(?:tech(?:nical)? file|technical documentation)\b.*\b(?:review|weekly|status|check-?in)\b/i.test(`${type} ${title}`),
+    matches: (type, title) => /\b(?:tech(?:nical)? file|technical documentation)\b.*\b(?:review|weekly|status|check-?in)\b/i.test(`${type} ${title}`)
+      || /\b(?:sw|software)\b.*\b(?:weekly|review|status|check[ -]?in)\b/i.test(`${type} ${title}`),
     riskEvidence: /\b(?:outstanding (?:point|issue)|issue remains|incompatib|unresolved|missing|cannot|can't|delay|block|gap(?:s)? (?:that|which|remain)|high-risk area)\b/i,
     dimensions: [
       {

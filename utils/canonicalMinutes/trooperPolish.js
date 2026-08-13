@@ -16,11 +16,26 @@ function unresolvedReference(value) {
     || /\bkind of\b|\bsort of\b|\byeah\b|\byep\b|\bunspecified\b|\[[^\]]+\]/i.test(text);
 }
 
+function nonActionState(value) {
+  return /^(?:be|remain|stay)\s+(?:out|away|off|unavailable|available)\b/i.test(clean(value));
+}
+
+function tokenSet(value) {
+  return new Set(clean(value).toLowerCase().split(/[^a-z0-9]+/).filter((token) => token.length > 3 && !['team', 'reviewed', 'specific', 'regarding', 'including'].includes(token)));
+}
+
+function nearDuplicate(left, right) {
+  const a = tokenSet(left); const b = tokenSet(right);
+  if (!a.size || !b.size) return false;
+  const shared = [...a].filter((token) => b.has(token)).length;
+  return shared / Math.min(a.size, b.size) >= 0.72;
+}
+
 function canonicalFallback(payload) {
   const base = { ...payload, screens: { ...(payload?.screens || {}) } };
   delete base._canonicalEvidencePack;
   if (Array.isArray(base.screens.actions)) {
-    base.screens.actions = base.screens.actions.filter((item) => !unresolvedReference(item.action));
+    base.screens.actions = base.screens.actions.filter((item) => !unresolvedReference(item.action) && !nonActionState(item.action));
   }
   return base;
 }
@@ -59,7 +74,7 @@ function promptFor(stage, payload, evidencePack) {
     '- Return valid JSON only.',
     '',
     'CONFIRMED_STATE:',
-    JSON.stringify({ stagedStage: stage, screens: payload.screens, decisions: payload.decisions, risks: payload.risks }, null, 2),
+    JSON.stringify({ stagedStage: stage }, null, 2),
     '',
     'BOUNDED_MINILM_EVIDENCE:',
     JSON.stringify(evidencePack, null, 2),
@@ -94,7 +109,7 @@ function applyActionRewrite(payload, output, evidencePack) {
     return (byIndex.get(index) || []).slice(0, 3).flatMap((candidate) => {
       if (!validReferences(candidate, pack)) return [];
       const action = clean(candidate.action);
-      if (!action || unresolvedReference(action) || action.split(/\s+/).length < 4) return [];
+      if (!action || unresolvedReference(action) || nonActionState(action) || action.split(/\s+/).length < 4) return [];
       if (clean(candidate.owner).toLowerCase() !== clean(source.owner).toLowerCase()) return [];
       if (clean(candidate.deadline).toLowerCase() !== clean(source.deadline).toLowerCase()) return [];
       return [{ ...source, action, evidenceIds: candidate.evidenceIds }];
@@ -110,7 +125,11 @@ function applyDiscussionRewrite(payload, output, evidencePack) {
   const discussion = sourceCards.map((source, index) => {
     const candidate = byIndex.get(index);
     const pack = evidencePack[index];
-    const points = Array.isArray(candidate?.points) ? candidate.points.map(clean).filter((point) => point && !unresolvedReference(point) && point.split(/\s+/).length >= 5) : [];
+    const points = [];
+    for (const point of Array.isArray(candidate?.points) ? candidate.points.map(clean) : []) {
+      if (!point || unresolvedReference(point) || point.split(/\s+/).length < 5 || points.some((existing) => nearDuplicate(existing, point))) continue;
+      points.push(point);
+    }
     if (!candidate || !pack || clean(candidate.topic) !== clean(source.topic) || !validReferences(candidate, pack) || !points.length) return source;
     return { ...source, points, evidenceIds: candidate.evidenceIds };
   });
@@ -148,4 +167,4 @@ async function polishCanonicalStage(payload, options = {}) {
   return { payload: rewritten, used: true, reason: 'Trooper rewrote bounded MiniLM evidence.', usage: body?.usage || null };
 }
 
-module.exports = { promptFor, polishCanonicalStage, applyActionRewrite, applyDiscussionRewrite, unresolvedReference, canonicalFallback };
+module.exports = { promptFor, polishCanonicalStage, applyActionRewrite, applyDiscussionRewrite, unresolvedReference, canonicalFallback, nonActionState, nearDuplicate };
