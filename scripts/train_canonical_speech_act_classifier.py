@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 
 import joblib
+import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import classification_report, confusion_matrix, f1_score
@@ -47,6 +48,7 @@ def main() -> int:
     parser.add_argument("--output", required=True)
     parser.add_argument("--allow-unreviewed", action="store_true")
     parser.add_argument("--base-bundle", help="Preserve existing heads from this bundle and train only contextual heads")
+    parser.add_argument("--discourse-data", help="Optional contextual discourse-role training CSV")
     args = parser.parse_args()
     frame = pd.read_csv(args.data).fillna("")
     contextual_targets = ("lifecycle_state", "context_dependency", "canonical_worthiness", "temporal_role")
@@ -97,8 +99,23 @@ def main() -> int:
         bundle[f"{prefix}_label_encoder"] = encoder
         bundle[f"{prefix}_classifier"] = model
         contextual_metrics[target] = {"available": True, **head_metrics}
+    discourse_metrics = {"available": False, "reason": "no_discourse_data"}
+    if args.discourse_data:
+        discourse_frame = pd.read_csv(args.discourse_data).fillna("")
+        discourse_leakage = discourse_frame.groupby("group_id")["recommended_split"].nunique()
+        if (discourse_leakage > 1).any():
+            raise SystemExit("Discourse-role group leakage detected across data splits.")
+        discourse_current = embedder.encode(discourse_frame["current_text"].tolist(), normalize_embeddings=True, convert_to_numpy=True, show_progress_bar=False)
+        discourse_context = embedder.encode(discourse_frame["context_text"].tolist(), normalize_embeddings=True, convert_to_numpy=True, show_progress_bar=False)
+        discourse_features = np.hstack([discourse_current, discourse_context, np.abs(discourse_current - discourse_context), discourse_current * discourse_context])
+        discourse_encoder, discourse_model, discourse_metrics = single_head(discourse_frame, discourse_features, "discourse_role")
+        bundle["discourse_role_label_encoder"] = discourse_encoder
+        bundle["discourse_role_classifier"] = discourse_model
+        bundle["discourse_role_feature_contract"] = "current_context_absdiff_product_v1"
+        discourse_metrics = {"available": True, **discourse_metrics}
+        bundle["bundle_schema_version"] = max(5, bundle.get("bundle_schema_version", 4))
     joblib.dump(bundle, output / "classifier.joblib")
-    metrics = {"rows": len(frame), "groups": frame["group_id"].nunique(), "evidenceType": evidence_metrics, "actionState": action_metrics, "contextualHeads": contextual_metrics}
+    metrics = {"rows": len(frame), "groups": frame["group_id"].nunique(), "evidenceType": evidence_metrics, "actionState": action_metrics, "contextualHeads": contextual_metrics, "discourseRole": discourse_metrics}
     (output / "metrics.json").write_text(json.dumps(metrics, indent=2) + "\n")
     frame.to_csv(output / "training_data_used.csv", index=False)
     print(json.dumps(metrics, indent=2))

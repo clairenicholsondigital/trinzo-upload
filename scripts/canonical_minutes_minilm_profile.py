@@ -16,7 +16,7 @@ from pathlib import Path
 
 from meeting_minutes_minilm_experiment import MiniLMBackend
 
-REPO_CLASSIFIER_PATH = Path(__file__).resolve().parent.parent / "artifacts" / "canonical-speech-act-model-v3" / "classifier.joblib"
+REPO_CLASSIFIER_PATH = Path(__file__).resolve().parent.parent / "artifacts" / "canonical-speech-act-model-v9" / "classifier.joblib"
 DEFAULT_CLASSIFIER_PATH = str(REPO_CLASSIFIER_PATH if REPO_CLASSIFIER_PATH.exists() else Path("/root/meeting-minutes-evidence-model/runs/owner-framing-20260810T224329Z/model_bundle/classifier.joblib"))
 
 
@@ -166,6 +166,14 @@ def main() -> None:
             encoder = trained.get(f"{prefix}_label_encoder")
             if classifier is not None and encoder is not None:
                 contextual_predictions[output_key] = (classifier.predict_proba(context_matrix), list(encoder.classes_))
+        discourse_classifier = trained.get("discourse_role_classifier")
+        discourse_encoder = trained.get("discourse_role_label_encoder")
+        if discourse_classifier is not None and discourse_encoder is not None:
+            if trained.get("discourse_role_feature_contract") == "current_context_absdiff_product_v1":
+                discourse_features = np.hstack([matrix, context_matrix, np.abs(matrix - context_matrix), matrix * context_matrix])
+            else:
+                discourse_features = context_matrix
+            contextual_predictions["discourseRoleProbabilities"] = (discourse_classifier.predict_proba(discourse_features), list(discourse_encoder.classes_))
 
     records = []
     event_output = {}
@@ -213,7 +221,7 @@ def main() -> None:
         }
     print(json.dumps({
         "available": True,
-        "profileSchemaVersion": 2,
+        "profileSchemaVersion": 3,
         "shadow": {"enabled": bool(os.environ.get("MEETING_MINUTES_ENRICHED_SHADOW", "1") != "0"), "bundleSchemaVersion": int(trained.get("bundle_schema_version", 3)) if trained else None, "headsAvailable": sorted(contextual_predictions.keys()) if trained else []},
         "modelName": backend.model_name,
         "classifierModel": str(classifier_path) if trained is not None else "prototype_only",

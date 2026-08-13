@@ -17,6 +17,9 @@ function csvCell(value) {
 
 async function main() {
   process.env.MEETING_MINUTES_ENRICHED_EVIDENCE = '1';
+  if (!process.env.MEETING_MINUTES_EVIDENCE_MODEL) {
+    throw new Error('MEETING_MINUTES_EVIDENCE_MODEL must name the exact classifier bundle used for a recorded golden run.');
+  }
   const commit = String(process.argv[2] || '').trim();
   if (!/^[a-f0-9]{7,40}$/i.test(commit)) throw new Error('Usage: node scripts/record_canonical_staged_golden.js <commit> [run-id]');
   const generatedAt = new Date().toISOString();
@@ -84,6 +87,7 @@ async function main() {
     liveCommit: commit.slice(0, 12),
     generatedAt,
     pipeline: 'canonical_staged_v2',
+    evidenceModel: process.env.MEETING_MINUTES_EVIDENCE_MODEL,
     caseCount: summaries.length,
     totalIssues: summaries.reduce((sum, item) => sum + item.issueCount, 0),
     totalBlockingIssues: summaries.reduce((sum, item) => sum + item.blockingCount, 0),

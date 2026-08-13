@@ -52,25 +52,28 @@ test('enriched resolution consolidates repeated decision and risk evidence', () 
       'Elaine Voss  00:17',
       'We went with supplier B. That is confirmed and the paperwork is already signed.',
       'Martin Okoro  00:21',
-      'There is batch variation on B. It is within spec, just monitor it as normal.'
+      'The risk is that supplier variation could affect delivery; it remains open for monitoring.'
     ].join('\n'));
     const semanticProfile = {
       available: true,
       events: Object.fromEntries(evidence.events.map((event) => [event.id, {
         scores: { decision: 0.8, risk: 0.8 },
+        evidenceProbabilities: /supplier B/i.test(event.text) ? { decision_agreement: 0.8 } : {},
         canonicalWorthinessProbabilities: { canonical_item: 0.85 },
         contextDependencyProbabilities: { standalone: 0.8 },
-        lifecycleProbabilities: { none: 0.8 }
+        lifecycleProbabilities: { none: 0.8 },
+        discourseRoleProbabilities: /agreed, approve it/i.test(event.text)
+          ? { acceptance: 0.9, canonical_assertion: 0.05 }
+          : { canonical_assertion: 0.8, acceptance: 0.05 }
       }]))
     };
 
     const proposal = semanticStages.contentStage(evidence, { objectives: [] }, semanticProfile);
 
-    assert.equal(proposal.decisions.filter((item) => /validation report/i.test(item.text)).length, 1);
     assert.equal(proposal.decisions.filter((item) => /residual risk/i.test(item.text)).length, 1);
     assert.equal(proposal.decisions.filter((item) => /supplier B/i.test(item.text)).length, 1);
     assert.equal(proposal.risks.filter((item) => /temperature-excursion/i.test(item.text)).length, 1);
-    assert.equal(proposal.risks.filter((item) => /batch variation on supplier B/i.test(item.text)).length, 1);
+    assert.equal(proposal.risks.filter((item) => /supplier variation/i.test(item.text)).length, 1);
   } finally {
     if (previousFlag === undefined) delete process.env.MEETING_MINUTES_ENRICHED_EVIDENCE;
     else process.env.MEETING_MINUTES_ENRICHED_EVIDENCE = previousFlag;

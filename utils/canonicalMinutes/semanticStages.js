@@ -4,6 +4,7 @@ const { clean } = require('./evidence');
 const { semanticFor } = require('./minilm');
 const deterministicStages = require('./stages');
 const { deadlineFrom } = deterministicStages;
+const { actionHasConcreteObject, applyOperationalPhaseTiming, attachTemporalContext, composeDecision, composeRisk, consolidate, deriveRoleDecisions, tokenOverlap } = require('./canonicalResolver');
 
 function unique(items, key) {
   const seen = new Set();
@@ -36,7 +37,7 @@ function trainedProbability(profile, event, group, label) {
 }
 
 function enrichedEvidenceEnabled() {
-  return process.env.MEETING_MINUTES_ENRICHED_EVIDENCE === '1';
+  return process.env.MEETING_MINUTES_ENRICHED_EVIDENCE !== '0';
 }
 
 function enrichedProbability(profile, event, group, label) {
@@ -54,6 +55,25 @@ function independentlyCanonical(profile, event) {
   const noncanonical = Math.max(enrichedProbability(profile, event, 'canonicalWorthinessProbabilities', 'supporting_detail'), enrichedProbability(profile, event, 'canonicalWorthinessProbabilities', 'duplicate_expression'), enrichedProbability(profile, event, 'canonicalWorthinessProbabilities', 'context_only'));
   const canonical = enrichedProbability(profile, event, 'canonicalWorthinessProbabilities', 'canonical_item');
   return !((dependency >= 0.65 || noncanonical >= 0.65) && canonical < 0.5);
+}
+
+function discourseMayPublish(profile, event, section) {
+  const discourse = semanticFor(profile, event)?.discourseRoleProbabilities || {};
+  if (!Object.keys(discourse).length || section === 'action') return true;
+  const canonical = Number(discourse.canonical_assertion || 0);
+  const attachment = Math.max(
+    Number(discourse.acceptance || 0), Number(discourse.single_item_recap || 0),
+    Number(discourse.supporting_detail || 0), Number(discourse.context_only || 0),
+    Number(discourse.administrative || 0), Number(discourse.completed_history || 0),
+    Number(discourse.hypothetical || 0), Number(discourse.unassigned_proposal || 0)
+  );
+  const multiItemRecap = Number(discourse.multi_item_recap || 0);
+  if (multiItemRecap >= 0.2 && canonical <= multiItemRecap + 0.05) return false;
+  if (Number(discourse.acceptance || 0) >= 0.5 && Number(discourse.acceptance || 0) > canonical * 2) return false;
+  if (Math.max(Number(discourse.administrative || 0), Number(discourse.context_only || 0)) >= 0.5 && canonical < 0.2) return false;
+  if (canonical < 0.12 && attachment > canonical) return false;
+  if (section === 'decision' && canonical < 0.12 && Number(discourse.canonical_commitment || 0) > canonical) return false;
+  return true;
 }
 
 function participantByFirstName(value, participants) {
@@ -369,13 +389,20 @@ function contentStage(evidence, state, profile) {
       discussion.push({ topic: titleFromRepresentative(prior.text), points: [{ text: point, evidenceIds: [prior.id] }], evidenceIds: [prior.id], topicId: `decision_context_${prior.id}`, cohesion: 1 });
     }
   }
-  const decisions = [...deterministic.decisions];
+  const decisions = deterministic.decisions.map((item) => ({ ...item, deterministic: true }));
+  decisions.push(...deriveRoleDecisions(evidence, decisions));
   const risks = [...deterministic.risks];
   for (const event of evidence.events) {
     const evidenceProbabilities = semanticFor(profile, event).evidenceProbabilities || {};
     const evidenceRank = Object.entries(evidenceProbabilities).sort((left, right) => right[1] - left[1]);
     const decisionSignal = trainedProbability(profile, event, 'signalProbabilities', 'decision_language');
-    if (event.roles.includes('decision_candidate') && independentlyCanonical(profile, event) && ((evidenceRank[0]?.[0] === 'decision_agreement' && evidenceRank[0][1] >= 0.22) || decisionSignal >= 0.72)) {
+    const discourseAssertion = enrichedProbability(profile, event, 'discourseRoleProbabilities', 'canonical_assertion');
+    const eventIndex = evidence.events.findIndex((candidate) => candidate.id === event.id);
+    const sameTurnDecision = evidence.events.slice(Math.max(0, eventIndex - 2), eventIndex)
+      .some((candidate) => candidate.turnId === event.turnId && candidate.roles.includes('decision_candidate'));
+    const policyClause = sameTurnDecision && /\bwe\s+(?:only\s+)?(?:pause|stop|proceed|continue|launch|release)\b/i.test(event.text);
+    const classifierDecisionCandidate = (discourseAssertion >= 0.32 && Number(evidenceProbabilities.decision_agreement || 0) >= 0.25) || policyClause;
+    if ((event.roles.includes('decision_candidate') || classifierDecisionCandidate) && independentlyCanonical(profile, event) && (policyClause || (evidenceRank[0]?.[0] === 'decision_agreement' && evidenceRank[0][1] >= 0.22) || decisionSignal >= 0.72)) {
       let text = clean(event.text).replace(/^(?:yeah|yes|okay|right|so)[,;:\s]+/i, '').replace(/[.]+$/, '');
       if (/\b(?:move|reschedule|change|replace)\s+it\s+to\s+/i.test(text)) {
         const eventIndex = evidence.events.findIndex((item) => item.id === event.id);
@@ -465,6 +492,36 @@ function acceptedTentativeActions(evidence) {
   return actions;
 }
 
+function learnedSlotActions(evidence, profile) {
+  if (process.env.MEETING_MINUTES_SLOT_ACTIONS !== '1') return [];
+  return evidence.events.flatMap((event) => {
+    const semantic = semanticFor(profile, event);
+    const slots = Array.isArray(semantic.canonicalSlots) ? semantic.canonicalSlots : [];
+    const actionSlots = slots.filter((slot) => slot.label === 'ACTION' && Number(slot.confidence || 0) >= 0.58);
+    if (!actionSlots.length) return [];
+    const confirmed = Number(semantic.actionProbabilities?.confirmed_action || 0);
+    const commitment = Number(semantic.discourseRoleProbabilities?.canonical_commitment || 0);
+    const administrative = Number(semantic.discourseRoleProbabilities?.administrative || 0);
+    const recap = Number(semantic.discourseRoleProbabilities?.single_item_recap || 0);
+    const ownerSlot = slots.filter((slot) => slot.label === 'OWNER').sort((left, right) => Number(right.confidence || 0) - Number(left.confidence || 0))[0];
+    const owner = ownerSlot ? participantByFirstName(ownerSlot.text, evidence.participants) : event.speaker;
+    if (!owner || !evidence.participants.includes(owner)) return [];
+    const firstActionStart = Math.min(...actionSlots.map((slot) => Number(slot.start)));
+    const learnedOwner = Number(ownerSlot?.confidence || 0) >= 0.75 && Number(ownerSlot.end) <= firstActionStart;
+    const learnedGate = (learnedOwner && recap >= 0.22)
+      || (learnedOwner && commitment >= 0.42 && confirmed >= 0.45 && commitment >= administrative + 0.08)
+      || (!learnedOwner && commitment >= 0.6 && confirmed >= 0.7 && administrative < 0.18);
+    if (!learnedGate) return [];
+    const actionStart = firstActionStart;
+    const actionEnd = Math.max(...actionSlots.map((slot) => Number(slot.end)));
+    const action = clean(event.text.slice(actionStart, actionEnd));
+    if (!action) return [];
+    const temporalDeadline = Math.max(Number(semantic.temporalRoleProbabilities?.deadline_current || 0), Number(semantic.temporalRoleProbabilities?.deadline_previous || 0));
+    const dueSlot = temporalDeadline >= 0.35 ? slots.filter((slot) => slot.label === 'DUE' && Number(slot.confidence || 0) >= 0.75).sort((left, right) => Number(right.confidence || 0) - Number(left.confidence || 0))[0] : null;
+    return [{ owner, action: action.charAt(0).toUpperCase() + action.slice(1), deadline: dueSlot?.text || 'Not stated', evidenceIds: [event.id], semanticConfidence: Math.max(confirmed, commitment), learnedSlot: true, learnedAssignment: learnedOwner }];
+  });
+}
+
 function decisionDedupKey(item) {
   return clean(item.text).toLowerCase()
     .replace(/^(?:so|well|okay|right)[,;:\s]+/, '')
@@ -473,76 +530,61 @@ function decisionDedupKey(item) {
     .trim();
 }
 
-function contentTokens(value) {
-  const stop = new Set(['the', 'a', 'an', 'and', 'or', 'to', 'for', 'of', 'on', 'in', 'by', 'it', 'that', 'this', 'we', 'i', 'will', 'shall', 'do', 'take', 'agreed', 'decision']);
-  const aliases = { accepted: 'accept', accepting: 'accept', approved: 'approve', approving: 'approve', confirmed: 'confirm', confirming: 'confirm', grouped: 'group', grouping: 'group', monitoring: 'monitor', monitored: 'monitor', questions: 'question', risks: 'risk' };
-  return new Set(clean(value).toLowerCase().match(/[a-z0-9]+/g)?.map((token) => aliases[token] || token).filter((token) => token.length > 2 && !stop.has(token)) || []);
-}
-
-function tokenOverlap(left, right) {
-  const a = contentTokens(left); const b = contentTokens(right);
-  if (!a.size || !b.size) return 0;
-  const shared = [...a].filter((token) => b.has(token)).length;
-  return shared / Math.min(a.size, b.size);
-}
-
-function canonicaliseCandidates(items, textOf, qualityOf) {
-  const groups = [];
-  for (const item of items) {
-    const group = groups.find((existing) => existing.some((candidate) => tokenOverlap(textOf(candidate), textOf(item)) >= 0.55));
-    if (group) group.push(item); else groups.push([item]);
-  }
-  return groups.map((group) => {
-    const representative = [...group].sort((left, right) => qualityOf(right) - qualityOf(left))[0];
-    return { ...representative, evidenceIds: [...new Set(group.flatMap((item) => item.evidenceIds || []))] };
-  });
+function canonicaliseCandidates(items, textOf, qualityOf, profile = null) {
+  return consolidate(items, { textOf, qualityOf, profile, lexicalThreshold: 0.55 });
 }
 
 function resolveEnrichedDecisions(items, evidence, profile) {
   if (!enrichedEvidenceEnabled()) return unique(items, decisionDedupKey);
   const eligible = items.filter((item) => {
     const sources = (item.evidenceIds || []).map((id) => evidence.events.find((event) => event.id === id)).filter(Boolean);
-    const canonicalShape = /^(?:Adopt|Stay|Keep|Move|Finish|Hold|Approve|Accept|Confirm|Do not|Use)\b/i.test(clean(item.text));
-    if (!canonicalShape && sources.some((event) => /\bI\s*(?:['’]ll|will|shall|can|need to|am going to)\b/i.test(event.text))) return false;
-    if (/^(?:yeah|yes|yep)?[,;\s]*(?:agreed|confirmed)(?:[,;\s]+(?:yeah|yes|yep|approve it|no need))*[.!]?$/i.test(clean(item.text))) return false;
-    if (/^just the\b.*\bwe don['’]t need the whole thing again\b/i.test(clean(item.text))) return false;
-    if (/\bwatch item\b/i.test(clean(item.text)) || /^I confirmed\b.*\band it['’]s in\b/i.test(clean(item.text))) return false;
-    if (/\b(?:paperwork['’]?s already signed|nothing left to do|nothing to action)\b/i.test(clean(item.text))
-      && !/^(?:Approve|Accept|Confirm|Do not)\b/.test(clean(item.text))) return false;
-    const recapVerbs = clean(item.text).match(/\b(?:approved|accepted|confirmed)\b/gi) || [];
-    if (recapVerbs.length >= 2) return false;
-    return canonicalShape || sources.some((event) => independentlyCanonical(profile, event));
+    if (item.deterministic) {
+      const canonicalShape = /^(?:Adopt|Stay|Keep|Move|Finish|Hold|Approve|Accept|Confirm|Do not|Use)\b/i.test(clean(item.text));
+      if (canonicalShape) return true;
+    }
+    return sources.some((event) => {
+      const assertion = enrichedProbability(profile, event, 'discourseRoleProbabilities', 'canonical_assertion');
+      const explicitCollectiveDecision = /\b(?:decision\s*(?:is|:)|we\s+(?:have\s+)?(?:decided|agreed|approve|approved|accept|accepted|confirm|confirmed|stay|stayed|concluded|selected|chose|went with)|we\s+(?:only\s+)?(?:pause|stop|proceed|continue|launch|release))\b/i.test(event.text);
+      return independentlyCanonical(profile, event) && discourseMayPublish(profile, event, 'decision') && (explicitCollectiveDecision || assertion >= 0.5);
+    });
   });
-  return canonicaliseCandidates(eligible, (item) => item.text, (item) => {
+  const resolved = canonicaliseCandidates(eligible, (item) => item.text, (item) => {
     const sources = (item.evidenceIds || []).map((id) => evidence.events.find((event) => event.id === id)).filter(Boolean);
     const canonical = Math.max(...sources.map((event) => enrichedProbability(profile, event, 'canonicalWorthinessProbabilities', 'canonical_item')), 0);
-    return canonical + (/^decision:/i.test(clean(item.text)) ? 0.2 : 0) + Math.min(clean(item.text).length, 120) / 1000;
-  });
+    const assertion = Math.max(...sources.map((event) => enrichedProbability(profile, event, 'discourseRoleProbabilities', 'canonical_assertion')), 0);
+    const recap = Math.max(...sources.map((event) => enrichedProbability(profile, event, 'discourseRoleProbabilities', 'multi_item_recap')), 0);
+    const acceptance = Math.max(...sources.map((event) => enrichedProbability(profile, event, 'discourseRoleProbabilities', 'acceptance')), 0);
+    return canonical + assertion - (recap * 0.8) - (acceptance * 0.35);
+  }, profile);
+  const eventById = new Map(evidence.events.map((event) => [event.id, event]));
+  return resolved.map((item) => ({ ...item, text: composeDecision(item, eventById) })).filter((item) => item.text);
 }
 
 function resolveEnrichedRisks(items, evidence, profile) {
   if (!enrichedEvidenceEnabled()) return unique(items, (item) => item.text);
   const eligible = items.filter((item) => {
-    const text = clean(item.text);
     const sources = (item.evidenceIds || []).map((id) => evidence.events.find((event) => event.id === id)).filter(Boolean);
-    const recapVerbs = text.match(/\b(?:approved|accepted|confirmed)\b/gi) || [];
-    if (recapVerbs.length >= 2 || /^next,?\s+/i.test(text) || /^so decision\b/i.test(text)) return false;
-    if (/\b(?:nothing to action|formally accepting it)\b/i.test(text) && !/^Residual temperature-excursion risk/i.test(text)) return false;
-    if (/\bwatch item\b/i.test(text)) {
-      const indices = sources.map((source) => evidence.events.indexOf(source)).filter((index) => index >= 0);
-      const nearby = indices.some((index) => /\bbatch variation\b/i.test(evidence.events.slice(Math.max(0, index - 2), index + 3).map((event) => event.text).join(' ')));
-      if (nearby) return false;
-    }
-    const canonicalShape = /^(?:Residual temperature-excursion risk|Batch variation on supplier B|SSL certificate expiry|Launch error rate|The session could overrun|Screen-share transfer|Presenter connection|Recording could)/i.test(text);
-    return canonicalShape || sources.some((event) => independentlyCanonical(profile, event));
+    return sources.some((event) => independentlyCanonical(profile, event));
   });
-  return canonicaliseCandidates(eligible, (item) => item.text, (item) => {
-    const canonicalShape = /^(?:Residual temperature-excursion risk|Batch variation on supplier B|SSL certificate expiry|Launch error rate)/i.test(clean(item.text));
-    return (canonicalShape ? 1 : 0) + Math.min(clean(item.text).length, 120) / 1000;
-  });
+  const eventById = new Map(evidence.events.map((event) => [event.id, event]));
+  return consolidate(eligible, {
+    textOf: (item) => item.text,
+    qualityOf: (item) => {
+    const sources = (item.evidenceIds || []).map((id) => evidence.events.find((event) => event.id === id)).filter(Boolean);
+    const canonical = Math.max(...sources.map((event) => enrichedProbability(profile, event, 'canonicalWorthinessProbabilities', 'canonical_item')), 0);
+      const concision = Math.max(0, 1 - (clean(item.text).split(/\s+/).length / 60));
+      return canonical + (concision * 0.12);
+    },
+    profile,
+    eventById,
+    lexicalThreshold: 0.3,
+    anchorGrouping: true,
+    anchorTurnDistance: 8
+  }).map((item) => ({ ...item, text: composeRisk(item, evidence, profile) }));
 }
 
 function actionIsSuperseded(item, evidence, profile) {
+  if (item.learnedSlot) return false;
   const indices = (item.evidenceIds || []).map((id) => evidence.events.findIndex((event) => event.id === id)).filter((index) => index >= 0);
   if (!indices.length || !item.owner || item.owner === 'Not stated') return false;
   const end = Math.max(...indices);
@@ -559,22 +601,38 @@ function actionIsSuperseded(item, evidence, profile) {
 function resolveEnrichedActions(items, evidence, profile) {
   if (!enrichedEvidenceEnabled()) return items;
   const eligible = items.filter((item) => !actionIsSuperseded(item, evidence, profile)).filter((item) => {
-    if (/^(?:still\s+)?(?:message|tell|send)\s+you\b/i.test(clean(item.action))) return false;
-    if (/^find\s+(?:that|the)\s+(?:little\s+)?(?:clock|button|icon)\b.*\b(?:top|bottom|left|right)\b/i.test(clean(item.action))) return false;
     const sources = (item.evidenceIds || []).map((id) => evidence.events.find((event) => event.id === id)).filter(Boolean);
     const inactive = Math.max(...sources.flatMap((event) => ['completed', 'inactive', 'superseded'].map((label) => enrichedProbability(profile, event, 'lifecycleProbabilities', label))), 0);
     const active = Math.max(...sources.map((event) => enrichedProbability(profile, event, 'lifecycleProbabilities', 'active')), 0);
-    return sources.some((event) => independentlyCanonical(profile, event)) && !(inactive >= 0.65 && inactive > active);
+    const confirmed = Math.max(...sources.map((event) => trainedProbability(profile, event, 'actionProbabilities', 'confirmed_action')), 0);
+    const possible = Math.max(...sources.map((event) => trainedProbability(profile, event, 'actionProbabilities', 'possible_action')), 0);
+    const commitment = Math.max(...sources.map((event) => enrichedProbability(profile, event, 'discourseRoleProbabilities', 'canonical_commitment')), 0);
+    const canonical = Math.max(...sources.map((event) => enrichedProbability(profile, event, 'canonicalWorthinessProbabilities', 'canonical_item')), 0);
+    const noise = Math.max(...sources.map((event) => trainedProbability(profile, event, 'evidenceProbabilities', 'low_value_noise')), 0);
+    const learnedOrActionable = item.learnedSlot || confirmed >= 0.08 || possible >= 0.08 || commitment >= 0.1;
+    const completeEnough = actionHasConcreteObject(item.action) || canonical >= 0.45 || noise < 0.5;
+    return learnedOrActionable && completeEnough && (item.learnedSlot || sources.some((event) => independentlyCanonical(profile, event))) && !(inactive >= 0.65 && inactive > active);
   });
-  const groups = [];
-  for (const item of eligible) {
-    const group = groups.find((existing) => existing.some((candidate) => clean(candidate.owner).toLowerCase() === clean(item.owner).toLowerCase() && tokenOverlap(candidate.action, item.action) >= 0.5));
-    if (group) group.push(item); else groups.push([item]);
-  }
-  return groups.map((group) => {
-    const quality = (item) => actionPublishability(item, evidence, profile) + (item.deadline !== 'Not stated' ? 0.2 : 0) - (/\?|\b(?:it|that)\b/i.test(item.action) ? 0.25 : 0);
-    const representative = [...group].sort((left, right) => quality(right) - quality(left))[0];
-    return { ...representative, evidenceIds: [...new Set(group.flatMap((item) => item.evidenceIds || []))] };
+  const eventById = new Map(evidence.events.map((event) => [event.id, event]));
+  const resolved = consolidate(eligible, {
+    textOf: (item) => item.action,
+    ownerOf: (item) => item.owner,
+    qualityOf: (item) => actionPublishability(item, evidence, profile) + (Math.min(clean(item.action).split(/\s+/).length, 15) * 0.025) + (item.deadline !== 'Not stated' ? 0.2 : 0) - (item.learnedSlot ? 0.35 : 0) - (/\?|\b(?:it|that)\b/i.test(item.action) ? 0.25 : 0),
+    profile,
+    eventById,
+    lexicalThreshold: 0.5,
+    anchorGrouping: true,
+    anchorTurnDistance: 24
+  });
+  return resolved.filter((item) => {
+    const sameOwner = resolved.filter((other) => other !== item && clean(other.owner).toLowerCase() === clean(item.owner).toLowerCase());
+    if (!sameOwner.length) return true;
+    if (item.learnedSlot && !item.learnedAssignment && sameOwner.some((other) => other.learnedAssignment)) return false;
+    const words = clean(item.action).split(/\s+/).filter(Boolean).length;
+    const source = (item.evidenceIds || []).map((id) => evidence.events.find((event) => event.id === id)).filter(Boolean);
+    const recap = Math.max(...source.map((event) => enrichedProbability(profile, event, 'discourseRoleProbabilities', 'multi_item_recap')), 0);
+    const commitment = Math.max(...source.map((event) => enrichedProbability(profile, event, 'discourseRoleProbabilities', 'canonical_commitment')), 0);
+    return words > 3 && !(recap >= 0.18 && recap > commitment);
   });
 }
 
@@ -608,23 +666,21 @@ function actionsStage(evidence, state, profile, topology) {
     ...threads.flatMap((thread) => actionsFromThread(thread, evidence, profile)),
     ...acceptedTentativeActions(evidence),
     ...acceptedCollectiveActions(evidence),
-    ...explicitObligationActions(evidence)
+    ...explicitObligationActions(evidence),
+    ...learnedSlotActions(evidence, profile)
   ].map((item) => resolveActionReferent(item, evidence)), (item) => `${item.owner}|${item.action}`);
   if (enrichedEvidenceEnabled()) {
-    actions = resolveEnrichedActions(actions, evidence, profile).map((item) => {
+    actions = applyOperationalPhaseTiming(attachTemporalContext(resolveEnrichedActions(actions, evidence, profile).map((item) => {
       if (item.deadline && item.deadline !== 'Not stated') return item;
       const lastIndex = Math.max(...(item.evidenceIds || []).map((id) => evidence.events.findIndex((event) => event.id === id)), -1);
       const deadlineEvent = evidence.events.slice(lastIndex + 1, lastIndex + 3).find((event) => enrichedLabel(profile, event, 'temporalRoleProbabilities') === 'deadline_previous' && deadlineFrom(event.text) !== 'Not stated');
       if (deadlineEvent) return { ...item, deadline: deadlineFrom(deadlineEvent.text), evidenceIds: [...new Set([...(item.evidenceIds || []), deadlineEvent.id])] };
-      if (topology.mode === 'distributed_recap' && /\b(?:start|monitor)\b.*\brecord(?:ing)?\b/i.test(item.action)) return { ...item, deadline: "from the host's first words" };
-      if (topology.mode === 'distributed_recap' && /\b(?:restore|build(?:ing)?|make|re-share|reshare|circulate|write)\b/i.test(item.action)) return { ...item, deadline: 'before the live session' };
-      if (topology.mode === 'distributed_recap' && /\b(?:opening|housekeeping|handover|chat|present|record|red dot|questions?|answers?|joke|cue)\b/i.test(item.action)) return { ...item, deadline: 'during the live session' };
       return item;
-    });
+    }), evidence, profile, deadlineFrom), evidence, topology);
   }
   const structuredEvidenceIds = new Set(evidence.events.filter((event) => event.structuredSource === 'actions_owner_deadline_table').map((event) => event.id));
   if (structuredEvidenceIds.size) {
-    actions = unique(actions.filter((item) => (item.evidenceIds || []).some((id) => structuredEvidenceIds.has(id))).map((item) => ({
+    actions = unique(actions.filter((item) => item.learnedSlot || (item.evidenceIds || []).some((id) => structuredEvidenceIds.has(id)) || actionPublishability(item, evidence, profile) >= 0.45).map((item) => ({
       ...item,
       action: clean(clean(item.action)
         .replace(/\bRsk Mgmt\b/gi, 'Risk Management')
@@ -662,4 +718,4 @@ function actionsStage(evidence, state, profile, topology) {
   };
 }
 
-module.exports = { contextStage, contentStage, actionsStage, buildCommitmentThreads, actionsFromThread, hasSemanticRole };
+module.exports = { contextStage, contentStage, actionsStage, buildCommitmentThreads, actionsFromThread, hasSemanticRole, learnedSlotActions, resolveEnrichedActions };

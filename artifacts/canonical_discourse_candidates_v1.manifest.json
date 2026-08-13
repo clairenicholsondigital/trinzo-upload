@@ -1,0 +1,26 @@
+{
+  "rows": 1480,
+  "groups": 60,
+  "groupLeakage": {},
+  "splitCounts": {
+    "train": 1036,
+    "validation": 222,
+    "test": 222
+  },
+  "labelCounts": {
+    "canonical_commitment": 200,
+    "single_item_recap": 100,
+    "unassigned_proposal": 100,
+    "hypothetical": 80,
+    "completed_history": 120,
+    "state_modifier": 160,
+    "canonical_assertion": 280,
+    "supporting_detail": 140,
+    "administrative": 100,
+    "temporal_attachment": 40,
+    "acceptance": 100,
+    "multi_item_recap": 40,
+    "context_only": 20
+  },
+  "frozenGoldenTextUsed": false
+}

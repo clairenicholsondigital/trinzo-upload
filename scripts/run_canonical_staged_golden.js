@@ -6,6 +6,7 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 const mammoth = require('mammoth');
 const { runCanonicalNoEditPass } = require('../utils/canonicalMinutes/runner');
+const { assessWeightedErrors } = require('../utils/meetingMinutesCoreGolden');
 
 const ROOT = path.resolve(__dirname, 'meeting-minutes-core-golden');
 
@@ -17,6 +18,7 @@ async function main() {
   const cases = [];
   for (const caseName of caseNames) {
     const caseDirectory = path.join(caseRoot, caseName);
+    const manifest = JSON.parse(await fs.readFile(path.join(caseDirectory, 'manifest.json'), 'utf8'));
     const { value } = await mammoth.extractRawText({ path: path.join(caseDirectory, 'transcript.docx') });
     const result = runCanonicalNoEditPass(value, { fileName: `${caseName}.docx` });
     const visible = result.visibleOutput;
@@ -32,13 +34,19 @@ async function main() {
     const scored = spawnSync('python3', [path.join(ROOT, 'tools/score_output.py'), caseDirectory, outputPath], { encoding: 'utf8' });
     if (scored.status !== 0) throw new Error(scored.stderr || `Scoring failed for ${caseName}`);
     const score = JSON.parse(scored.stdout);
-    cases.push({ caseName, score, extractionMode: result.metrics.extractionMode, topologyObservation: result.metrics.topologyObservation, counts: { actions: normalised.actions.length, decisions: normalised.decisions.length, risks: normalised.risks.length }, semanticLockPassed: result.audits.semanticLock.passed, completenessSuggestions: result.audits.completeness.suggestions.length, semanticCandidateCount: result.metrics.semanticCandidateCount, topicClusterCount: result.metrics.topicClusterCount, durationMs: result.metrics.durationMs });
+    const weightedAssessment = assessWeightedErrors(manifest, {
+      ...normalised,
+      actions: normalised.actions.map(({ owner, action, deadline }) => ({ owner, action, due_evidence: deadline }))
+    });
+    cases.push({ caseName, score, weightedAssessment, extractionMode: result.metrics.extractionMode, topologyObservation: result.metrics.topologyObservation, counts: { actions: normalised.actions.length, decisions: normalised.decisions.length, risks: normalised.risks.length }, semanticLockPassed: result.audits.semanticLock.passed, completenessSuggestions: result.audits.completeness.suggestions.length, semanticCandidateCount: result.metrics.semanticCandidateCount, topicClusterCount: result.metrics.topicClusterCount, durationMs: result.metrics.durationMs });
   }
   const summary = {
     pipeline: 'canonical_staged_v2',
     cases: cases.length,
     meanScore: Math.round((cases.reduce((sum, item) => sum + item.score.score, 0) / cases.length) * 10) / 10,
     casesAtOrAbove75: cases.filter((item) => item.score.score >= 75).length,
+    totalIssues: cases.reduce((sum, item) => sum + item.weightedAssessment.errorCount, 0),
+    totalBlockingIssues: cases.reduce((sum, item) => sum + item.weightedAssessment.blockingCount, 0),
     semanticLockPasses: cases.filter((item) => item.semanticLockPassed).length,
     extractionModes: cases.reduce((counts, item) => ({ ...counts, [item.extractionMode]: (counts[item.extractionMode] || 0) + 1 }), {}),
     modelCalls: cases.length,
