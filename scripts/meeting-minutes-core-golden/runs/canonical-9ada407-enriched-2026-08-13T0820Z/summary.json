@@ -1,0 +1,149 @@
+{
+  "liveCommit": "9ada407955b5",
+  "generatedAt": "2026-08-13T08:07:24.683Z",
+  "pipeline": "canonical_staged_v2",
+  "caseCount": 10,
+  "totalIssues": 11,
+  "totalBlockingIssues": 5,
+  "maximumIssuesPerCase": 3,
+  "casesBelowFiveIssues": 10,
+  "averageScore": 97.8,
+  "averageWeightedScore": 93.8,
+  "summaries": [
+    {
+      "case": "01_explicit_action_recap",
+      "score": 100,
+      "weightedScore": 100,
+      "issueCount": 0,
+      "blockingCount": 0,
+      "actions": 8,
+      "decisions": 3,
+      "risks": 4,
+      "errorTypeCounts": {},
+      "semanticLockPassed": true
+    },
+    {
+      "case": "02_scattered_actions",
+      "score": 100,
+      "weightedScore": 82,
+      "issueCount": 3,
+      "blockingCount": 2,
+      "actions": 6,
+      "decisions": 1,
+      "risks": 2,
+      "errorTypeCounts": {
+        "extra_or_unsupported_action": 2,
+        "extra_risk": 1
+      },
+      "semanticLockPassed": true
+    },
+    {
+      "case": "03_superseded_actions",
+      "score": 100,
+      "weightedScore": 100,
+      "issueCount": 0,
+      "blockingCount": 0,
+      "actions": 1,
+      "decisions": 1,
+      "risks": 0,
+      "errorTypeCounts": {},
+      "semanticLockPassed": true
+    },
+    {
+      "case": "04_completed_vs_outstanding",
+      "score": 100,
+      "weightedScore": 100,
+      "issueCount": 0,
+      "blockingCount": 0,
+      "actions": 1,
+      "decisions": 1,
+      "risks": 0,
+      "errorTypeCounts": {},
+      "semanticLockPassed": true
+    },
+    {
+      "case": "05_hypothetical_language",
+      "score": 100,
+      "weightedScore": 96,
+      "issueCount": 1,
+      "blockingCount": 0,
+      "actions": 1,
+      "decisions": 2,
+      "risks": 1,
+      "errorTypeCounts": {
+        "extra_or_unsupported_decision": 1
+      },
+      "semanticLockPassed": true
+    },
+    {
+      "case": "06_ownership_chaos",
+      "score": 100,
+      "weightedScore": 92,
+      "issueCount": 1,
+      "blockingCount": 1,
+      "actions": 4,
+      "decisions": 0,
+      "risks": 0,
+      "errorTypeCounts": {
+        "extra_or_unsupported_action": 1
+      },
+      "semanticLockPassed": true
+    },
+    {
+      "case": "07_deadline_torture",
+      "score": 85,
+      "weightedScore": 96,
+      "issueCount": 1,
+      "blockingCount": 0,
+      "actions": 3,
+      "decisions": 1,
+      "risks": 1,
+      "errorTypeCounts": {
+        "extra_or_unsupported_decision": 1
+      },
+      "semanticLockPassed": true
+    },
+    {
+      "case": "08_attendee_provenance",
+      "score": 100,
+      "weightedScore": 82,
+      "issueCount": 3,
+      "blockingCount": 2,
+      "actions": 4,
+      "decisions": 1,
+      "risks": 2,
+      "errorTypeCounts": {
+        "extra_or_unsupported_action": 2,
+        "extra_risk": 1
+      },
+      "semanticLockPassed": true
+    },
+    {
+      "case": "09_no_action_meeting",
+      "score": 100,
+      "weightedScore": 100,
+      "issueCount": 0,
+      "blockingCount": 0,
+      "actions": 0,
+      "decisions": 4,
+      "risks": 2,
+      "errorTypeCounts": {},
+      "semanticLockPassed": true
+    },
+    {
+      "case": "10_chaos_goblin",
+      "score": 92.5,
+      "weightedScore": 90,
+      "issueCount": 2,
+      "blockingCount": 0,
+      "actions": 3,
+      "decisions": 1,
+      "risks": 1,
+      "errorTypeCounts": {
+        "missing_or_wrong_due_evidence": 1,
+        "missing_key_decision": 1
+      },
+      "semanticLockPassed": true
+    }
+  ]
+}

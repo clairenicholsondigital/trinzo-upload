@@ -7,6 +7,11 @@ const REQUIRED_EDIT_BASELINE = {
   label: 'Earlier 12 August run',
   count: 115
 };
+const REPORTED_CANONICAL_BASELINE = {
+  label: '12 August reported live run',
+  count: 47,
+  blockingCount: 14
+};
 const REQUIRED_EDIT_RUN_OVERRIDES = {
   'live-no-edit-804c290': 115
 };
@@ -639,6 +644,13 @@ async function getMeetingMinutesCoreGoldenStatus() {
   const currentRequiredEdits = weightedCases.length
     ? weightedCases.reduce((sum, item) => sum + item.latestResult.weightedAssessment.errorCount, 0)
     : null;
+  const currentBlockingIssues = weightedCases.length
+    ? weightedCases.reduce((sum, item) => sum + item.latestResult.weightedAssessment.blockingCount, 0)
+    : null;
+  const maximumIssuesPerCase = weightedCases.length
+    ? Math.max(...weightedCases.map((item) => item.latestResult.weightedAssessment.errorCount), 0)
+    : null;
+  const casesBelowFiveIssues = weightedCases.filter((item) => item.latestResult.weightedAssessment.errorCount < 5).length;
   const requiredEditTrend = await buildRequiredEditTrend(records, manifestByCaseId);
   const currentTrendPoint = requiredEditTrend.length ? requiredEditTrend[requiredEditTrend.length - 1] : null;
   const previousTrendPoint = requiredEditTrend.length > 1 ? requiredEditTrend[requiredEditTrend.length - 2] : null;
@@ -679,6 +691,15 @@ async function getMeetingMinutesCoreGoldenStatus() {
       requiredEditBaselineLabel: previousTrendPoint?.label || REQUIRED_EDIT_BASELINE.label,
       previousRequiredEdits,
       currentRequiredEdits: latestRequiredEdits,
+      currentBlockingIssues,
+      maximumIssuesPerCase,
+      casesBelowFiveIssues,
+      targetCaseCount: cases.length,
+      reportedBaselineLabel: REPORTED_CANONICAL_BASELINE.label,
+      reportedBaselineIssues: REPORTED_CANONICAL_BASELINE.count,
+      reportedBaselineBlockingIssues: REPORTED_CANONICAL_BASELINE.blockingCount,
+      reportedIssueReduction: typeof latestRequiredEdits === 'number' ? REPORTED_CANONICAL_BASELINE.count - latestRequiredEdits : null,
+      reportedBlockingReduction: typeof currentBlockingIssues === 'number' ? REPORTED_CANONICAL_BASELINE.blockingCount - currentBlockingIssues : null,
       requiredEditReduction,
       requiredEditReductionPercent: typeof requiredEditReduction === 'number'
         ? Math.round((requiredEditReduction / Math.max(previousRequiredEdits, 1)) * 1000) / 10

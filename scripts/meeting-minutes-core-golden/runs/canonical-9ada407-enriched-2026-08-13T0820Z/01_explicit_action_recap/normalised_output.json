@@ -1,0 +1,62 @@
+{
+  "attendees": [
+    "Priya Sethi",
+    "Tom Whitfield",
+    "Nadia Okonkwo",
+    "Callum Reid"
+  ],
+  "client_attendees": [],
+  "actions": [
+    {
+      "owner": "Callum Reid",
+      "action": "Building the closing slide with the QR code and the link",
+      "due_evidence": "before the live session"
+    },
+    {
+      "owner": "Nadia Okonkwo",
+      "action": "Group chat questions and privately cue the presenter during the live session",
+      "due_evidence": "during the live session"
+    },
+    {
+      "owner": "Tom Whitfield",
+      "action": "Keep self-introduction and answers to roughly thirty seconds and omit the opening joke",
+      "due_evidence": "during the live session"
+    },
+    {
+      "owner": "Priya Sethi",
+      "action": "Handle the opening, the housekeeping, tap-the-speech-bubble line; Cover any dead air on the handovers",
+      "due_evidence": "during the live session"
+    },
+    {
+      "owner": "Callum Reid",
+      "action": "Restore the animation on the three-things slide",
+      "due_evidence": "before the live session"
+    },
+    {
+      "owner": "Nadia Okonkwo",
+      "action": "Write and circulate three backup questions",
+      "due_evidence": "tonight"
+    },
+    {
+      "owner": "Callum Reid",
+      "action": "Start and monitor the recording, verify the red dot and take a screenshot",
+      "due_evidence": "from the host's first words"
+    },
+    {
+      "owner": "all attendees",
+      "action": "Run a short opening and first-handover warm-up",
+      "due_evidence": "08:30 tomorrow"
+    }
+  ],
+  "decisions": [
+    "Finish content by 35 minutes and reserve 20 minutes for questions",
+    "Hold a short warm-up at 08:30 before the live session",
+    "Use Priya Sethi as host and closer"
+  ],
+  "risks": [
+    "Screen-share transfer can create dead air",
+    "Presenter connection could drop",
+    "The session could overrun and crowd out questions",
+    "Recording could miss the opening or stop"
+  ]
+}

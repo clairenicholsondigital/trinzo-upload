@@ -1,0 +1,19 @@
+{
+  "attendees": [
+    "Helen Ward",
+    "Omar Khan",
+    "Lucy Price"
+  ],
+  "client_attendees": [],
+  "actions": [
+    {
+      "owner": "Lucy Price",
+      "action": "Draft and send the release note by",
+      "due_evidence": "Wednesday morning"
+    }
+  ],
+  "decisions": [
+    "Keep the release scheduled for Friday, provided Lucy's note is ready"
+  ],
+  "risks": []
+}

@@ -272,24 +272,24 @@ input, select {
       <div class="metric-note">Adversarial regression cases</div>
     </article>
     <article class="metric">
-      <div class="metric-label">Recorded runs</div>
-      <div class="metric-value" id="recordedCaseCount">-</div>
-      <div class="metric-note">Cases with latest score data</div>
+      <div class="metric-label">Current issues</div>
+      <div class="metric-value" id="currentIssueCount">-</div>
+      <div class="metric-note">Across the latest 10-case run</div>
     </article>
     <article class="metric">
-      <div class="metric-label">Working</div>
-      <div class="metric-value" id="workingCount">-</div>
-      <div class="metric-note">Weighted score at or above 90%</div>
+      <div class="metric-label">Blocking issues</div>
+      <div class="metric-value" id="blockingIssueCount">-</div>
+      <div class="metric-note">Action-safety failures</div>
     </article>
     <article class="metric">
-      <div class="metric-label">Close</div>
-      <div class="metric-value" id="closeCount">-</div>
-      <div class="metric-note">Weighted score 75% to 89%</div>
+      <div class="metric-label">Worst case</div>
+      <div class="metric-value" id="maximumIssuesPerCase">-</div>
+      <div class="metric-note">Maximum issues in one transcript</div>
     </article>
     <article class="metric">
-      <div class="metric-label">Needs work</div>
-      <div class="metric-value" id="needsWorkCount">-</div>
-      <div class="metric-note">Blocked, unsafe, or below review band</div>
+      <div class="metric-label">Target passed</div>
+      <div class="metric-value" id="casesBelowFiveIssues">-</div>
+      <div class="metric-note">Transcripts below 5 issues</div>
     </article>
     <article class="metric">
       <div class="metric-label">Weighted gap</div>
@@ -425,16 +425,16 @@ input, select {
   function renderSummary(payload) {
     var summary = payload.summary || {};
     setText('caseCount', summary.caseCount == null ? '-' : summary.caseCount);
-    setText('recordedCaseCount', summary.recordedCaseCount == null ? '-' : summary.recordedCaseCount);
-    setText('workingCount', summary.workingCount == null ? '-' : summary.workingCount);
-    setText('closeCount', summary.closeCount == null ? '-' : summary.closeCount);
-    setText('needsWorkCount', summary.needsWorkCount == null ? '-' : summary.needsWorkCount);
+    setText('currentIssueCount', summary.currentRequiredEdits == null ? '-' : summary.currentRequiredEdits);
+    setText('blockingIssueCount', summary.currentBlockingIssues == null ? '-' : summary.currentBlockingIssues);
+    setText('maximumIssuesPerCase', summary.maximumIssuesPerCase == null ? '-' : summary.maximumIssuesPerCase);
+    setText('casesBelowFiveIssues', summary.casesBelowFiveIssues == null ? '-' : summary.casesBelowFiveIssues + '/' + (summary.targetCaseCount || 10));
     setText('humanPerfectGap', typeof summary.humanPerfectGap === 'number' ? summary.humanPerfectGap.toFixed(1) + '%' : 'Awaiting run');
     setText('generatedAt', payload.generatedAt ? new Date(payload.generatedAt).toLocaleString() : 'Loaded');
     if (typeof summary.previousRequiredEdits === 'number' && typeof summary.currentRequiredEdits === 'number') {
-      setText('requiredEditTitle', 'Required edits reduced from ' + summary.previousRequiredEdits + ' to ' + summary.currentRequiredEdits);
-      setText('requiredEditBody', (summary.requiredEditBaselineLabel || 'Previous run') + ' needed ' + summary.previousRequiredEdits + ' real edits across the 10-case suite. The latest canonical run needs ' + summary.currentRequiredEdits + '. Future full-suite runs will add new points to the graph below.');
-      setText('requiredEditDelta', '-' + (summary.requiredEditReduction || 0) + ' edits');
+      setText('requiredEditTitle', 'Latest canonical run: ' + summary.currentRequiredEdits + ' issues, ' + summary.currentBlockingIssues + ' blocking');
+      setText('requiredEditBody', (summary.reportedBaselineLabel || 'Reported baseline') + ' recorded ' + summary.reportedBaselineIssues + ' issues and ' + summary.reportedBaselineBlockingIssues + ' blockers. The latest run reduces that by ' + summary.reportedIssueReduction + ' issues and ' + summary.reportedBlockingReduction + ' blockers; all ' + summary.casesBelowFiveIssues + ' transcripts are below five issues. The trend uses the current semantic one-to-one evaluator, so older outputs may re-score below their originally reported totals.');
+      setText('requiredEditDelta', '-' + (summary.reportedIssueReduction || 0) + ' issues');
     } else {
       setText('requiredEditTitle', 'Required edits awaiting latest run');
       setText('requiredEditBody', 'Run the full core golden suite to calculate the latest real-edit count.');

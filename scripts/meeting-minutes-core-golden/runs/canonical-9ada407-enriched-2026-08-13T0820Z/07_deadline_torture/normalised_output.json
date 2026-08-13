@@ -1,0 +1,31 @@
+{
+  "attendees": [
+    "Grace Lin",
+    "Idris Moore",
+    "Kate Evans"
+  ],
+  "client_attendees": [],
+  "actions": [
+    {
+      "owner": "Idris Moore",
+      "action": "Send the draft by",
+      "due_evidence": "end of day tomorrow"
+    },
+    {
+      "owner": "Kate Evans",
+      "action": "Review the draft",
+      "due_evidence": "within two working days of receiving it"
+    },
+    {
+      "owner": "Grace Lin",
+      "action": "Submit the approved draft on",
+      "due_evidence": "the next working day after Kate's approval"
+    }
+  ],
+  "decisions": [
+    "Agreed, Thursday close"
+  ],
+  "risks": [
+    "Submission timing depends on the review and approval sequence"
+  ]
+}

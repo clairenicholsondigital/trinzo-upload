@@ -1,0 +1,19 @@
+{
+  "attendees": [
+    "Elaine Voss",
+    "Martin Okoro",
+    "Sana Iqbal"
+  ],
+  "client_attendees": [],
+  "actions": [],
+  "decisions": [
+    "Approve the validation report for release",
+    "Do not carry out a further round of testing",
+    "So decision, we accept the residual risk on the temperature excursion",
+    "Confirm supplier B as the component supplier"
+  ],
+  "risks": [
+    "Residual temperature-excursion risk is accepted and documented",
+    "Batch variation on supplier B is within specification and requires monitoring only"
+  ]
+}
