@@ -43,6 +43,7 @@ const {
 const { getMeetingMinutesCoreGoldenStatus } = require('../utils/meetingMinutesCoreGolden');
 const { runCanonicalNoEditPass } = require('../utils/canonicalMinutes/runner');
 const { runCanonicalLiveStage } = require('../utils/canonicalMinutes/liveStages');
+const { polishCanonicalStage, canonicalFallback } = require('../utils/canonicalMinutes/trooperPolish');
 
 const {
   saveMeetingMinutes,
@@ -3558,17 +3559,33 @@ function canonicalConfirmedStages(input = {}) {
   };
 }
 
-function canonicalStagedResponse(stage, transcript, input = {}) {
+async function canonicalStagedResponse(stage, transcript, input = {}) {
   const payload = runCanonicalLiveStage(transcript.text, {
     stage,
     fileName: transcript.fileName || 'transcript.txt',
-    confirmed: canonicalConfirmedStages(input)
+    confirmed: canonicalConfirmedStages(input),
+    includeEvidencePack: ['discussion', 'actions'].includes(stage)
   });
+  let polished = { payload, used: false, reason: 'Trooper is not used for this stage.' };
+  if (['discussion', 'actions'].includes(stage)) {
+    try {
+      polished = await polishCanonicalStage(payload);
+    } catch (error) {
+      safeLogError('[Canonical staged Trooper polish failed]', error, { stage });
+      const fallback = canonicalFallback(payload);
+      polished = { payload: fallback, used: false, reason: error?.message || 'Trooper rewrite failed.' };
+    }
+  }
+  const result = polished.payload;
   return {
     source: transcript.source,
     fileName: transcript.fileName || null,
     transcriptLength: transcript.text.length,
-    ...payload,
+    ...result,
+    telemetryPreview: {
+      ...(result.telemetryPreview || {}),
+      trooper: { used: polished.used, reason: polished.reason, usage: polished.usage || null, input: 'bounded_minilm_evidence' }
+    },
     preparedTranscriptTelemetry: transcript.preparedTranscriptTelemetry || null
   };
 }
@@ -3658,7 +3675,7 @@ async function runQueuedStagedMeetingMinutesStage(jobId) {
       };
     } else {
       await updateGenerationJobProgress(jobId, stage, 35, `Running canonical ${stage} evidence classification.`);
-      payload = canonicalStagedResponse(stage, transcript, input);
+      payload = await canonicalStagedResponse(stage, transcript, input);
     }
 
     const priorScreens = {};
@@ -4391,7 +4408,7 @@ router.post('/staged-meeting-minutes', requireAuth, withTestUpload(async (req, r
         confirmedDiscussion: parseStagedJsonArray(req.body?.confirmedDiscussion),
         confirmedActions: parseStagedJsonArray(req.body?.confirmedActions)
       };
-      const response = canonicalStagedResponse(requestedStage, {
+      const response = await canonicalStagedResponse(requestedStage, {
         ...transcript,
         preparedTranscriptTelemetry: aiTranscript.preparedTranscriptTelemetry
       }, confirmed);

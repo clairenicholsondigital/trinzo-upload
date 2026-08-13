@@ -14,6 +14,12 @@ function capitaliseInitial(value) {
   return clean(value).replace(/[a-z]/i, (letter) => letter.toUpperCase());
 }
 
+function lowerInitialUnlessInitialism(value) {
+  const text = clean(value);
+  if (/^[A-Z]{2,}\b/.test(text)) return text;
+  return text ? text.charAt(0).toLowerCase() + text.slice(1) : text;
+}
+
 function approvedText(values, key = 'text') {
   return strings(values).map((text) => ({ [key]: text, humanFinal: text, aiOriginal: text }));
 }
@@ -88,7 +94,7 @@ function summaryScreen(proposal) {
     executiveSummary: /webinar/.test(meetingType) && /rehearsal|practice|run[ -]?through/.test(meetingType)
       ? `The webinar rehearsal reviewed ${overallTopics.join('; ').replace(/; ([^;]+)$/, '; and $1').toLowerCase()}.`
       : overallTopics.length
-      ? `The meeting reviewed ${overallTopics.join('; ').toLowerCase()}.`
+      ? `The meeting reviewed ${overallTopics.map(lowerInitialUnlessInitialism).join('; ')}.`
       : 'No substantive meeting topics were identified automatically.'
   };
 }
@@ -113,6 +119,50 @@ function warningFlags(warnings, stage) {
   }));
 }
 
+function sampledIds(ids, maximum) {
+  const values = [...new Set(ids || [])];
+  if (values.length <= maximum) return values;
+  return [...new Set(Array.from({ length: maximum }, (_unused, index) => values[Math.round(index * (values.length - 1) / (maximum - 1))]))];
+}
+
+function boundedEvidencePack(items, evidence, profile, stage) {
+  const byId = new Map(evidence.events.map((event) => [event.id, event]));
+  const actionStage = stage === 'actions';
+  return (Array.isArray(items) ? items : []).map((item, itemIndex) => ({
+    itemIndex,
+    topic: clean(item.topic),
+    owner: clean(item.owner),
+    action: clean(item.action),
+    deadline: clean(item.deadline),
+    currentPoints: strings(item.points),
+    evidence: sampledIds(item.evidenceIds, actionStage ? 8 : 4).map((id) => {
+      const event = byId.get(id);
+      if (!event) return null;
+      const eventIndex = evidence.events.indexOf(event);
+      const semantic = profile?.events?.[id] || {};
+      return {
+        id,
+        speaker: clean(event.speaker),
+        previous: clean(event.previousText).slice(0, 500),
+        current: clean(event.text).slice(0, 700),
+        next: clean(event.nextText).slice(0, 500),
+        contextWindow: evidence.events.slice(Math.max(0, eventIndex - (actionStage ? 18 : 2)), Math.min(evidence.events.length, eventIndex + (actionStage ? 5 : 3))).map((contextEvent) => ({
+          id: contextEvent.id,
+          speaker: clean(contextEvent.speaker),
+          text: clean(contextEvent.text).slice(0, 320)
+        })),
+        labels: {
+          evidenceType: semantic.evidenceType || '',
+          actionState: semantic.actionState || '',
+          lifecycle: semantic.lifecycle || '',
+          canonicalWorthiness: semantic.canonicalWorthiness || '',
+          temporalRole: semantic.temporalRole || ''
+        }
+      };
+    }).filter(Boolean)
+  }));
+}
+
 function runCanonicalLiveStage(transcriptText, options = {}) {
   const stage = clean(options.stage).toLowerCase();
   if (!['summary', 'discussion', 'actions'].includes(stage)) throw new Error(`Unsupported canonical live stage: ${stage}`);
@@ -132,7 +182,7 @@ function runCanonicalLiveStage(transcriptText, options = {}) {
   const screen = stage === 'summary' ? summaryScreen(proposal)
     : stage === 'discussion' ? discussionScreen(proposal)
       : proposal.actions.map(({ owner, action, deadline, evidenceIds }) => ({ owner, action: capitaliseInitial(action), deadline: capitaliseInitial(deadline), evidenceIds }));
-  return {
+  const result = {
     pipeline: 'canonical_staged_v2',
     strategy: 'semantic_v2',
     stagedStage: stage,
@@ -163,6 +213,10 @@ function runCanonicalLiveStage(transcriptText, options = {}) {
       evidenceClassifier: { used: true }
     }
   };
+  if (options.includeEvidencePack && ['discussion', 'actions'].includes(stage)) {
+    result._canonicalEvidencePack = boundedEvidencePack(screen, evidence, profile, stage);
+  }
+  return result;
 }
 
-module.exports = { runCanonicalLiveStage, buildConfirmedState, capitaliseInitial };
+module.exports = { runCanonicalLiveStage, buildConfirmedState, capitaliseInitial, lowerInitialUnlessInitialism };

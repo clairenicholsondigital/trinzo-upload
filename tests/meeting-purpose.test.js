@@ -6,7 +6,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const mammoth = require('mammoth');
 const { purposePlan } = require('../utils/canonicalMinutes/meetingPurpose');
-const { capitaliseInitial } = require('../utils/canonicalMinutes/liveStages');
+const { capitaliseInitial, lowerInitialUnlessInitialism } = require('../utils/canonicalMinutes/liveStages');
 const { prepareEvidence } = require('../utils/canonicalMinutes/evidence');
 
 function evidence(lines) {
@@ -52,6 +52,12 @@ test('action grammar capitalises the first letter without changing the remaining
   assert.equal(capitaliseInitial('before the live session'), 'Before the live session');
   assert.equal(capitaliseInitial('09:30 thursday'), '09:30 Thursday');
   assert.equal(capitaliseInitial('build the QR code slide'), 'Build the QR code slide');
+});
+
+test('executive-summary grammar lowercases ordinary topics but preserves initialisms', () => {
+  assert.equal(lowerInitialUnlessInitialism('Goods movement and distribution'), 'goods movement and distribution');
+  assert.equal(lowerInitialUnlessInitialism('QMS and importer obligations'), 'QMS and importer obligations');
+  assert.equal(lowerInitialUnlessInitialism('UDI, labelling and EUDAMED registration'), 'UDI, labelling and EUDAMED registration');
 });
 
 test('technical-file title activates grounded workstream framing', () => {
