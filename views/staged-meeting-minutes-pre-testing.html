@@ -310,6 +310,23 @@ input, select {
     </div>
   </section>
 
+  <section class="panel" aria-label="Latest engineering readout">
+    <div class="toolbar">
+      <div>
+        <p class="eyebrow">Latest engineering readout</p>
+        <h2>Deployed result and clean model audit</h2>
+      </div>
+      <span class="pill" id="readoutAsOf">Loading</span>
+    </div>
+    <p class="muted">These are deliberately separate: the deployed benchmark measures the complete resolver, while the clean audit removes transcript-specific shortcuts to measure reusable classifier and resolver behaviour.</p>
+    <div class="metric-grid" id="engineeringMetrics">
+      <div class="empty">Loading latest classifier data.</div>
+    </div>
+    <div class="detail-grid" id="headStatus">
+      <div class="empty">Loading extra-head status.</div>
+    </div>
+  </section>
+
   <section class="split">
     <div class="panel">
       <div class="toolbar">
@@ -443,6 +460,39 @@ input, select {
     renderRequiredEditChart(summary.requiredEditTrend || []);
   }
 
+  function renderEngineeringReadout(readout) {
+    var metrics = document.getElementById('engineeringMetrics');
+    var heads = document.getElementById('headStatus');
+    if (!readout) {
+      metrics.innerHTML = '<div class="empty">No engineering readout has been published.</div>';
+      heads.innerHTML = '';
+      setText('readoutAsOf', 'Unavailable');
+      return;
+    }
+    setText('readoutAsOf', readout.asOf ? new Date(readout.asOf).toLocaleString() : 'Latest');
+    var deployed = readout.deployed || {};
+    var audit = readout.cleanAudit || {};
+    var gate = readout.nextGate || {};
+    metrics.innerHTML = [
+      ['Deployed benchmark', deployed.issues, deployed.blockingIssues + ' blocking · ' + deployed.averageWeightedScore + '% weighted'],
+      ['Clean no-shortcuts audit', audit.issues, audit.blockingIssues + ' blocking · research only'],
+      ['Clean cases below five', audit.casesBelowFiveIssues + '/' + audit.caseCount, 'Worst case: ' + audit.maximumIssuesPerCase],
+      ['Next deployment gate', '≤' + gate.issues, gate.regressionsAllowed + ' regressions allowed']
+    ].map(function (item) {
+      return '<article class="metric"><div class="metric-label">' + escapeHtml(item[0]) + '</div><div class="metric-value">' + escapeHtml(item[1]) + '</div><div class="metric-note">' + escapeHtml(item[2]) + '</div></article>';
+    }).join('');
+    var auditCases = Array.isArray(audit.cases) ? audit.cases.map(function (item) {
+      return 'Case ' + item.id + ': ' + item.issues + (item.blockingIssues ? ' (' + item.blockingIssues + ' blocking)' : '');
+    }).join(' · ') : '';
+    heads.innerHTML = '<article class="validation-card"><strong>Provenance</strong><p class="muted">' + escapeHtml(deployed.note || '') + '</p><p class="muted">' + escapeHtml(audit.note || '') + '</p>' +
+      (auditCases ? '<small>' + escapeHtml(auditCases) + '</small>' : '') + '</article>' +
+      (readout.heads || []).map(function (head) {
+        var tone = head.state === 'trained' ? 'good' : 'warn';
+        return '<article class="benchmark-card"><div class="benchmark-top"><strong>' + escapeHtml(head.name) + '</strong><span class="pill status ' + tone + '">' + escapeHtml(head.state) + '</span></div><p class="muted">' + escapeHtml(head.note || '') + '</p><small>' + escapeHtml(head.bundle || '') + '</small></article>';
+      }).join('') +
+      '<article class="validation-card"><strong>Deployment gate</strong><p class="muted">' + escapeHtml(gate.note || '') + '</p></article>';
+  }
+
   function renderValidation(payload) {
     var validation = payload.validation || {};
     setText('validationTitle', validation.ok ? 'Fixture set validated' : 'Fixture issue found');
@@ -540,6 +590,7 @@ input, select {
       state.cases = payload.cases || [];
       state.benchmarks = payload.benchmarks || [];
       renderSummary(payload);
+      renderEngineeringReadout(payload.engineeringReadout);
       renderValidation(payload);
       populateMeetingTypes(state.cases);
       renderCases();

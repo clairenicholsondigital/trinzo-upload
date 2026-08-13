@@ -9,6 +9,9 @@ const {
 
 test('core golden status reads the current staged meeting-minutes suite', async () => {
   const status = await getMeetingMinutesCoreGoldenStatus();
+  assert.equal(status.engineeringReadout.deployed.issues, 11);
+  assert.equal(status.engineeringReadout.cleanAudit.issues, 23);
+  assert.equal(status.engineeringReadout.nextGate.issues, 5);
 
   assert.equal(status.ok, true);
   assert.equal(status.validation.ok, true);

@@ -652,6 +652,15 @@ async function getMeetingMinutesCoreGoldenStatus() {
     : null;
   const casesBelowFiveIssues = weightedCases.filter((item) => item.latestResult.weightedAssessment.errorCount < 5).length;
   const requiredEditTrend = await buildRequiredEditTrend(records, manifestByCaseId);
+  let engineeringReadout = null;
+  try {
+    engineeringReadout = await readJson(path.join(REPO_ROOT, 'artifacts', 'pre_testing_latest.json'));
+  } catch (error) {
+    if (error?.code !== 'ENOENT') {
+      validation.ok = false;
+      validation.errors.push(`Could not read the latest engineering readout: ${error.message}`);
+    }
+  }
   const currentTrendPoint = requiredEditTrend.length ? requiredEditTrend[requiredEditTrend.length - 1] : null;
   const previousTrendPoint = requiredEditTrend.length > 1 ? requiredEditTrend[requiredEditTrend.length - 2] : null;
   const previousRequiredEdits = previousTrendPoint?.requiredEdits ?? REQUIRED_EDIT_BASELINE.count;
@@ -707,7 +716,8 @@ async function getMeetingMinutesCoreGoldenStatus() {
       requiredEditTrend
     },
     cases,
-    benchmarks
+    benchmarks,
+    engineeringReadout
   };
 }
 

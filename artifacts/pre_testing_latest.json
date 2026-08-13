@@ -1,0 +1,53 @@
+{
+  "asOf": "2026-08-13T10:00:00.000Z",
+  "deployed": {
+    "applicationCommit": "341369b956a3",
+    "benchmarkCommit": "9ada407955b5",
+    "modelBundle": "canonical-speech-act-model-v4",
+    "issues": 11,
+    "blockingIssues": 5,
+    "averageWeightedScore": 93.8,
+    "casesBelowFiveIssues": 10,
+    "caseCount": 10,
+    "status": "deployed",
+    "note": "Latest recorded deployed-behaviour benchmark. This result includes resolver rules as well as MiniLM evidence heads."
+  },
+  "cleanAudit": {
+    "branch": "codex/minilm-ceiling",
+    "modelBundle": "canonical-speech-act-model-v10 candidate (slot path disabled)",
+    "issues": 23,
+    "blockingIssues": 3,
+    "maximumIssuesPerCase": 8,
+    "casesBelowFiveIssues": 8,
+    "caseCount": 10,
+    "status": "research",
+    "note": "Honest no-shortcuts baseline after removing transcript-specific resolver rules. Not deployed.",
+    "cases": [
+      { "id": "1", "issues": 8, "blockingIssues": 1 },
+      { "id": "2", "issues": 0, "blockingIssues": 0 },
+      { "id": "3", "issues": 1, "blockingIssues": 0 },
+      { "id": "4", "issues": 0, "blockingIssues": 0 },
+      { "id": "5", "issues": 2, "blockingIssues": 0 },
+      { "id": "6", "issues": 0, "blockingIssues": 0 },
+      { "id": "7", "issues": 0, "blockingIssues": 0 },
+      { "id": "8", "issues": 3, "blockingIssues": 2 },
+      { "id": "9", "issues": 7, "blockingIssues": 0 },
+      { "id": "10", "issues": 2, "blockingIssues": 0 }
+    ]
+  },
+  "heads": [
+    { "name": "Lifecycle state", "bundle": "v4", "state": "trained", "note": "Contextual head; active, tentative, completed, inactive and superseded evidence." },
+    { "name": "Context dependency", "bundle": "v4", "state": "trained", "note": "Contextual head; standalone, acceptance and previous/next dependency." },
+    { "name": "Canonical worthiness", "bundle": "v4", "state": "trained", "note": "Contextual head; canonical item, supporting detail, duplicate and context-only evidence." },
+    { "name": "Temporal role", "bundle": "v4", "state": "trained", "note": "Contextual head; deadline attachment, historical and other temporal evidence." },
+    { "name": "Discourse role", "bundle": "v10 candidate", "state": "experimental", "note": "Best clean benchmark: 23 issues and 3 blockers, from the 37/7 no-shortcuts baseline." },
+    { "name": "Action token slots", "bundle": "v10 shadow", "state": "experimental", "note": "Disabled by default. Generated-data token F1 did not transfer safely: enabled run regressed to 26 issues and 6 blockers." },
+    { "name": "Canonical relation", "bundle": "v5 candidate", "state": "experimental", "note": "Pairwise grouping head rejected for deployment after over-grouping real conversational evidence." }
+  ],
+  "nextGate": {
+    "issues": 5,
+    "regressionsAllowed": 0,
+    "deploymentReady": false,
+    "note": "The next deployment requires five or fewer clean-audit issues with no regressions."
+  }
+}
