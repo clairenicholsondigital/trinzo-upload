@@ -84,3 +84,31 @@ test('real T733 transcript is covered by the staged technical-file purpose polic
   assert.ok(plan.topics.some((item) => item.text === 'Electrical compliance testing'));
   assert.ok(plan.objectives.every((item) => !/^(?:Review )?(?:That|And|No|Emma\b)/i.test(item.text)));
 });
+
+test('importer-obligations title activates grounded regulatory workstreams', () => {
+  const plan = purposePlan({ type: 'Project review', title: 'Importer Obligations Review Plan' }, evidence([
+    'The QMS manual will support the importer obligations and compliance procedures.',
+    'Goods enter the EU before moving to the warehouse for barcode picking and packing.',
+    'The legal manufacturer registers devices in EUDAMED and the importer verifies registration.',
+    'Update the declarations of conformity with the PPE risk rationale.',
+    'Review the HPRA fee invoice and audit documentation.'
+  ]));
+  assert.equal(plan.profileId, 'importer_obligations_review');
+  assert.ok(plan.topics.some((item) => item.text === 'QMS and importer obligations'));
+  assert.ok(plan.topics.some((item) => item.text === 'UDI, labelling and EUDAMED registration'));
+  assert.ok(plan.topics.some((item) => item.text === 'HPRA readiness and follow-up'));
+  assert.ok(plan.discussion.every((card) => card.points[0].evidenceIds.length));
+});
+
+test('real T819 client transcript is covered by the staged importer-obligations policy', async () => {
+  const documentPath = path.join(__dirname, '..', 'scripts', 'meeting-minutes-core-golden', 'human_benchmarks', 'T819_dita_client', 'transcript.docx');
+  const buffer = await fs.readFile(documentPath);
+  const extracted = await mammoth.extractRawText({ buffer });
+  const evidence = prepareEvidence(extracted.value);
+  const plan = purposePlan({ type: 'Project review', title: 'Client Importer Obligations Review Plan' }, evidence);
+  assert.equal(plan.profileId, 'importer_obligations_review');
+  assert.ok(plan.topics.length >= 6);
+  assert.ok(plan.topics.some((item) => item.text === 'Warehouse, ordering and packaging processes'));
+  assert.ok(plan.topics.some((item) => item.text === 'Manufacturer, importer and authorised-representative roles'));
+  assert.ok(plan.objectives.every((item) => !/^(?:Review )?(?:Who|Mm|OK|Makes sense)\b/i.test(item.text)));
+});

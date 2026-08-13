@@ -134,6 +134,62 @@ const MEETING_PROFILES = [
         evidence: /\b(?:subcontractor|contract manufacturing|usability|formative stud|biocomp|biocompatibility|pms|post-market|process maps?)\b/i
       }
     ]
+  },
+  {
+    id: 'importer_obligations_review',
+    matches: (type, title) => /\b(?:importer obligations?|importer compliance|regulatory import)\b.*\b(?:review|plan|workshop|status|meeting)?\b/i.test(`${type} ${title}`),
+    riskEvidence: /\b(?:could|may|will)\b.{0,80}\b(?:prevent|delay|block|non-compliance|audit finding)\b|\b(?:non-compliance|audit finding)\b/i,
+    dimensions: [
+      {
+        id: 'qms',
+        topic: 'QMS and importer obligations',
+        objective: 'Review the QMS approach and documents required to meet importer obligations',
+        summary: 'The QMS manual was reviewed as the foundation for importer-compliance procedures aligned with existing business processes.',
+        evidence: /\b(?:qms|quality management system|importer obligations?|compliance documents?|procedures?)\b/i
+      },
+      {
+        id: 'goods_flow',
+        topic: 'Goods movement, storage and distribution',
+        objective: 'Document the movement, storage and distribution of imported products',
+        summary: 'The team mapped the flow of products from supplier and EU entry through clearance, Irish storage and customer distribution.',
+        evidence: /\b(?:goods movement|point of entry|fiscal clearance|airport|storage|warehouse|courier|dhl|dispatch|distribution|shipped)\b/i
+      },
+      {
+        id: 'warehouse',
+        topic: 'Warehouse, ordering and packaging processes',
+        objective: 'Understand ordering, warehouse picking, packaging and product-information controls',
+        summary: 'Ordering, product allocation, barcode-assisted picking, repackaging, inserts and shipping labels were reviewed.',
+        evidence: /\b(?:sales order|customer order|warehouse|picking|packing|packaging|barcode|scanner|netsuite|rf smart|shipping label|invoice)\b/i
+      },
+      {
+        id: 'udi',
+        topic: 'UDI, labelling and EUDAMED registration',
+        objective: 'Confirm UDI, labelling and EUDAMED registration requirements and timelines',
+        summary: 'The team reviewed current barcoding, future UDI production identifiers, labelling responsibilities and EUDAMED registration deadlines.',
+        evidence: /\b(?:udi|eudamed|udamed|udimed|labelling|labeling|labels?|lot numbering|data matrix|upc|registration of devices)\b/i
+      },
+      {
+        id: 'roles',
+        topic: 'Manufacturer, importer and authorised-representative roles',
+        objective: 'Clarify registration and verification responsibilities across the manufacturer, importer and authorised representative',
+        summary: 'Responsibilities for completing and verifying device registrations were clarified across the legal manufacturer, importer, authorised representative and external representative.',
+        evidence: /\b(?:legal manufacturer|importer|authori[sz]ed rep(?:resentative)?|med ?envoy|economic operator|manufacturer eo|verify the registration)\b/i
+      },
+      {
+        id: 'declarations',
+        topic: 'Declarations of conformity, PPE and language scope',
+        objective: 'Review declarations of conformity, PPE rationale and language requirements',
+        summary: 'Declarations of conformity for sunglasses, combined MDR and PPE rationale, destination countries and language considerations were reviewed.',
+        evidence: /\b(?:declarations? of conformity|\bdoc['’]?s?\b|sunglasses|\bppe\b|risk rationale|languages?|translations?)\b/i
+      },
+      {
+        id: 'hpra',
+        topic: 'HPRA readiness and follow-up',
+        objective: 'Confirm HPRA documentation, audit-readiness and follow-up actions',
+        summary: 'The team discussed importer audit readiness, regulatory documentation and follow-up on the HPRA fee invoice.',
+        evidence: /\b(?:hpra|audit|annual fees?|invoice fee|registration preparation|regulatory documentation)\b/i
+      }
+    ]
   }
 ];
 
