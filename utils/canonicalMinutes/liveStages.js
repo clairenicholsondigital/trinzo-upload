@@ -10,6 +10,10 @@ function strings(values) {
   return (Array.isArray(values) ? values : []).map((value) => clean(value)).filter(Boolean);
 }
 
+function capitaliseInitial(value) {
+  return clean(value).replace(/[a-z]/i, (letter) => letter.toUpperCase());
+}
+
 function approvedText(values, key = 'text') {
   return strings(values).map((text) => ({ [key]: text, humanFinal: text, aiOriginal: text }));
 }
@@ -26,9 +30,9 @@ function approvedDiscussion(values) {
 function approvedActions(values) {
   return (Array.isArray(values) ? values : []).map((item) => ({
     owner: clean(item?.owner) || 'Not stated',
-    action: clean(item?.action),
-    deadline: clean(item?.deadline) || 'Not stated',
-    humanFinal: clean(item?.action),
+    action: capitaliseInitial(item?.action),
+    deadline: capitaliseInitial(item?.deadline) || 'Not stated',
+    humanFinal: capitaliseInitial(item?.action),
     aiOriginal: clean(item?.action)
   })).filter((item) => item.action);
 }
@@ -127,7 +131,7 @@ function runCanonicalLiveStage(transcriptText, options = {}) {
   if (stage === 'actions') proposal = semanticStages.actionsStage(evidence, state, profile, topology);
   const screen = stage === 'summary' ? summaryScreen(proposal)
     : stage === 'discussion' ? discussionScreen(proposal)
-      : proposal.actions.map(({ owner, action, deadline, evidenceIds }) => ({ owner, action, deadline, evidenceIds }));
+      : proposal.actions.map(({ owner, action, deadline, evidenceIds }) => ({ owner, action: capitaliseInitial(action), deadline: capitaliseInitial(deadline), evidenceIds }));
   return {
     pipeline: 'canonical_staged_v2',
     strategy: 'semantic_v2',
@@ -161,4 +165,4 @@ function runCanonicalLiveStage(transcriptText, options = {}) {
   };
 }
 
-module.exports = { runCanonicalLiveStage, buildConfirmedState };
+module.exports = { runCanonicalLiveStage, buildConfirmedState, capitaliseInitial };

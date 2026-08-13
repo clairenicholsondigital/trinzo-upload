@@ -367,7 +367,7 @@ function contentStage(evidence, state, profile) {
       : minuteEvidence.slice(0, 4);
     return { topic: titleFromRepresentative(topic.representativeText), points, evidenceIds: topic.evidenceIds, topicId: topic.id, cohesion: topic.cohesion };
   }).filter((item) => item.points.length);
-  if (longTranscript) {
+  if (longTranscript && !purpose) {
     const riskCards = discussion.filter((card) => card.evidenceIds.some((id) => {
       const event = byId.get(id);
       return event && score(profile, event, 'risk') >= 0.6;
@@ -430,7 +430,10 @@ function contentStage(evidence, state, profile) {
       if (text) risks.push({ text, evidenceIds: [event.id], semanticConfidence: score(profile, event, 'risk') });
     }
   }
-  const resolvedRisks = resolveEnrichedRisks(risks, evidence, profile);
+  let resolvedRisks = resolveEnrichedRisks(risks, evidence, profile);
+  if (purpose?.riskEvidence) {
+    resolvedRisks = resolvedRisks.filter((item) => (item.evidenceIds || []).some((id) => purpose.riskEvidence.test(clean(byId.get(id)?.text))));
+  }
   return { discussion, decisions: resolveEnrichedDecisions(decisions, evidence, profile), risks: resolvedRisks, warnings: [] };
 }
 
@@ -453,6 +456,10 @@ function resolveActionReferent(item, evidence) {
       .replace(/\bfollow up on that\b/i, `follow up on ${referent}`);
     if (/\bsend (?:a )?copy\b/i.test(action)) action = action.replace(/\bsend (?:a )?copy\b/i, `send a copy of ${referent}`);
   }
+  if (/^review (?:it|that)\b/i.test(action) && /\bdraft(?:ing|ed)?\b|\bdraught(?:ing|ed)?\b/i.test(context)) {
+    action = action.replace(/^review (?:it|that)\b/i, 'Review the draft content');
+  }
+  action = action.replace(/\s+and then we can have another call\b.*$/i, ' and arrange a follow-up call');
   if (/\bget (?:a )?(.{0,60}?call) in\b/i.test(action)) action = action.replace(/\bget (?:a )?(.{0,60}?call) in\b/i, 'schedule a $1');
   if (/\bsend (?:a )?copy\b/i.test(action) && /\b[A-Z]{2,}\b/.test(context) && /\bauthori[sz]ed rep(?:resentative)?\b/i.test(context) && /\bbill\b/i.test(context)) {
     const acronym = context.match(/\b[A-Z]{2,}\b/)?.[0];

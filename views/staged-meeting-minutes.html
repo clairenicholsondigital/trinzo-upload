@@ -505,6 +505,7 @@ td textarea {
               <option>Decision meeting</option>
               <option>Workshop</option>
               <option>Webinar rehearsal</option>
+              <option>Case study interview</option>
             </select>
           </div>
         </div>
@@ -1051,10 +1052,13 @@ td textarea {
 
   function renderActionRow(action) {
     action = action || {};
+    function capitaliseInitial(value) {
+      return String(value || '').trim().replace(/[a-z]/i, function (letter) { return letter.toUpperCase(); });
+    }
     return '<tr>' +
       '<td><input value="' + escapeHtml(action.owner || 'Not stated') + '" /></td>' +
-      '<td><textarea>' + escapeHtml(action.action || 'Review action wording') + '</textarea></td>' +
-      '<td><input value="' + escapeHtml(action.deadline || '') + '" placeholder="e.g. 14 August 2026 or next Monday" aria-label="Action date or deadline" /></td>' +
+      '<td><textarea>' + escapeHtml(capitaliseInitial(action.action) || 'Review action wording') + '</textarea></td>' +
+      '<td><input value="' + escapeHtml(capitaliseInitial(action.deadline)) + '" placeholder="e.g. 14 August 2026 or next Monday" aria-label="Action date or deadline" /></td>' +
       '<td><button class="secondary" type="button" data-action-row="duplicate">Duplicate</button> <button class="secondary" type="button" data-action-row="delete">Delete</button></td>' +
     '</tr>';
   }
