@@ -43,7 +43,7 @@ const {
 const { getMeetingMinutesCoreGoldenStatus } = require('../utils/meetingMinutesCoreGolden');
 const { runCanonicalNoEditPass } = require('../utils/canonicalMinutes/runner');
 const { runCanonicalLiveStage } = require('../utils/canonicalMinutes/liveStages');
-const { polishCanonicalStage, canonicalFallback, addRecoveredActionCandidates } = require('../utils/canonicalMinutes/trooperPolish');
+const { polishCanonicalStage, canonicalFallback, addRecoveredActionCandidates, clientReadyPresentation } = require('../utils/canonicalMinutes/trooperPolish');
 const { reviewGeneratedContent } = require('../utils/terminologyQa');
 
 const {
@@ -3735,7 +3735,7 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
       polished = { payload: fallback, used: false, reason: error?.message || 'Trooper rewrite failed.' };
     }
   }
-  const result = polished.payload;
+  const result = clientReadyPresentation(polished.payload);
   return {
     source: transcript.source,
     fileName: transcript.fileName || null,

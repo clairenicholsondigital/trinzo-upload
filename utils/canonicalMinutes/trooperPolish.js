@@ -3,6 +3,7 @@
 const fetch = require('node-fetch');
 const { clean } = require('./evidence');
 const { deadlineFrom } = require('./stages');
+const { finaliseDiscussionPointForMinutes, normaliseFinalStagedActionCandidate } = require('../stagedEditorial');
 
 const DEFAULT_URL = 'https://eu.router.trooper.ai/v1/chat/completions';
 const DEFAULT_MODEL = 'eu_liv_000099';
@@ -35,6 +36,56 @@ function nearDuplicate(left, right) {
   if (!a.size || !b.size) return false;
   const shared = [...a].filter((token) => b.has(token)).length;
   return shared / Math.min(a.size, b.size) >= 0.72;
+}
+
+function normaliseActionPresentation(value) {
+  return clean(value)
+    .replace(/^give\s+(.+?)\s+to\s+([A-Z][\p{L}'’.-]+(?:\s+[A-Z][\p{L}'’.-]+){0,3})\b/iu, 'Send $1 to $2')
+    .replace(/^provide\s+([A-Z][\p{L}'’.-]+(?:\s+[A-Z][\p{L}'’.-]+){0,3})\s+with\s+(.+)$/iu, 'Provide $2 to $1')
+    .replace(/^(?:the\s+)?(?:speaker|attendee|participant)\s+(?:said|noted|explained|confirmed)\s+(?:that\s+)?/i, '');
+}
+
+function normaliseDiscussionPresentation(value) {
+  return clean(value).replace(
+    /^(?:(?:the\s+)?(?:speaker|attendee|participant)|[A-Z][\p{L}'’.-]+(?:\s+[A-Z][\p{L}'’.-]+){0,3})\s+(?:said|explained|reported|stated)\s+(?:that\s+)?/iu,
+    ''
+  );
+}
+
+function clientReadyPresentation(payload) {
+  const stage = clean(payload?.stagedStage).toLowerCase();
+  const base = { ...payload, screens: { ...(payload?.screens || {}) } };
+  const retainedForReview = [];
+  if (stage === 'discussion' && Array.isArray(base.screens.discussion)) {
+    base.screens.discussion = base.screens.discussion.map((card) => ({
+      ...card,
+      points: (card.points || []).map((point) => {
+        const presented = normaliseDiscussionPresentation(point);
+        const polished = finaliseDiscussionPointForMinutes(presented, card.topic);
+        if (polished) return polished;
+        retainedForReview.push({ section: card.topic || 'Discussion', text: clean(point) });
+        return clean(point);
+      }).filter(Boolean)
+    })).filter((card) => card.points.length);
+  }
+  if (stage === 'actions' && Array.isArray(base.screens.actions)) {
+    base.screens.actions = base.screens.actions.map((item) => {
+      const presented = normaliseActionPresentation(item.action);
+      const polished = normaliseFinalStagedActionCandidate({ ...item, action: presented });
+      if (polished) return { ...item, ...polished };
+      retainedForReview.push({ section: 'Actions', text: clean(item.action) });
+      return item;
+    });
+  }
+  const existingFlags = Array.isArray(base.validationFlags) ? base.validationFlags : [];
+  const polishFlag = retainedForReview.length ? {
+    type: 'wording_needs_review', severity: 'warning', blocking: false,
+    message: `Evidence was retained for ${retainedForReview.length} item${retainedForReview.length === 1 ? '' : 's'}, but the wording could not be safely polished automatically. Review the highlighted stage before approval.`
+  } : {
+    type: 'language_polished', severity: 'info', blocking: false,
+    message: 'Evidence-backed draft: client-ready language checks completed without changing the underlying facts, owners or deadlines.'
+  };
+  return { ...base, validationFlags: [...existingFlags, polishFlag], editorialStatus: retainedForReview.length ? 'wording_needs_review' : 'language_polished' };
 }
 
 function canonicalFallback(payload) {
@@ -352,4 +403,4 @@ async function polishCanonicalStage(payload, options = {}) {
   return { payload: rewritten, used: true, reason: `Trooper rewrote ${packs.length} bounded MiniLM evidence pack(s).`, usage };
 }
 
-module.exports = { promptFor, polishCanonicalStage, applyActionRewrite, applyDiscussionRewrite, unresolvedReference, canonicalFallback, nonActionState, nearDuplicate, addRecoveredActionCandidates };
+module.exports = { promptFor, polishCanonicalStage, applyActionRewrite, applyDiscussionRewrite, unresolvedReference, canonicalFallback, nonActionState, nearDuplicate, addRecoveredActionCandidates, clientReadyPresentation, normaliseActionPresentation, normaliseDiscussionPresentation };

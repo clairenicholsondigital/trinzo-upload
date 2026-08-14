@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { polishCanonicalStage, promptFor, unresolvedReference, nonActionState, nearDuplicate, addRecoveredActionCandidates } = require('../utils/canonicalMinutes/trooperPolish');
+const { polishCanonicalStage, promptFor, unresolvedReference, nonActionState, nearDuplicate, addRecoveredActionCandidates, clientReadyPresentation, normaliseActionPresentation } = require('../utils/canonicalMinutes/trooperPolish');
 
 function actionPayload() {
   return {
@@ -176,4 +176,24 @@ test('an evidence-bound candidate survives model omission and unavailable rewrit
   assert.ok(rewritten.payload.screens.actions.some((item) => item.action === 'Review the supplier quality agreement'));
   const fallback = await polishCanonicalStage(enriched, { apiKey: '' });
   assert.ok(fallback.payload.screens.actions.some((item) => item.action === 'Review the supplier quality agreement'));
+});
+
+test('final presentation removes reporting wrappers without changing canonical facts', () => {
+  const discussion = clientReadyPresentation({
+    stagedStage: 'discussion', validationFlags: [],
+    screens: { discussion: [{ topic: 'Labelling', points: ['Orla explained that the updated label includes importer information.'] }] }
+  });
+  assert.deepEqual(discussion.screens.discussion[0].points, ['The updated label includes importer information.']);
+  assert.equal(discussion.editorialStatus, 'language_polished');
+  assert.equal(normaliseActionPresentation('Give the QMS Manual to Orla Skally'), 'Send the QMS Manual to Orla Skally');
+});
+
+test('unsafe wording is retained as evidence-backed draft and explicitly flagged', () => {
+  const result = clientReadyPresentation({
+    stagedStage: 'discussion', validationFlags: [],
+    screens: { discussion: [{ topic: 'Review', points: ['The speaker said this was kind of okay.'] }] }
+  });
+  assert.deepEqual(result.screens.discussion[0].points, ['The speaker said this was kind of okay.']);
+  assert.equal(result.editorialStatus, 'wording_needs_review');
+  assert.ok(result.validationFlags.some((flag) => flag.type === 'wording_needs_review'));
 });
