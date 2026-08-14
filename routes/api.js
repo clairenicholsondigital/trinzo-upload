@@ -3564,6 +3564,7 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
     stage,
     fileName: transcript.fileName || 'transcript.txt',
     confirmed: canonicalConfirmedStages(input),
+    reviewerGuidance: input.additionalContext || '',
     includeEvidencePack: ['discussion', 'actions'].includes(stage)
   });
   let polished = { payload, used: false, reason: 'Trooper is not used for this stage.' };

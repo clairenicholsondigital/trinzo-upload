@@ -63,6 +63,7 @@ function buildConfirmedState(transcriptText, fileName, confirmed = {}) {
   if (Object.keys(summary).length) {
     state = acceptProposal(state, {
       objectives: approvedText(summary.objectives),
+      topics: approvedText(summary.overallTopics),
       meeting: state.meeting
     }, { source: 'stage_1_human_confirmation' });
   }
@@ -177,7 +178,7 @@ function runCanonicalLiveStage(transcriptText, options = {}) {
   const confirmed = options.confirmed || {};
   let state = buildConfirmedState(transcriptText, options.fileName || 'transcript.txt', confirmed);
   let proposal;
-  if (stage === 'summary') proposal = semanticStages.contextStage(evidence, profile, state);
+  if (stage === 'summary') proposal = semanticStages.contextStage(evidence, profile, state, options.reviewerGuidance);
   if (stage === 'discussion') proposal = semanticStages.contentStage(evidence, state, profile);
   if (stage === 'actions') proposal = semanticStages.actionsStage(evidence, state, profile, topology);
   const screen = stage === 'summary' ? summaryScreen(proposal)
@@ -195,6 +196,7 @@ function runCanonicalLiveStage(transcriptText, options = {}) {
       inputStateVersion: state.version,
       confirmedCollections: {
         objectives: state.objectives.length,
+        topics: state.topics.length,
         discussion: state.discussion.length,
         decisions: state.decisions.length,
         risks: state.risks.length,

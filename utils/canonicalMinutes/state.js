@@ -2,7 +2,7 @@
 
 const crypto = require('crypto');
 
-const COLLECTIONS = ['objectives', 'discussion', 'decisions', 'risks', 'actions', 'rejections'];
+const COLLECTIONS = ['objectives', 'topics', 'discussion', 'decisions', 'risks', 'actions', 'rejections'];
 
 function createCanonicalState({ transcriptText, fileName = 'transcript.txt', meeting = {} }) {
   return {
@@ -14,6 +14,7 @@ function createCanonicalState({ transcriptText, fileName = 'transcript.txt', mee
     },
     meeting,
     objectives: [],
+    topics: [],
     discussion: [],
     decisions: [],
     risks: [],

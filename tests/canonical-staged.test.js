@@ -233,14 +233,55 @@ test('live staged state locks reviewer-confirmed input for downstream stages', (
   ].join('\n');
   const state = buildConfirmedState(transcript, 'review.txt', {
     details: { meetingTitle: 'Reviewer title', participants: ['Amina Khan', 'Ben Stone'] },
-    summary: { objectives: ['Use reviewer-corrected option B'] },
+    summary: { objectives: ['Use reviewer-corrected option B'], overallTopics: ['Reviewer-approved option'] },
     discussion: [{ topic: 'Chosen option', points: ['The reviewer confirmed option B.'] }]
   });
   assert.equal(state.objectives[0].humanFinal, 'Use reviewer-corrected option B');
   assert.equal(state.objectives[0].locked, true);
   assert.equal(state.objectives[0].source, 'stage_1_human_confirmation');
+  assert.equal(state.topics[0].humanFinal, 'Reviewer-approved option');
+  assert.equal(state.topics[0].locked, true);
   assert.equal(state.discussion[0].points[0].text, 'The reviewer confirmed option B.');
   assert.equal(state.discussion[0].source, 'stage_2_human_confirmation');
+});
+
+test('summary reviewer guidance prioritises supported evidence without becoming evidence', () => {
+  const evidence = prepareEvidence([
+    'Amina Khan  00:01',
+    'We reviewed the slide order and opening section.',
+    'Ben Stone  00:08',
+    'We checked the recording and screen sharing contingency.'
+  ].join('\n'));
+  const result = semanticStages.contextStage(evidence, { topics: [] }, {
+    meeting: { type: 'Webinar rehearsal', title: 'Product webinar' }
+  }, 'Prioritise recording and technical readiness');
+  assert.equal(result.topics[0].text, 'Technical setup and contingencies');
+  assert.equal(result.topics.some((item) => /prioritise/i.test(item.text)), false);
+});
+
+test('confirmed summary topics become the preferred discussion agenda', () => {
+  const evidence = prepareEvidence([
+    'Amina Khan  00:01',
+    'The supplier schedule needs review before Friday.',
+    'Ben Stone  00:08',
+    'The validation report is ready for approval.'
+  ].join('\n'));
+  const profile = {
+    topics: [
+      { id: 'supplier', representativeText: 'Supplier schedule review', evidenceIds: [evidence.events[0].id], cohesion: 1 },
+      { id: 'validation', representativeText: 'Validation report approval', evidenceIds: [evidence.events[1].id], cohesion: 1 }
+    ],
+    events: {}
+  };
+  const state = { meeting: {}, objectives: [], decisions: [], risks: [], discussion: [], actions: [], topics: [
+    { text: 'Approved validation agenda', humanFinal: 'Approved validation agenda' },
+    { text: 'Approved supplier agenda', humanFinal: 'Approved supplier agenda' }
+  ] };
+  const result = semanticStages.contentStage(evidence, state, profile);
+  assert.deepEqual(result.discussion.slice(0, 2).map((card) => card.topic), [
+    'Approved validation agenda',
+    'Approved supplier agenda'
+  ]);
 });
 
 test('live actions stage uses confirmed state and returns the existing UI screen contract', () => {

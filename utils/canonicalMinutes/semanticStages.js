@@ -385,24 +385,69 @@ function minutesPoint(text) {
   return value ? `${value.charAt(0).toUpperCase()}${value.slice(1)}.` : '';
 }
 
-function contextStage(evidence, profile, state = {}) {
+const GUIDANCE_STOPWORDS = new Set(['about', 'after', 'again', 'also', 'before', 'client', 'emphasise', 'emphasize', 'focus', 'highlight', 'meeting', 'prioritise', 'prioritize', 'should', 'that', 'their', 'there', 'these', 'this', 'with']);
+
+function guidanceTokens(value) {
+  return new Set((clean(value).toLowerCase().match(/[a-z][a-z0-9-]{3,}/g) || []).filter((token) => !GUIDANCE_STOPWORDS.has(token)));
+}
+
+function prioritiseForGuidance(items, evidence, reviewerGuidance) {
+  const wanted = guidanceTokens(reviewerGuidance);
+  if (!wanted.size || !Array.isArray(items) || items.length < 2) return items;
+  const byId = new Map(evidence.events.map((event) => [event.id, event]));
+  return items.map((item, index) => {
+    const source = [item.text, item.topic, item.objective, item.summary,
+      ...(item.evidenceIds || []).map((id) => byId.get(id)?.text || '')].join(' ');
+    const available = guidanceTokens(source);
+    const relevance = [...wanted].filter((token) => available.has(token)).length;
+    return { item, index, relevance };
+  }).sort((left, right) => right.relevance - left.relevance || left.index - right.index).map(({ item }) => item);
+}
+
+function contextStage(evidence, profile, state = {}, reviewerGuidance = '') {
   const purpose = purposePlan(state.meeting, evidence);
   if (purpose) {
     return {
       meeting: state.meeting,
-      objectives: purpose.objectives,
-      topics: purpose.topics,
+      objectives: prioritiseForGuidance(purpose.objectives, evidence, reviewerGuidance),
+      topics: prioritiseForGuidance(purpose.topics, evidence, reviewerGuidance),
       purposeProfile: purpose.profileId,
       warnings: []
     };
   }
   const byId = new Map(evidence.events.map((event) => [event.id, event]));
-  const topics = (profile.topics || []).filter((topic) => publishableTopicRepresentative(topic.representativeText) && !/\b(?:no project update today|do not have a project update today|can everyone hear me|red light|webcam)\b/i.test(topic.representativeText || '') && !topic.evidenceIds.every((id) => { const event = byId.get(id); return event ? isSupersededBackground(event, evidence) : false; })).slice(0, 8);
+  const topics = prioritiseForGuidance((profile.topics || []).filter((topic) => publishableTopicRepresentative(topic.representativeText) && !/\b(?:no project update today|do not have a project update today|can everyone hear me|red light|webcam)\b/i.test(topic.representativeText || '') && !topic.evidenceIds.every((id) => { const event = byId.get(id); return event ? isSupersededBackground(event, evidence) : false; })).slice(0, 8), evidence, reviewerGuidance);
   return {
     meeting: { participants: evidence.participants },
     objectives: topics.slice(0, 6).map((topic) => ({ text: `Review ${titleFromRepresentative(topic.representativeText)}`, evidenceIds: topic.evidenceIds, topicId: topic.id })),
     warnings: topics.length ? [] : [{ type: 'thin_context', severity: 'warning', message: 'MiniLM found no confident substantive topic clusters.' }]
   };
+}
+
+function topicMatchScore(confirmedTopic, card) {
+  const wanted = guidanceTokens(confirmedTopic);
+  const available = guidanceTokens([card.topic, ...(card.points || []).map((point) => point.text || point)].join(' '));
+  if (!wanted.size || !available.size) return 0;
+  return [...wanted].filter((token) => available.has(token)).length / wanted.size;
+}
+
+function applyConfirmedTopicAgenda(discussion, state) {
+  const confirmed = (state.topics || []).map((item) => clean(item.humanFinal || item.text)).filter(Boolean);
+  if (!confirmed.length || !discussion.length) return discussion;
+  const unused = new Set(discussion.map((_item, index) => index));
+  const ordered = [];
+  for (const [confirmedIndex, topic] of confirmed.entries()) {
+    const ranked = [...unused].map((index) => ({ index, score: topicMatchScore(topic, discussion[index]) }))
+      .sort((left, right) => right.score - left.score || left.index - right.index);
+    let selected = ranked[0];
+    // Summary topics and generated discussion topics share their source order.
+    // Use that stable relationship only when an edited label no longer shares words.
+    if ((!selected || selected.score === 0) && unused.has(confirmedIndex)) selected = { index: confirmedIndex, score: 0 };
+    if (!selected) continue;
+    unused.delete(selected.index);
+    ordered.push({ ...discussion[selected.index], topic, confirmedTopic: true });
+  }
+  return [...ordered, ...[...unused].map((index) => discussion[index])];
 }
 
 function selectLongDiscussionTopics(topics, evidence, byId, profile) {
@@ -510,6 +555,7 @@ function contentStage(evidence, state, profile) {
       ].slice(0, 17);
     }
   }
+  discussion = applyConfirmedTopicAgenda(discussion, state);
   // Keep explicit, deterministic speech-act extraction as the precision anchor.
   // MiniLM extends it for conversational variants, but may not independently
   // promote an informational sentence into a decision or risk.
