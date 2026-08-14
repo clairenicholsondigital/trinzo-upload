@@ -214,14 +214,15 @@ td textarea { min-height:68px; }
 }
 .stage-validation-warning .stage-validation-tag { background:#f5e2b8; color:#7a5b12; }
 .stage-validation-info .stage-validation-tag { background:#d8ecf2; color:#22697e; }
-.terminology-qa { margin-top:1rem; border:1px solid #e8cf78; border-radius:12px; background:#fff9df; color:#3d3520; padding:.9rem; display:grid; gap:.6rem; }
+.terminology-qa { margin-top:1rem; border:1px solid #cfe2e8; border-radius:8px; background:#f8fcfd; color:#27323a; padding:.75rem; display:grid; gap:.45rem; }
 .terminology-qa[hidden] { display:none; }
-.terminology-qa h3 { margin:0; color:#5c4a13; }
-.terminology-suggestion { display:flex; align-items:center; gap:.65rem; flex-wrap:wrap; padding:.55rem; border-top:1px solid #eadca6; }
-.terminology-suggestion mark { background:#ffe68a; padding:.08rem .2rem; border-radius:3px; }
+.terminology-qa h3 { margin:0; color:#02173B; font-size:.95rem; }
+.terminology-qa p { margin:0; color:#596875; font-size:.86rem; }
+.terminology-suggestion { display:flex; align-items:center; gap:.65rem; flex-wrap:wrap; padding:.45rem 0; border-top:1px solid #dbe8ed; font-size:.9rem; }
+.terminology-suggestion mark { background:#e6f7f7; color:#02173B; padding:.08rem .2rem; border-radius:3px; }
 .terminology-suggestion-actions { margin-left:auto; display:flex; gap:.4rem; }
 .terminology-suggestion-actions button { padding:.42rem .65rem; }
-.qa-field-highlight { background:#fff6c7 !important; border-color:#d9aa20 !important; box-shadow:0 0 0 2px rgba(217,170,32,.16); }
+.qa-field-highlight { background:#f2fbfb !important; border-color:#17D0C4 !important; box-shadow:0 0 0 2px rgba(23,208,196,.14); }
 .stage-decision-copy { display:grid; gap:.2rem; }
 .stage-decision-question {
   margin:0;
@@ -712,6 +713,8 @@ td select {
   var draggedAttendeeChip = null;
   var terminologyQaPanel = document.getElementById('terminologyQa');
   var terminologySuggestions = [];
+  var terminologyAppliedCorrections = [];
+  var terminologySuppressedAutoKeys = {};
 
   function escapeHtml(value) {
     return String(value == null ? '' : value)
@@ -1345,12 +1348,38 @@ td select {
 
   function renderTerminologyQa() {
     clearTerminologyHighlights();
-    if (!terminologyQaPanel || !terminologySuggestions.length) {
+    var activeStage = stageForScreen(activeIndex);
+    var visibleApplied = terminologyAppliedCorrections.filter(function (item) {
+      return item.stage === activeStage && item.status !== 'undone';
+    });
+    var visibleSuggestions = terminologySuggestions.filter(function (item) {
+      return !item.stage || item.stage === activeStage;
+    });
+    if (!terminologyQaPanel || (!visibleApplied.length && !visibleSuggestions.length)) {
       if (terminologyQaPanel) terminologyQaPanel.hidden = true;
       return;
     }
-    terminologyQaPanel.innerHTML = '<h3>Proofreading suggestions</h3><p>These are optional terminology checks. Nothing is changed unless you accept it.</p>';
-    terminologySuggestions.forEach(function (item) {
+    terminologyQaPanel.innerHTML = '<h3>Check these terms</h3><p>The tool changed these terms.</p>';
+    visibleApplied.forEach(function (item) {
+      var control = terminologyQaControl(item.fieldPath);
+      if (control) control.classList.add('qa-field-highlight');
+      var row = document.createElement('div');
+      row.className = 'terminology-suggestion terminology-applied';
+      var copy = document.createElement('span');
+      copy.innerHTML = '<mark>' + escapeHtml(item.original) + '</mark> <span aria-hidden="true">→</span> <strong>' + escapeHtml(item.replacement) + '</strong>';
+      var actions = document.createElement('span');
+      actions.className = 'terminology-suggestion-actions';
+      var undo = document.createElement('button');
+      undo.type = 'button';
+      undo.className = 'secondary';
+      undo.textContent = 'Undo';
+      undo.addEventListener('click', function () { undoTerminologyCorrection(item); });
+      actions.appendChild(undo);
+      row.appendChild(copy);
+      row.appendChild(actions);
+      terminologyQaPanel.appendChild(row);
+    });
+    visibleSuggestions.forEach(function (item) {
       var control = terminologyQaControl(item.fieldPath);
       if (control) control.classList.add('qa-field-highlight');
       var row = document.createElement('div');
@@ -1394,6 +1423,98 @@ td select {
     control.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
+  function terminologyAutoKey(item, stage) {
+    return [stage || item.stage || '', item.fieldPath || '', String(item.original || '').toLowerCase(), String(item.replacement || '').toLowerCase()].join('|');
+  }
+
+  function replaceAllTerminology(value, original, replacement) {
+    var escaped = String(original || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (!escaped) return String(value || '');
+    return String(value || '').replace(new RegExp(escaped, 'g'), replacement);
+  }
+
+  function syncCurrentStageAfterTerminology(stage) {
+    commitStageState(stage);
+    if (stage && stagedState[stage]) generatedStageVersions[stage] = cloneReviewValue(stagedState[stage]);
+    renderFinalDocument();
+    saveDraft();
+  }
+
+  function applyAutomaticTerminologyCorrections(items, stage) {
+    var appliedAny = false;
+    items.forEach(function (item) {
+      var key = terminologyAutoKey(item, stage);
+      if (terminologySuppressedAutoKeys[key]) return;
+      if (terminologyAppliedCorrections.some(function (existing) { return terminologyAutoKey(existing, existing.stage) === key && existing.status !== 'undone'; })) return;
+      var control = terminologyQaControl(item.fieldPath);
+      if (!control || control.tagName === 'SELECT') return;
+      var beforeValue = String(control.value || '');
+      if (beforeValue.indexOf(item.original) === -1) return;
+      var afterValue = replaceAllTerminology(beforeValue, item.original, item.replacement);
+      if (afterValue === beforeValue) return;
+      control.value = afterValue;
+      control.dispatchEvent(new Event('input', { bubbles: true }));
+      control.dispatchEvent(new Event('change', { bubbles: true }));
+      terminologyAppliedCorrections.push({
+        id: item.id + '-' + Date.now(),
+        stage: stage,
+        fieldPath: item.fieldPath,
+        original: item.original,
+        replacement: item.replacement,
+        beforeValue: beforeValue,
+        afterValue: afterValue,
+        status: 'applied',
+        at: new Date().toISOString()
+      });
+      terminologyDecisionEvents.push({
+        originalText: item.original,
+        suggestedText: item.replacement,
+        decision: 'auto_applied',
+        scopeType: item.scopeType || 'project',
+        scopeKey: item.scopeKey || '',
+        fieldPath: item.fieldPath || '',
+        stage: stage,
+        at: new Date().toISOString()
+      });
+      appliedAny = true;
+    });
+    if (appliedAny) {
+      syncCurrentStageAfterTerminology(stage);
+      persistReviewAnalytics('terminology_auto_applied', 'latest_snapshot', { immediate: true });
+    }
+    return appliedAny;
+  }
+
+  function undoTerminologyCorrection(item) {
+    var control = terminologyQaControl(item.fieldPath);
+    if (!control || control.tagName === 'SELECT') return;
+    var currentValue = String(control.value || '');
+    if (currentValue === item.afterValue) {
+      control.value = item.beforeValue;
+    } else {
+      control.value = replaceAllTerminology(currentValue, item.replacement, item.original);
+    }
+    control.dispatchEvent(new Event('input', { bubbles: true }));
+    control.dispatchEvent(new Event('change', { bubbles: true }));
+    item.status = 'undone';
+    item.undoneAt = new Date().toISOString();
+    terminologySuppressedAutoKeys[terminologyAutoKey(item, item.stage)] = true;
+    terminologyDecisionEvents.push({
+      originalText: item.original,
+      suggestedText: item.replacement,
+      decision: 'auto_undone',
+      scopeType: 'project',
+      scopeKey: '',
+      fieldPath: item.fieldPath || '',
+      stage: item.stage || stageForScreen(activeIndex),
+      at: new Date().toISOString()
+    });
+    syncCurrentStageAfterTerminology(item.stage || stageForScreen(activeIndex));
+    renderTerminologyQa();
+    persistReviewAnalytics('terminology_auto_undone', 'latest_snapshot', { immediate: true });
+    setReviewStatus('Terminology change undone.', false);
+  }
+
   async function decideTerminologySuggestion(item, decision) {
     try {
       await fetchJson('/api/staged-meeting-minutes/terminology-qa/decision', {
@@ -1432,7 +1553,13 @@ td select {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ stage: stage, content: terminologyQaContent(stage), details: detailsFromDom(), draftId: ensureDraftId() })
       });
-      terminologySuggestions = Array.isArray(result.suggestions) ? result.suggestions : [];
+      var suggestions = Array.isArray(result.suggestions) ? result.suggestions : [];
+      var automatic = suggestions.filter(function (item) { return item.autoApply; });
+      terminologySuggestions = suggestions.filter(function (item) { return !item.autoApply; }).map(function (item) {
+        item.stage = stage;
+        return item;
+      });
+      applyAutomaticTerminologyCorrections(automatic, stage);
       renderTerminologyQa();
     } catch (_error) {
       terminologySuggestions = [];
@@ -1768,6 +1895,12 @@ td select {
     if (existing && Array.isArray(existing.terminologyDecisions)) {
       terminologyDecisionEvents = existing.terminologyDecisions.slice(-100);
     }
+    if (existing && Array.isArray(existing.terminologyAppliedCorrections)) {
+      terminologyAppliedCorrections = existing.terminologyAppliedCorrections.slice(-100);
+    }
+    if (existing && existing.terminologySuppressedAutoKeys && typeof existing.terminologySuppressedAutoKeys === 'object') {
+      terminologySuppressedAutoKeys = existing.terminologySuppressedAutoKeys;
+    }
     finalReviewCompleted = Boolean(existing && existing.finalReviewCompleted);
     if (existing && existing.generatedStages && typeof existing.generatedStages === 'object') {
       Object.keys(generatedStages).forEach(function (stage) {
@@ -1976,6 +2109,8 @@ td select {
     generatedStages = { details: false, summary: false, discussion: false, actions: false };
     regenerationEvents = [];
     terminologyDecisionEvents = [];
+    terminologyAppliedCorrections = [];
+    terminologySuppressedAutoKeys = {};
     finalReviewCompleted = false;
     reviewEditStartedAt = null;
     reviewEditMs = 0;
@@ -2041,6 +2176,8 @@ td select {
       generatedStageVersions: generatedStageVersions,
       unresolvedWorkstreamFlags: unresolvedWorkstreamFlags,
       terminologyDecisions: terminologyDecisionEvents.slice(-100),
+      terminologyAppliedCorrections: terminologyAppliedCorrections.slice(-100),
+      terminologySuppressedAutoKeys: terminologySuppressedAutoKeys,
       finalReviewCompleted: finalReviewCompleted,
       stagedState: stagedState,
       regenerationCount: regenerationEvents.length,
@@ -2125,6 +2262,7 @@ td select {
     }
     updateDecisionPanel();
     renderFinalDocument();
+    renderTerminologyQa();
     params.set('screen', String(activeIndex));
     if (draftId) replaceUrl(window.location.pathname + '?' + params.toString());
     saveDraft();

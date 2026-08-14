@@ -368,10 +368,13 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("Some possible actions were not added automatically", semantic)
         self.assertNotIn("semantic commitment thread(s) require adjudication", semantic)
 
-    def test_post_generation_terminology_qa_is_review_only_and_audited(self):
+    def test_post_generation_terminology_qa_is_applied_with_reviewer_undo_and_audited(self):
         page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
-        self.assertIn("Proofreading suggestions", page)
+        self.assertIn("Check these terms", page)
+        self.assertIn("The tool changed these terms", page)
+        self.assertIn("applyAutomaticTerminologyCorrections", page)
+        self.assertIn("undoTerminologyCorrection", page)
         self.assertIn("qa-field-highlight", page)
         self.assertIn("decideTerminologySuggestion", page)
         self.assertIn("terminology-qa/suggestions", api)

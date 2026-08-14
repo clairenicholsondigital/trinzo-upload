@@ -9,12 +9,20 @@ const GLOBAL_TERMS = [
   { canonical: 'CER', aliases: [] },
   { canonical: 'DHF', aliases: [] },
   { canonical: 'UDI', aliases: [] },
-  { canonical: 'EUDAMED', aliases: ['eudamed', 'udamed', 'udimed'] },
+  { canonical: 'EUDAMED', aliases: ['eudamed', 'udamed', 'udimed', 'udemed'] },
   { canonical: 'HPRA', aliases: [] },
   { canonical: 'FMEA', aliases: [] },
   { canonical: 'PMS', aliases: [] },
-  { canonical: 'SBOM', aliases: [] },
-  { canonical: 'MDSAP', aliases: ['medsap'] }
+  { canonical: 'SBOM', aliases: ['s-bom'] },
+  { canonical: 'MDSAP', aliases: ['medsap', 'meds app'] }
+];
+
+const AUTO_CORRECTIONS = [
+  { original: 'Udemed', replacement: 'EUDAMED', reason: 'Known transcript terminology correction' },
+  { original: 'Udimed', replacement: 'EUDAMED', reason: 'Known transcript terminology correction' },
+  { original: 'Meds app', replacement: 'MDSAP', reason: 'Known transcript terminology correction' },
+  { original: 'S-BOM', replacement: 'SBOM', reason: 'Known transcript terminology correction' },
+  { original: 'Kappa', replacement: 'CAPA', reason: 'Known transcript terminology correction' }
 ];
 
 function clean(value) { return String(value || '').replace(/\s+/g, ' ').trim(); }
@@ -52,12 +60,13 @@ function generatedFields(stage, content) {
   return [];
 }
 
-function suggestion(field, original, replacement, reason, confidence, scope) {
+function suggestion(field, original, replacement, reason, confidence, scope, options = {}) {
   const signature = `${field.path}|${key(original)}|${key(replacement)}`;
   return {
     id: crypto.createHash('sha256').update(signature).digest('hex').slice(0, 16),
     fieldPath: field.path, original, replacement, reason, confidence,
-    scopeType: scope.type, scopeKey: scope.key
+    scopeType: scope.type, scopeKey: scope.key,
+    autoApply: Boolean(options.autoApply)
   };
 }
 
@@ -65,6 +74,13 @@ function termSuggestions(field, terms, learned, scope) {
   const text = clean(field.text); if (!text) return [];
   const tokens = text.match(/\b[A-Za-z][A-Za-z0-9-]{2,15}\b/g) || [];
   const candidates = [];
+  for (const mapping of AUTO_CORRECTIONS) {
+    const pattern = new RegExp(`\\b${mapping.original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+    const matched = text.match(pattern)?.[0];
+    if (matched && key(matched) !== key(mapping.replacement)) {
+      candidates.push(suggestion(field, matched, mapping.replacement, mapping.reason, 1, scope, { autoApply: true }));
+    }
+  }
   for (const mapping of learned) {
     const original = clean(mapping.originalText);
     if (original && key(original) !== key(mapping.suggestedText) && text.toLowerCase().includes(original.toLowerCase())) {
@@ -80,7 +96,8 @@ function termSuggestions(field, terms, learned, scope) {
         continue;
       }
       const alias = (term.aliases || []).some((value) => key(value) === tokenKey);
-      const fuzzy = !alias && /^[A-Z][A-Za-z0-9-]{2,7}$/.test(token)
+      const fuzzy = !alias && !/^[A-Z0-9-]{2,}$/.test(token)
+        && /^[A-Z][A-Za-z0-9-]{2,7}$/.test(token)
         && Math.abs(token.length - term.canonical.length) <= 1
         && editDistance(token, term.canonical) === 1;
       if (alias || fuzzy) candidates.push(suggestion(field, token, term.canonical, alias ? 'Known terminology variant' : 'Close terminology match', alias ? 0.99 : 0.9, scope));

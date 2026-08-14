@@ -14,6 +14,35 @@ test('terminology QA suggests explicit aliases and acronym capitalisation after 
   assert.ok(suggestions.some((item) => item.original === 'qms' && item.replacement === 'QMS'));
 });
 
+test('terminology QA marks configured transcript corrections for automatic application', () => {
+  const suggestions = reviewGeneratedContent({
+    stage: 'discussion',
+    content: [{
+      topic: 'Regulatory terms',
+      points: [
+        'Udemed and Udimed evidence was reviewed for existing products.',
+        'The Meds app audit scope included S-BOM and Kappa evidence.'
+      ]
+    }],
+    scope: { type: 'project', key: 'T819' }
+  });
+  const automatic = suggestions.filter((item) => item.autoApply).map((item) => `${item.original}->${item.replacement}`);
+  assert.ok(automatic.includes('Udemed->EUDAMED'));
+  assert.ok(automatic.includes('Udimed->EUDAMED'));
+  assert.ok(automatic.includes('Meds app->MDSAP'));
+  assert.ok(automatic.includes('S-BOM->SBOM'));
+  assert.ok(automatic.includes('Kappa->CAPA'));
+});
+
+test('terminology QA does not fuzzy-suggest QMS as PMS', () => {
+  const suggestions = reviewGeneratedContent({
+    stage: 'summary',
+    content: { objectives: ['Review QMS alignment'], executiveSummary: 'The QMS manual remains under review.', overallTopics: [] },
+    scope: { type: 'project', key: 'T819' }
+  });
+  assert.equal(suggestions.some((item) => item.original === 'QMS' && item.replacement === 'PMS'), false);
+});
+
 test('terminology QA conservatively resolves a unique attendee owner variant', () => {
   const suggestions = reviewGeneratedContent({
     stage: 'actions',
