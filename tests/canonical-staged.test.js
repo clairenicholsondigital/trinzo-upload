@@ -157,6 +157,36 @@ test('ordinary commitments remain on the standard extractor', () => {
   assert.equal(assessEvidenceTopology(evidence).mode, 'standard');
 });
 
+test('explicit first-person future commitments publish as concrete actions', () => {
+  const evidence = prepareEvidence([
+    'Jacqui Fox  00:01',
+    "I have that code of conduct, so I'll get that over to you today as well, Niamh.",
+    'Smith, Stuart M  00:05',
+    "Yes, so I'll share with you the tracker that we use that transmits."
+  ].join('\n'));
+  const result = semanticStages.actionsStage(evidence, {}, { events: {} }, { mode: 'standard' });
+  assert.ok(result.actions.some((item) => item.owner === 'Jacqui Fox' && /code of conduct/i.test(item.action) && item.deadline === 'today'));
+  assert.ok(result.actions.some((item) => item.owner === 'Smith, Stuart M' && /tracker/i.test(item.action)));
+  assert.equal(result.warnings.some((warning) => warning.type === 'unresolved_commitment_threads'), false);
+});
+
+test('weak first-person future wording remains unpublished', () => {
+  const maybeEvidence = prepareEvidence([
+    'Jacqui Fox  00:01',
+    "Maybe I'll send something over later.",
+    'Niamh Byrne  00:05',
+    'Okay.'
+  ].join('\n'));
+  const probablyEvidence = prepareEvidence([
+    'Jacqui Fox  00:01',
+    "I'll probably have a look at that.",
+    'Niamh Byrne  00:05',
+    'Okay.'
+  ].join('\n'));
+  assert.deepEqual(semanticStages.actionsStage(maybeEvidence, {}, { events: {} }, { mode: 'standard' }).actions, []);
+  assert.deepEqual(semanticStages.actionsStage(probablyEvidence, {}, { events: {} }, { mode: 'standard' }).actions, []);
+});
+
 test('unrelated planning recap generalises beyond the webinar fixture', () => {
   const transcript = [
     'Morgan Lee  14:00',

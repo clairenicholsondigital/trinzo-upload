@@ -92,6 +92,12 @@ function stripDeadline(text, deadline) {
   return value.replace(/\b(?:by|on|at)\s*$/i, '').replace(/^[,;:\s]+|[,;:\s]+$/g, '');
 }
 
+function hasExplicitFutureCommitment(text) {
+  return /\bI\s*(?:['’]ll|will|shall)\s+(?:send|share|provide|arrange|review|complete|prepare|update|confirm|get|upload|forward|circulate|draft|submit|finish|finalise|finalize|investigate|check|schedule|create|develop)\b/i.test(clean(text))
+    && !/\b(?:probably|maybe|might|I think|I don['’]?t|wouldn['’]?t)\b/i.test(clean(text))
+    && !/\?\s*$/.test(clean(text));
+}
+
 function actionShape(event, evidence) {
   const text = clean(event.text);
   const shapes = [
@@ -284,7 +290,7 @@ function actionsFromThread(thread, evidence, profile) {
   const trainedCompleted = Math.max(...thread.events.map((event) => trainedProbability(profile, event, 'actionProbabilities', 'completed_history')), 0);
   const trainedNotAction = Math.max(...thread.events.map((event) => trainedProbability(profile, event, 'actionProbabilities', 'not_action')), 0);
   const explicitActionForm = thread.events.some((event) => event.roles.includes('action_candidate') && actionShape(event, evidence));
-  const strongExplicitAction = thread.events.some((event) => event.roles.includes('action_candidate') && !event.roles.includes('hypothetical') && /\b(?:I['’]ll|I will|I shall|I need to)\b/i.test(event.text) && actionShape(event, evidence));
+  const strongExplicitAction = thread.events.some((event) => event.roles.includes('action_candidate') && !event.roles.includes('hypothetical') && (hasExplicitFutureCommitment(event.text) || /\bI\s+(?:need to|must|have to)\b/i.test(event.text)) && actionShape(event, evidence));
   const acceptedProposal = thread.events.some((event) => {
     const shape = actionShape(event, evidence);
     if (!shape || !/^(?:do|handle|take)\s+(?:it|that)[.!?]*$/i.test(shape.action)) return false;
@@ -336,6 +342,7 @@ function actionsFromThread(thread, evidence, profile) {
       deadline,
       evidenceIds: thread.evidenceIds,
       threadId: thread.id,
+      explicitFutureCommitment: hasExplicitFutureCommitment(shaped.event.text),
       semanticConfidence: Number(Math.max(positive - negative, 0).toFixed(4))
     };
   }).filter(Boolean);
@@ -613,12 +620,19 @@ function resolveActionReferent(item, evidence) {
   const contextEvents = evidence.events.slice(Math.max(0, sourceIndex - 10), Math.max(...indices) + 1);
   const context = contextEvents.map((event) => event.text).join(' ');
   let action = clean(item.action);
-  const referentMatches = [...context.matchAll(/\b((?:[a-z][a-z0-9'’-]*\s+){0,4}(?:working sessions?|check-in calls?|recurrence calls?|buttons?|ports?|controls?|drivers?|task lists?|project plans?|guides?|documents?|reports?|plans?|bills?|invoices?|files?|standards?|procedures?|declarations? of conformity))\b/gi)];
-  const referent = clean(referentMatches.at(-1)?.[1] || '').replace(/^(?:at\s+)?(?:the|a|an|that|this)\s+/i, '');
+  const localHeldObject = context.match(/\bI\s+(?:have|have got|['’]ve got)\s+(?:that|the)\s+(code of conduct)\b/i);
+  if (localHeldObject && /^get (?:it|that|this) over\b/i.test(action)) {
+    action = `send the ${clean(localHeldObject[1])}`;
+  }
+  if (/^share with you the tracker\b/i.test(action)) action = 'share the tracker';
+  const referentMatches = [...context.matchAll(/\b((?:[a-z][a-z0-9'’-]*\s+){0,4}(?:working sessions?|check-in calls?|recurrence calls?|code of conduct|trackers?|buttons?|ports?|controls?|drivers?|task lists?|project plans?|guides?|documents?|reports?|plans?|bills?|invoices?|files?|standards?|procedures?|declarations? of conformity))\b/gi)];
+  const referent = clean(referentMatches.at(-1)?.[1] || '').replace(/^(?:at\s+)?(?:I\s+(?:have|have got|['’]ve got)\s+)?(?:the|a|an|that|this)\s+/i, '');
   if (referent) {
     action = action
       .replace(/\bhave a (?:read around|look)\b/i, /\breports?\b/i.test(referent) ? `review referenced reports (${referent})` : `review ${referent}`)
       .replace(/\blook at\b$/i, `review ${referent}`)
+      .replace(/^get (?:it|that|this) over\b.*$/i, `send the ${referent}`)
+      .replace(/^share with you (?:the|a|an|that|this)?\s*.+$/i, `share the ${referent}`)
       .replace(/\bset that up\b/i, `set up ${referent}`)
       .replace(/\barrange that\b/i, `arrange ${referent}`)
       .replace(/\breview (?:it|that)\b/i, `review ${referent}`)
@@ -634,7 +648,9 @@ function resolveActionReferent(item, evidence) {
     const acronym = context.match(/\b[A-Z]{2,}\b/)?.[0];
     action = `Send a copy of the ${acronym} authorised representative bill`;
   }
-  return { ...item, action: action.charAt(0).toUpperCase() + action.slice(1) };
+  const explicitFutureCommitment = item.explicitFutureCommitment
+    || contextEvents.some((event) => event.roles.includes('action_candidate') && !event.roles.includes('hypothetical') && hasExplicitFutureCommitment(event.text));
+  return { ...item, action: action.charAt(0).toUpperCase() + action.slice(1), explicitFutureCommitment };
 }
 
 function acceptedCollectiveActions(evidence) {
@@ -815,7 +831,7 @@ function resolveEnrichedActions(items, evidence, profile) {
     const commitment = Math.max(...sources.map((event) => enrichedProbability(profile, event, 'discourseRoleProbabilities', 'canonical_commitment')), 0);
     const canonical = Math.max(...sources.map((event) => enrichedProbability(profile, event, 'canonicalWorthinessProbabilities', 'canonical_item')), 0);
     const noise = Math.max(...sources.map((event) => trainedProbability(profile, event, 'evidenceProbabilities', 'low_value_noise')), 0);
-    const learnedOrActionable = item.learnedSlot || confirmed >= 0.08 || possible >= 0.08 || commitment >= 0.1;
+    const learnedOrActionable = item.learnedSlot || item.explicitFutureCommitment || confirmed >= 0.08 || possible >= 0.08 || commitment >= 0.1;
     const completeEnough = actionHasConcreteObject(item.action) || canonical >= 0.45 || noise < 0.5;
     return learnedOrActionable && completeEnough && (item.learnedSlot || sources.some((event) => independentlyCanonical(profile, event))) && !(inactive >= 0.65 && inactive > active);
   });
@@ -854,13 +870,15 @@ function actionPublishability(item, evidence, profile) {
   let quality = confirmed + (possible * 0.35) - (negative * 0.7) - (administrative * 0.6);
   if (item.owner && item.owner !== 'Not stated') quality += 0.15;
   if (source.some((event) => event.roles.includes('action_candidate') && !event.roles.includes('hypothetical') && /\bI\s+(?:need to|must|have to)\b/i.test(event.text))) quality += 0.9;
+  if (item.explicitFutureCommitment || source.some((event) => event.roles.includes('action_candidate') && !event.roles.includes('hypothetical') && hasExplicitFutureCommitment(event.text))) quality += 0.8;
   if (item.deadline && item.deadline !== 'Not stated') quality += 0.12;
   if (words.length >= 4 && words.length <= 20) quality += 0.12;
   if (/\b(?:review|send|share|confirm|complete|prepare|update|provide|request|schedule|draft|test|submit|follow up|investigate|create|develop|finalise)\b/i.test(item.action)) quality += 0.1;
   if (/\b(?:share my screen|book a holiday|(?:mum|mother)['’]?s shopping|shopping for (?:my|their) (?:mum|mother)|housebound|weekend plans?|talk to you soon|speak to you next week|get down the road)\b/i.test(item.action)) quality -= 2;
   if (/^(?:be|stay) there\b|\b(?:free|available|availability)\b/i.test(item.action)) quality -= 1.2;
   if (/^(?:be|go|do|take|get|send|share|review|add|put|time)\s+(?:it|that|this|there|right|out|you)?[.!?]?$/i.test(item.action)) quality -= 0.8;
-  if (/\?|\b(?:probably|maybe|I['’]?ll|I am|I think|I don['’]?t|wouldn['’]?t)\b/i.test(item.action)) quality -= 0.45;
+  if (/\?|\b(?:probably|maybe|I am|I think|I don['’]?t|wouldn['’]?t)\b/i.test(item.action)) quality -= 0.45;
+  if (/\bI['’]?ll\s+(?:probably|maybe)\b/i.test(item.action)) quality -= 0.35;
   if (words.length < 3 || words.length > 28) quality -= 0.6;
   return quality;
 }
@@ -932,13 +950,13 @@ function actionsStage(evidence, state, profile, topology) {
   } else if (evidence.events.length >= 100 && topology.mode === 'standard') {
     const ranked = actions
       .filter((item) => !isUnderspecifiedAction(item))
-      .map((item, index) => ({ item, index, publishability: actionPublishability(item, evidence, profile), explicitObligation: (item.evidenceIds || []).some((id) => {
+      .map((item, index) => ({ item, index, publishability: actionPublishability(item, evidence, profile), strongCommitment: item.explicitFutureCommitment || (item.evidenceIds || []).some((id) => {
         const event = evidence.events.find((candidate) => candidate.id === id);
-        return event?.roles.includes('action_candidate') && !event.roles.includes('hypothetical') && !/\?\s*$/.test(event.text) && /\bI\s+(?:need to|must|have to)\b/i.test(event.text);
+        return event?.roles.includes('action_candidate') && !event.roles.includes('hypothetical') && !/\?\s*$/.test(event.text) && (/\bI\s+(?:need to|must|have to)\b/i.test(event.text) || hasExplicitFutureCommitment(event.text));
       }) }))
       .filter((candidate) => candidate.publishability >= 0.08);
-    const mandatory = ranked.filter((candidate) => candidate.explicitObligation);
-    const optional = ranked.filter((candidate) => !candidate.explicitObligation)
+    const mandatory = ranked.filter((candidate) => candidate.strongCommitment);
+    const optional = ranked.filter((candidate) => !candidate.strongCommitment)
       .sort((left, right) => right.publishability - left.publishability || left.index - right.index);
     actionCandidates = [...mandatory, ...optional]
       .sort((left, right) => left.index - right.index)
@@ -964,7 +982,11 @@ function actionsStage(evidence, state, profile, topology) {
       .sort((left, right) => left.index - right.index)
       .map((candidate) => candidate.item);
   }
-  const unresolvedThreads = threads.filter((thread) => !actions.some((action) => action.threadId === thread.id)).map((thread) => ({
+  const unresolvedThreads = threads.filter((thread) => !actions.some((action) => {
+    if (action.threadId === thread.id) return true;
+    const actionEvidence = new Set(action.evidenceIds || []);
+    return thread.evidenceIds.some((id) => actionEvidence.has(id));
+  })).map((thread) => ({
     threadId: thread.id, evidenceIds: thread.evidenceIds, scores: thread.semanticScores,
     reason: 'Semantic candidate could not be safely converted into an owner/action record.'
   }));
