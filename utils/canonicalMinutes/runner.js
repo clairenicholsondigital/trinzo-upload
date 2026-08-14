@@ -48,10 +48,18 @@ function runCanonicalNoEditPass(transcriptText, options = {}) {
   const strategy = options.strategy || 'semantic_v2';
   const semanticProfile = options.semanticProfile || loadMiniLMProfileSync(evidence, options);
   if (!semanticProfile?.available) throw new Error(`Canonical MiniLM profile unavailable: ${semanticProfile?.reason || 'unknown error'}`);
-  let state = createCanonicalState({ transcriptText, fileName: options.fileName, meeting: { title: options.meetingTitle || '', participants: evidence.participants } });
+  let state = createCanonicalState({
+    transcriptText,
+    fileName: options.fileName,
+    meeting: {
+      title: options.meetingTitle || '',
+      type: options.meetingType || '',
+      participants: evidence.participants
+    }
+  });
   const stageSnapshots = [];
   const stages = [
-    ['context', () => semanticStages.contextStage(evidence, semanticProfile)],
+    ['context', () => semanticStages.contextStage(evidence, semanticProfile, state, options.reviewerGuidance)],
     ['content', () => semanticStages.contentStage(evidence, state, semanticProfile)],
     ['actions', () => semanticStages.actionsStage(evidence, state, semanticProfile, topology)]
   ];

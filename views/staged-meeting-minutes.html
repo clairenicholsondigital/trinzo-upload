@@ -1034,11 +1034,30 @@ td select {
     };
   }
 
+  function topicRefsFromDom(topics) {
+    var refs = generatedStageVersions.summary && Array.isArray(generatedStageVersions.summary.topicRefs)
+      ? generatedStageVersions.summary.topicRefs
+      : [];
+    var unused = refs.map(function (_ref, index) { return index; });
+    return topics.map(function (text, index) {
+      var exactAt = unused.findIndex(function (refIndex) {
+        return String(refs[refIndex].text || '').trim().toLowerCase() === String(text || '').trim().toLowerCase();
+      });
+      var refIndex = exactAt >= 0 ? unused.splice(exactAt, 1)[0]
+        : topics.length === refs.length && unused.indexOf(index) >= 0 ? index
+          : -1;
+      if (refIndex >= 0) unused = unused.filter(function (candidate) { return candidate !== refIndex; });
+      return refIndex >= 0 ? refs[refIndex] : {};
+    });
+  }
+
   function summaryFromDom() {
+    var topics = linesFromTextarea(overallTopicsInput && overallTopicsInput.value);
     return {
       objectives: linesFromTextarea(objectivesInput && objectivesInput.value),
       executiveSummary: executiveSummaryInput && executiveSummaryInput.value ? executiveSummaryInput.value.trim() : '',
-      overallTopics: linesFromTextarea(overallTopicsInput && overallTopicsInput.value)
+      overallTopics: topics,
+      topicRefs: topicRefsFromDom(topics)
     };
   }
 
@@ -1598,7 +1617,9 @@ td select {
           ? summary.overallTopics.join('\n')
           : overallTopicsInput.value;
       }
-      stagedState.summary = summaryFromDom();
+      stagedState.summary = Object.assign(summaryFromDom(), {
+        topicRefs: Array.isArray(summary.topicRefs) ? summary.topicRefs : []
+      });
       generatedStageVersions.summary = cloneReviewValue(stagedState.summary);
     }
     if (Object.prototype.hasOwnProperty.call(screensPayload, 'discussion')) {

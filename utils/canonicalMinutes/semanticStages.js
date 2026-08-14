@@ -7,6 +7,7 @@ const { deadlineFrom } = deterministicStages;
 const { actionHasConcreteObject, applyOperationalPhaseTiming, attachTemporalContext, composeDecision, composeRisk, consolidate, deriveRoleDecisions, tokenOverlap } = require('./canonicalResolver');
 const { purposePlan, objectiveIntentForText, topicOrderRank } = require('./meetingPurpose');
 const { resolveActionRecords } = require('./actionResolution');
+const { editorialTopicLabel, editorialTopics } = require('./topicEditorial');
 
 function unique(items, key) {
   const seen = new Set();
@@ -213,7 +214,9 @@ function candidateReviewScore(item, evidence, profile) {
 function reviewCandidateNoise(item, evidence) {
   const text = clean(item.action);
   const sourceText = (item.evidenceIds || []).map((id) => evidence.events.find((event) => event.id === id)?.text || '').join(' ');
-  return nonMinuteActionText(`${text} ${sourceText}`) || isUnderspecifiedAction(item);
+  const malformed = /,\s*I['’]m\b|\bbecause I['’]m\b/i.test(text);
+  const unresolvedObject = /\b(?:review|send|share|update|complete)\s+(?:it|that|this)(?:\s+as well)?$/i.test(text);
+  return malformed || unresolvedObject || nonMinuteActionText(`${text} ${sourceText}`) || isUnderspecifiedAction(item);
 }
 
 function nonMinuteActionText(value) {
@@ -378,6 +381,7 @@ function publishableTopicRepresentative(text) {
 function minutesPoint(text) {
   let value = clean(text).replace(/[.]+$/, '');
   value = value
+    .replace(/^(?:and\s+)?then[,;:\s]+/i, '')
     .replace(/^I\s+(?:think|believe|guess|suppose)\s+(?:that\s+)?/i, '')
     .replace(/^we\s+(?:discussed|reviewed|noted|confirmed)\s+/i, 'The team $1 ')
     .replace(/^you know[,;:\s]*/i, '')
@@ -391,7 +395,21 @@ function minutesPoint(text) {
     .replace(/\bour\b/gi, "the team's")
     .replace(/\bI\b/g, 'the speaker')
     .replace(/\bmy\b/gi, "the speaker's");
-  if (value.split(/\s+/).length < 5 || /(?:\b(?:and|but|or|because|that|which|with|from|to|for|of|the|a|an)|[,;:])$/i.test(value)) return '';
+  value = value
+    .replace(/\bthe speaker['’]ve\b/gi, 'the speaker has')
+    .replace(/\bthe speaker (?:don['’]?t|do not)\b/gi, 'the speaker does not')
+    .replace(/\bthe speaker (?:haven['’]?t|have not)\b/gi, 'the speaker has not')
+    .replace(/\bthe speaker think\b/gi, 'the speaker thinks')
+    .replace(/\bthe speaker know\b/gi, 'the speaker knows')
+    .replace(/\bthe speaker need\b/gi, 'the speaker needs')
+    .replace(/\bthe speaker do\b/gi, 'the speaker does')
+    .replace(/\bthe speaker the speaker\b/gi, 'the speaker')
+    .replace(/\bhow it how\b/gi, 'how')
+    .replace(/\bkind of\b/gi, '')
+    .replace(/\bsort of\b/gi, '')
+    .replace(/\blike,?\s+/gi, '')
+    .replace(/\s{2,}/g, ' ');
+  if (value.split(/\s+/).length < 5 || /\bthat is that there is\b/i.test(value) || /(?:\b(?:and|but|or|because|that|which|with|from|into|onto|to|for|of|the|a|an)|[,;:])$/i.test(value)) return '';
   return value ? `${value.charAt(0).toUpperCase()}${value.slice(1)}.` : '';
 }
 
@@ -414,9 +432,9 @@ function prioritiseForGuidance(items, evidence, reviewerGuidance) {
   }).sort((left, right) => right.relevance - left.relevance || left.index - right.index).map(({ item }) => item);
 }
 
-function objectivePhraseForTopic(topic, topicHints) {
+function objectivePhraseForTopic(topic, topicHints, evidence) {
   const intent = objectiveIntentForText(topicHints, topic.representativeText);
-  const title = titleFromRepresentative(topic.representativeText);
+  const title = topic.editorialText || editorialTopicLabel(topic, evidence);
   return `${intent} ${title.charAt(0).toLowerCase()}${title.slice(1)}`;
 }
 
@@ -438,11 +456,11 @@ function contextStage(evidence, profile, state = {}, reviewerGuidance = '') {
       .sort((left, right) => left.rank - right.rank || left.index - right.index)
       .map((entry) => entry.topic);
   }
-  const topics = prioritiseForGuidance(clusters.slice(0, 8), evidence, reviewerGuidance);
+  const topics = prioritiseForGuidance(editorialTopics(clusters, evidence, 6), evidence, reviewerGuidance);
   return {
     meeting: state.meeting || { participants: evidence.participants },
-    objectives: topics.slice(0, 6).map((topic) => ({ text: objectivePhraseForTopic(topic, topicHints), evidenceIds: topic.evidenceIds, topicId: topic.id })),
-    topics: topics.map((topic) => ({ text: titleFromRepresentative(topic.representativeText), evidenceIds: topic.evidenceIds, topicId: topic.id })),
+    objectives: topics.slice(0, 6).map((topic) => ({ text: objectivePhraseForTopic(topic, topicHints, evidence), evidenceIds: topic.evidenceIds, topicId: topic.id })),
+    topics: topics.map((topic) => ({ text: topic.editorialText, evidenceIds: topic.evidenceIds, topicId: topic.id })),
     purposeProfile: purpose?.profileId || null,
     warnings: topics.length ? [] : [{ type: 'thin_context', severity: 'warning', message: 'MiniLM found no confident substantive topic clusters.' }]
   };
@@ -456,12 +474,23 @@ function topicMatchScore(confirmedTopic, card) {
 }
 
 function applyConfirmedTopicAgenda(discussion, state) {
-  const confirmed = (state.topics || []).map((item) => clean(item.humanFinal || item.text)).filter(Boolean);
+  const confirmed = (state.topics || []).map((item) => ({
+    text: clean(item.humanFinal || item.text),
+    topicId: clean(item.topicId)
+  })).filter((item) => item.text);
   if (!confirmed.length || !discussion.length) return discussion;
   const unused = new Set(discussion.map((_item, index) => index));
   const ordered = [];
   for (const topic of confirmed) {
-    const ranked = [...unused].map((index) => ({ index, score: topicMatchScore(topic, discussion[index]) }))
+    const exactIndex = topic.topicId
+      ? [...unused].find((index) => discussion[index].topicId === topic.topicId)
+      : undefined;
+    if (exactIndex !== undefined) {
+      unused.delete(exactIndex);
+      ordered.push({ ...discussion[exactIndex], topic: topic.text, confirmedTopic: true });
+      continue;
+    }
+    const ranked = [...unused].map((index) => ({ index, score: topicMatchScore(topic.text, discussion[index]) }))
       .sort((left, right) => right.score - left.score || left.index - right.index);
     // Only bind a confirmed topic to a card that shares vocabulary with it.
     // A zero-overlap positional fallback used to steal an unrelated card by
@@ -471,9 +500,13 @@ function applyConfirmedTopicAgenda(discussion, state) {
     const selected = ranked.find((entry) => entry.score > 0);
     if (!selected) continue;
     unused.delete(selected.index);
-    ordered.push({ ...discussion[selected.index], topic, confirmedTopic: true });
+    ordered.push({ ...discussion[selected.index], topic: topic.text, confirmedTopic: true });
   }
-  return [...ordered, ...[...unused].map((index) => discussion[index])];
+  // Once Summary has been confirmed it is the agenda contract. Do not append
+  // unrelated clusters after it; that recreates noise the reviewer already
+  // removed on the previous screen. With no usable match, retain the original
+  // discussion as a safe fallback instead of returning an empty screen.
+  return ordered.length ? ordered : discussion;
 }
 
 function selectLongDiscussionTopics(topics, evidence, byId, profile) {
@@ -560,8 +593,8 @@ function contentStage(evidence, state, profile) {
     const points = longTranscript
       ? (minuteEvidence.length ? [{ text: minuteEvidence.slice(0, 2).map((item) => item.text).join(' '), evidenceIds: minuteEvidence.slice(0, 2).flatMap((item) => item.evidenceIds) }] : [])
       : minuteEvidence.slice(0, 4);
-    return { topic: titleFromRepresentative(topic.representativeText), points, evidenceIds: topic.evidenceIds, topicId: topic.id, cohesion: topic.cohesion };
-  }).filter((item) => item.points.length);
+    return { topic: editorialTopicLabel(topic, evidence), points, evidenceIds: topic.evidenceIds, topicId: topic.id, cohesion: topic.cohesion };
+  }).filter((item) => item.topic && item.topic !== 'Substantive discussion' && item.points.length);
   if (longTranscript) {
     const riskCards = discussion.filter((card) => card.evidenceIds.some((id) => {
       const event = byId.get(id);
@@ -636,13 +669,18 @@ function resolveActionReferent(item, evidence) {
   const sourceIndex = Math.min(...indices);
   const contextEvents = evidence.events.slice(Math.max(0, sourceIndex - 10), Math.max(...indices) + 1);
   const context = contextEvents.map((event) => event.text).join(' ');
+  const sourceSpeaker = evidence.events[sourceIndex]?.speaker;
+  const referentContext = contextEvents
+    .filter((event) => !sourceSpeaker || event.speaker === sourceSpeaker)
+    .map((event) => event.text)
+    .join(' ');
   let action = clean(item.action);
   // Referent resolution is generic: it captures the nearest preceding concrete
   // noun phrase from THIS transcript's context and rewrites pronoun-shaped
   // commitments ("get that over", "share with you the X") around it. The noun
   // vocabulary is a general business-object list — no per-meeting phrases.
-  const referentMatches = [...context.matchAll(/\b((?:[a-z][a-z0-9'’-]*\s+){0,4}(?:working sessions?|check-in calls?|recurrence calls?|code of conduct|trackers?|buttons?|ports?|controls?|drivers?|task lists?|project plans?|guides?|documents?|reports?|plans?|bills?|invoices?|files?|standards?|procedures?|declarations? of conformity))\b/gi)];
-  const referent = clean(referentMatches.at(-1)?.[1] || '').replace(/^(?:at\s+)?(?:I\s+(?:have|have got|['’]ve got)\s+)?(?:the|a|an|that|this)\s+/i, '');
+  const referentMatches = [...referentContext.matchAll(/\b(working sessions?|check-in calls?|recurrence calls?|code of conduct|trackers?|buttons?|ports?|controls?|drivers?|task lists?|project plans?|guides?|documents?|reports?|plans?|bills?|invoices?|files?|standards?|regulations?|procedures?|declarations? of conformity)\b/gi)];
+  const referent = clean(referentMatches.at(-1)?.[1] || '');
   if (referent) {
     action = action
       .replace(/\bhave a (?:read around|look)\b/i, /\breports?\b/i.test(referent) ? `review referenced reports (${referent})` : `review ${referent}`)
@@ -652,9 +690,17 @@ function resolveActionReferent(item, evidence) {
       .replace(/\bset that up\b/i, `set up ${referent}`)
       .replace(/\barrange that\b/i, `arrange ${referent}`)
       .replace(/\breview (?:it|that)\b/i, `review ${referent}`)
-      .replace(/\bfollow up on that\b/i, `follow up on ${referent}`);
+      .replace(/\bfollow up on that\b/i, `follow up on ${referent}`)
+      .replace(/\b(?:it|that|them)\b/i, referent);
     if (/\bsend (?:a )?copy\b/i.test(action)) action = action.replace(/\bsend (?:a )?copy\b/i, `send a copy of ${referent}`);
   }
+  action = action
+    .replace(/^try and\s+/i, '')
+    .replace(/\s+so (?:it['’]?s|that['’]?s) not like\b.*$/i, '')
+    .replace(/\bshare the share with you the\b/i, 'share the')
+    .replace(/\bsend the (?:and\s+)?I have that\b/i, 'send the')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
   if (/^review (?:it|that)\b/i.test(action) && /\bdraft(?:ing|ed)?\b|\bdraught(?:ing|ed)?\b/i.test(context)) {
     action = action.replace(/^review (?:it|that)\b/i, 'Review the draft content');
   }
@@ -998,6 +1044,10 @@ function actionsStage(evidence, state, profile, topology) {
       .sort((left, right) => left.index - right.index)
       .map((candidate) => candidate.item);
   }
+  // The same generic noise gate used for reviewer candidates must also protect
+  // the published list. Otherwise a high classifier score can promote an
+  // absence/status remark (for example, “out for the next few days”) as a task.
+  actions = actions.filter((item) => !reviewCandidateNoise(item, evidence));
   const unresolvedThreads = threads.filter((thread) => !actions.some((action) => {
     if (action.threadId === thread.id) return true;
     const actionEvidence = new Set(action.evidenceIds || []);

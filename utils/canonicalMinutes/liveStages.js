@@ -25,6 +25,15 @@ function approvedText(values, key = 'text') {
   return strings(values).map((text) => ({ [key]: text, humanFinal: text, aiOriginal: text }));
 }
 
+function approvedTopics(summary = {}) {
+  const refs = Array.isArray(summary.topicRefs) ? summary.topicRefs : [];
+  return strings(summary.overallTopics).map((text, index) => ({
+    text,
+    topicId: clean(refs[index]?.topicId),
+    evidenceIds: Array.isArray(refs[index]?.evidenceIds) ? refs[index].evidenceIds : []
+  }));
+}
+
 function approvedDiscussion(values) {
   return (Array.isArray(values) ? values : []).map((card) => ({
     topic: clean(card?.topic) || 'Discussion',
@@ -64,7 +73,7 @@ function buildConfirmedState(transcriptText, fileName, confirmed = {}) {
   if (Object.keys(summary).length) {
     state = acceptProposal(state, {
       objectives: approvedText(summary.objectives),
-      topics: approvedText(summary.overallTopics),
+      topics: approvedTopics(summary),
       meeting: state.meeting
     }, { source: 'stage_1_human_confirmation' });
   }
@@ -93,6 +102,7 @@ function summaryScreen(proposal) {
   return {
     objectives,
     overallTopics,
+    topicRefs: (proposal.topics || []).map((item) => ({ text: item.text || '', topicId: item.topicId || '', evidenceIds: item.evidenceIds || [] })),
     executiveSummary: /webinar/.test(meetingType) && /rehearsal|practice|run[ -]?through/.test(meetingType)
       ? `The webinar rehearsal reviewed ${overallTopics.join('; ').replace(/; ([^;]+)$/, '; and $1').toLowerCase()}.`
       : overallTopics.length
@@ -182,7 +192,7 @@ function runCanonicalLiveStage(transcriptText, options = {}) {
   if (stage === 'summary') proposal = semanticStages.contextStage(evidence, profile, state, options.reviewerGuidance);
   if (stage === 'discussion') proposal = semanticStages.contentStage(evidence, state, profile);
   if (stage === 'actions') proposal = semanticStages.actionsStage(evidence, state, profile, topology);
-  // Final anti-leakage gate: drop anything not grounded in THIS transcript.
+  // Final provenance gate: drop anything without evidence from THIS transcript.
   proposal = groundProposal(proposal, evidence);
   const screen = stage === 'summary' ? summaryScreen(proposal)
     : stage === 'discussion' ? discussionScreen(proposal)

@@ -165,10 +165,14 @@ test('explicit first-person future commitments publish as concrete actions', () 
     "Yes, so I'll share with you the tracker that we use that transmits."
   ].join('\n'));
   const result = semanticStages.actionsStage(evidence, {}, { events: {} }, { mode: 'standard' });
-  assert.ok(result.actions.some((item) => item.owner === 'Jacqui Fox' && /code of conduct/i.test(item.action) && item.deadline === 'today'));
+  const codeOfConduct = result.actions.find((item) => item.owner === 'Jacqui Fox' && /code of conduct/i.test(item.action));
+  assert.ok(codeOfConduct && codeOfConduct.deadline === 'today');
+  assert.doesNotMatch(codeOfConduct.action, /\band I have that\b/i);
   // Teams surname-first display names are normalised generically to "First Last",
   // so the owner resolves to "Stuart Smith" (not the raw "Smith, Stuart M").
-  assert.ok(result.actions.some((item) => item.owner === 'Stuart Smith' && /tracker/i.test(item.action)));
+  const tracker = result.actions.find((item) => item.owner === 'Stuart Smith' && /tracker/i.test(item.action));
+  assert.ok(tracker);
+  assert.doesNotMatch(tracker.action, /share (?:the )?share/i);
   assert.equal(result.warnings.some((warning) => warning.type === 'unresolved_commitment_threads'), false);
 });
 
@@ -187,6 +191,17 @@ test('weak first-person future wording remains unpublished', () => {
   ].join('\n'));
   assert.deepEqual(semanticStages.actionsStage(maybeEvidence, {}, { events: {} }, { mode: 'standard' }).actions, []);
   assert.deepEqual(semanticStages.actionsStage(probablyEvidence, {}, { events: {} }, { mode: 'standard' }).actions, []);
+});
+
+test('malformed fragments and unresolved pronouns stay out of published actions', () => {
+  const evidence = prepareEvidence([
+    'Rebecca Cole  00:01',
+    "I'll get the file, I'm hoping done because I'm focusing on risk.",
+    'Jacqui Fox  00:08',
+    "I'll get Colm to review that as well."
+  ].join('\n'));
+  const result = semanticStages.actionsStage(evidence, {}, { events: {} }, { mode: 'standard' });
+  assert.deepEqual(result.actions, []);
 });
 
 test('unrelated planning recap generalises beyond the webinar fixture', () => {
@@ -265,13 +280,18 @@ test('live staged state locks reviewer-confirmed input for downstream stages', (
   ].join('\n');
   const state = buildConfirmedState(transcript, 'review.txt', {
     details: { meetingTitle: 'Reviewer title', participants: ['Amina Khan', 'Ben Stone'] },
-    summary: { objectives: ['Use reviewer-corrected option B'], overallTopics: ['Reviewer-approved option'] },
+    summary: {
+      objectives: ['Use reviewer-corrected option B'],
+      overallTopics: ['Reviewer-approved option'],
+      topicRefs: [{ topicId: 'topic_option', evidenceIds: ['evt_0001'] }]
+    },
     discussion: [{ topic: 'Chosen option', points: ['The reviewer confirmed option B.'] }]
   });
   assert.equal(state.objectives[0].humanFinal, 'Use reviewer-corrected option B');
   assert.equal(state.objectives[0].locked, true);
   assert.equal(state.objectives[0].source, 'stage_1_human_confirmation');
   assert.equal(state.topics[0].humanFinal, 'Reviewer-approved option');
+  assert.equal(state.topics[0].topicId, 'topic_option');
   assert.equal(state.topics[0].locked, true);
   assert.equal(state.discussion[0].points[0].text, 'The reviewer confirmed option B.');
   assert.equal(state.discussion[0].source, 'stage_2_human_confirmation');
@@ -298,7 +318,7 @@ test('summary reviewer guidance prioritises supported evidence without becoming 
     meeting: { type: 'Webinar rehearsal', title: 'Product webinar' }
   }, 'Prioritise recording and technical readiness');
   // Guidance floats the recording/technical topic to the front.
-  assert.match(result.topics[0].text, /recording|screen sharing/i);
+  assert.match(result.topics[0].text, /technical setup/i);
   // Guidance text itself never leaks into the topic list as content.
   assert.equal(result.topics.some((item) => /prioritise/i.test(item.text)), false);
   // Every emitted topic is grounded in this transcript's evidence.
@@ -328,6 +348,28 @@ test('confirmed summary topics become the preferred discussion agenda', () => {
     'Approved validation agenda',
     'Approved supplier agenda'
   ]);
+});
+
+test('stable topic ids preserve a fully rewritten human heading in Discussion', () => {
+  const evidence = prepareEvidence([
+    'Amina Khan  00:01',
+    'The supplier schedule needs review before Friday.',
+    'Ben Stone  00:08',
+    'The validation report is ready for approval.'
+  ].join('\n'));
+  const profile = {
+    topics: [
+      { id: 'supplier', representativeText: 'Supplier schedule review', evidenceIds: [evidence.events[0].id], cohesion: 1 },
+      { id: 'validation', representativeText: 'Validation report approval', evidenceIds: [evidence.events[1].id], cohesion: 1 }
+    ],
+    events: {}
+  };
+  const state = { meeting: {}, objectives: [], decisions: [], risks: [], discussion: [], actions: [], topics: [
+    { text: 'Completely rewritten heading', humanFinal: 'Completely rewritten heading', topicId: 'validation' }
+  ] };
+  const result = semanticStages.contentStage(evidence, state, profile);
+  assert.equal(result.discussion[0].topic, 'Completely rewritten heading');
+  assert.equal(result.discussion[0].topicId, 'validation');
 });
 
 test('live actions stage uses confirmed state and returns the existing UI screen contract', () => {

@@ -1,6 +1,6 @@
 'use strict';
 
-// Anti-leakage grounding gate.
+// Evidence-provenance gate.
 //
 // One invariant, enforced across the whole staged pipeline: every emitted item
 // (objective, topic, discussion point, decision, risk, action) must be grounded
@@ -9,16 +9,17 @@
 // any evidenceId from outside it. Ungrounded or foreign-referenced items are
 // dropped and reported.
 //
-// This makes transcript-to-transcript leakage structurally impossible,
-// independent of how an item was produced: deterministic extraction, MiniLM
-// clustering, or LLM polish. It is deliberately source-agnostic and runs as the
-// final filter before content is shown or persisted.
+// This prevents stale or foreign evidence references from crossing transcript
+// boundaries. It does not claim semantic entailment: wording quality and
+// factual support remain the responsibility of the extractive/editorial stage.
+// The gate is deliberately source-agnostic and runs before content is shown or
+// persisted.
 
 function currentEvidenceIdSet(evidence) {
   return new Set((evidence && Array.isArray(evidence.events) ? evidence.events : []).map((event) => event.id));
 }
 
-// Grounded == cites at least one current id AND cites no foreign id.
+// Provenance-valid == cites at least one current id AND cites no foreign id.
 function isGrounded(evidenceIds, idSet) {
   const ids = Array.isArray(evidenceIds) ? evidenceIds : [];
   if (!ids.length) return false;
