@@ -1703,13 +1703,30 @@ td select {
     return Number.isFinite(updatedAt) && updatedAt > 0 && Date.now() - updatedAt > 15 * 60 * 1000;
   }
 
+  function isTransientStagePollError(error) {
+    var message = String(error && error.message ? error.message : error || '').toLowerCase();
+    return /\b(?:terminated|timeout|timed out|failed to fetch|network|connection|econnreset|socket|temporarily unavailable)\b/.test(message);
+  }
+
   // Poll a queued stage job until it completes, then apply its screen payload in place so
   // the reviewer stays on the staged flow instead of being bounced to the Jobs list.
   async function pollStageJobUntilDone(jobId, stage, targetScreen) {
     var maxAttempts = 150; // ~5 minutes at 2s intervals
+    var transientPollFailures = 0;
+    var maxTransientPollFailures = 5;
     var startedAt = Date.now();
     for (var attempt = 0; attempt < maxAttempts; attempt += 1) {
-      var payload = await fetchJson('/api/jobs/' + encodeURIComponent(jobId));
+      var payload;
+      try {
+        payload = await fetchJson('/api/jobs/' + encodeURIComponent(jobId));
+        transientPollFailures = 0;
+      } catch (error) {
+        if (!isTransientStagePollError(error) || transientPollFailures >= maxTransientPollFailures) throw error;
+        transientPollFailures += 1;
+        setReviewStatus('Connection hiccup. Still checking the staged generation job... Elapsed: ' + elapsedStageText(startedAt) + '. You can close this tab and resume from Jobs.', false);
+        await delay(2500);
+        continue;
+      }
       var job = payload.job;
       if (!job) throw new Error('Staged generation job not found.');
       if (job.status === 'completed') {
