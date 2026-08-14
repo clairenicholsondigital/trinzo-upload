@@ -4,6 +4,17 @@ function clean(value) {
   return String(value || '').replace(/&apos;/g, "'").replace(/\s+/g, ' ').trim();
 }
 
+// Teams renders some display names surname-first as "Last, First M" (optional
+// middle initial). Normalise these generically to "First Last" so the same
+// person is never presented in two forms — e.g. as a normalised attendee AND as
+// a raw action owner in the owner dropdown. This is a general name-shape rule,
+// not a per-person alias table.
+function normaliseSpeakerName(name) {
+  const value = clean(name);
+  const surnameFirst = value.match(/^([A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+),\s*([A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+)(?:\s+[A-Z]\.?)?$/);
+  return surnameFirst ? `${surnameFirst[2]} ${surnameFirst[1]}` : value;
+}
+
 function parseTurns(transcriptText) {
   const turns = [];
   const source = String(transcriptText || '').replace(/\r/g, '');
@@ -13,7 +24,7 @@ function parseTurns(transcriptText) {
   matches.forEach((match, index) => {
     const next = matches[index + 1];
     const text = clean(source.slice(match.index + match[0].length, next ? next.index : source.length));
-    const speaker = match.speakerName;
+    const speaker = normaliseSpeakerName(match.speakerName);
     if (text && text.length <= 5000) turns.push({ id: `turn_${turns.length + 1}`, index: turns.length, speaker, text });
   });
   return turns;
@@ -87,4 +98,4 @@ function prepareEvidence(transcriptText) {
   return { turns, participants, events };
 }
 
-module.exports = { clean, parseTurns, parseStructuredMinutes, prepareEvidence };
+module.exports = { clean, normaliseSpeakerName, parseTurns, parseStructuredMinutes, prepareEvidence };

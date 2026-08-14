@@ -5,6 +5,7 @@ const { loadMiniLMProfileSync } = require('./minilm');
 const { createCanonicalState, acceptProposal } = require('./state');
 const semanticStages = require('./semanticStages');
 const { assessEvidenceTopology } = require('./topology');
+const { groundProposal } = require('./grounding');
 
 function strings(values) {
   return (Array.isArray(values) ? values : []).map((value) => clean(value)).filter(Boolean);
@@ -181,6 +182,8 @@ function runCanonicalLiveStage(transcriptText, options = {}) {
   if (stage === 'summary') proposal = semanticStages.contextStage(evidence, profile, state, options.reviewerGuidance);
   if (stage === 'discussion') proposal = semanticStages.contentStage(evidence, state, profile);
   if (stage === 'actions') proposal = semanticStages.actionsStage(evidence, state, profile, topology);
+  // Final anti-leakage gate: drop anything not grounded in THIS transcript.
+  proposal = groundProposal(proposal, evidence);
   const screen = stage === 'summary' ? summaryScreen(proposal)
     : stage === 'discussion' ? discussionScreen(proposal)
       : proposal.actions.map(({ owner, action, deadline, evidenceIds }) => ({ owner, action: capitaliseInitial(action), deadline: capitaliseInitial(deadline), evidenceIds }));
