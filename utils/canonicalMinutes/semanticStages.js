@@ -117,6 +117,103 @@ function actionShape(event, evidence) {
   return null;
 }
 
+function semanticActionCandidate(event, profile) {
+  const semantic = semanticFor(profile, event);
+  const action = Math.max(
+    Number(semantic.actionProbabilities?.confirmed_action || 0),
+    Number(semantic.actionProbabilities?.possible_action || 0)
+  );
+  const evidenceAction = Math.max(
+    Number(semantic.evidenceProbabilities?.action_commitment || 0),
+    Number(semantic.evidenceProbabilities?.document_control_task || 0),
+    Number(semantic.evidenceProbabilities?.regulatory_obligation || 0)
+  );
+  const discourse = Number(semantic.discourseRoleProbabilities?.canonical_commitment || 0);
+  const commitment = Number(semantic.scores?.commitment || 0);
+  const request = Number(semantic.scores?.request || 0);
+  const explicitSignal = Number(semantic.signalProbabilities?.explicit_commitment_verb || 0);
+  const objectSignal = Math.max(
+    Number(semantic.signalProbabilities?.deliverable_object || 0),
+    Number(semantic.signalProbabilities?.document_or_record || 0),
+    Number(semantic.signalProbabilities?.recipient_or_handover || 0)
+  );
+  const completed = Math.max(
+    Number(semantic.actionProbabilities?.completed_history || 0),
+    Number(semantic.lifecycleProbabilities?.completed || 0),
+    Number(semantic.lifecycleProbabilities?.inactive || 0)
+  );
+  const active = Number(semantic.lifecycleProbabilities?.active || 0);
+  const noise = Math.max(
+    Number(semantic.evidenceProbabilities?.low_value_noise || 0),
+    Number(semantic.scores?.administrative || 0)
+  );
+  const hypothetical = Math.max(
+    Number(semantic.scores?.hypothetical || 0),
+    Number(semantic.signalProbabilities?.hypothetical_language || 0)
+  );
+  const ongoingWork = /\b(?:ongoing|work in progress|working on|starting to|trying to|continu(?:e|ing)|further (?:work|updates?) (?:is|are )?(?:needed|required)|updates? (?:still )?need(?:s)? to happen)\b/i.test(event.text);
+  const cue = /\b(?:action(?:s)?|I\s*(?:['’]ll|will|shall|can|need to|must|have to|am going to)|we\s*(?:['’]ll|will|need to|must|have to)|you\s+(?:will|need to|must|have to)|(?:can|could|will|would)\s+you|please|needs? to|has to|must|still (?:need|needs|requires?|pending|outstanding)|remain(?:s|ing)? (?:to be done|outstanding|open|pending)|ongoing|work in progress|working on|starting to|trying to|continu(?:e|ing)|follow[- ]?up|sign off|approve|review|complete|update|share|send|confirm|trace|generate|schedule|arrange|set up|prepare|provide|finish|finalise|finalize|investigate|check|raise|bring|discuss|upload|forward|circulate|draft|document)\b/i.test(event.text);
+  const explicitNegative = /\b(?:already (?:done|complete|completed|sent|finished|closed)|no action|nothing to action|not (?:an|a) action|do not (?:make|record|minute)|cancelled|withdrawn)\b/i.test(event.text);
+  const personalOrAdministrative = /\b(?:book a holiday|holiday plans?|mum['’]?s shopping|mother['’]?s shopping|make tea|coffee|share my screen|microphone|camera|can everyone hear|speak to you next week|talk to you next week)\b/i.test(event.text);
+  const ungroundedQuestion = /\?\s*$/.test(clean(event.text))
+    && !/\b(?:can|could|will|would)\s+you\s+(?:review|send|share|complete|update|confirm|prepare|provide|check|schedule|arrange|upload|draft|document|sign|approve|submit|follow)\b/i.test(event.text);
+  const positive = Math.max(action, evidenceAction, discourse, commitment * 0.7, request * 0.7, explicitSignal * 0.65);
+  const learnedStrong = active >= 0.15 && (
+    action >= 0.2
+    || evidenceAction >= 0.25
+    || discourse >= 0.2
+    || (commitment >= 0.35 && objectSignal >= 0.25)
+  );
+  return (cue || learnedStrong)
+    && (objectSignal >= 0.28 || ongoingWork)
+    && (positive >= 0.2 || ongoingWork)
+    && (noise < 0.58 || ongoingWork)
+    && !explicitNegative
+    && !personalOrAdministrative
+    && !ungroundedQuestion
+    && !(completed >= 0.58 && completed > action + 0.08 && !ongoingWork)
+    && !(hypothetical >= 0.72 && Math.max(request, discourse, evidenceAction) < 0.3);
+}
+
+function semanticCandidateScore(event, profile) {
+  const semantic = semanticFor(profile, event);
+  const explicitProspective = /\b(?:I|we)\s*(?:['’]ll|will|shall|can|need to|must|have to|am going to)|\b(?:you|[A-Z][A-Za-z'’.-]+)\s+(?:will|need to|needs to|must|have to|has to)|\b(?:can|could|will|would)\s+you\s+(?:review|send|share|complete|update|confirm|prepare|provide|check|schedule|arrange|upload|draft|document|sign|approve|submit|follow)|\b(?:needs? to|must|has to|have to)\s+be\b/i.test(event.text) ? 0.7 : 0;
+  const outstanding = /\b(?:still (?:need|needs|requires?|pending|outstanding)|remain(?:s|ing)? (?:to be done|outstanding|open|pending)|ongoing|work in progress|working on|starting to|trying to|in progress|follow[- ]?up (?:is|remains) (?:open|pending)|yet to be|further (?:work|updates?) (?:is|are )?(?:needed|required)|updates? (?:still )?need(?:s)? to happen|needs? (?:review|completion|updating|confirmation)|continu(?:e|ing) (?:to |with )?(?:review|complete|update|test|prepare|develop|document|resolve|progress))\b/i.test(event.text) ? 1 : 0;
+  const weakOrPersonal = /\?\s*$|\b(?:probably|maybe|might|could have|if you wanted|book a holiday|shopping|make tea|speak to you next week)\b/i.test(event.text) ? 0.65 : 0;
+  return Number((
+    (Number(semantic.actionProbabilities?.confirmed_action || 0) * 1.25)
+    + (Number(semantic.actionProbabilities?.possible_action || 0) * 0.65)
+    + Number(semantic.evidenceProbabilities?.action_commitment || 0)
+    + (Number(semantic.evidenceProbabilities?.document_control_task || 0) * 0.45)
+    + (Number(semantic.evidenceProbabilities?.regulatory_obligation || 0) * 0.55)
+    + (Number(semantic.discourseRoleProbabilities?.canonical_commitment || 0) * 1.1)
+    + (Number(semantic.scores?.request || 0) * 0.35)
+    + explicitProspective
+    + outstanding
+    - Number(semantic.actionProbabilities?.completed_history || 0)
+    - (Number(semantic.evidenceProbabilities?.low_value_noise || 0) * 1.2)
+    - (Number(semantic.scores?.administrative || 0) * 0.8)
+    - weakOrPersonal
+  ).toFixed(4));
+}
+
+function candidateReviewScore(item, evidence, profile) {
+  if (item.semanticOnly) return Number(item.semanticConfidence || 0);
+  const source = (item.evidenceIds || []).map((id) => evidence.events.find((event) => event.id === id)).filter(Boolean);
+  const bestSemantic = Math.max(...source.map((event) => semanticCandidateScore(event, profile)), 0);
+  return actionPublishability(item, evidence, profile) + (bestSemantic * 0.45);
+}
+
+function reviewCandidateNoise(item, evidence) {
+  const text = clean(item.action);
+  const sourceText = (item.evidenceIds || []).map((id) => evidence.events.find((event) => event.id === id)?.text || '').join(' ');
+  return nonMinuteActionText(`${text} ${sourceText}`) || isUnderspecifiedAction(item);
+}
+
+function nonMinuteActionText(value) {
+  return /\b(?:book a holiday|holiday plans?|mum['’]?s shopping|mother['’]?s shopping|make tea|coffee|share my screen|microphone|camera|can everyone hear|speak to you next week|talk to you next week|out for (?:the )?next|away for (?:the )?next)\b/i.test(clean(value));
+}
+
 function buildCommitmentThreads(evidence, profile, topology = { mode: 'standard' }) {
   const threads = [];
   const sourceEvents = topology.mode === 'distributed_recap' && topology.evidenceWindow
@@ -129,14 +226,13 @@ function buildCommitmentThreads(evidence, profile, topology = { mode: 'standard'
     const notAction = trainedProbability(profile, event, 'actionProbabilities', 'not_action');
     const completed = trainedProbability(profile, event, 'actionProbabilities', 'completed_history');
     const commitmentSignal = trainedProbability(profile, event, 'signalProbabilities', 'explicit_commitment_verb');
-    return Boolean(shape) && (
+    return (Boolean(shape) && (
       event.roles.includes('action_candidate')
       || topology.mode === 'distributed_recap'
-      ||
-      confirmed >= 0.26
+      || confirmed >= 0.26
       || (possible >= 0.25 && commitmentSignal >= 0.48)
       || (topology.mode === 'distributed_recap' && Math.max(confirmed, possible) >= Math.max(notAction, completed) - 0.12)
-    );
+    )) || semanticActionCandidate(event, profile);
   });
   for (const event of candidates) {
     const eventShape = actionShape(event, evidence);
@@ -162,6 +258,23 @@ function buildCommitmentThreads(evidence, profile, topology = { mode: 'standard'
     evidenceIds: thread.events.map((event) => event.id),
     semanticScores: Object.fromEntries(['commitment', 'request', 'acceptance', 'completed', 'hypothetical', 'rejection'].map((role) => [role, Math.max(...thread.events.map((event) => score(profile, event, role)), 0)]))
   }));
+}
+
+function semanticThreadReviewCandidate(thread, evidence, profile) {
+  const ranked = thread.events.map((event) => ({ event, score: semanticCandidateScore(event, profile) }))
+    .sort((left, right) => right.score - left.score || left.event.turnIndex - right.event.turnIndex);
+  const representative = ranked[0]?.event;
+  if (!representative) return null;
+  const deadlineEvent = thread.events.find((event) => deadlineFrom(event.text) !== 'Not stated');
+  return {
+    owner: 'Not stated',
+    action: clean(representative.text).replace(/[.]+$/, ''),
+    deadline: deadlineEvent ? deadlineFrom(deadlineEvent.text) : 'Not stated',
+    evidenceIds: thread.evidenceIds,
+    threadId: thread.id,
+    semanticOnly: true,
+    semanticConfidence: Math.max(...ranked.map((item) => item.score), 0)
+  };
 }
 
 function actionsFromThread(thread, evidence, profile) {
@@ -788,13 +901,30 @@ function actionsStage(evidence, state, profile, topology) {
       .sort((left, right) => left.index - right.index)
       .map((candidate) => candidate.item);
   }
+  const representedThreads = new Set(actionCandidates.map((item) => item.threadId).filter(Boolean));
+  const semanticReviewCandidates = threads
+    .filter((thread) => !representedThreads.has(thread.id))
+    .map((thread) => semanticThreadReviewCandidate(thread, evidence, profile))
+    .filter(Boolean)
+    .sort((left, right) => right.semanticConfidence - left.semanticConfidence);
+  actionCandidates = unique([...actionCandidates, ...semanticReviewCandidates], (item) => `${item.threadId || ''}|${item.owner}|${item.action}`);
+  if (!structuredEvidenceIds.size) {
+    actionCandidates = actionCandidates
+      .filter((item) => !reviewCandidateNoise(item, evidence))
+      .map((item, index) => ({ item, index, score: candidateReviewScore(item, evidence, profile) }))
+      .filter((candidate) => candidate.score >= 0.06)
+      .sort((left, right) => right.score - left.score || left.index - right.index)
+      .slice(0, 24)
+      .sort((left, right) => left.index - right.index)
+      .map((candidate) => candidate.item);
+  }
   const unresolvedThreads = threads.filter((thread) => !actions.some((action) => action.threadId === thread.id)).map((thread) => ({
     threadId: thread.id, evidenceIds: thread.evidenceIds, scores: thread.semanticScores,
     reason: 'Semantic candidate could not be safely converted into an owner/action record.'
   }));
   return {
     actions: actions.map((item) => ({ ...item, action: canonicalActionText(item.action) })),
-    actionCandidates: actionCandidates.slice(0, 18).map((item) => ({ ...item, action: canonicalActionText(item.action) })),
+    actionCandidates: actionCandidates.slice(0, 24).map((item) => ({ ...item, action: item.semanticOnly ? clean(item.action) : canonicalActionText(item.action) })),
     extractionMode: 'minilm_commitment_threads',
     commitmentThreads: threads,
     unresolvedThreads,
@@ -805,4 +935,4 @@ function actionsStage(evidence, state, profile, topology) {
   };
 }
 
-module.exports = { contextStage, contentStage, actionsStage, buildCommitmentThreads, actionsFromThread, hasSemanticRole, learnedSlotActions, resolveEnrichedActions, isUnderspecifiedAction, canonicalActionText, canonicalRiskText };
+module.exports = { contextStage, contentStage, actionsStage, buildCommitmentThreads, actionsFromThread, semanticActionCandidate, semanticThreadReviewCandidate, hasSemanticRole, learnedSlotActions, resolveEnrichedActions, isUnderspecifiedAction, canonicalActionText, canonicalRiskText };

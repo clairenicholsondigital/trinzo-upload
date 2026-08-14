@@ -134,6 +134,7 @@ function boundedEvidencePack(items, evidence, profile, stage) {
     owner: clean(item.owner),
     action: clean(item.action),
     deadline: clean(item.deadline),
+    selectionMode: item.semanticOnly ? 'contextual_commitment_thread' : 'canonical_selected_action',
     currentPoints: strings(item.points),
     evidence: sampledIds(item.evidenceIds, actionStage ? 8 : 4).map((id) => {
       const event = byId.get(id);
@@ -146,7 +147,7 @@ function boundedEvidencePack(items, evidence, profile, stage) {
         previous: clean(event.previousText).slice(0, 500),
         current: clean(event.text).slice(0, 700),
         next: clean(event.nextText).slice(0, 500),
-        contextWindow: evidence.events.slice(Math.max(0, eventIndex - (actionStage ? 18 : 2)), Math.min(evidence.events.length, eventIndex + (actionStage ? 5 : 3))).map((contextEvent) => ({
+        contextWindow: evidence.events.slice(Math.max(0, eventIndex - (actionStage ? 8 : 2)), Math.min(evidence.events.length, eventIndex + (actionStage ? 5 : 3))).map((contextEvent) => ({
           id: contextEvent.id,
           speaker: clean(contextEvent.speaker),
           text: clean(contextEvent.text).slice(0, 320)
