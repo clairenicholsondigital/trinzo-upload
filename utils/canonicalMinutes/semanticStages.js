@@ -930,7 +930,7 @@ function actionsStage(evidence, state, profile, topology) {
     unresolvedThreads,
     warnings: [
       ...(actions.length ? [] : [{ type: 'no_actions_detected', severity: 'info', message: 'No transcript-supported action passed the MiniLM commitment-thread safety checks.' }]),
-      ...(unresolvedThreads.length ? [{ type: 'unresolved_commitment_threads', severity: 'warning', message: `${unresolvedThreads.length} semantic commitment thread(s) require adjudication.`, evidenceIds: unresolvedThreads.flatMap((item) => item.evidenceIds) }] : [])
+      ...(unresolvedThreads.length ? [{ type: 'unresolved_commitment_threads', severity: 'warning', message: 'Some possible actions were not added automatically because the owner or wording was unclear. Check the actions below and add anything important that is missing.', evidenceIds: unresolvedThreads.flatMap((item) => item.evidenceIds) }] : [])
     ]
   };
 }

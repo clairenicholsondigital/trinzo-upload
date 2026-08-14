@@ -345,6 +345,22 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("normaliseList(details.clientAttendees || details.allAttendees)", client_output)
         self.assertNotIn("normaliseList(details.allAttendees || details.clientAttendees)", client_output)
 
+    def test_staged_attendees_and_action_owners_are_editable_from_confirmed_people(self):
+        page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
+        semantic = (REPO_DIR / "utils" / "canonicalMinutes" / "semanticStages.js").read_text(encoding="utf-8")
+
+        self.assertIn('data-attendee-group="internal"', page)
+        self.assertIn('data-attendee-group="client"', page)
+        self.assertIn('draggable="true"', page)
+        self.assertIn('contenteditable="true"', page)
+        self.assertIn("function attendeeStateChanged", page)
+        self.assertIn("function actionOwnerOptions", page)
+        self.assertIn('class="action-owner-select"', page)
+        self.assertIn("Add someone new…", page)
+        self.assertIn("Enter the action owner’s name:", page)
+        self.assertIn("Some possible actions were not added automatically", semantic)
+        self.assertNotIn("semantic commitment thread(s) require adjudication", semantic)
+
     def test_staged_transcript_prep_is_deterministic_and_keeps_raw_source(self):
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
         db = (REPO_DIR / "utils" / "db.js").read_text(encoding="utf-8")
