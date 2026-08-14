@@ -56,6 +56,25 @@ test('Trooper action rewrite cannot change owner or retain unresolved references
   assert.equal(unresolvedReference('Discuss it with Louise and see what she says'), true);
 });
 
+test('Trooper may fill only owner and deadline slots explicitly supported by cited evidence', async () => {
+  const payload = actionPayload();
+  payload._canonicalEvidencePack[0].owner = 'Not stated';
+  payload._canonicalEvidencePack[0].deadline = 'Not stated';
+  payload._canonicalEvidencePack[0].evidence[0] = {
+    id: 'evt_2', speaker: 'Jacqui Fox', current: 'I will send the QMS manual to Orla by Friday.', contextWindow: []
+  };
+  const result = await polishCanonicalStage(payload, {
+    apiKey: 'test-key',
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: JSON.stringify({ actions: [{ itemIndex: 0, owner: 'Jacqui Fox', action: 'Send the QMS manual to Orla for review', deadline: 'Friday', evidenceIds: ['evt_2'] }] }) } }] })
+    })
+  });
+  assert.deepEqual(result.payload.screens.actions[0], {
+    owner: 'Jacqui Fox', action: 'Send the QMS manual to Orla for review', deadline: 'Friday', evidenceIds: ['evt_2']
+  });
+});
+
 test('missing Trooper configuration safely suppresses unresolved actions without leaking the private pack', async () => {
   const result = await polishCanonicalStage(actionPayload(), { apiKey: '' });
   assert.equal(result.used, false);

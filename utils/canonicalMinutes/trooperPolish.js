@@ -2,6 +2,7 @@
 
 const fetch = require('node-fetch');
 const { clean } = require('./evidence');
+const { deadlineFrom } = require('./stages');
 
 const DEFAULT_URL = 'https://eu.router.trooper.ai/v1/chat/completions';
 const DEFAULT_MODEL = 'eu_liv_000099';
@@ -68,7 +69,7 @@ function addRecoveredActionCandidates(payload, recovered = []) {
 function promptFor(stage, payload, evidencePack, options = {}) {
   const contract = stage === 'actions'
     ? {
-      actions: [{ itemIndex: 0, owner: 'exact supplied owner', action: 'complete action with explicit verb and object', deadline: 'exact supplied deadline', evidenceIds: ['supplied evidence id'] }]
+      actions: [{ itemIndex: 0, owner: 'supplied or explicitly evidenced owner', action: 'complete action with explicit verb and object', deadline: 'supplied or explicitly evidenced deadline', evidenceIds: ['supplied evidence id'] }]
     }
     : {
       discussion: [{ itemIndex: 0, topic: 'exact supplied topic', points: ['formal, self-contained minutes point'], evidenceIds: ['supplied evidence id'] }]
@@ -80,7 +81,7 @@ function promptFor(stage, payload, evidencePack, options = {}) {
     'Replace the reference with the most specific supported workstream, document, deliverable or task. Generic substitutes such as "the matter", "the topic" or "the issue" are not acceptable.',
     'The object must distinguish the record from other documents or issues: retain supported names, acronyms, subject matter and purpose. For an email, state its supported subject; for an escalation, state the exact supported issue and system or team.',
     'If the concrete object cannot be established from the supplied evidence, omit the action.',
-    'Do not change the supplied owner or deadline and do not create commitments.',
+    'Do not create commitments. Preserve supplied owners and deadlines. You may fill a Not stated owner or deadline only when the cited evidence explicitly assigns that owner or contains that exact deadline.',
     'If one supplied item contains two distinct explicit commitments in its cited evidence, you may return two records with the same itemIndex; each must cite the evidence for its own commitment.',
     'For each output record, preserve itemIndex and cite only evidenceIds supplied for that item.'
   ] : [
@@ -120,6 +121,41 @@ function validReferences(candidate, source) {
   return cited.length > 0 && cited.every((id) => allowed.has(id));
 }
 
+function evidenceEntriesFor(item) {
+  return (item?.evidence || []).flatMap((entry) => [
+    { id: entry?.id, speaker: entry?.speaker, text: entry?.current },
+    ...(entry?.contextWindow || []).map((context) => ({ id: context?.id, speaker: context?.speaker, text: context?.text }))
+  ]).filter((entry) => clean(entry.id));
+}
+
+function citedEntries(candidate, source) {
+  const cited = new Set((candidate?.evidenceIds || []).map(clean));
+  return evidenceEntriesFor(source).filter((entry) => cited.has(clean(entry.id)));
+}
+
+function ownerSupported(candidate, source) {
+  const proposed = clean(candidate.owner);
+  const existing = clean(source.owner) || 'Not stated';
+  if (proposed.toLowerCase() === existing.toLowerCase()) return true;
+  if (existing !== 'Not stated' || !proposed || proposed === 'Not stated') return false;
+  const firstName = proposed.split(/\s+/)[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return citedEntries(candidate, source).some((entry) => {
+    const text = clean(entry.text);
+    const speakerCommitment = clean(entry.speaker).toLowerCase() === proposed.toLowerCase()
+      && /\bI\s*(?:['’]ll|will|shall|can|need to|must|have to|am going to)\b/i.test(text);
+    const namedAssignment = new RegExp(`(?:^|[.!?;]\\s+)${firstName},\\s*(?:can|could|will|would)\\s+you\\b|\\b${firstName}\\s+to\\s+[a-z]|\\b(?:assigned to|owner is|action for)\\s+${firstName}\\b`, 'i').test(text);
+    return speakerCommitment || namedAssignment;
+  });
+}
+
+function deadlineSupported(candidate, source) {
+  const proposed = clean(candidate.deadline);
+  const existing = clean(source.deadline) || 'Not stated';
+  if (proposed.toLowerCase() === existing.toLowerCase()) return true;
+  if (existing !== 'Not stated' || !proposed || proposed === 'Not stated') return false;
+  return citedEntries(candidate, source).some((entry) => deadlineFrom(entry.text).toLowerCase() === proposed.toLowerCase());
+}
+
 function applyActionRewrite(payload, output, evidencePack) {
   const candidates = Array.isArray(output?.actions) ? output.actions : [];
   const byIndex = new Map();
@@ -140,9 +176,9 @@ function applyActionRewrite(payload, output, evidencePack) {
       if (!validReferences(candidate, pack)) return [];
       const action = clean(candidate.action);
       if (!action || unresolvedReference(action) || nonActionState(action) || action.split(/\s+/).length < 4) return [];
-      if (clean(candidate.owner).toLowerCase() !== clean(source.owner).toLowerCase()) return [];
-      if (clean(candidate.deadline).toLowerCase() !== clean(source.deadline).toLowerCase()) return [];
-      return [{ ...source, action, evidenceIds: candidate.evidenceIds }];
+      if (!ownerSupported(candidate, pack)) return [];
+      if (!deadlineSupported(candidate, pack)) return [];
+      return [{ ...source, owner: clean(candidate.owner) || source.owner, action, deadline: clean(candidate.deadline) || source.deadline, evidenceIds: candidate.evidenceIds }];
     });
   });
   return { ...payload, screens: { ...payload.screens, actions } };

@@ -14,19 +14,28 @@ function unique(items, key) {
 }
 
 function deadlineFrom(text) {
+  const value = clean(text);
+  if (/\b(?:discussed|reviewed|happened|occurred|was|were)\b.*\b(?:yesterday|last\s+(?:week|month|year)|\d+\s+(?:days?|weeks?|months?|years?)\s+ago|previously)\b/i.test(value)) return 'Not stated';
   const patterns = [
     /\b(?:by\s+)?\d{1,2}(?:st|nd|rd|th)?\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)(?:\s+[‘’']?\d{2,4})?\b/i,
     /\bwithin\s+\w+\s+working\s+days?\s+of\s+(?:receipt|receiving it)\b/i,
     /\b(?:on\s+)?the\s+next\s+working\s+day\s+after\s+[^,.]+/i,
     /\b(?:by\s+)?(?:close|end of (?:play|day))\s+(?:today|tomorrow|monday|tuesday|wednesday|thursday|friday)\b/i,
     /\b(?:at|by)\s+(?:\d{1,2}(?::\d{2})?|nine thirty|four)\s*(?:am|pm)?\s+(?:today|tomorrow|monday|tuesday|wednesday|thursday|friday)\b/i,
+    /\b(?:the\s+)?(?:(?:first|initial)\s+(?:minute|hour|day|week)|next\s+(?:(?:\w+|\d+)\s+)?(?:minutes?|hours?|days?|weeks?))\s+(?:after|from|following)\s+[^,.!?;]{2,100}\b(?:launch|meeting|call|release|go[ -]?live)\b/i,
     /\b(?:before\s+)?(?:lunch|noon)\b/i,
     /\b(?:this\s+evening)\b/i,
+    /\b(?:by\s+)?(?:the\s+)?end\s+of\s+(?:this|the|next)\s+(?:week|month|quarter|sprint)\b/i,
+    /\b(?:by\s+)?(?:the\s+)?(?:start|beginning)\s+of\s+(?:this|the|next)\s+(?:week|month|quarter|sprint)\b/i,
+    /\b(?:by|before|ahead of|in advance of)\s+(?:the\s+)?next\s+(?:client\s+)?(?:call|meeting|review|session|workshop|audit|submission|release|launch|sprint)\b/i,
+    /\b(?:by|before|ahead of|in advance of)\s+(?:submission|release|approval|sign[ -]?off|go[ -]?live|the audit|the review|the workshop)\b/i,
+    /\b(?:this|next)\s+(?:week|month|quarter|sprint)\b/i,
     /\b(?:by\s+)?(?:today|tonight|tomorrow(?:\s+morning)?|monday|tuesday|wednesday(?:\s+morning)?|thursday|friday)\b/i,
+    /\b(?:before|after|once|when|following)\s+[^,.!?;]{2,80}\b(?:confirm(?:s|ed|ation)?|approv(?:e|es|ed|al)|return(?:s|ed)?|arriv(?:e|es|ed|al)|receiv(?:e|es|ed)|complete(?:s|d|ion)?|finish(?:es|ed)?|finalis(?:e|es|ed|ation)|finaliz(?:e|es|ed|ation)|available|ready|signed|submitted|released|provided|agreed|resolved|closed)\b/i,
     /\b(?:during|before|from)\s+(?:the\s+)?(?:live session|launch|meeting|first hour)[^,.]*/i
   ];
   for (const pattern of patterns) {
-    const match = clean(text).match(pattern);
+    const match = value.match(pattern);
     if (match) return clean(match[0]).replace(/^by\s+/i, '').replace(/^on\s+/i, '');
   }
   return 'Not stated';
