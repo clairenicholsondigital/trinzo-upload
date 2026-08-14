@@ -44,6 +44,7 @@ const { getMeetingMinutesCoreGoldenStatus } = require('../utils/meetingMinutesCo
 const { runCanonicalNoEditPass } = require('../utils/canonicalMinutes/runner');
 const { runCanonicalLiveStage } = require('../utils/canonicalMinutes/liveStages');
 const { polishCanonicalStage, canonicalFallback } = require('../utils/canonicalMinutes/trooperPolish');
+const { reviewGeneratedContent } = require('../utils/terminologyQa');
 
 const {
   saveMeetingMinutes,
@@ -101,6 +102,8 @@ const {
   deleteGenerationJob,
   deleteMeetingMinutesJob,
   updateMeetingMinutesJobResult,
+  listTerminologyQaDecisions,
+  saveTerminologyQaDecision,
   updateGenerationJobProgress,
   markGenerationJobCompleted,
   markGenerationJobFailure,
@@ -4284,6 +4287,74 @@ router.get('/staged-meeting-minutes/pre-testing', requireAuth, async (req, res, 
     res.json(status);
   } catch (error) {
     next(error);
+  }
+});
+
+router.post('/staged-meeting-minutes/terminology-qa/suggestions', requireAuth, async (req, res) => {
+  try {
+    const stage = firstString(req.body?.stage).toLowerCase();
+    if (!['summary', 'discussion', 'actions'].includes(stage)) return res.status(400).json({ success: false, error: 'Unsupported review stage.' });
+    const details = req.body?.details && typeof req.body.details === 'object' ? req.body.details : {};
+    const scopeKey = firstString(details.meetingTitle, req.body?.draftId, 'unscoped').slice(0, 500);
+    const clientKey = firstString(details.clientName, scopeKey.match(/^Client\s+(.+?)(?:\s+T\d+|\s*[-–—]|$)/i)?.[1]).slice(0, 500);
+    const projectDecisions = await listTerminologyQaDecisions('project', scopeKey);
+    const clientDecisions = clientKey ? await listTerminologyQaDecisions('client', clientKey) : [];
+    const seenDecisions = new Set();
+    const decisions = [...projectDecisions, ...clientDecisions].filter((item) => {
+      const signature = `${String(item.originalText).toLowerCase()}|${String(item.suggestedText).toLowerCase()}`;
+      if (seenDecisions.has(signature)) return false;
+      seenDecisions.add(signature); return true;
+    });
+    const suggestions = reviewGeneratedContent({
+      stage,
+      content: req.body?.content,
+      attendees: Array.isArray(details.participants) ? details.participants : [],
+      controlledTerms: [
+        ...(Array.isArray(details.clientTerminology) ? details.clientTerminology : []),
+        ...(Array.isArray(details.projectTerminology) ? details.projectTerminology : [])
+      ],
+      learned: decisions.filter((item) => item.decision === 'accepted'),
+      rejected: decisions.filter((item) => item.decision === 'rejected'),
+      scope: { type: 'project', key: scopeKey }
+    });
+    return res.json({
+      success: true,
+      suggestions: suggestions.map((item) => ({
+        ...item,
+        availableScopes: [
+          { type: 'project', key: scopeKey, label: 'This project' },
+          ...(clientKey ? [{ type: 'client', key: clientKey, label: `This client (${clientKey})` }] : []),
+          { type: 'global', key: '', label: 'All meetings' }
+        ]
+      }))
+    });
+  } catch (error) {
+    safeLogError('[Terminology QA suggestions failed]', error);
+    return res.status(500).json({ success: false, error: 'Terminology suggestions are temporarily unavailable.' });
+  }
+});
+
+router.post('/staged-meeting-minutes/terminology-qa/decision', requireAuth, async (req, res) => {
+  try {
+    const decision = firstString(req.body?.decision).toLowerCase();
+    if (!['accepted', 'rejected'].includes(decision)) return res.status(400).json({ success: false, error: 'Decision must be accepted or rejected.' });
+    const originalText = firstString(req.body?.originalText).slice(0, 500);
+    const suggestedText = firstString(req.body?.suggestedText).slice(0, 500);
+    if (!originalText || !suggestedText) return res.status(400).json({ success: false, error: 'Original and suggested text are required.' });
+    const scopeType = ['global', 'client', 'project'].includes(firstString(req.body?.scopeType)) ? firstString(req.body?.scopeType) : 'project';
+    const scopeKey = scopeType === 'global' ? '' : firstString(req.body?.scopeKey, req.body?.draftId, 'unscoped').slice(0, 500);
+    const saved = await saveTerminologyQaDecision({
+      originalText, suggestedText, decision, scopeType, scopeKey,
+      fieldPath: firstString(req.body?.fieldPath).slice(0, 500),
+      draftId: firstString(req.body?.draftId).slice(0, 500),
+      userId: req.authUser?.userId,
+      userEmail: req.authUser?.email,
+      contextHash: crypto.createHash('sha256').update(`${scopeType}|${scopeKey}|${originalText}|${suggestedText}`).digest('hex')
+    });
+    return res.json({ success: true, decision: { ...saved, decision } });
+  } catch (error) {
+    safeLogError('[Terminology QA decision failed]', error);
+    return res.status(500).json({ success: false, error: 'The proofreading decision could not be saved.' });
   }
 });
 

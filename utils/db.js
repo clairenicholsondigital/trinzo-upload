@@ -3399,6 +3399,41 @@ async function deleteAuthSession(tokenHash) {
   await query('DELETE FROM auth_sessions WHERE session_token_hash = $1', [tokenHash]);
 }
 
+async function listTerminologyQaDecisions(scopeType, scopeKey) {
+  const result = await query(
+    `SELECT "originalText", "suggestedText", decision, "scopeType", "scopeKey", "createdAt"
+     FROM (
+       SELECT DISTINCT ON (LOWER(original_text), LOWER(suggested_text))
+              original_text AS "originalText", suggested_text AS "suggestedText", decision,
+              scope_type AS "scopeType", scope_key AS "scopeKey", created_at AS "createdAt"
+       FROM terminology_qa_decisions
+       WHERE (scope_type = 'global' AND scope_key = '')
+          OR (scope_type = $1 AND scope_key = $2)
+       ORDER BY LOWER(original_text), LOWER(suggested_text),
+                CASE WHEN scope_type = $1 AND scope_key = $2 THEN 0 ELSE 1 END,
+                created_at DESC
+     ) latest
+     ORDER BY "createdAt" DESC
+     LIMIT 1000`,
+    [String(scopeType || 'project'), String(scopeKey || '')]
+  );
+  return result.rows;
+}
+
+async function saveTerminologyQaDecision(payload) {
+  const result = await query(
+    `INSERT INTO terminology_qa_decisions
+       (original_text, suggested_text, decision, scope_type, scope_key, field_path,
+        draft_id, user_id, user_email, context_hash)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+     RETURNING id::text AS id, created_at AS "createdAt"`,
+    [payload.originalText, payload.suggestedText, payload.decision, payload.scopeType,
+      payload.scopeKey, payload.fieldPath, payload.draftId, payload.userId || null,
+      payload.userEmail || '', payload.contextHash || '']
+  );
+  return result.rows[0];
+}
+
 module.exports = {
   testConnection,
   listMeetings,
@@ -3486,6 +3521,8 @@ module.exports = {
   getAuthSession,
   touchAuthSession,
   deleteAuthSession,
+  listTerminologyQaDecisions,
+  saveTerminologyQaDecision,
   createPasswordResetToken,
   consumePasswordResetToken,
   updateAuthPassword

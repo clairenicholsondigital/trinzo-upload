@@ -102,7 +102,11 @@ textarea { min-height:110px; resize:vertical; }
 .chip-row { display:flex; flex-wrap:wrap; gap:.45rem; min-height:2.7rem; padding:.2rem; border:1px dashed transparent; border-radius:10px; }
 .chip-row.is-drag-over { border-color:var(--accent); background:rgba(23,208,196,.08); }
 .chip { display:inline-flex; align-items:center; gap:.35rem; border:1px solid var(--border); border-radius:999px; padding:.35rem .55rem; color:#dbeafe; background:#071126; font-size:.88rem; cursor:grab; }
-.chip.dragging { opacity:.55; }
+.chip:hover { border-color:rgba(23,208,196,.7); }
+.chip.dragging { opacity:.55; cursor:grabbing; }
+.attendee-drag-handle { color:var(--muted); font-size:1rem; line-height:1; user-select:none; }
+.chip-row.is-drag-over { min-height:3.25rem; box-shadow:inset 0 0 0 2px rgba(23,208,196,.45); }
+.chip-row.is-drag-over::after { content:'Drop attendee here'; display:inline-flex; align-items:center; border:1px dashed var(--accent); border-radius:999px; padding:.3rem .65rem; color:#bffbf6; background:rgba(23,208,196,.12); font-size:.78rem; font-weight:700; }
 .attendee-name { min-width:1.5rem; outline:none; border-radius:4px; }
 .attendee-name:focus { box-shadow:0 0 0 2px rgba(23,208,196,.35); }
 .chip button { padding:0; width:1.2rem; height:1.2rem; border-radius:999px; background:#132847; color:#dbeafe; border:1px solid var(--border); font-size:.7rem; }
@@ -210,6 +214,14 @@ td textarea { min-height:68px; }
 }
 .stage-validation-warning .stage-validation-tag { background:#f5e2b8; color:#7a5b12; }
 .stage-validation-info .stage-validation-tag { background:#d8ecf2; color:#22697e; }
+.terminology-qa { margin-top:1rem; border:1px solid #e8cf78; border-radius:12px; background:#fff9df; color:#3d3520; padding:.9rem; display:grid; gap:.6rem; }
+.terminology-qa[hidden] { display:none; }
+.terminology-qa h3 { margin:0; color:#5c4a13; }
+.terminology-suggestion { display:flex; align-items:center; gap:.65rem; flex-wrap:wrap; padding:.55rem; border-top:1px solid #eadca6; }
+.terminology-suggestion mark { background:#ffe68a; padding:.08rem .2rem; border-radius:3px; }
+.terminology-suggestion-actions { margin-left:auto; display:flex; gap:.4rem; }
+.terminology-suggestion-actions button { padding:.42rem .65rem; }
+.qa-field-highlight { background:#fff6c7 !important; border-color:#d9aa20 !important; box-shadow:0 0 0 2px rgba(217,170,32,.16); }
 .stage-decision-copy { display:grid; gap:.2rem; }
 .stage-decision-question {
   margin:0;
@@ -606,6 +618,7 @@ td select {
       </article>
 
       <div id="stageValidationFlags" class="stage-validation-flags review-only" aria-live="polite" hidden></div>
+      <section id="terminologyQa" class="terminology-qa review-only" aria-live="polite" hidden></section>
 
       <div class="stage-decision-card review-only" aria-live="polite">
         <div class="stage-decision-copy">
@@ -692,6 +705,8 @@ td select {
   var stageInFlight = null;
   var unresolvedWorkstreamFlags = {};
   var draggedAttendeeChip = null;
+  var terminologyQaPanel = document.getElementById('terminologyQa');
+  var terminologySuggestions = [];
 
   function escapeHtml(value) {
     return String(value == null ? '' : value)
@@ -936,7 +951,7 @@ td select {
     }) : [];
     row.innerHTML = names.map(function (name) {
       var safeName = escapeHtml(name);
-      return '<span class="chip" draggable="true"><span class="attendee-name" contenteditable="true" role="textbox" aria-label="Edit attendee name">' + safeName + '</span> <button type="button" data-attendee-remove aria-label="Remove ' + safeName + '">x</button></span>';
+      return '<span class="chip" draggable="true"><span class="attendee-drag-handle" aria-hidden="true">⠿</span><span class="attendee-name" contenteditable="true" role="textbox" aria-label="Edit attendee name">' + safeName + '</span><button type="button" data-attendee-remove aria-label="Remove ' + safeName + '">×</button></span>';
     }).join('') + ' <button class="ghost" type="button" data-attendee-add>Add attendee</button>';
     refreshActionOwnerOptions();
   }
@@ -1291,6 +1306,124 @@ td select {
     setReviewStatus('Added to the discussion table. Review and edit the wording before moving on.', false);
   }
 
+  function terminologyQaContent(stage) {
+    if (stage === 'summary') return summaryFromDom();
+    if (stage === 'discussion') return discussionRowsFromReview().map(function (item) { return { topic: item.topic, points: item.bullets }; });
+    if (stage === 'actions') return actionsFromReview();
+    return null;
+  }
+
+  function terminologyQaControl(fieldPath) {
+    var parts = String(fieldPath || '').split('.');
+    if (parts[0] === 'summary') {
+      if (parts[1] === 'objectives') return objectivesInput;
+      if (parts[1] === 'executiveSummary') return executiveSummaryInput;
+      if (parts[1] === 'overallTopics') return overallTopicsInput;
+    }
+    if (parts[0] === 'discussion') {
+      var discussionRow = discussionList && discussionList.querySelectorAll('.discussion-table tbody tr')[Number(parts[1])];
+      return discussionRow ? discussionRow.querySelector(parts[2] === 'topic' ? '.discussion-topic-input' : '.discussion-points-input') : null;
+    }
+    if (parts[0] === 'actions') {
+      var actionRow = actionsTableBody && actionsTableBody.querySelectorAll('tr')[Number(parts[1])];
+      if (!actionRow) return null;
+      if (parts[2] === 'owner') return actionRow.querySelector('.action-owner-select');
+      if (parts[2] === 'action') return actionRow.querySelector('td:nth-child(2) textarea');
+      if (parts[2] === 'deadline') return actionRow.querySelector('td:nth-child(3) input');
+    }
+    return null;
+  }
+
+  function clearTerminologyHighlights() {
+    document.querySelectorAll('.qa-field-highlight').forEach(function (element) { element.classList.remove('qa-field-highlight'); });
+  }
+
+  function renderTerminologyQa() {
+    clearTerminologyHighlights();
+    if (!terminologyQaPanel || !terminologySuggestions.length) {
+      if (terminologyQaPanel) terminologyQaPanel.hidden = true;
+      return;
+    }
+    terminologyQaPanel.innerHTML = '<h3>Proofreading suggestions</h3><p>These are optional terminology checks. Nothing is changed unless you accept it.</p>';
+    terminologySuggestions.forEach(function (item) {
+      var control = terminologyQaControl(item.fieldPath);
+      if (control) control.classList.add('qa-field-highlight');
+      var row = document.createElement('div');
+      row.className = 'terminology-suggestion';
+      var copy = document.createElement('span');
+      copy.innerHTML = '<mark>' + escapeHtml(item.original) + '</mark> <span aria-hidden="true">→</span> <strong>' + escapeHtml(item.replacement) + '</strong><br><small>' + escapeHtml(item.reason) + '</small>';
+      var actions = document.createElement('span');
+      actions.className = 'terminology-suggestion-actions';
+      var scopeSelect = document.createElement('select');
+      scopeSelect.setAttribute('aria-label', 'Remember correction for');
+      (item.availableScopes || []).forEach(function (scope) {
+        var option = document.createElement('option');
+        option.value = scope.type + '|' + scope.key; option.textContent = scope.label;
+        scopeSelect.appendChild(option);
+      });
+      scopeSelect.addEventListener('change', function () {
+        var selected = scopeSelect.value.split('|');
+        item.scopeType = selected.shift(); item.scopeKey = selected.join('|');
+      });
+      var accept = document.createElement('button');
+      accept.type = 'button'; accept.textContent = 'Accept';
+      accept.addEventListener('click', function () { decideTerminologySuggestion(item, 'accepted'); });
+      var reject = document.createElement('button');
+      reject.type = 'button'; reject.className = 'secondary'; reject.textContent = 'Reject';
+      reject.addEventListener('click', function () { decideTerminologySuggestion(item, 'rejected'); });
+      actions.appendChild(scopeSelect); actions.appendChild(accept); actions.appendChild(reject); row.appendChild(copy); row.appendChild(actions);
+      terminologyQaPanel.appendChild(row);
+    });
+    terminologyQaPanel.hidden = false;
+  }
+
+  function replaceTerminologySuggestion(item) {
+    var control = terminologyQaControl(item.fieldPath);
+    if (!control) return;
+    if (control.tagName === 'SELECT') {
+      control.value = item.replacement;
+    } else {
+      control.value = String(control.value || '').replace(item.original, item.replacement);
+    }
+    control.dispatchEvent(new Event('input', { bubbles: true }));
+    control.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  async function decideTerminologySuggestion(item, decision) {
+    try {
+      await fetchJson('/api/staged-meeting-minutes/terminology-qa/decision', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          originalText: item.original, suggestedText: item.replacement, decision: decision,
+          scopeType: item.scopeType, scopeKey: item.scopeKey, fieldPath: item.fieldPath, draftId: ensureDraftId()
+        })
+      });
+      if (decision === 'accepted') replaceTerminologySuggestion(item);
+      terminologySuggestions = terminologySuggestions.filter(function (candidate) { return candidate.id !== item.id; });
+      renderTerminologyQa();
+      setReviewStatus(decision === 'accepted' ? 'Proofreading correction applied to the generated minutes.' : 'Suggestion dismissed and remembered for this project.', false);
+    } catch (error) {
+      setReviewStatus(error && error.message ? error.message : 'The proofreading decision could not be saved.', true);
+    }
+  }
+
+  async function loadTerminologyQa(stage) {
+    if (!['summary', 'discussion', 'actions'].includes(stage)) {
+      terminologySuggestions = []; renderTerminologyQa(); return;
+    }
+    try {
+      var result = await fetchJson('/api/staged-meeting-minutes/terminology-qa/suggestions', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stage: stage, content: terminologyQaContent(stage), details: detailsFromDom(), draftId: ensureDraftId() })
+      });
+      terminologySuggestions = Array.isArray(result.suggestions) ? result.suggestions : [];
+      renderTerminologyQa();
+    } catch (_error) {
+      terminologySuggestions = [];
+      renderTerminologyQa();
+    }
+  }
+
   function applyStagedPayload(payload, targetScreen) {
     var payloadTranscriptSha256 = String(
       (payload && payload.transcriptSha256) ||
@@ -1345,6 +1478,7 @@ td select {
     } else if (Object.prototype.hasOwnProperty.call(screensPayload, 'details')) {
       showScreen(0);
     }
+    loadTerminologyQa(payload && payload.stagedStage ? payload.stagedStage : stageForScreen(targetScreen));
   }
 
   function currentParticipants() {

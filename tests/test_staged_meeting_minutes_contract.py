@@ -352,6 +352,8 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn('data-attendee-group="internal"', page)
         self.assertIn('data-attendee-group="client"', page)
         self.assertIn('draggable="true"', page)
+        self.assertIn('attendee-drag-handle', page)
+        self.assertIn('Drop attendee here', page)
         self.assertIn('contenteditable="true"', page)
         self.assertIn("function attendeeStateChanged", page)
         self.assertIn("function actionOwnerOptions", page)
@@ -360,6 +362,15 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("Enter the action owner’s name:", page)
         self.assertIn("Some possible actions were not added automatically", semantic)
         self.assertNotIn("semantic commitment thread(s) require adjudication", semantic)
+
+    def test_post_generation_terminology_qa_is_review_only_and_audited(self):
+        page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
+        api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+        self.assertIn("Proofreading suggestions", page)
+        self.assertIn("qa-field-highlight", page)
+        self.assertIn("decideTerminologySuggestion", page)
+        self.assertIn("terminology-qa/suggestions", api)
+        self.assertIn("terminology-qa/decision", api)
 
     def test_staged_transcript_prep_is_deterministic_and_keeps_raw_source(self):
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
