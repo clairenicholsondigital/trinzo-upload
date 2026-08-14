@@ -6,6 +6,7 @@ const deterministicStages = require('./stages');
 const { deadlineFrom } = deterministicStages;
 const { actionHasConcreteObject, applyOperationalPhaseTiming, attachTemporalContext, composeDecision, composeRisk, consolidate, deriveRoleDecisions, tokenOverlap } = require('./canonicalResolver');
 const { purposePlan } = require('./meetingPurpose');
+const { resolveActionRecords } = require('./actionResolution');
 
 function unique(items, key) {
   const seen = new Set();
@@ -747,7 +748,10 @@ function actionsStage(evidence, state, profile, topology) {
     ...learnedSlotActions(evidence, profile)
   ].map((item) => resolveActionReferent(item, evidence)), (item) => `${item.owner}|${item.action}`);
   if (enrichedEvidenceEnabled()) {
-    actions = applyOperationalPhaseTiming(attachTemporalContext(resolveEnrichedActions(actions, evidence, profile).map((item) => {
+    actions = applyOperationalPhaseTiming(attachTemporalContext(resolveActionRecords(resolveEnrichedActions(actions, evidence, profile), evidence, {
+      deadlineFrom,
+      profileLabel: (event) => enrichedLabel(profile, event, 'temporalRoleProbabilities')
+    }).map((item) => {
       if (item.deadline && item.deadline !== 'Not stated') return item;
       const lastIndex = Math.max(...(item.evidenceIds || []).map((id) => evidence.events.findIndex((event) => event.id === id)), -1);
       const deadlineEvent = evidence.events.slice(lastIndex + 1, lastIndex + 3).find((event) => enrichedLabel(profile, event, 'temporalRoleProbabilities') === 'deadline_previous' && deadlineFrom(event.text) !== 'Not stated');
@@ -780,7 +784,7 @@ function actionsStage(evidence, state, profile, topology) {
     actionCandidates = [...mandatory, ...optional]
       .sort((left, right) => left.index - right.index)
       .map((candidate) => candidate.item);
-    actions = [...mandatory, ...optional.slice(0, Math.max(0, 6 - mandatory.length))]
+    actions = [...mandatory, ...optional.filter((candidate) => candidate.publishability >= 0.22)]
       .sort((left, right) => left.index - right.index)
       .map((candidate) => candidate.item);
   }

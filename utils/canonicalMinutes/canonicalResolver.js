@@ -198,8 +198,10 @@ function attachTemporalContext(items, evidence, profile, deadlineFrom) {
       const temporal = profile?.events?.[event.id]?.temporalRoleProbabilities || {};
       const attachment = profile?.events?.[event.id]?.discourseRoleProbabilities || {};
       const explicit = deadlineFrom(event.text) !== 'Not stated';
-      const conflictingAction = event.roles?.includes('action_candidate') && !sources.some((source) => source.speaker === event.speaker);
-      return !conflictingAction && explicit && (Number(temporal.deadline_previous || 0) >= 0.12 || Number(temporal.deadline_current || 0) >= 0.12 || Number(attachment.temporal_attachment || 0) >= 0.08);
+      const explicitMilestone = /\b(?:decision|confirmed|scheduled|agreed)\b.*\b(?:launch|meeting|call|release|go[ -]?live|workshop|audit|submission)\b/i.test(event.text);
+      const explicitCommitment = /\bI\s*(?:['’]ll|will|shall|need to|must|have to|am going to)\b|\b[A-Z][A-Za-z'’.-]+,\s*(?:can|could|will|would)\s+you\b/i.test(event.text);
+      const conflictingAction = event.roles?.includes('action_candidate') && explicitCommitment && !sources.some((source) => source.speaker === event.speaker);
+      return !conflictingAction && explicit && (explicitMilestone || Number(temporal.deadline_previous || 0) >= 0.12 || Number(temporal.deadline_current || 0) >= 0.12 || Number(attachment.temporal_attachment || 0) >= 0.08);
     });
     const ranked = candidates.map((event) => {
       const index = evidence.events.indexOf(event);
@@ -211,7 +213,12 @@ function attachTemporalContext(items, evidence, profile, deadlineFrom) {
     if (!ranked.length || ranked[0].score < -0.16) return item;
     const event = ranked[0].event;
     const precise = clean(event.text).match(/\b((?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\s+at\s+(?:\d{1,2}(?::\d{2})?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve))\b/i)?.[1];
-    return { ...item, deadline: `${duration[1]} after ${precise || deadlineFrom(event.text)}`, evidenceIds: [...new Set([...(item.evidenceIds || []), event.id])] };
+    const hourWords = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12 };
+    const normalisedPrecise = precise?.replace(/\s+at\s+(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)$/i, (_match, hour) => ` ${hourWords[hour.toLowerCase()]}:00`)
+      .replace(/\s+at\s+(\d{1,2}(?::\d{2})?)$/i, ' $1');
+    const milestone = clean(event.text).match(/\b(launch|meeting|call|release|go[ -]?live|workshop|audit|submission)\b/i)?.[1];
+    const anchor = normalisedPrecise ? `${normalisedPrecise}${milestone ? ` ${milestone}` : ''}` : deadlineFrom(event.text);
+    return { ...item, deadline: `${duration[1]} after ${anchor}`, evidenceIds: [...new Set([...(item.evidenceIds || []), event.id])] };
   });
 }
 

@@ -55,7 +55,7 @@ test('action completeness rejects temporal fragments without a task object', () 
 
 test('temporal attachment links a duration action to a nearby non-action milestone', () => {
   const evidence = { events: [
-    { id: 'milestone', turnIndex: 3, speaker: 'Chair', text: 'Decision is launch Thursday at ten.', roles: ['decision_candidate'] },
+    { id: 'milestone', turnIndex: 3, speaker: 'Chair', text: 'Decision is launch Thursday at ten.', roles: ['decision_candidate', 'action_candidate'] },
     { id: 'policy', turnIndex: 3, speaker: 'Chair', text: 'We only pause above two per cent.', roles: [] },
     { id: 'action', turnIndex: 5, speaker: 'Analyst', text: "I'll monitor it for the first hour.", roles: ['action_candidate'] }
   ] };
@@ -63,7 +63,7 @@ test('temporal attachment links a duration action to a nearby non-action milesto
   const [result] = attachTemporalContext([
     { owner: 'Analyst', action: 'Monitor the dashboard for the first hour', deadline: 'Not stated', evidenceIds: ['action'] }
   ], evidence, profile, deadlineFrom);
-  assert.equal(result.deadline, 'first hour after Thursday at ten');
+  assert.equal(result.deadline, 'first hour after Thursday 10:00 launch');
 });
 
 test('distributed recaps inherit preparation and execution phases generically', () => {
