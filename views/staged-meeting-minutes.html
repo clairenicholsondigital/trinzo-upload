@@ -99,9 +99,15 @@ input, select, textarea {
   border-radius:10px; padding:.65rem .7rem; font:inherit;
 }
 textarea { min-height:110px; resize:vertical; }
-.chip-row { display:flex; flex-wrap:wrap; gap:.45rem; }
-.chip { display:inline-flex; align-items:center; gap:.35rem; border:1px solid var(--border); border-radius:999px; padding:.35rem .55rem; color:#dbeafe; background:#071126; font-size:.88rem; }
+.chip-row { display:flex; flex-wrap:wrap; gap:.45rem; min-height:2.7rem; padding:.2rem; border:1px dashed transparent; border-radius:10px; }
+.chip-row.is-drag-over { border-color:var(--accent); background:rgba(23,208,196,.08); }
+.chip { display:inline-flex; align-items:center; gap:.35rem; border:1px solid var(--border); border-radius:999px; padding:.35rem .55rem; color:#dbeafe; background:#071126; font-size:.88rem; cursor:grab; }
+.chip.dragging { opacity:.55; }
+.attendee-name { min-width:1.5rem; outline:none; border-radius:4px; }
+.attendee-name:focus { box-shadow:0 0 0 2px rgba(23,208,196,.35); }
 .chip button { padding:0; width:1.2rem; height:1.2rem; border-radius:999px; background:#132847; color:#dbeafe; border:1px solid var(--border); font-size:.7rem; }
+.attendee-help { display:block; width:100%; }
+.action-owner-select { min-width:210px; }
 .discussion-list { display:grid; gap:.75rem; }
 .discussion-table td ul {
   margin:.2rem 0;
@@ -409,7 +415,8 @@ td {
   background:#ffffff !important;
 }
 td input,
-td textarea {
+td textarea,
+td select {
   background:#ffffff !important;
   color:#17222c !important;
   border-color:#c3ced8 !important;
@@ -487,15 +494,17 @@ td textarea {
           </div>
           <div class="field full">
             <label>Internal attendees</label>
-            <div id="internalAttendeesRow" class="chip-row">
-              <button class="ghost" type="button">Add attendee</button>
+            <div id="internalAttendeesRow" class="chip-row" data-attendee-group="internal">
+              <button class="ghost" type="button" data-attendee-add>Add attendee</button>
             </div>
+            <small class="attendee-help">Drag names between Internal and Client. Click a name to edit it.</small>
           </div>
           <div class="field full">
             <label>Client attendees</label>
-            <div id="clientAttendeesRow" class="chip-row">
-              <button class="ghost" type="button">Add attendee</button>
+            <div id="clientAttendeesRow" class="chip-row" data-attendee-group="client">
+              <button class="ghost" type="button" data-attendee-add>Add attendee</button>
             </div>
+            <small class="attendee-help">Drag names between Internal and Client. Click a name to edit it.</small>
           </div>
           <div class="field">
             <label for="meetingType">Meeting type</label>
@@ -682,6 +691,7 @@ td textarea {
   var regenerationEvents = [];
   var stageInFlight = null;
   var unresolvedWorkstreamFlags = {};
+  var draggedAttendeeChip = null;
 
   function escapeHtml(value) {
     return String(value == null ? '' : value)
@@ -921,27 +931,67 @@ td textarea {
 
   function renderAttendees(row, attendees) {
     if (!row) return;
-    var names = Array.isArray(attendees) && attendees.length ? attendees : ['Not stated'];
+    var names = Array.isArray(attendees) ? attendees.filter(function (name) {
+      return String(name || '').trim() && String(name || '').trim().toLowerCase() !== 'not stated';
+    }) : [];
     row.innerHTML = names.map(function (name) {
       var safeName = escapeHtml(name);
-      return '<span class="chip">' + safeName + ' <button type="button" aria-label="Remove ' + safeName + '">x</button></span>';
-    }).join('') + ' <button class="ghost" type="button">Add attendee</button>';
+      return '<span class="chip" draggable="true"><span class="attendee-name" contenteditable="true" role="textbox" aria-label="Edit attendee name">' + safeName + '</span> <button type="button" data-attendee-remove aria-label="Remove ' + safeName + '">x</button></span>';
+    }).join('') + ' <button class="ghost" type="button" data-attendee-add>Add attendee</button>';
+    refreshActionOwnerOptions();
   }
 
   function attendeesFromRow(row) {
     if (!row) return [];
     return Array.prototype.slice.call(row.querySelectorAll('.chip')).map(function (chip) {
-      var clone = chip.cloneNode(true);
-      clone.querySelectorAll('button').forEach(function (button) { button.remove(); });
-      return clone.textContent.trim();
+      var name = chip.querySelector('.attendee-name');
+      return name ? name.textContent.trim() : '';
     }).filter(Boolean);
+  }
+
+  function attendeeOwnerNames() {
+    var seen = {};
+    return currentParticipants().filter(function (name) {
+      var key = String(name || '').trim().toLowerCase();
+      if (!key || key === 'not stated' || seen[key]) return false;
+      seen[key] = true;
+      return true;
+    });
+  }
+
+  function actionOwnerOptions(selectedOwner) {
+    var selected = String(selectedOwner || 'Not stated').trim() || 'Not stated';
+    var names = attendeeOwnerNames();
+    if (selected !== 'Not stated' && !names.some(function (name) { return name.toLowerCase() === selected.toLowerCase(); })) names.push(selected);
+    return ['Not stated'].concat(names).map(function (name) {
+      return '<option value="' + escapeHtml(name) + '"' + (name.toLowerCase() === selected.toLowerCase() ? ' selected' : '') + '>' + escapeHtml(name) + '</option>';
+    }).join('') + '<option value="__add_owner__">Add someone new…</option>';
+  }
+
+  function refreshActionOwnerOptions() {
+    if (!actionsTableBody) return;
+    Array.prototype.slice.call(actionsTableBody.querySelectorAll('.action-owner-select')).forEach(function (select) {
+      var selected = select.value || select.getAttribute('data-owner') || 'Not stated';
+      select.innerHTML = actionOwnerOptions(selected);
+      select.value = selected;
+      if (!select.value) select.value = 'Not stated';
+      select.setAttribute('data-owner', select.value);
+    });
+  }
+
+  function attendeeStateChanged() {
+    stagedState.details = detailsFromDom();
+    refreshActionOwnerOptions();
+    renderFinalDocument();
+    saveDraft();
   }
 
   function actionsFromDom() {
     return Array.prototype.slice.call(actionsTableBody ? actionsTableBody.querySelectorAll('tr') : []).map(function (row) {
       var cells = row.querySelectorAll('td');
+      var ownerControl = cells[0] ? cells[0].querySelector('select, input') : null;
       return {
-        owner: cells[0] && cells[0].querySelector('input') ? cells[0].querySelector('input').value.trim() : '',
+        owner: ownerControl ? ownerControl.value.trim() : '',
         action: cells[1] && cells[1].querySelector('textarea') ? cells[1].querySelector('textarea').value.trim() : '',
         deadline: cells[2] && cells[2].querySelector('input') ? cells[2].querySelector('input').value.trim() : ''
       };
@@ -1059,7 +1109,7 @@ td textarea {
       return String(value || '').trim().replace(/[a-z]/i, function (letter) { return letter.toUpperCase(); });
     }
     return '<tr>' +
-      '<td><input value="' + escapeHtml(action.owner || 'Not stated') + '" /></td>' +
+      '<td><select class="action-owner-select" data-owner="' + escapeHtml(action.owner || 'Not stated') + '" aria-label="Action owner">' + actionOwnerOptions(action.owner || 'Not stated') + '</select></td>' +
       '<td><textarea>' + escapeHtml(capitaliseInitial(action.action) || 'Review action wording') + '</textarea></td>' +
       '<td><input value="' + escapeHtml(capitaliseInitial(action.deadline)) + '" placeholder="e.g. 14 August 2026 or next Monday" aria-label="Action date or deadline" /></td>' +
       '<td><button class="secondary" type="button" data-action-row="duplicate">Duplicate</button> <button class="secondary" type="button" data-action-row="delete">Delete</button></td>' +
@@ -1068,8 +1118,9 @@ td textarea {
 
   function actionFromRow(row) {
     var cells = row ? row.querySelectorAll('td') : [];
+    var ownerControl = cells[0] ? cells[0].querySelector('select, input') : null;
     return {
-      owner: cells[0] && cells[0].querySelector('input') ? cells[0].querySelector('input').value.trim() : '',
+      owner: ownerControl ? ownerControl.value.trim() : '',
       action: cells[1] && cells[1].querySelector('textarea') ? cells[1].querySelector('textarea').value.trim() : '',
       deadline: cells[2] && cells[2].querySelector('input') ? cells[2].querySelector('input').value.trim() : ''
     };
@@ -1683,8 +1734,8 @@ td textarea {
     if (executiveSummaryInput) executiveSummaryInput.value = '';
     if (overallTopicsInput) overallTopicsInput.value = '';
     if (stageAdditionalContextInput) stageAdditionalContextInput.value = '';
-    if (internalAttendeesRow) internalAttendeesRow.innerHTML = '';
-    if (clientAttendeesRow) clientAttendeesRow.innerHTML = '';
+    renderAttendees(internalAttendeesRow, []);
+    renderAttendees(clientAttendeesRow, []);
     if (discussionList) discussionList.innerHTML = '';
     if (actionsTableBody) actionsTableBody.innerHTML = '';
     renderValidationFlags([]);
@@ -1853,7 +1904,87 @@ td textarea {
       renderFinalDocument();
       saveDraft();
     });
+    actionsTableBody.addEventListener('change', function (event) {
+      var select = event.target.closest('.action-owner-select');
+      if (!select) return;
+      if (select.value === '__add_owner__') {
+        var addedOwner = window.prompt('Enter the action owner’s name:');
+        addedOwner = String(addedOwner || '').trim();
+        if (addedOwner) {
+          select.insertAdjacentHTML('beforeend', '<option value="' + escapeHtml(addedOwner) + '">' + escapeHtml(addedOwner) + '</option>');
+          select.value = addedOwner;
+        } else {
+          select.value = select.getAttribute('data-owner') || 'Not stated';
+        }
+      }
+      select.setAttribute('data-owner', select.value);
+      commitStageState('actions');
+      renderFinalDocument();
+      saveDraft();
+    });
   }
+
+  [internalAttendeesRow, clientAttendeesRow].filter(Boolean).forEach(function (row) {
+    row.addEventListener('click', function (event) {
+      var addButton = event.target.closest('[data-attendee-add]');
+      if (addButton) {
+        var name = window.prompt('Enter the attendee’s name:');
+        name = String(name || '').trim();
+        if (name) {
+          var current = attendeesFromRow(row);
+          current.push(name);
+          renderAttendees(row, current);
+          attendeeStateChanged();
+        }
+        return;
+      }
+      var removeButton = event.target.closest('[data-attendee-remove]');
+      if (removeButton) {
+        var chip = removeButton.closest('.chip');
+        if (chip) chip.remove();
+        attendeeStateChanged();
+      }
+    });
+    row.addEventListener('input', function (event) {
+      if (!event.target.closest('.attendee-name')) return;
+      attendeeStateChanged();
+    });
+    row.addEventListener('keydown', function (event) {
+      if (event.target.closest('.attendee-name') && event.key === 'Enter') {
+        event.preventDefault();
+        event.target.blur();
+      }
+    });
+    row.addEventListener('dragstart', function (event) {
+      var chip = event.target.closest('.chip');
+      if (!chip) return;
+      draggedAttendeeChip = chip;
+      chip.classList.add('dragging');
+      if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+    });
+    row.addEventListener('dragover', function (event) {
+      if (!draggedAttendeeChip) return;
+      event.preventDefault();
+      row.classList.add('is-drag-over');
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+    });
+    row.addEventListener('dragleave', function (event) {
+      if (!row.contains(event.relatedTarget)) row.classList.remove('is-drag-over');
+    });
+    row.addEventListener('drop', function (event) {
+      if (!draggedAttendeeChip) return;
+      event.preventDefault();
+      var addButton = row.querySelector('[data-attendee-add]');
+      row.insertBefore(draggedAttendeeChip, addButton || null);
+      row.classList.remove('is-drag-over');
+      attendeeStateChanged();
+    });
+    row.addEventListener('dragend', function () {
+      if (draggedAttendeeChip) draggedAttendeeChip.classList.remove('dragging');
+      draggedAttendeeChip = null;
+      row.classList.remove('is-drag-over');
+    });
+  });
   nextButton.addEventListener('click', function () {
     if (activeIndex === 2 && Object.keys(unresolvedWorkstreamFlags).length) {
       setReviewStatus('Resolve each missing substantive workstream before moving on: add it, intentionally omit it, or return to summary topics.', true);
