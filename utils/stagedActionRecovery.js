@@ -1,7 +1,7 @@
 'use strict';
 
 const ACTION_CUE = /\b(?:action(?:s)?|will|i['’]?ll|we['’]?ll|can you|could you|please|need(?:s)? to|must|going to|hoping|follow[- ]?up|sign off|approve|review|complete|update|share|send|confirm|trace|generate|schedule|set up|add in)\b/i;
-const FIRST_PERSON_COMMITMENT = /\b(?:i['’]?ll|i will|i can (?:review|send|share|update|complete|confirm|prepare|add)|i need to|i['’]?m going to|i was going to|i was in the middle of|i['’]?m (?:in the middle of|working on|hoping)|i am (?:in the middle of|working on|hoping|tidying|updating|reviewing|preparing|completing|sharing|sending|adding)|i go away|i['’]?ve sent|i sent)\b/i;
+const FIRST_PERSON_COMMITMENT = /\b(?:i['’]?ll|i will|i can (?:review|send|share|update|complete|confirm|prepare|add)|i could (?:review|check|have a look)|i need to|i['’]?m going to|i was going to|i was in the middle of|i['’]?m (?:in the middle of|working on|hoping)|i am (?:in the middle of|working on|hoping|tidying|updating|reviewing|preparing|completing|sharing|sending|adding)|i go away|i['’]?ve sent|i sent)\b/i;
 const PERSON_NAME = "[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:\\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){0,2}";
 
 function cleanLine(value) {
@@ -197,25 +197,25 @@ const RECOVERY_RULES = [
   {
     id: 'label_importer_review',
     required: [/\blabel(?:ling|ing)?\b/i, /\b(?:look at|review|check)\b/i, /\bimporter\b/i],
-    action: () => 'Send the updated label to Jenny for importer review'
+    action: () => 'Review the updated label from an importer perspective'
   },
   {
     id: 'country_language_list',
     required: [/\blist\b/i, /\bcountr(?:y|ies)\b/i, /\blanguage\b/i, /\b(?:need|could do with|prepare|send|share)\b/i],
-    action: () => 'Prepare the country and language list for the declarations of conformity'
+    action: () => 'Prepare the country and language list'
   },
   {
-    id: 'dita_med_envoy_plan',
+    id: 'authorised_representative_plan_followup',
     required: [/\bmed\s*envoy\b/i, /\b(?:project plan|task list|plan of action|timeline|plan)\b/i, /\b(?:follow[- ]?up|oversight|status|send|share)\b/i],
     action: () => 'Follow up on the Med Envoy project plan or task list'
   },
   {
-    id: 'dita_hpra_bill',
+    id: 'regulatory_authority_fee_review',
     required: [/\bhpra\b/i, /\b(?:bill|annual fee)\b/i, /\b(?:send|share|review|look at|have a look)\b/i],
     action: () => 'Review the HPRA authorised-representative bill'
   },
   {
-    id: 'dita_doc_ppe_rationale',
+    id: 'declaration_risk_rationale_update',
     required: [/\bdeclarations? of conformity\b/i, /\bppe\b/i, /\brisk rationale\b/i, /\b(?:update|include|confirm|need to)\b/i],
     action: () => 'Update the declarations of conformity with the PPE risk rationale'
   },

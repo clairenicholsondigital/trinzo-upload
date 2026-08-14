@@ -77,12 +77,20 @@ function editorialTopicLabel(topic, evidence) {
   return enrichedConceptLabel(concept, source) || extractiveLabel(topic?.representativeText) || 'Substantive discussion';
 }
 
+function labelIsClientReady(value) {
+  const text = clean(value);
+  return Boolean(text)
+    && !/["“”]/.test(text)
+    && !/\b(?:I|we|you|they|he|she)(?:['’](?:m|ve|d|ll|re|s))?\b/i.test(text)
+    && !/\b(?:yeah|okay|problem importer|going because|you know)\b/i.test(text);
+}
+
 function editorialTopics(topics, evidence, maximum = 8) {
   const output = [];
   const byLabel = new Map();
   for (const topic of Array.isArray(topics) ? topics : []) {
     const text = editorialTopicLabel(topic, evidence);
-    if (!text || text === 'Substantive discussion') continue;
+    if (!text || text === 'Substantive discussion' || !labelIsClientReady(text)) continue;
     const key = text.toLowerCase();
     const existing = byLabel.get(key);
     if (existing) {
@@ -93,9 +101,31 @@ function editorialTopics(topics, evidence, maximum = 8) {
     const item = { ...topic, editorialText: text, clusterIds: [topic.id] };
     byLabel.set(key, item);
     output.push(item);
-    if (output.length >= maximum) break;
   }
-  return output;
+  // Consider the whole transcript before applying the display budget. Earlier
+  // code stopped at the first clusters, making long meetings dependent on
+  // incidental clustering order and crowding out later substantive workstreams.
+  const ranked = output.map((item, index) => {
+    const source = clusterText(item, evidence);
+    const namedTerms = SALIENT_TERMS.filter(([, pattern]) => pattern.test(source)).map(([term]) => term);
+    const evidenceCount = new Set(item.evidenceIds || []).size;
+    const genericPenalty = /^(?:content and communications|plans and timelines|product behaviour and design)$/i.test(item.editorialText) ? 2 : 0;
+    return { item, index, namedTerms, rank: (namedTerms.length * 5) + Math.min(evidenceCount, 8) - genericPenalty };
+  });
+  const selected = [];
+  const coveredTerms = new Set();
+  while (selected.length < maximum && selected.length < ranked.length) {
+    const remaining = ranked.filter((candidate) => !selected.includes(candidate));
+    remaining.sort((left, right) => {
+      const leftNew = left.namedTerms.filter((term) => !coveredTerms.has(term)).length;
+      const rightNew = right.namedTerms.filter((term) => !coveredTerms.has(term)).length;
+      return rightNew - leftNew || right.rank - left.rank || left.index - right.index;
+    });
+    const next = remaining[0];
+    selected.push(next);
+    next.namedTerms.forEach((term) => coveredTerms.add(term));
+  }
+  return selected.map(({ item }) => item);
 }
 
 module.exports = { CONCEPTS, clusterText, editorialTopicLabel, editorialTopics, extractiveLabel };

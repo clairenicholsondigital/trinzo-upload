@@ -158,3 +158,22 @@ test('evidence-bound recovery candidates join the Trooper pack without entering 
   assert.equal(enriched._canonicalEvidencePack[1].action, 'Review the mute-button flash sequence');
   assert.equal(enriched._canonicalEvidencePack[1].evidence[0].current.includes('mute-button LED'), true);
 });
+
+test('an evidence-bound candidate survives model omission and unavailable rewriting', async () => {
+  const enriched = addRecoveredActionCandidates(actionPayload(), [{
+    owner: 'Not stated',
+    action: 'Review the supplier quality agreement',
+    deadline: 'Not stated',
+    evidence: 'The supplier quality agreement needs to be reviewed.'
+  }]);
+  const rewritten = await polishCanonicalStage(enriched, {
+    apiKey: 'test-key',
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: JSON.stringify({ actions: [] }) } }] })
+    })
+  });
+  assert.ok(rewritten.payload.screens.actions.some((item) => item.action === 'Review the supplier quality agreement'));
+  const fallback = await polishCanonicalStage(enriched, { apiKey: '' });
+  assert.ok(fallback.payload.screens.actions.some((item) => item.action === 'Review the supplier quality agreement'));
+});

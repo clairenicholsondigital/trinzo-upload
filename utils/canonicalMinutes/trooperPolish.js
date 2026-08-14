@@ -10,6 +10,8 @@ const DEFAULT_MODEL = 'eu_liv_000099';
 function unresolvedReference(value) {
   const text = clean(value);
   return /\b(?:flick|send|share|bring|discuss|review|do|handle|sort|progress|go through)\s+(?:it|that|this)\b/i.test(text)
+    || /\b(?:take|have)\s+a\s+look\s+at\s+(?:it|that|this|us|them)\b/i.test(text)
+    || /\b(document|report|plan|file)\s+\1\b/i.test(text)
     || /\b(?:discuss|review|progress|handle)\s+(?:the\s+)?(?:matter|topic|issue)\b/i.test(text)
     || /\b(?:the|this)\s+(?:matter|topic|issue)\b/i.test(text)
     || /\b(?:flick|send|share|bring|review|forward|escalate)\s+(?:the\s+)?(?:document|file|item|matter|topic|issue)(?:\s+(?:over|to)\b|[.!?]*$)/i.test(text)
@@ -39,7 +41,11 @@ function canonicalFallback(payload) {
   const base = { ...payload, screens: { ...(payload?.screens || {}) } };
   delete base._canonicalEvidencePack;
   if (Array.isArray(base.screens.actions)) {
-    base.screens.actions = base.screens.actions.filter((item) => !unresolvedReference(item.action) && !nonActionState(item.action));
+    const recovered = (payload?._canonicalEvidencePack || [])
+      .filter((item) => item.selectionMode === 'evidence_bound_candidate')
+      .map((item) => ({ owner: item.owner || 'Not stated', action: item.action, deadline: item.deadline || 'Not stated', evidenceIds: (item.evidence || []).map((evidence) => evidence.id).filter(Boolean) }));
+    base.screens.actions = dedupeActions([...base.screens.actions, ...recovered]
+      .filter((item) => !unresolvedReference(item.action) && !nonActionState(item.action)));
   }
   return base;
 }
@@ -60,6 +66,7 @@ function addRecoveredActionCandidates(payload, recovered = []) {
       itemIndex: pack.length,
       topic: '', owner, action,
       deadline: clean(item.deadline) || 'Not stated',
+      selectionMode: 'evidence_bound_candidate',
       currentPoints: [],
       evidence: [{ id, speaker: owner, previous: '', current: clean(item.evidence).slice(0, 1800), next: '', contextWindow: [], labels: { evidenceType: 'action_candidate', actionState: 'possible_action', lifecycle: 'active', canonicalWorthiness: 'review_required', temporalRole: '' } }]
     });
@@ -252,7 +259,7 @@ function applyActionRewrite(payload, output, evidencePack) {
       deadline: pack.deadline || 'Not stated',
       evidenceIds: (pack.evidence || []).map((item) => item.id).filter(Boolean)
     };
-    return (byIndex.get(index) || []).slice(0, 3).flatMap((candidate) => {
+    const proposed = (byIndex.get(index) || []).slice(0, 3).flatMap((candidate) => {
       if (!validReferences(candidate, pack)) return [];
       if (!prospectiveEvidence(candidate, pack)) return [];
       const action = clean(candidate.action);
@@ -261,8 +268,25 @@ function applyActionRewrite(payload, output, evidencePack) {
       const deadline = deadlineSupported(candidate, pack) ? (clean(candidate.deadline) || source.deadline) : source.deadline;
       return [{ ...source, owner, action, deadline, evidenceIds: candidate.evidenceIds }];
     });
+    // Evidence-bound candidates have already passed deterministic local-window,
+    // actionability and final-output checks. The language model may improve
+    // them, but silence is not a rejection decision and must not erase them.
+    if (!proposed.length && pack.selectionMode === 'evidence_bound_candidate') return [source];
+    return proposed;
   });
-  return { ...payload, screens: { ...payload.screens, actions: dedupeActions(actions) } };
+  const finalActions = dedupeActions(actions);
+  return {
+    ...payload,
+    screens: { ...payload.screens, actions: finalActions },
+    canonicalDiagnostics: {
+      ...(payload.canonicalDiagnostics || {}),
+      actionAccounting: {
+        supplied: evidencePack.length,
+        evidenceBound: evidencePack.filter((item) => item.selectionMode === 'evidence_bound_candidate').length,
+        published: finalActions.length
+      }
+    }
+  };
 }
 
 function applyDiscussionRewrite(payload, output, evidencePack) {

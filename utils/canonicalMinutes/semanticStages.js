@@ -456,7 +456,7 @@ function contextStage(evidence, profile, state = {}, reviewerGuidance = '') {
       .sort((left, right) => left.rank - right.rank || left.index - right.index)
       .map((entry) => entry.topic);
   }
-  const topics = prioritiseForGuidance(editorialTopics(clusters, evidence, 6), evidence, reviewerGuidance);
+  const topics = prioritiseForGuidance(editorialTopics(clusters, evidence, 8), evidence, reviewerGuidance);
   return {
     meeting: state.meeting || { participants: evidence.participants },
     objectives: topics.slice(0, 6).map((topic) => ({ text: objectivePhraseForTopic(topic, topicHints, evidence), evidenceIds: topic.evidenceIds, topicId: topic.id })),

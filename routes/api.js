@@ -43,7 +43,7 @@ const {
 const { getMeetingMinutesCoreGoldenStatus } = require('../utils/meetingMinutesCoreGolden');
 const { runCanonicalNoEditPass } = require('../utils/canonicalMinutes/runner');
 const { runCanonicalLiveStage } = require('../utils/canonicalMinutes/liveStages');
-const { polishCanonicalStage, canonicalFallback } = require('../utils/canonicalMinutes/trooperPolish');
+const { polishCanonicalStage, canonicalFallback, addRecoveredActionCandidates } = require('../utils/canonicalMinutes/trooperPolish');
 const { reviewGeneratedContent } = require('../utils/terminologyQa');
 
 const {
@@ -523,6 +523,7 @@ function cleanStagedMeetingTitleCandidate(value, options = {}) {
 
 function inferStagedMeetingType(text, fileName = '') {
   const combined = `${text || ''}\n${fileName || ''}`;
+  if (/\bimporter(?:['’]s)?\s+(?:obligations?|responsibilit(?:y|ies)|requirements?)\b/i.test(combined)) return 'Importer obligations review';
   if (/\b(webinar|rehearsal|dry run|run-through|run through)\b/i.test(combined)) return 'Webinar rehearsal';
   if (/\bworkshop\b/i.test(combined)) return 'Workshop';
   if (/\bdecision\b/i.test(combined)) return 'Decision meeting';
@@ -3721,6 +3722,9 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
     reviewerGuidance: input.additionalContext || '',
     includeEvidencePack: ['discussion', 'actions'].includes(stage)
   });
+  if (stage === 'actions') {
+    payload = addRecoveredActionCandidates(payload, buildEvidenceBoundStagedActionInventory(transcript.text));
+  }
   let polished = { payload, used: false, reason: 'Trooper is not used for this stage.' };
   if (['discussion', 'actions'].includes(stage)) {
     try {
