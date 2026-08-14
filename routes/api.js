@@ -43,7 +43,7 @@ const {
 const { getMeetingMinutesCoreGoldenStatus } = require('../utils/meetingMinutesCoreGolden');
 const { runCanonicalNoEditPass } = require('../utils/canonicalMinutes/runner');
 const { runCanonicalLiveStage } = require('../utils/canonicalMinutes/liveStages');
-const { polishCanonicalStage, canonicalFallback, addRecoveredActionCandidates } = require('../utils/canonicalMinutes/trooperPolish');
+const { polishCanonicalStage, canonicalFallback } = require('../utils/canonicalMinutes/trooperPolish');
 
 const {
   saveMeetingMinutes,
@@ -3566,7 +3566,6 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
     confirmed: canonicalConfirmedStages(input),
     includeEvidencePack: ['discussion', 'actions'].includes(stage)
   });
-  if (stage === 'actions') payload = addRecoveredActionCandidates(payload, buildEvidenceBoundStagedActionInventory(transcript.text));
   let polished = { payload, used: false, reason: 'Trooper is not used for this stage.' };
   if (['discussion', 'actions'].includes(stage)) {
     try {

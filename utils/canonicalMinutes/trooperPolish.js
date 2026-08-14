@@ -13,9 +13,11 @@ function unresolvedReference(value) {
     || /\b(?:discuss|review|progress|handle)\s+(?:the\s+)?(?:matter|topic|issue)\b/i.test(text)
     || /\b(?:the|this)\s+(?:matter|topic|issue)\b/i.test(text)
     || /\b(?:flick|send|share|bring|review|forward|escalate)\s+(?:the\s+)?(?:document|file|item|matter|topic|issue)(?:\s+(?:over|to)\b|[.!?]*$)/i.test(text)
+    || /\b(?:send|share|review|follow up (?:with\s+\w+\s+)?regarding|get\s+\w+\s+to\s+review)\s+(?:the\s+)?(?:relevant|required|appropriate|applicable)?\s*(?:document|file|item|matter|topic|issue)(?:\s|[.!?]*$)/i.test(text)
     || /\b(?:overview|summary|details?)\s+of\s+(?:the\s+)?(?:products?|documents?|items?|things?)\b/i.test(text)
     || /\b(?:it|that|this)\s+(?:over|through|with)\b/i.test(text)
-    || /\bkind of\b|\bsort of\b|\byeah\b|\byep\b|\bunspecified\b|\[[^\]]+\]/i.test(text);
+    || /\bkind of\b|\bsort of\b|\byeah\b|\byep\b|\bunspecified\b|\[[^\]]+\]/i.test(text)
+    || /\b(?:assigned|do|complete)\s+homework\b/i.test(text);
 }
 
 function nonActionState(value) {
@@ -75,14 +77,19 @@ function promptFor(stage, payload, evidencePack, options = {}) {
       discussion: [{ itemIndex: 0, topic: 'exact supplied topic', points: ['formal, self-contained minutes point'], evidenceIds: ['supplied evidence id'] }]
     };
   const instructions = stage === 'actions' ? [
-    'Review every supplied MiniLM action candidate. Return each candidate that is a real prospective, minute-worthy commitment; omit completed work, status, availability, hypotheticals, suggestions without assignment, and conversational noise.',
+    'Review every supplied MiniLM action candidate. Return each candidate that is a real minute-worthy commitment or active outstanding deliverable; omit completed work, passive status with no remaining work, availability, hypotheticals, suggestions without assignment, and conversational noise.',
+    'A retained action must be supported by an explicit prospective commitment, assignment, request or obligation, or by clear evidence that specific work remains active and incomplete. Do not turn a question, recommendation, possible option, process description, audit scope, travel fact or meeting discussion into a commitment.',
+    'Treat work described as ongoing, in progress, being worked on or having recently started as outstanding only when the evidence also identifies concrete remaining work or a deliverable.',
+    'Consolidate repeated descriptions of the same underlying commitment into one canonical record.',
     'Rewrite each retained action into one complete, grammatical action with an explicit verb, specific object and supported purpose where the evidence establishes it.',
     'Resolve words such as it, this and that only from the supplied bounded context window.',
     'Replace the reference with the most specific supported workstream, document, deliverable or task. Generic substitutes such as "the matter", "the topic" or "the issue" are not acceptable.',
     'The object must distinguish the record from other documents or issues: retain supported names, acronyms, subject matter and purpose. For an email, state its supported subject; for an escalation, state the exact supported issue and system or team.',
+    'Preserve every supplied acronym exactly as written unless its expansion appears verbatim in the cited evidence; never guess an acronym expansion.',
     'If the concrete object cannot be established from the supplied evidence, omit the action.',
-    'Do not create commitments. Preserve supplied owners and deadlines. You may fill a Not stated owner or deadline only when the cited evidence explicitly assigns that owner or contains that exact deadline.',
-    'If one supplied item contains two distinct explicit commitments in its cited evidence, you may return two records with the same itemIndex; each must cite the evidence for its own commitment.',
+    'Do not create commitments. Preserve supplied owners and deadlines unless the cited evidence explicitly assigns a different owner. You may fill a Not stated owner or deadline only when the cited evidence explicitly assigns that owner or contains that exact deadline.',
+    'A supplied item may represent a contextual commitment thread rather than finished action wording. Resolve it only from its cited evidence.',
+    'If one supplied item contains multiple distinct explicit commitments in its cited evidence, you may return up to three records with the same itemIndex; each must cite the evidence for its own commitment.',
     'For each output record, preserve itemIndex and cite only evidenceIds supplied for that item.'
   ] : [
     'Rewrite the supplied canonical discussion records as concise, formal meeting-minutes prose.',
@@ -137,13 +144,25 @@ function ownerSupported(candidate, source) {
   const proposed = clean(candidate.owner);
   const existing = clean(source.owner) || 'Not stated';
   if (proposed.toLowerCase() === existing.toLowerCase()) return true;
-  if (existing !== 'Not stated' || !proposed || proposed === 'Not stated') return false;
-  const firstName = proposed.split(/\s+/)[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return citedEntries(candidate, source).some((entry) => {
+  if (!proposed || proposed === 'Not stated') return false;
+  const proposedOwners = proposed.split(/\s+(?:and|&)\s+/i).map(clean).filter(Boolean);
+  const entries = citedEntries(candidate, source);
+  const supportedPeople = proposedOwners.every((owner) => {
+    const firstName = owner.split(/\s+/)[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return entries.some((entry) => clean(entry.speaker).toLowerCase() === owner.toLowerCase()
+      || clean(entry.speaker).split(/\s+/)[0].toLowerCase() === owner.split(/\s+/)[0].toLowerCase()
+      || new RegExp(`\\b${firstName}\\b`, 'i').test(clean(entry.text)));
+  });
+  if (!supportedPeople) return false;
+  return entries.some((entry) => {
     const text = clean(entry.text);
-    const speakerCommitment = clean(entry.speaker).toLowerCase() === proposed.toLowerCase()
-      && /\bI\s*(?:['’]ll|will|shall|can|need to|must|have to|am going to)\b/i.test(text);
-    const namedAssignment = new RegExp(`(?:^|[.!?;]\\s+)${firstName},\\s*(?:can|could|will|would)\\s+you\\b|\\b${firstName}\\s+to\\s+[a-z]|\\b(?:assigned to|owner is|action for)\\s+${firstName}\\b`, 'i').test(text);
+    const speakerIsOwner = proposedOwners.some((owner) => clean(entry.speaker).toLowerCase() === owner.toLowerCase());
+    const speakerCommitment = speakerIsOwner
+      && /\b(?:I|we)\s*(?:['’]ll|will|shall|can|need to|must|have to|am going to)\b/i.test(text);
+    const namedAssignment = proposedOwners.some((owner) => {
+      const firstName = owner.split(/\s+/)[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return new RegExp(`(?:^|[.!?;]\\s+)${firstName},\\s*(?:can|could|will|would)\\s+you\\b|\\b${firstName}\\s+to\\s+[a-z]|\\b(?:assigned to|owner is|action for)\\s+${firstName}\\b`, 'i').test(text);
+    });
     return speakerCommitment || namedAssignment;
   });
 }
@@ -154,6 +173,67 @@ function deadlineSupported(candidate, source) {
   if (proposed.toLowerCase() === existing.toLowerCase()) return true;
   if (existing !== 'Not stated' || !proposed || proposed === 'Not stated') return false;
   return citedEntries(candidate, source).some((entry) => deadlineFrom(entry.text).toLowerCase() === proposed.toLowerCase());
+}
+
+function prospectiveEvidence(candidate, source) {
+  if (source.selectionMode === 'canonical_selected_action') return true;
+  const actionVerb = '(?:review|complete|update|share|send|flick|give|get|confirm|trace|generate|schedule|arrange|set up|prepare|provide|finish|finalise|finalize|investigate|check|raise|bring|discuss|upload|forward|circulate|draft|document|sign|approve|submit|publish|call|contact|meet|follow(?: up)?|develop|create|deliver|write|build|restore|monitor|test|assess|coordinate|book|obtain|request|resolve|fix|add|integrate|distribute|compile|progress|read|limit|determine|front[ -]?end|work(?: on| through)?|look at|do|handle|take)';
+  const explicit = new RegExp(`\\b(?:I|we)\\s*(?:['’]ll|will|shall|can|need to|must|have to|am going to)\\s+${actionVerb}\\b|\\b(?:you|[A-Z][A-Za-z'’.-]+)\\s+(?:will|shall|need to|needs to|must|have to|has to|is going to)\\s+${actionVerb}\\b|\\b(?:can|could|will|would)\\s+you\\s+${actionVerb}\\b|\\bplease\\s+${actionVerb}\\b|\\b(?:action|owner)\\s*(?:is|:)?\\s+[^.]{0,50}\\b${actionVerb}\\b`, 'i');
+  const impersonalObligation = new RegExp(`\\b(?:needs? to|must|has to|have to|will need to)\\s+(?:be\\s+)?${actionVerb}\\b`, 'i');
+  const deliverableObligation = /\b(?:needs? to|must|has to|have to|will need to)\s+be\s+(?:ready|available|completed|finished|signed|approved|submitted|provided|shared|updated|reviewed)\b/i;
+  const qualifiedCommitment = new RegExp(`\\b(?:I|we)\\s*(?:['’]ll|will)\\s+(?:try\\s+(?:and|to)\\s+)?${actionVerb}\\b|\\bI(?:['’]ve| have)\\s+got to\\s+${actionVerb}\\b`, 'i');
+  const actionCue = new RegExp(`\\b${actionVerb}\\b`, 'i');
+  const outstandingWork = new RegExp(`\\b(?:still (?:need|needs|requires?|pending|outstanding)|remain(?:s|ing)? (?:to be done|outstanding|open|pending)|in progress|working on|yet to be|follow[- ]?up (?:is|remains) (?:open|pending)|needs? (?:review|completion|updating|confirmation)|continu(?:e|ing) (?:to |with )?${actionVerb})\\b`, 'i');
+  const activeThread = (source.evidence || []).some((item) => {
+    const labels = item?.labels || {};
+    return ['confirmed_action', 'possible_action'].includes(labels.actionState)
+      && labels.lifecycle === 'active'
+      && !['supporting_detail', 'context_only', 'duplicate_expression', 'administrative_chatter', 'none'].includes(labels.canonicalWorthiness);
+  });
+  const entries = citedEntries(candidate, source);
+  const supported = entries.some((entry) => {
+    const text = clean(entry.text);
+    if (/\b(?:already|previously|last (?:week|month|year)|yesterday)\b.*\b(?:sent|shared|reviewed|completed|finished|signed|approved|submitted|did)\b/i.test(text)) return false;
+    if (/\?\s*$/.test(text) && !/\b(?:can|could|will|would)\s+you\b/i.test(text)) return false;
+    if (explicit.test(text) || impersonalObligation.test(text) || deliverableObligation.test(text) || qualifiedCommitment.test(text) || outstandingWork.test(text)) return true;
+    const sourceEvidence = (source.evidence || []).find((item) => clean(item.id) === clean(entry.id));
+    const labels = sourceEvidence?.labels || {};
+    const citedActive = ['confirmed_action', 'possible_action'].includes(labels.actionState)
+      && labels.lifecycle === 'active'
+      && !['supporting_detail', 'context_only', 'duplicate_expression', 'administrative_chatter', 'none'].includes(labels.canonicalWorthiness);
+    return actionCue.test(text) && (citedActive || activeThread);
+  });
+  if (supported) return true;
+  if (source.selectionMode !== 'contextual_commitment_thread') return false;
+  const allText = entries.map((entry) => clean(entry.text)).join(' ');
+  if (/\b(?:no action|nothing to action|already (?:done|completed|finished|closed)|cancelled|withdrawn)\b/i.test(allText)) return false;
+  if (/^(?:understand|demonstrate|consider|discuss .+ during the meeting|perform .+ controls|guarantee)\b/i.test(clean(candidate.action))) return false;
+  return actionCue.test(clean(candidate.action))
+    && clean(candidate.owner) !== 'Not stated'
+    && ownerSupported(candidate, source);
+}
+
+function dedupeActions(items) {
+  const output = [];
+  for (const item of items) {
+    const duplicateIndex = output.findIndex((existing) => {
+      const compatibleOwner = clean(existing.owner).toLowerCase() === clean(item.owner).toLowerCase()
+        || existing.owner === 'Not stated' || item.owner === 'Not stated';
+      return compatibleOwner && nearDuplicate(existing.action, item.action);
+    });
+    if (duplicateIndex < 0) {
+      output.push(item);
+      continue;
+    }
+    const existing = output[duplicateIndex];
+    output[duplicateIndex] = {
+      ...(existing.owner === 'Not stated' && item.owner !== 'Not stated' ? item : existing),
+      owner: existing.owner === 'Not stated' ? item.owner : existing.owner,
+      deadline: existing.deadline === 'Not stated' ? item.deadline : existing.deadline,
+      evidenceIds: [...new Set([...(existing.evidenceIds || []), ...(item.evidenceIds || [])])]
+    };
+  }
+  return output;
 }
 
 function applyActionRewrite(payload, output, evidencePack) {
@@ -174,14 +254,15 @@ function applyActionRewrite(payload, output, evidencePack) {
     };
     return (byIndex.get(index) || []).slice(0, 3).flatMap((candidate) => {
       if (!validReferences(candidate, pack)) return [];
+      if (!prospectiveEvidence(candidate, pack)) return [];
       const action = clean(candidate.action);
       if (!action || unresolvedReference(action) || nonActionState(action) || action.split(/\s+/).length < 4) return [];
-      if (!ownerSupported(candidate, pack)) return [];
-      if (!deadlineSupported(candidate, pack)) return [];
-      return [{ ...source, owner: clean(candidate.owner) || source.owner, action, deadline: clean(candidate.deadline) || source.deadline, evidenceIds: candidate.evidenceIds }];
+      const owner = ownerSupported(candidate, pack) ? (clean(candidate.owner) || source.owner) : source.owner;
+      const deadline = deadlineSupported(candidate, pack) ? (clean(candidate.deadline) || source.deadline) : source.deadline;
+      return [{ ...source, owner, action, deadline, evidenceIds: candidate.evidenceIds }];
     });
   });
-  return { ...payload, screens: { ...payload.screens, actions } };
+  return { ...payload, screens: { ...payload.screens, actions: dedupeActions(actions) } };
 }
 
 function applyDiscussionRewrite(payload, output, evidencePack) {
@@ -211,26 +292,40 @@ async function polishCanonicalStage(payload, options = {}) {
   const apiKey = clean(options.apiKey ?? process.env.TROOPER_API_KEY);
   if (!apiKey) return { payload: canonicalFallback(payload), used: false, reason: 'TROOPER_API_KEY is not configured.' };
   const fetchImpl = options.fetchImpl || fetch;
-  const response = await fetchImpl(clean(options.url ?? process.env.TROOPER_CHAT_COMPLETIONS_URL) || DEFAULT_URL, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: clean(options.model ?? process.env.TROOPER_MODEL) || DEFAULT_MODEL,
-      messages: [
-        { role: 'system', content: 'Rewrite bounded MiniLM evidence into client-ready canonical meeting records. Return valid JSON only.' },
-        { role: 'user', content: promptFor(stage, base, evidencePack, options) }
-      ],
-      temperature: 0.1,
-      max_tokens: stage === 'discussion' ? 2200 : 1400,
-      response_format: { type: 'json_object' }
-    })
-  });
-  if (!response.ok) throw new Error(`Trooper canonical ${stage} rewrite failed with status ${response.status}.`);
-  const body = await response.json();
-  const content = body?.choices?.[0]?.message?.content;
-  const output = typeof content === 'object' ? content : JSON.parse(String(content || '{}'));
-  const rewritten = stage === 'actions' ? applyActionRewrite(base, output, evidencePack) : applyDiscussionRewrite(base, output, evidencePack);
-  return { payload: rewritten, used: true, reason: 'Trooper rewrote bounded MiniLM evidence.', usage: body?.usage || null };
+  const packs = stage === 'actions' && evidencePack.length > 8
+    ? Array.from({ length: Math.ceil(evidencePack.length / 8) }, (_unused, index) => evidencePack.slice(index * 8, (index + 1) * 8))
+    : [evidencePack];
+  const actionResults = [];
+  const usage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+  let discussionResult = null;
+  for (const pack of packs) {
+    const indexedPack = pack.map((item, itemIndex) => ({ ...item, itemIndex }));
+    const response = await fetchImpl(clean(options.url ?? process.env.TROOPER_CHAT_COMPLETIONS_URL) || DEFAULT_URL, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: clean(options.model ?? process.env.TROOPER_MODEL) || DEFAULT_MODEL,
+        messages: [
+          { role: 'system', content: 'Rewrite bounded MiniLM evidence into client-ready canonical meeting records. Return valid JSON only.' },
+          { role: 'user', content: promptFor(stage, base, indexedPack, options) }
+        ],
+        temperature: 0.1,
+        max_tokens: stage === 'discussion' ? 2200 : 1400,
+        response_format: { type: 'json_object' }
+      })
+    });
+    if (!response.ok) throw new Error(`Trooper canonical ${stage} rewrite failed with status ${response.status}.`);
+    const body = await response.json();
+    for (const key of Object.keys(usage)) usage[key] += Number(body?.usage?.[key] || 0);
+    const content = body?.choices?.[0]?.message?.content;
+    const output = typeof content === 'object' ? content : JSON.parse(String(content || '{}'));
+    if (stage === 'actions') actionResults.push(...applyActionRewrite({ ...base, screens: { ...base.screens, actions: [] } }, output, indexedPack).screens.actions);
+    else discussionResult = applyDiscussionRewrite(base, output, indexedPack);
+  }
+  const rewritten = stage === 'actions'
+    ? { ...base, screens: { ...base.screens, actions: dedupeActions(actionResults) } }
+    : discussionResult;
+  return { payload: rewritten, used: true, reason: `Trooper rewrote ${packs.length} bounded MiniLM evidence pack(s).`, usage };
 }
 
 module.exports = { promptFor, polishCanonicalStage, applyActionRewrite, applyDiscussionRewrite, unresolvedReference, canonicalFallback, nonActionState, nearDuplicate, addRecoveredActionCandidates };

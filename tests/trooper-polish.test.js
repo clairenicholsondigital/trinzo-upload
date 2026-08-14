@@ -23,6 +23,36 @@ test('Trooper prompt contains bounded MiniLM context and no full transcript bloc
   assert.match(prompt, /QMS manual is ready for review/);
   assert.doesNotMatch(prompt, /\[TRANSCRIPT\]/);
   assert.match(promptFor('actions', payload, payload._canonicalEvidencePack, { reviewerGuidance: 'Emphasise regulatory deadlines.' }), /Emphasise regulatory deadlines/);
+  assert.match(prompt, /never guess an acronym expansion/i);
+});
+
+test('large action packs are reviewed in bounded batches', async () => {
+  const payload = actionPayload();
+  const subjects = ['quality', 'clinical', 'electrical', 'software', 'labelling', 'supplier', 'warehouse', 'complaints', 'training'];
+  payload._canonicalEvidencePack = Array.from({ length: 9 }, (_unused, index) => ({
+    itemIndex: index,
+    owner: 'Jacqui Fox',
+    action: `Review the ${subjects[index]} regulatory document`,
+    deadline: 'Not stated',
+    selectionMode: 'canonical_selected_action',
+    evidence: [{ id: `evt_${index + 1}`, speaker: 'Jacqui Fox', current: `I will review the ${subjects[index]} regulatory document.`, contextWindow: [] }]
+  }));
+  let calls = 0;
+  const result = await polishCanonicalStage(payload, {
+    apiKey: 'test-key',
+    fetchImpl: async (_url, request) => {
+      calls += 1;
+      const body = JSON.parse(request.body);
+      const supplied = JSON.parse(body.messages[1].content.split('BOUNDED_MINILM_EVIDENCE:\n')[1].split('\n\nRETURN_SCHEMA:')[0]);
+      const first = supplied[0];
+      return {
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: JSON.stringify({ actions: [{ itemIndex: 0, owner: first.owner, action: first.action, deadline: first.deadline, evidenceIds: [first.evidence[0].id] }] }) } }] })
+      };
+    }
+  });
+  assert.equal(calls, 2);
+  assert.equal(result.payload.screens.actions.length, 1);
 });
 
 test('Trooper action rewrite resolves a deictic action from cited context', async () => {
@@ -54,6 +84,35 @@ test('Trooper action rewrite cannot change owner or retain unresolved references
   });
   assert.deepEqual(result.payload.screens.actions, []);
   assert.equal(unresolvedReference('Discuss it with Louise and see what she says'), true);
+});
+
+test('unsupported slot changes fall back without discarding a supported action', async () => {
+  const payload = actionPayload();
+  const result = await polishCanonicalStage(payload, {
+    apiKey: 'test-key',
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: JSON.stringify({ actions: [{ itemIndex: 0, owner: 'Orla', action: 'Send the QMS manual to Orla for review', deadline: 'Friday', evidenceIds: ['evt_2'] }] }) } }] })
+    })
+  });
+  assert.deepEqual(result.payload.screens.actions[0], {
+    owner: 'Jacqui Fox', action: 'Send the QMS manual to Orla for review', deadline: 'Not stated', evidenceIds: ['evt_2']
+  });
+});
+
+test('an incorrectly supplied owner may be corrected only by explicit cited assignment evidence', async () => {
+  const payload = actionPayload();
+  payload._canonicalEvidencePack[0].evidence[0] = {
+    id: 'evt_2', speaker: 'Jacqui Fox', current: 'Orla, can you review the QMS manual?', contextWindow: []
+  };
+  const result = await polishCanonicalStage(payload, {
+    apiKey: 'test-key',
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: JSON.stringify({ actions: [{ itemIndex: 0, owner: 'Orla Skally', action: 'Review the QMS manual and importer procedures', deadline: 'Not stated', evidenceIds: ['evt_2'] }] }) } }] })
+    })
+  });
+  assert.equal(result.payload.screens.actions[0].owner, 'Orla Skally');
 });
 
 test('Trooper may fill only owner and deadline slots explicitly supported by cited evidence', async () => {
