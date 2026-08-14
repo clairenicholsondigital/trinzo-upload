@@ -959,7 +959,8 @@ td select {
     }) : [];
     row.innerHTML = names.map(function (name) {
       var safeName = escapeHtml(name);
-      return '<span class="chip" draggable="true"><span class="attendee-drag-handle" aria-hidden="true">⠿</span><span class="attendee-name" contenteditable="true" role="textbox" aria-label="Edit attendee name">' + safeName + '</span><button type="button" data-attendee-remove aria-label="Remove ' + safeName + '">×</button></span>';
+      var target = row === internalAttendeesRow ? 'Client' : 'Internal';
+      return '<span class="chip" draggable="true"><span class="attendee-drag-handle" aria-hidden="true">⠿</span><span class="attendee-name" contenteditable="true" role="textbox" aria-label="Edit attendee name">' + safeName + '</span><button type="button" data-attendee-move aria-label="Move ' + safeName + ' to ' + target + '" title="Move to ' + target + '">↔</button><button type="button" data-attendee-remove aria-label="Remove ' + safeName + '">×</button></span>';
     }).join('') + ' <button class="ghost" type="button" data-attendee-add>Add attendee</button>';
     refreshActionOwnerOptions();
   }
@@ -2388,6 +2389,15 @@ td select {
       if (removeButton) {
         var chip = removeButton.closest('.chip');
         if (chip) chip.remove();
+        attendeeStateChanged();
+        return;
+      }
+      var moveButton = event.target.closest('[data-attendee-move]');
+      if (moveButton) {
+        var moveChip = moveButton.closest('.chip');
+        var destination = row === internalAttendeesRow ? clientAttendeesRow : internalAttendeesRow;
+        var destinationAddButton = destination && destination.querySelector('[data-attendee-add]');
+        if (moveChip && destination) destination.insertBefore(moveChip, destinationAddButton || null);
         attendeeStateChanged();
       }
     });

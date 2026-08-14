@@ -584,7 +584,8 @@ const STAGED_KNOWN_INTERNAL_ATTENDEES = [
   'Mark Kelleher',
   'John-Paul Hughes',
   'Jenny Gough',
-  'Stuart Smith'
+  'Stuart Smith',
+  'Orla Skally'
 ];
 
 const STAGED_KNOWN_CLIENT_ATTENDEES = [
@@ -601,8 +602,7 @@ const STAGED_KNOWN_CLIENT_ATTENDEES = [
   'Claire Doherty',
   'Luke Speers',
   'Janine Thomas',
-  'Abby Lennon',
-  'Orla Skally'
+  'Abby Lennon'
 ];
 
 const STAGED_ATTENDEE_BUCKET_BY_NAME = new Map([

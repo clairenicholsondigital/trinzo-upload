@@ -1,6 +1,7 @@
 'use strict';
 
 const { clean } = require('./evidence');
+const { DOMAIN_TERMS, escapeRegExp } = require('../domainTerms');
 
 // A small, meeting-agnostic vocabulary for turning extractive MiniLM clusters
 // into readable agenda labels. These are concepts, not meeting templates: a
@@ -37,6 +38,21 @@ function conceptLabel(text) {
   return CONCEPTS.find((concept) => concept.pattern.test(text))?.label || '';
 }
 
+const SALIENT_TERMS = [
+  ...DOMAIN_TERMS.map((term) => [term.canonical, new RegExp(`\\b(?:${[term.canonical, ...term.aliases].map(escapeRegExp).join('|')})\\b`, 'i')]),
+  ['MedEnvoy', /\bmed\s*envoy\b/i],
+  ['declarations of conformity', /\bdeclarations? of conformity\b/i],
+  ['labelling', /\b(?:label|labelling|labeling|barcode)\b/i],
+  ['importer obligations', /\bimporter\b/i]
+];
+
+function enrichedConceptLabel(label, source) {
+  if (!label) return '';
+  const terms = SALIENT_TERMS.filter(([, pattern]) => pattern.test(source)).map(([term]) => term).slice(0, 2);
+  if (!terms.length || terms.some((term) => label.toLowerCase().includes(term.toLowerCase()))) return label;
+  return `${label}: ${terms.join(' and ')}`;
+}
+
 function extractiveLabel(value) {
   let text = clean(value).replace(/[.?!]+$/, '');
   for (let count = 0; count < 3 && LEAD_IN.test(text); count += 1) text = text.replace(LEAD_IN, '');
@@ -57,7 +73,8 @@ function extractiveLabel(value) {
 
 function editorialTopicLabel(topic, evidence) {
   const source = clusterText(topic, evidence);
-  return conceptLabel(source) || extractiveLabel(topic?.representativeText) || 'Substantive discussion';
+  const concept = conceptLabel(source);
+  return enrichedConceptLabel(concept, source) || extractiveLabel(topic?.representativeText) || 'Substantive discussion';
 }
 
 function editorialTopics(topics, evidence, maximum = 8) {

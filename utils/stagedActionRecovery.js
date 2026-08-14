@@ -189,6 +189,22 @@ function actionCandidate(rule, evidence, owner, deadline, sourceTurnIds = []) {
 
 const RECOVERY_RULES = [
   {
+    id: 'quality_manual_review_commitment',
+    required: [/\b(?:qms|quality) manual\b/i, /\b(?:i['’]?ll|i will|can)\s+(?:take a look|review|read|check|have a look)\b/i],
+    maxTurns: 8,
+    action: () => 'Review the QMS Manual'
+  },
+  {
+    id: 'label_importer_review',
+    required: [/\blabel(?:ling|ing)?\b/i, /\b(?:look at|review|check)\b/i, /\bimporter\b/i],
+    action: () => 'Send the updated label to Jenny for importer review'
+  },
+  {
+    id: 'country_language_list',
+    required: [/\blist\b/i, /\bcountr(?:y|ies)\b/i, /\blanguage\b/i, /\b(?:need|could do with|prepare|send|share)\b/i],
+    action: () => 'Prepare the country and language list for the declarations of conformity'
+  },
+  {
     id: 'dita_med_envoy_plan',
     required: [/\bmed\s*envoy\b/i, /\b(?:project plan|task list|plan of action|timeline|plan)\b/i, /\b(?:follow[- ]?up|oversight|status|send|share)\b/i],
     action: () => 'Follow up on the Med Envoy project plan or task list'
@@ -290,7 +306,7 @@ function buildEvidenceBoundStagedActionInventory(transcriptText) {
       if (!best || candidate.score > best.score) best = candidate;
     }
     for (let start = 0; start < turns.length; start += 1) {
-      for (let end = start + 1; end < Math.min(turns.length, start + 3); end += 1) {
+      for (let end = start + 1; end < Math.min(turns.length, start + (rule.maxTurns || 3)); end += 1) {
         const group = turns.slice(start, end + 1);
         const evidence = cleanLine(group.map((turn) => turn.text).join(' '));
         if (!ACTION_CUE.test(evidence) || !rule.required.every((pattern) => pattern.test(evidence))) continue;

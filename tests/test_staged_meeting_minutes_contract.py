@@ -360,12 +360,14 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn('attendee-drag-handle', page)
         self.assertIn('Drop attendee here', page)
         self.assertIn('contenteditable="true"', page)
+        self.assertIn('data-attendee-move', page)
+        self.assertIn("row === internalAttendeesRow ? 'Client' : 'Internal'", page)
         self.assertIn("function attendeeStateChanged", page)
         self.assertIn("function actionOwnerOptions", page)
         self.assertIn('class="action-owner-select"', page)
         self.assertIn("Add someone new…", page)
         self.assertIn("Enter the action owner’s name:", page)
-        self.assertIn("Some possible actions were not added automatically", semantic)
+        self.assertIn("A transcript-supported commitment may still need an owner", semantic)
         self.assertNotIn("semantic commitment thread(s) require adjudication", semantic)
 
     def test_post_generation_terminology_qa_is_applied_with_reviewer_undo_and_audited(self):

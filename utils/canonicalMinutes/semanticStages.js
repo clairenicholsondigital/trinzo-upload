@@ -1056,6 +1056,18 @@ function actionsStage(evidence, state, profile, topology) {
     threadId: thread.id, evidenceIds: thread.evidenceIds, scores: thread.semanticScores,
     reason: 'Semantic candidate could not be safely converted into an owner/action record.'
   }));
+  // Only interrupt the reviewer for a credible, concrete omission. Raw thread
+  // counts include tentative remarks, acknowledgements and fragments which are
+  // useful for telemetry but make a permanently noisy UI warning.
+  const credibleUnresolvedThreads = unresolvedThreads.filter((thread) => {
+    const candidate = semanticThreadReviewCandidate(
+      threads.find((item) => item.id === thread.threadId), evidence, profile
+    );
+    return candidate
+      && candidate.semanticConfidence >= 0.38
+      && !reviewCandidateNoise(candidate, evidence)
+      && !actions.some((action) => action.evidenceIds?.some((id) => candidate.evidenceIds.includes(id)));
+  });
   return {
     actions: actions.map((item) => ({ ...item, action: canonicalActionText(item.action) })),
     actionCandidates: actionCandidates.slice(0, 24).map((item) => ({ ...item, action: item.semanticOnly ? clean(item.action) : canonicalActionText(item.action) })),
@@ -1064,7 +1076,7 @@ function actionsStage(evidence, state, profile, topology) {
     unresolvedThreads,
     warnings: [
       ...(actions.length ? [] : [{ type: 'no_actions_detected', severity: 'info', message: 'No transcript-supported action passed the MiniLM commitment-thread safety checks.' }]),
-      ...(unresolvedThreads.length ? [{ type: 'unresolved_commitment_threads', severity: 'warning', message: 'Some possible actions were not added automatically because the owner or wording was unclear. Check the actions below and add anything important that is missing.', evidenceIds: unresolvedThreads.flatMap((item) => item.evidenceIds) }] : [])
+      ...(credibleUnresolvedThreads.length ? [{ type: 'unresolved_commitment_threads', severity: 'warning', message: 'A transcript-supported commitment may still need an owner or clearer wording. Check the suggested actions below.', evidenceIds: credibleUnresolvedThreads.flatMap((item) => item.evidenceIds) }] : [])
     ]
   };
 }

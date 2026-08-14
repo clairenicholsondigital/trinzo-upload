@@ -147,6 +147,10 @@ test('recovers DITA follow-ups only from the real DITA evidence windows', () => 
   assert.ok(ditaActions.includes('Follow up on the Med Envoy project plan or task list'));
   assert.ok(ditaActions.includes('Review the HPRA authorised-representative bill'));
   assert.ok(ditaActions.includes('Update the declarations of conformity with the PPE risk rationale'));
+  assert.ok(ditaActions.includes('Review the QMS Manual'));
+  assert.ok(ditaActions.includes('Send the updated label to Jenny for importer review'));
+  assert.ok(ditaActions.includes('Prepare the country and language list for the declarations of conformity'));
+  assert.equal(ditaActions.length, 6);
   assert.ok(!abbottActions.some((action) => /Med Envoy|HPRA|PPE risk rationale/i.test(action)));
 });
 
