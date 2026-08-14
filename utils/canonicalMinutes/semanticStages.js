@@ -5,7 +5,7 @@ const { semanticFor } = require('./minilm');
 const deterministicStages = require('./stages');
 const { deadlineFrom } = deterministicStages;
 const { actionHasConcreteObject, applyOperationalPhaseTiming, attachTemporalContext, composeDecision, composeRisk, consolidate, deriveRoleDecisions, tokenOverlap } = require('./canonicalResolver');
-const { purposePlan } = require('./meetingPurpose');
+const { purposePlan, objectiveIntentForText, topicOrderRank } = require('./meetingPurpose');
 const { resolveActionRecords } = require('./actionResolution');
 
 function unique(items, key) {
@@ -368,12 +368,15 @@ function publishableTopicRepresentative(text) {
   if (words.length < 4) return false;
   if (/^(?:and|but|because|when|presumably|interesting|so|well|yeah|yes|okay|right)\b/i.test(value)) return false;
   if (/(?:\b(?:and|but|because|that|which|with|from|to|for|of|the|a|an)|[,;:])$/i.test(value)) return false;
-  return /\b(?:audit|scope|standard|risk|software|document|training|schedule|plan|process|access|decision|action|requirement|testing|review|client|customer|supplier|regulatory|project|timeline|delivery|design|quality|system)\b/i.test(value);
+  // Substance is decided per-transcript by the MiniLM clusterer (it only emits
+  // clusters above its substantive threshold). A fixed domain-keyword whitelist
+  // here over-filtered legitimate topics whose vocabulary happened to fall
+  // outside the list, so rely on the structural checks above instead.
+  return true;
 }
 
 function minutesPoint(text) {
-  let value = clean(text).replace(/[.]+$/, '')
-    .replace(/\bTrace SW to identify the change in the SW between\b/gi, 'Document software versioning traceability between');
+  let value = clean(text).replace(/[.]+$/, '');
   value = value
     .replace(/^I\s+(?:think|believe|guess|suppose)\s+(?:that\s+)?/i, '')
     .replace(/^we\s+(?:discussed|reviewed|noted|confirmed)\s+/i, 'The team $1 ')
@@ -411,22 +414,36 @@ function prioritiseForGuidance(items, evidence, reviewerGuidance) {
   }).sort((left, right) => right.relevance - left.relevance || left.index - right.index).map(({ item }) => item);
 }
 
+function objectivePhraseForTopic(topic, topicHints) {
+  const intent = objectiveIntentForText(topicHints, topic.representativeText);
+  const title = titleFromRepresentative(topic.representativeText);
+  return `${intent} ${title.charAt(0).toLowerCase()}${title.slice(1)}`;
+}
+
 function contextStage(evidence, profile, state = {}, reviewerGuidance = '') {
-  const purpose = purposePlan(state.meeting, evidence);
-  if (purpose) {
-    return {
-      meeting: state.meeting,
-      objectives: prioritiseForGuidance(purpose.objectives, evidence, reviewerGuidance),
-      topics: prioritiseForGuidance(purpose.topics, evidence, reviewerGuidance),
-      purposeProfile: purpose.profileId,
-      warnings: []
-    };
-  }
+  // Topics ALWAYS come from this transcript's own MiniLM clusters. The
+  // meeting-type profile (if any) is a thin classifier used only to order those
+  // topics and choose an objective intent verb — it contributes no text and can
+  // never introduce another meeting's content.
+  const purpose = purposePlan(state.meeting);
+  const topicHints = purpose?.topicHints || [];
   const byId = new Map(evidence.events.map((event) => [event.id, event]));
-  const topics = prioritiseForGuidance((profile.topics || []).filter((topic) => publishableTopicRepresentative(topic.representativeText) && !/\b(?:no project update today|do not have a project update today|can everyone hear me|red light|webcam)\b/i.test(topic.representativeText || '') && !topic.evidenceIds.every((id) => { const event = byId.get(id); return event ? isSupersededBackground(event, evidence) : false; })).slice(0, 8), evidence, reviewerGuidance);
+  let clusters = (profile.topics || []).filter((topic) =>
+    publishableTopicRepresentative(topic.representativeText)
+    && !/\b(?:no project update today|do not have a project update today|can everyone hear me|red light|webcam)\b/i.test(topic.representativeText || '')
+    && !topic.evidenceIds.every((id) => { const event = byId.get(id); return event ? isSupersededBackground(event, evidence) : false; }));
+  if (topicHints.length) {
+    clusters = clusters
+      .map((topic, index) => ({ topic, index, rank: topicOrderRank(topicHints, topic.representativeText) }))
+      .sort((left, right) => left.rank - right.rank || left.index - right.index)
+      .map((entry) => entry.topic);
+  }
+  const topics = prioritiseForGuidance(clusters.slice(0, 8), evidence, reviewerGuidance);
   return {
-    meeting: { participants: evidence.participants },
-    objectives: topics.slice(0, 6).map((topic) => ({ text: `Review ${titleFromRepresentative(topic.representativeText)}`, evidenceIds: topic.evidenceIds, topicId: topic.id })),
+    meeting: state.meeting || { participants: evidence.participants },
+    objectives: topics.slice(0, 6).map((topic) => ({ text: objectivePhraseForTopic(topic, topicHints), evidenceIds: topic.evidenceIds, topicId: topic.id })),
+    topics: topics.map((topic) => ({ text: titleFromRepresentative(topic.representativeText), evidenceIds: topic.evidenceIds, topicId: topic.id })),
+    purposeProfile: purpose?.profileId || null,
     warnings: topics.length ? [] : [{ type: 'thin_context', severity: 'warning', message: 'MiniLM found no confident substantive topic clusters.' }]
   };
 }
@@ -443,13 +460,15 @@ function applyConfirmedTopicAgenda(discussion, state) {
   if (!confirmed.length || !discussion.length) return discussion;
   const unused = new Set(discussion.map((_item, index) => index));
   const ordered = [];
-  for (const [confirmedIndex, topic] of confirmed.entries()) {
+  for (const topic of confirmed) {
     const ranked = [...unused].map((index) => ({ index, score: topicMatchScore(topic, discussion[index]) }))
       .sort((left, right) => right.score - left.score || left.index - right.index);
-    let selected = ranked[0];
-    // Summary topics and generated discussion topics share their source order.
-    // Use that stable relationship only when an edited label no longer shares words.
-    if ((!selected || selected.score === 0) && unused.has(confirmedIndex)) selected = { index: confirmedIndex, score: 0 };
+    // Only bind a confirmed topic to a card that shares vocabulary with it.
+    // A zero-overlap positional fallback used to steal an unrelated card by
+    // index, which mis-filed content (e.g. a mute/fan point landing under a
+    // risk-management heading). Leave unmatched confirmed topics unbound; the
+    // real card keeps its own transcript-derived label and is appended below.
+    const selected = ranked.find((entry) => entry.score > 0);
     if (!selected) continue;
     unused.delete(selected.index);
     ordered.push({ ...discussion[selected.index], topic, confirmedTopic: true });
@@ -519,7 +538,6 @@ function isSupersededBackground(event, evidence) {
 }
 
 function contentStage(evidence, state, profile) {
-  const purpose = purposePlan(state.meeting, evidence);
   const byId = new Map(evidence.events.map((event) => [event.id, event]));
   const longTranscript = evidence.events.length >= 100;
   const selectedTopics = selectLongDiscussionTopics(profile.topics || [], evidence, byId, profile);
@@ -530,7 +548,9 @@ function contentStage(evidence, state, profile) {
   }));
   if (!longTranscript) topicCandidates.sort((left, right) => Number(right.explicitEvidence) - Number(left.explicitEvidence) || left.index - right.index);
   const discussionLimit = longTranscript ? 16 : evidence.events.length >= 25 ? 10 : 8;
-  let discussion = purpose?.discussion || topicCandidates.slice(0, discussionLimit).map(({ topic }) => {
+  // Discussion is ALWAYS derived from this transcript's evidence. There is no
+  // canned-template branch — a meeting-type profile never supplies body text.
+  let discussion = topicCandidates.slice(0, discussionLimit).map(({ topic }) => {
     const source = topic.evidenceIds.map((id) => byId.get(id)).filter(Boolean).filter((event) => !isSupersededBackground(event, evidence) && (score(profile, event, 'administrative') < 0.55 || /\b(?:offsite|absent|unavailable|miss)\b.*\b(?:meeting|check-in|call|session)\b|\b(?:meeting|check-in|call|session)\b.*\b(?:offsite|absent|unavailable|miss)\b/i.test(event.text)));
     const minuteEvidence = source.map((event) => {
       let text = minutesPoint(event.text);
@@ -542,7 +562,7 @@ function contentStage(evidence, state, profile) {
       : minuteEvidence.slice(0, 4);
     return { topic: titleFromRepresentative(topic.representativeText), points, evidenceIds: topic.evidenceIds, topicId: topic.id, cohesion: topic.cohesion };
   }).filter((item) => item.points.length);
-  if (longTranscript && !purpose) {
+  if (longTranscript) {
     const riskCards = discussion.filter((card) => card.evidenceIds.some((id) => {
       const event = byId.get(id);
       return event && score(profile, event, 'risk') >= 0.6;
@@ -569,7 +589,7 @@ function contentStage(evidence, state, profile) {
   const deterministic = deterministicStages.contentStage(evidence, state);
   // Preserve the immediately preceding rationale/proposal for an explicit
   // decision even when clustering keeps only the short acceptance turn.
-  for (const decision of purpose ? [] : deterministic.decisions) {
+  for (const decision of deterministic.decisions) {
     const decisionIndex = evidence.events.findIndex((event) => (decision.evidenceIds || []).includes(event.id));
     const prior = decisionIndex > 0 ? evidence.events[decisionIndex - 1] : null;
     const point = prior && !isSupersededBackground(prior, evidence) ? minutesPoint(prior.text) : '';
@@ -606,10 +626,7 @@ function contentStage(evidence, state, profile) {
       if (text) risks.push({ text, evidenceIds: [event.id], semanticConfidence: score(profile, event, 'risk') });
     }
   }
-  let resolvedRisks = resolveEnrichedRisks(risks, evidence, profile);
-  if (purpose?.riskEvidence) {
-    resolvedRisks = resolvedRisks.filter((item) => purpose.riskEvidence.test(clean(item.text)));
-  }
+  const resolvedRisks = resolveEnrichedRisks(risks, evidence, profile);
   return { discussion, decisions: resolveEnrichedDecisions(decisions, evidence, profile), risks: resolvedRisks, warnings: [] };
 }
 
@@ -620,11 +637,10 @@ function resolveActionReferent(item, evidence) {
   const contextEvents = evidence.events.slice(Math.max(0, sourceIndex - 10), Math.max(...indices) + 1);
   const context = contextEvents.map((event) => event.text).join(' ');
   let action = clean(item.action);
-  const localHeldObject = context.match(/\bI\s+(?:have|have got|['’]ve got)\s+(?:that|the)\s+(code of conduct)\b/i);
-  if (localHeldObject && /^get (?:it|that|this) over\b/i.test(action)) {
-    action = `send the ${clean(localHeldObject[1])}`;
-  }
-  if (/^share with you the tracker\b/i.test(action)) action = 'share the tracker';
+  // Referent resolution is generic: it captures the nearest preceding concrete
+  // noun phrase from THIS transcript's context and rewrites pronoun-shaped
+  // commitments ("get that over", "share with you the X") around it. The noun
+  // vocabulary is a general business-object list — no per-meeting phrases.
   const referentMatches = [...context.matchAll(/\b((?:[a-z][a-z0-9'’-]*\s+){0,4}(?:working sessions?|check-in calls?|recurrence calls?|code of conduct|trackers?|buttons?|ports?|controls?|drivers?|task lists?|project plans?|guides?|documents?|reports?|plans?|bills?|invoices?|files?|standards?|procedures?|declarations? of conformity))\b/gi)];
   const referent = clean(referentMatches.at(-1)?.[1] || '').replace(/^(?:at\s+)?(?:I\s+(?:have|have got|['’]ve got)\s+)?(?:the|a|an|that|this)\s+/i, '');
   if (referent) {

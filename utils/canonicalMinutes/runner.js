@@ -6,6 +6,7 @@ const { createCanonicalState, acceptProposal, lockedSemanticSnapshot } = require
 const { finalMinutes } = require('./stages');
 const semanticStages = require('./semanticStages');
 const { assessEvidenceTopology } = require('./topology');
+const { groundProposal } = require('./grounding');
 
 function auditSemanticLocks(state, minutes) {
   const expected = lockedSemanticSnapshot(state);
@@ -56,7 +57,7 @@ function runCanonicalNoEditPass(transcriptText, options = {}) {
   ];
   for (const [stage, build] of stages) {
     const stageStartedAt = Date.now();
-    const proposal = build();
+    const proposal = groundProposal(build(), evidence);
     const inputStateVersion = state.version;
     state = acceptProposal(state, proposal);
     stageSnapshots.push({ stage, inputStateVersion, acceptedStateVersion: state.version, proposal, warnings: proposal.warnings || [], durationMs: Date.now() - stageStartedAt });
