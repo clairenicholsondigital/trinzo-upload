@@ -583,7 +583,8 @@ const STAGED_KNOWN_INTERNAL_ATTENDEES = [
   'Claire Nicholson',
   'Mark Kelleher',
   'John-Paul Hughes',
-  'Jenny Gough'
+  'Jenny Gough',
+  'Stuart Smith'
 ];
 
 const STAGED_KNOWN_CLIENT_ATTENDEES = [
@@ -617,8 +618,23 @@ for (const name of [...STAGED_KNOWN_INTERNAL_ATTENDEES, ...STAGED_KNOWN_CLIENT_A
   STAGED_KNOWN_PERSON_BY_FIRST_NAME.set(firstName, existing ? null : name);
 }
 
+const STAGED_KNOWN_ATTENDEE_ALIASES = new Map([
+  [stagedKnownAttendeeKey('Smith, Stuart M'), 'Stuart Smith'],
+  [stagedKnownAttendeeKey('Smith Stuart M'), 'Stuart Smith']
+]);
+
+function canonicalStagedAttendeeAlias(value) {
+  const cleaned = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!cleaned) return '';
+  return STAGED_KNOWN_ATTENDEE_ALIASES.get(stagedKnownAttendeeKey(cleaned)) || cleaned;
+}
+
+function normaliseStagedKnownAttendeeAliasesInText(value) {
+  return String(value || '').replace(/\bSmith,\s*Stuart\s+M\b/g, 'Stuart Smith');
+}
+
 function canonicalKnownStagedPersonName(value) {
-  const cleaned = cleanStagedGeneratedLine(value || '');
+  const cleaned = cleanStagedGeneratedLine(canonicalStagedAttendeeAlias(value || ''));
   if (!cleaned) return '';
   const exact = STAGED_ATTENDEE_BUCKET_BY_NAME.get(stagedKnownAttendeeKey(cleaned));
   if (exact?.name) return exact.name;
@@ -634,13 +650,14 @@ function bucketKnownStagedAttendees(names) {
   const client = [];
   const unknown = [];
   for (const rawName of uniqueNames(names)) {
-    const known = STAGED_ATTENDEE_BUCKET_BY_NAME.get(stagedKnownAttendeeKey(rawName));
+    const canonicalName = canonicalStagedAttendeeAlias(rawName);
+    const known = STAGED_ATTENDEE_BUCKET_BY_NAME.get(stagedKnownAttendeeKey(canonicalName));
     if (known?.bucket === 'internal') {
       internal.push(known.name);
     } else if (known?.bucket === 'client') {
       client.push(known.name);
     } else {
-      unknown.push(rawName);
+      unknown.push(canonicalName);
     }
   }
   return {
@@ -670,7 +687,7 @@ function extractTeamsTranscriptHeader(lines) {
 }
 
 function extractTeamsTranscriptStructure(text) {
-  const transcript = String(text || '');
+  const transcript = normaliseStagedKnownAttendeeAliasesInText(text);
   const firstLines = transcript
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -682,7 +699,7 @@ function extractTeamsTranscriptStructure(text) {
   let turnCount = 0;
 
   const addSpeaker = (name, isTurn = false) => {
-    const cleaned = String(name || '').replace(/\s+/g, ' ').trim();
+    const cleaned = canonicalStagedAttendeeAlias(name).replace(/\s+/g, ' ').trim();
     if (!isLikelyPersonName(cleaned)) return;
     if (isTurn) {
       speakerTurnCounts.set(cleaned, (speakerTurnCounts.get(cleaned) || 0) + 1);
@@ -723,7 +740,7 @@ function extractTeamsTranscriptStructure(text) {
 }
 
 function buildPreparedTranscriptForStagedAI(text) {
-  const raw = String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const raw = normaliseStagedKnownAttendeeAliasesInText(text).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   const lines = raw.split('\n');
   const prepared = [];
   const removedReasons = {
@@ -769,7 +786,7 @@ function buildPreparedTranscriptForStagedAI(text) {
 
     const turnMatch = trimmed.match(turnLinePattern);
     if (turnMatch) {
-      const speaker = turnMatch[1].replace(/\s+/g, ' ').trim();
+      const speaker = canonicalStagedAttendeeAlias(turnMatch[1]).replace(/\s+/g, ' ').trim();
       const spoken = String(turnMatch[3] || '').replace(/\s+/g, ' ').trim();
       prepared.push(spoken ? `${speaker}: ${spoken}` : `${speaker}:`);
       return;
@@ -792,7 +809,7 @@ function buildPreparedTranscriptForStagedAI(text) {
 function extractTeamsSpeakerNames(text) {
   const structured = extractTeamsTranscriptStructure(text);
   if (structured.speakers.length) return structured.speakers;
-  const transcript = String(text || '');
+  const transcript = normaliseStagedKnownAttendeeAliasesInText(text);
   const names = [];
   const linePattern = /^\s*([A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){1,4})\s+(?:\d{1,2}:)?\d{1,2}:\d{2}(?=\s|[A-Za-z*]|$)/gm;
   const flattenedPattern = /\b\d{4,}\s+\d{4,}\s+([A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){1,4})\s+(?:\d{1,2}:)?\d{1,2}:\d{2}(?=\s|[A-Za-z*]|$)/g;
@@ -810,7 +827,7 @@ function extractTeamsSpeakerNames(text) {
 }
 
 function extractStagedDetailsFromTranscript(transcriptText, fileName = '') {
-  const text = String(transcriptText || '');
+  const text = normaliseStagedKnownAttendeeAliasesInText(transcriptText);
   const firstLines = text
     .split(/\r?\n/)
     .map((line) => line.trim())
