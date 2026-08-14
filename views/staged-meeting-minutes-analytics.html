@@ -162,10 +162,10 @@ input { width:100%; border:1px solid var(--border-strong); border-radius:8px; pa
         <h1>Minutes quality and improvement dashboard</h1>
         <p class="intro">A prototype layout for metrics that Trinzo can capture across generation, human review, approval and controlled system improvement.</p>
       </div>
-      <span class="period-pill">Prototype · local review data</span>
+      <span class="period-pill">Prototype · persisted review data</span>
     </div>
     <div class="prototype-banner" role="note">
-      <div><strong>This is a prototype metrics layout.</strong>The live figures at the top are calculated from staged reviews stored in this browser. Sections marked illustrative show the proposed reporting experience; organisation-wide reporting will require server-side review-event storage.</div>
+      <div><strong>This is a prototype metrics layout.</strong>The live figures at the top use persisted staged-review snapshots when available, with browser-stored drafts as a fallback. Sections marked illustrative show the proposed reporting experience.</div>
     </div>
   </section>
 
@@ -180,17 +180,17 @@ input { width:100%; border:1px solid var(--border-strong); border-radius:8px; pa
           <li><span>Workstream coverage</span><span class="capture-status live">Available now</span></li>
           <li><span>Misattributed points removed</span><span class="capture-status live">Available now</span></li>
           <li><span>Owner and deadline safety</span><span class="capture-status live">Available now</span></li>
-          <li><span>First-pass acceptance</span><span class="capture-status planned">Needs version store</span></li>
+          <li><span>First-pass acceptance</span><span class="capture-status live">Persisted now</span></li>
         </ul>
       </article>
       <article class="capture-card">
         <h3>Human review effort</h3>
         <p class="muted">Where reviewers spend time and exercise judgement.</p>
         <ul class="capture-list">
-          <li><span>Review time and input events</span><span class="capture-status live">Local now</span></li>
-          <li><span>Regeneration by stage</span><span class="capture-status live">Local now</span></li>
-          <li><span>Semantic edit type</span><span class="capture-status planned">Needs event store</span></li>
-          <li><span>Generated-to-approved diff</span><span class="capture-status planned">Needs version store</span></li>
+          <li><span>Review time and input events</span><span class="capture-status live">Persisted now</span></li>
+          <li><span>Regeneration by stage</span><span class="capture-status live">Persisted now</span></li>
+          <li><span>Semantic edit type</span><span class="capture-status live">Persisted now</span></li>
+          <li><span>Generated-to-approved diff</span><span class="capture-status live">Persisted now</span></li>
         </ul>
       </article>
       <article class="capture-card">
@@ -210,38 +210,38 @@ input { width:100%; border:1px solid var(--border-strong); border-radius:8px; pa
     <article class="metric">
       <div class="metric-label">Meetings processed</div>
       <div id="capturedReviewCount" class="metric-value">0</div>
-      <div class="metric-note">Staged reviews in this browser</div>
-      <span class="metric-source">Captured locally</span>
+      <div id="capturedReviewCountNote" class="metric-note">Persisted staged-review snapshots</div>
+      <span id="capturedReviewCountSource" class="metric-source">Server-side</span>
     </article>
     <article class="metric">
       <div class="metric-label">Minutes approved</div>
       <div id="capturedApprovalCount" class="metric-value">0</div>
-      <div class="metric-note">Drafts reaching final review</div>
-      <span class="metric-source">Captured locally</span>
+      <div id="capturedApprovalCountNote" class="metric-note">Final review completions</div>
+      <span id="capturedApprovalCountSource" class="metric-source">Server-side</span>
     </article>
     <article class="metric">
       <div class="metric-label">Approval rate</div>
       <div id="capturedApprovalRate" class="metric-value">0%</div>
       <div class="metric-note">Final review ÷ staged reviews</div>
-      <span class="metric-source">Prototype proxy</span>
+      <span id="capturedApprovalRateSource" class="metric-source">Server-side</span>
     </article>
     <article class="metric">
       <div class="metric-label">Average review time</div>
       <div id="capturedReviewTime" class="metric-value">0s</div>
-      <div class="metric-note">Active edit time per local draft</div>
-      <span class="metric-source">Captured locally</span>
+      <div id="capturedReviewTimeNote" class="metric-note">Active review time per persisted draft</div>
+      <span id="capturedReviewTimeSource" class="metric-source">Server-side</span>
     </article>
     <article class="metric">
       <div class="metric-label">Human input events</div>
       <div id="capturedEditCount" class="metric-value">0</div>
-      <div class="metric-note">Keystroke-level today; semantic edits planned</div>
-      <span class="metric-source">Captured locally</span>
+      <div id="capturedEditCountNote" class="metric-note">Meaningful changed fields, not keystrokes</div>
+      <span id="capturedEditCountSource" class="metric-source">Server-side</span>
     </article>
     <article class="metric">
       <div class="metric-label">Unresolved workstreams</div>
       <div id="capturedUnresolvedCount" class="metric-value">0</div>
       <div class="metric-note">Still blocking final progression</div>
-      <span class="metric-source">Captured locally</span>
+      <span id="capturedUnresolvedCountSource" class="metric-source">Server-side</span>
     </article>
     <article class="metric">
       <div class="metric-label">Manual regenerations</div>
@@ -548,6 +548,61 @@ input { width:100%; border:1px solid var(--border-strong); border-radius:8px; pa
   setText('capturedEditCount', totalEdits);
   setText('capturedUnresolvedCount', unresolved);
 
+  function setMetricSource(sourceText) {
+    ['capturedReviewCountSource', 'capturedApprovalCountSource', 'capturedApprovalRateSource', 'capturedReviewTimeSource', 'capturedEditCountSource', 'capturedUnresolvedCountSource'].forEach(function (id) {
+      setText(id, sourceText);
+    });
+  }
+
+  function latestServerEventByDraft(events) {
+    return events.reduce(function (acc, event) {
+      if (!event || !event.draftId) return acc;
+      var existing = acc[event.draftId];
+      if (!existing || String(event.updatedAt || '') > String(existing.updatedAt || '')) acc[event.draftId] = event;
+      return acc;
+    }, {});
+  }
+
+  fetch('/api/staged-meeting-minutes/review-events?limit=500', { credentials: 'same-origin' })
+    .then(function (response) { return response.ok ? response.json() : null; })
+    .then(function (payload) {
+      var events = payload && Array.isArray(payload.events) ? payload.events : [];
+      if (!events.length) {
+        setMetricSource('Captured locally');
+        setText('capturedReviewCountNote', 'Staged reviews in this browser');
+        setText('capturedApprovalCountNote', 'Drafts reaching final review');
+        setText('capturedReviewTimeNote', 'Active edit time per local draft');
+        setText('capturedEditCountNote', 'Local input events; server semantic edits unavailable');
+        return;
+      }
+      var byDraft = latestServerEventByDraft(events);
+      var latest = Object.keys(byDraft).map(function (key) { return byDraft[key]; });
+      var completedDrafts = new Set(events.filter(function (event) {
+        return event.finalReviewCompleted || event.reviewStatus === 'completed';
+      }).map(function (event) { return event.draftId; }));
+      var totalDuration = latest.reduce(function (sum, event) { return sum + Number(event.reviewDurationMs || 0); }, 0);
+      var changedFields = latest.reduce(function (sum, event) {
+        return sum + Number(event.editSummary && event.editSummary.changedFields || 0);
+      }, 0);
+      var unresolvedCount = latest.reduce(function (sum, event) {
+        return sum + (Array.isArray(event.unresolvedWorkstreams) ? event.unresolvedWorkstreams.length : 0);
+      }, 0);
+      setText('capturedReviewCount', latest.length);
+      setText('capturedApprovalCount', completedDrafts.size);
+      setText('capturedApprovalRate', latest.length ? Math.round((completedDrafts.size / latest.length) * 100) + '%' : '0%');
+      setText('capturedReviewTime', formatDuration(latest.length ? totalDuration / latest.length : 0));
+      setText('capturedEditCount', changedFields);
+      setText('capturedUnresolvedCount', unresolvedCount);
+      setMetricSource('Server-side');
+      setText('capturedReviewCountNote', 'Persisted staged-review snapshots');
+      setText('capturedApprovalCountNote', 'Final Review completion events');
+      setText('capturedReviewTimeNote', 'Active review time per persisted draft');
+      setText('capturedEditCountNote', 'Meaningful changed fields, not keystrokes');
+    })
+    .catch(function () {
+      setMetricSource('Captured locally');
+    });
+
   var candidates = [
     {
       id: 'semantic-edit-events',
@@ -633,38 +688,55 @@ input { width:100%; border:1px solid var(--border-strong); border-radius:8px; pa
       .replace(/'/g, '&#39;');
   }
 
-  var drafts = readDrafts();
-  var events = drafts.flatMap(function (draft) {
-    return Array.isArray(draft.regenerations) ? draft.regenerations : [];
-  });
-  var total = events.length || drafts.reduce(function (sum, draft) {
-    return sum + Number(draft.regenerationCount || 0);
-  }, 0);
-  var rate = drafts.length ? Math.round((total / drafts.length) * 10) / 10 : 0;
-
-  if (countNode) countNode.textContent = String(total);
-  if (noteNode) {
-    noteNode.textContent = drafts.length
-      ? rate + ' per local staged review across ' + drafts.length + ' draft' + (drafts.length === 1 ? '' : 's')
-      : 'No local staged review data yet';
-  }
-
-  if (!breakdownNode) return;
-  var stageCounts = events.reduce(function (acc, event) {
+  function renderRegenerationAnalytics(events, draftCount, sourceLabel) {
+    var total = events.length;
+    var rate = draftCount ? Math.round((total / draftCount) * 10) / 10 : 0;
+    if (countNode) countNode.textContent = String(total);
+    if (noteNode) {
+      noteNode.textContent = draftCount
+        ? rate + ' per ' + sourceLabel + ' staged review across ' + draftCount + ' draft' + (draftCount === 1 ? '' : 's')
+        : 'No staged review regeneration data yet';
+    }
+    if (!breakdownNode) return;
+    var stageCounts = events.reduce(function (acc, event) {
     var label = event.label || event.stage || 'Unknown step';
     acc[label] = (acc[label] || 0) + 1;
     return acc;
-  }, {});
-  var rows = Object.keys(stageCounts)
-    .sort(function (a, b) { return stageCounts[b] - stageCounts[a]; })
-    .map(function (label) {
-      var count = stageCounts[label];
-      var width = total ? Math.max(8, Math.round((count / total) * 100)) : 0;
-      return '<div class="line-row"><strong>' + escapeHtml(label) + '</strong><div class="track"><div class="fill" style="width:' + width + '%"></div></div><span>' + count + '</span></div>';
-    });
-  if (rows.length) {
-    breakdownNode.innerHTML = rows.join('');
+    }, {});
+    var rows = Object.keys(stageCounts)
+      .sort(function (a, b) { return stageCounts[b] - stageCounts[a]; })
+      .map(function (label) {
+        var count = stageCounts[label];
+        var width = total ? Math.max(8, Math.round((count / total) * 100)) : 0;
+        return '<div class="line-row"><strong>' + escapeHtml(label) + '</strong><div class="track"><div class="fill" style="width:' + width + '%"></div></div><span>' + count + '</span></div>';
+      });
+    if (rows.length) breakdownNode.innerHTML = rows.join('');
   }
+
+  var drafts = readDrafts();
+  var localEvents = drafts.flatMap(function (draft) {
+    return Array.isArray(draft.regenerations) ? draft.regenerations : [];
+  });
+  if (!localEvents.length) {
+    localEvents = drafts.flatMap(function (draft) {
+      return Number(draft.regenerationCount || 0) ? [{ label: draft.stage || 'Unknown step', stage: draft.stage || 'unknown' }] : [];
+    });
+  }
+  renderRegenerationAnalytics(localEvents, drafts.length, 'local');
+
+  fetch('/api/staged-meeting-minutes/review-events?limit=500', { credentials: 'same-origin' })
+    .then(function (response) { return response.ok ? response.json() : null; })
+    .then(function (payload) {
+      var events = payload && Array.isArray(payload.events) ? payload.events : [];
+      if (!events.length) return;
+      var draftIds = {};
+      var regenerationEvents = events.flatMap(function (event) {
+        if (event && event.draftId) draftIds[event.draftId] = true;
+        return Array.isArray(event.regenerationEvents) ? event.regenerationEvents : [];
+      });
+      renderRegenerationAnalytics(regenerationEvents, Object.keys(draftIds).length, 'persisted');
+    })
+    .catch(function () {});
 })();
 
 (function initialiseProjectRecordQuality() {

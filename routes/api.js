@@ -102,6 +102,8 @@ const {
   deleteGenerationJob,
   deleteMeetingMinutesJob,
   updateMeetingMinutesJobResult,
+  saveStagedMeetingMinutesReviewEvent,
+  listStagedMeetingMinutesReviewEvents,
   listTerminologyQaDecisions,
   saveTerminologyQaDecision,
   updateGenerationJobProgress,
@@ -190,6 +192,138 @@ const REVIEW_TEMPLATE = {
     transcriptLength: 0
   }
 };
+
+function stagedAnalyticsObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+function stagedAnalyticsArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function stagedAnalyticsText(value) {
+  if (value == null) return '';
+  if (Array.isArray(value)) return value.map(stagedAnalyticsText).filter(Boolean).join('\n');
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value).replace(/\s+/g, ' ').trim();
+}
+
+function stagedAnalyticsWords(value) {
+  return stagedAnalyticsText(value).toLowerCase().split(/[^a-z0-9]+/).filter((word) => word.length > 2);
+}
+
+function stagedAnalyticsSimilarity(left, right) {
+  const leftWords = new Set(stagedAnalyticsWords(left));
+  const rightWords = new Set(stagedAnalyticsWords(right));
+  if (!leftWords.size && !rightWords.size) return 1;
+  if (!leftWords.size || !rightWords.size) return 0;
+  const overlap = [...leftWords].filter((word) => rightWords.has(word)).length;
+  return overlap / Math.max(leftWords.size, rightWords.size);
+}
+
+function stagedReviewField(stage, fieldPath, label, value) {
+  return {
+    stage,
+    fieldPath,
+    label,
+    value: stagedAnalyticsText(value)
+  };
+}
+
+function flattenStagedReviewVersion(versions = {}) {
+  const fields = [];
+  const details = stagedAnalyticsObject(versions.details);
+  fields.push(stagedReviewField('details', 'details.meetingTitle', 'Meeting title', details.meetingTitle));
+  fields.push(stagedReviewField('details', 'details.meetingDate', 'Meeting date', details.meetingDate));
+  fields.push(stagedReviewField('details', 'details.meetingLocation', 'Meeting location', details.meetingLocation));
+  fields.push(stagedReviewField('details', 'details.meetingType', 'Meeting type', details.meetingType));
+  fields.push(stagedReviewField('details', 'details.internalAttendees', 'Trinzo participants', details.internalAttendees || details.trinzoAttendees));
+  fields.push(stagedReviewField('details', 'details.clientAttendees', 'Client participants', details.clientAttendees || details.allAttendees));
+
+  const summary = stagedAnalyticsObject(versions.summary);
+  fields.push(stagedReviewField('summary', 'summary.objectives', 'Meeting objectives', summary.objectives));
+  fields.push(stagedReviewField('summary', 'summary.executiveSummary', 'Executive summary', summary.executiveSummary));
+  fields.push(stagedReviewField('summary', 'summary.overallTopics', 'Overall topics', summary.overallTopics));
+
+  stagedAnalyticsArray(versions.discussion).forEach((item, index) => {
+    fields.push(stagedReviewField('discussion', `discussion.${index}.topic`, `Discussion ${index + 1} topic`, item?.topic));
+    fields.push(stagedReviewField('discussion', `discussion.${index}.points`, `Discussion ${index + 1} points`, item?.points || item?.bullets || item?.discussionPoints));
+  });
+
+  stagedAnalyticsArray(versions.actions).forEach((item, index) => {
+    fields.push(stagedReviewField('actions', `actions.${index}.owner`, `Action ${index + 1} owner`, item?.owner));
+    fields.push(stagedReviewField('actions', `actions.${index}.action`, `Action ${index + 1}`, item?.action || item?.meetingActionPoint));
+    fields.push(stagedReviewField('actions', `actions.${index}.deadline`, `Action ${index + 1} due`, item?.deadline || item?.meetingActionPointDeadline));
+  });
+
+  return fields.filter((field) => field.value);
+}
+
+function classifyStagedReviewEdit(before, after) {
+  if (!before && after) return 'added_by_reviewer';
+  if (before && !after) return 'removed_by_reviewer';
+  if (before === after) return 'accepted_unchanged';
+  const similarity = stagedAnalyticsSimilarity(before, after);
+  if (similarity >= 0.82) return 'wording_or_formatting_edit';
+  if (similarity >= 0.45) return 'substantive_rewrite';
+  return 'structural_or_semantic_change';
+}
+
+function buildStagedReviewDiffs(generatedVersions = {}, approvedVersions = {}) {
+  const generated = flattenStagedReviewVersion(generatedVersions);
+  const approved = flattenStagedReviewVersion(approvedVersions);
+  const generatedByPath = new Map(generated.map((field) => [field.fieldPath, field]));
+  const approvedByPath = new Map(approved.map((field) => [field.fieldPath, field]));
+  const paths = [...new Set([...generatedByPath.keys(), ...approvedByPath.keys()])].sort();
+  return paths.map((fieldPath) => {
+    const before = generatedByPath.get(fieldPath);
+    const after = approvedByPath.get(fieldPath);
+    const beforeText = before ? before.value : '';
+    const afterText = after ? after.value : '';
+    const editType = classifyStagedReviewEdit(beforeText, afterText);
+    return {
+      stage: (after || before)?.stage || '',
+      fieldPath,
+      label: (after || before)?.label || fieldPath,
+      editType,
+      before: beforeText,
+      after: afterText,
+      beforeLength: beforeText.length,
+      afterLength: afterText.length,
+      similarity: Number(stagedAnalyticsSimilarity(beforeText, afterText).toFixed(3))
+    };
+  });
+}
+
+function summariseStagedReviewDiffs(fieldDiffs = []) {
+  const byType = {};
+  const byStage = {};
+  fieldDiffs.forEach((diff) => {
+    byType[diff.editType] = (byType[diff.editType] || 0) + 1;
+    const stage = diff.stage || 'unknown';
+    byStage[stage] = byStage[stage] || {};
+    byStage[stage][diff.editType] = (byStage[stage][diff.editType] || 0) + 1;
+  });
+  return {
+    totalFields: fieldDiffs.length,
+    changedFields: fieldDiffs.filter((diff) => diff.editType !== 'accepted_unchanged').length,
+    byType,
+    byStage,
+    recurringProblemCandidates: fieldDiffs
+      .filter((diff) => ['substantive_rewrite', 'structural_or_semantic_change', 'removed_by_reviewer'].includes(diff.editType))
+      .map((diff) => ({ stage: diff.stage, fieldPath: diff.fieldPath, editType: diff.editType, label: diff.label }))
+  };
+}
+
+function stagedReviewProjectKey(details = {}, draftId = '') {
+  return firstString(
+    details.projectKey,
+    details.projectName,
+    details.meetingTitle,
+    draftId,
+    'unscoped'
+  ).slice(0, 500);
+}
 
 
 function runUploadMiddleware(req, res, middleware) {
@@ -4287,6 +4421,80 @@ router.get('/staged-meeting-minutes/pre-testing', requireAuth, async (req, res, 
     res.json(status);
   } catch (error) {
     next(error);
+  }
+});
+
+router.get('/staged-meeting-minutes/review-events', requireAuth, async (req, res) => {
+  try {
+    const events = await listStagedMeetingMinutesReviewEvents(req.query?.limit || 100, {
+      draftId: firstString(req.query?.draftId)
+    });
+    return res.json({ success: true, events });
+  } catch (error) {
+    safeLogError('[Staged review event list failed]', error);
+    return res.status(500).json({ success: false, error: 'Staged review analytics are temporarily unavailable.' });
+  }
+});
+
+router.post('/staged-meeting-minutes/review-events', requireAuth, async (req, res) => {
+  try {
+    const draftId = firstString(req.body?.draftId).slice(0, 500);
+    if (!draftId) return res.status(400).json({ success: false, error: 'Draft id is required.' });
+    const eventType = firstString(req.body?.eventType, 'review_snapshot').slice(0, 100);
+    const finalReviewCompleted = Boolean(req.body?.finalReviewCompleted);
+    const details = stagedAnalyticsObject(req.body?.meetingContext || req.body?.approvedVersions?.details);
+    const generatedVersions = stagedAnalyticsObject(req.body?.generatedVersions);
+    const approvedVersions = stagedAnalyticsObject(req.body?.approvedVersions);
+    const fieldDiffs = buildStagedReviewDiffs(generatedVersions, approvedVersions);
+    const reviewStatus = finalReviewCompleted
+      ? 'completed'
+      : Number(req.body?.activeScreen || 0) >= 4 ? 'final_review' : 'in_review';
+    const saved = await saveStagedMeetingMinutesReviewEvent({
+      draftId,
+      eventKey: firstString(req.body?.eventKey, finalReviewCompleted ? 'final_review_completed' : 'latest_snapshot').slice(0, 200),
+      eventType,
+      reviewStatus,
+      meetingTitle: firstString(details.meetingTitle, approvedVersions.details?.meetingTitle).slice(0, 500),
+      meetingDate: firstString(details.meetingDate, approvedVersions.details?.meetingDate),
+      meetingLocation: firstString(details.meetingLocation, approvedVersions.details?.meetingLocation).slice(0, 500),
+      meetingType: firstString(details.meetingType, approvedVersions.details?.meetingType).slice(0, 500),
+      projectKey: stagedReviewProjectKey(details, draftId),
+      sourceJobId: firstString(req.body?.sourceJobId).slice(0, 500),
+      transcriptSha256: firstString(req.body?.transcriptSha256).slice(0, 128),
+      activeScreen: Number(req.body?.activeScreen || 0),
+      currentStage: firstString(req.body?.currentStage).slice(0, 100),
+      generatedVersions,
+      approvedVersions,
+      fieldDiffs,
+      editSummary: {
+        ...summariseStagedReviewDiffs(fieldDiffs),
+        reviewDurationMs: Math.max(0, Number(req.body?.reviewDurationMs || 0)),
+        reviewEditCount: Math.max(0, Number(req.body?.reviewEditCount || 0)),
+        regenerationCount: stagedAnalyticsArray(req.body?.regenerationEvents).length,
+        terminologyDecisionCount: stagedAnalyticsArray(req.body?.terminologyDecisions).length,
+        unresolvedWorkstreamCount: stagedAnalyticsArray(req.body?.unresolvedWorkstreams).length,
+        finalReviewCompleted
+      },
+      regenerationEvents: stagedAnalyticsArray(req.body?.regenerationEvents),
+      terminologyDecisions: stagedAnalyticsArray(req.body?.terminologyDecisions),
+      unresolvedWorkstreams: stagedAnalyticsArray(req.body?.unresolvedWorkstreams),
+      finalReviewCompleted,
+      reviewDurationMs: Math.max(0, Number(req.body?.reviewDurationMs || 0)),
+      reviewEditCount: Math.max(0, Number(req.body?.reviewEditCount || 0)),
+      userId: req.authUser?.userId,
+      userEmail: req.authUser?.email,
+      context: {
+        generatedStages: stagedAnalyticsObject(req.body?.generatedStages),
+        transcriptLength: Number(req.body?.transcriptLength || 0),
+        fileName: firstString(req.body?.fileName).slice(0, 500),
+        additionalContext: firstString(req.body?.additionalContext).slice(0, 5000),
+        meetingContext: details
+      }
+    });
+    return res.json({ success: true, event: saved, editSummary: summariseStagedReviewDiffs(fieldDiffs) });
+  } catch (error) {
+    safeLogError('[Staged review event save failed]', error);
+    return res.status(500).json({ success: false, error: 'The staged review analytics snapshot could not be saved.' });
   }
 });
 

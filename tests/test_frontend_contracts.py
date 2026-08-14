@@ -177,6 +177,9 @@ class FrontendContractTest(unittest.TestCase):
 
         self.assertIn("This is a prototype metrics layout", analytics)
         self.assertIn("What we can capture", analytics)
+        self.assertIn("persisted staged-review snapshots", analytics)
+        self.assertIn("/api/staged-meeting-minutes/review-events?limit=500", analytics)
+        self.assertIn("Meaningful changed fields, not keystrokes", analytics)
         self.assertIn("Captured locally", analytics)
         self.assertIn("Human approval gate", analytics)
         self.assertIn("Approve for improvement work", analytics)

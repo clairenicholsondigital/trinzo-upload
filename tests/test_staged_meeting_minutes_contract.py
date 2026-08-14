@@ -372,6 +372,29 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("terminology-qa/suggestions", api)
         self.assertIn("terminology-qa/decision", api)
 
+    def test_staged_review_analytics_are_persisted_server_side(self):
+        page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
+        api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+        db = (REPO_DIR / "utils" / "db.js").read_text(encoding="utf-8")
+        migration = (REPO_DIR / "sql" / "migrations" / "20260814_add_staged_review_analytics.sql").read_text(encoding="utf-8")
+
+        self.assertIn("generatedStageVersions", page)
+        self.assertIn("reviewAnalyticsPayload", page)
+        self.assertIn("/api/staged-meeting-minutes/review-events", page)
+        self.assertIn("final_review_completed", page)
+        self.assertIn("terminologyDecisionEvents", page)
+        self.assertIn("unresolvedWorkstreamList", page)
+        self.assertIn("buildStagedReviewDiffs", api)
+        self.assertIn("wording_or_formatting_edit", api)
+        self.assertIn("substantive_rewrite", api)
+        self.assertIn("structural_or_semantic_change", api)
+        self.assertIn("saveStagedMeetingMinutesReviewEvent", db)
+        self.assertIn("staged_meeting_minutes_review_events", migration)
+        self.assertIn("field_diffs JSONB", migration)
+        self.assertIn("regeneration_events JSONB", migration)
+        self.assertIn("terminology_decisions JSONB", migration)
+        self.assertIn("final_review_completed BOOLEAN", migration)
+
     def test_staged_transcript_prep_is_deterministic_and_keeps_raw_source(self):
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
         db = (REPO_DIR / "utils" / "db.js").read_text(encoding="utf-8")

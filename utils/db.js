@@ -3399,6 +3399,174 @@ async function deleteAuthSession(tokenHash) {
   await query('DELETE FROM auth_sessions WHERE session_token_hash = $1', [tokenHash]);
 }
 
+async function ensureStagedReviewAnalyticsSchema() {
+  await query(`
+CREATE TABLE IF NOT EXISTS staged_meeting_minutes_review_events (
+  id BIGSERIAL PRIMARY KEY,
+  draft_id TEXT NOT NULL,
+  event_key TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  review_status TEXT NOT NULL DEFAULT 'in_review'
+    CHECK (review_status IN ('in_review', 'final_review', 'completed')),
+  meeting_title TEXT NOT NULL DEFAULT '',
+  meeting_date DATE,
+  meeting_location TEXT NOT NULL DEFAULT '',
+  meeting_type TEXT NOT NULL DEFAULT '',
+  project_key TEXT NOT NULL DEFAULT '',
+  source_job_id TEXT NOT NULL DEFAULT '',
+  transcript_sha256 TEXT NOT NULL DEFAULT '',
+  active_screen INT NOT NULL DEFAULT 0,
+  current_stage TEXT NOT NULL DEFAULT '',
+  generated_versions JSONB NOT NULL DEFAULT '{}'::jsonb,
+  approved_versions JSONB NOT NULL DEFAULT '{}'::jsonb,
+  field_diffs JSONB NOT NULL DEFAULT '[]'::jsonb,
+  edit_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
+  regeneration_events JSONB NOT NULL DEFAULT '[]'::jsonb,
+  terminology_decisions JSONB NOT NULL DEFAULT '[]'::jsonb,
+  unresolved_workstreams JSONB NOT NULL DEFAULT '[]'::jsonb,
+  final_review_completed BOOLEAN NOT NULL DEFAULT FALSE,
+  review_duration_ms INT NOT NULL DEFAULT 0,
+  review_edit_count INT NOT NULL DEFAULT 0,
+  user_id BIGINT REFERENCES auth_users(id) ON DELETE SET NULL,
+  user_email TEXT NOT NULL DEFAULT '',
+  context JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (draft_id, event_key)
+);
+CREATE INDEX IF NOT EXISTS idx_staged_review_events_draft
+  ON staged_meeting_minutes_review_events (draft_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_staged_review_events_status
+  ON staged_meeting_minutes_review_events (review_status, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_staged_review_events_project
+  ON staged_meeting_minutes_review_events (project_key, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_staged_review_events_field_diffs
+  ON staged_meeting_minutes_review_events USING GIN (field_diffs);
+`);
+}
+
+async function saveStagedMeetingMinutesReviewEvent(payload = {}) {
+  await ensureStagedReviewAnalyticsSchema();
+  const result = await query(
+    `INSERT INTO staged_meeting_minutes_review_events (
+       draft_id, event_key, event_type, review_status,
+       meeting_title, meeting_date, meeting_location, meeting_type, project_key,
+       source_job_id, transcript_sha256, active_screen, current_stage,
+       generated_versions, approved_versions, field_diffs, edit_summary,
+       regeneration_events, terminology_decisions, unresolved_workstreams,
+       final_review_completed, review_duration_ms, review_edit_count,
+       user_id, user_email, context, created_at, updated_at
+     )
+     VALUES (
+       $1,$2,$3,$4,
+       $5,$6::date,$7,$8,$9,
+       $10,$11,$12,$13,
+       $14::jsonb,$15::jsonb,$16::jsonb,$17::jsonb,
+       $18::jsonb,$19::jsonb,$20::jsonb,
+       $21,$22,$23,
+       $24,$25,$26::jsonb,NOW(),NOW()
+     )
+     ON CONFLICT (draft_id, event_key) DO UPDATE SET
+       event_type = EXCLUDED.event_type,
+       review_status = EXCLUDED.review_status,
+       meeting_title = EXCLUDED.meeting_title,
+       meeting_date = EXCLUDED.meeting_date,
+       meeting_location = EXCLUDED.meeting_location,
+       meeting_type = EXCLUDED.meeting_type,
+       project_key = EXCLUDED.project_key,
+       source_job_id = EXCLUDED.source_job_id,
+       transcript_sha256 = EXCLUDED.transcript_sha256,
+       active_screen = EXCLUDED.active_screen,
+       current_stage = EXCLUDED.current_stage,
+       generated_versions = EXCLUDED.generated_versions,
+       approved_versions = EXCLUDED.approved_versions,
+       field_diffs = EXCLUDED.field_diffs,
+       edit_summary = EXCLUDED.edit_summary,
+       regeneration_events = EXCLUDED.regeneration_events,
+       terminology_decisions = EXCLUDED.terminology_decisions,
+       unresolved_workstreams = EXCLUDED.unresolved_workstreams,
+       final_review_completed = EXCLUDED.final_review_completed,
+       review_duration_ms = EXCLUDED.review_duration_ms,
+       review_edit_count = EXCLUDED.review_edit_count,
+       user_id = EXCLUDED.user_id,
+       user_email = EXCLUDED.user_email,
+       context = EXCLUDED.context,
+       updated_at = NOW()
+     RETURNING id::text AS id, draft_id AS "draftId", event_key AS "eventKey",
+       event_type AS "eventType", review_status AS "reviewStatus", updated_at AS "updatedAt"`,
+    [
+      String(payload.draftId || ''),
+      String(payload.eventKey || 'latest_snapshot'),
+      String(payload.eventType || 'review_snapshot'),
+      String(payload.reviewStatus || 'in_review'),
+      String(payload.meetingTitle || ''),
+      toDateParam(payload.meetingDate),
+      String(payload.meetingLocation || ''),
+      String(payload.meetingType || ''),
+      String(payload.projectKey || ''),
+      String(payload.sourceJobId || ''),
+      String(payload.transcriptSha256 || ''),
+      Number(payload.activeScreen || 0),
+      String(payload.currentStage || ''),
+      JSON.stringify(payload.generatedVersions || {}),
+      JSON.stringify(payload.approvedVersions || {}),
+      JSON.stringify(Array.isArray(payload.fieldDiffs) ? payload.fieldDiffs : []),
+      JSON.stringify(payload.editSummary || {}),
+      JSON.stringify(Array.isArray(payload.regenerationEvents) ? payload.regenerationEvents : []),
+      JSON.stringify(Array.isArray(payload.terminologyDecisions) ? payload.terminologyDecisions : []),
+      JSON.stringify(Array.isArray(payload.unresolvedWorkstreams) ? payload.unresolvedWorkstreams : []),
+      Boolean(payload.finalReviewCompleted),
+      Math.max(0, Number(payload.reviewDurationMs || 0)),
+      Math.max(0, Number(payload.reviewEditCount || 0)),
+      payload.userId || null,
+      String(payload.userEmail || ''),
+      JSON.stringify(payload.context || {})
+    ]
+  );
+  return result.rows[0];
+}
+
+async function listStagedMeetingMinutesReviewEvents(limit = 100, filters = {}) {
+  await ensureStagedReviewAnalyticsSchema();
+  const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 500);
+  const draftId = String(filters.draftId || '').trim();
+  const result = await query(
+    `SELECT
+       id::text AS id,
+       draft_id AS "draftId",
+       event_key AS "eventKey",
+       event_type AS "eventType",
+       review_status AS "reviewStatus",
+       meeting_title AS "meetingTitle",
+       meeting_date AS "meetingDate",
+       meeting_location AS "meetingLocation",
+       meeting_type AS "meetingType",
+       project_key AS "projectKey",
+       source_job_id AS "sourceJobId",
+       transcript_sha256 AS "transcriptSha256",
+       active_screen AS "activeScreen",
+       current_stage AS "currentStage",
+       field_diffs AS "fieldDiffs",
+       edit_summary AS "editSummary",
+       regeneration_events AS "regenerationEvents",
+       terminology_decisions AS "terminologyDecisions",
+       unresolved_workstreams AS "unresolvedWorkstreams",
+       final_review_completed AS "finalReviewCompleted",
+       review_duration_ms AS "reviewDurationMs",
+       review_edit_count AS "reviewEditCount",
+       user_email AS "userEmail",
+       context,
+       created_at AS "createdAt",
+       updated_at AS "updatedAt"
+     FROM staged_meeting_minutes_review_events
+     WHERE ($1::text = '' OR draft_id = $1)
+     ORDER BY updated_at DESC, id DESC
+     LIMIT $2`,
+    [draftId, safeLimit]
+  );
+  return result.rows;
+}
+
 async function listTerminologyQaDecisions(scopeType, scopeKey) {
   const result = await query(
     `SELECT "originalText", "suggestedText", decision, "scopeType", "scopeKey", "createdAt"
@@ -3521,6 +3689,9 @@ module.exports = {
   getAuthSession,
   touchAuthSession,
   deleteAuthSession,
+  ensureStagedReviewAnalyticsSchema,
+  saveStagedMeetingMinutesReviewEvent,
+  listStagedMeetingMinutesReviewEvents,
   listTerminologyQaDecisions,
   saveTerminologyQaDecision,
   createPasswordResetToken,

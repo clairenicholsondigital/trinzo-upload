@@ -701,7 +701,12 @@ td select {
   // a genuine generation failure stays hidden until a later step.
   var generatedStages = { details: false, summary: false, discussion: false, actions: false };
   var stagedState = { details: null, summary: null, discussion: null, actions: null };
+  var generatedStageVersions = { details: null, summary: null, discussion: null, actions: null };
   var regenerationEvents = [];
+  var terminologyDecisionEvents = [];
+  var finalReviewCompleted = false;
+  var analyticsPersistTimer = null;
+  var analyticsPersistInFlight = false;
   var stageInFlight = null;
   var unresolvedWorkstreamFlags = {};
   var draggedAttendeeChip = null;
@@ -921,9 +926,9 @@ td select {
 
     if (activeIndex >= screens.length - 1) {
       stageDecisionQuestion.textContent = 'Ready to finish the staged review?';
-      stageDecisionHint.textContent = 'This assembles the approved screens. Export opens a clean client-facing copy without the review controls.';
+      stageDecisionHint.textContent = finalReviewCompleted ? 'Final review has been recorded. Export opens a clean client-facing copy without the review controls.' : 'This records the approved screens for improvement analytics. Export opens a clean client-facing copy without the review controls.';
       nextButton.textContent = 'Review complete';
-      nextButton.disabled = true;
+      nextButton.disabled = finalReviewCompleted;
     } else {
       stageDecisionQuestion.textContent = 'Want to move onto ' + nextLabel + '?';
       stageDecisionHint.textContent = 'Choose Yes when ' + currentLabel + ' looks right. Choose No to keep reviewing this stage.';
@@ -1398,9 +1403,20 @@ td select {
           scopeType: item.scopeType, scopeKey: item.scopeKey, fieldPath: item.fieldPath, draftId: ensureDraftId()
         })
       });
+      terminologyDecisionEvents.push({
+        originalText: item.original,
+        suggestedText: item.replacement,
+        decision: decision,
+        scopeType: item.scopeType || 'project',
+        scopeKey: item.scopeKey || '',
+        fieldPath: item.fieldPath || '',
+        stage: stageForScreen(activeIndex),
+        at: new Date().toISOString()
+      });
       if (decision === 'accepted') replaceTerminologySuggestion(item);
       terminologySuggestions = terminologySuggestions.filter(function (candidate) { return candidate.id !== item.id; });
       renderTerminologyQa();
+      persistReviewAnalytics('terminology_' + decision, 'latest_snapshot', { immediate: true });
       setReviewStatus(decision === 'accepted' ? 'Proofreading correction applied to the generated minutes.' : 'Suggestion dismissed and remembered for this project.', false);
     } catch (error) {
       setReviewStatus(error && error.message ? error.message : 'The proofreading decision could not be saved.', true);
@@ -1445,6 +1461,7 @@ td select {
       renderAttendees(internalAttendeesRow, details.internalAttendees);
       renderAttendees(clientAttendeesRow, details.clientAttendees || details.allAttendees);
       stagedState.details = detailsFromDom();
+      generatedStageVersions.details = cloneReviewValue(stagedState.details);
     }
     if (Object.prototype.hasOwnProperty.call(screensPayload, 'summary')) {
       if (objectivesInput) objectivesInput.value = Array.isArray(summary.objectives) && summary.objectives.length ? summary.objectives.join('\n') : objectivesInput.value;
@@ -1455,16 +1472,19 @@ td select {
           : overallTopicsInput.value;
       }
       stagedState.summary = summaryFromDom();
+      generatedStageVersions.summary = cloneReviewValue(stagedState.summary);
     }
     if (Object.prototype.hasOwnProperty.call(screensPayload, 'discussion')) {
       renderDiscussionCards(screensPayload.discussion);
       stagedState.discussion = discussionRowsFromReview().map(function (item) {
         return { topic: item.topic, points: item.bullets };
       });
+      generatedStageVersions.discussion = cloneReviewValue(stagedState.discussion);
     }
     if (Object.prototype.hasOwnProperty.call(screensPayload, 'actions')) {
       renderActions(screensPayload.actions);
       stagedState.actions = actionsFromReview();
+      generatedStageVersions.actions = cloneReviewValue(stagedState.actions);
     }
     renderValidationFlags(payload && payload.validationFlags);
     markGeneratedStages(payload);
@@ -1593,6 +1613,7 @@ td select {
     };
     regenerationEvents.push(event);
     saveDraft();
+    persistReviewAnalytics('regeneration_event', 'latest_snapshot', { immediate: true });
   }
 
   async function requestStagedStage(stage, targetScreen, options) {
@@ -1741,6 +1762,13 @@ td select {
     if (existing && existing.stagedState) {
       applySavedStageState(existing.stagedState);
     }
+    if (existing && existing.generatedStageVersions && typeof existing.generatedStageVersions === 'object') {
+      generatedStageVersions = Object.assign(generatedStageVersions, existing.generatedStageVersions);
+    }
+    if (existing && Array.isArray(existing.terminologyDecisions)) {
+      terminologyDecisionEvents = existing.terminologyDecisions.slice(-100);
+    }
+    finalReviewCompleted = Boolean(existing && existing.finalReviewCompleted);
     if (existing && existing.generatedStages && typeof existing.generatedStages === 'object') {
       Object.keys(generatedStages).forEach(function (stage) {
         generatedStages[stage] = Boolean(existing.generatedStages[stage] || generatedStages[stage]);
@@ -1830,6 +1858,96 @@ td select {
     return draftId;
   }
 
+  function cloneReviewValue(value) {
+    try {
+      return JSON.parse(JSON.stringify(value == null ? null : value));
+    } catch {
+      return value;
+    }
+  }
+
+  function unresolvedWorkstreamList() {
+    return Object.keys(unresolvedWorkstreamFlags || {}).map(function (key) {
+      var flag = unresolvedWorkstreamFlags[key] || {};
+      return Object.assign({ resolutionKey: key }, flag);
+    });
+  }
+
+  function approvedStageVersions() {
+    commitStageState(stageForScreen(activeIndex));
+    return {
+      details: cloneReviewValue(stagedState.details || detailsFromDom()),
+      summary: cloneReviewValue(stagedState.summary || summaryFromDom()),
+      discussion: cloneReviewValue(stagedState.discussion || discussionRowsFromReview().map(function (item) {
+        return { topic: item.topic, points: item.bullets };
+      })),
+      actions: cloneReviewValue(stagedState.actions || actionsFromReview())
+    };
+  }
+
+  function generatedVersionsForAnalytics() {
+    return {
+      details: cloneReviewValue(generatedStageVersions.details || stagedState.details || detailsFromDom()),
+      summary: cloneReviewValue(generatedStageVersions.summary || stagedState.summary || summaryFromDom()),
+      discussion: cloneReviewValue(generatedStageVersions.discussion || stagedState.discussion || []),
+      actions: cloneReviewValue(generatedStageVersions.actions || stagedState.actions || [])
+    };
+  }
+
+  function reviewAnalyticsPayload(eventType, eventKey, completed) {
+    var approved = approvedStageVersions();
+    var id = ensureDraftId();
+    return {
+      draftId: id,
+      eventKey: eventKey || 'latest_snapshot',
+      eventType: eventType || 'review_snapshot',
+      activeScreen: activeIndex,
+      currentStage: stageForScreen(activeIndex) || 'final_review',
+      sourceJobId: stagedSourceJobId,
+      transcriptSha256: draftTranscriptSha256,
+      transcriptLength: lastGeneratedPayload && lastGeneratedPayload.transcriptLength ? lastGeneratedPayload.transcriptLength : 0,
+      fileName: lastGeneratedPayload && lastGeneratedPayload.fileName ? lastGeneratedPayload.fileName : 'Staged review draft',
+      additionalContext: stageAdditionalContextInput && stageAdditionalContextInput.value.trim() ? stageAdditionalContextInput.value.trim() : '',
+      generatedStages: generatedStages,
+      meetingContext: approved.details || {},
+      generatedVersions: generatedVersionsForAnalytics(),
+      approvedVersions: approved,
+      regenerationEvents: regenerationEvents.slice(-50),
+      terminologyDecisions: terminologyDecisionEvents.slice(-100),
+      unresolvedWorkstreams: unresolvedWorkstreamList(),
+      finalReviewCompleted: Boolean(completed || finalReviewCompleted),
+      reviewDurationMs: currentReviewEditMs(),
+      reviewEditCount: reviewEditCount
+    };
+  }
+
+  function persistReviewAnalytics(eventType, eventKey, options) {
+    if (!reviewStarted && !lastGeneratedPayload) return;
+    var immediate = Boolean(options && options.immediate);
+    if (analyticsPersistTimer) {
+      clearTimeout(analyticsPersistTimer);
+      analyticsPersistTimer = null;
+    }
+    var run = function () {
+      if (analyticsPersistInFlight) {
+        analyticsPersistTimer = setTimeout(run, 1500);
+        return;
+      }
+      analyticsPersistInFlight = true;
+      fetchJson('/api/staged-meeting-minutes/review-events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(reviewAnalyticsPayload(eventType, eventKey, Boolean(options && options.completed)))
+      }).catch(function (_error) {
+        // Analytics should never block the reviewer from continuing the staged workflow.
+      }).finally(function () {
+        analyticsPersistInFlight = false;
+      });
+    };
+    if (immediate) run();
+    else analyticsPersistTimer = setTimeout(run, 1200);
+  }
+
   function hasExistingStagedTranscriptSource() {
     return Boolean(
       draftId ||
@@ -1854,8 +1972,11 @@ td select {
     activeIndex = 0;
     lastGeneratedPayload = null;
     stagedState = { details: null, summary: null, discussion: null, actions: null };
+    generatedStageVersions = { details: null, summary: null, discussion: null, actions: null };
     generatedStages = { details: false, summary: false, discussion: false, actions: false };
     regenerationEvents = [];
+    terminologyDecisionEvents = [];
+    finalReviewCompleted = false;
     reviewEditStartedAt = null;
     reviewEditMs = 0;
     reviewEditCount = 0;
@@ -1917,7 +2038,10 @@ td select {
       reviewEditMs: currentReviewEditMs(),
       reviewEditCount: reviewEditCount,
       generatedStages: generatedStages,
+      generatedStageVersions: generatedStageVersions,
       unresolvedWorkstreamFlags: unresolvedWorkstreamFlags,
+      terminologyDecisions: terminologyDecisionEvents.slice(-100),
+      finalReviewCompleted: finalReviewCompleted,
       stagedState: stagedState,
       regenerationCount: regenerationEvents.length,
       regenerations: regenerationEvents.slice(-25),
@@ -1934,6 +2058,7 @@ td select {
     };
     drafts = [payload].concat(drafts.filter(function (draft) { return draft.jobId !== id; }));
     writeDrafts(drafts);
+    persistReviewAnalytics(activeIndex >= screens.length - 1 ? 'final_review_snapshot' : 'review_snapshot', 'latest_snapshot');
   }
 
   function openClientPdfExport() {
@@ -1948,6 +2073,17 @@ td select {
       return;
     }
     printWindow.focus();
+  }
+
+  function completeFinalReview() {
+    if (activeIndex < screens.length - 1) return;
+    commitStageState('actions');
+    finalReviewCompleted = true;
+    renderFinalDocument();
+    saveDraft();
+    persistReviewAnalytics('final_review_completed', 'final_review_completed', { immediate: true, completed: true });
+    setReviewStatus('Final review recorded. Approved versions, edit differences and improvement signals have been saved.', false);
+    updateDecisionPanel();
   }
 
   function showScreen(index) {
@@ -2120,6 +2256,10 @@ td select {
     });
   });
   nextButton.addEventListener('click', function () {
+    if (activeIndex >= screens.length - 1) {
+      completeFinalReview();
+      return;
+    }
     if (activeIndex === 2 && Object.keys(unresolvedWorkstreamFlags).length) {
       setReviewStatus('Resolve each missing substantive workstream before moving on: add it, intentionally omit it, or return to summary topics.', true);
       return;
