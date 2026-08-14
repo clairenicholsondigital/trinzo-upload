@@ -868,7 +868,10 @@ function finalActionHasConcreteObject(action) {
   if (!object || FINAL_ACTION_WEAK_OBJECT.test(object)) return false;
   const words = object.split(/\s+/).filter(Boolean);
   if (words.length >= 2) return true;
-  return /\b(?:qms|hpra|mdr|ppe|doc|docs?|docx|sbom|medenvoy|iec60601|81001|27427|v1\.01|v1\.02|usb|gui)\b/i.test(object);
+  // General domain acronyms only — no client/product names or transcript-specific
+  // version literals. (This module is intentionally dependency-free; the shared
+  // dictionary in utils/domainTerms.js is the canonical list these mirror.)
+  return /\b(?:qms|hpra|mdr|ppe|docs?|docx|sbom|iec ?60601|81001|27427|usb|gui)\b/i.test(object);
 }
 
 function rewriteTranscriptShapedFinalAction(action, owner, evidence = '') {

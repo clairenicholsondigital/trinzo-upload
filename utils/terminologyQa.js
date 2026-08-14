@@ -1,29 +1,9 @@
 'use strict';
 
 const crypto = require('node:crypto');
-
-const GLOBAL_TERMS = [
-  { canonical: 'CAPA', aliases: ['kappa', 'capper', 'capa'] },
-  { canonical: 'MDR', aliases: [] },
-  { canonical: 'QMS', aliases: [] },
-  { canonical: 'CER', aliases: [] },
-  { canonical: 'DHF', aliases: [] },
-  { canonical: 'UDI', aliases: [] },
-  { canonical: 'EUDAMED', aliases: ['eudamed', 'udamed', 'udimed', 'udemed'] },
-  { canonical: 'HPRA', aliases: [] },
-  { canonical: 'FMEA', aliases: [] },
-  { canonical: 'PMS', aliases: [] },
-  { canonical: 'SBOM', aliases: ['s-bom'] },
-  { canonical: 'MDSAP', aliases: ['medsap', 'meds app'] }
-];
-
-const AUTO_CORRECTIONS = [
-  { original: 'Udemed', replacement: 'EUDAMED', reason: 'Known transcript terminology correction' },
-  { original: 'Udimed', replacement: 'EUDAMED', reason: 'Known transcript terminology correction' },
-  { original: 'Meds app', replacement: 'MDSAP', reason: 'Known transcript terminology correction' },
-  { original: 'S-BOM', replacement: 'SBOM', reason: 'Known transcript terminology correction' },
-  { original: 'Kappa', replacement: 'CAPA', reason: 'Known transcript terminology correction' }
-];
+// Domain terminology lives in one shared dictionary so every staged surface
+// recognises the same terms and corrections.
+const { DOMAIN_TERMS: GLOBAL_TERMS, AUTO_CORRECTIONS } = require('./domainTerms');
 
 function clean(value) { return String(value || '').replace(/\s+/g, ' ').trim(); }
 function key(value) { return clean(value).toLowerCase(); }

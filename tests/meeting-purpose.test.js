@@ -4,48 +4,100 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const mammoth = require('mammoth');
-const { purposePlan } = require('../utils/canonicalMinutes/meetingPurpose');
+const { purposePlan, meetingProfile, objectiveIntentForText, topicOrderRank } = require('../utils/canonicalMinutes/meetingPurpose');
 const { capitaliseInitial, lowerInitialUnlessInitialism } = require('../utils/canonicalMinutes/liveStages');
-const { prepareEvidence } = require('../utils/canonicalMinutes/evidence');
 
-function evidence(lines) {
-  return { events: lines.map((text, index) => ({ id: `evt_${index}`, text })) };
-}
+// The meeting-purpose module is a THIN CLASSIFIER. It maps a confirmed meeting
+// type/title to a profile id plus ordering/intent hints, and carries no canned
+// prose and no transcript content. These tests assert that contract and, above
+// all, that a profile can never contribute body text (the anti-leakage
+// guarantee: all Discussion/Summary text is derived from the transcript itself,
+// elsewhere in the pipeline).
 
-test('webinar rehearsal purpose produces grounded editorial objectives and topics', () => {
-  const plan = purposePlan({ type: 'Webinar rehearsal' }, evidence([
-    'We will rehearse the opening slides and then hand over to Sam.',
-    'Leave twenty minutes for audience questions in the chat.',
-    'Check screen sharing and start the recording.'
-  ]));
+const VALID_INTENTS = new Set(['Confirm', 'Review', 'Agree', 'Identify']);
+
+test('purposePlan returns only a profile id and structural hints — never prose', () => {
+  const plan = purposePlan({ type: 'Webinar rehearsal', title: 'Product webinar' });
   assert.equal(plan.profileId, 'webinar_rehearsal');
-  assert.ok(plan.objectives.some((item) => /content, running order and delivery readiness/i.test(item.text)));
-  assert.ok(plan.topics.some((item) => item.text === 'Presenter roles and handovers'));
-  assert.ok(plan.discussion.every((card) => card.evidenceIds.length > 0 && card.points[0].evidenceIds.length > 0));
+  // The only keys are the classifier id and the hint list.
+  assert.deepEqual(Object.keys(plan).sort(), ['profileId', 'topicHints']);
+  // Every hint is a { intent, pattern } pair — no free-text topic/objective/summary.
+  for (const hint of plan.topicHints) {
+    assert.deepEqual(Object.keys(hint).sort(), ['intent', 'pattern']);
+    assert.ok(VALID_INTENTS.has(hint.intent));
+    assert.ok(hint.pattern instanceof RegExp);
+  }
+});
+
+test('no profile carries any canned topic/objective/summary string', () => {
+  // Guard against a regression that reintroduces authored prose into the module,
+  // by walking every profile the classifier can return.
+  const types = [
+    'Webinar rehearsal', 'QIP Assessment Tool Case Study', 'Software Weekly Review',
+    'Importer Obligations Review', 'Internal Follow-up From Client Call', 'Audit Kick Off'
+  ];
+  for (const type of types) {
+    const plan = purposePlan({ type, title: type });
+    if (!plan) continue;
+    for (const hint of plan.topicHints) {
+      // A hint must be a matcher, not a sentence: intent is a single verb, the
+      // pattern is a RegExp. Neither can render into the minutes.
+      assert.equal(typeof hint.intent, 'string');
+      assert.ok(hint.intent.split(/\s+/).length === 1);
+    }
+  }
+});
+
+test('meeting-type classification is driven by type/title only', () => {
+  assert.equal(meetingProfile({ type: 'Webinar rehearsal' })?.id, 'webinar_rehearsal');
+  assert.equal(meetingProfile({ type: 'Project review', title: 'QIP Assessment Tool Case Study Nov 2024' })?.id, 'case_study_interview');
+  assert.equal(meetingProfile({ type: 'Project review', title: 'Client T733 Tech File Review Weekly' })?.id, 'technical_file_review');
+  assert.equal(meetingProfile({ type: 'Project review', title: 'Importer Obligations Review Plan' })?.id, 'importer_obligations_review');
+  assert.equal(meetingProfile({ type: 'Project review', title: 'Internal Follow-up and Review From Client Call' })?.id, 'internal_follow_up');
+  assert.equal(meetingProfile({ type: 'Project review', title: 'Client Audit Kick Off' })?.id, 'audit_planning');
 });
 
 test('meeting-type policy abstains for unrelated meeting types', () => {
-  assert.equal(purposePlan({ type: 'Project review' }, evidence(['Review the release plan.'])), null);
+  assert.equal(purposePlan({ type: 'Project review' }), null);
+  assert.equal(purposePlan({ type: 'Standup' }), null);
 });
 
-test('webinar dimensions are omitted when the transcript has no supporting evidence', () => {
-  const plan = purposePlan({ type: 'Webinar rehearsal' }, evidence(['We reviewed the slide deck and opening section.']));
-  assert.deepEqual(plan.topics.map((item) => item.text), ['Webinar content and running order']);
+test('objective intent is drawn from the first matching hint, defaulting to Review', () => {
+  const hints = purposePlan({ type: 'Audit Kick Off' }).topicHints;
+  assert.equal(objectiveIntentForText(hints, 'Confirming the audit scope and applicable standards'), 'Confirm');
+  assert.equal(objectiveIntentForText(hints, 'Agreeing key dates and preparation work'), 'Agree');
+  assert.equal(objectiveIntentForText(hints, 'Software, cybersecurity and risk analysis focus'), 'Identify');
+  // Unmatched text falls back to a neutral Review verb, never to canned prose.
+  assert.equal(objectiveIntentForText(hints, 'A topic the profile has no hint for'), 'Review');
+  assert.equal(objectiveIntentForText([], 'Anything at all'), 'Review');
 });
 
-test('case-study title activates a grounded interview plan even with the default meeting type', () => {
-  const plan = purposePlan({ type: 'Project review', title: 'QIP Assessment Tool Case Study Nov 2024' }, evidence([
-    'It is a combination of an assessment tool and an improvement plan for a site.',
-    'We run interviews, review procedures and show the final radar chart.',
-    'Take a look at the assessment reports and send me the draft to review.'
-  ]));
-  assert.equal(plan.profileId, 'case_study_interview');
-  assert.equal(plan.objectives[0].text, 'Explain the purpose, scope and structure of QIP Assessment Tool');
-  assert.ok(plan.topics.some((item) => item.text === 'Source material and follow-up'));
-  assert.ok(plan.discussion.every((card) => card.evidenceIds.length));
-  assert.equal(plan.riskEvidence.test('The former client had validation problems.'), false);
-  assert.equal(plan.riskEvidence.test('A missing testimonial could delay the case study.'), true);
+test('topic order rank follows hint order and sends unmatched topics last', () => {
+  const hints = purposePlan({ type: 'Audit Kick Off' }).topicHints;
+  const scopeRank = topicOrderRank(hints, 'the audit scope and standards');
+  const executionRank = topicOrderRank(hints, 'on-site gemba record sampling and findings tracker');
+  assert.ok(scopeRank < executionRank);
+  assert.equal(topicOrderRank(hints, 'a topic with no hint'), Number.MAX_SAFE_INTEGER);
+});
+
+test('a mis-classified audit still cannot inject foreign content — hints only reorder', () => {
+  // If an audit kickoff were mislabelled as a technical-file review, the profile
+  // it matches changes, but the plan still contains no text — so no alarm/mute/
+  // notified-body prose can leak into the audit minutes. Only ordering differs.
+  const mislabelled = purposePlan({ type: 'Software Weekly Review', title: 'Client Audit Kick Off' });
+  assert.equal(mislabelled.profileId, 'technical_file_review');
+  assert.ok(mislabelled.topicHints.every((hint) => hint.pattern instanceof RegExp && VALID_INTENTS.has(hint.intent)));
+});
+
+test('classification of the real golden transcripts resolves the expected frames', async () => {
+  // Classification depends only on type/title, so these run without the model.
+  const abbott = purposePlan({ type: 'Project review', title: 'Client Audit Kick Off' });
+  assert.equal(abbott.profileId, 'audit_planning');
+  const t761 = purposePlan({ type: 'Project review', title: 'Client T761 Eakin SW Weekly Checkin' });
+  assert.equal(t761.profileId, 'technical_file_review');
+  // Sanity: the fixtures still exist so downstream (model-run) evals can use them.
+  await fs.access(path.join(__dirname, '..', 'scripts', 'meeting-minutes-final-golden', '027_real_abbott_audit_kickoff_transcript', 'transcript.txt'));
+  await fs.access(path.join(__dirname, '..', 'scripts', 'meeting-minutes-final-golden', '025_real_t761_eakin_sw_weekly_transcript', 'transcript.txt'));
 });
 
 test('action grammar capitalises the first letter without changing the remaining wording', () => {
@@ -58,107 +110,4 @@ test('executive-summary grammar lowercases ordinary topics but preserves initial
   assert.equal(lowerInitialUnlessInitialism('Goods movement and distribution'), 'goods movement and distribution');
   assert.equal(lowerInitialUnlessInitialism('QMS and importer obligations'), 'QMS and importer obligations');
   assert.equal(lowerInitialUnlessInitialism('UDI, labelling and EUDAMED registration'), 'UDI, labelling and EUDAMED registration');
-});
-
-test('technical-file title activates grounded workstream framing', () => {
-  const plan = purposePlan({ type: 'Project review', title: 'Client T733 Tech File Review Weekly' }, evidence([
-    'The focus remains on risk management and cybersecurity mitigations.',
-    'The alarm software change and additional languages need clinical review.',
-    'Electrical compliance testing will be completed in house before the MDR submission.'
-  ]));
-  assert.equal(plan.profileId, 'technical_file_review');
-  assert.deepEqual(plan.topics.map((item) => item.text), [
-    'Risk management and cybersecurity',
-    'Software changes and review',
-    'Electrical compliance testing',
-    'Submission timing and dependencies'
-  ]);
-  assert.ok(plan.discussion.every((card) => card.points[0].evidenceIds.length));
-  assert.equal(plan.riskEvidence.test('Risk and electrical compliance remain the main focus.'), false);
-  assert.equal(plan.riskEvidence.test('One outstanding issue remains around the mute-button behaviour.'), true);
-});
-
-test('real T733 transcript is covered by the staged technical-file purpose policy', async () => {
-  const documentPath = path.join(__dirname, '..', 'scripts', 'meeting-minutes-core-golden', 'human_benchmarks', 'T733_eakin_tech_file', 'transcript.docx');
-  const buffer = await fs.readFile(documentPath);
-  const extracted = await mammoth.extractRawText({ buffer });
-  const evidence = prepareEvidence(extracted.value);
-  const plan = purposePlan({ type: 'Project review', title: 'Client Eakin T733 Tech File Review Weekly' }, evidence);
-  assert.equal(plan.profileId, 'technical_file_review');
-  assert.ok(plan.topics.length >= 5);
-  assert.ok(plan.topics.some((item) => item.text === 'Risk management and cybersecurity'));
-  assert.ok(plan.topics.some((item) => item.text === 'Electrical compliance testing'));
-  assert.ok(plan.objectives.every((item) => !/^(?:Review )?(?:That|And|No|Emma\b)/i.test(item.text)));
-});
-
-test('real T761 software weekly transcript uses the technical-file evidence frame', async () => {
-  const transcript = await fs.readFile(path.join(__dirname, '..', 'scripts', 'meeting-minutes-final-golden', '025_real_t761_eakin_sw_weekly_transcript', 'transcript.txt'), 'utf8');
-  const plan = purposePlan({ type: 'Project review', title: 'Client T761 Eakin SW Weekly Checkin' }, prepareEvidence(transcript));
-  assert.equal(plan.profileId, 'technical_file_review');
-  assert.ok(plan.topics.some((item) => item.text === 'Software changes and review'));
-  assert.ok(plan.topics.some((item) => item.text === 'Electrical compliance testing'));
-  assert.ok(plan.topics.every((item) => !/\b(?:I can't|I presume|you know|kind of)\b/i.test(item.text)));
-});
-
-test('importer-obligations title activates grounded regulatory workstreams', () => {
-  const plan = purposePlan({ type: 'Project review', title: 'Importer Obligations Review Plan' }, evidence([
-    'The QMS manual will support the importer obligations and compliance procedures.',
-    'Goods enter the EU before moving to the warehouse for barcode picking and packing.',
-    'The legal manufacturer registers devices in EUDAMED and the importer verifies registration.',
-    'Update the declarations of conformity with the PPE risk rationale.',
-    'Review the HPRA fee invoice and audit documentation.'
-  ]));
-  assert.equal(plan.profileId, 'importer_obligations_review');
-  assert.ok(plan.topics.some((item) => item.text === 'QMS and importer obligations'));
-  assert.ok(plan.topics.some((item) => item.text === 'UDI, labelling and EUDAMED registration'));
-  assert.ok(plan.topics.some((item) => item.text === 'HPRA readiness and follow-up'));
-  assert.ok(plan.discussion.every((card) => card.points[0].evidenceIds.length));
-});
-
-test('real T819 client transcript is covered by the staged importer-obligations policy', async () => {
-  const documentPath = path.join(__dirname, '..', 'scripts', 'meeting-minutes-core-golden', 'human_benchmarks', 'T819_dita_client', 'transcript.docx');
-  const buffer = await fs.readFile(documentPath);
-  const extracted = await mammoth.extractRawText({ buffer });
-  const evidence = prepareEvidence(extracted.value);
-  const plan = purposePlan({ type: 'Project review', title: 'Client Importer Obligations Review Plan' }, evidence);
-  assert.equal(plan.profileId, 'importer_obligations_review');
-  assert.ok(plan.topics.length >= 6);
-  assert.ok(plan.topics.some((item) => item.text === 'Warehouse, ordering and packaging processes'));
-  assert.ok(plan.topics.some((item) => item.text === 'Manufacturer, importer and authorised-representative roles'));
-  assert.ok(plan.objectives.every((item) => !/^(?:Review )?(?:Who|Mm|OK|Makes sense)\b/i.test(item.text)));
-});
-
-test('internal follow-up intent composes reusable evidence dimensions', () => {
-  const plan = purposePlan({ type: 'Project review', title: 'Internal Follow-up and Review From Client Call' }, evidence([
-    'We need working sessions to understand how the business works and develop usable procedures.',
-    'Schedule Wednesday, Thursday and Friday sessions for the relevant team members.',
-    'Confirm whether PPE and sunglasses are included in the scope.',
-    'We need clarification on declaration of conformity language requirements.'
-  ]));
-  assert.equal(plan.profileId, 'internal_follow_up');
-  assert.ok(plan.topics.some((item) => item.text === 'Client working sessions and internal coordination'));
-  assert.ok(plan.topics.some((item) => item.text === 'Declarations and language requirements'));
-});
-
-test('real T819 internal transcript is covered by the staged internal-follow-up policy', async () => {
-  const documentPath = path.join(__dirname, '..', 'scripts', 'meeting-minutes-core-golden', 'human_benchmarks', 'T819_dita_internal', 'transcript.docx');
-  const buffer = await fs.readFile(documentPath);
-  const extracted = await mammoth.extractRawText({ buffer });
-  const evidence = prepareEvidence(extracted.value);
-  const plan = purposePlan({ type: 'Project review', title: 'Internal Follow-up and Review From Client Call' }, evidence);
-  assert.equal(plan.profileId, 'internal_follow_up');
-  assert.ok(plan.topics.length >= 4);
-  assert.ok(plan.topics.some((item) => item.text === 'Scope and regulatory coverage'));
-  assert.ok(plan.objectives.every((item) => !/^(?:Review )?(?:As well|Mm|OK|Wednesday)\b/i.test(item.text)));
-});
-
-test('real Abbott transcript activates a reusable audit-planning frame', async () => {
-  const documentPath = path.join(__dirname, '..', 'scripts', 'meeting-minutes-final-golden', '027_real_abbott_audit_kickoff_transcript', 'transcript.txt');
-  const transcript = await fs.readFile(documentPath, 'utf8');
-  const plan = purposePlan({ type: 'Project review', title: 'Client Audit Kick Off' }, prepareEvidence(transcript));
-  assert.equal(plan.profileId, 'audit_planning');
-  assert.ok(plan.topics.some((item) => item.text === 'Audit scope, type and applicable standards'));
-  assert.ok(plan.topics.some((item) => item.text === 'Software, cybersecurity and risk-management focus'));
-  assert.ok(plan.topics.some((item) => item.text === 'On-site evidence gathering and audit execution'));
-  assert.ok(plan.objectives.every((item) => !/\b(?:Abbott|T796|Sylmar)\b/i.test(item.text)));
 });

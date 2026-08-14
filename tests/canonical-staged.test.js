@@ -166,7 +166,9 @@ test('explicit first-person future commitments publish as concrete actions', () 
   ].join('\n'));
   const result = semanticStages.actionsStage(evidence, {}, { events: {} }, { mode: 'standard' });
   assert.ok(result.actions.some((item) => item.owner === 'Jacqui Fox' && /code of conduct/i.test(item.action) && item.deadline === 'today'));
-  assert.ok(result.actions.some((item) => item.owner === 'Smith, Stuart M' && /tracker/i.test(item.action)));
+  // Teams surname-first display names are normalised generically to "First Last",
+  // so the owner resolves to "Stuart Smith" (not the raw "Smith, Stuart M").
+  assert.ok(result.actions.some((item) => item.owner === 'Stuart Smith' && /tracker/i.test(item.action)));
   assert.equal(result.warnings.some((warning) => warning.type === 'unresolved_commitment_threads'), false);
 });
 
@@ -282,11 +284,25 @@ test('summary reviewer guidance prioritises supported evidence without becoming 
     'Ben Stone  00:08',
     'We checked the recording and screen sharing contingency.'
   ].join('\n'));
-  const result = semanticStages.contextStage(evidence, { topics: [] }, {
+  // Topics are the transcript's own clusters (supplied here as the profile's
+  // topics). Reviewer guidance may only reorder them — it must not become a
+  // topic, and no canned template text may appear.
+  const profile = {
+    topics: [
+      { id: 'slides', representativeText: 'We reviewed the slide order and opening section', evidenceIds: [evidence.events[0].id], cohesion: 1 },
+      { id: 'recording', representativeText: 'We checked the recording and screen sharing contingency', evidenceIds: [evidence.events[1].id], cohesion: 1 }
+    ],
+    events: {}
+  };
+  const result = semanticStages.contextStage(evidence, profile, {
     meeting: { type: 'Webinar rehearsal', title: 'Product webinar' }
   }, 'Prioritise recording and technical readiness');
-  assert.equal(result.topics[0].text, 'Technical setup and contingencies');
+  // Guidance floats the recording/technical topic to the front.
+  assert.match(result.topics[0].text, /recording|screen sharing/i);
+  // Guidance text itself never leaks into the topic list as content.
   assert.equal(result.topics.some((item) => /prioritise/i.test(item.text)), false);
+  // Every emitted topic is grounded in this transcript's evidence.
+  assert.ok(result.topics.every((item) => (item.evidenceIds || []).length > 0));
 });
 
 test('confirmed summary topics become the preferred discussion agenda', () => {
