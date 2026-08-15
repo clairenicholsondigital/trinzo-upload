@@ -806,7 +806,7 @@ function buildStagedValidationFlags(screens = {}) {
 
 // --- Final action quality gate --------------------------------------------
 
-const FINAL_ACTION_VERB = /^(?:arrange|book|schedule|organise|coordinate|set\s+up|update|review|check|verify|validate|assess|send|share|provide|circulate|issue|upload|forward|confirm|prepare|complete|develop|build|create|finali[sz]e|finish|produce|draft|submit|approve|agree|accept|sign(?:\s+off)?|trace|generate|identify|document|follow[- ]?up)\b/i;
+const FINAL_ACTION_VERB = /^(?:arrange|book|schedule|organise|coordinate|set\s+up|continue|update|review|check|verify|validate|assess|send|share|provide|circulate|issue|upload|forward|confirm|prepare|complete|develop|build|create|finali[sz]e|finish|produce|draft|submit|approve|agree|accept|sign(?:\s+off)?|trace|generate|identify|document|follow[- ]?up)\b/i;
 const FINAL_ACTION_DEBRIS = [
   /^\s*(?:and\s+)?then\b/i,
   /^\s*(?:i|we)\s+(?:think|suppose|guess)\b/i,
@@ -863,10 +863,12 @@ function finalActionObjectText(action) {
 }
 
 function finalActionHasConcreteObject(action) {
-  const object = finalActionObjectText(action)
+  let object = finalActionObjectText(action)
     .replace(/^(?:the|a|an|to|on|for|with|about|regarding)\s+/i, '')
-    .replace(/\s+(?:for\s+review|with\s+.+|to\s+.+)$/i, '')
     .trim();
+  if (!/^continue\b/i.test(cleanFinalActionValue(action))) {
+    object = object.replace(/\s+(?:for\s+review|with\s+.+|to\s+.+)$/i, '').trim();
+  }
   if (!object || FINAL_ACTION_WEAK_OBJECT.test(object)) return false;
   const words = object.split(/\s+/).filter(Boolean);
   if (words.length >= 2) return true;

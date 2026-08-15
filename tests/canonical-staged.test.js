@@ -2,6 +2,8 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const { runCanonicalNoEditPass } = require('../utils/canonicalMinutes/runner');
 const { createCanonicalState, acceptProposal } = require('../utils/canonicalMinutes/state');
 const { finalMinutes } = require('../utils/canonicalMinutes/stages');
@@ -145,6 +147,39 @@ test('distributed action recap selects bounded cross-turn assembly', () => {
   assert.equal(result.metrics.topologyObservation, 'distributed_recap');
   assert.ok(result.visibleOutput.actions.some((item) => /animation/i.test(item.meetingActionPoint)));
   assert.ok(result.visibleOutput.actions.some((item) => /closing slide/i.test(item.meetingActionPoint)));
+});
+
+test('closing recap promotes only an independently corroborated earlier commitment', () => {
+  const evidence = prepareEvidence([
+    'Andrew Kane  00:01',
+    'I need to check the mute button flash behaviour.',
+    'Jacqui Fox  00:05',
+    'We also discussed the general test programme.',
+    'Rebecca Cuckoo  00:10',
+    'The status is otherwise unchanged.',
+    'Jacqui Fox  00:20',
+    'Right, the key things moving forward are',
+    'Jacqui Fox  00:21',
+    'Andrew to confirm the mute button flash behaviour.',
+    'Jacqui Fox  00:22',
+    'Rebecca to prepare an unrelated supplier pack.',
+    'Jacqui Fox  00:23',
+    'Thanks everyone.'
+  ].join('\n'));
+  const promoted = semanticStages.corroboratedClosingRecapActions(evidence);
+  assert.ok(promoted.some((item) => item.owner === 'Andrew Kane' && /mute button/i.test(item.action)));
+  assert.equal(promoted.some((item) => /supplier pack/i.test(item.action)), false);
+});
+
+test('real T761 closing recap corroborates the concrete ongoing workstreams without promoting the unassigned clinical review', () => {
+  const transcript = fs.readFileSync(path.join(__dirname, '../scripts/meeting-minutes-final-golden/025_real_t761_eakin_sw_weekly_transcript/transcript.txt'), 'utf8');
+  const promoted = semanticStages.corroboratedClosingRecapActions(prepareEvidence(transcript));
+  assert.ok(promoted.some((item) => item.owner === 'Andrew Kane' && /mute button/i.test(item.action)));
+  assert.ok(promoted.some((item) => item.owner === 'Andrew Kane' && /additional languages/i.test(item.action)));
+  assert.ok(promoted.some((item) => item.owner === 'Andrew Kane' && /electrical compliance testing/i.test(item.action)));
+  assert.ok(promoted.some((item) => item.owner === 'Rebecca Cuckoo' && /USB port/i.test(item.action)));
+  assert.equal(promoted.some((item) => /clinical review/i.test(item.action)), false);
+  assert.equal(promoted.some((item) => /fan logic/i.test(item.action)), false);
 });
 
 test('ordinary commitments remain on the standard extractor', () => {

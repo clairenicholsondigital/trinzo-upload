@@ -198,6 +198,37 @@ test('a named recipient introduced without cited support is rejected', async () 
   assert.deepEqual(result.payload.screens.actions, []);
 });
 
+test('recap-corroborated actions stay one-record-per-workstream even if Trooper tries to merge them', async () => {
+  const payload = actionPayload();
+  payload.screens.actions = [
+    { owner: 'Andrew Kane', action: 'Confirm the mute button behaviour and its effect on the flash', deadline: 'Not stated', evidenceIds: ['evt_1'] },
+    { owner: 'Andrew Kane', action: 'Continue the update to the 12 additional languages', deadline: 'Not stated', evidenceIds: ['evt_2'] }
+  ];
+  payload._canonicalEvidencePack = [
+    {
+      itemIndex: 0, owner: 'Andrew Kane', action: payload.screens.actions[0].action, deadline: 'Not stated',
+      selectionMode: 'canonical_selected_action', recapCorroborated: true,
+      evidence: [{ id: 'evt_1', speaker: 'Andrew Kane', current: "I need to look at the mute button behaviour.", contextWindow: [] }, { id: 'evt_3', speaker: 'Jacqui Fox', current: 'Andrew to confirm the mute button flash behaviour.', contextWindow: [] }]
+    },
+    {
+      itemIndex: 1, owner: 'Andrew Kane', action: payload.screens.actions[1].action, deadline: 'Not stated',
+      selectionMode: 'canonical_selected_action', recapCorroborated: true,
+      evidence: [{ id: 'evt_2', speaker: 'Andrew Kane', current: "I've started the language update.", contextWindow: [] }, { id: 'evt_4', speaker: 'Jacqui Fox', current: 'Continue the update to the additional languages.', contextWindow: [] }]
+    }
+  ];
+  const result = await polishCanonicalStage(payload, {
+    apiKey: 'test-key',
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: JSON.stringify({ actions: [{ itemIndex: 0, owner: 'Andrew Kane', action: 'Confirm the mute button and continue the language update', deadline: 'Not stated', evidenceIds: ['evt_1', 'evt_3'] }] }) } }] })
+    })
+  });
+  assert.deepEqual(result.payload.screens.actions.map((item) => item.action), [
+    'Confirm the mute button behaviour and its effect on the flash',
+    'Continue the update to the 12 additional languages'
+  ]);
+});
+
 test('a deadline must be present in the evidence cited for that action', async () => {
   const payload = actionPayload();
   payload._canonicalEvidencePack[0].deadline = 'Wednesday';

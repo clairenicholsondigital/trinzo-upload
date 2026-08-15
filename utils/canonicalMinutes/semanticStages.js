@@ -972,6 +972,150 @@ function isUnderspecifiedAction(item) {
     || /\?\s*$/.test(action);
 }
 
+function closingRecapStartIndex(evidence) {
+  const minimumIndex = Math.floor(evidence.events.length * 0.55);
+  let matched = -1;
+  evidence.events.forEach((event, index) => {
+    if (index >= minimumIndex && /\b(?:key things moving forward|next steps (?:are|include)|actions? moving forward|final (?:actions?|next steps)|to recap(?: the)? (?:actions?|next steps))\b/i.test(clean(event.text))) matched = index;
+  });
+  return matched;
+}
+
+function prospectiveOwnerEvidence(event) {
+  const text = clean(event?.text);
+  if (/\?\s*$/.test(text)) return false;
+  return /\bI\s*(?:['’]ll|will|shall|need to|must|have to|am going to)\b/i.test(text)
+    || /\bI(?:['’]m| am| was)\s+(?:in the middle of|working on|continuing|updating|reviewing|tidying|preparing|testing)\b/i.test(text)
+    || /\bI(?:['’]ve| have)?\s*started\b/i.test(text)
+    || /\bI(?:['’]ve| have)\s+got to\b/i.test(text);
+}
+
+function closingRecapFragments(value, participants = []) {
+  let text = clean(value);
+  for (const participant of participants) {
+    const first = participant.split(/\s+/)[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    text = text.replace(new RegExp(`\\s+and\\s+(${first}\\s+to\\s+)`, 'gi'), ' || $1');
+    text = text.replace(new RegExp(`\\s+and\\s+(${first}\\s+(?:did|has|had)\\s+)`, 'gi'), ' || $1');
+  }
+  return text.split(/\s*\|\|\s*|\s+and then\s+(?=(?:to\s+|you(?:['’]re| are)\s+|[A-Z][A-Za-z'’.-]+\s+to\s+))/i)
+    .map(clean)
+    .filter(Boolean);
+}
+
+function recapAnchorTokens(value) {
+  const stop = new Set(['about','after','again','also','and','are','been','being','but','can','continue','done','for','from','have','into','just','needs','need','next','only','over','perspective','probably','really','still','that','the','then','there','they','this','through','today','with','would','your','youre']);
+  const shortTechnical = new Set(['usb','gui','led','qms','mdr','ppe','pms']);
+  return clean(value).toLowerCase().match(/[a-z0-9-]{3,}/g)?.map((token) => token.replace(/(?:ing|ed|es|s)$/i, '')).filter((token) => (token.length >= 4 || shortTechnical.has(token)) && !stop.has(token)) || [];
+}
+
+function recapAnchorOverlap(left, right) {
+  const a = new Set(recapAnchorTokens(left));
+  const b = new Set(recapAnchorTokens(right));
+  return [...a].filter((token) => b.has(token));
+}
+
+function recapActionWording(value) {
+  let text = clean(value)
+    .replace(/^(?:and\s+then\s+|and\s+|then\s+)/i, '')
+    .replace(/^you(?:['’]re| are)\s+/i, '')
+    .replace(/^to\s+/i, '')
+    .replace(/\b(?:presumably|probably)\b[,.]?/gi, '')
+    .replace(/\bupgrade,?\s+or\s+sorry,?\s+(?:the\s+)?update\b/i, 'update')
+    .replace(/\bthe\s+(\d+)\s*,\s*the\s+\1\b/i, 'the $1')
+    .replace(/\b([A-Za-z]+)\s+\1\b/gi, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const named = text.match(/^([A-Z][A-Za-z'’.-]+)\s+to\s+(.+)/);
+  if (named) text = named[2];
+  text = text.replace(/^just\s+/i, '');
+  const confirmation = text.match(/^confirm\s+in\s+terms\s+of\s+the\s+(.+?)\s+and\s+what\b.*?\bhappens\s+to\s+the\s+(.+?)\s+in\s+relation\s+to\s+that[.!?]*$/i);
+  if (confirmation) text = `Confirm the ${clean(confirmation[1])} behaviour and its effect on the ${clean(confirmation[2])}`;
+  text = text.replace(/^continuing\s+to\s+review\s+(.+?)\s+side\s+of\s+things[.!?]*$/i, 'Continue reviewing $1 controls');
+  const testing = text.match(/^that\s+needs\s+still\s+to\s+be\s+done\s+and\s+then\s+the\s+(.+?testing)\s+has\s+started\s+or\s+will\s+start\s+shortly(?:\s+with\s+a\s+view\s+to\s+be\s+within\s+the\s+(.+?)\s+dates)?[.!?]*$/i);
+  if (testing) text = `Complete ${clean(testing[1])}${testing[2] ? ` by ${clean(testing[2])}` : ''}`;
+  return text ? text.charAt(0).toUpperCase() + text.slice(1) : '';
+}
+
+function corroboratedClosingRecapActions(evidence) {
+  const startIndex = closingRecapStartIndex(evidence);
+  if (startIndex < 0) return [];
+  const endIndex = Math.min(evidence.events.length - 1, startIndex + 16);
+  const recapEvents = evidence.events.slice(startIndex + 1, endIndex + 1);
+  const earlierEvents = evidence.events.slice(0, startIndex);
+  const candidates = [];
+
+  for (const recapEvent of recapEvents) {
+    for (const recapText of closingRecapFragments(recapEvent.text, evidence.participants)) {
+    if (!recapText || recapText.split(/\s+/).length < 5 || /\?\s*$/.test(recapText)) continue;
+    if (/\b(?:not sure|maybe|might|probably|could potentially|if needed|if required)\b/i.test(recapText)) continue;
+    if (!/\b(?:confirm|continue|update|review|complete|testing|follow up|send|share|prepare|finish|finalise|finalize|needs? to|still to be done|outstanding)\b/i.test(recapText)) continue;
+
+    const shaped = actionShape({ ...recapEvent, text: recapText }, evidence);
+    let explicitOwner = clean(shaped?.owner);
+    if (!explicitOwner || explicitOwner === 'Not stated') {
+      const named = evidence.participants.filter((name) => {
+        const first = name.split(/\s+/)[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return new RegExp(`\\b${first}\\b`, 'i').test(recapText);
+      });
+      if (named.length === 1 && new RegExp(`\\b${named[0].split(/\s+/)[0]}\\b[^.]{0,45}\\b(?:to|will|needs? to|should|continue|review|confirm|update)\\b`, 'i').test(recapText)) explicitOwner = named[0];
+    }
+
+    const earlierIndex = new Map(earlierEvents.map((event, index) => [event.id, index]));
+    const ranked = earlierEvents
+      .filter((event) => evidence.participants.includes(event.speaker) && prospectiveOwnerEvidence(event))
+      .map((event) => {
+        const index = earlierIndex.get(event.id);
+        const localText = earlierEvents.slice(index, Math.min(earlierEvents.length, index + 5))
+          .filter((candidate) => candidate.speaker === event.speaker)
+          .map((candidate) => candidate.text)
+          .join(' ');
+        return {
+          event,
+          localText,
+          overlap: Math.max(tokenOverlap(recapText, event.text), tokenOverlap(recapText, localText)),
+          anchors: recapAnchorOverlap(recapText, localText)
+        };
+      })
+      .filter((item) => {
+        if (item.anchors.length >= 2 && item.overlap >= (explicitOwner ? 0.08 : 0.16)) return true;
+        return !explicitOwner && item.anchors.length === 1 && item.anchors[0].length >= 7 && item.overlap >= 0.18;
+      })
+      .sort((left, right) => right.anchors.length - left.anchors.length || right.overlap - left.overlap);
+    if (!ranked.length) continue;
+
+    let support = ranked[0];
+    if (explicitOwner) {
+      support = ranked.find((item) => item.event.speaker === explicitOwner) || null;
+      if (!support) continue;
+    } else {
+      const bestByOwner = new Map();
+      for (const item of ranked) {
+        if (!bestByOwner.has(item.event.speaker)) bestByOwner.set(item.event.speaker, item);
+      }
+      const owners = [...bestByOwner.values()].sort((left, right) => right.overlap - left.overlap);
+      if (owners.length > 1 && owners[0].overlap - owners[1].overlap < 0.08) continue;
+      support = owners[0];
+      explicitOwner = support.event.speaker;
+    }
+
+    const action = recapActionWording(shaped?.action || recapText);
+    if (!action || isUnderspecifiedAction({ action })) continue;
+    const recapDeadline = deadlineFrom(recapText);
+    const supportDeadline = deadlineFrom(support.event.text);
+    candidates.push({
+      owner: explicitOwner,
+      action,
+      deadline: recapDeadline !== 'Not stated' ? recapDeadline : supportDeadline,
+      evidenceIds: [...new Set([support.event.id, recapEvent.id])],
+      semanticConfidence: Math.min(1, 0.72 + (support.overlap * 0.2)),
+      explicitFutureCommitment: true,
+      recapCorroborated: true
+    });
+    }
+  }
+  return unique(candidates, (item) => `${item.owner}|${item.action}`);
+}
+
 function canonicalActionText(value) {
   const text = clean(value);
   const provideOverview = text.match(/^(?:also\s+)?give\s+(?:you|them|him|her)\s+the\s+(.+?)\s+and\s+an?\s+overall\s+view\s+of\s+the\s+(.+?)(?:\s+themselves)?[.!?]*$/i);
@@ -988,13 +1132,15 @@ function canonicalActionText(value) {
 function actionsStage(evidence, state, profile, topology) {
   const threads = buildCommitmentThreads(evidence, profile, topology);
   const deterministic = deterministicStages.actionsStage(evidence, state, topology).actions;
+  const recapCorroborated = corroboratedClosingRecapActions(evidence);
   let actions = unique([
     ...deterministic,
     ...threads.flatMap((thread) => actionsFromThread(thread, evidence, profile)),
     ...acceptedTentativeActions(evidence),
     ...acceptedCollectiveActions(evidence),
     ...explicitObligationActions(evidence),
-    ...learnedSlotActions(evidence, profile)
+    ...learnedSlotActions(evidence, profile),
+    ...recapCorroborated
   ].map((item) => resolveActionReferent(item, evidence)), (item) => `${item.owner}|${item.action}`);
   if (enrichedEvidenceEnabled()) {
     actions = applyOperationalPhaseTiming(attachTemporalContext(resolveActionRecords(resolveEnrichedActions(actions, evidence, profile), evidence, {
@@ -1008,6 +1154,10 @@ function actionsStage(evidence, state, profile, topology) {
       return item;
     }), evidence, profile, deadlineFrom), evidence, topology);
   }
+  actions = unique([
+    ...actions,
+    ...recapCorroborated.map((item) => resolveActionReferent(item, evidence))
+  ], (item) => `${item.owner}|${item.action}`);
   let actionCandidates = actions;
   const structuredEvidenceIds = new Set(evidence.events.filter((event) => event.structuredSource === 'actions_owner_deadline_table').map((event) => event.id));
   if (structuredEvidenceIds.size) {
@@ -1044,6 +1194,16 @@ function actionsStage(evidence, state, profile, topology) {
     .filter(Boolean)
     .sort((left, right) => right.semanticConfidence - left.semanticConfidence);
   actionCandidates = unique([...actionCandidates, ...semanticReviewCandidates], (item) => `${item.threadId || ''}|${item.owner}|${item.action}`);
+  // Once a closing-recap event has been used to corroborate a concrete action,
+  // do not also expose a generic contextual candidate built from the same recap
+  // bullet(s). Otherwise the rewrite layer can combine neighbouring recap
+  // bullets into a second synthetic action alongside the correctly promoted
+  // one-record-per-workstream actions.
+  if (recapCorroborated.length) {
+    const claimedRecapEvidenceIds = new Set(recapCorroborated.flatMap((item) => (item.evidenceIds || []).slice(-1)));
+    actionCandidates = actionCandidates.filter((item) => item.recapCorroborated
+      || !(item.evidenceIds || []).some((id) => claimedRecapEvidenceIds.has(id)));
+  }
   if (!structuredEvidenceIds.size) {
     actionCandidates = actionCandidates
       .filter((item) => !reviewCandidateNoise(item, evidence))
@@ -1091,4 +1251,4 @@ function actionsStage(evidence, state, profile, topology) {
   };
 }
 
-module.exports = { contextStage, contentStage, actionsStage, buildCommitmentThreads, actionsFromThread, semanticActionCandidate, semanticThreadReviewCandidate, hasSemanticRole, learnedSlotActions, resolveEnrichedActions, isUnderspecifiedAction, canonicalActionText, canonicalRiskText };
+module.exports = { contextStage, contentStage, actionsStage, buildCommitmentThreads, actionsFromThread, semanticActionCandidate, semanticThreadReviewCandidate, hasSemanticRole, learnedSlotActions, resolveEnrichedActions, isUnderspecifiedAction, canonicalActionText, canonicalRiskText, corroboratedClosingRecapActions };

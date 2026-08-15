@@ -412,6 +412,17 @@ test('normaliseFinalStagedActionCandidate rewrites transcript-shaped opportunity
   });
 });
 
+test('normaliseFinalStagedActionCandidate accepts concrete continuation actions', () => {
+  assert.deepEqual(
+    normaliseFinalStagedActionCandidate({ owner: 'Andrew Kane', action: 'Continue the update to the 12 additional languages', deadline: 'Not stated' }),
+    { owner: 'Andrew Kane', action: 'Continue the update to the 12 additional languages', deadline: 'Not stated' }
+  );
+  assert.deepEqual(
+    normaliseFinalStagedActionCandidate({ owner: 'Rebecca Cuckoo', action: 'Continue reviewing the USB port controls', deadline: 'Not stated' }),
+    { owner: 'Rebecca Cuckoo', action: 'Continue reviewing the USB port controls', deadline: 'Not stated' }
+  );
+});
+
 test('normaliseFinalStagedActionCandidate canonicalises Not stated owner casing', () => {
   assert.deepEqual(
     normaliseFinalStagedActionCandidate({ owner: 'not stated', action: 'Review the QMS Manual', deadline: 'not stated' }),

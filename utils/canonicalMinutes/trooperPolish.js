@@ -258,7 +258,8 @@ function ownerSupported(candidate, source) {
     const text = clean(entry.text);
     const speakerIsOwner = proposedOwners.some((owner) => clean(entry.speaker).toLowerCase() === owner.toLowerCase());
     const speakerCommitment = speakerIsOwner
-      && /\b(?:I|we)\s*(?:['’]ll|will|shall|can|need to|must|have to|am going to)\b/i.test(text);
+      && (/\b(?:I|we)\s*(?:['’]ll|will|shall|can|need to|must|have to|am going to)\b/i.test(text)
+        || (source.recapCorroborated && /\bI(?:['’]m| am| was)\s+(?:in the middle of|working on|continuing|updating|reviewing|tidying|preparing|testing)\b|\bI(?:['’]ve| have)?\s*started\b/i.test(text)));
     const namedAssignment = proposedOwners.some((owner) => {
       const firstName = owner.split(/\s+/)[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       return new RegExp(`(?:^|[.!?;]\\s+)${firstName},\\s*(?:can|could|will|would)\\s+you\\b|\\b${firstName}\\s+to\\s+[a-z]|\\b(?:assigned to|owner is|action for)\\s+${firstName}\\b`, 'i').test(text);
@@ -292,7 +293,13 @@ function actionVerbSupported(candidate, source) {
   const family = actionVerbFamily(candidate.action);
   if (!family.length) return false;
   const entries = citedEntries(candidate, source);
-  return entries.some((entry) => family.some((verb) => new RegExp(`\\b${verb.replace(' ', '\\s+')}\\b`, 'i').test(clean(entry.text))));
+  if (entries.some((entry) => family.some((verb) => new RegExp(`\\b${verb.replace(' ', '\\s+')}\\b`, 'i').test(clean(entry.text))))) return true;
+  if (!source.recapCorroborated) return false;
+  const evidenceText = entries.map((entry) => clean(entry.text)).join(' ');
+  if (family.includes('complete') && /\b(?:needs? still to be done|has started|have started|will start|started)\b/i.test(evidenceText)) return true;
+  if (family.includes('update') && /\b(?:update|upgrade|updating)\b/i.test(evidenceText)) return true;
+  if (family.includes('review') && /\b(?:review|reviewing|look(?:ing)? at)\b/i.test(evidenceText)) return true;
+  return false;
 }
 
 function deadlineSupported(candidate, source) {
@@ -399,8 +406,15 @@ function applyActionRewrite(payload, output, evidencePack) {
       owner: pack.owner || 'Not stated',
       action: pack.action,
       deadline: pack.deadline || 'Not stated',
-      evidenceIds: (pack.evidence || []).map((item) => item.id).filter(Boolean)
+      evidenceIds: (pack.evidence || []).map((item) => item.id).filter(Boolean),
+      ...(pack.recapCorroborated ? { recapCorroborated: true } : {})
     };
+    // Closing-recap promotions have already passed a stricter two-source
+    // corroboration gate: one concrete earlier workstream record plus the
+    // later recap. Keep those records one-for-one. Letting Trooper rewrite
+    // several neighbouring recap items can merge distinct workstreams into a
+    // plausible-sounding but unsupported composite action.
+    if (source.recapCorroborated) return [source];
     const proposed = (byIndex.get(index) || []).slice(0, 3).flatMap((candidate) => {
       if (!validReferences(candidate, pack)) return [];
       if (!prospectiveEvidence(candidate, pack)) return [];
