@@ -263,6 +263,24 @@ test('final presentation withholds ownerless or invalid actions for reviewer con
   assert.equal(flag.repairCandidates.length, 2);
 });
 
+test('final discussion presentation strips internal evidence ids and keeps distinctive topics aligned', () => {
+  const result = clientReadyPresentation({
+    stagedStage: 'discussion', validationFlags: [],
+    screens: { discussion: [
+      { topic: 'Language support and localisation', points: [
+        'The alarm work will finish before the language support work. (evt_0374).',
+        'Potential issues exist with Arabic, Vietnamese and Greek. (evt_0391).'
+      ] },
+      { topic: 'Cybersecurity and access controls', points: [
+        'And the team were talking about a USB port lock and unwarranted interference. (evt_0456).'
+      ] }
+    ] }
+  });
+  assert.deepEqual(result.screens.discussion[0].points, ['Potential issues exist with Arabic, Vietnamese and Greek.']);
+  assert.deepEqual(result.screens.discussion[1].points, ['The cybersecurity review considered USB-port controls and the risk of unauthorised or unintended device interference.']);
+  assert.doesNotMatch(JSON.stringify(result.screens.discussion), /evt_/i);
+});
+
 test('final presentation removes reporting wrappers without changing canonical facts', () => {
   const discussion = clientReadyPresentation({
     stagedStage: 'discussion', validationFlags: [],

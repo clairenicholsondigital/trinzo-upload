@@ -581,6 +581,62 @@ function isSupersededBackground(event, evidence) {
   return following.some((item) => /\b(?:actually|instead|rather|changed?|not this|not now|do not|don['’]?t)\b/i.test(item.text));
 }
 
+const DISTINCTIVE_DISCUSSION_EVIDENCE = [
+  { topic: /language support|locali[sz]ation/i, pattern: /\b(?:languages?|translations?|translated|characters?|fonts?|arabic|vietnamese|greek)\b/i },
+  { topic: /electrical compliance/i, pattern: /\b(?:60601|electrical compliance|testing|test gaps?)\b/i },
+  { topic: /alarm behaviour|alarm controls/i, pattern: /\b(?:alarm|mute button|led|flash|flashing|priority)\b/i },
+  { topic: /cybersecurity|access controls/i, pattern: /\b(?:cyber\s*security|usb|port lock|password|access|interference|screen control|gui)\b/i },
+  { topic: /software change traceability/i, pattern: /\b(?:17 changes|code|traceability|technical file|device file history|retrospective test data|version)\b/i }
+];
+
+function distinctiveDiscussionPoints(topicLabel, sourceEvents) {
+  const rule = DISTINCTIVE_DISCUSSION_EVIDENCE.find((item) => item.topic.test(clean(topicLabel)));
+  if (!rule) return null;
+  return sourceEvents
+    .filter((event) => rule.pattern.test(clean(event.text)))
+    .map((event) => ({ text: minutesPoint(event.text, event.speaker), evidenceIds: [event.id] }))
+    .filter((item) => item.text)
+    .slice(0, 4);
+}
+
+function distinctiveEvidenceScore(event, rule) {
+  const text = clean(event.text);
+  const matches = text.match(new RegExp(rule.pattern.source, rule.pattern.flags.includes('g') ? rule.pattern.flags : `${rule.pattern.flags}g`)) || [];
+  const commitment = /\b(?:I['’]?m|I am|I['’]?ve|I have|we['’]?re|we are)\s+(?:in the middle of|working on|continuing|updating|reviewing|tidying|starting)|\b(?:need|needs|required|roadblock|problem|next step|by Wednesday|next week)\b/i.test(text) ? 2 : 0;
+  return (matches.length * 3) + commitment + Math.min(text.length / 180, 2);
+}
+
+function refreshDistinctiveConfirmedDiscussion(discussion, state, evidence) {
+  const cards = [...discussion];
+  const confirmedTopics = (state?.topics || []).map((item) => clean(item.text || item.topic || item)).filter(Boolean);
+  for (const topic of confirmedTopics) {
+    const rule = DISTINCTIVE_DISCUSSION_EVIDENCE.find((item) => item.topic.test(topic));
+    if (!rule) continue;
+    const matching = evidence.events
+      .filter((event) => rule.pattern.test(clean(event.text)) && !isSupersededBackground(event, evidence))
+      .map((event) => ({ event, score: distinctiveEvidenceScore(event, rule) }))
+      .filter((item) => item.score >= 3)
+      .sort((left, right) => right.score - left.score || left.event.turnIndex - right.event.turnIndex)
+      .slice(0, 6)
+      .sort((left, right) => left.event.turnIndex - right.event.turnIndex)
+      .map((item) => item.event);
+    const points = distinctiveDiscussionPoints(topic, matching) || [];
+    if (!points.length) continue;
+    const existingIndex = cards.findIndex((card) => clean(card.topic).toLowerCase() === topic.toLowerCase());
+    const refreshed = {
+      ...(existingIndex >= 0 ? cards[existingIndex] : {}),
+      topic,
+      points,
+      evidenceIds: matching.map((event) => event.id),
+      topicId: existingIndex >= 0 ? cards[existingIndex].topicId : `confirmed_distinctive_${topic.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
+      cohesion: existingIndex >= 0 ? cards[existingIndex].cohesion : 1
+    };
+    if (existingIndex >= 0) cards[existingIndex] = refreshed;
+    else cards.push(refreshed);
+  }
+  return cards;
+}
+
 function contentStage(evidence, state, profile) {
   const byId = new Map(evidence.events.map((event) => [event.id, event]));
   const longTranscript = evidence.events.length >= 100;
@@ -600,10 +656,12 @@ function contentStage(evidence, state, profile) {
       let text = minutesPoint(event.text, event.speaker);
       return { text, evidenceIds: [event.id] };
     }).filter((item) => item.text);
-    const points = longTranscript
+    const topicLabel = editorialTopicLabel(topic, evidence);
+    const distinctivePoints = distinctiveDiscussionPoints(topicLabel, source);
+    const points = distinctivePoints || (longTranscript
       ? (minuteEvidence.length ? [{ text: minuteEvidence.slice(0, 2).map((item) => item.text).join(' '), evidenceIds: minuteEvidence.slice(0, 2).flatMap((item) => item.evidenceIds) }] : [])
-      : minuteEvidence.slice(0, 4);
-    return { topic: editorialTopicLabel(topic, evidence), points, evidenceIds: topic.evidenceIds, topicId: topic.id, cohesion: topic.cohesion };
+      : minuteEvidence.slice(0, 4));
+    return { topic: topicLabel, points, evidenceIds: topic.evidenceIds, topicId: topic.id, cohesion: topic.cohesion };
   }).filter((item) => item.topic && item.topic !== 'Substantive discussion' && item.points.length);
   if (longTranscript) {
     const riskCards = discussion.filter((card) => card.evidenceIds.some((id) => {
@@ -625,7 +683,7 @@ function contentStage(evidence, state, profile) {
       ].slice(0, 17);
     }
   }
-  discussion = applyConfirmedTopicAgenda(discussion, state);
+  discussion = refreshDistinctiveConfirmedDiscussion(applyConfirmedTopicAgenda(discussion, state), state, evidence);
   // Keep explicit, deterministic speech-act extraction as the precision anchor.
   // MiniLM extends it for conversational variants, but may not independently
   // promote an informational sentence into a decision or risk.

@@ -571,7 +571,7 @@ function neutraliseReportedDiscussion(value) {
 }
 
 const RAW_TRANSCRIPT_DISCUSSION_PATTERNS = [
-  /^(?:well|yeah|yes|no|okay|ok|right|so|anyway|basically|actually|and then|and that|but)\b/i,
+  /^(?:well|yeah|yes|no|okay|ok|right|so|anyway|basically|actually|and then|and that|but|that['’]s)\b/i,
   /^(?:one of the things|the other thing|what I was|what we were|what was)\b/i,
   /\b(?:you know|I mean|sort of|kind of|as I say|like I said)\b/i,
   /\b(?:what you were,?\s+what was|\b\w+\s+it,?\s+but\s+\w+\s+it)\b/i

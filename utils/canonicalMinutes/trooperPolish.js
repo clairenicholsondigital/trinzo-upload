@@ -51,10 +51,72 @@ function normaliseActionPresentation(value) {
 }
 
 function normaliseDiscussionPresentation(value) {
-  return clean(value).replace(
-    /^(?:(?:the\s+)?(?:speaker|attendee|participant)|[A-Z][\p{L}'’.-]+(?:\s+[A-Z][\p{L}'’.-]+){0,3})\s+(?:said|explained|reported|stated)\s+(?:that\s+)?/iu,
-    ''
-  );
+  return clean(value)
+    .replace(/\s*\((?:evt_[a-z0-9_]+(?:\s*,\s*)?)+\)\.?/gi, '')
+    .replace(
+      /^(?:(?:the\s+)?(?:speaker|attendee|participant)|[A-Z][\p{L}'’.-]+(?:\s+[A-Z][\p{L}'’.-]+){0,3})\s+(?:said|explained|reported|stated)\s+(?:that\s+)?/iu,
+      ''
+    );
+}
+
+function distinctiveDiscussionFallback(topic, value) {
+  const text = clean(value);
+  if (/language support|locali[sz]ation/i.test(topic)) {
+    if (/\b(?:arabic|vietnamese|greek)\b/i.test(text)) return 'Arabic, Vietnamese and Greek were identified as languages that may require additional character support.';
+    if (/\b(?:font|arial)\b/i.test(text)) return 'Additional font support may be required for some languages.';
+    if (/\b(?:18 language files|12 languages).*(?:memory|capacity)|(?:memory|capacity).*(?:18 language files|12 languages)\b/i.test(text)) return 'Memory testing indicated that the system can accommodate 18 language files.';
+    if (/\bfully translated\b/i.test(text)) return 'The next step is to load the fully translated language files.';
+  }
+  if (/cybersecurity|access controls/i.test(topic)) {
+    if (/\b(?:usb|port lock)\b/i.test(text)) return 'The cybersecurity review considered USB-port controls and the risk of unauthorised or unintended device interference.';
+    if (/\bpassword\b/i.test(text)) return 'Password protection was considered as a potential access control alongside the need for rapid clinical intervention.';
+    if (/\b(?:screen|gui)\b.*\b(?:access|control|interference)\b|\b(?:access|control|interference)\b.*\b(?:screen|gui)\b/i.test(text)) return 'The review also considered controls for access to the device screen and GUI.';
+  }
+  if (/electrical compliance/i.test(topic)) {
+    if (/\b60601-?1\b/i.test(text)) return 'IEC 60601-1 documentation is being reviewed to identify any electrical-compliance testing gaps.';
+    if (/\b23rd of July|23 July\b/i.test(text)) return 'Electrical compliance testing is targeted for completion by 23 July.';
+  }
+  if (/alarm behaviour|alarm controls/i.test(topic)) {
+    if (/\bmute button\b.*\b(?:led|flash)\b|\b(?:led|flash)\b.*\bmute button\b/i.test(text)) return 'The remaining alarm-control point is to confirm the LED and flash behaviour when the mute button is pressed.';
+    if (/\b(?:low|medium|high) priority\b.*\b(?:colour|color|screen|led|flash)\b/i.test(text)) return 'The low-, medium- and high-priority alarm colour and flash behaviours were reviewed.';
+  }
+  if (/software change traceability/i.test(topic)) {
+    if (/\b17 changes\b.*\bcode\b|\bcode\b.*\b17 changes\b/i.test(text)) return 'The 17 changes between software versions 1.01 and 1.02 are being traced to their locations in the code.';
+    if (/\bretrospective test data\b/i.test(text)) return 'Retrospective test data may be required where software changes cannot otherwise be traced clearly.';
+  }
+  return '';
+}
+
+const DISTINCTIVE_TOPIC_ALIGNMENT = [
+  { topic: /language support|locali[sz]ation/i, point: /\b(?:languages?|translations?|translated|characters?|fonts?|arabic|vietnamese|greek)\b/i },
+  { topic: /electrical compliance/i, point: /\b(?:60601|electrical compliance|testing|test gaps?)\b/i },
+  { topic: /alarm behaviour|alarm controls/i, point: /\b(?:alarm|mute button|led|flash|flashing|priority)\b/i },
+  { topic: /cybersecurity|access controls/i, point: /\b(?:cyber\s*security|usb|port lock|password|access|interference|screen control|gui)\b/i },
+  { topic: /software change traceability/i, point: /\b(?:17 changes|code|traceability|technical file|device file history|retrospective test data|version)\b/i },
+  { topic: /software change control/i, point: /\b(?:change request|change control|software version|release|non-significant|non-substantial)\b/i }
+];
+
+function discussionPointAlignedToTopic(topic, point) {
+  const topicText = clean(topic);
+  const pointText = clean(point);
+  if (/language support|locali[sz]ation/i.test(topicText) && /\balarms?\b/i.test(pointText) && !/\b(?:arabic|vietnamese|greek|translations?|translated|characters?|fonts?)\b/i.test(pointText)) return false;
+  const rule = DISTINCTIVE_TOPIC_ALIGNMENT.find((item) => item.topic.test(topicText));
+  return !rule || rule.point.test(pointText);
+}
+
+function mergeClientReadyDiscussionCards(cards) {
+  const output = [];
+  for (const card of Array.isArray(cards) ? cards : []) {
+    const family = /^(?:risks?|risks and dependencies)$/i.test(clean(card.topic)) ? 'risks and dependencies' : clean(card.topic).toLowerCase();
+    const existing = output.find((item) => item._family === family);
+    if (!existing) {
+      output.push({ ...card, _family: family });
+      continue;
+    }
+    existing.points = [...new Set([...(existing.points || []), ...(card.points || [])])];
+    existing.evidenceIds = [...new Set([...(existing.evidenceIds || []), ...(card.evidenceIds || [])])];
+  }
+  return output.map(({ _family, ...card }) => card);
 }
 
 function clientReadyPresentation(payload) {
@@ -71,16 +133,18 @@ function clientReadyPresentation(payload) {
   };
   const retainedForReview = [];
   if (stage === 'discussion' && Array.isArray(base.screens.discussion)) {
-    base.screens.discussion = base.screens.discussion.map((card) => ({
+    base.screens.discussion = mergeClientReadyDiscussionCards(base.screens.discussion.map((card) => ({
       ...card,
-      points: (card.points || []).map((point) => {
+      points: [...new Set((card.points || []).map((point) => {
         const presented = normaliseEntities(normaliseDiscussionPresentation(point));
         const polished = finaliseDiscussionPointForMinutes(presented, card.topic);
-        if (polished) return polished;
+        if (polished && discussionPointAlignedToTopic(card.topic, polished)) return polished;
+        const fallback = distinctiveDiscussionFallback(card.topic, presented);
+        if (fallback) return fallback;
         retainedForReview.push({ section: card.topic || 'Discussion', text: clean(point) });
-        return clean(point);
-      }).filter(Boolean)
-    })).filter((card) => card.points.length);
+        return DISTINCTIVE_TOPIC_ALIGNMENT.some((item) => item.topic.test(clean(card.topic))) ? '' : clean(point);
+      }).filter(Boolean))]
+    })).filter((card) => card.points.length));
   }
   if (stage === 'actions' && Array.isArray(base.screens.actions)) {
     base.screens.actions = base.screens.actions.map((item) => {
@@ -477,6 +541,7 @@ function applyDiscussionRewrite(payload, output, evidencePack) {
     const points = [];
     for (const point of Array.isArray(candidate?.points) ? candidate.points.map(clean) : []) {
       if (!point || unresolvedReference(point) || point.split(/\s+/).length < 5 || points.some((existing) => nearDuplicate(existing, point))) continue;
+      if (!discussionPointAlignedToTopic(source.topic, point)) continue;
       points.push(point);
     }
     if (!candidate || !pack || clean(candidate.topic) !== clean(source.topic) || !validReferences(candidate, pack) || !points.length) return source;

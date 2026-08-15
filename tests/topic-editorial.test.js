@@ -21,6 +21,17 @@ test('editorial labels convert conversational representatives into reusable busi
   assert.equal(editorialTopicLabel(arbitrary.topic, arbitrary.evidence), 'Orchard irrigation pressure during the dry season');
 });
 
+test('editorial labels prefer specific technical workstreams over generic timing labels', () => {
+  const cyber = topicFor('The cyber security review covered the USB port lock and password controls.');
+  assert.equal(editorialTopicLabel(cyber.topic, cyber.evidence), 'Cybersecurity and access controls');
+
+  const languages = topicFor('Arabic, Vietnamese and Greek may require additional language characters and font support.');
+  assert.equal(editorialTopicLabel(languages.topic, languages.evidence), 'Language support and localisation');
+
+  const traceability = topicFor('The 17 changes between software versions need traceability to their location within the code.');
+  assert.equal(editorialTopicLabel(traceability.topic, traceability.evidence), 'Software change traceability');
+});
+
 test('editorial topics consolidate duplicate generic concepts without losing evidence', () => {
   const evidence = prepareEvidence([
     'Amina Khan  00:01', 'The software change is ready for review.',

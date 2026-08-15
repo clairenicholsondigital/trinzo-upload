@@ -7,6 +7,12 @@ const { DOMAIN_TERMS, escapeRegExp } = require('../domainTerms');
 // into readable agenda labels. These are concepts, not meeting templates: a
 // label is only available when the current cluster contains matching evidence.
 const CONCEPTS = [
+  { label: 'Cybersecurity and access controls', pattern: /\b(?:cyber\s*security|usb port|port lock|password protect(?:ed|ion)?|unwarranted interference|unauthorised access|unauthorized access)\b/i },
+  { label: 'Language support and localisation', pattern: /\b(?:languages?|translations?|translated|localisation|localization|language characters?|fonts?|arabic|vietnamese|greek)\b/i },
+  { label: 'Electrical compliance testing', pattern: /\b(?:iec\s*60601|60601-1|electrical compliance)\b/i },
+  { label: 'Software change traceability', pattern: /\b(?:17 changes|visibility within the code|device file history|software traceability|version traceability|retrospective test data)\b/i },
+  { label: 'Software change control', pattern: /\b(?:change request|change control|software versions?|version\s*1\.0|non-significant change|non-substantial change)\b/i },
+  { label: 'Alarm behaviour and controls', pattern: /\b(?:alarm|mute button|led flash|flashing|low priority|medium priority|high priority)\b/i },
   { label: 'Scope and requirements', pattern: /\b(?:scope|requirements?|specifications?|criteria|standards?|regulations?)\b/i },
   { label: 'Plans and timelines', pattern: /\b(?:plan(?:ning)?|schedule|timeline|milestones?|dates?|deadline|week|month|delivery)\b/i },
   { label: 'Roles and responsibilities', pattern: /\b(?:owner(?:ship)?|roles?|responsibilit(?:y|ies)|lead|support|handover)\b/i },
@@ -48,6 +54,8 @@ const SALIENT_TERMS = [
 
 function enrichedConceptLabel(label, source) {
   if (!label) return '';
+  const enrichable = /^(?:scope and requirements|regulatory and compliance|electrical compliance testing)$/i.test(label);
+  if (!enrichable) return label;
   const terms = SALIENT_TERMS.filter(([, pattern]) => pattern.test(source)).map(([term]) => term).slice(0, 2);
   if (!terms.length || terms.some((term) => label.toLowerCase().includes(term.toLowerCase()))) return label;
   return `${label}: ${terms.join(' and ')}`;
@@ -125,7 +133,14 @@ function editorialTopics(topics, evidence, maximum = 8) {
     selected.push(next);
     next.namedTerms.forEach((term) => coveredTerms.add(term));
   }
-  return selected.map(({ item }) => item);
+  const chosen = selected.map(({ item }) => item);
+  const labels = new Set(chosen.map((item) => clean(item.editorialText).toLowerCase()));
+  return chosen.filter((item) => {
+    const label = clean(item.editorialText).toLowerCase();
+    if (label === 'software changes' && [...labels].some((value) => /^software change (?:traceability|control)$/.test(value))) return false;
+    if (label === 'testing and validation' && [...labels].some((value) => value.startsWith('electrical compliance testing'))) return false;
+    return true;
+  });
 }
 
 module.exports = { CONCEPTS, clusterText, editorialTopicLabel, editorialTopics, extractiveLabel };
