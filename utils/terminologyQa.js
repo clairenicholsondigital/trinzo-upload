@@ -4,6 +4,7 @@ const crypto = require('node:crypto');
 // Domain terminology lives in one shared dictionary so every staged surface
 // recognises the same terms and corrections.
 const { DOMAIN_TERMS: GLOBAL_TERMS, AUTO_CORRECTIONS } = require('./domainTerms');
+const { findAttendeeTextCorrections } = require('./entityNormalization');
 
 function clean(value) { return String(value || '').replace(/\s+/g, ' ').trim(); }
 function key(value) { return clean(value).toLowerCase(); }
@@ -65,7 +66,7 @@ function termSuggestions(field, terms, learned, scope) {
     const original = clean(mapping.originalText);
     if (original && key(original) !== key(mapping.suggestedText) && text.toLowerCase().includes(original.toLowerCase())) {
       const matched = text.match(new RegExp(original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'))?.[0] || original;
-      candidates.push(suggestion(field, matched, mapping.suggestedText, 'Previously accepted correction', 0.995, scope));
+      candidates.push(suggestion(field, matched, mapping.suggestedText, 'Previously accepted correction', 0.995, scope, { autoApply: true }));
     }
   }
   for (const token of tokens) {
@@ -86,6 +87,19 @@ function termSuggestions(field, terms, learned, scope) {
   return candidates;
 }
 
+function attendeeTextSuggestions(field, attendees, scope) {
+  if (field.entityType === 'attendee') return [];
+  return findAttendeeTextCorrections(field.text, attendees).map((item) => suggestion(
+    field,
+    item.original,
+    item.replacement,
+    `Close match to confirmed attendee ${item.attendee}`,
+    item.confidence,
+    scope,
+    { autoApply: true }
+  ));
+}
+
 function attendeeSuggestion(field, attendees, scope) {
   const original = clean(field.text);
   if (!original || /^(?:not stated|all)$/i.test(original) || attendees.some((name) => key(name) === key(original))) return null;
@@ -104,6 +118,7 @@ function reviewGeneratedContent({ stage, content, attendees = [], controlledTerm
   const found = [];
   for (const field of generatedFields(stage, content)) {
     found.push(...termSuggestions(field, terms, learned, resolvedScope));
+    found.push(...attendeeTextSuggestions(field, attendees.map(clean).filter(Boolean), resolvedScope));
     if (field.entityType === 'attendee') {
       const entity = attendeeSuggestion(field, attendees.map(clean).filter(Boolean), resolvedScope);
       if (entity) found.push(entity);

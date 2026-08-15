@@ -107,7 +107,8 @@ function actionShape(event, evidence) {
     { re: /^(.+? document) is absent\b.*$/i, owner: () => 'Not stated', action: (match) => `Draft ${match[1]}` },
     { re: /^(.+?)\s+follow-up feedback is still pending[.!]?$/i, owner: () => 'Not stated', action: (match) => `Follow up ${match[1]} feedback` },
     { re: /^(?:yeah|yes|yep|agreed)[,;]?\s+(?:and\s+)?([a-z][a-z-]+ing\s+.+?)(?:,\s+and\s+I['’]ll\b|$)/i, owner: () => event.speaker, action: (match) => match[1] },
-    { re: /\bI\s*(?:['’]ll|will|shall|can|need to|am going to)\s+(.+)/i, owner: () => event.speaker, action: (match) => match[1] },
+    { re: /\bI\s*(?:['’]ll|will|shall|can|need to|must|have to|am going to)\s+(.+)/i, owner: () => event.speaker, action: (match) => match[1] },
+    { re: /\bI(?:['’]ve| have)\s+got to\s+(.+)/i, owner: () => event.speaker, action: (match) => match[1] },
     { re: /(?:^|[.!?]\s+)([A-Z][A-Za-z'’.-]+),\s*(?:can|could|will|would)\s+you\s+(.+)/i, owner: (match) => participantByFirstName(match[1], evidence.participants), action: (match) => match[2] },
     { re: /(?:^|[.!?]\s+)([A-Z][A-Za-z'’.-]+),\s*please\s+(.+)/i, owner: (match) => participantByFirstName(match[1], evidence.participants), action: (match) => match[2] },
     { re: /(?:^|[.;]\s*|\bactions?[:,.]?\s*)([A-Z][A-Za-z'’.-]+)\s+to\s+(.+)/i, owner: (match) => participantByFirstName(match[1], evidence.participants), action: (match) => match[2] },
@@ -245,8 +246,13 @@ function buildCommitmentThreads(evidence, profile, topology = { mode: 'standard'
   });
   for (const event of candidates) {
     const eventShape = actionShape(event, evidence);
+    const eventIndex = evidence.events.findIndex((item) => item.id === event.id);
     const existing = [...threads].reverse().find((thread) => {
       if (event.turnIndex - thread.turnEnd > 2) return false;
+      const maxEventGap = topology.mode === 'distributed_recap' ? 16 : 8;
+      const maxThreadEvents = topology.mode === 'distributed_recap' ? 12 : 6;
+      if (thread.events.length >= maxThreadEvents) return false;
+      if (Number.isInteger(thread.eventEndIndex) && eventIndex - thread.eventEndIndex > maxEventGap) return false;
       const priorShape = [...thread.events].reverse().map((item) => actionShape(item, evidence)).find(Boolean);
       if (eventShape?.owner && priorShape?.owner && eventShape.owner !== priorShape.owner && eventShape.action && !/^(?:do|handle|take)\s+(?:it|that)\b/i.test(eventShape.action)) return false;
       return thread.speakers.includes(event.speaker)
@@ -257,9 +263,10 @@ function buildCommitmentThreads(evidence, profile, topology = { mode: 'standard'
     if (existing) {
       existing.events.push(event);
       existing.turnEnd = event.turnIndex;
+      existing.eventEndIndex = eventIndex;
       if (!existing.speakers.includes(event.speaker)) existing.speakers.push(event.speaker);
     } else {
-      threads.push({ id: `thread_${String(threads.length + 1).padStart(3, '0')}`, events: [event], turnStart: event.turnIndex, turnEnd: event.turnIndex, speakers: [event.speaker], topologyMode: topology.mode });
+      threads.push({ id: `thread_${String(threads.length + 1).padStart(3, '0')}`, events: [event], turnStart: event.turnIndex, turnEnd: event.turnIndex, eventStartIndex: eventIndex, eventEndIndex: eventIndex, speakers: [event.speaker], topologyMode: topology.mode });
     }
   }
   return threads.map((thread) => ({
@@ -274,10 +281,13 @@ function semanticThreadReviewCandidate(thread, evidence, profile) {
     .sort((left, right) => right.score - left.score || left.event.turnIndex - right.event.turnIndex);
   const representative = ranked[0]?.event;
   if (!representative) return null;
+  const shaped = ranked.map(({ event }) => ({ event, shape: actionShape(event, evidence) }))
+    .find((item) => item.shape?.action && item.shape?.owner);
   const deadlineEvent = thread.events.find((event) => deadlineFrom(event.text) !== 'Not stated');
+  const action = clean(shaped?.shape?.action || representative.text).replace(/[.]+$/, '');
   return {
-    owner: 'Not stated',
-    action: clean(representative.text).replace(/[.]+$/, ''),
+    owner: clean(shaped?.shape?.owner) || 'Not stated',
+    action,
     deadline: deadlineEvent ? deadlineFrom(deadlineEvent.text) : 'Not stated',
     evidenceIds: thread.evidenceIds,
     threadId: thread.id,
@@ -378,8 +388,9 @@ function publishableTopicRepresentative(text) {
   return true;
 }
 
-function minutesPoint(text) {
+function minutesPoint(text, speaker = '') {
   let value = clean(text).replace(/[.]+$/, '');
+  const subject = clean(speaker) && !/^(?:not stated|unknown|speaker|client|trinzo)$/i.test(clean(speaker)) ? clean(speaker) : 'The participant';
   value = value
     .replace(/^(?:and\s+)?then[,;:\s]+/i, '')
     .replace(/^I\s+(?:think|believe|guess|suppose)\s+(?:that\s+)?/i, '')
@@ -388,22 +399,22 @@ function minutesPoint(text) {
     .replace(/^(?:yeah|yes|okay|right|so|well)[,;:\s]+/i, '');
   if (/^I\s*(?:['’]ll|will|can)\b|\byou know\b|\b(?:no project update today|do not have a project update today|can everyone hear me|red light|share my screen)\b|^(?:and|but|or|yes|yeah|okay|right)[.!?]?$/i.test(value)) return '';
   value = value
-    .replace(/\bI['’]ll\b/gi, 'the speaker will')
-    .replace(/\bI['’]m\b/gi, 'the speaker is')
+    .replace(/\bI['’]ll\b/gi, `${subject} will`)
+    .replace(/\bI['’]m\b/gi, `${subject} is`)
+    .replace(/\bI['’]ve\b/gi, `${subject} has`)
     .replace(/\bwe(?:'ve| have)\b/gi, 'the team has')
     .replace(/\bwe\b/gi, 'the team')
     .replace(/\bour\b/gi, "the team's")
-    .replace(/\bI\b/g, 'the speaker')
-    .replace(/\bmy\b/gi, "the speaker's");
+    .replace(/\bI\b/g, subject)
+    .replace(/\bmy\b/gi, `${subject}'s`);
+  const escapedSubject = subject.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   value = value
-    .replace(/\bthe speaker['’]ve\b/gi, 'the speaker has')
-    .replace(/\bthe speaker (?:don['’]?t|do not)\b/gi, 'the speaker does not')
-    .replace(/\bthe speaker (?:haven['’]?t|have not)\b/gi, 'the speaker has not')
-    .replace(/\bthe speaker think\b/gi, 'the speaker thinks')
-    .replace(/\bthe speaker know\b/gi, 'the speaker knows')
-    .replace(/\bthe speaker need\b/gi, 'the speaker needs')
-    .replace(/\bthe speaker do\b/gi, 'the speaker does')
-    .replace(/\bthe speaker the speaker\b/gi, 'the speaker')
+    .replace(new RegExp(`\\b${escapedSubject} (?:don['’]?t|do not)\\b`, 'gi'), `${subject} does not`)
+    .replace(new RegExp(`\\b${escapedSubject} (?:haven['’]?t|have not)\\b`, 'gi'), `${subject} has not`)
+    .replace(new RegExp(`\\b${escapedSubject} think\\b`, 'gi'), `${subject} thinks`)
+    .replace(new RegExp(`\\b${escapedSubject} know\\b`, 'gi'), `${subject} knows`)
+    .replace(new RegExp(`\\b${escapedSubject} need\\b`, 'gi'), `${subject} needs`)
+    .replace(new RegExp(`\\b${escapedSubject} do\\b`, 'gi'), `${subject} does`)
     .replace(/\bhow it how\b/gi, 'how')
     .replace(/\bkind of\b/gi, '')
     .replace(/\bsort of\b/gi, '')
@@ -586,8 +597,7 @@ function contentStage(evidence, state, profile) {
   let discussion = topicCandidates.slice(0, discussionLimit).map(({ topic }) => {
     const source = topic.evidenceIds.map((id) => byId.get(id)).filter(Boolean).filter((event) => !isSupersededBackground(event, evidence) && (score(profile, event, 'administrative') < 0.55 || /\b(?:offsite|absent|unavailable|miss)\b.*\b(?:meeting|check-in|call|session)\b|\b(?:meeting|check-in|call|session)\b.*\b(?:offsite|absent|unavailable|miss)\b/i.test(event.text)));
     const minuteEvidence = source.map((event) => {
-      let text = minutesPoint(event.text);
-      if (text && /\b(?:offsite|absent|unavailable|miss)\b/i.test(event.text)) text = text.replace(/\bThe speaker\b/g, event.speaker).replace(/\bthe speaker\b/g, event.speaker);
+      let text = minutesPoint(event.text, event.speaker);
       return { text, evidenceIds: [event.id] };
     }).filter((item) => item.text);
     const points = longTranscript
@@ -625,7 +635,7 @@ function contentStage(evidence, state, profile) {
   for (const decision of deterministic.decisions) {
     const decisionIndex = evidence.events.findIndex((event) => (decision.evidenceIds || []).includes(event.id));
     const prior = decisionIndex > 0 ? evidence.events[decisionIndex - 1] : null;
-    const point = prior && !isSupersededBackground(prior, evidence) ? minutesPoint(prior.text) : '';
+    const point = prior && !isSupersededBackground(prior, evidence) ? minutesPoint(prior.text, prior.speaker) : '';
     if (point && !discussion.some((card) => (card.evidenceIds || []).includes(prior.id))) {
       discussion.push({ topic: titleFromRepresentative(prior.text), points: [{ text: point, evidenceIds: [prior.id] }], evidenceIds: [prior.id], topicId: `decision_context_${prior.id}`, cohesion: 1 });
     }
@@ -655,7 +665,7 @@ function contentStage(evidence, state, profile) {
     }
     const riskSignal = trainedProbability(profile, event, 'signalProbabilities', 'risk_language');
     if (event.roles.includes('risk_candidate') && independentlyCanonical(profile, event) && !event.roles.includes('hypothetical') && ((evidenceRank[0]?.[0] === 'risk_dependency' && evidenceRank[0][1] >= 0.22) || riskSignal >= 0.72)) {
-      const text = minutesPoint(event.text);
+      const text = minutesPoint(event.text, event.speaker);
       if (text) risks.push({ text, evidenceIds: [event.id], semanticConfidence: score(profile, event, 'risk') });
     }
   }

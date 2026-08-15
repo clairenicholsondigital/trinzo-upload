@@ -203,6 +203,9 @@ td textarea { min-height:68px; }
 }
 .stage-validation-message { flex:1 1 auto; }
 .stage-validation-add { flex:0 0 auto; white-space:nowrap; }
+.stage-validation-candidates { flex:1 1 100%; display:grid; gap:.4rem; margin-top:.35rem; }
+.stage-validation-candidate { display:flex; align-items:center; gap:.55rem; padding:.45rem .55rem; border:1px solid #eadfbf; border-radius:8px; background:#fffdf7; }
+.stage-validation-candidate > span { flex:1 1 auto; }
 .stage-validation-tag {
   flex:0 0 auto;
   font-size:.72rem;
@@ -1267,6 +1270,48 @@ td select {
           addValidationSuggestionToDiscussion(flag, addButton);
         });
         row.appendChild(addButton);
+      }
+      if (flag && (flag.type === 'action_review_candidates' || flag.type === 'action_publication_review') && Array.isArray(flag.repairCandidates) && flag.repairCandidates.length) {
+        var candidateList = document.createElement('div');
+        candidateList.className = 'stage-validation-candidates';
+        flag.repairCandidates.forEach(function (candidate) {
+          var candidateRow = document.createElement('div');
+          candidateRow.className = 'stage-validation-candidate';
+          var candidateText = document.createElement('span');
+          var dispositionLabel = {
+            needs_assignment: 'Needs owner',
+            requirement: 'Requirement',
+            completed_history: 'Completed/history',
+            review_required: 'Needs confirmation'
+          }[candidate.reviewDisposition] || 'Needs review';
+          candidateText.textContent = dispositionLabel + ': ' + String(candidate.suggestedAction || candidate.action || 'Review follow-up');
+          candidateRow.appendChild(candidateText);
+          if (candidate.reviewDisposition !== 'completed_history') {
+            var addActionButton = document.createElement('button');
+            addActionButton.type = 'button';
+            addActionButton.className = 'secondary stage-validation-add';
+            addActionButton.textContent = 'Add to actions';
+            addActionButton.addEventListener('click', function () {
+              if (!actionsTableBody) return;
+              var empty = actionsTableBody.querySelector('.empty-state');
+              if (empty) actionsTableBody.innerHTML = '';
+              actionsTableBody.insertAdjacentHTML('beforeend', renderActionRow({
+                owner: candidate.owner || 'Not stated',
+                action: candidate.suggestedAction || candidate.action || '',
+                deadline: candidate.deadline || 'Not stated'
+              }));
+              refreshActionOwnerOptions();
+              stagedState.actions = actionsFromReview();
+              addActionButton.disabled = true;
+              addActionButton.textContent = 'Added';
+              setReviewStatus('Added the review candidate to Actions. Confirm the owner, wording and deadline before continuing.', false);
+              saveDraft();
+            });
+            candidateRow.appendChild(addActionButton);
+          }
+          candidateList.appendChild(candidateRow);
+        });
+        row.appendChild(candidateList);
       }
       if (flag && flag.type === 'unresolved_substantive_workstream' && flag.resolutionKey) {
         var omitButton = document.createElement('button');

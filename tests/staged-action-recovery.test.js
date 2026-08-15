@@ -52,7 +52,9 @@ test('recovers the T761 risk action only from one grounded speaker turn', () => 
   assert.deepEqual(buildEvidenceBoundStagedActionInventory(transcript), [{
     owner: 'Rebecca Cuckoo',
     action: 'Update the risk management file to address USB port-lock controls and screen-access controls',
+    evidenceAction: '',
     deadline: 'Wednesday',
+    reviewDisposition: 'confirmed_action',
     source: 'evidence_bound_transcript_action',
     evidence: 'We are looking at one port lock for the USB on the back of the device. The screen element can also be accessed, so a control is needed on the screen. I am tidying up the risk management file sheet to share back and I am hoping to get that done for Wednesday.',
     sourceTurnIds: [0],
@@ -128,7 +130,21 @@ test('reads trailing owners from a minutes-style action table', () => {
   assert.equal(clinical.deadline, '26th June');
   assert.equal(electrical.owner, 'Andrew');
   assert.equal(electrical.deadline, '23rd July');
-  assert.equal(retrospective.owner, 'Not stated');
+  assert.equal(retrospective.owner, 'Andrew');
+});
+
+test('parses DOCX-style inline Teams speaker timestamps through the canonical parser', () => {
+  const turns = parseTranscriptTurns([
+    'Orla Skally 7:41Yeah, no problem. I’ll take a look at it.',
+    'Mark Kelleher 7:44Thank you.',
+    'Orla Skally 7:46This week.',
+    'Jacqui Fox 7:47OK, this is the QMS manual.'
+  ].join('\n'));
+
+  assert.equal(turns.length, 4);
+  assert.equal(turns[0].speaker, 'Orla Skally');
+  assert.match(turns[0].text, /take a look/i);
+  assert.equal(turns[2].speaker, 'Orla Skally');
 });
 
 test('recovers DITA follow-ups only from the real DITA evidence windows', () => {

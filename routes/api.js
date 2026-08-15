@@ -3723,7 +3723,32 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
     includeEvidencePack: ['discussion', 'actions'].includes(stage)
   });
   if (stage === 'actions') {
-    payload = addRecoveredActionCandidates(payload, buildEvidenceBoundStagedActionInventory(transcript.text));
+    const recoveredActions = buildEvidenceBoundStagedActionInventory(transcript.text);
+    payload = addRecoveredActionCandidates(payload, recoveredActions);
+    const reviewOnly = recoveredActions.filter((item) => item.reviewDisposition && item.reviewDisposition !== 'confirmed_action');
+    if (reviewOnly.length) {
+      const counts = reviewOnly.reduce((summary, item) => {
+        const key = item.reviewDisposition || 'review_required';
+        summary[key] = (summary[key] || 0) + 1;
+        return summary;
+      }, {});
+      const labels = {
+        needs_assignment: 'need an owner',
+        requirement: 'are requirements rather than agreed actions',
+        completed_history: 'look completed or historical',
+        review_required: 'need reviewer confirmation'
+      };
+      payload.validationFlags = [
+        ...(Array.isArray(payload.validationFlags) ? payload.validationFlags : []),
+        {
+          type: 'action_review_candidates',
+          severity: 'warning',
+          blocking: false,
+          message: `Kept ${reviewOnly.length} transcript-supported follow-up candidate${reviewOnly.length === 1 ? '' : 's'} out of the final Actions table because ${Object.entries(counts).map(([key, count]) => `${count} ${labels[key] || 'need review'}`).join(', ')}.`,
+          repairCandidates: reviewOnly.map((item) => ({ owner: item.owner, action: item.action, suggestedAction: item.suggestedAction, deadline: item.deadline, reviewDisposition: item.reviewDisposition, evidence: item.evidence }))
+        }
+      ];
+    }
   }
   let polished = { payload, used: false, reason: 'Trooper is not used for this stage.' };
   if (['discussion', 'actions'].includes(stage)) {
@@ -6149,7 +6174,9 @@ router.post('/copilot-chat', async (req, res) => {
 
 router.stagedEvaluation = {
   runStagedSequenceForEvaluation,
-  stagedNoEditReviewExperience
+  stagedNoEditReviewExperience,
+  canonicalStagedResponse,
+  extractStagedDetailsFromTranscript
 };
 
 module.exports = router;

@@ -4,6 +4,7 @@ const fetch = require('node-fetch');
 const { clean } = require('./evidence');
 const { deadlineFrom } = require('./stages');
 const { finaliseDiscussionPointForMinutes, normaliseFinalStagedActionCandidate } = require('../stagedEditorial');
+const { normaliseAttendeeReferences } = require('../entityNormalization');
 
 const DEFAULT_URL = 'https://eu.router.trooper.ai/v1/chat/completions';
 const DEFAULT_MODEL = 'eu_liv_000099';
@@ -15,9 +16,13 @@ function unresolvedReference(value) {
     || /\b(document|report|plan|file)\s+\1\b/i.test(text)
     || /\b(?:discuss|review|progress|handle)\s+(?:the\s+)?(?:matter|topic|issue)\b/i.test(text)
     || /\b(?:the|this)\s+(?:matter|topic|issue)\b/i.test(text)
-    || /\b(?:flick|send|share|bring|review|forward|escalate)\s+(?:the\s+)?(?:document|file|item|matter|topic|issue)(?:\s+(?:over|to)\b|[.!?]*$)/i.test(text)
+    || /\b(?:flick|send|share|bring|review|forward|escalate)\s+(?:the\s+)?(?:document|file|item|pack|matter|topic|issue)(?:\s+(?:over|to)\b|[.!?]*$)/i.test(text)
     || /\b(?:send|share|review|follow up (?:with\s+\w+\s+)?regarding|get\s+\w+\s+to\s+review)\s+(?:the\s+)?(?:relevant|required|appropriate|applicable)?\s*(?:document|file|item|matter|topic|issue)(?:\s|[.!?]*$)/i.test(text)
     || /\b(?:overview|summary|details?)\s+of\s+(?:the\s+)?(?:products?|documents?|items?|things?)\b/i.test(text)
+    || /\b(?:the\s+)?recipient\b/i.test(text)
+    || /\b(?:all|the|some|other)\s+(?:other\s+)?stuff\b|\b(?:stuff|things?)\s+that\b/i.test(text)
+    || /\b(?:ideally|might be worth|maybe|perhaps)\b/i.test(text)
+    || /\b(?:send|share|provide|flick|forward|discuss|review)\b[^.]{0,80}\b(?:to|with)\s+you\b/i.test(text)
     || /\b(?:it|that|this)\s+(?:over|through|with)\b/i.test(text)
     || /\bkind of\b|\bsort of\b|\byeah\b|\byep\b|\bunspecified\b|\[[^\]]+\]/i.test(text)
     || /\b(?:assigned|do|complete)\s+homework\b/i.test(text);
@@ -55,12 +60,21 @@ function normaliseDiscussionPresentation(value) {
 function clientReadyPresentation(payload) {
   const stage = clean(payload?.stagedStage).toLowerCase();
   const base = { ...payload, screens: { ...(payload?.screens || {}) } };
+  const participants = Array.isArray(base.canonicalDiagnostics?.entityNames)
+    ? base.canonicalDiagnostics.entityNames
+    : (Array.isArray(base.canonicalDiagnostics?.participants) ? base.canonicalDiagnostics.participants : []);
+  const entityCorrections = [];
+  const normaliseEntities = (value) => {
+    const result = normaliseAttendeeReferences(value, participants);
+    entityCorrections.push(...result.corrections);
+    return result.text;
+  };
   const retainedForReview = [];
   if (stage === 'discussion' && Array.isArray(base.screens.discussion)) {
     base.screens.discussion = base.screens.discussion.map((card) => ({
       ...card,
       points: (card.points || []).map((point) => {
-        const presented = normaliseDiscussionPresentation(point);
+        const presented = normaliseEntities(normaliseDiscussionPresentation(point));
         const polished = finaliseDiscussionPointForMinutes(presented, card.topic);
         if (polished) return polished;
         retainedForReview.push({ section: card.topic || 'Discussion', text: clean(point) });
@@ -70,22 +84,45 @@ function clientReadyPresentation(payload) {
   }
   if (stage === 'actions' && Array.isArray(base.screens.actions)) {
     base.screens.actions = base.screens.actions.map((item) => {
-      const presented = normaliseActionPresentation(item.action);
+      const presented = normaliseEntities(normaliseActionPresentation(item.action));
       const polished = normaliseFinalStagedActionCandidate({ ...item, action: presented });
-      if (polished) return { ...item, ...polished };
-      retainedForReview.push({ section: 'Actions', text: clean(item.action) });
-      return item;
-    });
+      if (polished && polished.owner !== 'Not stated') return { ...item, ...polished };
+      retainedForReview.push({
+        section: 'Actions',
+        text: clean(item.action),
+        candidate: {
+          owner: polished?.owner || item.owner || 'Not stated',
+          action: polished?.action || presented || clean(item.action),
+          deadline: polished?.deadline || item.deadline || 'Not stated',
+          reviewDisposition: 'review_required'
+        }
+      });
+      return null;
+    }).filter(Boolean);
   }
   const existingFlags = Array.isArray(base.validationFlags) ? base.validationFlags : [];
+  const actionReviewCandidates = stage === 'actions'
+    ? retainedForReview.map((item) => item.candidate).filter(Boolean)
+    : [];
   const polishFlag = retainedForReview.length ? {
-    type: 'wording_needs_review', severity: 'warning', blocking: false,
-    message: `Evidence was retained for ${retainedForReview.length} item${retainedForReview.length === 1 ? '' : 's'}, but the wording could not be safely polished automatically. Review the highlighted stage before approval.`
+    type: stage === 'actions' ? 'action_publication_review' : 'wording_needs_review', severity: 'warning', blocking: false,
+    message: stage === 'actions'
+      ? `Kept ${retainedForReview.length} action candidate${retainedForReview.length === 1 ? '' : 's'} out of the final Actions table because the owner or wording could not be validated safely.`
+      : `Evidence was retained for ${retainedForReview.length} item${retainedForReview.length === 1 ? '' : 's'}, but the wording could not be safely polished automatically. Review the highlighted stage before approval.`,
+    ...(actionReviewCandidates.length ? { repairCandidates: actionReviewCandidates } : {})
   } : {
     type: 'language_polished', severity: 'info', blocking: false,
     message: 'Evidence-backed draft: client-ready language checks completed without changing the underlying facts, owners or deadlines.'
   };
-  return { ...base, validationFlags: [...existingFlags, polishFlag], editorialStatus: retainedForReview.length ? 'wording_needs_review' : 'language_polished' };
+  const entityFlag = entityCorrections.length ? {
+    type: 'attendee_entity_normalised', severity: 'info', blocking: false,
+    message: `Corrected ${entityCorrections.length} attendee-name transcription variant${entityCorrections.length === 1 ? '' : 's'} using the confirmed participant list.`
+  } : null;
+  return {
+    ...base,
+    validationFlags: [...existingFlags, ...(entityFlag ? [entityFlag] : []), polishFlag],
+    editorialStatus: retainedForReview.length ? 'wording_needs_review' : 'language_polished'
+  };
 }
 
 function canonicalFallback(payload) {
@@ -96,6 +133,7 @@ function canonicalFallback(payload) {
       .filter((item) => item.selectionMode === 'evidence_bound_candidate')
       .map((item) => ({ owner: item.owner || 'Not stated', action: item.action, deadline: item.deadline || 'Not stated', evidenceIds: (item.evidence || []).map((evidence) => evidence.id).filter(Boolean) }));
     base.screens.actions = dedupeActions([...base.screens.actions, ...recovered]
+      .filter((item) => clean(item.owner) && clean(item.owner) !== 'Not stated')
       .filter((item) => !unresolvedReference(item.action) && !nonActionState(item.action)));
   }
   return base;
@@ -106,18 +144,22 @@ function addRecoveredActionCandidates(payload, recovered = []) {
   const pack = Array.isArray(payload._canonicalEvidencePack) ? [...payload._canonicalEvidencePack] : [];
   const signatures = new Set(pack.map((item) => `${clean(item.owner).toLowerCase()}|${clean(item.action).toLowerCase()}`));
   for (const item of Array.isArray(recovered) ? recovered : []) {
-    const action = clean(item?.action);
+    const action = clean(item?.evidenceAction || item?.action);
+    const suggestedAction = clean(item?.action);
     if (!action || nonActionState(action)) continue;
     let owner = clean(item?.owner) || 'Not stated';
     if (!/^(?:Not stated|All|[A-Z][\p{L}'’.-]+(?:[ ,/-]+[A-Z][\p{L}'’.-]+)+)$/u.test(owner)) owner = 'Not stated';
     const signature = `${owner.toLowerCase()}|${action.toLowerCase()}`;
     if (signatures.has(signature)) continue;
     const id = `recovered_${pack.length + 1}`;
+    const reviewDisposition = clean(item.reviewDisposition) || (owner === 'Not stated' ? 'needs_assignment' : 'confirmed_action');
     pack.push({
       itemIndex: pack.length,
       topic: '', owner, action,
+      suggestedAction,
       deadline: clean(item.deadline) || 'Not stated',
-      selectionMode: 'evidence_bound_candidate',
+      reviewDisposition,
+      selectionMode: reviewDisposition === 'confirmed_action' ? 'evidence_bound_candidate' : 'review_required_candidate',
       currentPoints: [],
       evidence: [{ id, speaker: owner, previous: '', current: clean(item.evidence).slice(0, 1800), next: '', contextWindow: [], labels: { evidenceType: 'action_candidate', actionState: 'possible_action', lifecycle: 'active', canonicalWorthiness: 'review_required', temporalRole: '' } }]
     });
@@ -135,7 +177,7 @@ function promptFor(stage, payload, evidencePack, options = {}) {
       discussion: [{ itemIndex: 0, topic: 'exact supplied topic', points: ['formal, self-contained minutes point'], evidenceIds: ['supplied evidence id'] }]
     };
   const instructions = stage === 'actions' ? [
-    'Review every supplied MiniLM action candidate. Return each candidate that is a real minute-worthy commitment or active outstanding deliverable; omit completed work, passive status with no remaining work, availability, hypotheticals, suggestions without assignment, and conversational noise.',
+    'Review every supplied MiniLM action candidate. Return each candidate that is a real minute-worthy commitment or active outstanding deliverable; omit completed work, passive status with no remaining work, availability, hypotheticals, suggestions without assignment, regulatory/process requirements without an accepted owner, and conversational noise.',
     'A retained action must be supported by an explicit prospective commitment, assignment, request or obligation, or by clear evidence that specific work remains active and incomplete. Do not turn a question, recommendation, possible option, process description, audit scope, travel fact or meeting discussion into a commitment.',
     'Treat work described as ongoing, in progress, being worked on or having recently started as outstanding only when the evidence also identifies concrete remaining work or a deliverable.',
     'Consolidate repeated descriptions of the same underlying commitment into one canonical record.',
@@ -146,6 +188,8 @@ function promptFor(stage, payload, evidencePack, options = {}) {
     'Preserve every supplied acronym exactly as written unless its expansion appears verbatim in the cited evidence; never guess an acronym expansion.',
     'If the concrete object cannot be established from the supplied evidence, omit the action.',
     'Do not create commitments. Preserve supplied owners and deadlines unless the cited evidence explicitly assigns a different owner. You may fill a Not stated owner or deadline only when the cited evidence explicitly assigns that owner or contains that exact deadline.',
+    'Respect reviewDisposition. completed_history, requirement and review_required candidates must not be published as final actions. A needs_assignment candidate may be published only if the cited evidence explicitly resolves the owner.',
+    'Do not introduce a named recipient or participant unless that person is explicitly present in the evidenceIds cited for that output record.',
     'A supplied item may represent a contextual commitment thread rather than finished action wording. Resolve it only from its cited evidence.',
     'If one supplied item contains multiple distinct explicit commitments in its cited evidence, you may return up to three records with the same itemIndex; each must cite the evidence for its own commitment.',
     'For each output record, preserve itemIndex and cite only evidenceIds supplied for that item.'
@@ -200,8 +244,6 @@ function citedEntries(candidate, source) {
 
 function ownerSupported(candidate, source) {
   const proposed = clean(candidate.owner);
-  const existing = clean(source.owner) || 'Not stated';
-  if (proposed.toLowerCase() === existing.toLowerCase()) return true;
   if (!proposed || proposed === 'Not stated') return false;
   const proposedOwners = proposed.split(/\s+(?:and|&)\s+/i).map(clean).filter(Boolean);
   const entries = citedEntries(candidate, source);
@@ -225,12 +267,56 @@ function ownerSupported(candidate, source) {
   });
 }
 
+const ACTION_VERB_FAMILIES = [
+  ['send', 'share', 'provide', 'flick', 'give', 'forward', 'circulate', 'distribute'],
+  ['review', 'check', 'read', 'assess', 'inspect', 'look'],
+  ['schedule', 'arrange', 'book', 'set up'],
+  ['meet', 'discuss', 'talk', 'speak'],
+  ['update', 'modify', 'add', 'include', 'revise'],
+  ['prepare', 'draft', 'create', 'develop', 'compile', 'produce'],
+  ['attend', 'join'],
+  ['run', 'perform', 'complete', 'do', 'execute'],
+  ['follow', 'contact', 'call', 'email'],
+  ['sign', 'approve', 'authorise', 'authorize'],
+  ['confirm', 'verify', 'validate'],
+  ['submit', 'upload', 'register', 'record'],
+  ['investigate', 'trace', 'identify', 'resolve', 'fix']
+];
+
+function actionVerbFamily(value) {
+  const text = clean(value).toLowerCase();
+  return ACTION_VERB_FAMILIES.find((family) => family.some((verb) => new RegExp(`\\b${verb.replace(' ', '\\s+')}\\b`, 'i').test(text))) || [];
+}
+
+function actionVerbSupported(candidate, source) {
+  const family = actionVerbFamily(candidate.action);
+  if (!family.length) return false;
+  const entries = citedEntries(candidate, source);
+  return entries.some((entry) => family.some((verb) => new RegExp(`\\b${verb.replace(' ', '\\s+')}\\b`, 'i').test(clean(entry.text))));
+}
+
 function deadlineSupported(candidate, source) {
   const proposed = clean(candidate.deadline);
-  const existing = clean(source.deadline) || 'Not stated';
-  if (proposed.toLowerCase() === existing.toLowerCase()) return true;
-  if (existing !== 'Not stated' || !proposed || proposed === 'Not stated') return false;
+  if (!proposed || proposed === 'Not stated') return false;
+  // A deadline is field-level evidence, not a property of a broad commitment
+  // thread. It must appear in evidence explicitly cited for this output record;
+  // matching a pre-filled source deadline is not sufficient.
   return citedEntries(candidate, source).some((entry) => deadlineFrom(entry.text).toLowerCase() === proposed.toLowerCase());
+}
+
+function unsupportedNamedParticipants(candidate, source) {
+  const action = clean(candidate.action);
+  if (!action) return [];
+  const allEntries = evidenceEntriesFor(source);
+  const cited = citedEntries(candidate, source);
+  const participants = [...new Set(allEntries.map((entry) => clean(entry.speaker)).filter((name) => /\s/.test(name)))];
+  return participants.filter((name) => {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (!new RegExp(`\\b${escaped}\\b`, 'i').test(action)) return false;
+    const firstName = name.split(/\s+/)[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return !cited.some((entry) => clean(entry.speaker).toLowerCase() === name.toLowerCase()
+      || new RegExp(`\\b${escaped}\\b|\\b${firstName}\\b`, 'i').test(clean(entry.text)));
+  });
 }
 
 function prospectiveEvidence(candidate, source) {
@@ -252,6 +338,9 @@ function prospectiveEvidence(candidate, source) {
   const supported = entries.some((entry) => {
     const text = clean(entry.text);
     if (/\b(?:already|previously|last (?:week|month|year)|yesterday)\b.*\b(?:sent|shared|reviewed|completed|finished|signed|approved|submitted|did)\b/i.test(text)) return false;
+    if (/\bI\s+(?:do\s+)?have\s+(?:a|an|the)\s+(?:call|meeting|session)\b/i.test(text) && !/\b(?:schedule|arrange|book|set up|need to|will|shall|must)\b/i.test(text)) return false;
+    if (/\b(?:might|maybe|perhaps|if you wanted|could have|worth thinking|ideally|probably)\b/i.test(text)
+        && !/\b(?:agreed|confirmed|yes[,.;]?\s+I['’]ll|leave that with me|I\s+will|I['’]ll)\b/i.test(text)) return false;
     if (/\?\s*$/.test(text) && !/\b(?:can|could|will|would)\s+you\b/i.test(text)) return false;
     if (explicit.test(text) || impersonalObligation.test(text) || deliverableObligation.test(text) || qualifiedCommitment.test(text) || outstandingWork.test(text)) return true;
     const sourceEvidence = (source.evidence || []).find((item) => clean(item.id) === clean(entry.id));
@@ -304,6 +393,8 @@ function applyActionRewrite(payload, output, evidencePack) {
   }
   const actions = evidencePack.flatMap((pack, index) => {
     if (!pack) return [];
+    const reviewDisposition = pack.reviewDisposition || '';
+    const selectionMode = pack.selectionMode || '';
     const source = {
       owner: pack.owner || 'Not stated',
       action: pack.action,
@@ -315,14 +406,36 @@ function applyActionRewrite(payload, output, evidencePack) {
       if (!prospectiveEvidence(candidate, pack)) return [];
       const action = clean(candidate.action);
       if (!action || unresolvedReference(action) || nonActionState(action) || action.split(/\s+/).length < 4) return [];
-      const owner = ownerSupported(candidate, pack) ? (clean(candidate.owner) || source.owner) : source.owner;
-      const deadline = deadlineSupported(candidate, pack) ? (clean(candidate.deadline) || source.deadline) : source.deadline;
-      return [{ ...source, owner, action, deadline, evidenceIds: candidate.evidenceIds }];
+      if (!actionVerbSupported(candidate, pack)) return [];
+      if (unsupportedNamedParticipants(candidate, pack).length) return [];
+      if (['completed_history', 'requirement', 'review_required'].includes(reviewDisposition)) return [];
+      let owner = 'Not stated';
+      if (ownerSupported(candidate, pack)) owner = clean(candidate.owner) || source.owner;
+      else if (source.owner !== 'Not stated' && ownerSupported({ ...candidate, owner: source.owner }, pack)) owner = source.owner;
+      if (owner === 'Not stated') return [];
+      const proposedDeadline = clean(candidate.deadline) || source.deadline;
+      const deadline = deadlineSupported({ ...candidate, deadline: proposedDeadline }, pack) ? proposedDeadline : 'Not stated';
+      const citedIds = Array.isArray(candidate.evidenceIds) ? candidate.evidenceIds : [];
+      const ownerEvidenceIds = owner === 'Not stated' ? [] : citedEntries(candidate, pack)
+        .filter((entry) => clean(entry.speaker).split(/\s+/)[0].toLowerCase() === owner.split(/\s+/)[0].toLowerCase()
+          || new RegExp(`\\b${owner.split(/\s+/)[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(clean(entry.text)))
+        .map((entry) => entry.id);
+      const deadlineEvidenceIds = deadline === 'Not stated' ? [] : citedEntries(candidate, pack)
+        .filter((entry) => deadlineFrom(entry.text).toLowerCase() === deadline.toLowerCase())
+        .map((entry) => entry.id);
+      return [{ ...source, owner, action, deadline, evidenceIds: citedIds, provenance: { actionEvidenceIds: citedIds, ownerEvidenceIds, deadlineEvidenceIds } }];
     });
-    // Evidence-bound candidates have already passed deterministic local-window,
-    // actionability and final-output checks. The language model may improve
-    // them, but silence is not a rejection decision and must not erase them.
-    if (!proposed.length && pack.selectionMode === 'evidence_bound_candidate') return [source];
+    // Confirmed evidence-bound candidates survive a language-model omission,
+    // but review-only recovery candidates never become final actions by default.
+    // For canonical selected actions, preserve the source only when its wording
+    // is already specific enough to be safe.
+    if (!proposed.length && selectionMode === 'evidence_bound_candidate'
+        && !unresolvedReference(source.action) && !nonActionState(source.action)
+        && clean(source.action).split(/\s+/).length >= 4) return [source];
+    if (!proposed.length && selectionMode === 'canonical_selected_action'
+        && source.owner !== 'Not stated'
+        && !unresolvedReference(source.action) && !nonActionState(source.action)
+        && clean(source.action).split(/\s+/).length >= 4) return [{ ...source, deadline: 'Not stated' }];
     return proposed;
   });
   const finalActions = dedupeActions(actions);
@@ -358,9 +471,30 @@ function applyDiscussionRewrite(payload, output, evidencePack) {
   return { ...payload, screens: { ...payload.screens, discussion } };
 }
 
+function normaliseEvidencePackEntities(evidencePack, participants) {
+  return (Array.isArray(evidencePack) ? evidencePack : []).map((item) => ({
+    ...item,
+    action: normaliseAttendeeReferences(item.action, participants).text,
+    currentPoints: (item.currentPoints || []).map((point) => normaliseAttendeeReferences(point, participants).text),
+    evidence: (item.evidence || []).map((entry) => ({
+      ...entry,
+      previous: normaliseAttendeeReferences(entry.previous, participants).text,
+      current: normaliseAttendeeReferences(entry.current, participants).text,
+      next: normaliseAttendeeReferences(entry.next, participants).text,
+      contextWindow: (entry.contextWindow || []).map((context) => ({
+        ...context,
+        text: normaliseAttendeeReferences(context.text, participants).text
+      }))
+    }))
+  }));
+}
+
 async function polishCanonicalStage(payload, options = {}) {
   const stage = clean(payload?.stagedStage).toLowerCase();
-  const evidencePack = Array.isArray(payload?._canonicalEvidencePack) ? payload._canonicalEvidencePack : [];
+  const participants = Array.isArray(payload?.canonicalDiagnostics?.entityNames)
+    ? payload.canonicalDiagnostics.entityNames
+    : (Array.isArray(payload?.canonicalDiagnostics?.participants) ? payload.canonicalDiagnostics.participants : []);
+  const evidencePack = normaliseEvidencePackEntities(payload?._canonicalEvidencePack, participants);
   const base = { ...payload };
   delete base._canonicalEvidencePack;
   if (!['discussion', 'actions'].includes(stage) || !evidencePack.length) return { payload: base, used: false, reason: 'No bounded evidence pack.' };

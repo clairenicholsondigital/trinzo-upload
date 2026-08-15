@@ -813,7 +813,8 @@ const FINAL_ACTION_DEBRIS = [
   /^\s*(?:maybe|probably|possibly|just)\b/i,
   /\b(?:would|could)\s+(?:be\s+)?(?:nice|good|useful)\s+to\b/i,
   /\bgive\s+(?:him|her|them|[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)?)\s+the\s+opportunity\s+to\b/i,
-  /\bthe\s+opportunity\s+to\s+review\b/i
+  /\bthe\s+opportunity\s+to\s+review\b/i,
+  /\badjusting\s+overall\b/i
 ];
 const FINAL_ACTION_WEAK_OBJECT = /^(?:it|this|that|these|those|them|everything|stuff|things|outputs?|documents?|final documents?|any final documents?|the outputs?|the documents?)$/i;
 
@@ -826,6 +827,7 @@ function cleanFinalActionValue(value) {
 
 function normaliseFinalActionOwner(owner) {
   const cleaned = cleanFinalActionValue(owner) || 'Not stated';
+  if (/^not stated$/i.test(cleaned)) return 'Not stated';
   if (/^(?:we|us|our team|the team|everyone)$/i.test(cleaned)) return 'All';
   return cleaned;
 }
@@ -917,7 +919,8 @@ function normaliseFinalStagedActionCandidate(candidate = {}) {
     candidate.owner || candidate.meetingActionPointOwner || 'Not stated',
     candidate.evidence || candidate.sourceText || candidate.contextText || ''
   );
-  const deadline = cleanFinalActionValue(candidate.deadline || candidate.meetingActionPointDeadline || 'Not stated') || 'Not stated';
+  const rawDeadline = cleanFinalActionValue(candidate.deadline || candidate.meetingActionPointDeadline || 'Not stated') || 'Not stated';
+  const deadline = /^not stated$/i.test(rawDeadline) ? 'Not stated' : rawDeadline;
   const evidence = cleanFinalActionValue(candidate.evidence || candidate.sourceText || candidate.contextText || '');
   if (/^review\s+(?:the\s+)?USB port cybersecurity controls\.?$/i.test(rewritten.action) && !evidence) return null;
   const issue = stagedFinalActionQualityIssue({

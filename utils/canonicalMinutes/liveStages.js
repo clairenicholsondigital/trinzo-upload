@@ -6,6 +6,7 @@ const { createCanonicalState, acceptProposal } = require('./state');
 const semanticStages = require('./semanticStages');
 const { assessEvidenceTopology } = require('./topology');
 const { groundProposal } = require('./grounding');
+const { extractMentionedPeople } = require('../entityNormalization');
 
 function strings(values) {
   return (Array.isArray(values) ? values : []).map((value) => clean(value)).filter(Boolean);
@@ -217,6 +218,8 @@ function runCanonicalLiveStage(transcriptText, options = {}) {
       },
       evidenceEventCount: evidence.events.length,
       participantCount: evidence.participants.length,
+      participants: evidence.participants,
+      entityNames: [...new Set([...evidence.participants, ...extractMentionedPeople(transcriptText, evidence.participants)])],
       topology: topology.mode,
       modelName: profile.modelName,
       humanConfirmedInputIsAuthoritative: true

@@ -1,5 +1,7 @@
 'use strict';
 
+const { prepareEvidence } = require('./canonicalMinutes/evidence');
+
 const ACTION_CUE = /\b(?:action(?:s)?|will|i['’]?ll|we['’]?ll|can you|could you|please|need(?:s)? to|must|going to|hoping|follow[- ]?up|sign off|approve|review|complete|update|share|send|confirm|trace|generate|schedule|set up|add in)\b/i;
 const FIRST_PERSON_COMMITMENT = /\b(?:i['’]?ll|i will|i can (?:review|send|share|update|complete|confirm|prepare|add)|i could (?:review|check|have a look)|i need to|i['’]?m going to|i was going to|i was in the middle of|i['’]?m (?:in the middle of|working on|hoping)|i am (?:in the middle of|working on|hoping|tidying|updating|reviewing|preparing|completing|sharing|sending|adding)|i go away|i['’]?ve sent|i sent)\b/i;
 const PERSON_NAME = "[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:\\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){0,2}";
@@ -17,31 +19,23 @@ function speakerFromHeader(line) {
 }
 
 function parseTranscriptTurns(transcriptText) {
-  const turns = [];
-  let current = null;
-
-  function flush() {
-    if (!current) return;
-    const segments = current.lines.map(cleanLine).filter(Boolean);
-    const text = cleanLine(segments.join(' '));
-    if (text) turns.push({ turnIndex: turns.length, speaker: current.speaker || 'Not stated', text, segments });
-    current = null;
-  }
-
-  for (const rawLine of String(transcriptText || '').split(/\r?\n/)) {
-    const line = cleanLine(rawLine);
-    if (!line) continue;
-    const speaker = speakerFromHeader(line);
-    if (speaker) {
-      flush();
-      current = { speaker, lines: [] };
-      continue;
-    }
-    if (!current) current = { speaker: 'Not stated', lines: [] };
-    current.lines.push(line);
-  }
-  flush();
-  return turns;
+  // Recovery must use the same parser as the canonical pipeline. DOCX extraction
+  // can place a Teams speaker, timestamp and the first words of speech on one
+  // physical line (for example "Orla Skally 7:41Yeah, no problem"). The old
+  // recovery-only parser expected a standalone header line and therefore
+  // collapsed a whole live transcript into one ownerless turn.
+  const evidence = prepareEvidence(transcriptText);
+  return (evidence.turns || []).map((turn, index) => {
+    const text = cleanLine(turn.text);
+    const segments = text.split(/(?<=[.!?])\s+(?=[A-Z0-9])/).map(cleanLine).filter(Boolean);
+    return {
+      turnIndex: Number.isInteger(turn.index) ? turn.index : index,
+      speaker: cleanLine(turn.speaker) || 'Not stated',
+      text,
+      segments: segments.length ? segments : [text],
+      ...(turn.structuredSource ? { structuredSource: turn.structuredSource } : {})
+    };
+  }).filter((turn) => turn.text);
 }
 
 const COMPLETE_DEADLINE = /\b(?:today|tomorrow|before arrival|before [A-Z][a-z]+ arrives|before (?:the )?(?:audit|site visit|next review|client call|meeting)|next\s+(?:monday|tuesday|wednesday|thursday|friday|week|meeting)|this\s+week|(?:by\s+)?(?:the\s+)?end\s+of\s+(?:this|next)\s+week|w\/e\s+\d{1,2}(?:st|nd|rd|th)?\s+[A-Z][a-z]+|(?:by\s+)?(?:the\s+)?end\s+of\s+[A-Z][a-z]+|monday|tuesday|wednesday|thursday|friday|\d{1,2}(?:st|nd|rd|th)(?:\s+of)?\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)|\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December))\b/i;
@@ -144,6 +138,9 @@ function evidenceCandidateScore(candidate) {
   if (candidate.deadline !== 'Not stated') score += 3;
   if (FIRST_PERSON_COMMITMENT.test(candidate.evidence)) score += 4;
   if (/\b(?:need(?:s)? to|must|will|i['’]?ll|can you|could you|please|action(?:s)?|hoping)\b/i.test(candidate.evidence)) score += 3;
+  const canonical = cleanLine(candidate.action).toLowerCase().replace(/[^a-z0-9 ]+/g, ' ');
+  const evidence = cleanLine(candidate.evidence).toLowerCase().replace(/[^a-z0-9 ]+/g, ' ');
+  if (canonical && evidence.includes(canonical)) score += 8;
   if (/\?\s*$/.test(candidate.evidence)) score -= 3;
   return score;
 }
@@ -171,13 +168,45 @@ function deadlineFromTurnGroup(turns, rule) {
   return 'Not stated';
 }
 
+function candidateDisposition(evidence, owner) {
+  const text = cleanLine(evidence);
+  const completed = /\b(?:already|previously|last\s+(?:week|month|year)|yesterday)\b[^.]{0,120}\b(?:sent|shared|reviewed|completed|finished|closed|followed up|did follow up)\b|\b(?:did|had)\s+follow(?:ed)?\s+up\b/i.test(text);
+  const tentative = /\b(?:might|may|perhaps|maybe|if you wanted|if required|could have a look)\b/i.test(text);
+  const explicitOwnerCommitment = owner !== 'Not stated' && /\bI\s*(?:['’]ll|will|shall|can|need to|must|have to|am going to)|\bI(?:['’]ve| have)\s+got to\b|\bI(?:['’]m| am)\s+(?:working on|tidying|updating|reviewing|preparing|completing|sharing|sending|adding)\b/i.test(text);
+  const impersonalRequirement = /\b(?:needs? to|must|has to|have to|required to)\b/i.test(text) && owner === 'Not stated';
+  if (completed && !/\b(?:still|remains?|outstanding|pending|yet to)\b/i.test(text)) return 'completed_history';
+  if (tentative && !/\b(?:agreed|confirmed|yes[,.;]?\s+I['’]ll|leave that with me)\b/i.test(text)) return 'review_required';
+  if (explicitOwnerCommitment) return 'confirmed_action';
+  if (impersonalRequirement) return 'requirement';
+  return owner === 'Not stated' ? 'needs_assignment' : 'review_required';
+}
+
+function extractProspectiveAction(evidence) {
+  const text = cleanLine(evidence);
+  const patterns = [
+    /\bI\s*(?:['’]ll|will|shall|can|need to|must|have to|am going to)\s+(.+?)(?=(?:\s+[A-Z][A-Za-z'’.-]+\s+\d{1,2}:\d{2})|$)/i,
+    /\bI(?:['’]ve| have)\s+got to\s+(.+?)(?=(?:\s+[A-Z][A-Za-z'’.-]+\s+\d{1,2}:\d{2})|$)/i,
+    /\bwe\s+(?:will|need to|must|have to)\s+(.+?)(?=(?:\s+[A-Z][A-Za-z'’.-]+\s+\d{1,2}:\d{2})|$)/i
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (!match) continue;
+    const action = cleanLine(match[1]).replace(/[.]+$/, '');
+    if (action.split(/\s+/).length >= 2 && action.split(/\s+/).length <= 40) return action;
+  }
+  return '';
+}
+
 function actionCandidate(rule, evidence, owner, deadline, sourceTurnIds = []) {
   const action = cleanLine(rule.action(evidence)).replace(/[.]+$/, '');
+  const evidenceAction = extractProspectiveAction(evidence);
   if (!action) return null;
   const candidate = {
     owner,
     action,
+    evidenceAction,
     deadline,
+    reviewDisposition: candidateDisposition(evidence, owner),
     source: 'evidence_bound_transcript_action',
     evidence,
     sourceTurnIds,
@@ -303,6 +332,7 @@ function buildEvidenceBoundStagedActionInventory(transcriptText) {
         [turn.turnIndex]
       );
       if (!candidate) continue;
+      if (turn.structuredSource) candidate.score += 20;
       if (!best || candidate.score > best.score) best = candidate;
     }
     for (let start = 0; start < turns.length; start += 1) {
@@ -317,7 +347,10 @@ function buildEvidenceBoundStagedActionInventory(transcriptText) {
           deadlineFromTurnGroup(group, rule),
           group.map((turn) => turn.turnIndex)
         );
-        if (candidate) candidate.score -= ((group.length - 1) * 2) + Math.floor(evidence.length / 600);
+        if (candidate) {
+          candidate.score -= ((group.length - 1) * 2) + Math.floor(evidence.length / 600);
+          if (group.some((turn) => turn.structuredSource)) candidate.score += 20;
+        }
         if (candidate && (!best || candidate.score > best.score)) best = candidate;
       }
     }

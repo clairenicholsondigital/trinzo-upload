@@ -412,6 +412,13 @@ test('normaliseFinalStagedActionCandidate rewrites transcript-shaped opportunity
   });
 });
 
+test('normaliseFinalStagedActionCandidate canonicalises Not stated owner casing', () => {
+  assert.deepEqual(
+    normaliseFinalStagedActionCandidate({ owner: 'not stated', action: 'Review the QMS Manual', deadline: 'not stated' }),
+    { owner: 'Not stated', action: 'Review the QMS Manual', deadline: 'Not stated' }
+  );
+});
+
 test('stagedFinalActionQualityIssue rejects vague fragments while permitting an unstated owner', () => {
   assert.equal(
     stagedFinalActionQualityIssue({ owner: 'Jacqui Fox', action: 'Then review the outputs of that testing and update any final documents' }),

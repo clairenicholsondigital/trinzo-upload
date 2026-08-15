@@ -63,6 +63,26 @@ test('rejected mappings are not repeatedly surfaced in the same scope', () => {
   assert.equal(suggestions.some((item) => item.replacement === 'CAPA'), false);
 });
 
+test('attendee-name transcript variants are auto-corrected only in person-shaped contexts', () => {
+  const actionSuggestions = reviewGeneratedContent({
+    stage: 'actions',
+    content: [{ owner: 'Jacqui Fox', action: 'Schedule a weekly recurrence call with Oral to check in', deadline: 'Not stated' }],
+    attendees: ['Jacqui Fox', 'Orla Skally', 'Colm O\'Rourke'],
+    scope: { type: 'project', key: 'T819' }
+  });
+  const oral = actionSuggestions.find((item) => item.fieldPath === 'actions.0.action' && item.original === 'Oral');
+  assert.equal(oral?.replacement, 'Orla');
+  assert.equal(oral?.autoApply, true);
+
+  const medicalSuggestions = reviewGeneratedContent({
+    stage: 'discussion',
+    content: [{ topic: 'Treatment', points: ['The device may be used with oral medication.'] }],
+    attendees: ['Orla Skally'],
+    scope: { type: 'project', key: 'Clinical' }
+  });
+  assert.equal(medicalSuggestions.some((item) => item.original.toLowerCase() === 'oral' && item.replacement === 'Orla'), false);
+});
+
 test('accepted project mapping is reusable without altering source evidence', () => {
   const content = { objectives: [], executiveSummary: 'Review the Med Envoy handoff.', overallTopics: [] };
   const before = JSON.stringify(content);
@@ -72,5 +92,6 @@ test('accepted project mapping is reusable without altering source evidence', ()
     scope: { type: 'project', key: 'T819' }
   });
   assert.equal(suggestions[0].replacement, 'MedEnvoy');
+  assert.equal(suggestions[0].autoApply, true);
   assert.equal(JSON.stringify(content), before);
 });

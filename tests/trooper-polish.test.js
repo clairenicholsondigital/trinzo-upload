@@ -96,7 +96,8 @@ test('unsupported slot changes fall back without discarding a supported action',
     })
   });
   assert.deepEqual(result.payload.screens.actions[0], {
-    owner: 'Jacqui Fox', action: 'Send the QMS manual to Orla for review', deadline: 'Not stated', evidenceIds: ['evt_2']
+    owner: 'Jacqui Fox', action: 'Send the QMS manual to Orla for review', deadline: 'Not stated', evidenceIds: ['evt_2'],
+    provenance: { actionEvidenceIds: ['evt_2'], ownerEvidenceIds: ['evt_2'], deadlineEvidenceIds: [] }
   });
 });
 
@@ -130,7 +131,8 @@ test('Trooper may fill only owner and deadline slots explicitly supported by cit
     })
   });
   assert.deepEqual(result.payload.screens.actions[0], {
-    owner: 'Jacqui Fox', action: 'Send the QMS manual to Orla for review', deadline: 'Friday', evidenceIds: ['evt_2']
+    owner: 'Jacqui Fox', action: 'Send the QMS manual to Orla for review', deadline: 'Friday', evidenceIds: ['evt_2'],
+    provenance: { actionEvidenceIds: ['evt_2'], ownerEvidenceIds: ['evt_2'], deadlineEvidenceIds: ['evt_2'] }
   });
 });
 
@@ -144,6 +146,7 @@ test('missing Trooper configuration safely suppresses unresolved actions without
 test('post-Trooper checks reject availability states and repeated discussion prose', () => {
   assert.equal(nonActionState('Be out for the next couple of days'), true);
   assert.equal(nonActionState('Review the mute-button flash sequence'), false);
+  assert.equal(unresolvedReference('Send the pack to the recipient'), true);
   assert.equal(nearDuplicate(
     'The team reviewed technical-file progress, current priorities and outstanding deliverables.',
     'Technical-file progress, current priorities and outstanding deliverables were reviewed.'
@@ -159,11 +162,12 @@ test('evidence-bound recovery candidates join the Trooper pack without entering 
   assert.equal(enriched._canonicalEvidencePack[1].evidence[0].current.includes('mute-button LED'), true);
 });
 
-test('an evidence-bound candidate survives model omission and unavailable rewriting', async () => {
+test('ownerless recovery candidates stay out of final actions until ownership is resolved', async () => {
   const enriched = addRecoveredActionCandidates(actionPayload(), [{
     owner: 'Not stated',
     action: 'Review the supplier quality agreement',
     deadline: 'Not stated',
+    reviewDisposition: 'needs_assignment',
     evidence: 'The supplier quality agreement needs to be reviewed.'
   }]);
   const rewritten = await polishCanonicalStage(enriched, {
@@ -173,9 +177,59 @@ test('an evidence-bound candidate survives model omission and unavailable rewrit
       json: async () => ({ choices: [{ message: { content: JSON.stringify({ actions: [] }) } }] })
     })
   });
-  assert.ok(rewritten.payload.screens.actions.some((item) => item.action === 'Review the supplier quality agreement'));
+  assert.ok(!rewritten.payload.screens.actions.some((item) => item.action === 'Review the supplier quality agreement'));
   const fallback = await polishCanonicalStage(enriched, { apiKey: '' });
-  assert.ok(fallback.payload.screens.actions.some((item) => item.action === 'Review the supplier quality agreement'));
+  assert.ok(!fallback.payload.screens.actions.some((item) => item.action === 'Review the supplier quality agreement'));
+});
+
+test('a named recipient introduced without cited support is rejected', async () => {
+  const payload = actionPayload();
+  payload._canonicalEvidencePack[0].evidence[0] = {
+    id: 'evt_2', speaker: 'Jacqui Fox', current: 'I will send the code of conduct to Niamh today.',
+    contextWindow: [{ id: 'evt_1', speaker: 'Stuart Smith', text: 'The code of conduct is required.' }]
+  };
+  const result = await polishCanonicalStage(payload, {
+    apiKey: 'test-key',
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: JSON.stringify({ actions: [{ itemIndex: 0, owner: 'Jacqui Fox', action: 'Send the code of conduct to Stuart Smith today', deadline: 'today', evidenceIds: ['evt_2'] }] }) } }] })
+    })
+  });
+  assert.deepEqual(result.payload.screens.actions, []);
+});
+
+test('a deadline must be present in the evidence cited for that action', async () => {
+  const payload = actionPayload();
+  payload._canonicalEvidencePack[0].deadline = 'Wednesday';
+  payload._canonicalEvidencePack[0].evidence[0] = {
+    id: 'evt_2', speaker: 'Jacqui Fox', current: 'I will send the QMS manual to Orla.',
+    contextWindow: [{ id: 'evt_3', speaker: 'Other Person', text: 'A separate meeting is on Wednesday.' }]
+  };
+  const result = await polishCanonicalStage(payload, {
+    apiKey: 'test-key',
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: JSON.stringify({ actions: [{ itemIndex: 0, owner: 'Jacqui Fox', action: 'Send the QMS manual to Orla for review', deadline: 'Wednesday', evidenceIds: ['evt_2'] }] }) } }] })
+    })
+  });
+  assert.equal(result.payload.screens.actions[0].deadline, 'Not stated');
+  assert.deepEqual(result.payload.screens.actions[0].provenance.deadlineEvidenceIds, []);
+});
+
+test('final presentation withholds ownerless or invalid actions for reviewer confirmation', () => {
+  const result = clientReadyPresentation({
+    stagedStage: 'actions', validationFlags: [],
+    screens: { actions: [
+      { owner: 'Not stated', action: 'Complete Electrical compliance testing', deadline: '23rd July' },
+      { owner: 'David', action: 'IF SW change cannot be seem generate retrospective test data', deadline: 'Not stated' },
+      { owner: 'Rebecca Cuckoo', action: 'Share standards 81001-5-1 and 27427 for review', deadline: '16th June' }
+    ] }
+  });
+  assert.deepEqual(result.screens.actions, [
+    { owner: 'Rebecca Cuckoo', action: 'Share standards 81001-5-1 and 27427 for review', deadline: '16th June' }
+  ]);
+  const flag = result.validationFlags.find((item) => item.type === 'action_publication_review');
+  assert.equal(flag.repairCandidates.length, 2);
 });
 
 test('final presentation removes reporting wrappers without changing canonical facts', () => {
