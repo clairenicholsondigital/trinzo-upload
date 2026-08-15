@@ -192,6 +192,15 @@ test('reshapeStagedDiscussionCardsForHumanMinutes preserves process-heavy detail
   assert.ok(!result[0].points.some((point) => /^The discussion covered/i.test(point)));
 });
 
+test('reshapeStagedDiscussionCardsForHumanMinutes replaces transcript-shaped topic headings from their grounded points', () => {
+  const cards = reshapeStagedDiscussionCardsForHumanMinutes([
+    { topic: 'Absolutely address follow', points: ['The team reviewed importer requirements and applicable standards.'] },
+    { topic: 'Like, as the team is developing big', points: ['Arabic, Vietnamese and Greek may require additional character and font support.'] },
+    { topic: 'That might be deemed for translation by views it', points: ['The cybersecurity review considered USB access and unauthorised device interference.'] }
+  ]);
+  assert.deepEqual(cards.map((card) => card.topic), ['Scope and requirements', 'Language support and localisation', 'Cybersecurity and access controls']);
+});
+
 test('reshapeStagedDiscussionCardsForHumanMinutes normalises client-facing DITA terminology', () => {
   const result = reshapeStagedDiscussionCardsForHumanMinutes([
     {

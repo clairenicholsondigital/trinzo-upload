@@ -32,6 +32,16 @@ test('editorial labels prefer specific technical workstreams over generic timing
   assert.equal(editorialTopicLabel(traceability.topic, traceability.evidence), 'Software change traceability');
 });
 
+test('extractive topic fallback rejects transcript-shaped fragments', () => {
+  const fragments = [
+    'Absolutely address follow',
+    'Like, as the team is developing big',
+    'That might be deemed for translation by views it'
+  ];
+  for (const text of fragments) assert.equal(require('../utils/canonicalMinutes/topicEditorial').extractiveLabel(text), '', text);
+  assert.equal(require('../utils/canonicalMinutes/topicEditorial').extractiveLabel('We discussed orchard irrigation pressure during the dry season.'), 'Orchard irrigation pressure during the dry season');
+});
+
 test('editorial topics consolidate duplicate generic concepts without losing evidence', () => {
   const evidence = prepareEvidence([
     'Amina Khan  00:01', 'The software change is ready for review.',

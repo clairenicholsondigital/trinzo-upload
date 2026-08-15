@@ -644,19 +644,46 @@ function orderHumanDiscussionPoints(points, topic = '') {
     .map((item) => item.point);
 }
 
-function topicLabelForHumanMinutes(topic) {
+const DISCUSSION_TOPIC_INFERENCE = [
+  ['Cybersecurity and access controls', /\b(?:cyber\s*security|usb|port lock|password|unauthori[sz]ed|interference|gui|screen access)\b/i],
+  ['Language support and localisation', /\b(?:languages?|translations?|translated|locali[sz]ation|characters?|fonts?|arabic|vietnamese|greek)\b/i],
+  ['Electrical compliance testing', /\b(?:iec\s*60601|60601-1|electrical compliance)\b/i],
+  ['Alarm behaviour and controls', /\b(?:alarm|mute button|led|flash(?:ing)?|priority)\b/i],
+  ['Software change traceability', /\b(?:17 changes|visibility within the code|device file history|traceability|retrospective test data)\b/i],
+  ['Risks and dependencies', /\b(?:risk management|risk matrix|benefit-risk|risks?|dependencies|blockers?|mitigation)\b/i],
+  ['Regulatory and compliance', /\b(?:regulatory|compliance|mdr|mdsap|hpra|eudamed|authorised representative|authorized representative)\b/i],
+  ['Scope and requirements', /\b(?:scope|requirements?|standards?|specifications?|criteria)\b/i],
+  ['Documentation and evidence', /\b(?:documents?|documentation|technical file|reports?|records?|evidence)\b/i],
+  ['Operations and processes', /\b(?:operations?|process(?:es)?|workflow|warehouse|supplier|customer order)\b/i]
+];
+
+function discussionTopicLooksTranscriptShaped(value) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!text) return true;
+  if (/^(?:absolutely|definitely|probably|possibly|maybe|perhaps|like\b|that\b|this\b|it\b|there\b|so\b|well\b|and\b|but\b)/i.test(text)) return true;
+  if (/\b(?:I|we|you|they|he|she|it)(?:['’](?:m|ve|d|ll|re|s))?\b/i.test(text)) return true;
+  if (/\b(?:am|is|are|was|were|be|been|being|will|would|could|should|might|may|can|has|have|had|does?|did)\b/i.test(text)) return true;
+  if (/^(?:address|follow|develop(?:ing)?|deem(?:ed)?|determine(?:d)?|confirm|ensure|make|take|get|give|send|share)\b/i.test(text)) return true;
+  return false;
+}
+
+function topicLabelForHumanMinutes(topic, points = []) {
   const cleaned = sentenceCaseHumanDiscussion(topic || 'Discussion')
     .replace(/\bUDI\s+and\s+EUDAMED\s+Responsibilities\b/i, 'UDI and regulatory data')
     .replace(/\bDeclarations?\s+of\s+Conformity\b/i, 'DoCs')
     .trim();
-  return cleaned || 'Discussion';
+  if (cleaned && !discussionTopicLooksTranscriptShaped(cleaned)) return cleaned;
+  const source = (Array.isArray(points) ? points : []).join(' ');
+  const inferred = DISCUSSION_TOPIC_INFERENCE.find(([, pattern]) => pattern.test(source));
+  return inferred ? inferred[0] : 'Discussion';
 }
 
 function reshapeStagedDiscussionCardsForHumanMinutes(cards, options = {}) {
   const result = [];
   for (const card of Array.isArray(cards) ? cards : []) {
     if (!card || typeof card !== 'object') continue;
-    const topic = topicLabelForHumanMinutes(card.topic);
+    const sourcePoints = Array.isArray(card.points) ? card.points : cardPoints(card);
+    const topic = topicLabelForHumanMinutes(card.topic, sourcePoints);
     const seen = new Set();
     const points = [];
     let rawTranscriptPointsRemoved = 0;

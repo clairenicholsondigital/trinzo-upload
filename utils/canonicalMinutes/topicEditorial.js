@@ -62,9 +62,21 @@ function enrichedConceptLabel(label, source) {
 }
 
 function extractiveLabel(value) {
-  let text = clean(value).replace(/[.?!]+$/, '');
+  const original = clean(value).replace(/[.?!]+$/, '');
+  let text = original;
   for (let count = 0; count < 3 && LEAD_IN.test(text); count += 1) text = text.replace(LEAD_IN, '');
-  text = text.replace(/^(?:in relation to|in terms of|on the subject of)\s+/i, '');
+  text = text
+    .replace(/^(?:(?:the\s+)?team\s+)?(?:discussed|reviewed|covered|considered|noted)\s+(?:that\s+)?/i, '')
+    .replace(/^(?:in relation to|in terms of|on the subject of|about)\s+/i, '');
+  // Never manufacture a topic heading from a sentence-shaped fragment. A
+  // free-form label is only safe when stripping the conversational lead-in
+  // leaves a noun-like phrase. Modal/auxiliary verbs, personal pronouns and
+  // rhetorical qualifiers are strong evidence that we are still looking at
+  // speech rather than a topic name.
+  if (/^(?:absolutely|definitely|probably|possibly|maybe|perhaps|likely)\b/i.test(text)) return '';
+  if (/\b(?:I|we|you|they|he|she|it)(?:['’](?:m|ve|d|ll|re|s))?\b/i.test(text)) return '';
+  if (/\b(?:am|is|are|was|were|be|been|being|will|would|could|should|might|may|can|has|have|had|does?|did)\b/i.test(text)) return '';
+  if (/^(?:address|follow|develop(?:ing)?|deem(?:ed)?|determine(?:d)?|confirm|ensure|make|take|get|give|send|share)\b/i.test(text)) return '';
   const words = text.split(/\s+/).filter(Boolean);
   const content = words.filter((word) => {
     const token = word.toLowerCase().replace(/[^a-z0-9-]/g, '');
