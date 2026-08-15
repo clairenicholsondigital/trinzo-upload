@@ -215,6 +215,7 @@ test('finaliseDiscussionPointForMinutes removes raw transcript fragments without
   assert.equal(finaliseDiscussionPointForMinutes('Priya Shah 12:41 We were going to look at that one next.', 'Delivery plan'), '');
   assert.equal(finaliseDiscussionPointForMinutes('I mean, you know, we were kind of waiting for that.', 'Delivery plan'), '');
   assert.equal(finaliseDiscussionPointForMinutes("There's one to, obviously, as you say, Rebecca, you're updating the risk at the moment, so you're considering that; Yeah", 'Risks and dependencies'), '');
+  assert.equal(finaliseDiscussionPointForMinutes("Let's hope it's not a password on the screen, because Jacqui Fox would imagine that that's another software change, isn't it?", 'Cybersecurity and access controls'), '');
 });
 
 test('finaliseDiscussionPointForMinutes rejects the leaked T761 reported-speech fragments', () => {

@@ -289,6 +289,14 @@ test('final presentation drops discussion text positively identified as raw tran
   assert.deepEqual(result.screens.discussion[0].points, ['The team confirmed the risk management file is being updated.']);
 });
 
+test('rhetorical cybersecurity remarks are neutralised rather than published as transcript prose', () => {
+  const result = clientReadyPresentation({
+    stagedStage: 'discussion', validationFlags: [],
+    screens: { discussion: [{ topic: 'Cybersecurity and access controls', points: ["Let's hope it's not a password on the screen, because Jacqui Fox would imagine that that's another software change, isn't it?"] }] }
+  });
+  assert.deepEqual(result.screens.discussion[0].points, ['Password protection was considered as a potential access control alongside the need for rapid clinical intervention.']);
+});
+
 test('final presentation removes reporting wrappers without changing canonical facts', () => {
   const discussion = clientReadyPresentation({
     stagedStage: 'discussion', validationFlags: [],
