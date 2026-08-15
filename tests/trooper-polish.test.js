@@ -281,6 +281,14 @@ test('final discussion presentation strips internal evidence ids and keeps disti
   assert.doesNotMatch(JSON.stringify(result.screens.discussion), /evt_/i);
 });
 
+test('final presentation drops discussion text positively identified as raw transcript debris', () => {
+  const result = clientReadyPresentation({
+    stagedStage: 'discussion', validationFlags: [],
+    screens: { discussion: [{ topic: 'Risks and dependencies', points: ["There's one to, obviously, as you say, Rebecca, you're updating the risk at the moment, so you're considering that; Yeah", 'The team confirmed the risk management file is being updated.'] }] }
+  });
+  assert.deepEqual(result.screens.discussion[0].points, ['The team confirmed the risk management file is being updated.']);
+});
+
 test('final presentation removes reporting wrappers without changing canonical facts', () => {
   const discussion = clientReadyPresentation({
     stagedStage: 'discussion', validationFlags: [],

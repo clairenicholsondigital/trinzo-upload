@@ -142,6 +142,7 @@ function clientReadyPresentation(payload) {
         const fallback = distinctiveDiscussionFallback(card.topic, presented);
         if (fallback) return fallback;
         retainedForReview.push({ section: card.topic || 'Discussion', text: clean(point) });
+        if (/^there['’]s one to\b/i.test(presented)) return '';
         return DISTINCTIVE_TOPIC_ALIGNMENT.some((item) => item.topic.test(clean(card.topic))) ? '' : clean(point);
       }).filter(Boolean))]
     })).filter((card) => card.points.length));
