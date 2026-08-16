@@ -526,6 +526,26 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("pollStageJobUntilDone", page)
         self.assertNotIn("window.location.href = payload.jobsUrl", page)
 
+    def test_reviewer_confirmed_purpose_and_key_facts_are_threaded_downstream(self):
+        api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+        canonical_state = (REPO_DIR / "utils" / "canonicalMinutes" / "state.js").read_text(encoding="utf-8")
+        canonical_live = (REPO_DIR / "utils" / "canonicalMinutes" / "liveStages.js").read_text(encoding="utf-8")
+        semantic_stages = (REPO_DIR / "utils" / "canonicalMinutes" / "semanticStages.js").read_text(encoding="utf-8")
+        semantic_authority = (REPO_DIR / "utils" / "stagedSemanticAuthority.js").read_text(encoding="utf-8")
+
+        self.assertIn("buildConfirmedUnderstanding", semantic_authority)
+        self.assertIn("repairDiscussionForConfirmedUnderstanding", semantic_authority)
+        self.assertIn("meetingPurpose: firstString(confirmedSummary.meetingPurpose", api)
+        self.assertIn("keyFacts: confirmedUnderstanding.criticalFacts.map((fact) => fact.text)", api)
+        self.assertIn("confirmedUnderstanding,", api)
+        self.assertIn("Treat CONFIRMED_CONTEXT.confirmedUnderstanding.meetingPurpose", api)
+        self.assertIn("Preserve relevant reviewer-confirmed critical facts", api)
+        self.assertIn("reviewerConfirmedFactPreservation", api)
+        self.assertIn("meetingUnderstanding", canonical_state)
+        self.assertIn("const meetingUnderstanding = buildConfirmedUnderstanding(summary)", canonical_live)
+        self.assertIn("criticalFacts: meetingUnderstanding.criticalFacts.map((fact) => fact.text)", canonical_live)
+        self.assertIn("repairDiscussionForConfirmedUnderstanding", semantic_stages)
+
     def test_staged_transcript_identity_isolated_between_drafts(self):
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
         page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")

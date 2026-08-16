@@ -11,6 +11,11 @@ const { prepareEvidence } = require('../utils/canonicalMinutes/evidence');
 const { assessEvidenceTopology } = require('../utils/canonicalMinutes/topology');
 const { runCanonicalLiveStage, buildConfirmedState } = require('../utils/canonicalMinutes/liveStages');
 const semanticStages = require('../utils/canonicalMinutes/semanticStages');
+const {
+  buildConfirmedUnderstanding,
+  repairDiscussionForConfirmedUnderstanding,
+  factIsPreserved
+} = require('../utils/stagedSemanticAuthority');
 
 test('generic action gate rejects unresolved conversational references', () => {
   ['Send that out now', 'Copy her this time', 'Do it at the same time', 'Be there for really', 'Probably tomorrow?', 'Need before the audit starts', 'Be mid audit at that point', 'Run it through the site', 'Try and do is limit your stream', 'Quickly share so we can review it']
@@ -330,6 +335,106 @@ test('live staged state locks reviewer-confirmed input for downstream stages', (
   assert.equal(state.topics[0].locked, true);
   assert.equal(state.discussion[0].points[0].text, 'The reviewer confirmed option B.');
   assert.equal(state.discussion[0].source, 'stage_2_human_confirmation');
+});
+
+test('confirmed Summary purpose and key facts become semantic authority', () => {
+  const transcript = [
+    'Amina Khan  00:01',
+    'Goods are supplied from Japan and move through the Netherlands for fiscal clearance only.',
+    'Ben Stone  00:08',
+    'The goods are finally stored at Park West in Dublin.'
+  ].join('\n');
+  const state = buildConfirmedState(transcript, 'dita.txt', {
+    details: { meetingTitle: 'DITA importer obligations' },
+    summary: {
+      meetingPurpose: 'The meeting was process discovery so importer-obligation procedures could reflect how the business works.',
+      keyFacts: [
+        'Goods originate from suppliers in Japan.',
+        'Netherlands is used for fiscal clearance only, not substantive warehousing.',
+        'Final storage is at DITA Park West in Dublin.'
+      ],
+      objectives: ['Confirm importer-obligation process evidence'],
+      overallTopics: ['Importer process flow']
+    }
+  });
+  assert.equal(state.meeting.purpose, 'The meeting was process discovery so importer-obligation procedures could reflect how the business works.');
+  assert.equal(state.meetingUnderstanding.meetingPurpose, state.meeting.purpose);
+  assert.deepEqual(state.meeting.criticalFacts, [
+    'Goods originate from suppliers in Japan.',
+    'Netherlands is used for fiscal clearance only, not substantive warehousing.',
+    'Final storage is at DITA Park West in Dublin.'
+  ]);
+  assert.equal(state.meetingUnderstanding.criticalFacts.length, 3);
+  assert.ok(state.meetingUnderstanding.criticalFacts.every((fact) => fact.authority === 'reviewer_confirmed'));
+});
+
+test('repair preserves transcript-supported reviewer-confirmed DITA facts in Discussion', () => {
+  const ditaTranscript = fs.readFileSync(
+    path.resolve(__dirname, '../../trinzo-ui-test-transcripts/extracted-text/Client DITA T819 - Importer Obligations - Client connect-6-.txt'),
+    'utf8'
+  );
+  const understanding = buildConfirmedUnderstanding({
+    meetingPurpose: "The meeting was process discovery to understand DITA's actual operational processes so practical importer-obligation procedures could be designed around how the business works.",
+    keyFacts: [
+      'Goods originate from suppliers in Japan.',
+      'Netherlands is used for fiscal clearance only, not substantive warehousing.',
+      'Final storage is at DITA Park West in Dublin.',
+      "Importer procedures need to reflect DITA's actual ERP/order flow, warehouse checks, scanners, document control and manual processes."
+    ]
+  });
+  const result = repairDiscussionForConfirmedUnderstanding({
+    discussion: [{ topic: 'QMS manual', points: ['The QMS manual was reviewed as a reference for the importer procedures.'] }],
+    understanding,
+    transcriptText: ditaTranscript
+  });
+  const discussionText = result.discussion.map((card) => `${card.topic} ${(card.points || []).join(' ')}`).join(' ');
+  assert.match(discussionText, /Japan/i);
+  assert.match(discussionText, /Netherlands/i);
+  assert.match(discussionText, /fiscal(?:ly)? clear/i);
+  assert.match(discussionText, /Dublin|Park West/i);
+  assert.match(discussionText, /ERP|NetSuite/i);
+  assert.match(discussionText, /warehouse/i);
+  assert.match(discussionText, /scanner|RF Smart|barcod/i);
+  assert.match(discussionText, /document control|manual/i);
+  assert.equal(result.validationFlags.length, 0);
+  assert.equal(result.telemetry.unresolvedFactCount, 0);
+  assert.ok(understanding.criticalFacts.every((fact) => factIsPreserved(fact.text, result.discussion)));
+});
+
+test('canonical Discussion generation preserves reviewer-confirmed DITA semantic anchors', () => {
+  const ditaTranscript = fs.readFileSync(
+    path.resolve(__dirname, '../../trinzo-ui-test-transcripts/extracted-text/Client DITA T819 - Importer Obligations - Client connect-6-.txt'),
+    'utf8'
+  );
+  const evidence = prepareEvidence(ditaTranscript);
+  const firstQmsEvent = evidence.events.find((event) => /QMS manual/i.test(event.text)) || evidence.events[0];
+  const state = buildConfirmedState(ditaTranscript, 'dita.txt', {
+    summary: {
+      meetingPurpose: "The meeting was process discovery to understand DITA's actual operational processes so practical importer-obligation procedures could be designed around how the business works.",
+      keyFacts: [
+        'Goods originate from suppliers in Japan.',
+        'Netherlands is used for fiscal clearance only, not substantive warehousing.',
+        'Final storage is at DITA Park West in Dublin.',
+        "Importer procedures need to reflect DITA's actual ERP/order flow, warehouse checks, scanners, document control and manual processes."
+      ],
+      objectives: ['Review QMS manual context'],
+      overallTopics: ['QMS manual context']
+    }
+  });
+  const result = semanticStages.contentStage(evidence, state, {
+    topics: [{ id: 'qms', representativeText: firstQmsEvent.text, evidenceIds: [firstQmsEvent.id], cohesion: 1 }],
+    events: {}
+  });
+  const discussionText = result.discussion.map((card) => `${card.topic} ${(card.points || []).map((point) => point.text || point).join(' ')}`).join(' ');
+  assert.match(discussionText, /Japan/i);
+  assert.match(discussionText, /Netherlands/i);
+  assert.match(discussionText, /fiscal(?:ly)? clear/i);
+  assert.match(discussionText, /Dublin|Park West/i);
+  assert.match(discussionText, /ERP|NetSuite/i);
+  assert.match(discussionText, /warehouse/i);
+  assert.match(discussionText, /scanner|RF Smart|barcod/i);
+  assert.match(discussionText, /document control|manual/i);
+  assert.equal(result.semanticPreservation.unresolvedFactCount, 0);
 });
 
 test('summary reviewer guidance prioritises supported evidence without becoming evidence', () => {

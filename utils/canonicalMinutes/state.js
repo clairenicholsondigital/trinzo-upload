@@ -20,6 +20,11 @@ function createCanonicalState({ transcriptText, fileName = 'transcript.txt', mee
     risks: [],
     actions: [],
     rejections: [],
+    meetingUnderstanding: {
+      meetingPurpose: '',
+      meetingPurposeId: '',
+      criticalFacts: []
+    },
     warnings: [],
     version: 0
   };
@@ -42,6 +47,15 @@ function acceptProposal(state, proposal, options = {}) {
   const version = state.version + 1;
   const next = { ...state, version };
   if (proposal.meeting) next.meeting = { ...state.meeting, ...proposal.meeting };
+  if (proposal.meetingUnderstanding) {
+    next.meetingUnderstanding = {
+      ...(state.meetingUnderstanding || {}),
+      ...proposal.meetingUnderstanding,
+      criticalFacts: Array.isArray(proposal.meetingUnderstanding.criticalFacts)
+        ? proposal.meetingUnderstanding.criticalFacts
+        : (state.meetingUnderstanding?.criticalFacts || [])
+    };
+  }
   for (const key of COLLECTIONS) {
     if (!Object.prototype.hasOwnProperty.call(proposal, key)) continue;
     next[key] = (Array.isArray(proposal[key]) ? proposal[key] : []).map((item, index) => approvedItem(key.slice(0, -1), item, version, index, options));

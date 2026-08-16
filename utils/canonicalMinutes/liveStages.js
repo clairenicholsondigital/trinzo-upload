@@ -7,6 +7,7 @@ const semanticStages = require('./semanticStages');
 const { assessEvidenceTopology } = require('./topology');
 const { groundProposal } = require('./grounding');
 const { extractMentionedPeople } = require('../entityNormalization');
+const { buildConfirmedUnderstanding } = require('../stagedSemanticAuthority');
 
 function strings(values) {
   return (Array.isArray(values) ? values : []).map((value) => clean(value)).filter(Boolean);
@@ -72,10 +73,16 @@ function buildConfirmedState(transcriptText, fileName, confirmed = {}) {
   });
   const summary = confirmed.summary || {};
   if (Object.keys(summary).length) {
+    const meetingUnderstanding = buildConfirmedUnderstanding(summary);
     state = acceptProposal(state, {
       objectives: approvedText(summary.objectives),
       topics: approvedTopics(summary),
-      meeting: state.meeting
+      meeting: {
+        ...state.meeting,
+        purpose: meetingUnderstanding.meetingPurpose,
+        criticalFacts: meetingUnderstanding.criticalFacts.map((fact) => fact.text)
+      },
+      meetingUnderstanding
     }, { source: 'stage_1_human_confirmation' });
   }
   if (Array.isArray(confirmed.discussion)) {
@@ -219,7 +226,8 @@ function runCanonicalLiveStage(transcriptText, options = {}) {
         discussion: state.discussion.length,
         decisions: state.decisions.length,
         risks: state.risks.length,
-        actions: state.actions.length
+        actions: state.actions.length,
+        criticalFacts: Array.isArray(state.meetingUnderstanding?.criticalFacts) ? state.meetingUnderstanding.criticalFacts.length : 0
       },
       evidenceEventCount: evidence.events.length,
       participantCount: evidence.participants.length,

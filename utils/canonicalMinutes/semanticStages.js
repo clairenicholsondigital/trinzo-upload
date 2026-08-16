@@ -10,6 +10,7 @@ const { buildMeetingSpine } = require('./meetingSpine');
 const { canHeadlineTopic, canStandAloneAsMinutesEvidence, isTranscriptMetaText, isCorrectionOrAcknowledgementFragment, isContextDependentText, isMalformedTranscriptText } = require('./publishability');
 const { resolveActionRecords } = require('./actionResolution');
 const { editorialTopicLabel, editorialTopics } = require('./topicEditorial');
+const { repairDiscussionForConfirmedUnderstanding } = require('../stagedSemanticAuthority');
 
 function unique(items, key) {
   const seen = new Set();
@@ -758,7 +759,25 @@ function contentStage(evidence, state, profile) {
     }
   }
   const resolvedRisks = resolveEnrichedRisks(risks, evidence, profile);
-  return { discussion, decisions: resolveEnrichedDecisions(decisions, evidence, profile), risks: resolvedRisks, warnings: [] };
+  const semanticPreservation = repairDiscussionForConfirmedUnderstanding({
+    discussion,
+    understanding: state.meetingUnderstanding,
+    transcriptText: evidence.events.map((event) => event.text).join('\n'),
+    evidenceEvents: evidence.events
+  });
+  return {
+    discussion: semanticPreservation.discussion,
+    decisions: resolveEnrichedDecisions(decisions, evidence, profile),
+    risks: resolvedRisks,
+    warnings: semanticPreservation.validationFlags.map((flag) => ({
+      type: flag.type,
+      message: flag.message,
+      severity: flag.severity,
+      blocking: flag.blocking,
+      resolutionKey: flag.resolutionKey
+    })),
+    semanticPreservation: semanticPreservation.telemetry
+  };
 }
 
 function resolveActionReferent(item, evidence) {

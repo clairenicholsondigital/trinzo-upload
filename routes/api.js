@@ -45,6 +45,10 @@ const { runCanonicalNoEditPass } = require('../utils/canonicalMinutes/runner');
 const { runCanonicalLiveStage } = require('../utils/canonicalMinutes/liveStages');
 const { polishCanonicalStage, canonicalFallback, addRecoveredActionCandidates, clientReadyPresentation } = require('../utils/canonicalMinutes/trooperPolish');
 const { reviewGeneratedContent } = require('../utils/terminologyQa');
+const {
+  buildConfirmedUnderstanding,
+  repairDiscussionForConfirmedUnderstanding
+} = require('../utils/stagedSemanticAuthority');
 
 const {
   saveMeetingMinutes,
@@ -1879,6 +1883,7 @@ function stagedTrooperSchema(stage) {
 function buildStagedTrooperPrompt(stage, transcript, req, options = {}) {
   const details = stagedDetailsWithConfirmedContext(req, transcript);
   const context = stagedContextFromRequest(req);
+  const confirmedUnderstanding = context.confirmedUnderstanding;
   const discussionEvidencePack = stage === 'discussion'
     ? (Array.isArray(options.evidencePack) && options.evidencePack.length
       ? options.evidencePack
@@ -1893,6 +1898,9 @@ function buildStagedTrooperPrompt(stage, transcript, req, options = {}) {
     meetingLocation: details.meetingLocation || context.meetingLocation,
     meetingType: context.meetingType || details.meetingType || 'Project review',
     participants: context.participants.length ? context.participants : details.allAttendees,
+    meetingPurpose: confirmedUnderstanding.meetingPurpose,
+    keyFacts: confirmedUnderstanding.criticalFacts.map((fact) => fact.text),
+    confirmedUnderstanding,
     overallTopics: context.overallTopics,
     reviewerGuidance: context.additionalContext,
     topicEvidence: discussionEvidencePack,
@@ -1923,6 +1931,8 @@ function buildStagedTrooperPrompt(stage, transcript, req, options = {}) {
     ],
     discussion: [
       'Write stage 3 only: discussion points grouped against the confirmed topics.',
+      'Treat CONFIRMED_CONTEXT.confirmedUnderstanding.meetingPurpose and CONFIRMED_CONTEXT.confirmedUnderstanding.criticalFacts as reviewer-confirmed semantic framing when they are relevant to the transcript evidence.',
+      'Preserve relevant reviewer-confirmed critical facts in the discussion output; do not weaken them into generic topic labels.',
       'Treat CONFIRMED_CONTEXT.overallTopics as the agenda for a methodical transcript pass.',
       'For each confirmed overall topic, look through the transcript for evidence relevant to that topic before moving to the next topic.',
       'Use CONFIRMED_CONTEXT.topicEvidence as the MiniLM semantic evidence pack where present, then cross-check against the transcript.',
@@ -2337,12 +2347,24 @@ function transcriptForStagedAI(transcript, inputPayload = {}) {
 function stagedContextFromRequest(req) {
   const confirmedDetails = parseStagedJsonObject(req.body?.confirmedDetails || req.query?.confirmedDetails);
   const confirmedSummary = parseStagedJsonObject(req.body?.confirmedSummary || req.query?.confirmedSummary);
+  const explicitKeyFacts = parseStagedJsonArray(req.body?.keyFacts || req.query?.keyFacts);
+  const summaryForUnderstanding = {
+    ...confirmedSummary,
+    meetingPurpose: firstString(confirmedSummary.meetingPurpose, confirmedSummary.purpose, req.body?.meetingPurpose, req.query?.meetingPurpose),
+    keyFacts: Array.isArray(confirmedSummary.keyFacts) && confirmedSummary.keyFacts.length
+      ? confirmedSummary.keyFacts
+      : explicitKeyFacts
+  };
+  const confirmedUnderstanding = buildConfirmedUnderstanding(summaryForUnderstanding);
   return {
     meetingTitle: firstString(confirmedDetails.meetingTitle, req.body?.meetingTitle, req.query?.meetingTitle),
     meetingDate: firstString(confirmedDetails.meetingDate, req.body?.meetingDate, req.query?.meetingDate),
     meetingLocation: firstString(confirmedDetails.meetingLocation, req.body?.meetingLocation, req.query?.meetingLocation),
     meetingType: firstString(confirmedDetails.meetingType, req.body?.meetingType, req.query?.meetingType, 'Project review'),
     participants: linesFrom(confirmedDetails.participants || req.body?.participants || req.query?.participants),
+    meetingPurpose: confirmedUnderstanding.meetingPurpose,
+    keyFacts: confirmedUnderstanding.criticalFacts.map((fact) => fact.text),
+    confirmedUnderstanding,
     objectives: linesFrom(confirmedSummary.objectives || req.body?.reviewObjectives || req.query?.reviewObjectives),
     overallTopics: linesFrom(confirmedSummary.overallTopics || req.body?.overallTopics || req.query?.overallTopics || req.body?.topics || req.query?.topics),
     additionalContext: firstString(req.body?.additionalContext, req.query?.additionalContext).slice(0, 3000)
@@ -3241,7 +3263,16 @@ function buildStagedDiscussionResponse(req, transcript, minilmContext = null) {
     ...leakageRepair.dropped.map((item) => ({ topic: item.from, droppedPointCount: 1, reason: 'wrong_section_leakage' }))
   ];
   const discussionCompaction = compactStagedDiscussionCards(rawDiscussion, { pointLimit: 4 });
-  const discussion = reshapeStagedDiscussionCardsForHumanMinutes(discussionCompaction.cards, { pointLimit: 6, processDetailPointLimit: 8 });
+  const reshapedDiscussion = reshapeStagedDiscussionCardsForHumanMinutes(discussionCompaction.cards, { pointLimit: 6, processDetailPointLimit: 8 });
+  const semanticPreservation = repairDiscussionForConfirmedUnderstanding({
+    discussion: reshapedDiscussion,
+    understanding: context.confirmedUnderstanding,
+    transcriptText: transcript.text
+  });
+  const discussion = reshapeStagedDiscussionCardsForHumanMinutes(semanticPreservation.discussion, {
+    pointLimit: 6,
+    processDetailPointLimit: 8
+  });
   const workstreamCoverage = buildStagedWorkstreamCoverage(topics, discussion, confirmedWorkstreamState);
   const output = stagedMiniLMOutput(minilmContext);
   const executiveSummaryFromFindings = cleanStagedExecutiveSummary(
@@ -3258,12 +3289,15 @@ function buildStagedDiscussionResponse(req, transcript, minilmContext = null) {
   }
 
   const droppedDuplicates = Array.isArray(miniLmDiscussion.droppedDuplicates) ? miniLmDiscussion.droppedDuplicates : [];
-  const validationFlags = buildStagedValidationFlags({
+  const validationFlags = [
+    ...buildStagedValidationFlags({
     objectives: context.objectives,
     discussion,
     droppedDuplicates,
     droppedMisattributed
-  });
+    }),
+    ...semanticPreservation.validationFlags
+  ];
   for (const coverage of workstreamCoverage) {
     if (!['missing', 'thin'].includes(coverage.status)) continue;
     validationFlags.push({
@@ -3297,12 +3331,16 @@ function buildStagedDiscussionResponse(req, transcript, minilmContext = null) {
     contextUsed: {
       meetingType,
       participantCount: participants.length,
-      overallTopics: topics
+      overallTopics: topics,
+      meetingPurpose: context.meetingPurpose,
+      keyFactCount: context.keyFacts.length,
+      confirmedUnderstanding: context.confirmedUnderstanding
     },
     telemetryPreview: {
       stage: 'discussion',
       topicCount: topics.length,
       discussionCards: discussion.length,
+      reviewerConfirmedFactPreservation: semanticPreservation.telemetry,
       droppedMisattributedDiscussionPoints: droppedMisattributed.length,
       workstreamCoverage,
       transcriptLength: transcript.text.length,
