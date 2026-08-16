@@ -333,7 +333,8 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("function normaliseStagedKnownAttendeeAliasesInText", api)
         self.assertIn("Grace McGroogan", api)
         self.assertIn("Andrew Kane", api)
-        self.assertIn("Rebecca Cuckoo", api)
+        self.assertNotIn("'Rebecca Cuckoo'", api)
+        self.assertIn("possible_attendee_name_mismatch", api)
         self.assertIn("Orla Skally", api)
         self.assertIn("Abby Lennon", api)
         self.assertIn("...explicitClientBuckets.internal", api)
@@ -446,7 +447,7 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
 
         self.assertIn("stage-decision-card", page)
         self.assertIn("Want to move onto the next stage?", page)
-        self.assertIn("Yes, proceed to next step", page)
+        self.assertIn("'Continue to ' + nextLabel.toLowerCase()", page)
         self.assertNotIn("'Yes, generate ' + nextLabel", page)
         self.assertNotIn("'Yes, move to ' + nextLabel", page)
         self.assertIn("No, keep reviewing", page)

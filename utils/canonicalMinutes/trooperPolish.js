@@ -532,6 +532,17 @@ function applyActionRewrite(payload, output, evidencePack) {
   };
 }
 
+function discussionPointGrounded(point, candidate, pack) {
+  const entries = citedEntries(candidate, pack);
+  if (!entries.length) return false;
+  const evidenceText = entries.map((entry) => clean(entry.text).toLowerCase()).join(' ');
+  const text = clean(point);
+  const protectedTokens = text.match(/\b(?:[A-Z]{2,}(?:-\d+)?|\d+(?:\.\d+)*(?:%|st|nd|rd|th)?|[A-Za-z]+\d+[A-Za-z0-9-]*)\b/g) || [];
+  if (protectedTokens.some((token) => !evidenceText.includes(token.toLowerCase()))) return false;
+  const suspiciousSpecifics = text.toLowerCase().match(/\b(?:clean room|sterili[sz]ation|sharepoint|hotel|california|eudamed|hpra|medenvoy|cybersecurity|password|usb|declaration(?:s)? of conformity)\b/g) || [];
+  return !suspiciousSpecifics.some((phrase) => !evidenceText.includes(phrase));
+}
+
 function applyDiscussionRewrite(payload, output, evidencePack) {
   const sourceCards = payload.screens?.discussion || [];
   const candidates = Array.isArray(output?.discussion) ? output.discussion : [];
@@ -543,6 +554,7 @@ function applyDiscussionRewrite(payload, output, evidencePack) {
     for (const point of Array.isArray(candidate?.points) ? candidate.points.map(clean) : []) {
       if (!point || unresolvedReference(point) || point.split(/\s+/).length < 5 || points.some((existing) => nearDuplicate(existing, point))) continue;
       if (!discussionPointAlignedToTopic(source.topic, point)) continue;
+      if (!discussionPointGrounded(point, candidate, pack)) continue;
       points.push(point);
     }
     if (!candidate || !pack || clean(candidate.topic) !== clean(source.topic) || !validReferences(candidate, pack) || !points.length) return source;
@@ -617,4 +629,4 @@ async function polishCanonicalStage(payload, options = {}) {
   return { payload: rewritten, used: true, reason: `Trooper rewrote ${packs.length} bounded MiniLM evidence pack(s).`, usage };
 }
 
-module.exports = { promptFor, polishCanonicalStage, applyActionRewrite, applyDiscussionRewrite, unresolvedReference, canonicalFallback, nonActionState, nearDuplicate, addRecoveredActionCandidates, clientReadyPresentation, normaliseActionPresentation, normaliseDiscussionPresentation };
+module.exports = { promptFor, polishCanonicalStage, applyActionRewrite, applyDiscussionRewrite, discussionPointGrounded, unresolvedReference, canonicalFallback, nonActionState, nearDuplicate, addRecoveredActionCandidates, clientReadyPresentation, normaliseActionPresentation, normaliseDiscussionPresentation };

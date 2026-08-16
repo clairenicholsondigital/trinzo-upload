@@ -127,8 +127,16 @@ textarea { min-height:110px; resize:vertical; }
   border-color:#c3ced8;
 }
 .discussion-table textarea {
-  min-height:92px;
+  min-height:140px;
+  line-height:1.45;
 }
+.discussion-table th:first-child,
+.discussion-table td:first-child { width:28%; min-width:190px; }
+.discussion-table th:last-child,
+.discussion-table td:last-child { width:72%; }
+.discussion-table td { padding:.8rem; }
+.selected-file-name { min-height:1.2rem; }
+.final-output-note { margin-top:.55rem; }
 .table-wrap { overflow-x:auto; border:1px solid var(--border); border-radius:12px; background:#071126; }
 table { width:100%; border-collapse:collapse; min-width:720px; }
 th, td { border-bottom:1px solid var(--border); padding:.65rem; text-align:left; vertical-align:top; }
@@ -488,6 +496,7 @@ td select {
             <div class="field">
               <label for="stagedTranscriptFile">Upload transcript</label>
               <input id="stagedTranscriptFile" type="file" accept=".txt,.docx,.csv,text/plain,text/csv,application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+              <small id="selectedTranscriptFileName" class="selected-file-name">No file selected.</small>
             </div>
           </div>
           <div class="actions" style="margin-top:.85rem;">
@@ -513,19 +522,21 @@ td select {
             <div id="internalAttendeesRow" class="chip-row" data-attendee-group="internal">
               <button class="ghost" type="button" data-attendee-add>Add attendee</button>
             </div>
-            <small class="attendee-help">Drag names between Internal and Client. Click a name to edit it.</small>
+            <small class="attendee-help">Drag names between Internal and <span data-client-attendee-label>Client</span>. Click a name to edit it.</small>
           </div>
           <div class="field full">
-            <label>Client attendees</label>
+            <label><span id="clientAttendeeLabel">Client</span> attendees</label>
             <div id="clientAttendeesRow" class="chip-row" data-attendee-group="client">
               <button class="ghost" type="button" data-attendee-add>Add attendee</button>
             </div>
-            <small class="attendee-help">Drag names between Internal and Client. Click a name to edit it.</small>
+            <small class="attendee-help">Drag names between Internal and <span data-client-attendee-label>Client</span>. Click a name to edit it.</small>
+            <label class="attendee-help" for="useExternalAttendeeLabel"><input id="useExternalAttendeeLabel" type="checkbox" /> Use “External” instead of “Client” in the minutes</label>
           </div>
           <div class="field">
             <label for="meetingType">Meeting type</label>
             <select id="meetingType">
               <option>Project review</option>
+              <option>Audit kick-off / planning</option>
               <option>Client update</option>
               <option>Decision meeting</option>
               <option>Workshop</option>
@@ -619,6 +630,7 @@ td select {
           <button class="secondary" type="button" disabled>Email</button>
           <button class="secondary" type="button" disabled>Save draft</button>
         </div>
+        <p class="note final-output-note">Copy, Email and Save draft are not available yet. Export PDF is available from this review.</p>
       </article>
 
       <div id="stageValidationFlags" class="stage-validation-flags review-only" aria-live="polite" hidden></div>
@@ -679,6 +691,7 @@ td select {
   var meetingTypeInput = document.getElementById('meetingType');
   var transcriptTextInput = document.getElementById('stagedTranscriptText');
   var transcriptFileInput = document.getElementById('stagedTranscriptFile');
+  var selectedTranscriptFileName = document.getElementById('selectedTranscriptFileName');
   var generateButton = document.getElementById('generateStagedMinutesBtn');
   var generationStatus = document.getElementById('stagedGenerationStatus');
   var reviewGenerationStatus = document.getElementById('reviewGenerationStatus');
@@ -687,6 +700,8 @@ td select {
   var overallTopicsInput = document.getElementById('overallTopics');
   var internalAttendeesRow = document.getElementById('internalAttendeesRow');
   var clientAttendeesRow = document.getElementById('clientAttendeesRow');
+  var clientAttendeeLabel = document.getElementById('clientAttendeeLabel');
+  var useExternalAttendeeLabel = document.getElementById('useExternalAttendeeLabel');
   var discussionList = document.getElementById('discussionList');
   var actionsTableBody = document.getElementById('actionsTableBody');
   var addActionRowButton = document.getElementById('addActionRowBtn');
@@ -937,8 +952,8 @@ td select {
       nextButton.disabled = finalReviewCompleted;
     } else {
       stageDecisionQuestion.textContent = 'Want to move onto ' + nextLabel + '?';
-      stageDecisionHint.textContent = 'Choose Yes when ' + currentLabel + ' looks right. Choose No to keep reviewing this stage.';
-      nextButton.textContent = 'Yes, proceed to next step';
+      stageDecisionHint.textContent = 'Continue when ' + currentLabel + ' looks right, or keep reviewing this stage.';
+      nextButton.textContent = 'Continue to ' + nextLabel.toLowerCase();
       nextButton.disabled = !canMoveNext;
     }
     if (stageAdditionalContextWrap) {
@@ -1006,7 +1021,18 @@ td select {
     });
   }
 
+  function selectedClientAttendeeLabel() {
+    return useExternalAttendeeLabel && useExternalAttendeeLabel.checked ? 'External' : 'Client';
+  }
+
+  function updateClientAttendeeLabels() {
+    var label = selectedClientAttendeeLabel();
+    if (clientAttendeeLabel) clientAttendeeLabel.textContent = label;
+    Array.prototype.slice.call(document.querySelectorAll('[data-client-attendee-label]')).forEach(function (node) { node.textContent = label; });
+  }
+
   function attendeeStateChanged() {
+    updateClientAttendeeLabels();
     stagedState.details = detailsFromDom();
     refreshActionOwnerOptions();
     renderFinalDocument();
@@ -1031,6 +1057,7 @@ td select {
       meetingDate: meetingDateInput && meetingDateInput.value ? meetingDateInput.value.trim() : '',
       meetingLocation: meetingLocationInput && meetingLocationInput.value ? meetingLocationInput.value.trim() : '',
       meetingType: meetingTypeInput && meetingTypeInput.value ? meetingTypeInput.value.trim() : '',
+      clientAttendeeLabel: selectedClientAttendeeLabel(),
       internalAttendees: attendeesFromRow(internalAttendeesRow),
       clientAttendees: attendeesFromRow(clientAttendeesRow),
       allAttendees: currentParticipants(),
@@ -1084,6 +1111,8 @@ td select {
       if (meetingDateInput) meetingDateInput.value = state.details.meetingDate || '';
       if (meetingLocationInput) meetingLocationInput.value = state.details.meetingLocation || '';
       if (meetingTypeInput && state.details.meetingType) meetingTypeInput.value = state.details.meetingType;
+      if (useExternalAttendeeLabel) useExternalAttendeeLabel.checked = state.details.clientAttendeeLabel === 'External';
+      updateClientAttendeeLabels();
       renderAttendees(internalAttendeesRow, state.details.internalAttendees);
       renderAttendees(clientAttendeesRow, state.details.clientAttendees || state.details.allAttendees);
     }
@@ -1209,6 +1238,8 @@ td select {
       '<h2>' + escapeHtml(details.meetingTitle || 'Untitled meeting') + '</h2>' +
       '<p><strong>Date:</strong> ' + escapeHtml(formatUkDate(details.meetingDate)) + '</p>' +
       '<p><strong>Location:</strong> ' + escapeHtml(details.meetingLocation || 'Not stated') + '</p>' +
+      '<p><strong>Internal attendees:</strong> ' + escapeHtml((details.internalAttendees || []).join(', ') || 'Not stated') + '</p>' +
+      '<p><strong>' + escapeHtml(details.clientAttendeeLabel === 'External' ? 'External' : 'Client') + ' attendees:</strong> ' + escapeHtml((details.clientAttendees || []).join(', ') || 'Not stated') + '</p>' +
       '<div class="section"><h3>Objectives</h3><ul>' + objectives.map(function (item) { return '<li>' + escapeHtml(item) + '</li>'; }).join('') + '</ul></div>' +
       '<div class="section"><h3>Summary</h3><p>' + escapeHtml(summary.executiveSummary || 'Review the transcript-generated summary before moving on.') + '</p></div>' +
       '<div class="section"><h3>Key discussion points</h3><table class="discussion-table"><thead><tr><th>Topic</th><th>Discussion points</th></tr></thead><tbody>' + discussionRows.map(function (item) {
@@ -1217,7 +1248,7 @@ td select {
       '<div class="section"><h3>Actions</h3><table><thead><tr><th>Owner</th><th>Action</th><th>Due</th></tr></thead><tbody>' + actions.map(function (item) {
         return '<tr><td>' + escapeHtml(item.owner || 'Not stated') + '</td><td>' + escapeHtml(item.action || 'Review action wording') + '</td><td>' + escapeHtml(item.deadline || 'Not stated') + '</td></tr>';
       }).join('') + '</tbody></table></div>' +
-      '<div class="section"><h3>Sign-off</h3><p>Ready for human approval.</p></div>';
+      '<div class="section"><h3>Review status</h3><p>Ready for reviewer decision.</p></div>';
   }
 
   function markGeneratedStages(payload) {
@@ -2514,10 +2545,14 @@ td select {
       if (!queued) generateButton.disabled = false;
     });
   }
+  if (useExternalAttendeeLabel) useExternalAttendeeLabel.addEventListener('change', attendeeStateChanged);
   if (transcriptFileInput) {
     transcriptFileInput.addEventListener('change', function () {
       if (transcriptFileInput.files && transcriptFileInput.files[0]) {
+        if (selectedTranscriptFileName) selectedTranscriptFileName.textContent = 'Selected: ' + transcriptFileInput.files[0].name;
         resetStagedWorkflowForNewTranscript();
+      } else if (selectedTranscriptFileName) {
+        selectedTranscriptFileName.textContent = 'No file selected.';
       }
     });
   }

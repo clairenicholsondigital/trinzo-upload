@@ -332,6 +332,7 @@ tr { page-break-inside:avoid; }
     var title = details.meetingTitle || draft.meetingTitle || 'Meeting minutes';
     var internal = normaliseList(details.internalAttendees);
     var client = normaliseList(details.clientAttendees || details.allAttendees);
+    var clientAttendeeLabel = details.clientAttendeeLabel === 'External' ? 'External' : 'Client';
     document.title = title + ' | Client meeting minutes';
     if (backToReviewLink) {
       backToReviewLink.href = '/staged-meeting-minutes?draftId=' + encodeURIComponent(draft.jobId || draftId) + '&screen=4';
@@ -346,7 +347,7 @@ tr { page-break-inside:avoid; }
           '<div class="meta-item"><span class="meta-label">Date</span><span class="meta-value">' + escapeHtml(formatUkDate(details.meetingDate)) + '</span></div>' +
           '<div class="meta-item"><span class="meta-label">Location</span><span class="meta-value">' + escapeHtml(details.meetingLocation || draft.meetingLocation || 'Not stated') + '</span></div>' +
           '<div class="meta-item"><span class="meta-label">Internal attendees</span><span class="meta-value">' + escapeHtml(internal.length ? internal.join(', ') : 'Not stated') + '</span></div>' +
-          '<div class="meta-item"><span class="meta-label">Client attendees</span><span class="meta-value">' + escapeHtml(client.length ? client.join(', ') : 'Not stated') + '</span></div>' +
+          '<div class="meta-item"><span class="meta-label">' + escapeHtml(clientAttendeeLabel) + ' attendees</span><span class="meta-value">' + escapeHtml(client.length ? client.join(', ') : 'Not stated') + '</span></div>' +
         '</section>' +
         '<section><h2>Objectives</h2>' + renderList(summary.objectives, 'Not stated') + '</section>' +
         '<section><h2>Executive summary</h2><p>' + escapeHtml(summary.executiveSummary || 'Not stated') + '</p></section>' +

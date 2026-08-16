@@ -6,6 +6,8 @@ const deterministicStages = require('./stages');
 const { deadlineFrom } = deterministicStages;
 const { actionHasConcreteObject, applyOperationalPhaseTiming, attachTemporalContext, composeDecision, composeRisk, consolidate, deriveRoleDecisions, tokenOverlap } = require('./canonicalResolver');
 const { purposePlan, objectiveIntentForText, topicOrderRank } = require('./meetingPurpose');
+const { buildMeetingSpine } = require('./meetingSpine');
+const { canHeadlineTopic, canStandAloneAsMinutesEvidence, isTranscriptMetaText, isCorrectionOrAcknowledgementFragment, isContextDependentText, isMalformedTranscriptText } = require('./publishability');
 const { resolveActionRecords } = require('./actionResolution');
 const { editorialTopicLabel, editorialTopics } = require('./topicEditorial');
 
@@ -376,16 +378,12 @@ function titleFromRepresentative(text) {
 }
 
 function publishableTopicRepresentative(text) {
-  const value = clean(text);
-  const words = value.split(/\s+/).filter(Boolean);
-  if (words.length < 4) return false;
-  if (/^(?:and|but|because|when|presumably|interesting|so|well|yeah|yes|okay|right)\b/i.test(value)) return false;
-  if (/(?:\b(?:and|but|because|that|which|with|from|to|for|of|the|a|an)|[,;:])$/i.test(value)) return false;
-  // Substance is decided per-transcript by the MiniLM clusterer (it only emits
-  // clusters above its substantive threshold). A fixed domain-keyword whitelist
-  // here over-filtered legitimate topics whose vocabulary happened to fall
-  // outside the list, so rely on the structural checks above instead.
-  return true;
+  return canHeadlineTopic(clean(text));
+}
+
+function topicHasPublishableEvidence(topic, byId) {
+  const events = (topic.evidenceIds || []).map((id) => byId.get(id)).filter(Boolean);
+  return events.some((event) => canStandAloneAsMinutesEvidence(event.text, { allowConditional: true }));
 }
 
 function minutesPoint(text, speaker = '') {
@@ -467,11 +465,16 @@ function contextStage(evidence, profile, state = {}, reviewerGuidance = '') {
       .sort((left, right) => left.rank - right.rank || left.index - right.index)
       .map((entry) => entry.topic);
   }
-  const topics = prioritiseForGuidance(editorialTopics(clusters, evidence, 8), evidence, reviewerGuidance);
+  const editorial = editorialTopics(clusters, evidence, 8);
+  const spine = buildMeetingSpine({ evidence, meeting: state.meeting || {}, workstreams: editorial.map((topic) => ({ ...topic, text: topic.editorialText })) });
+  const rankedIds = new Map(spine.publishableTopics.map((topic, index) => [topic.id, index]));
+  const rankedTopics = [...editorial].sort((left, right) => (rankedIds.get(left.id) ?? 999) - (rankedIds.get(right.id) ?? 999));
+  const topics = prioritiseForGuidance(rankedTopics, evidence, reviewerGuidance);
   return {
     meeting: state.meeting || { participants: evidence.participants },
-    objectives: topics.slice(0, 6).map((topic) => ({ text: objectivePhraseForTopic(topic, topicHints, evidence), evidenceIds: topic.evidenceIds, topicId: topic.id })),
+    objectives: topics.slice(0, 4).map((topic) => ({ text: objectivePhraseForTopic(topic, topicHints, evidence), evidenceIds: topic.evidenceIds, topicId: topic.id })),
     topics: topics.map((topic) => ({ text: topic.editorialText, evidenceIds: topic.evidenceIds, topicId: topic.id })),
+    meetingSpine: spine,
     purposeProfile: purpose?.profileId || null,
     warnings: topics.length ? [] : [{ type: 'thin_context', severity: 'warning', message: 'MiniLM found no confident substantive topic clusters.' }]
   };
@@ -640,7 +643,11 @@ function refreshDistinctiveConfirmedDiscussion(discussion, state, evidence) {
 function contentStage(evidence, state, profile) {
   const byId = new Map(evidence.events.map((event) => [event.id, event]));
   const longTranscript = evidence.events.length >= 100;
-  const selectedTopics = selectLongDiscussionTopics(profile.topics || [], evidence, byId, profile);
+  const profileTopics = profile.topics || [];
+  const selectedTopicSource = (state.topics || []).length
+    ? profileTopics
+    : profileTopics.filter((topic) => publishableTopicRepresentative(topic.representativeText) && topicHasPublishableEvidence(topic, byId));
+  const selectedTopics = selectLongDiscussionTopics(selectedTopicSource, evidence, byId, profile);
   const topicCandidates = selectedTopics.map((topic, index) => ({
     topic,
     index,
@@ -651,7 +658,12 @@ function contentStage(evidence, state, profile) {
   // Discussion is ALWAYS derived from this transcript's evidence. There is no
   // canned-template branch — a meeting-type profile never supplies body text.
   let discussion = topicCandidates.slice(0, discussionLimit).map(({ topic }) => {
-    const source = topic.evidenceIds.map((id) => byId.get(id)).filter(Boolean).filter((event) => !isSupersededBackground(event, evidence) && (score(profile, event, 'administrative') < 0.55 || /\b(?:offsite|absent|unavailable|miss)\b.*\b(?:meeting|check-in|call|session)\b|\b(?:meeting|check-in|call|session)\b.*\b(?:offsite|absent|unavailable|miss)\b/i.test(event.text)));
+    const source = topic.evidenceIds.map((id) => byId.get(id)).filter(Boolean).filter((event) => !isSupersededBackground(event, evidence)
+      && !isTranscriptMetaText(event.text)
+      && !isCorrectionOrAcknowledgementFragment(event.text)
+      && !isContextDependentText(event.text)
+      && !isMalformedTranscriptText(event.text)
+      && (score(profile, event, 'administrative') < 0.55 || /\b(?:offsite|absent|unavailable|miss)\b.*\b(?:meeting|check-in|call|session)\b|\b(?:meeting|check-in|call|session)\b.*\b(?:offsite|absent|unavailable|miss)\b/i.test(event.text)));
     const minuteEvidence = source.map((event) => {
       let text = minutesPoint(event.text, event.speaker);
       return { text, evidenceIds: [event.id] };
@@ -1187,6 +1199,15 @@ function canonicalActionText(value) {
   return text;
 }
 
+function actionConfidenceTier(item, evidence, profile, selected = false) {
+  if (selected) return 'confirmed';
+  const quality = candidateReviewScore(item, evidence, profile);
+  const ownerKnown = clean(item.owner) && clean(item.owner) !== 'Not stated';
+  if (quality >= 0.42 && ownerKnown) return 'review_wording';
+  if (quality >= 0.24) return 'review_owner_or_wording';
+  return 'possible_follow_up';
+}
+
 function actionsStage(evidence, state, profile, topology) {
   const threads = buildCommitmentThreads(evidence, profile, topology);
   const deterministic = deterministicStages.actionsStage(evidence, state, topology).actions;
@@ -1276,6 +1297,12 @@ function actionsStage(evidence, state, profile, topology) {
   // the published list. Otherwise a high classifier score can promote an
   // absence/status remark (for example, “out for the next few days”) as a task.
   actions = actions.filter((item) => !reviewCandidateNoise(item, evidence));
+  const selectedSignatures = new Set(actions.map((item) => `${clean(item.owner).toLowerCase()}|${clean(item.action).toLowerCase()}`));
+  const tieredCandidates = actionCandidates.map((item) => ({
+    ...item,
+    confidenceTier: actionConfidenceTier(item, evidence, profile, selectedSignatures.has(`${clean(item.owner).toLowerCase()}|${clean(item.action).toLowerCase()}`))
+  }));
+  const reviewRequired = tieredCandidates.filter((item) => ['review_wording', 'review_owner_or_wording'].includes(item.confidenceTier));
   const unresolvedThreads = threads.filter((thread) => !actions.some((action) => {
     if (action.threadId === thread.id) return true;
     const actionEvidence = new Set(action.evidenceIds || []);
@@ -1298,12 +1325,13 @@ function actionsStage(evidence, state, profile, topology) {
   });
   return {
     actions: actions.map((item) => ({ ...item, action: canonicalActionText(item.action) })),
-    actionCandidates: actionCandidates.slice(0, 24).map((item) => ({ ...item, action: item.semanticOnly ? clean(item.action) : canonicalActionText(item.action) })),
+    actionCandidates: tieredCandidates.slice(0, 24).map((item) => ({ ...item, action: item.semanticOnly ? clean(item.action) : canonicalActionText(item.action) })),
     extractionMode: 'minilm_commitment_threads',
     commitmentThreads: threads,
     unresolvedThreads,
     warnings: [
       ...(actions.length ? [] : [{ type: 'no_actions_detected', severity: 'info', message: 'No transcript-supported action passed the MiniLM commitment-thread safety checks.' }]),
+      ...(reviewRequired.length ? [{ type: 'action_candidates_need_confirmation', severity: 'warning', blocking: false, message: `${reviewRequired.length} transcript-supported action candidate${reviewRequired.length === 1 ? ' needs' : 's need'} owner or wording confirmation.`, repairCandidates: reviewRequired.map((item) => ({ owner: item.owner || 'Not stated', action: canonicalActionText(item.action), deadline: item.deadline || 'Not stated', confidenceTier: item.confidenceTier, evidenceIds: item.evidenceIds || [] })) }] : []),
       ...(credibleUnresolvedThreads.length ? [{ type: 'unresolved_commitment_threads', severity: 'warning', message: 'A transcript-supported commitment may still need an owner or clearer wording. Check the suggested actions below.', evidenceIds: credibleUnresolvedThreads.flatMap((item) => item.evidenceIds) }] : [])
     ]
   };

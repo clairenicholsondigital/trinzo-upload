@@ -143,6 +143,14 @@ test('missing Trooper configuration safely suppresses unresolved actions without
   assert.equal('_canonicalEvidencePack' in result.payload, false);
 });
 
+test('discussion grounding rejects unsupported technical specifics even when a rewrite cites valid evidence', () => {
+  const { discussionPointGrounded } = require('../utils/canonicalMinutes/trooperPolish');
+  const pack = { evidence: [{ id: 'evt_1', speaker: 'Jacqui Fox', current: 'We need to confirm the audit scope and software review track.', contextWindow: [] }] };
+  const candidate = { evidenceIds: ['evt_1'] };
+  assert.equal(discussionPointGrounded('The audit pack avoids clean room and sterilisation standards.', candidate, pack), false);
+  assert.equal(discussionPointGrounded('The audit scope and software review track were discussed.', candidate, pack), true);
+});
+
 test('post-Trooper checks reject availability states and repeated discussion prose', () => {
   assert.equal(nonActionState('Be out for the next couple of days'), true);
   assert.equal(nonActionState('Review the mute-button flash sequence'), false);

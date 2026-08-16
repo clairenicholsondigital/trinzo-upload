@@ -523,11 +523,15 @@ function cleanStagedMeetingTitleCandidate(value, options = {}) {
 
 function inferStagedMeetingType(text, fileName = '') {
   const combined = `${text || ''}\n${fileName || ''}`;
+  const titleHint = String(fileName || '').replace(/[_-]+/g, ' ');
+  if (/\binternal\b.*\b(?:follow ?up|review from client call|debrief)\b/i.test(titleHint)) return 'Internal follow-up';
   if (/\bimporter(?:['’]s)?\s+(?:obligations?|responsibilit(?:y|ies)|requirements?)\b/i.test(combined)) return 'Importer obligations review';
+  if (/\baudit\b.*\b(?:kick ?off|planning|preparation|readiness)\b/i.test(titleHint)) return 'Audit kick-off / planning';
+  if (/\b(?:tech(?:nical)? file|\bSW\b|software)\b.*\b(?:weekly|check ?in|review)\b/i.test(titleHint)) return 'Technical file review';
   if (/\b(webinar|rehearsal|dry run|run-through|run through)\b/i.test(combined)) return 'Webinar rehearsal';
   if (/\bworkshop\b/i.test(combined)) return 'Workshop';
-  if (/\bdecision\b/i.test(combined)) return 'Decision meeting';
-  if (/\b(client update|status update)\b/i.test(combined)) return 'Client update';
+  if (/\b(client update|status update)\b/i.test(titleHint)) return 'Client update';
+  if (/\bdecision\b/i.test(titleHint)) return 'Decision meeting';
   return 'Project review';
 }
 
@@ -597,7 +601,6 @@ const STAGED_KNOWN_CLIENT_ATTENDEES = [
   'Adil Kauim',
   'Kevin Beattie',
   'Andrew Kane',
-  'Rebecca Cuckoo',
   'Christina Cargan',
   'Ciaran Ryan',
   'Claire Doherty',
@@ -874,6 +877,13 @@ function extractStagedDetailsFromTranscript(transcriptText, fileName = '') {
   ]);
   const headerDate = teamsHeader.meetingDate || '';
   const headerTitle = teamsHeader.meetingTitle || '';
+  const attendeeNameWarnings = teamsSpeakers.flatMap((name) => {
+    const parts = stagedKnownAttendeeKey(name).split(/\s+/).filter(Boolean);
+    if (parts.length < 2 || STAGED_ATTENDEE_BUCKET_BY_NAME.has(stagedKnownAttendeeKey(name))) return [];
+    const knownFirstName = STAGED_KNOWN_PERSON_BY_FIRST_NAME.get(parts[0]);
+    if (!knownFirstName) return [];
+    return [{ type: 'possible_attendee_name_mismatch', severity: 'warning', blocking: false, message: `Check attendee name “${name}”. The first name matches known participant “${knownFirstName}”, but the transcript surname differs.` }];
+  });
 
   return {
     ok: true,
@@ -891,6 +901,7 @@ function extractStagedDetailsFromTranscript(transcriptText, fileName = '') {
         allAttendees: uniqueNames([...internalAttendees, ...clientAttendees, ...teamsSpeakers])
       }
     },
+    validationFlags: attendeeNameWarnings,
     telemetryPreview: {
       stage: 'details',
       transcriptLength: text.length,

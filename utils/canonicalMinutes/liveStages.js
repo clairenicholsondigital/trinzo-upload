@@ -149,6 +149,7 @@ function boundedEvidencePack(items, evidence, profile, stage) {
     deadline: clean(item.deadline),
     selectionMode: item.semanticOnly ? 'contextual_commitment_thread' : 'canonical_selected_action',
     recapCorroborated: Boolean(item.recapCorroborated),
+    confidenceTier: clean(item.confidenceTier),
     currentPoints: strings(item.points),
     evidence: sampledIds(item.evidenceIds, actionStage ? 8 : 4).map((id) => {
       const event = byId.get(id);
