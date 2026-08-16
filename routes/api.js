@@ -43,6 +43,7 @@ const {
 const { getMeetingMinutesCoreGoldenStatus } = require('../utils/meetingMinutesCoreGolden');
 const { runCanonicalNoEditPass } = require('../utils/canonicalMinutes/runner');
 const { runCanonicalLiveStage } = require('../utils/canonicalMinutes/liveStages');
+const { prepareEvidence } = require('../utils/canonicalMinutes/evidence');
 const { polishCanonicalStage, canonicalFallback, addRecoveredActionCandidates, clientReadyPresentation } = require('../utils/canonicalMinutes/trooperPolish');
 const { reviewGeneratedContent } = require('../utils/terminologyQa');
 const {
@@ -3798,10 +3799,11 @@ function serialiseActionReviewCandidate(item = {}) {
 }
 
 async function canonicalStagedResponse(stage, transcript, input = {}) {
+  const confirmed = canonicalConfirmedStages(input);
   let payload = runCanonicalLiveStage(transcript.text, {
     stage,
     fileName: transcript.fileName || 'transcript.txt',
-    confirmed: canonicalConfirmedStages(input),
+    confirmed,
     reviewerGuidance: input.additionalContext || '',
     includeEvidencePack: ['discussion', 'actions'].includes(stage)
   });
@@ -3843,6 +3845,32 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
       const fallback = canonicalFallback(payload);
       polished = { payload: fallback, used: false, reason: error?.message || 'Trooper rewrite failed.' };
     }
+  }
+  if (stage === 'discussion') {
+    const evidence = prepareEvidence(transcript.text);
+    const semanticPreservation = repairDiscussionForConfirmedUnderstanding({
+      discussion: polished.payload?.screens?.discussion || [],
+      understanding: buildConfirmedUnderstanding(confirmed.summary),
+      transcriptText: transcript.text,
+      evidenceEvents: evidence.events
+    });
+    polished.payload = {
+      ...polished.payload,
+      screens: {
+        ...(polished.payload?.screens || {}),
+        discussion: semanticPreservation.discussion
+      },
+      validationFlags: [
+        ...(Array.isArray(polished.payload?.validationFlags)
+          ? polished.payload.validationFlags.filter((flag) => flag.type !== 'reviewer_confirmed_fact_not_preserved')
+          : []),
+        ...semanticPreservation.validationFlags
+      ],
+      telemetryPreview: {
+        ...(polished.payload?.telemetryPreview || {}),
+        reviewerConfirmedFactPreservationAfterPolish: semanticPreservation.telemetry
+      }
+    };
   }
   const result = clientReadyPresentation(polished.payload);
   return {

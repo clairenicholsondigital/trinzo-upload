@@ -59,6 +59,10 @@ function normaliseDiscussionPresentation(value) {
     );
 }
 
+function discussionPointText(value) {
+  return value && typeof value === 'object' ? clean(value.text) : clean(value);
+}
+
 function distinctiveDiscussionFallback(topic, value) {
   const text = clean(value);
   if (/language support|locali[sz]ation/i.test(topic)) {
@@ -186,14 +190,15 @@ function clientReadyPresentation(payload) {
     base.screens.discussion = mergeClientReadyDiscussionCards(base.screens.discussion.map((card) => ({
       ...card,
       points: [...new Set((card.points || []).map((point) => {
-        const presented = normaliseEntities(normaliseDiscussionPresentation(point));
+        const sourceText = discussionPointText(point);
+        const presented = normaliseEntities(normaliseDiscussionPresentation(sourceText));
         const polished = finaliseDiscussionPointForMinutes(presented, card.topic);
         if (polished && discussionPointAlignedToTopic(card.topic, polished)) return polished;
         const fallback = distinctiveDiscussionFallback(card.topic, presented);
         if (fallback) return fallback;
-        retainedForReview.push({ section: card.topic || 'Discussion', text: clean(point) });
+        retainedForReview.push({ section: card.topic || 'Discussion', text: sourceText });
         if (/^there['’]s one to\b/i.test(presented)) return '';
-        return DISTINCTIVE_TOPIC_ALIGNMENT.some((item) => item.topic.test(clean(card.topic))) ? '' : clean(point);
+        return DISTINCTIVE_TOPIC_ALIGNMENT.some((item) => item.topic.test(clean(card.topic))) ? '' : sourceText;
       }).filter(Boolean))]
     })).filter((card) => card.points.length));
   }

@@ -325,6 +325,29 @@ test('final discussion presentation strips internal evidence ids and keeps disti
   assert.doesNotMatch(JSON.stringify(result.screens.discussion), /evt_/i);
 });
 
+test('final discussion presentation preserves repaired evidence-bearing semantic points', () => {
+  const result = clientReadyPresentation({
+    stagedStage: 'discussion',
+    validationFlags: [],
+    screens: { discussion: [{
+      topic: 'Goods flow and import clearance',
+      points: [
+        { text: 'Goods originate from suppliers in Japan.', evidenceIds: ['evt_55'] },
+        { text: 'Netherlands is used for fiscal clearance only, not substantive warehousing.', evidenceIds: ['evt_57'] },
+        { text: 'Final storage is at DITA Park West in Dublin.', evidenceIds: ['evt_61'] },
+        { text: "Importer procedures need to reflect DITA's actual ERP/order flow, warehouse checks, scanners, document control and manual processes.", evidenceIds: ['evt_88'] }
+      ]
+    }] }
+  });
+  const text = result.screens.discussion.flatMap((card) => card.points).join(' ');
+  assert.match(text, /Japan/i);
+  assert.match(text, /Netherlands/i);
+  assert.match(text, /fiscal(?:ly)? clearance/i);
+  assert.match(text, /Dublin|Park West/i);
+  assert.match(text, /ERP|warehouse|scanner|document control/i);
+  assert.doesNotMatch(JSON.stringify(result.screens.discussion), /evt_/i);
+});
+
 test('final presentation drops discussion text positively identified as raw transcript debris', () => {
   const result = clientReadyPresentation({
     stagedStage: 'discussion', validationFlags: [],

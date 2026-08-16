@@ -11,6 +11,7 @@ const { prepareEvidence } = require('../utils/canonicalMinutes/evidence');
 const { assessEvidenceTopology } = require('../utils/canonicalMinutes/topology');
 const { runCanonicalLiveStage, buildConfirmedState } = require('../utils/canonicalMinutes/liveStages');
 const semanticStages = require('../utils/canonicalMinutes/semanticStages');
+const apiRouter = require('../routes/api');
 const {
   buildConfirmedUnderstanding,
   repairDiscussionForConfirmedUnderstanding,
@@ -437,16 +438,22 @@ test('canonical Discussion generation preserves reviewer-confirmed DITA semantic
   assert.equal(result.semanticPreservation.unresolvedFactCount, 0);
 });
 
-test('canonical Discussion API screen preserves reviewer-confirmed DITA facts after grounding', () => {
+test('canonical Discussion API response preserves reviewer-confirmed DITA facts after grounding and polish', async () => {
   const ditaTranscript = fs.readFileSync(
     path.resolve(__dirname, '../../trinzo-ui-test-transcripts/extracted-text/Client DITA T819 - Importer Obligations - Client connect-6-.txt'),
     'utf8'
   );
-  const result = runCanonicalLiveStage(ditaTranscript, {
-    stage: 'discussion',
-    fileName: 'dita.txt',
-    confirmed: {
-      summary: {
+  const previousTrooperKey = process.env.TROOPER_API_KEY;
+  delete process.env.TROOPER_API_KEY;
+  let result;
+  try {
+    result = await apiRouter.stagedEvaluation.canonicalStagedResponse('discussion', {
+      text: ditaTranscript,
+      source: 'text',
+      fileName: 'dita.txt',
+      preparedTranscriptTelemetry: null
+    }, {
+      confirmedSummary: {
         meetingPurpose: "The meeting was process discovery to understand DITA's actual operational processes so practical importer-obligation procedures could be designed around how the business works.",
         keyFacts: [
           'Goods originate from suppliers in Japan.',
@@ -457,8 +464,10 @@ test('canonical Discussion API screen preserves reviewer-confirmed DITA facts af
         objectives: ['Understand DITA importer-obligation process evidence'],
         overallTopics: ['Goods flow and import clearance', 'Operational process requirements']
       }
-    }
-  });
+    });
+  } finally {
+    if (previousTrooperKey) process.env.TROOPER_API_KEY = previousTrooperKey;
+  }
   const discussionText = result.screens.discussion.map((card) => `${card.topic} ${(card.points || []).join(' ')}`).join(' ');
   assert.match(discussionText, /Japan/i);
   assert.match(discussionText, /Netherlands/i);
