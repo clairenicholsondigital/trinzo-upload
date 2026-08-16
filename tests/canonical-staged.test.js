@@ -402,6 +402,23 @@ test('repair preserves transcript-supported reviewer-confirmed DITA facts in Dis
   assert.ok(understanding.criticalFacts.every((fact) => factIsPreserved(fact.text, result.discussion)));
 });
 
+test('compound reviewer-confirmed facts require material component preservation', () => {
+  const fact = "Importer procedures need to reflect DITA's actual ERP/order flow, warehouse checks, scanners, document control and manual processes.";
+  assert.equal(factIsPreserved(fact, [{
+    topic: 'Operational process requirements',
+    points: [
+      'The goal is to ensure minimal organisational impact and sustainability for the implemented procedures by aligning them with existing, robust processes.',
+      "The meeting was process discovery to understand DITA's actual operational processes."
+    ]
+  }]), false);
+  assert.equal(factIsPreserved(fact, [{
+    topic: 'Operational process requirements',
+    points: [
+      'The procedures should be based on DITA NetSuite order workflow, warehouse verification, barcode scanning, document control and manual warehouse processes.'
+    ]
+  }]), true);
+});
+
 test('canonical Discussion generation preserves reviewer-confirmed DITA semantic anchors', () => {
   const ditaTranscript = fs.readFileSync(
     path.resolve(__dirname, '../../trinzo-ui-test-transcripts/extracted-text/Client DITA T819 - Importer Obligations - Client connect-6-.txt'),

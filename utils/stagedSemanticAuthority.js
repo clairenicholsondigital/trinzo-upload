@@ -108,6 +108,67 @@ function keywordSupportScore(fact, text) {
   return matched / factTokens.length;
 }
 
+const MATERIAL_CONCEPT_SYNONYMS = {
+  erp: ['erp', 'enterprise resource planning', 'netsuite', 'order system'],
+  order: ['order', 'orders', 'ordering', 'purchase order'],
+  flow: ['flow', 'workflow', 'process', 'route', 'sequence'],
+  warehouse: ['warehouse', 'warehousing', 'storage', 'goods in', 'goods-in', 'picking', 'packing'],
+  check: ['check', 'checks', 'checked', 'checking', 'inspection', 'inspect', 'verification', 'verify', 'review'],
+  scanner: ['scanner', 'scanners', 'scanning', 'scan', 'barcode', 'barcoding', 'rf smart', 'rfsmart'],
+  document: ['document', 'documents', 'documentation', 'record', 'records'],
+  control: ['control', 'controlled', 'controls', 'qms', 'quality management system'],
+  manual: ['manual', 'manually', 'non automated', 'non-automated', 'not automated', 'paper', 'human'],
+  process: ['process', 'processes', 'procedure', 'procedures', 'workflow', 'workflows']
+};
+
+const MATERIAL_LIST_PREFIX = /\b(?:including|such as|covering|including relevant|including the relevant)\b/i;
+
+function materialComponentTokens(value) {
+  return lowerTokens(value)
+    .filter((token) => !['include', 'including', 'relevant', 'actual'].includes(token));
+}
+
+function materialComponentsForFact(factText) {
+  const text = cleanText(factText);
+  const prefixMatch = text.match(MATERIAL_LIST_PREFIX);
+  if (!prefixMatch && !/[;,/]|\s+and\s+/i.test(text)) return [];
+  const listText = prefixMatch ? text.slice((prefixMatch.index || 0) + prefixMatch[0].length) : text;
+  const components = listText
+    .replace(/[.?!]+$/g, '')
+    .split(/\s*,\s*|\s+and\s+|\s*;\s*/)
+    .map((part) => part.replace(/^(?:the|relevant|actual)\s+/i, '').trim())
+    .map((part) => ({ text: part, tokens: materialComponentTokens(part) }))
+    .filter((component) => component.tokens.length);
+  return components.length >= 3 ? components : [];
+}
+
+function materialTokenIsCovered(token, haystack) {
+  const synonyms = MATERIAL_CONCEPT_SYNONYMS[token] || [token];
+  return synonyms.some((synonym) => {
+    const normalised = cleanText(synonym).toLowerCase();
+    if (!normalised) return false;
+    if (/\s/.test(normalised)) return haystack.includes(normalised);
+    return new RegExp(`\\b${normalised.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(haystack);
+  });
+}
+
+function materialComponentIsPreserved(component, text) {
+  const haystack = cleanText(text).toLowerCase();
+  const tokens = component.tokens || [];
+  if (!tokens.length) return true;
+  const matched = tokens.filter((token) => materialTokenIsCovered(token, haystack)).length;
+  if (tokens.length === 1) return matched === 1;
+  if (tokens.length === 2) return matched === 2;
+  return matched / tokens.length >= 0.67;
+}
+
+function materialComponentsArePreserved(factText, text) {
+  const components = materialComponentsForFact(factText);
+  if (!components.length) return null;
+  const preserved = components.filter((component) => materialComponentIsPreserved(component, text)).length;
+  return preserved / components.length >= 0.8;
+}
+
 function findSupportingEvidence(factText, transcriptText, evidenceEvents = []) {
   const candidates = [];
   const rankedEvents = [];
@@ -160,6 +221,8 @@ function discussionText(discussion = []) {
 function factIsPreserved(factText, discussion = []) {
   const combined = discussionText(discussion);
   if (!combined) return false;
+  const materialCoverage = materialComponentsArePreserved(factText, combined);
+  if (materialCoverage !== null) return materialCoverage;
   return Math.max(textSimilarity(factText, combined), keywordSupportScore(factText, combined)) >= 0.55;
 }
 
