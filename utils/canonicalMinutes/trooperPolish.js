@@ -179,7 +179,7 @@ function actionReviewCandidatesFromFlags(flags = []) {
       if (normalised.action && !byId.has(normalised.id)) byId.set(normalised.id, normalised);
     }
   }
-  return rankAndClusterActionReviewCandidates([...byId.values()]);
+  return rankAndClusterActionReviewCandidates([...byId.values()], { preserveExistingUsefulness: true });
 }
 
 function clientReadyPresentation(payload) {
@@ -302,15 +302,17 @@ function addRecoveredActionCandidates(payload, recovered = []) {
     if (signatures.has(signature)) continue;
     const id = `recovered_${pack.length + 1}`;
     const reviewDisposition = clean(item.reviewDisposition) || (owner === 'Not stated' ? 'needs_assignment' : 'confirmed_action');
+    const rankedScore = Number(item.reviewerUsefulnessScore || 0);
+    const recoveredScore = Number(enriched.reviewerUsefulnessScore || 0);
     pack.push({
       itemIndex: pack.length,
       topic: '', owner, action,
       suggestedAction,
       deadline: clean(item.deadline) || 'Not stated',
       reviewDisposition,
-      reviewerUsefulnessScore: Number(enriched.reviewerUsefulnessScore || item.reviewerUsefulnessScore || 0),
-      reviewerUsefulnessTier: clean(enriched.reviewerUsefulnessTier || item.reviewerUsefulnessTier),
-      actionClassification: clean(enriched.actionClassification || item.actionClassification),
+      reviewerUsefulnessScore: rankedScore || recoveredScore,
+      reviewerUsefulnessTier: rankedScore ? clean(item.reviewerUsefulnessTier) : clean(enriched.reviewerUsefulnessTier || item.reviewerUsefulnessTier),
+      actionClassification: rankedScore ? clean(item.actionClassification) : clean(enriched.actionClassification || item.actionClassification),
       ownerEvidenceType: clean(enriched.ownerEvidenceType || item.ownerEvidenceType),
       workstreamRelevance: enriched.workstreamRelevance || item.workstreamRelevance || null,
       clusterKey: clean(enriched.clusterKey || item.clusterKey),

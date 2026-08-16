@@ -74,9 +74,19 @@ function classificationForCandidate(candidate = {}, options = {}) {
     || /\b(\w+)\s+\1\b/i.test(action);
   const currentState = /\b(?:is|are|was|were|will be|puts?|checks?|does|do)\b/i.test(action)
     && !/\b(?:confirm|provide|send|share|review|update|prepare|arrange|schedule|follow|request|complete|draft|submit|create|develop|document)\b/i.test(action);
+  const operationalNarrative = /\b(?:units?|orders?|boxes?|warehouse|handheld devices?|scanner|scanners|barcode|barcodes|pick(?:ing)?|picked|pack(?:ing)?|packed|label(?:ling|ing)?|stored?|storage|shel(?:f|ves)|dispatch|courier|NetSuite|ERP|order flow)\b/i.test(combined)
+    && /\b(?:we|they|team|staff|warehouse)\b/i.test(combined)
+    && !/\b(?:confirm|provide|send|share|review|update|prepare|arrange|schedule|follow|request|complete|draft|submit|create|develop|document|need(?:s)? to|required|requirement)\b/i.test(action);
   const processDescription = /\b(?:will have|we['’]?ll have|can directly|will place|have to pick|have to store|has to meet|incorporated in the procedure|understand how the business works|applicable reg requirements|lot numbering process)\b/i.test(combined)
     && !followUpVerb
     && !explicitRequest;
+  const completeReviewableProposition = Boolean(
+    candidate.reviewDisposition === 'requirement'
+    || followUpVerb
+    || explicitRequest
+    || (explicitCommitment && concreteArtefact)
+    || (dependency && concreteArtefact && !operationalNarrative && !processDescription)
+  );
   return {
     regulatory,
     explicitRequest,
@@ -88,8 +98,10 @@ function classificationForCandidate(candidate = {}, options = {}) {
     fragmentary,
     currentState,
     followUpVerb,
+    operationalNarrative,
     processDescription,
-    informational: currentState || processDescription || (regulatory && !explicitRequest && !explicitCommitment && !dependency && !followUpVerb)
+    completeReviewableProposition,
+    informational: currentState || processDescription || operationalNarrative || (regulatory && !explicitRequest && !explicitCommitment && !dependency && !followUpVerb)
   };
 }
 
@@ -184,6 +196,7 @@ function reviewerUsefulness(candidate = {}, options = {}) {
   if (cls.informational) score -= 0.28;
   if (cls.currentState) score -= 0.18;
   if (cls.processDescription) score -= 0.38;
+  if (cls.operationalNarrative) score -= 0.3;
   if (cls.completed && !/\b(?:project plan|task list|follow[- ]?up|pending|outstanding|still|align)\b/i.test(`${candidate.action || ''} ${candidateEvidenceText(candidate, options)}`)) score -= 0.55;
   else if (cls.completed) score -= 0.18;
   if (cls.hypothetical && !cls.dependency) score -= 0.22;
@@ -192,13 +205,15 @@ function reviewerUsefulness(candidate = {}, options = {}) {
   if (cls.fragmentary) score = Math.min(score, 0.24);
   if (cls.informational && candidate.reviewDisposition !== 'requirement') score = Math.min(score, 0.32);
   if (cls.processDescription && candidate.reviewDisposition !== 'requirement') score = Math.min(score, 0.32);
+  if (!cls.completeReviewableProposition && candidate.reviewDisposition !== 'requirement') score = Math.min(score, 0.33);
   return {
     reviewerUsefulnessScore: Number(clamp(score).toFixed(4)),
     reviewerUsefulnessTier: score >= 0.62 ? 'high' : score >= 0.34 ? 'medium' : 'low',
     actionClassification: cls.completed ? 'completed_history'
       : cls.fragmentary ? 'fragment'
-      : cls.informational ? 'informational'
       : candidate.reviewDisposition === 'requirement' ? 'requirement'
+      : !cls.completeReviewableProposition ? 'incomplete_proposition'
+      : cls.informational ? 'informational'
       : cls.explicitCommitment ? 'commitment'
       : cls.explicitRequest ? 'request'
       : cls.dependency ? 'dependency_follow_up'
@@ -212,16 +227,17 @@ function enrichActionReviewCandidate(candidate = {}, options = {}) {
   const usefulness = reviewerUsefulness(candidate, options);
   const suggestedAction = reviewerFacingActionText(candidate, options);
   const existingScore = Number(candidate.reviewerUsefulnessScore);
-  const reviewerUsefulnessScore = Number.isFinite(existingScore) && existingScore > 0
+  const preserveExisting = options.preserveExistingUsefulness && Number.isFinite(existingScore) && existingScore > 0;
+  const reviewerUsefulnessScore = preserveExisting
     ? Number(clamp(existingScore).toFixed(4))
     : usefulness.reviewerUsefulnessScore;
-  const reviewerUsefulnessTier = clean(candidate.reviewerUsefulnessTier) || usefulness.reviewerUsefulnessTier;
+  const reviewerUsefulnessTier = reviewerUsefulnessScore >= 0.62 ? 'high' : reviewerUsefulnessScore >= 0.34 ? 'medium' : 'low';
   return {
     ...candidate,
     suggestedAction,
     reviewerUsefulnessScore,
-    reviewerUsefulnessTier,
-    actionClassification: clean(candidate.actionClassification) || usefulness.actionClassification,
+    reviewerUsefulnessTier: preserveExisting && clean(candidate.reviewerUsefulnessTier) ? clean(candidate.reviewerUsefulnessTier) : reviewerUsefulnessTier,
+    actionClassification: preserveExisting && clean(candidate.actionClassification) ? clean(candidate.actionClassification) : clean(candidate.actionClassification) || usefulness.actionClassification,
     workstreamRelevance: candidate.workstreamRelevance || usefulness.workstreamRelevance,
     ownerEvidenceType: clean(candidate.ownerEvidenceType) || usefulness.ownerEvidenceType,
     clusterKey: clusterKey({ ...candidate, suggestedAction }, options)

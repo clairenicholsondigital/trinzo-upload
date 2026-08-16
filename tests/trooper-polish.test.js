@@ -170,6 +170,25 @@ test('evidence-bound recovery candidates join the Trooper pack without entering 
   assert.equal(enriched._canonicalEvidencePack[1].evidence[0].current.includes('mute-button LED'), true);
 });
 
+test('recovered reviewer candidates preserve context-aware usefulness rank through the Trooper pack', () => {
+  const payload = actionPayload();
+  const enriched = addRecoveredActionCandidates(payload, [{
+    owner: 'Not stated',
+    action: 'Arrange further process-discovery working sessions to confirm the operational details needed for importer-obligation procedures',
+    suggestedAction: 'Arrange further process-discovery working sessions to confirm the operational details needed for importer-obligation procedures',
+    deadline: 'Not stated',
+    reviewDisposition: 'needs_assignment',
+    reviewerUsefulnessScore: 0.8891,
+    reviewerUsefulnessTier: 'high',
+    actionClassification: 'dependency_follow_up',
+    evidence: 'Further working sessions are needed to go through the operational details before procedure drafting.'
+  }]);
+  const recovered = enriched._canonicalEvidencePack.find((item) => item.action.includes('process-discovery'));
+  assert.equal(recovered.reviewerUsefulnessScore, 0.8891);
+  assert.equal(recovered.reviewerUsefulnessTier, 'high');
+  assert.equal(recovered.actionClassification, 'dependency_follow_up');
+});
+
 test('ownerless recovery candidates stay out of final actions until ownership is resolved', async () => {
   const enriched = addRecoveredActionCandidates(actionPayload(), [{
     owner: 'Not stated',
@@ -287,6 +306,9 @@ test('final presentation preserves action candidate arrays across API serialisat
     suggestedAction: 'Prepare the country and language list',
     deadline: 'Not stated',
     reviewDisposition: 'needs_assignment',
+    reviewerUsefulnessScore: 0.83,
+    reviewerUsefulnessTier: 'high',
+    actionClassification: 'requirement',
     evidenceIds: ['evt_1', 'evt_2']
   };
   const result = clientReadyPresentation({
@@ -305,6 +327,9 @@ test('final presentation preserves action candidate arrays across API serialisat
   assert.equal(roundTrip.actionReviewCandidates.length, 1);
   assert.equal(roundTrip.actionReviewCandidates[0].id, 'action-candidate-fixed');
   assert.equal(roundTrip.actionReviewCandidates[0].reviewDisposition, 'needs_assignment');
+  assert.equal(roundTrip.actionReviewCandidates[0].reviewerUsefulnessScore, 0.83);
+  assert.equal(roundTrip.actionReviewCandidates[0].reviewerUsefulnessTier, 'high');
+  assert.equal(roundTrip.actionReviewCandidates[0].actionClassification, 'requirement');
   assert.equal(roundTrip.validationFlags[0].repairCandidates[0].id, 'action-candidate-fixed');
   assert.equal(roundTrip.candidateAccounting.confirmedActions, 1);
   assert.equal(roundTrip.candidateAccounting.reviewerCandidates, 1);

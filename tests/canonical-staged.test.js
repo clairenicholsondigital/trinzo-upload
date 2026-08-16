@@ -661,6 +661,7 @@ test('canonical Actions ranking separates reviewer usefulness from automatic pub
   assert.ok([...clusterKeys].some((key) => /qms/i.test(key)));
   assert.doesNotMatch(highText, /\bdo or like\b|document document|review that document as well/i);
   assert.doesNotMatch(highText, /has to meet MDR requirements|will have lot numbering process/i);
+  assert.doesNotMatch(highText, /10 units|box(?:\.| )?big enough|handheld devices|pick into that box/i);
   assert.match(allText, /updated label from the importer perspective/i);
   assert.equal(
     confirmedActions.some((action) => /Med Envoy|Cody|project plan|task list/i.test(action.action || action.meetingActionPoint || '')),
