@@ -201,12 +201,15 @@ function actionCandidate(rule, evidence, owner, deadline, sourceTurnIds = []) {
   const action = cleanLine(rule.action(evidence)).replace(/[.]+$/, '');
   const evidenceAction = extractProspectiveAction(evidence);
   if (!action) return null;
+  const reviewDisposition = rule.id === 'quality_manual_review_commitment'
+    ? 'review_required'
+    : candidateDisposition(evidence, owner);
   const candidate = {
-    owner,
+    owner: rule.id === 'quality_manual_review_commitment' ? 'Not stated' : owner,
     action,
     evidenceAction,
     deadline,
-    reviewDisposition: candidateDisposition(evidence, owner),
+    reviewDisposition,
     source: 'evidence_bound_transcript_action',
     evidence,
     sourceTurnIds,
@@ -221,7 +224,7 @@ const RECOVERY_RULES = [
     id: 'quality_manual_review_commitment',
     required: [/\b(?:qms|quality) manual\b/i, /\b(?:i['’]?ll|i will|can)\s+(?:take a look|review|read|check|have a look)\b/i],
     maxTurns: 8,
-    action: () => 'Review the QMS Manual'
+    action: () => 'Confirm access to the QMS Manual so it can be used as the procedure-design reference'
   },
   {
     id: 'label_importer_review',

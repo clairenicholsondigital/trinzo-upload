@@ -163,10 +163,13 @@ test('recovers DITA follow-ups only from the real DITA evidence windows', () => 
   assert.ok(ditaActions.includes('Follow up on the Med Envoy project plan or task list'));
   assert.ok(ditaActions.includes('Review the HPRA authorised-representative bill'));
   assert.ok(ditaActions.includes('Update the declarations of conformity with the PPE risk rationale'));
-  assert.ok(ditaActions.includes('Review the QMS Manual'));
+  assert.ok(ditaActions.includes('Confirm access to the QMS Manual so it can be used as the procedure-design reference'));
   assert.ok(ditaActions.includes('Review the updated label from an importer perspective'));
   assert.ok(ditaActions.includes('Prepare the country and language list'));
   assert.equal(ditaActions.length, 6);
+  const ditaQms = buildEvidenceBoundStagedActionInventory(dita).find((item) => /QMS Manual/i.test(item.action));
+  assert.equal(ditaQms.owner, 'Not stated');
+  assert.equal(ditaQms.reviewDisposition, 'review_required');
   assert.ok(!abbottActions.some((action) => /Med Envoy|HPRA|PPE risk rationale/i.test(action)));
 });
 

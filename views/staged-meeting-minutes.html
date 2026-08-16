@@ -1368,6 +1368,10 @@ td select {
   function actionCandidateTier(candidate) {
     var disposition = String(candidate && candidate.reviewDisposition || '');
     var confidenceTier = String(candidate && candidate.confidenceTier || '');
+    var usefulnessTier = String(candidate && candidate.reviewerUsefulnessTier || '');
+    if (usefulnessTier === 'high') return disposition === 'requirement' ? 'requirements' : 'likely';
+    if (usefulnessTier === 'medium' && disposition === 'requirement') return 'requirements';
+    if (usefulnessTier === 'low') return 'low';
     if (disposition === 'requirement') return 'requirements';
     if (disposition === 'completed_history') return 'low';
     if (confidenceTier === 'review_wording' || confidenceTier === 'review_owner_or_wording') return 'likely';
@@ -1439,6 +1443,13 @@ td select {
         deadline: source.deadline || 'Not stated',
         reviewDisposition: source.reviewDisposition || source.confidenceTier || 'review_required',
         confidenceTier: source.confidenceTier || '',
+        reviewerUsefulnessScore: Number(source.reviewerUsefulnessScore || 0),
+        reviewerUsefulnessTier: source.reviewerUsefulnessTier || '',
+        actionClassification: source.actionClassification || '',
+        ownerEvidenceType: source.ownerEvidenceType || '',
+        workstreamRelevance: source.workstreamRelevance || null,
+        clusterKey: source.clusterKey || '',
+        clusterSize: Number(source.clusterSize || 0),
         evidenceIds: Array.isArray(source.evidenceIds) ? source.evidenceIds : []
       }
     };
@@ -1456,6 +1467,13 @@ td select {
       deadline: source.deadline || 'Not stated',
       reviewDisposition: source.reviewDisposition || source.confidenceTier || 'review_required',
       confidenceTier: source.confidenceTier || '',
+      reviewerUsefulnessScore: Number(source.reviewerUsefulnessScore || 0),
+      reviewerUsefulnessTier: source.reviewerUsefulnessTier || '',
+      actionClassification: source.actionClassification || '',
+      ownerEvidenceType: source.ownerEvidenceType || '',
+      workstreamRelevance: source.workstreamRelevance || null,
+      clusterKey: source.clusterKey || '',
+      clusterSize: Number(source.clusterSize || 0),
       evidenceIds: Array.isArray(source.evidenceIds) ? source.evidenceIds.slice(0, 12) : []
     };
   }
@@ -1511,6 +1529,7 @@ td select {
     actionReviewCandidates = actionReviewCandidates.filter(function (entry) { return entry.id !== resolvedKey; });
     currentActionReviewCandidatePayloads = currentActionReviewCandidatePayloads.filter(function (candidate) { return candidate.id !== resolvedKey; });
     if (element) element.remove();
+    renderActionReviewGroups();
     renderResolvedChecks();
     updateReviewToolbar();
     saveDraft();
@@ -1544,7 +1563,7 @@ td select {
     var definitions = [
       ['likely', 'Likely follow-ups', true],
       ['requirements', 'Requirements that may need an action', false],
-      ['low', 'Low-confidence candidates', false]
+      ['low', 'Other possible follow-ups', false]
     ];
     actionReviewGroups.innerHTML = definitions.map(function (definition) {
       var entries = groups[definition[0]];
@@ -1562,8 +1581,8 @@ td select {
     var list = Array.isArray(flags) ? flags.filter(Boolean) : [];
     currentValidationFlags = list;
     currentValidationStage = stage || stageForScreen(activeIndex) || '';
-    var fromFlags = collectActionCandidatesFromFlags(list, currentValidationStage);
     var fromPayload = collectActionCandidatesFromPayload(payloadCandidates);
+    var fromFlags = fromPayload.length ? [] : collectActionCandidatesFromFlags(list, currentValidationStage);
     var byCandidateId = {};
     fromFlags.concat(fromPayload).forEach(function (entry) {
       if (entry && !reviewCheckIsResolved(entry.id) && !byCandidateId[entry.id]) byCandidateId[entry.id] = entry;

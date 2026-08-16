@@ -593,6 +593,118 @@ test('canonical Discussion planner still allows non-DITA emergent risk workstrea
   assert.ok(planned.some((workstream) => /risk|audit|planning|scope|responsibilit/i.test(workstream.label)));
 });
 
+test('canonical Actions ranking separates reviewer usefulness from automatic publication confidence for DITA', async () => {
+  const ditaTranscript = fs.readFileSync(
+    path.resolve(__dirname, '../../trinzo-ui-test-transcripts/extracted-text/Client DITA T819 - Importer Obligations - Client connect-6-.txt'),
+    'utf8'
+  );
+  const previousTrooperKey = process.env.TROOPER_API_KEY;
+  delete process.env.TROOPER_API_KEY;
+  let result;
+  try {
+    result = await apiRouter.stagedEvaluation.canonicalStagedResponse('actions', {
+      text: ditaTranscript,
+      source: 'text',
+      fileName: 'dita.txt',
+      preparedTranscriptTelemetry: null
+    }, {
+      confirmedSummary: {
+        meetingPurpose: "Understand DITA's actual operational processes so importer-obligation procedures can be designed around how the business works.",
+        keyFacts: [
+          'Goods originate from suppliers in Japan.',
+          'The Netherlands is used for fiscal clearance only, not substantive warehousing.',
+          'Final storage is at DITA Park West in Dublin.',
+          "Importer procedures need to reflect DITA's actual ERP/order flow, warehouse checks, scanners, document control and manual processes."
+        ],
+        overallTopics: [
+          'Goods flow and storage',
+          'Importer-obligation QMS procedure design',
+          'Operational process detail',
+          'MDR/PPE/sunglasses and declarations of conformity',
+          'EUDAMED/HPRA',
+          'Language/country requirements',
+          'MedEnvoy/Cody alignment',
+          'Further process discovery'
+        ]
+      },
+      confirmedDiscussion: [
+        { topic: 'Goods flow and storage', points: ['Goods originate from Japan, pass through the Netherlands for fiscal clearance only and are stored finally at DITA Park West in Dublin.'] },
+        { topic: 'Importer-obligation QMS procedure design', points: ['Importer procedures need to fit DITA operational processes.'] },
+        { topic: 'Operational process detail', points: ['ERP/order flow, warehouse checks, scanners, document control and manual processes need to be confirmed.'] },
+        { topic: 'MDR/PPE/sunglasses and declarations of conformity', points: ['PPE/sunglasses and declarations of conformity need review.'] },
+        { topic: 'EUDAMED/HPRA', points: ['EUDAMED and HPRA registration evidence were discussed.'] },
+        { topic: 'Language/country requirements', points: ['Country and language information is required.'] },
+        { topic: 'MedEnvoy/Cody alignment', points: ['MedEnvoy and Cody alignment needs checking.'] },
+        { topic: 'Further process discovery', points: ['Further working sessions are needed.'] }
+      ]
+    });
+  } finally {
+    if (previousTrooperKey) process.env.TROOPER_API_KEY = previousTrooperKey;
+  }
+
+  const confirmedActions = result.screens.actions || [];
+  const candidates = result.actionReviewCandidates || [];
+  const high = candidates.filter((candidate) => candidate.reviewerUsefulnessTier === 'high');
+  const highText = high.map((candidate) => candidate.suggestedAction || candidate.action).join('\n');
+  const allText = candidates.map((candidate) => candidate.suggestedAction || candidate.action).join('\n');
+  const clusterKeys = new Set(candidates.map((candidate) => candidate.clusterKey));
+
+  assert.ok(confirmedActions.length <= 2, `automatic publication should stay conservative: ${confirmedActions.length}`);
+  assert.ok(high.length >= 5 && high.length <= 8, `expected a small high-priority set, got ${high.length}`);
+  assert.match(highText, /Med Envoy project plan|task list/i);
+  assert.match(highText, /country and language information/i);
+  assert.match(highText, /PPE\/sunglasses declarations of conformity|Category I risk rationale/i);
+  assert.match(highText, /further process-discovery|working sessions/i);
+  assert.match(highText, /QMS Manual/i);
+  assert.ok([...clusterKeys].some((key) => /medenvoy|project_plan/i.test(key)));
+  assert.ok([...clusterKeys].some((key) => /ppe_doc/i.test(key)));
+  assert.ok([...clusterKeys].some((key) => /qms/i.test(key)));
+  assert.doesNotMatch(highText, /\bdo or like\b|document document|review that document as well/i);
+  assert.doesNotMatch(highText, /has to meet MDR requirements|will have lot numbering process/i);
+  assert.match(allText, /updated label from the importer perspective/i);
+  assert.equal(
+    confirmedActions.some((action) => /Med Envoy|Cody|project plan|task list/i.test(action.action || action.meetingActionPoint || '')),
+    false
+  );
+  assert.equal(
+    confirmedActions.some((action) => /QMS Manual/i.test(action.action || action.meetingActionPoint || '') && /Orla Skally/i.test(action.owner || action.meetingActionPointOwner || '')),
+    false
+  );
+  assert.ok(candidates.some((candidate) => /QMS Manual/i.test(candidate.suggestedAction || candidate.action) && candidate.owner === 'Not stated'));
+  assert.ok(candidates.every((candidate) => !candidate.deadline || candidate.deadline === 'Not stated'));
+});
+
+test('canonical Actions ranking still keeps non-DITA explicit work visible', async () => {
+  const transcript = fs.readFileSync(
+    path.resolve(__dirname, '../scripts/meeting-minutes-final-golden/025_real_t761_eakin_sw_weekly_transcript/transcript.txt'),
+    'utf8'
+  );
+  const previousTrooperKey = process.env.TROOPER_API_KEY;
+  delete process.env.TROOPER_API_KEY;
+  let result;
+  try {
+    result = await apiRouter.stagedEvaluation.canonicalStagedResponse('actions', {
+      text: transcript,
+      source: 'text',
+      fileName: 't761.txt',
+      preparedTranscriptTelemetry: null
+    }, {
+      confirmedSummary: {
+        meetingPurpose: 'Review current software workstreams and agree next follow-up for the weekly check-in.',
+        overallTopics: ['Mute button testing', 'Language updates', 'Electrical compliance testing', 'Risk-management controls']
+      }
+    });
+  } finally {
+    if (previousTrooperKey) process.env.TROOPER_API_KEY = previousTrooperKey;
+  }
+  const confirmedText = (result.screens.actions || []).map((item) => `${item.owner || item.meetingActionPointOwner || ''} ${item.action || item.meetingActionPoint || ''}`).join('\n');
+  const candidateText = (result.actionReviewCandidates || []).map((item) => `${item.reviewerUsefulnessTier || ''} ${item.suggestedAction || item.action || ''}`).join('\n');
+  const combined = `${confirmedText}\n${candidateText}`;
+  assert.match(combined, /mute button|additional languages|electrical compliance|USB|risk management/i);
+  assert.doesNotMatch(combined, /Med Envoy|HPRA|authorised-representative|PPE\/sunglasses/i);
+  assert.ok((result.screens.actions || []).length >= 1 || (result.actionReviewCandidates || []).some((candidate) => candidate.reviewerUsefulnessTier === 'high'));
+});
+
 test('summary reviewer guidance prioritises supported evidence without becoming evidence', () => {
   const evidence = prepareEvidence([
     'Amina Khan  00:01',

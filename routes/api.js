@@ -45,6 +45,7 @@ const { runCanonicalNoEditPass } = require('../utils/canonicalMinutes/runner');
 const { runCanonicalLiveStage } = require('../utils/canonicalMinutes/liveStages');
 const { prepareEvidence } = require('../utils/canonicalMinutes/evidence');
 const { polishCanonicalStage, canonicalFallback, addRecoveredActionCandidates, clientReadyPresentation } = require('../utils/canonicalMinutes/trooperPolish');
+const { enrichActionReviewCandidate } = require('../utils/canonicalMinutes/actionReviewRanking');
 const { reviewGeneratedContent } = require('../utils/terminologyQa');
 const {
   buildConfirmedUnderstanding,
@@ -3782,7 +3783,7 @@ function serialiseActionReviewCandidate(item = {}) {
     : (Array.isArray(item.evidence)
       ? item.evidence.map((entry) => entry && entry.id).filter(Boolean)
       : []);
-  const candidate = {
+  const candidate = enrichActionReviewCandidate({
     owner: item.owner || 'Not stated',
     action: item.action || item.suggestedAction || '',
     suggestedAction: item.suggestedAction || item.action || '',
@@ -3791,7 +3792,7 @@ function serialiseActionReviewCandidate(item = {}) {
     evidenceIds,
     sourceTurnIds: Array.isArray(item.sourceTurnIds) ? item.sourceTurnIds : [],
     evidence: item.evidence
-  };
+  });
   return {
     id: `action-candidate-${stableActionCandidateHash(candidate)}`,
     ...candidate

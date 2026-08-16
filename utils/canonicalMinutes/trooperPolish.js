@@ -5,6 +5,7 @@ const { clean } = require('./evidence');
 const { deadlineFrom } = require('./stages');
 const { finaliseDiscussionPointForMinutes, normaliseFinalStagedActionCandidate } = require('../stagedEditorial');
 const { normaliseAttendeeReferences } = require('../entityNormalization');
+const { enrichActionReviewCandidate, rankAndClusterActionReviewCandidates } = require('./actionReviewRanking');
 
 const DEFAULT_URL = 'https://eu.router.trooper.ai/v1/chat/completions';
 const DEFAULT_MODEL = 'eu_liv_000099';
@@ -152,6 +153,14 @@ function normaliseActionReviewCandidate(candidate = {}, flag = {}, index = 0) {
     deadline: clean(candidate.deadline) || 'Not stated',
     reviewDisposition: clean(candidate.reviewDisposition || candidate.confidenceTier) || 'review_required',
     confidenceTier: clean(candidate.confidenceTier),
+    reviewerUsefulnessScore: Number(candidate.reviewerUsefulnessScore || 0),
+    reviewerUsefulnessTier: clean(candidate.reviewerUsefulnessTier),
+    actionClassification: clean(candidate.actionClassification),
+    ownerEvidenceType: clean(candidate.ownerEvidenceType),
+    workstreamRelevance: candidate.workstreamRelevance || null,
+    clusterKey: clean(candidate.clusterKey),
+    clusterSize: Number(candidate.clusterSize || 0),
+    alternateCandidateIds: Array.isArray(candidate.alternateCandidateIds) ? candidate.alternateCandidateIds.map(clean).filter(Boolean) : [],
     evidenceIds: Array.isArray(candidate.evidenceIds)
       ? candidate.evidenceIds.map(clean).filter(Boolean)
       : [],
@@ -170,7 +179,7 @@ function actionReviewCandidatesFromFlags(flags = []) {
       if (normalised.action && !byId.has(normalised.id)) byId.set(normalised.id, normalised);
     }
   }
-  return [...byId.values()];
+  return rankAndClusterActionReviewCandidates([...byId.values()]);
 }
 
 function clientReadyPresentation(payload) {
@@ -214,7 +223,9 @@ function clientReadyPresentation(payload) {
           owner: polished?.owner || item.owner || 'Not stated',
           action: polished?.action || presented || clean(item.action),
           deadline: polished?.deadline || item.deadline || 'Not stated',
-          reviewDisposition: 'review_required'
+          reviewDisposition: 'review_required',
+          confidenceTier: item.confidenceTier,
+          evidenceIds: item.evidenceIds || []
         }
       });
       return null;
@@ -276,8 +287,14 @@ function addRecoveredActionCandidates(payload, recovered = []) {
   const pack = Array.isArray(payload._canonicalEvidencePack) ? [...payload._canonicalEvidencePack] : [];
   const signatures = new Set(pack.map((item) => `${clean(item.owner).toLowerCase()}|${clean(item.action).toLowerCase()}`));
   for (const item of Array.isArray(recovered) ? recovered : []) {
-    const action = clean(item?.evidenceAction || item?.action);
-    const suggestedAction = clean(item?.action);
+    const enriched = enrichActionReviewCandidate({
+      ...item,
+      action: item?.evidenceAction || item?.action,
+      suggestedAction: item?.action,
+      evidenceIds: item?.sourceTurnIds || item?.evidenceIds || []
+    }, {});
+    const action = clean(enriched?.action);
+    const suggestedAction = clean(enriched?.suggestedAction || item?.action);
     if (!action || nonActionState(action)) continue;
     let owner = clean(item?.owner) || 'Not stated';
     if (!/^(?:Not stated|All|[A-Z][\p{L}'’.-]+(?:[ ,/-]+[A-Z][\p{L}'’.-]+)+)$/u.test(owner)) owner = 'Not stated';
@@ -291,6 +308,12 @@ function addRecoveredActionCandidates(payload, recovered = []) {
       suggestedAction,
       deadline: clean(item.deadline) || 'Not stated',
       reviewDisposition,
+      reviewerUsefulnessScore: Number(enriched.reviewerUsefulnessScore || item.reviewerUsefulnessScore || 0),
+      reviewerUsefulnessTier: clean(enriched.reviewerUsefulnessTier || item.reviewerUsefulnessTier),
+      actionClassification: clean(enriched.actionClassification || item.actionClassification),
+      ownerEvidenceType: clean(enriched.ownerEvidenceType || item.ownerEvidenceType),
+      workstreamRelevance: enriched.workstreamRelevance || item.workstreamRelevance || null,
+      clusterKey: clean(enriched.clusterKey || item.clusterKey),
       selectionMode: reviewDisposition === 'confirmed_action' ? 'evidence_bound_candidate' : 'review_required_candidate',
       currentPoints: [],
       evidence: [{ id, speaker: owner, previous: '', current: clean(item.evidence).slice(0, 1800), next: '', contextWindow: [], labels: { evidenceType: 'action_candidate', actionState: 'possible_action', lifecycle: 'active', canonicalWorthiness: 'review_required', temporalRole: '' } }]

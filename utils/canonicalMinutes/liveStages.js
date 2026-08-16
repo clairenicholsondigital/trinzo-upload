@@ -157,6 +157,16 @@ function boundedEvidencePack(items, evidence, profile, stage) {
     selectionMode: item.semanticOnly ? 'contextual_commitment_thread' : 'canonical_selected_action',
     recapCorroborated: Boolean(item.recapCorroborated),
     confidenceTier: clean(item.confidenceTier),
+    reviewDisposition: clean(item.reviewDisposition),
+    suggestedAction: clean(item.suggestedAction || item.action),
+    reviewerUsefulnessScore: Number(item.reviewerUsefulnessScore || 0),
+    reviewerUsefulnessTier: clean(item.reviewerUsefulnessTier),
+    actionClassification: clean(item.actionClassification),
+    ownerEvidenceType: clean(item.ownerEvidenceType),
+    workstreamRelevance: item.workstreamRelevance || null,
+    clusterKey: clean(item.clusterKey),
+    clusterSize: Number(item.clusterSize || 0),
+    alternateCandidateIds: Array.isArray(item.alternateCandidateIds) ? item.alternateCandidateIds : [],
     currentPoints: strings(item.points),
     evidence: sampledIds(item.evidenceIds, actionStage ? 8 : 4).map((id) => {
       const event = byId.get(id);

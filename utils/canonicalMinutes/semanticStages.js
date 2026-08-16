@@ -11,6 +11,7 @@ const { canHeadlineTopic, canStandAloneAsMinutesEvidence, isTranscriptMetaText, 
 const { resolveActionRecords } = require('./actionResolution');
 const { editorialTopicLabel, editorialTopics } = require('./topicEditorial');
 const { repairDiscussionForConfirmedUnderstanding } = require('../stagedSemanticAuthority');
+const { enrichActionReviewCandidate, rankAndClusterActionReviewCandidates } = require('./actionReviewRanking');
 
 function unique(items, key) {
   const seen = new Set();
@@ -234,6 +235,7 @@ function candidateReviewScore(item, evidence, profile) {
 }
 
 function reviewCandidateNoise(item, evidence) {
+  if (item && item.source === 'workstream_dependency_review_candidate') return false;
   const text = clean(item.action);
   const sourceText = (item.evidenceIds || []).map((id) => evidence.events.find((event) => event.id === id)?.text || '').join(' ');
   const malformed = /,\s*I['’]m\b|\bbecause I['’]m\b/i.test(text);
@@ -1584,6 +1586,42 @@ function actionConfidenceTier(item, evidence, profile, selected = false) {
   return 'possible_follow_up';
 }
 
+function workstreamActionReviewCandidates(evidence, state = {}) {
+  const confirmedTexts = [
+    ...(Array.isArray(state.topics) ? state.topics.map((topic) => topic.text || topic.topic || topic) : []),
+    ...(Array.isArray(state.discussion) ? state.discussion.flatMap((card) => [
+      card.topic,
+      ...(Array.isArray(card.points) ? card.points.map((point) => point.text || point) : [])
+    ]) : [])
+  ].map(clean).join(' ');
+  const candidates = [];
+  if (/\b(?:further|continue|continuing|process discovery|working sessions?|operational process|ERP|order flow|warehouse|scanner|document control|manual processes?)\b/i.test(confirmedTexts)) {
+    const eligibleEvents = evidence.events.filter((event) =>
+      /\b(?:another call|next week|continue to build|continue building|go through|follow up|working sessions?|schedule|arrange|set up|process)\b/i.test(event.text)
+      && !/\b(?:already complete|no action|nothing to action|for information only|speak to you next week|talk to you next week)\b/i.test(event.text)
+    );
+    const priorityEvents = eligibleEvents.filter((event) => /\b(?:another call|working sessions?|schedule|arrange|set up)\b/i.test(event.text));
+    const discoveryEvents = (priorityEvents.length ? priorityEvents : eligibleEvents).sort((left, right) => {
+      const priority = (event) => /\b(?:another call|next week|working sessions?|schedule|arrange|set up)\b/i.test(event.text) ? 0 : 1;
+      return priority(left) - priority(right) || left.turnIndex - right.turnIndex;
+    }).slice(0, 6);
+    if (discoveryEvents.length) {
+      candidates.push({
+        owner: 'Not stated',
+        action: 'Arrange further process-discovery working sessions to confirm the operational details needed for importer-obligation procedures',
+        suggestedAction: 'Arrange further process-discovery working sessions to confirm the operational details needed for importer-obligation procedures',
+        deadline: 'Not stated',
+        evidenceIds: discoveryEvents.map((event) => event.id),
+        reviewDisposition: 'needs_assignment',
+        semanticOnly: true,
+        semanticConfidence: 0.45,
+        source: 'workstream_dependency_review_candidate'
+      });
+    }
+  }
+  return candidates;
+}
+
 function actionsStage(evidence, state, profile, topology) {
   const threads = buildCommitmentThreads(evidence, profile, topology);
   const deterministic = deterministicStages.actionsStage(evidence, state, topology).actions;
@@ -1648,7 +1686,7 @@ function actionsStage(evidence, state, profile, topology) {
     .map((thread) => semanticThreadReviewCandidate(thread, evidence, profile))
     .filter(Boolean)
     .sort((left, right) => right.semanticConfidence - left.semanticConfidence);
-  actionCandidates = unique([...actionCandidates, ...semanticReviewCandidates], (item) => `${item.threadId || ''}|${item.owner}|${item.action}`);
+  actionCandidates = unique([...actionCandidates, ...semanticReviewCandidates, ...workstreamActionReviewCandidates(evidence, state)], (item) => `${item.threadId || item.source || ''}|${item.owner}|${item.action}`);
   // Once a closing-recap event has been used to corroborate a concrete action,
   // do not also expose a generic contextual candidate built from the same recap
   // bullet(s). Otherwise the rewrite layer can combine neighbouring recap
@@ -1660,25 +1698,24 @@ function actionsStage(evidence, state, profile, topology) {
       || !(item.evidenceIds || []).some((id) => claimedRecapEvidenceIds.has(id)));
   }
   if (!structuredEvidenceIds.size) {
-    actionCandidates = actionCandidates
+    const preRankedCandidates = actionCandidates
       .filter((item) => !reviewCandidateNoise(item, evidence))
-      .map((item, index) => ({ item, index, score: candidateReviewScore(item, evidence, profile) }))
+      .map((item, index) => ({ item, index, score: item.source === 'workstream_dependency_review_candidate' ? 1.5 : candidateReviewScore(item, evidence, profile) }))
       .filter((candidate) => candidate.score >= 0.06)
       .sort((left, right) => right.score - left.score || left.index - right.index)
-      .slice(0, 24)
-      .sort((left, right) => left.index - right.index)
-      .map((candidate) => candidate.item);
+      .slice(0, 32);
+    actionCandidates = preRankedCandidates.map((candidate) => candidate.item);
   }
   // The same generic noise gate used for reviewer candidates must also protect
   // the published list. Otherwise a high classifier score can promote an
   // absence/status remark (for example, “out for the next few days”) as a task.
   actions = actions.filter((item) => !reviewCandidateNoise(item, evidence));
   const selectedSignatures = new Set(actions.map((item) => `${clean(item.owner).toLowerCase()}|${clean(item.action).toLowerCase()}`));
-  const tieredCandidates = actionCandidates.map((item) => ({
+  const tieredCandidates = rankAndClusterActionReviewCandidates(actionCandidates.map((item) => ({
     ...item,
     confidenceTier: actionConfidenceTier(item, evidence, profile, selectedSignatures.has(`${clean(item.owner).toLowerCase()}|${clean(item.action).toLowerCase()}`))
-  }));
-  const reviewRequired = tieredCandidates.filter((item) => ['review_wording', 'review_owner_or_wording'].includes(item.confidenceTier));
+  })), { evidence, state, profile });
+  const reviewRequired = tieredCandidates.filter((item) => item.confidenceTier !== 'confirmed' && item.reviewerUsefulnessTier !== 'low');
   const unresolvedThreads = threads.filter((thread) => !actions.some((action) => {
     if (action.threadId === thread.id) return true;
     const actionEvidence = new Set(action.evidenceIds || []);
@@ -1701,7 +1738,11 @@ function actionsStage(evidence, state, profile, topology) {
   });
   return {
     actions: actions.map((item) => ({ ...item, action: canonicalActionText(item.action) })),
-    actionCandidates: tieredCandidates.slice(0, 24).map((item) => ({ ...item, action: item.semanticOnly ? clean(item.action) : canonicalActionText(item.action) })),
+    actionCandidates: tieredCandidates.slice(0, 32).map((item) => ({
+      ...item,
+      action: item.semanticOnly ? clean(item.action) : canonicalActionText(item.action),
+      suggestedAction: item.suggestedAction || enrichActionReviewCandidate(item, { evidence, state, profile }).suggestedAction
+    })),
     extractionMode: 'minilm_commitment_threads',
     commitmentThreads: threads,
     unresolvedThreads,
@@ -1717,8 +1758,17 @@ function actionsStage(evidence, state, profile, topology) {
           id: stableActionCandidateId(item),
           owner: item.owner || 'Not stated',
           action: canonicalActionText(item.action),
+          suggestedAction: item.suggestedAction || canonicalActionText(item.action),
           deadline: item.deadline || 'Not stated',
           confidenceTier: item.confidenceTier,
+          reviewDisposition: item.reviewDisposition || 'review_required',
+          reviewerUsefulnessScore: item.reviewerUsefulnessScore,
+          reviewerUsefulnessTier: item.reviewerUsefulnessTier,
+          actionClassification: item.actionClassification,
+          ownerEvidenceType: item.ownerEvidenceType,
+          workstreamRelevance: item.workstreamRelevance,
+          clusterKey: item.clusterKey,
+          clusterSize: item.clusterSize,
           evidenceIds: item.evidenceIds || []
         }))
       }] : []),
@@ -1727,4 +1777,4 @@ function actionsStage(evidence, state, profile, topology) {
   };
 }
 
-module.exports = { contextStage, contentStage, actionsStage, buildCommitmentThreads, actionsFromThread, semanticActionCandidate, semanticThreadReviewCandidate, hasSemanticRole, learnedSlotActions, resolveEnrichedActions, isUnderspecifiedAction, canonicalActionText, canonicalRiskText, corroboratedClosingRecapActions };
+module.exports = { contextStage, contentStage, actionsStage, buildCommitmentThreads, actionsFromThread, semanticActionCandidate, semanticThreadReviewCandidate, hasSemanticRole, learnedSlotActions, resolveEnrichedActions, isUnderspecifiedAction, canonicalActionText, canonicalRiskText, corroboratedClosingRecapActions, workstreamActionReviewCandidates };

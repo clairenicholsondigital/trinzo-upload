@@ -273,7 +273,10 @@ test('final presentation withholds ownerless or invalid actions for reviewer con
   assert.equal(result.candidateAccounting.confirmedActions, 1);
   assert.equal(result.candidateAccounting.reviewerCandidates, 2);
   assert.ok(result.actionReviewCandidates.every((candidate) => candidate.id.startsWith('candidate::')));
-  assert.deepEqual(result.actionReviewCandidates.map((candidate) => candidate.action), flag.repairCandidates.map((candidate) => candidate.action));
+  assert.deepEqual(
+    result.actionReviewCandidates.map((candidate) => candidate.action).sort(),
+    flag.repairCandidates.map((candidate) => candidate.action).sort()
+  );
 });
 
 test('final presentation preserves action candidate arrays across API serialisation', () => {
