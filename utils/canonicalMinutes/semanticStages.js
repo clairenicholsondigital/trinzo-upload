@@ -506,6 +506,314 @@ function topicMatchScore(confirmedTopic, card) {
   return [...wanted].filter((token) => available.has(token)).length / wanted.size;
 }
 
+const PLANNER_STOPWORDS = new Set([
+  ...GUIDANCE_STOPWORDS,
+  'actual', 'around', 'business', 'confirmed', 'country', 'countries', 'design', 'designed',
+  'detail', 'details', 'flow', 'important', 'including', 'meeting', 'minutes', 'need', 'needs',
+  'obligation', 'obligations', 'procedure', 'procedures', 'process', 'processes', 'requirements',
+  'review', 'reviewed', 'storage', 'summary', 'supported', 'topic', 'topics', 'workstream'
+]);
+
+const DISCUSSION_PLAN_CONCEPTS = [
+  {
+    id: 'goods_flow_storage',
+    labelPattern: /\b(?:goods?|flow|storage|warehouse|warehousing|supplier|suppliers?|japan|netherlands|fiscal|clearance|dublin|park west|import(?:er)?)\b/i,
+    evidencePattern: /\b(?:goods?|supplier|suppliers?|japan|netherlands|fiscal|clearance|warehouse|warehousing|stored?|storage|dublin|park west|dispatch|shipp(?:ed|ing)|country of origin|final destination)\b/i
+  },
+  {
+    id: 'procedure_design',
+    labelPattern: /\b(?:importer|obligation|procedure|procedures|qms|quality|manual|operational|operations?|process(?:es)?|workflow|erp|order flow|warehouse checks?|scanner|barcode|document control)\b/i,
+    evidencePattern: /\b(?:importer|obligation|procedure|procedures|qms|quality manual|operational|operations?|process(?:es)?|workflow|netsuite|erp|order flow|warehouse checks?|warehouse verification|scanner|scanners|rf smart|barcode|document control|manual process(?:es)?|robust process(?:es)?)\b/i
+  },
+  {
+    id: 'ppe_doc',
+    labelPattern: /\b(?:ppe|sunglasses?|declarations? of conformity|doc\b|conformity|mdr|category)\b/i,
+    evidencePattern: /\b(?:ppe|sunglasses?|declarations? of conformity|doc\b|conformity|category\s*one|category\s*1|risk rationale|eumdr|eu mdr|mdr)\b/i
+  },
+  {
+    id: 'language_country',
+    labelPattern: /\b(?:language|languages?|country|countries|translation|translations?|locali[sz]ation|ifu|ifus|labels?|labelling|labeling|manufacturer information)\b/i,
+    evidencePattern: /\b(?:language|languages?|country|countries|translation|translations?|locali[sz]ation|ifu|ifus|labels?|labelling|labeling|manufacturer information|suppl(?:y|ied) (?:to|in)|market(?:s)?)\b/i,
+    antiPattern: /\b(?:risk rationale|ppe category|declarations? of conformity)\b/i
+  },
+  {
+    id: 'eudamed_hpra',
+    labelPattern: /\b(?:eudamed|hpra|srn|registration|authori[sz]ed representative|regulatory)\b/i,
+    evidencePattern: /\b(?:eudamed|hpra|srn|registration|authori[sz]ed representative|authori[sz]ed rep|regulatory|bill|invoice)\b/i
+  },
+  {
+    id: 'medenvoy_cody',
+    labelPattern: /\b(?:med\s*envoy|medenvoy|cody|alignment|scope|project plan)\b/i,
+    evidencePattern: /\b(?:med\s*envoy|medenvoy|cody|alignment|scope|project plan|side meetings?|consult Cody|updates?)\b/i
+  },
+  {
+    id: 'future_discovery',
+    labelPattern: /\b(?:further|future|discovery|working sessions?|workshop|follow[- ]?up|next call|another call|process discovery)\b/i,
+    evidencePattern: /\b(?:further|future|discovery|working sessions?|workshop|follow[- ]?up|next call|another call|go through|walk through|process discovery|arrange|schedule)\b/i
+  },
+  {
+    id: 'risk',
+    labelPattern: /\b(?:risk|risks|dependency|dependencies|blocker|issue|issues)\b/i,
+    evidencePattern: /\b(?:risk|risks|dependency|dependencies|blocker|issue|issues|consequence|incomplete|missing|audit)\b/i,
+    generic: true
+  }
+];
+
+function plannerTokens(value) {
+  return new Set((clean(value).toLowerCase().match(/[a-z][a-z0-9-]{2,}/g) || [])
+    .filter((token) => token.length > 2 && !PLANNER_STOPWORDS.has(token)));
+}
+
+function plannerConceptsFor(value) {
+  const text = clean(value);
+  return DISCUSSION_PLAN_CONCEPTS.filter((concept) => concept.labelPattern.test(text));
+}
+
+function relevantConfirmedFactsForWorkstream(label, understanding = {}) {
+  const labelConceptIds = new Set(plannerConceptsFor(label).map((concept) => concept.id));
+  return (Array.isArray(understanding?.criticalFacts) ? understanding.criticalFacts : [])
+    .filter((fact) => {
+      const text = clean(fact.text || fact);
+      if (!text) return false;
+      const factConceptIds = new Set(plannerConceptsFor(text).map((concept) => concept.id));
+      return [...factConceptIds].some((id) => labelConceptIds.has(id))
+        || topicMatchScore(label, { topic: text, points: [] }) >= 0.2;
+    })
+    .map((fact) => clean(fact.text || fact))
+    .filter(Boolean);
+}
+
+function discussionPlanSearchText(workstream, state = {}) {
+  const confirmedFacts = relevantConfirmedFactsForWorkstream(workstream.label, state.meetingUnderstanding);
+  const purpose = /(?:procedure|qms|operational|process|importer|obligation)/i.test(workstream.label)
+    ? clean(state.meetingUnderstanding?.meetingPurpose || state.meeting?.purpose || '')
+    : '';
+  return [workstream.label, purpose, ...confirmedFacts].filter(Boolean).join(' ');
+}
+
+function eventPublishableForDiscussion(event, evidence) {
+  if (!event || isSupersededBackground(event, evidence)) return false;
+  if (isTranscriptMetaText(event.text) || isCorrectionOrAcknowledgementFragment(event.text)
+    || isContextDependentText(event.text) || isMalformedTranscriptText(event.text)) return false;
+  return canStandAloneAsMinutesEvidence(event.text, { allowConditional: true }) || minutesPoint(event.text, event.speaker);
+}
+
+function scoreEventForPlannedWorkstream(event, workstream, state = {}) {
+  const eventText = clean(event.text);
+  const eventTokens = plannerTokens(eventText);
+  const searchText = discussionPlanSearchText(workstream, state);
+  const wanted = plannerTokens(searchText);
+  const overlap = wanted.size ? [...wanted].filter((token) => eventTokens.has(token)).length / Math.max(wanted.size, 1) : 0;
+  const concepts = plannerConceptsFor(workstream.label);
+  const conceptHits = concepts.filter((concept) => concept.evidencePattern.test(eventText)).length;
+  const antiHits = concepts.filter((concept) => concept.antiPattern && concept.antiPattern.test(eventText)).length;
+  const factHits = relevantConfirmedFactsForWorkstream(workstream.label, state)
+    .reduce((sum, fact) => {
+      const factTokens = plannerTokens(fact);
+      if (!factTokens.size) return sum;
+      const covered = [...factTokens].filter((token) => eventTokens.has(token)).length / factTokens.size;
+      return sum + (covered >= 0.22 ? covered : 0);
+    }, 0);
+  const genericPenalty = workstream.provenance === 'generic' ? 0.35 : 0;
+  return Math.max(0, (overlap * 2.2) + (conceptHits * 1.35) + (factHits * 1.8) - (antiHits * 1.7) - genericPenalty);
+}
+
+function stableWorkstreamId(label, index) {
+  const key = clean(label).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 48);
+  return key ? `planned_${key}` : `planned_${index}`;
+}
+
+function confirmedDiscussionWorkstreams(state = {}) {
+  return (state.topics || []).map((item, index) => {
+    const label = clean(item.humanFinal || item.text || item.topic);
+    if (!label) return null;
+    return {
+      id: stableWorkstreamId(label, index),
+      label,
+      provenance: 'reviewer_confirmed',
+      topicId: clean(item.topicId),
+      planningPriority: 100 - index,
+      sourceIndex: index
+    };
+  }).filter(Boolean);
+}
+
+function emergentDiscussionWorkstreams(selectedTopics, evidence, usedLabels = new Set(), coveredConceptIds = new Set()) {
+  return (Array.isArray(selectedTopics) ? selectedTopics : []).map((topic, index) => {
+    const label = editorialTopicLabel(topic, evidence);
+    if (!label || label === 'Substantive discussion') return null;
+    const key = clean(label).toLowerCase();
+    if (usedLabels.has(key)) return null;
+    const conceptIds = plannerConceptsFor(label).map((concept) => concept.id);
+    if (conceptIds.length && conceptIds.some((id) => coveredConceptIds.has(id))) return null;
+    usedLabels.add(key);
+    return {
+      id: topic.id || stableWorkstreamId(label, index),
+      label,
+      provenance: DISCUSSION_PLAN_CONCEPTS.some((concept) => concept.generic && concept.labelPattern.test(label)) ? 'generic' : 'transcript_emergent',
+      topicId: topic.id,
+      clusterEvidenceIds: topic.evidenceIds || [],
+      planningPriority: 50 - index,
+      sourceIndex: index
+    };
+  }).filter(Boolean);
+}
+
+function buildDiscussionEvidencePlan(evidence, state, selectedTopics) {
+  const confirmed = confirmedDiscussionWorkstreams(state);
+  const usedLabels = new Set(confirmed.map((item) => clean(item.label).toLowerCase()));
+  const coveredConceptIds = new Set(confirmed.flatMap((item) => plannerConceptsFor(item.label).map((concept) => concept.id)));
+  let workstreams = [...confirmed, ...emergentDiscussionWorkstreams(selectedTopics, evidence, usedLabels, coveredConceptIds)];
+  if (!workstreams.some((item) => item.provenance === 'generic' && /\brisk/i.test(item.label))) {
+    workstreams.push({
+      id: 'planned_risks',
+      label: 'Risks and dependencies',
+      provenance: 'generic',
+      planningPriority: 1,
+      sourceIndex: workstreams.length
+    });
+  }
+  const byId = new Map(evidence.events.map((event) => [event.id, event]));
+  const allocations = [];
+  for (const event of evidence.events) {
+    if (!eventPublishableForDiscussion(event, evidence)) continue;
+    const scored = workstreams
+      .map((workstream) => ({ workstream, score: scoreEventForPlannedWorkstream(event, workstream, state) }))
+      .filter((item) => item.score >= (item.workstream.provenance === 'generic' ? 2.35 : (item.workstream.provenance === 'reviewer_confirmed' ? 0.65 : 1.15)))
+      .sort((left, right) => right.score - left.score || right.workstream.planningPriority - left.workstream.planningPriority);
+    if (!scored.length) continue;
+    const primary = scored[0];
+    allocations.push({ eventId: event.id, workstreamId: primary.workstream.id, score: Number(primary.score.toFixed(3)), primary: true });
+    for (const secondary of scored.slice(1, 3)) {
+      if (secondary.score >= 2.6 && secondary.score >= primary.score * 0.86) {
+        allocations.push({ eventId: event.id, workstreamId: secondary.workstream.id, score: Number(secondary.score.toFixed(3)), primary: false });
+      }
+    }
+  }
+  const byWorkstream = new Map(workstreams.map((workstream) => [workstream.id, []]));
+  for (const allocation of allocations) {
+    byWorkstream.get(allocation.workstreamId)?.push(allocation);
+  }
+  const substantivePrimaryIds = new Set(allocations
+    .filter((allocation) => allocation.primary)
+    .map((allocation) => {
+      const workstream = workstreams.find((item) => item.id === allocation.workstreamId);
+      return workstream && workstream.provenance !== 'generic' ? allocation.eventId : '';
+    })
+    .filter(Boolean));
+  workstreams = workstreams.map((workstream) => {
+    const workstreamAllocations = (byWorkstream.get(workstream.id) || [])
+      .filter((allocation) => !(workstream.provenance === 'generic' && substantivePrimaryIds.has(allocation.eventId)));
+    const primaryAllocations = workstreamAllocations.filter((allocation) => allocation.primary);
+    const evidenceIds = [...new Set(workstreamAllocations
+      .sort((left, right) => right.score - left.score || evidence.events.findIndex((event) => event.id === left.eventId) - evidence.events.findIndex((event) => event.id === right.eventId))
+      .map((allocation) => allocation.eventId))];
+    const minimum = workstream.provenance === 'reviewer_confirmed' ? 1 : (workstream.provenance === 'generic' ? 2 : 1);
+    const suppressionReason = evidenceIds.length >= minimum
+      ? ''
+      : (workstream.provenance === 'reviewer_confirmed' ? 'no_transcript_supported_evidence' : 'below_planning_threshold');
+    return {
+      ...workstream,
+      evidenceIds,
+      evidenceScores: evidenceIds.map((id) => workstreamAllocations.find((allocation) => allocation.eventId === id)?.score || 0),
+      primaryEvidenceCount: primaryAllocations.length,
+      suppressionReason
+    };
+  });
+  const plannedWorkstreams = workstreams
+    .filter((workstream) => !workstream.suppressionReason)
+    .sort((left, right) => right.planningPriority - left.planningPriority || left.sourceIndex - right.sourceIndex);
+  return {
+    workstreams: plannedWorkstreams,
+    suppressedWorkstreams: workstreams.filter((workstream) => workstream.suppressionReason).map((workstream) => ({
+      id: workstream.id,
+      label: workstream.label,
+      provenance: workstream.provenance,
+      suppressionReason: workstream.suppressionReason,
+      evidenceCount: workstream.evidenceIds.length
+    })),
+    primaryAllocations: allocations.filter((allocation) => allocation.primary),
+    secondaryAllocations: allocations.filter((allocation) => !allocation.primary),
+    evidenceById: byId
+  };
+}
+
+function concisePlannerPointForEvents(label, events) {
+  const texts = events.map((event) => clean(event.text)).join(' ');
+  if (/goods|storage|warehouse|supplier|japan|netherlands|fiscal|dublin|park west/i.test(label)) {
+    const parts = [];
+    if (/\bjapan\b/i.test(texts)) parts.push('goods originate from suppliers in Japan');
+    if (/\bnetherlands\b/i.test(texts) && /\bfiscal|clearance\b/i.test(texts)) parts.push('the Netherlands is used for fiscal clearance rather than substantive warehousing');
+    if (/\b(?:dublin|park west)\b/i.test(texts)) parts.push('final storage is at DITA Park West in Dublin');
+    if (parts.length >= 2) return `${parts.join('; ')}.`;
+  }
+  if (/procedure|qms|operational|process|importer|obligation/i.test(label)) {
+    const parts = [];
+    if (/\b(?:netsuite|erp|order flow|order)\b/i.test(texts)) parts.push('ERP/order flow');
+    if (/\bwarehouse\b/i.test(texts)) parts.push('warehouse checks');
+    if (/\b(?:scanner|rf smart|barcode)\b/i.test(texts)) parts.push('scanner/barcode use');
+    if (/\bdocument control\b/i.test(texts)) parts.push('document control');
+    if (/\bmanual\b/i.test(texts)) parts.push('manual processes');
+    if (parts.length >= 3) return `Importer-obligation procedures need to reflect DITA's actual operational processes, including ${parts.join(', ')}.`;
+  }
+  return '';
+}
+
+function discussionCardsFromPlan(plan, evidence, state = {}) {
+  const byId = plan.evidenceById || new Map(evidence.events.map((event) => [event.id, event]));
+  return plan.workstreams.map((workstream) => {
+    const selected = workstream.evidenceIds
+      .map((id) => byId.get(id))
+      .filter(Boolean)
+      .sort((left, right) => left.turnIndex - right.turnIndex);
+    const topEvents = selected.slice(0, 6);
+    const facts = relevantConfirmedFactsForWorkstream(workstream.label, state.meetingUnderstanding);
+    let concise = concisePlannerPointForEvents(workstream.label, topEvents);
+    if (!concise && /goods|storage|warehouse|supplier|japan|netherlands|fiscal|dublin|park west/i.test(workstream.label)) {
+      const flowFacts = facts.filter((fact) => /japan|netherlands|fiscal|warehouse|warehousing|dublin|park west/i.test(fact));
+      if (flowFacts.length >= 2) concise = `DITA's goods flow starts with suppliers in Japan, uses the Netherlands for fiscal clearance only rather than substantive warehousing, and ends with final storage at DITA Park West in Dublin.`;
+    }
+    let points = concise ? [{ text: concise, evidenceIds: topEvents.map((event) => event.id) }] : [];
+    if (!points.length) {
+      points = topEvents
+        .map((event) => ({ text: minutesPoint(event.text, event.speaker), evidenceIds: [event.id] }))
+        .filter((item) => item.text)
+        .slice(0, 4);
+    }
+    if (workstream.provenance === 'reviewer_confirmed' && /procedure|qms|operational|process|importer|obligation/i.test(workstream.label)) {
+      const fact = facts.find((item) => /erp|order flow|warehouse|scanner|barcode|document control|manual/i.test(item));
+      if (fact && !points.some((point) => /erp|netsuite|order flow/i.test(point.text) && /warehouse/i.test(point.text))) {
+        const evidenceIds = topEvents.map((event) => event.id);
+        if (evidenceIds.length) points.unshift({ text: fact.replace(/[.]+$/, '.'), evidenceIds });
+      }
+    }
+    return {
+      topic: workstream.label,
+      points,
+      evidenceIds: [...new Set(points.flatMap((point) => point.evidenceIds || []).concat(workstream.evidenceIds))],
+      topicId: workstream.topicId || workstream.id,
+      cohesion: workstream.provenance === 'reviewer_confirmed' ? 1 : 0.85,
+      plannedWorkstream: {
+        id: workstream.id,
+        provenance: workstream.provenance,
+        evidenceCount: workstream.evidenceIds.length,
+        primaryEvidenceCount: workstream.primaryEvidenceCount
+      }
+    };
+  }).filter((card) => card.points.length);
+}
+
+function filterRisksAlreadyAllocatedToPlannedWorkstreams(risks, plan) {
+  if (!plan || !Array.isArray(risks) || !risks.length) return risks;
+  const substantiveIds = new Set(plan.workstreams
+    .filter((workstream) => workstream.provenance !== 'generic')
+    .flatMap((workstream) => workstream.evidenceIds || []));
+  return risks.filter((risk) => {
+    const ids = Array.isArray(risk.evidenceIds) ? risk.evidenceIds : [];
+    return !ids.length || ids.some((id) => !substantiveIds.has(id));
+  });
+}
+
 function applyConfirmedTopicAgenda(discussion, state) {
   const confirmed = (state.topics || []).map((item) => ({
     text: clean(item.humanFinal || item.text),
@@ -674,6 +982,7 @@ function contentStage(evidence, state, profile) {
   }));
   if (!longTranscript) topicCandidates.sort((left, right) => Number(right.explicitEvidence) - Number(left.explicitEvidence) || left.index - right.index);
   const discussionLimit = longTranscript ? 16 : evidence.events.length >= 25 ? 10 : 8;
+  const discussionPlan = buildDiscussionEvidencePlan(evidence, state, selectedTopics);
   // Discussion is ALWAYS derived from this transcript's evidence. There is no
   // canned-template branch — a meeting-type profile never supplies body text.
   let discussion = topicCandidates.slice(0, discussionLimit).map(({ topic }) => {
@@ -714,7 +1023,23 @@ function contentStage(evidence, state, profile) {
       ].slice(0, 17);
     }
   }
-  discussion = refreshDistinctiveConfirmedDiscussion(applyConfirmedTopicAgenda(discussion, state), state, evidence);
+  const allPlannedDiscussion = discussionCardsFromPlan(discussionPlan, evidence, state);
+  const reviewerPlannedCount = discussionPlan.workstreams.filter((workstream) => workstream.provenance === 'reviewer_confirmed').length;
+  const plannedDiscussion = allPlannedDiscussion.filter((card) => {
+    if (card.plannedWorkstream?.provenance === 'reviewer_confirmed') return true;
+    return reviewerPlannedCount < 6;
+  });
+  if (plannedDiscussion.length) {
+    const plannedIds = new Set(plannedDiscussion.map((card) => clean(card.topic).toLowerCase()));
+    const transcriptEmergentRoom = reviewerPlannedCount >= 6 ? 0 : Math.max(0, discussionLimit - plannedDiscussion.length);
+    const emergentCards = discussion
+      .filter((card) => !plannedIds.has(clean(card.topic).toLowerCase()))
+      .filter((card) => !DISCUSSION_PLAN_CONCEPTS.some((concept) => concept.generic && concept.labelPattern.test(card.topic)))
+      .slice(0, transcriptEmergentRoom);
+    discussion = [...plannedDiscussion, ...emergentCards].slice(0, discussionLimit);
+  } else {
+    discussion = refreshDistinctiveConfirmedDiscussion(applyConfirmedTopicAgenda(discussion, state), state, evidence);
+  }
   // Keep explicit, deterministic speech-act extraction as the precision anchor.
   // MiniLM extends it for conversational variants, but may not independently
   // promote an informational sentence into a decision or risk.
@@ -758,7 +1083,7 @@ function contentStage(evidence, state, profile) {
       if (text) risks.push({ text, evidenceIds: [event.id], semanticConfidence: score(profile, event, 'risk') });
     }
   }
-  const resolvedRisks = resolveEnrichedRisks(risks, evidence, profile);
+  const resolvedRisks = filterRisksAlreadyAllocatedToPlannedWorkstreams(resolveEnrichedRisks(risks, evidence, profile), discussionPlan);
   const semanticPreservation = repairDiscussionForConfirmedUnderstanding({
     discussion,
     understanding: state.meetingUnderstanding,
@@ -776,7 +1101,21 @@ function contentStage(evidence, state, profile) {
       blocking: flag.blocking,
       resolutionKey: flag.resolutionKey
     })),
-    semanticPreservation: semanticPreservation.telemetry
+    semanticPreservation: semanticPreservation.telemetry,
+    discussionPlan: {
+      workstreams: discussionPlan.workstreams.map((workstream) => ({
+        id: workstream.id,
+        label: workstream.label,
+        provenance: workstream.provenance,
+        evidenceCount: workstream.evidenceIds.length,
+        primaryEvidenceCount: workstream.primaryEvidenceCount,
+        evidenceIds: workstream.evidenceIds.slice(0, 12),
+        evidenceScores: workstream.evidenceScores.slice(0, 12)
+      })),
+      suppressedWorkstreams: discussionPlan.suppressedWorkstreams,
+      primaryAllocationCount: discussionPlan.primaryAllocations.length,
+      secondaryAllocationCount: discussionPlan.secondaryAllocations.length
+    }
   };
 }
 

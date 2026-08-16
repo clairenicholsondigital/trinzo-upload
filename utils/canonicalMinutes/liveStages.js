@@ -235,7 +235,8 @@ function runCanonicalLiveStage(transcriptText, options = {}) {
       entityNames: [...new Set([...evidence.participants, ...extractMentionedPeople(transcriptText, evidence.participants)])],
       topology: topology.mode,
       modelName: profile.modelName,
-      humanConfirmedInputIsAuthoritative: true
+      humanConfirmedInputIsAuthoritative: true,
+      discussionPlan: stage === 'discussion' && proposal.discussionPlan ? proposal.discussionPlan : null
     },
     telemetryPreview: {
       topicCount: (profile.topics || []).length,

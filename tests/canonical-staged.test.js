@@ -500,6 +500,99 @@ test('canonical Discussion API response preserves reviewer-confirmed DITA facts 
   );
 });
 
+test('canonical Discussion planner allocates DITA evidence to reviewer-confirmed workstreams before prose', () => {
+  const ditaTranscript = fs.readFileSync(
+    path.resolve(__dirname, '../../trinzo-ui-test-transcripts/extracted-text/Client DITA T819 - Importer Obligations - Client connect-6-.txt'),
+    'utf8'
+  );
+  const evidence = prepareEvidence(ditaTranscript);
+  const ids = (pattern) => evidence.events.filter((event) => pattern.test(event.text)).slice(0, 10).map((event) => event.id);
+  const state = buildConfirmedState(ditaTranscript, 'dita.txt', {
+    summary: {
+      meetingPurpose: "Understand DITA's actual operational processes so importer-obligation procedures can be designed around how the business works.",
+      keyFacts: [
+        'Goods originate from suppliers in Japan.',
+        'The Netherlands is used for fiscal clearance only, not substantive warehousing.',
+        'Final storage is at DITA Park West in Dublin.',
+        "Importer procedures need to reflect DITA's actual ERP/order flow, warehouse checks, scanners, document control and manual processes."
+      ],
+      overallTopics: [
+        'Goods flow and storage',
+        'Importer-obligation QMS procedure design',
+        'Operational process detail',
+        'MDR/PPE/sunglasses and declarations of conformity',
+        'EUDAMED/HPRA',
+        'Language/country requirements',
+        'MedEnvoy/Cody alignment',
+        'Further process discovery'
+      ]
+    }
+  });
+  const profile = {
+    events: {},
+    topics: [
+      { id: 'goods', representativeText: 'Japan Netherlands fiscal clearance Dublin Park West storage', evidenceIds: ids(/japan|netherlands|fiscal|park west|dublin/i), cohesion: 1 },
+      { id: 'operations', representativeText: 'ERP order flow warehouse scanners document control manual processes', evidenceIds: ids(/netsuite|erp|order|warehouse|scanner|rf smart|barcode|document control|manual/i), cohesion: 1 },
+      { id: 'ppe', representativeText: 'PPE sunglasses declarations of conformity risk rationale', evidenceIds: ids(/sunglasses|ppe|declaration|conformity|risk rationale/i), cohesion: 1 },
+      { id: 'language', representativeText: 'Language country requirements translations labels IFU manufacturer information', evidenceIds: ids(/language|translation|country|label|ifu|manufacturer/i), cohesion: 1 },
+      { id: 'regulatory', representativeText: 'EUDAMED HPRA registration authorised representative', evidenceIds: ids(/eudamed|udemed|hpra|registration|authorized|authorised/i), cohesion: 1 },
+      { id: 'medenvoy', representativeText: 'MedEnvoy Cody alignment scope', evidenceIds: ids(/med.?envoy|cody|scope/i), cohesion: 1 },
+      { id: 'discovery', representativeText: 'Further process discovery working sessions', evidenceIds: ids(/working session|another call|go through|process/i), cohesion: 1 }
+    ]
+  };
+  const result = semanticStages.contentStage(evidence, state, profile);
+  const plan = result.discussionPlan;
+  const byLabel = new Map(plan.workstreams.map((workstream) => [workstream.label, workstream]));
+  [
+    'Goods flow and storage',
+    'Importer-obligation QMS procedure design',
+    'Operational process detail',
+    'MDR/PPE/sunglasses and declarations of conformity',
+    'EUDAMED/HPRA',
+    'Language/country requirements',
+    'MedEnvoy/Cody alignment',
+    'Further process discovery'
+  ].forEach((label) => assert.ok(byLabel.get(label), `missing planned workstream: ${label}`));
+  assert.ok(byLabel.get('Goods flow and storage').evidenceIds.some((id) => /japan|netherlands|fiscal|dublin|park west/i.test(evidence.events.find((event) => event.id === id)?.text || '')));
+  assert.ok(byLabel.get('Operational process detail').evidenceIds.some((id) => /netsuite|erp|warehouse|scanner|rf smart|barcode|document control|manual/i.test(evidence.events.find((event) => event.id === id)?.text || '')));
+  assert.ok(byLabel.get('MDR/PPE/sunglasses and declarations of conformity').evidenceIds.some((id) => /sunglasses|declarations? of conformity|risk rationale|ppe/i.test(evidence.events.find((event) => event.id === id)?.text || '')));
+  const languageTexts = byLabel.get('Language/country requirements').evidenceIds.map((id) => evidence.events.find((event) => event.id === id)?.text || '').join(' ');
+  assert.match(languageTexts, /language|country|translation|labels?|IFU|manufacturer information/i);
+  assert.doesNotMatch(languageTexts, /risk rationale for the PPE category one/i);
+  assert.ok(byLabel.get('EUDAMED/HPRA').evidenceIds.some((id) => /eudamed|udemed|hpra|registration|authori[sz]ed/i.test(evidence.events.find((event) => event.id === id)?.text || '')));
+  assert.ok(byLabel.get('MedEnvoy/Cody alignment').evidenceIds.some((id) => /med.?envoy|cody/i.test(evidence.events.find((event) => event.id === id)?.text || '')));
+  assert.ok(byLabel.get('Further process discovery').evidenceIds.some((id) => /follow up|go through|process|working session|another call/i.test(evidence.events.find((event) => event.id === id)?.text || '')));
+  assert.equal(result.risks.length, 0);
+  const discussionText = result.discussion.map((card) => `${card.topic} ${card.points.map((point) => point.text || point).join(' ')}`).join(' ');
+  assert.match(discussionText, /Japan/i);
+  assert.match(discussionText, /Netherlands/i);
+  assert.match(discussionText, /fiscal(?:ly)? clear/i);
+  assert.match(discussionText, /Dublin|Park West/i);
+  assert.match(discussionText, /ERP|NetSuite|order flow/i);
+  assert.match(discussionText, /warehouse/i);
+  assert.match(discussionText, /scanner|RF Smart|barcod/i);
+});
+
+test('canonical Discussion planner still allows non-DITA emergent risk workstreams', () => {
+  const transcript = fs.readFileSync(
+    path.resolve(__dirname, '../scripts/meeting-minutes-final-golden/027_real_abbott_audit_kickoff_transcript/transcript.txt'),
+    'utf8'
+  );
+  const evidence = prepareEvidence(transcript);
+  const riskIds = evidence.events.filter((event) => /risk|audit|gap|issue|dependency|blocker|consequence/i.test(event.text)).slice(0, 10).map((event) => event.id);
+  const profile = {
+    events: {},
+    topics: [
+      { id: 'risk-topic', representativeText: 'Audit risks dependencies and gaps', evidenceIds: riskIds, cohesion: 1 },
+      { id: 'planning-topic', representativeText: 'Audit kickoff planning scope and responsibilities', evidenceIds: evidence.events.slice(0, 12).map((event) => event.id), cohesion: 1 }
+    ]
+  };
+  const result = semanticStages.contentStage(evidence, { objectives: [] }, profile);
+  const planned = result.discussionPlan.workstreams;
+  assert.ok(planned.some((workstream) => workstream.provenance === 'transcript_emergent' || workstream.provenance === 'generic'));
+  assert.ok(planned.some((workstream) => /risk|audit|planning|scope|responsibilit/i.test(workstream.label)));
+});
+
 test('summary reviewer guidance prioritises supported evidence without becoming evidence', () => {
   const evidence = prepareEvidence([
     'Amina Khan  00:01',
