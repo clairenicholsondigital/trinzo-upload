@@ -85,6 +85,11 @@ def centroid(vectors: list[list[float]]) -> list[float]:
     return [item / length for item in value]
 
 
+def matrix_has_features(matrix) -> bool:
+    shape = getattr(matrix, "shape", ())
+    return len(shape) == 2 and shape[0] > 0 and shape[1] > 0
+
+
 def cluster_events(records: list[dict], embeddings: dict[str, list[float]]) -> list[dict]:
     eligible = [record for record in records if record.get("scores", {}).get("substantive", 0) >= 0.36 and record.get("scores", {}).get("administrative", 0) < 0.55]
     clusters: list[dict] = []
@@ -151,29 +156,33 @@ def main() -> None:
         import numpy as np
         trained = joblib.load(classifier_path)
         matrix = np.asarray([embeddings.get(text, []) for text in texts])
-        evidence_matrix = trained["status_classifier"].predict_proba(matrix)
-        evidence_classes = list(trained["status_label_encoder"].classes_)
-        action_matrix = trained["action_state_classifier"].predict_proba(matrix)
-        action_classes = list(trained["action_state_label_encoder"].classes_)
-        signal_matrix = trained["signal_classifier"].predict_proba(matrix)
-        signal_classes = list(trained["signal_binarizer"].classes_)
-        context_texts = [normalise(event.get("contextText") or f"[PREVIOUS]\n{event.get('previousText', '')}\n[CURRENT]\n{event.get('text', '')}\n[NEXT]\n{event.get('nextText', '')}") for event in events]
-        context_embeddings = backend.encode_many(context_texts)
-        context_matrix = np.asarray([context_embeddings.get(text, []) for text in context_texts])
-        contextual_predictions = {}
-        for prefix, output_key in (("lifecycle", "lifecycleProbabilities"), ("context_dependency", "contextDependencyProbabilities"), ("canonical_worthiness", "canonicalWorthinessProbabilities"), ("temporal_role", "temporalRoleProbabilities")):
-            classifier = trained.get(f"{prefix}_classifier")
-            encoder = trained.get(f"{prefix}_label_encoder")
-            if classifier is not None and encoder is not None:
-                contextual_predictions[output_key] = (classifier.predict_proba(context_matrix), list(encoder.classes_))
-        discourse_classifier = trained.get("discourse_role_classifier")
-        discourse_encoder = trained.get("discourse_role_label_encoder")
-        if discourse_classifier is not None and discourse_encoder is not None:
-            if trained.get("discourse_role_feature_contract") == "current_context_absdiff_product_v1":
-                discourse_features = np.hstack([matrix, context_matrix, np.abs(matrix - context_matrix), matrix * context_matrix])
-            else:
-                discourse_features = context_matrix
-            contextual_predictions["discourseRoleProbabilities"] = (discourse_classifier.predict_proba(discourse_features), list(discourse_encoder.classes_))
+        if matrix_has_features(matrix):
+            evidence_matrix = trained["status_classifier"].predict_proba(matrix)
+            evidence_classes = list(trained["status_label_encoder"].classes_)
+            action_matrix = trained["action_state_classifier"].predict_proba(matrix)
+            action_classes = list(trained["action_state_label_encoder"].classes_)
+            signal_matrix = trained["signal_classifier"].predict_proba(matrix)
+            signal_classes = list(trained["signal_binarizer"].classes_)
+            context_texts = [normalise(event.get("contextText") or f"[PREVIOUS]\n{event.get('previousText', '')}\n[CURRENT]\n{event.get('text', '')}\n[NEXT]\n{event.get('nextText', '')}") for event in events]
+            context_embeddings = backend.encode_many(context_texts)
+            context_matrix = np.asarray([context_embeddings.get(text, []) for text in context_texts])
+            contextual_predictions = {}
+            if matrix_has_features(context_matrix):
+                for prefix, output_key in (("lifecycle", "lifecycleProbabilities"), ("context_dependency", "contextDependencyProbabilities"), ("canonical_worthiness", "canonicalWorthinessProbabilities"), ("temporal_role", "temporalRoleProbabilities")):
+                    classifier = trained.get(f"{prefix}_classifier")
+                    encoder = trained.get(f"{prefix}_label_encoder")
+                    if classifier is not None and encoder is not None:
+                        contextual_predictions[output_key] = (classifier.predict_proba(context_matrix), list(encoder.classes_))
+                discourse_classifier = trained.get("discourse_role_classifier")
+                discourse_encoder = trained.get("discourse_role_label_encoder")
+                if discourse_classifier is not None and discourse_encoder is not None:
+                    if trained.get("discourse_role_feature_contract") == "current_context_absdiff_product_v1":
+                        discourse_features = np.hstack([matrix, context_matrix, np.abs(matrix - context_matrix), matrix * context_matrix])
+                    else:
+                        discourse_features = context_matrix
+                    contextual_predictions["discourseRoleProbabilities"] = (discourse_classifier.predict_proba(discourse_features), list(discourse_encoder.classes_))
+        else:
+            trained = None
 
     records = []
     event_output = {}
