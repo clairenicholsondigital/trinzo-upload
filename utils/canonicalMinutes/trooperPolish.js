@@ -119,6 +119,56 @@ function mergeClientReadyDiscussionCards(cards) {
   return output.map(({ _family, ...card }) => card);
 }
 
+function stableReviewPart(value) {
+  if (Array.isArray(value)) return value.map(stableReviewPart).join(',');
+  if (value && typeof value === 'object') {
+    return Object.keys(value).sort().map((key) => `${key}:${stableReviewPart(value[key])}`).join('|');
+  }
+  return clean(value).toLowerCase();
+}
+
+function actionReviewCandidateId(candidate = {}) {
+  const explicit = clean(candidate.id || candidate.key || candidate.candidateId);
+  if (explicit) return explicit;
+  return `candidate::${stableReviewPart({
+    owner: candidate.owner || 'Not stated',
+    action: candidate.suggestedAction || candidate.action,
+    deadline: candidate.deadline || 'Not stated',
+    disposition: candidate.reviewDisposition || candidate.confidenceTier || '',
+    evidenceIds: candidate.evidenceIds || []
+  })}`;
+}
+
+function normaliseActionReviewCandidate(candidate = {}, flag = {}, index = 0) {
+  const normalised = {
+    id: actionReviewCandidateId(candidate),
+    owner: clean(candidate.owner) || 'Not stated',
+    action: clean(candidate.action || candidate.suggestedAction),
+    suggestedAction: clean(candidate.suggestedAction || candidate.action),
+    deadline: clean(candidate.deadline) || 'Not stated',
+    reviewDisposition: clean(candidate.reviewDisposition || candidate.confidenceTier) || 'review_required',
+    confidenceTier: clean(candidate.confidenceTier),
+    evidenceIds: Array.isArray(candidate.evidenceIds)
+      ? candidate.evidenceIds.map(clean).filter(Boolean)
+      : [],
+    sourceFlagType: clean(flag.type),
+    sourceFlagKey: clean(flag.resolutionKey || flag.key || flag.id) || `flag-${index}`
+  };
+  if (candidate.evidence) normalised.evidence = candidate.evidence;
+  return normalised;
+}
+
+function actionReviewCandidatesFromFlags(flags = []) {
+  const byId = new Map();
+  for (const [flagIndex, flag] of (Array.isArray(flags) ? flags : []).entries()) {
+    for (const candidate of Array.isArray(flag?.repairCandidates) ? flag.repairCandidates : []) {
+      const normalised = normaliseActionReviewCandidate(candidate, flag, flagIndex);
+      if (normalised.action && !byId.has(normalised.id)) byId.set(normalised.id, normalised);
+    }
+  }
+  return [...byId.values()];
+}
+
 function clientReadyPresentation(payload) {
   const stage = clean(payload?.stagedStage).toLowerCase();
   const base = { ...payload, screens: { ...(payload?.screens || {}) } };
@@ -166,7 +216,7 @@ function clientReadyPresentation(payload) {
     }).filter(Boolean);
   }
   const existingFlags = Array.isArray(base.validationFlags) ? base.validationFlags : [];
-  const actionReviewCandidates = stage === 'actions'
+  const retainedActionReviewCandidates = stage === 'actions'
     ? retainedForReview.map((item) => item.candidate).filter(Boolean)
     : [];
   const polishFlag = retainedForReview.length ? {
@@ -174,7 +224,7 @@ function clientReadyPresentation(payload) {
     message: stage === 'actions'
       ? `Kept ${retainedForReview.length} action candidate${retainedForReview.length === 1 ? '' : 's'} out of the final Actions table because the owner or wording could not be validated safely.`
       : `Evidence was retained for ${retainedForReview.length} item${retainedForReview.length === 1 ? '' : 's'}, but the wording could not be safely polished automatically. Review the highlighted stage before approval.`,
-    ...(actionReviewCandidates.length ? { repairCandidates: actionReviewCandidates } : {})
+    ...(retainedActionReviewCandidates.length ? { repairCandidates: retainedActionReviewCandidates } : {})
   } : {
     type: 'language_polished', severity: 'info', blocking: false,
     message: 'Evidence-backed draft: client-ready language checks completed without changing the underlying facts, owners or deadlines.'
@@ -183,9 +233,21 @@ function clientReadyPresentation(payload) {
     type: 'attendee_entity_normalised', severity: 'info', blocking: false,
     message: `Corrected ${entityCorrections.length} attendee-name transcription variant${entityCorrections.length === 1 ? '' : 's'} using the confirmed participant list.`
   } : null;
+  const validationFlags = [...existingFlags, ...(entityFlag ? [entityFlag] : []), polishFlag];
+  const actionReviewCandidates = stage === 'actions'
+    ? actionReviewCandidatesFromFlags(validationFlags)
+    : [];
   return {
     ...base,
-    validationFlags: [...existingFlags, ...(entityFlag ? [entityFlag] : []), polishFlag],
+    validationFlags,
+    ...(stage === 'actions' ? {
+      actionReviewCandidates,
+      candidateAccounting: {
+        confirmedActions: Array.isArray(base.screens.actions) ? base.screens.actions.length : 0,
+        reviewerCandidates: actionReviewCandidates.length,
+        validationFlagsWithCandidates: validationFlags.filter((flag) => Array.isArray(flag.repairCandidates) && flag.repairCandidates.length).length
+      }
+    } : {}),
     editorialStatus: retainedForReview.length ? 'wording_needs_review' : 'language_polished'
   };
 }

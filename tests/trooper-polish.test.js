@@ -269,6 +269,42 @@ test('final presentation withholds ownerless or invalid actions for reviewer con
   ]);
   const flag = result.validationFlags.find((item) => item.type === 'action_publication_review');
   assert.equal(flag.repairCandidates.length, 2);
+  assert.equal(result.actionReviewCandidates.length, 2);
+  assert.equal(result.candidateAccounting.confirmedActions, 1);
+  assert.equal(result.candidateAccounting.reviewerCandidates, 2);
+  assert.ok(result.actionReviewCandidates.every((candidate) => candidate.id.startsWith('candidate::')));
+  assert.deepEqual(result.actionReviewCandidates.map((candidate) => candidate.action), flag.repairCandidates.map((candidate) => candidate.action));
+});
+
+test('final presentation preserves action candidate arrays across API serialisation', () => {
+  const candidate = {
+    id: 'action-candidate-fixed',
+    owner: 'Not stated',
+    action: 'Prepare the country and language list',
+    suggestedAction: 'Prepare the country and language list',
+    deadline: 'Not stated',
+    reviewDisposition: 'needs_assignment',
+    evidenceIds: ['evt_1', 'evt_2']
+  };
+  const result = clientReadyPresentation({
+    stagedStage: 'actions',
+    validationFlags: [{
+      type: 'action_review_candidates',
+      severity: 'warning',
+      resolutionKey: 'action-review-candidates:fixture',
+      message: '1 transcript-supported follow-up candidate needs review.',
+      repairCandidates: [candidate]
+    }],
+    screens: { actions: [{ owner: 'Orla Skally', action: 'Review the HPRA authorised-representative bill', deadline: 'Not stated' }] }
+  });
+
+  const roundTrip = JSON.parse(JSON.stringify(result));
+  assert.equal(roundTrip.actionReviewCandidates.length, 1);
+  assert.equal(roundTrip.actionReviewCandidates[0].id, 'action-candidate-fixed');
+  assert.equal(roundTrip.actionReviewCandidates[0].reviewDisposition, 'needs_assignment');
+  assert.equal(roundTrip.validationFlags[0].repairCandidates[0].id, 'action-candidate-fixed');
+  assert.equal(roundTrip.candidateAccounting.confirmedActions, 1);
+  assert.equal(roundTrip.candidateAccounting.reviewerCandidates, 1);
 });
 
 test('final discussion presentation strips internal evidence ids and keeps distinctive topics aligned', () => {

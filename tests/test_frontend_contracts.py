@@ -476,10 +476,27 @@ class FrontendContractTest(unittest.TestCase):
 
         self.assertIn("function validationFlagKey(flag, index, stage)", staged_page)
         self.assertIn("function actionCandidateKey(flagKey, candidate)", staged_page)
+        self.assertIn("var explicitKey = candidate && (candidate.id || candidate.key || candidate.candidateId)", staged_page)
+        self.assertIn("function collectActionCandidatesFromFlags(list, stage)", staged_page)
+        self.assertIn("function collectActionCandidatesFromPayload(candidates)", staged_page)
         self.assertIn("list.forEach(function (flag, flagIndex)", staged_page)
         self.assertIn("var flagKey = validationFlagKey(flag, flagIndex, stage)", staged_page)
-        self.assertIn("actionReviewCandidates.push({ id: candidateKey, candidate: candidate, flagKey: flagKey })", staged_page)
+        self.assertIn("fromFlags.concat(fromPayload).forEach(function (entry)", staged_page)
         self.assertNotIn("actionReviewCandidates.push({ id: flagIndex + '-' + candidateIndex", staged_page)
+
+    def test_staged_action_candidates_are_persisted_and_hydrated(self):
+        staged_page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
+
+        self.assertIn("var currentValidationFlags = []", staged_page)
+        self.assertIn("var currentActionReviewCandidatePayloads = []", staged_page)
+        self.assertIn("function compactValidationFlagsForDraft(flags)", staged_page)
+        self.assertIn("validationFlags: compactValidationFlagsForDraft(currentValidationFlags)", staged_page)
+        self.assertIn("validationStage: currentValidationStage", staged_page)
+        self.assertIn("actionReviewCandidates: currentActionReviewCandidatePayloads", staged_page)
+        self.assertIn("if (existing && Array.isArray(existing.validationFlags))", staged_page)
+        self.assertIn("if (existing && Array.isArray(existing.actionReviewCandidates))", staged_page)
+        self.assertIn("renderValidationFlags(currentValidationFlags, currentValidationStage || stageForScreen(activeIndex), currentActionReviewCandidatePayloads)", staged_page)
+        self.assertIn("actionReviewCandidates = actionReviewCandidates.filter(function (entry) { return entry.id !== resolvedKey; })", staged_page)
 
     def test_staged_generation_state_exposes_target_stage_and_terminal_states(self):
         staged_page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
@@ -492,8 +509,12 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("setGenerationState('running', stage)", staged_page)
         self.assertIn("setGenerationState('complete', '')", staged_page)
         self.assertIn("setGenerationState('error', stage)", staged_page)
+        self.assertIn("idle = no generation in progress", staged_page)
+        self.assertIn("complete = a generation request just succeeded", staged_page)
         self.assertIn("generationState: generationState", staged_page)
         self.assertIn("targetStage: targetStageInFlight", staged_page)
+        self.assertIn("hydratingSavedDraft = true", staged_page)
+        self.assertIn("if (hydratingSavedDraft) return", staged_page)
 
     def test_staged_discussion_controls_and_terminology_jump_are_wired_to_cards(self):
         staged_page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")

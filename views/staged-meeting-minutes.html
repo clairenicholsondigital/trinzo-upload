@@ -788,7 +788,10 @@ td select {
   var resolvedReviewChecks = [];
   var resolvedReviewCheckKeys = {};
   var currentValidationFlags = [];
+  var currentValidationStage = '';
+  var currentActionReviewCandidatePayloads = [];
   var actionReviewCandidates = [];
+  var hydratingSavedDraft = false;
   var draggedAttendeeChip = null;
   var terminologyQaPanel = document.getElementById('terminologyQa');
   var terminologySuggestions = [];
@@ -968,6 +971,9 @@ td select {
   }
 
   function setGenerationState(state, targetStage) {
+    // idle = no generation in progress on an already hydrated/reviewable screen.
+    // complete = a generation request just succeeded in this browser session.
+    // queued/running/error describe the current or last attempted target stage.
     generationState = String(state || 'idle');
     targetStageInFlight = targetStage ? String(targetStage) : '';
     document.body.setAttribute('data-stage', stageForScreen(activeIndex) || 'final_review');
@@ -1361,8 +1367,10 @@ td select {
 
   function actionCandidateTier(candidate) {
     var disposition = String(candidate && candidate.reviewDisposition || '');
+    var confidenceTier = String(candidate && candidate.confidenceTier || '');
     if (disposition === 'requirement') return 'requirements';
     if (disposition === 'completed_history') return 'low';
+    if (confidenceTier === 'review_wording' || confidenceTier === 'review_owner_or_wording') return 'likely';
     if (disposition === 'needs_assignment' || disposition === 'review_required') return 'likely';
     return 'low';
   }
@@ -1400,6 +1408,11 @@ td select {
   }
 
   function actionCandidateKey(flagKey, candidate) {
+    var explicitKey = candidate && (candidate.id || candidate.key || candidate.candidateId);
+    if (explicitKey) {
+      var explicitPart = stableReviewPart(explicitKey);
+      return explicitPart.indexOf('candidate::') === 0 ? explicitPart : 'candidate::' + explicitPart;
+    }
     return [
       'candidate',
       flagKey,
@@ -1411,6 +1424,73 @@ td select {
         evidenceIds: candidate && candidate.evidenceIds
       })
     ].join('::');
+  }
+
+  function normaliseActionCandidatePayload(candidate, flagKey) {
+    var source = candidate || {};
+    var normalised = {
+      id: actionCandidateKey(flagKey || source.sourceFlagKey || '', source),
+      flagKey: flagKey || source.sourceFlagKey || '',
+      candidate: {
+        id: source.id || source.key || source.candidateId || '',
+        owner: source.owner || 'Not stated',
+        action: source.action || source.suggestedAction || '',
+        suggestedAction: source.suggestedAction || source.action || '',
+        deadline: source.deadline || 'Not stated',
+        reviewDisposition: source.reviewDisposition || source.confidenceTier || 'review_required',
+        confidenceTier: source.confidenceTier || '',
+        evidenceIds: Array.isArray(source.evidenceIds) ? source.evidenceIds : []
+      }
+    };
+    return normalised.candidate.action || normalised.candidate.suggestedAction ? normalised : null;
+  }
+
+  function compactActionCandidateForDraft(candidate) {
+    var source = candidate || {};
+    return {
+      id: source.id || source.key || source.candidateId || '',
+      sourceFlagKey: source.sourceFlagKey || '',
+      owner: source.owner || 'Not stated',
+      action: source.action || source.suggestedAction || '',
+      suggestedAction: source.suggestedAction || source.action || '',
+      deadline: source.deadline || 'Not stated',
+      reviewDisposition: source.reviewDisposition || source.confidenceTier || 'review_required',
+      confidenceTier: source.confidenceTier || '',
+      evidenceIds: Array.isArray(source.evidenceIds) ? source.evidenceIds.slice(0, 12) : []
+    };
+  }
+
+  function compactValidationFlagsForDraft(flags) {
+    return (Array.isArray(flags) ? flags : []).filter(Boolean).map(function (flag) {
+      var copy = Object.assign({}, flag);
+      if (Array.isArray(flag.repairCandidates)) {
+        copy.repairCandidates = flag.repairCandidates.map(compactActionCandidateForDraft);
+      }
+      return copy;
+    });
+  }
+
+  function collectActionCandidatesFromFlags(list, stage) {
+    var byId = {};
+    (Array.isArray(list) ? list : []).forEach(function (flag, flagIndex) {
+      if (!flag || !Array.isArray(flag.repairCandidates) || !flag.repairCandidates.length) return;
+      if (!(flag.type === 'action_review_candidates' || flag.type === 'action_publication_review' || flag.type === 'action_candidates_need_confirmation')) return;
+      var flagKey = validationFlagKey(flag, flagIndex, stage);
+      flag.repairCandidates.forEach(function (candidate) {
+        var entry = normaliseActionCandidatePayload(candidate, flagKey);
+        if (entry && !byId[entry.id]) byId[entry.id] = entry;
+      });
+    });
+    return Object.keys(byId).map(function (id) { return byId[id]; });
+  }
+
+  function collectActionCandidatesFromPayload(candidates) {
+    var byId = {};
+    (Array.isArray(candidates) ? candidates : []).forEach(function (candidate) {
+      var entry = normaliseActionCandidatePayload(candidate, candidate && candidate.sourceFlagKey);
+      if (entry && !byId[entry.id]) byId[entry.id] = entry;
+    });
+    return Object.keys(byId).map(function (id) { return byId[id]; });
   }
 
   function reviewCheckIsResolved(key) {
@@ -1428,6 +1508,8 @@ td select {
     resolvedReviewCheckKeys[resolvedKey] = true;
     resolvedReviewChecks = resolvedReviewChecks.filter(function (item) { return item.key !== resolvedKey; });
     resolvedReviewChecks.push({ key: resolvedKey, message: String(message || 'Reviewed item'), at: new Date().toISOString() });
+    actionReviewCandidates = actionReviewCandidates.filter(function (entry) { return entry.id !== resolvedKey; });
+    currentActionReviewCandidatePayloads = currentActionReviewCandidatePayloads.filter(function (candidate) { return candidate.id !== resolvedKey; });
     if (element) element.remove();
     renderResolvedChecks();
     updateReviewToolbar();
@@ -1475,11 +1557,21 @@ td select {
     updateReviewToolbar();
   }
 
-  function renderValidationFlags(flags, stage) {
+  function renderValidationFlags(flags, stage, payloadCandidates) {
     if (!stageValidationFlags) return;
     var list = Array.isArray(flags) ? flags.filter(Boolean) : [];
     currentValidationFlags = list;
-    actionReviewCandidates = [];
+    currentValidationStage = stage || stageForScreen(activeIndex) || '';
+    var fromFlags = collectActionCandidatesFromFlags(list, currentValidationStage);
+    var fromPayload = collectActionCandidatesFromPayload(payloadCandidates);
+    var byCandidateId = {};
+    fromFlags.concat(fromPayload).forEach(function (entry) {
+      if (entry && !reviewCheckIsResolved(entry.id) && !byCandidateId[entry.id]) byCandidateId[entry.id] = entry;
+    });
+    actionReviewCandidates = Object.keys(byCandidateId).map(function (id) { return byCandidateId[id]; });
+    currentActionReviewCandidatePayloads = actionReviewCandidates.map(function (entry) {
+      return compactActionCandidateForDraft(Object.assign({}, entry.candidate, { id: entry.id, sourceFlagKey: entry.flagKey }));
+    });
     list.forEach(function (flag, flagIndex) {
       if (flag && flag.blocking && flag.resolutionKey && !unresolvedWorkstreamFlags[flag.resolutionKey]) {
         unresolvedWorkstreamFlags[flag.resolutionKey] = flag;
@@ -1500,14 +1592,6 @@ td select {
     list.forEach(function (flag, flagIndex) {
       var flagKey = validationFlagKey(flag, flagIndex, stage);
       var flagResolved = reviewCheckIsResolved(flagKey);
-      if (flag && (flag.type === 'action_review_candidates' || flag.type === 'action_publication_review') && Array.isArray(flag.repairCandidates) && flag.repairCandidates.length) {
-        flag.repairCandidates.forEach(function (candidate) {
-          var candidateKey = actionCandidateKey(flagKey, candidate);
-          if (!reviewCheckIsResolved(candidateKey)) {
-            actionReviewCandidates.push({ id: candidateKey, candidate: candidate, flagKey: flagKey });
-          }
-        });
-      }
       if (flagResolved) return;
       var row = document.createElement('div');
       row.setAttribute('data-review-check-key', flagKey);
@@ -1933,7 +2017,7 @@ td select {
       stagedState.actions = actionsFromReview();
       generatedStageVersions.actions = cloneReviewValue(stagedState.actions);
     }
-    renderValidationFlags(payload && payload.validationFlags, payload && payload.stagedStage);
+    renderValidationFlags(payload && payload.validationFlags, payload && payload.stagedStage, payload && payload.actionReviewCandidates);
     markGeneratedStages(payload);
     if (payload && payload.jobId) stagedSourceJobId = String(payload.jobId);
     lastGeneratedPayload = payload;
@@ -2113,10 +2197,12 @@ td select {
       // Stay on the staged review and stream the result in place instead of redirecting to Jobs.
       await pollStageJobUntilDone(payload.jobId, stage, targetScreen);
       setGenerationState('complete', '');
+      saveDraft();
       setReviewStatus(stageReadyMessage(stage, isRegeneration), false);
       return true;
     } catch (error) {
       setGenerationState('error', stage);
+      saveDraft();
       setReviewStatus(error && error.message ? error.message : 'This staged screen could not be generated.', true);
       return false;
     } finally {
@@ -2155,6 +2241,7 @@ td select {
         setReviewStatus('Resumed staged ' + labelForStage(resumedStage) + ' generation. Waiting for the review screen…', false);
         await pollStageJobUntilDone(stageJobId, resumedStage, targetScreen);
         setGenerationState('complete', '');
+        saveDraft();
         params.delete('stageJobId');
         replaceUrl(window.location.pathname + '?' + params.toString());
         setReviewStatus(stageReadyMessage(resumedStage, false), false);
@@ -2167,11 +2254,15 @@ td select {
       if (!result || !result.screens) throw new Error('The completed staged job did not include a screen payload.');
       applyStagedPayload(result, targetScreen);
       setGenerationState('complete', '');
+      saveDraft();
       params.delete('stageJobId');
       replaceUrl(window.location.pathname + '?' + params.toString());
       setReviewStatus(stageReadyMessage(result.stagedStage || stageForScreen(activeIndex), false), false);
     } catch (error) {
-      if (resumedStage) setGenerationState('error', resumedStage);
+      if (resumedStage) {
+        setGenerationState('error', resumedStage);
+        saveDraft();
+      }
       setReviewStatus(error && error.message ? error.message : 'Could not load the staged job result.', true);
     } finally {
       stageInFlight = null;
@@ -2222,6 +2313,13 @@ td select {
     if (existing && existing.unresolvedWorkstreamFlags && typeof existing.unresolvedWorkstreamFlags === 'object') {
       unresolvedWorkstreamFlags = existing.unresolvedWorkstreamFlags;
     }
+    if (existing && Array.isArray(existing.validationFlags)) {
+      currentValidationFlags = existing.validationFlags;
+      currentValidationStage = existing.validationStage || stageForScreen(existing.activeScreen) || '';
+    }
+    if (existing && Array.isArray(existing.actionReviewCandidates)) {
+      currentActionReviewCandidatePayloads = existing.actionReviewCandidates;
+    }
     if (existing && existing.resolvedReviewCheckKeys && typeof existing.resolvedReviewCheckKeys === 'object') {
       resolvedReviewCheckKeys = existing.resolvedReviewCheckKeys;
     }
@@ -2265,6 +2363,14 @@ td select {
         generatedStages[stage] = Boolean(existing.generatedStages[stage] || generatedStages[stage]);
       });
     }
+    if (existing && existing.generationState && !['queued', 'running'].includes(existing.generationState)) {
+      generationState = existing.generationState;
+      targetStageInFlight = existing.targetStage || '';
+    } else if (!stageJobId) {
+      generationState = 'idle';
+      targetStageInFlight = '';
+    }
+    renderValidationFlags(currentValidationFlags, currentValidationStage || stageForScreen(activeIndex), currentActionReviewCandidatePayloads);
   }
 
   // Transcripts are kept in the browser, keyed by draftId, so a reloaded/resumed staged
@@ -2468,6 +2574,10 @@ td select {
     generatedStageVersions = { details: null, summary: null, discussion: null, actions: null };
     generatedStages = { details: false, summary: false, discussion: false, actions: false };
     regenerationEvents = [];
+    currentValidationFlags = [];
+    currentValidationStage = '';
+    currentActionReviewCandidatePayloads = [];
+    actionReviewCandidates = [];
     resolvedReviewChecks = [];
     resolvedReviewCheckKeys = {};
     terminologyDecisionEvents = [];
@@ -2505,6 +2615,7 @@ td select {
   }
 
   function saveDraft() {
+    if (hydratingSavedDraft) return;
     if (!reviewStarted && !lastGeneratedPayload) return;
     commitStageState(stageForScreen(activeIndex));
     var id = ensureDraftId();
@@ -2541,6 +2652,9 @@ td select {
       generatedStages: generatedStages,
       generatedStageVersions: generatedStageVersions,
       unresolvedWorkstreamFlags: unresolvedWorkstreamFlags,
+      validationFlags: compactValidationFlagsForDraft(currentValidationFlags),
+      validationStage: currentValidationStage,
+      actionReviewCandidates: currentActionReviewCandidatePayloads,
       resolvedReviewChecks: resolvedReviewChecks.slice(-100),
       resolvedReviewCheckKeys: resolvedReviewCheckKeys,
       terminologyDecisions: terminologyDecisionEvents.slice(-100),
@@ -2893,8 +3007,13 @@ td select {
   updateReviewTimerDisplay();
   renderFinalDocument();
   setReviewStarted(reviewStarted);
+  hydratingSavedDraft = true;
   hydrateSavedDraftContext();
   showScreen(Number.isFinite(requestedScreen) ? requestedScreen : 0);
+  hydratingSavedDraft = false;
+  setGenerationState(generationState, targetStageInFlight);
+  renderFinalDocument();
+  updateReviewToolbar();
   loadQueuedStageResult();
 })();
 </script>

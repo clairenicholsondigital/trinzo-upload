@@ -569,6 +569,9 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("reviewObjectives: input.reviewObjectives || ''", api)
         self.assertIn("reviewDiscussion: input.reviewDiscussion || ''", api)
         self.assertIn("reviewActions: input.reviewActions || ''", api)
+        self.assertIn("function serialiseActionReviewCandidate", api)
+        self.assertIn("action-candidate-${stableActionCandidateHash(candidate)}", api)
+        self.assertIn("resolutionKey: `action-review-candidates:", api)
 
         # The util exposes the mechanical fixers and the advisory flag builder.
         for name in (
@@ -589,7 +592,7 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("function renderValidationFlags", page)
         self.assertIn("function addValidationSuggestionToDiscussion", page)
         self.assertIn("Add to discussion", page)
-        self.assertIn("renderValidationFlags(payload && payload.validationFlags, payload && payload.stagedStage)", page)
+        self.assertIn("renderValidationFlags(payload && payload.validationFlags, payload && payload.stagedStage, payload && payload.actionReviewCandidates)", page)
         self.assertIn("formData.append('reviewObjectives'", page)
         self.assertIn("formData.append('reviewDiscussion'", page)
         self.assertIn("formData.append('reviewActions'", page)

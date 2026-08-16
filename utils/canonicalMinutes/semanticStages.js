@@ -21,6 +21,24 @@ function unique(items, key) {
   });
 }
 
+function stableCandidatePart(value) {
+  if (Array.isArray(value)) return value.map(stableCandidatePart).join(',');
+  if (value && typeof value === 'object') {
+    return Object.keys(value).sort().map((key) => `${key}:${stableCandidatePart(value[key])}`).join('|');
+  }
+  return clean(value).toLowerCase();
+}
+
+function stableActionCandidateId(item = {}) {
+  return `semantic-action-candidate::${stableCandidatePart({
+    owner: item.owner || 'Not stated',
+    action: item.action,
+    deadline: item.deadline || 'Not stated',
+    disposition: item.reviewDisposition || item.confidenceTier || '',
+    evidenceIds: item.evidenceIds || []
+  })}`;
+}
+
 function score(profile, event, role) {
   return Number(semanticFor(profile, event).scores?.[role] || 0);
 }
@@ -1331,7 +1349,21 @@ function actionsStage(evidence, state, profile, topology) {
     unresolvedThreads,
     warnings: [
       ...(actions.length ? [] : [{ type: 'no_actions_detected', severity: 'info', message: 'No transcript-supported action passed the MiniLM commitment-thread safety checks.' }]),
-      ...(reviewRequired.length ? [{ type: 'action_candidates_need_confirmation', severity: 'warning', blocking: false, message: `${reviewRequired.length} transcript-supported action candidate${reviewRequired.length === 1 ? ' needs' : 's need'} owner or wording confirmation.`, repairCandidates: reviewRequired.map((item) => ({ owner: item.owner || 'Not stated', action: canonicalActionText(item.action), deadline: item.deadline || 'Not stated', confidenceTier: item.confidenceTier, evidenceIds: item.evidenceIds || [] })) }] : []),
+      ...(reviewRequired.length ? [{
+        type: 'action_candidates_need_confirmation',
+        severity: 'warning',
+        blocking: false,
+        resolutionKey: `semantic-action-candidates:${reviewRequired.map(stableActionCandidateId).join('|')}`,
+        message: `${reviewRequired.length} transcript-supported action candidate${reviewRequired.length === 1 ? ' needs' : 's need'} owner or wording confirmation.`,
+        repairCandidates: reviewRequired.map((item) => ({
+          id: stableActionCandidateId(item),
+          owner: item.owner || 'Not stated',
+          action: canonicalActionText(item.action),
+          deadline: item.deadline || 'Not stated',
+          confidenceTier: item.confidenceTier,
+          evidenceIds: item.evidenceIds || []
+        }))
+      }] : []),
       ...(credibleUnresolvedThreads.length ? [{ type: 'unresolved_commitment_threads', severity: 'warning', message: 'A transcript-supported commitment may still need an owner or clearer wording. Check the suggested actions below.', evidenceIds: credibleUnresolvedThreads.flatMap((item) => item.evidenceIds) }] : [])
     ]
   };

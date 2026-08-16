@@ -3725,6 +3725,40 @@ function canonicalConfirmedStages(input = {}) {
   };
 }
 
+function stableActionCandidateHash(candidate = {}) {
+  const payload = {
+    owner: cleanStagedGeneratedLine(candidate.owner || 'Not stated') || 'Not stated',
+    action: cleanStagedActionText(candidate.suggestedAction || candidate.action || ''),
+    deadline: cleanStagedGeneratedLine(candidate.deadline || 'Not stated') || 'Not stated',
+    disposition: cleanStagedGeneratedLine(candidate.reviewDisposition || candidate.confidenceTier || ''),
+    evidenceIds: Array.isArray(candidate.evidenceIds) ? candidate.evidenceIds : [],
+    sourceTurnIds: Array.isArray(candidate.sourceTurnIds) ? candidate.sourceTurnIds : []
+  };
+  return crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex').slice(0, 16);
+}
+
+function serialiseActionReviewCandidate(item = {}) {
+  const evidenceIds = Array.isArray(item.evidenceIds)
+    ? item.evidenceIds
+    : (Array.isArray(item.evidence)
+      ? item.evidence.map((entry) => entry && entry.id).filter(Boolean)
+      : []);
+  const candidate = {
+    owner: item.owner || 'Not stated',
+    action: item.action || item.suggestedAction || '',
+    suggestedAction: item.suggestedAction || item.action || '',
+    deadline: item.deadline || 'Not stated',
+    reviewDisposition: item.reviewDisposition || 'review_required',
+    evidenceIds,
+    sourceTurnIds: Array.isArray(item.sourceTurnIds) ? item.sourceTurnIds : [],
+    evidence: item.evidence
+  };
+  return {
+    id: `action-candidate-${stableActionCandidateHash(candidate)}`,
+    ...candidate
+  };
+}
+
 async function canonicalStagedResponse(stage, transcript, input = {}) {
   let payload = runCanonicalLiveStage(transcript.text, {
     stage,
@@ -3756,7 +3790,8 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
           severity: 'warning',
           blocking: false,
           message: `Kept ${reviewOnly.length} transcript-supported follow-up candidate${reviewOnly.length === 1 ? '' : 's'} out of the final Actions table because ${Object.entries(counts).map(([key, count]) => `${count} ${labels[key] || 'need review'}`).join(', ')}.`,
-          repairCandidates: reviewOnly.map((item) => ({ owner: item.owner, action: item.action, suggestedAction: item.suggestedAction, deadline: item.deadline, reviewDisposition: item.reviewDisposition, evidence: item.evidence }))
+          resolutionKey: `action-review-candidates:${crypto.createHash('sha256').update(reviewOnly.map((item) => stableActionCandidateHash(item)).join('|')).digest('hex').slice(0, 16)}`,
+          repairCandidates: reviewOnly.map(serialiseActionReviewCandidate)
         }
       ];
     }
