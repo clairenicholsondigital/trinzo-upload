@@ -106,16 +106,34 @@ function summaryScreen(proposal) {
   const overallTopics = (Array.isArray(proposal.topics) && proposal.topics.length
     ? proposal.topics.map((item) => item.text)
     : objectives.map((text) => clean(text).replace(/^Review\s+/i, ''))).filter(Boolean);
+  const initialUnderstanding = proposal.initialUnderstanding || null;
+  const inferredPurpose = clean(initialUnderstanding?.meetingPurpose?.text);
+  const spineItems = (Array.isArray(initialUnderstanding?.meetingSpine) ? initialUnderstanding.meetingSpine : [])
+    .map((item) => clean(item.text))
+    .filter(Boolean)
+    .slice(0, 4);
+  const synthesis = [inferredPurpose, ...spineItems].filter(Boolean).join(' ');
   const meetingType = clean(proposal.meeting?.type).toLowerCase();
   return {
     objectives,
+    meetingPurpose: inferredPurpose,
     overallTopics,
     topicRefs: (proposal.topics || []).map((item) => ({ text: item.text || '', topicId: item.topicId || '', evidenceIds: item.evidenceIds || [] })),
-    executiveSummary: /webinar/.test(meetingType) && /rehearsal|practice|run[ -]?through/.test(meetingType)
+    executiveSummary: synthesis || (/webinar/.test(meetingType) && /rehearsal|practice|run[ -]?through/.test(meetingType)
       ? `The webinar rehearsal reviewed ${overallTopics.join('; ').replace(/; ([^;]+)$/, '; and $1').toLowerCase()}.`
       : overallTopics.length
       ? `The meeting reviewed ${overallTopics.map(lowerInitialUnlessInitialism).join('; ')}.`
-      : 'No substantive meeting topics were identified automatically.'
+      : 'No substantive meeting topics were identified automatically.'),
+    initialUnderstanding: initialUnderstanding ? {
+      provenance: initialUnderstanding.provenance,
+      meetingMode: initialUnderstanding.meetingMode,
+      meetingPurpose: initialUnderstanding.meetingPurpose,
+      meetingSpine: initialUnderstanding.meetingSpine,
+      primaryWorkstreams: initialUnderstanding.primaryWorkstreams,
+      materialClarifications: initialUnderstanding.materialClarifications,
+      unresolvedNeeds: initialUnderstanding.unresolvedNeeds,
+      diagnostics: initialUnderstanding.diagnostics
+    } : null
   };
 }
 
@@ -246,6 +264,20 @@ function runCanonicalLiveStage(transcriptText, options = {}) {
       topology: topology.mode,
       modelName: profile.modelName,
       humanConfirmedInputIsAuthoritative: true,
+      initialUnderstanding: stage === 'summary' && proposal.initialUnderstanding ? {
+        provenance: proposal.initialUnderstanding.provenance,
+        meetingMode: proposal.initialUnderstanding.meetingMode,
+        meetingPurpose: proposal.initialUnderstanding.meetingPurpose,
+        spineCount: proposal.initialUnderstanding.meetingSpine?.length || 0,
+        primaryWorkstreams: (proposal.initialUnderstanding.primaryWorkstreams || []).map((item) => ({
+          label: item.label,
+          provenance: item.provenance,
+          evidenceCount: (item.evidenceIds || []).length
+        })),
+        materialClarificationCount: proposal.initialUnderstanding.materialClarifications?.length || 0,
+        unresolvedNeedCount: proposal.initialUnderstanding.unresolvedNeeds?.length || 0,
+        diagnostics: proposal.initialUnderstanding.diagnostics || null
+      } : null,
       discussionPlan: stage === 'discussion' && proposal.discussionPlan ? proposal.discussionPlan : null
     },
     telemetryPreview: {

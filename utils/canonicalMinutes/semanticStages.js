@@ -7,6 +7,7 @@ const { deadlineFrom } = deterministicStages;
 const { actionHasConcreteObject, applyOperationalPhaseTiming, attachTemporalContext, composeDecision, composeRisk, consolidate, deriveRoleDecisions, tokenOverlap } = require('./canonicalResolver');
 const { purposePlan, objectiveIntentForText, topicOrderRank } = require('./meetingPurpose');
 const { buildMeetingSpine } = require('./meetingSpine');
+const { buildInitialUnderstanding } = require('./initialUnderstanding');
 const { canHeadlineTopic, canStandAloneAsMinutesEvidence, isTranscriptMetaText, isCorrectionOrAcknowledgementFragment, isContextDependentText, isMalformedTranscriptText } = require('./publishability');
 const { resolveActionRecords } = require('./actionResolution');
 const { editorialTopicLabel, editorialTopics } = require('./topicEditorial');
@@ -491,11 +492,22 @@ function contextStage(evidence, profile, state = {}, reviewerGuidance = '') {
   const rankedIds = new Map(spine.publishableTopics.map((topic, index) => [topic.id, index]));
   const rankedTopics = [...editorial].sort((left, right) => (rankedIds.get(left.id) ?? 999) - (rankedIds.get(right.id) ?? 999));
   const topics = prioritiseForGuidance(rankedTopics, evidence, reviewerGuidance);
+  const initialUnderstanding = buildInitialUnderstanding({
+    evidence,
+    meeting: state.meeting || {},
+    topics,
+    meetingSpine: spine
+  });
   return {
     meeting: state.meeting || { participants: evidence.participants },
-    objectives: topics.slice(0, 4).map((topic) => ({ text: objectivePhraseForTopic(topic, topicHints, evidence), evidenceIds: topic.evidenceIds, topicId: topic.id })),
-    topics: topics.map((topic) => ({ text: topic.editorialText, evidenceIds: topic.evidenceIds, topicId: topic.id })),
+    objectives: (initialUnderstanding.objectives && initialUnderstanding.objectives.length
+      ? initialUnderstanding.objectives
+      : topics.slice(0, 4).map((topic) => ({ text: objectivePhraseForTopic(topic, topicHints, evidence), evidenceIds: topic.evidenceIds, topicId: topic.id }))),
+    topics: (initialUnderstanding.primaryWorkstreams && initialUnderstanding.primaryWorkstreams.length
+      ? initialUnderstanding.primaryWorkstreams.map((workstream) => ({ text: workstream.label, evidenceIds: workstream.evidenceIds, topicId: workstream.id, provenance: workstream.provenance }))
+      : topics.map((topic) => ({ text: topic.editorialText, evidenceIds: topic.evidenceIds, topicId: topic.id }))),
     meetingSpine: spine,
+    initialUnderstanding,
     purposeProfile: purpose?.profileId || null,
     warnings: topics.length ? [] : [{ type: 'thin_context', severity: 'warning', message: 'MiniLM found no confident substantive topic clusters.' }]
   };
