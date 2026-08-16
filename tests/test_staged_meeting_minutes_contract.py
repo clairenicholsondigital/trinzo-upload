@@ -383,6 +383,18 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("terminology-qa/suggestions", api)
         self.assertIn("terminology-qa/decision", api)
 
+    def test_staged_review_checks_persist_stable_resolved_keys(self):
+        page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
+
+        self.assertIn("resolvedReviewCheckKeys", page)
+        self.assertIn("function reviewCheckIsResolved(key)", page)
+        self.assertIn("resolvedReviewCheckKeys[resolvedKey] = true", page)
+        self.assertIn("if (flagResolved) return;", page)
+        self.assertIn("resolvedReviewCheckKeys: resolvedReviewCheckKeys", page)
+        self.assertIn("existing.resolvedReviewCheckKeys", page)
+        self.assertIn("resolveReviewItem(text.textContent, row, flagKey)", page)
+        self.assertIn("resolveReviewItem('Reviewed and dismissed as a non-action:", page)
+
     def test_staged_review_analytics_are_persisted_server_side(self):
         page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
@@ -577,7 +589,7 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("function renderValidationFlags", page)
         self.assertIn("function addValidationSuggestionToDiscussion", page)
         self.assertIn("Add to discussion", page)
-        self.assertIn("renderValidationFlags(payload && payload.validationFlags)", page)
+        self.assertIn("renderValidationFlags(payload && payload.validationFlags, payload && payload.stagedStage)", page)
         self.assertIn("formData.append('reviewObjectives'", page)
         self.assertIn("formData.append('reviewDiscussion'", page)
         self.assertIn("formData.append('reviewActions'", page)

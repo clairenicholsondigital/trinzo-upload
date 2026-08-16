@@ -440,6 +440,7 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn('id="keyFactsList"', staged_page)
         self.assertIn('id="actionReviewGroups"', staged_page)
         self.assertIn('data-generation-state', staged_page)
+        self.assertIn('data-target-stage', staged_page)
         self.assertNotIn("What was discussed", staged_page)
         self.assertNotIn("Staging note:", staged_page)
         self.assertNotIn("Change owner", staged_page)
@@ -469,6 +470,43 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("detail: String(row?.detail", api)
         self.assertIn("evidence: String(row?.evidence", api)
         self.assertIn('"discussionTopics": [', (REPO_DIR / "scripts" / "meeting_minutes_trooper.py").read_text(encoding="utf-8"))
+
+    def test_staged_action_candidate_flags_do_not_use_leaky_flag_index_scope(self):
+        staged_page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
+
+        self.assertIn("function validationFlagKey(flag, index, stage)", staged_page)
+        self.assertIn("function actionCandidateKey(flagKey, candidate)", staged_page)
+        self.assertIn("list.forEach(function (flag, flagIndex)", staged_page)
+        self.assertIn("var flagKey = validationFlagKey(flag, flagIndex, stage)", staged_page)
+        self.assertIn("actionReviewCandidates.push({ id: candidateKey, candidate: candidate, flagKey: flagKey })", staged_page)
+        self.assertNotIn("actionReviewCandidates.push({ id: flagIndex + '-' + candidateIndex", staged_page)
+
+    def test_staged_generation_state_exposes_target_stage_and_terminal_states(self):
+        staged_page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
+
+        self.assertIn("var targetStageInFlight = ''", staged_page)
+        self.assertIn("var generationState = 'idle'", staged_page)
+        self.assertIn("function setGenerationState(state, targetStage)", staged_page)
+        self.assertIn("document.body.setAttribute('data-target-stage', targetStageInFlight)", staged_page)
+        self.assertIn("setGenerationState('queued', stage)", staged_page)
+        self.assertIn("setGenerationState('running', stage)", staged_page)
+        self.assertIn("setGenerationState('complete', '')", staged_page)
+        self.assertIn("setGenerationState('error', stage)", staged_page)
+        self.assertIn("generationState: generationState", staged_page)
+        self.assertIn("targetStage: targetStageInFlight", staged_page)
+
+    def test_staged_discussion_controls_and_terminology_jump_are_wired_to_cards(self):
+        staged_page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
+
+        self.assertIn('id="expandDiscussionBtn"', staged_page)
+        self.assertIn('id="collapseDiscussionBtn"', staged_page)
+        self.assertIn("index === 0 ? ' open' : ''", staged_page)
+        self.assertIn("document.querySelectorAll('.discussion-card')).forEach(function (card) { card.open = true; })", staged_page)
+        self.assertIn("document.querySelectorAll('.discussion-card')).forEach(function (card) { card.open = false; })", staged_page)
+        self.assertIn("function focusTerminologyControl(item)", staged_page)
+        self.assertIn("discussionCard.open = true", staged_page)
+        self.assertIn("jumpToField.textContent = 'Go to field'", staged_page)
+        self.assertIn("discussionList.querySelectorAll('.discussion-card')[Number(parts[1])]", staged_page)
 
 
 if __name__ == "__main__":
