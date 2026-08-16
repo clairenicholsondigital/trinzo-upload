@@ -1553,6 +1553,23 @@ td select {
     return Boolean(key && resolvedReviewCheckKeys[key]);
   }
 
+  function unresolvedWorkstreamReviewKey(flag) {
+    if (!flag) return '';
+    if (flag._reviewCheckKey) return flag._reviewCheckKey;
+    return validationFlagKey(flag, 0, flag._reviewStage || currentValidationStage || 'discussion');
+  }
+
+  function reconcileUnresolvedWorkstreamFlags() {
+    Object.keys(unresolvedWorkstreamFlags || {}).forEach(function (key) {
+      var flag = unresolvedWorkstreamFlags[key];
+      var reviewKey = unresolvedWorkstreamReviewKey(flag);
+      if (!flag || !flag.blocking || reviewCheckIsResolved(reviewKey)) {
+        delete unresolvedWorkstreamFlags[key];
+      }
+    });
+    return Object.keys(unresolvedWorkstreamFlags || {});
+  }
+
   function updateConfirmedActionCount() {
     if (!confirmedActionCount) return;
     var count = actionsFromReview().length;
@@ -1562,6 +1579,7 @@ td select {
   function resolveReviewItem(message, element, key) {
     var resolvedKey = key || ('message::' + stableReviewPart(message || 'Reviewed item'));
     resolvedReviewCheckKeys[resolvedKey] = true;
+    reconcileUnresolvedWorkstreamFlags();
     resolvedReviewChecks = resolvedReviewChecks.filter(function (item) { return item.key !== resolvedKey; });
     resolvedReviewChecks.push({ key: resolvedKey, message: String(message || 'Reviewed item'), at: new Date().toISOString() });
     actionReviewCandidates = actionReviewCandidates.filter(function (entry) { return entry.id !== resolvedKey; });
@@ -1635,9 +1653,13 @@ td select {
     });
     list.forEach(function (flag, flagIndex) {
       if (flag && flag.blocking && flag.resolutionKey && !unresolvedWorkstreamFlags[flag.resolutionKey]) {
-        unresolvedWorkstreamFlags[flag.resolutionKey] = flag;
+        unresolvedWorkstreamFlags[flag.resolutionKey] = Object.assign({}, flag, {
+          _reviewCheckKey: validationFlagKey(flag, flagIndex, currentValidationStage),
+          _reviewStage: currentValidationStage
+        });
       }
     });
+    reconcileUnresolvedWorkstreamFlags();
     stageValidationFlags.innerHTML = '';
     if (!list.length) {
       stageValidationFlags.hidden = true;
@@ -3015,7 +3037,7 @@ td select {
       completeFinalReview();
       return;
     }
-    if (activeIndex === 2 && Object.keys(unresolvedWorkstreamFlags).length) {
+    if (activeIndex === 2 && reconcileUnresolvedWorkstreamFlags().length) {
       setReviewStatus('Resolve each missing substantive workstream before moving on: add it, intentionally omit it, or return to summary topics.', true);
       return;
     }

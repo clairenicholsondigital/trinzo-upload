@@ -503,6 +503,16 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("renderValidationFlags(currentValidationFlags, currentValidationStage || stageForScreen(activeIndex), currentActionReviewCandidatePayloads)", staged_page)
         self.assertIn("actionReviewCandidates = actionReviewCandidates.filter(function (entry) { return entry.id !== resolvedKey; })", staged_page)
 
+    def test_resolved_workstream_flags_do_not_silently_block_actions_transition(self):
+        staged_page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
+
+        self.assertIn("function unresolvedWorkstreamReviewKey(flag)", staged_page)
+        self.assertIn("function reconcileUnresolvedWorkstreamFlags()", staged_page)
+        self.assertIn("_reviewCheckKey: validationFlagKey(flag, flagIndex, currentValidationStage)", staged_page)
+        self.assertIn("reconcileUnresolvedWorkstreamFlags();", staged_page)
+        self.assertIn("if (activeIndex === 2 && reconcileUnresolvedWorkstreamFlags().length)", staged_page)
+        self.assertNotIn("if (activeIndex === 2 && Object.keys(unresolvedWorkstreamFlags).length)", staged_page)
+
     def test_staged_generation_state_exposes_target_stage_and_terminal_states(self):
         staged_page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
 
