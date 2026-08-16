@@ -113,6 +113,26 @@ textarea { min-height:110px; resize:vertical; }
 .attendee-help { display:block; width:100%; }
 .action-owner-select { min-width:210px; }
 .discussion-list { display:grid; gap:.75rem; }
+.review-toolbar { position:sticky; top:.5rem; z-index:6; display:flex; justify-content:space-between; gap:.65rem; align-items:center; margin-bottom:.85rem; padding:.65rem .75rem; border:1px solid #cfe2e8; border-radius:10px; background:rgba(248,252,253,.96); color:#27323a; box-shadow:0 4px 16px rgba(2,23,59,.08); }
+.review-toolbar[hidden] { display:none; }
+.review-count { font-weight:700; color:#02173B; }
+.meeting-understanding { margin-bottom:.9rem; padding:.85rem; border:1px solid #b9dde4; border-radius:12px; background:#f8fcfd; }
+.meeting-understanding label { color:#02173B; }
+.meeting-understanding textarea { background:#fff !important; color:#17222c !important; border-color:#c3ced8 !important; }
+.key-facts-panel { margin-top:.9rem; padding:.85rem; border:1px solid #cfe2e8; border-radius:12px; background:#f8fcfd; color:#27323a; }
+.key-facts-list { display:grid; gap:.45rem; margin-top:.55rem; }
+.key-fact-row { display:flex; gap:.5rem; align-items:center; }
+.key-fact-row input { background:#fff !important; color:#17222c !important; border-color:#c3ced8 !important; }
+.discussion-card { border:1px solid #d9e1e8; border-radius:12px; background:#fff; color:#17222c; overflow:hidden; }
+.discussion-card summary { cursor:pointer; display:flex; justify-content:space-between; gap:.75rem; padding:.8rem .9rem; font-weight:700; background:#f8fafc; }
+.discussion-card-body { padding:.85rem; display:grid; gap:.65rem; }
+.discussion-card textarea, .discussion-card input { background:#fff !important; color:#17222c !important; border-color:#c3ced8 !important; }
+.action-review-groups { display:grid; gap:.7rem; margin-top:1rem; }
+.action-review-group { border:1px solid #d9e1e8; border-radius:10px; background:#fff; color:#27323a; overflow:hidden; }
+.action-review-group summary { cursor:pointer; padding:.7rem .8rem; font-weight:700; background:#f8fafc; }
+.action-candidate-card { padding:.7rem .8rem; border-top:1px solid #e7edf1; display:grid; gap:.5rem; }
+.action-candidate-actions { display:flex; gap:.45rem; flex-wrap:wrap; }
+.resolved-checks { margin-top:.65rem; color:#596875; font-size:.86rem; }
 .discussion-table td ul {
   margin:.2rem 0;
   padding-left:1.15rem;
@@ -558,6 +578,11 @@ td select {
           </div>
           <span class="progress-pill">2 of 5</span>
         </div>
+        <div class="meeting-understanding">
+          <label for="meetingPurpose">Meeting purpose</label>
+          <textarea id="meetingPurpose" placeholder="In one or two sentences, what was this meeting fundamentally trying to accomplish?"></textarea>
+          <small>Correct this first if the AI has the hierarchy wrong. Later stages will carry this reviewer-confirmed understanding forward.</small>
+        </div>
         <div class="field">
           <label for="objectives">Meeting objectives</label>
           <textarea id="objectives" placeholder="Meeting objectives will appear here after generation."></textarea>
@@ -570,9 +595,14 @@ td select {
         <div class="field">
           <label for="overallTopics">Overall topics discussed</label>
           <textarea id="overallTopics" placeholder="Overall topics will appear here after generation."></textarea>
-          <small>The AI has detected that these meeting topics were discussed, these will be used to pull out discussion points from the meeting on the next stage.</small>
-          <small>These topics frame the detailed discussion review on the next screen.</small>
+          <small>These are useful structure, but they are not the sole authority for the next stage.</small>
         </div>
+        <section class="key-facts-panel">
+          <h3>Key facts to preserve</h3>
+          <p>Capture brief clarifications that would materially change the meaning of the minutes if they disappeared.</p>
+          <div id="keyFactsList" class="key-facts-list"></div>
+          <button id="addKeyFactBtn" class="secondary" type="button" style="margin-top:.55rem;">Add key fact</button>
+        </section>
       </article>
 
       <article class="screen" data-screen="2">
@@ -594,6 +624,7 @@ td select {
           </div>
           <span class="progress-pill">4 of 5</span>
         </div>
+        <p><strong id="confirmedActionCount">0 confirmed actions</strong>. Review the useful ambiguous follow-ups below without weakening owner or deadline safeguards.</p>
         <div class="table-wrap">
           <table>
             <thead>
@@ -611,6 +642,7 @@ td select {
         <div class="actions" style="margin-top:.85rem;">
           <button id="addActionRowBtn" type="button">Add action</button>
         </div>
+        <div id="actionReviewGroups" class="action-review-groups"></div>
       </article>
 
       <article class="screen" data-screen="4">
@@ -633,7 +665,12 @@ td select {
         <p class="note final-output-note">Copy, Email and Save draft are not available yet. Export PDF is available from this review.</p>
       </article>
 
+      <div id="reviewToolbar" class="review-toolbar review-only" hidden>
+        <span id="remainingReviewCount" class="review-count">No outstanding review items</span>
+        <button id="nextReviewItemBtn" class="secondary" type="button">Review next item</button>
+      </div>
       <div id="stageValidationFlags" class="stage-validation-flags review-only" aria-live="polite" hidden></div>
+      <details id="resolvedChecks" class="resolved-checks review-only" hidden><summary>Resolved checks</summary><div id="resolvedChecksList"></div></details>
       <section id="terminologyQa" class="terminology-qa review-only" aria-live="polite" hidden></section>
 
       <div class="stage-decision-card review-only" aria-live="polite">
@@ -695,9 +732,12 @@ td select {
   var generateButton = document.getElementById('generateStagedMinutesBtn');
   var generationStatus = document.getElementById('stagedGenerationStatus');
   var reviewGenerationStatus = document.getElementById('reviewGenerationStatus');
+  var meetingPurposeInput = document.getElementById('meetingPurpose');
   var objectivesInput = document.getElementById('objectives');
   var executiveSummaryInput = document.getElementById('executiveSummary');
   var overallTopicsInput = document.getElementById('overallTopics');
+  var keyFactsList = document.getElementById('keyFactsList');
+  var addKeyFactButton = document.getElementById('addKeyFactBtn');
   var internalAttendeesRow = document.getElementById('internalAttendeesRow');
   var clientAttendeesRow = document.getElementById('clientAttendeesRow');
   var clientAttendeeLabel = document.getElementById('clientAttendeeLabel');
@@ -708,6 +748,13 @@ td select {
   var exportClientPdfButton = document.getElementById('exportClientPdfBtn');
   var finalDocumentPreview = document.getElementById('finalDocumentPreview');
   var stageValidationFlags = document.getElementById('stageValidationFlags');
+  var actionReviewGroups = document.getElementById('actionReviewGroups');
+  var confirmedActionCount = document.getElementById('confirmedActionCount');
+  var reviewToolbar = document.getElementById('reviewToolbar');
+  var remainingReviewCount = document.getElementById('remainingReviewCount');
+  var nextReviewItemButton = document.getElementById('nextReviewItemBtn');
+  var resolvedChecks = document.getElementById('resolvedChecks');
+  var resolvedChecksList = document.getElementById('resolvedChecksList');
   var lastGeneratedPayload = null;
   var reviewEditStartedAt = null;
   var reviewEditMs = 0;
@@ -728,6 +775,9 @@ td select {
   var analyticsPersistInFlight = false;
   var stageInFlight = null;
   var unresolvedWorkstreamFlags = {};
+  var resolvedReviewChecks = [];
+  var currentValidationFlags = [];
+  var actionReviewCandidates = [];
   var draggedAttendeeChip = null;
   var terminologyQaPanel = document.getElementById('terminologyQa');
   var terminologySuggestions = [];
@@ -1082,9 +1132,24 @@ td select {
     });
   }
 
+  function keyFactsFromDom() {
+    return Array.prototype.slice.call(keyFactsList ? keyFactsList.querySelectorAll('.key-fact-input') : []).map(function (input) { return input.value.trim(); }).filter(Boolean);
+  }
+
+  function renderKeyFacts(facts) {
+    if (!keyFactsList) return;
+    var items = Array.isArray(facts) ? facts : [];
+    keyFactsList.innerHTML = items.map(function (fact) {
+      return '<div class="key-fact-row"><input class="key-fact-input" value="' + escapeHtml(fact) + '" aria-label="Key fact to preserve" /><button class="secondary" type="button" data-key-fact-remove>Remove</button></div>';
+    }).join('');
+    if (!items.length) keyFactsList.innerHTML = '<p class="muted key-facts-empty">No key facts added yet.</p>';
+  }
+
   function summaryFromDom() {
     var topics = linesFromTextarea(overallTopicsInput && overallTopicsInput.value);
     return {
+      meetingPurpose: meetingPurposeInput && meetingPurposeInput.value ? meetingPurposeInput.value.trim() : '',
+      keyFacts: keyFactsFromDom(),
       objectives: linesFromTextarea(objectivesInput && objectivesInput.value),
       executiveSummary: executiveSummaryInput && executiveSummaryInput.value ? executiveSummaryInput.value.trim() : '',
       overallTopics: topics,
@@ -1119,6 +1184,8 @@ td select {
     if (state.summary && typeof state.summary === 'object') {
       stagedState.summary = state.summary;
       generatedStages.summary = true;
+      if (meetingPurposeInput) meetingPurposeInput.value = state.summary.meetingPurpose || state.summary.executiveSummary || '';
+      renderKeyFacts(state.summary.keyFacts || []);
       if (objectivesInput) objectivesInput.value = Array.isArray(state.summary.objectives) ? state.summary.objectives.join('\n') : '';
       if (executiveSummaryInput) executiveSummaryInput.value = state.summary.executiveSummary || '';
       if (overallTopicsInput) overallTopicsInput.value = Array.isArray(state.summary.overallTopics) ? state.summary.overallTopics.join('\n') : '';
@@ -1136,6 +1203,19 @@ td select {
   }
 
   function renderDiscussionCards(cards) {
+    if (!discussionList) return;
+    var items = Array.isArray(cards) && cards.length ? cards : [{ topic: 'No substantive discussion sections generated', points: ['No topic had enough transcript evidence to include automatically.'] }];
+    discussionList.innerHTML = items.map(function (card, index) {
+      var points = Array.isArray(card.points) ? card.points : [];
+      var bulletPoints = [card.whatWasDiscussed, card.currentPosition, card.decisionOrAgreement, card.dependencyOrRisk, card.nextStep].concat(points).filter(Boolean);
+      var seen = {};
+      var bullets = bulletPoints.map(cleanDiscussionDisplayText).filter(function (point) { var key = point.toLowerCase(); if (!point || seen[key]) return false; seen[key] = true; return true; });
+      if (!bullets.length) bullets = ['Review this section against the transcript.'];
+      return '<details class="discussion-card" open><summary><span>' + escapeHtml(card.topic || 'Discussion') + '</span><span class="muted">' + bullets.length + ' point' + (bullets.length === 1 ? '' : 's') + '</span></summary><div class="discussion-card-body"><label>Topic<input class="discussion-topic-input" value="' + escapeHtml(card.topic || 'Discussion') + '" aria-label="Discussion topic ' + (index + 1) + '" /></label><label>Discussion points<textarea class="discussion-points-input" aria-label="Discussion points ' + (index + 1) + '">' + escapeHtml(bullets.map(function (point) { return '- ' + point; }).join('\n')) + '</textarea></label></div></details>';
+    }).join('');
+  }
+
+  function legacyRenderDiscussionCardsUnused(cards) {
     if (!discussionList) return;
     var items = Array.isArray(cards) && cards.length ? cards : [{ topic: 'No substantive discussion sections generated', points: ['No topic had enough transcript evidence to include automatically.'] }];
     var rows = items.map(function (card) {
@@ -1202,15 +1282,12 @@ td select {
   }
 
   function discussionRowsFromReview() {
-    return Array.prototype.slice.call(discussionList ? discussionList.querySelectorAll('.discussion-table tbody tr') : []).map(function (row) {
-      var cells = row.querySelectorAll('td');
-      var topicInput = cells[0] ? cells[0].querySelector('input, textarea') : null;
-      var pointsInput = cells[1] ? cells[1].querySelector('textarea') : null;
+    return Array.prototype.slice.call(discussionList ? discussionList.querySelectorAll('.discussion-card') : []).map(function (card) {
+      var topicInput = card.querySelector('.discussion-topic-input');
+      var pointsInput = card.querySelector('.discussion-points-input');
       return {
-        topic: topicInput ? topicInput.value.trim() : (cells[0] ? cells[0].textContent.trim() : 'Discussion'),
-        bullets: pointsInput
-          ? linesFromDiscussionTextarea(pointsInput.value)
-          : Array.prototype.slice.call(cells[1] ? cells[1].querySelectorAll('li') : []).map(function (li) { return cleanDiscussionDisplayText(li.textContent); }).filter(Boolean)
+        topic: topicInput ? topicInput.value.trim() : 'Discussion',
+        bullets: pointsInput ? linesFromDiscussionTextarea(pointsInput.value) : []
       };
     }).filter(function (item) { return item.bullets.length && item.topic !== 'No substantive discussion sections generated'; });
   }
@@ -1263,10 +1340,75 @@ td select {
     if (Object.prototype.hasOwnProperty.call(screensPayload, 'actions')) generatedStages.actions = true;
   }
 
+  function actionCandidateTier(candidate) {
+    var disposition = String(candidate && candidate.reviewDisposition || '');
+    if (disposition === 'requirement') return 'requirements';
+    if (disposition === 'completed_history') return 'low';
+    if (disposition === 'needs_assignment' || disposition === 'review_required') return 'likely';
+    return 'low';
+  }
+
+  function updateConfirmedActionCount() {
+    if (!confirmedActionCount) return;
+    var count = actionsFromReview().length;
+    confirmedActionCount.textContent = count + ' confirmed action' + (count === 1 ? '' : 's');
+  }
+
+  function resolveReviewItem(message, element) {
+    resolvedReviewChecks.push({ message: String(message || 'Reviewed item'), at: new Date().toISOString() });
+    if (element) element.remove();
+    renderResolvedChecks();
+    updateReviewToolbar();
+    saveDraft();
+  }
+
+  function renderResolvedChecks() {
+    if (!resolvedChecks || !resolvedChecksList) return;
+    resolvedChecksList.innerHTML = resolvedReviewChecks.slice(-20).map(function (item) { return '<p>✓ ' + escapeHtml(item.message) + '</p>'; }).join('');
+    resolvedChecks.hidden = !resolvedReviewChecks.length;
+  }
+
+  function updateReviewToolbar() {
+    if (!reviewToolbar || !remainingReviewCount) return;
+    var outstanding = document.querySelectorAll('.stage-validation-flag:not(.is-resolved), .terminology-suggestion, .action-candidate-card').length;
+    remainingReviewCount.textContent = outstanding ? outstanding + ' item' + (outstanding === 1 ? '' : 's') + ' need review' : 'No outstanding review items';
+    reviewToolbar.hidden = activeIndex === 4 || (!outstanding && !resolvedReviewChecks.length);
+    if (nextReviewItemButton) nextReviewItemButton.disabled = !outstanding;
+    statusItems.forEach(function (item, idx) {
+      var label = item.querySelector('span:last-child');
+      if (!label) return;
+      var base = screenLabel(idx);
+      if (idx === activeIndex && outstanding) label.textContent = base + ' · ' + outstanding;
+      else label.textContent = base;
+    });
+  }
+
+  function renderActionReviewGroups() {
+    if (!actionReviewGroups) return;
+    var groups = { likely: [], requirements: [], low: [] };
+    actionReviewCandidates.forEach(function (entry) { groups[actionCandidateTier(entry.candidate)].push(entry); });
+    var definitions = [
+      ['likely', 'Likely follow-ups', true],
+      ['requirements', 'Requirements that may need an action', false],
+      ['low', 'Low-confidence candidates', false]
+    ];
+    actionReviewGroups.innerHTML = definitions.map(function (definition) {
+      var entries = groups[definition[0]];
+      if (!entries.length) return '';
+      return '<details class="action-review-group"' + (definition[2] ? ' open' : '') + '><summary>' + entries.length + ' ' + definition[1].toLowerCase() + '</summary>' + entries.map(function (entry) {
+        var candidate = entry.candidate;
+        return '<div class="action-candidate-card" data-candidate-id="' + escapeHtml(entry.id) + '"><strong>' + escapeHtml(candidate.suggestedAction || candidate.action || 'Review follow-up') + '</strong><span class="muted">Owner: ' + escapeHtml(candidate.owner || 'Unconfirmed') + '</span><div class="action-candidate-actions"><button type="button" data-candidate-action="add">Add to actions</button><button class="secondary" type="button" data-candidate-action="dismiss">Not an action</button></div></div>';
+      }).join('') + '</details>';
+    }).join('');
+    updateReviewToolbar();
+  }
+
   function renderValidationFlags(flags) {
     if (!stageValidationFlags) return;
     var list = Array.isArray(flags) ? flags.filter(Boolean) : [];
-    list.forEach(function (flag) {
+    currentValidationFlags = list;
+    actionReviewCandidates = [];
+    list.forEach(function (flag, flagIndex) {
       if (flag && flag.blocking && flag.resolutionKey && !unresolvedWorkstreamFlags[flag.resolutionKey]) {
         unresolvedWorkstreamFlags[flag.resolutionKey] = flag;
       }
@@ -1274,6 +1416,9 @@ td select {
     stageValidationFlags.innerHTML = '';
     if (!list.length) {
       stageValidationFlags.hidden = true;
+      renderActionReviewGroups();
+      renderResolvedChecks();
+      updateReviewToolbar();
       return;
     }
     var heading = document.createElement('p');
@@ -1303,47 +1448,17 @@ td select {
         row.appendChild(addButton);
       }
       if (flag && (flag.type === 'action_review_candidates' || flag.type === 'action_publication_review') && Array.isArray(flag.repairCandidates) && flag.repairCandidates.length) {
-        var candidateList = document.createElement('div');
-        candidateList.className = 'stage-validation-candidates';
-        flag.repairCandidates.forEach(function (candidate) {
-          var candidateRow = document.createElement('div');
-          candidateRow.className = 'stage-validation-candidate';
-          var candidateText = document.createElement('span');
-          var dispositionLabel = {
-            needs_assignment: 'Needs owner',
-            requirement: 'Requirement',
-            completed_history: 'Completed/history',
-            review_required: 'Needs confirmation'
-          }[candidate.reviewDisposition] || 'Needs review';
-          candidateText.textContent = dispositionLabel + ': ' + String(candidate.suggestedAction || candidate.action || 'Review follow-up');
-          candidateRow.appendChild(candidateText);
-          if (candidate.reviewDisposition !== 'completed_history') {
-            var addActionButton = document.createElement('button');
-            addActionButton.type = 'button';
-            addActionButton.className = 'secondary stage-validation-add';
-            addActionButton.textContent = 'Add to actions';
-            addActionButton.addEventListener('click', function () {
-              if (!actionsTableBody) return;
-              var empty = actionsTableBody.querySelector('.empty-state');
-              if (empty) actionsTableBody.innerHTML = '';
-              actionsTableBody.insertAdjacentHTML('beforeend', renderActionRow({
-                owner: candidate.owner || 'Not stated',
-                action: candidate.suggestedAction || candidate.action || '',
-                deadline: candidate.deadline || 'Not stated'
-              }));
-              refreshActionOwnerOptions();
-              stagedState.actions = actionsFromReview();
-              addActionButton.disabled = true;
-              addActionButton.textContent = 'Added';
-              setReviewStatus('Added the review candidate to Actions. Confirm the owner, wording and deadline before continuing.', false);
-              saveDraft();
-            });
-            candidateRow.appendChild(addActionButton);
-          }
-          candidateList.appendChild(candidateRow);
+        flag.repairCandidates.forEach(function (candidate, candidateIndex) {
+          actionReviewCandidates.push({ id: flagIndex + '-' + candidateIndex, candidate: candidate });
         });
-        row.appendChild(candidateList);
+        text.textContent = 'Action candidates have been grouped below by how useful they are likely to be for reviewer triage.';
       }
+      var resolveButton = document.createElement('button');
+      resolveButton.type = 'button';
+      resolveButton.className = 'secondary stage-validation-add';
+      resolveButton.textContent = 'Mark reviewed';
+      resolveButton.addEventListener('click', function () { resolveReviewItem(text.textContent, row); });
+      row.appendChild(resolveButton);
       if (flag && flag.type === 'unresolved_substantive_workstream' && flag.resolutionKey) {
         var omitButton = document.createElement('button');
         omitButton.type = 'button';
@@ -1367,6 +1482,9 @@ td select {
       stageValidationFlags.appendChild(row);
     });
     stageValidationFlags.hidden = false;
+    renderActionReviewGroups();
+    renderResolvedChecks();
+    updateReviewToolbar();
   }
 
   function addValidationSuggestionToDiscussion(flag, button) {
@@ -1453,6 +1571,7 @@ td select {
     });
     if (!terminologyQaPanel || (!visibleApplied.length && !visibleSuggestions.length)) {
       if (terminologyQaPanel) terminologyQaPanel.hidden = true;
+      updateReviewToolbar();
       return;
     }
     terminologyQaPanel.innerHTML = '<h3>Check these terms</h3><p>The tool changed these terms.</p>';
@@ -1505,6 +1624,7 @@ td select {
       terminologyQaPanel.appendChild(row);
     });
     terminologyQaPanel.hidden = false;
+    updateReviewToolbar();
   }
 
   function replaceTerminologySuggestion(item) {
@@ -1687,6 +1807,8 @@ td select {
       generatedStageVersions.details = cloneReviewValue(stagedState.details);
     }
     if (Object.prototype.hasOwnProperty.call(screensPayload, 'summary')) {
+      if (meetingPurposeInput) meetingPurposeInput.value = summary.meetingPurpose || summary.purpose || summary.executiveSummary || meetingPurposeInput.value;
+      if (!keyFactsFromDom().length) renderKeyFacts(summary.keyFacts || summary.criticalFacts || []);
       if (objectivesInput) objectivesInput.value = Array.isArray(summary.objectives) && summary.objectives.length ? summary.objectives.join('\n') : objectivesInput.value;
       if (executiveSummaryInput) executiveSummaryInput.value = summary.executiveSummary || executiveSummaryInput.value;
       if (overallTopicsInput) {
@@ -1764,6 +1886,8 @@ td select {
     if (stagedState.summary) {
       formData.append('confirmedSummary', JSON.stringify(stagedState.summary));
       formData.append('overallTopics', (stagedState.summary.overallTopics || []).join('\n'));
+      formData.append('meetingPurpose', stagedState.summary.meetingPurpose || '');
+      formData.append('keyFacts', JSON.stringify(stagedState.summary.keyFacts || []));
     }
     if (stagedState.discussion) formData.append('confirmedDiscussion', JSON.stringify(stagedState.discussion));
     if (stagedState.actions) formData.append('confirmedActions', JSON.stringify(stagedState.actions));
@@ -1989,6 +2113,7 @@ td select {
     if (existing && existing.unresolvedWorkstreamFlags && typeof existing.unresolvedWorkstreamFlags === 'object') {
       unresolvedWorkstreamFlags = existing.unresolvedWorkstreamFlags;
     }
+    if (existing && Array.isArray(existing.resolvedReviewChecks)) resolvedReviewChecks = existing.resolvedReviewChecks.slice(-100);
     if (existing && existing.sourceJobId && !stagedSourceJobId) {
       stagedSourceJobId = String(existing.sourceJobId);
     }
@@ -2235,6 +2360,8 @@ td select {
     if (meetingDateInput) meetingDateInput.value = '';
     if (meetingLocationInput) meetingLocationInput.value = 'Microsoft Teams';
     if (meetingTypeInput) meetingTypeInput.value = '';
+    if (meetingPurposeInput) meetingPurposeInput.value = '';
+    renderKeyFacts([]);
     if (objectivesInput) objectivesInput.value = '';
     if (executiveSummaryInput) executiveSummaryInput.value = '';
     if (overallTopicsInput) overallTopicsInput.value = '';
@@ -2290,6 +2417,7 @@ td select {
       generatedStages: generatedStages,
       generatedStageVersions: generatedStageVersions,
       unresolvedWorkstreamFlags: unresolvedWorkstreamFlags,
+      resolvedReviewChecks: resolvedReviewChecks.slice(-100),
       terminologyDecisions: terminologyDecisionEvents.slice(-100),
       terminologyAppliedCorrections: terminologyAppliedCorrections.slice(-100),
       terminologySuppressedAutoKeys: terminologySuppressedAutoKeys,
@@ -2364,6 +2492,9 @@ td select {
         }
       }
     });
+    screens.forEach(function (screen, idx) { screen.setAttribute('aria-hidden', idx === activeIndex ? 'false' : 'true'); });
+    document.body.setAttribute('data-stage', stageForScreen(activeIndex) || 'final_review');
+    document.body.setAttribute('data-generation-state', stageInFlight ? 'running' : 'complete');
     renderIcons();
     previousButton.disabled = activeIndex === 0;
     if (regenerateButton) regenerateButton.disabled = activeIndex >= screens.length - 1;
@@ -2378,6 +2509,8 @@ td select {
     updateDecisionPanel();
     renderFinalDocument();
     renderTerminologyQa();
+    updateConfirmedActionCount();
+    updateReviewToolbar();
     params.set('screen', String(activeIndex));
     if (draftId) replaceUrl(window.location.pathname + '?' + params.toString());
     saveDraft();
@@ -2398,6 +2531,47 @@ td select {
   if (regenerateButton) {
     regenerateButton.addEventListener('click', regenerateCurrentScreen);
   }
+  if (addKeyFactButton) {
+    addKeyFactButton.addEventListener('click', function () {
+      var facts = keyFactsFromDom();
+      facts.push('');
+      renderKeyFacts(facts);
+      var inputs = keyFactsList.querySelectorAll('.key-fact-input');
+      if (inputs.length) inputs[inputs.length - 1].focus();
+    });
+  }
+  if (keyFactsList) {
+    keyFactsList.addEventListener('click', function (event) {
+      var button = event.target.closest('[data-key-fact-remove]');
+      if (!button) return;
+      button.closest('.key-fact-row').remove();
+      if (!keyFactsFromDom().length) renderKeyFacts([]);
+      commitStageState('summary'); saveDraft();
+    });
+  }
+  if (nextReviewItemButton) {
+    nextReviewItemButton.addEventListener('click', function () {
+      var item = document.querySelector('.stage-validation-flag, .terminology-suggestion, .action-candidate-card');
+      if (item) { item.scrollIntoView({ behavior: 'smooth', block: 'center' }); var focusable = item.querySelector('button, input, textarea, select'); if (focusable) focusable.focus(); }
+    });
+  }
+  if (actionReviewGroups) {
+    actionReviewGroups.addEventListener('click', function (event) {
+      var button = event.target.closest('[data-candidate-action]');
+      if (!button) return;
+      var card = button.closest('.action-candidate-card');
+      var entry = actionReviewCandidates.find(function (candidate) { return candidate.id === card.getAttribute('data-candidate-id'); });
+      if (!entry) return;
+      if (button.getAttribute('data-candidate-action') === 'add') {
+        var empty = actionsTableBody.querySelector('.empty-state'); if (empty) actionsTableBody.innerHTML = '';
+        actionsTableBody.insertAdjacentHTML('beforeend', renderActionRow({ owner: entry.candidate.owner || 'Not stated', action: entry.candidate.suggestedAction || entry.candidate.action || '', deadline: entry.candidate.deadline || '' }));
+        refreshActionOwnerOptions(); stagedState.actions = actionsFromReview(); updateConfirmedActionCount();
+        resolveReviewItem('Added follow-up to confirmed actions: ' + (entry.candidate.suggestedAction || entry.candidate.action || 'Action'), card);
+      } else {
+        resolveReviewItem('Reviewed and dismissed as a non-action: ' + (entry.candidate.suggestedAction || entry.candidate.action || 'Candidate'), card);
+      }
+    });
+  }
   if (addActionRowButton && actionsTableBody) {
     addActionRowButton.addEventListener('click', function () {
       actionsTableBody.insertAdjacentHTML('beforeend', renderActionRow({
@@ -2405,6 +2579,7 @@ td select {
         action: '',
         deadline: ''
       }));
+      updateConfirmedActionCount();
       renderFinalDocument();
       saveDraft();
     });
@@ -2424,6 +2599,7 @@ td select {
       } else if (action === 'delete') {
         row.remove();
       }
+      updateConfirmedActionCount();
       renderFinalDocument();
       saveDraft();
     });
