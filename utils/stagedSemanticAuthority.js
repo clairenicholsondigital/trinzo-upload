@@ -110,10 +110,12 @@ function keywordSupportScore(fact, text) {
 
 function findSupportingEvidence(factText, transcriptText, evidenceEvents = []) {
   const candidates = [];
+  const rankedEvents = [];
   for (const event of Array.isArray(evidenceEvents) ? evidenceEvents : []) {
     const text = cleanText(event && event.text);
     if (!text) continue;
     const score = Math.max(textSimilarity(factText, text), keywordSupportScore(factText, text));
+    if (score > 0) rankedEvents.push({ text, id: event.id, score });
     if (score >= 0.34) candidates.push({ text, id: event.id, score });
   }
   if (!candidates.length) {
@@ -124,10 +126,24 @@ function findSupportingEvidence(factText, transcriptText, evidenceEvents = []) {
   }
   if (!candidates.length && transcriptText) {
     const score = keywordSupportScore(factText, transcriptText);
-    if (score >= 0.34) candidates.push({ text: cleanText(factText), id: '', score, supportScope: 'whole_transcript' });
+    if (score >= 0.34) {
+      const nearestEvents = rankedEvents
+        .sort((left, right) => right.score - left.score)
+        .slice(0, 5);
+      if (nearestEvents.length) candidates.push(...nearestEvents.map((event) => ({ ...event, supportScope: 'whole_transcript_nearest_event' })));
+      else candidates.push({ text: cleanText(factText), id: '', score, supportScope: 'whole_transcript' });
+    }
   }
   candidates.sort((left, right) => right.score - left.score);
-  return candidates.slice(0, 3);
+  const topCandidates = candidates.slice(0, 3);
+  if (topCandidates.some((candidate) => candidate.id)) return topCandidates;
+  if (rankedEvents.length) {
+    return rankedEvents
+      .sort((left, right) => right.score - left.score)
+      .slice(0, 3)
+      .map((event) => ({ ...event, supportScope: 'nearest_event_for_matched_window' }));
+  }
+  return topCandidates;
 }
 
 function discussionText(discussion = []) {
@@ -168,8 +184,9 @@ function appendFactToDiscussion(discussion = [], fact) {
   const existing = cards.find((card) => textSimilarity(card.topic || '', topic) >= 0.35)
     || cards.find((card) => textSimilarity(`${card.topic || ''} ${(card.points || []).join(' ')}`, fact.text) >= 0.18);
   const point = cleanText(fact.text).replace(/[.?!]?$/, '.');
+  const pointValue = evidenceIds.length ? { text: point, evidenceIds } : point;
   if (existing) {
-    if (!existing.points.some((candidate) => textSimilarity(candidate && typeof candidate === 'object' ? candidate.text : candidate, point) >= 0.7)) existing.points.push(point);
+    if (!existing.points.some((candidate) => textSimilarity(candidate && typeof candidate === 'object' ? candidate.text : candidate, point) >= 0.7)) existing.points.push(pointValue);
     if (evidenceIds.length) existing.evidenceIds = [...new Set([...(existing.evidenceIds || []), ...evidenceIds])];
     existing.source = existing.source || 'reviewer_confirmed_fact_repair';
     existing.reviewerConfirmedFactIds = [...new Set([...(existing.reviewerConfirmedFactIds || []), fact.id])];
@@ -177,7 +194,7 @@ function appendFactToDiscussion(discussion = [], fact) {
   }
   cards.push({
     topic,
-    points: [point],
+    points: [pointValue],
     evidenceIds,
     source: 'reviewer_confirmed_fact_repair',
     reviewerConfirmedFactIds: [fact.id]

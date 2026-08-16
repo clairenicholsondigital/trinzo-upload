@@ -437,6 +437,43 @@ test('canonical Discussion generation preserves reviewer-confirmed DITA semantic
   assert.equal(result.semanticPreservation.unresolvedFactCount, 0);
 });
 
+test('canonical Discussion API screen preserves reviewer-confirmed DITA facts after grounding', () => {
+  const ditaTranscript = fs.readFileSync(
+    path.resolve(__dirname, '../../trinzo-ui-test-transcripts/extracted-text/Client DITA T819 - Importer Obligations - Client connect-6-.txt'),
+    'utf8'
+  );
+  const result = runCanonicalLiveStage(ditaTranscript, {
+    stage: 'discussion',
+    fileName: 'dita.txt',
+    confirmed: {
+      summary: {
+        meetingPurpose: "The meeting was process discovery to understand DITA's actual operational processes so practical importer-obligation procedures could be designed around how the business works.",
+        keyFacts: [
+          'Goods originate from suppliers in Japan.',
+          'Netherlands is used for fiscal clearance only, not substantive warehousing.',
+          'Final storage is at DITA Park West in Dublin.',
+          "Importer procedures need to reflect DITA's actual ERP/order flow, warehouse checks, scanners, document control and manual processes."
+        ],
+        objectives: ['Understand DITA importer-obligation process evidence'],
+        overallTopics: ['Goods flow and import clearance', 'Operational process requirements']
+      }
+    }
+  });
+  const discussionText = result.screens.discussion.map((card) => `${card.topic} ${(card.points || []).join(' ')}`).join(' ');
+  assert.match(discussionText, /Japan/i);
+  assert.match(discussionText, /Netherlands/i);
+  assert.match(discussionText, /fiscal(?:ly)? clear/i);
+  assert.match(discussionText, /Dublin|Park West/i);
+  assert.match(discussionText, /ERP|NetSuite/i);
+  assert.match(discussionText, /warehouse/i);
+  assert.match(discussionText, /scanner|RF Smart|barcod/i);
+  assert.match(discussionText, /document control|manual/i);
+  assert.equal(
+    result.validationFlags.some((flag) => flag.type === 'reviewer_confirmed_fact_not_preserved'),
+    false
+  );
+});
+
 test('summary reviewer guidance prioritises supported evidence without becoming evidence', () => {
   const evidence = prepareEvidence([
     'Amina Khan  00:01',
