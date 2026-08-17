@@ -4,7 +4,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   polishExecutiveSummaryGrammar,
-  validateGrammarRevision
+  validateGrammarRevision,
+  fallbackMinutesReadySummary,
+  transcriptShapedSummaryIssue
 } = require('../utils/stagedExecutiveSummaryGrammar');
 
 function trooperResponse(revisedText, inspectRequest) {
@@ -62,6 +64,34 @@ test('grammar validation accepts cleanup of transcript-like executive-summary pr
   const result = validateGrammarRevision(original, revised);
   assert.equal(result.ok, true);
   assert.ok(result.overlap >= 0.62);
+});
+
+test('grammar validation rejects transcript-shaped executive summary after copy edit', () => {
+  const text = 'Align internally on the client call, outstanding information gaps, and next working sessions. Obviously, that depends on how big a customer is or the network you are selling to, and what their demands are. They were not too keen to send them to share with us, but I have taken a snapshot of the label.';
+  const result = validateGrammarRevision(text, text);
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'conversational_filler');
+  assert.equal(transcriptShapedSummaryIssue(text), 'conversational_filler');
+});
+
+test('fallback minutes-ready summary hides unsafe transcript fragments', () => {
+  const original = 'Align internally on the client call, outstanding information gaps, and next working sessions. Country and language evidence was needed to assess translation, labelling, and market requirements. Because many of these company authorities will have their own databases, there will be information that needs to be submitted to health authorities. Obviously, that depends on how big a customer is or the network you are selling to, and what their demands are. They were not too keen to send them to share with us, but I have taken a snapshot of the label.';
+  const fallback = fallbackMinutesReadySummary(original);
+  assert.match(fallback, /Align internally on the client call/);
+  assert.match(fallback, /Country and language evidence was needed/);
+  assert.match(fallback, /many of these company authorities will have their own databases/);
+  assert.doesNotMatch(fallback, /\bObviously\b|\byou\b|\bI\b|to to|share with us/i);
+});
+
+test('polishing falls back if Trooper returns transcript-shaped prose', async () => {
+  const original = 'Align internally on the client call, outstanding information gaps, and next working sessions. Obviously, that depends on how big a customer is or the network you are selling to, and what their demands are. They were not too keen to send them to share with us, but I have taken a snapshot of the label.';
+  const result = await polishExecutiveSummaryGrammar(original, {
+    apiKey: 'test-key', model: 'test-model', url: 'https://example.invalid',
+    fetchImpl: trooperResponse(original)
+  });
+  assert.equal(result.used, false);
+  assert.equal(result.reason, 'deterministic_conversational_filler');
+  assert.doesNotMatch(result.text, /\bObviously\b|\byou\b|\bI\b|share with us/i);
 });
 
 test('grammar polishing fails open when the isolated call is unavailable', async () => {
