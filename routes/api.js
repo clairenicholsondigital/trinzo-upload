@@ -48,6 +48,7 @@ const { polishCanonicalStage, canonicalFallback, addRecoveredActionCandidates, c
 const { enrichActionReviewCandidate } = require('../utils/canonicalMinutes/actionReviewRanking');
 const { reviewGeneratedContent } = require('../utils/terminologyQa');
 const { generateStagedMinutesPdf, stagedMinutesPdfFilename } = require('../utils/stagedMinutesPdf');
+const { polishExecutiveSummaryGrammar } = require('../utils/stagedExecutiveSummaryGrammar');
 const {
   buildConfirmedUnderstanding,
   repairDiscussionForConfirmedUnderstanding
@@ -1309,6 +1310,19 @@ function cleanStagedExecutiveSummary(value) {
   return isNoEvidenceDiscussionText(cleaned) ? '' : cleaned;
 }
 
+async function grammarPolishStagedExecutiveSummary(value) {
+  const original = cleanStagedExecutiveSummary(value);
+  if (!original) return { text: '', used: false, reason: 'empty_text' };
+  return polishExecutiveSummaryGrammar(original, {
+    apiKey: process.env.TROOPER_API_KEY,
+    model: String(process.env.TROOPER_MODEL || TROOPER_STAGE_MODEL_DEFAULT).trim() || TROOPER_STAGE_MODEL_DEFAULT,
+    url: String(process.env.TROOPER_CHAT_COMPLETIONS_URL || TROOPER_STAGE_URL_DEFAULT).trim() || TROOPER_STAGE_URL_DEFAULT,
+    fetchImpl: fetch,
+    maxTokens: Number(process.env.STAGED_SUMMARY_GRAMMAR_MAX_TOKENS || 700),
+    timeoutMs: Number(process.env.STAGED_SUMMARY_GRAMMAR_TIMEOUT_MS || 20000)
+  });
+}
+
 function stagedMiniLMOutput(minilmContext) {
   return minilmContext && minilmContext.ok && minilmContext.output && typeof minilmContext.output === 'object'
     ? minilmContext.output
@@ -2476,7 +2490,7 @@ function stagedDetailsWithConfirmedContext(req, transcript) {
   };
 }
 
-function buildStagedSummaryResponse(req, transcript, minilmContext = null) {
+async function buildStagedSummaryResponse(req, transcript, minilmContext = null) {
   const details = stagedDetailsWithConfirmedContext(req, transcript);
   const output = stagedMiniLMOutput(minilmContext);
   const topics = topicsFromStagedMiniLM(minilmContext).length
@@ -2492,10 +2506,12 @@ function buildStagedSummaryResponse(req, transcript, minilmContext = null) {
   const objectives = objectiveReduction.objectives.length
     ? objectiveReduction.objectives
     : ['Review the confirmed meeting topics and agreed follow-up points.'];
-  const summary = cleanStagedExecutiveSummary(output.executiveSummary || output.meetingDescription || output.summary) ||
+  const generatedSummary = cleanStagedExecutiveSummary(output.executiveSummary || output.meetingDescription || output.summary) ||
     (topics.length
       ? 'The transcript contains substantive project, technical and follow-up evidence for structured review. The discussion stage should confirm current positions, agreed changes, unresolved dependencies and time-critical actions before approval.'
       : 'The project status, agreed changes, unresolved risks and timeline impact should be confirmed from the transcript before moving to detailed discussion points.');
+  const grammarPolish = await grammarPolishStagedExecutiveSummary(generatedSummary);
+  const summary = grammarPolish.text || generatedSummary;
 
   return {
     ok: true,
@@ -2516,6 +2532,13 @@ function buildStagedSummaryResponse(req, transcript, minilmContext = null) {
       topicCount: topics.length,
       transcriptLength: transcript.text.length,
       embeddingClassifier: stagedMiniLMTelemetry(minilmContext),
+      executiveSummaryGrammar: {
+        attempted: true,
+        used: Boolean(grammarPolish.used),
+        reason: grammarPolish.reason,
+        overlap: grammarPolish.overlap,
+        timingMs: grammarPolish.timingMs
+      },
       objectiveReducer: objectiveReduction.telemetry
     }
   };
@@ -3268,7 +3291,7 @@ function buildStagedWorkstreamCoverage(topics = [], discussion = [], workstreamS
   });
 }
 
-function buildStagedDiscussionResponse(req, transcript, minilmContext = null) {
+async function buildStagedDiscussionResponse(req, transcript, minilmContext = null) {
   const context = stagedContextFromRequest(req);
   const miniLmDiscussion = discussionFromStagedMiniLM(minilmContext);
   const topicCandidates = context.overallTopics.length
@@ -3315,9 +3338,13 @@ function buildStagedDiscussionResponse(req, transcript, minilmContext = null) {
   });
   const workstreamCoverage = buildStagedWorkstreamCoverage(topics, discussion, confirmedWorkstreamState);
   const output = stagedMiniLMOutput(minilmContext);
-  const executiveSummaryFromFindings = cleanStagedExecutiveSummary(
+  const generatedExecutiveSummaryFromFindings = cleanStagedExecutiveSummary(
     output.executiveSummaryFromFindings || output.summaryFromFindings || output.executiveSummary || ''
   );
+  const grammarPolish = generatedExecutiveSummaryFromFindings
+    ? await grammarPolishStagedExecutiveSummary(generatedExecutiveSummaryFromFindings)
+    : { text: '', used: false, reason: 'empty_text' };
+  const executiveSummaryFromFindings = grammarPolish.text || generatedExecutiveSummaryFromFindings;
   const screens = {
     discussion: discussion.length ? discussion : []
   };
@@ -3385,6 +3412,13 @@ function buildStagedDiscussionResponse(req, transcript, minilmContext = null) {
       workstreamCoverage,
       transcriptLength: transcript.text.length,
       embeddingClassifier: stagedMiniLMTelemetry(minilmContext),
+      executiveSummaryGrammar: {
+        attempted: Boolean(generatedExecutiveSummaryFromFindings),
+        used: Boolean(grammarPolish.used),
+        reason: grammarPolish.reason,
+        overlap: grammarPolish.overlap,
+        timingMs: grammarPolish.timingMs
+      },
       discussionCompaction: discussionCompaction.telemetry
     }
   };
@@ -3750,8 +3784,8 @@ async function runStagedSequenceForEvaluation(transcriptText, options = {}) {
       ? { context: deterministicContext, provider: 'deterministic-trooper-extractor', fallbackUsed: true }
       : await buildStagedGenerationContext(stage, aiTranscript, req);
     let response;
-    if (stage === 'summary') response = buildStagedSummaryResponse(req, aiTranscript, generation.context);
-    else if (stage === 'discussion') response = buildStagedDiscussionResponse(req, aiTranscript, generation.context);
+    if (stage === 'summary') response = await buildStagedSummaryResponse(req, aiTranscript, generation.context);
+    else if (stage === 'discussion') response = await buildStagedDiscussionResponse(req, aiTranscript, generation.context);
     else response = buildStagedActionsResponse(req, aiTranscript, generation.context, rawTranscript.text);
     const value = response.screens?.[stage];
     state[stage] = stage === 'summary'
@@ -3935,7 +3969,24 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
       }
     };
   }
-  const result = clientReadyPresentation(polished.payload);
+  let result = clientReadyPresentation(polished.payload);
+  let executiveSummaryGrammar = { used: false, reason: 'not_applicable' };
+  const presentationSummary = result?.screens?.summary?.executiveSummary;
+  if (['summary', 'discussion'].includes(stage) && presentationSummary) {
+    executiveSummaryGrammar = await grammarPolishStagedExecutiveSummary(presentationSummary);
+    if (executiveSummaryGrammar.text) {
+      result = {
+        ...result,
+        screens: {
+          ...(result.screens || {}),
+          summary: {
+            ...(result.screens?.summary || {}),
+            executiveSummary: executiveSummaryGrammar.text
+          }
+        }
+      };
+    }
+  }
   return {
     source: transcript.source,
     fileName: transcript.fileName || null,
@@ -3943,6 +3994,13 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
     ...result,
     telemetryPreview: {
       ...(result.telemetryPreview || {}),
+      executiveSummaryGrammar: {
+        attempted: ['summary', 'discussion'].includes(stage) && Boolean(presentationSummary),
+        used: Boolean(executiveSummaryGrammar.used),
+        reason: executiveSummaryGrammar.reason,
+        overlap: executiveSummaryGrammar.overlap,
+        timingMs: executiveSummaryGrammar.timingMs
+      },
       trooper: { used: polished.used, reason: polished.reason, usage: polished.usage || null, input: 'bounded_minilm_evidence' }
     },
     preparedTranscriptTelemetry: transcript.preparedTranscriptTelemetry || null
