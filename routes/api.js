@@ -569,9 +569,9 @@ function cleanStagedMeetingTitleCandidate(value, options = {}) {
   return title;
 }
 
-function inferStagedMeetingType(text, fileName = '') {
-  const combined = `${text || ''}\n${fileName || ''}`;
-  const titleHint = String(fileName || '').replace(/[_-]+/g, ' ');
+function inferStagedMeetingType(text, fileName = '', meetingTitle = '') {
+  const combined = `${text || ''}\n${fileName || ''}\n${meetingTitle || ''}`;
+  const titleHint = `${fileName || ''} ${meetingTitle || ''}`.replace(/[_-]+/g, ' ');
   if (/\binternal\b.*\b(?:follow ?up|review from client call|debrief)\b/i.test(titleHint)) return 'Internal follow-up';
   if (/\bimporter(?:['’]s)?\s+(?:obligations?|responsibilit(?:y|ies)|requirements?)\b/i.test(combined)) return 'Importer obligations review';
   if (/\baudit\b.*\b(?:kick ?off|planning|preparation|readiness)\b/i.test(titleHint)) return 'Audit kick-off / planning';
@@ -943,7 +943,7 @@ function extractStagedDetailsFromTranscript(transcriptText, fileName = '') {
         meetingDate: headerDate || normaliseDateInput(rawDate),
         meetingLocation: rawLocation || (/teams|microsoft teams/i.test(text) ? 'Microsoft Teams' : 'Microsoft Teams'),
         organisation: rawOrganisation,
-        meetingType: inferStagedMeetingType(text, fileName),
+        meetingType: inferStagedMeetingType(text, fileName, headerTitle || meetingTitle),
         internalAttendees,
         clientAttendees,
         allAttendees: uniqueNames([...internalAttendees, ...clientAttendees, ...teamsSpeakers])

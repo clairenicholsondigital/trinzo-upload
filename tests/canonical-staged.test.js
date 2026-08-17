@@ -982,6 +982,7 @@ test('staged details extracts unpunctuated meeting title before generic overview
   const result = apiRouter.stagedEvaluation.extractStagedDetailsFromTranscript(transcript, 'fallback-transcript.txt');
   assert.equal(result.screens.details.meetingTitle, 'T761 Eakin Healthcare Tech File SW Review SW Coding Changes');
   assert.notEqual(result.screens.details.meetingTitle, 'Meeting Overview');
+  assert.equal(result.screens.details.meetingType, 'Technical file review');
 });
 
 test('live Summary screen hides reported-speech topic labels from Overall topics', async () => {
