@@ -5,8 +5,10 @@ const assert = require('node:assert/strict');
 const {
   enrichActionReviewCandidate,
   rankAndClusterActionReviewCandidates,
-  reviewerUsefulness
+  reviewerUsefulness,
+  strongestWorkstream
 } = require('../utils/canonicalMinutes/actionReviewRanking');
+const { buildConfirmedState } = require('../utils/canonicalMinutes/liveStages');
 
 function options() {
   return {
@@ -132,4 +134,108 @@ test('non-prominent raw fragments remain available as lower-priority candidates'
 
   assert.ok(ranked.some((candidate) => /10 units/i.test(candidate.action || '') && candidate.reviewerUsefulnessTier !== 'high'));
   assert.ok(ranked.some((candidate) => /QMS Manual/i.test(candidate.suggestedAction || candidate.action || '') && candidate.reviewerUsefulnessTier === 'high'));
+});
+
+test('confirmed Discussion evidence overlap outranks lexical workstream similarity', () => {
+  const candidate = {
+    owner: 'Not stated',
+    action: 'Flick this over',
+    evidence: 'I will flick this over after the call.',
+    evidenceIds: ['evt_medenvoy']
+  };
+  const match = strongestWorkstream(candidate, {
+    state: {
+      topics: [{ text: 'General follow-up', evidenceIds: [] }],
+      discussion: [{
+        topic: 'MedEnvoy alignment',
+        topicId: 'medenvoy',
+        evidenceIds: ['evt_medenvoy'],
+        points: [{ text: 'The project plan or task list is the relevant artefact.', evidenceIds: ['evt_medenvoy'] }]
+      }]
+    },
+    evidence: { events: [] }
+  });
+
+  assert.equal(match.matchType, 'evidence_overlap');
+  assert.equal(match.evidenceOverlap, 1);
+  assert.match(match.label, /project plan or task list/i);
+});
+
+test('confirmed Discussion handoff preserves supplied provenance without inventing it', () => {
+  const state = buildConfirmedState('Amina  00:01\nI will send it.', 'review.txt', {
+    discussion: [{
+      topic: 'Reviewed artefact',
+      topicId: 'topic_artefact',
+      evidenceIds: ['evt_1'],
+      points: ['Reviewer edit with provenance', 'Reviewer-added prose without provenance'],
+      pointRefs: [{ evidenceIds: ['evt_1'] }, { evidenceIds: [] }]
+    }]
+  });
+
+  assert.equal(state.discussion[0].topicId, 'topic_artefact');
+  assert.deepEqual(state.discussion[0].evidenceIds, ['evt_1']);
+  assert.deepEqual(state.discussion[0].points[0].evidenceIds, ['evt_1']);
+  assert.deepEqual(state.discussion[0].points[1].evidenceIds, []);
+});
+
+test('unrelated reviewed Discussion cannot reinterpret a candidate through weak lexical similarity', () => {
+  const candidate = {
+    owner: 'David',
+    action: 'Confirm the mute-button test evidence',
+    evidence: 'David will confirm the mute-button test evidence.',
+    evidenceIds: ['evt_mute']
+  };
+  const match = strongestWorkstream(candidate, {
+    state: {
+      discussion: [{
+        topic: 'Clinical review',
+        evidenceIds: ['evt_clinical'],
+        points: [{ text: 'Clinical review of alarm behaviour remains separate.', evidenceIds: ['evt_clinical'] }]
+      }]
+    },
+    evidence: { events: [] }
+  });
+
+  assert.notEqual(match.matchType, 'evidence_overlap');
+  assert.equal(match.evidenceOverlap, 0);
+});
+
+test('Discussion context affects review relevance but never owner or deadline evidence', () => {
+  const candidate = {
+    owner: 'Not stated',
+    deadline: 'Not stated',
+    action: 'Provide the applicable product classifications',
+    reviewDisposition: 'review_required',
+    evidence: 'Can somebody provide the applicable product classifications?',
+    evidenceIds: ['evt_classification']
+  };
+  const enriched = enrichActionReviewCandidate(candidate, {
+    state: {
+      discussion: [{
+        topic: 'Product classifications',
+        evidenceIds: ['evt_classification'],
+        points: [{ text: 'Andrew will provide these by Friday.', evidenceIds: ['evt_classification'] }]
+      }]
+    },
+    evidence: { events: [] }
+  });
+
+  assert.equal(enriched.workstreamRelevance.matchType, 'evidence_overlap');
+  assert.equal(enriched.owner, 'Not stated');
+  assert.equal(enriched.deadline, 'Not stated');
+});
+
+test('Discussion-only prose cannot create an action candidate', () => {
+  const ranked = rankAndClusterActionReviewCandidates([], {
+    state: {
+      discussion: [{
+        topic: 'Cybersecurity',
+        evidenceIds: [],
+        points: [{ text: 'The team should prepare a new cybersecurity report.', evidenceIds: [] }]
+      }]
+    },
+    evidence: { events: [] }
+  });
+
+  assert.deepEqual(ranked, []);
 });

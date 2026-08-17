@@ -37,12 +37,28 @@ function approvedTopics(summary = {}) {
 }
 
 function approvedDiscussion(values) {
-  return (Array.isArray(values) ? values : []).map((card) => ({
-    topic: clean(card?.topic) || 'Discussion',
-    points: strings(card?.points || card?.bullets).map((text) => ({ text })),
-    humanFinal: clean(card?.topic) || 'Discussion',
-    aiOriginal: clean(card?.topic) || 'Discussion'
-  })).filter((card) => card.points.length);
+  return (Array.isArray(values) ? values : []).map((card) => {
+    const pointRefs = Array.isArray(card?.pointRefs) ? card.pointRefs : [];
+    return {
+      topic: clean(card?.topic) || 'Discussion',
+      topicId: clean(card?.topicId),
+      evidenceIds: strings(card?.evidenceIds),
+      points: (Array.isArray(card?.points || card?.bullets) ? (card.points || card.bullets) : [])
+      .map((point, index) => {
+        const text = clean(typeof point === 'string' ? point : point?.text);
+        if (!text) return null;
+        return {
+          text,
+          // Only retain provenance supplied by the confirmed stage. Reviewer
+          // prose never receives inferred evidence merely because it is similar.
+          evidenceIds: strings(typeof point === 'string' ? pointRefs[index]?.evidenceIds : point?.evidenceIds)
+        };
+      })
+      .filter(Boolean),
+      humanFinal: clean(card?.topic) || 'Discussion',
+      aiOriginal: clean(card?.topic) || 'Discussion'
+    };
+  }).filter((card) => card.points.length);
 }
 
 function approvedActions(values) {
@@ -141,6 +157,7 @@ function discussionScreen(proposal) {
   const cards = proposal.discussion.map((card) => ({
     topic: card.topic,
     points: card.points.map((point) => point.text).filter(Boolean),
+    pointRefs: card.points.map((point) => ({ evidenceIds: point.evidenceIds || [] })),
     evidenceIds: card.evidenceIds || [],
     topicId: card.topicId || null
   }));

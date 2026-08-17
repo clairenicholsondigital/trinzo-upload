@@ -37,22 +37,79 @@ function hasImporterProcedureContext(value) {
   return /\b(?:importer|importer-obligation|importer obligation|QMS|quality manual|procedure(?:s)?|procedure-design|goods flow|operational details?|operational process(?:es)?|ERP|order flow|warehouse|scanner|barcode|document control|manual process(?:es)?)\b/i.test(clean(value));
 }
 
-function workstreamTexts(state = {}) {
-  return uniqueStrings([
-    ...(Array.isArray(state.topics) ? state.topics.map((topic) => topic.text || topic.topic || topic) : []),
-    ...(Array.isArray(state.discussion) ? state.discussion.flatMap((card) => [
-      card.topic,
-      ...(Array.isArray(card.points) ? card.points.map((point) => point.text || point) : [])
-    ]) : [])
-  ]);
+function reviewedWorkstreamContexts(state = {}) {
+  const contexts = [];
+  for (const topic of Array.isArray(state.topics) ? state.topics : []) {
+    const heading = clean(topic?.text || topic?.topic || topic);
+    if (!heading) continue;
+    contexts.push({
+      topicId: clean(topic?.topicId),
+      heading,
+      point: '',
+      evidenceIds: uniqueStrings(topic?.evidenceIds || []),
+      source: 'confirmed_summary'
+    });
+  }
+  for (const card of Array.isArray(state.discussion) ? state.discussion : []) {
+    const heading = clean(card?.topic) || 'Discussion';
+    const cardEvidenceIds = uniqueStrings(card?.evidenceIds || []);
+    const points = Array.isArray(card?.points) ? card.points : [];
+    // Card provenance safely supports the reviewed heading. Point wording only
+    // receives evidence authority when the confirmed UI supplied point-level
+    // provenance; this prevents newly typed prose inheriting the whole card.
+    contexts.push({ topicId: clean(card?.topicId), heading, point: '', evidenceIds: cardEvidenceIds, source: 'confirmed_discussion' });
+    for (const point of points) {
+      const text = clean(point?.text || point);
+      if (!text) continue;
+      const pointEvidenceIds = uniqueStrings(typeof point === 'string' ? [] : point?.evidenceIds || []);
+      contexts.push({
+        topicId: clean(card?.topicId),
+        heading,
+        point: text,
+        evidenceIds: pointEvidenceIds,
+        source: 'confirmed_discussion'
+      });
+    }
+  }
+  return contexts;
+}
+
+function evidenceOverlap(leftIds = [], rightIds = []) {
+  const left = new Set(uniqueStrings(leftIds));
+  const right = new Set(uniqueStrings(rightIds));
+  if (!left.size || !right.size) return 0;
+  let shared = 0;
+  for (const id of left) if (right.has(id)) shared += 1;
+  return shared / Math.max(1, Math.min(left.size, right.size));
 }
 
 function strongestWorkstream(candidate = {}, options = {}) {
   const haystack = `${candidate.action || ''} ${candidate.suggestedAction || ''} ${candidateEvidenceText(candidate, options)}`;
-  let best = { label: '', score: 0 };
-  for (const label of workstreamTexts(options.state || {})) {
-    const score = tokenSimilarity(haystack, label);
-    if (score > best.score) best = { label, score };
+  const candidateTopicId = clean(candidate.topicId || candidate.workstreamId);
+  let best = { label: '', score: 0, matchType: 'none', evidenceOverlap: 0, topicId: '', evidenceIds: [] };
+  for (const context of reviewedWorkstreamContexts(options.state || {})) {
+    const label = [context.heading, context.point].filter(Boolean).join(': ');
+    const overlap = evidenceOverlap(candidate.evidenceIds || [], context.evidenceIds || []);
+    const sameTopic = Boolean(candidateTopicId && context.topicId && candidateTopicId === context.topicId);
+    const lexicalScore = tokenSimilarity(haystack, label);
+    const pointSpecificity = context.point ? 0.02 : 0;
+    // Evidence provenance is the strongest relationship, existing stable topic
+    // identity is second, and the old lexical path remains the compatibility
+    // fallback for historical drafts without provenance.
+    const score = overlap > 0
+      ? Math.max(0.72, Math.min(1, 0.72 + (overlap * 0.2) + (lexicalScore * 0.08) + pointSpecificity))
+      : sameTopic
+        ? Math.max(0.52, Math.min(0.7, 0.52 + (lexicalScore * 0.18)))
+        : lexicalScore;
+    if (score > best.score) best = {
+      label,
+      score,
+      matchType: overlap > 0 ? 'evidence_overlap' : sameTopic ? 'topic_identity' : lexicalScore > 0 ? 'lexical' : 'none',
+      evidenceOverlap: Number(overlap.toFixed(4)),
+      topicId: context.topicId,
+      evidenceIds: context.evidenceIds,
+      source: context.source
+    };
   }
   return best;
 }
@@ -289,5 +346,7 @@ module.exports = {
   reviewerUsefulness,
   hasImporterProcedureContext,
   ownerEvidenceType,
-  clusterKey
+  clusterKey,
+  reviewedWorkstreamContexts,
+  strongestWorkstream
 };

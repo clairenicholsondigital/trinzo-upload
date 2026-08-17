@@ -384,6 +384,27 @@ test('final discussion presentation enforces confirmed downstream workstream ali
   assert.deepEqual(byTopic.get('Standards and risk-management work'), ['The team confirmed the risk management file is being updated.']);
 });
 
+test('final discussion presentation keeps provenance aligned with retained points', () => {
+  const result = clientReadyPresentation({
+    stagedStage: 'discussion',
+    validationFlags: [],
+    screens: { discussion: [{
+      topic: 'Language support and localisation',
+      points: [
+        'The alarm work is unrelated to language support.',
+        'Arabic and Vietnamese need character support.'
+      ],
+      pointRefs: [
+        { evidenceIds: ['evt_alarm'] },
+        { evidenceIds: ['evt_language'] }
+      ]
+    }] }
+  });
+
+  assert.deepEqual(result.screens.discussion[0].points, ['Arabic and Vietnamese need character support.']);
+  assert.deepEqual(result.screens.discussion[0].pointRefs, [{ evidenceIds: ['evt_language'] }]);
+});
+
 test('final discussion presentation preserves repaired evidence-bearing semantic points', () => {
   const result = clientReadyPresentation({
     stagedStage: 'discussion',

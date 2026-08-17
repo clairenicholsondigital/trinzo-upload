@@ -120,7 +120,12 @@ function mergeClientReadyDiscussionCards(cards) {
       output.push({ ...card, _family: family });
       continue;
     }
-    existing.points = [...new Set([...(existing.points || []), ...(card.points || [])])];
+    for (const [pointIndex, point] of (card.points || []).entries()) {
+      if ((existing.points || []).includes(point)) continue;
+      existing.points.push(point);
+      existing.pointRefs = Array.isArray(existing.pointRefs) ? existing.pointRefs : [];
+      existing.pointRefs.push(Array.isArray(card.pointRefs) ? card.pointRefs[pointIndex] || { evidenceIds: [] } : { evidenceIds: [] });
+    }
     existing.evidenceIds = [...new Set([...(existing.evidenceIds || []), ...(card.evidenceIds || [])])];
   }
   return output.map(({ _family, ...card }) => card);
@@ -217,20 +222,27 @@ function clientReadyPresentation(payload) {
   };
   const retainedForReview = [];
   if (stage === 'discussion' && Array.isArray(base.screens.discussion)) {
-    base.screens.discussion = mergeClientReadyDiscussionCards(base.screens.discussion.map((card) => ({
-      ...card,
-      points: [...new Set((card.points || []).map((point) => {
+    base.screens.discussion = mergeClientReadyDiscussionCards(base.screens.discussion.map((card) => {
+      const points = [];
+      const pointRefs = [];
+      (card.points || []).forEach((point, pointIndex) => {
         const sourceText = discussionPointText(point);
         const presented = normaliseEntities(normaliseDiscussionPresentation(sourceText));
         const polished = finaliseDiscussionPointForMinutes(presented, card.topic);
-        if (polished && discussionPointAlignedToTopic(card.topic, polished)) return polished;
+        let retained = '';
+        if (polished && discussionPointAlignedToTopic(card.topic, polished)) retained = polished;
         const fallback = distinctiveDiscussionFallback(card.topic, presented);
-        if (fallback) return fallback;
-        retainedForReview.push({ section: card.topic || 'Discussion', text: sourceText });
-        if (/^there['’]s one to\b/i.test(presented)) return '';
-        return DISTINCTIVE_TOPIC_ALIGNMENT.some((item) => item.topic.test(clean(card.topic))) ? '' : sourceText;
-      }).filter(Boolean))]
-    })).filter((card) => card.points.length));
+        if (!retained && fallback) retained = fallback;
+        if (!retained) {
+          retainedForReview.push({ section: card.topic || 'Discussion', text: sourceText });
+          if (!/^there['’]s one to\b/i.test(presented) && !DISTINCTIVE_TOPIC_ALIGNMENT.some((item) => item.topic.test(clean(card.topic)))) retained = sourceText;
+        }
+        if (!retained || points.includes(retained)) return;
+        points.push(retained);
+        pointRefs.push(Array.isArray(card.pointRefs) ? card.pointRefs[pointIndex] || { evidenceIds: [] } : { evidenceIds: [] });
+      });
+      return { ...card, points, pointRefs };
+    }).filter((card) => card.points.length));
   }
   if (stage === 'actions' && Array.isArray(base.screens.actions)) {
     base.screens.actions = base.screens.actions.map((item) => {
@@ -677,7 +689,12 @@ function applyDiscussionRewrite(payload, output, evidencePack) {
       points.push(point);
     }
     if (!candidate || !pack || clean(candidate.topic) !== clean(source.topic) || !validReferences(candidate, pack) || !points.length) return source;
-    return { ...source, points, evidenceIds: candidate.evidenceIds };
+    return {
+      ...source,
+      points,
+      evidenceIds: candidate.evidenceIds,
+      pointRefs: points.map(() => ({ evidenceIds: candidate.evidenceIds }))
+    };
   });
   return { ...payload, screens: { ...payload.screens, discussion } };
 }

@@ -1209,7 +1209,7 @@ td select {
     if (stage === 'details') stagedState.details = detailsFromDom();
     if (stage === 'summary') stagedState.summary = summaryFromDom();
     if (stage === 'discussion') stagedState.discussion = discussionRowsFromReview().map(function (item) {
-      return { topic: item.topic, points: item.bullets };
+      return { topic: item.topic, points: item.bullets, topicId: item.topicId, evidenceIds: item.evidenceIds, pointRefs: item.pointRefs };
     });
     if (stage === 'actions') stagedState.actions = actionsFromReview();
   }
@@ -1258,7 +1258,11 @@ td select {
       var seen = {};
       var bullets = bulletPoints.map(cleanDiscussionDisplayText).filter(function (point) { var key = point.toLowerCase(); if (!point || seen[key]) return false; seen[key] = true; return true; });
       if (!bullets.length) bullets = ['Review this section against the transcript.'];
-      return '<details class="discussion-card"' + (index === 0 ? ' open' : '') + ' data-discussion-index="' + index + '"><summary><span class="discussion-card-title">' + escapeHtml(card.topic || 'Discussion') + '</span><span class="discussion-card-summary-actions"><span class="muted">' + bullets.length + ' point' + (bullets.length === 1 ? '' : 's') + '</span><span class="discussion-card-chevron" aria-hidden="true"><i data-lucide="chevron-down"></i></span><button class="discussion-card-delete" type="button" data-discussion-delete aria-label="Remove discussion row"><i data-lucide="trash-2" aria-hidden="true"></i></button></span></summary><div class="discussion-card-body"><label>Topic<input class="discussion-topic-input" value="' + escapeHtml(card.topic || 'Discussion') + '" aria-label="Discussion topic ' + (index + 1) + '" /></label><label>Discussion points<textarea class="discussion-points-input" aria-label="Discussion points ' + (index + 1) + '">' + escapeHtml(bullets.map(function (point) { return '- ' + point; }).join('\n')) + '</textarea></label></div></details>';
+      var pointRefs = bullets.map(function (point, pointIndex) {
+        var supplied = Array.isArray(card.pointRefs) ? card.pointRefs[pointIndex] : null;
+        return { text: point, evidenceIds: supplied && Array.isArray(supplied.evidenceIds) ? supplied.evidenceIds : [] };
+      });
+      return '<details class="discussion-card"' + (index === 0 ? ' open' : '') + ' data-discussion-index="' + index + '" data-topic-id="' + escapeHtml(card.topicId || '') + '" data-evidence-ids="' + escapeHtml(JSON.stringify(Array.isArray(card.evidenceIds) ? card.evidenceIds : [])) + '" data-point-refs="' + escapeHtml(JSON.stringify(pointRefs)) + '"><summary><span class="discussion-card-title">' + escapeHtml(card.topic || 'Discussion') + '</span><span class="discussion-card-summary-actions"><span class="muted">' + bullets.length + ' point' + (bullets.length === 1 ? '' : 's') + '</span><span class="discussion-card-chevron" aria-hidden="true"><i data-lucide="chevron-down"></i></span><button class="discussion-card-delete" type="button" data-discussion-delete aria-label="Remove discussion row"><i data-lucide="trash-2" aria-hidden="true"></i></button></span></summary><div class="discussion-card-body"><label>Topic<input class="discussion-topic-input" value="' + escapeHtml(card.topic || 'Discussion') + '" aria-label="Discussion topic ' + (index + 1) + '" /></label><label>Discussion points<textarea class="discussion-points-input" aria-label="Discussion points ' + (index + 1) + '">' + escapeHtml(bullets.map(function (point) { return '- ' + point; }).join('\n')) + '</textarea></label></div></details>';
     }).join('');
     renderIcons();
   }
@@ -1333,9 +1337,22 @@ td select {
     return Array.prototype.slice.call(discussionList ? discussionList.querySelectorAll('.discussion-card') : []).map(function (card) {
       var topicInput = card.querySelector('.discussion-topic-input');
       var pointsInput = card.querySelector('.discussion-points-input');
+      var bullets = pointsInput ? linesFromDiscussionTextarea(pointsInput.value) : [];
+      var originalRefs = [];
+      var cardEvidenceIds = [];
+      try { originalRefs = JSON.parse(card.getAttribute('data-point-refs') || '[]'); } catch (_error) { originalRefs = []; }
+      try { cardEvidenceIds = JSON.parse(card.getAttribute('data-evidence-ids') || '[]'); } catch (_error) { cardEvidenceIds = []; }
+      var sameShape = bullets.length === originalRefs.length;
+      var pointRefs = bullets.map(function (point, index) {
+        var matched = sameShape ? originalRefs[index] : originalRefs.find(function (ref) { return String(ref && ref.text || '').trim() === point; });
+        return { evidenceIds: matched && Array.isArray(matched.evidenceIds) ? matched.evidenceIds : [] };
+      });
       return {
         topic: topicInput ? topicInput.value.trim() : 'Discussion',
-        bullets: pointsInput ? linesFromDiscussionTextarea(pointsInput.value) : []
+        bullets: bullets,
+        topicId: card.getAttribute('data-topic-id') || '',
+        evidenceIds: Array.isArray(cardEvidenceIds) ? cardEvidenceIds : [],
+        pointRefs: pointRefs
       };
     }).filter(function (item) { return item.bullets.length && item.topic !== 'No substantive discussion sections generated'; });
   }
@@ -2221,7 +2238,7 @@ td select {
     if (Object.prototype.hasOwnProperty.call(screensPayload, 'discussion')) {
       renderDiscussionCards(screensPayload.discussion);
       stagedState.discussion = discussionRowsFromReview().map(function (item) {
-        return { topic: item.topic, points: item.bullets };
+        return { topic: item.topic, points: item.bullets, topicId: item.topicId, evidenceIds: item.evidenceIds, pointRefs: item.pointRefs };
       });
       generatedStageVersions.discussion = cloneReviewValue(stagedState.discussion);
     }
