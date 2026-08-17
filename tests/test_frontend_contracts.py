@@ -427,6 +427,8 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("applyStagedPayload", staged_page)
         self.assertIn("details.clientAttendees || details.allAttendees", staged_page)
         self.assertIn("clientAttendees: attendeesFromRow(clientAttendeesRow)", staged_page)
+        self.assertIn("checkbox-inline", staged_page)
+        self.assertIn('.checkbox-inline input[type="checkbox"]', staged_page)
         self.assertIn("startReviewEditTimer", staged_page)
         self.assertIn("isReviewEditTarget", staged_page)
         self.assertIn("reviewEditStartedAt", staged_page)

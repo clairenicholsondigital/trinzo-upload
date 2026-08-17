@@ -93,6 +93,8 @@ body.pre-upload .screen:not([data-screen="0"]) {
 .form-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.85rem; }
 .field { display:grid; gap:.35rem; }
 .field.full { grid-column:1 / -1; }
+.checkbox-inline { display:inline-flex; align-items:center; gap:.45rem; width:max-content; max-width:100%; }
+.checkbox-inline input[type="checkbox"] { flex:0 0 auto; width:1rem !important; height:1rem; margin:0; }
 label { color:#dbeafe; font-weight:700; font-size:.9rem; }
 input, select, textarea {
   width:100%; background:#071126; color:var(--text); border:1px solid var(--border);
@@ -575,7 +577,7 @@ td select {
               <button class="ghost" type="button" data-attendee-add>Add attendee</button>
             </div>
             <small class="attendee-help">Drag names between Internal and <span data-client-attendee-label>Client</span>. Click a name to edit it.</small>
-            <label class="attendee-help" for="useExternalAttendeeLabel"><input id="useExternalAttendeeLabel" type="checkbox" /> Use “External” instead of “Client” in the minutes</label>
+            <label class="attendee-help checkbox-inline" for="useExternalAttendeeLabel"><input id="useExternalAttendeeLabel" type="checkbox" /> Use “External” instead of “Client” in the minutes</label>
           </div>
           <div class="field">
             <label for="meetingType">Meeting type</label>
