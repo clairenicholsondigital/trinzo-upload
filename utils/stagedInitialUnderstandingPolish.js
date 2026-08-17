@@ -24,8 +24,9 @@ function protectedFacts(value) {
 
 const EDITORIAL_WORDS = new Set([
   'agree', 'agreed', 'align', 'clarify', 'confirm', 'coordinate', 'discuss', 'establish',
-  'identify', 'meeting', 'next', 'objective', 'objectives', 'progress', 'related', 'review',
-  'reviewed', 'summary', 'the', 'their', 'workstream', 'workstreams'
+  'focused', 'further', 'identify', 'including', 'information', 'meeting', 'necessary',
+  'next', 'objective', 'objectives', 'progress', 'related', 'remain', 'required', 'review',
+  'reviewed', 'summary', 'supporting', 'the', 'their', 'workstream', 'workstreams'
 ]);
 
 function contentTokens(value) {
@@ -47,10 +48,19 @@ function validateInitialUnderstandingRevision(original, revised) {
   const sourceFacts = protectedFacts(sourceText);
   const revisedFacts = protectedFacts(revisedText);
   if ([...revisedFacts].some((fact) => !sourceFacts.has(fact))) return { ok: false, reason: 'new_protected_fact' };
+  if (/\bI\b|\b(?:we|our|my)\b/i.test(executiveSummary)) {
+    return { ok: false, reason: 'first_person_summary' };
+  }
+  if (/(?:^|[.!?]\s+)(?:obviously|basically|you know|because)\b/i.test(executiveSummary)) {
+    return { ok: false, reason: 'conversational_summary' };
+  }
   const sourceTokens = contentTokens(sourceText);
   const unsupportedTokens = [...contentTokens(revisedText)]
     .filter((token) => !sourceTokens.has(token) && !EDITORIAL_WORDS.has(token));
-  if (unsupportedTokens.length) return { ok: false, reason: 'new_substantive_wording' };
+  const revisedTokens = contentTokens(revisedText);
+  if (unsupportedTokens.length / Math.max(revisedTokens.size, 1) > 0.08) {
+    return { ok: false, reason: 'new_substantive_wording' };
+  }
   const summaryValidation = validateGrammarRevision(
     clean([original.meetingPurpose, ...original.overallTopics, original.executiveSummary].join(' ')),
     executiveSummary
@@ -58,7 +68,7 @@ function validateInitialUnderstandingRevision(original, revised) {
   // This pass may deliberately remove repeated/weak notes, so only the protected-fact
   // and broad semantic-overlap parts of the grammar guard apply here.
   if (summaryValidation.reason === 'new_protected_fact') return { ok: false, reason: summaryValidation.reason };
-  if (summaryValidation.overlap != null && summaryValidation.overlap < 0.45) {
+  if (summaryValidation.overlap != null && summaryValidation.overlap < 0.3) {
     return { ok: false, reason: 'meaning_changed', overlap: summaryValidation.overlap };
   }
   return { ok: true, reason: 'accepted', objectives, executiveSummary, overlap: summaryValidation.overlap };
@@ -96,9 +106,11 @@ async function polishInitialUnderstanding(input = {}, options = {}) {
           {
             role: 'user',
             content: [
-              'Write 2-5 concise meeting objectives and one short executive summary in natural British English.',
-              'Remove repetition, conversational fragments and notes that are plainly not meaningful meeting subjects.',
+              'Write 2-5 concise meeting objectives and a professional 2-3 sentence executive summary in natural British English.',
+              'The executive summary must read like formal meeting minutes, not copied transcript speech or a list of notes.',
+              'Synthesise and compress the supplied material. Use third-person, neutral wording and remove repetition, first-person speech, conversational fragments and plainly meaningless notes.',
               'Use only meaning present in the supplied material. If a note is unclear, omit it rather than guessing.',
+              'Reuse the supplied terminology wherever possible; do not introduce new substantive concepts.',
               'Do not add actions, owners, deadlines, decisions or outcomes.',
               'Return JSON only as {"objectives":["..."],"executiveSummary":"..."}.',
               '',
