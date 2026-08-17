@@ -564,7 +564,9 @@ function cleanStagedMeetingTitleCandidate(value, options = {}) {
     title = `${title} - ${readableDate}`;
   }
 
-  return title.replace(/\s+-\s+-\s+/g, ' - ').trim();
+  title = title.replace(/\s+-\s+-\s+/g, ' - ').trim();
+  if (/^(?:meeting\s+overview|untitled\s+meeting|meeting|overview|transcript|recording|staged\s+review\s+draft)$/i.test(title)) return '';
+  return title;
 }
 
 function inferStagedMeetingType(text, fileName = '') {
@@ -583,7 +585,7 @@ function inferStagedMeetingType(text, fileName = '') {
 
 function extractLineAfterLabel(text, labels) {
   const labelPattern = labels.map((label) => label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
-  const match = String(text || '').match(new RegExp(`(?:^|\\n)\\s*(?:${labelPattern})\\s*[:\\-]\\s*([^\\n]{1,180})`, 'i'));
+  const match = String(text || '').match(new RegExp(`(?:^|\\n)\\s*(?:${labelPattern})\\s*(?:[:\\-]|\\s+)\\s*([^\\n]{1,180})`, 'i'));
   return match ? match[1].trim() : '';
 }
 
@@ -1014,6 +1016,8 @@ function isUsableStagedTopic(topic) {
   if (words.length > 9) return false;
   if (/[.?!]/.test(cleaned)) return false;
   if (/\b(?:said that|and the other|review these topics|evidence-backed discussion|transcript-generated|proper english)\b/i.test(cleaned)) return false;
+  if (/^[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){0,3}\s+(?:said|noted|explained|mentioned|queried|asked|advised|confirmed|suggested|thought|thinks?|wanted?|wants?)\b/i.test(cleaned)) return false;
+  if (/^(?:he|she|they|we|i|you)\s+(?:said|noted|explained|mentioned|queried|asked|advised|confirmed|suggested|thought|thinks?|wanted?|wants?)\b/i.test(cleaned)) return false;
   return true;
 }
 

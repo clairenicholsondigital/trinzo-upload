@@ -23,6 +23,14 @@ function lowerInitialUnlessInitialism(value) {
   return text ? text.charAt(0).toLowerCase() + text.slice(1) : text;
 }
 
+function topicLooksLikeReportedSpeechFragment(value) {
+  const text = clean(value);
+  if (!text) return false;
+  if (/^[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){0,3}\s+(?:said|noted|explained|mentioned|queried|asked|advised|confirmed|suggested|thought|thinks?|wanted?|wants?)\b/i.test(text)) return true;
+  if (/^(?:he|she|they|we|i|you)\s+(?:said|noted|explained|mentioned|queried|asked|advised|confirmed|suggested|thought|thinks?|wanted?|wants?)\b/i.test(text)) return true;
+  return false;
+}
+
 function approvedText(values, key = 'text') {
   return strings(values).map((text) => ({ [key]: text, humanFinal: text, aiOriginal: text }));
 }
@@ -119,9 +127,13 @@ function buildConfirmedState(transcriptText, fileName, confirmed = {}) {
 
 function summaryScreen(proposal) {
   const objectives = proposal.objectives.map((item) => item.text);
-  const overallTopics = (Array.isArray(proposal.topics) && proposal.topics.length
-    ? proposal.topics.map((item) => item.text)
-    : objectives.map((text) => clean(text).replace(/^Review\s+/i, ''))).filter(Boolean);
+  const rawTopicItems = Array.isArray(proposal.topics) && proposal.topics.length
+    ? proposal.topics
+    : objectives.map((text) => ({ text: clean(text).replace(/^(?:Review|Confirm|Clarify|Identify|Agree)\s+/i, '') }));
+  const visibleTopicItems = rawTopicItems
+    .filter((item) => clean(item?.text))
+    .filter((item) => !topicLooksLikeReportedSpeechFragment(item.text));
+  const overallTopics = visibleTopicItems.map((item) => clean(item.text)).filter(Boolean);
   const initialUnderstanding = proposal.initialUnderstanding || null;
   const inferredPurpose = clean(initialUnderstanding?.meetingPurpose?.text);
   const spineItems = (Array.isArray(initialUnderstanding?.meetingSpine) ? initialUnderstanding.meetingSpine : [])
@@ -134,7 +146,7 @@ function summaryScreen(proposal) {
     objectives,
     meetingPurpose: inferredPurpose,
     overallTopics,
-    topicRefs: (proposal.topics || []).map((item) => ({ text: item.text || '', topicId: item.topicId || '', evidenceIds: item.evidenceIds || [] })),
+    topicRefs: visibleTopicItems.map((item) => ({ text: item.text || '', topicId: item.topicId || '', evidenceIds: item.evidenceIds || [] })),
     executiveSummary: synthesis || (/webinar/.test(meetingType) && /rehearsal|practice|run[ -]?through/.test(meetingType)
       ? `The webinar rehearsal reviewed ${overallTopics.join('; ').replace(/; ([^;]+)$/, '; and $1').toLowerCase()}.`
       : overallTopics.length

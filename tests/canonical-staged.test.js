@@ -970,6 +970,45 @@ test('live Discussion screen does not append extra Decisions or Risks rows when 
   assert.equal(headings.some((heading) => /^(?:Decisions|Risks)$/i.test(heading)), false);
 });
 
+test('staged details extracts unpunctuated meeting title before generic overview heading', () => {
+  const transcript = [
+    'Meeting Overview',
+    'Meeting Title T761 Eakin Healthcare Tech File SW review - SW coding changes',
+    'Meeting Date 15th June 2026',
+    'Participants',
+    'Jacqui Fox',
+    'Rebecca Cuckoo'
+  ].join('\n');
+  const result = apiRouter.stagedEvaluation.extractStagedDetailsFromTranscript(transcript, 'fallback-transcript.txt');
+  assert.equal(result.screens.details.meetingTitle, 'T761 Eakin Healthcare Tech File SW Review SW Coding Changes');
+  assert.notEqual(result.screens.details.meetingTitle, 'Meeting Overview');
+});
+
+test('live Summary screen hides reported-speech topic labels from Overall topics', async () => {
+  const previousApiKey = process.env.TROOPER_API_KEY;
+  process.env.TROOPER_API_KEY = '';
+  try {
+    const transcript = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'meeting-minutes-final-golden', '022_real_eakin_sw_minutes_pdf', 'transcript.txt'), 'utf8');
+    const result = await apiRouter.stagedEvaluation.canonicalStagedResponse('summary', {
+      text: transcript,
+      source: 'test',
+      fileName: '022-real-eakin-sw-minutes-pdf.txt'
+    }, {
+      confirmedDetails: {
+        meetingTitle: 'T761 Eakin Healthcare Tech File SW review - SW coding changes',
+        meetingType: 'Technical file review'
+      }
+    });
+    const topics = result.screens.summary.overallTopics;
+    assert.ok(topics.some((topic) => /alarm-code|clinical confirmation/i.test(topic)), topics.join(' | '));
+    assert.equal(topics.some((topic) => /David noted the current setup the flash/i.test(topic)), false, topics.join(' | '));
+    assert.equal((result.screens.summary.topicRefs || []).length, topics.length);
+  } finally {
+    if (previousApiKey) process.env.TROOPER_API_KEY = previousApiKey;
+    else delete process.env.TROOPER_API_KEY;
+  }
+});
+
 test('live actions stage uses confirmed state and returns the existing UI screen contract', () => {
   const transcript = [
     'Amina Khan  00:01',
