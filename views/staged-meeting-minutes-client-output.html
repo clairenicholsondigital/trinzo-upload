@@ -246,7 +246,6 @@ tr { page-break-inside:avoid; }
 <body>
 <div class="toolbar">
   <a class="button secondary" id="backToReviewLink" href="/staged-meeting-minutes">Back to review</a>
-  <button id="printBtn" type="button">Print / save PDF</button>
 </div>
 <main id="outputRoot"></main>
 <script>
@@ -254,9 +253,7 @@ tr { page-break-inside:avoid; }
   var STAGED_DRAFTS_KEY = 'stagedMeetingMinutesJobs';
   var params = new URLSearchParams(window.location.search);
   var draftId = params.get('draftId') || '';
-  var shouldPrint = params.get('print') === '1';
   var outputRoot = document.getElementById('outputRoot');
-  var printButton = document.getElementById('printBtn');
   var backToReviewLink = document.getElementById('backToReviewLink');
 
   function escapeHtml(value) {
@@ -377,20 +374,8 @@ tr { page-break-inside:avoid; }
   var draft = readDrafts().find(function (item) { return String(item.jobId) === String(draftId); });
   if (draft) {
     renderDraft(draft);
-    if (shouldPrint) {
-      window.addEventListener('load', function () {
-        window.focus();
-        window.setTimeout(function () { window.print(); }, 350);
-      });
-    }
   } else {
     renderMissingDraft();
-  }
-
-  if (printButton) {
-    printButton.addEventListener('click', function () {
-      window.print();
-    });
   }
 })();
 </script>

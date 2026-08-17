@@ -271,7 +271,7 @@ function clientReadyPresentation(payload) {
   const polishFlag = retainedForReview.length ? {
     type: stage === 'actions' ? 'action_publication_review' : 'wording_needs_review', severity: 'warning', blocking: false,
     message: stage === 'actions'
-      ? `Kept ${retainedForReview.length} action candidate${retainedForReview.length === 1 ? '' : 's'} out of the final Actions table because the owner or wording could not be validated safely.`
+      ? `${retainedForReview.length} action${retainedForReview.length === 1 ? ' needs' : 's need'} review because the owner or wording could not be confirmed safely.`
       : `Evidence was retained for ${retainedForReview.length} item${retainedForReview.length === 1 ? '' : 's'}, but the wording could not be safely polished automatically. Review the highlighted stage before approval.`,
     ...(retainedActionReviewCandidates.length ? { repairCandidates: retainedActionReviewCandidates } : {})
   } : {

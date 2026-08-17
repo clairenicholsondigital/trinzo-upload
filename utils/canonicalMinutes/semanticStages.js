@@ -544,7 +544,7 @@ function contextStage(evidence, profile, state = {}, reviewerGuidance = '') {
     meetingSpine: spine,
     initialUnderstanding,
     purposeProfile: purpose?.profileId || null,
-    warnings: topics.length ? [] : [{ type: 'thin_context', severity: 'warning', message: 'MiniLM found no confident substantive topic clusters.' }]
+    warnings: topics.length ? [] : [{ type: 'thin_context', severity: 'warning', message: 'No clear substantive topics were identified.' }]
   };
 }
 
@@ -2044,13 +2044,13 @@ function actionsStage(evidence, state, profile, topology) {
     commitmentThreads: threads,
     unresolvedThreads,
     warnings: [
-      ...(actions.length ? [] : [{ type: 'no_actions_detected', severity: 'info', message: 'No transcript-supported action passed the MiniLM commitment-thread safety checks.' }]),
+      ...(actions.length ? [] : [{ type: 'no_actions_detected', severity: 'info', message: 'No transcript-supported actions were identified.' }]),
       ...(reviewRequired.length ? [{
         type: 'action_candidates_need_confirmation',
         severity: 'warning',
         blocking: false,
         resolutionKey: `semantic-action-candidates:${reviewRequired.map(stableActionCandidateId).join('|')}`,
-        message: `${reviewRequired.length} transcript-supported action candidate${reviewRequired.length === 1 ? ' needs' : 's need'} owner or wording confirmation.`,
+        message: `${reviewRequired.length} action${reviewRequired.length === 1 ? ' needs' : 's need'} owner or wording confirmation.`,
         repairCandidates: reviewRequired.map((item) => ({
           id: stableActionCandidateId(item),
           owner: item.owner || 'Not stated',
@@ -2073,7 +2073,7 @@ function actionsStage(evidence, state, profile, topology) {
         type: 'compound_action_publication_review',
         severity: 'warning',
         blocking: false,
-        message: `Kept ${demotedCompoundActions.length} compound action candidate${demotedCompoundActions.length === 1 ? '' : 's'} out of the final Actions table because the cited clauses did not share a safe owner, object and workstream.`,
+        message: `${demotedCompoundActions.length} combined action${demotedCompoundActions.length === 1 ? ' needs' : 's need'} review because the supporting clauses did not share a clear owner, subject and workstream.`,
         repairCandidates: demotedCompoundActions.map((item) => ({
           id: stableActionCandidateId(item),
           owner: item.owner || 'Not stated',

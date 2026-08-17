@@ -625,27 +625,40 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("formData.append('reviewActions'", page)
         self.assertIn("Editorial checks (review before moving on)", page)
 
-    def test_staged_export_uses_clean_client_output_view(self):
-        server = (REPO_DIR / "server.js").read_text(encoding="utf-8")
+    def test_staged_reviewer_copy_and_controls_hide_internal_processing_terms(self):
+        page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
+        api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+
+        self.assertIn("review-check-button", page)
+        self.assertIn("✓ Reviewed", page)
+        self.assertIn("outstanding === 1 ? ' needs' : 's need'", page)
+        self.assertIn("Actions are grouped below to help you review them.", page)
+        self.assertIn("function validReviewerOwner", page)
+        self.assertIn(">Add owner</option>", page)
+        self.assertNotIn("Mark reviewed", page)
+        self.assertNotIn("Running canonical ${stage} evidence classification.", api)
+        self.assertIn("Reviewing discussion evidence.", api)
+        self.assertIn("Reviewing action evidence.", api)
+
+    def test_staged_export_uses_one_server_generated_pdf_for_download_and_preview(self):
         page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
         output = (REPO_DIR / "views" / "staged-meeting-minutes-client-output.html").read_text(encoding="utf-8")
+        api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+        pdf = (REPO_DIR / "utils" / "stagedMinutesPdf.js").read_text(encoding="utf-8")
 
-        self.assertIn("app.get('/staged-meeting-minutes/client-output'", server)
         self.assertIn('id="exportClientPdfBtn"', page)
-        self.assertIn("function openClientPdfExport", page)
-        self.assertIn("/staged-meeting-minutes/client-output?draftId=", page)
-        self.assertIn("Export opens a clean client-facing copy without the review controls.", page)
+        self.assertIn('id="previewClientPdfBtn"', page)
+        self.assertIn("function generatedClientPdf", page)
+        self.assertIn("/api/staged-meeting-minutes/pdf", page)
+        self.assertIn("generatedPdfCache", page)
+        self.assertIn("Download PDF", page)
+        self.assertIn("Preview PDF", page)
+        self.assertIn("router.post('/staged-meeting-minutes/pdf'", api)
+        self.assertIn("displayHeaderFooter: false", pdf)
+        self.assertIn("Content-Disposition", api)
         self.assertNotIn("Export, email and save are still disabled", page)
-
-        self.assertIn("STAGED_DRAFTS_KEY = 'stagedMeetingMinutesJobs'", output)
-        self.assertIn("Meeting minutes", output)
-        self.assertIn("trinzologo", output.replace("-", "").lower())
-        self.assertIn("@media print", output)
-        self.assertIn(".toolbar", output)
-        self.assertIn("window.print()", output)
-        self.assertIn("Review and approve before sharing externally.", output)
-        self.assertNotIn("stage-decision-card", output)
-        self.assertNotIn("status-strip", output)
+        self.assertNotIn("window.print()", page)
+        self.assertNotIn("window.print()", output)
 
 
 if __name__ == "__main__":

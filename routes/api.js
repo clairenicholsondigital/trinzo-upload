@@ -47,6 +47,7 @@ const { prepareEvidence } = require('../utils/canonicalMinutes/evidence');
 const { polishCanonicalStage, canonicalFallback, addRecoveredActionCandidates, clientReadyPresentation } = require('../utils/canonicalMinutes/trooperPolish');
 const { enrichActionReviewCandidate } = require('../utils/canonicalMinutes/actionReviewRanking');
 const { reviewGeneratedContent } = require('../utils/terminologyQa');
+const { generateStagedMinutesPdf, stagedMinutesPdfFilename } = require('../utils/stagedMinutesPdf');
 const {
   buildConfirmedUnderstanding,
   repairDiscussionForConfirmedUnderstanding
@@ -2277,7 +2278,7 @@ async function buildStagedGenerationContext(stage, transcript, req, onProgress =
     workstreamState = buildStagedWorkstreamState(evidencePack, fastContext, confirmedTopics);
   }
   if (stage === 'actions') {
-    await onProgress(18, 'Building an evidence-led action candidate ledger.');
+    await onProgress(18, 'Reviewing transcript evidence for actions.');
     actionEvidenceContext = await buildStagedEvidenceClassifierContext(transcript);
   }
 
@@ -3725,7 +3726,7 @@ async function runStagedSequenceForEvaluation(transcriptText, options = {}) {
       const missing = evidenceLedger.actions.filter((item) => ![...surfaced].some((text) => stagedTokenSimilarity(text, cleanStagedActionText(item.action).toLowerCase()) >= 0.55));
       if (missing.length) validationFlags.push({
         type: 'detected_actions_not_surfaced', severity: 'warning', blocking: true,
-        message: `${missing.length} transcript-supported action candidate${missing.length === 1 ? ' was' : 's were'} not surfaced. Review and approve or reject each candidate.`,
+        message: `${missing.length} transcript-supported action${missing.length === 1 ? ' was' : 's were'} not shown. Review and approve or reject each action.`,
         repairCandidates: missing
       });
     }
@@ -3830,7 +3831,7 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
           type: 'action_review_candidates',
           severity: 'warning',
           blocking: false,
-          message: `Kept ${reviewOnly.length} transcript-supported follow-up candidate${reviewOnly.length === 1 ? '' : 's'} out of the final Actions table because ${Object.entries(counts).map(([key, count]) => `${count} ${labels[key] || 'need review'}`).join(', ')}.`,
+          message: `${reviewOnly.length} transcript-supported follow-up${reviewOnly.length === 1 ? ' needs' : 's need'} review because ${Object.entries(counts).map(([key, count]) => `${count} ${labels[key] || 'need review'}`).join(', ')}.`,
           resolutionKey: `action-review-candidates:${crypto.createHash('sha256').update(reviewOnly.map((item) => stableActionCandidateHash(item)).join('|')).digest('hex').slice(0, 16)}`,
           repairCandidates: reviewOnly.map(serialiseActionReviewCandidate)
         }
@@ -3971,7 +3972,12 @@ async function runQueuedStagedMeetingMinutesStage(jobId) {
         }
       };
     } else {
-      await updateGenerationJobProgress(jobId, stage, 35, `Running canonical ${stage} evidence classification.`);
+      const evidenceProgressMessage = stage === 'actions'
+        ? 'Reviewing action evidence.'
+        : stage === 'discussion'
+          ? 'Reviewing discussion evidence.'
+          : 'Reviewing summary evidence.';
+      await updateGenerationJobProgress(jobId, stage, 35, evidenceProgressMessage);
       payload = await canonicalStagedResponse(stage, transcript, input);
     }
 
@@ -4722,6 +4728,24 @@ router.post('/staged-meeting-minutes/terminology-qa/decision', requireAuth, asyn
   } catch (error) {
     safeLogError('[Terminology QA decision failed]', error);
     return res.status(500).json({ success: false, error: 'The proofreading decision could not be saved.' });
+  }
+});
+
+router.post('/staged-meeting-minutes/pdf', requireAuth, async (req, res) => {
+  try {
+    const minutes = req.body?.minutes && typeof req.body.minutes === 'object' ? req.body.minutes : {};
+    const pdf = await generateStagedMinutesPdf(minutes);
+    const filename = stagedMinutesPdfFilename(minutes).replace(/["\\]/g, '');
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="${filename}"`,
+      'Cache-Control': 'no-store',
+      'Content-Length': String(pdf.length)
+    });
+    return res.send(pdf);
+  } catch (error) {
+    safeLogError('[Staged meeting minutes PDF failed]', error);
+    return res.status(500).json({ success: false, error: 'The PDF could not be generated. Please try again.' });
   }
 });
 

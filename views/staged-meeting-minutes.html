@@ -93,6 +93,8 @@ body.pre-upload .screen:not([data-screen="0"]) {
 .stage-autosave-status { color:#6b7b88; font-size:.76rem; font-weight:600; white-space:nowrap; }
 .stage-autosave-status.is-saving { color:#287084; }
 .stage-autosave-status.save-error { color:#991b1b; }
+.review-check-button { display:inline-flex; align-items:center; justify-content:center; flex:0 0 auto; width:2rem; height:2rem; padding:0; border-radius:999px; font-size:1rem; line-height:1; }
+.reviewed-state { display:inline-flex; align-items:center; gap:.3rem; color:#667681; font-size:.8rem; font-weight:700; white-space:nowrap; }
 .progress-pill { flex:0 0 auto; border:1px solid rgba(23,208,196,.45); border-radius:999px; padding:.25rem .6rem; color:#c9fffb; background:rgba(23,208,196,.1); font-weight:700; font-size:.85rem; }
 .form-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.85rem; }
 .field { display:grid; gap:.35rem; }
@@ -697,9 +699,10 @@ td select {
           <div id="finalDocumentPreview"></div>
         </div>
         <div class="actions" style="margin-top:.85rem;">
-          <button id="exportClientPdfBtn" type="button" disabled>Export PDF</button>
+          <button id="exportClientPdfBtn" type="button" disabled>Download PDF</button>
+          <button id="previewClientPdfBtn" class="secondary" type="button" disabled>Preview PDF</button>
         </div>
-        <p class="note final-output-note">Export PDF opens a clean client-facing copy from this review.</p>
+        <p class="note final-output-note">Download or preview the same client-ready PDF generated from this review.</p>
       </article>
 
       <div class="stage-decision-card review-only" aria-live="polite">
@@ -786,6 +789,7 @@ td select {
   var actionsTableBody = document.getElementById('actionsTableBody');
   var addActionRowButton = document.getElementById('addActionRowBtn');
   var exportClientPdfButton = document.getElementById('exportClientPdfBtn');
+  var previewClientPdfButton = document.getElementById('previewClientPdfBtn');
   var finalDocumentPreview = document.getElementById('finalDocumentPreview');
   var stageValidationFlags = document.getElementById('stageValidationFlags');
   var actionReviewGroups = document.getElementById('actionReviewGroups');
@@ -823,6 +827,7 @@ td select {
   var currentValidationStage = '';
   var currentActionReviewCandidatePayloads = [];
   var actionReviewCandidates = [];
+  var generatedPdfCache = null;
   var hydratingSavedDraft = false;
   var autosaveTimer = null;
   var lastAutosaveAt = null;
@@ -856,6 +861,7 @@ td select {
 
   function scheduleDraftAutosave() {
     if (!reviewStarted && !lastGeneratedPayload) return;
+    generatedPdfCache = null;
     setAutosaveStatus('Saving…', 'saving');
     clearTimeout(autosaveTimer);
     autosaveTimer = setTimeout(function () {
@@ -1079,7 +1085,7 @@ td select {
 
     if (activeIndex >= screens.length - 1) {
       stageDecisionQuestion.textContent = 'Ready to finish the staged review?';
-      stageDecisionHint.textContent = finalReviewCompleted ? 'Final review has been recorded. Export opens a clean client-facing copy without the review controls.' : 'This records the approved screens for improvement analytics. Export opens a clean client-facing copy without the review controls.';
+      stageDecisionHint.textContent = finalReviewCompleted ? 'Final review has been recorded. You can now download or preview the client-ready PDF.' : 'This records the approved screens for improvement analytics. You can then download or preview the client-ready PDF.';
       nextButton.textContent = 'Review complete';
       nextButton.disabled = finalReviewCompleted;
     } else {
@@ -1133,11 +1139,19 @@ td select {
     });
   }
 
+  function validReviewerOwner(value) {
+    var owner = String(value || '').replace(/\s+/g, ' ').trim();
+    if (!owner || /^not stated$/i.test(owner)) return '';
+    if (/^(?:it(?:['’]s| is)?|i|i['’]m|me|my|mine|we|we['’]re|us|our|ours|you|you['’]re|they|they['’]re|them|their|theirs|he|he['’]s|him|his|she|she['’]s|her|hers|this|that|there|here|someone|somebody|anyone|anybody|everyone|everybody|unknown|tbc|tbd|review|complete|update|share|send|confirm|action|owner)$/i.test(owner)) return '';
+    if (/^[^A-Za-zÀ-ÖØ-öø-ÿ]+$/.test(owner) || /[.!?]$/.test(owner) || owner.split(/\s+/).length > 8) return '';
+    return owner;
+  }
+
   function actionOwnerOptions(selectedOwner) {
-    var selected = String(selectedOwner || 'Not stated').trim() || 'Not stated';
+    var selected = validReviewerOwner(selectedOwner);
     var names = attendeeOwnerNames();
-    if (selected !== 'Not stated' && !names.some(function (name) { return name.toLowerCase() === selected.toLowerCase(); })) names.push(selected);
-    return ['Not stated'].concat(names).map(function (name) {
+    if (selected && !names.some(function (name) { return name.toLowerCase() === selected.toLowerCase(); })) names.push(selected);
+    return '<option value=""' + (!selected ? ' selected' : '') + '>Add owner</option>' + names.map(function (name) {
       return '<option value="' + escapeHtml(name) + '"' + (name.toLowerCase() === selected.toLowerCase() ? ' selected' : '') + '>' + escapeHtml(name) + '</option>';
     }).join('') + '<option value="__add_owner__">Add someone new…</option>';
   }
@@ -1145,10 +1159,9 @@ td select {
   function refreshActionOwnerOptions() {
     if (!actionsTableBody) return;
     Array.prototype.slice.call(actionsTableBody.querySelectorAll('.action-owner-select')).forEach(function (select) {
-      var selected = select.value || select.getAttribute('data-owner') || 'Not stated';
+      var selected = validReviewerOwner(select.value || select.getAttribute('data-owner'));
       select.innerHTML = actionOwnerOptions(selected);
       select.value = selected;
-      if (!select.value) select.value = 'Not stated';
       select.setAttribute('data-owner', select.value);
     });
   }
@@ -1176,7 +1189,7 @@ td select {
       var cells = row.querySelectorAll('td');
       var ownerControl = cells[0] ? cells[0].querySelector('select, input') : null;
       return {
-        owner: ownerControl ? ownerControl.value.trim() : '',
+        owner: ownerControl ? (validReviewerOwner(ownerControl.value) || 'Not stated') : 'Not stated',
         action: cells[1] && cells[1].querySelector('textarea') ? cells[1].querySelector('textarea').value.trim() : '',
         deadline: cells[2] && cells[2].querySelector('input') ? cells[2].querySelector('input').value.trim() : ''
       };
@@ -1351,7 +1364,7 @@ td select {
       return String(value || '').trim().replace(/[a-z]/i, function (letter) { return letter.toUpperCase(); });
     }
     return '<tr>' +
-      '<td><select class="action-owner-select" data-owner="' + escapeHtml(action.owner || 'Not stated') + '" aria-label="Action owner">' + actionOwnerOptions(action.owner || 'Not stated') + '</select></td>' +
+      '<td><select class="action-owner-select" data-owner="' + escapeHtml(validReviewerOwner(action.owner)) + '" aria-label="Action owner">' + actionOwnerOptions(action.owner) + '</select></td>' +
       '<td><textarea>' + escapeHtml(capitaliseInitial(action.action) || 'Review action wording') + '</textarea></td>' +
       '<td><input value="' + escapeHtml(capitaliseInitial(action.deadline)) + '" placeholder="e.g. 14 August 2026 or next Monday" aria-label="Action date or deadline" /></td>' +
       '<td><button class="secondary" type="button" data-action-row="duplicate">Duplicate</button> <button class="secondary" type="button" data-action-row="delete">Delete</button></td>' +
@@ -1362,7 +1375,7 @@ td select {
     var cells = row ? row.querySelectorAll('td') : [];
     var ownerControl = cells[0] ? cells[0].querySelector('select, input') : null;
     return {
-      owner: ownerControl ? ownerControl.value.trim() : '',
+      owner: ownerControl ? (validReviewerOwner(ownerControl.value) || 'Not stated') : 'Not stated',
       action: cells[1] && cells[1].querySelector('textarea') ? cells[1].querySelector('textarea').value.trim() : '',
       deadline: cells[2] && cells[2].querySelector('input') ? cells[2].querySelector('input').value.trim() : ''
     };
@@ -1668,16 +1681,19 @@ td select {
 
   function renderResolvedChecks() {
     if (!resolvedChecks || !resolvedChecksList) return;
-    resolvedChecksList.innerHTML = resolvedReviewChecks.slice(-20).map(function (item) { return '<p>✓ ' + escapeHtml(item.message) + '</p>'; }).join('');
+    resolvedChecksList.innerHTML = resolvedReviewChecks.slice(-20).map(function (item) { return '<p><span class="reviewed-state">✓ Reviewed</span> — ' + escapeHtml(item.message) + '</p>'; }).join('');
     resolvedChecks.hidden = !resolvedReviewChecks.length;
   }
 
   function updateReviewToolbar() {
     if (!reviewToolbar || !remainingReviewCount) return;
     var outstanding = document.querySelectorAll('.stage-validation-flag:not(.is-resolved), .terminology-suggestion, .action-candidate-card').length;
-    remainingReviewCount.textContent = outstanding ? outstanding + ' item' + (outstanding === 1 ? '' : 's') + ' need review' : 'No outstanding review items';
+    remainingReviewCount.textContent = outstanding ? outstanding + ' item' + (outstanding === 1 ? ' needs' : 's need') + ' review' : 'No outstanding review items';
     reviewToolbar.hidden = activeIndex === 4 || (!outstanding && !resolvedReviewChecks.length);
-    if (nextReviewItemButton) nextReviewItemButton.disabled = !outstanding;
+    if (nextReviewItemButton) {
+      nextReviewItemButton.disabled = !outstanding;
+      nextReviewItemButton.hidden = !outstanding;
+    }
     statusItems.forEach(function (item, idx) {
       var label = item.querySelector('span:last-child');
       if (!label) return;
@@ -1701,7 +1717,8 @@ td select {
       if (!entries.length) return '';
       return '<details class="action-review-group"' + (definition[2] ? ' open' : '') + '><summary>' + entries.length + ' ' + definition[1].toLowerCase() + '</summary>' + entries.map(function (entry) {
         var candidate = entry.candidate;
-        return '<div class="action-candidate-card" data-candidate-id="' + escapeHtml(entry.id) + '"><strong>' + escapeHtml(candidate.suggestedAction || candidate.action || 'Review follow-up') + '</strong><span class="muted">Owner: ' + escapeHtml(candidate.owner || 'Unconfirmed') + '</span><div class="action-candidate-actions"><button type="button" data-candidate-action="add">Add to actions</button><button class="secondary" type="button" data-candidate-action="dismiss">Not an action</button></div></div>';
+        var owner = validReviewerOwner(candidate.owner);
+        return '<div class="action-candidate-card" data-candidate-id="' + escapeHtml(entry.id) + '"><strong>' + escapeHtml(candidate.suggestedAction || candidate.action || 'Review follow-up') + '</strong><span class="muted">Owner: ' + (owner ? escapeHtml(owner) : '<span class="review-owner-unresolved">Add owner</span>') + '</span><div class="action-candidate-actions"><button type="button" data-candidate-action="add">Add to actions</button><button class="secondary" type="button" data-candidate-action="dismiss">Not an action</button></div></div>';
       }).join('') + '</details>';
     }).join('');
     updateReviewToolbar();
@@ -1774,12 +1791,14 @@ td select {
         row.appendChild(addButton);
       }
       if (flag && (flag.type === 'action_review_candidates' || flag.type === 'action_publication_review') && Array.isArray(flag.repairCandidates) && flag.repairCandidates.length) {
-        text.textContent = 'Action candidates have been grouped below by how useful they are likely to be for reviewer triage.';
+        text.textContent = 'Actions are grouped below to help you review them.';
       }
       var resolveButton = document.createElement('button');
       resolveButton.type = 'button';
-      resolveButton.className = 'secondary stage-validation-add';
-      resolveButton.textContent = 'Mark reviewed';
+      resolveButton.className = 'secondary stage-validation-add review-check-button';
+      resolveButton.textContent = '✓';
+      resolveButton.setAttribute('aria-label', 'Mark as reviewed');
+      resolveButton.title = 'Mark as reviewed';
       resolveButton.addEventListener('click', function () { resolveReviewItem(text.textContent, row, flagKey); });
       row.appendChild(resolveButton);
       if (flag && flag.type === 'unresolved_substantive_workstream' && flag.resolutionKey) {
@@ -2961,18 +2980,64 @@ td select {
     persistReviewAnalytics(activeIndex >= screens.length - 1 ? 'final_review_snapshot' : 'review_snapshot', 'latest_snapshot');
   }
 
-  function openClientPdfExport() {
+  function clientPdfFilename(minutes) {
+    var title = String(minutes && minutes.details && minutes.details.meetingTitle || 'meeting-minutes')
+      .replace(/[^a-z0-9 _-]+/gi, '').replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').slice(0, 100);
+    return (title || 'meeting-minutes') + '.pdf';
+  }
+
+  async function generatedClientPdf() {
     commitStageState(stageForScreen(activeIndex));
     renderFinalDocument();
     saveDraft();
-    var id = ensureDraftId();
-    var outputUrl = '/staged-meeting-minutes/client-output?draftId=' + encodeURIComponent(id) + '&print=1';
-    var printWindow = window.open(outputUrl, '_blank', 'width=1100,height=800');
-    if (!printWindow) {
-      window.location.href = outputUrl;
+    var minutes = approvedStageVersions();
+    var signature = JSON.stringify(minutes);
+    if (generatedPdfCache && generatedPdfCache.signature === signature) return generatedPdfCache;
+    var response = await fetch('/api/staged-meeting-minutes/pdf', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ minutes: minutes })
+    });
+    if (!response.ok) {
+      var errorPayload = await response.json().catch(function () { return {}; });
+      throw new Error(errorPayload.error || 'The PDF could not be generated.');
+    }
+    generatedPdfCache = { signature: signature, blob: await response.blob(), filename: clientPdfFilename(minutes) };
+    return generatedPdfCache;
+  }
+
+  async function downloadClientPdf() {
+    try {
+      setReviewStatus('Generating your PDF…', false);
+      var generated = await generatedClientPdf();
+      var url = URL.createObjectURL(generated.blob);
+      var link = document.createElement('a');
+      link.href = url; link.download = generated.filename;
+      document.body.appendChild(link); link.click(); link.remove();
+      window.setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+      setReviewStatus('PDF downloaded.', false);
+    } catch (error) {
+      setReviewStatus(error.message || 'The PDF could not be generated.', true);
+    }
+  }
+
+  async function previewClientPdf() {
+    var previewWindow = window.open('', '_blank');
+    if (!previewWindow) {
+      setReviewStatus('Allow pop-ups to preview the PDF in a new tab.', true);
       return;
     }
-    printWindow.focus();
+    try {
+      previewWindow.document.write('<p style="font-family:sans-serif;padding:1rem">Generating PDF…</p>');
+      var generated = await generatedClientPdf();
+      var url = URL.createObjectURL(generated.blob);
+      previewWindow.location.replace(url);
+      window.setTimeout(function () { URL.revokeObjectURL(url); }, 10 * 60 * 1000);
+      setReviewStatus('PDF opened in a new tab.', false);
+    } catch (error) {
+      previewWindow.close();
+      setReviewStatus(error.message || 'The PDF could not be generated.', true);
+    }
   }
 
   function completeFinalReview() {
@@ -3025,6 +3090,7 @@ td select {
     if (exportClientPdfButton) {
       exportClientPdfButton.disabled = activeIndex !== screens.length - 1;
     }
+    if (previewClientPdfButton) previewClientPdfButton.disabled = activeIndex !== screens.length - 1;
     updateDecisionPanel();
     renderFinalDocument();
     renderTerminologyQa();
@@ -3117,12 +3183,12 @@ td select {
       if (!entry) return;
       if (button.getAttribute('data-candidate-action') === 'add') {
         var empty = actionsTableBody.querySelector('.empty-state'); if (empty) actionsTableBody.innerHTML = '';
-        actionsTableBody.insertAdjacentHTML('beforeend', renderActionRow({ owner: entry.candidate.owner || 'Not stated', action: entry.candidate.suggestedAction || entry.candidate.action || '', deadline: entry.candidate.deadline || '' }));
+        actionsTableBody.insertAdjacentHTML('beforeend', renderActionRow({ owner: validReviewerOwner(entry.candidate.owner), action: entry.candidate.suggestedAction || entry.candidate.action || '', deadline: entry.candidate.deadline || '' }));
         refreshActionOwnerOptions(); stagedState.actions = actionsFromReview(); updateConfirmedActionCount();
         pruneConfirmedActionCandidates();
         resolveReviewItem('Added follow-up to confirmed actions: ' + (entry.candidate.suggestedAction || entry.candidate.action || 'Action'), card, entry.id);
       } else {
-        resolveReviewItem('Reviewed and dismissed as a non-action: ' + (entry.candidate.suggestedAction || entry.candidate.action || 'Candidate'), card, entry.id);
+        resolveReviewItem('Reviewed and dismissed as a non-action: ' + (entry.candidate.suggestedAction || entry.candidate.action || 'Action'), card, entry.id);
       }
     });
   }
@@ -3139,8 +3205,9 @@ td select {
     });
   }
   if (exportClientPdfButton) {
-    exportClientPdfButton.addEventListener('click', openClientPdfExport);
+    exportClientPdfButton.addEventListener('click', downloadClientPdf);
   }
+  if (previewClientPdfButton) previewClientPdfButton.addEventListener('click', previewClientPdf);
   if (actionsTableBody) {
     actionsTableBody.addEventListener('click', function (event) {
       var button = event.target.closest('[data-action-row]');
@@ -3167,7 +3234,7 @@ td select {
           select.insertAdjacentHTML('beforeend', '<option value="' + escapeHtml(addedOwner) + '">' + escapeHtml(addedOwner) + '</option>');
           select.value = addedOwner;
         } else {
-          select.value = select.getAttribute('data-owner') || 'Not stated';
+          select.value = validReviewerOwner(select.getAttribute('data-owner'));
         }
       }
       select.setAttribute('data-owner', select.value);
