@@ -125,6 +125,25 @@ textarea { min-height:110px; resize:vertical; }
 .key-fact-row input { background:#fff !important; color:#17222c !important; border-color:#c3ced8 !important; }
 .discussion-card { border:1px solid #d9e1e8; border-radius:12px; background:#fff; color:#17222c; overflow:hidden; }
 .discussion-card summary { cursor:pointer; display:flex; justify-content:space-between; gap:.75rem; padding:.8rem .9rem; font-weight:700; background:#f8fafc; }
+.discussion-card-title { min-width:0; }
+.discussion-card-summary-actions { display:inline-flex; align-items:center; gap:.5rem; flex:0 0 auto; }
+.discussion-card-chevron { display:inline-flex; align-items:center; justify-content:center; width:1.25rem; height:1.25rem; color:#435466; transition:transform .16s ease; }
+.discussion-card[open] .discussion-card-chevron { transform:rotate(180deg); }
+.discussion-card-delete {
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:1.6rem;
+  height:1.6rem;
+  padding:0;
+  border-radius:999px;
+  background:#ffffff;
+  color:#596875;
+  border:1px solid #cfdbe4;
+}
+.discussion-card-delete:hover { color:#991b1b; border-color:#f3b4b4; background:#fff5f5; }
+.discussion-card-delete svg,
+.discussion-card-chevron svg { width:.95rem; height:.95rem; }
 .discussion-card-body { padding:.85rem; display:grid; gap:.65rem; }
 .discussion-card textarea, .discussion-card input { background:#fff !important; color:#17222c !important; border-color:#c3ced8 !important; }
 .discussion-controls { display:flex; gap:.5rem; justify-content:flex-end; margin-bottom:.75rem; flex-wrap:wrap; }
@@ -1237,8 +1256,9 @@ td select {
       var seen = {};
       var bullets = bulletPoints.map(cleanDiscussionDisplayText).filter(function (point) { var key = point.toLowerCase(); if (!point || seen[key]) return false; seen[key] = true; return true; });
       if (!bullets.length) bullets = ['Review this section against the transcript.'];
-      return '<details class="discussion-card"' + (index === 0 ? ' open' : '') + ' data-discussion-index="' + index + '"><summary><span>' + escapeHtml(card.topic || 'Discussion') + '</span><span class="muted">' + bullets.length + ' point' + (bullets.length === 1 ? '' : 's') + '</span></summary><div class="discussion-card-body"><label>Topic<input class="discussion-topic-input" value="' + escapeHtml(card.topic || 'Discussion') + '" aria-label="Discussion topic ' + (index + 1) + '" /></label><label>Discussion points<textarea class="discussion-points-input" aria-label="Discussion points ' + (index + 1) + '">' + escapeHtml(bullets.map(function (point) { return '- ' + point; }).join('\n')) + '</textarea></label></div></details>';
+      return '<details class="discussion-card"' + (index === 0 ? ' open' : '') + ' data-discussion-index="' + index + '"><summary><span class="discussion-card-title">' + escapeHtml(card.topic || 'Discussion') + '</span><span class="discussion-card-summary-actions"><span class="muted">' + bullets.length + ' point' + (bullets.length === 1 ? '' : 's') + '</span><span class="discussion-card-chevron" aria-hidden="true"><i data-lucide="chevron-down"></i></span><button class="discussion-card-delete" type="button" data-discussion-delete aria-label="Remove discussion row"><i data-lucide="trash-2" aria-hidden="true"></i></button></span></summary><div class="discussion-card-body"><label>Topic<input class="discussion-topic-input" value="' + escapeHtml(card.topic || 'Discussion') + '" aria-label="Discussion topic ' + (index + 1) + '" /></label><label>Discussion points<textarea class="discussion-points-input" aria-label="Discussion points ' + (index + 1) + '">' + escapeHtml(bullets.map(function (point) { return '- ' + point; }).join('\n')) + '</textarea></label></div></details>';
     }).join('');
+    renderIcons();
   }
 
   function legacyRenderDiscussionCardsUnused(cards) {
@@ -2987,6 +3007,24 @@ td select {
   if (collapseDiscussionButton) {
     collapseDiscussionButton.addEventListener('click', function () {
       Array.prototype.slice.call(document.querySelectorAll('.discussion-card')).forEach(function (card) { card.open = false; });
+    });
+  }
+  if (discussionList) {
+    discussionList.addEventListener('click', function (event) {
+      var deleteButton = event.target.closest('[data-discussion-delete]');
+      if (!deleteButton) return;
+      event.preventDefault();
+      event.stopPropagation();
+      var card = deleteButton.closest('.discussion-card');
+      if (!card) return;
+      if (!window.confirm('Are you sure you want to remove this row?')) return;
+      card.remove();
+      if (!discussionRowsFromReview().length) renderDiscussionCards([]);
+      commitStageState('discussion');
+      renderFinalDocument();
+      renderTerminologyQa();
+      updateReviewToolbar();
+      saveDraft();
     });
   }
   if (nextReviewItemButton) {
