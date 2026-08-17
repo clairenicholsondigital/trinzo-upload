@@ -212,18 +212,16 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     <div class="jobs-header">
       <div class="jobs-heading">
         <h1>Library</h1>
-        <p class="intro">Find generated work and resume paused meeting-minute reviews. Archive finished test runs when you no longer want them shown here.</p>
+        <p class="intro">Find and resume your staged meeting-minute reviews.</p>
       </div>
       <div class="jobs-actions">
-        <a class="button secondary" href="/meeting-minutes-final">Process new meeting</a>
+        <a class="button secondary" href="/staged-meeting-minutes">Process new meeting</a>
         <button id="refreshBtn" type="button">Refresh</button>
       </div>
     </div>
     <nav class="queue-tabs" aria-label="Job queues">
       <a class="queue-tab" href="/jobs" aria-current="page">All items</a>
-      <a class="queue-tab" href="/jobs?type=meeting-minutes">Meeting minutes</a>
       <a class="queue-tab" href="/jobs?type=staged-meeting-minutes">Staged meeting minutes</a>
-      <a class="queue-tab" href="/jobs?type=project-updates">Project updates</a>
     </nav>
     <div id="bulkBar" class="bulk-bar" hidden>
       <label><input id="selectAllJobs" type="checkbox" /> Select all</label>
@@ -1196,7 +1194,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
 
   function currentQueueType() {
     const type = new URLSearchParams(window.location.search).get('type') || '';
-    return ['meeting-minutes', 'project-updates', 'staged-meeting-minutes'].includes(type) ? type : '';
+    return type === 'staged-meeting-minutes' ? type : '';
   }
 
   function updateQueueTabs() {
@@ -1239,7 +1237,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
                 <td data-label="Status"><span class="status ${statusClass(job.status)}">${escapeHtml(friendlyLabel(job.status || 'queued'))}</span>${job.stage && job.stage !== job.status ? `<br><small class="muted">${escapeHtml(friendlyLabel(job.stage))}</small>` : ''}${job.errorMessage ? `<br><small class="muted">${escapeHtml(job.errorMessage)}</small>` : ''}</td>
                 <td data-label="Actions" class="row-actions">
                   ${isLocalStagedDraft(job) ? `<a class="button" href="${escapeAttribute(job.resumeUrl)}">Resume</a><button class="danger" data-delete-staged="${escapeHtml(job.jobId)}" type="button">Delete</button>` : ''}
-                  ${job.jobType === 'staged_meeting_minutes_stage' ? `<a class="button" href="${escapeAttribute(job.resumeUrl)}">Resume staged review</a>` : ''}
+                  ${job.jobType === 'staged_meeting_minutes_stage' ? `<a class="button resume-staged" href="${escapeAttribute(job.resumeUrl)}">Resume staged review <span aria-hidden="true">›</span></a>` : ''}
                   ${!isStagedJob(job) && job.status === 'completed' ? `<a class="button" target="_blank" rel="noopener" href="/jobs/${encodeURIComponent(job.jobId)}/result">${job.jobType === 'project_update_generate' ? 'Open job' : 'Open result'}</a>` : ''}
                   ${!isStagedJob(job) && job.status === 'failed' ? `<button class="secondary" data-retry="${escapeHtml(job.jobId)}" type="button">Retry</button>` : ''}
                   ${!isStagedJob(job) && (job.status === 'queued' || job.status === 'running') ? `<button class="danger" data-cancel="${escapeHtml(job.jobId)}" type="button">Cancel</button>` : ''}
@@ -1254,7 +1252,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   }
 
   function canArchive(job) {
-    return isLocalStagedDraft(job) || ['completed', 'failed', 'cancelled'].includes(job.status);
+    return Boolean(job);
   }
 
   function updateBulkControls() {
@@ -1271,17 +1269,17 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   async function archiveJobs(jobs, allFinished = false) {
     if (!jobs.length) return;
     const prompt = allFinished
-      ? `Archive all ${jobs.length} available item${jobs.length === 1 ? '' : 's'} currently shown in Library?`
+      ? 'Archive every staged meeting-minutes item in Library?'
       : `Archive ${jobs.length} selected item${jobs.length === 1 ? '' : 's'}?`;
     if (!window.confirm(`${prompt} They will be hidden, not deleted.`)) return;
     const localIds = jobs.filter(isLocalStagedDraft).map((job) => job.jobId);
     const serverIds = jobs.filter((job) => !isLocalStagedDraft(job)).map((job) => job.jobId);
     try {
-      if (serverIds.length) {
+      if (serverIds.length || allFinished) {
         await fetchJson('/api/jobs/archive', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ jobIds: serverIds })
+          body: JSON.stringify(allFinished ? { archiveAll: true } : { jobIds: serverIds })
         });
       }
       if (localIds.length) archiveStagedDrafts(localIds);
@@ -1462,16 +1460,9 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     updateQueueTabs();
     const type = currentQueueType();
     const staged = stagedJobs();
-    if (type === 'staged-meeting-minutes') {
-      const payload = await fetchJson('/api/jobs?limit=100&type=staged-meeting-minutes');
-      const jobs = Array.isArray(payload.jobs) ? payload.jobs : [];
-      renderJobs(staged.concat(jobs));
-      return;
-    }
-    const apiType = type === 'meeting-minutes' || type === 'project-updates' ? type : '';
-    const payload = await fetchJson(`/api/jobs?limit=100${apiType ? `&type=${encodeURIComponent(apiType)}` : ''}`);
+    const payload = await fetchJson('/api/jobs?limit=100&type=staged-meeting-minutes');
     const jobs = Array.isArray(payload.jobs) ? payload.jobs : [];
-    renderJobs(type ? jobs : staged.concat(jobs));
+    renderJobs(staged.concat(jobs));
   }
 
   async function loadDetail() {

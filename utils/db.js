@@ -2428,8 +2428,18 @@ async function deleteGenerationJob(jobId) {
   return Boolean(result.rows[0]);
 }
 
-async function archiveGenerationJobs(jobIds = []) {
+async function archiveGenerationJobs(jobIds = [], options = {}) {
   await ensureMeetingJobQueueSchema();
+  if (options.archiveAll === true) {
+    const result = await query(
+      `UPDATE meeting_jobs
+       SET archived_at = NOW(), updated_at = NOW()
+       WHERE archived_at IS NULL
+         AND job_type = 'staged_meeting_minutes_stage'
+       RETURNING id`
+    );
+    return result.rows.map((row) => Number(row.id));
+  }
   const ids = [...new Set((Array.isArray(jobIds) ? jobIds : [])
     .map((value) => Number(value))
     .filter((value) => Number.isInteger(value) && value > 0))].slice(0, 200);
@@ -2440,7 +2450,6 @@ async function archiveGenerationJobs(jobIds = []) {
      WHERE id = ANY($1::bigint[])
        AND archived_at IS NULL
        AND job_type IN ('meeting_minutes_generate', 'project_update_generate', 'staged_meeting_minutes_stage')
-       AND status IN ('completed','failed','cancelled')
      RETURNING id`,
     [ids]
   );

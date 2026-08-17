@@ -421,6 +421,13 @@ tbody tr:last-child td { border-bottom:none; }
 .jobs .row-actions button {
   min-height:2.25rem;
 }
+.jobs .resume-staged {
+  white-space:nowrap;
+}
+.jobs .resume-staged span {
+  font-size:1.2em;
+  line-height:1;
+}
 .jobs .row-actions button.danger {
   background:var(--danger-text) !important;
   border-color:var(--danger-text) !important;

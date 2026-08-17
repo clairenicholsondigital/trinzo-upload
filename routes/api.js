@@ -5190,10 +5190,11 @@ router.delete('/jobs/:jobId', requireAuth, async (req, res) => {
 router.post('/jobs/archive', requireAuth, async (req, res) => {
   try {
     const requestedIds = Array.isArray(req.body?.jobIds) ? req.body.jobIds : [];
-    if (!requestedIds.length) {
+    const archiveAll = req.body?.archiveAll === true;
+    if (!archiveAll && !requestedIds.length) {
       return res.status(400).json({ ok: false, success: false, error: 'Select at least one item to archive.' });
     }
-    const archivedIds = await archiveGenerationJobs(requestedIds);
+    const archivedIds = await archiveGenerationJobs(requestedIds, { archiveAll });
     return res.json({ ok: true, success: true, archivedIds, archivedCount: archivedIds.length });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ ok: false, success: false, error: error.message || 'Failed to archive items.' });
