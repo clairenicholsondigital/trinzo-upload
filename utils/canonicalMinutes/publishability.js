@@ -5,7 +5,8 @@ const { clean } = require('./evidence');
 function isTranscriptMetaText(value) {
   const text = clean(value);
   if (!text) return true;
-  return /\b(?:start(?:ed|ing)?|stop(?:ped|ping)?|pause(?:d|ing)?|resume(?:d|ing)?)\s+(?:the\s+)?transcription\b/i.test(text)
+  return /\[\s*(?:barking|laughter|coughing|doorbell|music|background noise|inaudible)\s*\]/i.test(text)
+    || /\b(?:start(?:ed|ing)?|stop(?:ped|ping)?|pause(?:d|ing)?|resume(?:d|ing)?)\s+(?:the\s+)?transcription\b/i.test(text)
     || /\b(?:transcription|recording)\s+(?:has\s+)?(?:start(?:ed)?|stop(?:ped)?|pause(?:d)?|resume(?:d)?)\b/i.test(text)
     || /\b(?:can (?:everyone|you) hear me|you(?:'re| are) muted|unmute|mute button|share my screen|camera (?:is|isn't|is not)|microphone|mic (?:is|isn't|is not)|teams (?:has|is)|zoom (?:has|is)|connection (?:dropped|froze|has dropped)|sorry[, ]+carry on|go ahead[, ]+sorry)\b/i.test(text)
     || /^(?:hello|hi|morning|afternoon|thanks? (?:all|everyone)|cheers|bye|see you|speak soon)[.! ]*$/i.test(text);

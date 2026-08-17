@@ -42,6 +42,16 @@ test('transcription controls and malformed stitched text cannot become canonical
   assert.equal(canHeadlineTopic("soYou're getting ties time"), false);
 });
 
+test('common bracketed non-speech annotations cannot become canonical evidence', () => {
+  const annotations = ['Barking', 'Laughter', 'Coughing', 'Doorbell', 'Music', 'Background noise', 'Inaudible'];
+  for (const annotation of annotations) {
+    const text = `[${annotation}] No! Sorry. Carry on.`;
+    assert.equal(isTranscriptMetaText(text), true, annotation);
+    assert.equal(canStandAloneAsMinutesEvidence(text), false, annotation);
+    assert.equal(canHeadlineTopic(text), false, annotation);
+  }
+});
+
 test('meeting-purpose policy stays thin and cannot inject transcript content', () => {
   const plan = purposePlan({ title: 'Client Eakin Tech File Review Weekly', type: 'Technical file review' });
   assert.ok(plan);
