@@ -107,6 +107,7 @@ const {
   cancelGenerationJob,
   cancelMeetingMinutesJob,
   deleteGenerationJob,
+  archiveGenerationJobs,
   deleteMeetingMinutesJob,
   updateMeetingMinutesJobResult,
   saveStagedMeetingMinutesReviewEvent,
@@ -5183,6 +5184,19 @@ router.delete('/jobs/:jobId', requireAuth, async (req, res) => {
     return res.json({ ok: true, success: true });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ ok: false, success: false, error: error.message || 'Failed to delete job.' });
+  }
+});
+
+router.post('/jobs/archive', requireAuth, async (req, res) => {
+  try {
+    const requestedIds = Array.isArray(req.body?.jobIds) ? req.body.jobIds : [];
+    if (!requestedIds.length) {
+      return res.status(400).json({ ok: false, success: false, error: 'Select at least one item to archive.' });
+    }
+    const archivedIds = await archiveGenerationJobs(requestedIds);
+    return res.json({ ok: true, success: true, archivedIds, archivedCount: archivedIds.length });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ ok: false, success: false, error: error.message || 'Failed to archive items.' });
   }
 });
 

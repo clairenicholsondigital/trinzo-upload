@@ -159,8 +159,13 @@ textarea { min-height:110px; resize:vertical; }
 .action-review-groups { display:grid; gap:.7rem; margin-top:1rem; }
 .action-review-group { border:1px solid #d9e1e8; border-radius:10px; background:#fff; color:#27323a; overflow:hidden; }
 .action-review-group summary { cursor:pointer; padding:.7rem .8rem; font-weight:700; background:#f8fafc; }
-.action-candidate-card { padding:.7rem .8rem; border-top:1px solid #e7edf1; display:grid; gap:.5rem; }
-.action-candidate-actions { display:flex; gap:.45rem; flex-wrap:wrap; }
+.action-candidate-card { padding:.52rem .7rem; border-top:1px solid #e7edf1; display:grid; gap:.28rem; }
+.action-candidate-card > strong { line-height:1.3; }
+.action-candidate-meta { display:flex; align-items:center; justify-content:space-between; gap:.5rem; flex-wrap:wrap; min-height:1.85rem; }
+.action-candidate-owner { display:inline-flex; align-items:center; gap:.25rem; min-width:0; font-size:.82rem; }
+.review-owner-unresolved { display:inline-flex; align-items:center; border:1px dashed #9fb2bf; border-radius:999px; padding:.06rem .38rem; color:#315f70; font-size:.78rem; font-weight:700; }
+.action-candidate-actions { display:flex; align-items:center; gap:.3rem; margin-left:auto; }
+.action-candidate-actions button { min-height:1.8rem; padding:.28rem .5rem; border-radius:8px; font-size:.78rem; }
 .resolved-checks { margin-top:.65rem; color:#596875; font-size:.86rem; }
 .discussion-table td ul {
   margin:.2rem 0;
@@ -241,6 +246,7 @@ td textarea { min-height:68px; }
 .stage-decision-card .stage-validation-flags,
 .stage-decision-card .terminology-qa,
 .stage-decision-card .resolved-checks { margin:0; }
+.stage-autosave-bottom { justify-self:end; margin-top:-.25rem; opacity:.86; }
 .stage-validation-flags {
   margin-top:1rem;
   border:1px solid #e3d4a6;
@@ -520,7 +526,7 @@ td select {
     <a href="/meeting-minutes-final">Meeting transcript to minutes</a>
     <a href="/staged-meeting-minutes">Staged minutes</a>
     <a href="/staged-meeting-minutes/pre-testing">Pre-testing</a>
-    <a href="/jobs">Jobs</a>
+    <a href="/jobs">Library</a>
     <a href="/project-update-test">Project Updates</a>
     <a href="/project-update-test/roadmap">Roadmap</a>
   </nav>
@@ -725,8 +731,7 @@ td select {
           <details id="resolvedChecks" class="resolved-checks review-only" hidden><summary>Resolved checks</summary><div id="resolvedChecksList"></div></details>
         </div>
         <div id="stageAdditionalContextWrap" class="stage-decision-guidance" hidden>
-          <label for="stageAdditionalContext">Anything else to add? <span class="muted">Optional — tell the next step what to emphasise</span></label>
-          <textarea id="stageAdditionalContext" placeholder="For example: prioritise launch readiness or highlight unresolved client dependencies. Only transcript-supported information will be used."></textarea>
+          <textarea id="stageAdditionalContext" aria-label="Optional context for the next step" placeholder="Optional: add anything you’d like the next step to emphasise. Only transcript-supported information will be used."></textarea>
         </div>
         <div class="stage-decision-actions">
           <div class="secondary-group">
@@ -737,6 +742,7 @@ td select {
           <button id="nextScreenBtn" type="button">Yes, move on</button>
         </div>
         <div id="reviewGenerationStatus" class="review-status review-only" role="status" aria-live="polite"></div>
+        <small class="stage-autosave-status stage-autosave-bottom">Autosave ready</small>
       </div>
     </section>
   </main>
@@ -1092,6 +1098,11 @@ td select {
       stageDecisionHint.textContent = finalReviewCompleted ? 'Final review has been recorded. You can now download or preview the client-ready PDF.' : 'This records the approved screens for improvement analytics. You can then download or preview the client-ready PDF.';
       nextButton.textContent = 'Review complete';
       nextButton.disabled = finalReviewCompleted;
+    } else if (activeIndex === 0 && nextIndex === 1) {
+      stageDecisionQuestion.textContent = 'Ready to move onto Summary?';
+      stageDecisionHint.textContent = 'Continue when Details looks right, or add anything you’d like the next step to emphasise.';
+      nextButton.textContent = 'Continue to summary';
+      nextButton.disabled = !canMoveNext;
     } else {
       stageDecisionQuestion.textContent = 'Want to move onto ' + nextLabel + '?';
       stageDecisionHint.textContent = 'Continue when ' + currentLabel + ' looks right, or keep reviewing this stage.';
@@ -1763,7 +1774,7 @@ td select {
       return '<details class="action-review-group"' + (definition[2] ? ' open' : '') + '><summary>' + entries.length + ' ' + definition[1].toLowerCase() + '</summary>' + entries.map(function (entry) {
         var candidate = entry.candidate;
         var owner = validReviewerOwner(candidate.owner);
-        return '<div class="action-candidate-card" data-candidate-id="' + escapeHtml(entry.id) + '"><strong>' + escapeHtml(candidate.suggestedAction || candidate.action || 'Review follow-up') + '</strong><span class="muted">Owner: ' + (owner ? escapeHtml(owner) : '<span class="review-owner-unresolved">Add owner</span>') + '</span><div class="action-candidate-actions"><button type="button" data-candidate-action="add">Add to actions</button><button class="secondary" type="button" data-candidate-action="dismiss">Not an action</button></div></div>';
+        return '<div class="action-candidate-card" data-candidate-id="' + escapeHtml(entry.id) + '"><strong>' + escapeHtml(candidate.suggestedAction || candidate.action || 'Review follow-up') + '</strong><div class="action-candidate-meta"><span class="muted action-candidate-owner">Owner: ' + (owner ? escapeHtml(owner) : '<span class="review-owner-unresolved">Add owner</span>') + '</span><div class="action-candidate-actions"><button type="button" data-candidate-action="add" aria-label="Add to actions" title="Add to actions">✓ Add</button><button class="secondary" type="button" data-candidate-action="dismiss" aria-label="Not an action" title="Not an action">× Dismiss</button></div></div></div>';
       }).join('') + '</details>';
     }).join('');
     updateReviewToolbar();
@@ -2464,7 +2475,7 @@ td select {
       } catch (error) {
         if (!isTransientStagePollError(error) || transientPollFailures >= maxTransientPollFailures) throw error;
         transientPollFailures += 1;
-        setReviewStatus('Connection hiccup. Still checking the staged generation job... Elapsed: ' + elapsedStageText(startedAt) + '. You can close this tab and resume from Jobs.', false);
+        setReviewStatus('Connection hiccup. Still checking the staged generation job... Elapsed: ' + elapsedStageText(startedAt) + '. You can close this tab and resume from Library.', false);
         await delay(2500);
         continue;
       }
@@ -2483,10 +2494,10 @@ td select {
       var progress = Number(job.progressPercent || 0);
       var status = job.statusMessage || stageLoadingMessage(stage, false);
       var progressText = progress ? ' ' + progress + '%.' : '';
-      setReviewStatus(status + progressText + ' Elapsed: ' + elapsedStageText(startedAt) + '. You can close this tab and resume from Jobs.', false);
+      setReviewStatus(status + progressText + ' Elapsed: ' + elapsedStageText(startedAt) + '. You can close this tab and resume from Library.', false);
       await delay(2000);
     }
-    throw new Error('Staged ' + labelForStage(stage) + ' generation is taking longer than expected. You can track it from Jobs and reopen this draft when it is ready.');
+    throw new Error('Staged ' + labelForStage(stage) + ' generation is taking longer than expected. You can track it from Library and reopen this draft when it is ready.');
   }
 
   function recordRegeneration(stage, screenIndex) {
@@ -2556,7 +2567,7 @@ td select {
     var resumedStage = '';
     try {
       setReviewStarted(true);
-      setReviewStatus('Loading staged generation from Jobs...', false);
+      setReviewStatus('Loading staged generation from Library...', false);
       var payload = await fetchJson('/api/jobs/' + encodeURIComponent(stageJobId));
       if (!payload.job) throw new Error('Staged generation job not found.');
       var targetScreen = Number(params.get('screen') || requestedScreen || payload.job.inputPayload?.targetScreen || 0);

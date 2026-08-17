@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Jobs</title>
+<title>Library</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet" />
@@ -36,6 +36,11 @@ button:disabled { opacity:.55; cursor:not-allowed; }
 .jobs th { background:#0b1530; color:var(--muted); font-size:.86rem; }
 .jobs tr { background:#071126; }
 .jobs tr:hover { background:#0b1730; }
+.bulk-bar { display:flex; align-items:center; gap:.65rem; flex-wrap:wrap; margin:.85rem 0 0; padding:.55rem .65rem; border:1px solid var(--border); border-radius:10px; background:#071126; }
+.bulk-bar label { display:inline-flex; align-items:center; gap:.4rem; color:var(--muted); font-size:.9rem; cursor:pointer; }
+.bulk-bar input, .job-select { accent-color:var(--accent); }
+.bulk-bar button { padding:.42rem .65rem; font-size:.86rem; }
+.bulk-count { color:var(--muted); font-size:.86rem; min-width:5.5rem; }
 .status { display:inline-flex; padding:.25rem .55rem; border-radius:999px; border:1px solid var(--border); font-weight:700; font-size:.82rem; }
 .status.running { color:#e0fffd; border-color:rgba(23,208,196,.65); background:rgba(23,208,196,.1); }
 .status.completed { color:#bbf7d0; border-color:#166534; background:#052e1b; }
@@ -199,15 +204,15 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     <a href="/dashboard">Dashboard</a>
     <a href="/meeting-minutes-final">Meeting transcript to minutes</a>
     <a href="/staged-meeting-minutes">Staged minutes</a>
-    <a href="/jobs">Jobs</a>
+    <a href="/jobs">Library</a>
     <a href="/project-update-test">Project Updates</a>
   </nav>
 
   <section id="listPanel" class="panel jobs-shell">
     <div class="jobs-header">
       <div class="jobs-heading">
-        <h1>Jobs</h1>
-        <p class="intro">Track queued, running, completed and failed work across the Trinzo tools. Live generation jobs appear alongside browser-saved staged review drafts so paused meeting-minute reviews can be resumed.</p>
+        <h1>Library</h1>
+        <p class="intro">Find generated work and resume paused meeting-minute reviews. Archive finished test runs when you no longer want them shown here.</p>
       </div>
       <div class="jobs-actions">
         <a class="button secondary" href="/meeting-minutes-final">Process new meeting</a>
@@ -215,18 +220,24 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
       </div>
     </div>
     <nav class="queue-tabs" aria-label="Job queues">
-      <a class="queue-tab" href="/jobs" aria-current="page">All jobs</a>
+      <a class="queue-tab" href="/jobs" aria-current="page">All items</a>
       <a class="queue-tab" href="/jobs?type=meeting-minutes">Meeting minutes</a>
       <a class="queue-tab" href="/jobs?type=staged-meeting-minutes">Staged meeting minutes</a>
       <a class="queue-tab" href="/jobs?type=project-updates">Project updates</a>
     </nav>
+    <div id="bulkBar" class="bulk-bar" hidden>
+      <label><input id="selectAllJobs" type="checkbox" /> Select all</label>
+      <span id="bulkCount" class="bulk-count">0 selected</span>
+      <button id="archiveSelectedBtn" class="secondary" type="button" disabled>Archive selected</button>
+      <button id="archiveAllBtn" class="secondary" type="button">Archive all</button>
+    </div>
     <div id="message" class="message" hidden></div>
     <div id="listView"></div>
   </section>
 
   <section id="detailPanel" class="panel" hidden>
     <div class="toolbar">
-      <h2 id="detailTitle">Job detail</h2>
+      <h2 id="detailTitle">Library item</h2>
       <div class="row-actions">
         <button id="retryBtn" class="secondary" type="button">Retry</button>
         <button id="cancelBtn" class="danger" type="button">Cancel</button>
@@ -260,6 +271,11 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   const resultJson = document.getElementById('resultJson');
   const retryBtn = document.getElementById('retryBtn');
   const cancelBtn = document.getElementById('cancelBtn');
+  const bulkBar = document.getElementById('bulkBar');
+  const selectAllJobs = document.getElementById('selectAllJobs');
+  const bulkCount = document.getElementById('bulkCount');
+  const archiveSelectedBtn = document.getElementById('archiveSelectedBtn');
+  const archiveAllBtn = document.getElementById('archiveAllBtn');
   const pathMatch = window.location.pathname.match(/(?:\/jobs|\/meeting-minutes-final\/jobs)\/([^/]+)(?:\/result)?$/);
   const resultOnly = /(?:\/jobs|\/meeting-minutes-final\/jobs)\/[^/]+\/result$/.test(window.location.pathname);
   let activeJobId = pathMatch && /^\d+$/.test(pathMatch[1]) ? Number(pathMatch[1]) : null;
@@ -270,6 +286,8 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   let editDirty = false;
   let editFocused = false;
   let timer = null;
+  let visibleJobs = [];
+  const selectedJobs = new Set();
 
   function escapeHtml(value) {
     return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -335,6 +353,14 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
     localStorage.setItem('stagedMeetingMinutesJobs', JSON.stringify(drafts));
   }
 
+  function archiveStagedDrafts(jobIds) {
+    const ids = new Set(jobIds.map(String));
+    const drafts = readStagedDrafts().map((draft) => ids.has(String(draft.jobId))
+      ? { ...draft, archivedAt: new Date().toISOString() }
+      : draft);
+    localStorage.setItem('stagedMeetingMinutesJobs', JSON.stringify(drafts));
+  }
+
   function stagedDraftJob(draft) {
     return {
       jobId: draft.jobId,
@@ -358,7 +384,7 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   }
 
   function stagedJobs() {
-    return readStagedDrafts().map(stagedDraftJob);
+    return readStagedDrafts().filter((draft) => !draft.archivedAt).map(stagedDraftJob);
   }
 
   function isStagedJob(job) {
@@ -1184,9 +1210,12 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
   }
 
   function renderJobs(jobs) {
+    visibleJobs = jobs;
+    selectedJobs.clear();
+    updateBulkControls();
     if (!jobs.length) {
       const type = currentQueueType();
-      listView.innerHTML = `<p class="muted">No ${type === 'project-updates' ? 'project-update' : type === 'meeting-minutes' ? 'meeting-minutes' : ''} jobs yet.</p>`;
+      listView.innerHTML = `<p class="muted">No ${type === 'project-updates' ? 'project-update' : type === 'meeting-minutes' ? 'meeting-minutes' : ''} items yet.</p>`;
       return;
     }
     listView.innerHTML = `
@@ -1194,7 +1223,8 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
         <table class="jobs">
           <thead>
             <tr>
-              <th>Job</th>
+              <th aria-label="Select"></th>
+              <th>Item</th>
               <th>Type</th>
               <th>Meeting</th>
               <th>Status</th>
@@ -1207,7 +1237,8 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
           <tbody>
             ${jobs.map((job) => `
               <tr>
-                <td data-label="Job"><strong>#${escapeHtml(job.jobId)}</strong><br><small class="muted">${escapeHtml(formatDate(job.createdAt))}</small></td>
+                <td data-label="Select"><input class="job-select" type="checkbox" data-select-job="${escapeHtml(job.jobId)}" aria-label="Select ${escapeHtml(jobTitle(job))}" ${canArchive(job) ? '' : 'disabled'} /></td>
+                <td data-label="Item"><strong>#${escapeHtml(job.jobId)}</strong><br><small class="muted">${escapeHtml(formatDate(job.createdAt))}</small></td>
                 <td data-label="Type"><span class="badge">${escapeHtml(jobTypeLabel(job))}</span></td>
                 <td data-label="Meeting"><strong>${escapeHtml(jobTitle(job))}</strong><br><small class="muted">${escapeHtml(job.fileName || `${job.transcriptLength || 0} chars`)}</small></td>
                 <td data-label="Status"><span class="status ${statusClass(job.status)}">${escapeHtml(friendlyLabel(job.status || 'queued'))}</span>${job.errorMessage ? `<br><small class="muted">${escapeHtml(job.errorMessage)}</small>` : ''}</td>
@@ -1229,6 +1260,45 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
         </table>
       </div>
     `;
+  }
+
+  function canArchive(job) {
+    return isLocalStagedDraft(job) || ['completed', 'failed', 'cancelled'].includes(job.status);
+  }
+
+  function updateBulkControls() {
+    const eligible = visibleJobs.filter(canArchive);
+    const selectedCount = [...selectedJobs].filter((id) => eligible.some((job) => String(job.jobId) === id)).length;
+    bulkBar.hidden = !eligible.length;
+    bulkCount.textContent = `${selectedCount} selected`;
+    archiveSelectedBtn.disabled = selectedCount === 0;
+    archiveAllBtn.disabled = eligible.length === 0;
+    selectAllJobs.checked = eligible.length > 0 && selectedCount === eligible.length;
+    selectAllJobs.indeterminate = selectedCount > 0 && selectedCount < eligible.length;
+  }
+
+  async function archiveJobs(jobs, allFinished = false) {
+    if (!jobs.length) return;
+    const prompt = allFinished
+      ? `Archive all ${jobs.length} available item${jobs.length === 1 ? '' : 's'} currently shown in Library?`
+      : `Archive ${jobs.length} selected item${jobs.length === 1 ? '' : 's'}?`;
+    if (!window.confirm(`${prompt} They will be hidden, not deleted.`)) return;
+    const localIds = jobs.filter(isLocalStagedDraft).map((job) => job.jobId);
+    const serverIds = jobs.filter((job) => !isLocalStagedDraft(job)).map((job) => job.jobId);
+    try {
+      if (serverIds.length) {
+        await fetchJson('/api/jobs/archive', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jobIds: serverIds })
+        });
+      }
+      if (localIds.length) archiveStagedDrafts(localIds);
+      setMessage(`${jobs.length} item${jobs.length === 1 ? '' : 's'} archived.`, 'success');
+      await loadList();
+    } catch (error) {
+      setMessage(error.message || 'Could not archive the selected items.', 'error');
+    }
   }
 
   function summaryItem(label, value) {
@@ -1474,6 +1544,22 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
       refresh();
     }
   });
+  listView.addEventListener('change', (event) => {
+    const checkbox = event.target.closest('[data-select-job]');
+    if (!checkbox) return;
+    const id = String(checkbox.dataset.selectJob);
+    if (checkbox.checked) selectedJobs.add(id);
+    else selectedJobs.delete(id);
+    updateBulkControls();
+  });
+  selectAllJobs.addEventListener('change', () => {
+    selectedJobs.clear();
+    if (selectAllJobs.checked) visibleJobs.filter(canArchive).forEach((job) => selectedJobs.add(String(job.jobId)));
+    listView.querySelectorAll('[data-select-job]').forEach((checkbox) => { checkbox.checked = selectedJobs.has(String(checkbox.dataset.selectJob)); });
+    updateBulkControls();
+  });
+  archiveSelectedBtn.addEventListener('click', () => archiveJobs(visibleJobs.filter((job) => selectedJobs.has(String(job.jobId)))));
+  archiveAllBtn.addEventListener('click', () => archiveJobs(visibleJobs.filter(canArchive), true));
   resultActions.addEventListener('click', (event) => {
     const deleteBackendJob = event.target.closest('[data-delete]');
     if (deleteBackendJob) {

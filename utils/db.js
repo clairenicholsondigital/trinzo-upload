@@ -1828,6 +1828,7 @@ ALTER TABLE meeting_jobs ADD COLUMN IF NOT EXISTS stage TEXT NOT NULL DEFAULT 'q
 ALTER TABLE meeting_jobs ADD COLUMN IF NOT EXISTS progress_percent INT NOT NULL DEFAULT 0;
 ALTER TABLE meeting_jobs ADD COLUMN IF NOT EXISTS status_message TEXT NOT NULL DEFAULT '';
 ALTER TABLE meeting_jobs ADD COLUMN IF NOT EXISTS cancel_requested BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE meeting_jobs ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
 ALTER TABLE meeting_jobs DROP CONSTRAINT IF EXISTS meeting_jobs_job_type_check;
 ALTER TABLE meeting_jobs ADD CONSTRAINT meeting_jobs_job_type_check
   CHECK (job_type IN ('agent_extract', 'webhook_send', 'document_generate', 'meeting_minutes_generate', 'project_update_generate', 'staged_meeting_minutes_stage'));
@@ -2124,6 +2125,7 @@ async function listGenerationJobs(limit = 50, filters = {}) {
        LIMIT 1
      ) a ON TRUE
      WHERE j.job_type IN ('meeting_minutes_generate', 'project_update_generate', 'staged_meeting_minutes_stage')
+       AND j.archived_at IS NULL
        ${jobType ? 'AND j.job_type = $2' : ''}
      ORDER BY
        CASE j.status WHEN 'running' THEN 0 WHEN 'queued' THEN 1 WHEN 'failed' THEN 2 ELSE 3 END,
@@ -2424,6 +2426,25 @@ async function deleteGenerationJob(jobId) {
     [Number(jobId)]
   );
   return Boolean(result.rows[0]);
+}
+
+async function archiveGenerationJobs(jobIds = []) {
+  await ensureMeetingJobQueueSchema();
+  const ids = [...new Set((Array.isArray(jobIds) ? jobIds : [])
+    .map((value) => Number(value))
+    .filter((value) => Number.isInteger(value) && value > 0))].slice(0, 200);
+  if (!ids.length) return [];
+  const result = await query(
+    `UPDATE meeting_jobs
+     SET archived_at = NOW(), updated_at = NOW()
+     WHERE id = ANY($1::bigint[])
+       AND archived_at IS NULL
+       AND job_type IN ('meeting_minutes_generate', 'project_update_generate', 'staged_meeting_minutes_stage')
+       AND status IN ('completed','failed','cancelled')
+     RETURNING id`,
+    [ids]
+  );
+  return result.rows.map((row) => Number(row.id));
 }
 
 async function deleteMeetingMinutesJob(jobId) {
@@ -3670,6 +3691,7 @@ module.exports = {
   cancelGenerationJob,
   cancelMeetingMinutesJob,
   deleteGenerationJob,
+  archiveGenerationJobs,
   deleteMeetingMinutesJob,
   updateMeetingMinutesJobResult,
   claimNextJob,
