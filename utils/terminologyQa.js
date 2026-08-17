@@ -33,11 +33,21 @@ function generatedFields(stage, content) {
     { path: `discussion.${index}.topic`, text: card.topic },
     ...(card.points || []).map((text, pointIndex) => ({ path: `discussion.${index}.points.${pointIndex}`, text }))
   ]);
-  if (stage === 'actions') return (content || []).flatMap((action, index) => [
+  if (stage === 'actions') {
+    const actions = Array.isArray(content) ? content : (Array.isArray(content?.actions) ? content.actions : []);
+    const actionCandidates = Array.isArray(content?.actionCandidates) ? content.actionCandidates : [];
+    return [
+      ...actions.flatMap((action, index) => [
     { path: `actions.${index}.owner`, text: action.owner, entityType: 'attendee' },
     { path: `actions.${index}.action`, text: action.action },
     { path: `actions.${index}.deadline`, text: action.deadline }
-  ]);
+      ]),
+      ...actionCandidates.map((candidate, index) => ({
+        path: `actionCandidates.${index}.action`,
+        text: candidate.suggestedAction || candidate.action
+      }))
+    ];
+  }
   return [];
 }
 

@@ -503,6 +503,27 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("renderValidationFlags(currentValidationFlags, currentValidationStage || stageForScreen(activeIndex), currentActionReviewCandidatePayloads)", staged_page)
         self.assertIn("actionReviewCandidates = actionReviewCandidates.filter(function (entry) { return entry.id !== resolvedKey; })", staged_page)
 
+    def test_staged_terminology_qa_covers_likely_action_candidates_and_is_collapsed(self):
+        staged_page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
+        terminology = (REPO_DIR / "utils" / "terminologyQa.js").read_text(encoding="utf-8")
+
+        self.assertIn("actionCandidates: currentActionReviewCandidatePayloads", staged_page)
+        self.assertIn("function actionCandidateIndexFromFieldPath(fieldPath)", staged_page)
+        self.assertIn("function setActionCandidateTerminologyValue(fieldPath, value)", staged_page)
+        self.assertIn("path: `actionCandidates.${index}.action`", terminology)
+        self.assertIn("var details = document.createElement('details')", staged_page)
+        self.assertIn("details.className = 'terminology-qa-details'", staged_page)
+        self.assertNotIn("details.open = true", staged_page)
+
+    def test_staged_final_review_only_shows_pdf_export_action(self):
+        staged_page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
+
+        self.assertIn('id="exportClientPdfBtn"', staged_page)
+        self.assertNotIn('<button class="secondary" type="button" disabled>Copy</button>', staged_page)
+        self.assertNotIn('<button class="secondary" type="button" disabled>Email</button>', staged_page)
+        self.assertNotIn('<button class="secondary" type="button" disabled>Save draft</button>', staged_page)
+        self.assertNotIn("Copy, Email and Save draft are not available yet.", staged_page)
+
     def test_resolved_workstream_flags_do_not_silently_block_actions_transition(self):
         staged_page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
 

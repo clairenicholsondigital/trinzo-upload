@@ -251,6 +251,10 @@ td textarea { min-height:68px; }
 .terminology-qa[hidden] { display:none; }
 .terminology-qa h3 { margin:0; color:#02173B; font-size:.95rem; }
 .terminology-qa p { margin:0; color:#596875; font-size:.86rem; }
+.terminology-qa-details { display:grid; gap:.45rem; }
+.terminology-qa-details summary { cursor:pointer; color:#02173B; font-weight:700; }
+.terminology-qa-details-body { display:grid; gap:.45rem; padding-top:.5rem; }
+.terminology-qa-summary-note { display:block; color:#596875; font-size:.86rem; font-weight:400; margin-top:.15rem; }
 .terminology-suggestion { display:flex; align-items:center; gap:.65rem; flex-wrap:wrap; padding:.45rem 0; border-top:1px solid #dbe8ed; font-size:.9rem; }
 .terminology-suggestion mark { background:#e6f7f7; color:#02173B; padding:.08rem .2rem; border-radius:3px; }
 .terminology-suggestion-actions { margin-left:auto; display:flex; gap:.4rem; }
@@ -655,7 +659,7 @@ td select {
         <div class="screen-header">
           <div>
             <h2>Final review</h2>
-            <p class="intro">Review the final minutes layout before export, copy, email or draft save.</p>
+            <p class="intro">Review the final minutes layout before exporting the PDF.</p>
           </div>
           <span class="progress-pill">5 of 5</span>
         </div>
@@ -664,11 +668,8 @@ td select {
         </div>
         <div class="actions" style="margin-top:.85rem;">
           <button id="exportClientPdfBtn" type="button" disabled>Export PDF</button>
-          <button class="secondary" type="button" disabled>Copy</button>
-          <button class="secondary" type="button" disabled>Email</button>
-          <button class="secondary" type="button" disabled>Save draft</button>
         </div>
-        <p class="note final-output-note">Copy, Email and Save draft are not available yet. Export PDF is available from this review.</p>
+        <p class="note final-output-note">Export PDF opens a clean client-facing copy from this review.</p>
       </article>
 
       <div id="reviewToolbar" class="review-toolbar review-only" hidden>
@@ -1780,8 +1781,59 @@ td select {
   function terminologyQaContent(stage) {
     if (stage === 'summary') return summaryFromDom();
     if (stage === 'discussion') return discussionRowsFromReview().map(function (item) { return { topic: item.topic, points: item.bullets }; });
-    if (stage === 'actions') return actionsFromReview();
+    if (stage === 'actions') return {
+      actions: actionsFromReview(),
+      actionCandidates: currentActionReviewCandidatePayloads
+    };
     return null;
+  }
+
+  function actionCandidateIndexFromFieldPath(fieldPath) {
+    var parts = String(fieldPath || '').split('.');
+    return parts[0] === 'actionCandidates' && parts[2] === 'action' ? Number(parts[1]) : -1;
+  }
+
+  function actionCandidateEntryForIndex(index) {
+    if (!Number.isFinite(index) || index < 0) return null;
+    var payload = currentActionReviewCandidatePayloads[index] || null;
+    var entry = payload && payload.id
+      ? actionReviewCandidates.find(function (candidate) { return candidate.id === payload.id; })
+      : actionReviewCandidates[index];
+    return { payload: payload, entry: entry || null };
+  }
+
+  function actionCandidateCardForIndex(index) {
+    var pair = actionCandidateEntryForIndex(index);
+    var id = pair && pair.payload && pair.payload.id ? pair.payload.id : pair && pair.entry && pair.entry.id;
+    if (!id || !actionReviewGroups) return null;
+    return Array.prototype.slice.call(actionReviewGroups.querySelectorAll('.action-candidate-card'))
+      .find(function (card) { return card.getAttribute('data-candidate-id') === id; }) || null;
+  }
+
+  function actionCandidateTerminologyValue(fieldPath) {
+    var pair = actionCandidateEntryForIndex(actionCandidateIndexFromFieldPath(fieldPath));
+    var source = pair && (pair.payload || (pair.entry && pair.entry.candidate));
+    return source ? String(source.suggestedAction || source.action || '') : '';
+  }
+
+  function setActionCandidateTerminologyValue(fieldPath, value) {
+    var index = actionCandidateIndexFromFieldPath(fieldPath);
+    var pair = actionCandidateEntryForIndex(index);
+    var text = String(value || '');
+    if (!pair || (!pair.payload && !pair.entry)) return false;
+    if (pair.payload) {
+      pair.payload.action = text;
+      pair.payload.suggestedAction = text;
+    }
+    if (pair.entry && pair.entry.candidate) {
+      pair.entry.candidate.action = text;
+      pair.entry.candidate.suggestedAction = text;
+    }
+    currentActionReviewCandidatePayloads = actionReviewCandidates.map(function (entry) {
+      return compactActionCandidateForDraft(Object.assign({}, entry.candidate, { id: entry.id, sourceFlagKey: entry.flagKey }));
+    });
+    renderActionReviewGroups();
+    return true;
   }
 
   function terminologyQaControl(fieldPath) {
@@ -1810,6 +1862,17 @@ td select {
   }
 
   function focusTerminologyControl(item) {
+    var candidateIndex = actionCandidateIndexFromFieldPath(item && item.fieldPath);
+    if (candidateIndex >= 0) {
+      var card = actionCandidateCardForIndex(candidateIndex);
+      if (!card) return;
+      var parentDetails = card.closest('details');
+      if (parentDetails) parentDetails.open = true;
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      var button = card.querySelector('button');
+      if (button) button.focus();
+      return;
+    }
     var control = terminologyQaControl(item && item.fieldPath);
     if (!control) return;
     var discussionCard = control.closest('.discussion-card');
@@ -1833,7 +1896,16 @@ td select {
       updateReviewToolbar();
       return;
     }
-    terminologyQaPanel.innerHTML = '<h3>Check these terms</h3><p>The tool changed these terms.</p>';
+    terminologyQaPanel.innerHTML = '';
+    var details = document.createElement('details');
+    details.className = 'terminology-qa-details';
+    var summary = document.createElement('summary');
+    summary.innerHTML = 'Check these terms<span class="terminology-qa-summary-note">The tool changed ' + (visibleApplied.length + visibleSuggestions.length) + ' term' + (visibleApplied.length + visibleSuggestions.length === 1 ? '' : 's') + '.</span>';
+    var body = document.createElement('div');
+    body.className = 'terminology-qa-details-body';
+    details.appendChild(summary);
+    details.appendChild(body);
+    terminologyQaPanel.appendChild(details);
     visibleApplied.forEach(function (item) {
       var control = terminologyQaControl(item.fieldPath);
       if (control) control.classList.add('qa-field-highlight');
@@ -1856,7 +1928,7 @@ td select {
       actions.appendChild(jump); actions.appendChild(undo);
       row.appendChild(copy);
       row.appendChild(actions);
-      terminologyQaPanel.appendChild(row);
+      body.appendChild(row);
     });
     visibleSuggestions.forEach(function (item) {
       var control = terminologyQaControl(item.fieldPath);
@@ -1888,7 +1960,7 @@ td select {
       jumpToField.type = 'button'; jumpToField.className = 'secondary'; jumpToField.textContent = 'Go to field';
       jumpToField.addEventListener('click', function () { focusTerminologyControl(item); });
       actions.appendChild(scopeSelect); actions.appendChild(jumpToField); actions.appendChild(accept); actions.appendChild(reject); row.appendChild(copy); row.appendChild(actions);
-      terminologyQaPanel.appendChild(row);
+      body.appendChild(row);
     });
     terminologyQaPanel.hidden = false;
     updateReviewToolbar();
@@ -1896,6 +1968,12 @@ td select {
 
   function replaceTerminologySuggestion(item) {
     var control = terminologyQaControl(item.fieldPath);
+    if (!control && actionCandidateIndexFromFieldPath(item.fieldPath) >= 0) {
+      var candidateValue = actionCandidateTerminologyValue(item.fieldPath);
+      if (!candidateValue) return;
+      setActionCandidateTerminologyValue(item.fieldPath, replaceAllTerminology(candidateValue, item.original, item.replacement));
+      return;
+    }
     if (!control) return;
     if (control.tagName === 'SELECT') {
       control.value = item.replacement;
@@ -1930,14 +2008,19 @@ td select {
       if (terminologySuppressedAutoKeys[key]) return;
       if (terminologyAppliedCorrections.some(function (existing) { return terminologyAutoKey(existing, existing.stage) === key && existing.status !== 'undone'; })) return;
       var control = terminologyQaControl(item.fieldPath);
-      if (!control || control.tagName === 'SELECT') return;
-      var beforeValue = String(control.value || '');
+      var candidateField = !control && actionCandidateIndexFromFieldPath(item.fieldPath) >= 0;
+      if ((!control && !candidateField) || (control && control.tagName === 'SELECT')) return;
+      var beforeValue = candidateField ? actionCandidateTerminologyValue(item.fieldPath) : String(control.value || '');
       if (beforeValue.indexOf(item.original) === -1) return;
       var afterValue = replaceAllTerminology(beforeValue, item.original, item.replacement);
       if (afterValue === beforeValue) return;
-      control.value = afterValue;
-      control.dispatchEvent(new Event('input', { bubbles: true }));
-      control.dispatchEvent(new Event('change', { bubbles: true }));
+      if (candidateField) {
+        setActionCandidateTerminologyValue(item.fieldPath, afterValue);
+      } else {
+        control.value = afterValue;
+        control.dispatchEvent(new Event('input', { bubbles: true }));
+        control.dispatchEvent(new Event('change', { bubbles: true }));
+      }
       terminologyAppliedCorrections.push({
         id: item.id + '-' + Date.now(),
         stage: stage,
@@ -1970,6 +2053,31 @@ td select {
 
   function undoTerminologyCorrection(item) {
     var control = terminologyQaControl(item.fieldPath);
+    var candidateField = !control && actionCandidateIndexFromFieldPath(item.fieldPath) >= 0;
+    if (candidateField) {
+      var currentCandidateValue = actionCandidateTerminologyValue(item.fieldPath);
+      setActionCandidateTerminologyValue(item.fieldPath, currentCandidateValue === item.afterValue
+        ? item.beforeValue
+        : replaceAllTerminology(currentCandidateValue, item.replacement, item.original));
+      item.status = 'undone';
+      item.undoneAt = new Date().toISOString();
+      terminologySuppressedAutoKeys[terminologyAutoKey(item, item.stage)] = true;
+      terminologyDecisionEvents.push({
+        originalText: item.original,
+        suggestedText: item.replacement,
+        decision: 'auto_undone',
+        scopeType: 'project',
+        scopeKey: '',
+        fieldPath: item.fieldPath || '',
+        stage: item.stage || stageForScreen(activeIndex),
+        at: new Date().toISOString()
+      });
+      syncCurrentStageAfterTerminology(item.stage || stageForScreen(activeIndex));
+      renderTerminologyQa();
+      persistReviewAnalytics('terminology_auto_undone', 'latest_snapshot', { immediate: true });
+      setReviewStatus('Terminology change undone.', false);
+      return;
+    }
     if (!control || control.tagName === 'SELECT') return;
     var currentValue = String(control.value || '');
     if (currentValue === item.afterValue) {

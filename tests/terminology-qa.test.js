@@ -34,6 +34,23 @@ test('terminology QA marks configured transcript corrections for automatic appli
   assert.ok(automatic.includes('Kappa->CAPA'));
 });
 
+test('terminology QA applies shared corrections to action review candidates', () => {
+  const suggestions = reviewGeneratedContent({
+    stage: 'actions',
+    content: {
+      actions: [],
+      actionCandidates: [
+        { suggestedAction: 'Review the Kappa investigation evidence', action: 'Review the Kappa investigation evidence' }
+      ]
+    },
+    scope: { type: 'project', key: 'T796' }
+  });
+  const candidateCorrection = suggestions.find((item) => item.fieldPath === 'actionCandidates.0.action');
+  assert.equal(candidateCorrection?.original, 'Kappa');
+  assert.equal(candidateCorrection?.replacement, 'CAPA');
+  assert.equal(candidateCorrection?.autoApply, true);
+});
+
 test('terminology QA does not fuzzy-suggest QMS as PMS', () => {
   const suggestions = reviewGeneratedContent({
     stage: 'summary',
