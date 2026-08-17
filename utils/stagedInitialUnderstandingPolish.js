@@ -74,14 +74,12 @@ function normaliseTopicObjective(topic) {
 function deterministicPresentationFallback(original, reason = 'unsafe_presentation') {
   const objectives = cleanLines(original.objectives, 5)
     .filter((item) => !objectiveIssue(item));
-  if (!objectives.length) {
-    for (const topic of cleanLines(original.overallTopics, 8)) {
-      const objective = normaliseTopicObjective(topic);
-      if (objective && !objectives.some((item) => item.toLowerCase() === objective.toLowerCase())) {
-        objectives.push(objective);
-      }
-      if (objectives.length >= 5) break;
+  for (const topic of cleanLines(original.overallTopics, 8)) {
+    const objective = normaliseTopicObjective(topic);
+    if (objective && !objectives.some((item) => item.toLowerCase() === objective.toLowerCase())) {
+      objectives.push(objective);
     }
+    if (objectives.length >= 5) break;
   }
   const executiveSummary = fallbackMinutesReadySummary(original.executiveSummary) || clean(original.meetingPurpose);
   if (!objectives.length || !executiveSummary || transcriptShapedSummaryIssue(executiveSummary)) {

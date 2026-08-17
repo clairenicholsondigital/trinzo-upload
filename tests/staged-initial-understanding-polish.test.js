@@ -126,7 +126,10 @@ test('deterministic fallback drops unsafe objective labels and unsafe summary fr
   }, 'malformed_objective');
   assert.equal(fallback.used, true);
   assert.equal(fallback.reason, 'deterministic_malformed_objective');
-  assert.deepEqual(fallback.objectives, ['Review assessment tool requirements.']);
+  assert.deepEqual(fallback.objectives, [
+    'Review assessment tool requirements.',
+    'Review quality system and quality culture.'
+  ]);
   assert.doesNotMatch(fallback.executiveSummary, /\bWe'd\b|what's what|For a site in the areas/i);
 });
 
