@@ -237,12 +237,31 @@ function topicForFact(factText) {
   return 'Confirmed meeting context';
 }
 
-function appendFactToDiscussion(discussion = [], fact) {
+function tokenOverlap(left, right) {
+  const leftTokens = new Set(cleanText(left).toLowerCase().split(/[^a-z0-9]+/).filter((token) => token.length > 3));
+  const rightTokens = new Set(cleanText(right).toLowerCase().split(/[^a-z0-9]+/).filter((token) => token.length > 3));
+  if (!leftTokens.size || !rightTokens.size) return 0;
+  let shared = 0;
+  for (const token of leftTokens) if (rightTokens.has(token)) shared += 1;
+  return shared / Math.min(leftTokens.size, rightTokens.size);
+}
+
+function bestAuthoritativeTopicForFact(factText, authoritativeTopics = []) {
+  const ranked = (Array.isArray(authoritativeTopics) ? authoritativeTopics : [])
+    .map((topic) => cleanText(topic))
+    .filter(Boolean)
+    .map((topic) => ({ topic, score: Math.max(textSimilarity(topic, factText), tokenOverlap(topic, factText)) }))
+    .sort((left, right) => right.score - left.score);
+  return ranked[0]?.score >= 0.18 ? ranked[0].topic : '';
+}
+
+function appendFactToDiscussion(discussion = [], fact, options = {}) {
   const cards = (Array.isArray(discussion) ? discussion : []).map((card) => ({
     ...card,
     points: Array.isArray(card && card.points) ? [...card.points] : []
   }));
-  const topic = topicForFact(fact.text);
+  const authoritativeTopic = bestAuthoritativeTopicForFact(fact.text, options.authoritativeTopics);
+  const topic = authoritativeTopic || (Array.isArray(options.authoritativeTopics) && options.authoritativeTopics.length ? 'Other' : topicForFact(fact.text));
   const evidenceIds = Array.isArray(fact.evidenceIds) ? fact.evidenceIds.filter(Boolean) : [];
   const existing = cards.find((card) => textSimilarity(card.topic || '', topic) >= 0.35)
     || cards.find((card) => textSimilarity(`${card.topic || ''} ${(card.points || []).join(' ')}`, fact.text) >= 0.18);
@@ -281,7 +300,7 @@ function semanticAnchorsForDiscussion(understanding = {}) {
   return anchors;
 }
 
-function repairDiscussionForConfirmedUnderstanding({ discussion = [], understanding = {}, transcriptText = '', evidenceEvents = [] } = {}) {
+function repairDiscussionForConfirmedUnderstanding({ discussion = [], understanding = {}, transcriptText = '', evidenceEvents = [], authoritativeTopics = [] } = {}) {
   let repaired = Array.isArray(discussion) ? discussion : [];
   const validationFlags = [];
   const repairedFacts = [];
@@ -301,7 +320,7 @@ function repairDiscussionForConfirmedUnderstanding({ discussion = [], understand
     };
     supportedFacts.push(fact.id);
     if (!factIsPreserved(fact.text, repaired)) {
-      repaired = appendFactToDiscussion(repaired, factWithEvidence);
+      repaired = appendFactToDiscussion(repaired, factWithEvidence, { authoritativeTopics });
       repairedFacts.push(fact.id);
     }
     if (!factIsPreserved(fact.text, repaired)) {

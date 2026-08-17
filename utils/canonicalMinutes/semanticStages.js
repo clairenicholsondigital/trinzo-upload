@@ -846,15 +846,50 @@ function emergentDiscussionWorkstreams(selectedTopics, evidence, usedLabels = ne
   }).filter(Boolean);
 }
 
+function otherDiscussionEvidenceIds(selectedTopics, evidence, confirmedWorkstreams, allocations) {
+  const confirmedIds = new Set(confirmedWorkstreams.flatMap((workstream) => workstream.evidenceIds || []));
+  const allocatedIds = new Set(allocations.filter((allocation) => allocation.primary).map((allocation) => allocation.eventId));
+  const byId = new Map(evidence.events.map((event) => [event.id, event]));
+  const ids = [];
+  const seen = new Set();
+  for (const topic of Array.isArray(selectedTopics) ? selectedTopics : []) {
+    const label = editorialTopicLabel(topic, evidence);
+    if (!label || label === 'Substantive discussion') continue;
+    const duplicateOfConfirmed = confirmedWorkstreams.some((workstream) => workstreamsSemanticallySimilar(
+      { label, topicId: topic.id, points: [topic.representativeText || ''] },
+      workstream
+    ));
+    if (duplicateOfConfirmed) continue;
+    const topicIds = Array.isArray(topic.evidenceIds) ? topic.evidenceIds : [];
+    const publishableIds = topicIds
+      .map((id) => clean(id))
+      .filter((id) => {
+        if (!id || seen.has(id) || confirmedIds.has(id) || allocatedIds.has(id)) return false;
+        const event = byId.get(id);
+        return event && eventPublishableForDiscussion(event, evidence);
+      });
+    if (!publishableIds.length) continue;
+    for (const id of publishableIds.slice(0, 4)) {
+      seen.add(id);
+      ids.push(id);
+      if (ids.length >= 8) return ids;
+    }
+  }
+  return ids;
+}
+
 function buildDiscussionEvidencePlan(evidence, state, selectedTopics) {
   const confirmed = confirmedDiscussionWorkstreams(state).map((workstream) => ({
     ...workstream,
     seedEvidenceIds: seedEvidenceFromProfileTopics(workstream, selectedTopics, evidence)
   }));
+  const summaryTopicsAuthoritative = confirmed.length > 0;
   const usedLabels = new Set(confirmed.map((item) => clean(item.label).toLowerCase()));
   const coveredConceptIds = new Set(confirmed.flatMap((item) => plannerConceptsFor(item.label).map((concept) => concept.id)));
-  let workstreams = [...confirmed, ...emergentDiscussionWorkstreams(selectedTopics, evidence, usedLabels, coveredConceptIds)];
-  if (!workstreams.some((item) => item.provenance === 'generic' && /\brisk/i.test(item.label))) {
+  let workstreams = summaryTopicsAuthoritative
+    ? [...confirmed]
+    : [...confirmed, ...emergentDiscussionWorkstreams(selectedTopics, evidence, usedLabels, coveredConceptIds)];
+  if (!summaryTopicsAuthoritative && !workstreams.some((item) => item.provenance === 'generic' && /\brisk/i.test(item.label))) {
     workstreams.push({
       id: 'planned_risks',
       label: 'Risks and dependencies',
@@ -935,6 +970,23 @@ function buildDiscussionEvidencePlan(evidence, state, selectedTopics) {
     stronger.push(workstream);
     return workstream;
   });
+  if (summaryTopicsAuthoritative) {
+    const otherIds = otherDiscussionEvidenceIds(selectedTopics, evidence, workstreams, allocations);
+    if (otherIds.length) {
+      workstreams.push({
+        id: 'planned_other',
+        label: 'Other',
+        provenance: 'reviewer_other',
+        topicId: 'canonical_other',
+        evidenceIds: otherIds,
+        evidenceScores: otherIds.map(() => 0),
+        primaryEvidenceCount: 0,
+        planningPriority: -1,
+        sourceIndex: workstreams.length,
+        suppressionReason: ''
+      });
+    }
+  }
   const plannedWorkstreams = workstreams
     .filter((workstream) => !workstream.suppressionReason)
     .sort((left, right) => right.planningPriority - left.planningPriority || left.sourceIndex - right.sourceIndex);
@@ -1262,15 +1314,19 @@ function contentStage(evidence, state, profile) {
     return reviewerPlannedCount < 6;
   });
   if (plannedDiscussion.length) {
-    const plannedIds = new Set(plannedDiscussion.map((card) => clean(card.topic).toLowerCase()));
-    const transcriptEmergentRoom = reviewerPlannedCount >= 6 ? 0 : Math.max(0, discussionLimit - plannedDiscussion.length);
-    const emergentCards = discussion
-      .filter((card) => !plannedIds.has(clean(card.topic).toLowerCase()))
-      .filter((card) => !DISCUSSION_PLAN_CONCEPTS.some((concept) => concept.generic && concept.labelPattern.test(card.topic)))
-      .filter((card) => !(genericFallbackDiscussionLabel(card.topic) && plannedDiscussion.length))
-      .filter((card) => emergentCardAddsDistinctMeaning(card, plannedDiscussion))
-      .slice(0, transcriptEmergentRoom);
-    discussion = [...plannedDiscussion, ...emergentCards].slice(0, discussionLimit);
+    if (reviewerPlannedCount > 0) {
+      discussion = plannedDiscussion;
+    } else {
+      const plannedIds = new Set(plannedDiscussion.map((card) => clean(card.topic).toLowerCase()));
+      const transcriptEmergentRoom = Math.max(0, discussionLimit - plannedDiscussion.length);
+      const emergentCards = discussion
+        .filter((card) => !plannedIds.has(clean(card.topic).toLowerCase()))
+        .filter((card) => !DISCUSSION_PLAN_CONCEPTS.some((concept) => concept.generic && concept.labelPattern.test(card.topic)))
+        .filter((card) => !(genericFallbackDiscussionLabel(card.topic) && plannedDiscussion.length))
+        .filter((card) => emergentCardAddsDistinctMeaning(card, plannedDiscussion))
+        .slice(0, transcriptEmergentRoom);
+      discussion = [...plannedDiscussion, ...emergentCards].slice(0, discussionLimit);
+    }
   } else {
     discussion = refreshDistinctiveConfirmedDiscussion(applyConfirmedTopicAgenda(discussion, state), state, evidence);
   }
@@ -1284,7 +1340,7 @@ function contentStage(evidence, state, profile) {
     const decisionIndex = evidence.events.findIndex((event) => (decision.evidenceIds || []).includes(event.id));
     const prior = decisionIndex > 0 ? evidence.events[decisionIndex - 1] : null;
     const point = prior && !isSupersededBackground(prior, evidence) ? minutesPoint(prior.text, prior.speaker) : '';
-    if (point && !discussion.some((card) => (card.evidenceIds || []).includes(prior.id))) {
+    if (!reviewerPlannedCount && point && !discussion.some((card) => (card.evidenceIds || []).includes(prior.id))) {
       discussion.push({ topic: titleFromRepresentative(prior.text), points: [{ text: point, evidenceIds: [prior.id] }], evidenceIds: [prior.id], topicId: `decision_context_${prior.id}`, cohesion: 1 });
     }
   }
@@ -1322,7 +1378,8 @@ function contentStage(evidence, state, profile) {
     discussion,
     understanding: state.meetingUnderstanding,
     transcriptText: evidence.events.map((event) => event.text).join('\n'),
-    evidenceEvents: evidence.events
+    evidenceEvents: evidence.events,
+    authoritativeTopics: reviewerPlannedCount > 0 ? (state.topics || []).map((item) => clean(item.humanFinal || item.text || item.topic)).filter(Boolean) : []
   });
   return {
     discussion: semanticPreservation.discussion,
@@ -1336,6 +1393,7 @@ function contentStage(evidence, state, profile) {
       resolutionKey: flag.resolutionKey
     })),
     semanticPreservation: semanticPreservation.telemetry,
+    summaryTopicsAuthoritative: reviewerPlannedCount > 0,
     discussionPlan: {
       workstreams: discussionPlan.workstreams.map((workstream) => ({
         id: workstream.id,

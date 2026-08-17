@@ -144,6 +144,7 @@ function discussionScreen(proposal) {
     evidenceIds: card.evidenceIds || [],
     topicId: card.topicId || null
   }));
+  if (proposal.summaryTopicsAuthoritative) return cards;
   if (proposal.decisions.length) cards.push({ topic: 'Decisions', points: proposal.decisions.map((item) => item.text), evidenceIds: proposal.decisions.flatMap((item) => item.evidenceIds || []), topicId: 'canonical_decisions' });
   const riskEvidenceIds = proposal.risks.flatMap((item) => item.evidenceIds || []);
   const plannedRiskCard = cards.find((card) => /\brisk(?:s?|[- ]management| analysis| assessment)\b/i.test(clean(card.topic)));

@@ -563,6 +563,16 @@ test('canonical Discussion planner allocates DITA evidence to reviewer-confirmed
   assert.ok(byLabel.get('MedEnvoy/Cody alignment').evidenceIds.some((id) => /med.?envoy|cody/i.test(evidence.events.find((event) => event.id === id)?.text || '')));
   assert.ok(byLabel.get('Further process discovery').evidenceIds.some((id) => /follow up|go through|process|working session|another call/i.test(evidence.events.find((event) => event.id === id)?.text || '')));
   assert.equal(result.risks.length, 0);
+  assert.deepEqual(result.discussion.map((card) => card.topic), [
+    'Goods flow and storage',
+    'Importer-obligation QMS procedure design',
+    'Operational process detail',
+    'MDR/PPE/sunglasses and declarations of conformity',
+    'EUDAMED/HPRA',
+    'Language/country requirements',
+    'MedEnvoy/Cody alignment',
+    'Further process discovery'
+  ]);
   const discussionText = result.discussion.map((card) => `${card.topic} ${card.points.map((point) => point.text || point).join(' ')}`).join(' ');
   assert.match(discussionText, /Japan/i);
   assert.match(discussionText, /Netherlands/i);
@@ -640,8 +650,18 @@ test('canonical Discussion planner allocates T761 alarm and debug evidence to co
   assert.match(alarmText, /sound|chirp|mute button|flash|priority|clinical|clinician/i);
   assert.match(debugText, /debug|test data|retrospective|validation|verification/i);
   assert.doesNotMatch(languageText, /\b(?:chirps?|mute button|LED|flash|low priority|medium priority|high priority)\b/i);
+  assert.deepEqual(result.discussion.map((card) => card.topic), [
+    'Language and country requirements',
+    'Alarm-code and clinical confirmation',
+    'Debug and test-script evidence',
+    'Change control and version traceability',
+    'Electrical compliance evidence',
+    'Cybersecurity, USB and GUI controls',
+    'Standards and risk-management work'
+  ]);
   assert.ok(result.discussion.some((card) => card.topic === 'Alarm-code and clinical confirmation'));
   assert.ok(result.discussion.some((card) => card.topic === 'Debug and test-script evidence'));
+  assert.equal(result.discussion.some((card) => /Software change traceability|Testing and validation|Plans and timelines|Risks and dependencies|Confirmed meeting context/i.test(card.topic)), false);
 });
 
 test('canonical Discussion planner keeps Abbott logistics out of Risk unless risk-bearing evidence is present', () => {
@@ -666,6 +686,7 @@ test('canonical Discussion planner keeps Abbott logistics out of Risk unless ris
     events: {},
     topics: [
       { id: 'logistics', representativeText: 'audit site hotel travel timing logistics scope', evidenceIds: ids(/hotel|travel|site|on site|timing|schedule|scope/i), cohesion: 1 },
+      { id: 'software', representativeText: 'software deep dive specialist coverage responsibilities cybersecurity validation', evidenceIds: ids(/software|cybersecurity|validation|specialist|deep dive|responsibilit/i), cohesion: 1 },
       { id: 'risk', representativeText: 'risk analysis audit plan SBOM threat model CVE cybersecurity software validation complaints CAPA deviations', evidenceIds: ids(/risk analysis|risk assessment|risk management|audit plan|sbom|threat model|cve|cybersecurity|software validation|complaints|capa|deviations/i), cohesion: 1 },
       { id: 'access', representativeText: 'code of conduct confidentiality training SharePoint document access tracker', evidenceIds: ids(/code of conduct|confidentiality|training|sharepoint|document access|tracker/i), cohesion: 1 }
     ]
@@ -683,6 +704,12 @@ test('canonical Discussion planner keeps Abbott logistics out of Risk unless ris
     .map((card) => card.topic)
     .join('\n');
   assert.doesNotMatch(genericLabels, /Plans and timelines|Scope and requirements|Software changes|Roles and responsibilities/i);
+  assert.deepEqual(result.discussion.map((card) => card.topic), [
+    'Audit scope, timing and logistics',
+    'Software deep-dive role and responsibilities',
+    'Preparation, confidentiality and document access',
+    'Risk analysis and audit-planning evidence'
+  ]);
 });
 
 test('canonical Actions ranking separates reviewer usefulness from automatic publication confidence for DITA', async () => {
@@ -867,17 +894,20 @@ test('summary reviewer guidance prioritises supported evidence without becoming 
   assert.ok(result.topics.every((item) => (item.evidenceIds || []).length > 0));
 });
 
-test('confirmed summary topics become the preferred discussion agenda', () => {
+test('confirmed summary topics are the authoritative discussion agenda with Other last', () => {
   const evidence = prepareEvidence([
     'Amina Khan  00:01',
     'The supplier schedule needs review before Friday.',
     'Ben Stone  00:08',
-    'The validation report is ready for approval.'
+    'The validation report is ready for approval.',
+    'Cara Lee  00:15',
+    'The team also discussed the separate support mailbox migration.'
   ].join('\n'));
   const profile = {
     topics: [
       { id: 'supplier', representativeText: 'Supplier schedule review', evidenceIds: [evidence.events[0].id], cohesion: 1 },
-      { id: 'validation', representativeText: 'Validation report approval', evidenceIds: [evidence.events[1].id], cohesion: 1 }
+      { id: 'validation', representativeText: 'Validation report approval', evidenceIds: [evidence.events[1].id], cohesion: 1 },
+      { id: 'mailbox', representativeText: 'Separate support mailbox migration', evidenceIds: [evidence.events[2].id], cohesion: 1 }
     ],
     events: {}
   };
@@ -886,10 +916,14 @@ test('confirmed summary topics become the preferred discussion agenda', () => {
     { text: 'Approved supplier agenda', humanFinal: 'Approved supplier agenda' }
   ] };
   const result = semanticStages.contentStage(evidence, state, profile);
-  assert.deepEqual(result.discussion.slice(0, 2).map((card) => card.topic), [
+  assert.deepEqual(result.discussion.map((card) => card.topic), [
     'Approved validation agenda',
-    'Approved supplier agenda'
+    'Approved supplier agenda',
+    'Other'
   ]);
+  const other = result.discussion.find((card) => card.topic === 'Other');
+  assert.match(other.points.map((point) => point.text || point).join(' '), /support mailbox migration/i);
+  assert.equal(result.discussion.some((card) => /Separate support mailbox migration/i.test(card.topic)), false);
 });
 
 test('stable topic ids preserve a fully rewritten human heading in Discussion', () => {
@@ -912,6 +946,28 @@ test('stable topic ids preserve a fully rewritten human heading in Discussion', 
   const result = semanticStages.contentStage(evidence, state, profile);
   assert.equal(result.discussion[0].topic, 'Completely rewritten heading');
   assert.equal(result.discussion[0].topicId, 'validation');
+});
+
+test('live Discussion screen does not append extra Decisions or Risks rows when Summary topics are authoritative', () => {
+  const transcript = [
+    'Amina Khan  00:01',
+    'The launch approval is blocked by the missing validation report.',
+    'Ben Stone  00:08',
+    'We decided to pause the launch until the report is approved.'
+  ].join('\n');
+  const result = runCanonicalLiveStage(transcript, {
+    stage: 'discussion',
+    fileName: 'authoritative-topics.txt',
+    confirmed: {
+      summary: {
+        meetingPurpose: 'Review launch approval, validation evidence and the decision on release timing.',
+        overallTopics: ['Launch approval and validation evidence']
+      }
+    }
+  });
+  const headings = result.screens.discussion.map((card) => card.topic);
+  assert.ok(headings.includes('Launch approval and validation evidence'));
+  assert.equal(headings.some((heading) => /^(?:Decisions|Risks)$/i.test(heading)), false);
 });
 
 test('live actions stage uses confirmed state and returns the existing UI screen contract', () => {
