@@ -66,7 +66,7 @@ function discussionPointText(value) {
 
 function distinctiveDiscussionFallback(topic, value) {
   const text = clean(value);
-  if (/language support|locali[sz]ation/i.test(topic)) {
+  if (/language(?: support| and country)|locali[sz]ation/i.test(topic)) {
     if (/\b(?:arabic|vietnamese|greek)\b/i.test(text)) return 'Arabic, Vietnamese and Greek were identified as languages that may require additional character support.';
     if (/\b(?:font|arial)\b/i.test(text)) return 'Additional font support may be required for some languages.';
     if (/\b(?:18 language files|12 languages).*(?:memory|capacity)|(?:memory|capacity).*(?:18 language files|12 languages)\b/i.test(text)) return 'Memory testing indicated that the system can accommodate 18 language files.';
@@ -81,7 +81,7 @@ function distinctiveDiscussionFallback(topic, value) {
     if (/\b60601-?1\b/i.test(text)) return 'IEC 60601-1 documentation is being reviewed to identify any electrical-compliance testing gaps.';
     if (/\b23rd of July|23 July\b/i.test(text)) return 'Electrical compliance testing is targeted for completion by 23 July.';
   }
-  if (/alarm behaviour|alarm controls/i.test(topic)) {
+  if (/alarm(?: behaviour| controls|-code)|clinical confirmation/i.test(topic)) {
     if (/\bmute button\b.*\b(?:led|flash)\b|\b(?:led|flash)\b.*\bmute button\b/i.test(text)) return 'The remaining alarm-control point is to confirm the LED and flash behaviour when the mute button is pressed.';
     if (/\b(?:low|medium|high) priority\b.*\b(?:colour|color|screen|led|flash)\b/i.test(text)) return 'The low-, medium- and high-priority alarm colour and flash behaviours were reviewed.';
   }
@@ -93,18 +93,20 @@ function distinctiveDiscussionFallback(topic, value) {
 }
 
 const DISTINCTIVE_TOPIC_ALIGNMENT = [
-  { topic: /language support|locali[sz]ation/i, point: /\b(?:languages?|translations?|translated|characters?|fonts?|arabic|vietnamese|greek)\b/i },
+  { topic: /language(?: support| and country)|locali[sz]ation/i, point: /\b(?:languages?|translations?|translated|characters?|fonts?|arabic|vietnamese|greek|country|countries)\b/i },
   { topic: /electrical compliance/i, point: /\b(?:60601|electrical compliance|testing|test gaps?)\b/i },
-  { topic: /alarm behaviour|alarm controls/i, point: /\b(?:alarm|mute button|led|flash|flashing|priority)\b/i },
+  { topic: /alarm(?: behaviour| controls|-code)|clinical confirmation/i, point: /\b(?:alarm|mute button|led|flash|flashing|priority|sound|chirps?|clinical|clinician|colour|color)\b/i },
+  { topic: /debug|test[- ]?script/i, point: /\b(?:debug|test scripts?|test data|validation|verification|retrospective|visible on screen)\b/i },
   { topic: /cybersecurity|access controls/i, point: /\b(?:cyber\s*security|usb|port lock|password|access|interference|screen control|gui)\b/i },
-  { topic: /software change traceability/i, point: /\b(?:17 changes|code|traceability|technical file|device file history|retrospective test data|version)\b/i },
+  { topic: /change control|software change traceability|version traceability/i, point: /\b(?:change request|change control|17 changes|code|traceability|technical file|device file history|retrospective test data|version)\b/i },
+  { topic: /standards?|risk[- ]management/i, point: /\b(?:standards?|risk management|risk matrix|benefit-risk|mitigation|81001|27427|hazard|fmea)\b/i },
   { topic: /software change control/i, point: /\b(?:change request|change control|software version|release|non-significant|non-substantial)\b/i }
 ];
 
 function discussionPointAlignedToTopic(topic, point) {
   const topicText = clean(topic);
   const pointText = clean(point);
-  if (/language support|locali[sz]ation/i.test(topicText) && /\balarms?\b/i.test(pointText) && !/\b(?:arabic|vietnamese|greek|translations?|translated|characters?|fonts?)\b/i.test(pointText)) return false;
+  if (/language(?: support| and country)|locali[sz]ation/i.test(topicText) && /\b(?:alarms?|debug|chirps?|mute button|led|flash|priority)\b/i.test(pointText) && !/\b(?:arabic|vietnamese|greek|translations?|translated|characters?|fonts?|country|countries)\b/i.test(pointText)) return false;
   const rule = DISTINCTIVE_TOPIC_ALIGNMENT.find((item) => item.topic.test(topicText));
   return !rule || rule.point.test(pointText);
 }

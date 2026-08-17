@@ -145,7 +145,20 @@ function discussionScreen(proposal) {
     topicId: card.topicId || null
   }));
   if (proposal.decisions.length) cards.push({ topic: 'Decisions', points: proposal.decisions.map((item) => item.text), evidenceIds: proposal.decisions.flatMap((item) => item.evidenceIds || []), topicId: 'canonical_decisions' });
-  if (proposal.risks.length) cards.push({ topic: 'Risks', points: proposal.risks.map((item) => item.text), evidenceIds: proposal.risks.flatMap((item) => item.evidenceIds || []), topicId: 'canonical_risks' });
+  const riskEvidenceIds = proposal.risks.flatMap((item) => item.evidenceIds || []);
+  const plannedRiskCard = cards.find((card) => /\brisk(?:s?|[- ]management| analysis| assessment)\b/i.test(clean(card.topic)));
+  const plannedRiskIds = new Set(plannedRiskCard?.evidenceIds || []);
+  const riskAlreadyOwned = plannedRiskCard && (
+    !riskEvidenceIds.length
+    || riskEvidenceIds.some((id) => plannedRiskIds.has(id))
+    || proposal.risks.some((risk) => (plannedRiskCard.points || []).some((point) => {
+      const riskTokens = new Set(clean(risk.text).toLowerCase().split(/[^a-z0-9]+/).filter((token) => token.length > 4));
+      const pointText = clean(point).toLowerCase();
+      const overlap = [...riskTokens].filter((token) => pointText.includes(token)).length;
+      return riskTokens.size && overlap / riskTokens.size >= 0.45;
+    }))
+  );
+  if (proposal.risks.length && !riskAlreadyOwned) cards.push({ topic: 'Risks', points: proposal.risks.map((item) => item.text), evidenceIds: riskEvidenceIds, topicId: 'canonical_risks' });
   return cards;
 }
 

@@ -353,6 +353,37 @@ test('final discussion presentation strips internal evidence ids and keeps disti
   assert.doesNotMatch(JSON.stringify(result.screens.discussion), /evt_/i);
 });
 
+test('final discussion presentation enforces confirmed downstream workstream alignment', () => {
+  const result = clientReadyPresentation({
+    stagedStage: 'discussion',
+    validationFlags: [],
+    screens: { discussion: [
+      { topic: 'Language and country requirements', points: [
+        'Andrew Kane has identified three alarms.',
+        'A discussion occurred regarding the debug process for understanding software behaviour without physical access.',
+        'Arabic, Vietnamese and Greek were identified as languages needing character support.'
+      ] },
+      { topic: 'Alarm-code and clinical confirmation', points: [
+        'Actions were discussed concerning the sound functionality.',
+        'The fully translated language files were loaded.'
+      ] },
+      { topic: 'Debug and test-script evidence', points: [
+        'A query was raised about the documentation of changes within a change request form.',
+        'Progress on the debug process was checked.'
+      ] },
+      { topic: 'Standards and risk-management work', points: [
+        "There's now a standard, let's use cyan, blue, or yellow for low priority.",
+        'The team confirmed the risk management file is being updated.'
+      ] }
+    ] }
+  });
+  const byTopic = new Map(result.screens.discussion.map((card) => [card.topic, card.points]));
+  assert.deepEqual(byTopic.get('Language and country requirements'), ['Arabic, Vietnamese and Greek were identified as languages needing character support.']);
+  assert.deepEqual(byTopic.get('Alarm-code and clinical confirmation'), ['Actions were discussed concerning the sound functionality.']);
+  assert.deepEqual(byTopic.get('Debug and test-script evidence'), ['Progress on the debug process was checked.']);
+  assert.deepEqual(byTopic.get('Standards and risk-management work'), ['The team confirmed the risk management file is being updated.']);
+});
+
 test('final discussion presentation preserves repaired evidence-bearing semantic points', () => {
   const result = clientReadyPresentation({
     stagedStage: 'discussion',

@@ -583,7 +583,7 @@ const RAW_TRANSCRIPT_DISCUSSION_PATTERNS = [
 ];
 
 const STAGED_SPEAKER_TURN_PREFIX = /^(?:\[?\d{1,2}:\d{2}(?::\d{2})?\]?\s*)?(?:[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){0,3})\s+(?:\d{1,2}:\d{2}(?::\d{2})?|said\s*:)|^\[?\d{1,2}:\d{2}(?::\d{2})?\]?\s*/;
-const FIRST_PERSON_TRANSCRIPT_VOICE = /\b(?:I|I'm|I’m|I've|I’ve|I'd|I’d|we|we're|we’re|we've|we’ve|we'd|we’d|us|our|ours|you|you're|you’re|you've|you’ve|your|yours)\b/i;
+const FIRST_PERSON_TRANSCRIPT_VOICE = /\b(?:I|I'm|I’m|I've|I’ve|I'd|I’d|we|we're|we’re|we've|we’ve|we'd|we’d|us|our|ours|you|you're|you’re|you've|you’ve|your|yours|let['’]s)\b/i;
 const STANDALONE_MINUTES_SUBJECT = /^(?:the\s+(?:team|group|meeting|discussion|review|project|client|supplier|process|system|document|audit|work|risk|scope)|[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){0,3}\s+(?:noted|confirmed|agreed)|[A-Z0-9][A-Za-z0-9'’()./&+-]+\s+(?:is|are|was|were|has|have|will|would|remains?|requires?|includes?|covers?|supports?|uses?|needs?))/;
 
 const DISCUSSION_ACTION_ONLY = /^(?:arrange|book|schedule|organise|coordinate|set\s+up|update|review|check|verify|validate|assess|send|share|provide|circulate|issue|upload|forward|confirm|prepare|complete|develop|build|create|finali[sz]e|finish|produce|draft|submit|approve|agree|accept|sign(?:\s+off)?|trace|generate|identify|document|follow[- ]?up|begin)\b/i;
