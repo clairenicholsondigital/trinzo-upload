@@ -322,6 +322,33 @@ tbody tr:last-child td { border-bottom:none; }
 .jobs-shell #listView {
   padding-bottom:1.25rem;
 }
+.jobs-shell .bulk-bar {
+  margin:.85rem 1.25rem 0 !important;
+  padding:.55rem .65rem !important;
+  border:1px solid var(--border) !important;
+  border-radius:var(--radius-sm) !important;
+  background:var(--soft) !important;
+  color:var(--text) !important;
+  box-shadow:none !important;
+}
+.jobs-shell .bulk-bar label,
+.jobs-shell .bulk-count {
+  color:var(--muted) !important;
+}
+.jobs-shell .bulk-bar button.secondary {
+  background:var(--surface) !important;
+  color:var(--accent-700) !important;
+  border:1px solid var(--border-strong) !important;
+}
+.jobs-shell .bulk-bar button.secondary:hover:not(:disabled) {
+  background:var(--brand-050) !important;
+  border-color:var(--accent) !important;
+}
+.jobs-shell .bulk-bar button:disabled {
+  background:var(--soft-2) !important;
+  color:#7b8994 !important;
+  border-color:var(--border) !important;
+}
 .jobs-table-wrap {
   margin-top:1rem;
   overflow-x:auto;
@@ -358,27 +385,20 @@ tbody tr:last-child td { border-bottom:none; }
   background:var(--brand-050) !important;
 }
 .jobs th:nth-child(1),
-.jobs td:nth-child(1) { width:8%; }
+.jobs td:nth-child(1) { width:5%; }
 .jobs th:nth-child(2),
 .jobs td:nth-child(2) {
-  width:13%;
-  max-width:10rem;
+  width:43%;
+  overflow-wrap:anywhere;
 }
 .jobs th:nth-child(3),
 .jobs td:nth-child(3) {
-  width:29%;
-  overflow-wrap:anywhere;
+  width:19%;
 }
 .jobs th:nth-child(4),
-.jobs td:nth-child(4) { width:13%; }
+.jobs td:nth-child(4) { width:14%; }
 .jobs th:nth-child(5),
-.jobs td:nth-child(5) { width:14%; }
-.jobs th:nth-child(6),
-.jobs td:nth-child(6) { width:7%; }
-.jobs th:nth-child(7),
-.jobs td:nth-child(7) { width:8%; }
-.jobs th:nth-child(8),
-.jobs td:nth-child(8) { width:8%; }
+.jobs td:nth-child(5) { width:19%; }
 .jobs .progress {
   min-width:0;
   color:var(--text);
@@ -433,6 +453,9 @@ tbody tr:last-child td { border-bottom:none; }
   .jobs-shell #listView {
     margin-left:1rem;
     margin-right:1rem;
+  }
+  .jobs-shell .bulk-bar {
+    margin:.75rem 1rem 0 !important;
   }
   .jobs-table-wrap {
     border:0;

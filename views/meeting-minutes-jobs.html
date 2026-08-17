@@ -36,7 +36,7 @@ button:disabled { opacity:.55; cursor:not-allowed; }
 .jobs th { background:#0b1530; color:var(--muted); font-size:.86rem; }
 .jobs tr { background:#071126; }
 .jobs tr:hover { background:#0b1730; }
-.bulk-bar { display:flex; align-items:center; gap:.65rem; flex-wrap:wrap; margin:.85rem 0 0; padding:.55rem .65rem; border:1px solid var(--border); border-radius:10px; background:#071126; }
+.bulk-bar { display:flex; align-items:center; gap:.65rem; flex-wrap:wrap; margin:.85rem 0 0; padding:.55rem .65rem; border:1px solid var(--border); border-radius:10px; background:var(--soft); color:var(--text); }
 .bulk-bar label { display:inline-flex; align-items:center; gap:.4rem; color:var(--muted); font-size:.9rem; cursor:pointer; }
 .bulk-bar input, .job-select { accent-color:var(--accent); }
 .bulk-bar button { padding:.42rem .65rem; font-size:.86rem; }
@@ -1224,13 +1224,9 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
           <thead>
             <tr>
               <th aria-label="Select"></th>
-              <th>Item</th>
-              <th>Type</th>
               <th>Meeting</th>
+              <th>Started</th>
               <th>Status</th>
-              <th>Progress</th>
-              <th>Runtime</th>
-              <th>Attempts</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -1238,17 +1234,12 @@ details pre { margin-top:0; border-top:0; border-top-left-radius:0; border-top-r
             ${jobs.map((job) => `
               <tr>
                 <td data-label="Select"><input class="job-select" type="checkbox" data-select-job="${escapeHtml(job.jobId)}" aria-label="Select ${escapeHtml(jobTitle(job))}" ${canArchive(job) ? '' : 'disabled'} /></td>
-                <td data-label="Item"><strong>#${escapeHtml(job.jobId)}</strong><br><small class="muted">${escapeHtml(formatDate(job.createdAt))}</small></td>
-                <td data-label="Type"><span class="badge">${escapeHtml(jobTypeLabel(job))}</span></td>
-                <td data-label="Meeting"><strong>${escapeHtml(jobTitle(job))}</strong><br><small class="muted">${escapeHtml(job.fileName || `${job.transcriptLength || 0} chars`)}</small></td>
-                <td data-label="Status"><span class="status ${statusClass(job.status)}">${escapeHtml(friendlyLabel(job.status || 'queued'))}</span>${job.errorMessage ? `<br><small class="muted">${escapeHtml(job.errorMessage)}</small>` : ''}</td>
-                <td data-label="Progress">${renderProgress(job)}</td>
-                <td data-label="Runtime">${escapeHtml(runtime(job))}</td>
-                <td data-label="Attempts">${escapeHtml(job.attempts || 0)} / ${escapeHtml(job.maxAttempts || 0)}</td>
+                <td data-label="Meeting"><strong>${escapeHtml(jobTitle(job))}</strong></td>
+                <td data-label="Started">${escapeHtml(formatDate(job.createdAt))}</td>
+                <td data-label="Status"><span class="status ${statusClass(job.status)}">${escapeHtml(friendlyLabel(job.status || 'queued'))}</span>${job.stage && job.stage !== job.status ? `<br><small class="muted">${escapeHtml(friendlyLabel(job.stage))}</small>` : ''}${job.errorMessage ? `<br><small class="muted">${escapeHtml(job.errorMessage)}</small>` : ''}</td>
                 <td data-label="Actions" class="row-actions">
-                  ${isLocalStagedDraft(job) ? `<a class="button" href="${escapeAttribute(job.resumeUrl)}">Resume</a><a class="button secondary" href="/jobs/${encodeURIComponent(job.jobId)}">Details</a><button class="danger" data-delete-staged="${escapeHtml(job.jobId)}" type="button">Remove</button>` : ''}
+                  ${isLocalStagedDraft(job) ? `<a class="button" href="${escapeAttribute(job.resumeUrl)}">Resume</a><button class="danger" data-delete-staged="${escapeHtml(job.jobId)}" type="button">Delete</button>` : ''}
                   ${job.jobType === 'staged_meeting_minutes_stage' ? `<a class="button" href="${escapeAttribute(job.resumeUrl)}">Resume staged review</a>` : ''}
-                  ${job.jobType === 'staged_meeting_minutes_stage' ? `<a class="button secondary" href="/jobs/${encodeURIComponent(job.jobId)}">Details</a>` : ''}
                   ${!isStagedJob(job) && job.status === 'completed' ? `<a class="button" target="_blank" rel="noopener" href="/jobs/${encodeURIComponent(job.jobId)}/result">${job.jobType === 'project_update_generate' ? 'Open job' : 'Open result'}</a>` : ''}
                   ${!isStagedJob(job) && job.status === 'failed' ? `<button class="secondary" data-retry="${escapeHtml(job.jobId)}" type="button">Retry</button>` : ''}
                   ${!isStagedJob(job) && (job.status === 'queued' || job.status === 'running') ? `<button class="danger" data-cancel="${escapeHtml(job.jobId)}" type="button">Cancel</button>` : ''}
