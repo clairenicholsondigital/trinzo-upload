@@ -1917,9 +1917,17 @@ td select {
     window.setTimeout(function () { stageValidationFlags.classList.remove('needs-attention'); }, 1600);
   }
 
+  function visibleActionCandidateSnippet(candidate) {
+    var snippet = String(candidate && candidate.sourceSnippet || '').replace(/\s+/g, ' ').trim();
+    var wordCount = (snippet.match(/[A-Za-z0-9][A-Za-z0-9'’-]*/g) || []).length;
+    return wordCount >= 4 ? snippet : '';
+  }
+
   function renderActionReviewGroups() {
     if (!actionReviewGroups) return;
-    var entries = actionReviewCandidates.slice();
+    var entries = actionReviewCandidates.map(function (entry) {
+      return Object.assign({}, entry, { visibleSnippet: visibleActionCandidateSnippet(entry.candidate) });
+    }).filter(function (entry) { return entry.visibleSnippet; });
     if (!entries.length) {
       actionReviewGroups.innerHTML = '';
       updateReviewToolbar();
@@ -1927,7 +1935,7 @@ td select {
     }
     actionReviewGroups.innerHTML = '<details class="action-review-group" open><summary>' + entries.length + ' transcript snippet' + (entries.length === 1 ? '' : 's') + ' that may contain actions</summary><p class="action-review-guidance">Review these snippets and turn any genuine commitments into actions.</p>' + entries.map(function (entry) {
       var candidate = entry.candidate;
-      var snippet = candidate.sourceSnippet || candidate.action || candidate.suggestedAction || 'Transcript evidence needs review.';
+      var snippet = entry.visibleSnippet;
       var speaker = candidate.sourceSpeaker || 'Not identified';
       return '<div class="action-candidate-card" data-candidate-id="' + escapeHtml(entry.id) + '"><span class="action-snippet-label">Transcript snippet</span><blockquote class="action-transcript-snippet">“' + escapeHtml(snippet) + '”</blockquote><div class="action-candidate-meta"><span class="muted action-candidate-owner">Speaker: ' + escapeHtml(speaker) + '</span><div class="action-candidate-actions"><button type="button" data-candidate-action="add" aria-label="Create action from transcript snippet" title="Create an editable action">Create action</button><button class="secondary" type="button" data-candidate-action="dismiss" aria-label="Dismiss transcript snippet" title="Dismiss">× Dismiss</button></div></div></div>';
     }).join('') + '</details>';

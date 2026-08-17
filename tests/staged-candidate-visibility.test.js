@@ -8,7 +8,9 @@ const { chromium } = require('playwright');
 
 test('action review candidate cards expose non-empty visible text after closed groups are expanded', async () => {
   const html = fs.readFileSync(path.resolve(__dirname, '../views/staged-meeting-minutes.html'), 'utf8');
-  assert.match(html, /candidate\.sourceSnippet \|\| candidate\.action \|\| candidate\.suggestedAction/);
+  assert.match(html, /function visibleActionCandidateSnippet/);
+  assert.match(html, /wordCount >= 4/);
+  assert.doesNotMatch(html, /candidate\.sourceSnippet \|\| candidate\.action \|\| candidate\.suggestedAction/);
 
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
