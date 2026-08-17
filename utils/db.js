@@ -3300,24 +3300,56 @@ async function markWebhookFailure(job, errorMessage) {
   return shouldRetry;
 }
 
-async function createAuthUser({ email, fullName, passwordSalt, passwordHash }) {
+const AUTH_USER_ROLES = new Set(['admin', 'client']);
+
+function normaliseAuthUserRole(role) {
+  const value = String(role || '').trim().toLowerCase();
+  return AUTH_USER_ROLES.has(value) ? value : 'admin';
+}
+
+let authUserRoleSchemaReady = false;
+
+async function ensureAuthUserRoleSchema() {
+  if (authUserRoleSchemaReady) return;
+  await query("ALTER TABLE IF EXISTS auth_users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'admin'");
+  await query("UPDATE auth_users SET role = 'admin' WHERE role IS NULL OR role NOT IN ('admin', 'client')");
+  await query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'auth_users_role_check'
+      ) THEN
+        ALTER TABLE auth_users
+          ADD CONSTRAINT auth_users_role_check CHECK (role IN ('admin', 'client'));
+      END IF;
+    END
+    $$;
+  `);
+  authUserRoleSchemaReady = true;
+}
+
+async function createAuthUser({ email, fullName, passwordSalt, passwordHash, role = 'admin' }) {
+  await ensureAuthUserRoleSchema();
   const out = await runPsql(
-    'INSERT INTO auth_users (email, full_name, password_salt, password_hash) VALUES ($1, $2, $3, $4) RETURNING id::text, email, full_name',
-    [email.toLowerCase(), fullName || '', passwordSalt, passwordHash]
+    'INSERT INTO auth_users (email, full_name, password_salt, password_hash, role) VALUES ($1, $2, $3, $4, $5) RETURNING id::text, email, full_name, role',
+    [email.toLowerCase(), fullName || '', passwordSalt, passwordHash, normaliseAuthUserRole(role)]
   );
-  const [id, userEmail, name] = (out.split('\n').find(Boolean) || '||').split('|');
-  return { id: Number(id), email: userEmail, fullName: name };
+  const [id, userEmail, name, userRole] = (out.split('\n').find(Boolean) || '|||').split('|');
+  return { id: Number(id), email: userEmail, fullName: name, role: normaliseAuthUserRole(userRole) };
 }
 
 async function findAuthUserByEmail(email) {
+  await ensureAuthUserRoleSchema();
   const out = await runPsql(
-    'SELECT id::text, email, full_name, password_salt, password_hash, is_active::text FROM auth_users WHERE email = $1 LIMIT 1',
+    'SELECT id::text, email, full_name, password_salt, password_hash, is_active::text, role FROM auth_users WHERE email = $1 LIMIT 1',
     [String(email || '').toLowerCase()]
   );
   const line = out.split('\n').find(Boolean);
   if (!line) return null;
-  const [id, userEmail, fullName, passwordSalt, passwordHash, isActive] = line.split('|');
-  return { id: Number(id), email: userEmail, fullName, passwordSalt, passwordHash, isActive: isActive === 't' || isActive === 'true' };
+  const [id, userEmail, fullName, passwordSalt, passwordHash, isActive, role] = line.split('|');
+  return { id: Number(id), email: userEmail, fullName, passwordSalt, passwordHash, isActive: isActive === 't' || isActive === 'true', role: normaliseAuthUserRole(role) };
 }
 
 async function touchAuthLastLogin(userId) {
@@ -3358,6 +3390,7 @@ let authSessionSchemaReady = false;
 
 async function ensureAuthSessionSchema() {
   if (authSessionSchemaReady) return;
+  await ensureAuthUserRoleSchema();
   await query(`
     CREATE TABLE IF NOT EXISTS auth_sessions (
       id BIGSERIAL PRIMARY KEY,
@@ -3394,6 +3427,7 @@ async function getAuthSession(tokenHash) {
        u.id::text AS "userId",
        u.email,
        u.full_name AS "fullName",
+       u.role,
        u.is_active AS "isActive"
      FROM auth_sessions s
      JOIN auth_users u ON u.id = s.user_id
@@ -3412,6 +3446,7 @@ async function getAuthSession(tokenHash) {
     userId: Number(session.userId),
     email: session.email,
     fullName: session.fullName,
+    role: normaliseAuthUserRole(session.role),
     expiresAt: session.expiresAt
   };
 }

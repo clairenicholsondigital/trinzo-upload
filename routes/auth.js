@@ -88,7 +88,7 @@ router.post('/login', async (req, res) => {
     setSessionCookie(res, sessionToken);
     await touchAuthLastLogin(user.id);
 
-    return res.json({ success: true, user: { id: user.id, email: user.email, fullName: user.fullName } });
+    return res.json({ success: true, user: { id: user.id, email: user.email, fullName: user.fullName, role: user.role } });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
   }
@@ -110,7 +110,7 @@ router.get('/me', async (req, res) => {
   try {
     const session = await readSession(req, res);
     if (!session) return res.status(401).json({ success: false, error: 'Not authenticated.' });
-    return res.json({ success: true, user: { userId: session.userId, email: session.email, fullName: session.fullName } });
+    return res.json({ success: true, user: { userId: session.userId, email: session.email, fullName: session.fullName, role: session.role } });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
   }
@@ -125,7 +125,7 @@ async function requireAuth(req, res, next) {
       }
       return res.redirect('/auth/login');
     }
-    req.authUser = { userId: session.userId, email: session.email, fullName: session.fullName };
+    req.authUser = { userId: session.userId, email: session.email, fullName: session.fullName, role: session.role };
     return next();
   } catch (error) {
     if (req.path.startsWith('/api/') || req.originalUrl.startsWith('/api/')) {

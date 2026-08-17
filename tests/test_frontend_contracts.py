@@ -91,6 +91,21 @@ class FrontendContractTest(unittest.TestCase):
         self.assertNotIn("Create account", login)
         self.assertNotIn("/auth/register", login)
 
+    def test_auth_users_have_admin_and_client_roles(self):
+        auth = (REPO_DIR / "routes" / "auth.js").read_text(encoding="utf-8")
+        db = (REPO_DIR / "utils" / "db.js").read_text(encoding="utf-8")
+        migration = (REPO_DIR / "sql" / "migrations" / "20260817_add_auth_user_roles.sql").read_text(encoding="utf-8")
+
+        self.assertIn("ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'admin'", migration)
+        self.assertIn("CHECK (role IN ('admin', 'client'))", migration)
+        self.assertIn("const AUTH_USER_ROLES = new Set(['admin', 'client']);", db)
+        self.assertIn("return AUTH_USER_ROLES.has(value) ? value : 'admin';", db)
+        self.assertIn("INSERT INTO auth_users (email, full_name, password_salt, password_hash, role)", db)
+        self.assertIn("SELECT id::text, email, full_name, password_salt, password_hash, is_active::text, role", db)
+        self.assertIn('u.role,', db)
+        self.assertIn("role: user.role", auth)
+        self.assertIn("role: session.role", auth)
+
     def test_dashboard_only_links_to_feedback_listing_and_matches_final_style(self):
         dashboard = (REPO_DIR / "views" / "dashboard.html").read_text(encoding="utf-8")
         meeting_minutes_final = (REPO_DIR / "views" / "meeting-minutes-final.html").read_text(encoding="utf-8")
