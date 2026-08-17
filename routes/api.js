@@ -323,6 +323,42 @@ function summariseStagedReviewDiffs(fieldDiffs = []) {
   };
 }
 
+function stagedWorkflowInteractionEvents(events = []) {
+  return stagedAnalyticsArray(events).slice(-250).map((event) => ({
+    id: firstString(event?.id).slice(0, 120),
+    type: firstString(event?.type).slice(0, 120),
+    at: firstString(event?.at).slice(0, 80),
+    stage: firstString(event?.stage).slice(0, 100),
+    activeScreen: Number.isFinite(Number(event?.activeScreen)) ? Number(event.activeScreen) : null,
+    source: firstString(event?.source).slice(0, 120),
+    details: stagedAnalyticsObject(event?.details)
+  })).filter((event) => event.type);
+}
+
+function summariseStagedWorkflowInteractions(events = []) {
+  const byType = {};
+  const byStage = {};
+  events.forEach((event) => {
+    byType[event.type] = (byType[event.type] || 0) + 1;
+    const stage = event.stage || 'unknown';
+    byStage[stage] = byStage[stage] || {};
+    byStage[stage][event.type] = (byStage[stage][event.type] || 0) + 1;
+  });
+  return {
+    totalEvents: events.length,
+    byType,
+    byStage,
+    stageTransitionCount: events.filter((event) => ['stage_entered', 'stage_left', 'stage_revisited'].includes(event.type)).length,
+    candidateDecisionCount: events.filter((event) => ['action_candidate_accepted', 'action_candidate_dismissed'].includes(event.type)).length,
+    manualActionEventCount: events.filter((event) => /^manual_action_|^action_row_/.test(event.type)).length,
+    ownerCorrectionCount: events.filter((event) => event.type === 'action_owner_changed').length,
+    pdfEventCount: events.filter((event) => /^pdf_/.test(event.type)).length,
+    resumeCount: events.filter((event) => event.type === 'draft_resumed').length,
+    errorEventCount: events.filter((event) => /(?:failed|error|retry|timeout)/.test(event.type)).length,
+    abandonmentSignalCount: events.filter((event) => event.type === 'workflow_abandonment_signal').length
+  };
+}
+
 function stagedReviewProjectKey(details = {}, draftId = '') {
   return firstString(
     details.projectKey,
@@ -4636,6 +4672,8 @@ router.post('/staged-meeting-minutes/review-events', requireAuth, async (req, re
     const generatedVersions = stagedAnalyticsObject(req.body?.generatedVersions);
     const approvedVersions = stagedAnalyticsObject(req.body?.approvedVersions);
     const fieldDiffs = buildStagedReviewDiffs(generatedVersions, approvedVersions);
+    const interactionEvents = stagedWorkflowInteractionEvents(req.body?.interactionEvents);
+    const interactionSummary = summariseStagedWorkflowInteractions(interactionEvents);
     const reviewStatus = finalReviewCompleted
       ? 'completed'
       : Number(req.body?.activeScreen || 0) >= 4 ? 'final_review' : 'in_review';
@@ -4663,6 +4701,11 @@ router.post('/staged-meeting-minutes/review-events', requireAuth, async (req, re
         regenerationCount: stagedAnalyticsArray(req.body?.regenerationEvents).length,
         terminologyDecisionCount: stagedAnalyticsArray(req.body?.terminologyDecisions).length,
         unresolvedWorkstreamCount: stagedAnalyticsArray(req.body?.unresolvedWorkstreams).length,
+        interactionEventCount: interactionSummary.totalEvents,
+        interactionSummary,
+        workflowDurationMs: Math.max(0, Number(req.body?.workflowDurationMs || 0)),
+        stageDwellMsByStage: stagedAnalyticsObject(req.body?.stageDwellMsByStage),
+        stageActiveEditMsByStage: stagedAnalyticsObject(req.body?.stageActiveEditMsByStage),
         finalReviewCompleted
       },
       regenerationEvents: stagedAnalyticsArray(req.body?.regenerationEvents),
@@ -4678,7 +4721,14 @@ router.post('/staged-meeting-minutes/review-events', requireAuth, async (req, re
         transcriptLength: Number(req.body?.transcriptLength || 0),
         fileName: firstString(req.body?.fileName).slice(0, 500),
         additionalContext: firstString(req.body?.additionalContext).slice(0, 5000),
-        meetingContext: details
+        meetingContext: details,
+        workflowStartedAt: firstString(req.body?.workflowStartedAt).slice(0, 80),
+        workflowDurationMs: Math.max(0, Number(req.body?.workflowDurationMs || 0)),
+        interactionEvents,
+        interactionSummary,
+        stageDwellMsByStage: stagedAnalyticsObject(req.body?.stageDwellMsByStage),
+        stageActiveEditMsByStage: stagedAnalyticsObject(req.body?.stageActiveEditMsByStage),
+        stageVisitCounts: stagedAnalyticsObject(req.body?.stageVisitCounts)
       }
     });
     return res.json({ success: true, event: saved, editSummary: summariseStagedReviewDiffs(fieldDiffs) });
