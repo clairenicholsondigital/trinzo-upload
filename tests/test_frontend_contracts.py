@@ -549,6 +549,14 @@ class FrontendContractTest(unittest.TestCase):
         self.assertNotIn('<button class="secondary" type="button" disabled>Save draft</button>', staged_page)
         self.assertNotIn("Copy, Email and Save draft are not available yet.", staged_page)
 
+    def test_staged_actions_review_copy_and_manual_rows_are_first_user_friendly(self):
+        staged_page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
+
+        self.assertIn("review prompt' + (outstanding === 1 ? '' : 's') + ' to check'", staged_page)
+        self.assertNotIn("' items need review'", staged_page)
+        self.assertIn("startBlank: true", staged_page)
+        self.assertIn("if (!actionText && !action.startBlank) actionText = 'Review action wording';", staged_page)
+
     def test_resolved_workstream_flags_do_not_silently_block_actions_transition(self):
         staged_page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
 

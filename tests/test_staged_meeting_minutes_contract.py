@@ -636,7 +636,7 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
 
         self.assertIn("review-check-button", page)
         self.assertIn("✓ Reviewed", page)
-        self.assertIn("outstanding === 1 ? ' needs' : 's need'", page)
+        self.assertIn("review prompt' + (outstanding === 1 ? '' : 's') + ' to check'", page)
         self.assertIn("Actions are grouped below to help you review them.", page)
         self.assertIn("function reviewerFlagMessage", page)
         self.assertIn("renderedMessages[messageKey].push(flagKey)", page)

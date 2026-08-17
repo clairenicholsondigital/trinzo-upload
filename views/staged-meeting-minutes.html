@@ -1751,7 +1751,7 @@ td select {
   function updateReviewToolbar() {
     var outstanding = document.querySelectorAll('.stage-validation-flag:not(.is-resolved), .terminology-suggestion, .action-candidate-card').length;
     if (remainingReviewCount) {
-      remainingReviewCount.textContent = outstanding + ' item' + (outstanding === 1 ? ' needs' : 's need') + ' review';
+      remainingReviewCount.textContent = outstanding + ' review prompt' + (outstanding === 1 ? '' : 's') + ' to check';
       remainingReviewCount.hidden = activeIndex !== 3 || !outstanding;
     }
     statusItems.forEach(function (item, idx) {
@@ -3281,7 +3281,8 @@ td select {
       actionsTableBody.insertAdjacentHTML('beforeend', renderActionRow({
         owner: 'Not stated',
         action: '',
-        deadline: ''
+        deadline: '',
+        startBlank: true
       }));
       updateConfirmedActionCount();
       renderFinalDocument();
