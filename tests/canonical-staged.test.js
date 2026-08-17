@@ -593,6 +593,98 @@ test('canonical Discussion planner still allows non-DITA emergent risk workstrea
   assert.ok(planned.some((workstream) => /risk|audit|planning|scope|responsibilit/i.test(workstream.label)));
 });
 
+test('canonical Discussion planner allocates T761 alarm and debug evidence to confirmed technical workstreams', () => {
+  const transcript = fs.readFileSync(
+    path.resolve(__dirname, '../scripts/meeting-minutes-final-golden/025_real_t761_eakin_sw_weekly_transcript/transcript.txt'),
+    'utf8'
+  );
+  const evidence = prepareEvidence(transcript);
+  const ids = (pattern) => evidence.events.filter((event) => pattern.test(event.text)).slice(0, 12).map((event) => event.id);
+  const state = buildConfirmedState(transcript, 't761.txt', {
+    summary: {
+      meetingPurpose: 'Coordinate progress, evidence gaps, blockers and next steps for the software-change and technical-file programme.',
+      overallTopics: [
+        'Language and country requirements',
+        'Alarm-code and clinical confirmation',
+        'Debug and test-script evidence',
+        'Change control and version traceability',
+        'Electrical compliance evidence',
+        'Cybersecurity, USB and GUI controls',
+        'Standards and risk-management work'
+      ]
+    }
+  });
+  const profile = {
+    events: {},
+    topics: [
+      { id: 'alarm', representativeText: 'alarm sound chirps mute button LED flash priority colours clinical confirmation', evidenceIds: ids(/alarm|sound|chirp|mute button|flash|led|priority|clinical|clinician|colour|color/i), cohesion: 1 },
+      { id: 'debug', representativeText: 'debug outputs test scripts retrospective test data validation evidence', evidenceIds: ids(/debug|test script|test data|retrospective|validation|verification/i), cohesion: 1 },
+      { id: 'language', representativeText: 'language files translations fonts characters markets countries', evidenceIds: ids(/language|translation|font|characters?|country|countries/i), cohesion: 1 },
+      { id: 'traceability', representativeText: 'change control software version traceability technical file', evidenceIds: ids(/change control|change request|version|traceability|technical file|device file history|17 changes/i), cohesion: 1 },
+      { id: 'risk', representativeText: 'risk management standards mitigation USB port lock GUI', evidenceIds: ids(/risk management|standards?|81001|27427|usb|port lock|gui/i), cohesion: 1 }
+    ]
+  };
+
+  const result = semanticStages.contentStage(evidence, state, profile);
+  const byLabel = new Map(result.discussionPlan.workstreams.map((workstream) => [workstream.label, workstream]));
+  const alarm = byLabel.get('Alarm-code and clinical confirmation');
+  const debug = byLabel.get('Debug and test-script evidence');
+  const language = byLabel.get('Language and country requirements');
+
+  assert.ok(alarm, 'alarm workstream should not be suppressed');
+  assert.ok(debug, 'debug/test workstream should not be suppressed');
+  const alarmText = alarm.evidenceIds.map((id) => evidence.events.find((event) => event.id === id)?.text || '').join(' ');
+  const debugText = debug.evidenceIds.map((id) => evidence.events.find((event) => event.id === id)?.text || '').join(' ');
+  const languageText = language.evidenceIds.map((id) => evidence.events.find((event) => event.id === id)?.text || '').join(' ');
+
+  assert.match(alarmText, /sound|chirp|mute button|flash|priority|clinical|clinician/i);
+  assert.match(debugText, /debug|test data|retrospective|validation|verification/i);
+  assert.doesNotMatch(languageText, /\b(?:chirps?|mute button|LED|flash|low priority|medium priority|high priority)\b/i);
+  assert.ok(result.discussion.some((card) => card.topic === 'Alarm-code and clinical confirmation'));
+  assert.ok(result.discussion.some((card) => card.topic === 'Debug and test-script evidence'));
+});
+
+test('canonical Discussion planner keeps Abbott logistics out of Risk unless risk-bearing evidence is present', () => {
+  const transcript = fs.readFileSync(
+    path.resolve(__dirname, '../scripts/meeting-minutes-final-golden/027_real_abbott_audit_kickoff_transcript/transcript.txt'),
+    'utf8'
+  );
+  const evidence = prepareEvidence(transcript);
+  const ids = (pattern) => evidence.events.filter((event) => pattern.test(event.text)).slice(0, 12).map((event) => event.id);
+  const state = buildConfirmedState(transcript, 'abbott.txt', {
+    summary: {
+      meetingPurpose: 'Align the audit team on the surveillance-audit plan, preparation, access, timing, logistics and responsibilities.',
+      overallTopics: [
+        'Audit scope, timing and logistics',
+        'Software deep-dive role and responsibilities',
+        'Preparation, confidentiality and document access',
+        'Risk analysis and audit-planning evidence'
+      ]
+    }
+  });
+  const profile = {
+    events: {},
+    topics: [
+      { id: 'logistics', representativeText: 'audit site hotel travel timing logistics scope', evidenceIds: ids(/hotel|travel|site|on site|timing|schedule|scope/i), cohesion: 1 },
+      { id: 'risk', representativeText: 'risk analysis audit plan SBOM threat model CVE cybersecurity software validation complaints CAPA deviations', evidenceIds: ids(/risk analysis|risk assessment|risk management|audit plan|sbom|threat model|cve|cybersecurity|software validation|complaints|capa|deviations/i), cohesion: 1 },
+      { id: 'access', representativeText: 'code of conduct confidentiality training SharePoint document access tracker', evidenceIds: ids(/code of conduct|confidentiality|training|sharepoint|document access|tracker/i), cohesion: 1 }
+    ]
+  };
+
+  const result = semanticStages.contentStage(evidence, state, profile);
+  const risk = result.discussionPlan.workstreams.find((workstream) => workstream.label === 'Risk analysis and audit-planning evidence');
+  assert.ok(risk);
+  const riskText = risk.evidenceIds.map((id) => evidence.events.find((event) => event.id === id)?.text || '').join(' ');
+  assert.match(riskText, /risk analysis|risk assessment|risk management|audit plan|sbom|threat model|cve|cybersecurity|software validation|complaints|capa|deviations/i);
+  assert.doesNotMatch(riskText, /Costa Rica|hotel|dietary requirements|hire car/i);
+
+  const genericLabels = result.discussion
+    .filter((card) => !['Audit scope, timing and logistics', 'Software deep-dive role and responsibilities', 'Preparation, confidentiality and document access', 'Risk analysis and audit-planning evidence'].includes(card.topic))
+    .map((card) => card.topic)
+    .join('\n');
+  assert.doesNotMatch(genericLabels, /Plans and timelines|Scope and requirements|Software changes|Roles and responsibilities/i);
+});
+
 test('canonical Actions ranking separates reviewer usefulness from automatic publication confidence for DITA', async () => {
   const ditaTranscript = fs.readFileSync(
     path.resolve(__dirname, '../../trinzo-ui-test-transcripts/extracted-text/Client DITA T819 - Importer Obligations - Client connect-6-.txt'),
@@ -704,6 +796,47 @@ test('canonical Actions ranking still keeps non-DITA explicit work visible', asy
   assert.match(combined, /mute button|additional languages|electrical compliance|USB|risk management/i);
   assert.doesNotMatch(combined, /Med Envoy|HPRA|authorised-representative|PPE\/sunglasses/i);
   assert.ok((result.screens.actions || []).length >= 1 || (result.actionReviewCandidates || []).some((candidate) => candidate.reviewerUsefulnessTier === 'high'));
+});
+
+test('canonical Actions do not publish mixed compound T761 recap clauses as one confirmed action', async () => {
+  const transcript = fs.readFileSync(
+    path.resolve(__dirname, '../scripts/meeting-minutes-final-golden/025_real_t761_eakin_sw_weekly_transcript/transcript.txt'),
+    'utf8'
+  );
+  const previousTrooperKey = process.env.TROOPER_API_KEY;
+  delete process.env.TROOPER_API_KEY;
+  let result;
+  try {
+    result = await apiRouter.stagedEvaluation.canonicalStagedResponse('actions', {
+      text: transcript,
+      source: 'text',
+      fileName: 't761.txt',
+      preparedTranscriptTelemetry: null
+    }, {
+      confirmedSummary: {
+        meetingPurpose: 'Coordinate progress, evidence gaps, blockers and next steps for the software-change and technical-file programme.',
+        overallTopics: [
+          'Language and country requirements',
+          'Alarm-code and clinical confirmation',
+          'Debug and test-script evidence',
+          'Change control and version traceability',
+          'Electrical compliance evidence',
+          'Cybersecurity, USB and GUI controls',
+          'Standards and risk-management work'
+        ]
+      }
+    });
+  } finally {
+    if (previousTrooperKey) process.env.TROOPER_API_KEY = previousTrooperKey;
+  }
+
+  const confirmed = result.screens.actions || [];
+  const confirmedText = confirmed.map((item) => `${item.owner || ''} ${item.action || ''}`).join('\n');
+  assert.doesNotMatch(confirmedText, /drivers needs/i);
+  assert.ok(!confirmed.some((item) => /additional languages/i.test(item.action) && /electrical compliance/i.test(item.action)), confirmedText);
+
+  const reviewText = (result.actionReviewCandidates || []).map((item) => `${item.suggestedAction || item.action || ''}`).join('\n');
+  assert.match(`${confirmedText}\n${reviewText}`, /mute button|additional languages|electrical compliance|USB|risk management/i);
 });
 
 test('summary reviewer guidance prioritises supported evidence without becoming evidence', () => {

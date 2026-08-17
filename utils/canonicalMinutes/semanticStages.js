@@ -13,6 +13,7 @@ const { resolveActionRecords } = require('./actionResolution');
 const { editorialTopicLabel, editorialTopics } = require('./topicEditorial');
 const { repairDiscussionForConfirmedUnderstanding } = require('../stagedSemanticAuthority');
 const { enrichActionReviewCandidate, rankAndClusterActionReviewCandidates, hasImporterProcedureContext } = require('./actionReviewRanking');
+const { finaliseDiscussionPointForMinutes } = require('../stagedEditorial');
 
 function unique(items, key) {
   const seen = new Set();
@@ -242,6 +243,40 @@ function reviewCandidateNoise(item, evidence) {
   const malformed = /,\s*I['’]m\b|\bbecause I['’]m\b/i.test(text);
   const unresolvedObject = /\b(?:review|send|share|update|complete)\s+(?:it|that|this)(?:\s+as well)?$/i.test(text);
   return malformed || unresolvedObject || nonMinuteActionText(`${text} ${sourceText}`) || isUnderspecifiedAction(item);
+}
+
+function actionWorkstreamFamilies(value) {
+  const text = clean(value);
+  const families = new Set();
+  if (/\b(?:language|languages?|translation|font|characters?|symbols?|graphics driver)\b/i.test(text)) families.add('language');
+  if (/\b(?:electrical compliance|iec\s*60601|electrical testing)\b/i.test(text)) families.add('electrical_compliance');
+  if (/\b(?:alarm|mute button|led|flash(?:ing)?|priority|clinical|clinician|sound|chirps?)\b/i.test(text)) families.add('alarm_controls');
+  if (/\b(?:usb|port lock|gui|screen control|cyber\s*security|password)\b/i.test(text)) families.add('cybersecurity_controls');
+  if (/\b(?:change request|change control|version|traceability|technical file|device file history|17 changes?)\b/i.test(text)) families.add('software_traceability');
+  if (/\b(?:risk management|risk file|risk matrix|standards?|81001|27427)\b/i.test(text)) families.add('standards_risk');
+  if (/\b(?:debug|test scripts?|test data|validation|verification)\b/i.test(text)) families.add('debug_testing');
+  if (/\b(?:qms|quality manual|procedure|process discovery|working sessions?|warehouse|erp|order flow|scanner|barcode)\b/i.test(text)) families.add('procedure_process');
+  return families;
+}
+
+function materialActionClauses(value) {
+  return clean(value)
+    .split(/\s*(?:[.;]\s+|[.;](?=[A-Z0-9])|\band then\b|\bthen\b|\s+\+\s+)\s*/i)
+    .map((part) => clean(part))
+    .filter((part) => part.split(/\s+/).filter(Boolean).length >= 3);
+}
+
+function compoundActionPublicationIssue(item, evidence) {
+  const actionText = clean(item?.action);
+  if (!actionText) return 'missing_action';
+  if (/\b(?:drivers needs|access shirt|back[- ]to[- ]somber pressure valves?|version one to 10[12])\b/i.test(actionText)) return 'malformed_compound_action';
+  const actionFamilies = actionWorkstreamFamilies(actionText);
+  const clauses = materialActionClauses(actionText);
+  if (actionFamilies.size >= 2 && clauses.length >= 2) return 'mixed_workstream_clauses';
+  const sourceText = (item.evidenceIds || []).map((id) => evidence.events.find((event) => event.id === id)?.text || '').join(' ');
+  const sourceClauses = materialActionClauses(sourceText);
+  if (sourceClauses.length >= 2 && actionFamilies.size >= 2) return 'mixed_source_clauses';
+  return '';
 }
 
 function nonMinuteActionText(value) {
@@ -530,6 +565,26 @@ const PLANNER_STOPWORDS = new Set([
 
 const DISCUSSION_PLAN_CONCEPTS = [
   {
+    id: 'audit_logistics',
+    labelPattern: /\b(?:audit scope|audit timing|audit logistics|surveillance|site|on[- ]?site|travel|hotel|hire car|schedule|timing|dates?)\b/i,
+    evidencePattern: /\b(?:audit scope|surveillance|site|on[- ]?site|travel|hotel|hire car|logistics|schedule|timing|dates?|report writing|five days?)\b/i
+  },
+  {
+    id: 'audit_preparation_access',
+    labelPattern: /\b(?:preparation|confidentiality|code of conduct|training|document access|sharepoint|tracker|query log|access)\b/i,
+    evidencePattern: /\b(?:preparation|confidentiality|code of conduct|training attestation|document access|sharepoint|tracker|query log|secure(?:ly)?|external access|front[- ]?end)\b/i
+  },
+  {
+    id: 'audit_risk_planning',
+    labelPattern: /\b(?:risk analysis|risk assessment|audit[- ]?planning evidence|audit plan|s-?bom|sbom|threat model|cves?|software validation|software development)\b/i,
+    evidencePattern: /\b(?:risk analysis|risk assessment|risk management|audit plan|s-?bom|sbom|threat model|cves?|cybersecurity|software development|software validation|complaints?|capa|deviations?)\b/i
+  },
+  {
+    id: 'software_roles',
+    labelPattern: /\b(?:software deep[- ]?dive|software audit|specialist software|software coverage|roles?|responsibilit(?:y|ies)|lead auditor|co[- ]?auditor|track)\b/i,
+    evidencePattern: /\b(?:software deep[- ]?dive|software audit|specialist software|software coverage|roles?|responsibilit(?:y|ies)|lead auditor|co[- ]?auditor|track)\b/i
+  },
+  {
     id: 'goods_flow_storage',
     labelPattern: /\b(?:goods?|flow|storage|warehouse|warehousing|supplier|suppliers?|japan|netherlands|fiscal|clearance|dublin|park west|import(?:er)?)\b/i,
     evidencePattern: /\b(?:goods?|supplier|suppliers?|japan|netherlands|fiscal|clearance|warehouse|warehousing|stored?|storage|dublin|park west|dispatch|shipp(?:ed|ing)|country of origin|final destination)\b/i
@@ -548,7 +603,38 @@ const DISCUSSION_PLAN_CONCEPTS = [
     id: 'language_country',
     labelPattern: /\b(?:language|languages?|country|countries|translation|translations?|locali[sz]ation|ifu|ifus|labels?|labelling|labeling|manufacturer information)\b/i,
     evidencePattern: /\b(?:language|languages?|country|countries|translation|translations?|locali[sz]ation|ifu|ifus|labels?|labelling|labeling|manufacturer information|suppl(?:y|ied) (?:to|in)|market(?:s)?)\b/i,
-    antiPattern: /\b(?:risk rationale|ppe category|declarations? of conformity)\b/i
+    antiPattern: /\b(?:risk rationale|ppe category|declarations? of conformity|alarm|chirps?|mute button|led|flash(?:ing)?|low priority|medium priority|high priority|sound)\b/i
+  },
+  {
+    id: 'alarm_controls',
+    labelPattern: /\b(?:alarm|alarm-code|clinical|clinician|sound|chirps?|mute button|led|flash(?:ing)?|priority|colour|color|code changes?)\b/i,
+    evidencePattern: /\b(?:alarm|sound|chirps?|mute button|led|flash(?:ing)?|low priority|medium priority|high priority|priority levels?|colour|color|clinical|clinician|code changes?)\b/i,
+    antiPattern: /\b(?:language files?|translations?|font|characters?|arabic|vietnamese|greek)\b/i
+  },
+  {
+    id: 'debug_testing',
+    labelPattern: /\b(?:debug|test[- ]?scripts?|test data|testing evidence|validation|verification|retrospective testing|retrospective test data)\b/i,
+    evidencePattern: /\b(?:debug|test[- ]?scripts?|test data|testing output|test results?|validation|verification|retrospective test(?:ing| data)|visible on screen)\b/i
+  },
+  {
+    id: 'software_traceability',
+    labelPattern: /\b(?:change control|change request|version traceability|software traceability|software changes?|technical file|device file history|17 changes?)\b/i,
+    evidencePattern: /\b(?:change control|change request|software versions?|version\s*1\.?0?1|version\s*1\.?0?2|version one|102|traceability|technical file|device file history|17 changes?|code)\b/i
+  },
+  {
+    id: 'electrical_compliance',
+    labelPattern: /\b(?:electrical compliance|iec\s*60601|60601-?1|electrical testing|test gaps?)\b/i,
+    evidencePattern: /\b(?:electrical compliance|iec\s*60601|60601-?1|electrical testing|test gaps?|23rd? of july|23 july)\b/i
+  },
+  {
+    id: 'cybersecurity_controls',
+    labelPattern: /\b(?:cyber\s*security|usb|port lock|gui|screen control|password|access controls?|interference)\b/i,
+    evidencePattern: /\b(?:cyber\s*security|usb|port lock|gui|screen control|password|access controls?|unauthori[sz]ed access|unwarranted interference)\b/i
+  },
+  {
+    id: 'standards_risk_management',
+    labelPattern: /\b(?:standards?|risk[- ]?management|risk matrix|fmea|hazards?|mitigation|81001|27427)\b/i,
+    evidencePattern: /\b(?:standards?|risk[- ]?management|risk matrix|fmea|hazards?|mitigation|81001|27427)\b/i
   },
   {
     id: 'eudamed_hpra',
@@ -568,10 +654,31 @@ const DISCUSSION_PLAN_CONCEPTS = [
   {
     id: 'risk',
     labelPattern: /\b(?:risk|risks|dependency|dependencies|blocker|issue|issues)\b/i,
-    evidencePattern: /\b(?:risk|risks|dependency|dependencies|blocker|issue|issues|consequence|incomplete|missing|audit)\b/i,
+    evidencePattern: /\b(?:risk|risks|dependency|dependencies|blocker|issue|issues|consequence|incomplete|missing|uncertain|uncertainty|exposure|mitigation|unavailable|gap)\b/i,
     generic: true
   }
 ];
+
+function riskBearingEvidence(value) {
+  const text = clean(value);
+  return /\b(?:risk|risks|dependency|dependencies|blocker|blocked|issue|issues|consequence|incomplete|missing|uncertain|uncertainty|exposure|mitigation|unavailable|gap|delay|fail(?:ure)?|cannot|can't|unable|required before|prerequisite)\b/i.test(text);
+}
+
+function eventConflictsWithWorkstream(eventText, workstreamLabel) {
+  const concepts = plannerConceptsFor(workstreamLabel);
+  if (concepts.some((concept) => concept.id === 'language_country')) {
+    const languageSupport = DISCUSSION_PLAN_CONCEPTS.find((concept) => concept.id === 'language_country')?.evidencePattern.test(eventText);
+    const competingTechnicalSupport = ['alarm_controls', 'debug_testing', 'electrical_compliance', 'cybersecurity_controls', 'software_traceability', 'standards_risk_management']
+      .some((id) => DISCUSSION_PLAN_CONCEPTS.find((concept) => concept.id === id)?.evidencePattern.test(eventText));
+    if (competingTechnicalSupport && !languageSupport) return true;
+  }
+  if (concepts.some((concept) => concept.id === 'cybersecurity_controls')) {
+    const cyberSupport = DISCUSSION_PLAN_CONCEPTS.find((concept) => concept.id === 'cybersecurity_controls')?.evidencePattern.test(eventText);
+    const alarmSupport = DISCUSSION_PLAN_CONCEPTS.find((concept) => concept.id === 'alarm_controls')?.evidencePattern.test(eventText);
+    if (alarmSupport && !cyberSupport) return true;
+  }
+  return false;
+}
 
 function plannerTokens(value) {
   return new Set((clean(value).toLowerCase().match(/[a-z][a-z0-9-]{2,}/g) || [])
@@ -581,6 +688,19 @@ function plannerTokens(value) {
 function plannerConceptsFor(value) {
   const text = clean(value);
   return DISCUSSION_PLAN_CONCEPTS.filter((concept) => concept.labelPattern.test(text));
+}
+
+function conceptIdsFor(value) {
+  return plannerConceptsFor(value).map((concept) => concept.id);
+}
+
+function conceptIdSetFor(value) {
+  return new Set(conceptIdsFor(value));
+}
+
+function conceptSetsOverlap(left, right) {
+  if (!left?.size || !right?.size) return false;
+  return [...left].some((id) => right.has(id));
 }
 
 function relevantConfirmedFactsForWorkstream(label, understanding = {}) {
@@ -619,8 +739,11 @@ function scoreEventForPlannedWorkstream(event, workstream, state = {}) {
   const wanted = plannerTokens(searchText);
   const overlap = wanted.size ? [...wanted].filter((token) => eventTokens.has(token)).length / Math.max(wanted.size, 1) : 0;
   const concepts = plannerConceptsFor(workstream.label);
+  if (concepts.length === 1 && concepts[0].id === 'risk' && !riskBearingEvidence(eventText)) return 0;
+  if (eventConflictsWithWorkstream(eventText, workstream.label)) return 0;
   const conceptHits = concepts.filter((concept) => concept.evidencePattern.test(eventText)).length;
   const antiHits = concepts.filter((concept) => concept.antiPattern && concept.antiPattern.test(eventText)).length;
+  if (concepts.some((concept) => concept.id === 'risk') && !concepts.some((concept) => concept.id !== 'risk') && !riskBearingEvidence(eventText)) return 0;
   const factHits = relevantConfirmedFactsForWorkstream(workstream.label, state)
     .reduce((sum, fact) => {
       const factTokens = plannerTokens(fact);
@@ -628,8 +751,9 @@ function scoreEventForPlannedWorkstream(event, workstream, state = {}) {
       const covered = [...factTokens].filter((token) => eventTokens.has(token)).length / factTokens.size;
       return sum + (covered >= 0.22 ? covered : 0);
     }, 0);
+  const seedHit = (workstream.seedEvidenceIds || workstream.clusterEvidenceIds || []).includes(event.id) ? 1 : 0;
   const genericPenalty = workstream.provenance === 'generic' ? 0.35 : 0;
-  return Math.max(0, (overlap * 2.2) + (conceptHits * 1.35) + (factHits * 1.8) - (antiHits * 1.7) - genericPenalty);
+  return Math.max(0, (overlap * 2.2) + (conceptHits * 1.35) + (factHits * 1.8) + (seedHit * 3.4) - (antiHits * 1.7) - genericPenalty);
 }
 
 function stableWorkstreamId(label, index) {
@@ -646,10 +770,59 @@ function confirmedDiscussionWorkstreams(state = {}) {
       label,
       provenance: 'reviewer_confirmed',
       topicId: clean(item.topicId),
+      seedEvidenceIds: Array.isArray(item.evidenceIds) ? item.evidenceIds.map(clean).filter(Boolean) : [],
       planningPriority: 100 - index,
       sourceIndex: index
     };
   }).filter(Boolean);
+}
+
+function seedEvidenceFromProfileTopics(workstream, selectedTopics = [], evidence) {
+  const label = clean(workstream.label);
+  const labelConcepts = conceptIdSetFor(label);
+  const ids = new Set(workstream.seedEvidenceIds || workstream.clusterEvidenceIds || []);
+  for (const topic of Array.isArray(selectedTopics) ? selectedTopics : []) {
+    const topicLabel = editorialTopicLabel(topic, evidence);
+    const topicText = [topicLabel, topic.representativeText].filter(Boolean).join(' ');
+    const topicConcepts = conceptIdSetFor(topicText);
+    const exactTopicId = clean(workstream.topicId) && clean(workstream.topicId) === clean(topic.id);
+    const semanticMatch = conceptSetsOverlap(labelConcepts, topicConcepts);
+    const labelMatch = topicMatchScore(label, { topic: topicLabel, points: [topic.representativeText || ''] }) >= 0.22;
+    const tokenMatch = lexicalOverlap(plannerTokens(label), plannerTokens(topicText)) >= 0.34;
+    if (exactTopicId || semanticMatch || (!labelConcepts.size && (labelMatch || tokenMatch))) {
+      for (const id of Array.isArray(topic.evidenceIds) ? topic.evidenceIds : []) ids.add(clean(id));
+    }
+  }
+  return [...ids].filter(Boolean);
+}
+
+function lexicalOverlap(leftTokens, rightTokens) {
+  if (!leftTokens?.size || !rightTokens?.size) return 0;
+  return [...leftTokens].filter((token) => rightTokens.has(token)).length / Math.min(leftTokens.size, rightTokens.size);
+}
+
+function evidenceOverlapRatio(leftIds = [], rightIds = []) {
+  const left = new Set(leftIds || []);
+  const right = new Set(rightIds || []);
+  if (!left.size || !right.size) return 0;
+  let shared = 0;
+  for (const id of left) if (right.has(id)) shared += 1;
+  return shared / Math.min(left.size, right.size);
+}
+
+function workstreamsSemanticallySimilar(left, right) {
+  if (clean(left.topicId) && clean(left.topicId) === clean(right.topicId)) return true;
+  if (clean(left.id) && clean(left.id) === clean(right.topicId)) return true;
+  if (clean(right.id) && clean(right.id) === clean(left.topicId)) return true;
+  const leftConcepts = conceptIdSetFor([left.label, ...(left.points || [])].join(' '));
+  const rightConcepts = conceptIdSetFor([right.label, ...(right.points || [])].join(' '));
+  return conceptSetsOverlap(leftConcepts, rightConcepts)
+    || topicMatchScore(left.label, { topic: right.label, points: [] }) >= 0.24
+    || lexicalOverlap(plannerTokens(left.label), plannerTokens(right.label)) >= 0.38;
+}
+
+function genericFallbackDiscussionLabel(value) {
+  return /\b(?:plans? and timelines?|scope and requirements|software changes|roles and responsibilities|documentation and evidence|cybersecurity and access controls)\b/i.test(clean(value));
 }
 
 function emergentDiscussionWorkstreams(selectedTopics, evidence, usedLabels = new Set(), coveredConceptIds = new Set()) {
@@ -664,7 +837,7 @@ function emergentDiscussionWorkstreams(selectedTopics, evidence, usedLabels = ne
     return {
       id: topic.id || stableWorkstreamId(label, index),
       label,
-      provenance: DISCUSSION_PLAN_CONCEPTS.some((concept) => concept.generic && concept.labelPattern.test(label)) ? 'generic' : 'transcript_emergent',
+      provenance: DISCUSSION_PLAN_CONCEPTS.some((concept) => concept.generic && concept.labelPattern.test(label)) || genericFallbackDiscussionLabel(label) ? 'generic' : 'transcript_emergent',
       topicId: topic.id,
       clusterEvidenceIds: topic.evidenceIds || [],
       planningPriority: 50 - index,
@@ -674,7 +847,10 @@ function emergentDiscussionWorkstreams(selectedTopics, evidence, usedLabels = ne
 }
 
 function buildDiscussionEvidencePlan(evidence, state, selectedTopics) {
-  const confirmed = confirmedDiscussionWorkstreams(state);
+  const confirmed = confirmedDiscussionWorkstreams(state).map((workstream) => ({
+    ...workstream,
+    seedEvidenceIds: seedEvidenceFromProfileTopics(workstream, selectedTopics, evidence)
+  }));
   const usedLabels = new Set(confirmed.map((item) => clean(item.label).toLowerCase()));
   const coveredConceptIds = new Set(confirmed.flatMap((item) => plannerConceptsFor(item.label).map((concept) => concept.id)));
   let workstreams = [...confirmed, ...emergentDiscussionWorkstreams(selectedTopics, evidence, usedLabels, coveredConceptIds)];
@@ -716,12 +892,18 @@ function buildDiscussionEvidencePlan(evidence, state, selectedTopics) {
     })
     .filter(Boolean));
   workstreams = workstreams.map((workstream) => {
+    const seedEvidenceIds = workstream.provenance === 'reviewer_confirmed'
+      ? (workstream.seedEvidenceIds || []).filter((id) => {
+        const event = byId.get(id);
+        return event && eventPublishableForDiscussion(event, evidence) && !eventConflictsWithWorkstream(clean(event.text), workstream.label);
+      })
+      : [];
     const workstreamAllocations = (byWorkstream.get(workstream.id) || [])
       .filter((allocation) => !(workstream.provenance === 'generic' && substantivePrimaryIds.has(allocation.eventId)));
     const primaryAllocations = workstreamAllocations.filter((allocation) => allocation.primary);
-    const evidenceIds = [...new Set(workstreamAllocations
+    const evidenceIds = [...new Set([...seedEvidenceIds, ...workstreamAllocations
       .sort((left, right) => right.score - left.score || evidence.events.findIndex((event) => event.id === left.eventId) - evidence.events.findIndex((event) => event.id === right.eventId))
-      .map((allocation) => allocation.eventId))];
+      .map((allocation) => allocation.eventId)])];
     const minimum = workstream.provenance === 'reviewer_confirmed' ? 1 : (workstream.provenance === 'generic' ? 2 : 1);
     const suppressionReason = evidenceIds.length >= minimum
       ? ''
@@ -734,6 +916,25 @@ function buildDiscussionEvidencePlan(evidence, state, selectedTopics) {
       suppressionReason
     };
   });
+  const stronger = [];
+  workstreams = workstreams.map((workstream) => {
+    if (workstream.suppressionReason) return workstream;
+    const duplicateOf = stronger.find((candidate) => {
+      if (!candidate.evidenceIds?.length || !workstream.evidenceIds?.length) return false;
+      const overlap = evidenceOverlapRatio(workstream.evidenceIds, candidate.evidenceIds);
+      if (overlap < (workstream.provenance === 'generic' ? 0.35 : 0.55)) return false;
+      return workstreamsSemanticallySimilar(workstream, candidate) || workstream.provenance === 'generic';
+    });
+    if (duplicateOf && workstream.provenance !== 'reviewer_confirmed') {
+      return {
+        ...workstream,
+        suppressionReason: `duplicates_${duplicateOf.provenance}_workstream`,
+        duplicateOf: duplicateOf.label
+      };
+    }
+    stronger.push(workstream);
+    return workstream;
+  });
   const plannedWorkstreams = workstreams
     .filter((workstream) => !workstream.suppressionReason)
     .sort((left, right) => right.planningPriority - left.planningPriority || left.sourceIndex - right.sourceIndex);
@@ -744,6 +945,7 @@ function buildDiscussionEvidencePlan(evidence, state, selectedTopics) {
       label: workstream.label,
       provenance: workstream.provenance,
       suppressionReason: workstream.suppressionReason,
+      duplicateOf: workstream.duplicateOf || '',
       evidenceCount: workstream.evidenceIds.length
     })),
     primaryAllocations: allocations.filter((allocation) => allocation.primary),
@@ -790,7 +992,7 @@ function discussionCardsFromPlan(plan, evidence, state = {}) {
     let points = concise ? [{ text: concise, evidenceIds: topEvents.map((event) => event.id) }] : [];
     if (!points.length) {
       points = topEvents
-        .map((event) => ({ text: minutesPoint(event.text, event.speaker), evidenceIds: [event.id] }))
+        .map((event) => ({ text: finaliseDiscussionPointForMinutes(minutesPoint(event.text, event.speaker), workstream.label), evidenceIds: [event.id] }))
         .filter((item) => item.text)
         .slice(0, 4);
     }
@@ -815,6 +1017,22 @@ function discussionCardsFromPlan(plan, evidence, state = {}) {
       }
     };
   }).filter((card) => card.points.length);
+}
+
+function emergentCardAddsDistinctMeaning(card, plannedCards = []) {
+  if (!card?.points?.length) return false;
+  const cardIds = card.evidenceIds || card.points.flatMap((point) => point.evidenceIds || []);
+  for (const planned of plannedCards || []) {
+    const plannedIds = planned.evidenceIds || planned.points?.flatMap((point) => point.evidenceIds || []) || [];
+    const overlap = evidenceOverlapRatio(cardIds, plannedIds);
+    const similar = workstreamsSemanticallySimilar({ label: card.topic, points: card.points.map((point) => point.text || point) }, {
+      label: planned.topic,
+      points: planned.points.map((point) => point.text || point)
+    });
+    if (overlap >= 0.55 && similar) return false;
+    if (overlap >= 0.75 && DISCUSSION_PLAN_CONCEPTS.some((concept) => concept.generic && concept.labelPattern.test(card.topic))) return false;
+  }
+  return true;
 }
 
 function filterRisksAlreadyAllocatedToPlannedWorkstreams(risks, plan) {
@@ -938,7 +1156,7 @@ function distinctiveDiscussionPoints(topicLabel, sourceEvents) {
   if (!rule) return null;
   return sourceEvents
     .filter((event) => rule.pattern.test(clean(event.text)))
-    .map((event) => ({ text: minutesPoint(event.text, event.speaker), evidenceIds: [event.id] }))
+    .map((event) => ({ text: finaliseDiscussionPointForMinutes(minutesPoint(event.text, event.speaker), topicLabel), evidenceIds: [event.id] }))
     .filter((item) => item.text)
     .slice(0, 4);
 }
@@ -1049,6 +1267,8 @@ function contentStage(evidence, state, profile) {
     const emergentCards = discussion
       .filter((card) => !plannedIds.has(clean(card.topic).toLowerCase()))
       .filter((card) => !DISCUSSION_PLAN_CONCEPTS.some((concept) => concept.generic && concept.labelPattern.test(card.topic)))
+      .filter((card) => !(genericFallbackDiscussionLabel(card.topic) && plannedDiscussion.length))
+      .filter((card) => emergentCardAddsDistinctMeaning(card, plannedDiscussion))
       .slice(0, transcriptEmergentRoom);
     discussion = [...plannedDiscussion, ...emergentCards].slice(0, discussionLimit);
   } else {
@@ -1722,6 +1942,13 @@ function actionsStage(evidence, state, profile, topology) {
   // the published list. Otherwise a high classifier score can promote an
   // absence/status remark (for example, “out for the next few days”) as a task.
   actions = actions.filter((item) => !reviewCandidateNoise(item, evidence));
+  const demotedCompoundActions = [];
+  actions = actions.filter((item) => {
+    const reason = compoundActionPublicationIssue(item, evidence);
+    if (!reason) return true;
+    demotedCompoundActions.push({ ...item, compoundPublicationReason: reason, reviewDisposition: 'review_required' });
+    return false;
+  });
   const selectedSignatures = new Set(actions.map((item) => `${clean(item.owner).toLowerCase()}|${clean(item.action).toLowerCase()}`));
   const tieredCandidates = rankAndClusterActionReviewCandidates(actionCandidates.map((item) => ({
     ...item,
@@ -1782,6 +2009,23 @@ function actionsStage(evidence, state, profile, topology) {
           clusterKey: item.clusterKey,
           clusterSize: item.clusterSize,
           evidenceIds: item.evidenceIds || []
+        }))
+      }] : []),
+      ...(demotedCompoundActions.length ? [{
+        type: 'compound_action_publication_review',
+        severity: 'warning',
+        blocking: false,
+        message: `Kept ${demotedCompoundActions.length} compound action candidate${demotedCompoundActions.length === 1 ? '' : 's'} out of the final Actions table because the cited clauses did not share a safe owner, object and workstream.`,
+        repairCandidates: demotedCompoundActions.map((item) => ({
+          id: stableActionCandidateId(item),
+          owner: item.owner || 'Not stated',
+          action: canonicalActionText(item.action),
+          suggestedAction: canonicalActionText(item.action),
+          deadline: item.deadline || 'Not stated',
+          confidenceTier: item.confidenceTier || 'review_owner_or_wording',
+          reviewDisposition: 'review_required',
+          evidenceIds: item.evidenceIds || [],
+          compoundPublicationReason: item.compoundPublicationReason
         }))
       }] : []),
       ...(credibleUnresolvedThreads.length ? [{ type: 'unresolved_commitment_threads', severity: 'warning', message: 'A transcript-supported commitment may still need an owner or clearer wording. Check the suggested actions below.', evidenceIds: credibleUnresolvedThreads.flatMap((item) => item.evidenceIds) }] : [])

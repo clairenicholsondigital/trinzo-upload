@@ -171,6 +171,25 @@ function normaliseActionReviewCandidate(candidate = {}, flag = {}, index = 0) {
   return normalised;
 }
 
+function recoveredCandidateNeedsClauseReview(value) {
+  const text = clean(value);
+  if (!text) return false;
+  if (/\b(?:drivers needs|access shirt|back[- ]to[- ]somber pressure valves?|version one to 10[12])\b/i.test(text)) return true;
+  const families = [
+    /\b(?:language|languages?|translation|font|characters?|symbols?|graphics driver)\b/i,
+    /\b(?:electrical compliance|iec\s*60601|electrical testing)\b/i,
+    /\b(?:alarm|mute button|led|flash(?:ing)?|priority|clinical|clinician|sound|chirps?)\b/i,
+    /\b(?:usb|port lock|gui|screen control|cyber\s*security|password)\b/i,
+    /\b(?:change request|change control|version|traceability|technical file|device file history|17 changes?)\b/i,
+    /\b(?:risk management|risk file|risk matrix|standards?|81001|27427)\b/i,
+    /\b(?:debug|test scripts?|test data|validation|verification)\b/i
+  ].filter((pattern) => pattern.test(text)).length;
+  const clauses = text.split(/\s*(?:[.;]\s+|[.;](?=[A-Z0-9])|\band then\b|\bthen\b)\s*/i)
+    .map(clean)
+    .filter((part) => part.split(/\s+/).length >= 3).length;
+  return families >= 2 && clauses >= 2;
+}
+
 function actionReviewCandidatesFromFlags(flags = []) {
   const byId = new Map();
   for (const [flagIndex, flag] of (Array.isArray(flags) ? flags : []).entries()) {
@@ -287,9 +306,13 @@ function addRecoveredActionCandidates(payload, recovered = []) {
   const pack = Array.isArray(payload._canonicalEvidencePack) ? [...payload._canonicalEvidencePack] : [];
   const signatures = new Set(pack.map((item) => `${clean(item.owner).toLowerCase()}|${clean(item.action).toLowerCase()}`));
   for (const item of Array.isArray(recovered) ? recovered : []) {
+    const rawAction = clean(item?.evidenceAction || item?.action);
+    const canonicalRecoveredAction = clean(item?.action);
+    const needsClauseReview = recoveredCandidateNeedsClauseReview(rawAction) || recoveredCandidateNeedsClauseReview(clean(item?.evidence));
+    const safeRecoveredAction = needsClauseReview ? canonicalRecoveredAction : rawAction;
     const enriched = enrichActionReviewCandidate({
       ...item,
-      action: item?.evidenceAction || item?.action,
+      action: safeRecoveredAction,
       suggestedAction: item?.action,
       evidenceIds: item?.sourceTurnIds || item?.evidenceIds || []
     }, {});
@@ -301,7 +324,9 @@ function addRecoveredActionCandidates(payload, recovered = []) {
     const signature = `${owner.toLowerCase()}|${action.toLowerCase()}`;
     if (signatures.has(signature)) continue;
     const id = `recovered_${pack.length + 1}`;
-    const reviewDisposition = clean(item.reviewDisposition) || (owner === 'Not stated' ? 'needs_assignment' : 'confirmed_action');
+    const reviewDisposition = needsClauseReview
+      ? 'review_required'
+      : (clean(item.reviewDisposition) || (owner === 'Not stated' ? 'needs_assignment' : 'confirmed_action'));
     const rankedScore = Number(item.reviewerUsefulnessScore || 0);
     const recoveredScore = Number(enriched.reviewerUsefulnessScore || 0);
     pack.push({

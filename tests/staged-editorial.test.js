@@ -227,6 +227,13 @@ test('finaliseDiscussionPointForMinutes removes raw transcript fragments without
   assert.equal(finaliseDiscussionPointForMinutes("Let's hope it's not a password on the screen, because Jacqui Fox would imagine that that's another software change, isn't it?", 'Cybersecurity and access controls'), '');
 });
 
+test('finaliseDiscussionPointForMinutes drops browser-observed malformed downstream points without hallucinating repair', () => {
+  assert.equal(finaliseDiscussionPointForMinutes('That will, that scope and what you build out will.', 'Audit scope, timing and logistics'), '');
+  assert.equal(finaliseDiscussionPointForMinutes('The tracker and query log were discussed on the basis of access shirt.', 'Preparation, confidentiality and document access'), '');
+  assert.equal(finaliseDiscussionPointForMinutes('The documentation currently goes from version one to 102.', 'Change control and version traceability'), '');
+  assert.equal(finaliseDiscussionPointForMinutes('The standards review included back-to-somber pressure valves.', 'Standards and risk-management work'), '');
+});
+
 test('finaliseDiscussionPointForMinutes rejects the leaked T761 reported-speech fragments', () => {
   const topic = 'Language File Updates and Character Support';
   assert.equal(finaliseDiscussionPointForMinutes(
@@ -431,6 +438,17 @@ test('normaliseFinalStagedActionCandidate accepts concrete continuation actions'
   assert.deepEqual(
     normaliseFinalStagedActionCandidate({ owner: 'Rebecca Cuckoo', action: 'Continue reviewing the USB port controls', deadline: 'Not stated' }),
     { owner: 'Rebecca Cuckoo', action: 'Continue reviewing the USB port controls', deadline: 'Not stated' }
+  );
+});
+
+test('normaliseFinalStagedActionCandidate rejects mixed compound workstream clauses', () => {
+  assert.equal(
+    normaliseFinalStagedActionCandidate({
+      owner: 'Andrew Kane',
+      action: 'Continue the update to the 12 additional languages.drivers needs still to be done and then the electrical compliance testing has started or will start shortly with a view to be within the 23rd of July dates.',
+      deadline: 'Not stated'
+    }),
+    null
   );
 });
 

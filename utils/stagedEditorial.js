@@ -213,6 +213,8 @@ function isMalformedStagedLine(value) {
   if (GLUED_CLAUSE.test(text)) return true;
   if (/^(?:from\s+)?directly\s+from\b/i.test(text)) return true;
   if (/\b(?:a point of related point|will\s+[A-Z][a-z]+\s+has\s+access|performing some inactions)\b/i.test(text)) return true;
+  if (/\b(?:access shirt|back[- ]to[- ]somber pressure valves?|version one to 10[12])\b/i.test(text)) return true;
+  if (/\b(?:that will,?\s+that|will,?\s+that)\b/i.test(text) && !/\b(?:the team|discussion|review|meeting)\b/i.test(text)) return true;
   if (/\b(?:they may or may not|may or may not),?\s+(?:like|you know)\b/i.test(text)) return true;
   if (/\b(?:it['’]?s|that['’]?s)\s+(?:minimal|probably|maybe)\b/i.test(text) && !/\b(?:the team|discussion|review)\b/i.test(text)) return true;
   return false;
@@ -571,7 +573,7 @@ function neutraliseReportedDiscussion(value) {
 }
 
 const RAW_TRANSCRIPT_DISCUSSION_PATTERNS = [
-  /^(?:well|yeah|yes|no|okay|ok|right|so|anyway|basically|actually|and then|and that|but|that['’]s)\b/i,
+  /^(?:well|yeah|yes|no|okay|ok|right|so|anyway|basically|actually|and then|and that|but|that['’]s|that will)\b/i,
   /^(?:one of the things|the other thing|what I was|what we were|what was|there['’]s one to)\b/i,
   /^(?:let['’]s hope|I would (?:imagine|guess|suppose|think)|I['’]d (?:imagine|guess|suppose|think))\b/i,
   /\b[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){0,3}\s+would\s+(?:imagine|guess|suppose|think)\b/i,
@@ -693,8 +695,8 @@ function reshapeStagedDiscussionCardsForHumanMinutes(cards, options = {}) {
       const before = humaniseDiscussionPoint(point);
       const human = finaliseDiscussionPointForMinutes(point, topic);
       if (!human && before) {
-        if (isMalformedStagedLine(before)) malformedDiscussionPointsRemoved += 1;
-        else if (isRawTranscriptDiscussionPoint(before)) rawTranscriptPointsRemoved += 1;
+        if (isRawTranscriptDiscussionPoint(before)) rawTranscriptPointsRemoved += 1;
+        else if (isMalformedStagedLine(before)) malformedDiscussionPointsRemoved += 1;
         else if (discussionPointIsActionOnly(before)) actionOnlyPointsRemoved += 1;
       }
       const key = normaliseForSimilarity(human);
@@ -937,12 +939,31 @@ function stagedFinalActionQualityIssue(candidate = {}) {
   const action = cleanFinalActionValue(rewritten.action);
   if (!action) return 'missing_action';
   if (isMalformedStagedLine(action)) return 'malformed_action';
+  if (finalActionMixesWorkstreams(action)) return 'mixed_workstream_clauses';
   if (FINAL_ACTION_DEBRIS.some((pattern) => pattern.test(action))) return 'transcript_debris';
   if (!FINAL_ACTION_VERB.test(action)) return 'missing_actionable_verb';
   if (!finalActionHasConcreteObject(action)) return 'missing_concrete_object';
   if (/\b(?:someone|somebody|they|we)\s+(?:will|should|need to|needs to)\b/i.test(action)) return 'unclear_actor';
   if (/\b(?:look at|think about|discuss|consider|progress|sort out|stuff|things|everything)\b/i.test(action)) return 'vague_action';
   return null;
+}
+
+function finalActionMixesWorkstreams(value) {
+  const text = cleanFinalActionValue(value);
+  const families = [
+    /\b(?:language|languages?|translation|font|characters?|symbols?|graphics driver)\b/i,
+    /\b(?:electrical compliance|iec\s*60601|electrical testing)\b/i,
+    /\b(?:alarm|mute button|led|flash(?:ing)?|priority|clinical|clinician|sound|chirps?)\b/i,
+    /\b(?:usb|port lock|gui|screen control|cyber\s*security|password)\b/i,
+    /\b(?:change request|change control|version|traceability|technical file|device file history|17 changes?)\b/i,
+    /\b(?:risk management|risk file|risk matrix|standards?|81001|27427)\b/i,
+    /\b(?:debug|test scripts?|test data|validation|verification)\b/i
+  ].filter((pattern) => pattern.test(text)).length;
+  if (families < 2) return false;
+  const clauses = text.split(/\s*(?:[.;]\s+|[.;](?=[A-Z0-9])|\band then\b|\bthen\b)\s*/i)
+    .map((part) => part.trim())
+    .filter((part) => part.split(/\s+/).filter(Boolean).length >= 3);
+  return clauses.length >= 2;
 }
 
 function normaliseFinalStagedActionCandidate(candidate = {}) {
