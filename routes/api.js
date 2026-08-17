@@ -49,6 +49,7 @@ const { enrichActionReviewCandidate } = require('../utils/canonicalMinutes/actio
 const { reviewGeneratedContent } = require('../utils/terminologyQa');
 const { generateStagedMinutesPdf, stagedMinutesPdfFilename } = require('../utils/stagedMinutesPdf');
 const { polishExecutiveSummaryGrammar } = require('../utils/stagedExecutiveSummaryGrammar');
+const { polishInitialUnderstanding } = require('../utils/stagedInitialUnderstandingPolish');
 const {
   buildConfirmedUnderstanding,
   repairDiscussionForConfirmedUnderstanding
@@ -1320,6 +1321,23 @@ async function grammarPolishStagedExecutiveSummary(value) {
     fetchImpl: fetch,
     maxTokens: Number(process.env.STAGED_SUMMARY_GRAMMAR_MAX_TOKENS || 700),
     timeoutMs: Number(process.env.STAGED_SUMMARY_GRAMMAR_TIMEOUT_MS || 20000)
+  });
+}
+
+async function polishStagedInitialUnderstanding(summary, meetingTitle) {
+  return polishInitialUnderstanding({
+    meetingTitle,
+    meetingPurpose: summary?.meetingPurpose,
+    objectives: summary?.objectives,
+    overallTopics: summary?.overallTopics,
+    executiveSummary: summary?.executiveSummary
+  }, {
+    apiKey: process.env.TROOPER_API_KEY,
+    model: String(process.env.TROOPER_MODEL || TROOPER_STAGE_MODEL_DEFAULT).trim() || TROOPER_STAGE_MODEL_DEFAULT,
+    url: String(process.env.TROOPER_CHAT_COMPLETIONS_URL || TROOPER_STAGE_URL_DEFAULT).trim() || TROOPER_STAGE_URL_DEFAULT,
+    fetchImpl: fetch,
+    maxTokens: Number(process.env.STAGED_INITIAL_UNDERSTANDING_MAX_TOKENS || 650),
+    timeoutMs: Number(process.env.STAGED_INITIAL_UNDERSTANDING_TIMEOUT_MS || 20000)
   });
 }
 
@@ -3970,6 +3988,27 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
     };
   }
   let result = clientReadyPresentation(polished.payload);
+  let initialUnderstandingPolish = { used: false, reason: 'not_applicable' };
+  const presentationInitialSummary = result?.screens?.summary;
+  if (stage === 'summary' && presentationInitialSummary) {
+    initialUnderstandingPolish = await polishStagedInitialUnderstanding(
+      presentationInitialSummary,
+      confirmed.details?.meetingTitle || input.meetingTitle || ''
+    );
+    if (initialUnderstandingPolish.used) {
+      result = {
+        ...result,
+        screens: {
+          ...(result.screens || {}),
+          summary: {
+            ...presentationInitialSummary,
+            objectives: initialUnderstandingPolish.objectives,
+            executiveSummary: initialUnderstandingPolish.executiveSummary
+          }
+        }
+      };
+    }
+  }
   let executiveSummaryGrammar = { used: false, reason: 'not_applicable' };
   const presentationSummary = result?.screens?.summary?.executiveSummary;
   if (['summary', 'discussion'].includes(stage) && presentationSummary) {
@@ -4000,6 +4039,13 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
         reason: executiveSummaryGrammar.reason,
         overlap: executiveSummaryGrammar.overlap,
         timingMs: executiveSummaryGrammar.timingMs
+      },
+      initialUnderstandingPolish: {
+        attempted: stage === 'summary' && Boolean(presentationInitialSummary),
+        used: Boolean(initialUnderstandingPolish.used),
+        reason: initialUnderstandingPolish.reason,
+        overlap: initialUnderstandingPolish.overlap,
+        timingMs: initialUnderstandingPolish.timingMs
       },
       trooper: { used: polished.used, reason: polished.reason, usage: polished.usage || null, input: 'bounded_minilm_evidence' }
     },
