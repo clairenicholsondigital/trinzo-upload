@@ -171,6 +171,8 @@ function normaliseActionReviewCandidate(candidate = {}, flag = {}, index = 0) {
     evidenceIds: Array.isArray(candidate.evidenceIds)
       ? candidate.evidenceIds.map(clean).filter(Boolean)
       : [],
+    sourceSnippet: clean(candidate.sourceSnippet),
+    sourceSpeaker: clean(candidate.sourceSpeaker),
     sourceFlagType: clean(flag.type),
     sourceFlagKey: clean(flag.resolutionKey || flag.key || flag.id) || `flag-${index}`
   };

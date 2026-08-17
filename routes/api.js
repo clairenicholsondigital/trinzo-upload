@@ -3780,6 +3780,8 @@ function stableActionCandidateHash(candidate = {}) {
 }
 
 function serialiseActionReviewCandidate(item = {}) {
+  const evidenceEntries = Array.isArray(item.evidence) ? item.evidence.filter(Boolean) : [];
+  const primaryEvidence = evidenceEntries.find((entry) => entry.current || entry.text) || {};
   const evidenceIds = Array.isArray(item.evidenceIds)
     ? item.evidenceIds
     : (Array.isArray(item.evidence)
@@ -3797,8 +3799,29 @@ function serialiseActionReviewCandidate(item = {}) {
   });
   return {
     id: `action-candidate-${stableActionCandidateHash(candidate)}`,
-    ...candidate
+    ...candidate,
+    sourceSnippet: cleanStagedGeneratedLine(item.sourceSnippet || primaryEvidence.current || primaryEvidence.text || item.action || item.suggestedAction || ''),
+    sourceSpeaker: cleanStagedGeneratedLine(item.sourceSpeaker || primaryEvidence.speaker || '')
   };
+}
+
+function attachActionCandidateSourceSnippets(payload = {}) {
+  const evidenceById = new Map((Array.isArray(payload._canonicalEvidencePack) ? payload._canonicalEvidencePack : [])
+    .flatMap((pack) => Array.isArray(pack?.evidence) ? pack.evidence : [])
+    .filter((entry) => entry?.id)
+    .map((entry) => [String(entry.id), entry]));
+  for (const flag of Array.isArray(payload.validationFlags) ? payload.validationFlags : []) {
+    for (const candidate of Array.isArray(flag?.repairCandidates) ? flag.repairCandidates : []) {
+      if (candidate.sourceSnippet) continue;
+      const evidence = (Array.isArray(candidate.evidenceIds) ? candidate.evidenceIds : [])
+        .map((id) => evidenceById.get(String(id)))
+        .find((entry) => entry?.current || entry?.text);
+      if (!evidence) continue;
+      candidate.sourceSnippet = cleanStagedGeneratedLine(evidence.current || evidence.text);
+      candidate.sourceSpeaker = cleanStagedGeneratedLine(evidence.speaker || '');
+    }
+  }
+  return payload;
 }
 
 async function canonicalStagedResponse(stage, transcript, input = {}) {
@@ -3810,6 +3833,7 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
     reviewerGuidance: input.additionalContext || '',
     includeEvidencePack: ['discussion', 'actions'].includes(stage)
   });
+  if (stage === 'actions') payload = attachActionCandidateSourceSnippets(payload);
   if (stage === 'actions') {
     const recoveredActions = buildEvidenceBoundStagedActionInventory(transcript.text);
     payload = addRecoveredActionCandidates(payload, recoveredActions);

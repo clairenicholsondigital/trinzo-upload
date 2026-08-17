@@ -157,8 +157,10 @@ textarea { min-height:110px; resize:vertical; }
 .action-review-groups { display:grid; gap:.7rem; margin-top:1rem; }
 .action-review-group { border:1px solid #d9e1e8; border-radius:10px; background:#fff; color:#27323a; overflow:hidden; }
 .action-review-group summary { cursor:pointer; padding:.7rem .8rem; font-weight:700; background:#f8fafc; }
+.action-review-guidance { margin:0; padding:.55rem .7rem; color:#596875; background:#fbfdfe; border-top:1px solid #e7edf1; font-size:.86rem; }
 .action-candidate-card { padding:.52rem .7rem; border-top:1px solid #e7edf1; display:grid; gap:.28rem; }
-.action-candidate-card > strong { line-height:1.3; }
+.action-snippet-label { color:#435466; font-size:.75rem; font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
+.action-transcript-snippet { margin:0; padding:.55rem .65rem; border-left:3px solid #9fcbd2; background:#f7fafb; color:#27323a; line-height:1.4; }
 .action-candidate-meta { display:flex; align-items:center; justify-content:space-between; gap:.5rem; flex-wrap:wrap; min-height:1.85rem; }
 .action-candidate-owner { display:inline-flex; align-items:center; gap:.25rem; min-width:0; font-size:.82rem; }
 .review-owner-unresolved { color:#596875; }
@@ -1397,9 +1399,11 @@ td select {
     function capitaliseInitial(value) {
       return String(value || '').trim().replace(/[a-z]/i, function (letter) { return letter.toUpperCase(); });
     }
+    var actionText = capitaliseInitial(action.action);
+    if (!actionText && !action.startBlank) actionText = 'Review action wording';
     return '<tr>' +
       '<td><select class="action-owner-select" data-owner="' + escapeHtml(validReviewerOwner(action.owner)) + '" aria-label="Action owner">' + actionOwnerOptions(action.owner) + '</select></td>' +
-      '<td><textarea>' + escapeHtml(capitaliseInitial(action.action) || 'Review action wording') + '</textarea></td>' +
+      '<td><textarea placeholder="Describe the action…">' + escapeHtml(actionText) + '</textarea></td>' +
       '<td><input value="' + escapeHtml(capitaliseInitial(action.deadline)) + '" placeholder="e.g. 14 August 2026 or next Monday" aria-label="Action date or deadline" /></td>' +
       '<td><button class="secondary" type="button" data-action-row="duplicate">Duplicate</button> <button class="secondary" type="button" data-action-row="delete">Delete</button></td>' +
     '</tr>';
@@ -1593,6 +1597,8 @@ td select {
 
   function normaliseActionCandidatePayload(candidate, flagKey) {
     var source = candidate || {};
+    var evidence = Array.isArray(source.evidence) ? source.evidence : [];
+    var primaryEvidence = evidence.find(function (item) { return item && (item.current || item.text); }) || {};
     var normalised = {
       id: actionCandidateKey(flagKey || source.sourceFlagKey || '', source),
       flagKey: flagKey || source.sourceFlagKey || '',
@@ -1611,7 +1617,9 @@ td select {
         workstreamRelevance: source.workstreamRelevance || null,
         clusterKey: source.clusterKey || '',
         clusterSize: Number(source.clusterSize || 0),
-        evidenceIds: Array.isArray(source.evidenceIds) ? source.evidenceIds : []
+        evidenceIds: Array.isArray(source.evidenceIds) ? source.evidenceIds : [],
+        sourceSnippet: source.sourceSnippet || primaryEvidence.current || primaryEvidence.text || source.action || source.suggestedAction || '',
+        sourceSpeaker: source.sourceSpeaker || primaryEvidence.speaker || ''
       }
     };
     return normalised.candidate.action || normalised.candidate.suggestedAction ? normalised : null;
@@ -1635,6 +1643,8 @@ td select {
       workstreamRelevance: source.workstreamRelevance || null,
       clusterKey: source.clusterKey || '',
       clusterSize: Number(source.clusterSize || 0),
+      sourceSnippet: source.sourceSnippet || '',
+      sourceSpeaker: source.sourceSpeaker || '',
       evidenceIds: Array.isArray(source.evidenceIds) ? source.evidenceIds.slice(0, 12) : []
     };
   }
@@ -1782,22 +1792,18 @@ td select {
 
   function renderActionReviewGroups() {
     if (!actionReviewGroups) return;
-    var groups = { likely: [], requirements: [], low: [] };
-    actionReviewCandidates.forEach(function (entry) { groups[actionCandidateTier(entry.candidate)].push(entry); });
-    var definitions = [
-      ['likely', 'Follow-ups', true],
-      ['requirements', 'Requirements that may need an action', false],
-      ['low', 'Other possible follow-ups', false]
-    ];
-    actionReviewGroups.innerHTML = definitions.map(function (definition) {
-      var entries = groups[definition[0]];
-      if (!entries.length) return '';
-      return '<details class="action-review-group"' + (definition[2] ? ' open' : '') + '><summary>' + entries.length + ' ' + definition[1].toLowerCase() + '</summary>' + entries.map(function (entry) {
-        var candidate = entry.candidate;
-        var owner = validReviewerOwner(candidate.owner);
-        return '<div class="action-candidate-card" data-candidate-id="' + escapeHtml(entry.id) + '"><strong>' + escapeHtml(candidate.suggestedAction || candidate.action || 'Review follow-up') + '</strong><div class="action-candidate-meta"><span class="muted action-candidate-owner">Owner: ' + (owner ? escapeHtml(owner) : '<span class="review-owner-unresolved">Not assigned</span>') + '</span><div class="action-candidate-actions"><button type="button" data-candidate-action="add" aria-label="Add to actions" title="Add to actions">✓ Add</button><button class="secondary" type="button" data-candidate-action="dismiss" aria-label="Not an action" title="Not an action">× Dismiss</button></div></div></div>';
-      }).join('') + '</details>';
-    }).join('');
+    var entries = actionReviewCandidates.slice();
+    if (!entries.length) {
+      actionReviewGroups.innerHTML = '';
+      updateReviewToolbar();
+      return;
+    }
+    actionReviewGroups.innerHTML = '<details class="action-review-group" open><summary>' + entries.length + ' transcript snippet' + (entries.length === 1 ? '' : 's') + ' that may contain actions</summary><p class="action-review-guidance">Review these snippets and turn any genuine commitments into actions.</p>' + entries.map(function (entry) {
+      var candidate = entry.candidate;
+      var snippet = candidate.sourceSnippet || candidate.action || candidate.suggestedAction || 'Transcript evidence needs review.';
+      var speaker = candidate.sourceSpeaker || 'Not identified';
+      return '<div class="action-candidate-card" data-candidate-id="' + escapeHtml(entry.id) + '"><span class="action-snippet-label">Transcript snippet</span><blockquote class="action-transcript-snippet">“' + escapeHtml(snippet) + '”</blockquote><div class="action-candidate-meta"><span class="muted action-candidate-owner">Speaker: ' + escapeHtml(speaker) + '</span><div class="action-candidate-actions"><button type="button" data-candidate-action="add" aria-label="Create action from transcript snippet" title="Create an editable action">Create action</button><button class="secondary" type="button" data-candidate-action="dismiss" aria-label="Dismiss transcript snippet" title="Dismiss">× Dismiss</button></div></div></div>';
+    }).join('') + '</details>';
     updateReviewToolbar();
   }
 
@@ -3255,12 +3261,18 @@ td select {
       if (!entry) return;
       if (button.getAttribute('data-candidate-action') === 'add') {
         var empty = actionsTableBody.querySelector('.empty-state'); if (empty) actionsTableBody.innerHTML = '';
-        actionsTableBody.insertAdjacentHTML('beforeend', renderActionRow({ owner: validReviewerOwner(entry.candidate.owner), action: entry.candidate.suggestedAction || entry.candidate.action || '', deadline: entry.candidate.deadline || '' }));
+        var snippet = String(entry.candidate.sourceSnippet || '').trim();
+        var suggestion = String(entry.candidate.suggestedAction || entry.candidate.action || '').trim();
+        var editableAction = normaliseActionComparisonText(snippet) !== normaliseActionComparisonText(suggestion) ? suggestion : '';
+        var deadline = /^not stated$/i.test(String(entry.candidate.deadline || '').trim()) ? '' : entry.candidate.deadline || '';
+        actionsTableBody.insertAdjacentHTML('beforeend', renderActionRow({ owner: validReviewerOwner(entry.candidate.owner), action: editableAction, deadline: deadline, startBlank: true }));
+        var createdAction = actionsTableBody.querySelector('tr:last-child textarea');
+        if (createdAction) createdAction.focus();
         refreshActionOwnerOptions(); stagedState.actions = actionsFromReview(); updateConfirmedActionCount();
         pruneConfirmedActionCandidates();
-        resolveReviewItem('Added follow-up to confirmed actions: ' + (entry.candidate.suggestedAction || entry.candidate.action || 'Action'), card, entry.id);
+        resolveReviewItem('Created an editable action from a reviewed transcript snippet.', card, entry.id);
       } else {
-        resolveReviewItem('Reviewed and dismissed as a non-action: ' + (entry.candidate.suggestedAction || entry.candidate.action || 'Action'), card, entry.id);
+        resolveReviewItem('Reviewed and dismissed transcript snippet.', card, entry.id);
       }
     });
   }
