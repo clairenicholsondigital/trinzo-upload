@@ -2,7 +2,12 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { polishInitialUnderstanding, validateInitialUnderstandingRevision } = require('../utils/stagedInitialUnderstandingPolish');
+const {
+  deterministicPresentationFallback,
+  objectiveIssue,
+  polishInitialUnderstanding,
+  validateInitialUnderstandingRevision
+} = require('../utils/stagedInitialUnderstandingPolish');
 
 const input = {
   meetingTitle: 'Client T761 Eakin SW Weekly Checkin',
@@ -60,6 +65,69 @@ test('validator accepts a compressed third-person meeting executive summary', ()
     executiveSummary: 'The meeting reviewed outstanding country and language evidence for translation, labelling and market requirements. Further health authority information and supporting label information remain required.'
   });
   assert.equal(validation.ok, true);
+});
+
+test('validator accepts final presentation cleanup of a transcript-shaped objective label', () => {
+  const source = {
+    meetingTitle: 'Eakin SW minutes PDF',
+    meetingPurpose: 'Clarify the current setup, flash behaviour and related next steps.',
+    objectives: [
+      'Clarify david noted the current setup the flash and related next steps.',
+      'Review electrical-compliance testing evidence.'
+    ],
+    overallTopics: ['Current setup and flash behaviour', 'Electrical-compliance testing evidence'],
+    executiveSummary: 'Clarify the current setup, flash behaviour and related next steps. Electrical-compliance testing evidence was discussed.'
+  };
+  const validation = validateInitialUnderstandingRevision(source, {
+    objectives: [
+      'Confirm the current setup and flash behaviour.',
+      'Review electrical-compliance testing evidence.'
+    ],
+    executiveSummary: 'The meeting reviewed the current setup, flash behaviour and electrical-compliance testing evidence.'
+  });
+  assert.equal(validation.ok, true);
+});
+
+test('validator accepts final cleanup when the source summary is visibly transcript-shaped', () => {
+  const source = {
+    meetingTitle: 'QIP assessment tool case study',
+    meetingPurpose: 'Review the quality-system case study and related assessment-tool requirements.',
+    objectives: ['Review quality system and quality culture operating requirements.'],
+    overallTopics: ['Quality system and quality culture', 'Assessment tool requirements', 'Site review requirements'],
+    executiveSummary: "Review the quality-system case study and related assessment-tool requirements. For a site in the areas of quality system, quality culture operating. We'd just be speaking to them to understand what's what."
+  };
+  const validation = validateInitialUnderstandingRevision(source, {
+    objectives: ['Review quality-system and quality-culture requirements.'],
+    executiveSummary: 'The meeting reviewed quality-system and quality-culture requirements for the assessment-tool case study. Further site input is required to clarify the relevant operating requirements.'
+  });
+  assert.equal(validation.ok, true);
+});
+
+test('validator rejects transcript-shaped objectives after Trooper cleanup', () => {
+  assert.equal(objectiveIssue('Clarify david noted the current setup the flash and related next steps.'), 'speaker_transcript_objective');
+  const validation = validateInitialUnderstandingRevision(input, {
+    objectives: ['Clarify David noted the current setup the flash and related next steps.'],
+    executiveSummary: 'The meeting reviewed alarm behaviour and controls and the related next steps.'
+  });
+  assert.equal(validation.ok, false);
+  assert.equal(validation.reason, 'speaker_transcript_objective');
+});
+
+test('deterministic fallback drops unsafe objective labels and unsafe summary fragments', () => {
+  const fallback = deterministicPresentationFallback({
+    meetingTitle: 'QIP assessment tool case study',
+    meetingPurpose: 'Review the quality-system case study and related assessment-tool requirements.',
+    objectives: [
+      'Clarify david noted the current setup the flash and related next steps.',
+      'Review assessment tool requirements.'
+    ],
+    overallTopics: ['Assessment tool requirements', 'Quality system and quality culture'],
+    executiveSummary: "Review the quality-system case study and related assessment-tool requirements. For a site in the areas of quality system, quality culture operating. We'd just be speaking to them to understand what's what."
+  }, 'malformed_objective');
+  assert.equal(fallback.used, true);
+  assert.equal(fallback.reason, 'deterministic_malformed_objective');
+  assert.deepEqual(fallback.objectives, ['Review assessment tool requirements.']);
+  assert.doesNotMatch(fallback.executiveSummary, /\bWe'd\b|what's what|For a site in the areas/i);
 });
 
 test('validator rejects first-person transcript wording in an executive summary', () => {

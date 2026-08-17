@@ -25,8 +25,8 @@ function transcriptShapedSummaryIssue(value) {
   const text = clean(value);
   if (!text) return 'empty_text';
   if (/(?:^|[.!?]\s+)(?:obviously|basically|you know)\b/i.test(text)) return 'conversational_filler';
-  if (/\b(?:I|we|our|ours|my|mine|me|us|you|your|yours|you're|you are)\b/i.test(text)) return 'first_or_second_person';
-  if (/\b(?:call\s+they|to\s+to|send\s+them\s+to\s+share|share\s+them\s+with\s+us)\b/i.test(text)) return 'malformed_transcript_join';
+  if (/\b(?:I|we|we'd|we'll|we've|we're|our|ours|my|mine|me|us|you|your|yours|you're|you are)\b/i.test(text)) return 'first_or_second_person';
+  if (/\b(?:call\s+they|to\s+to|send\s+them\s+to\s+share|share\s+them\s+with\s+us|for\s+a\s+site\s+in\s+the\s+areas\s+of|quality\s+culture\s+operating)\b/i.test(text)) return 'malformed_transcript_join';
   if (/(?:^|[.!?]\s+)because\b/i.test(text)) return 'dependent_clause_start';
   return '';
 }
@@ -69,7 +69,8 @@ function shouldUseTranscriptFallback(reason) {
     'conversational_filler',
     'first_or_second_person',
     'malformed_transcript_join',
-    'dependent_clause_start'
+    'dependent_clause_start',
+    'meaning_changed'
   ].includes(clean(reason));
 }
 
@@ -151,7 +152,9 @@ async function polishExecutiveSummaryGrammar(text, options = {}) {
     return validation.ok
       ? { text: revised, used: revised !== original, reason: validation.reason, overlap: validation.overlap, timingMs: Date.now() - startedAt }
       : (() => {
-          const fallback = shouldUseTranscriptFallback(validation.reason)
+          const fallback = shouldUseTranscriptFallback(validation.reason) && (
+              validation.reason !== 'meaning_changed' || transcriptShapedSummaryIssue(original)
+            )
             ? fallbackMinutesReadySummary(revised || original)
             : '';
           return fallback
