@@ -89,6 +89,10 @@ body.pre-upload .screen:not([data-screen="0"]) {
 .screen { display:none; }
 .screen.active { display:block; }
 .screen-header { display:flex; gap:1rem; justify-content:space-between; align-items:flex-start; margin-bottom:.9rem; }
+.screen-header-meta { display:grid; justify-items:end; gap:.3rem; flex:0 0 auto; }
+.stage-autosave-status { color:#6b7b88; font-size:.76rem; font-weight:600; white-space:nowrap; }
+.stage-autosave-status.is-saving { color:#287084; }
+.stage-autosave-status.save-error { color:#991b1b; }
 .progress-pill { flex:0 0 auto; border:1px solid rgba(23,208,196,.45); border-radius:999px; padding:.25rem .6rem; color:#c9fffb; background:rgba(23,208,196,.1); font-weight:700; font-size:.85rem; }
 .form-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.85rem; }
 .field { display:grid; gap:.35rem; }
@@ -230,6 +234,11 @@ td textarea { min-height:68px; }
   display:grid;
   gap:.75rem;
 }
+.stage-decision-review { display:contents; }
+.stage-decision-card .review-toolbar { margin:0; position:static; box-shadow:none; }
+.stage-decision-card .stage-validation-flags,
+.stage-decision-card .terminology-qa,
+.stage-decision-card .resolved-checks { margin:0; }
 .stage-validation-flags {
   margin-top:1rem;
   border:1px solid #e3d4a6;
@@ -530,7 +539,7 @@ td select {
             <h2>Meeting details</h2>
             <p class="intro">Is this the right meeting?</p>
           </div>
-          <span class="progress-pill">1 of 5</span>
+          <div class="screen-header-meta"><span class="progress-pill">1 of 5</span><small class="stage-autosave-status">Autosave starts after generation</small></div>
         </div>
         <div class="source-panel">
           <h3>Transcript source</h3>
@@ -603,7 +612,7 @@ td select {
             <h2>Objectives and summary</h2>
             <p class="intro">Did the AI understand what this meeting was about?</p>
           </div>
-          <span class="progress-pill">2 of 5</span>
+          <div class="screen-header-meta"><span class="progress-pill">2 of 5</span><small class="stage-autosave-status">Autosave ready</small></div>
         </div>
         <div class="meeting-understanding">
           <label for="meetingPurpose">Meeting purpose</label>
@@ -638,7 +647,7 @@ td select {
             <h2>Key discussion points</h2>
             <p class="intro">Did we capture the important conversation properly?</p>
           </div>
-          <span class="progress-pill">3 of 5</span>
+          <div class="screen-header-meta"><span class="progress-pill">3 of 5</span><small class="stage-autosave-status">Autosave ready</small></div>
         </div>
         <div class="discussion-controls">
           <button id="expandDiscussionBtn" class="secondary" type="button">Expand all</button>
@@ -653,7 +662,7 @@ td select {
             <h2>Actions</h2>
             <p class="intro">Check owners, action wording and the best available date before anything leaves the system.</p>
           </div>
-          <span class="progress-pill">4 of 5</span>
+          <div class="screen-header-meta"><span class="progress-pill">4 of 5</span><small class="stage-autosave-status">Autosave ready</small></div>
         </div>
         <p><strong id="confirmedActionCount">0 confirmed actions</strong>. Review the useful ambiguous follow-ups below without weakening owner or deadline safeguards.</p>
         <div class="table-wrap">
@@ -682,7 +691,7 @@ td select {
             <h2>Final review</h2>
             <p class="intro">Review the final minutes layout before exporting the PDF.</p>
           </div>
-          <span class="progress-pill">5 of 5</span>
+          <div class="screen-header-meta"><span class="progress-pill">5 of 5</span><small class="stage-autosave-status">Autosave ready</small></div>
         </div>
         <div class="final-document">
           <div id="finalDocumentPreview"></div>
@@ -693,18 +702,19 @@ td select {
         <p class="note final-output-note">Export PDF opens a clean client-facing copy from this review.</p>
       </article>
 
-      <div id="reviewToolbar" class="review-toolbar review-only" hidden>
-        <span id="remainingReviewCount" class="review-count">No outstanding review items</span>
-        <button id="nextReviewItemBtn" class="secondary" type="button">Review next item</button>
-      </div>
-      <div id="stageValidationFlags" class="stage-validation-flags review-only" aria-live="polite" hidden></div>
-      <details id="resolvedChecks" class="resolved-checks review-only" hidden><summary>Resolved checks</summary><div id="resolvedChecksList"></div></details>
-      <section id="terminologyQa" class="terminology-qa review-only" aria-live="polite" hidden></section>
-
       <div class="stage-decision-card review-only" aria-live="polite">
         <div class="stage-decision-copy">
           <p id="stageDecisionQuestion" class="stage-decision-question">Want to move onto the next stage?</p>
           <p id="stageDecisionHint" class="stage-decision-hint">If this screen looks right, generate the next stage. If not, keep editing here.</p>
+        </div>
+        <div class="stage-decision-review">
+          <div id="reviewToolbar" class="review-toolbar review-only" hidden>
+            <span id="remainingReviewCount" class="review-count">No outstanding review items</span>
+            <button id="nextReviewItemBtn" class="secondary" type="button">Review next item</button>
+          </div>
+          <div id="stageValidationFlags" class="stage-validation-flags review-only" aria-live="polite" hidden></div>
+          <section id="terminologyQa" class="terminology-qa review-only" aria-live="polite" hidden></section>
+          <details id="resolvedChecks" class="resolved-checks review-only" hidden><summary>Resolved checks</summary><div id="resolvedChecksList"></div></details>
         </div>
         <div id="stageAdditionalContextWrap" class="stage-decision-guidance" hidden>
           <label for="stageAdditionalContext">Anything else to add? <span class="muted">Optional — tell the next step what to emphasise</span></label>
@@ -718,8 +728,8 @@ td select {
           </div>
           <button id="nextScreenBtn" type="button">Yes, move on</button>
         </div>
+        <div id="reviewGenerationStatus" class="review-status review-only" role="status" aria-live="polite"></div>
       </div>
-      <div id="reviewGenerationStatus" class="review-status review-only" role="status" aria-live="polite"></div>
     </section>
   </main>
 </div>
@@ -814,6 +824,8 @@ td select {
   var currentActionReviewCandidatePayloads = [];
   var actionReviewCandidates = [];
   var hydratingSavedDraft = false;
+  var autosaveTimer = null;
+  var lastAutosaveAt = null;
   var draggedAttendeeChip = null;
   var terminologyQaPanel = document.getElementById('terminologyQa');
   var terminologySuggestions = [];
@@ -827,6 +839,29 @@ td select {
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
+  }
+
+  function setAutosaveStatus(message, state) {
+    Array.prototype.slice.call(document.querySelectorAll('.stage-autosave-status')).forEach(function (status) {
+      status.textContent = message;
+      status.classList.toggle('is-saving', state === 'saving');
+      status.classList.toggle('save-error', state === 'error');
+    });
+  }
+
+  function autosaveTimeLabel(value) {
+    var date = value instanceof Date ? value : new Date(value || Date.now());
+    return 'Autosaved ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function scheduleDraftAutosave() {
+    if (!reviewStarted && !lastGeneratedPayload) return;
+    setAutosaveStatus('Saving…', 'saving');
+    clearTimeout(autosaveTimer);
+    autosaveTimer = setTimeout(function () {
+      autosaveTimer = null;
+      saveDraft();
+    }, 450);
   }
 
   function linesFromTextarea(value) {
@@ -2540,6 +2575,10 @@ td select {
     if (!draftId) return;
     var drafts = readDrafts();
     var existing = drafts.find(function (draft) { return String(draft.jobId) === String(draftId); });
+    if (existing && existing.updatedAt) {
+      lastAutosaveAt = existing.updatedAt;
+      setAutosaveStatus(autosaveTimeLabel(existing.updatedAt), 'saved');
+    }
     if (existing && existing.unresolvedWorkstreamFlags && typeof existing.unresolvedWorkstreamFlags === 'object') {
       unresolvedWorkstreamFlags = existing.unresolvedWorkstreamFlags;
     }
@@ -2655,8 +2694,10 @@ td select {
   function writeDrafts(drafts) {
     try {
       localStorage.setItem(STAGED_DRAFTS_KEY, JSON.stringify(drafts.slice(0, 20)));
+      return true;
     } catch {
       // Local draft history is helpful, but staged review generation should still work if storage is unavailable.
+      return false;
     }
   }
 
@@ -2817,6 +2858,10 @@ td select {
     reviewEditStartedAt = null;
     reviewEditMs = 0;
     reviewEditCount = 0;
+    lastAutosaveAt = null;
+    clearTimeout(autosaveTimer);
+    autosaveTimer = null;
+    setAutosaveStatus('Autosave starts after generation', '');
 
     if (meetingTitleInput) meetingTitleInput.value = '';
     if (meetingDateInput) meetingDateInput.value = '';
@@ -2907,7 +2952,12 @@ td select {
       generated: Boolean(lastGeneratedPayload)
     };
     drafts = [payload].concat(drafts.filter(function (draft) { return draft.jobId !== id; }));
-    writeDrafts(drafts);
+    if (writeDrafts(drafts)) {
+      lastAutosaveAt = now;
+      setAutosaveStatus(autosaveTimeLabel(now), 'saved');
+    } else {
+      setAutosaveStatus('Autosave unavailable', 'error');
+    }
     persistReviewAnalytics(activeIndex >= screens.length - 1 ? 'final_review_snapshot' : 'review_snapshot', 'latest_snapshot');
   }
 
@@ -3251,7 +3301,7 @@ td select {
       }
       commitStageState(stageForScreen(activeIndex));
       renderFinalDocument();
-      saveDraft();
+      scheduleDraftAutosave();
     }
   });
   updateReviewTimerDisplay();

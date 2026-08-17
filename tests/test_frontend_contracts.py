@@ -573,6 +573,20 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("jumpToField.textContent = 'Go to field'", staged_page)
         self.assertIn("discussionList.querySelectorAll('.discussion-card')[Number(parts[1])]", staged_page)
 
+    def test_staged_review_items_are_connected_to_transition_and_autosave_is_visible(self):
+        staged_page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
+
+        decision_start = staged_page.index('<div class="stage-decision-card review-only"')
+        decision_end = staged_page.index('</div>\n    </section>', decision_start)
+        decision_markup = staged_page[decision_start:decision_end]
+        self.assertIn('id="stageValidationFlags"', decision_markup)
+        self.assertIn('id="resolvedChecks"', decision_markup)
+        self.assertIn('id="reviewGenerationStatus"', decision_markup)
+        self.assertGreaterEqual(staged_page.count('class="stage-autosave-status"'), 5)
+        self.assertIn("function scheduleDraftAutosave()", staged_page)
+        self.assertIn("Autosaved ' + date.toLocaleTimeString", staged_page)
+        self.assertIn("scheduleDraftAutosave();", staged_page)
+
 
 if __name__ == "__main__":
     unittest.main()
