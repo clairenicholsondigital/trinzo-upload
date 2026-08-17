@@ -256,6 +256,12 @@ td textarea { min-height:68px; }
   font-weight:700;
   font-size:.95rem;
 }
+.stage-validation-complete { margin:.1rem 0 0; color:#3f6f5b; font-size:.9rem; font-weight:600; }
+@keyframes editorial-check-flash {
+  0%, 100% { background:#fdfaf0; box-shadow:none; }
+  45% { background:#fff3c9; box-shadow:0 0 0 3px rgba(214,161,35,.28); }
+}
+.stage-validation-flags.needs-attention { animation:editorial-check-flash .7s ease-in-out 2; }
 .stage-validation-flag {
   display:flex;
   gap:.5rem;
@@ -713,7 +719,6 @@ td select {
         <div class="stage-decision-review">
           <div id="reviewToolbar" class="review-toolbar review-only" hidden>
             <span id="remainingReviewCount" class="review-count">No outstanding review items</span>
-            <button id="nextReviewItemBtn" class="secondary" type="button">Review next item</button>
           </div>
           <div id="stageValidationFlags" class="stage-validation-flags review-only" aria-live="polite" hidden></div>
           <section id="terminologyQa" class="terminology-qa review-only" aria-live="polite" hidden></section>
@@ -796,7 +801,6 @@ td select {
   var confirmedActionCount = document.getElementById('confirmedActionCount');
   var reviewToolbar = document.getElementById('reviewToolbar');
   var remainingReviewCount = document.getElementById('remainingReviewCount');
-  var nextReviewItemButton = document.getElementById('nextReviewItemBtn');
   var resolvedChecks = document.getElementById('resolvedChecks');
   var resolvedChecksList = document.getElementById('resolvedChecksList');
   var lastGeneratedPayload = null;
@@ -1679,6 +1683,24 @@ td select {
     saveDraft();
   }
 
+  function resolveGroupedReviewItems(message, element, keys) {
+    var groupedKeys = Array.isArray(keys) && keys.length ? keys : ['message::' + stableReviewPart(message || 'Reviewed item')];
+    groupedKeys.forEach(function (key) {
+      resolvedReviewCheckKeys[key] = true;
+      actionReviewCandidates = actionReviewCandidates.filter(function (entry) { return entry.id !== key; });
+      currentActionReviewCandidatePayloads = currentActionReviewCandidatePayloads.filter(function (candidate) { return candidate.id !== key; });
+    });
+    reconcileUnresolvedWorkstreamFlags();
+    var resolvedKey = groupedKeys[0];
+    resolvedReviewChecks = resolvedReviewChecks.filter(function (item) { return groupedKeys.indexOf(item.key) < 0; });
+    resolvedReviewChecks.push({ key: resolvedKey, message: String(message || 'Reviewed item'), at: new Date().toISOString() });
+    if (element) element.remove();
+    renderActionReviewGroups();
+    renderResolvedChecks();
+    updateReviewToolbar();
+    saveDraft();
+  }
+
   function renderResolvedChecks() {
     if (!resolvedChecks || !resolvedChecksList) return;
     resolvedChecksList.innerHTML = resolvedReviewChecks.slice(-20).map(function (item) { return '<p><span class="reviewed-state">✓ Reviewed</span> — ' + escapeHtml(item.message) + '</p>'; }).join('');
@@ -1689,11 +1711,7 @@ td select {
     if (!reviewToolbar || !remainingReviewCount) return;
     var outstanding = document.querySelectorAll('.stage-validation-flag:not(.is-resolved), .terminology-suggestion, .action-candidate-card').length;
     remainingReviewCount.textContent = outstanding ? outstanding + ' item' + (outstanding === 1 ? ' needs' : 's need') + ' review' : 'No outstanding review items';
-    reviewToolbar.hidden = activeIndex === 4 || (!outstanding && !resolvedReviewChecks.length);
-    if (nextReviewItemButton) {
-      nextReviewItemButton.disabled = !outstanding;
-      nextReviewItemButton.hidden = !outstanding;
-    }
+    reviewToolbar.hidden = activeIndex === 4 || !outstanding;
     statusItems.forEach(function (item, idx) {
       var label = item.querySelector('span:last-child');
       if (!label) return;
@@ -1701,6 +1719,33 @@ td select {
       if (idx === activeIndex && outstanding) label.textContent = base + ' · ' + outstanding;
       else label.textContent = base;
     });
+    if (stageValidationFlags && !stageValidationFlags.hidden) {
+      var editorialOutstanding = stageValidationFlags.querySelector('.stage-validation-flag');
+      var complete = stageValidationFlags.querySelector('.stage-validation-complete');
+      if (!editorialOutstanding && !complete) {
+        complete = document.createElement('p');
+        complete.className = 'stage-validation-complete';
+        complete.textContent = 'You’ve reviewed all editorial checks.';
+        stageValidationFlags.appendChild(complete);
+      } else if (editorialOutstanding && complete) {
+        complete.remove();
+      }
+    }
+  }
+
+  function reviewerFlagMessage(flag) {
+    if (flag && (flag.type === 'action_review_candidates' || flag.type === 'action_publication_review') && Array.isArray(flag.repairCandidates) && flag.repairCandidates.length) {
+      return 'Actions are grouped below to help you review them.';
+    }
+    return flag && flag.message ? String(flag.message) : '';
+  }
+
+  function drawAttentionToEditorialChecks() {
+    if (!stageValidationFlags || stageValidationFlags.hidden) return;
+    stageValidationFlags.classList.remove('needs-attention');
+    void stageValidationFlags.offsetWidth;
+    stageValidationFlags.classList.add('needs-attention');
+    window.setTimeout(function () { stageValidationFlags.classList.remove('needs-attention'); }, 1600);
   }
 
   function renderActionReviewGroups() {
@@ -1764,10 +1809,19 @@ td select {
     heading.className = 'stage-validation-heading';
     heading.textContent = 'Editorial checks (review before moving on)';
     stageValidationFlags.appendChild(heading);
+    var renderedMessages = {};
     list.forEach(function (flag, flagIndex) {
       var flagKey = validationFlagKey(flag, flagIndex, stage);
       var flagResolved = reviewCheckIsResolved(flagKey);
       if (flagResolved) return;
+      var displayedMessage = reviewerFlagMessage(flag);
+      var messageKey = stableReviewPart(displayedMessage);
+      if (renderedMessages[messageKey]) {
+        renderedMessages[messageKey].push(flagKey);
+        return;
+      }
+      var groupedReviewKeys = [flagKey];
+      renderedMessages[messageKey] = groupedReviewKeys;
       var row = document.createElement('div');
       row.setAttribute('data-review-check-key', flagKey);
       var severity = flag && flag.severity === 'warning' ? 'warning' : 'info';
@@ -1778,7 +1832,7 @@ td select {
       row.appendChild(label);
       var text = document.createElement('span');
       text.className = 'stage-validation-message';
-      text.textContent = (flag && flag.message) ? String(flag.message) : '';
+      text.textContent = displayedMessage;
       row.appendChild(text);
       if (flag && (flag.type === 'possible_omitted_workstream' || flag.type === 'unresolved_substantive_workstream') && flag.discussionSuggestion) {
         var addButton = document.createElement('button');
@@ -1790,16 +1844,13 @@ td select {
         });
         row.appendChild(addButton);
       }
-      if (flag && (flag.type === 'action_review_candidates' || flag.type === 'action_publication_review') && Array.isArray(flag.repairCandidates) && flag.repairCandidates.length) {
-        text.textContent = 'Actions are grouped below to help you review them.';
-      }
       var resolveButton = document.createElement('button');
       resolveButton.type = 'button';
       resolveButton.className = 'secondary stage-validation-add review-check-button';
       resolveButton.textContent = '✓';
       resolveButton.setAttribute('aria-label', 'Mark as reviewed');
       resolveButton.title = 'Mark as reviewed';
-      resolveButton.addEventListener('click', function () { resolveReviewItem(text.textContent, row, flagKey); });
+      resolveButton.addEventListener('click', function () { resolveGroupedReviewItems(text.textContent, row, groupedReviewKeys); });
       row.appendChild(resolveButton);
       if (flag && flag.type === 'unresolved_substantive_workstream' && flag.resolutionKey) {
         var omitButton = document.createElement('button');
@@ -3162,18 +3213,6 @@ td select {
       saveDraft();
     });
   }
-  if (nextReviewItemButton) {
-    nextReviewItemButton.addEventListener('click', function () {
-      var item = document.querySelector('.stage-validation-flag, .terminology-suggestion, .action-candidate-card');
-      if (item) {
-        var parentDetails = item.closest('details');
-        if (parentDetails) parentDetails.open = true;
-        item.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        var focusable = item.querySelector('button, input, textarea, select');
-        if (focusable) focusable.focus();
-      }
-    });
-  }
   if (actionReviewGroups) {
     actionReviewGroups.addEventListener('click', function (event) {
       var button = event.target.closest('[data-candidate-action]');
@@ -3321,6 +3360,7 @@ td select {
     }
     if (activeIndex === 2 && reconcileUnresolvedWorkstreamFlags().length) {
       setReviewStatus('Resolve each missing substantive workstream before moving on: add it, intentionally omit it, or return to summary topics.', true);
+      drawAttentionToEditorialChecks();
       return;
     }
     if (activeIndex < screens.length - 1) goToScreen(activeIndex + 1);

@@ -18,13 +18,24 @@ function safeList(value) {
   return (Array.isArray(value) ? value : []).map((item) => clean(item)).filter(Boolean).slice(0, 100);
 }
 
+function formatUkDate(value) {
+  const text = clean(value, 'Not stated');
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return text;
+  const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const monthIndex = Number(match[2]) - 1;
+  const day = Number(match[3]);
+  if (monthIndex < 0 || monthIndex > 11 || day < 1 || day > 31) return text;
+  return `${day} ${months[monthIndex]} ${match[1]}`;
+}
+
 function normaliseMinutes(input = {}) {
   const details = input.details && typeof input.details === 'object' ? input.details : {};
   const summary = input.summary && typeof input.summary === 'object' ? input.summary : {};
   return {
     details: {
       meetingTitle: clean(details.meetingTitle, 'Meeting minutes').slice(0, 500),
-      meetingDate: clean(details.meetingDate, 'Not stated').slice(0, 100),
+      meetingDate: formatUkDate(details.meetingDate).slice(0, 100),
       meetingLocation: clean(details.meetingLocation, 'Not stated').slice(0, 500),
       clientAttendeeLabel: clean(details.clientAttendeeLabel, 'Client').slice(0, 50),
       internalAttendees: safeList(details.internalAttendees),
@@ -122,4 +133,4 @@ async function generateStagedMinutesPdf(input = {}) {
   }
 }
 
-module.exports = { generateStagedMinutesPdf, normaliseMinutes, renderStagedMinutesPdfHtml, stagedMinutesPdfFilename };
+module.exports = { formatUkDate, generateStagedMinutesPdf, normaliseMinutes, renderStagedMinutesPdfHtml, stagedMinutesPdfFilename };
