@@ -32,6 +32,14 @@ test('editorial labels prefer specific technical workstreams over generic timing
   assert.equal(editorialTopicLabel(traceability.topic, traceability.evidence), 'Software change traceability');
 });
 
+test('editorial labels treat alarm bells as warning-sign language, not literal device alarms', () => {
+  const idiom = topicFor('What are the alarm bells for them to bring somebody in before a quality system problem becomes serious?');
+  assert.equal(editorialTopicLabel(idiom.topic, idiom.evidence), 'Quality and risk indicators');
+
+  const literal = topicFor('The mute button changes the LED flash behaviour for the high priority alarm.');
+  assert.equal(editorialTopicLabel(literal.topic, literal.evidence), 'Alarm behaviour and controls');
+});
+
 test('extractive topic fallback rejects transcript-shaped fragments', () => {
   const fragments = [
     'Absolutely address follow',

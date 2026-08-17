@@ -7,6 +7,7 @@ const { DOMAIN_TERMS, escapeRegExp } = require('../domainTerms');
 // into readable agenda labels. These are concepts, not meeting templates: a
 // label is only available when the current cluster contains matching evidence.
 const CONCEPTS = [
+  { label: 'Quality and risk indicators', pattern: /\b(?:alarm bells?|red flags?|warning signs?|early warnings?|risk indicators?|concerns?)\b/i },
   { label: 'Cybersecurity and access controls', pattern: /\b(?:cyber\s*security|usb port|port lock|password protect(?:ed|ion)?|unwarranted interference|unauthorised access|unauthorized access)\b/i },
   { label: 'Language support and localisation', pattern: /\b(?:languages?|translations?|translated|localisation|localization|language characters?|fonts?|arabic|vietnamese|greek)\b/i },
   { label: 'Electrical compliance testing', pattern: /\b(?:iec\s*60601|60601-1|electrical compliance)\b/i },

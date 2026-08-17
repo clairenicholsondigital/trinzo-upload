@@ -1010,6 +1010,36 @@ test('live Summary screen hides reported-speech topic labels from Overall topics
   }
 });
 
+test('live Summary screen does not turn QIP alarm-bells idiom into device-alarm workstreams', async () => {
+  const previousApiKey = process.env.TROOPER_API_KEY;
+  process.env.TROOPER_API_KEY = '';
+  try {
+    const transcript = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'meeting-minutes-final-golden', '026_real_qip_assessment_tool_case_study_transcript', 'transcript.txt'), 'utf8');
+    const result = await apiRouter.stagedEvaluation.canonicalStagedResponse('summary', {
+      text: transcript,
+      source: 'test',
+      fileName: '026-real-qip-assessment-tool-case-study-transcript.txt'
+    }, {
+      confirmedDetails: {
+        meetingTitle: 'QIP assessment tool case study',
+        meetingType: 'Project review'
+      }
+    });
+    const text = [
+      result.screens.summary.meetingPurpose,
+      result.screens.summary.executiveSummary,
+      ...(result.screens.summary.objectives || []),
+      ...(result.screens.summary.overallTopics || [])
+    ].join('\n');
+    assert.doesNotMatch(text, /alarm-code|clinical confirmation|software-change package/i);
+    assert.equal((result.screens.summary.overallTopics || []).some((topic) => /alarm behaviour|alarm controls/i.test(topic)), false, (result.screens.summary.overallTopics || []).join(' | '));
+    assert.ok((result.screens.summary.overallTopics || []).some((topic) => /quality|risk indicators|assessment/i.test(topic)), (result.screens.summary.overallTopics || []).join(' | '));
+  } finally {
+    if (previousApiKey) process.env.TROOPER_API_KEY = previousApiKey;
+    else delete process.env.TROOPER_API_KEY;
+  }
+});
+
 test('live actions stage uses confirmed state and returns the existing UI screen contract', () => {
   const transcript = [
     'Amina Khan  00:01',
