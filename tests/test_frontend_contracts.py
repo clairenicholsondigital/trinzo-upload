@@ -425,7 +425,7 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("formData.append('overallTopics'", staged_page)
         self.assertIn("Date / deadline", staged_page)
         self.assertIn("Action date or deadline", staged_page)
-        self.assertIn("Prefer an actual date", staged_page)
+        self.assertNotIn("Prefer an actual date", staged_page)
         self.assertIn("next Monday", staged_page)
         self.assertIn("<th>Owner</th><th>Action</th><th>Due</th>", staged_page)
         self.assertIn("escapeHtml(item.deadline || 'Not stated')", staged_page)

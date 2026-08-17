@@ -13,6 +13,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@fontsource/roboto": "^5.2.6",
     "@microsoft/agents-activity": "^1.5.1",
     "@microsoft/agents-hosting": "^1.5.1",
     "dotenv": "^17.4.2",

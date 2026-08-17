@@ -121,9 +121,7 @@ textarea { min-height:110px; resize:vertical; }
 .attendee-help { display:block; width:100%; }
 .action-owner-select { min-width:210px; }
 .discussion-list { display:grid; gap:.75rem; }
-.review-toolbar { position:sticky; top:.5rem; z-index:6; display:flex; justify-content:space-between; gap:.65rem; align-items:center; margin-bottom:.85rem; padding:.65rem .75rem; border:1px solid #cfe2e8; border-radius:10px; background:rgba(248,252,253,.96); color:#27323a; box-shadow:0 4px 16px rgba(2,23,59,.08); }
-.review-toolbar[hidden] { display:none; }
-.review-count { font-weight:700; color:#02173B; }
+.review-count { color:#596875; font-size:.86rem; font-weight:600; }
 .meeting-understanding { margin-bottom:.9rem; padding:.85rem; border:1px solid #b9dde4; border-radius:12px; background:#f8fcfd; }
 .meeting-understanding label { color:#02173B; }
 .meeting-understanding textarea { background:#fff !important; color:#17222c !important; border-color:#c3ced8 !important; }
@@ -163,7 +161,7 @@ textarea { min-height:110px; resize:vertical; }
 .action-candidate-card > strong { line-height:1.3; }
 .action-candidate-meta { display:flex; align-items:center; justify-content:space-between; gap:.5rem; flex-wrap:wrap; min-height:1.85rem; }
 .action-candidate-owner { display:inline-flex; align-items:center; gap:.25rem; min-width:0; font-size:.82rem; }
-.review-owner-unresolved { display:inline-flex; align-items:center; border:1px dashed #9fb2bf; border-radius:999px; padding:.06rem .38rem; color:#315f70; font-size:.78rem; font-weight:700; }
+.review-owner-unresolved { color:#596875; }
 .action-candidate-actions { display:flex; align-items:center; gap:.3rem; margin-left:auto; }
 .action-candidate-actions button { min-height:1.8rem; padding:.28rem .5rem; border-radius:8px; font-size:.78rem; }
 .resolved-checks { margin-top:.65rem; color:#596875; font-size:.86rem; }
@@ -242,7 +240,6 @@ td textarea { min-height:68px; }
   gap:.75rem;
 }
 .stage-decision-review { display:contents; }
-.stage-decision-card .review-toolbar { margin:0; position:static; box-shadow:none; }
 .stage-decision-card .stage-validation-flags,
 .stage-decision-card .terminology-qa,
 .stage-decision-card .resolved-checks { margin:0; }
@@ -674,11 +671,10 @@ td select {
         <div class="screen-header">
           <div>
             <h2>Actions</h2>
-            <p class="intro">Check owners, action wording and the best available date before anything leaves the system.</p>
           </div>
           <div class="screen-header-meta"><span class="progress-pill">4 of 5</span><small class="stage-autosave-status">Autosave ready</small></div>
         </div>
-        <p><strong id="confirmedActionCount">0 confirmed actions</strong>. Review the useful ambiguous follow-ups below without weakening owner or deadline safeguards.</p>
+        <p><strong id="confirmedActionCount">0 confirmed actions</strong></p>
         <div class="table-wrap">
           <table>
             <thead>
@@ -686,13 +682,12 @@ td select {
                 <th>Owner</th>
                 <th>Action</th>
                 <th>Date / deadline</th>
-                <th>Tools</th>
+                <th aria-label="Row actions"></th>
               </tr>
             </thead>
             <tbody id="actionsTableBody"></tbody>
           </table>
         </div>
-        <p class="note">Prefer an actual date where the transcript gives enough context. If the clearest wording is relative, for example next Monday or next week, keep that rather than forcing a guess.</p>
         <div class="actions" style="margin-top:.85rem;">
           <button id="addActionRowBtn" type="button">Add action</button>
         </div>
@@ -721,11 +716,9 @@ td select {
         <div class="stage-decision-copy">
           <p id="stageDecisionQuestion" class="stage-decision-question">Want to move onto the next stage?</p>
           <p id="stageDecisionHint" class="stage-decision-hint">If this screen looks right, generate the next stage. If not, keep editing here.</p>
+          <p id="remainingReviewCount" class="review-count" hidden></p>
         </div>
         <div class="stage-decision-review">
-          <div id="reviewToolbar" class="review-toolbar review-only" hidden>
-            <span id="remainingReviewCount" class="review-count">No outstanding review items</span>
-          </div>
           <div id="stageValidationFlags" class="stage-validation-flags review-only" aria-live="polite" hidden></div>
           <section id="terminologyQa" class="terminology-qa review-only" aria-live="polite" hidden></section>
           <details id="resolvedChecks" class="resolved-checks review-only" hidden><summary>Resolved checks</summary><div id="resolvedChecksList"></div></details>
@@ -805,7 +798,6 @@ td select {
   var stageValidationFlags = document.getElementById('stageValidationFlags');
   var actionReviewGroups = document.getElementById('actionReviewGroups');
   var confirmedActionCount = document.getElementById('confirmedActionCount');
-  var reviewToolbar = document.getElementById('reviewToolbar');
   var remainingReviewCount = document.getElementById('remainingReviewCount');
   var resolvedChecks = document.getElementById('resolvedChecks');
   var resolvedChecksList = document.getElementById('resolvedChecksList');
@@ -1719,10 +1711,11 @@ td select {
   }
 
   function updateReviewToolbar() {
-    if (!reviewToolbar || !remainingReviewCount) return;
     var outstanding = document.querySelectorAll('.stage-validation-flag:not(.is-resolved), .terminology-suggestion, .action-candidate-card').length;
-    remainingReviewCount.textContent = outstanding ? outstanding + ' item' + (outstanding === 1 ? ' needs' : 's need') + ' review' : 'No outstanding review items';
-    reviewToolbar.hidden = activeIndex === 4 || !outstanding;
+    if (remainingReviewCount) {
+      remainingReviewCount.textContent = outstanding + ' item' + (outstanding === 1 ? ' needs' : 's need') + ' review';
+      remainingReviewCount.hidden = activeIndex !== 3 || !outstanding;
+    }
     statusItems.forEach(function (item, idx) {
       var label = item.querySelector('span:last-child');
       if (!label) return;
@@ -1764,7 +1757,7 @@ td select {
     var groups = { likely: [], requirements: [], low: [] };
     actionReviewCandidates.forEach(function (entry) { groups[actionCandidateTier(entry.candidate)].push(entry); });
     var definitions = [
-      ['likely', 'Likely follow-ups', true],
+      ['likely', 'Follow-ups', true],
       ['requirements', 'Requirements that may need an action', false],
       ['low', 'Other possible follow-ups', false]
     ];
@@ -1774,7 +1767,7 @@ td select {
       return '<details class="action-review-group"' + (definition[2] ? ' open' : '') + '><summary>' + entries.length + ' ' + definition[1].toLowerCase() + '</summary>' + entries.map(function (entry) {
         var candidate = entry.candidate;
         var owner = validReviewerOwner(candidate.owner);
-        return '<div class="action-candidate-card" data-candidate-id="' + escapeHtml(entry.id) + '"><strong>' + escapeHtml(candidate.suggestedAction || candidate.action || 'Review follow-up') + '</strong><div class="action-candidate-meta"><span class="muted action-candidate-owner">Owner: ' + (owner ? escapeHtml(owner) : '<span class="review-owner-unresolved">Add owner</span>') + '</span><div class="action-candidate-actions"><button type="button" data-candidate-action="add" aria-label="Add to actions" title="Add to actions">✓ Add</button><button class="secondary" type="button" data-candidate-action="dismiss" aria-label="Not an action" title="Not an action">× Dismiss</button></div></div></div>';
+        return '<div class="action-candidate-card" data-candidate-id="' + escapeHtml(entry.id) + '"><strong>' + escapeHtml(candidate.suggestedAction || candidate.action || 'Review follow-up') + '</strong><div class="action-candidate-meta"><span class="muted action-candidate-owner">Owner: ' + (owner ? escapeHtml(owner) : '<span class="review-owner-unresolved">Not assigned</span>') + '</span><div class="action-candidate-actions"><button type="button" data-candidate-action="add" aria-label="Add to actions" title="Add to actions">✓ Add</button><button class="secondary" type="button" data-candidate-action="dismiss" aria-label="Not an action" title="Not an action">× Dismiss</button></div></div></div>';
       }).join('') + '</details>';
     }).join('');
     updateReviewToolbar();

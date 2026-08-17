@@ -18,6 +18,9 @@ test('staged PDF renderer uses reviewed content and escapes it safely', () => {
   assert.match(html, /Alex &amp; Co/);
   assert.match(html, /17 August 2026/);
   assert.match(html, /Send the plan/);
+  assert.match(html, /font-family:'Roboto'/);
+  assert.match(html, /data:font\/woff2;base64,/);
+  assert.doesNotMatch(html, /Arial/);
   assert.doesNotMatch(html, /<script/i);
   assert.equal(stagedMinutesPdfFilename(minutes), 'Client-Audit.pdf');
 });

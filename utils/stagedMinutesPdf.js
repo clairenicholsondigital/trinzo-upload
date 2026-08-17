@@ -1,4 +1,17 @@
 const { chromium } = require('playwright');
+const fs = require('fs');
+
+let robotoFaces = '';
+
+function embeddedRobotoFaces() {
+  if (robotoFaces) return robotoFaces;
+  robotoFaces = [400, 500, 700].map((weight) => {
+    const fontPath = require.resolve(`@fontsource/roboto/files/roboto-latin-${weight}-normal.woff2`);
+    const fontData = fs.readFileSync(fontPath).toString('base64');
+    return `@font-face { font-family:'Roboto'; font-style:normal; font-weight:${weight}; font-display:block; src:url(data:font/woff2;base64,${fontData}) format('woff2'); }`;
+  }).join('\n');
+  return robotoFaces;
+}
 
 function clean(value, fallback = '') {
   const text = String(value == null ? '' : value).replace(/\s+/g, ' ').trim();
@@ -68,9 +81,10 @@ function renderStagedMinutesPdfHtml(input = {}) {
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>${escapeHtml(details.meetingTitle)}</title>
 <style>
+  ${embeddedRobotoFaces()}
   @page { size:A4; margin:14mm; }
   * { box-sizing:border-box; }
-  body { margin:0; color:#17222c; font:10.5pt/1.45 Arial, sans-serif; }
+  body { margin:0; color:#17222c; font:400 10.5pt/1.45 'Roboto'; }
   header { display:flex; justify-content:space-between; gap:20px; border-bottom:5px solid #17d0c4; padding-bottom:12px; margin-bottom:18px; }
   header p { margin:0 0 3px; color:#287084; font-size:9pt; font-weight:700; text-transform:uppercase; letter-spacing:.08em; }
   h1 { margin:0; color:#02173b; font-size:22pt; line-height:1.15; }
@@ -81,11 +95,11 @@ function renderStagedMinutesPdfHtml(input = {}) {
   .meta { display:grid; grid-template-columns:1fr 1fr; border:1px solid #cfdbe4; border-radius:8px; overflow:hidden; }
   .meta div { padding:8px 10px; border-bottom:1px solid #e1e8ed; }
   .meta div:nth-child(odd) { border-right:1px solid #e1e8ed; }
-  .label { display:block; color:#5d6b78; font-size:8pt; font-weight:700; text-transform:uppercase; }
+  .label { display:block; color:#5d6b78; font-size:8pt; font-weight:500; text-transform:uppercase; }
   table { width:100%; border-collapse:collapse; break-inside:auto; }
   tr { break-inside:avoid; }
   th, td { border:1px solid #cfdbe4; padding:7px 8px; text-align:left; vertical-align:top; }
-  th { color:#445463; background:#eef4f6; font-size:8pt; text-transform:uppercase; }
+  th { color:#445463; background:#eef4f6; font-size:8pt; font-weight:500; text-transform:uppercase; }
   .discussion th:first-child { width:29%; }
   .actions th:first-child { width:20%; }
   .actions th:last-child { width:20%; }
@@ -127,6 +141,7 @@ async function generateStagedMinutesPdf(input = {}) {
   try {
     const page = await browser.newPage();
     await page.setContent(renderStagedMinutesPdfHtml(input), { waitUntil: 'load' });
+    await page.evaluate(() => document.fonts.ready);
     return await page.pdf({ format: 'A4', printBackground: true, displayHeaderFooter: false, preferCSSPageSize: true });
   } finally {
     await browser.close();
