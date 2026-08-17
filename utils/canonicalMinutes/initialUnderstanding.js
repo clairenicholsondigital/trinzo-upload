@@ -89,7 +89,12 @@ const WORKSTREAM_CONCEPTS = [
   { label: 'Debug and test-script evidence', profiles: ['technical_file_review'], pattern: /\b(?:debug|test script|testing|test results?|verification|validation|retrospective test data)\b/i },
   { label: 'Change control and version traceability', profiles: ['technical_file_review'], pattern: /\b(?:change request|change control|version\s*1\.0|version\s*1\.01|version\s*1\.02|software versions?|software traceability|version traceability|device file history|17 changes)\b/i },
   { label: 'Electrical compliance evidence', profiles: ['technical_file_review'], pattern: /\b(?:iec\s*60601|60601-1|electrical compliance|electrical testing)\b/i },
-  { label: 'Cybersecurity, USB and GUI controls', profiles: ['technical_file_review', 'audit_planning'], pattern: /\b(?:cyber\s*security|usb port|port lock|gui|password protect(?:ed|ion)?|unauthorised access|unauthorized access|unwarranted interference)\b/i },
+  {
+    label: 'Cybersecurity, USB and GUI controls',
+    profiles: ['technical_file_review'],
+    pattern: /\b(?:cyber\s*security|usb port|port lock|gui|password protect(?:ed|ion)?|unauthorised access|unauthorized access|unwarranted interference)\b/i,
+    requiredEvidencePattern: /\b(?:usb|port lock|gui|password protect(?:ed|ion)?|unauthorised access|unauthorized access|unwarranted interference)\b/i
+  },
   { label: 'Standards and risk-management work', profiles: ['technical_file_review'], pattern: /\b(?:standards?|risk management|risk matrix|fmea|hazards?|mitigation)\b/i }
 ];
 
@@ -157,6 +162,11 @@ function inferredWorkstreamsFromEvidence(evidence, topics = [], profileId = '') 
   for (const concept of WORKSTREAM_CONCEPTS) {
     if (Array.isArray(concept.profiles) && concept.profiles.length && !concept.profiles.includes(profileId)) continue;
     const evidenceIds = strongestEvidenceIdsForPattern(evidence, concept.pattern, 8);
+    if (evidenceIds.length && concept.requiredEvidencePattern) {
+      const byId = eventByIdMap(evidence);
+      const hasRequiredEvidence = evidenceIds.some((id) => concept.requiredEvidencePattern.test(byId.get(id)?.text || ''));
+      if (!hasRequiredEvidence) continue;
+    }
     if (evidenceIds.length) byLabel.set(concept.label.toLowerCase(), { label: concept.label, evidenceIds, provenance: 'model_inferred' });
   }
   for (const topic of topics) {

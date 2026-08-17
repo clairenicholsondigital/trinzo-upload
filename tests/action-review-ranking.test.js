@@ -79,6 +79,23 @@ test('useful grounded requirements and follow-ups remain prominent', () => {
   assert.match(prominentText, /process-discovery working sessions|operational details/i);
 });
 
+test('generic meeting follow-ups are not rewritten into importer-obligation wording without importer evidence', () => {
+  const enriched = enrichActionReviewCandidate({
+    owner: 'Not stated',
+    action: 'Arrange further working sessions',
+    reviewDisposition: 'review_required',
+    evidence: 'We can set up meetings following on from that and make sure the testing actions get tidied up nicely.'
+  }, {
+    state: {
+      meeting: { purpose: 'Coordinate software technical-file testing follow-ups.' },
+      topics: ['Testing and validation', 'Software change traceability']
+    },
+    evidence: { events: [] }
+  });
+
+  assert.doesNotMatch(enriched.suggestedAction, /importer-obligation|process-discovery/i);
+});
+
 test('non-DITA technical status follow-ups are not demoted by the actionability gate', () => {
   const score = reviewerUsefulness({
     owner: 'Not stated',

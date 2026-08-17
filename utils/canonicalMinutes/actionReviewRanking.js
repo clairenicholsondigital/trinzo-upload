@@ -33,6 +33,10 @@ function candidateEvidenceText(candidate = {}, options = {}) {
   return uniqueStrings(candidate.evidenceIds || []).map((id) => byId.get(id)?.text || '').filter(Boolean).join(' ');
 }
 
+function hasImporterProcedureContext(value) {
+  return /\b(?:importer|importer-obligation|importer obligation|QMS|quality manual|procedure(?:s)?|procedure-design|goods flow|operational details?|operational process(?:es)?|ERP|order flow|warehouse|scanner|barcode|document control|manual process(?:es)?)\b/i.test(clean(value));
+}
+
 function workstreamTexts(state = {}) {
   return uniqueStrings([
     ...(Array.isArray(state.topics) ? state.topics.map((topic) => topic.text || topic.topic || topic) : []),
@@ -130,7 +134,8 @@ function reviewerFacingActionText(candidate = {}, options = {}) {
   if (/\bdeclarations? of conformity\b/i.test(combined) && /\b(?:PPE|risk rationale|sunglasses)\b/i.test(combined)) {
     return 'Confirm whether the PPE/sunglasses declarations of conformity need updating with the Category I risk rationale';
   }
-  if (/\bworking sessions?\b|\bprocess discovery\b|\b(?:ERP|order flow|warehouse|scanner|barcode|document control|manual process)\b/i.test(combined)
+  if (hasImporterProcedureContext(combined)
+      && /\bworking sessions?\b|\bprocess discovery\b|\b(?:ERP|order flow|warehouse|scanner|barcode|document control|manual process)\b/i.test(combined)
       && /\b(?:set up|schedule|arrange|further|next|continue|working sessions?)\b/i.test(combined)) {
     return 'Arrange further process-discovery working sessions to confirm the operational details needed for importer-obligation procedures';
   }
@@ -282,6 +287,7 @@ module.exports = {
   rankAndClusterActionReviewCandidates,
   reviewerFacingActionText,
   reviewerUsefulness,
+  hasImporterProcedureContext,
   ownerEvidenceType,
   clusterKey
 };

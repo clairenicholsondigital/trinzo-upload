@@ -60,6 +60,7 @@ test('cold Abbott summary frames audit preparation and rejects fragment topics',
   assert.doesNotMatch(summary.meetingPurpose, /^The meeting reviewed\b/i);
   assert.ok((summary.overallTopics || []).some((topic) => /audit scope|timing|logistics/i.test(topic)));
   assert.ok((summary.overallTopics || []).some((topic) => /preparation|confidentiality|access/i.test(topic)));
+  assert.doesNotMatch(text, /\bUSB\b|\bGUI\b/i);
   assert.doesNotMatch(text, /\bEven gone through\b/i);
 });
 
@@ -126,4 +127,61 @@ test('T761 cold understanding does not publish the previous broad Colm topic-lis
   const confirmed = (proposal.actions || []).map((item) => `${item.owner || ''} - ${item.action || ''}`).join('\n');
   assert.doesNotMatch(confirmed, /Colm\s+-\s+Review the language support and localisation, cybersecurity and access controls, electrical compliance testing/i);
   assert.doesNotMatch(confirmed, /Colm\s+-\s+Review .*software change control/i);
+});
+
+test('T761 cold actions do not inherit importer-obligation process-discovery wording', () => {
+  const transcript = fs.readFileSync(fixturePath('025_real_t761_eakin_sw_weekly_transcript'), 'utf8');
+  const details = {
+    meetingTitle: 'Client T761 Eakin SW Weekly Checkin',
+    meetingType: 'Software Weekly Review'
+  };
+  const summary = runCanonicalLiveStage(transcript, {
+    stage: 'summary',
+    fileName: 't761.txt',
+    confirmed: { details }
+  }).screens.summary;
+  const discussion = runCanonicalLiveStage(transcript, {
+    stage: 'discussion',
+    fileName: 't761.txt',
+    confirmed: { details, summary }
+  }).screens.discussion;
+  const actions = runCanonicalLiveStage(transcript, {
+    stage: 'actions',
+    fileName: 't761.txt',
+    confirmed: { details, summary, discussion },
+    includeEvidencePack: true
+  });
+  const candidateText = JSON.stringify(actions.validationFlags || []);
+  assert.doesNotMatch(candidateText, /importer-obligation|process-discovery working sessions/i);
+});
+
+test('DITA cold understanding retains legitimate importer process-discovery context', () => {
+  const summary = summaryFor('021_real_dita_importer_obligations_transcript', {
+    meetingTitle: 'Client DITA T819 Importer Obligations review plan',
+    meetingType: 'Importer Obligations Review'
+  });
+  const text = combinedSummaryText(summary);
+  assert.match(text, /importer-obligation|procedure|goods flow|storage/i);
+  assert.match(text, /process|operational/i);
+});
+
+test('cold fixture sequence remains isolated across Abbott, T761 and DITA', () => {
+  const t761First = summaryFor('025_real_t761_eakin_sw_weekly_transcript', {
+    meetingTitle: 'Client T761 Eakin SW Weekly Checkin',
+    meetingType: 'Software Weekly Review'
+  });
+  const abbottAfterT761 = summaryFor('027_real_abbott_audit_kickoff_transcript', {
+    meetingTitle: 'Client Abbott T796 Audit kick off Sylmar',
+    meetingType: 'Audit kick-off / planning'
+  });
+  const ditaAfterAbbott = summaryFor('021_real_dita_importer_obligations_transcript', {
+    meetingTitle: 'Client DITA T819 Importer Obligations review plan',
+    meetingType: 'Importer Obligations Review'
+  });
+  const abbottText = combinedSummaryText(abbottAfterT761);
+  const t761Text = combinedSummaryText(t761First);
+  const ditaText = combinedSummaryText(ditaAfterAbbott);
+  assert.doesNotMatch(abbottText, /\bUSB\b|\bGUI\b|alarm-code|mute button/i);
+  assert.doesNotMatch(t761Text, /importer-obligation|MedEnvoy|sunglasses/i);
+  assert.doesNotMatch(ditaText, /Sylmar|mute button|alarm-code|USB|GUI/i);
 });

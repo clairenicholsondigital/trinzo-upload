@@ -12,7 +12,7 @@ const { canHeadlineTopic, canStandAloneAsMinutesEvidence, isTranscriptMetaText, 
 const { resolveActionRecords } = require('./actionResolution');
 const { editorialTopicLabel, editorialTopics } = require('./topicEditorial');
 const { repairDiscussionForConfirmedUnderstanding } = require('../stagedSemanticAuthority');
-const { enrichActionReviewCandidate, rankAndClusterActionReviewCandidates } = require('./actionReviewRanking');
+const { enrichActionReviewCandidate, rankAndClusterActionReviewCandidates, hasImporterProcedureContext } = require('./actionReviewRanking');
 
 function unique(items, key) {
   const seen = new Set();
@@ -1607,7 +1607,7 @@ function workstreamActionReviewCandidates(evidence, state = {}) {
     ]) : [])
   ].map(clean).join(' ');
   const candidates = [];
-  if (/\b(?:further|continue|continuing|process discovery|working sessions?|operational process|ERP|order flow|warehouse|scanner|document control|manual processes?)\b/i.test(confirmedTexts)) {
+  if (hasImporterProcedureContext(confirmedTexts) && /\b(?:further|continue|continuing|process discovery|working sessions?|operational process|ERP|order flow|warehouse|scanner|document control|manual processes?)\b/i.test(confirmedTexts)) {
     const eligibleEvents = evidence.events.filter((event) =>
       /\b(?:another call|next week|continue to build|continue building|go through|follow up|working sessions?|schedule|arrange|set up|process)\b/i.test(event.text)
       && !/\b(?:already complete|no action|nothing to action|for information only|speak to you next week|talk to you next week)\b/i.test(event.text)
