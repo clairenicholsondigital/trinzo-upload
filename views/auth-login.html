@@ -243,7 +243,7 @@
         showStatus('Login successful. Redirecting...', 'success');
 
         setTimeout(() => {
-          window.location.href = '/dashboard';
+          window.location.href = data.user && data.user.role === 'client' ? '/staged-meeting-minutes/' : '/dashboard';
         }, 600);
 
       } catch (error) {

@@ -106,6 +106,19 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("role: user.role", auth)
         self.assertIn("role: session.role", auth)
 
+    def test_client_role_redirects_to_staged_minutes_and_gets_reduced_nav(self):
+        login = (REPO_DIR / "views" / "auth-login.html").read_text(encoding="utf-8")
+        shared_nav = (REPO_DIR / "public" / "trinzo.js").read_text(encoding="utf-8")
+
+        self.assertIn("data.user && data.user.role === 'client' ? '/staged-meeting-minutes/' : '/dashboard'", login)
+        self.assertIn("var clientHomeUrl = '/staged-meeting-minutes/';", shared_nav)
+        self.assertIn("{ href: clientHomeUrl, label: 'Staged minutes' }", shared_nav)
+        self.assertIn("{ href: '/jobs', label: 'Library' }", shared_nav)
+        self.assertIn("if (user && user.role === 'client')", shared_nav)
+        self.assertIn("reduceClientNavigation(nav);", shared_nav)
+        self.assertIn("addBrand(nav, clientHomeUrl);", shared_nav)
+        self.assertIn("nav.innerHTML = '';", shared_nav)
+
     def test_dashboard_only_links_to_feedback_listing_and_matches_final_style(self):
         dashboard = (REPO_DIR / "views" / "dashboard.html").read_text(encoding="utf-8")
         meeting_minutes_final = (REPO_DIR / "views" / "meeting-minutes-final.html").read_text(encoding="utf-8")

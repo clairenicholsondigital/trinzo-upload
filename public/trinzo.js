@@ -5,12 +5,57 @@
 (function () {
   var pilotProjectName = 'Trinzo Project Update Tool \u2014 Internal Pilot';
   var pilotProfileUrl = '/project-update-test?stage=insights&projectName=' + encodeURIComponent(pilotProjectName);
+  var clientHomeUrl = '/staged-meeting-minutes/';
+  var clientNavItems = [
+    { href: clientHomeUrl, label: 'Staged minutes' },
+    { href: '/jobs', label: 'Library' }
+  ];
+
+  function normalisedPath(value) {
+    return (String(value || '').split('?')[0].replace(/\/+$/, '') || '/');
+  }
+
+  function currentUser() {
+    return fetch('/api/auth/me', { credentials: 'same-origin' })
+      .then(function (response) {
+        if (!response.ok) return null;
+        return response.json().catch(function () { return null; });
+      })
+      .then(function (payload) {
+        return payload && payload.success ? payload.user : null;
+      })
+      .catch(function () { return null; });
+  }
+
+  function addBrand(nav, href) {
+    var brand = document.createElement('a');
+    brand.className = 'brand';
+    brand.href = href || '/dashboard';
+    brand.setAttribute('aria-label', 'Trinzo home');
+    var img = document.createElement('img');
+    img.src = '/static/trinzo-logo-dark.svg';
+    img.alt = 'Trinzo';
+    brand.appendChild(img);
+    nav.insertBefore(brand, nav.firstChild);
+    return brand;
+  }
+
+  function reduceClientNavigation(nav) {
+    nav.innerHTML = '';
+    addBrand(nav, clientHomeUrl);
+    clientNavItems.forEach(function (item) {
+      var link = document.createElement('a');
+      link.href = item.href;
+      link.textContent = item.label;
+      nav.appendChild(link);
+    });
+  }
 
   function addProjectManagementMenu(nav) {
     if (nav.querySelector('.nav-menu-project-management')) return;
 
     var projectLink = Array.prototype.find.call(nav.querySelectorAll('a[href]'), function (link) {
-      var href = (link.getAttribute('href') || '').split('?')[0].replace(/\/+$/, '');
+      var href = normalisedPath(link.getAttribute('href'));
       return href === '/project-update-test';
     });
     if (!projectLink) return;
@@ -38,40 +83,41 @@
     projectLink.remove();
   }
 
-  function enhance() {
+  function highlightCurrentPage(nav) {
+    var here = normalisedPath(location.pathname || '/');
+    var links = nav.querySelectorAll('a[href]');
+    var best = null, bestLen = -1;
+    links.forEach(function (a) {
+      if (a.classList.contains('brand')) return;
+      var href = normalisedPath(a.getAttribute('href'));
+      if (here === href || (href !== '/' && here.indexOf(href) === 0)) {
+        if (href.length > bestLen) { best = a; bestLen = href.length; }
+      }
+    });
+    if (best) best.setAttribute('aria-current', 'page');
+    if (here.indexOf('/project-update-test') === 0) {
+      var projectMenu = nav.querySelector('.nav-menu-project-management');
+      if (projectMenu) projectMenu.setAttribute('aria-current', 'page');
+    }
+  }
+
+  async function enhance() {
     var nav = document.querySelector('nav.nav');
     if (nav) {
+      var user = await currentUser();
+      if (user && user.role === 'client') {
+        reduceClientNavigation(nav);
+        highlightCurrentPage(nav);
+        return;
+      }
+
       // Brand logo (skip if a page already provides one)
       if (!nav.querySelector('.brand')) {
-        var brand = document.createElement('a');
-        brand.className = 'brand';
-        brand.href = '/dashboard';
-        brand.setAttribute('aria-label', 'Trinzo home');
-        var img = document.createElement('img');
-        img.src = '/static/trinzo-logo-dark.svg';
-        img.alt = 'Trinzo';
-        brand.appendChild(img);
-        nav.insertBefore(brand, nav.firstChild);
+        addBrand(nav, '/dashboard');
       }
 
       addProjectManagementMenu(nav);
-
-      // Active-page highlight
-      var here = (location.pathname || '/').replace(/\/+$/, '') || '/';
-      var links = nav.querySelectorAll('a[href]');
-      var best = null, bestLen = -1;
-      links.forEach(function (a) {
-        if (a.classList.contains('brand')) return;
-        var href = (a.getAttribute('href') || '').split('?')[0].replace(/\/+$/, '') || '/';
-        if (here === href || (href !== '/' && here.indexOf(href) === 0)) {
-          if (href.length > bestLen) { best = a; bestLen = href.length; }
-        }
-      });
-      if (best) best.setAttribute('aria-current', 'page');
-      if (here.indexOf('/project-update-test') === 0) {
-        var projectMenu = nav.querySelector('.nav-menu-project-management');
-        if (projectMenu) projectMenu.setAttribute('aria-current', 'page');
-      }
+      highlightCurrentPage(nav);
     }
   }
 
