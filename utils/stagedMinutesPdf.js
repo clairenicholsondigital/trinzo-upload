@@ -31,6 +31,14 @@ function safeList(value) {
   return (Array.isArray(value) ? value : []).map((item) => clean(item)).filter(Boolean).slice(0, 100);
 }
 
+function attendeeLists(details = {}) {
+  let internal = safeList(details.internalAttendees);
+  const client = safeList(details.clientAttendees);
+  const combined = safeList(details.participants || details.allAttendees);
+  if (!internal.length && !client.length && combined.length) internal = combined;
+  return { internal, client };
+}
+
 function formatUkDate(value) {
   const text = clean(value, 'Not stated');
   const match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -44,6 +52,7 @@ function formatUkDate(value) {
 
 function normaliseMinutes(input = {}) {
   const details = input.details && typeof input.details === 'object' ? input.details : {};
+  const attendees = attendeeLists(details);
   const summary = input.summary && typeof input.summary === 'object' ? input.summary : {};
   return {
     details: {
@@ -51,8 +60,8 @@ function normaliseMinutes(input = {}) {
       meetingDate: formatUkDate(details.meetingDate).slice(0, 100),
       meetingLocation: clean(details.meetingLocation, 'Not stated').slice(0, 500),
       clientAttendeeLabel: clean(details.clientAttendeeLabel, 'Client').slice(0, 50),
-      internalAttendees: safeList(details.internalAttendees),
-      clientAttendees: safeList(details.clientAttendees)
+      internalAttendees: attendees.internal,
+      clientAttendees: attendees.client
     },
     summary: {
       objectives: safeList(summary.objectives),

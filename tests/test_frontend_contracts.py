@@ -442,7 +442,7 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("escapeHtml(item.deadline || 'Not stated')", staged_page)
         self.assertNotIn("with no date stated", staged_page)
         self.assertIn("applyStagedPayload", staged_page)
-        self.assertIn("details.clientAttendees || details.allAttendees", staged_page)
+        self.assertIn("function attendeeListsFromDetails", staged_page)
         self.assertIn("clientAttendees: attendeesFromRow(clientAttendeesRow)", staged_page)
         self.assertIn("checkbox-inline", staged_page)
         self.assertIn('.checkbox-inline input[type="checkbox"]', staged_page)

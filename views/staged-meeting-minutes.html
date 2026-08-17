@@ -1217,6 +1217,33 @@ td select {
     };
   }
 
+  function attendeeListsFromDetails(details) {
+    var source = details && typeof details === 'object' ? details : {};
+    var internal = Array.isArray(source.internalAttendees) ? source.internalAttendees.filter(Boolean) : [];
+    var client = Array.isArray(source.clientAttendees) ? source.clientAttendees.filter(Boolean) : [];
+    var combined = Array.isArray(source.participants) ? source.participants.filter(Boolean)
+      : Array.isArray(source.allAttendees) ? source.allAttendees.filter(Boolean) : [];
+    if (!internal.length && !client.length && combined.length) internal = combined;
+    return { internal: internal, client: client };
+  }
+
+  function mergeGeneratedDetails(details, allowAttendeeReplacement) {
+    var incoming = details && typeof details === 'object' ? details : {};
+    var confirmed = stagedState.details && typeof stagedState.details === 'object'
+      ? stagedState.details
+      : detailsFromDom();
+    var existingAttendees = attendeeListsFromDetails(confirmed);
+    var incomingAttendees = attendeeListsFromDetails(incoming);
+    var useIncomingAttendees = allowAttendeeReplacement || (!existingAttendees.internal.length && !existingAttendees.client.length);
+    var merged = Object.assign({}, confirmed, incoming, {
+      internalAttendees: useIncomingAttendees ? incomingAttendees.internal : existingAttendees.internal,
+      clientAttendees: useIncomingAttendees ? incomingAttendees.client : existingAttendees.client
+    });
+    merged.allAttendees = merged.internalAttendees.concat(merged.clientAttendees);
+    merged.participants = merged.allAttendees.slice();
+    return merged;
+  }
+
   function topicRefsFromDom(topics) {
     var refs = generatedStageVersions.summary && Array.isArray(generatedStageVersions.summary.topicRefs)
       ? generatedStageVersions.summary.topicRefs
@@ -1422,6 +1449,7 @@ td select {
     if (!finalDocumentPreview) return;
     commitStageState(stageForScreen(activeIndex));
     var details = stagedState.details || detailsFromDom();
+    var attendeeLists = attendeeListsFromDetails(details);
     var summary = stagedState.summary || summaryFromDom();
     var objectives = Array.isArray(summary.objectives) ? summary.objectives : [];
     var discussionRows = Array.isArray(stagedState.discussion)
@@ -1435,8 +1463,8 @@ td select {
       '<h2>' + escapeHtml(details.meetingTitle || 'Untitled meeting') + '</h2>' +
       '<p><strong>Date:</strong> ' + escapeHtml(formatUkDate(details.meetingDate)) + '</p>' +
       '<p><strong>Location:</strong> ' + escapeHtml(details.meetingLocation || 'Not stated') + '</p>' +
-      '<p><strong>Internal attendees:</strong> ' + escapeHtml((details.internalAttendees || []).join(', ') || 'Not stated') + '</p>' +
-      '<p><strong>' + escapeHtml(details.clientAttendeeLabel === 'External' ? 'External' : 'Client') + ' attendees:</strong> ' + escapeHtml((details.clientAttendees || []).join(', ') || 'Not stated') + '</p>' +
+      '<p><strong>Internal attendees:</strong> ' + escapeHtml(attendeeLists.internal.join(', ') || 'Not stated') + '</p>' +
+      '<p><strong>' + escapeHtml(details.clientAttendeeLabel === 'External' ? 'External' : 'Client') + ' attendees:</strong> ' + escapeHtml(attendeeLists.client.join(', ') || 'Not stated') + '</p>' +
       '<div class="section"><h3>Objectives</h3><ul>' + objectives.map(function (item) { return '<li>' + escapeHtml(item) + '</li>'; }).join('') + '</ul></div>' +
       '<div class="section"><h3>Summary</h3><p>' + escapeHtml(summary.executiveSummary || 'Review the transcript-generated summary before moving on.') + '</p></div>' +
       '<div class="section"><h3>Key discussion points</h3><table class="discussion-table"><thead><tr><th>Topic</th><th>Discussion points</th></tr></thead><tbody>' + discussionRows.map(function (item) {
@@ -2320,12 +2348,13 @@ td select {
     var details = screensPayload.details || {};
     var summary = screensPayload.summary || {};
     if (Object.prototype.hasOwnProperty.call(screensPayload, 'details')) {
-      if (meetingTitleInput) meetingTitleInput.value = details.meetingTitle || meetingTitleInput.value || 'Untitled meeting';
-      if (meetingDateInput && details.meetingDate) meetingDateInput.value = details.meetingDate.slice(0, 10);
-      if (meetingLocationInput) meetingLocationInput.value = details.meetingLocation || 'Microsoft Teams';
-      if (meetingTypeInput && details.meetingType) meetingTypeInput.value = details.meetingType;
-      renderAttendees(internalAttendeesRow, details.internalAttendees);
-      renderAttendees(clientAttendeesRow, details.clientAttendees || details.allAttendees);
+      var mergedDetails = mergeGeneratedDetails(details, payload && payload.stagedStage === 'details');
+      if (meetingTitleInput) meetingTitleInput.value = mergedDetails.meetingTitle || meetingTitleInput.value || 'Untitled meeting';
+      if (meetingDateInput && mergedDetails.meetingDate) meetingDateInput.value = mergedDetails.meetingDate.slice(0, 10);
+      if (meetingLocationInput) meetingLocationInput.value = mergedDetails.meetingLocation || 'Microsoft Teams';
+      if (meetingTypeInput && mergedDetails.meetingType) meetingTypeInput.value = mergedDetails.meetingType;
+      renderAttendees(internalAttendeesRow, mergedDetails.internalAttendees);
+      renderAttendees(clientAttendeesRow, mergedDetails.clientAttendees);
       stagedState.details = detailsFromDom();
       generatedStageVersions.details = cloneReviewValue(stagedState.details);
     }

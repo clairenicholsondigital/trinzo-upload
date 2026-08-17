@@ -36,3 +36,11 @@ test('staged PDF normalisation drops empty rows and supplies display fallbacks',
   assert.deepEqual(result.actions, []);
   assert.deepEqual(result.discussion, []);
 });
+
+test('staged PDF preserves attendees from legacy combined participant fields', () => {
+  const result = normaliseMinutes({
+    details: { meetingTitle: 'Legacy draft', participants: ['Jacqui Fox', 'Orla Skally'] }
+  });
+  assert.deepEqual(result.details.internalAttendees, ['Jacqui Fox', 'Orla Skally']);
+  assert.deepEqual(result.details.clientAttendees, []);
+});
