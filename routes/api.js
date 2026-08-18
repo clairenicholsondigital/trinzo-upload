@@ -4006,6 +4006,7 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
           ...(result.screens || {}),
           summary: {
             ...presentationInitialSummary,
+            meetingPurpose: initialUnderstandingPolish.meetingPurpose,
             objectives: initialUnderstandingPolish.objectives,
             executiveSummary: initialUnderstandingPolish.executiveSummary
           }

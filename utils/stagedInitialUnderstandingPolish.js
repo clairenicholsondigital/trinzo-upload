@@ -53,8 +53,15 @@ function objectiveIssue(value) {
   return '';
 }
 
+function presentationTextIssue(value, field = 'text') {
+  const text = clean(value);
+  if (!text) return `${field}_empty`;
+  return objectiveIssue(text) || transcriptShapedSummaryIssue(text) || '';
+}
+
 function hasPresentationIssue(notes = {}) {
   return [
+    notes.meetingPurpose,
     ...(Array.isArray(notes.objectives) ? notes.objectives : []),
     notes.executiveSummary
   ].some((item) => objectiveIssue(item) || transcriptShapedSummaryIssue(item));
@@ -81,12 +88,17 @@ function deterministicPresentationFallback(original, reason = 'unsafe_presentati
     }
     if (objectives.length >= 5) break;
   }
+  const purposeIsSafe = !presentationTextIssue(original.meetingPurpose, 'purpose');
+  const fallbackPurpose = purposeIsSafe
+    ? clean(original.meetingPurpose)
+    : objectives[0] || cleanLines(original.overallTopics, 8).map(normaliseTopicObjective).find(Boolean) || '';
   const executiveSummary = fallbackMinutesReadySummary(original.executiveSummary) || clean(original.meetingPurpose);
-  if (!objectives.length || !executiveSummary || transcriptShapedSummaryIssue(executiveSummary)) {
+  if (!fallbackPurpose || !objectives.length || !executiveSummary || transcriptShapedSummaryIssue(executiveSummary)) {
     return { ...original, used: false, reason };
   }
   return {
     ...original,
+    meetingPurpose: fallbackPurpose,
     objectives,
     executiveSummary,
     used: true,
@@ -95,10 +107,14 @@ function deterministicPresentationFallback(original, reason = 'unsafe_presentati
 }
 
 function validateInitialUnderstandingRevision(original, revised) {
+  const originalPurposeIssue = presentationTextIssue(original.meetingPurpose, 'purpose');
+  const meetingPurpose = clean(revised?.meetingPurpose) || (originalPurposeIssue ? '' : clean(original.meetingPurpose));
   const objectives = cleanLines(revised?.objectives, 5);
   const executiveSummary = clean(revised?.executiveSummary);
-  if (!objectives.length || !executiveSummary) return { ok: false, reason: 'incomplete_response' };
+  if (!meetingPurpose || !objectives.length || !executiveSummary) return { ok: false, reason: 'incomplete_response' };
   const sourceNeedsPresentationPolish = hasPresentationIssue(original);
+  const outputPurposeIssue = presentationTextIssue(meetingPurpose, 'purpose');
+  if (outputPurposeIssue) return { ok: false, reason: outputPurposeIssue };
   const outputObjectiveIssue = objectives.map(objectiveIssue).find(Boolean);
   if (outputObjectiveIssue) return { ok: false, reason: outputObjectiveIssue };
   const sourceText = clean([
@@ -108,14 +124,14 @@ function validateInitialUnderstandingRevision(original, revised) {
     ...original.overallTopics,
     original.executiveSummary
   ].join(' '));
-  const revisedText = clean([...objectives, executiveSummary].join(' '));
+  const revisedText = clean([meetingPurpose, ...objectives, executiveSummary].join(' '));
   const sourceFacts = protectedFacts(sourceText);
   const revisedFacts = protectedFacts(revisedText);
   if ([...revisedFacts].some((fact) => !sourceFacts.has(fact))) return { ok: false, reason: 'new_protected_fact' };
-  if (/\bI\b|\b(?:we|we'd|we'll|we've|we're|our|my)\b/i.test(executiveSummary)) {
+  if (/\bI\b|\b(?:we|we'd|we'll|we've|we're|our|my)\b/i.test(`${meetingPurpose} ${executiveSummary}`)) {
     return { ok: false, reason: 'first_person_summary' };
   }
-  if (/(?:^|[.!?]\s+)(?:obviously|basically|you know|because)\b/i.test(executiveSummary)) {
+  if (/(?:^|[.!?]\s+)(?:obviously|basically|you know|because)\b/i.test(`${meetingPurpose}. ${executiveSummary}`)) {
     return { ok: false, reason: 'conversational_summary' };
   }
   const summaryIssue = transcriptShapedSummaryIssue(executiveSummary);
@@ -138,7 +154,7 @@ function validateInitialUnderstandingRevision(original, revised) {
   if (summaryValidation.overlap != null && summaryValidation.overlap < (sourceNeedsPresentationPolish ? 0.2 : 0.3)) {
     return { ok: false, reason: 'meaning_changed', overlap: summaryValidation.overlap };
   }
-  return { ok: true, reason: 'accepted', objectives, executiveSummary, overlap: summaryValidation.overlap };
+  return { ok: true, reason: 'accepted', meetingPurpose, objectives, executiveSummary, overlap: summaryValidation.overlap };
 }
 
 async function polishInitialUnderstanding(input = {}, options = {}) {
@@ -173,13 +189,14 @@ async function polishInitialUnderstanding(input = {}, options = {}) {
           {
             role: 'user',
             content: [
-              'Write 2-5 concise meeting objectives and a professional 2-3 sentence executive summary in natural British English.',
+              'Write one concise meeting purpose, 2-5 concise meeting objectives and a professional 2-3 sentence executive summary in natural British English.',
+              'The meeting purpose must explain why the meeting happened in one clean sentence.',
               'The executive summary must read like formal meeting minutes, not copied transcript speech or a list of notes.',
               'Synthesise and compress the supplied material. Use third-person, neutral wording and remove repetition, first-person speech, conversational fragments and plainly meaningless notes.',
               'Use only meaning present in the supplied material. If a note is unclear, omit it rather than guessing.',
               'Reuse the supplied terminology wherever possible; do not introduce new substantive concepts.',
               'Do not add actions, owners, deadlines, decisions or outcomes.',
-              'Return JSON only as {"objectives":["..."],"executiveSummary":"..."}.',
+              'Return JSON only as {"meetingPurpose":"...","objectives":["..."],"executiveSummary":"..."}.',
               '',
               `[MEETING_TITLE] ${original.meetingTitle || 'Not stated'} [/MEETING_TITLE]`,
               `[MEETING_PURPOSE] ${original.meetingPurpose || 'Not stated'} [/MEETING_PURPOSE]`,
@@ -201,7 +218,7 @@ async function polishInitialUnderstanding(input = {}, options = {}) {
     const parsed = typeof content === 'object' && content ? content : JSON.parse(String(content || '{}'));
     const validation = validateInitialUnderstandingRevision(original, parsed);
     return validation.ok
-      ? { ...original, objectives: validation.objectives, executiveSummary: validation.executiveSummary, used: true, reason: validation.reason, overlap: validation.overlap, timingMs: Date.now() - startedAt }
+      ? { ...original, meetingPurpose: validation.meetingPurpose, objectives: validation.objectives, executiveSummary: validation.executiveSummary, used: true, reason: validation.reason, overlap: validation.overlap, timingMs: Date.now() - startedAt }
       : { ...deterministicPresentationFallback(original, validation.reason), overlap: validation.overlap, timingMs: Date.now() - startedAt };
   } catch {
     return { ...deterministicPresentationFallback(original, 'request_failed'), timingMs: Date.now() - startedAt };
