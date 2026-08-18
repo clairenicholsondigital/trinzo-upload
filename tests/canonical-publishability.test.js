@@ -27,6 +27,13 @@ test('canonical publishability rejects context-dependent question fragments as t
   assert.equal(canHeadlineTopic(text), false);
 });
 
+test('canonical publishability rejects filler-only topic headings without blocking substantive headings', () => {
+  assert.equal(canHeadlineTopic('Just to, just to know'), false);
+  assert.equal(canHeadlineTopic('Maybe just something to know'), false);
+  assert.equal(canHeadlineTopic('Alarm behaviour and controls'), true);
+  assert.equal(canHeadlineTopic('Training, document access and confidentiality'), true);
+});
+
 test('conditional process detail can support a topic without becoming the topic heading', () => {
   const text = 'If the change is approved, the change request is signed off.';
   assert.equal(isConditionalLead(text), true);

@@ -44,7 +44,8 @@ test('extractive topic fallback rejects transcript-shaped fragments', () => {
   const fragments = [
     'Absolutely address follow',
     'Like, as the team is developing big',
-    'That might be deemed for translation by views it'
+    'That might be deemed for translation by views it',
+    'Just to, just to know'
   ];
   for (const text of fragments) assert.equal(require('../utils/canonicalMinutes/topicEditorial').extractiveLabel(text), '', text);
   assert.equal(require('../utils/canonicalMinutes/topicEditorial').extractiveLabel('We discussed orchard irrigation pressure during the dry season.'), 'Orchard irrigation pressure during the dry season');

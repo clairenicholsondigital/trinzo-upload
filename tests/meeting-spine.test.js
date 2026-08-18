@@ -38,5 +38,6 @@ test('topic heading gate rejects schedule fragments and conversational question 
   assert.equal(usableHeading('Wednesday, Thursday, Fridays'), false);
   assert.equal(usableHeading('And then as a consequence to that, does that mean'), false);
   assert.equal(usableHeading('Like, as the team is developing big'), false);
+  assert.equal(usableHeading('Just to, just to know'), false);
   assert.equal(usableHeading('Training, document access and confidentiality'), true);
 });

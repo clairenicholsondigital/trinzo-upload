@@ -33,7 +33,7 @@ const CONCEPTS = [
 ];
 
 const LEAD_IN = /^(?:(?:yeah|yes|okay|ok|right|so|well|no|like|ohh?|thanks?|thank you)[,;:\s]+|(?:and|but)\s+|(?:I|we|they|you|the team)\s+(?:think|know|guess|suppose|discussed|reviewed|covered|noted|said|have|has|had|were|are|will|would|can|could|need to)\s+(?:that\s+)?)/i;
-const WEAK = new Set(['about', 'after', 'again', 'also', 'been', 'being', 'could', 'from', 'have', 'into', 'just', 'like', 'more', 'much', 'only', 'other', 'really', 'should', 'some', 'something', 'still', 'that', 'their', 'them', 'then', 'there', 'these', 'they', 'thing', 'this', 'those', 'very', 'want', 'were', 'what', 'when', 'where', 'which', 'with', 'would', 'your']);
+const WEAK = new Set(['about', 'after', 'again', 'also', 'been', 'being', 'could', 'from', 'have', 'into', 'just', 'know', 'like', 'more', 'much', 'only', 'other', 'really', 'should', 'some', 'something', 'still', 'that', 'their', 'them', 'then', 'there', 'these', 'they', 'thing', 'this', 'those', 'very', 'want', 'were', 'what', 'when', 'where', 'which', 'with', 'would', 'your']);
 
 function clusterText(topic, evidence) {
   const byId = new Map((evidence?.events || []).map((event) => [event.id, event.text]));
@@ -83,7 +83,7 @@ function extractiveLabel(value) {
     const token = word.toLowerCase().replace(/[^a-z0-9-]/g, '');
     return token.length > 2 && !WEAK.has(token);
   });
-  const selected = (content.length >= 2 ? content : words).slice(0, 7).join(' ')
+  const selected = (content.length >= 2 ? content : []).slice(0, 7).join(' ')
     .replace(/^[,;:\s]+|[,;:\s]+$/g, '');
   if (!selected || selected.split(/\s+/).length < 3) return '';
   if (/^(?:you|was|were|is|are|it['’]?s|those|these|there|that['’]?s|takes?|say|aim|doesn|don|didn|hasn|hadn|couldn|wouldn|shouldn)\b/i.test(selected)) return '';

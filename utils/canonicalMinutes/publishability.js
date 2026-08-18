@@ -2,6 +2,22 @@
 
 const { clean } = require('./evidence');
 
+const HEADLINE_WEAK_TOKENS = new Set([
+  'about', 'actually', 'again', 'also', 'anything', 'because', 'been', 'being',
+  'could', 'does', 'doing', 'done', 'from', 'going', 'guess', 'have', 'having',
+  'into', 'just', 'kind', 'know', 'like', 'maybe', 'more', 'much', 'need',
+  'only', 'really', 'right', 'say', 'see', 'should', 'some', 'something',
+  'sort', 'still', 'that', 'their', 'them', 'then', 'there', 'these', 'they',
+  'thing', 'think', 'this', 'those', 'trying', 'very', 'want', 'well', 'what',
+  'when', 'where', 'which', 'with', 'would', 'yeah', 'yes', 'your'
+]);
+
+function headlineContentTokens(value) {
+  return (clean(value).toLowerCase().match(/[a-z][a-z0-9'’-]{2,}/g) || [])
+    .map((token) => token.replace(/[^a-z0-9'’-]/g, ''))
+    .filter((token) => token && !HEADLINE_WEAK_TOKENS.has(token));
+}
+
 function isTranscriptMetaText(value) {
   const text = clean(value);
   if (!text) return true;
@@ -61,6 +77,7 @@ function canStandAloneAsMinutesEvidence(value, options = {}) {
 function canHeadlineTopic(value) {
   const text = clean(value);
   if (!canStandAloneAsMinutesEvidence(text)) return false;
+  if (headlineContentTokens(text).length < 2) return false;
   if (/^(?:and|but|because|when|presumably|interesting|so|well|yeah|yes|okay|right|like)\b/i.test(text)) return false;
   if (/\?$/.test(text)) return false;
   if (/^(?:(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)s?[,/ &-]*)+$/i.test(text)) return false;
