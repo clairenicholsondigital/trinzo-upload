@@ -84,6 +84,22 @@ test('does not recover a future action from completed historical work', () => {
   assert.deepEqual(buildEvidenceBoundStagedActionInventory(transcript), []);
 });
 
+test('keeps previous follow-up evidence reviewable when an artefact is still needed', () => {
+  const transcript = [
+    'Alex Smith   12:00',
+    'I did follow up with Morgan last week for a copy of the project plan or task list from Med Envoy, because that will help us understand the current activity.',
+    'Alex Smith   12:10',
+    'If you are talking to Morgan, could you mention it again so we can avoid duplication?'
+  ].join('\n');
+
+  const inventory = buildEvidenceBoundStagedActionInventory(transcript);
+  const followUp = inventory.find((item) => /project plan or task list/i.test(item.action));
+
+  assert.ok(followUp);
+  assert.notEqual(followUp.reviewDisposition, 'completed_history');
+  assert.equal(followUp.owner, 'Not stated');
+});
+
 test('recovers multiple evidence-bound actions from the real T761 fixture without affecting Abbott', () => {
   const t761 = fs.readFileSync(path.join(
     REPO_DIR,
@@ -168,8 +184,10 @@ test('recovers DITA follow-ups only from the real DITA evidence windows', () => 
   assert.ok(ditaActions.includes('Prepare the country and language list'));
   assert.equal(ditaActions.length, 6);
   const ditaQms = buildEvidenceBoundStagedActionInventory(dita).find((item) => /QMS Manual/i.test(item.action));
+  const medEnvoy = buildEvidenceBoundStagedActionInventory(dita).find((item) => /Med Envoy project plan or task list/i.test(item.action));
   assert.equal(ditaQms.owner, 'Not stated');
   assert.equal(ditaQms.reviewDisposition, 'review_required');
+  assert.notEqual(medEnvoy.reviewDisposition, 'completed_history');
   assert.ok(!abbottActions.some((action) => /Med Envoy|HPRA|PPE risk rationale/i.test(action)));
 });
 

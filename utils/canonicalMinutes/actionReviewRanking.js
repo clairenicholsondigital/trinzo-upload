@@ -27,6 +27,13 @@ function uniqueStrings(values) {
   return [...new Set((Array.isArray(values) ? values : []).map(clean).filter(Boolean))];
 }
 
+function hasOutstandingArtifactDependency(value) {
+  const text = clean(value);
+  const artifact = /\b(?:copy of|project plan|task list|plan of action|timeline|status update|latest version|access to|list of|information|evidence|document|manual|file|record|tracker|summary|report)\b/i.test(text);
+  const stillNeeded = /\b(?:need(?:s)?|required|can you|could you|please|ask|mention|follow[- ]?up|go back|send|share|provide|confirm|request|help us understand|avoid duplication|without it|struggle|pending|outstanding|still|waiting|depend(?:s|ency)?)\b/i.test(text);
+  return artifact && stillNeeded;
+}
+
 function candidateEvidenceText(candidate = {}, options = {}) {
   if (clean(candidate.evidence)) return clean(candidate.evidence);
   const byId = new Map((options.evidence?.events || []).map((event) => [event.id, event]));
@@ -124,7 +131,8 @@ function classificationForCandidate(candidate = {}, options = {}) {
   const followUpVerb = /^(?:confirm|provide|send|share|review|update|prepare|arrange|schedule|follow up|request|complete|draft|submit|create|develop|document|obtain|resend)\b/i.test(action);
   const concreteArtefact = /\b(?:manual|document|file|record|invoice|bill|fee|registration|SRN|project plan|task list|label|IFU|countries|languages|declaration(?:s)? of conformity|risk rationale|procedure(?:s)?|session(?:s)?|meeting|call|evidence|confirmation)\b/i.test(combined);
   const dependency = /\b(?:before|so that|so|in order to|depends?|dependency|align(?:ed|ment)?|input|access|confirm|provide|send|share|follow[- ]?up|further|next|working session(?:s)?)\b/i.test(combined);
-  const completed = /\b(?:already|previously|last\s+(?:week|month|year)|yesterday)\b[^.]{0,140}\b(?:sent|shared|reviewed|completed|finished|closed|followed up|did follow up)\b|\bno action\b/i.test(combined);
+  const completed = /\b(?:already|previously|last\s+(?:week|month|year)|yesterday)\b[^.]{0,140}\b(?:sent|shared|reviewed|completed|finished|closed|followed up|did follow up)\b|\bno action\b/i.test(combined)
+    && !hasOutstandingArtifactDependency(combined);
   const hypothetical = /\b(?:might|may|perhaps|maybe|if you wanted|if required|could have a look|would be able to)\b/i.test(combined) && !/\b(?:agreed|confirmed|yes[,.;]?\s+I['’]ll|leave that with me)\b/i.test(combined);
   const fragmentary = action.split(/\s+/).filter(Boolean).length < 4
     || /^(?:do|like|do or like|review that document as well|review that|send that|share that|do it|do that|handle that)$/i.test(action)

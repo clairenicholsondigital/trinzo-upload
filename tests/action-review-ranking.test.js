@@ -81,6 +81,24 @@ test('useful grounded requirements and follow-ups remain prominent', () => {
   assert.match(prominentText, /process-discovery working sessions|operational details/i);
 });
 
+test('previous follow-up wording does not hide still-needed artefact dependencies', () => {
+  const enriched = enrichActionReviewCandidate({
+    owner: 'Not stated',
+    action: 'Follow up on the project plan or task list',
+    reviewDisposition: 'review_required',
+    evidence: 'I did follow up with Morgan last week for a copy of the project plan or task list, because that will help us understand the current activity and avoid duplication.'
+  }, {
+    state: {
+      meeting: { purpose: 'Coordinate outstanding artefacts and dependencies before the next project stage.' },
+      topics: ['Representative project-plan alignment', 'Open artefact dependencies']
+    },
+    evidence: { events: [] }
+  });
+
+  assert.equal(enriched.reviewerUsefulnessTier, 'high');
+  assert.notEqual(enriched.actionClassification, 'completed_history');
+});
+
 test('generic meeting follow-ups are not rewritten into importer-obligation wording without importer evidence', () => {
   const enriched = enrichActionReviewCandidate({
     owner: 'Not stated',

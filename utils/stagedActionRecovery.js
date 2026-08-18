@@ -145,6 +145,13 @@ function evidenceCandidateScore(candidate) {
   return score;
 }
 
+function hasOutstandingArtifactDependency(text) {
+  const source = cleanLine(text);
+  const artifact = /\b(?:copy of|project plan|task list|plan of action|timeline|status update|latest version|access to|list of|information|evidence|document|manual|file|record|tracker|summary|report)\b/i.test(source);
+  const stillNeeded = /\b(?:need(?:s)?|required|can you|could you|please|ask|mention|follow[- ]?up|go back|send|share|provide|confirm|request|help us understand|avoid duplication|without it|struggle|pending|outstanding|still|waiting|depend(?:s|ency)?)\b/i.test(source);
+  return artifact && stillNeeded;
+}
+
 function turnHasRuleContext(turn, rule) {
   return rule.required.some((pattern) => pattern.test(turn.text));
 }
@@ -174,7 +181,7 @@ function candidateDisposition(evidence, owner) {
   const tentative = /\b(?:might|may|perhaps|maybe|if you wanted|if required|could have a look)\b/i.test(text);
   const explicitOwnerCommitment = owner !== 'Not stated' && /\bI\s*(?:['’]ll|will|shall|can|need to|must|have to|am going to)|\bI(?:['’]ve| have)\s+got to\b|\bI(?:['’]m| am)\s+(?:working on|tidying|updating|reviewing|preparing|completing|sharing|sending|adding)\b/i.test(text);
   const impersonalRequirement = /\b(?:needs? to|must|has to|have to|required to)\b/i.test(text) && owner === 'Not stated';
-  if (completed && !/\b(?:still|remains?|outstanding|pending|yet to)\b/i.test(text)) return 'completed_history';
+  if (completed && !/\b(?:still|remains?|outstanding|pending|yet to)\b/i.test(text) && !hasOutstandingArtifactDependency(text)) return 'completed_history';
   if (tentative && !/\b(?:agreed|confirmed|yes[,.;]?\s+I['’]ll|leave that with me)\b/i.test(text)) return 'review_required';
   if (explicitOwnerCommitment) return 'confirmed_action';
   if (impersonalRequirement) return 'requirement';
