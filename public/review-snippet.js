@@ -436,8 +436,12 @@
       stopStream();
       state.stream = await navigator.mediaDevices.getDisplayMedia({
         video: { displaySurface: 'browser' },
-        audio: false
+        audio: false,
+        preferCurrentTab: true,
+        selfBrowserSurface: 'include',
+        surfaceSwitching: 'exclude'
       });
+      var settings = captureSettings(state.stream);
       var video = document.createElement('video');
       video.srcObject = state.stream;
       video.muted = true;
@@ -451,14 +455,7 @@
       sourceContext.drawImage(video, 0, 0);
       stopStream();
 
-      var scaleX = source.width / window.innerWidth;
-      var scaleY = source.height / window.innerHeight;
-      var crop = {
-        x: Math.max(0, Math.round(selection.x * scaleX)),
-        y: Math.max(0, Math.round(selection.y * scaleY)),
-        width: Math.max(1, Math.min(source.width, Math.round(selection.width * scaleX))),
-        height: Math.max(1, Math.min(source.height, Math.round(selection.height * scaleY)))
-      };
+      var crop = cropForSelection(source, selection, settings);
       var output = document.createElement('canvas');
       var downscale = crop.width > config.maxImageWidth ? config.maxImageWidth / crop.width : 1;
       output.width = Math.round(crop.width * downscale);
@@ -475,6 +472,82 @@
       stopStream();
       setMessage(error && error.message ? error.message : 'The screenshot could not be captured.');
     }
+  }
+
+  function captureSettings(stream) {
+    var track = stream && stream.getVideoTracks && stream.getVideoTracks()[0];
+    return track && track.getSettings ? track.getSettings() : {};
+  }
+
+  function cropForSelection(source, selection, settings) {
+    var mapping = captureMapping(source, settings || {});
+    var crop = {
+      x: Math.round(mapping.offsetX + selection.x * mapping.scaleX),
+      y: Math.round(mapping.offsetY + selection.y * mapping.scaleY),
+      width: Math.round(selection.width * mapping.scaleX),
+      height: Math.round(selection.height * mapping.scaleY)
+    };
+    return clampCrop(crop, source.width, source.height);
+  }
+
+  function captureMapping(source, settings) {
+    var surface = settings.displaySurface || 'browser';
+    var viewportWidth = Math.max(1, window.innerWidth || document.documentElement.clientWidth || 1);
+    var viewportHeight = Math.max(1, window.innerHeight || document.documentElement.clientHeight || 1);
+    var outerWidth = Math.max(viewportWidth, window.outerWidth || viewportWidth);
+    var outerHeight = Math.max(viewportHeight, window.outerHeight || viewportHeight);
+    var screenWidth = Math.max(outerWidth, window.screen && window.screen.width ? window.screen.width : outerWidth);
+    var screenHeight = Math.max(outerHeight, window.screen && window.screen.height ? window.screen.height : outerHeight);
+
+    if (surface === 'monitor') {
+      var monitorScaleX = source.width / screenWidth;
+      var monitorScaleY = source.height / screenHeight;
+      var monitorChrome = browserChromeInsets(outerWidth, outerHeight, viewportWidth, viewportHeight);
+      return {
+        scaleX: monitorScaleX,
+        scaleY: monitorScaleY,
+        offsetX: Math.max(0, (window.screenX || 0) + monitorChrome.left) * monitorScaleX,
+        offsetY: Math.max(0, (window.screenY || 0) + monitorChrome.top) * monitorScaleY
+      };
+    }
+
+    if (surface === 'window') {
+      var windowScaleX = source.width / outerWidth;
+      var windowScaleY = source.height / outerHeight;
+      var windowChrome = browserChromeInsets(outerWidth, outerHeight, viewportWidth, viewportHeight);
+      return {
+        scaleX: windowScaleX,
+        scaleY: windowScaleY,
+        offsetX: windowChrome.left * windowScaleX,
+        offsetY: windowChrome.top * windowScaleY
+      };
+    }
+
+    return {
+      scaleX: source.width / viewportWidth,
+      scaleY: source.height / viewportHeight,
+      offsetX: 0,
+      offsetY: 0
+    };
+  }
+
+  function browserChromeInsets(outerWidth, outerHeight, viewportWidth, viewportHeight) {
+    var side = Math.max(0, (outerWidth - viewportWidth) / 2);
+    return {
+      left: side,
+      top: Math.max(0, outerHeight - viewportHeight - side)
+    };
+  }
+
+  function clampCrop(crop, sourceWidth, sourceHeight) {
+    var x = Math.max(0, Math.min(sourceWidth - 1, crop.x));
+    var y = Math.max(0, Math.min(sourceHeight - 1, crop.y));
+    return {
+      x: x,
+      y: y,
+      width: Math.max(1, Math.min(sourceWidth - x, crop.width)),
+      height: Math.max(1, Math.min(sourceHeight - y, crop.height))
+    };
   }
 
   function openDialog() {
