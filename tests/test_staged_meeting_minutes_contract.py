@@ -636,6 +636,7 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("function renderValidationFlags", page)
         self.assertIn("function addValidationSuggestionToDiscussion", page)
         self.assertIn("Add to discussion", page)
+        self.assertIn("if (flag && flag.discussionSuggestion)", page)
         self.assertIn("renderValidationFlags(payload && payload.validationFlags, payload && payload.stagedStage, payload && payload.actionReviewCandidates)", page)
         self.assertIn("formData.append('reviewObjectives'", page)
         self.assertIn("formData.append('reviewDiscussion'", page)

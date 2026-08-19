@@ -2090,7 +2090,7 @@ td select {
       text.className = 'stage-validation-message';
       text.textContent = displayedMessage;
       row.appendChild(text);
-      if (flag && (flag.type === 'possible_omitted_workstream' || flag.type === 'unresolved_substantive_workstream') && flag.discussionSuggestion) {
+      if (flag && flag.discussionSuggestion) {
         var addButton = document.createElement('button');
         addButton.type = 'button';
         addButton.className = 'secondary stage-validation-add';

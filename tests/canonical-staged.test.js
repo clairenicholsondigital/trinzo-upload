@@ -15,7 +15,8 @@ const apiRouter = require('../routes/api');
 const {
   buildConfirmedUnderstanding,
   repairDiscussionForConfirmedUnderstanding,
-  factIsPreserved
+  factIsPreserved,
+  reviewerConfirmedFactMissingMessage
 } = require('../utils/stagedSemanticAuthority');
 
 test('generic action gate rejects unresolved conversational references', () => {
@@ -400,6 +401,18 @@ test('repair preserves transcript-supported reviewer-confirmed DITA facts in Dis
   assert.equal(result.validationFlags.length, 0);
   assert.equal(result.telemetry.unresolvedFactCount, 0);
   assert.ok(understanding.criticalFacts.every((fact) => factIsPreserved(fact.text, result.discussion)));
+});
+
+test('reviewer-confirmed fact warning names the missed fact and suggested section', () => {
+  const message = reviewerConfirmedFactMissingMessage(
+    'Final storage is at DITA Park West in Dublin.',
+    'Goods flow and storage'
+  );
+  assert.match(message, /Missing from Discussion/);
+  assert.match(message, /Final storage is at DITA Park West in Dublin/);
+  assert.match(message, /Suggested section: "Goods flow and storage"/);
+  assert.match(message, /Add this point, edit it/);
+  assert.doesNotMatch(message, /Meeting purpose or Key fact was not preserved/);
 });
 
 test('compound reviewer-confirmed facts require material component preservation', () => {

@@ -18,6 +18,12 @@ function cleanText(value) {
     .trim();
 }
 
+function shortReviewText(value, limit = 180) {
+  const text = cleanText(value);
+  if (text.length <= limit) return text;
+  return `${text.slice(0, limit - 1).trim()}...`;
+}
+
 function normaliseToken(token) {
   const value = String(token || '').toLowerCase();
   if (value === 'japanese') return 'japan';
@@ -300,6 +306,12 @@ function semanticAnchorsForDiscussion(understanding = {}) {
   return anchors;
 }
 
+function reviewerConfirmedFactMissingMessage(factText, suggestedTopic) {
+  const fact = shortReviewText(factText);
+  const topic = shortReviewText(suggestedTopic || topicForFact(factText), 90);
+  return `Missing from Discussion: "${fact}" Suggested section: "${topic}". Add this point, edit it if the wording is not right, or mark it reviewed if the discussion already covers it.`;
+}
+
 function repairDiscussionForConfirmedUnderstanding({ discussion = [], understanding = {}, transcriptText = '', evidenceEvents = [], authoritativeTopics = [] } = {}) {
   let repaired = Array.isArray(discussion) ? discussion : [];
   const validationFlags = [];
@@ -324,15 +336,16 @@ function repairDiscussionForConfirmedUnderstanding({ discussion = [], understand
       repairedFacts.push(fact.id);
     }
     if (!factIsPreserved(fact.text, repaired)) {
+      const suggestedTopic = topicForFact(fact.text);
       unresolvedFacts.push(fact.id);
       validationFlags.push({
         type: 'reviewer_confirmed_fact_not_preserved',
         severity: 'warning',
         blocking: true,
         resolutionKey: `reviewer-confirmed-fact:${fact.id}`,
-        message: 'A transcript-supported reviewer-confirmed Meeting purpose or Key fact was not preserved in Discussion. Review and add it before continuing.',
+        message: reviewerConfirmedFactMissingMessage(fact.text, suggestedTopic),
         discussionSuggestion: {
-          topic: topicForFact(fact.text),
+          topic: suggestedTopic,
           point: fact.text,
           source: 'reviewer_confirmed_fact'
         }
@@ -362,5 +375,6 @@ module.exports = {
   stableSemanticId,
   textSimilarity,
   findSupportingEvidence,
-  factIsPreserved
+  factIsPreserved,
+  reviewerConfirmedFactMissingMessage
 };
