@@ -40,6 +40,26 @@ test('parses Teams speaker blocks into attributed turns', () => {
   ]);
 });
 
+test('parses verbose Teams timestamp exports into attributed turns', () => {
+  const turns = parseTranscriptTurns([
+    'Conor Flynn',
+    '0 minutes 3 seconds0:03',
+    'Conor Flynn 0 minutes 3 seconds',
+    'Can you review the quarterly priorities and send the key AI project points today?',
+    '',
+    'Ciara Griffin',
+    '0 minutes 17 seconds0:17',
+    'Ciara Griffin 0 minutes 17 seconds',
+    'Yes, I can do that.'
+  ].join('\n'));
+
+  assert.equal(turns.length, 2);
+  assert.equal(turns[0].speaker, 'Conor Flynn');
+  assert.match(turns[0].text, /review the quarterly priorities/i);
+  assert.equal(turns[1].speaker, 'Ciara Griffin');
+  assert.match(turns[1].text, /I can do that/i);
+});
+
 test('recovers the T761 risk action only from one grounded speaker turn', () => {
   const transcript = [
     'Rebecca Cuckoo   23:08',

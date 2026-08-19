@@ -4,6 +4,10 @@ function clean(value) {
   return String(value || '').replace(/&apos;/g, "'").replace(/\s+/g, ' ').trim();
 }
 
+const CLOCK_TIMESTAMP = String.raw`(?:\d{1,2}:)?\d{1,2}:\d{2}(?::\d{2})?`;
+const VERBOSE_TEAMS_TIMESTAMP = String.raw`(?:(?:\d+\s+hours?\s+)?\d+\s+minutes?(?:\s+\d+\s+seconds?)?|\d+\s+seconds?)`;
+const TEAMS_TIMESTAMP = String.raw`(?:${CLOCK_TIMESTAMP}|${VERBOSE_TEAMS_TIMESTAMP})(?:${CLOCK_TIMESTAMP})?`;
+
 // Teams renders some display names surname-first as "Last, First M" (optional
 // middle initial). Normalise these generically to "First Last" so the same
 // person is never presented in two forms — e.g. as a normalised attendee AND as
@@ -18,7 +22,7 @@ function normaliseSpeakerName(name) {
 function parseTurns(transcriptText) {
   const turns = [];
   const source = String(transcriptText || '').replace(/\r/g, '');
-  const header = /(?:^|\n)((?:[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+\s*,\s*[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:[ \t]+[A-Z])?)|(?:[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:[ \t]+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){0,3}))(?:[ \t]+|[ \t]*[-–][ \t]*|[ \t]*\n[ \t]*)(\d{1,2}:\d{2}(?::\d{2})?)[ \t]*|(?:^|\n|(?<=[.!?]))([A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+):[ \t]*/gm;
+  const header = new RegExp(String.raw`(?:^|\n)((?:[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+\s*,\s*[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:[ \t]+[A-Z])?)|(?:[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:[ \t]+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){0,3}))(?:[ \t]+|[ \t]*[-–][ \t]*|[ \t]*\n[ \t]*)(${TEAMS_TIMESTAMP})[ \t]*|(?:^|\n|(?<=[.!?]))([A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+):[ \t]*`, 'gm');
   const ignoredHeaders = /^(?:date|location|duration|transcript|recording|meeting|speakers|attendees|decision confirmed)$/i;
   const matches = [...source.matchAll(header)].map((match) => ({ ...match, speakerName: clean(match[1] || match[3]) })).filter((match) => !ignoredHeaders.test(match.speakerName));
   matches.forEach((match, index) => {

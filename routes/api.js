@@ -720,7 +720,9 @@ function bucketKnownStagedAttendees(names) {
 }
 
 const TEAMS_PERSON_NAME_PATTERN = "[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:\\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){1,4}";
-const TEAMS_TIMESTAMP_PATTERN = "(?:\\d{1,2}:)?\\d{1,2}:\\d{2}";
+const TEAMS_CLOCK_TIMESTAMP_PATTERN = "(?:\\d{1,2}:)?\\d{1,2}:\\d{2}";
+const TEAMS_VERBOSE_TIMESTAMP_PATTERN = "(?:(?:\\d+\\s+hours?\\s+)?\\d+\\s+minutes?(?:\\s+\\d+\\s+seconds?)?|\\d+\\s+seconds?)";
+const TEAMS_TIMESTAMP_PATTERN = `(?:${TEAMS_CLOCK_TIMESTAMP_PATTERN}|${TEAMS_VERBOSE_TIMESTAMP_PATTERN})(?:${TEAMS_CLOCK_TIMESTAMP_PATTERN})?`;
 const TEAMS_HEADER_DATE_PATTERN = "\\b(?:20\\d{6}|20\\d{2}[-/]\\d{1,2}[-/]\\d{1,2}|\\d{1,2}[/-]\\d{1,2}[/-]20\\d{2}|\\d{1,2}\\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\\s+20\\d{2})\\b";
 
 function extractTeamsTranscriptHeader(lines) {
@@ -1559,12 +1561,18 @@ function cleanStagedActionText(value) {
 function isAuditableStagedAction(action, owner = '', deadline = '') {
   const text = cleanStagedActionText(action);
   if (!text || isNoEvidenceDiscussionText(text) || isMalformedStagedLine(text)) return false;
+  if (isQuestionShapedStagedAction(text)) return false;
   if (/\b(?:everything|stuff|things|sort out|as much as possible|front[- ]?end everything|prep\b|progress\b|look at|think about|discuss|consider)\b/i.test(text)) return false;
   const hasConcreteVerb = /\b(?:arrange|book|schedule|organise|coordinate|set\s+up|update|review|send|share|confirm|prepare|complete|finali[sz]e|provide|draft|submit|circulate|issue|upload|agree|approve|sign(?:\s+off)?|trace|generate|identify|document|follow[- ]?up)\b/i.test(text);
   const hasObject = text.split(/\s+/).length >= 3;
   const hasCommitmentSignal = stagedTextHasFutureCommitmentMarker(text) || /\b(?:action|owner|deadline|by|before|next|follow[- ]?up|catch[- ]?up)\b/i.test(text) || cleanStagedGeneratedLine(deadline);
   const hasUsableOwner = cleanStagedGeneratedLine(owner) && !/^not stated$/i.test(cleanStagedGeneratedLine(owner));
   return hasConcreteVerb && hasObject && (hasCommitmentSignal || hasUsableOwner);
+}
+
+function isQuestionShapedStagedAction(action) {
+  const text = cleanStagedActionText(action);
+  return /\?\s*$/.test(text) || /^(?:did|do|does|is|are|am|can|could|would|should|what|when|where|why|how)\b/i.test(text);
 }
 
 function stagedActionIntent(action) {
@@ -1734,6 +1742,113 @@ function actionsFromEvidenceClassifier(context) {
   })));
 }
 
+function actionReviewCandidateSuggestion(text) {
+  const value = cleanStagedGeneratedLine(text || '')
+    .replace(/\bofpulling\b/gi, 'of pulling')
+    .replace(/\bgenerateleads\b/gi, 'generate leads')
+    .replace(/\byou\.aim\b/gi, 'you aim')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[.?!]+$/, '');
+  if (!value) return '';
+  const lower = value.toLowerCase();
+  let suggestion = '';
+  if (/\bfour[- ]week pilot\b/.test(lower)) {
+    suggestion = 'Run a four-week pilot to test the volume and quality of leads before automating the process';
+  } else if (/\b(?:criteria|criterion)\b/.test(lower) && /\b(?:icp|ideal client profile|fit)\b/.test(lower)) {
+    suggestion = 'Define the ICP fit criteria for the lead generation process';
+  } else if (/\bqualif(?:y|ying)\b/.test(lower) && /\bleads?\b/.test(lower)) {
+    suggestion = 'Define how client delivery leads should be qualified';
+  } else if (/\bcapture\b/.test(lower) && /\bsignal\b/.test(lower)) {
+    suggestion = 'Confirm how lead signals will be captured and triaged';
+  } else if (/\bkey questions\b/i.test(value) && /\bleadership\b/i.test(value)) {
+    suggestion = 'Prepare the key questions for the leadership meeting';
+  } else if (/\bforward(?:ing)?\s+(?:me\s+)?(.+?)(?:\s+and\s+i['’]?ll|\s+and then|$)/i.test(value)) {
+    suggestion = `Forward ${value.match(/\bforward(?:ing)?\s+(?:me\s+)?(.+?)(?:\s+and\s+i['’]?ll|\s+and then|$)/i)[1]}`;
+  } else if (/\b(?:send|share|forward)\b/.test(lower) && /\b(?:article|document|pack|report|information|points|transcript)\b/.test(lower)) {
+    suggestion = value
+      .replace(/^.*?\b(?:send|share|forward)\b/i, (match) => match.replace(/^.*?\b/i, '').trim())
+      .replace(/^send\b/i, 'Send')
+      .replace(/^share\b/i, 'Share')
+      .replace(/^forward\b/i, 'Forward');
+  } else if (/\bwe need (?:a way )?to\b/i.test(value)) {
+    suggestion = value.replace(/^.*?\bwe need (?:a way )?to\b/i, 'Confirm how to');
+  } else if (/\bneeds? to\b/i.test(value)) {
+    suggestion = value.replace(/^.*?\bneeds? to\b/i, 'Confirm how to');
+  } else if (/\b(?:i['’]?ll|i will|i need to|i have to|we['’]?ll|we will|we need to|we have to)\b/i.test(value)) {
+    suggestion = value
+      .replace(/^.*?\b(?:i['’]?ll|i will|i need to|i have to|we['’]?ll|we will|we need to|we have to)\b/i, '')
+      .replace(/^\s*(?:to\s+)?/i, '')
+      .trim();
+  }
+  suggestion = cleanStagedActionText(suggestion || value);
+  if (!suggestion || suggestion.split(/\s+/).length < 4 || suggestion.split(/\s+/).length > 32) return '';
+  if (/^(?:and then|but|because|okay|yeah|no|what|when|where|why|how)\b/i.test(suggestion)) return '';
+  if (/\b(?:take it from there|move you off (?:this )?screen|looking at yourselves|reception|wi-?fi)\b/i.test(suggestion)) return '';
+  if (isQuestionShapedStagedAction(suggestion)) return '';
+  return suggestion[0].toUpperCase() + suggestion.slice(1);
+}
+
+function actionReviewCandidateIsUseful(text, item = {}) {
+  const value = cleanStagedGeneratedLine(text || '');
+  if (value.length < 28 || value.length > 320) return false;
+  if (/^(?:#|[-*]\s*(?:source file|meeting id|stored meeting title|transcript length|autosave timestamp)|\d+\s*(?:m|h|s)\b)/i.test(value)) return false;
+  if (/\b(?:meeting transcript|source file|stored meeting title|autosave timestamp|stopped transcription|started transcription)\b/i.test(value)) return false;
+  if (/\b(?:move you off (?:this )?screen|looking at yourselves|reception|wi-?fi)\b/i.test(value)) return false;
+  if (/\?\s*$/.test(value) && !/\b(?:need to|needs to|can you|could you|should|will|going to)\b/i.test(value)) return false;
+  if (/\b(?:good to see you|thanks|bye|take care|highlights by the way)\b/i.test(value)) return false;
+  const evidenceType = cleanStagedGeneratedLine(item.evidenceType || '');
+  const commitmentState = cleanStagedGeneratedLine(item.commitmentState || '');
+  const usefulType = /^(?:action_commitment|document_control_task|process_overview)$/i.test(evidenceType);
+  const usefulState = /^(?:possible_action|confirmed_action)$/i.test(commitmentState);
+  const usefulLanguage = /\b(?:need(?:s)? to|we need|i need|i['’]?ll|i will|we['’]?ll|we will|going to|four[- ]week pilot|define|qualif(?:y|ying)|capture|triage|send|share|forward|confirm|test|pilot)\b/i.test(value);
+  return usefulLanguage || usefulType || usefulState;
+}
+
+function actionReviewCandidatesFromEvidence(context, transcriptText) {
+  const candidates = [];
+  const seen = new Set();
+  const push = (candidate) => {
+    if (!candidate) return;
+    const action = actionReviewCandidateSuggestion(candidate.text);
+    if (!action) return;
+    const key = action.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    candidates.push({
+      owner: candidate.speaker || 'Not stated',
+      action,
+      suggestedAction: action,
+      deadline: 'Not stated',
+      reviewDisposition: 'review_required',
+      confidenceTier: 'review',
+      reviewerUsefulnessTier: 'medium',
+      source: candidate.source || 'action_review_candidate',
+      sourceSnippet: cleanStagedGeneratedLine(candidate.text || ''),
+      sourceSpeaker: cleanStagedGeneratedLine(candidate.speaker || '')
+    });
+  };
+
+  const evidenceContext = stagedEvidenceClassifierContext(context);
+  for (const item of Array.isArray(evidenceContext?.items) ? evidenceContext.items : []) {
+    const text = cleanStagedGeneratedLine(item?.text || '');
+    if (item?.suppressReason || !actionReviewCandidateIsUseful(text, item)) continue;
+    push({ text, speaker: cleanStagedGeneratedLine(item?.speaker || ''), source: 'meeting_minutes_evidence_classifier_review' });
+    if (candidates.length >= 6) return candidates;
+  }
+
+  const evidence = prepareEvidence(transcriptText);
+  for (const event of evidence.events || []) {
+    if (!Array.isArray(event.roles) || !event.roles.includes('action_candidate')) continue;
+    if (event.roles.includes('negative_or_superseding') || event.roles.includes('completed_history')) continue;
+    if (!actionReviewCandidateIsUseful(event.text, { evidenceType: 'action_commitment', commitmentState: 'possible_action' })) continue;
+    push({ text: event.text, speaker: event.speaker, source: 'transcript_action_review_candidate' });
+    if (candidates.length >= 6) return candidates;
+  }
+
+  return candidates;
+}
+
 function attachStagedEvidenceClassifierContext(context, evidenceContext) {
   const base = context && typeof context === 'object'
     ? context
@@ -1759,7 +1874,7 @@ function ownerFromTeamsSpeakerLine(line) {
   const text = String(line || '').replace(/\s+/g, ' ').trim();
   const commaMatch = text.match(/^([A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+),\s*([A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+)(?:\s+([A-Z]))?\b/);
   if (commaMatch) return [commaMatch[2], commaMatch[3]].filter(Boolean).join(' ');
-  const teamsMatch = text.match(/^([A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){0,2})\s+(?:\d{1,2}:)?\d{1,2}[:.]\d{2}\b/);
+  const teamsMatch = text.match(new RegExp(`^([A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:\\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){0,2})\\s+${TEAMS_TIMESTAMP_PATTERN}\\b`, 'i'));
   if (teamsMatch && isLikelyPersonName(teamsMatch[1])) return teamsMatch[1];
   const nameMatch = text.match(/^([A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){1,2})\b/);
   return nameMatch && isLikelyPersonName(nameMatch[1]) ? nameMatch[1] : 'Not stated';
@@ -3490,7 +3605,7 @@ function buildStagedActionsResponse(req, transcript, minilmContext = null, recov
   const ledgerRepairs = mergedActions.length < 4 ? evidenceLedger.actions : [];
   const evidenceMergedActions = [...ledgerRepairs, ...mergedActions].filter((candidate, index, all) =>
     all.findIndex((existing) => stagedActionsAreDuplicates(existing, candidate)) === index
-  );
+  ).filter((candidate) => isAuditableStagedAction(candidate?.action || '', candidate?.owner || '', candidate?.deadline || ''));
   const details = stagedDetailsWithConfirmedContext(req, transcript);
   const participants = uniqueNames([
     ...(Array.isArray(details.allAttendees) ? details.allAttendees : []),
@@ -3515,7 +3630,15 @@ function buildStagedActionsResponse(req, transcript, minilmContext = null, recov
     discussion: reviewContext.discussion,
     actions
   }), ...ownerValidationFlags];
-  if (!actions.length) validationFlags.push({
+  const actionReviewCandidates = actions.length ? [] : actionReviewCandidatesFromEvidence(minilmContext, groundedTranscriptText);
+  if (!actions.length && actionReviewCandidates.length) validationFlags.push({
+    type: 'action_review_candidates',
+    severity: 'warning',
+    blocking: false,
+    message: `${actionReviewCandidates.length} possible follow-up${actionReviewCandidates.length === 1 ? ' needs' : 's need'} your decision. Add anything that is a real action, and dismiss anything that is only background or process discussion.`,
+    repairCandidates: actionReviewCandidates
+  });
+  if (!actions.length && !actionReviewCandidates.length) validationFlags.push({
     type: 'no_actions_detected',
     severity: 'info',
     blocking: false,
@@ -3530,6 +3653,7 @@ function buildStagedActionsResponse(req, transcript, minilmContext = null, recov
     staged: true,
     stagedStage: 'actions',
     validationFlags,
+    actionReviewCandidates,
     screens: {
       actions
     },
@@ -6514,7 +6638,9 @@ router.stagedEvaluation = {
   runStagedSequenceForEvaluation,
   stagedNoEditReviewExperience,
   canonicalStagedResponse,
-  extractStagedDetailsFromTranscript
+  extractStagedDetailsFromTranscript,
+  buildStagedActionsResponse,
+  buildPreparedTranscriptForStagedAI
 };
 
 module.exports = router;
