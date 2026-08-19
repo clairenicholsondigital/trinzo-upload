@@ -208,7 +208,7 @@ function actionsStage(evidence, state, topology = { mode: 'standard' }) {
   return {
     actions,
     extractionMode: topology.mode,
-    warnings: actions.length ? [] : [{ type: 'no_actions_detected', severity: 'info', message: 'No transcript-supported actions were detected.' }]
+    warnings: actions.length ? [] : [{ type: 'no_actions_detected', severity: 'info', message: 'No actions were found. If the meeting really had no follow-ups, mark this as reviewed. Otherwise, add the missing action manually.' }]
   };
 }
 

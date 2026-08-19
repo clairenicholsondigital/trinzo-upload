@@ -2044,13 +2044,13 @@ function actionsStage(evidence, state, profile, topology) {
     commitmentThreads: threads,
     unresolvedThreads,
     warnings: [
-      ...(actions.length ? [] : [{ type: 'no_actions_detected', severity: 'info', message: 'No transcript-supported actions were identified.' }]),
+      ...(actions.length ? [] : [{ type: 'no_actions_detected', severity: 'info', message: 'No actions were found. If the meeting really had no follow-ups, mark this as reviewed. Otherwise, add the missing action manually.' }]),
       ...(reviewRequired.length ? [{
         type: 'action_candidates_need_confirmation',
         severity: 'warning',
         blocking: false,
         resolutionKey: `semantic-action-candidates:${reviewRequired.map(stableActionCandidateId).join('|')}`,
-        message: `${reviewRequired.length} action${reviewRequired.length === 1 ? ' needs' : 's need'} owner or wording confirmation.`,
+        message: `${reviewRequired.length} possible action${reviewRequired.length === 1 ? ' needs' : 's need'} your decision because the owner or wording is not safe to publish automatically.`,
         repairCandidates: reviewRequired.map((item) => ({
           id: stableActionCandidateId(item),
           owner: item.owner || 'Not stated',
@@ -2073,7 +2073,7 @@ function actionsStage(evidence, state, profile, topology) {
         type: 'compound_action_publication_review',
         severity: 'warning',
         blocking: false,
-        message: `${demotedCompoundActions.length} combined action${demotedCompoundActions.length === 1 ? ' needs' : 's need'} review because the supporting clauses did not share a clear owner, subject and workstream.`,
+        message: `${demotedCompoundActions.length} combined action${demotedCompoundActions.length === 1 ? ' needs' : 's need'} your decision because the supporting clauses do not share a clear owner, subject and workstream.`,
         repairCandidates: demotedCompoundActions.map((item) => ({
           id: stableActionCandidateId(item),
           owner: item.owner || 'Not stated',
@@ -2086,7 +2086,7 @@ function actionsStage(evidence, state, profile, topology) {
           compoundPublicationReason: item.compoundPublicationReason
         }))
       }] : []),
-      ...(credibleUnresolvedThreads.length ? [{ type: 'unresolved_commitment_threads', severity: 'warning', message: 'A transcript-supported commitment may still need an owner or clearer wording. Check the suggested actions below.', evidenceIds: credibleUnresolvedThreads.flatMap((item) => item.evidenceIds) }] : [])
+      ...(credibleUnresolvedThreads.length ? [{ type: 'unresolved_commitment_threads', severity: 'warning', message: 'A possible commitment still needs an owner or clearer wording. Check the suggested actions below and either add it to the table or dismiss it.', evidenceIds: credibleUnresolvedThreads.flatMap((item) => item.evidenceIds) }] : [])
     ]
   };
 }

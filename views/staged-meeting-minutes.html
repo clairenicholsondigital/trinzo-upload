@@ -94,6 +94,7 @@ body.pre-upload .screen:not([data-screen="0"]) {
 .stage-autosave-status.is-saving { color:#287084; }
 .stage-autosave-status.save-error { color:#991b1b; }
 .review-check-button { display:inline-flex; align-items:center; justify-content:center; flex:0 0 auto; width:2rem; height:2rem; padding:0; border-radius:999px; font-size:1rem; line-height:1; }
+.review-target-button { white-space:nowrap; }
 .reviewed-state { display:inline-flex; align-items:center; gap:.3rem; color:#667681; font-size:.8rem; font-weight:700; white-space:nowrap; }
 .progress-pill { flex:0 0 auto; border:1px solid rgba(23,208,196,.45); border-radius:999px; padding:.25rem .6rem; color:#c9fffb; background:rgba(23,208,196,.1); font-weight:700; font-size:.85rem; }
 .form-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.85rem; }
@@ -276,6 +277,19 @@ td textarea { min-height:68px; }
 }
 .stage-validation-message { flex:1 1 auto; }
 .stage-validation-add { flex:0 0 auto; white-space:nowrap; }
+.stage-review-targeted { outline:2px solid rgba(23,208,196,.35); outline-offset:3px; }
+.review-field-note {
+  margin:.45rem 0 0;
+  border:1px solid rgba(23,208,196,.35);
+  border-radius:8px;
+  background:rgba(23,208,196,.08);
+  color:#dffdfa;
+  padding:.5rem .6rem;
+  font-size:.82rem;
+  line-height:1.35;
+}
+.review-field-note strong { color:#9ff7ef; }
+tr .review-field-note { color:#27323a; background:#f2fbfb; }
 .stage-validation-candidates { flex:1 1 100%; display:grid; gap:.4rem; margin-top:.35rem; }
 .stage-validation-candidate { display:flex; align-items:center; gap:.55rem; padding:.45rem .55rem; border:1px solid #eadfbf; border-radius:8px; background:#fffdf7; }
 .stage-validation-candidate > span { flex:1 1 auto; }
@@ -1476,6 +1490,7 @@ td select {
       return '<details class="discussion-card"' + (index === 0 ? ' open' : '') + ' data-discussion-index="' + index + '" data-topic-id="' + escapeHtml(card.topicId || '') + '" data-evidence-ids="' + escapeHtml(JSON.stringify(Array.isArray(card.evidenceIds) ? card.evidenceIds : [])) + '" data-point-refs="' + escapeHtml(JSON.stringify(pointRefs)) + '"><summary><span class="discussion-card-title">' + escapeHtml(card.topic || 'Discussion') + '</span><span class="discussion-card-summary-actions"><span class="muted">' + bullets.length + ' point' + (bullets.length === 1 ? '' : 's') + '</span><span class="discussion-card-chevron" aria-hidden="true"><i data-lucide="chevron-down"></i></span><button class="discussion-card-delete" type="button" data-discussion-delete aria-label="Remove discussion row"><i data-lucide="trash-2" aria-hidden="true"></i></button></span></summary><div class="discussion-card-body"><label>Topic<input class="discussion-topic-input" value="' + escapeHtml(card.topic || 'Discussion') + '" aria-label="Discussion topic ' + (index + 1) + '" /></label><label>Discussion points<textarea class="discussion-points-input" aria-label="Discussion points ' + (index + 1) + '">' + escapeHtml(bullets.map(function (point) { return '- ' + point; }).join('\n')) + '</textarea></label></div></details>';
     }).join('');
     renderIcons();
+    applyReviewFlagAnnotations(currentValidationFlags, currentValidationStage || 'discussion');
   }
 
   function legacyRenderDiscussionCardsUnused(cards) {
@@ -1519,6 +1534,7 @@ td select {
     actionsTableBody.innerHTML = items.map(function (action) {
       return renderActionRow(action);
     }).join('');
+    applyReviewFlagAnnotations(currentValidationFlags, currentValidationStage || 'actions');
   }
 
   function renderActionRow(action) {
@@ -1722,6 +1738,69 @@ td select {
     ].join('::');
   }
 
+  function reviewFlagLabel(flag) {
+    if (flag && Array.isArray(flag.repairCandidates) && flag.repairCandidates.length) return 'Decide';
+    if (flag && flag.discussionSuggestion) return 'Add or omit';
+    if (flag && flag.severity === 'warning') return 'Review';
+    return 'Tidied';
+  }
+
+  function reviewFlagTargetControl(flag) {
+    return terminologyQaControl(flag && flag.fieldPath);
+  }
+
+  function reviewFlagTargetContainer(flag) {
+    var control = reviewFlagTargetControl(flag);
+    if (!control) return null;
+    return control.closest('.discussion-card') || control.closest('tr') || control.closest('label') || control;
+  }
+
+  function clearReviewFlagAnnotations() {
+    document.querySelectorAll('.review-field-note').forEach(function (element) { element.remove(); });
+    document.querySelectorAll('.stage-review-targeted').forEach(function (element) { element.classList.remove('stage-review-targeted'); });
+  }
+
+  function addReviewFieldNote(flag) {
+    var control = reviewFlagTargetControl(flag);
+    var container = reviewFlagTargetContainer(flag);
+    if (!control || !container) return false;
+    container.classList.add('stage-review-targeted');
+    var note = document.createElement('div');
+    note.className = 'review-field-note';
+    note.setAttribute('data-review-field-path', String(flag.fieldPath || ''));
+    note.innerHTML = '<strong>' + escapeHtml(reviewFlagLabel(flag)) + ':</strong> ' + escapeHtml(reviewerFlagMessage(flag));
+    if (container.matches('tr')) {
+      var cell = container.querySelector('td:last-child') || container.lastElementChild;
+      if (cell) cell.appendChild(note);
+      else container.appendChild(note);
+    } else {
+      container.appendChild(note);
+    }
+    return true;
+  }
+
+  function applyReviewFlagAnnotations(flags, stage) {
+    clearReviewFlagAnnotations();
+    (Array.isArray(flags) ? flags : []).forEach(function (flag, index) {
+      if (!flag || !flag.fieldPath) return;
+      var flagKey = validationFlagKey(flag, index, stage);
+      if (reviewCheckIsResolved(flagKey)) return;
+      addReviewFieldNote(flag);
+    });
+  }
+
+  function focusReviewFlagTarget(flag) {
+    var control = reviewFlagTargetControl(flag);
+    if (!control) return;
+    var card = control.closest('.discussion-card');
+    if (card) card.open = true;
+    var container = reviewFlagTargetContainer(flag);
+    if (container) container.classList.add('stage-review-targeted');
+    control.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    control.classList.add('qa-field-highlight');
+    control.focus();
+  }
+
   function normaliseActionCandidatePayload(candidate, flagKey) {
     var source = candidate || {};
     var evidence = Array.isArray(source.evidence) ? source.evidence : [];
@@ -1847,6 +1926,7 @@ td select {
     if (element) element.remove();
     renderActionReviewGroups();
     renderResolvedChecks();
+    applyReviewFlagAnnotations(currentValidationFlags, currentValidationStage || stageForScreen(activeIndex));
     updateReviewToolbar();
     saveDraft();
   }
@@ -1865,6 +1945,7 @@ td select {
     if (element) element.remove();
     renderActionReviewGroups();
     renderResolvedChecks();
+    applyReviewFlagAnnotations(currentValidationFlags, currentValidationStage || stageForScreen(activeIndex));
     updateReviewToolbar();
     saveDraft();
   }
@@ -1903,10 +1984,11 @@ td select {
   }
 
   function reviewerFlagMessage(flag) {
-    if (flag && (flag.type === 'action_review_candidates' || flag.type === 'action_publication_review') && Array.isArray(flag.repairCandidates) && flag.repairCandidates.length) {
+    if (flag && flag.message) return String(flag.message);
+    if (flag && Array.isArray(flag.repairCandidates) && flag.repairCandidates.length) {
       return 'Actions are grouped below to help you review them.';
     }
-    return flag && flag.message ? String(flag.message) : '';
+    return '';
   }
 
   function drawAttentionToEditorialChecks() {
@@ -1973,6 +2055,7 @@ td select {
     stageValidationFlags.innerHTML = '';
     if (!list.length) {
       stageValidationFlags.hidden = true;
+      clearReviewFlagAnnotations();
       renderActionReviewGroups();
       renderResolvedChecks();
       updateReviewToolbar();
@@ -2001,7 +2084,7 @@ td select {
       row.className = 'stage-validation-flag stage-validation-' + severity;
       var label = document.createElement('span');
       label.className = 'stage-validation-tag';
-      label.textContent = severity === 'warning' ? 'Check' : 'Tidied';
+      label.textContent = reviewFlagLabel(flag);
       row.appendChild(label);
       var text = document.createElement('span');
       text.className = 'stage-validation-message';
@@ -2016,6 +2099,16 @@ td select {
           addValidationSuggestionToDiscussion(flag, addButton);
         });
         row.appendChild(addButton);
+      }
+      if (flag && flag.fieldPath && reviewFlagTargetControl(flag)) {
+        var targetButton = document.createElement('button');
+        targetButton.type = 'button';
+        targetButton.className = 'secondary stage-validation-add review-target-button';
+        targetButton.textContent = 'Show in table';
+        targetButton.addEventListener('click', function () {
+          focusReviewFlagTarget(flag);
+        });
+        row.appendChild(targetButton);
       }
       var resolveButton = document.createElement('button');
       resolveButton.type = 'button';
@@ -2048,6 +2141,7 @@ td select {
       stageValidationFlags.appendChild(row);
     });
     stageValidationFlags.hidden = false;
+    applyReviewFlagAnnotations(list, stage);
     renderActionReviewGroups();
     renderResolvedChecks();
     updateReviewToolbar();

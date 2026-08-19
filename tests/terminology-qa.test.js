@@ -34,6 +34,23 @@ test('terminology QA marks configured transcript corrections for automatic appli
   assert.ok(automatic.includes('Kappa->CAPA'));
 });
 
+test('terminology QA auto-corrects plural Kappas to CAPAs regardless of transcript capitalisation', () => {
+  const suggestions = reviewGeneratedContent({
+    stage: 'discussion',
+    content: [{
+      topic: 'Quality system',
+      points: [
+        'Review late kappas and root cause analysis.',
+        'KAPPAS were raised as a backlog concern.'
+      ]
+    }],
+    scope: { type: 'project', key: 'QIP' }
+  });
+  const automatic = suggestions.filter((item) => item.autoApply).map((item) => `${item.original}->${item.replacement}`);
+  assert.ok(automatic.includes('kappas->CAPAs'));
+  assert.ok(automatic.includes('KAPPAS->CAPAs'));
+});
+
 test('terminology QA applies shared corrections to action review candidates', () => {
   const suggestions = reviewGeneratedContent({
     stage: 'actions',
@@ -48,6 +65,23 @@ test('terminology QA applies shared corrections to action review candidates', ()
   const candidateCorrection = suggestions.find((item) => item.fieldPath === 'actionCandidates.0.action');
   assert.equal(candidateCorrection?.original, 'Kappa');
   assert.equal(candidateCorrection?.replacement, 'CAPA');
+  assert.equal(candidateCorrection?.autoApply, true);
+});
+
+test('terminology QA applies plural CAPA correction to action review candidates', () => {
+  const suggestions = reviewGeneratedContent({
+    stage: 'actions',
+    content: {
+      actions: [],
+      actionCandidates: [
+        { suggestedAction: 'Review the late Kappas before the audit', action: 'Review the late Kappas before the audit' }
+      ]
+    },
+    scope: { type: 'project', key: 'QIP' }
+  });
+  const candidateCorrection = suggestions.find((item) => item.fieldPath === 'actionCandidates.0.action');
+  assert.equal(candidateCorrection?.original, 'Kappas');
+  assert.equal(candidateCorrection?.replacement, 'CAPAs');
   assert.equal(candidateCorrection?.autoApply, true);
 });
 

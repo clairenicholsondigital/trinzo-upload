@@ -38,7 +38,8 @@ const AUTO_CORRECTIONS = [
   { original: 'Udimed', replacement: 'EUDAMED', reason: 'Recognised terminology correction' },
   { original: 'Meds app', replacement: 'MDSAP', reason: 'Recognised terminology correction' },
   { original: 'S-BOM', replacement: 'SBOM', reason: 'Recognised terminology correction' },
-  { original: 'Kappa', replacement: 'CAPA', reason: 'Recognised terminology correction' }
+  { original: 'Kappa', replacement: 'CAPA', reason: 'Recognised terminology correction' },
+  { original: 'Kappas', replacement: 'CAPAs', reason: 'Recognised terminology correction' }
 ];
 
 function escapeRegExp(value) {

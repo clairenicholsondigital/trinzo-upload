@@ -273,16 +273,16 @@ function clientReadyPresentation(payload) {
   const polishFlag = retainedForReview.length ? {
     type: stage === 'actions' ? 'action_publication_review' : 'wording_needs_review', severity: 'warning', blocking: false,
     message: stage === 'actions'
-      ? `${retainedForReview.length} action${retainedForReview.length === 1 ? ' needs' : 's need'} review because the owner or wording could not be confirmed safely.`
-      : `Evidence was retained for ${retainedForReview.length} item${retainedForReview.length === 1 ? '' : 's'}, but the wording could not be safely polished automatically. Review the highlighted stage before approval.`,
+      ? `${retainedForReview.length} possible action${retainedForReview.length === 1 ? ' needs' : 's need'} your decision because the owner or wording was not safe to publish automatically. Add the real actions and dismiss anything that should not appear in the minutes.`
+      : `${retainedForReview.length} item${retainedForReview.length === 1 ? '' : 's'} still need a wording check. Edit the highlighted section before approval.`,
     ...(retainedActionReviewCandidates.length ? { repairCandidates: retainedActionReviewCandidates } : {})
   } : {
     type: 'language_polished', severity: 'info', blocking: false,
-    message: 'Evidence-backed draft: client-ready language checks completed without changing the underlying facts, owners or deadlines.'
+    message: 'The tool tidied the language without changing the underlying facts, owners or deadlines. Give the stage a quick scan before moving on.'
   };
   const entityFlag = entityCorrections.length ? {
     type: 'attendee_entity_normalised', severity: 'info', blocking: false,
-    message: `Corrected ${entityCorrections.length} attendee-name transcription variant${entityCorrections.length === 1 ? '' : 's'} using the confirmed participant list.`
+    message: `The tool corrected ${entityCorrections.length} attendee-name transcription variant${entityCorrections.length === 1 ? '' : 's'} using the confirmed participant list. Check the visible names still look right.`
   } : null;
   const validationFlags = [...existingFlags, ...(entityFlag ? [entityFlag] : []), polishFlag];
   const actionReviewCandidates = stage === 'actions'

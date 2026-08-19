@@ -375,7 +375,7 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn('class="action-owner-select"', page)
         self.assertIn("Add someone new…", page)
         self.assertIn("Enter the action owner’s name:", page)
-        self.assertIn("A transcript-supported commitment may still need an owner", semantic)
+        self.assertIn("A possible commitment still needs an owner", semantic)
         self.assertNotIn("semantic commitment thread(s) require adjudication", semantic)
 
     def test_post_generation_terminology_qa_is_applied_with_reviewer_undo_and_audited(self):
@@ -647,10 +647,16 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
 
         self.assertIn("review-check-button", page)
+        self.assertIn("review-target-button", page)
+        self.assertIn("review-field-note", page)
+        self.assertIn("stage-review-targeted", page)
+        self.assertIn("Show in table", page)
         self.assertIn("✓ Reviewed", page)
         self.assertIn("review prompt' + (outstanding === 1 ? '' : 's') + ' to check'", page)
         self.assertIn("Actions are grouped below to help you review them.", page)
         self.assertIn("function reviewerFlagMessage", page)
+        self.assertIn("function applyReviewFlagAnnotations", page)
+        self.assertIn("function focusReviewFlagTarget", page)
         self.assertIn("renderedMessages[messageKey].push(flagKey)", page)
         self.assertIn("resolveGroupedReviewItems", page)
         self.assertIn("You’ve reviewed all editorial checks.", page)

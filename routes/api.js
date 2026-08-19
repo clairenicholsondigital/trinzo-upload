@@ -3389,14 +3389,16 @@ async function buildStagedDiscussionResponse(req, transcript, minilmContext = nu
   ];
   for (const coverage of workstreamCoverage) {
     if (!['missing', 'thin'].includes(coverage.status)) continue;
+    const discussionIndex = discussion.findIndex((card) => normaliseTopicKey(card?.topic) === normaliseTopicKey(coverage.topic));
     validationFlags.push({
       type: coverage.status === 'missing' ? 'unresolved_substantive_workstream' : 'thin_substantive_workstream',
       severity: 'warning',
       blocking: coverage.status === 'missing',
       resolutionKey: `workstream:${normaliseTopicKey(coverage.topic)}`,
+      fieldPath: discussionIndex >= 0 ? `discussion.${discussionIndex}.points` : null,
       message: coverage.status === 'missing'
-        ? `"${coverage.topic}" has transcript evidence but no discussion section. Add it, intentionally omit it, or return to summary topics.`
-        : `"${coverage.topic}" has only one retained discussion point. Review whether more evidence is needed.`,
+        ? `"${coverage.topic}" appears in the transcript but is not currently in the discussion notes. Add the suggested section, mark it as intentionally left out, or return to the summary topics.`
+        : `"${coverage.topic}" only has one discussion point. Scan the section and add any missing transcript-supported detail if needed.`,
       discussionSuggestion: coverage.status === 'missing' && Array.isArray(confirmedWorkstreamState)
         ? (() => {
             const state = findWorkstreamStateForTopic(confirmedWorkstreamState, coverage.topic);
@@ -3495,13 +3497,14 @@ function buildStagedActionsResponse(req, transcript, minilmContext = null, recov
     ...extractTeamsSpeakerNames(groundedTranscriptText)
   ]);
   const ownerValidationFlags = [];
-  const actions = evidenceMergedActions.map((item) => {
+  const actions = evidenceMergedActions.map((item, index) => {
     const validation = normaliseAndValidateActionOwner(item.owner, participants);
     if (!['accepted', 'repaired_unambiguous'].includes(validation.status)) {
       ownerValidationFlags.push({
         type: 'uncertain_action_owner',
         severity: 'warning',
-        message: `Changed unsupported action owner "${item.owner}" to Not stated. Confirm the owner against the transcript.`
+        fieldPath: `actions.${index}.owner`,
+        message: `The tool could not safely match "${item.owner}" to a confirmed attendee, so the owner is set to Not stated. Choose the correct owner from the table if the transcript supports one.`
       });
     }
     return { owner: validation.owner, action: item.action, deadline: item.deadline || 'Not stated', ...(item.source ? { source: item.source } : {}) };
@@ -3516,7 +3519,7 @@ function buildStagedActionsResponse(req, transcript, minilmContext = null, recov
     type: 'no_actions_detected',
     severity: 'info',
     blocking: false,
-    message: 'No transcript-supported actions were detected. Confirm that this meeting genuinely ended without actions.'
+    message: 'No actions were found. If the meeting really had no follow-ups, mark this as reviewed. Otherwise, add the missing action manually.'
   });
 
   return {
@@ -3702,7 +3705,7 @@ function stagedNoEditReviewExperience(trace = []) {
       blocking: Boolean(flag.blocking),
       resolutionKey: flag.resolutionKey || null,
       message: flag.message || '',
-      uiLabel: flag.severity === 'warning' ? 'Check' : 'Tidied',
+      uiLabel: flag.repairCandidates ? 'Decide' : flag.discussionSuggestion ? 'Add or omit' : flag.severity === 'warning' ? 'Review' : 'Tidied',
       reviewerChoices: stagedReviewerChoicesForFlag(flag),
       discussionSuggestion: flag.discussionSuggestion || null,
       repairCandidates: Array.isArray(flag.repairCandidates) ? flag.repairCandidates : null
@@ -3819,7 +3822,7 @@ async function runStagedSequenceForEvaluation(transcriptText, options = {}) {
       const missing = evidenceLedger.actions.filter((item) => ![...surfaced].some((text) => stagedTokenSimilarity(text, cleanStagedActionText(item.action).toLowerCase()) >= 0.55));
       if (missing.length) validationFlags.push({
         type: 'detected_actions_not_surfaced', severity: 'warning', blocking: true,
-        message: `${missing.length} transcript-supported action${missing.length === 1 ? ' was' : 's were'} not shown. Review and approve or reject each action.`,
+        message: `${missing.length} possible action${missing.length === 1 ? ' was' : 's were'} found in the transcript but not added to the table. Add the real actions and dismiss anything that is only background or already completed.`,
         repairCandidates: missing
       });
     }
@@ -3948,7 +3951,7 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
           type: 'action_review_candidates',
           severity: 'warning',
           blocking: false,
-          message: `${reviewOnly.length} transcript-supported follow-up${reviewOnly.length === 1 ? ' needs' : 's need'} review because ${Object.entries(counts).map(([key, count]) => `${count} ${labels[key] || 'need review'}`).join(', ')}.`,
+          message: `${reviewOnly.length} possible follow-up${reviewOnly.length === 1 ? ' needs' : 's need'} a decision: ${Object.entries(counts).map(([key, count]) => `${count} ${labels[key] || 'need review'}`).join(', ')}. Add the real actions and dismiss anything that should not appear in the minutes.`,
           resolutionKey: `action-review-candidates:${crypto.createHash('sha256').update(reviewOnly.map((item) => stableActionCandidateHash(item)).join('|')).digest('hex').slice(0, 16)}`,
           repairCandidates: reviewOnly.map(serialiseActionReviewCandidate)
         }

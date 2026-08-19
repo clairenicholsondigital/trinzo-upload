@@ -755,46 +755,53 @@ function buildStagedValidationFlags(screens = {}) {
     flags.push({
       type: 'duplicate_section',
       severity: 'info',
-      message: `Removed a duplicate discussion section ("${dropped.topic}") that repeated "${dropped.duplicateOf}".`
+      message: `The tool removed a duplicate "${dropped.topic}" discussion section because it repeated "${dropped.duplicateOf}". No action is needed unless you expected a separate section.`
     });
   }
 
   for (const dropped of Array.isArray(screens.droppedMisattributed) ? screens.droppedMisattributed : []) {
+    const droppedTopic = String(dropped.topic || '').trim().toLowerCase();
+    const discussionIndex = discussion.findIndex((card) => String(card?.topic || '').trim().toLowerCase() === droppedTopic);
     flags.push({
       type: 'misattributed_discussion_evidence',
       severity: 'warning',
-      message: `Removed ${dropped.droppedPointCount || 'some'} discussion point(s) under "${dropped.topic}" because they did not fit that workstream's evidence.`
+      fieldPath: discussionIndex >= 0 ? `discussion.${discussionIndex}.points` : null,
+      message: `${dropped.droppedPointCount || 'Some'} point(s) were removed from "${dropped.topic}" because they appeared to belong to different transcript evidence. Scan this section and add anything important that is missing.`
     });
   }
 
   // Malformed text should already be filtered upstream; flag anything that
   // survives so it is never silently published.
-  for (const card of discussion) {
+  discussion.forEach((card, cardIndex) => {
     const qualityFlags = Array.isArray(card?.qualityFlags) ? card.qualityFlags : [];
     if (qualityFlags.includes('raw_transcript_discussion_points_removed')) {
       flags.push({
         type: 'raw_transcript_discussion_points_removed',
         severity: 'info',
-        message: `Removed raw transcript-style wording under "${card.topic || 'Discussion'}" before final review.`
+        fieldPath: `discussion.${cardIndex}.points`,
+        message: `The tool tidied transcript-style wording in "${card.topic || 'Discussion'}". Scan the section to make sure the meaning still looks right.`
       });
     }
     if (qualityFlags.includes('malformed_discussion_points_removed')) {
       flags.push({
         type: 'malformed_discussion_points_removed',
         severity: 'warning',
-        message: `Removed malformed generated wording under "${card.topic || 'Discussion'}" before final review.`
+        fieldPath: `discussion.${cardIndex}.points`,
+        message: `The tool removed malformed wording from "${card.topic || 'Discussion'}". Check this section for anything important that may need adding back in clearer wording.`
       });
     }
-    for (const point of cardPoints(card)) {
+    for (const [pointIndex, point] of cardPoints(card).entries()) {
       if (isMalformedStagedLine(point)) {
         flags.push({
           type: 'malformed_text',
           severity: 'warning',
-          message: `Possible transcription-noise wording under "${card.topic || 'Discussion'}": "${point}".`
+          fieldPath: `discussion.${cardIndex}.points`,
+          message: `This wording in "${card.topic || 'Discussion'}" may still sound like transcript noise: "${point}". Edit or remove it before moving on.`,
+          pointIndex
         });
       }
     }
-  }
+  });
 
   // Completeness: a subject significant enough to drive an action or appear in
   // the objectives should normally be represented in the discussion. Flag,
@@ -823,7 +830,7 @@ function buildStagedValidationFlags(screens = {}) {
       flags.push({
         type: 'possible_omitted_workstream',
         severity: 'warning',
-        message: `"${subject.text.trim().slice(0, 120)}" appears in the ${subject.source} but has no matching discussion section. Confirm it is covered or intentionally omitted.`,
+        message: `This ${subject.source} is not explained in the discussion notes: "${subject.text.trim().slice(0, 120)}". Add a short discussion point, or mark it as intentionally left out.`,
         discussionSuggestion: {
           topic: suggestionTopic || 'Discussion point to review',
           point: suggestionText,
