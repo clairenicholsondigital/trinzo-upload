@@ -342,17 +342,22 @@ function semanticThreadReviewCandidate(thread, evidence, profile) {
   if (!representative) return null;
   const shaped = ranked.map(({ event }) => ({ event, shape: actionShape(event, evidence) }))
     .find((item) => item.shape?.action && item.shape?.owner);
-  const deadlineEvent = thread.events.find((event) => deadlineFrom(event.text) !== 'Not stated');
   const action = clean(shaped?.shape?.action || representative.text).replace(/[.]+$/, '');
-  return {
+  const candidate = {
     owner: clean(shaped?.shape?.owner) || 'Not stated',
     action,
-    deadline: deadlineEvent ? deadlineFrom(deadlineEvent.text) : 'Not stated',
+    deadline: 'Not stated',
     evidenceIds: thread.evidenceIds,
+    representativeEvidenceIds: [shaped?.event?.id || representative.id],
     threadId: thread.id,
     semanticOnly: true,
     semanticConfidence: Math.max(...ranked.map((item) => item.score), 0)
   };
+  return resolveActionRecords([candidate], evidence, {
+    deadlineFrom,
+    profileLabel: (event) => enrichedLabel(profile, event, 'temporalRoleProbabilities'),
+    profileFor: (event) => semanticFor(profile, event)
+  })[0];
 }
 
 function actionsFromThread(thread, evidence, profile) {
@@ -1928,13 +1933,8 @@ function actionsStage(evidence, state, profile, topology) {
   if (enrichedEvidenceEnabled()) {
     actions = applyOperationalPhaseTiming(attachTemporalContext(resolveActionRecords(resolveEnrichedActions(actions, evidence, profile), evidence, {
       deadlineFrom,
-      profileLabel: (event) => enrichedLabel(profile, event, 'temporalRoleProbabilities')
-    }).map((item) => {
-      if (item.deadline && item.deadline !== 'Not stated') return item;
-      const lastIndex = Math.max(...(item.evidenceIds || []).map((id) => evidence.events.findIndex((event) => event.id === id)), -1);
-      const deadlineEvent = evidence.events.slice(lastIndex + 1, lastIndex + 3).find((event) => enrichedLabel(profile, event, 'temporalRoleProbabilities') === 'deadline_previous' && deadlineFrom(event.text) !== 'Not stated');
-      if (deadlineEvent) return { ...item, deadline: deadlineFrom(deadlineEvent.text), evidenceIds: [...new Set([...(item.evidenceIds || []), deadlineEvent.id])] };
-      return item;
+      profileLabel: (event) => enrichedLabel(profile, event, 'temporalRoleProbabilities'),
+      profileFor: (event) => semanticFor(profile, event)
     }), evidence, profile, deadlineFrom), evidence, topology);
   }
   actions = unique([

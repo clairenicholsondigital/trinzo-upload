@@ -218,6 +218,42 @@ test('explicit first-person future commitments publish as concrete actions', () 
   assert.equal(result.warnings.some((warning) => warning.type === 'unresolved_commitment_threads'), false);
 });
 
+test('live semantic actions attach a separate deadline reply through contextual evidence', () => {
+  const evidence = prepareEvidence([
+    'Amina Shah  00:01',
+    'I will send the validation pack.',
+    'Bob Smith  00:05',
+    'Before the next client call?',
+    'Amina Shah  00:08',
+    'Yes.'
+  ].join('\n'));
+  const profile = { events: Object.fromEntries(evidence.events.map((event) => [event.id, {
+    scores: {
+      commitment: /will send/i.test(event.text) ? 0.9 : 0.05,
+      request: 0.05,
+      acceptance: /^Yes/i.test(event.text) ? 0.8 : 0.05,
+      completed: 0.02,
+      hypothetical: 0.02,
+      rejection: 0.02,
+      administrative: 0.02
+    },
+    temporalRoleProbabilities: /Before/i.test(event.text)
+      ? { deadline_previous: 0.72, deadline_current: 0.08, historical: 0.05, other: 0.08, none: 0.07 }
+      : { none: 0.8, deadline_current: 0.05, deadline_previous: 0.05, historical: 0.05, other: 0.05 },
+    lifecycleProbabilities: { active: 0.7, completed: 0.05, tentative: 0.05, none: 0.2 },
+    canonicalWorthinessProbabilities: { canonical_item: 0.7, supporting_detail: 0.1, context_only: 0.05, duplicate_expression: 0.05, none: 0.1 },
+    contextDependencyProbabilities: { standalone: 0.7, needs_previous: 0.1, accepts_previous: 0.1, modifies_previous: 0.05, needs_next: 0.05 },
+    actionProbabilities: { confirmed_action: /will send/i.test(event.text) ? 0.8 : 0.05, possible_action: 0.05, not_action: /will send/i.test(event.text) ? 0.1 : 0.9 },
+    evidenceProbabilities: { action_commitment: /will send/i.test(event.text) ? 0.8 : 0.05, low_value_noise: 0.05 }
+  }])) };
+
+  const result = semanticStages.actionsStage(evidence, {}, profile, { mode: 'standard' });
+  const action = result.actions.find((item) => /validation pack/i.test(item.action));
+  assert.equal(action.deadline, 'Before the next client call');
+  assert.deepEqual(action.evidenceIds, ['evt_0001', 'evt_0002']);
+  assert.equal(action.slotResolution.deadline, 'context_evidence');
+});
+
 test('weak first-person future wording remains unpublished', () => {
   const maybeEvidence = prepareEvidence([
     'Jacqui Fox  00:01',
