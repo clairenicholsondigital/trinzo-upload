@@ -5,11 +5,28 @@ const fs = require('fs/promises');
 const express = require('express');
 const apiRoutes = require('./routes/api');
 const authRoutes = require('./routes/auth');
+const reviewFeedbackRoutes = require('./routes/reviewFeedback');
 const { startProjectKnowledgeEmbedInterval } = require('./utils/knowledge');
 
 const app = express();
 const PORT = process.env.PORT || 3978;
 
+function addReviewSnippet(html) {
+  if (!/<\/body>/i.test(html) || html.includes('/static/review-snippet.js')) return html;
+  const snippet = [
+    '<script',
+    '  defer',
+    '  src="/static/review-snippet.js"',
+    '  data-endpoint="/api/review-feedback"',
+    '  data-project="trinzo"',
+    '  data-accent="#17D0C4"',
+    '  data-max-image-width="1600"',
+    '></script>'
+  ].join('\n');
+  return html.replace(/<\/body>/i, `${snippet}\n</body>`);
+}
+
+app.use('/api/review-feedback', express.json({ limit: '14mb' }));
 // 4mb comfortably covers the largest legitimate JSON payload today (a ~2MB-char
 // transcript plus review-data structure); previously 25mb, which let a client
 // buffer a much larger body in memory before any app-level size check ran.
@@ -18,7 +35,7 @@ app.use('/static', express.static(path.join(__dirname, 'public')));
 
 async function sendView(res, fileName) {
   const html = await fs.readFile(path.join(__dirname, 'views', fileName), 'utf8');
-  res.type('html').send(html);
+  res.type('html').send(addReviewSnippet(html));
 }
 
 app.get('/', (req, res) => {
@@ -83,6 +100,10 @@ app.get('/meeting-minutes-feedback', authRoutes.requireAuth, (req, res) => {
 
 app.get('/meeting-minutes-feedback/:feedbackId', authRoutes.requireAuth, (req, res) => {
   sendView(res, 'meeting-minutes-feedback.html').catch((error) => res.status(404).send(error.message));
+});
+
+app.get('/review-feedback', authRoutes.requireAuth, (req, res) => {
+  sendView(res, 'review-feedback.html').catch((error) => res.status(404).send(error.message));
 });
 
 // The project workspace: one project-first page hosting the Setup → Process →
@@ -157,6 +178,7 @@ app.get('/auth/forgot-password', (req, res) => {
   sendView(res, 'auth-forgot-password.html').catch((error) => res.status(404).send(error.message));
 });
 
+app.use('/api/review-feedback', authRoutes.requireAuth, reviewFeedbackRoutes);
 app.use('/api', apiRoutes);
 app.use('/api/auth', authRoutes);
 

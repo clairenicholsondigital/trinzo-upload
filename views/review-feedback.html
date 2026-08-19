@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Trinzo review feedback</title>
+<script defer src="/static/trinzo.js"></script>
+<style>
+:root{--bg:#0b1020;--panel:#11192f;--panel2:#0f172a;--border:#263552;--text:#e5eefb;--muted:#9fb0c8;--accent:#17D0C4;--danger:#f87171}
+*{box-sizing:border-box}body{margin:0;font-family:Roboto,Arial,sans-serif;background:radial-gradient(circle at top left,#17213b,var(--bg) 42%,#070b14);color:var(--text);min-height:100vh}
+.nav{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:.75rem;justify-content:space-between;padding:.9rem 1rem;background:rgba(11,16,32,.92);backdrop-filter:blur(12px);border-bottom:1px solid var(--border)}
+.brand{font-weight:800;letter-spacing:.02em}.nav-links{display:flex;gap:.5rem;flex-wrap:wrap}.nav a{color:#dbeafe;text-decoration:none;padding:.55rem .75rem;border-radius:10px}.nav a:hover,.nav a.active{background:#16233d}
+main{width:min(1240px,calc(100vw - 28px));margin:1.25rem auto 3rem}.hero{display:flex;align-items:flex-end;justify-content:space-between;gap:1rem;margin-bottom:1rem}.hero h1{margin:.2rem 0;font-size:clamp(1.6rem,3vw,2.4rem)}.hero p{margin:.25rem 0;color:var(--muted)}
+.button{display:inline-flex;align-items:center;gap:.35rem;border:1px solid var(--border);border-radius:10px;background:#13213a;color:var(--text);padding:.65rem .8rem;font-weight:700;text-decoration:none;cursor:pointer}.button.primary{background:var(--accent);border-color:var(--accent);color:#031018}
+.panel{background:linear-gradient(145deg,var(--panel),var(--panel2));border:1px solid var(--border);border-radius:16px;box-shadow:0 18px 60px rgba(0,0,0,.32);overflow:hidden}.toolbar{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1rem;border-bottom:1px solid var(--border)}.toolbar input,.toolbar select{background:#071126;border:1px solid var(--border);border-radius:10px;color:var(--text);font:inherit;padding:.65rem .75rem}.toolbar input{min-width:240px;flex:1}
+.feedback-list{display:grid;gap:0}.feedback-card{display:grid;grid-template-columns:minmax(220px,340px) 1fr;gap:1rem;padding:1rem;border-bottom:1px solid var(--border)}.feedback-card:last-child{border-bottom:0}.screenshot{display:block;min-height:160px;background:#071126;border:1px solid var(--border);border-radius:12px;overflow:hidden}.screenshot img{display:block;width:100%;height:auto}.meta{display:flex;gap:.45rem;flex-wrap:wrap;margin:.45rem 0}.pill{display:inline-flex;align-items:center;border:1px solid var(--border);border-radius:999px;padding:.25rem .5rem;color:#dbeafe;font-size:.78rem}.priority-urgent,.priority-high{border-color:#fb7185;color:#fecdd3}.priority-low{color:#bfdbfe}.comment{white-space:pre-wrap;line-height:1.55;margin:.6rem 0;color:#eef6ff}.muted{color:var(--muted)}.path{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.85rem;color:#c7d2fe;word-break:break-all}.card-actions{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-top:.75rem}.empty,.error{padding:2rem;text-align:center;color:var(--muted)}.error{color:#fecaca}
+@media(max-width:760px){.hero,.toolbar{align-items:stretch;flex-direction:column}.toolbar input{min-width:0;width:100%}.feedback-card{grid-template-columns:1fr}.nav{align-items:flex-start;flex-direction:column}}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <div class="brand">Trinzo</div>
+  <div class="nav-links">
+    <a href="/dashboard">Dashboard</a>
+    <a href="/staged-meeting-minutes">Staged minutes</a>
+    <a class="active" href="/review-feedback">Review feedback</a>
+  </div>
+</nav>
+<main>
+  <section class="hero">
+    <div>
+      <p class="muted">Screenshot review board</p>
+      <h1>Review feedback</h1>
+      <p>Open any Trinzo page with <code>?review=1</code>, capture a marked-up screenshot, and it will appear here.</p>
+    </div>
+    <a class="button primary" href="/staged-meeting-minutes?review=1">Review staged minutes</a>
+  </section>
+  <section class="panel">
+    <div class="toolbar">
+      <input id="searchInput" type="search" placeholder="Search comments, tags or page paths" />
+      <select id="statusFilter" aria-label="Filter by status">
+        <option value="">All statuses</option>
+        <option value="open">Open</option>
+        <option value="reviewing">Reviewing</option>
+        <option value="fixed">Fixed</option>
+        <option value="closed">Closed</option>
+      </select>
+    </div>
+    <div id="feedbackList" class="feedback-list"><div class="empty">Loading feedback...</div></div>
+  </section>
+</main>
+<script>
+(function(){
+  const list = document.getElementById('feedbackList');
+  const search = document.getElementById('searchInput');
+  const statusFilter = document.getElementById('statusFilter');
+  let entries = [];
+
+  function escapeHtml(value) {
+    return String(value || '').replace(/[&<>"']/g, (character) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;'
+    }[character]));
+  }
+
+  function formatDate(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
+  }
+
+  function matches(entry) {
+    const query = search.value.trim().toLowerCase();
+    const status = statusFilter.value;
+    if (status && entry.status !== status) return false;
+    if (!query) return true;
+    const haystack = [
+      entry.comment,
+      entry.pagePath,
+      entry.pageTitle,
+      entry.priority,
+      entry.status,
+      ...(entry.tags || [])
+    ].join(' ').toLowerCase();
+    return haystack.includes(query);
+  }
+
+  function render() {
+    const visible = entries.filter(matches);
+    if (!visible.length) {
+      list.innerHTML = '<div class="empty">No matching feedback yet.</div>';
+      return;
+    }
+    list.innerHTML = visible.map((entry) => `
+      <article class="feedback-card" data-feedback-id="${escapeHtml(entry.id)}">
+        <a class="screenshot" href="/api/review-feedback/screenshots/${encodeURIComponent(entry.screenshotFile)}" target="_blank" rel="noreferrer">
+          <img src="/api/review-feedback/screenshots/${encodeURIComponent(entry.screenshotFile)}" alt="Screenshot for ${escapeHtml(entry.pageTitle || entry.pagePath || 'review feedback')}" loading="lazy" />
+        </a>
+        <div>
+          <div class="meta">
+            <span class="pill">${escapeHtml(entry.status || 'open')}</span>
+            <span class="pill priority-${escapeHtml(entry.priority || 'normal')}">${escapeHtml(entry.priority || 'normal')}</span>
+            ${(entry.tags || []).map((tag) => `<span class="pill">${escapeHtml(tag)}</span>`).join('')}
+          </div>
+          <div class="path">${escapeHtml(entry.pagePath || entry.pageUrl || 'Unknown page')}</div>
+          <p class="comment">${escapeHtml(entry.comment)}</p>
+          <p class="muted">Submitted ${escapeHtml(formatDate(entry.createdAt))}${entry.reviewerName ? ` by ${escapeHtml(entry.reviewerName)}` : ''}</p>
+          <div class="card-actions">
+            ${entry.pageUrl ? `<a class="button" href="${escapeHtml(entry.pageUrl)}">Open page</a>` : ''}
+            <select data-status>
+              ${['open','reviewing','fixed','closed'].map((status) => `<option value="${status}" ${status === entry.status ? 'selected' : ''}>${status}</option>`).join('')}
+            </select>
+            <span class="muted" data-save-status></span>
+          </div>
+        </div>
+      </article>
+    `).join('');
+  }
+
+  async function load() {
+    try {
+      const response = await fetch('/api/review-feedback?limit=300');
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || 'Feedback could not be loaded.');
+      entries = body.entries || [];
+      render();
+    } catch (error) {
+      list.innerHTML = `<div class="error">${escapeHtml(error.message)}</div>`;
+    }
+  }
+
+  async function updateStatus(card, status) {
+    const marker = card.querySelector('[data-save-status]');
+    marker.textContent = 'Saving...';
+    try {
+      const id = card.dataset.feedbackId;
+      const response = await fetch(`/api/review-feedback/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status })
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || 'Status could not be saved.');
+      const index = entries.findIndex((entry) => entry.id === id);
+      if (index !== -1) entries[index] = body.entry;
+      marker.textContent = 'Saved';
+    } catch (error) {
+      marker.textContent = error.message;
+    }
+  }
+
+  search.addEventListener('input', render);
+  statusFilter.addEventListener('change', render);
+  list.addEventListener('change', (event) => {
+    const select = event.target.closest('[data-status]');
+    if (!select) return;
+    const card = event.target.closest('[data-feedback-id]');
+    if (card) updateStatus(card, select.value);
+  });
+  load();
+})();
+</script>
+</body>
+</html>

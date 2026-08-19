@@ -91,6 +91,30 @@ class FrontendContractTest(unittest.TestCase):
         self.assertNotIn("Create account", login)
         self.assertNotIn("/auth/register", login)
 
+    def test_portable_review_snippet_is_wired_to_authenticated_review_board(self):
+        server = (REPO_DIR / "server.js").read_text(encoding="utf-8")
+        dashboard = (REPO_DIR / "views" / "dashboard.html").read_text(encoding="utf-8")
+        review_page = (REPO_DIR / "views" / "review-feedback.html").read_text(encoding="utf-8")
+        route = (REPO_DIR / "routes" / "reviewFeedback.js").read_text(encoding="utf-8")
+        store = (REPO_DIR / "utils" / "reviewFeedbackStore.js").read_text(encoding="utf-8")
+        snippet = (REPO_DIR / "public" / "review-snippet.js").read_text(encoding="utf-8")
+
+        self.assertIn("function addReviewSnippet", server)
+        self.assertIn('src="/static/review-snippet.js"', server)
+        self.assertIn('data-endpoint="/api/review-feedback"', server)
+        self.assertIn("app.get('/review-feedback', authRoutes.requireAuth", server)
+        self.assertIn("app.use('/api/review-feedback', authRoutes.requireAuth, reviewFeedbackRoutes)", server)
+        self.assertIn('href="/review-feedback"', dashboard)
+        self.assertIn("?review=1", review_page)
+        self.assertIn("/api/review-feedback/screenshots/", review_page)
+        self.assertIn("router.post('/'", route)
+        self.assertIn("router.get('/screenshots/:fileName'", route)
+        self.assertIn("REVIEW_FEEDBACK_DATA_DIR", store)
+        self.assertIn("MAX_SCREENSHOT_BYTES", store)
+        self.assertIn("getDisplayMedia", snippet)
+        self.assertIn("data-field=\"priority\"", snippet)
+        self.assertIn("data-field=\"tags\"", snippet)
+
     def test_auth_users_have_admin_and_client_roles(self):
         auth = (REPO_DIR / "routes" / "auth.js").read_text(encoding="utf-8")
         db = (REPO_DIR / "utils" / "db.js").read_text(encoding="utf-8")
