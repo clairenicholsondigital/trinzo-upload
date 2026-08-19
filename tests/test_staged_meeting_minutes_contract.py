@@ -649,6 +649,7 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
 
         self.assertIn("review-check-button", page)
         self.assertIn("review-target-button", page)
+        self.assertIn("stage-validation-actions", page)
         self.assertIn("review-field-note", page)
         self.assertIn("stage-review-targeted", page)
         self.assertIn("Show in table", page)

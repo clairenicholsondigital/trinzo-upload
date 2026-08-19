@@ -269,13 +269,25 @@ td textarea { min-height:68px; }
 }
 .stage-validation-flags.needs-attention { animation:editorial-check-flash .7s ease-in-out 2; }
 .stage-validation-flag {
-  display:flex;
-  gap:.5rem;
-  align-items:flex-start;
+  display:grid;
+  grid-template-columns:auto minmax(0, 1fr) auto;
+  gap:.55rem .65rem;
+  align-items:start;
   font-size:.92rem;
   color:#403a2c;
 }
-.stage-validation-message { flex:1 1 auto; }
+.stage-validation-message {
+  min-width:0;
+  line-height:1.45;
+}
+.stage-validation-actions {
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+  align-items:flex-start;
+  gap:.45rem;
+  min-width:0;
+}
 .stage-validation-add { flex:0 0 auto; white-space:nowrap; }
 .stage-review-targeted { outline:2px solid rgba(23,208,196,.35); outline-offset:3px; }
 .review-field-note {
@@ -304,6 +316,10 @@ tr .review-field-note { color:#27323a; background:#f2fbfb; }
 }
 .stage-validation-warning .stage-validation-tag { background:#f5e2b8; color:#7a5b12; }
 .stage-validation-info .stage-validation-tag { background:#d8ecf2; color:#22697e; }
+@media (max-width:760px) {
+  .stage-validation-flag { grid-template-columns:1fr; }
+  .stage-validation-actions { justify-content:flex-start; }
+}
 .terminology-qa { margin-top:1rem; border:1px solid #cfe2e8; border-radius:8px; background:#f8fcfd; color:#27323a; padding:.75rem; display:grid; gap:.45rem; }
 .terminology-qa[hidden] { display:none; }
 .terminology-qa h3 { margin:0; color:#02173B; font-size:.95rem; }
@@ -2090,6 +2106,8 @@ td select {
       text.className = 'stage-validation-message';
       text.textContent = displayedMessage;
       row.appendChild(text);
+      var actions = document.createElement('div');
+      actions.className = 'stage-validation-actions';
       if (flag && flag.discussionSuggestion) {
         var addButton = document.createElement('button');
         addButton.type = 'button';
@@ -2098,7 +2116,7 @@ td select {
         addButton.addEventListener('click', function () {
           addValidationSuggestionToDiscussion(flag, addButton);
         });
-        row.appendChild(addButton);
+        actions.appendChild(addButton);
       }
       if (flag && flag.fieldPath && reviewFlagTargetControl(flag)) {
         var targetButton = document.createElement('button');
@@ -2108,7 +2126,7 @@ td select {
         targetButton.addEventListener('click', function () {
           focusReviewFlagTarget(flag);
         });
-        row.appendChild(targetButton);
+        actions.appendChild(targetButton);
       }
       var resolveButton = document.createElement('button');
       resolveButton.type = 'button';
@@ -2117,7 +2135,7 @@ td select {
       resolveButton.setAttribute('aria-label', 'Mark as reviewed');
       resolveButton.title = 'Mark as reviewed';
       resolveButton.addEventListener('click', function () { resolveGroupedReviewItems(text.textContent, row, groupedReviewKeys); });
-      row.appendChild(resolveButton);
+      actions.appendChild(resolveButton);
       if (flag && flag.type === 'unresolved_substantive_workstream' && flag.resolutionKey) {
         var omitButton = document.createElement('button');
         omitButton.type = 'button';
@@ -2130,14 +2148,15 @@ td select {
           setReviewStatus('Recorded as intentionally omitted by the reviewer.', false);
           saveDraft();
         });
-        row.appendChild(omitButton);
+        actions.appendChild(omitButton);
         var summaryButton = document.createElement('button');
         summaryButton.type = 'button';
         summaryButton.className = 'secondary stage-validation-add';
         summaryButton.textContent = 'Return to summary topics';
         summaryButton.addEventListener('click', function () { showScreen(1); });
-        row.appendChild(summaryButton);
+        actions.appendChild(summaryButton);
       }
+      row.appendChild(actions);
       stageValidationFlags.appendChild(row);
     });
     stageValidationFlags.hidden = false;
