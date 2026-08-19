@@ -50,6 +50,7 @@ const { reviewGeneratedContent } = require('../utils/terminologyQa');
 const { generateStagedMinutesPdf, stagedMinutesPdfFilename } = require('../utils/stagedMinutesPdf');
 const { polishExecutiveSummaryGrammar } = require('../utils/stagedExecutiveSummaryGrammar');
 const { polishInitialUnderstanding } = require('../utils/stagedInitialUnderstandingPolish');
+const { assessStagedTranscriptHealth, stagedTranscriptHealthFlag } = require('../utils/stagedTranscriptHealth');
 const {
   buildConfirmedUnderstanding,
   repairDiscussionForConfirmedUnderstanding
@@ -4046,6 +4047,7 @@ function attachActionCandidateSourceSnippets(payload = {}) {
 async function canonicalStagedResponse(stage, transcript, input = {}) {
   const confirmed = canonicalConfirmedStages(input);
   const semanticTranscript = transcriptForStagedAI(transcript, input);
+  const transcriptHealth = assessStagedTranscriptHealth(semanticTranscript.text);
   let payload = runCanonicalLiveStage(semanticTranscript.text, {
     stage,
     fileName: transcript.fileName || 'transcript.txt',
@@ -4053,6 +4055,10 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
     reviewerGuidance: input.additionalContext || '',
     includeEvidencePack: ['discussion', 'actions'].includes(stage)
   });
+  if (stage === 'summary') {
+    const healthFlag = stagedTranscriptHealthFlag(transcriptHealth);
+    if (healthFlag) payload.validationFlags = [...(payload.validationFlags || []), healthFlag];
+  }
   if (stage === 'actions') payload = attachActionCandidateSourceSnippets(payload);
   if (stage === 'actions') {
     const recoveredActions = buildEvidenceBoundStagedActionInventory(semanticTranscript.text);
@@ -4180,6 +4186,7 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
         overlap: initialUnderstandingPolish.overlap,
         timingMs: initialUnderstandingPolish.timingMs
       },
+      transcriptHealth,
       trooper: { used: polished.used, reason: polished.reason, usage: polished.usage || null, input: 'bounded_minilm_evidence' }
     },
     preparedTranscriptTelemetry: semanticTranscript.preparedTranscriptTelemetry || transcript.preparedTranscriptTelemetry || null
