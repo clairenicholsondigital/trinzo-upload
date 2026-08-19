@@ -123,7 +123,8 @@ async function requireAuth(req, res, next) {
       if (req.path.startsWith('/api/') || req.originalUrl.startsWith('/api/')) {
         return res.status(401).json({ success: false, error: 'Not authenticated.' });
       }
-      return res.redirect('/auth/login');
+      const returnTo = String(req.originalUrl || req.url || '/').slice(0, 4000);
+      return res.redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
     }
     req.authUser = { userId: session.userId, email: session.email, fullName: session.fullName, role: session.role };
     return next();

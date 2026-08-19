@@ -204,6 +204,18 @@
       statusBox.textContent = message;
     }
 
+    function safeReturnTo() {
+      const value = new URLSearchParams(window.location.search).get('returnTo') || '';
+      if (!value.startsWith('/') || value.startsWith('//')) return '';
+      try {
+        const target = new URL(value, window.location.origin);
+        if (target.origin !== window.location.origin) return '';
+        return target.pathname + target.search + target.hash;
+      } catch {
+        return '';
+      }
+    }
+
     passwordToggle.addEventListener('click', () => {
       const isVisible = passwordInput.type === 'text';
 
@@ -243,7 +255,7 @@
         showStatus('Login successful. Redirecting...', 'success');
 
         setTimeout(() => {
-          window.location.href = data.user && data.user.role === 'client' ? '/staged-meeting-minutes/' : '/dashboard';
+          window.location.href = safeReturnTo() || (data.user && data.user.role === 'client' ? '/staged-meeting-minutes/' : '/dashboard');
         }, 600);
 
       } catch (error) {

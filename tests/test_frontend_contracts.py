@@ -115,6 +115,17 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("data-field=\"priority\"", snippet)
         self.assertIn("data-field=\"tags\"", snippet)
 
+    def test_login_preserves_safe_authenticated_review_deep_links(self):
+        auth_route = (REPO_DIR / "routes" / "auth.js").read_text(encoding="utf-8")
+        login = (REPO_DIR / "views" / "auth-login.html").read_text(encoding="utf-8")
+
+        self.assertIn("req.originalUrl || req.url", auth_route)
+        self.assertIn("/auth/login?returnTo=${encodeURIComponent(returnTo)}", auth_route)
+        self.assertIn("function safeReturnTo()", login)
+        self.assertIn("!value.startsWith('/') || value.startsWith('//')", login)
+        self.assertIn("target.origin !== window.location.origin", login)
+        self.assertIn("window.location.href = safeReturnTo() ||", login)
+
     def test_auth_users_have_admin_and_client_roles(self):
         auth = (REPO_DIR / "routes" / "auth.js").read_text(encoding="utf-8")
         db = (REPO_DIR / "utils" / "db.js").read_text(encoding="utf-8")
