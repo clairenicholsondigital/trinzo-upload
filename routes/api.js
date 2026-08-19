@@ -4045,7 +4045,8 @@ function attachActionCandidateSourceSnippets(payload = {}) {
 
 async function canonicalStagedResponse(stage, transcript, input = {}) {
   const confirmed = canonicalConfirmedStages(input);
-  let payload = runCanonicalLiveStage(transcript.text, {
+  const semanticTranscript = transcriptForStagedAI(transcript, input);
+  let payload = runCanonicalLiveStage(semanticTranscript.text, {
     stage,
     fileName: transcript.fileName || 'transcript.txt',
     confirmed,
@@ -4054,7 +4055,7 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
   });
   if (stage === 'actions') payload = attachActionCandidateSourceSnippets(payload);
   if (stage === 'actions') {
-    const recoveredActions = buildEvidenceBoundStagedActionInventory(transcript.text);
+    const recoveredActions = buildEvidenceBoundStagedActionInventory(semanticTranscript.text);
     payload = addRecoveredActionCandidates(payload, recoveredActions);
     const reviewOnly = recoveredActions.filter((item) => item.reviewDisposition && item.reviewDisposition !== 'confirmed_action');
     if (reviewOnly.length) {
@@ -4093,11 +4094,11 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
     }
   }
   if (stage === 'discussion') {
-    const evidence = prepareEvidence(transcript.text);
+    const evidence = prepareEvidence(semanticTranscript.text);
     const semanticPreservation = repairDiscussionForConfirmedUnderstanding({
       discussion: polished.payload?.screens?.discussion || [],
       understanding: buildConfirmedUnderstanding(confirmed.summary),
-      transcriptText: transcript.text,
+      transcriptText: semanticTranscript.text,
       evidenceEvents: evidence.events
     });
     polished.payload = {
@@ -4181,7 +4182,7 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
       },
       trooper: { used: polished.used, reason: polished.reason, usage: polished.usage || null, input: 'bounded_minilm_evidence' }
     },
-    preparedTranscriptTelemetry: transcript.preparedTranscriptTelemetry || null
+    preparedTranscriptTelemetry: semanticTranscript.preparedTranscriptTelemetry || transcript.preparedTranscriptTelemetry || null
   };
 }
 

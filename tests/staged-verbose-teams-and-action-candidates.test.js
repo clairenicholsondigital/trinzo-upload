@@ -3,6 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const router = require('../routes/api');
+const { prepareEvidence } = require('../utils/canonicalMinutes/evidence');
 
 const {
   extractStagedDetailsFromTranscript,
@@ -33,6 +34,25 @@ test('staged details recognise verbose Teams timestamp speaker turns', () => {
   const prepared = buildPreparedTranscriptForStagedAI(transcript);
   assert.match(prepared.text, /Conor Flynn:/);
   assert.match(prepared.text, /Ciara Griffin:/);
+});
+
+test('indented Teams turns and prepared full-name turns produce the same canonical evidence', () => {
+  const raw = [
+    'Review Lean Generation Pipeline-Meeting Transcript',
+    '  Conor Flynn   0:03gets information to Keon and Liam for the proposed lead generation process.',
+    '  Keon Fox   0:58Okay.',
+    '  Jack Cunningham   5:53The team needs to define the ICP fit criteria before the pilot.'
+  ].join('\n');
+  const prepared = buildPreparedTranscriptForStagedAI(raw).text;
+  const rawEvidence = prepareEvidence(raw);
+  const preparedEvidence = prepareEvidence(prepared);
+
+  assert.deepEqual(rawEvidence.participants, ['Conor Flynn', 'Keon Fox', 'Jack Cunningham']);
+  assert.deepEqual(preparedEvidence.participants, rawEvidence.participants);
+  assert.equal(rawEvidence.turns.length, 3);
+  assert.equal(preparedEvidence.turns.length, rawEvidence.turns.length);
+  assert.equal(preparedEvidence.events.length, rawEvidence.events.length);
+  assert.match(prepared, /Conor Flynn:/);
 });
 
 test('actions stage surfaces review candidates when follow-ups are plausible but not safe to publish', () => {

@@ -22,7 +22,8 @@ function normaliseSpeakerName(name) {
 function parseTurns(transcriptText) {
   const turns = [];
   const source = String(transcriptText || '').replace(/\r/g, '');
-  const header = new RegExp(String.raw`(?:^|\n)((?:[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+\s*,\s*[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:[ \t]+[A-Z])?)|(?:[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:[ \t]+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){0,3}))(?:[ \t]+|[ \t]*[-–][ \t]*|[ \t]*\n[ \t]*)(${TEAMS_TIMESTAMP})[ \t]*|(?:^|\n|(?<=[.!?]))([A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+):[ \t]*`, 'gm');
+  const speakerName = String.raw`(?:[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+\s*,\s*[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:[ \t]+[A-Z])?|[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:[ \t]+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){0,3})`;
+  const header = new RegExp(String.raw`(?:^|\n)[ \t]*(${speakerName})(?:[ \t]+|[ \t]*[-–][ \t]*|[ \t]*\n[ \t]*)(${TEAMS_TIMESTAMP})[ \t]*|(?:^|\n|(?<=[.!?]))[ \t]*(${speakerName}):[ \t]*`, 'gm');
   const ignoredHeaders = /^(?:date|location|duration|transcript|recording|meeting|speakers|attendees|decision confirmed)$/i;
   const matches = [...source.matchAll(header)].map((match) => ({ ...match, speakerName: clean(match[1] || match[3]) })).filter((match) => !ignoredHeaders.test(match.speakerName));
   matches.forEach((match, index) => {
