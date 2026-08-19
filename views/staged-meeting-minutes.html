@@ -331,6 +331,7 @@ tr .review-field-note { color:#27323a; background:#f2fbfb; }
 .terminology-qa-summary-note { display:block; color:#596875; font-size:.86rem; font-weight:400; margin-top:.15rem; }
 .terminology-suggestion { display:flex; align-items:center; gap:.65rem; flex-wrap:wrap; padding:.45rem 0; border-top:1px solid #dbe8ed; font-size:.9rem; }
 .terminology-suggestion mark { background:#e6f7f7; color:#02173B; padding:.08rem .2rem; border-radius:3px; }
+.terminology-occurrence-note { display:block; margin-top:.2rem; color:#596875; font-size:.82rem; }
 .terminology-suggestion-actions { margin-left:auto; display:flex; gap:.4rem; }
 .terminology-suggestion-actions button { padding:.42rem .65rem; }
 .qa-field-highlight { background:#f2fbfb !important; border-color:#17D0C4 !important; box-shadow:0 0 0 2px rgba(23,208,196,.14); }
@@ -2361,6 +2362,36 @@ td select {
     control.focus();
   }
 
+  function terminologyDisplayGroupKey(item) {
+    return [
+      item && item.stage || '',
+      String(item && item.original || '').trim().toLowerCase(),
+      String(item && item.replacement || '').trim().toLowerCase(),
+      item && item.status || ''
+    ].join('|');
+  }
+
+  function groupedTerminologyItems(items) {
+    var groupsByKey = {};
+    (Array.isArray(items) ? items : []).forEach(function (item) {
+      var key = terminologyDisplayGroupKey(item);
+      if (!groupsByKey[key]) groupsByKey[key] = { key: key, items: [], original: item.original, replacement: item.replacement, stage: item.stage };
+      groupsByKey[key].items.push(item);
+    });
+    return Object.keys(groupsByKey).map(function (key) { return groupsByKey[key]; });
+  }
+
+  function terminologySummaryText(appliedGroups, suggestions) {
+    var appliedCount = appliedGroups.length;
+    var suggestionCount = suggestions.length;
+    var occurrenceCount = appliedGroups.reduce(function (total, group) { return total + group.items.length; }, 0);
+    if (appliedCount && !suggestionCount) {
+      return 'The tool changed ' + appliedCount + ' term' + (appliedCount === 1 ? '' : 's') + (occurrenceCount > appliedCount ? ' in ' + occurrenceCount + ' places' : '') + '.';
+    }
+    var total = appliedCount + suggestionCount;
+    return 'Check ' + total + ' term change' + (total === 1 ? '' : 's') + '.';
+  }
+
   function renderTerminologyQa() {
     clearTerminologyHighlights();
     var activeStage = stageForScreen(activeIndex);
@@ -2375,34 +2406,40 @@ td select {
       updateReviewToolbar();
       return;
     }
+    var visibleAppliedGroups = groupedTerminologyItems(visibleApplied);
     terminologyQaPanel.innerHTML = '';
     var details = document.createElement('details');
     details.className = 'terminology-qa-details';
     var summary = document.createElement('summary');
-    summary.innerHTML = 'Check these terms<span class="terminology-qa-summary-note">The tool changed ' + (visibleApplied.length + visibleSuggestions.length) + ' term' + (visibleApplied.length + visibleSuggestions.length === 1 ? '' : 's') + '.</span>';
+    summary.innerHTML = 'Check these terms<span class="terminology-qa-summary-note">' + escapeHtml(terminologySummaryText(visibleAppliedGroups, visibleSuggestions)) + '</span>';
     var body = document.createElement('div');
     body.className = 'terminology-qa-details-body';
     details.appendChild(summary);
     details.appendChild(body);
     terminologyQaPanel.appendChild(details);
-    visibleApplied.forEach(function (item) {
+    visibleAppliedGroups.forEach(function (group) {
+      var item = group.items[0];
+      group.items.forEach(function (appliedItem) {
+        var control = terminologyQaControl(appliedItem.fieldPath);
+        if (control) control.classList.add('qa-field-highlight');
+      });
       var control = terminologyQaControl(item.fieldPath);
       if (control) control.classList.add('qa-field-highlight');
       var row = document.createElement('div');
       row.className = 'terminology-suggestion terminology-applied';
       var copy = document.createElement('span');
-      copy.innerHTML = '<mark>' + escapeHtml(item.original) + '</mark> <span aria-hidden="true">→</span> <strong>' + escapeHtml(item.replacement) + '</strong>';
+      copy.innerHTML = '<mark>' + escapeHtml(group.original) + '</mark> <span aria-hidden="true">→</span> <strong>' + escapeHtml(group.replacement) + '</strong>' + (group.items.length > 1 ? '<span class="terminology-occurrence-note">Changed in ' + group.items.length + ' places.</span>' : '');
       var actions = document.createElement('span');
       actions.className = 'terminology-suggestion-actions';
       var undo = document.createElement('button');
       undo.type = 'button';
       undo.className = 'secondary';
-      undo.textContent = 'Undo';
-      undo.addEventListener('click', function () { undoTerminologyCorrection(item); });
+      undo.textContent = group.items.length > 1 ? 'Undo all' : 'Undo';
+      undo.addEventListener('click', function () { undoTerminologyCorrectionGroup(group.items); });
       var jump = document.createElement('button');
       jump.type = 'button';
       jump.className = 'secondary';
-      jump.textContent = 'Go to field';
+      jump.textContent = group.items.length > 1 ? 'Go to first field' : 'Go to field';
       jump.addEventListener('click', function () { focusTerminologyControl(item); });
       actions.appendChild(jump); actions.appendChild(undo);
       row.appendChild(copy);
@@ -2530,7 +2567,19 @@ td select {
     return appliedAny;
   }
 
-  function undoTerminologyCorrection(item) {
+  function undoTerminologyCorrectionGroup(items) {
+    var group = Array.isArray(items) ? items : [];
+    group.forEach(function (item) { undoTerminologyCorrection(item, { deferRender: true }); });
+    if (group.length) {
+      syncCurrentStageAfterTerminology(group[0].stage || stageForScreen(activeIndex));
+      renderTerminologyQa();
+      persistReviewAnalytics('terminology_auto_undone', 'latest_snapshot', { immediate: true });
+      setReviewStatus(group.length > 1 ? 'Terminology changes undone.' : 'Terminology change undone.', false);
+    }
+  }
+
+  function undoTerminologyCorrection(item, options) {
+    options = options || {};
     var control = terminologyQaControl(item.fieldPath);
     var candidateField = !control && actionCandidateIndexFromFieldPath(item.fieldPath) >= 0;
     if (candidateField) {
@@ -2551,10 +2600,12 @@ td select {
         stage: item.stage || stageForScreen(activeIndex),
         at: new Date().toISOString()
       });
-      syncCurrentStageAfterTerminology(item.stage || stageForScreen(activeIndex));
-      renderTerminologyQa();
-      persistReviewAnalytics('terminology_auto_undone', 'latest_snapshot', { immediate: true });
-      setReviewStatus('Terminology change undone.', false);
+      if (!options.deferRender) {
+        syncCurrentStageAfterTerminology(item.stage || stageForScreen(activeIndex));
+        renderTerminologyQa();
+        persistReviewAnalytics('terminology_auto_undone', 'latest_snapshot', { immediate: true });
+        setReviewStatus('Terminology change undone.', false);
+      }
       return;
     }
     if (!control || control.tagName === 'SELECT') return;
@@ -2579,10 +2630,12 @@ td select {
       stage: item.stage || stageForScreen(activeIndex),
       at: new Date().toISOString()
     });
-    syncCurrentStageAfterTerminology(item.stage || stageForScreen(activeIndex));
-    renderTerminologyQa();
-    persistReviewAnalytics('terminology_auto_undone', 'latest_snapshot', { immediate: true });
-    setReviewStatus('Terminology change undone.', false);
+    if (!options.deferRender) {
+      syncCurrentStageAfterTerminology(item.stage || stageForScreen(activeIndex));
+      renderTerminologyQa();
+      persistReviewAnalytics('terminology_auto_undone', 'latest_snapshot', { immediate: true });
+      setReviewStatus('Terminology change undone.', false);
+    }
   }
 
   async function decideTerminologySuggestion(item, decision) {
