@@ -289,6 +289,7 @@ td textarea { min-height:68px; }
   min-width:0;
 }
 .stage-validation-add { flex:0 0 auto; white-space:nowrap; }
+.review-check-text-button { min-height:2rem; }
 .stage-review-targeted { outline:2px solid rgba(23,208,196,.35); outline-offset:3px; }
 .review-field-note {
   margin:.45rem 0 0;
@@ -1245,8 +1246,8 @@ td select {
     var currentLabel = screenLabel(activeIndex);
 
     if (activeIndex >= screens.length - 1) {
-      stageDecisionQuestion.textContent = 'Ready to finish the staged review?';
-      stageDecisionHint.textContent = finalReviewCompleted ? 'Final review has been recorded. You can now download or preview the client-ready PDF.' : 'This records the approved screens for improvement analytics. You can then download or preview the client-ready PDF.';
+      stageDecisionQuestion.textContent = 'Ready to approve the PDF?';
+      stageDecisionHint.textContent = finalReviewCompleted ? 'Final review has been recorded. You can now download or preview the client-ready PDF.' : 'Preview the PDF. If anything still needs changing, go back to that screen; if it looks right, mark the review complete.';
       nextButton.textContent = 'Review complete';
       nextButton.disabled = finalReviewCompleted;
     } else if (activeIndex === 0 && nextIndex === 1) {
@@ -1754,7 +1755,26 @@ td select {
     ].join('::');
   }
 
+  function isFinalReviewScreen() {
+    return activeIndex >= screens.length - 1;
+  }
+
+  function finalReviewTargetScreenIndex(flag) {
+    if (!flag) return null;
+    if (Array.isArray(flag.repairCandidates) && flag.repairCandidates.length) return 3;
+    if (/action|commitment/i.test(String(flag.type || ''))) return 3;
+    if (flag.discussionSuggestion || /discussion|workstream/i.test(String(flag.type || ''))) return 2;
+    return null;
+  }
+
   function reviewFlagLabel(flag) {
+    if (isFinalReviewScreen()) {
+      var targetIndex = finalReviewTargetScreenIndex(flag);
+      if (targetIndex === 3) return 'Actions';
+      if (targetIndex === 2) return 'Discussion';
+      if (flag && flag.severity === 'info') return 'Already checked';
+      return 'Final check';
+    }
     if (flag && Array.isArray(flag.repairCandidates) && flag.repairCandidates.length) return 'Decide';
     if (flag && flag.discussionSuggestion) return 'Add or omit';
     if (flag && flag.severity === 'warning') return 'Review';
@@ -2000,6 +2020,17 @@ td select {
   }
 
   function reviewerFlagMessage(flag) {
+    if (isFinalReviewScreen()) {
+      if (flag && Array.isArray(flag.repairCandidates) && flag.repairCandidates.length) {
+        return flag.repairCandidates.length + ' possible action' + (flag.repairCandidates.length === 1 ? ' still needs' : 's still need') + ' a decision. Go back to Actions, add the real actions to the table or dismiss the candidates, then return here to finish the review.';
+      }
+      if (flag && flag.discussionSuggestion) {
+        return 'A suggested discussion point still needs a decision. Go back to Discussion, add it or mark it as intentionally omitted, then return here.';
+      }
+      if (flag && flag.type === 'language_polished') {
+        return 'The tool has already tidied wording. Preview the PDF and only go back if something looks wrong.';
+      }
+    }
     if (flag && flag.message) return String(flag.message);
     if (flag && Array.isArray(flag.repairCandidates) && flag.repairCandidates.length) {
       return 'Actions are grouped below to help you review them.';
@@ -2079,7 +2110,7 @@ td select {
     }
     var heading = document.createElement('p');
     heading.className = 'stage-validation-heading';
-    heading.textContent = 'Editorial checks (review before moving on)';
+    heading.textContent = isFinalReviewScreen() ? 'Before you finish' : 'Editorial checks (review before moving on)';
     stageValidationFlags.appendChild(heading);
     var renderedMessages = {};
     list.forEach(function (flag, flagIndex) {
@@ -2128,12 +2159,30 @@ td select {
         });
         actions.appendChild(targetButton);
       }
+      var finalTargetIndex = isFinalReviewScreen() ? finalReviewTargetScreenIndex(flag) : null;
+      if (finalTargetIndex !== null) {
+        var returnButton = document.createElement('button');
+        returnButton.type = 'button';
+        returnButton.className = 'secondary stage-validation-add';
+        returnButton.textContent = finalTargetIndex === 3 ? 'Review in Actions' : 'Review in Discussion';
+        returnButton.addEventListener('click', function () {
+          showScreen(finalTargetIndex);
+        });
+        actions.appendChild(returnButton);
+      }
       var resolveButton = document.createElement('button');
       resolveButton.type = 'button';
-      resolveButton.className = 'secondary stage-validation-add review-check-button';
-      resolveButton.textContent = '✓';
-      resolveButton.setAttribute('aria-label', 'Mark as reviewed');
-      resolveButton.title = 'Mark as reviewed';
+      if (isFinalReviewScreen()) {
+        resolveButton.className = 'secondary stage-validation-add review-check-text-button';
+        resolveButton.textContent = 'Looks OK';
+        resolveButton.setAttribute('aria-label', 'Mark final check as reviewed');
+        resolveButton.title = 'Mark final check as reviewed';
+      } else {
+        resolveButton.className = 'secondary stage-validation-add review-check-button';
+        resolveButton.textContent = '✓';
+        resolveButton.setAttribute('aria-label', 'Mark as reviewed');
+        resolveButton.title = 'Mark as reviewed';
+      }
       resolveButton.addEventListener('click', function () { resolveGroupedReviewItems(text.textContent, row, groupedReviewKeys); });
       actions.appendChild(resolveButton);
       if (flag && flag.type === 'unresolved_substantive_workstream' && flag.resolutionKey) {
