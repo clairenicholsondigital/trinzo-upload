@@ -15,6 +15,7 @@ const { repairDiscussionForConfirmedUnderstanding } = require('../stagedSemantic
 const { enrichActionReviewCandidate, rankAndClusterActionReviewCandidates, hasImporterProcedureContext } = require('./actionReviewRanking');
 const { finaliseDiscussionPointForMinutes } = require('../stagedEditorial');
 const { prospectiveLanguageShape, pronominalTask, trimProspectiveTaskClause } = require('./prospectiveTasks');
+const { enrichUnderspecifiedActionObject } = require('./actionObjectResolution');
 
 function unique(items, key) {
   const seen = new Set();
@@ -1542,7 +1543,11 @@ function resolveActionReferent(item, evidence) {
   }
   const explicitFutureCommitment = item.explicitFutureCommitment
     || contextEvents.some((event) => event.roles.includes('action_candidate') && !event.roles.includes('hypothetical') && hasExplicitFutureCommitment(event.text));
-  return { ...item, action: action.charAt(0).toUpperCase() + action.slice(1), explicitFutureCommitment };
+  return enrichUnderspecifiedActionObject({
+    ...item,
+    action: action.charAt(0).toUpperCase() + action.slice(1),
+    explicitFutureCommitment
+  }, evidence);
 }
 
 function acceptedCollectiveActions(evidence) {

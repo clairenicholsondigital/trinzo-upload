@@ -211,7 +211,10 @@ function boundedEvidencePack(items, evidence, profile, stage) {
   const actionStage = stage === 'actions';
   return (Array.isArray(items) ? items : []).map((item, itemIndex) => {
     const evidenceLimit = actionStage ? 8 : 4;
-    const representativeIds = [...new Set(Array.isArray(item.representativeEvidenceIds) ? item.representativeEvidenceIds : [])]
+    const representativeIds = [...new Set([
+      ...(Array.isArray(item.representativeEvidenceIds) ? item.representativeEvidenceIds : []),
+      ...(Array.isArray(item.wordingEvidenceIds) ? item.wordingEvidenceIds : [])
+    ])]
       .slice(0, evidenceLimit);
     const supportingIds = (Array.isArray(item.evidenceIds) ? item.evidenceIds : [])
       .filter((id) => !representativeIds.includes(id));
