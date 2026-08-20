@@ -81,6 +81,29 @@ test('useful grounded requirements and follow-ups remain prominent', () => {
   assert.match(prominentText, /process-discovery working sessions|operational details/i);
 });
 
+test('generic prospective speech acts remain visible for human action review', () => {
+  const candidates = [
+    {
+      owner: 'Not stated',
+      action: 'Define the criteria for the ICP fit',
+      speechAct: 'required_unassigned_work',
+      reviewDisposition: 'requirement',
+      evidence: 'Something that needs to be defined as a team is how the criteria for the ICP fit are set.'
+    },
+    {
+      owner: 'Not stated',
+      action: 'Manually test a small slice',
+      speechAct: 'collective_plan',
+      explicitFutureCommitment: true,
+      reviewDisposition: 'needs_assignment',
+      evidence: "What we want to do is take a small slice and manually do it. Then we're going to test it."
+    }
+  ];
+  const ranked = rankAndClusterActionReviewCandidates(candidates, options());
+  assert.equal(ranked.length, 2);
+  assert.ok(ranked.every((candidate) => candidate.reviewerUsefulnessTier !== 'low'));
+});
+
 test('previous follow-up wording does not hide still-needed artefact dependencies', () => {
   const enriched = enrichActionReviewCandidate({
     owner: 'Not stated',

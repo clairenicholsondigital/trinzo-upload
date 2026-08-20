@@ -620,6 +620,8 @@ class FrontendContractTest(unittest.TestCase):
         self.assertNotIn("' items need review'", staged_page)
         self.assertIn("startBlank: true", staged_page)
         self.assertIn("if (!actionText && !action.startBlank) actionText = 'Review action wording';", staged_page)
+        self.assertIn("if (row.querySelector('.empty-state')) return null;", staged_page)
+        self.assertIn("return item && Boolean(String(item.action || '').trim());", staged_page)
 
     def test_resolved_workstream_flags_do_not_silently_block_actions_transition(self):
         staged_page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")

@@ -209,7 +209,17 @@ function sampledIds(ids, maximum) {
 function boundedEvidencePack(items, evidence, profile, stage) {
   const byId = new Map(evidence.events.map((event) => [event.id, event]));
   const actionStage = stage === 'actions';
-  return (Array.isArray(items) ? items : []).map((item, itemIndex) => ({
+  return (Array.isArray(items) ? items : []).map((item, itemIndex) => {
+    const evidenceLimit = actionStage ? 8 : 4;
+    const representativeIds = [...new Set(Array.isArray(item.representativeEvidenceIds) ? item.representativeEvidenceIds : [])]
+      .slice(0, evidenceLimit);
+    const supportingIds = (Array.isArray(item.evidenceIds) ? item.evidenceIds : [])
+      .filter((id) => !representativeIds.includes(id));
+    const packedIds = [
+      ...representativeIds,
+      ...sampledIds(supportingIds, Math.max(0, evidenceLimit - representativeIds.length))
+    ];
+    return ({
     itemIndex,
     topic: clean(item.topic),
     owner: clean(item.owner),
@@ -229,7 +239,11 @@ function boundedEvidencePack(items, evidence, profile, stage) {
     clusterSize: Number(item.clusterSize || 0),
     alternateCandidateIds: Array.isArray(item.alternateCandidateIds) ? item.alternateCandidateIds : [],
     currentPoints: strings(item.points),
-    evidence: sampledIds(item.evidenceIds, actionStage ? 8 : 4).map((id) => {
+    // Consolidated threads retain broad supporting evidence, but the
+    // representative event is the best reviewer-facing source snippet. Keep it
+    // first so a short acknowledgement such as "Click" or "Yep" cannot hide
+    // the actual commitment/requirement that produced the candidate.
+    evidence: packedIds.map((id) => {
       const event = byId.get(id);
       if (!event) return null;
       const eventIndex = evidence.events.indexOf(event);
@@ -257,7 +271,8 @@ function boundedEvidencePack(items, evidence, profile, stage) {
         }
       };
     }).filter(Boolean)
-  }));
+  });
+  });
 }
 
 function runCanonicalLiveStage(transcriptText, options = {}) {

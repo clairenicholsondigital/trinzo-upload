@@ -391,6 +391,8 @@ function semanticThreadReviewCandidate(thread, evidence, profile) {
     representativeEvidenceIds: [shaped?.event?.id || representative.id],
     threadId: thread.id,
     semanticOnly: true,
+    speechAct: clean(shaped?.shape?.speechAct),
+    reviewDisposition: shaped?.shape?.speechAct === 'required_unassigned_work' ? 'requirement' : '',
     semanticConfidence: Math.max(...ranked.map((item) => item.score), 0)
   };
   return resolveActionRecords([candidate], evidence, {
@@ -417,8 +419,22 @@ function actionsFromThread(thread, evidence, profile) {
   const collectivePlans = thread.events
     .map((event) => ({ event, shape: actionShape(event, evidence) }))
     .filter((item) => /^collective_plan/.test(item.shape?.speechAct || ''));
+  const baseCollectivePlans = collectivePlans.filter((item) => item.shape.speechAct === 'collective_plan');
+  const collectiveReaffirmations = collectivePlans.filter((item) => item.shape.speechAct === 'collective_plan_reaffirmation');
   const acceptanceEvents = thread.events.filter((event) => acceptanceStrength(profile, event) >= 0.5);
-  const acceptedCollectivePlan = collectivePlans.some(({ event }) => acceptanceEvents.some((acceptance) => acceptance.turnIndex >= event.turnIndex));
+  const acceptedAfterProposal = baseCollectivePlans.some(({ event }) => acceptanceEvents.some((acceptance) => acceptance.turnIndex >= event.turnIndex));
+  // Real discussions often acknowledge an idea immediately before the speaker
+  // states it fully, then reaffirm it afterwards ("we're going to test it").
+  // A later, referential reaffirmation is strong enough to confirm the same
+  // thread; the earlier acknowledgement is supporting context, not a required
+  // ordering assumption.
+  const reaffirmedCollectivePlan = baseCollectivePlans.some(({ event: planEvent, shape: planShape }) =>
+    collectiveReaffirmations.some(({ event, shape }) => event.turnIndex >= planEvent.turnIndex && (
+      pronominalTask(shape.action)
+      || tokenOverlap(planShape.action, shape.action) >= 0.18
+    ))
+  );
+  const acceptedCollectivePlan = acceptedAfterProposal || reaffirmedCollectivePlan;
   const requiredUnassignedWork = thread.events.some((event) => actionShape(event, evidence)?.speechAct === 'required_unassigned_work');
   const acceptedProposal = acceptedPronounProposal || acceptedCollectivePlan;
   if (thread.topologyMode !== 'distributed_recap') {
@@ -477,9 +493,16 @@ function actionsFromThread(thread, evidence, profile) {
       action: action.charAt(0).toUpperCase() + action.slice(1),
       deadline,
       evidenceIds: thread.evidenceIds,
+      representativeEvidenceIds: [...new Set([
+        shaped.event.id,
+        ...(acceptedCollectivePlan ? baseCollectivePlans.map((item) => item.event.id) : [])
+      ])],
       threadId: thread.id,
       explicitFutureCommitment: hasExplicitFutureCommitment(shaped.event.text) || acceptedCollectivePlan,
       speechAct: shaped.shape.speechAct || '',
+      reviewDisposition: shaped.shape.speechAct === 'required_unassigned_work'
+        ? 'requirement'
+        : acceptedCollectivePlan && shaped.shape.owner === 'Not stated' ? 'needs_assignment' : '',
       semanticConfidence: Number(Math.max(positive - negative, 0).toFixed(4))
     };
   }).filter(Boolean);
@@ -1927,9 +1950,13 @@ function canonicalActionText(value) {
 }
 
 function actionConfidenceTier(item, evidence, profile, selected = false) {
-  if (selected) return 'confirmed';
-  const quality = candidateReviewScore(item, evidence, profile);
   const ownerKnown = clean(item.owner) && clean(item.owner) !== 'Not stated';
+  // Selection confirms that the commitment is grounded; it does not confirm an
+  // owner that the transcript never supplied. Ownerless selected work remains
+  // a reviewer candidate rather than silently disappearing in presentation.
+  if (selected && ownerKnown) return 'confirmed';
+  if (selected) return 'review_owner_or_wording';
+  const quality = candidateReviewScore(item, evidence, profile);
   if (quality >= 0.42 && ownerKnown) return 'review_wording';
   if (quality >= 0.24) return 'review_owner_or_wording';
   return 'possible_follow_up';
@@ -2082,10 +2109,14 @@ function actionsStage(evidence, state, profile, topology) {
     const candidate = semanticThreadReviewCandidate(
       threads.find((item) => item.id === thread.threadId), evidence, profile
     );
+    const reviewedCandidate = candidate ? enrichActionReviewCandidate(candidate, { evidence, state, profile }) : null;
     return candidate
       && candidate.semanticConfidence >= 0.38
       && !reviewCandidateNoise(candidate, evidence)
-      && !actions.some((action) => action.evidenceIds?.some((id) => candidate.evidenceIds.includes(id)));
+      && reviewedCandidate?.reviewerUsefulnessTier !== 'low'
+      && !actions.some((action) => action.evidenceIds?.some((id) => candidate.evidenceIds.includes(id)))
+      && !tieredCandidates.some((visible) => visible.reviewerUsefulnessTier !== 'low'
+        && visible.evidenceIds?.some((id) => candidate.evidenceIds.includes(id)));
   });
   return {
     actions: actions.map((item) => ({ ...item, action: canonicalActionText(item.action) })),
@@ -2098,7 +2129,13 @@ function actionsStage(evidence, state, profile, topology) {
     commitmentThreads: threads,
     unresolvedThreads,
     warnings: [
-      ...(actions.length ? [] : [{ type: 'no_actions_detected', severity: 'info', message: 'No actions were found. If the meeting really had no follow-ups, mark this as reviewed. Otherwise, add the missing action manually.' }]),
+      ...(actions.length ? [] : [{
+        type: 'no_actions_detected',
+        severity: 'info',
+        message: reviewRequired.length
+          ? 'No actions have been added yet. Review the transcript snippets below and create any genuine actions, or add one manually.'
+          : 'No actions were found. If the meeting really had no follow-ups, mark this as reviewed. Otherwise, add the missing action manually.'
+      }]),
       ...(reviewRequired.length ? [{
         type: 'action_candidates_need_confirmation',
         severity: 'warning',
@@ -2145,4 +2182,4 @@ function actionsStage(evidence, state, profile, topology) {
   };
 }
 
-module.exports = { contextStage, contentStage, actionsStage, buildCommitmentThreads, actionsFromThread, semanticActionCandidate, semanticThreadReviewCandidate, hasSemanticRole, learnedSlotActions, resolveEnrichedActions, isUnderspecifiedAction, canonicalActionText, canonicalRiskText, corroboratedClosingRecapActions, workstreamActionReviewCandidates };
+module.exports = { contextStage, contentStage, actionsStage, actionConfidenceTier, buildCommitmentThreads, actionsFromThread, semanticActionCandidate, semanticThreadReviewCandidate, hasSemanticRole, learnedSlotActions, resolveEnrichedActions, isUnderspecifiedAction, canonicalActionText, canonicalRiskText, corroboratedClosingRecapActions, workstreamActionReviewCandidates };

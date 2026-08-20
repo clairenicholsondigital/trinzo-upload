@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { actionsFromThread, buildCommitmentThreads, semanticActionCandidate } = require('../utils/canonicalMinutes/semanticStages');
+const { actionConfidenceTier, actionsFromThread, buildCommitmentThreads, semanticActionCandidate } = require('../utils/canonicalMinutes/semanticStages');
 
 function profileFor(id, overrides = {}) {
   return { events: { [id]: {
@@ -101,6 +101,35 @@ test('collective plan, contextual acceptance and reaffirmation resolve into one 
   assert.equal(actions[0].explicitFutureCommitment, true);
 });
 
+test('a later referential reaffirmation confirms a collective plan when acknowledgement came first', () => {
+  const events = [
+    { id: 'e1', speaker: 'Keon Fox', turnIndex: 1, text: "Yep, that's good.", roles: [] },
+    { id: 'e2', speaker: 'Conor Flynn', turnIndex: 2, text: 'If that makes sense, what we want to do is take a really, really small slice and manually do it.', roles: [] },
+    { id: 'e3', speaker: 'Conor Flynn', turnIndex: 3, text: "And then we're going to test it.", roles: [] }
+  ];
+  const evidence = { participants: ['Conor Flynn', 'Keon Fox'], events };
+  const profile = { events: {
+    e1: profileFor('unused').events.unused,
+    e2: profileFor('unused', {
+      scores: { commitment: 0.18, request: 0.08, administrative: 0.04, hypothetical: 0.7 },
+      actionProbabilities: { confirmed_action: 0.05, possible_action: 0.3, not_action: 0.52, completed_history: 0.02 },
+      lifecycleProbabilities: { active: 0.24, completed: 0.02, inactive: 0.02 }
+    }).events.unused,
+    e3: profileFor('unused', {
+      scores: { commitment: 0.25, request: 0.05, administrative: 0.04, hypothetical: 0.45 },
+      actionProbabilities: { confirmed_action: 0.08, possible_action: 0.35, not_action: 0.5, completed_history: 0.02 },
+      lifecycleProbabilities: { active: 0.2, completed: 0.02, inactive: 0.02 }
+    }).events.unused
+  } };
+
+  const thread = buildCommitmentThreads(evidence, profile).find((item) => item.evidenceIds.includes('e2'));
+  const actions = actionsFromThread(thread, evidence, profile);
+  assert.equal(actions.length, 1);
+  assert.equal(actions[0].action, 'Manually test a small slice');
+  assert.equal(actions[0].reviewDisposition, 'needs_assignment');
+  assert.deepEqual(actions[0].representativeEvidenceIds, ['e2']);
+});
+
 test('required but unassigned work becomes a bounded reviewable action without inventing an owner', () => {
   const event = {
     id: 'e1', speaker: 'Jack Cunningham', turnIndex: 1, roles: [],
@@ -118,6 +147,7 @@ test('required but unassigned work becomes a bounded reviewable action without i
   assert.equal(actions[0].action, 'Define the acceptance criteria for supplier onboarding');
   assert.equal(actions[0].owner, 'Not stated');
   assert.equal(actions[0].speechAct, 'required_unassigned_work');
+  assert.equal(actions[0].reviewDisposition, 'requirement');
 });
 
 test('an unaccepted conditional plan is not promoted', () => {
@@ -140,4 +170,9 @@ test('a proposed operating-process description does not become an action', () =>
     evidenceProbabilities: { action_commitment: 0.08, document_control_task: 0.18, regulatory_obligation: 0.01, low_value_noise: 0.05 }
   });
   assert.equal(semanticActionCandidate(event, profile), false);
+});
+
+test('selection does not label an ownerless action as confirmed', () => {
+  assert.equal(actionConfidenceTier({ owner: 'Not stated' }, {}, {}, true), 'review_owner_or_wording');
+  assert.equal(actionConfidenceTier({ owner: 'Amina Shah' }, {}, {}, true), 'confirmed');
 });

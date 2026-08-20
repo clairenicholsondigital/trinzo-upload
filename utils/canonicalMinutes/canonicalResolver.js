@@ -96,7 +96,11 @@ function consolidate(items, options) {
     const representative = [...group].sort((left, right) => options.qualityOf(right) - options.qualityOf(left))[0];
     return {
       ...representative,
-      representativeEvidenceIds: [...(representative.evidenceIds || [])],
+      representativeEvidenceIds: [...(
+        Array.isArray(representative.representativeEvidenceIds) && representative.representativeEvidenceIds.length
+          ? representative.representativeEvidenceIds
+          : representative.evidenceIds || []
+      )],
       evidenceIds: [...new Set(group.flatMap((item) => item.evidenceIds || []))]
     };
   });

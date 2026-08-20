@@ -1606,8 +1606,13 @@ td select {
 
   function actionsFromReview() {
     return Array.prototype.slice.call(actionsTableBody ? actionsTableBody.querySelectorAll('tr') : []).map(function (row) {
+      if (row.querySelector('.empty-state')) return null;
       return actionFromRow(row);
-    }).filter(function (item) { return item.owner || item.action || item.deadline; });
+    }).filter(function (item) {
+      // Owner defaults to "Not stated", so it cannot establish that a real row
+      // exists. Only a substantive action should count or persist.
+      return item && Boolean(String(item.action || '').trim());
+    });
   }
 
   function renderFinalDocument() {

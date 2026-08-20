@@ -25,6 +25,24 @@ test('generic consolidation groups paraphrases by owner and shared entity anchor
   assert.deepEqual(result[0].evidenceIds, ['a', 'b']);
 });
 
+test('consolidation preserves the winning action event separately from broad thread evidence', () => {
+  const result = consolidate([
+    {
+      owner: 'Not stated',
+      action: 'Manually test a small slice',
+      evidenceIds: ['ack', 'plan', 'reaffirmation'],
+      representativeEvidenceIds: ['plan']
+    }
+  ], {
+    textOf: (item) => item.action,
+    ownerOf: (item) => item.owner,
+    qualityOf: () => 1,
+    eventById: new Map([['ack', { turnIndex: 1 }], ['plan', { turnIndex: 2 }], ['reaffirmation', { turnIndex: 3 }]])
+  });
+  assert.deepEqual(result[0].evidenceIds, ['ack', 'plan', 'reaffirmation']);
+  assert.deepEqual(result[0].representativeEvidenceIds, ['plan']);
+});
+
 test('generic consolidation does not group the same entity across different owners', () => {
   const result = consolidate([
     { owner: 'Alex Morgan', action: 'Contact Morgan today', evidenceIds: ['a'] },

@@ -151,6 +151,8 @@ function classificationForCandidate(candidate = {}, options = {}) {
     && !explicitRequest;
   const completeReviewableProposition = Boolean(
     candidate.reviewDisposition === 'requirement'
+    || candidate.speechAct === 'required_unassigned_work'
+    || (/^collective_plan/.test(clean(candidate.speechAct)) && candidate.explicitFutureCommitment)
     || followUpVerb
     || explicitRequest
     || (explicitCommitment && concreteArtefact)
@@ -252,6 +254,8 @@ function reviewerUsefulness(candidate = {}, options = {}) {
   const purpose = clean(options.state?.meeting?.purpose || options.state?.meetingUnderstanding?.meetingPurpose || '');
   const purposeScore = purpose ? tokenSimilarity(`${candidate.suggestedAction || candidate.action} ${candidateEvidenceText(candidate, options)}`, purpose) : 0;
   let score = 0.18;
+  if (candidate.speechAct === 'required_unassigned_work') score += 0.24;
+  if (/^collective_plan/.test(clean(candidate.speechAct)) && candidate.explicitFutureCommitment) score += 0.2;
   if (cls.explicitCommitment && !cls.processDescription) score += 0.22;
   if (cls.explicitRequest) score += 0.22;
   if (cls.concreteArtefact) score += 0.18;
@@ -270,7 +274,8 @@ function reviewerUsefulness(candidate = {}, options = {}) {
   if (cls.completed && !/\b(?:project plan|task list|follow[- ]?up|pending|outstanding|still|align)\b/i.test(`${candidate.action || ''} ${candidateEvidenceText(candidate, options)}`)) score -= 0.55;
   else if (cls.completed) score -= 0.18;
   if (cls.hypothetical && !cls.dependency) score -= 0.22;
-  if (!cls.concreteArtefact && !cls.dependency) score -= 0.16;
+  const groundedProspectivePlan = /^collective_plan/.test(clean(candidate.speechAct)) && candidate.explicitFutureCommitment;
+  if (!cls.concreteArtefact && !cls.dependency && !groundedProspectivePlan) score -= 0.16;
   if (/^(?:do or like|do|like)$/i.test(clean(candidate.action))) score -= 0.65;
   if (cls.fragmentary) score = Math.min(score, 0.24);
   if (cls.informational && candidate.reviewDisposition !== 'requirement') score = Math.min(score, 0.32);

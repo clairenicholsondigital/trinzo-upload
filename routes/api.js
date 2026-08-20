@@ -4026,16 +4026,31 @@ function serialiseActionReviewCandidate(item = {}) {
 }
 
 function attachActionCandidateSourceSnippets(payload = {}) {
-  const evidenceById = new Map((Array.isArray(payload._canonicalEvidencePack) ? payload._canonicalEvidencePack : [])
-    .flatMap((pack) => Array.isArray(pack?.evidence) ? pack.evidence : [])
+  const packedEvidence = (Array.isArray(payload._canonicalEvidencePack) ? payload._canonicalEvidencePack : [])
+    .flatMap((pack) => Array.isArray(pack?.evidence) ? pack.evidence : []);
+  const evidenceById = new Map(packedEvidence
+    .flatMap((entry) => [entry, ...(Array.isArray(entry?.contextWindow) ? entry.contextWindow : [])])
     .filter((entry) => entry?.id)
     .map((entry) => [String(entry.id), entry]));
-  for (const flag of Array.isArray(payload.validationFlags) ? payload.validationFlags : []) {
-    for (const candidate of Array.isArray(flag?.repairCandidates) ? flag.repairCandidates : []) {
-      if (candidate.sourceSnippet) continue;
-      const evidence = (Array.isArray(candidate.evidenceIds) ? candidate.evidenceIds : [])
+  const candidateLists = [
+    ...(Array.isArray(payload.validationFlags) ? payload.validationFlags : []).map((flag) => flag?.repairCandidates),
+    payload.actionReviewCandidates
+  ];
+  for (const candidates of candidateLists) {
+    for (const candidate of Array.isArray(candidates) ? candidates : []) {
+      const evidence = [
+        ...(Array.isArray(candidate.representativeEvidenceIds) ? candidate.representativeEvidenceIds : []),
+        ...(Array.isArray(candidate.evidenceIds) ? candidate.evidenceIds : [])
+      ]
         .map((id) => evidenceById.get(String(id)))
-        .find((entry) => entry?.current || entry?.text);
+        .filter(Boolean)
+        .map((entry) => ({
+          entry,
+          snippet: cleanStagedEvidenceSnippet(entry.current || entry.text),
+          relevance: stagedTokenSimilarity(candidate.suggestedAction || candidate.action, entry.current || entry.text)
+        }))
+        .filter((item) => item.snippet)
+        .sort((left, right) => right.relevance - left.relevance || left.snippet.length - right.snippet.length)[0]?.entry;
       if (!evidence) continue;
       candidate.sourceSnippet = cleanStagedGeneratedLine(evidence.current || evidence.text);
       candidate.sourceSpeaker = cleanStagedGeneratedLine(evidence.speaker || '');
@@ -4089,6 +4104,7 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
       ];
     }
   }
+  const canonicalEvidencePack = Array.isArray(payload._canonicalEvidencePack) ? payload._canonicalEvidencePack : [];
   let polished = { payload, used: false, reason: 'Trooper is not used for this stage.' };
   if (['discussion', 'actions'].includes(stage)) {
     try {
@@ -4126,6 +4142,10 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
     };
   }
   let result = clientReadyPresentation(polished.payload);
+  if (stage === 'actions' && canonicalEvidencePack.length) {
+    result = attachActionCandidateSourceSnippets({ ...result, _canonicalEvidencePack: canonicalEvidencePack });
+    delete result._canonicalEvidencePack;
+  }
   let initialUnderstandingPolish = { used: false, reason: 'not_applicable' };
   const presentationInitialSummary = result?.screens?.summary;
   if (stage === 'summary' && presentationInitialSummary) {
