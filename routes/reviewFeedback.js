@@ -4,10 +4,20 @@ const {
   createReviewFeedback,
   listReviewFeedback,
   reviewScreenshotPath,
+  summariseReviewFeedback,
   updateReviewFeedbackStatus
 } = require('../utils/reviewFeedbackStore');
 
 const router = express.Router();
+
+async function summaryHandler(req, res) {
+  try {
+    const summary = await summariseReviewFeedback();
+    return res.json({ ok: true, ...summary });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error.message || 'Feedback summary could not be loaded.' });
+  }
+}
 
 router.post('/', async (req, res) => {
   try {
@@ -52,3 +62,4 @@ router.get('/screenshots/:fileName', async (req, res) => {
 });
 
 module.exports = router;
+module.exports.summaryHandler = summaryHandler;

@@ -3,6 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
+  dedupeObjectives,
   deterministicPresentationFallback,
   objectiveIssue,
   polishInitialUnderstanding,
@@ -45,6 +46,25 @@ test('isolated polish removes repetition without changing the structural topics'
   assert.match(requestBody.messages[1].content, /Return JSON only as \{"meetingPurpose"/);
   assert.doesNotMatch(requestBody.messages[1].content, /\[TRANSCRIPT\]/i);
   assert.deepEqual(input.overallTopics, ['Alarm behaviour and controls', "Lovely, that's one sorted", 'Now, the annual show']);
+});
+
+test('objective cleanup de-duplicates different intent wording for the same workstream', () => {
+  const objectives = [
+    'Clarify quality and risk management and related next steps.',
+    'Clarify customer and stakeholder feedback and related next steps.',
+    'Review quality and risk management.',
+    'Review customer and stakeholder feedback.'
+  ];
+  assert.deepEqual(dedupeObjectives(objectives), objectives.slice(0, 2));
+
+  const fallback = deterministicPresentationFallback({
+    meetingTitle: 'Management review',
+    meetingPurpose: 'Review quality, risk and stakeholder feedback.',
+    objectives,
+    overallTopics: ['Quality and risk management', 'Customer and stakeholder feedback'],
+    executiveSummary: 'The meeting reviewed quality and risk management and customer and stakeholder feedback.'
+  });
+  assert.deepEqual(fallback.objectives, objectives.slice(0, 2));
 });
 
 test('polish rejects invented protected facts', () => {

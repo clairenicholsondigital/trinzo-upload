@@ -14,6 +14,7 @@ const { editorialTopicLabel, editorialTopics } = require('./topicEditorial');
 const { repairDiscussionForConfirmedUnderstanding } = require('../stagedSemanticAuthority');
 const { enrichActionReviewCandidate, rankAndClusterActionReviewCandidates, hasImporterProcedureContext } = require('./actionReviewRanking');
 const { finaliseDiscussionPointForMinutes } = require('../stagedEditorial');
+const { prospectiveLanguageShape, pronominalTask, trimProspectiveTaskClause } = require('./prospectiveTasks');
 
 function unique(items, key) {
   const seen = new Set();
@@ -23,6 +24,17 @@ function unique(items, key) {
     seen.add(value);
     return true;
   });
+}
+
+function neutraliseCollectiveVoice(value) {
+  return clean(value)
+    .replace(/\bwe[’']d\b/gi, 'the team would')
+    .replace(/\bwe[’']ll\b/gi, 'the team will')
+    .replace(/\bwe(?:[’']ve| have)\b/gi, 'the team has')
+    .replace(/\bwe(?:[’']re| are)\b/gi, 'the team is')
+    .replace(/\bwe\b/gi, 'the team')
+    .replace(/\bour\b/gi, "the team's")
+    .replace(/\b(would|will|can|could|should|to)\s+feedback\b/gi, '$1 feed back');
 }
 
 function stableCandidatePart(value) {
@@ -123,8 +135,18 @@ function hasExplicitFutureCommitment(text) {
     && !/\?\s*$/.test(clean(text));
 }
 
+function acceptanceStrength(profile, event) {
+  return Math.max(
+    score(profile, event, 'acceptance'),
+    enrichedProbability(profile, event, 'discourseRoleProbabilities', 'acceptance'),
+    enrichedProbability(profile, event, 'contextDependencyProbabilities', 'accepts_previous')
+  );
+}
+
 function actionShape(event, evidence) {
   const text = clean(event.text);
+  const prospectiveShape = prospectiveLanguageShape(event);
+  if (prospectiveShape) return prospectiveShape;
   const shapes = [
     { re: /^(.+?)\s+(?:are|is)\s+still not finalised[.!]?$/i, owner: () => 'Not stated', action: (match) => `Finalise ${match[1]}` },
     { re: /^(.+?)\s+input is still missing for\s+(.+?)[.!]?$/i, owner: () => 'Not stated', action: (match) => `Provide ${match[1]} input for ${match[2]}` },
@@ -288,34 +310,52 @@ function buildCommitmentThreads(evidence, profile, topology = { mode: 'standard'
   const sourceEvents = topology.mode === 'distributed_recap' && topology.evidenceWindow
     ? evidence.events.slice(topology.evidenceWindow.startIndex, topology.evidenceWindow.endIndex + 1)
     : evidence.events;
-  const candidates = sourceEvents.filter((event) => {
+  const candidates = sourceEvents.filter((event, sourceIndex) => {
     const shape = actionShape(event, evidence);
     const confirmed = trainedProbability(profile, event, 'actionProbabilities', 'confirmed_action');
     const possible = trainedProbability(profile, event, 'actionProbabilities', 'possible_action');
     const notAction = trainedProbability(profile, event, 'actionProbabilities', 'not_action');
     const completed = trainedProbability(profile, event, 'actionProbabilities', 'completed_history');
     const commitmentSignal = trainedProbability(profile, event, 'signalProbabilities', 'explicit_commitment_verb');
+    const active = trainedProbability(profile, event, 'lifecycleProbabilities', 'active');
+    const contextualAcceptance = acceptanceStrength(profile, event);
+    const hasRecentCollectivePlan = contextualAcceptance >= 0.5 && sourceEvents
+      .slice(Math.max(0, sourceIndex - 16), sourceIndex)
+      .some((prior) => /^collective_plan/.test(actionShape(prior, evidence)?.speechAct || ''));
+    const genericProspectiveShape = Boolean(shape?.speechAct) && (
+      possible >= 0.2
+      || confirmed >= 0.15
+      || active >= 0.12
+      || commitmentSignal >= 0.3
+    );
     return (Boolean(shape) && (
       event.roles.includes('action_candidate')
       || topology.mode === 'distributed_recap'
       || confirmed >= 0.26
       || (possible >= 0.25 && commitmentSignal >= 0.48)
       || (topology.mode === 'distributed_recap' && Math.max(confirmed, possible) >= Math.max(notAction, completed) - 0.12)
-    )) || semanticActionCandidate(event, profile);
+    )) || genericProspectiveShape || hasRecentCollectivePlan || semanticActionCandidate(event, profile);
   });
   for (const event of candidates) {
     const eventShape = actionShape(event, evidence);
     const eventIndex = evidence.events.findIndex((item) => item.id === event.id);
     const existing = [...threads].reverse().find((thread) => {
       if (event.turnIndex - thread.turnEnd > 2) return false;
-      const maxEventGap = topology.mode === 'distributed_recap' ? 16 : 8;
+      // Short acknowledgements often confirm a plan that was explained over
+      // several intervening sentences. The contextual MiniLM head is allowed
+      // to widen this relationship window; topic words are not.
+      const contextualAcceptance = acceptanceStrength(profile, event);
+      const maxEventGap = topology.mode === 'distributed_recap' || contextualAcceptance >= 0.5 ? 16 : 8;
       const maxThreadEvents = topology.mode === 'distributed_recap' ? 12 : 6;
-      if (thread.events.length >= maxThreadEvents) return false;
+      const followsAcceptedPlan = /^collective_plan/.test(eventShape?.speechAct || '')
+        && acceptanceStrength(profile, thread.events.at(-1)) >= 0.5
+        && eventIndex - thread.eventEndIndex <= 3;
+      if (thread.events.length >= maxThreadEvents && !followsAcceptedPlan) return false;
       if (Number.isInteger(thread.eventEndIndex) && eventIndex - thread.eventEndIndex > maxEventGap) return false;
       const priorShape = [...thread.events].reverse().map((item) => actionShape(item, evidence)).find(Boolean);
       if (eventShape?.owner && priorShape?.owner && eventShape.owner !== priorShape.owner && eventShape.action && !/^(?:do|handle|take)\s+(?:it|that)\b/i.test(eventShape.action)) return false;
       return thread.speakers.includes(event.speaker)
-        || score(profile, event, 'acceptance') >= 0.38
+        || contextualAcceptance >= 0.38
         || score(profile, event, 'request') >= 0.38
         || (priorShape?.owner === event.speaker && score(profile, event, 'commitment') >= 0.3);
     });
@@ -368,21 +408,40 @@ function actionsFromThread(thread, evidence, profile) {
   const trainedNotAction = Math.max(...thread.events.map((event) => trainedProbability(profile, event, 'actionProbabilities', 'not_action')), 0);
   const explicitActionForm = thread.events.some((event) => event.roles.includes('action_candidate') && actionShape(event, evidence));
   const strongExplicitAction = thread.events.some((event) => event.roles.includes('action_candidate') && !event.roles.includes('hypothetical') && (hasExplicitFutureCommitment(event.text) || /\bI\s+(?:need to|must|have to)\b/i.test(event.text)) && actionShape(event, evidence));
-  const acceptedProposal = thread.events.some((event) => {
+  const acceptedPronounProposal = thread.events.some((event) => {
     const shape = actionShape(event, evidence);
-    if (!shape || !/^(?:do|handle|take)\s+(?:it|that)[.!?]*$/i.test(shape.action)) return false;
+    if (!shape || !pronominalTask(shape.action)) return false;
     const sourceIndex = evidence.events.findIndex((item) => item.id === event.id);
     return evidence.events.slice(Math.max(0, sourceIndex - 10), sourceIndex).some((item) => /\bwe need(?: to)?\s+.+/i.test(item.text));
   });
+  const collectivePlans = thread.events
+    .map((event) => ({ event, shape: actionShape(event, evidence) }))
+    .filter((item) => /^collective_plan/.test(item.shape?.speechAct || ''));
+  const acceptanceEvents = thread.events.filter((event) => acceptanceStrength(profile, event) >= 0.5);
+  const acceptedCollectivePlan = collectivePlans.some(({ event }) => acceptanceEvents.some((acceptance) => acceptance.turnIndex >= event.turnIndex));
+  const requiredUnassignedWork = thread.events.some((event) => actionShape(event, evidence)?.speechAct === 'required_unassigned_work');
+  const acceptedProposal = acceptedPronounProposal || acceptedCollectivePlan;
   if (thread.topologyMode !== 'distributed_recap') {
-    if (!explicitActionForm && !acceptedProposal && trainedCompleted > trainedConfirmed + 0.12) return [];
-    if (!explicitActionForm && !acceptedProposal && trainedNotAction > trainedConfirmed + 0.2 && trainedConfirmed < 0.28) return [];
+    if (!explicitActionForm && !acceptedProposal && !requiredUnassignedWork && trainedCompleted > trainedConfirmed + 0.12) return [];
+    if (!explicitActionForm && !acceptedProposal && !requiredUnassignedWork && trainedNotAction > trainedConfirmed + 0.2 && trainedConfirmed < 0.28) return [];
     if (!acceptedProposal && !strongExplicitAction && thread.semanticScores.hypothetical >= 0.7 && thread.semanticScores.hypothetical > positive + 0.08) return [];
     if (thread.semanticScores.rejection >= 0.6 && thread.semanticScores.rejection > positive + 0.08) return [];
   }
-  const shapedEvents = thread.events.map((event) => ({ event, shape: actionShape(event, evidence) })).filter((item) => item.shape?.action && item.shape?.owner && (!item.event.roles.includes('hypothetical') || acceptedProposal));
-  const concrete = shapedEvents.filter((item) => !/^(?:do|handle|take)\s+(?:it|that)\b/i.test(item.shape.action));
-  return (concrete.length ? concrete : shapedEvents).map((shaped) => {
+  const shapedEvents = thread.events.map((event) => ({ event, shape: actionShape(event, evidence) })).filter((item) => item.shape?.action && item.shape?.owner && (!item.event.roles.includes('hypothetical') || acceptedProposal || item.shape.speechAct === 'required_unassigned_work'));
+  const concrete = shapedEvents.filter((item) => !pronominalTask(item.shape.action));
+  let selected = concrete.length ? concrete : shapedEvents;
+  if (acceptedCollectivePlan && collectivePlans.length) {
+    const plan = collectivePlans.find((item) => !pronominalTask(item.shape.action)) || collectivePlans[0];
+    const reaffirmation = collectivePlans.find((item) => item !== plan && /^([a-z][a-z-]*)\s+(?:it|that|this)$/i.test(clean(item.shape.action)));
+    let action = trimProspectiveTaskClause(plan.shape.action);
+    const manualPlaceholder = action.match(/^take\s+(.+?)\s+and\s+([a-z-]+ly\s+)?do it$/i);
+    const reaffirmedVerb = reaffirmation?.shape.action.match(/^([a-z][a-z-]*)\s+(?:it|that|this)$/i)?.[1];
+    if (manualPlaceholder && reaffirmedVerb) {
+      action = `${clean(manualPlaceholder[2])} ${reaffirmedVerb} ${clean(manualPlaceholder[1])}`;
+    }
+    selected = [{ event: plan.event, shape: { ...plan.shape, action: clean(action) } }];
+  }
+  return selected.map((shaped) => {
     let deadline = deadlineFrom(shaped.event.text);
     let action = stripDeadline(shaped.shape.action, deadline)
       .replace(/^(?:yeah|yes|okay|right|agreed)[,;:\s]+/i, '')
@@ -419,21 +478,18 @@ function actionsFromThread(thread, evidence, profile) {
       deadline,
       evidenceIds: thread.evidenceIds,
       threadId: thread.id,
-      explicitFutureCommitment: hasExplicitFutureCommitment(shaped.event.text),
+      explicitFutureCommitment: hasExplicitFutureCommitment(shaped.event.text) || acceptedCollectivePlan,
+      speechAct: shaped.shape.speechAct || '',
       semanticConfidence: Number(Math.max(positive - negative, 0).toFixed(4))
     };
   }).filter(Boolean);
 }
 
 function titleFromRepresentative(text) {
-  const value = clean(text)
+  const value = neutraliseCollectiveVoice(clean(text)
     .replace(/^(?:yeah|yes|okay|right|so|well)[,;:\s]+/i, '')
     .replace(/^(?:I|we|they|the team)\s+(?:think|know|discussed|reviewed|covered|noted|said|have|has)\s+(?:that\s+)?/i, '')
-    .replace(/^I(?:['’]ll|\s+(?:can|will|shall|need to))\s+/i, '')
-    .replace(/\bwe(?:'ve| have)\b/gi, 'the team has')
-    .replace(/\bwe(?:'re| are)\b/gi, 'the team is')
-    .replace(/\bwe\b/gi, 'the team')
-    .replace(/\bour\b/gi, "the team's")
+    .replace(/^I(?:['’]ll|\s+(?:can|will|shall|need to))\s+/i, ''))
     .replace(/[.?!]+$/, '');
   const words = value.split(/\s+/).slice(0, 10).join(' ');
   return words ? words.charAt(0).toUpperCase() + words.slice(1) : 'Substantive discussion';
@@ -462,11 +518,9 @@ function minutesPoint(text, speaker = '') {
     .replace(/\bI['’]ll\b/gi, `${subject} will`)
     .replace(/\bI['’]m\b/gi, `${subject} is`)
     .replace(/\bI['’]ve\b/gi, `${subject} has`)
-    .replace(/\bwe(?:'ve| have)\b/gi, 'the team has')
-    .replace(/\bwe\b/gi, 'the team')
-    .replace(/\bour\b/gi, "the team's")
     .replace(/\bI\b/g, subject)
     .replace(/\bmy\b/gi, `${subject}'s`);
+  value = neutraliseCollectiveVoice(value);
   const escapedSubject = subject.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   value = value
     .replace(new RegExp(`\\b${escapedSubject} (?:don['’]?t|do not)\\b`, 'gi'), `${subject} does not`)

@@ -104,6 +104,7 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn('data-endpoint="/api/review-feedback"', server)
         self.assertIn("app.get('/review-feedback', authRoutes.requireAuth", server)
         self.assertIn("app.use('/api/review-feedback', authRoutes.requireAuth, reviewFeedbackRoutes)", server)
+        self.assertIn("app.get('/api/review-feedback/summary', reviewFeedbackRoutes.summaryHandler)", server)
         self.assertIn('href="/review-feedback"', dashboard)
         self.assertIn("?review=1", review_page)
         self.assertIn("/api/review-feedback/screenshots/", review_page)

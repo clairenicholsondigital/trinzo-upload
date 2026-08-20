@@ -217,6 +217,13 @@ function isMalformedStagedLine(value) {
   if (/\b(?:that will,?\s+that|will,?\s+that)\b/i.test(text) && !/\b(?:the team|discussion|review|meeting)\b/i.test(text)) return true;
   if (/\b(?:they may or may not|may or may not),?\s+(?:like|you know)\b/i.test(text)) return true;
   if (/\b(?:it['’]?s|that['’]?s)\s+(?:minimal|probably|maybe)\b/i.test(text) && !/\b(?:the team|discussion|review)\b/i.test(text)) return true;
+  // A bare-pronoun replacement must never leave an English contraction glued
+  // to a noun (the former formatter could turn "we'd" into "the team'd").
+  if (/\b(?:team|group|meeting|discussion|review)['’]d\b/i.test(text)) return true;
+  // Reject an unresolved transcript clause rather than guessing at its
+  // intended meaning. Clean minutes may say "feed results back", but not that
+  // something should "feed back how ... has gone back in".
+  if (/\b(?:feed\s+back|feedback)\s+how\b.*\b(?:gone|went|goes?)\s+back\s+in\b/i.test(text)) return true;
   return false;
 }
 

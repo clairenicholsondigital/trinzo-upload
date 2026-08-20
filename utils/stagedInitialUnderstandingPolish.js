@@ -18,6 +18,31 @@ function cleanLines(value, limit = 8) {
     .slice(0, limit);
 }
 
+// Objectives can express the same workstream with different editorial verbs
+// (for example, "Clarify X and related next steps" and "Review X").  Exact
+// string de-duplication cannot spot that.  Keep this deliberately lexical and
+// conservative: it removes only the standard objective framing that Trinzo
+// itself adds, then compares the remaining workstream wording.
+function objectiveSemanticKey(value) {
+  return clean(value)
+    .toLowerCase()
+    .replace(/^(?:(?:review|clarify|confirm|coordinate|align|discuss|identify|agree)(?:\s+and\s+)?)+\s+/i, '')
+    .replace(/\s+and\s+(?:the\s+)?related\s+next\s+steps\.?$/i, '')
+    .replace(/\s+and\s+next\s+steps\.?$/i, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function dedupeObjectives(value, limit = 5) {
+  const seen = new Set();
+  return cleanLines(value, Math.max(limit * 2, 8)).filter((item) => {
+    const key = objectiveSemanticKey(item);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, limit);
+}
+
 function protectedFacts(value) {
   return new Set([
     ...(clean(value).match(/\b\d+(?:[.,:]\d+)*(?:%|st|nd|rd|th)?\b/g) || []),
@@ -79,11 +104,12 @@ function normaliseTopicObjective(topic) {
 }
 
 function deterministicPresentationFallback(original, reason = 'unsafe_presentation') {
-  const objectives = cleanLines(original.objectives, 5)
+  const objectives = dedupeObjectives(original.objectives, 5)
     .filter((item) => !objectiveIssue(item));
   for (const topic of cleanLines(original.overallTopics, 8)) {
     const objective = normaliseTopicObjective(topic);
-    if (objective && !objectives.some((item) => item.toLowerCase() === objective.toLowerCase())) {
+    const key = objectiveSemanticKey(objective);
+    if (objective && key && !objectives.some((item) => objectiveSemanticKey(item) === key)) {
       objectives.push(objective);
     }
     if (objectives.length >= 5) break;
@@ -109,7 +135,7 @@ function deterministicPresentationFallback(original, reason = 'unsafe_presentati
 function validateInitialUnderstandingRevision(original, revised) {
   const originalPurposeIssue = presentationTextIssue(original.meetingPurpose, 'purpose');
   const meetingPurpose = clean(revised?.meetingPurpose) || (originalPurposeIssue ? '' : clean(original.meetingPurpose));
-  const objectives = cleanLines(revised?.objectives, 5);
+  const objectives = dedupeObjectives(revised?.objectives, 5);
   const executiveSummary = clean(revised?.executiveSummary);
   if (!meetingPurpose || !objectives.length || !executiveSummary) return { ok: false, reason: 'incomplete_response' };
   const sourceNeedsPresentationPolish = hasPresentationIssue(original);
@@ -161,7 +187,7 @@ async function polishInitialUnderstanding(input = {}, options = {}) {
   const original = {
     meetingTitle: clean(input.meetingTitle),
     meetingPurpose: clean(input.meetingPurpose),
-    objectives: cleanLines(input.objectives, 5),
+    objectives: dedupeObjectives(input.objectives, 5),
     overallTopics: cleanLines(input.overallTopics, 8),
     executiveSummary: clean(input.executiveSummary)
   };
@@ -228,7 +254,9 @@ async function polishInitialUnderstanding(input = {}, options = {}) {
 }
 
 module.exports = {
+  dedupeObjectives,
   deterministicPresentationFallback,
+  objectiveSemanticKey,
   objectiveIssue,
   polishInitialUnderstanding,
   validateInitialUnderstandingRevision

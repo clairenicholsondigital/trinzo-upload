@@ -106,6 +106,10 @@ app.get('/review-feedback', authRoutes.requireAuth, (req, res) => {
   sendView(res, 'review-feedback.html').catch((error) => res.status(404).send(error.message));
 });
 
+// Aggregate-only integration endpoint. It intentionally exposes no comments,
+// reviewer details, page URLs or screenshots.
+app.get('/api/review-feedback/summary', reviewFeedbackRoutes.summaryHandler);
+
 // The project workspace: one project-first page hosting the Setup → Process →
 // Reports → Insights stages. The old standalone list pages now redirect into the
 // matching workspace stage; the detail pages (single report/milestone/snapshot)

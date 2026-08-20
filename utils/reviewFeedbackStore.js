@@ -65,6 +65,38 @@ async function listReviewFeedback({ limit = 100 } = {}) {
   return entries.slice(0, safeLimit);
 }
 
+function incrementCount(counts, value, fallback = '') {
+  const key = cleanString(value || fallback, 100).toLowerCase();
+  if (key) counts[key] = (counts[key] || 0) + 1;
+}
+
+async function summariseReviewFeedback() {
+  const entries = await readJson(feedbackFile(), []);
+  const openEntries = entries.filter((entry) => cleanString(entry?.status || 'open', 20).toLowerCase() === 'open');
+  const priorityCounts = { low: 0, normal: 0, high: 0, urgent: 0 };
+  const allTagCounts = {};
+  const tagCounts = {};
+
+  for (const entry of entries) {
+    const tags = [...new Set((Array.isArray(entry?.tags) ? entry.tags : cleanTags(entry?.tags))
+      .map((tag) => cleanString(tag, 100).toLowerCase())
+      .filter(Boolean))];
+    for (const tag of tags) incrementCount(allTagCounts, tag);
+    if (cleanString(entry?.status || 'open', 20).toLowerCase() === 'open') {
+      incrementCount(priorityCounts, entry?.priority, 'normal');
+      for (const tag of tags) incrementCount(tagCounts, tag);
+    }
+  }
+
+  return {
+    totalSnippets: entries.length,
+    openCount: openEntries.length,
+    openByPriority: priorityCounts,
+    tagCounts: Object.fromEntries(Object.entries(allTagCounts).sort(([left], [right]) => left.localeCompare(right))),
+    openTagCounts: Object.fromEntries(Object.entries(tagCounts).sort(([left], [right]) => left.localeCompare(right)))
+  };
+}
+
 async function createReviewFeedback(payload = {}, reviewer = {}) {
   const comment = cleanString(payload.comment, 4000);
   if (!comment) {
@@ -135,5 +167,6 @@ module.exports = {
   createReviewFeedback,
   listReviewFeedback,
   reviewScreenshotPath,
+  summariseReviewFeedback,
   updateReviewFeedbackStatus
 };

@@ -8,6 +8,7 @@ const {
   createReviewFeedback,
   listReviewFeedback,
   reviewScreenshotPath,
+  summariseReviewFeedback,
   updateReviewFeedbackStatus
 } = require('../utils/reviewFeedbackStore');
 
@@ -60,4 +61,35 @@ test('review feedback store rejects empty comments and non-image payloads', asyn
     () => createReviewFeedback({ comment: 'Broken', screenshotDataUrl: 'not an image' }),
     /PNG or JPEG/
   );
+});
+
+test('review feedback summary counts only open priorities and tags', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'trinzo-review-feedback-summary-'));
+  process.env.REVIEW_FEEDBACK_DATA_DIR = tempDir;
+
+  const first = await createReviewFeedback({
+    comment: 'First open item', priority: 'high', tags: 'Actions, wording',
+    screenshotDataUrl: 'data:image/png;base64,aGVsbG8='
+  });
+  await createReviewFeedback({
+    comment: 'Second open item', priority: 'urgent', tags: 'actions, mobile',
+    screenshotDataUrl: 'data:image/png;base64,aGVsbG8='
+  });
+  const closed = await createReviewFeedback({
+    comment: 'Closed item', priority: 'high', tags: 'actions, closed-only',
+    screenshotDataUrl: 'data:image/png;base64,aGVsbG8='
+  });
+  await updateReviewFeedbackStatus(closed.id, 'closed');
+
+  assert.equal(first.status, 'open');
+  assert.deepEqual(await summariseReviewFeedback(), {
+    totalSnippets: 3,
+    openCount: 2,
+    openByPriority: { low: 0, normal: 0, high: 1, urgent: 1 },
+    tagCounts: { actions: 3, 'closed-only': 1, mobile: 1, wording: 1 },
+    openTagCounts: { actions: 2, mobile: 1, wording: 1 }
+  });
+
+  await fs.rm(tempDir, { recursive: true, force: true });
+  delete process.env.REVIEW_FEEDBACK_DATA_DIR;
 });

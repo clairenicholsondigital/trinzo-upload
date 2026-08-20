@@ -232,6 +232,7 @@ test('finaliseDiscussionPointForMinutes drops browser-observed malformed downstr
   assert.equal(finaliseDiscussionPointForMinutes('The tracker and query log were discussed on the basis of access shirt.', 'Preparation, confidentiality and document access'), '');
   assert.equal(finaliseDiscussionPointForMinutes('The documentation currently goes from version one to 102.', 'Change control and version traceability'), '');
   assert.equal(finaliseDiscussionPointForMinutes('The standards review included back-to-somber pressure valves.', 'Standards and risk-management work'), '');
+  assert.equal(finaliseDiscussionPointForMinutes("The team'd feedback how that has gone back in for the team's learning and see if the team can improve it from there.", 'Customer and stakeholder feedback'), '');
 });
 
 test('finaliseDiscussionPointForMinutes rejects the leaked T761 reported-speech fragments', () => {
@@ -293,6 +294,9 @@ test('client-clean discussion filtering is topic-agnostic and preserves formal m
 test('isMalformedStagedLine catches other dangling qualifiers and glued clauses', () => {
   assert.equal(isMalformedStagedLine('Possible This is a risk to the timeline'), true);
   assert.equal(isMalformedStagedLine('the plan was agreed They will review it next week'), true);
+  assert.equal(isMalformedStagedLine("The team'd review the results next week."), true);
+  assert.equal(isMalformedStagedLine("The team would feed back how that has gone back in for the team's learning."), true);
+  assert.equal(isMalformedStagedLine('The team would feed the results back into the review process to support learning.'), false);
 });
 
 test('isMalformedStagedLine rejects browser-observed QMS transcript fragments', () => {
