@@ -344,6 +344,15 @@ function repairDiscussionForConfirmedUnderstanding({ discussion = [], understand
         blocking: true,
         resolutionKey: `reviewer-confirmed-fact:${fact.id}`,
         message: reviewerConfirmedFactMissingMessage(fact.text, suggestedTopic),
+        // The same information, in parts, so the reviewer's screen can show the
+        // quoted point as a quote and the section as a label instead of running
+        // all three of them together into one paragraph. `message` stays as the
+        // single-string form for anything that reads flags without rendering.
+        detail: {
+          lead: 'Missing from Discussion',
+          quote: shortReviewText(fact.text, 240),
+          meta: shortReviewText(suggestedTopic || topicForFact(fact.text), 90)
+        },
         discussionSuggestion: {
           topic: suggestedTopic,
           point: fact.text,
