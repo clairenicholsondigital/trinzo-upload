@@ -1,0 +1,1152 @@
+[
+  {
+    "file": "scripts/meeting-minutes-core-golden/cases/01_explicit_action_recap/transcript.docx",
+    "turns": 174,
+    "events": 255,
+    "participants": 4,
+    "contentChars": 12679,
+    "parsedChars": 12535,
+    "coverage": 0.989,
+    "hash": "1290b586532f4a74"
+  },
+  {
+    "file": "scripts/meeting-minutes-core-golden/cases/02_scattered_actions/transcript.docx",
+    "turns": 48,
+    "events": 76,
+    "participants": 4,
+    "contentChars": 3086,
+    "parsedChars": 2962,
+    "coverage": 0.96,
+    "hash": "d0de9b2874cb8b41"
+  },
+  {
+    "file": "scripts/meeting-minutes-core-golden/cases/03_superseded_actions/transcript.docx",
+    "turns": 8,
+    "events": 12,
+    "participants": 3,
+    "contentChars": 629,
+    "parsedChars": 502,
+    "coverage": 0.798,
+    "hash": "dcf54733788cdd17"
+  },
+  {
+    "file": "scripts/meeting-minutes-core-golden/cases/04_completed_vs_outstanding/transcript.docx",
+    "turns": 8,
+    "events": 11,
+    "participants": 3,
+    "contentChars": 599,
+    "parsedChars": 471,
+    "coverage": 0.786,
+    "hash": "1a431894a6d77b25"
+  },
+  {
+    "file": "scripts/meeting-minutes-core-golden/cases/05_hypothetical_language/transcript.docx",
+    "turns": 7,
+    "events": 10,
+    "participants": 3,
+    "contentChars": 534,
+    "parsedChars": 408,
+    "coverage": 0.764,
+    "hash": "579ee34a05ec069f"
+  },
+  {
+    "file": "scripts/meeting-minutes-core-golden/cases/06_ownership_chaos/transcript.docx",
+    "turns": 7,
+    "events": 10,
+    "participants": 4,
+    "contentChars": 547,
+    "parsedChars": 411,
+    "coverage": 0.751,
+    "hash": "3280736df2c3d965"
+  },
+  {
+    "file": "scripts/meeting-minutes-core-golden/cases/07_deadline_torture/transcript.docx",
+    "turns": 7,
+    "events": 10,
+    "participants": 3,
+    "contentChars": 514,
+    "parsedChars": 390,
+    "coverage": 0.759,
+    "hash": "e8fa9ae0874cf276"
+  },
+  {
+    "file": "scripts/meeting-minutes-core-golden/cases/08_attendee_provenance/transcript.docx",
+    "turns": 34,
+    "events": 54,
+    "participants": 4,
+    "contentChars": 2456,
+    "parsedChars": 2321,
+    "coverage": 0.945,
+    "hash": "17e07ef844be61a6"
+  },
+  {
+    "file": "scripts/meeting-minutes-core-golden/cases/09_no_action_meeting/transcript.docx",
+    "turns": 31,
+    "events": 61,
+    "participants": 3,
+    "contentChars": 2848,
+    "parsedChars": 2719,
+    "coverage": 0.955,
+    "hash": "7ba4072e420c09af"
+  },
+  {
+    "file": "scripts/meeting-minutes-core-golden/cases/10_chaos_goblin/transcript.docx",
+    "turns": 12,
+    "events": 20,
+    "participants": 4,
+    "contentChars": 989,
+    "parsedChars": 844,
+    "coverage": 0.853,
+    "hash": "b8bc59bc5352d161"
+  },
+  {
+    "file": "scripts/meeting-minutes-core-golden/human_benchmarks/T733_eakin_tech_file/transcript.docx",
+    "turns": 65,
+    "events": 200,
+    "participants": 5,
+    "contentChars": 13408,
+    "parsedChars": 13268,
+    "coverage": 0.99,
+    "hash": "a4f6e74710e66fbf"
+  },
+  {
+    "file": "scripts/meeting-minutes-core-golden/human_benchmarks/T761_eakin_software/transcript.docx",
+    "turns": 213,
+    "events": 450,
+    "participants": 4,
+    "contentChars": 21863,
+    "parsedChars": 21727,
+    "coverage": 0.994,
+    "hash": "f381b68bab8f169c"
+  },
+  {
+    "file": "scripts/meeting-minutes-core-golden/human_benchmarks/T819_dita_client/transcript.docx",
+    "turns": 332,
+    "events": 692,
+    "participants": 6,
+    "contentChars": 29295,
+    "parsedChars": 29143,
+    "coverage": 0.995,
+    "hash": "e462881568476b96"
+  },
+  {
+    "file": "scripts/meeting-minutes-core-golden/human_benchmarks/T819_dita_internal/transcript.docx",
+    "turns": 193,
+    "events": 394,
+    "participants": 5,
+    "contentChars": 20323,
+    "parsedChars": 20167,
+    "coverage": 0.992,
+    "hash": "4b288625bcd165b9"
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/001_decision_heavy_no_actions/transcript.txt",
+    "turns": 8,
+    "events": 8,
+    "participants": 4,
+    "contentChars": 465,
+    "parsedChars": 465,
+    "coverage": 1,
+    "hash": "32a75528208a14d9"
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/002_incident_actions_decision/transcript.txt",
+    "turns": 8,
+    "events": 8,
+    "participants": 3,
+    "contentChars": 428,
+    "parsedChars": 391,
+    "coverage": 0.914,
+    "hash": "3efa6a5d55812776"
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/003_low_substance_noise_abstention/transcript.txt",
+    "turns": 7,
+    "events": 8,
+    "participants": 2,
+    "contentChars": 168,
+    "parsedChars": 168,
+    "coverage": 1,
+    "hash": "626f9e6fac96b2c8"
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/004_action_free_information_briefing/transcript.txt",
+    "turns": 5,
+    "events": 6,
+    "participants": 2,
+    "contentChars": 354,
+    "parsedChars": 331,
+    "coverage": 0.935,
+    "hash": "bd9b8e4f0ae99d2c"
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/005_project_status_pending_leadership/transcript.txt",
+    "turns": 5,
+    "events": 5,
+    "participants": 2,
+    "contentChars": 375,
+    "parsedChars": 329,
+    "coverage": 0.877,
+    "hash": "750eb59b589010a4"
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/006_client_onboarding_split_rollout/transcript.txt",
+    "turns": 4,
+    "events": 4,
+    "participants": 2,
+    "contentChars": 283,
+    "parsedChars": 233,
+    "coverage": 0.823,
+    "hash": "4e9a3a385b0c57dc"
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/007_operations_review_internal_cover/transcript.txt",
+    "turns": 6,
+    "events": 6,
+    "participants": 2,
+    "contentChars": 276,
+    "parsedChars": 236,
+    "coverage": 0.855,
+    "hash": "dfb2296bd1c38bbb"
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/008_sales_pipeline_review/transcript.txt",
+    "turns": 7,
+    "events": 7,
+    "participants": 2,
+    "contentChars": 355,
+    "parsedChars": 309,
+    "coverage": 0.87,
+    "hash": "30ba7d9577688916"
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/009_board_launch_delay/transcript.txt",
+    "turns": 4,
+    "events": 4,
+    "participants": 2,
+    "contentChars": 272,
+    "parsedChars": 236,
+    "coverage": 0.868,
+    "hash": "e4959fd8bbf158a6"
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/010_webinar_rehearsal_trim/transcript.txt",
+    "turns": 5,
+    "events": 5,
+    "participants": 3,
+    "contentChars": 264,
+    "parsedChars": 214,
+    "coverage": 0.811,
+    "hash": "17595e505f4bb054"
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/011_finance_budget_review/transcript.txt",
+    "turns": 5,
+    "events": 5,
+    "participants": 2,
+    "contentChars": 252,
+    "parsedChars": 205,
+    "coverage": 0.813,
+    "hash": "0eb161eaa78b937e"
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/012_hiring_interview_debrief/transcript.txt",
+    "turns": 4,
+    "events": 4,
+    "participants": 2,
+    "contentChars": 221,
+    "parsedChars": 172,
+    "coverage": 0.778,
+    "hash": "82cffc99d4a3580f"
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/013_messy_speaker_timestamp_formats/transcript.txt",
+    "turns": 5,
+    "events": 6,
+    "participants": 3,
+    "contentChars": 325,
+    "parsedChars": 295,
+    "coverage": 0.908,
+    "hash": "e9310c9e14214e45"
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/014_status_update_discussion_only/transcript.txt",
+    "turns": 4,
+    "events": 4,
+    "participants": 2,
+    "contentChars": 304,
+    "parsedChars": 259,
+    "coverage": 0.852,
+    "hash": "82ceb8be8027d954"
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/015_hidden_decision_meeting/transcript.txt",
+    "turns": 6,
+    "events": 6,
+    "participants": 3,
+    "contentChars": 324,
+    "parsedChars": 276,
+    "coverage": 0.852,
+    "hash": "6d5c9f2db86458c4"
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/016_document_review_discussion_only/transcript.txt",
+    "turns": 4,
+    "events": 4,
+    "participants": 2,
+    "contentChars": 290,
+    "parsedChars": 243,
+    "coverage": 0.838,
+    "hash": "e22546a8ddf9be7a"
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/017_dependency_risk_discussion_only/transcript.txt",
+    "turns": 4,
+    "events": 4,
+    "participants": 2,
+    "contentChars": 286,
+    "parsedChars": 239,
+    "coverage": 0.836,
+    "hash": "8418391a30a50c15"
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/018_support_metrics_action_heavy/transcript.txt",
+    "turns": 26,
+    "events": 32,
+    "participants": 3,
+    "contentChars": 1136,
+    "parsedChars": 1136,
+    "coverage": 1,
+    "hash": "9ff71f73346dcc6d"
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/019_contract_negotiation_review/transcript.txt",
+    "turns": 5,
+    "events": 5,
+    "participants": 2,
+    "contentChars": 328,
+    "parsedChars": 276,
+    "coverage": 0.841,
+    "hash": "974c2e87864f89f6"
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/020_customer_complaint_review/transcript.txt",
+    "turns": 4,
+    "events": 4,
+    "participants": 2,
+    "contentChars": 255,
+    "parsedChars": 204,
+    "coverage": 0.8,
+    "hash": "3a6f6e54eeb14855"
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/021_real_dita_importer_obligations_transcript/transcript.txt",
+    "turns": 332,
+    "events": 700,
+    "participants": 6,
+    "contentChars": 29418,
+    "parsedChars": 29266,
+    "coverage": 0.995,
+    "hash": "7fd1674c5fe95d94"
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/022_real_eakin_sw_minutes_pdf/transcript.txt",
+    "turns": 17,
+    "events": 38,
+    "participants": 5,
+    "contentChars": 4928,
+    "parsedChars": 4553,
+    "coverage": 0.924,
+    "hash": "1949bbcd8fa54d5b"
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/023_real_eakin_t733_weekly_transcript/transcript.txt",
+    "turns": 65,
+    "events": 206,
+    "participants": 5,
+    "contentChars": 13455,
+    "parsedChars": 13315,
+    "coverage": 0.99,
+    "hash": "f008ed9d4a733428"
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/024_real_dita_internal_followup_transcript/transcript.txt",
+    "turns": 193,
+    "events": 401,
+    "participants": 5,
+    "contentChars": 20401,
+    "parsedChars": 20245,
+    "coverage": 0.992,
+    "hash": "e7c5905888c02325"
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/025_real_t761_eakin_sw_weekly_transcript/transcript.txt",
+    "turns": 355,
+    "events": 671,
+    "participants": 4,
+    "contentChars": 30581,
+    "parsedChars": 30445,
+    "coverage": 0.996,
+    "hash": "cb3f5b4cfd2e6a4d"
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/026_real_qip_assessment_tool_case_study_transcript/transcript.txt",
+    "turns": 86,
+    "events": 418,
+    "participants": 2,
+    "contentChars": 23652,
+    "parsedChars": 23615,
+    "coverage": 0.998,
+    "hash": "d6e9a43758a53d12"
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/027_real_abbott_audit_kickoff_transcript/transcript.txt",
+    "turns": 272,
+    "events": 560,
+    "participants": 3,
+    "contentChars": 28005,
+    "parsedChars": 27864,
+    "coverage": 0.995,
+    "hash": "ec1e1468d4c82729"
+  },
+  {
+    "file": "scripts/transcript-tests/001_status_review/transcript.txt",
+    "turns": 36,
+    "events": 55,
+    "participants": 2,
+    "contentChars": 1883,
+    "parsedChars": 1846,
+    "coverage": 0.98,
+    "hash": "ef58c599044e3ae1"
+  },
+  {
+    "file": "scripts/transcript-tests/002_validation_decision/transcript.txt",
+    "turns": 10,
+    "events": 12,
+    "participants": 3,
+    "contentChars": 426,
+    "parsedChars": 426,
+    "coverage": 1,
+    "hash": "96b5a00db3da12d7"
+  },
+  {
+    "file": "scripts/transcript-tests/003_webinar_rehearsal/transcript.txt",
+    "turns": 193,
+    "events": 442,
+    "participants": 3,
+    "contentChars": 24284,
+    "parsedChars": 24147,
+    "coverage": 0.994,
+    "hash": "0b92e80f34531cff"
+  },
+  {
+    "file": "scripts/transcript-tests/004_contract_renewal/transcript.txt",
+    "turns": 7,
+    "events": 7,
+    "participants": 2,
+    "contentChars": 422,
+    "parsedChars": 378,
+    "coverage": 0.896,
+    "hash": "16bd66c1e685350b"
+  },
+  {
+    "file": "scripts/transcript-tests/005_office_relocation/transcript.txt",
+    "turns": 7,
+    "events": 7,
+    "participants": 3,
+    "contentChars": 444,
+    "parsedChars": 397,
+    "coverage": 0.894,
+    "hash": "0bd5517594aa9e64"
+  },
+  {
+    "file": "scripts/transcript-tests/006_product_bug_triage/transcript.txt",
+    "turns": 6,
+    "events": 6,
+    "participants": 4,
+    "contentChars": 287,
+    "parsedChars": 256,
+    "coverage": 0.892,
+    "hash": "edbf1cd5de43c967"
+  },
+  {
+    "file": "scripts/transcript-tests/007_client_onboarding/transcript.txt",
+    "turns": 4,
+    "events": 4,
+    "participants": 2,
+    "contentChars": 339,
+    "parsedChars": 293,
+    "coverage": 0.864,
+    "hash": "cdd139d9a4cb4019"
+  },
+  {
+    "file": "scripts/transcript-tests/008_event_planning/transcript.txt",
+    "turns": 5,
+    "events": 5,
+    "participants": 2,
+    "contentChars": 363,
+    "parsedChars": 321,
+    "coverage": 0.884,
+    "hash": "fbd07e8474f147b5"
+  },
+  {
+    "file": "scripts/transcript-tests/009_supplier_risk_review/transcript.txt",
+    "turns": 5,
+    "events": 5,
+    "participants": 2,
+    "contentChars": 383,
+    "parsedChars": 340,
+    "coverage": 0.888,
+    "hash": "c7dfa20fb13ebe06"
+  },
+  {
+    "file": "scripts/transcript-tests/010_finance_budget_review/transcript.txt",
+    "turns": 4,
+    "events": 4,
+    "participants": 2,
+    "contentChars": 283,
+    "parsedChars": 239,
+    "coverage": 0.845,
+    "hash": "c3fe37266c140ec5"
+  },
+  {
+    "file": "scripts/transcript-tests/011_hiring_interview_debrief/transcript.txt",
+    "turns": 5,
+    "events": 5,
+    "participants": 2,
+    "contentChars": 310,
+    "parsedChars": 274,
+    "coverage": 0.884,
+    "hash": "b820f8901ca73131"
+  },
+  {
+    "file": "scripts/transcript-tests/012_training_rollout/transcript.txt",
+    "turns": 5,
+    "events": 5,
+    "participants": 3,
+    "contentChars": 340,
+    "parsedChars": 294,
+    "coverage": 0.865,
+    "hash": "ebe55c54c7ed8ece"
+  },
+  {
+    "file": "scripts/transcript-tests/013_low_substance_fallback/transcript.txt",
+    "turns": 7,
+    "events": 7,
+    "participants": 2,
+    "contentChars": 114,
+    "parsedChars": 72,
+    "coverage": 0.632,
+    "hash": "1ba52f7216699126"
+  },
+  {
+    "file": "scripts/transcript-tests/014_request_acceptance/transcript.txt",
+    "turns": 3,
+    "events": 3,
+    "participants": 2,
+    "contentChars": 121,
+    "parsedChars": 78,
+    "coverage": 0.645,
+    "hash": "8e43fa524b5e5969"
+  },
+  {
+    "file": "scripts/transcript-tests/015_ownership_assignment/transcript.txt",
+    "turns": 3,
+    "events": 3,
+    "participants": 2,
+    "contentChars": 102,
+    "parsedChars": 58,
+    "coverage": 0.569,
+    "hash": "2342989fd05a50f4"
+  },
+  {
+    "file": "scripts/transcript-tests/016_investigation_commitment/transcript.txt",
+    "turns": 3,
+    "events": 3,
+    "participants": 2,
+    "contentChars": 139,
+    "parsedChars": 99,
+    "coverage": 0.712,
+    "hash": "13d33a3727238f9c"
+  },
+  {
+    "file": "scripts/transcript-tests/017_orphan_commitment/transcript.txt",
+    "turns": 2,
+    "events": 2,
+    "participants": 2,
+    "contentChars": 57,
+    "parsedChars": 19,
+    "coverage": 0.333,
+    "hash": "50d8560e2e47f15b"
+  },
+  {
+    "file": "scripts/transcript-tests/018_sales_pipeline_review/transcript.txt",
+    "turns": 7,
+    "events": 7,
+    "participants": 2,
+    "contentChars": 355,
+    "parsedChars": 309,
+    "coverage": 0.87,
+    "hash": "30ba7d9577688916"
+  },
+  {
+    "file": "scripts/transcript-tests/019_supplier_review/transcript.txt",
+    "turns": 6,
+    "events": 6,
+    "participants": 2,
+    "contentChars": 372,
+    "parsedChars": 332,
+    "coverage": 0.892,
+    "hash": "6e77da0188c691aa"
+  },
+  {
+    "file": "scripts/transcript-tests/020_contract_negotiation/transcript.txt",
+    "turns": 5,
+    "events": 5,
+    "participants": 2,
+    "contentChars": 328,
+    "parsedChars": 276,
+    "coverage": 0.841,
+    "hash": "974c2e87864f89f6"
+  },
+  {
+    "file": "scripts/transcript-tests/021_hiring_interview_debrief/transcript.txt",
+    "turns": 4,
+    "events": 4,
+    "participants": 2,
+    "contentChars": 221,
+    "parsedChars": 172,
+    "coverage": 0.778,
+    "hash": "82cffc99d4a3580f"
+  },
+  {
+    "file": "scripts/transcript-tests/022_candidate_screening/transcript.txt",
+    "turns": 4,
+    "events": 4,
+    "participants": 2,
+    "contentChars": 205,
+    "parsedChars": 160,
+    "coverage": 0.78,
+    "hash": "918dc271d011060e"
+  },
+  {
+    "file": "scripts/transcript-tests/023_finance_budget_review/transcript.txt",
+    "turns": 5,
+    "events": 5,
+    "participants": 2,
+    "contentChars": 252,
+    "parsedChars": 205,
+    "coverage": 0.813,
+    "hash": "0eb161eaa78b937e"
+  },
+  {
+    "file": "scripts/transcript-tests/024_board_update/transcript.txt",
+    "turns": 4,
+    "events": 4,
+    "participants": 2,
+    "contentChars": 249,
+    "parsedChars": 206,
+    "coverage": 0.827,
+    "hash": "0afd963e3cf0daed"
+  },
+  {
+    "file": "scripts/transcript-tests/025_incident_response/transcript.txt",
+    "turns": 4,
+    "events": 4,
+    "participants": 2,
+    "contentChars": 250,
+    "parsedChars": 200,
+    "coverage": 0.8,
+    "hash": "1ef98ce97715e7ec"
+  },
+  {
+    "file": "scripts/transcript-tests/026_product_bug_triage/transcript.txt",
+    "turns": 4,
+    "events": 4,
+    "participants": 2,
+    "contentChars": 241,
+    "parsedChars": 197,
+    "coverage": 0.817,
+    "hash": "6880609cbfd29f37"
+  },
+  {
+    "file": "scripts/transcript-tests/027_customer_complaint_review/transcript.txt",
+    "turns": 4,
+    "events": 4,
+    "participants": 2,
+    "contentChars": 255,
+    "parsedChars": 204,
+    "coverage": 0.8,
+    "hash": "3a6f6e54eeb14855"
+  },
+  {
+    "file": "scripts/transcript-tests/028_customer_onboarding/transcript.txt",
+    "turns": 6,
+    "events": 6,
+    "participants": 2,
+    "contentChars": 317,
+    "parsedChars": 263,
+    "coverage": 0.83,
+    "hash": "db7ed8d448c6bc8e"
+  },
+  {
+    "file": "scripts/transcript-tests/029_office_relocation/transcript.txt",
+    "turns": 6,
+    "events": 6,
+    "participants": 2,
+    "contentChars": 357,
+    "parsedChars": 307,
+    "coverage": 0.86,
+    "hash": "0756f105c56131db"
+  },
+  {
+    "file": "scripts/transcript-tests/030_webinar_rehearsal/transcript.txt",
+    "turns": 5,
+    "events": 5,
+    "participants": 3,
+    "contentChars": 264,
+    "parsedChars": 214,
+    "coverage": 0.811,
+    "hash": "17595e505f4bb054"
+  },
+  {
+    "file": "scripts/transcript-tests/031_event_planning/transcript.txt",
+    "turns": 4,
+    "events": 4,
+    "participants": 2,
+    "contentChars": 266,
+    "parsedChars": 219,
+    "coverage": 0.823,
+    "hash": "2ce7e1ed551cde8f"
+  },
+  {
+    "file": "scripts/transcript-tests/032_training_rollout/transcript.txt",
+    "turns": 5,
+    "events": 5,
+    "participants": 2,
+    "contentChars": 322,
+    "parsedChars": 273,
+    "coverage": 0.848,
+    "hash": "d636b5b426574971"
+  },
+  {
+    "file": "scripts/transcript-tests/033_marketing_campaign_review/transcript.txt",
+    "turns": 4,
+    "events": 4,
+    "participants": 2,
+    "contentChars": 262,
+    "parsedChars": 211,
+    "coverage": 0.805,
+    "hash": "90f0efaf5934ec11"
+  },
+  {
+    "file": "scripts/transcript-tests/034_software_release_review/transcript.txt",
+    "turns": 4,
+    "events": 4,
+    "participants": 2,
+    "contentChars": 262,
+    "parsedChars": 213,
+    "coverage": 0.813,
+    "hash": "8a45f9097cd7a960"
+  },
+  {
+    "file": "scripts/transcript-tests/035_procurement_discussion/transcript.txt",
+    "turns": 4,
+    "events": 4,
+    "participants": 2,
+    "contentChars": 273,
+    "parsedChars": 225,
+    "coverage": 0.824,
+    "hash": "3a197a20f69534ac"
+  },
+  {
+    "file": "scripts/transcript-tests/036_project_retrospective/transcript.txt",
+    "turns": 4,
+    "events": 4,
+    "participants": 2,
+    "contentChars": 246,
+    "parsedChars": 199,
+    "coverage": 0.809,
+    "hash": "91bd050702ff07f7"
+  },
+  {
+    "file": "scripts/transcript-tests/037_partnership_discussion/transcript.txt",
+    "turns": 5,
+    "events": 5,
+    "participants": 2,
+    "contentChars": 315,
+    "parsedChars": 267,
+    "coverage": 0.848,
+    "hash": "b880cdfd5c6d8adc"
+  },
+  {
+    "file": "scripts/transcript-tests/038_grant_application_review/transcript.txt",
+    "turns": 6,
+    "events": 6,
+    "participants": 2,
+    "contentChars": 400,
+    "parsedChars": 350,
+    "coverage": 0.875,
+    "hash": "743188eaa1375dc1"
+  },
+  {
+    "file": "scripts/transcript-tests/039_risk_review/transcript.txt",
+    "turns": 4,
+    "events": 4,
+    "participants": 2,
+    "contentChars": 234,
+    "parsedChars": 197,
+    "coverage": 0.842,
+    "hash": "edd09aea8f30fafe"
+  },
+  {
+    "file": "scripts/transcript-tests/040_governance_review/transcript.txt",
+    "turns": 6,
+    "events": 6,
+    "participants": 2,
+    "contentChars": 291,
+    "parsedChars": 248,
+    "coverage": 0.852,
+    "hash": "b71f1760d8ee3878"
+  },
+  {
+    "file": "scripts/transcript-tests/041_operations_review/transcript.txt",
+    "turns": 6,
+    "events": 6,
+    "participants": 2,
+    "contentChars": 276,
+    "parsedChars": 236,
+    "coverage": 0.855,
+    "hash": "dfb2296bd1c38bbb"
+  },
+  {
+    "file": "scripts/transcript-tests/042_support_escalation_review/transcript.txt",
+    "turns": 5,
+    "events": 5,
+    "participants": 2,
+    "contentChars": 295,
+    "parsedChars": 247,
+    "coverage": 0.837,
+    "hash": "213f1f8215c6050f"
+  },
+  {
+    "file": "scripts/transcript-tests/043_release_go_no_go/transcript.txt",
+    "turns": 6,
+    "events": 6,
+    "participants": 3,
+    "contentChars": 289,
+    "parsedChars": 242,
+    "coverage": 0.837,
+    "hash": "0fe1fa27129c66ee"
+  },
+  {
+    "file": "scripts/transcript-tests/044_budget_reforecast/transcript.txt",
+    "turns": 5,
+    "events": 5,
+    "participants": 2,
+    "contentChars": 277,
+    "parsedChars": 230,
+    "coverage": 0.83,
+    "hash": "085635cf7493b61e"
+  },
+  {
+    "file": "scripts/transcript-tests/045_board_launch_delay/transcript.txt",
+    "turns": 4,
+    "events": 4,
+    "participants": 2,
+    "contentChars": 272,
+    "parsedChars": 236,
+    "coverage": 0.868,
+    "hash": "e4959fd8bbf158a6"
+  },
+  {
+    "file": "scripts/transcript-tests/046_customer_onboarding_split_rollout/transcript.txt",
+    "turns": 4,
+    "events": 4,
+    "participants": 2,
+    "contentChars": 283,
+    "parsedChars": 233,
+    "coverage": 0.823,
+    "hash": "4e9a3a385b0c57dc"
+  },
+  {
+    "file": "scripts/transcript-tests/047_supplier_renewal_rejection/transcript.txt",
+    "turns": 4,
+    "events": 4,
+    "participants": 2,
+    "contentChars": 270,
+    "parsedChars": 231,
+    "coverage": 0.856,
+    "hash": "b8aea228b474b4bc"
+  },
+  {
+    "file": "scripts/transcript-tests/048_status_review_pending_leadership/transcript.txt",
+    "turns": 5,
+    "events": 5,
+    "participants": 2,
+    "contentChars": 375,
+    "parsedChars": 329,
+    "coverage": 0.877,
+    "hash": "750eb59b589010a4"
+  },
+  {
+    "file": "scripts/transcript-tests/049_low_substance_noise/transcript.txt",
+    "turns": 5,
+    "events": 5,
+    "participants": 2,
+    "contentChars": 114,
+    "parsedChars": 82,
+    "coverage": 0.719,
+    "hash": "235ca8ff34c4272d"
+  },
+  {
+    "file": "scripts/transcript-tests/050_partnership_mou_enablement/transcript.txt",
+    "turns": 6,
+    "events": 6,
+    "participants": 3,
+    "contentChars": 369,
+    "parsedChars": 323,
+    "coverage": 0.875,
+    "hash": "af029e07c5be61d1"
+  },
+  {
+    "file": "scripts/transcript-tests/051_real_webinar_rehearsal/transcript.txt",
+    "turns": 193,
+    "events": 442,
+    "participants": 3,
+    "contentChars": 24284,
+    "parsedChars": 24147,
+    "coverage": 0.994,
+    "hash": "0b92e80f34531cff"
+  },
+  {
+    "file": "scripts/transcript-tests/052_status_update_meeting/transcript.txt",
+    "turns": 4,
+    "events": 4,
+    "participants": 2,
+    "contentChars": 304,
+    "parsedChars": 259,
+    "coverage": 0.852,
+    "hash": "82ceb8be8027d954"
+  },
+  {
+    "file": "scripts/transcript-tests/053_hidden_decision_meeting/transcript.txt",
+    "turns": 6,
+    "events": 6,
+    "participants": 3,
+    "contentChars": 324,
+    "parsedChars": 276,
+    "coverage": 0.852,
+    "hash": "6d5c9f2db86458c4"
+  },
+  {
+    "file": "scripts/transcript-tests/054_document_review_meeting/transcript.txt",
+    "turns": 4,
+    "events": 4,
+    "participants": 2,
+    "contentChars": 290,
+    "parsedChars": 243,
+    "coverage": 0.838,
+    "hash": "e22546a8ddf9be7a"
+  },
+  {
+    "file": "scripts/transcript-tests/055_dependency_risk_meeting/transcript.txt",
+    "turns": 4,
+    "events": 4,
+    "participants": 2,
+    "contentChars": 286,
+    "parsedChars": 239,
+    "coverage": 0.836,
+    "hash": "8418391a30a50c15"
+  },
+  {
+    "file": "scripts/transcript-tests/056_progress_dashboard_meeting/transcript.txt",
+    "turns": 4,
+    "events": 4,
+    "participants": 2,
+    "contentChars": 233,
+    "parsedChars": 183,
+    "coverage": 0.785,
+    "hash": "1905e0417e91e3d5"
+  },
+  {
+    "file": "scripts/transcript-tests/057_rehearsal_banter_filter/transcript.txt",
+    "turns": 4,
+    "events": 4,
+    "participants": 3,
+    "contentChars": 196,
+    "parsedChars": 148,
+    "coverage": 0.755,
+    "hash": "615b0df6488787cd"
+  },
+  {
+    "file": "scripts/transcript-tests/058_submission_date_priority/transcript.txt",
+    "turns": 3,
+    "events": 3,
+    "participants": 2,
+    "contentChars": 256,
+    "parsedChars": 214,
+    "coverage": 0.836,
+    "hash": "5a469bfa15c391db"
+  },
+  {
+    "file": "scripts/transcript-tests/059_partial_completion_allowed/transcript.txt",
+    "turns": 3,
+    "events": 3,
+    "participants": 2,
+    "contentChars": 311,
+    "parsedChars": 269,
+    "coverage": 0.865,
+    "hash": "6d1d8210576694f0"
+  },
+  {
+    "file": "scripts/transcript-tests/060_external_review_optional/transcript.txt",
+    "turns": 3,
+    "events": 3,
+    "participants": 2,
+    "contentChars": 224,
+    "parsedChars": 182,
+    "coverage": 0.813,
+    "hash": "d1f9bdbf041ff137"
+  },
+  {
+    "file": "scripts/transcript-tests/061_no_major_impact_dependency/transcript.txt",
+    "turns": 3,
+    "events": 3,
+    "participants": 2,
+    "contentChars": 253,
+    "parsedChars": 211,
+    "coverage": 0.834,
+    "hash": "857d325453af3aef"
+  },
+  {
+    "file": "scripts/transcript-tests/062_completed_and_approved_status/transcript.txt",
+    "turns": 3,
+    "events": 3,
+    "participants": 2,
+    "contentChars": 204,
+    "parsedChars": 162,
+    "coverage": 0.794,
+    "hash": "39bfad303a975c83"
+  },
+  {
+    "file": "scripts/transcript-tests/063_rejection_test/transcript.txt",
+    "turns": 3,
+    "events": 3,
+    "participants": 2,
+    "contentChars": 129,
+    "parsedChars": 99,
+    "coverage": 0.767,
+    "hash": "2939079bf786654c"
+  },
+  {
+    "file": "scripts/transcript-tests/064_analytics_review/transcript.txt",
+    "turns": 0,
+    "events": 0,
+    "participants": 0,
+    "contentChars": 28722,
+    "parsedChars": 0,
+    "coverage": 0,
+    "hash": "c35e7fe8d10ed254"
+  },
+  {
+    "file": "scripts/transcript-tests/064_status_setup_clause_rejected/transcript.txt",
+    "turns": 1,
+    "events": 1,
+    "participants": 1,
+    "contentChars": 105,
+    "parsedChars": 72,
+    "coverage": 0.686,
+    "hash": "ce66c71c9a7118fa"
+  },
+  {
+    "file": "scripts/transcript-tests/065_status_topic_date_casing/transcript.txt",
+    "turns": 1,
+    "events": 1,
+    "participants": 1,
+    "contentChars": 85,
+    "parsedChars": 43,
+    "coverage": 0.506,
+    "hash": "525848fbb353100c"
+  },
+  {
+    "file": "scripts/transcript-tests/066_status_misrecognized_setup_rejected/transcript.txt",
+    "turns": 1,
+    "events": 1,
+    "participants": 1,
+    "contentChars": 83,
+    "parsedChars": 50,
+    "coverage": 0.602,
+    "hash": "938b7dc672741d1c"
+  },
+  {
+    "file": "scripts/transcript-tests/067_banana_falcon_client_ready/transcript.txt",
+    "turns": 45,
+    "events": 53,
+    "participants": 4,
+    "contentChars": 1403,
+    "parsedChars": 1361,
+    "coverage": 0.97,
+    "hash": "9ad3b5877e0bf07e"
+  },
+  {
+    "file": "scripts/transcript-tests/068_noisy_low_substance_sparse/transcript.txt",
+    "turns": 7,
+    "events": 8,
+    "participants": 2,
+    "contentChars": 168,
+    "parsedChars": 168,
+    "coverage": 1,
+    "hash": "626f9e6fac96b2c8"
+  },
+  {
+    "file": "scripts/transcript-tests/069_decision_heavy_internal/transcript.txt",
+    "turns": 8,
+    "events": 8,
+    "participants": 4,
+    "contentChars": 465,
+    "parsedChars": 465,
+    "coverage": 1,
+    "hash": "32a75528208a14d9"
+  },
+  {
+    "file": "scripts/transcript-tests/070_incident_bug_triage/transcript.txt",
+    "turns": 8,
+    "events": 8,
+    "participants": 3,
+    "contentChars": 428,
+    "parsedChars": 391,
+    "coverage": 0.914,
+    "hash": "3efa6a5d55812776"
+  },
+  {
+    "file": "scripts/transcript-tests/071_messy_speaker_timestamp_formats/transcript.txt",
+    "turns": 5,
+    "events": 6,
+    "participants": 3,
+    "contentChars": 325,
+    "parsedChars": 295,
+    "coverage": 0.908,
+    "hash": "e9310c9e14214e45"
+  },
+  {
+    "file": "scripts/transcript-tests/072_action_free_information_briefing/transcript.txt",
+    "turns": 4,
+    "events": 4,
+    "participants": 2,
+    "contentChars": 304,
+    "parsedChars": 278,
+    "coverage": 0.914,
+    "hash": "f241c53e9b755238"
+  },
+  {
+    "file": "scripts/transcript-tests/073_support_metrics_actions/transcript.txt",
+    "turns": 26,
+    "events": 32,
+    "participants": 3,
+    "contentChars": 1136,
+    "parsedChars": 1136,
+    "coverage": 1,
+    "hash": "9ff71f73346dcc6d"
+  }
+]

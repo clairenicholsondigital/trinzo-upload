@@ -19,11 +19,18 @@ function normaliseSpeakerName(name) {
   return surnameFirst ? `${surnameFirst[2]} ${surnameFirst[1]}` : value;
 }
 
+// The speaker-header grammar, in one place. Exported so that diagnostics can
+// measure how much of a transcript is header versus content using exactly the
+// grammar the parser applies, rather than a copy that silently drifts from it.
+function buildSpeakerHeaderPattern() {
+  const speakerName = String.raw`(?:[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+\s*,\s*[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:[ \t]+[A-Z])?|[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:[ \t]+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){0,3})`;
+  return new RegExp(String.raw`(?:^|\n)[ \t]*(${speakerName})(?:[ \t]+|[ \t]*[-–][ \t]*|[ \t]*\n[ \t]*)(${TEAMS_TIMESTAMP})[ \t]*|(?:^|\n|(?<=[.!?]))[ \t]*(${speakerName}):[ \t]*`, 'gm');
+}
+
 function parseTurns(transcriptText) {
   const turns = [];
   const source = String(transcriptText || '').replace(/\r/g, '');
-  const speakerName = String.raw`(?:[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+\s*,\s*[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:[ \t]+[A-Z])?|[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+(?:[ \t]+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’.-]+){0,3})`;
-  const header = new RegExp(String.raw`(?:^|\n)[ \t]*(${speakerName})(?:[ \t]+|[ \t]*[-–][ \t]*|[ \t]*\n[ \t]*)(${TEAMS_TIMESTAMP})[ \t]*|(?:^|\n|(?<=[.!?]))[ \t]*(${speakerName}):[ \t]*`, 'gm');
+  const header = buildSpeakerHeaderPattern();
   const ignoredHeaders = /^(?:date|location|duration|transcript|recording|meeting|speakers|attendees|decision confirmed)$/i;
   const matches = [...source.matchAll(header)].map((match) => ({ ...match, speakerName: clean(match[1] || match[3]) })).filter((match) => !ignoredHeaders.test(match.speakerName));
   matches.forEach((match, index) => {
@@ -103,4 +110,4 @@ function prepareEvidence(transcriptText) {
   return { turns, participants, events };
 }
 
-module.exports = { clean, normaliseSpeakerName, parseTurns, parseStructuredMinutes, prepareEvidence };
+module.exports = { clean, normaliseSpeakerName, buildSpeakerHeaderPattern, parseTurns, parseStructuredMinutes, prepareEvidence };
