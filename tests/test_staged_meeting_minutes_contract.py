@@ -486,7 +486,11 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("'Continue to ' + nextLabel.toLowerCase()", page)
         self.assertNotIn("'Yes, generate ' + nextLabel", page)
         self.assertNotIn("'Yes, move to ' + nextLabel", page)
-        self.assertIn("No, keep reviewing", page)
+        # "No, keep reviewing" was removed: it navigated nowhere and cancelled
+        # nothing, because staying on the stage is already what happens if you
+        # do not move on. It asked the reviewer to press a button to take no
+        # action, beside the button that does.
+        self.assertNotIn("No, keep reviewing", page)
         self.assertIn("function highestReachableScreen", page)
         self.assertIn("function lockedStageMessage", page)
         self.assertIn("item.classList.toggle('locked'", page)

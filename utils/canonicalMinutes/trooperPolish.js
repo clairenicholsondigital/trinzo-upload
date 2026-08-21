@@ -276,15 +276,17 @@ function clientReadyPresentation(payload) {
       ? `${retainedForReview.length} possible action${retainedForReview.length === 1 ? ' needs' : 's need'} your decision because the owner or wording was not safe to publish automatically. Add the real actions and dismiss anything that should not appear in the minutes.`
       : `${retainedForReview.length} item${retainedForReview.length === 1 ? '' : 's'} still need a wording check. Edit the highlighted section before approval.`,
     ...(retainedActionReviewCandidates.length ? { repairCandidates: retainedActionReviewCandidates } : {})
-  } : {
-    type: 'language_polished', severity: 'info', blocking: false,
-    message: 'The tool tidied the language without changing the underlying facts, owners or deadlines. Give the stage a quick scan before moving on.'
-  };
+    // Nothing needing a decision means nothing to raise. This used to emit a
+    // check saying the wording had been tidied and inviting a scan, on every
+    // stage where the rewrite ran cleanly — which is most of them. It asked for
+    // no decision and named nothing specific, so it appeared beside real checks
+    // and taught reviewers that items in this panel can be ignored.
+  } : null;
   const entityFlag = entityCorrections.length ? {
     type: 'attendee_entity_normalised', severity: 'info', blocking: false,
     message: `The tool corrected ${entityCorrections.length} attendee-name transcription variant${entityCorrections.length === 1 ? '' : 's'} using the confirmed participant list. Check the visible names still look right.`
   } : null;
-  const validationFlags = [...existingFlags, ...(entityFlag ? [entityFlag] : []), polishFlag];
+  const validationFlags = [...existingFlags, ...(entityFlag ? [entityFlag] : []), ...(polishFlag ? [polishFlag] : [])];
   const actionReviewCandidates = stage === 'actions'
     ? actionReviewCandidatesFromFlags(validationFlags)
     : [];

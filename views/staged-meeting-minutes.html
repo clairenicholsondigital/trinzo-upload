@@ -793,7 +793,6 @@ td select {
           <div class="secondary-group">
             <button id="previousScreenBtn" class="secondary" type="button">Go back</button>
             <button id="regenerateScreenBtn" class="secondary" type="button">Re-run AI generation step</button>
-            <button id="stayScreenBtn" class="ghost" type="button">No, keep reviewing</button>
           </div>
           <button id="nextScreenBtn" type="button">Yes, move on</button>
         </div>
@@ -824,7 +823,6 @@ td select {
   var statusItems = Array.prototype.slice.call(document.querySelectorAll('[data-screen-target]'));
   var previousButton = document.getElementById('previousScreenBtn');
   var nextButton = document.getElementById('nextScreenBtn');
-  var stayButton = document.getElementById('stayScreenBtn');
   var regenerateButton = document.getElementById('regenerateScreenBtn');
   var stageDecisionQuestion = document.getElementById('stageDecisionQuestion');
   var stageDecisionHint = document.getElementById('stageDecisionHint');
@@ -1298,10 +1296,6 @@ td select {
     if (previousButton) {
       previousButton.textContent = activeIndex > 0 ? 'Go back to ' + screenLabel(activeIndex - 1) : 'Go back';
       previousButton.style.display = activeIndex > 0 ? '' : 'none';
-    }
-    if (stayButton) {
-      stayButton.textContent = 'No, keep reviewing';
-      stayButton.style.display = activeIndex >= screens.length - 1 ? 'none' : '';
     }
   }
 
@@ -3727,13 +3721,6 @@ td select {
     recordWorkflowInteraction('navigation_back_clicked', { targetStage: stageForScreen(activeIndex - 1) || 'details' }, { source: 'previous_button', persist: false });
     showScreen(activeIndex - 1);
   });
-  if (stayButton) {
-    stayButton.addEventListener('click', function () {
-      recordWorkflowInteraction('stage_stay_clicked', {}, { source: 'stay_button' });
-      setReviewStatus('No problem. Keep reviewing this stage; the next stage will stay ready when you are.', false);
-      updateDecisionPanel();
-    });
-  }
   if (regenerateButton) {
     regenerateButton.addEventListener('click', regenerateCurrentScreen);
   }
