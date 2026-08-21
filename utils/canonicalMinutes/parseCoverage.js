@@ -11,7 +11,7 @@
 // This runs on the same cut points parseTurns() uses, so it reports on the
 // parser that actually ran rather than on a second copy of its rules.
 
-const { clean, findSpeakerCuts, buildSpeakerHeaderPattern, MAX_TURN_CHARS } = require('./evidence');
+const { clean, findSpeakerCuts, findUnreadRegions, buildSpeakerHeaderPattern } = require('./evidence');
 
 // Below this share of content read, a reviewer is being shown minutes drawn
 // from a minority of the meeting and should be told before they start editing.
@@ -44,33 +44,10 @@ function summarise(text, limit = 120) {
   return value.length <= limit ? value : `${value.slice(0, limit - 1).trimEnd()}…`;
 }
 
-// Everything between one cut and the next becomes a turn, so unread content is
-// never scattered: it is the passage before the first recognised speaker, or a
-// monologue too long to keep. Naming which of the two it is turns "we lost 30%"
-// into something a reviewer can act on.
-function findUnreadRegions(source, cuts) {
-  const regions = [];
-  const opening = clean(source.slice(0, cuts.length ? cuts[0].index : source.length));
-  if (opening) {
-    regions.push({
-      kind: cuts.length ? 'before_first_speaker' : 'no_speakers_recognised',
-      chars: opening.length,
-      sample: summarise(opening)
-    });
-  }
-  cuts.forEach((cut, index) => {
-    const next = cuts[index + 1];
-    const text = clean(source.slice(cut.index + cut.length, next ? next.index : source.length));
-    if (text.length > MAX_TURN_CHARS) {
-      regions.push({
-        kind: 'turn_too_long',
-        chars: text.length,
-        speaker: cut.speakerName,
-        sample: summarise(text)
-      });
-    }
-  });
-  return regions.sort((left, right) => right.chars - left.chars);
+function describeRegions(regions) {
+  return regions
+    .map((region) => ({ kind: region.kind, chars: clean(region.text).length, speaker: region.speaker, sample: summarise(region.text) }))
+    .sort((left, right) => right.chars - left.chars);
 }
 
 // Content is the meeting itself: the source minus every header the parser cut
@@ -105,7 +82,7 @@ function measureParseCoverage(transcriptText, evidence) {
     parsedChars,
     unreadChars: Math.max(0, contentChars - parsedChars),
     unattributedTurnCount,
-    unreadRegions: findUnreadRegions(source, cuts)
+    unreadRegions: describeRegions(findUnreadRegions(source))
   };
 }
 

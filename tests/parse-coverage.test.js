@@ -18,6 +18,8 @@ const WELL_FORMED = [
 ].join('\n');
 
 // The opening two thirds of this meeting were exported without speaker labels.
+// It reads as speech, so it is recovered rather than lost — see the Phase 3
+// case at the foot of this file.
 const UNLABELLED_OPENING = `${[
   'So the way I see it we need to close out the billing portal decision this week,',
   'because support are already carrying the load and the legacy system is still running',
@@ -25,6 +27,28 @@ const UNLABELLED_OPENING = `${[
   'nobody objected, and the regional rollout gives us a way to watch the error rates',
   'before we commit everyone. There is also the question of the read-only window.'
 ].join(' ')}\n${WELL_FORMED}`;
+
+// A structured minutes header ahead of the transcript proper: label-and-value
+// lines with no sentence punctuation. This is genuinely unread, and rightly so —
+// segmenting it into discussion would put "Meeting Title" into the minutes as
+// something a person said.
+const DOCUMENT_PREAMBLE = `${[
+  'Meeting Overview',
+  'Meeting Title T761 Eakin Healthcare Tech File SW review',
+  'Meeting Date 15th June 2026',
+  'Location MS Teams',
+  'Objectives of the meeting',
+  'Alarm changes',
+  'Language changes',
+  'SW versioning changes',
+  'Electrical Safety testing - Timeframe Dependency',
+  'Cybersecurity and Document Tracking',
+  'Participants Trinzo:',
+  'Jacqui Fox',
+  'David Didsbury',
+  'Client:',
+  'Rebecca Ward'
+].join('\n')}\n${WELL_FORMED}`;
 
 test('a fully read transcript reports complete coverage and nothing unread', () => {
   const coverage = measure(WELL_FORMED);
@@ -34,11 +58,11 @@ test('a fully read transcript reports complete coverage and nothing unread', () 
 });
 
 test('coverage counts what the parser read, not what it produced', () => {
-  const coverage = measure(UNLABELLED_OPENING);
+  const coverage = measure(DOCUMENT_PREAMBLE);
   assert.ok(coverage.coverage < 0.85, `expected partial coverage, got ${coverage.coverage}`);
-  assert.ok(coverage.unreadChars > 300);
+  assert.ok(coverage.unreadChars >= 200);
   assert.equal(coverage.unreadRegions[0].kind, 'before_first_speaker');
-  assert.match(coverage.unreadRegions[0].sample, /^So the way I see it/);
+  assert.match(coverage.unreadRegions[0].sample, /^Meeting Overview/);
 });
 
 test('a monologue dropped for length is named rather than silently lost', () => {
@@ -63,7 +87,7 @@ test('unattributed turns are counted separately from unread text', () => {
 });
 
 test('partial coverage is a visible, non-blocking warning naming what was missed', () => {
-  const health = assessStagedTranscriptHealth(UNLABELLED_OPENING);
+  const health = assessStagedTranscriptHealth(DOCUMENT_PREAMBLE);
   assert.ok(health.reasons.includes('transcript_partially_parsed'));
   const flag = stagedTranscriptHealthFlag(health);
   assert.equal(flag.type, 'transcript_partially_parsed');
@@ -86,12 +110,12 @@ test('a short transcript missing only a title line stays silent', () => {
 });
 
 test('a large absolute loss warns even when the ratio looks acceptable', () => {
-  // A long meeting that reads cleanly apart from an unlabelled opening: the
-  // share lost is small, the quantity lost is several minutes of discussion.
-  const opening = 'An unlabelled opening passage that the parser cannot attribute to anyone at all. '.repeat(30);
-  const body = Array.from({ length: 250 }, (unused, index) =>
+  // A long meeting that reads cleanly apart from one monologue too long to
+  // keep: the share lost is small, the quantity lost is several minutes.
+  const monologue = `Priya Raman 05:00\n${'The board update covers revenue, risk and hiring in turn. '.repeat(90)}`;
+  const body = Array.from({ length: 500 }, (unused, index) =>
     `Alex Morgan ${String(index % 60).padStart(2, '0')}:12\nWe reviewed the rollout plan and agreed the regional launch sequence for region ${index}.`).join('\n');
-  const text = `${opening}\n${body}`;
+  const text = `${body}\n${monologue}`;
   const coverage = measure(text);
   assert.ok(coverage.coverage > 0.85, `expected an acceptable-looking ratio, got ${coverage.coverage}`);
   assert.ok(coverage.unreadChars >= 2000);
@@ -118,4 +142,65 @@ test('mixed speaker formats warn about ownership without blocking', () => {
   const flag = stagedTranscriptHealthFlag(health);
   assert.equal(flag.blocking, false);
   assert.match(flag.message, /no owner set/);
+});
+
+// Phase 3: segmentation no longer depends on speaker attribution. Sentences
+// exist in the text whether or not anyone is named, so a recording with no
+// diarisation still yields discussion — attributed to nobody, which is honest.
+test('unlabelled speech is recovered rather than left unread', () => {
+  const coverage = measure(UNLABELLED_OPENING);
+  assert.equal(coverage.coverage, 1, 'the unlabelled opening is read, not lost');
+  assert.ok(coverage.unattributedTurnCount > 0, 'and it is marked as belonging to nobody');
+});
+
+test('document furniture is left unread rather than minuted as discussion', () => {
+  const evidence = prepareEvidence(DOCUMENT_PREAMBLE);
+  const recovered = evidence.turns.filter((turn) => turn.attributionConfidence === 0);
+  assert.deepEqual(recovered, [], 'a label-and-value header is not speech');
+  assert.ok(!evidence.events.some((event) => /Meeting Title|Meeting Date/i.test(event.text)),
+    'form fields must never reach the minutes as things people said');
+});
+
+test('a wholly undiarised recording becomes usable instead of blocking', () => {
+  const text = [
+    'So the main thing from today is the billing portal rollout and how we phase it.',
+    'We went through the regional sequence and everyone was comfortable starting in the north.',
+    'The security audit found three critical findings that we must remediate before launch.',
+    'I will own the remediation work and report back on Thursday with a full plan.',
+    'The regulator deadline is the fifteenth and slipping it triggers a financial penalty.',
+    'We also need to keep the legacy portal read-only for four weeks after the launch date.'
+  ].join('\n');
+  const evidence = prepareEvidence(text);
+  assert.equal(evidence.turns.length, 6);
+  assert.ok(evidence.turns.every((turn) => turn.speaker === 'Not stated' && turn.attributionConfidence === 0));
+  assert.deepEqual(evidence.participants, [], 'nobody was named, so nobody is claimed');
+
+  const health = assessStagedTranscriptHealth(text);
+  assert.equal(health.state, 'sparse_but_usable');
+  const flag = stagedTranscriptHealthFlag(health);
+  assert.equal(flag.blocking, false, 'the meeting is readable; it just has no speakers');
+  assert.match(flag.message, /no speaker labels/);
+});
+
+test('recovered speech still classifies as evidence', () => {
+  const evidence = prepareEvidence([
+    'So the main thing from today is the billing portal rollout and how we phase it.',
+    'I will own the remediation work and report back on Thursday with a full plan.',
+    'There is a risk that the electrical testing slips beyond the regulator deadline.'
+  ].join('\n'));
+  const roles = evidence.events.flatMap((event) => event.roles);
+  assert.ok(roles.includes('action_candidate'), 'a commitment is still a commitment with no name on it');
+  assert.ok(roles.includes('risk_candidate'), 'and a risk is still a risk');
+});
+
+test('recovery never engages on a transcript the parser already reads', () => {
+  const evidence = prepareEvidence(WELL_FORMED);
+  assert.ok(!evidence.turns.some((turn) => turn.attributionConfidence === 0));
+  assert.deepEqual(evidence.participants, ['Alex Morgan', 'Priya Raman']);
+});
+
+test('a short unlabelled aside is too little to recover from', () => {
+  const evidence = prepareEvidence(`Right, quick one before we start.\n${WELL_FORMED}`);
+  assert.ok(!evidence.turns.some((turn) => turn.attributionConfidence === 0),
+    'below the recovery floor the parser stays out of it');
 });

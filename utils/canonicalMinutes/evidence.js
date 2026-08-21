@@ -18,6 +18,19 @@ const UNATTRIBUTED_SPEAKER = 'Not stated';
 // leaving the reader to wonder where it went.
 const MAX_TURN_CHARS = 5000;
 
+// Thresholds for recovering speech nobody labelled. Deliberately conservative:
+// a passage must be long enough to be worth reading, carry several sentences,
+// and average out at prose length rather than form-field length. Measured
+// against the committed corpus these admit exactly one transcript — the
+// undiarised recording — and leave the other 114 untouched.
+const MIN_RECOVERABLE_SPEECH_CHARS = 200;
+const MIN_SPEECH_TERMINATORS = 3;
+const MAX_CHARS_PER_SENTENCE = 400;
+
+// prepareEvidence splits turns into sentence events on this boundary; reused so
+// an over-long recovered line breaks where a sentence actually ends.
+const SENTENCE_BOUNDARY = /(?<=[.!?])(?:\s+|(?=[A-Z]))/;
+
 // Teams renders some display names surname-first as "Last, First M" (optional
 // middle initial). Normalise these generically to "First Last" so the same
 // person is never presented in two forms — e.g. as a normalised attendee AND as
@@ -80,6 +93,65 @@ function findSpeakerCuts(transcriptText) {
   return [...attributed, ...unattributed].sort((a, b) => a.index - b.index);
 }
 
+// Everything between one cut and the next becomes a turn, so unread content is
+// never scattered: it is the passage before the first recognised speaker, or a
+// monologue too long to keep.
+function findUnreadRegions(transcriptText) {
+  const source = String(transcriptText || '').replace(/\r/g, '');
+  const cuts = findSpeakerCuts(source);
+  const regions = [];
+  const openingText = source.slice(0, cuts.length ? cuts[0].index : source.length);
+  if (clean(openingText)) {
+    regions.push({ kind: cuts.length ? 'before_first_speaker' : 'no_speakers_recognised', index: 0, text: openingText });
+  }
+  cuts.forEach((cut, index) => {
+    const next = cuts[index + 1];
+    const start = cut.index + cut.length;
+    const text = source.slice(start, next ? next.index : source.length);
+    if (clean(text).length > MAX_TURN_CHARS) regions.push({ kind: 'turn_too_long', index: start, speaker: cut.speakerName, text });
+  });
+  return regions;
+}
+
+// Does this passage read as speech nobody labelled, or as document furniture?
+// The two are separated decisively by sentence punctuation. The undiarised
+// recording in the corpus runs one terminator every 33 characters across 28KB;
+// the structured minutes header that also goes unread has none at all in 374
+// characters, and segmenting that into discussion would put "Meeting Title" and
+// an attendee list into the minutes as things people said.
+function looksLikeUnlabelledSpeech(text) {
+  const value = clean(text);
+  if (value.length < MIN_RECOVERABLE_SPEECH_CHARS) return false;
+  const terminators = (value.match(/[.!?]/g) || []).length;
+  if (terminators < MIN_SPEECH_TERMINATORS) return false;
+  return value.length / terminators <= MAX_CHARS_PER_SENTENCE;
+}
+
+// Segmentation does not need to know who spoke. Sentences and utterances exist
+// in the text whether or not anyone is named, so a recording with no diarisation
+// still yields discussion — attributed to nobody, which is the honest answer.
+// Source lines are kept as the unit because they carry the recorder's own
+// segmentation; only a line past the turn limit is broken up further.
+function recoverUnlabelledTurns(transcriptText) {
+  const recovered = [];
+  for (const region of findUnreadRegions(transcriptText)) {
+    if (region.kind === 'turn_too_long') continue; // an attributed monologue, not unlabelled speech
+    if (!looksLikeUnlabelledSpeech(region.text)) continue;
+    for (const line of region.text.split('\n')) {
+      const text = clean(line);
+      if (!text) continue;
+      if (text.length <= MAX_TURN_CHARS) { recovered.push(text); continue; }
+      let buffer = '';
+      for (const sentence of text.split(SENTENCE_BOUNDARY)) {
+        if (buffer && `${buffer} ${sentence}`.length > MAX_TURN_CHARS) { recovered.push(buffer); buffer = ''; }
+        buffer = buffer ? `${buffer} ${sentence}` : sentence;
+      }
+      if (buffer) recovered.push(buffer);
+    }
+  }
+  return recovered.map((text) => ({ speaker: UNATTRIBUTED_SPEAKER, text, attributionConfidence: 0 }));
+}
+
 function parseTurns(transcriptText) {
   const turns = [];
   const source = String(transcriptText || '').replace(/\r/g, '');
@@ -137,8 +209,13 @@ function sentenceRole(text) {
 
 function prepareEvidence(transcriptText) {
   const parsedTurns = parseTurns(transcriptText);
+  // Fallback only, and unreachable for any transcript the parser already reads:
+  // a region qualifies only if the header grammar found nothing there and the
+  // text reads as speech. Recovered speech always precedes the first recognised
+  // speaker, so it goes first and source order is preserved.
+  const recoveredTurns = recoverUnlabelledTurns(transcriptText);
   const structured = parseStructuredMinutes(transcriptText);
-  const turns = [...parsedTurns, ...structured.turns].map((turn, index) => ({ ...turn, id: `turn_${index + 1}`, index }));
+  const turns = [...recoveredTurns, ...parsedTurns, ...structured.turns].map((turn, index) => ({ ...turn, id: `turn_${index + 1}`, index }));
   const invalidSpeakers = /^(?:yes|yeah|right|same|also|okay|great|no|well|and|client|trinzo|speakers|participants|attendees|not stated)$/i;
   const participants = [...new Set([...structured.participants, ...turns.filter((turn) => !turn.structuredSource).map((turn) => turn.speaker)].filter((name) => !invalidSpeakers.test(name)))];
   const events = [];
@@ -164,4 +241,4 @@ function prepareEvidence(transcriptText) {
   return { turns, participants, events };
 }
 
-module.exports = { clean, normaliseSpeakerName, buildSpeakerHeaderPattern, findSpeakerCuts, MAX_TURN_CHARS, UNATTRIBUTED_SPEAKER, parseTurns, parseStructuredMinutes, prepareEvidence };
+module.exports = { clean, normaliseSpeakerName, buildSpeakerHeaderPattern, findSpeakerCuts, findUnreadRegions, looksLikeUnlabelledSpeech, recoverUnlabelledTurns, MAX_TURN_CHARS, UNATTRIBUTED_SPEAKER, parseTurns, parseStructuredMinutes, prepareEvidence };

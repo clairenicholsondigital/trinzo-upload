@@ -35,9 +35,15 @@ function assessStagedTranscriptHealth(transcriptText) {
 
   const parseCoverage = measureParseCoverage(transcriptText, evidence);
 
+  // A recording with no diarisation has no participants to find, but its
+  // discussion is still there and still worth minuting. Missing participants
+  // stays fatal for genuinely unparseable input; it is not fatal when the
+  // parser recovered the speech and is saying plainly that nobody was named.
+  const recoveredUnattributed = turns.some((turn) => turn.attributionConfidence === 0);
+
   let state = 'healthy';
   const reasons = [];
-  if (!turns.length || !events.length || !participants.length) {
+  if (!turns.length || !events.length || (!participants.length && !recoveredUnattributed)) {
     state = 'structurally_unreliable';
     reasons.push('speaker_turns_not_reliably_parsed');
   } else if (events.length < 3) {
@@ -73,9 +79,12 @@ function assessStagedTranscriptHealth(transcriptText) {
 // A sentence about the speakers we could not name, added to whichever flag is
 // shown. An unidentified speaker is not a defect in the meeting; it is a limit
 // on what the minutes can claim, and the reviewer is the one who can fix it.
-function unidentifiedSpeakerNote(coverage) {
-  const count = coverage.unattributedTurnCount || 0;
+function unidentifiedSpeakerNote(health) {
+  const count = (health.parseCoverage || {}).unattributedTurnCount || 0;
   if (!count) return '';
+  if (count >= (health.parsedTurnCount || 0)) {
+    return ' The discussion below was read from a recording with no speaker labels, so nothing in it is attributed and any follow-ups need an owner assigning by hand.';
+  }
   return ` ${count} turn${count === 1 ? ' was' : 's were'} recorded in a speaker format this transcript does not label, so ${count === 1 ? 'its' : 'their'} follow-ups have no owner set — assign one where you can.`;
 }
 
@@ -104,7 +113,7 @@ function stagedTranscriptHealthFlag(health) {
       severity: 'warning',
       blocking: false,
       resolutionKey: 'transcript-health:coverage',
-      message: `Only ${Math.round((coverage.coverage || 0) * 100)}% of this transcript was read into the minutes, so anything below is drawn from part of the meeting rather than all of it.${unreadNote}${unidentifiedSpeakerNote(coverage)} You can continue, but a cleaner export of the recording will produce better minutes.`
+      message: `Only ${Math.round((coverage.coverage || 0) * 100)}% of this transcript was read into the minutes, so anything below is drawn from part of the meeting rather than all of it.${unreadNote}${unidentifiedSpeakerNote(health)} You can continue, but a cleaner export of the recording will produce better minutes.`
     };
   }
 
@@ -114,7 +123,7 @@ function stagedTranscriptHealthFlag(health) {
       severity: 'warning',
       blocking: false,
       resolutionKey: 'transcript-health:attribution',
-      message: `This transcript mixes speaker formats.${unidentifiedSpeakerNote(coverage)}`.trim()
+      message: `${(coverage.unattributedTurnCount || 0) >= (health.parsedTurnCount || 0) ? '' : 'This transcript mixes speaker formats.'}${unidentifiedSpeakerNote(health)}`.trim()
     };
   }
 
@@ -123,7 +132,7 @@ function stagedTranscriptHealthFlag(health) {
     severity: 'warning',
     blocking: false,
     resolutionKey: 'transcript-health:sparse',
-    message: `This transcript contains limited substantive discussion or a high proportion of short conversational fragments. You can continue, but check the topics and follow-ups particularly carefully.${unidentifiedSpeakerNote(coverage)}`
+    message: `This transcript contains limited substantive discussion or a high proportion of short conversational fragments. You can continue, but check the topics and follow-ups particularly carefully.${unidentifiedSpeakerNote(health)}`
   };
 }
 

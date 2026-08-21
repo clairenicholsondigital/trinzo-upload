@@ -1145,14 +1145,14 @@
   },
   {
     "file": "scripts/transcript-tests/064_analytics_review/transcript.txt",
-    "turns": 0,
-    "events": 0,
+    "turns": 102,
+    "events": 513,
     "participants": 0,
-    "unattributedTurns": 0,
+    "unattributedTurns": 102,
     "contentChars": 28722,
-    "parsedChars": 0,
-    "coverage": 0,
-    "hash": "c35e7fe8d10ed254"
+    "parsedChars": 28722,
+    "coverage": 1,
+    "hash": "842651c642a75e47"
   },
   {
     "file": "scripts/transcript-tests/064_status_setup_clause_rejected/transcript.txt",
