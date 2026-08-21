@@ -4070,7 +4070,10 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
     reviewerGuidance: input.additionalContext || '',
     includeEvidencePack: ['discussion', 'actions'].includes(stage)
   });
-  if (stage === 'summary') {
+  // Screen 0. A transcript the parser could only partly read produces thin
+  // minutes at every later stage, so the reviewer needs to know before they
+  // spend time editing them, not after.
+  if (stage === 'details') {
     const healthFlag = stagedTranscriptHealthFlag(transcriptHealth);
     if (healthFlag) payload.validationFlags = [...(payload.validationFlags || []), healthFlag];
   }

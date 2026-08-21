@@ -649,6 +649,27 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("formData.append('reviewActions'", page)
         self.assertIn("Editorial checks (review before moving on)", page)
 
+    def test_transcript_health_is_raised_on_the_first_screen(self):
+        api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+        health = (REPO_DIR / "utils" / "stagedTranscriptHealth.js").read_text(encoding="utf-8")
+
+        # A partly read transcript makes every later stage thin, so the warning
+        # belongs on details (screen 0) rather than summary (screen 1), where a
+        # reviewer would already have spent time editing it.
+        self.assertIn("if (stage === 'details') {\n    const healthFlag = stagedTranscriptHealthFlag(transcriptHealth);", api)
+        self.assertNotIn("if (stage === 'summary') {\n    const healthFlag", api)
+        self.assertIn("transcript_partially_parsed", health)
+        self.assertIn("isPartiallyParsed(parseCoverage)", health)
+        self.assertIn("measureParseCoverage", health)
+
+        coverage = (REPO_DIR / "utils" / "canonicalMinutes" / "parseCoverage.js").read_text(encoding="utf-8")
+
+        # The ratio needs an absolute floor beside it, or the warning fires on
+        # roughly half the corpus and stops meaning anything.
+        self.assertIn("PARTIAL_COVERAGE_THRESHOLD = 0.85", coverage)
+        self.assertIn("MIN_UNREAD_CHARS = 200", coverage)
+        self.assertIn("LARGE_UNREAD_CHARS = 2000", coverage)
+
     def test_staged_reviewer_copy_and_controls_hide_internal_processing_terms(self):
         page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")

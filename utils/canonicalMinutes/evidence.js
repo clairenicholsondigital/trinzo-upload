@@ -13,6 +13,11 @@ const TEAMS_TIMESTAMP = String.raw`(?:${CLOCK_TIMESTAMP}|${VERBOSE_TEAMS_TIMESTA
 // anywhere downstream without a new code path having to opt in.
 const UNATTRIBUTED_SPEAKER = 'Not stated';
 
+// A turn longer than this is currently discarded outright rather than split.
+// Named so that coverage reporting can say a monologue was dropped instead of
+// leaving the reader to wonder where it went.
+const MAX_TURN_CHARS = 5000;
+
 // Teams renders some display names surname-first as "Last, First M" (optional
 // middle initial). Normalise these generically to "First Last" so the same
 // person is never presented in two forms — e.g. as a normalised attendee AND as
@@ -57,8 +62,11 @@ function looksLikeUnsupportedSpeakerHandle(handle) {
   return /[._]/.test(handle) || /\d/.test(handle) || handle === handle.toLowerCase();
 }
 
-function parseTurns(transcriptText) {
-  const turns = [];
+// The points at which the transcript changes speaker, in source order, each
+// carrying the span of the header itself. Exported because measuring what the
+// parser did not read means knowing exactly where it cut; a second copy of this
+// logic would report coverage for a parser other than the one that ran.
+function findSpeakerCuts(transcriptText) {
   const source = String(transcriptText || '').replace(/\r/g, '');
   const attributed = [...source.matchAll(buildSpeakerHeaderPattern())]
     .map((match) => ({ index: match.index, length: match[0].length, speakerName: clean(match[1] || match[3]), attributed: true }))
@@ -69,14 +77,20 @@ function parseTurns(transcriptText) {
     .filter((match) => looksLikeUnsupportedSpeakerHandle(match[1]))
     .map((match) => ({ index: match.index, length: match[0].length, speakerName: UNATTRIBUTED_SPEAKER, attributed: false }))
     .filter((candidate) => !attributed.some((match) => candidate.index < match.index + match.length && candidate.index >= match.index));
-  const matches = [...attributed, ...unattributed].sort((a, b) => a.index - b.index);
+  return [...attributed, ...unattributed].sort((a, b) => a.index - b.index);
+}
+
+function parseTurns(transcriptText) {
+  const turns = [];
+  const source = String(transcriptText || '').replace(/\r/g, '');
+  const matches = findSpeakerCuts(source);
   matches.forEach((match, index) => {
     const next = matches[index + 1];
     const text = clean(source.slice(match.index + match.length, next ? next.index : source.length));
     const speaker = match.attributed ? normaliseSpeakerName(match.speakerName) : UNATTRIBUTED_SPEAKER;
     // attributionConfidence is present only when attribution failed, so turns
     // the parser has always read correctly keep exactly the shape they had.
-    if (text && text.length <= 5000) turns.push({ id: `turn_${turns.length + 1}`, index: turns.length, speaker, text, ...(match.attributed ? {} : { attributionConfidence: 0 }) });
+    if (text && text.length <= MAX_TURN_CHARS) turns.push({ id: `turn_${turns.length + 1}`, index: turns.length, speaker, text, ...(match.attributed ? {} : { attributionConfidence: 0 }) });
   });
   return turns;
 }
@@ -150,4 +164,4 @@ function prepareEvidence(transcriptText) {
   return { turns, participants, events };
 }
 
-module.exports = { clean, normaliseSpeakerName, buildSpeakerHeaderPattern, parseTurns, parseStructuredMinutes, prepareEvidence };
+module.exports = { clean, normaliseSpeakerName, buildSpeakerHeaderPattern, findSpeakerCuts, MAX_TURN_CHARS, UNATTRIBUTED_SPEAKER, parseTurns, parseStructuredMinutes, prepareEvidence };

@@ -20,7 +20,8 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const mammoth = require('mammoth');
-const { prepareEvidence, buildSpeakerHeaderPattern } = require('../utils/canonicalMinutes/evidence');
+const { prepareEvidence } = require('../utils/canonicalMinutes/evidence');
+const { measureParseCoverage } = require('../utils/canonicalMinutes/parseCoverage');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const BASELINE_PATH = path.join(REPO_ROOT, 'tests', 'fixtures', 'evidence-parse-baseline.json');
@@ -29,8 +30,6 @@ const CORPORA = [
   path.join('scripts', 'meeting-minutes-core-golden'),
   path.join('scripts', 'meeting-minutes-final-golden')
 ];
-
-const normalise = (value) => String(value || '').replace(/\s+/g, ' ').trim();
 
 function listTranscripts() {
   const found = [];
@@ -54,21 +53,19 @@ async function readTranscript(relativePath) {
   return fs.readFileSync(full, 'utf8');
 }
 
-// Content characters are the source minus speaker headers: the text a reader
-// would consider the meeting itself. Parsed characters are what survives into
-// evidence turns, excluding turns synthesised from a structured actions table
-// (those are not present in the prose and would inflate the figure).
+// Coverage comes from the same helper the product uses to warn reviewers, so
+// the number in this report and the number on screen 0 cannot disagree.
 function measureOne(text) {
   const evidence = prepareEvidence(text);
-  const contentChars = normalise(text.replace(buildSpeakerHeaderPattern(), ' ')).length;
-  const parsedChars = normalise(evidence.turns.filter((turn) => !turn.structuredSource).map((turn) => turn.text).join(' ')).length;
+  const { coverage, contentChars, parsedChars, unattributedTurnCount } = measureParseCoverage(text, evidence);
   return {
     turns: evidence.turns.length,
     events: evidence.events.length,
     participants: evidence.participants.length,
+    unattributedTurns: unattributedTurnCount,
     contentChars,
     parsedChars,
-    coverage: contentChars ? Number(Math.min(1, parsedChars / contentChars).toFixed(3)) : 1,
+    coverage,
     hash: crypto.createHash('sha256').update(JSON.stringify(evidence)).digest('hex').slice(0, 16)
   };
 }
