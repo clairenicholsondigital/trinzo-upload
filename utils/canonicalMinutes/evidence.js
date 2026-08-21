@@ -93,24 +93,54 @@ function findSpeakerCuts(transcriptText) {
   return [...attributed, ...unattributed].sort((a, b) => a.index - b.index);
 }
 
-// Everything between one cut and the next becomes a turn, so unread content is
-// never scattered: it is the passage before the first recognised speaker, or a
-// monologue too long to keep.
+// Everything between one cut and the next becomes one or more turns, so the
+// only content that goes unread is a passage the header grammar found nothing
+// in — before the first recognised speaker, or throughout an undiarised file.
+// A long monologue is no longer among them: it is split rather than dropped.
 function findUnreadRegions(transcriptText) {
   const source = String(transcriptText || '').replace(/\r/g, '');
   const cuts = findSpeakerCuts(source);
-  const regions = [];
   const openingText = source.slice(0, cuts.length ? cuts[0].index : source.length);
-  if (clean(openingText)) {
-    regions.push({ kind: cuts.length ? 'before_first_speaker' : 'no_speakers_recognised', index: 0, text: openingText });
+  if (!clean(openingText)) return [];
+  return [{ kind: cuts.length ? 'before_first_speaker' : 'no_speakers_recognised', index: 0, text: openingText }];
+}
+
+// A turn longer than the limit used to be discarded in full — one speaker's
+// entire contribution vanishing with nothing said about it. Break it where
+// sentences end instead, so the speech survives and stays attributed. The
+// word-level and character-level fallbacks exist so that a passage with no
+// sentence punctuation at all still cannot exceed the limit and be lost.
+function splitOversizedSentence(sentence) {
+  if (sentence.length <= MAX_TURN_CHARS) return [sentence];
+  const pieces = [];
+  let buffer = '';
+  for (const word of sentence.split(/\s+/).filter(Boolean)) {
+    if (word.length > MAX_TURN_CHARS) {
+      if (buffer) { pieces.push(buffer); buffer = ''; }
+      for (let start = 0; start < word.length; start += MAX_TURN_CHARS) pieces.push(word.slice(start, start + MAX_TURN_CHARS));
+      continue;
+    }
+    if (buffer && `${buffer} ${word}`.length > MAX_TURN_CHARS) { pieces.push(buffer); buffer = ''; }
+    buffer = buffer ? `${buffer} ${word}` : word;
   }
-  cuts.forEach((cut, index) => {
-    const next = cuts[index + 1];
-    const start = cut.index + cut.length;
-    const text = source.slice(start, next ? next.index : source.length);
-    if (clean(text).length > MAX_TURN_CHARS) regions.push({ kind: 'turn_too_long', index: start, speaker: cut.speakerName, text });
-  });
-  return regions;
+  if (buffer) pieces.push(buffer);
+  return pieces;
+}
+
+function splitIntoTurnSizedChunks(value) {
+  const text = clean(value);
+  if (!text) return [];
+  if (text.length <= MAX_TURN_CHARS) return [text];
+  const chunks = [];
+  let buffer = '';
+  for (const sentence of text.split(SENTENCE_BOUNDARY)) {
+    for (const piece of splitOversizedSentence(sentence)) {
+      if (buffer && `${buffer} ${piece}`.length > MAX_TURN_CHARS) { chunks.push(buffer); buffer = ''; }
+      buffer = buffer ? `${buffer} ${piece}` : piece;
+    }
+  }
+  if (buffer) chunks.push(buffer);
+  return chunks;
 }
 
 // Does this passage read as speech nobody labelled, or as document furniture?
@@ -135,19 +165,8 @@ function looksLikeUnlabelledSpeech(text) {
 function recoverUnlabelledTurns(transcriptText) {
   const recovered = [];
   for (const region of findUnreadRegions(transcriptText)) {
-    if (region.kind === 'turn_too_long') continue; // an attributed monologue, not unlabelled speech
     if (!looksLikeUnlabelledSpeech(region.text)) continue;
-    for (const line of region.text.split('\n')) {
-      const text = clean(line);
-      if (!text) continue;
-      if (text.length <= MAX_TURN_CHARS) { recovered.push(text); continue; }
-      let buffer = '';
-      for (const sentence of text.split(SENTENCE_BOUNDARY)) {
-        if (buffer && `${buffer} ${sentence}`.length > MAX_TURN_CHARS) { recovered.push(buffer); buffer = ''; }
-        buffer = buffer ? `${buffer} ${sentence}` : sentence;
-      }
-      if (buffer) recovered.push(buffer);
-    }
+    for (const line of region.text.split('\n')) recovered.push(...splitIntoTurnSizedChunks(line));
   }
   return recovered.map((text) => ({ speaker: UNATTRIBUTED_SPEAKER, text, attributionConfidence: 0 }));
 }
@@ -162,7 +181,11 @@ function parseTurns(transcriptText) {
     const speaker = match.attributed ? normaliseSpeakerName(match.speakerName) : UNATTRIBUTED_SPEAKER;
     // attributionConfidence is present only when attribution failed, so turns
     // the parser has always read correctly keep exactly the shape they had.
-    if (text && text.length <= MAX_TURN_CHARS) turns.push({ id: `turn_${turns.length + 1}`, index: turns.length, speaker, text, ...(match.attributed ? {} : { attributionConfidence: 0 }) });
+    // A turn within the limit yields exactly one chunk, so the common path is
+    // untouched; only a monologue that used to be discarded yields several.
+    for (const chunk of splitIntoTurnSizedChunks(text)) {
+      turns.push({ id: `turn_${turns.length + 1}`, index: turns.length, speaker, text: chunk, ...(match.attributed ? {} : { attributionConfidence: 0 }) });
+    }
   });
   return turns;
 }

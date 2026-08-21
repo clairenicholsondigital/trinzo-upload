@@ -88,8 +88,7 @@ function measureParseCoverage(transcriptText, evidence) {
 
 function describeUnreadRegion(region) {
   if (region.kind === 'no_speakers_recognised') return 'no speaker labels were recognised anywhere in the file';
-  if (region.kind === 'before_first_speaker') return `${region.chars} characters before the first recognised speaker ("${region.sample}")`;
-  return `a ${region.chars}-character passage from ${region.speaker} that was too long to keep ("${region.sample}")`;
+  return `${region.chars} characters before the first recognised speaker ("${region.sample}")`;
 }
 
 module.exports = { measureParseCoverage, describeUnreadRegion, isPartiallyParsed, PARTIAL_COVERAGE_THRESHOLD, MIN_UNREAD_CHARS, LARGE_UNREAD_CHARS };

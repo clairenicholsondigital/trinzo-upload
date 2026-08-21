@@ -65,13 +65,34 @@ test('coverage counts what the parser read, not what it produced', () => {
   assert.match(coverage.unreadRegions[0].sample, /^Meeting Overview/);
 });
 
-test('a monologue dropped for length is named rather than silently lost', () => {
+// Phase 4: a turn past the length limit used to be discarded in full — one
+// speaker's entire contribution gone, with nothing said about it.
+test('a monologue too long for one turn is split rather than dropped', () => {
+  const monologue = 'The board update covers revenue, risk and hiring. '.repeat(130);
+  const text = `Claire Nicholson 00:12\n${monologue}\nMark Kelleher 40:00\nNoted, thanks.`;
+  const evidence = prepareEvidence(text);
+  const claire = evidence.turns.filter((turn) => turn.speaker === 'Claire Nicholson');
+
+  assert.ok(claire.length > 1, 'the monologue is broken into several turns');
+  assert.ok(claire.every((turn) => turn.text.length <= 5000), 'and each one fits the limit');
+  const preserved = claire.reduce((total, turn) => total + turn.text.length, 0);
+  assert.ok(preserved > monologue.length - 10, `expected the speech to survive, kept ${preserved} of ${monologue.length}`);
+  assert.ok(claire.every((turn) => !('attributionConfidence' in turn)),
+    'splitting a turn does not make its speaker any less certain');
+});
+
+test('splitting a monologue leaves nothing reported as unread', () => {
   const text = `Claire Nicholson 00:12\n${'The board update covers revenue, risk and hiring. '.repeat(130)}\nMark Kelleher 40:00\nNoted, thanks.`;
   const coverage = measure(text);
-  const dropped = coverage.unreadRegions.find((region) => region.kind === 'turn_too_long');
-  assert.ok(dropped, 'an over-long turn must be reported, not just discarded');
-  assert.equal(dropped.speaker, 'Claire Nicholson');
-  assert.ok(dropped.chars > 5000);
+  assert.equal(coverage.coverage, 1);
+  assert.deepEqual(coverage.unreadRegions, []);
+});
+
+test('a monologue with no sentence punctuation is still split, not lost', () => {
+  const text = `Claire Nicholson 00:12\n${'revenue risk hiring headcount budget '.repeat(200)}`;
+  const evidence = prepareEvidence(text);
+  assert.ok(evidence.turns.length > 1);
+  assert.ok(evidence.turns.every((turn) => turn.text.length <= 5000));
 });
 
 test('a transcript with no recognisable speakers says so explicitly', () => {
@@ -110,12 +131,13 @@ test('a short transcript missing only a title line stays silent', () => {
 });
 
 test('a large absolute loss warns even when the ratio looks acceptable', () => {
-  // A long meeting that reads cleanly apart from one monologue too long to
-  // keep: the share lost is small, the quantity lost is several minutes.
-  const monologue = `Priya Raman 05:00\n${'The board update covers revenue, risk and hiring in turn. '.repeat(90)}`;
-  const body = Array.from({ length: 500 }, (unused, index) =>
+  // A long meeting behind a long structured header: the header is a small
+  // share of the file but a substantial quantity of text left unread.
+  const preamble = Array.from({ length: 40 }, (unused, index) =>
+    `Document Reference ${index} T761 Eakin Healthcare Tech File SW review record`).join('\n');
+  const body = Array.from({ length: 300 }, (unused, index) =>
     `Alex Morgan ${String(index % 60).padStart(2, '0')}:12\nWe reviewed the rollout plan and agreed the regional launch sequence for region ${index}.`).join('\n');
-  const text = `${body}\n${monologue}`;
+  const text = `${preamble}\n${body}`;
   const coverage = measure(text);
   assert.ok(coverage.coverage > 0.85, `expected an acceptable-looking ratio, got ${coverage.coverage}`);
   assert.ok(coverage.unreadChars >= 2000);
