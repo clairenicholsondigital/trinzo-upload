@@ -247,9 +247,28 @@ function clientReadyPresentation(payload) {
     }).filter((card) => card.points.length));
   }
   if (stage === 'actions' && Array.isArray(base.screens.actions)) {
+    // How each action's owner was established, keyed by the evidence it cites.
+    // The published action carries only owner, action, deadline and evidenceIds,
+    // so this is where the upstream finding — that someone committed to this or
+    // was asked to do it — is reattached before the publication gate reads it.
+    const provenanceByEvidenceId = new Map();
+    for (const entry of Array.isArray(payload?._canonicalEvidencePack) ? payload._canonicalEvidencePack : []) {
+      if (!entry?.ownerEvidenceType) continue;
+      for (const cited of Array.isArray(entry.evidence) ? entry.evidence : []) {
+        if (!cited?.id) continue;
+        const existing = provenanceByEvidenceId.get(cited.id);
+        // An explicit commitment or request outranks a weaker attribution.
+        if (!existing || /^(?:self_commitment|direct_request)$/i.test(entry.ownerEvidenceType)) {
+          provenanceByEvidenceId.set(cited.id, entry.ownerEvidenceType);
+        }
+      }
+    }
     base.screens.actions = base.screens.actions.map((item) => {
       const presented = normaliseEntities(normaliseActionPresentation(item.action));
-      const polished = normaliseFinalStagedActionCandidate({ ...item, action: presented });
+      const ownerEvidenceType = (Array.isArray(item.evidenceIds) ? item.evidenceIds : [])
+        .map((id) => provenanceByEvidenceId.get(id))
+        .find((value) => /^(?:self_commitment|direct_request)$/i.test(String(value || ''))) || null;
+      const polished = normaliseFinalStagedActionCandidate({ ...item, action: presented, ownerEvidenceType });
       if (polished && polished.owner !== 'Not stated') return { ...item, ...polished };
       retainedForReview.push({
         section: 'Actions',

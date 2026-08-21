@@ -890,7 +890,19 @@ const FINAL_ACTION_DEBRIS = [
   /\b(?:would|could)\s+(?:be\s+)?(?:nice|good|useful)\s+to\b/i,
   /\bgive\s+(?:him|her|them|[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)?)\s+the\s+opportunity\s+to\b/i,
   /\bthe\s+opportunity\s+to\s+review\b/i,
-  /\badjusting\s+overall\b/i
+  /\badjusting\s+overall\b/i,
+  // Presentation faults that the verb whitelist used to catch by accident. Now
+  // that an attributed commitment is no longer vetoed for its opening word,
+  // these have to be recognised for what they actually are: text that is not
+  // fit to print, whoever committed to it.
+  // Trailing filler, but "top right" and "sign off ok" are content: a bare
+  // yeah/yep/anyway is never a real ending, the rest need a comma before them.
+  /\s(?:yeah|yep|anyway)\s*$/i,
+  /,\s*(?:yeah|yep|ok|okay|right|anyway|like)\s*$/i,
+  /\b(\w+)\s+\1\b/i,                                        // "Follow follow up"
+  /\bthe\s+the\b/i,
+  /^\s*if\b[^.]*\bcannot\b/i,                               // conditional, not an instruction
+  /\bcannot be seem\b/i                                      // transcription damage
 ];
 const FINAL_ACTION_WEAK_OBJECT = /^(?:it|this|that|these|those|them|everything|stuff|things|outputs?|documents?|final documents?|any final documents?|the outputs?|the documents?)$/i;
 
@@ -993,11 +1005,35 @@ function stagedFinalActionQualityIssue(candidate = {}) {
   if (!action) return 'missing_action';
   if (isMalformedStagedLine(action)) return 'malformed_action';
   if (finalActionMixesWorkstreams(action)) return 'mixed_workstream_clauses';
+  // An absence is not a deliverable: "Miss the usual weekly check-in" records
+  // that something will not happen, which belongs in the discussion, not in a
+  // list of things somebody has undertaken to do.
+  if (/^(?:miss|skip|avoid|not\s+attend|stay\s+with|remain\s+with)\b/i.test(action)) return 'not_a_deliverable';
   if (FINAL_ACTION_DEBRIS.some((pattern) => pattern.test(action))) return 'transcript_debris';
-  if (!openingVerbIsActionable(action)) return 'missing_actionable_verb';
-  if (!finalActionHasConcreteObject(action)) return 'missing_concrete_object';
+  // Whether this text is an action at all was settled upstream, from an actor,
+  // a modality and a future-facing predicate: "I'll write the backup questions"
+  // or "Nadia, you're doing the planted questions". ownerEvidenceType carries
+  // that finding through as self_commitment or direct_request.
+  //
+  // The two checks below re-decide the same question from the opening word of a
+  // phrase that has since been through presentation rewriting. Where the
+  // evidence already establishes the commitment, that is both redundant and
+  // wrong: across the corpus it vetoed 92 explicit first-person commitments,
+  // each with a named owner, because the sentence happened to start with
+  // "write" or "restore" rather than a listed verb.
+  //
+  // So they no longer veto an attributed action. They still apply when nothing
+  // upstream vouched for it, which is what keeps "Sales input" and "Clinical
+  // review of code changes" out of a client's minutes. The presentation checks
+  // above apply either way: an attributed commitment rendered as debris is
+  // still not fit to publish.
+  const attributed = /^(?:self_commitment|direct_request)$/i.test(String(candidate.ownerEvidenceType || ''));
+  if (!attributed) {
+    if (!openingVerbIsActionable(action)) return 'missing_actionable_verb';
+    if (!finalActionHasConcreteObject(action)) return 'missing_concrete_object';
+  }
   if (/\b(?:someone|somebody|they|we)\s+(?:will|should|need to|needs to)\b/i.test(action)) return 'unclear_actor';
-  if (/(?<![\w-])(?:look at|think about|discuss|consider|progress|sort out|stuff|things|everything)\b/i.test(action)) return 'vague_action';
+  if (/(?<![\w-])(?:look at|think about|discuss|consider|progress|sort out|stuff|things|everything|go through|read around|have a (?:look|read|think)|work around|sort it|see how it goes)\b/i.test(action)) return 'vague_action';
   return null;
 }
 
