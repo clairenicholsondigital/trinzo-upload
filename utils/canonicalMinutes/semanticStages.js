@@ -587,7 +587,7 @@ function objectivePhraseForTopic(topic, topicHints, evidence) {
   return `${intent} ${title.charAt(0).toLowerCase()}${title.slice(1)}`;
 }
 
-function contextStage(evidence, profile, state = {}, reviewerGuidance = '') {
+function contextStage(evidence, profile, state = {}, reviewerGuidance = '', topology = { mode: 'standard' }) {
   // Topics ALWAYS come from this transcript's own MiniLM clusters. The
   // meeting-type profile (if any) is a thin classifier used only to order those
   // topics and choose an objective intent verb — it contributes no text and can
@@ -610,11 +610,21 @@ function contextStage(evidence, profile, state = {}, reviewerGuidance = '') {
   const rankedIds = new Map(spine.publishableTopics.map((topic, index) => [topic.id, index]));
   const rankedTopics = [...editorial].sort((left, right) => (rankedIds.get(left.id) ?? 999) - (rankedIds.get(right.id) ?? 999));
   const topics = prioritiseForGuidance(rankedTopics, evidence, reviewerGuidance);
+  // This meeting's own actions, so the summary can say what it worked on rather
+  // than repeating a sentence fixed to the meeting type. Failure here must not
+  // cost the summary: the purpose falls back to describing the discussion.
+  let actionSubjects = [];
+  try {
+    actionSubjects = (actionsStage(evidence, state, profile, topology)?.actions || []).map((item) => item.action).filter(Boolean);
+  } catch (error) {
+    actionSubjects = [];
+  }
   const initialUnderstanding = buildInitialUnderstanding({
     evidence,
     meeting: state.meeting || {},
     topics,
-    meetingSpine: spine
+    meetingSpine: spine,
+    actions: actionSubjects
   });
   return {
     meeting: state.meeting || { participants: evidence.participants },

@@ -75,7 +75,16 @@ test('cold T761 summary frames weekly technical-file coordination instead of tax
   assert.ok((summary.overallTopics || []).some((topic) => /alarm/i.test(topic)));
   assert.ok((summary.overallTopics || []).some((topic) => /change control|version traceability/i.test(topic)));
   assert.ok((summary.overallTopics || []).some((topic) => /electrical compliance/i.test(topic)));
-  assert.ok((summary.objectives || []).some((objective) => /^Coordinate\b/i.test(objective)));
+  // Objectives used to be a fixed list attached to the meeting type, identical
+  // for every software weekly review. They are now drawn from this meeting's
+  // own actions, so the assertion is that they are specific to this transcript
+  // rather than that they open with the profile's verb.
+  const objectives = (summary.objectives || []).map((objective) => objective.text || objective);
+  assert.ok(objectives.length, 'the summary still proposes objectives');
+  assert.ok(objectives.some((objective) => /usb|mute button|electrical compliance|alarm/i.test(objective)),
+    `expected objectives specific to this meeting, got: ${JSON.stringify(objectives)}`);
+  assert.ok(!objectives.some((objective) => /technical-file package|change-control workstreams/i.test(objective)),
+    'the fixed meeting-type objectives should no longer be emitted');
 });
 
 test('initial understanding keeps fragmentary evidence out of high-level workstreams', () => {

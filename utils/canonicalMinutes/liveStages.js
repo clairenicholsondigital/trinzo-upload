@@ -291,7 +291,7 @@ function runCanonicalLiveStage(transcriptText, options = {}) {
   const confirmed = options.confirmed || {};
   let state = buildConfirmedState(transcriptText, options.fileName || 'transcript.txt', confirmed);
   let proposal;
-  if (stage === 'summary') proposal = semanticStages.contextStage(evidence, profile, state, options.reviewerGuidance);
+  if (stage === 'summary') proposal = semanticStages.contextStage(evidence, profile, state, options.reviewerGuidance, topology);
   if (stage === 'discussion') proposal = semanticStages.contentStage(evidence, state, profile);
   if (stage === 'actions') proposal = semanticStages.actionsStage(evidence, state, profile, topology);
   // Final provenance gate: drop anything without evidence from THIS transcript.

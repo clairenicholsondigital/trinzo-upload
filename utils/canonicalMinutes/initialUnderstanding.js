@@ -301,7 +301,8 @@ function buildMeetingSpineItems(evidence, workstreams) {
     .slice(0, 8);
 }
 
-function buildPurpose(meeting, profileId, mode, spine, workstreams, evidence) {
+
+function buildPurpose(meeting, profileId, mode, spine, workstreams, evidence, actions = []) {
   const config = MODE_CONFIG[profileId];
   const evidenceIds = unique([
     ...(mode.evidenceIds || []),
@@ -313,6 +314,18 @@ function buildPurpose(meeting, profileId, mode, spine, workstreams, evidence) {
     site: siteFromMeeting(meeting)
   };
   let text = config?.purpose ? config.purpose(context) : '';
+  // A profile purpose is identical for every meeting of that type, so on its
+  // own it tells the reader nothing about the meeting in front of them. Keep
+  // the framing — the profile does know this was a rehearsal, an audit plan and
+  // so on — and add one sentence of what this meeting actually covered.
+  if (text) {
+    // Action subjects are the right length for an objective and too long for a
+    // purpose sentence — clipping them to fit breaks the phrase mid-noun. The
+    // concept description is always well-formed, so it carries the second
+    // sentence while the objectives carry the detail.
+    const covered = describeDiscussedConcepts(evidence);
+    return { text: covered ? `${text} ${covered}` : text, evidenceIds, provenance: 'model_inferred', confidence: 0.76 };
+  }
   if (!text) {
     const labels = workstreams.slice(0, 2).map((item) => item.label.toLowerCase());
     text = labels.length
@@ -340,9 +353,73 @@ function buildPurpose(meeting, profileId, mode, spine, workstreams, evidence) {
   };
 }
 
-function buildObjectives(profileId, workstreams, purpose) {
+// Leading verbs on an extracted action, stripped so the action's subject can
+// follow the profile's own intent verb without reading as two verbs in a row.
+const ACTION_LEAD_VERB = /^(?:building|build|restoring|restore|putting|put|starting|start|writing|write|keeping|keep|handling|handle|running|run|finding|find|grouping|group|covering|cover|monitoring|monitor|circulating|circulate|verifying|verify|taking|take|sending|send|sharing|share|reviewing|review|confirming|confirm|and)\s+/i;
+
+function actionSubject(action) {
+  let text = clean(action);
+  for (let pass = 0; pass < 3 && ACTION_LEAD_VERB.test(text); pass += 1) text = text.replace(ACTION_LEAD_VERB, '');
+  // Keep the first clause: an action often carries a second, unrelated half.
+  text = text.split(/[;,]\s|\sand\s(?=[a-z]+\s(?:the|a|an)\b)/)[0];
+  text = text.replace(/^(?:the|a|an)\s+/i, '').trim();
+  if (!text) return '';
+  return /^[A-Z]{2,}/.test(text) ? text : text.charAt(0).toLowerCase() + text.slice(1);
+}
+
+// The meeting-type profile knows the shape of the meeting and supplies the
+// intent verb; the meeting's own actions supply the subject. Neither half is
+// written here, so a profile still contributes no content of its own — which is
+// the rule meetingPurpose.js states and MODE_CONFIG's fixed objectives broke.
+function deriveObjectivesFromActions(actions, topicHints) {
+  const available = (Array.isArray(actions) ? actions : []).map(clean).filter(Boolean);
+  const used = new Set();
+  const derived = [];
+  for (const hint of Array.isArray(topicHints) ? topicHints : []) {
+    const match = available.find((action) => hint.pattern.test(action) && !used.has(action));
+    if (!match || match.split(/\s+/).length < 3) continue;
+    used.add(match);
+    // The action is already a well-formed phrase. Prefixing the hint's intent
+    // verb produced "Confirm the continue reviewing the USB port controls";
+    // the profile's job here is choosing and ordering which actions surface,
+    // not supplying a second verb. A gerund opening is normalised so the list
+    // reads as objectives rather than as a progress report.
+    derived.push(asObjectivePhrase(match));
+    if (derived.length >= 4) break;
+  }
+  return derived;
+}
+
+const GERUND_TO_IMPERATIVE = {
+  building: 'Build', putting: 'Put', restoring: 'Restore', starting: 'Start', writing: 'Write',
+  keeping: 'Keep', handling: 'Handle', running: 'Run', finding: 'Find', grouping: 'Group',
+  covering: 'Cover', monitoring: 'Monitor', circulating: 'Circulate', verifying: 'Verify',
+  taking: 'Take', sending: 'Send', sharing: 'Share', reviewing: 'Review', confirming: 'Confirm',
+  completing: 'Complete', continuing: 'Continue', updating: 'Update', checking: 'Check'
+};
+
+function asObjectivePhrase(action) {
+  const text = clean(action);
+  const [first, ...rest] = text.split(/\s+/);
+  const imperative = GERUND_TO_IMPERATIVE[first.toLowerCase()];
+  const phrase = imperative ? [imperative, ...rest].join(' ') : text;
+  return phrase.charAt(0).toUpperCase() + phrase.slice(1);
+}
+
+function buildObjectives(profileId, workstreams, purpose, actions = [], topicHints = []) {
   const configObjectives = MODE_CONFIG[profileId]?.objectives || [];
   const evidenceIds = unique(workstreams.slice(0, 4).flatMap((item) => item.evidenceIds || [])).slice(0, 10);
+  // Objectives drawn from this meeting's own actions beat a fixed list every
+  // time: the fixed list is identical for every meeting of the same type.
+  const derived = deriveObjectivesFromActions(actions, topicHints);
+  if (derived.length) {
+    return derived.map((text, index) => ({
+      text,
+      evidenceIds: evidenceIds.length ? evidenceIds : purpose.evidenceIds,
+      provenance: 'transcript_emergent',
+      id: `initial_objective_${index + 1}`
+    }));
+  }
   if (configObjectives.length) {
     return configObjectives.slice(0, 4).map((text, index) => ({
       text,
@@ -389,7 +466,7 @@ function genericTopicRatio(workstreams) {
   return Number((generic / workstreams.length).toFixed(3));
 }
 
-function buildInitialUnderstanding({ evidence, meeting = {}, topics = [], meetingSpine = null } = {}) {
+function buildInitialUnderstanding({ evidence, meeting = {}, topics = [], meetingSpine = null, actions = [] } = {}) {
   const plan = purposePlan(meeting);
   const profileId = plan?.profileId || meetingSpine?.purposeProfile || '';
   const topicWorkstreams = (topics || []).map((topic) => ({
@@ -401,8 +478,8 @@ function buildInitialUnderstanding({ evidence, meeting = {}, topics = [], meetin
   const selectedWorkstreams = (workstreams.length ? workstreams : topicWorkstreams).slice(0, 8);
   const mode = inferMeetingMode(meeting, profileId, evidence);
   const spine = buildMeetingSpineItems(evidence, selectedWorkstreams);
-  const purpose = buildPurpose(meeting, profileId, mode, spine, selectedWorkstreams, evidence);
-  const objectives = buildObjectives(profileId, selectedWorkstreams, purpose);
+  const purpose = buildPurpose(meeting, profileId, mode, spine, selectedWorkstreams, evidence, actions);
+  const objectives = buildObjectives(profileId, selectedWorkstreams, purpose, actions, plan?.topicHints || []);
   const clarifications = buildClarifications(evidence);
   const unresolvedNeeds = buildUnresolvedNeeds(evidence);
   return {
