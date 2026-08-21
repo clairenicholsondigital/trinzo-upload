@@ -3,7 +3,37 @@
 const { clean } = require('./evidence');
 const { purposePlan } = require('./meetingPurpose');
 const { canHeadlineTopic, canSupportPurposeDimension, canStandAloneAsMinutesEvidence } = require('./publishability');
-const { editorialTopicLabel, isPublishableTopicLabel } = require('./topicEditorial');
+const { editorialTopicLabel, isPublishableTopicLabel, CONCEPTS } = require('./topicEditorial');
+
+// A concept counts as discussed only when several turns support it, so a single
+// stray word cannot put a subject into the meeting's purpose. Three is as many
+// as a purpose sentence carries before it stops being a summary.
+const MIN_EVENTS_PER_CONCEPT = 2;
+const MAX_PURPOSE_CONCEPTS = 3;
+
+// Labels frequently contain "and" ("Documentation and evidence"), so a plain
+// "X, Y and Z" is genuinely ambiguous. The serial comma is doing real work.
+function joinConceptLabels(labels) {
+  if (labels.length <= 1) return labels[0] || '';
+  if (labels.length === 2) return `${labels[0]} and ${labels[1]}`;
+  return `${labels.slice(0, -1).join(', ')}, and ${labels[labels.length - 1]}`;
+}
+
+// What the meeting actually covered, in the curated concept vocabulary, ranked
+// by how much of the discussion supports each one. Grounded by construction: a
+// concept is only available when the transcript contains matching evidence, and
+// the labels are client-safe because they are written rather than extracted.
+function describeDiscussedConcepts(evidence) {
+  const events = (evidence && evidence.events) || [];
+  if (!events.length) return '';
+  const ranked = CONCEPTS
+    .map((concept) => ({ label: concept.label, support: events.filter((event) => concept.pattern.test(event.text || '')).length }))
+    .filter((item) => item.support >= MIN_EVENTS_PER_CONCEPT)
+    .sort((left, right) => right.support - left.support)
+    .slice(0, MAX_PURPOSE_CONCEPTS);
+  if (!ranked.length) return '';
+  return `The meeting covered ${joinConceptLabels(ranked.map((item) => item.label.toLowerCase()))}.`;
+}
 
 const STOPWORDS = new Set([
   'about', 'after', 'again', 'also', 'been', 'being', 'client', 'confirm', 'could',
@@ -271,7 +301,7 @@ function buildMeetingSpineItems(evidence, workstreams) {
     .slice(0, 8);
 }
 
-function buildPurpose(meeting, profileId, mode, spine, workstreams) {
+function buildPurpose(meeting, profileId, mode, spine, workstreams, evidence) {
   const config = MODE_CONFIG[profileId];
   const evidenceIds = unique([
     ...(mode.evidenceIds || []),
@@ -287,12 +317,27 @@ function buildPurpose(meeting, profileId, mode, spine, workstreams) {
     const labels = workstreams.slice(0, 2).map((item) => item.label.toLowerCase());
     text = labels.length
       ? `Coordinate the meeting's main workstreams, dependencies and next steps around ${labels.join(' and ')}.`
-      : 'Establish the meeting context, material developments and next steps from the transcript evidence.';
+      : '';
   }
-  if (/;\s/.test(text) || /^The meeting reviewed\b/i.test(text)) {
-    text = 'Establish the meeting purpose, material developments and next steps from the transcript evidence.';
-  }
-  return { text, evidenceIds, provenance: 'model_inferred', confidence: config ? 0.76 : 0.45 };
+  // A semicolon-spliced or report-shaped purpose is not usable prose either.
+  const unusable = !text || /;\s/.test(text) || /^The meeting reviewed\b/i.test(text);
+  if (!unusable) return { text, evidenceIds, provenance: 'model_inferred', confidence: config ? 0.76 : 0.45 };
+
+  // Nothing in the meeting's own structure named a purpose. Say what was
+  // actually discussed rather than emitting a sentence about "the transcript
+  // evidence", which describes our pipeline rather than the client's meeting
+  // and reads, to the person holding the minutes, as though the meeting had
+  // been about transcripts. Where even that is unavailable, say so plainly
+  // and let the flag ask the reviewer for it.
+  const described = describeDiscussedConcepts(evidence);
+  return {
+    text: described || 'A clear purpose for this meeting was not stated in the discussion.',
+    evidenceIds,
+    provenance: 'inferred_from_discussion',
+    confidence: described ? 0.35 : 0.2,
+    inferred: true,
+    describedFromDiscussion: Boolean(described)
+  };
 }
 
 function buildObjectives(profileId, workstreams, purpose) {
@@ -356,7 +401,7 @@ function buildInitialUnderstanding({ evidence, meeting = {}, topics = [], meetin
   const selectedWorkstreams = (workstreams.length ? workstreams : topicWorkstreams).slice(0, 8);
   const mode = inferMeetingMode(meeting, profileId, evidence);
   const spine = buildMeetingSpineItems(evidence, selectedWorkstreams);
-  const purpose = buildPurpose(meeting, profileId, mode, spine, selectedWorkstreams);
+  const purpose = buildPurpose(meeting, profileId, mode, spine, selectedWorkstreams, evidence);
   const objectives = buildObjectives(profileId, selectedWorkstreams, purpose);
   const clarifications = buildClarifications(evidence);
   const unresolvedNeeds = buildUnresolvedNeeds(evidence);
@@ -392,6 +437,7 @@ function buildInitialUnderstanding({ evidence, meeting = {}, topics = [], meetin
 
 module.exports = {
   buildInitialUnderstanding,
+  describeDiscussedConcepts,
   organisationFromMeeting,
   siteFromMeeting
 };

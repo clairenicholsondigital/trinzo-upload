@@ -627,7 +627,22 @@ function contextStage(evidence, profile, state = {}, reviewerGuidance = '') {
     meetingSpine: spine,
     initialUnderstanding,
     purposeProfile: purpose?.profileId || null,
-    warnings: topics.length ? [] : [{ type: 'thin_context', severity: 'warning', message: 'No clear substantive topics were identified.' }]
+    warnings: [
+      ...(topics.length ? [] : [{ type: 'thin_context', severity: 'warning', message: 'No clear substantive topics were identified.' }]),
+      // The purpose was not stated by the meeting itself, so it has been
+      // described from what was discussed. That is a reasonable summary but it
+      // is not the same as knowing why the meeting was held, and the reviewer
+      // is the one who does know.
+      ...(initialUnderstanding.meetingPurpose?.inferred ? [{
+        type: 'meeting_purpose_inferred',
+        severity: 'warning',
+        blocking: false,
+        resolutionKey: 'meeting-purpose:inferred',
+        message: initialUnderstanding.meetingPurpose.describedFromDiscussion
+          ? 'No purpose was stated in this meeting, so the summary describes what was discussed instead. Replace it with why the meeting was actually held.'
+          : 'No purpose was stated in this meeting and there was not enough discussion to describe one. Add the purpose before sharing these minutes.'
+      }] : [])
+    ]
   };
 }
 
