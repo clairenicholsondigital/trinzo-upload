@@ -10,7 +10,7 @@ const { buildMeetingSpine } = require('./meetingSpine');
 const { buildInitialUnderstanding } = require('./initialUnderstanding');
 const { canHeadlineTopic, canStandAloneAsMinutesEvidence, isTranscriptMetaText, isCorrectionOrAcknowledgementFragment, isContextDependentText, isMalformedTranscriptText } = require('./publishability');
 const { resolveActionRecords } = require('./actionResolution');
-const { editorialTopicLabel, editorialTopics } = require('./topicEditorial');
+const { editorialTopicLabel, editorialTopics, publishableTopicCards } = require('./topicEditorial');
 const { repairDiscussionForConfirmedUnderstanding } = require('../stagedSemanticAuthority');
 const { enrichActionReviewCandidate, rankAndClusterActionReviewCandidates, hasImporterProcedureContext } = require('./actionReviewRanking');
 const { finaliseDiscussionPointForMinutes } = require('../stagedEditorial');
@@ -1352,6 +1352,7 @@ function contentStage(evidence, state, profile) {
   const discussionPlan = buildDiscussionEvidencePlan(evidence, state, selectedTopics);
   // Discussion is ALWAYS derived from this transcript's evidence. There is no
   // canned-template branch — a meeting-type profile never supplies body text.
+  let unnamedDiscussionCards = 0;
   let discussion = topicCandidates.slice(0, discussionLimit).map(({ topic }) => {
     const source = topic.evidenceIds.map((id) => byId.get(id)).filter(Boolean).filter((event) => !isSupersededBackground(event, evidence)
       && !isTranscriptMetaText(event.text)
@@ -1369,7 +1370,13 @@ function contentStage(evidence, state, profile) {
       ? (minuteEvidence.length ? [{ text: minuteEvidence.slice(0, 2).map((item) => item.text).join(' '), evidenceIds: minuteEvidence.slice(0, 2).flatMap((item) => item.evidenceIds) }] : [])
       : minuteEvidence.slice(0, 4));
     return { topic: topicLabel, points, evidenceIds: topic.evidenceIds, topicId: topic.id, cohesion: topic.cohesion };
-  }).filter((item) => item.topic && item.topic !== 'Substantive discussion' && item.points.length);
+  }).filter((item) => {
+    // A card with points but no usable heading is discussion we could not name.
+    // Counted so that an empty discussion can say which of the two it was:
+    // nothing worth minuting, or nothing we could give a heading to.
+    if (item.points.length && (!item.topic || item.topic === 'Substantive discussion')) unnamedDiscussionCards += 1;
+    return item.topic && item.topic !== 'Substantive discussion' && item.points.length;
+  });
   if (longTranscript) {
     const riskCards = discussion.filter((card) => card.evidenceIds.some((id) => {
       const event = byId.get(id);
@@ -1464,17 +1471,35 @@ function contentStage(evidence, state, profile) {
     evidenceEvents: evidence.events,
     authoritativeTopics: reviewerPlannedCount > 0 ? (state.topics || []).map((item) => clean(item.humanFinal || item.text || item.topic)).filter(Boolean) : []
   });
+  // Every card, whichever function named it, meets the same bar here.
+  const publishableDiscussion = publishableTopicCards(semanticPreservation.discussion);
+  // Dropping an unusable heading is right, but silently returning an empty
+  // discussion is not: the reviewer would see a blank screen with no idea
+  // whether the meeting was thin or the headings were unusable. Say which.
+  // Covers both ways a heading can be rejected: refused at the final gate, or
+  // never successfully named in the first place.
+  const rejectedAtGate = Boolean(semanticPreservation.discussion?.length) && !publishableDiscussion.length;
+  const discussionEmptiedByLabels = !publishableDiscussion.length && (rejectedAtGate || unnamedDiscussionCards > 0);
   return {
-    discussion: semanticPreservation.discussion,
+    discussion: publishableDiscussion,
     decisions: resolveEnrichedDecisions(decisions, evidence, profile),
     risks: resolvedRisks,
-    warnings: semanticPreservation.validationFlags.map((flag) => ({
-      type: flag.type,
-      message: flag.message,
-      severity: flag.severity,
-      blocking: flag.blocking,
-      resolutionKey: flag.resolutionKey
-    })),
+    warnings: [
+      ...semanticPreservation.validationFlags.map((flag) => ({
+        type: flag.type,
+        message: flag.message,
+        severity: flag.severity,
+        blocking: flag.blocking,
+        resolutionKey: flag.resolutionKey
+      })),
+      ...(discussionEmptiedByLabels ? [{
+        type: 'discussion_topics_not_publishable',
+        message: 'The discussion in this meeting could not be given headings that read as topics rather than as things people said, so no discussion section is shown. Add the topics you want covered and they will be used as written.',
+        severity: 'warning',
+        blocking: false,
+        resolutionKey: 'discussion-topics:not-publishable'
+      }] : [])
+    ],
     semanticPreservation: semanticPreservation.telemetry,
     summaryTopicsAuthoritative: reviewerPlannedCount > 0,
     discussionPlan: {

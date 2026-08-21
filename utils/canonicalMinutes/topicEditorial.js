@@ -76,7 +76,10 @@ function extractiveLabel(value) {
   // speech rather than a topic name.
   if (/^(?:absolutely|definitely|probably|possibly|maybe|perhaps|likely)\b/i.test(text)) return '';
   if (/\b(?:I|we|you|they|he|she|it)(?:['’](?:m|ve|d|ll|re|s))?\b/i.test(text)) return '';
-  if (/\b(?:am|is|are|was|were|be|been|being|will|would|could|should|might|may|can|has|have|had|does?|did)\b/i.test(text)) return '';
+  // "let's" is first-person plural wearing a contraction the guard above does
+  // not spell out, and it opens an utterance rather than naming a subject.
+  if (/\blet['’]?s\b/i.test(text)) return '';
+  if (/\b(?:am|is|are|was|were|be|been|being|will|would|could|should|might|may|can|has|have|had|do(?:es)?|did)\b/i.test(text)) return '';
   if (/^(?:address|follow|develop(?:ing)?|deem(?:ed)?|determine(?:d)?|confirm|ensure|make|take|get|give|send|share)\b/i.test(text)) return '';
   const words = text.split(/\s+/).filter(Boolean);
   const content = words.filter((word) => {
@@ -103,7 +106,43 @@ function labelIsClientReady(value) {
   return Boolean(text)
     && !/["“”]/.test(text)
     && !/\b(?:I|we|you|they|he|she)(?:['’](?:m|ve|d|ll|re|s))?\b/i.test(text)
+    && !/\blet['’]?s\b/i.test(text)
     && !/\b(?:yeah|okay|problem importer|going because|you know)\b/i.test(text);
+}
+
+// Openers that mark an utterance rather than a subject. A topic names what was
+// discussed; these introduce something somebody said about it. Kept separate
+// from the pronoun test because a politeness opener carries no pronoun at all
+// and still plainly is not the name of a topic.
+// Modal openers are deliberately absent: "can you send that over" is already
+// refused for its pronoun, while "CAN bus integration" and "Do not resuscitate"
+// are real subjects. Excluding modals costs nothing and avoids refusing a
+// legitimate technical heading.
+const SPEECH_OPENER = /^(?:please|let['’]?s|let us|go ahead|carry on|sure|thanks|thank you|sorry|maybe|actually|obviously|basically|just|right then|first off|anyway)\b/i;
+
+// The single gate every topic label passes before a reviewer sees it.
+//
+// Labels are minted by several functions — a curated concept name, an
+// extractive phrase from cluster evidence, the opening words of a decision
+// rationale — and each carried its own guard or, in one case, none at all, so a
+// label reading as speech reached the screen through whichever path lacked the
+// check. Applying this once over the assembled cards means a label source added
+// later cannot quietly bypass it.
+//
+// Deliberately categorical: it tests the shape of the phrase, never a specific
+// wording. No transcript-specific phrase belongs here.
+function isPublishableTopicLabel(value) {
+  const text = clean(value);
+  if (!text || /^substantive discussion$/i.test(text)) return false;
+  if (!labelIsClientReady(text)) return false;
+  return !SPEECH_OPENER.test(text);
+}
+
+// Applied at the point the discussion is returned, so it covers every card
+// whatever produced it. A topic the reviewer confirmed themselves is theirs to
+// word however they like and is never second-guessed here.
+function publishableTopicCards(cards) {
+  return (Array.isArray(cards) ? cards : []).filter((card) => card?.confirmedTopic || isPublishableTopicLabel(card?.topic));
 }
 
 function editorialTopics(topics, evidence, maximum = 8) {
@@ -156,4 +195,4 @@ function editorialTopics(topics, evidence, maximum = 8) {
   });
 }
 
-module.exports = { CONCEPTS, clusterText, editorialTopicLabel, editorialTopics, extractiveLabel };
+module.exports = { CONCEPTS, clusterText, editorialTopicLabel, editorialTopics, extractiveLabel, labelIsClientReady, isPublishableTopicLabel, publishableTopicCards };

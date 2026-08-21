@@ -670,6 +670,31 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("MIN_UNREAD_CHARS = 200", coverage)
         self.assertIn("LARGE_UNREAD_CHARS = 2000", coverage)
 
+    def test_topic_headings_pass_one_gate_before_a_reviewer_sees_them(self):
+        editorial = (REPO_DIR / "utils" / "canonicalMinutes" / "topicEditorial.js").read_text(encoding="utf-8")
+        stages = (REPO_DIR / "utils" / "canonicalMinutes" / "semanticStages.js").read_text(encoding="utf-8")
+
+        # Several functions mint topic labels. The gate is applied once, over the
+        # assembled cards, so a label source added later cannot bypass it.
+        self.assertIn("function isPublishableTopicLabel", editorial)
+        self.assertIn("function publishableTopicCards", editorial)
+        self.assertIn("discussion: publishableDiscussion", stages)
+
+        # A reviewer's own wording is never second-guessed.
+        self.assertIn("card?.confirmedTopic || isPublishableTopicLabel", editorial)
+
+        # An empty discussion says why rather than showing a blank screen.
+        self.assertIn("discussion_topics_not_publishable", stages)
+
+        # /does?/ matches "doe", not "do" - the word the guard exists to catch.
+        for path in ("utils/canonicalMinutes/topicEditorial.js", "utils/stagedEditorial.js"):
+            source = (REPO_DIR / path).read_text(encoding="utf-8")
+            self.assertNotIn("|does?|did)", source, f"{path} still has the doe/do slip")
+            self.assertIn("|do(?:es)?|did)", source)
+
+        # No transcript-specific phrase belongs in editorial policy.
+        self.assertNotIn("belt and braces", editorial.lower())
+
     def test_staged_reviewer_copy_and_controls_hide_internal_processing_terms(self):
         page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")

@@ -671,7 +671,7 @@ function discussionTopicLooksTranscriptShaped(value) {
   if (!text) return true;
   if (/^(?:absolutely|definitely|probably|possibly|maybe|perhaps|like\b|that\b|this\b|it\b|there\b|so\b|well\b|and\b|but\b)/i.test(text)) return true;
   if (/\b(?:I|we|you|they|he|she|it)(?:['’](?:m|ve|d|ll|re|s))?\b/i.test(text)) return true;
-  if (/\b(?:am|is|are|was|were|be|been|being|will|would|could|should|might|may|can|has|have|had|does?|did)\b/i.test(text)) return true;
+  if (/\b(?:am|is|are|was|were|be|been|being|will|would|could|should|might|may|can|has|have|had|do(?:es)?|did)\b/i.test(text)) return true;
   if (/^(?:address|follow|develop(?:ing)?|deem(?:ed)?|determine(?:d)?|confirm|ensure|make|take|get|give|send|share)\b/i.test(text)) return true;
   return false;
 }

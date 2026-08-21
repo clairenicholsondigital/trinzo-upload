@@ -1,0 +1,1480 @@
+[
+  {
+    "file": "scripts/meeting-minutes-core-golden/cases/01_explicit_action_recap/transcript.docx",
+    "topicCount": 5,
+    "topics": [
+      "Content and communications",
+      "Please belt and braces",
+      "Let's just nail the joins and the questions bit",
+      "Decisions",
+      "Risks"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Please belt and braces"
+    ]
+  },
+  {
+    "file": "scripts/meeting-minutes-core-golden/cases/02_scattered_actions/transcript.docx",
+    "topicCount": 10,
+    "topics": [
+      "One day, exactly, not today",
+      "Good, that's off the list",
+      "Plans and timelines",
+      "Product behaviour and design",
+      "The mega-menu tested badly, people couldn't find",
+      "Less build well",
+      "Customer and stakeholder feedback",
+      "The SSL certificate",
+      "Decisions",
+      "Risks"
+    ],
+    "summaryTopicCount": 4,
+    "summaryTopics": [
+      "Customer and stakeholder feedback",
+      "Good, that's off the list",
+      "One day, exactly, not today",
+      "The mega-menu tested badly, people couldn't find"
+    ]
+  },
+  {
+    "file": "scripts/meeting-minutes-core-golden/cases/03_superseded_actions/transcript.docx",
+    "topicCount": 4,
+    "topics": [
+      "Software changes",
+      "Plans and timelines",
+      "The security review was completed yesterday and signed off",
+      "Decisions"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Product behaviour and design"
+    ]
+  },
+  {
+    "file": "scripts/meeting-minutes-core-golden/cases/04_completed_vs_outstanding/transcript.docx",
+    "topicCount": 4,
+    "topics": [
+      "Ben, please upload the signed response the",
+      "Operations and processes",
+      "Possibly, but no commitment today",
+      "Decisions"
+    ],
+    "summaryTopicCount": 2,
+    "summaryTopics": [
+      "Operations and processes",
+      "Ben, please upload the signed response the"
+    ]
+  },
+  {
+    "file": "scripts/meeting-minutes-core-golden/cases/05_hypothetical_language/transcript.docx",
+    "topicCount": 5,
+    "topics": [
+      "Ravi owns the quote request for Friday",
+      "Migrate analytics platforms next year the licence",
+      "No action on that today",
+      "There is one concrete follow-up",
+      "Decisions"
+    ],
+    "summaryTopicCount": 2,
+    "summaryTopics": [
+      "Ravi owns the quote request for Friday",
+      "Migrate analytics platforms next year the licence"
+    ]
+  },
+  {
+    "file": "scripts/meeting-minutes-core-golden/cases/06_ownership_chaos/transcript.docx",
+    "topicCount": 2,
+    "topics": [
+      "Marta owns the venue call, Dan the",
+      "Technical setup"
+    ],
+    "summaryTopicCount": 2,
+    "summaryTopics": [
+      "Marta owns the venue call, Dan the",
+      "Technical setup"
+    ]
+  },
+  {
+    "file": "scripts/meeting-minutes-core-golden/cases/07_deadline_torture/transcript.docx",
+    "topicCount": 2,
+    "topics": [
+      "Idris, send the draft end day tomorrow",
+      "Risks"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Idris, send the draft end day tomorrow"
+    ]
+  },
+  {
+    "file": "scripts/meeting-minutes-core-golden/cases/08_attendee_provenance/transcript.docx",
+    "topicCount": 4,
+    "topics": [
+      "Budget and commercial matters",
+      "Brilliant, that's one less",
+      "Decisions",
+      "Risks"
+    ],
+    "summaryTopicCount": 2,
+    "summaryTopics": [
+      "Budget and commercial matters",
+      "Brilliant, that's one less"
+    ]
+  },
+  {
+    "file": "scripts/meeting-minutes-core-golden/cases/09_no_action_meeting/transcript.docx",
+    "topicCount": 7,
+    "topics": [
+      "Testing and validation",
+      "Plans and timelines",
+      "All the acceptance criteria were met, I went through them",
+      "I don't think another round adds anything, it'd just delay",
+      "Fair enough, I just wanted to check",
+      "The residual risk there is low, and the team would",
+      "Decisions"
+    ],
+    "summaryTopicCount": 4,
+    "summaryTopics": [
+      "Plans and timelines",
+      "Risks and dependencies",
+      "Testing and validation",
+      "Scope and requirements"
+    ]
+  },
+  {
+    "file": "scripts/meeting-minutes-core-golden/cases/10_chaos_goblin/transcript.docx",
+    "topicCount": 3,
+    "topics": [
+      "I was going to email client contact Susan, but George,",
+      "Decisions",
+      "Risks"
+    ],
+    "summaryTopicCount": 0,
+    "summaryTopics": []
+  },
+  {
+    "file": "scripts/meeting-minutes-core-golden/human_benchmarks/T733_eakin_tech_file/transcript.docx",
+    "topicCount": 4,
+    "topics": [
+      "Documentation and evidence",
+      "Language support and localisation",
+      "Plans and timelines",
+      "Risks"
+    ],
+    "summaryTopicCount": 3,
+    "summaryTopics": [
+      "Language support and localisation",
+      "Cybersecurity and access controls",
+      "Scope and requirements: IEC 27427"
+    ]
+  },
+  {
+    "file": "scripts/meeting-minutes-core-golden/human_benchmarks/T761_eakin_software/transcript.docx",
+    "topicCount": 10,
+    "topics": [
+      "Risks and dependencies",
+      "Plans and timelines",
+      "Mhm.and the purpose the file",
+      "Content and communications",
+      "Scope and requirements: ISO",
+      "Software change traceability",
+      "Language support and localisation",
+      "Cybersecurity and access controls",
+      "Technical setup",
+      "And then as a consequence to that, does that mean"
+    ],
+    "summaryTopicCount": 2,
+    "summaryTopics": [
+      "Scope and requirements: ISO",
+      "Language support and localisation"
+    ]
+  },
+  {
+    "file": "scripts/meeting-minutes-core-golden/human_benchmarks/T819_dita_client/transcript.docx",
+    "topicCount": 6,
+    "topics": [
+      "Plans and timelines",
+      "Content and communications",
+      "Quality and risk management",
+      "Operations and processes",
+      "Product behaviour and design",
+      "Risks"
+    ],
+    "summaryTopicCount": 4,
+    "summaryTopics": [
+      "Quality and risk management",
+      "Scope and requirements: MDR",
+      "Regulatory and compliance: HPRA",
+      "Product behaviour and design"
+    ]
+  },
+  {
+    "file": "scripts/meeting-minutes-core-golden/human_benchmarks/T819_dita_internal/transcript.docx",
+    "topicCount": 7,
+    "topics": [
+      "Plans and timelines",
+      "Language support and localisation",
+      "Quality and risk management",
+      "Content and communications",
+      "Option cancel days not needed, option cancel",
+      "Customer and stakeholder feedback",
+      "Like, as the team is developing big"
+    ],
+    "summaryTopicCount": 4,
+    "summaryTopics": [
+      "Language support and localisation",
+      "Quality and risk management",
+      "Customer and stakeholder feedback",
+      "Product behaviour and design"
+    ]
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/001_decision_heavy_no_actions/transcript.txt",
+    "topicCount": 4,
+    "topics": [
+      "Roles and responsibilities",
+      "Decision confirmed: phased regional launch and legacy",
+      "Choose the rollout approach for the billing",
+      "Agreed, four weeks gives customer success enough cover"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Choose the rollout approach for the billing"
+    ]
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/002_incident_actions_decision/transcript.txt",
+    "topicCount": 2,
+    "topics": [
+      "Patch the mapper and replay the failed",
+      "The payment export failed for three customers"
+    ],
+    "summaryTopicCount": 3,
+    "summaryTopics": [
+      "Customer and stakeholder feedback",
+      "Patch the mapper and replay the failed",
+      "The payment export failed for three customers"
+    ]
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/003_low_substance_noise_abstention/transcript.txt",
+    "topicCount": 0,
+    "topics": [],
+    "summaryTopicCount": 0,
+    "summaryTopics": []
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/004_action_free_information_briefing/transcript.txt",
+    "topicCount": 1,
+    "topics": [
+      "The mileage rate changes July"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "The mileage rate changes July"
+    ]
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/005_project_status_pending_leadership/transcript.txt",
+    "topicCount": 3,
+    "topics": [
+      "Documentation and evidence",
+      "Budget and commercial matters",
+      "Customer and stakeholder feedback"
+    ],
+    "summaryTopicCount": 2,
+    "summaryTopics": [
+      "Customer and stakeholder feedback",
+      "Budget and commercial matters"
+    ]
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/006_client_onboarding_split_rollout/transcript.txt",
+    "topicCount": 2,
+    "topics": [
+      "Operations and processes",
+      "Mina send the missing-field list today"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Mina send the missing-field list today"
+    ]
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/007_operations_review_internal_cover/transcript.txt",
+    "topicCount": 0,
+    "topics": [],
+    "summaryTopicCount": 0,
+    "summaryTopics": []
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/008_sales_pipeline_review/transcript.txt",
+    "topicCount": 2,
+    "topics": [
+      "Focus the retail and logistics accounts instead",
+      "Risks"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Focus the retail and logistics accounts instead"
+    ]
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/009_board_launch_delay/transcript.txt",
+    "topicCount": 2,
+    "topics": [
+      "Leah update the board pack tonight",
+      "Actually, the team should move the Spain launch to September"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Leah update the board pack tonight"
+    ]
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/010_webinar_rehearsal_trim/transcript.txt",
+    "topicCount": 2,
+    "topics": [
+      "Content and communications",
+      "Keep the live demo seven minutes and"
+    ],
+    "summaryTopicCount": 2,
+    "summaryTopics": [
+      "Keep the live demo seven minutes and",
+      "Content and communications"
+    ]
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/011_finance_budget_review/transcript.txt",
+    "topicCount": 2,
+    "topics": [
+      "Plans and timelines",
+      "Plans and timelines"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Plans and timelines"
+    ]
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/012_hiring_interview_debrief/transcript.txt",
+    "topicCount": 2,
+    "topics": [
+      "Product behaviour and design",
+      "Her gap is depth on incident management at larger scale"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Product behaviour and design"
+    ]
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/013_messy_speaker_timestamp_formats/transcript.txt",
+    "topicCount": 2,
+    "topics": [
+      "Operations and processes",
+      "Legal review is complete, but finance approval is still pending"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Request the insurance certificate Friday"
+    ]
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/014_status_update_discussion_only/transcript.txt",
+    "topicCount": 1,
+    "topics": [
+      "Product behaviour and design"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Product behaviour and design"
+    ]
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/015_hidden_decision_meeting/transcript.txt",
+    "topicCount": 2,
+    "topics": [
+      "David reschedule the weekly check-in today",
+      "Friday noon works best"
+    ],
+    "summaryTopicCount": 2,
+    "summaryTopics": [
+      "David reschedule the weekly check-in today",
+      "Friday noon works best"
+    ]
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/016_document_review_discussion_only/transcript.txt",
+    "topicCount": 2,
+    "topics": [
+      "Risks and dependencies",
+      "Documentation and evidence"
+    ],
+    "summaryTopicCount": 2,
+    "summaryTopics": [
+      "Risks and dependencies",
+      "Documentation and evidence"
+    ]
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/017_dependency_risk_discussion_only/transcript.txt",
+    "topicCount": 1,
+    "topics": [
+      "Continue the current information for now"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Continue the current information for now"
+    ]
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/018_support_metrics_action_heavy/transcript.txt",
+    "topicCount": 4,
+    "topics": [
+      "The team keeps saying the same",
+      "Six months ago",
+      "Testing and validation",
+      "Content and communications"
+    ],
+    "summaryTopicCount": 2,
+    "summaryTopics": [
+      "The team keeps saying the same",
+      "Account setup and permissions"
+    ]
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/019_contract_negotiation_review/transcript.txt",
+    "topicCount": 4,
+    "topics": [
+      "Sign the one-year extension and keep the",
+      "Jon redline the exit clause Friday",
+      "That is cheaper on paper, but it would lock us",
+      "Decisions"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Jon redline the exit clause Friday"
+    ]
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/020_customer_complaint_review/transcript.txt",
+    "topicCount": 3,
+    "topics": [
+      "Budget and commercial matters",
+      "Customer and stakeholder feedback",
+      "The customer has raised a second complaint about missed handover"
+    ],
+    "summaryTopicCount": 2,
+    "summaryTopics": [
+      "Customer and stakeholder feedback",
+      "Budget and commercial matters"
+    ]
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/021_real_dita_importer_obligations_transcript/transcript.txt",
+    "topicCount": 7,
+    "topics": [
+      "Plans and timelines",
+      "Product behaviour and design",
+      "Operations and processes",
+      "Content and communications",
+      "Content and communications",
+      "Content and communications",
+      "Risks"
+    ],
+    "summaryTopicCount": 4,
+    "summaryTopics": [
+      "Quality and risk management",
+      "Scope and requirements: MDR",
+      "Regulatory and compliance: HPRA",
+      "Product behaviour and design"
+    ]
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/022_real_eakin_sw_minutes_pdf/transcript.txt",
+    "topicCount": 9,
+    "topics": [
+      "Plans and timelines",
+      "Language support and localisation",
+      "Electrical compliance testing",
+      "Software change control",
+      "Electrical compliance testing: IEC 60601",
+      "Quality and risk indicators",
+      "Jacqui Fox David Didsbury Colm O’Rourke (absent)",
+      "David noted the current setup the flash",
+      "Andrew and Colm review applicability"
+    ],
+    "summaryTopicCount": 5,
+    "summaryTopics": [
+      "Cybersecurity and access controls",
+      "Language support and localisation",
+      "Electrical compliance testing: IEC 60601",
+      "Quality and risk indicators",
+      "Jacqui Fox David Didsbury Colm O’Rourke (absent)"
+    ]
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/023_real_eakin_t733_weekly_transcript/transcript.txt",
+    "topicCount": 6,
+    "topics": [
+      "Risks and dependencies",
+      "Documentation and evidence",
+      "Language support and localisation",
+      "Plans and timelines",
+      "Testing and validation",
+      "Software change traceability"
+    ],
+    "summaryTopicCount": 3,
+    "summaryTopics": [
+      "Language support and localisation",
+      "Scope and requirements: IEC 27427",
+      "Come here slightly higher percentage"
+    ]
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/024_real_dita_internal_followup_transcript/transcript.txt",
+    "topicCount": 6,
+    "topics": [
+      "Plans and timelines",
+      "Language support and localisation",
+      "Quality and risk management",
+      "Content and communications",
+      "Customer and stakeholder feedback",
+      "Like, as the team is developing big"
+    ],
+    "summaryTopicCount": 4,
+    "summaryTopics": [
+      "Language support and localisation",
+      "Quality and risk management",
+      "Customer and stakeholder feedback",
+      "Product behaviour and design"
+    ]
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/025_real_t761_eakin_sw_weekly_transcript/transcript.txt",
+    "topicCount": 5,
+    "topics": [
+      "Language support and localisation",
+      "Risks and dependencies",
+      "Software change traceability",
+      "Electrical compliance testing",
+      "Testing and validation"
+    ],
+    "summaryTopicCount": 3,
+    "summaryTopics": [
+      "Language support and localisation",
+      "Cybersecurity and access controls",
+      "Electrical compliance testing: IEC 60601"
+    ]
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/026_real_qip_assessment_tool_case_study_transcript/transcript.txt",
+    "topicCount": 5,
+    "topics": [
+      "Quality and risk management",
+      "Testing and validation",
+      "Product behaviour and design",
+      "Content and communications",
+      "Risks"
+    ],
+    "summaryTopicCount": 3,
+    "summaryTopics": [
+      "Quality and risk management",
+      "Customer and stakeholder feedback",
+      "Product behaviour and design"
+    ]
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/027_real_abbott_audit_kickoff_transcript/transcript.txt",
+    "topicCount": 5,
+    "topics": [
+      "Scope and requirements",
+      "Quality and risk indicators",
+      "Risks and dependencies",
+      "Plans and timelines",
+      "Risks"
+    ],
+    "summaryTopicCount": 2,
+    "summaryTopics": [
+      "Quality and risk indicators",
+      "Cybersecurity and access controls"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/001_status_review/transcript.txt",
+    "topicCount": 5,
+    "topics": [
+      "Operations and processes",
+      "Budget and commercial matters",
+      "Due end quarter",
+      "The repeatable AI use case library, I think the team",
+      "Risks"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Budget and commercial matters"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/002_validation_decision/transcript.txt",
+    "topicCount": 2,
+    "topics": [
+      "Testing and validation",
+      "Further actions one"
+    ],
+    "summaryTopicCount": 3,
+    "summaryTopics": [
+      "Testing and validation",
+      "Risks and dependencies",
+      "Further actions one"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/003_webinar_rehearsal/transcript.txt",
+    "topicCount": 7,
+    "topics": [
+      "Roles and responsibilities",
+      "Content and communications",
+      "Documentation and evidence",
+      "Opportunities for improvement here",
+      "Operations and processes",
+      "And then can you delegate it to a junior member",
+      "Decisions"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Opportunities for improvement here"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/004_contract_renewal/transcript.txt",
+    "topicCount": 2,
+    "topics": [
+      "Operations and processes",
+      "A three-year term would reduce the increase, but it locks"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Operations and processes"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/005_office_relocation/transcript.txt",
+    "topicCount": 3,
+    "topics": [
+      "Plans and timelines",
+      "Roles and responsibilities",
+      "Plans and timelines"
+    ],
+    "summaryTopicCount": 2,
+    "summaryTopics": [
+      "Roles and responsibilities",
+      "Plans and timelines"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/006_product_bug_triage/transcript.txt",
+    "topicCount": 2,
+    "topics": [
+      "Risks and dependencies",
+      "Software changes"
+    ],
+    "summaryTopicCount": 2,
+    "summaryTopics": [
+      "Risks and dependencies",
+      "Software changes"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/007_client_onboarding/transcript.txt",
+    "topicCount": 2,
+    "topics": [
+      "Operations and processes",
+      "Further actions for meeting"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Further actions for meeting"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/008_event_planning/transcript.txt",
+    "topicCount": 1,
+    "topics": [
+      "Registration is already at one hundred and eighty people, so"
+    ],
+    "summaryTopicCount": 0,
+    "summaryTopics": []
+  },
+  {
+    "file": "scripts/transcript-tests/009_supplier_risk_review/transcript.txt",
+    "topicCount": 2,
+    "topics": [
+      "Operations and processes",
+      "The backup supplier cannot guarantee September delivery and their latest"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Quality and risk indicators"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/010_finance_budget_review/transcript.txt",
+    "topicCount": 1,
+    "topics": [
+      "Plans and timelines"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Plans and timelines"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/011_hiring_interview_debrief/transcript.txt",
+    "topicCount": 3,
+    "topics": [
+      "Roles and responsibilities",
+      "Regulatory and compliance",
+      "Actions beyond preparing the offer pack"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Actions beyond preparing the offer pack"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/012_training_rollout/transcript.txt",
+    "topicCount": 3,
+    "topics": [
+      "Louise split the material two forty-five minute",
+      "Please publish the revised timetable Thursday",
+      "Keep the pilot group the Manchester site"
+    ],
+    "summaryTopicCount": 3,
+    "summaryTopics": [
+      "Louise split the material two forty-five minute",
+      "Please publish the revised timetable Thursday",
+      "Keep the pilot group the Manchester site"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/013_low_substance_fallback/transcript.txt",
+    "topicCount": 0,
+    "topics": [],
+    "summaryTopicCount": 0,
+    "summaryTopics": []
+  },
+  {
+    "file": "scripts/transcript-tests/014_request_acceptance/transcript.txt",
+    "topicCount": 0,
+    "topics": [],
+    "summaryTopicCount": 0,
+    "summaryTopics": []
+  },
+  {
+    "file": "scripts/transcript-tests/015_ownership_assignment/transcript.txt",
+    "topicCount": 0,
+    "topics": [],
+    "summaryTopicCount": 0,
+    "summaryTopics": []
+  },
+  {
+    "file": "scripts/transcript-tests/016_investigation_commitment/transcript.txt",
+    "topicCount": 0,
+    "topics": [],
+    "summaryTopicCount": 0,
+    "summaryTopics": []
+  },
+  {
+    "file": "scripts/transcript-tests/017_orphan_commitment/transcript.txt",
+    "topicCount": 0,
+    "topics": [],
+    "summaryTopicCount": 0,
+    "summaryTopics": []
+  },
+  {
+    "file": "scripts/transcript-tests/018_sales_pipeline_review/transcript.txt",
+    "topicCount": 2,
+    "topics": [
+      "Focus the retail and logistics accounts instead",
+      "Risks"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Focus the retail and logistics accounts instead"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/019_supplier_review/transcript.txt",
+    "topicCount": 2,
+    "topics": [
+      "Operations and processes",
+      "Risks"
+    ],
+    "summaryTopicCount": 2,
+    "summaryTopics": [
+      "Operations and processes",
+      "Plans and timelines"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/020_contract_negotiation/transcript.txt",
+    "topicCount": 4,
+    "topics": [
+      "Sign the one-year extension and keep the",
+      "Jon redline the exit clause Friday",
+      "That is cheaper on paper, but it would lock us",
+      "Decisions"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Jon redline the exit clause Friday"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/021_hiring_interview_debrief/transcript.txt",
+    "topicCount": 2,
+    "topics": [
+      "Product behaviour and design",
+      "Her gap is depth on incident management at larger scale"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Product behaviour and design"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/022_candidate_screening/transcript.txt",
+    "topicCount": 1,
+    "topics": [
+      "Customer and stakeholder feedback"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Customer and stakeholder feedback"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/023_finance_budget_review/transcript.txt",
+    "topicCount": 2,
+    "topics": [
+      "Plans and timelines",
+      "Plans and timelines"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Plans and timelines"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/024_board_update/transcript.txt",
+    "topicCount": 2,
+    "topics": [
+      "Budget and commercial matters",
+      "Tom tighten the churn narrative before Thursday"
+    ],
+    "summaryTopicCount": 2,
+    "summaryTopics": [
+      "Budget and commercial matters",
+      "Tom tighten the churn narrative before Thursday"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/025_incident_response/transcript.txt",
+    "topicCount": 3,
+    "topics": [
+      "Keep the status page open until the",
+      "Noah pull the API logs 6pm",
+      "The database failover worked, but API latency is still unstable"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Noah pull the API logs 6pm"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/026_product_bug_triage/transcript.txt",
+    "topicCount": 2,
+    "topics": [
+      "Product behaviour and design",
+      "The checkout bug only appears when saved cards and discount"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Product behaviour and design"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/027_customer_complaint_review/transcript.txt",
+    "topicCount": 3,
+    "topics": [
+      "Budget and commercial matters",
+      "Customer and stakeholder feedback",
+      "The customer has raised a second complaint about missed handover"
+    ],
+    "summaryTopicCount": 2,
+    "summaryTopics": [
+      "Customer and stakeholder feedback",
+      "Budget and commercial matters"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/028_customer_onboarding/transcript.txt",
+    "topicCount": 1,
+    "topics": [
+      "Customer and stakeholder feedback"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Customer and stakeholder feedback"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/029_office_relocation/transcript.txt",
+    "topicCount": 2,
+    "topics": [
+      "Sophie confirm the movers tomorrow",
+      "I don't think that works for the meeting rooms"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Sophie confirm the movers tomorrow"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/030_webinar_rehearsal/transcript.txt",
+    "topicCount": 2,
+    "topics": [
+      "Content and communications",
+      "Keep the live demo seven minutes and"
+    ],
+    "summaryTopicCount": 2,
+    "summaryTopics": [
+      "Keep the live demo seven minutes and",
+      "Content and communications"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/031_event_planning/transcript.txt",
+    "topicCount": 2,
+    "topics": [
+      "Plans and timelines",
+      "Registration is at two hundred and twenty and the breakout"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Plans and timelines"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/032_training_rollout/transcript.txt",
+    "topicCount": 3,
+    "topics": [
+      "Louise split the material two forty-minute sessions",
+      "Please publish the revised timetable Thursday",
+      "Keep the pilot group the Manchester site"
+    ],
+    "summaryTopicCount": 3,
+    "summaryTopics": [
+      "Louise split the material two forty-minute sessions",
+      "Please publish the revised timetable Thursday",
+      "Keep the pilot group the Manchester site"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/033_marketing_campaign_review/transcript.txt",
+    "topicCount": 1,
+    "topics": [
+      "Leo rewrite the landing-page copy tonight"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Leo rewrite the landing-page copy tonight"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/034_software_release_review/transcript.txt",
+    "topicCount": 2,
+    "topics": [
+      "Software changes",
+      "Accessibility fixes are still open and the analytics dashboard has"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Software changes"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/035_procurement_discussion/transcript.txt",
+    "topicCount": 3,
+    "topics": [
+      "Buy the lower-volume option first and review",
+      "Yasmin request the revised quote Tuesday",
+      "The larger hardware package includes support, but it commits us"
+    ],
+    "summaryTopicCount": 2,
+    "summaryTopics": [
+      "Yasmin request the revised quote Tuesday",
+      "Buy the lower-volume option first and review"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/036_project_retrospective/transcript.txt",
+    "topicCount": 1,
+    "topics": [
+      "Plans and timelines"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Plans and timelines"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/037_partnership_discussion/transcript.txt",
+    "topicCount": 3,
+    "topics": [
+      "Run ninety-day pilot Northstar and review exclusivity",
+      "Dean draft the pilot terms Monday",
+      "I don't want us to lock the whole channel"
+    ],
+    "summaryTopicCount": 2,
+    "summaryTopics": [
+      "Run ninety-day pilot Northstar and review exclusivity",
+      "Dean draft the pilot terms Monday"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/038_grant_application_review/transcript.txt",
+    "topicCount": 3,
+    "topics": [
+      "Roles and responsibilities",
+      "Neil rewrite the summary Wednesday",
+      "I don't think that is strong enough"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Neil rewrite the summary Wednesday"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/039_risk_review/transcript.txt",
+    "topicCount": 3,
+    "topics": [
+      "Operations and processes",
+      "Maria update the register tomorrow",
+      "Risks"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Maria update the register tomorrow"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/040_governance_review/transcript.txt",
+    "topicCount": 2,
+    "topics": [
+      "Plans and timelines",
+      "Owen circulate the final draft afternoon"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Owen circulate the final draft afternoon"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/041_operations_review/transcript.txt",
+    "topicCount": 0,
+    "topics": [],
+    "summaryTopicCount": 0,
+    "summaryTopics": []
+  },
+  {
+    "file": "scripts/transcript-tests/042_support_escalation_review/transcript.txt",
+    "topicCount": 2,
+    "topics": [
+      "Customer and stakeholder feedback",
+      "Replace the workaround article direct escalation path"
+    ],
+    "summaryTopicCount": 2,
+    "summaryTopics": [
+      "Customer and stakeholder feedback",
+      "Replace the workaround article direct escalation path"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/043_release_go_no_go/transcript.txt",
+    "topicCount": 1,
+    "topics": [
+      "Software changes"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Software changes"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/044_budget_reforecast/transcript.txt",
+    "topicCount": 3,
+    "topics": [
+      "Ben send the revised forecast Wednesday",
+      "Not deciding headcount today",
+      "Risks"
+    ],
+    "summaryTopicCount": 2,
+    "summaryTopics": [
+      "Not deciding headcount today",
+      "Ben send the revised forecast Wednesday"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/045_board_launch_delay/transcript.txt",
+    "topicCount": 2,
+    "topics": [
+      "Leah update the board pack tonight",
+      "Actually, the team should move the Spain launch to September"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Leah update the board pack tonight"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/046_customer_onboarding_split_rollout/transcript.txt",
+    "topicCount": 2,
+    "topics": [
+      "Operations and processes",
+      "Mina send the missing-field list today"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Mina send the missing-field list today"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/047_supplier_renewal_rejection/transcript.txt",
+    "topicCount": 3,
+    "topics": [
+      "Mark send the renewal note tomorrow morning",
+      "Supplier A cut price by 8 percent, but migration and",
+      "Risks"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Mark send the renewal note tomorrow morning"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/048_status_review_pending_leadership/transcript.txt",
+    "topicCount": 3,
+    "topics": [
+      "Documentation and evidence",
+      "Budget and commercial matters",
+      "Customer and stakeholder feedback"
+    ],
+    "summaryTopicCount": 2,
+    "summaryTopics": [
+      "Customer and stakeholder feedback",
+      "Budget and commercial matters"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/049_low_substance_noise/transcript.txt",
+    "topicCount": 1,
+    "topics": [
+      "Let's run through the agenda"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Let's run through the agenda"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/050_partnership_mou_enablement/transcript.txt",
+    "topicCount": 3,
+    "topics": [
+      "Plans and timelines",
+      "The partner wants two enablement sessions July",
+      "The co-branded webinar is fine, but legal review of the"
+    ],
+    "summaryTopicCount": 0,
+    "summaryTopics": []
+  },
+  {
+    "file": "scripts/transcript-tests/051_real_webinar_rehearsal/transcript.txt",
+    "topicCount": 7,
+    "topics": [
+      "Roles and responsibilities",
+      "Content and communications",
+      "Documentation and evidence",
+      "Opportunities for improvement here",
+      "Operations and processes",
+      "And then can you delegate it to a junior member",
+      "Decisions"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Opportunities for improvement here"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/052_status_update_meeting/transcript.txt",
+    "topicCount": 1,
+    "topics": [
+      "Product behaviour and design"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Product behaviour and design"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/053_hidden_decision_meeting/transcript.txt",
+    "topicCount": 2,
+    "topics": [
+      "David reschedule the weekly check-in today",
+      "Friday noon works best"
+    ],
+    "summaryTopicCount": 2,
+    "summaryTopics": [
+      "David reschedule the weekly check-in today",
+      "Friday noon works best"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/054_document_review_meeting/transcript.txt",
+    "topicCount": 2,
+    "topics": [
+      "Risks and dependencies",
+      "Documentation and evidence"
+    ],
+    "summaryTopicCount": 2,
+    "summaryTopics": [
+      "Risks and dependencies",
+      "Documentation and evidence"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/055_dependency_risk_meeting/transcript.txt",
+    "topicCount": 1,
+    "topics": [
+      "Continue the current information for now"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Continue the current information for now"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/056_progress_dashboard_meeting/transcript.txt",
+    "topicCount": 1,
+    "topics": [
+      "Documentation and evidence"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Documentation and evidence"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/057_rehearsal_banter_filter/transcript.txt",
+    "topicCount": 0,
+    "topics": [],
+    "summaryTopicCount": 0,
+    "summaryTopics": []
+  },
+  {
+    "file": "scripts/transcript-tests/058_submission_date_priority/transcript.txt",
+    "topicCount": 4,
+    "topics": [
+      "Plans and timelines",
+      "Plans and timelines",
+      "Documentation and evidence",
+      "Risks"
+    ],
+    "summaryTopicCount": 2,
+    "summaryTopics": [
+      "Documentation and evidence",
+      "Plans and timelines"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/059_partial_completion_allowed/transcript.txt",
+    "topicCount": 0,
+    "topics": [],
+    "summaryTopicCount": 0,
+    "summaryTopics": []
+  },
+  {
+    "file": "scripts/transcript-tests/060_external_review_optional/transcript.txt",
+    "topicCount": 0,
+    "topics": [],
+    "summaryTopicCount": 0,
+    "summaryTopics": []
+  },
+  {
+    "file": "scripts/transcript-tests/061_no_major_impact_dependency/transcript.txt",
+    "topicCount": 1,
+    "topics": [
+      "Plans and timelines"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Plans and timelines"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/062_completed_and_approved_status/transcript.txt",
+    "topicCount": 0,
+    "topics": [],
+    "summaryTopicCount": 0,
+    "summaryTopics": []
+  },
+  {
+    "file": "scripts/transcript-tests/063_rejection_test/transcript.txt",
+    "topicCount": 0,
+    "topics": [],
+    "summaryTopicCount": 0,
+    "summaryTopics": []
+  },
+  {
+    "file": "scripts/transcript-tests/064_analytics_review/transcript.txt",
+    "topicCount": 4,
+    "topics": [
+      "The across all the selected sessions",
+      "Customer and stakeholder feedback",
+      "Plans and timelines",
+      "There is no real difference"
+    ],
+    "summaryTopicCount": 3,
+    "summaryTopics": [
+      "Customer and stakeholder feedback",
+      "The across all the selected sessions",
+      "Maths the first two tables add together"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/064_status_setup_clause_rejected/transcript.txt",
+    "topicCount": 1,
+    "topics": [
+      "Documentation and evidence"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Documentation and evidence"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/065_status_topic_date_casing/transcript.txt",
+    "topicCount": 1,
+    "topics": [
+      "Documentation and evidence"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Documentation and evidence"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/066_status_misrecognized_setup_rejected/transcript.txt",
+    "topicCount": 1,
+    "topics": [
+      "Documentation and evidence"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Documentation and evidence"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/067_banana_falcon_client_ready/transcript.txt",
+    "topicCount": 4,
+    "topics": [
+      "Claire, Bob, Sarah, Mike ---",
+      "Product behaviour and design",
+      "Customers won't Dave means",
+      "Action for Mike investigate API numbers"
+    ],
+    "summaryTopicCount": 4,
+    "summaryTopics": [
+      "Product behaviour and design",
+      "Action for Mike investigate API numbers",
+      "Claire, Bob, Sarah, Mike ---",
+      "Customers won't Dave means"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/068_noisy_low_substance_sparse/transcript.txt",
+    "topicCount": 0,
+    "topics": [],
+    "summaryTopicCount": 0,
+    "summaryTopics": []
+  },
+  {
+    "file": "scripts/transcript-tests/069_decision_heavy_internal/transcript.txt",
+    "topicCount": 4,
+    "topics": [
+      "Roles and responsibilities",
+      "Decision confirmed: phased regional launch and legacy",
+      "Choose the rollout approach for the billing",
+      "Agreed, four weeks gives customer success enough cover"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Choose the rollout approach for the billing"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/070_incident_bug_triage/transcript.txt",
+    "topicCount": 2,
+    "topics": [
+      "Patch the mapper and replay the failed",
+      "The payment export failed for three customers"
+    ],
+    "summaryTopicCount": 3,
+    "summaryTopics": [
+      "Customer and stakeholder feedback",
+      "Patch the mapper and replay the failed",
+      "The payment export failed for three customers"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/071_messy_speaker_timestamp_formats/transcript.txt",
+    "topicCount": 2,
+    "topics": [
+      "Operations and processes",
+      "Legal review is complete, but finance approval is still pending"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Request the insurance certificate Friday"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/072_action_free_information_briefing/transcript.txt",
+    "topicCount": 1,
+    "topics": [
+      "The mileage rate changes July and the"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "The mileage rate changes July and the"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/073_support_metrics_actions/transcript.txt",
+    "topicCount": 4,
+    "topics": [
+      "The team keeps saying the same",
+      "Six months ago",
+      "Testing and validation",
+      "Content and communications"
+    ],
+    "summaryTopicCount": 2,
+    "summaryTopics": [
+      "The team keeps saying the same",
+      "Account setup and permissions"
+    ]
+  }
+]

@@ -3,7 +3,7 @@
 const { clean } = require('./evidence');
 const { purposePlan } = require('./meetingPurpose');
 const { canHeadlineTopic, canSupportPurposeDimension, canStandAloneAsMinutesEvidence } = require('./publishability');
-const { editorialTopicLabel } = require('./topicEditorial');
+const { editorialTopicLabel, isPublishableTopicLabel } = require('./topicEditorial');
 
 const STOPWORDS = new Set([
   'about', 'after', 'again', 'also', 'been', 'being', 'client', 'confirm', 'could',
@@ -171,7 +171,10 @@ function inferredWorkstreamsFromEvidence(evidence, topics = [], profileId = '') 
   }
   for (const topic of topics) {
     const label = clean(topic.text || topic.editorialText || topic.topic || editorialTopicLabel(topic, evidence));
-    if (!label || !canHeadlineTopic(label)) continue;
+    // canHeadlineTopic judges whether a sentence could head a topic; this also
+    // requires the result to read as a subject rather than as something said,
+    // so the summary screen holds to the same bar as the discussion screen.
+    if (!label || !canHeadlineTopic(label) || !isPublishableTopicLabel(label)) continue;
     const key = label.toLowerCase();
     if (byLabel.has(key)) continue;
     const labelTokens = new Set(tokens(label));
@@ -348,7 +351,7 @@ function buildInitialUnderstanding({ evidence, meeting = {}, topics = [], meetin
     label: clean(topic.text || topic.editorialText || topic.topic),
     evidenceIds: topic.evidenceIds || [],
     provenance: 'transcript_emergent'
-  })).filter((item) => item.label && canHeadlineTopic(item.label));
+  })).filter((item) => item.label && canHeadlineTopic(item.label) && isPublishableTopicLabel(item.label));
   const workstreams = inferredWorkstreamsFromEvidence(evidence, [...topicWorkstreams, ...(topics || [])], profileId);
   const selectedWorkstreams = (workstreams.length ? workstreams : topicWorkstreams).slice(0, 8);
   const mode = inferMeetingMode(meeting, profileId, evidence);
