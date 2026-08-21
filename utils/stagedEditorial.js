@@ -852,7 +852,37 @@ function buildStagedValidationFlags(screens = {}) {
 
 // --- Final action quality gate --------------------------------------------
 
-const FINAL_ACTION_VERB = /^(?:arrange|book|schedule|organise|coordinate|set\s+up|continue|update|review|check|verify|validate|assess|send|share|provide|circulate|issue|upload|forward|confirm|prepare|complete|develop|build|create|finali[sz]e|finish|produce|draft|submit|approve|agree|accept|sign(?:\s+off)?|trace|generate|identify|document|follow[- ]?up)\b/i;
+// The verbs an action may open with. This is a whitelist on purpose: it is what
+// keeps "Be, especially the response to the cars", "IF SW change cannot be seem"
+// and "Sales input" out of a client's minutes.
+//
+// It was written from regulatory meetings and stayed there, so ordinary working
+// verbs were missing and 92 of 156 extracted actions across the corpus were
+// rejected as having no actionable verb — including "Write and circulate three
+// backup questions" and "Restore the animation on the three-things slide". Half
+// of all meetings that produced actions had every one of them held back, which
+// is what "no actions" looked like to a reviewer.
+//
+// The additions below are taken from the openings that were actually being
+// rejected, not invented. Deliberately still absent: have, be, work, go, miss,
+// stay and if, which opened either malformed text or a decision rather than an
+// action, and bare nouns such as "Clinical review of ..." and "Sales input".
+const FINAL_ACTION_VERB = /^(?:arrange|book|schedule|organise|coordinate|set\s+up|continue|update|review|check|verify|validate|assess|send|share|provide|circulate|issue|upload|forward|confirm|prepare|complete|develop|build|create|finali[sz]e|finish|produce|draft|submit|approve|agree|accept|sign(?:\s+off)?|trace|generate|identify|document|follow[- ]?up|reschedule|postpone|prioritise|queue|allocate|reserve|start|restart|run|rerun|launch|begin|initiate|execute|trigger|activate|invoke|deploy|resume|proceed|perform|write|rewrite|regenerate|make|rebuild|compose|design|assemble|compile|author|define|establish|scaffold|provision|edit|modify|change|revise|amend|adjust|alter|tweak|refine|rework|replace|rename|restructure|reorganise|reconfigure|migrate|convert|map|remap|override|patch|fix|correct|repair|resolve|restore|recover|reset|revert|refresh|add|insert|append|attach|include|incorporate|import|install|integrate|connect|link|associate|assign|register|enrol|subscribe|enable|configure|populate|merge|combine|sync|synchronise|remove|delete|erase|clear|purge|strip|detach|disconnect|unlink|uninstall|disable|deactivate|cancel|stop|halt|pause|suspend|terminate|close|archive|retire|withdraw|revoke|exclude|omit|discard|publish|release|ship|push|post|distribute|deliver|export|promote|announce|serve|host|commit|email|message|contact|call|phone|reply|respond|answer|notify|inform|advise|alert|remind|brief|report|acknowledge|request|ask|invite|chase|escalate|consult|inspect|examine|evaluate|analyse|investigate|explore|research|audit|test|compare|measure|monitor|track|observe|diagnose|troubleshoot|debug|reproduce|find|locate|detect|discover|determine|decide|choose|select|reject|decline|authorise|finalise|nominate|appoint|endorse|fetch|retrieve|get|obtain|collect|gather|query|search|read|load|parse|extract|ingest|store|save|persist|cache|index|catalogue|classify|categorise|tag|label|filter|sort|group|aggregate|calculate|compute|transform|normalise|reconcile|deduplicate|grant|permit|authenticate|onboard|transfer|delegate|block|restrict|move|copy|duplicate|clone|download|receive|route|redirect|relocate|shift|dispatch|settle|conclude|mark|flag|hand\s+over|record|capture|follow[-\s]?up|clarify|implement|speak|defer|delay|focus|come|switch|swap|log|raise|open|buy|renew|redline|flick|bring|split|tighten|pull|watch|ring|keep|handle)\b/i;
+
+// "Building the closing slide" is the same commitment as "Build the closing
+// slide". Only the base form is listed above, so a gerund is matched by its
+// stem rather than by adding an -ing spelling for every verb.
+function openingVerbIsActionable(action) {
+  const text = String(action || '').trim();
+  if (FINAL_ACTION_VERB.test(text)) return true;
+  const first = text.split(/\s+/)[0] || '';
+  const gerund = first.match(/^([a-z]{3,})ing$/i);
+  if (!gerund) return false;
+  const stem = gerund[1];
+  // "writing" -> "write", "running" -> "run", "building" -> "build".
+  const candidates = [stem, `${stem}e`, stem.replace(/([a-z])\1$/i, '$1')];
+  return candidates.some((base) => FINAL_ACTION_VERB.test(`${base} `));
+}
 const FINAL_ACTION_DEBRIS = [
   /^\s*(?:and\s+)?then\b/i,
   /^\s*(?:i|we)\s+(?:think|suppose|guess)\b/i,
@@ -904,8 +934,13 @@ function finalActionObjectText(action) {
   const signOff = text.match(/^sign\s+off\s+(.+)$/i);
   if (signOff) return cleanFinalActionValue(signOff[1]);
   const verb = text.match(FINAL_ACTION_VERB);
-  if (!verb) return '';
-  return cleanFinalActionValue(text.slice(verb[0].length));
+  if (verb) return cleanFinalActionValue(text.slice(verb[0].length));
+  // A gerund opening is accepted as actionable, so its object has to be found
+  // the same way, or "Building the closing slide with the QR code" is judged to
+  // have no object at all rather than an obvious one.
+  const gerund = text.match(/^[a-z]{3,}ing\b/i);
+  if (gerund && openingVerbIsActionable(text)) return cleanFinalActionValue(text.slice(gerund[0].length));
+  return '';
 }
 
 function finalActionHasConcreteObject(action) {
@@ -918,6 +953,10 @@ function finalActionHasConcreteObject(action) {
   if (!object || FINAL_ACTION_WEAK_OBJECT.test(object)) return false;
   const words = object.split(/\s+/).filter(Boolean);
   if (words.length >= 2) return true;
+  // A one-word object is still an object. Requiring two words held back "Call
+  // the venue", "Patch the mapper" and "Update the rota"; the weak-object list
+  // above is what actually separates a real target from "it" or "stuff".
+  if (/^[a-z][a-z-]{2,}$/i.test(object)) return true;
   // General domain acronyms only — no client/product names or transcript-specific
   // version literals. (This module is intentionally dependency-free; the shared
   // dictionary in utils/domainTerms.js is the canonical list these mirror.)
@@ -955,10 +994,10 @@ function stagedFinalActionQualityIssue(candidate = {}) {
   if (isMalformedStagedLine(action)) return 'malformed_action';
   if (finalActionMixesWorkstreams(action)) return 'mixed_workstream_clauses';
   if (FINAL_ACTION_DEBRIS.some((pattern) => pattern.test(action))) return 'transcript_debris';
-  if (!FINAL_ACTION_VERB.test(action)) return 'missing_actionable_verb';
+  if (!openingVerbIsActionable(action)) return 'missing_actionable_verb';
   if (!finalActionHasConcreteObject(action)) return 'missing_concrete_object';
   if (/\b(?:someone|somebody|they|we)\s+(?:will|should|need to|needs to)\b/i.test(action)) return 'unclear_actor';
-  if (/\b(?:look at|think about|discuss|consider|progress|sort out|stuff|things|everything)\b/i.test(action)) return 'vague_action';
+  if (/(?<![\w-])(?:look at|think about|discuss|consider|progress|sort out|stuff|things|everything)\b/i.test(action)) return 'vague_action';
   return null;
 }
 
