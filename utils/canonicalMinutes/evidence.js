@@ -8,6 +8,11 @@ const CLOCK_TIMESTAMP = String.raw`(?:\d{1,2}:)?\d{1,2}:\d{2}(?::\d{2})?`;
 const VERBOSE_TEAMS_TIMESTAMP = String.raw`(?:(?:\d+\s+hours?\s+)?\d+\s+minutes?(?:\s+\d+\s+seconds?)?|\d+\s+seconds?)`;
 const TEAMS_TIMESTAMP = String.raw`(?:${CLOCK_TIMESTAMP}|${VERBOSE_TEAMS_TIMESTAMP})(?:${CLOCK_TIMESTAMP})?`;
 
+// The sentinel the rest of the pipeline already uses for an owner nobody
+// claimed. Reusing it means an unattributed turn cannot become an action owner
+// anywhere downstream without a new code path having to opt in.
+const UNATTRIBUTED_SPEAKER = 'Not stated';
+
 // Teams renders some display names surname-first as "Last, First M" (optional
 // middle initial). Normalise these generically to "First Last" so the same
 // person is never presented in two forms — e.g. as a normalised attendee AND as
@@ -27,17 +32,51 @@ function buildSpeakerHeaderPattern() {
   return new RegExp(String.raw`(?:^|\n)[ \t]*(${speakerName})(?:[ \t]+|[ \t]*[-–][ \t]*|[ \t]*\n[ \t]*)(${TEAMS_TIMESTAMP})[ \t]*|(?:^|\n|(?<=[.!?]))[ \t]*(${speakerName}):[ \t]*`, 'gm');
 }
 
+const IGNORED_HEADERS = /^(?:date|location|duration|transcript|recording|meeting|speakers|attendees|decision confirmed)$/i;
+
+// Document labels that open a line the same way a speaker handle does. Applied
+// only to the unsupported-handle path below: widening the list the supported
+// grammar uses would change transcripts that already parse, which belongs in
+// its own change rather than riding along with this one.
+const NON_SPEAKER_LINE_LABELS = /^(?:note|notes|action|actions|agenda|apologies|present|absent|summary|update|topic|decision|decisions|risk|risks|owner|deadline|next steps)$/i;
+
+// Line-initial "handle: text" openings that the supported grammar above does
+// not recognise — lowercase, dotted, underscored or numbered handles such as
+// "priya.raman:", "tom_oneill:" or "SPEAKER_02:", optionally behind a
+// timestamp. These are plausible speaker conventions, so the line almost
+// certainly starts a new turn; we simply cannot say whose.
+function buildUnsupportedHeaderPattern() {
+  return new RegExp(String.raw`(?:^|\n)[ \t]*(?:${TEAMS_TIMESTAMP}[ \t]+)?([A-Za-z][A-Za-zÀ-ÖØ-öø-ÿ0-9'’._-]{0,39}):[ \t]+`, 'gm');
+}
+
+// A handle the supported grammar would have caught if it were a plain
+// capitalised name, distinguished by a marker no English sentence opener
+// carries: an internal dot or underscore, a digit, or being wholly lowercase.
+function looksLikeUnsupportedSpeakerHandle(handle) {
+  if (IGNORED_HEADERS.test(handle) || NON_SPEAKER_LINE_LABELS.test(handle)) return false;
+  return /[._]/.test(handle) || /\d/.test(handle) || handle === handle.toLowerCase();
+}
+
 function parseTurns(transcriptText) {
   const turns = [];
   const source = String(transcriptText || '').replace(/\r/g, '');
-  const header = buildSpeakerHeaderPattern();
-  const ignoredHeaders = /^(?:date|location|duration|transcript|recording|meeting|speakers|attendees|decision confirmed)$/i;
-  const matches = [...source.matchAll(header)].map((match) => ({ ...match, speakerName: clean(match[1] || match[3]) })).filter((match) => !ignoredHeaders.test(match.speakerName));
+  const attributed = [...source.matchAll(buildSpeakerHeaderPattern())]
+    .map((match) => ({ index: match.index, length: match[0].length, speakerName: clean(match[1] || match[3]), attributed: true }))
+    .filter((match) => !IGNORED_HEADERS.test(match.speakerName));
+  // Cut at unsupported headers too, so their text is never absorbed into the
+  // previous speaker's turn. Wrong owner becomes blank owner: blank is honest.
+  const unattributed = [...source.matchAll(buildUnsupportedHeaderPattern())]
+    .filter((match) => looksLikeUnsupportedSpeakerHandle(match[1]))
+    .map((match) => ({ index: match.index, length: match[0].length, speakerName: UNATTRIBUTED_SPEAKER, attributed: false }))
+    .filter((candidate) => !attributed.some((match) => candidate.index < match.index + match.length && candidate.index >= match.index));
+  const matches = [...attributed, ...unattributed].sort((a, b) => a.index - b.index);
   matches.forEach((match, index) => {
     const next = matches[index + 1];
-    const text = clean(source.slice(match.index + match[0].length, next ? next.index : source.length));
-    const speaker = normaliseSpeakerName(match.speakerName);
-    if (text && text.length <= 5000) turns.push({ id: `turn_${turns.length + 1}`, index: turns.length, speaker, text });
+    const text = clean(source.slice(match.index + match.length, next ? next.index : source.length));
+    const speaker = match.attributed ? normaliseSpeakerName(match.speakerName) : UNATTRIBUTED_SPEAKER;
+    // attributionConfidence is present only when attribution failed, so turns
+    // the parser has always read correctly keep exactly the shape they had.
+    if (text && text.length <= 5000) turns.push({ id: `turn_${turns.length + 1}`, index: turns.length, speaker, text, ...(match.attributed ? {} : { attributionConfidence: 0 }) });
   });
   return turns;
 }
@@ -86,7 +125,7 @@ function prepareEvidence(transcriptText) {
   const parsedTurns = parseTurns(transcriptText);
   const structured = parseStructuredMinutes(transcriptText);
   const turns = [...parsedTurns, ...structured.turns].map((turn, index) => ({ ...turn, id: `turn_${index + 1}`, index }));
-  const invalidSpeakers = /^(?:yes|yeah|right|same|also|okay|great|no|well|and|client|trinzo|speakers|participants|attendees)$/i;
+  const invalidSpeakers = /^(?:yes|yeah|right|same|also|okay|great|no|well|and|client|trinzo|speakers|participants|attendees|not stated)$/i;
   const participants = [...new Set([...structured.participants, ...turns.filter((turn) => !turn.structuredSource).map((turn) => turn.speaker)].filter((name) => !invalidSpeakers.test(name)))];
   const events = [];
   for (const turn of turns) {
@@ -99,7 +138,8 @@ function prepareEvidence(transcriptText) {
       speaker: turn.speaker,
       text,
       roles: sentenceRole(text),
-      structuredSource: turn.structuredSource || null
+      structuredSource: turn.structuredSource || null,
+      ...(turn.attributionConfidence === 0 ? { attributionConfidence: 0 } : {})
     }));
   }
   events.forEach((event, index) => {
