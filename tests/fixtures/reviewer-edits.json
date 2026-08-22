@@ -73,15 +73,31 @@
     },
     {
       "id": "key-fact-the-transcript-does-not-state",
-      "finding": "stagedSemanticAuthority hits a bare `continue` when a confirmed fact has no lexical support, skipping both the repair and the flag",
+      "finding": "stagedSemanticAuthority hits a bare `continue` when a confirmed fact has no lexical support, skipping both the repair and the flag, so the fact vanished and the reviewer was never told",
       "appliesTo": ["021_real_dita_importer_obligations_transcript"],
-      "intent": "The reviewer records something they know that the meeting only alluded to.",
+      "intent": "A fact whose words appear nowhere in the transcript. Deliberately disjoint: findSupportingEvidence falls back to scoring against the whole transcript, so on a 36KB file almost any ordinary sentence scrapes support and this branch is rarely reached. It is still the branch that silently dropped a reviewer's words.",
+      "edits": [
+        { "stage": "summary", "op": "append", "path": "summary.keyFacts", "to": "The Helsinki freight corridor closes for refurbishment." }
+      ],
+      "expect": {
+        "preserved": [
+          { "stage": "summary", "text": "The Helsinki freight corridor closes for refurbishment." },
+          { "stage": "discussion", "text": "The Helsinki freight corridor closes for refurbishment." }
+        ],
+        "flags": ["reviewer_confirmed_fact_unsupported_by_transcript"],
+        "blockingFlags": 0
+      }
+    },
+    {
+      "id": "key-fact-that-cannot-be-placed-does-not-block",
+      "finding": "reviewer_confirmed_fact_not_preserved was blocking, so a fact the pipeline could not file well stopped the reviewer rather than informing them",
+      "appliesTo": ["021_real_dita_importer_obligations_transcript"],
+      "intent": "The common case: the fact has transcript support but the discussion will not hold it neatly. It goes in as written and the reviewer is told, not stopped.",
       "edits": [
         { "stage": "summary", "op": "append", "path": "summary.keyFacts", "to": "The HPRA registration renewal falls due in November." }
       ],
       "expect": {
         "preserved": [{ "stage": "summary", "text": "The HPRA registration renewal falls due in November." }],
-        "flags": ["reviewer_confirmed_fact_unsupported_by_transcript"],
         "blockingFlags": 0
       }
     },
@@ -111,6 +127,7 @@
     },
     {
       "id": "single-name-owner-keeps-the-action",
+      "pending": "actionsStage does not read state.actions at all, so a confirmed owner never reaches the actions screen.",
       "finding": "the recovered-owner regex required two capitalised words, so a first name became 'Not stated' and the publication gate then dropped the action",
       "appliesTo": ["021_real_dita_importer_obligations_transcript"],
       "intent": "The reviewer assigns an action to someone by first name.",

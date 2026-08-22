@@ -117,7 +117,7 @@ test('a recovered action keeps its owner when the meeting uses first names', () 
   assert.equal(withoutNames._canonicalEvidencePack[0].owner, 'Not stated');
 });
 
-test('confirmed attendees reach the entity names later stages normalise against', () => {
+test('confirmed attendees reach the entity names later stages normalise against', { timeout: 300000 }, () => {
   const transcriptText = fs.readFileSync(DITA_TRANSCRIPT, 'utf8');
   const result = runCanonicalLiveStage(transcriptText, {
     stage: 'summary',
@@ -130,7 +130,7 @@ test('confirmed attendees reach the entity names later stages normalise against'
   );
 });
 
-test('a confirmed meeting purpose survives re-running the summary stage', () => {
+test('a confirmed meeting purpose survives re-running the summary stage', { timeout: 300000 }, () => {
   const transcriptText = fs.readFileSync(DITA_TRANSCRIPT, 'utf8');
   const meetingPurpose = 'Agree who carries the importer obligations for DITA and what evidence HPRA will expect.';
   const overallTopics = ['Where the goods physically go', 'What HPRA will ask for'];
@@ -152,7 +152,7 @@ test('a confirmed meeting purpose survives re-running the summary stage', () => 
   assert.deepEqual(summary.topicRefs.map((ref) => ref.text), overallTopics);
 });
 
-test('an unconfirmed summary is still generated normally', () => {
+test('an unconfirmed summary is still generated normally', { timeout: 300000 }, () => {
   // The contract must be inert without confirmed input, or it would suppress the tool's
   // actual job. This is the same assertion the corpus-wide no-edit sweep makes at scale.
   const transcriptText = fs.readFileSync(DITA_TRANSCRIPT, 'utf8');

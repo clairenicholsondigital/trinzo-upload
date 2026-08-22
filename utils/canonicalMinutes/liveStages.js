@@ -6,6 +6,7 @@ const { createCanonicalState, acceptProposal } = require('./state');
 const semanticStages = require('./semanticStages');
 const { assessEvidenceTopology } = require('./topology');
 const { groundProposal } = require('./grounding');
+const { auditConfirmedAgainstScreen } = require('./runner');
 const { extractMentionedPeople, damerauLevenshtein } = require('../entityNormalization');
 const { buildConfirmedUnderstanding } = require('../stagedSemanticAuthority');
 
@@ -422,6 +423,7 @@ function runCanonicalLiveStage(transcriptText, options = {}) {
         evidenceIds
       }));
   const screen = applyConfirmedOverlay(stage, generatedScreen, state);
+  const confirmedValueAudit = auditConfirmedAgainstScreen(state, stage, screen);
   const result = {
     pipeline: 'canonical_staged_v2',
     strategy: 'semantic_v2',
@@ -429,9 +431,28 @@ function runCanonicalLiveStage(transcriptText, options = {}) {
     screens: { [stage]: screen },
     decisions: stage === 'discussion' ? proposal.decisions.map((item) => item.text) : strings(confirmed.decisions),
     risks: stage === 'discussion' ? proposal.risks.map((item) => item.text) : strings(confirmed.risks),
-    validationFlags: warningFlags(proposal.warnings, stage),
+    validationFlags: [
+      ...warningFlags(proposal.warnings, stage),
+      // Something the reviewer corrected did not survive into this stage. That is our
+      // failure, not theirs, so it is reported rather than made into an obstacle - but it
+      // is reported, because the alternative is that it goes unnoticed, which is the
+      // whole complaint.
+      ...(confirmedValueAudit.missing.length ? [{
+        type: 'reviewer_confirmed_value_missing',
+        severity: 'warning',
+        blocking: false,
+        resolutionKey: `reviewer-confirmed-missing:${stage}`,
+        message: `${confirmedValueAudit.missing.length} thing${confirmedValueAudit.missing.length === 1 ? '' : 's'} you confirmed earlier ${confirmedValueAudit.missing.length === 1 ? 'is' : 'are'} not reflected here: ${confirmedValueAudit.missing.map((item) => `${item.label} "${clean(item.value).slice(0, 60)}"`).join('; ')}.`,
+        detail: {
+          lead: 'Not carried into this screen',
+          quote: clean(confirmedValueAudit.missing[0].value).slice(0, 240),
+          meta: confirmedValueAudit.missing[0].label
+        }
+      }] : [])
+    ],
     canonicalDiagnostics: {
       inputStateVersion: state.version,
+      confirmedValueAudit,
       confirmedCollections: {
         objectives: state.objectives.length,
         topics: state.topics.length,

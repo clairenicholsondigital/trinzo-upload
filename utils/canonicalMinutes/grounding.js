@@ -1,5 +1,7 @@
 'use strict';
 
+const { isReviewerAuthored } = require('./state');
+
 // Evidence-provenance gate.
 //
 // One invariant, enforced across the whole staged pipeline: every emitted item
@@ -19,16 +21,28 @@ function currentEvidenceIdSet(evidence) {
   return new Set((evidence && Array.isArray(evidence.events) ? evidence.events : []).map((event) => event.id));
 }
 
-// Provenance-valid == cites at least one current id AND cites no foreign id.
-function isGrounded(evidenceIds, idSet) {
+// Provenance-valid == cites no foreign id AND cites at least one current id.
+//
+// Those are two guarantees, and only the first is about leakage. Refusing an item that
+// cites nothing is a completeness proxy: an LLM that invented a passage cites nothing to
+// support it. A reviewer is not an LLM. They may state something the extractor never
+// selected an event for, and the confirmed-fact repair inserts exactly such an item -
+// which this then deleted, after the preservation check had already passed, so the flag
+// written for that case never fired and the reviewer saw a generic "dropped 1 item".
+//
+// So the foreign-id test is never relaxed - a confirmed payload replayed against a
+// re-uploaded transcript is precisely the leakage case - and only the cites-something
+// test yields, and only for text the reviewer wrote.
+function isGrounded(evidenceIds, idSet, options = {}) {
   const ids = Array.isArray(evidenceIds) ? evidenceIds : [];
-  if (!ids.length) return false;
-  return ids.some((id) => idSet.has(id)) && ids.every((id) => idSet.has(id));
+  if (ids.some((id) => !idSet.has(id))) return false;
+  if (ids.length) return true;
+  return Boolean(options.reviewerAuthored);
 }
 
 function groundCollection(items, idSet, dropped, kind) {
   return (Array.isArray(items) ? items : []).filter((item) => {
-    if (isGrounded(item && item.evidenceIds, idSet)) return true;
+    if (isGrounded(item && item.evidenceIds, idSet, { reviewerAuthored: isReviewerAuthored(item) })) return true;
     dropped.push({ kind, item });
     return false;
   });
@@ -39,7 +53,7 @@ function groundDiscussionCard(card, idSet, dropped) {
     // Point objects carry their own evidenceIds; a bare string inherits the
     // card's grounding (already verified by the caller).
     if (typeof point === 'string') return true;
-    if (isGrounded(point && point.evidenceIds, idSet)) return true;
+    if (isGrounded(point && point.evidenceIds, idSet, { reviewerAuthored: isReviewerAuthored(point) })) return true;
     dropped.push({ kind: 'discussion_point', item: point });
     return false;
   });
@@ -62,7 +76,7 @@ function groundProposal(proposal, evidence) {
   if (Array.isArray(proposal.discussion)) {
     grounded.discussion = proposal.discussion
       .map((card) => {
-        if (!isGrounded(card && card.evidenceIds, idSet)) {
+        if (!isGrounded(card && card.evidenceIds, idSet, { reviewerAuthored: isReviewerAuthored(card) })) {
           dropped.push({ kind: 'discussion_card', item: card });
           return null;
         }

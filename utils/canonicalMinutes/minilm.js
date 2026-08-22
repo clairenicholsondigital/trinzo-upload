@@ -74,7 +74,13 @@ function loadMiniLMProfileSync(evidence, options = {}) {
   try {
     fs.writeFileSync(inputPath, payload);
     const result = spawnSync(process.env.PYTHON_BIN || 'python3', [path.join(__dirname, '..', '..', 'scripts', 'canonical_minutes_minilm_profile.py'), inputPath], {
-      cwd: path.join(__dirname, '..', '..'), encoding: 'utf8', timeout: Number(options.timeoutMs || 120000), maxBuffer: 20 * 1024 * 1024
+      // A backstop against a hung profiler, not a performance budget. One profile takes
+      // about twenty-five seconds on an idle machine; several at once - which is what the
+      // test suite does, and what a busy server does - take considerably longer, and at
+      // 120s they were being killed on a cold cache and reported as "profile unavailable".
+      // Killing work that would have finished buys nothing, so the limit is set where it
+      // still catches a genuine hang.
+      cwd: path.join(__dirname, '..', '..'), encoding: 'utf8', timeout: Number(options.timeoutMs || process.env.CANONICAL_MINILM_TIMEOUT_MS || 600000), maxBuffer: 20 * 1024 * 1024
     });
     if (result.status !== 0) throw new Error(result.stderr || `MiniLM profile process exited with ${result.status}`);
     const profile = JSON.parse(result.stdout);

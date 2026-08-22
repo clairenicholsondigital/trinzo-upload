@@ -288,7 +288,14 @@ function appendFactToDiscussion(discussion = [], fact, options = {}) {
     || cards.find((card) => textSimilarity(card.topic || '', topic) >= 0.35)
     || cards.find((card) => textSimilarity(`${card.topic || ''} ${(card.points || []).join(' ')}`, fact.text) >= 0.18);
   const point = cleanText(fact.text).replace(/[.?!]?$/, '.');
-  const pointValue = evidenceIds.length ? { text: point, evidenceIds } : point;
+  // A fact with no supporting evidence is only allowed through the grounding gate
+  // because the reviewer wrote it, and the gate reads that from the item it is given.
+  // Marking the fact but not the card it lands on left the card looking like ungrounded
+  // model output, which is exactly what the gate is there to delete.
+  const reviewerAuthored = fact.reviewerAuthored === true;
+  const pointValue = evidenceIds.length
+    ? { text: point, evidenceIds }
+    : (reviewerAuthored ? { text: point, evidenceIds: [], reviewerAuthored: true } : point);
   if (existing) {
     if (!existing.points.some((candidate) => textSimilarity(candidate && typeof candidate === 'object' ? candidate.text : candidate, point) >= 0.7)) existing.points.push(pointValue);
     if (evidenceIds.length) existing.evidenceIds = [...new Set([...(existing.evidenceIds || []), ...evidenceIds])];
@@ -300,6 +307,7 @@ function appendFactToDiscussion(discussion = [], fact, options = {}) {
     topic,
     points: [pointValue],
     evidenceIds,
+    reviewerAuthored,
     source: 'reviewer_confirmed_fact_repair',
     reviewerConfirmedFactIds: [fact.id]
   });
@@ -339,7 +347,34 @@ function repairDiscussionForConfirmedUnderstanding({ discussion = [], understand
   for (const fact of semanticAnchorsForDiscussion(understanding)) {
     const support = findSupportingEvidence(fact.text, transcriptText, evidenceEvents);
     if (!support.length) {
+      // A `continue` here used to skip both the repair and the flag, so a fact the
+      // reviewer typed and confirmed never reached the minutes and they were never told.
+      // It was recorded only in telemetry, which nothing renders.
+      //
+      // The reviewer is accountable for their own minutes: their words go in whether or
+      // not the extractor selected an event for them. Grounding permits this for
+      // reviewer-authored items specifically - the foreign-evidence guarantee is
+      // untouched, since citing nothing cannot leak another transcript.
+      //
+      // Telling them is information, not a gate. They know what was said; the transcript
+      // is the thing that might be incomplete.
       unsupportedFacts.push(fact.id);
+      if (!factIsPreserved(fact.text, repaired)) {
+        repaired = appendFactToDiscussion(repaired, { ...fact, evidenceIds: [], reviewerAuthored: true }, { authoritativeTopics });
+        repairedFacts.push(fact.id);
+      }
+      validationFlags.push({
+        type: 'reviewer_confirmed_fact_unsupported_by_transcript',
+        severity: 'info',
+        blocking: false,
+        resolutionKey: `reviewer-confirmed-fact-unsupported:${fact.id}`,
+        message: `"${shortReviewText(fact.text, 180)}" is in the minutes as you wrote it. Nothing in the transcript states it, so it carries no supporting evidence.`,
+        detail: {
+          lead: 'Kept, with no transcript evidence',
+          quote: shortReviewText(fact.text, 240),
+          meta: 'Included as written'
+        }
+      });
       continue;
     }
     const factWithEvidence = {
@@ -357,7 +392,10 @@ function repairDiscussionForConfirmedUnderstanding({ discussion = [], understand
       validationFlags.push({
         type: 'reviewer_confirmed_fact_not_preserved',
         severity: 'warning',
-        blocking: true,
+        // Informational rather than blocking. Blocking made sense while a lost fact was
+        // the reviewer's problem to solve; now the fact is written through, so this
+        // reports that we could not place it well, which is ours.
+        blocking: false,
         resolutionKey: `reviewer-confirmed-fact:${fact.id}`,
         message: reviewerConfirmedFactMissingMessage(fact.text, suggestedTopic),
         // The same information, in parts, so the reviewer's screen can show the

@@ -21,8 +21,8 @@
         "editedDiscussionCards": 4,
         "coldActions": 4,
         "editedActions": 4,
-        "coldBlockingFlags": 1,
-        "editedBlockingFlags": 1
+        "coldBlockingFlags": 0,
+        "editedBlockingFlags": 0
       },
       "headings": [
         "Where the goods physically go",
@@ -54,7 +54,7 @@
         "editedDiscussionCards": 4,
         "coldActions": 4,
         "editedActions": 4,
-        "coldBlockingFlags": 1,
+        "coldBlockingFlags": 0,
         "editedBlockingFlags": 0
       },
       "headings": [
@@ -91,8 +91,8 @@
         "editedDiscussionCards": 4,
         "coldActions": 4,
         "editedActions": 4,
-        "coldBlockingFlags": 1,
-        "editedBlockingFlags": 1
+        "coldBlockingFlags": 0,
+        "editedBlockingFlags": 0
       },
       "headings": [
         "What we owe the client",
@@ -128,8 +128,8 @@
         "editedDiscussionCards": 4,
         "coldActions": 5,
         "editedActions": 5,
-        "coldBlockingFlags": 1,
-        "editedBlockingFlags": 1
+        "coldBlockingFlags": 0,
+        "editedBlockingFlags": 0
       },
       "headings": [
         "CAN bus integration",
@@ -148,17 +148,43 @@
     {
       "scenario": "key-fact-the-transcript-does-not-state",
       "transcript": "021_real_dita_importer_obligations_transcript",
-      "violations": [
-        {
-          "kind": "flag_missing",
-          "type": "reviewer_confirmed_fact_unsupported_by_transcript"
-        },
-        {
-          "kind": "blocking_flags",
-          "count": 1,
-          "allowed": 0
-        }
+      "violations": [],
+      "keyFactCount": 1,
+      "unpreservedFactCount": 0,
+      "unpreservedFacts": [],
+      "difference": {
+        "summaryChanged": true,
+        "discussionChanged": true,
+        "actionsChanged": false,
+        "headingsAdded": [
+          "Other"
+        ],
+        "headingsRemoved": [],
+        "coldDiscussionCards": 4,
+        "editedDiscussionCards": 5,
+        "coldActions": 4,
+        "editedActions": 4,
+        "coldBlockingFlags": 0,
+        "editedBlockingFlags": 0
+      },
+      "headings": [
+        "Quality and risk management",
+        "Scope and requirements: MDR",
+        "Regulatory and compliance: HPRA",
+        "Product behaviour and design",
+        "Other"
       ],
+      "actions": [
+        "Orla Skally | Review document document as well | Not stated",
+        "Jacqui Fox | Flick this over to Orla | Not stated",
+        "Orla Skally | Bring that to the US team | Not stated",
+        "Orla Skally | Send a copy of the HPRA authorised representative bill | Not stated"
+      ]
+    },
+    {
+      "scenario": "key-fact-that-cannot-be-placed-does-not-block",
+      "transcript": "021_real_dita_importer_obligations_transcript",
+      "violations": [],
       "keyFactCount": 1,
       "unpreservedFactCount": 0,
       "unpreservedFacts": [],
@@ -172,8 +198,8 @@
         "editedDiscussionCards": 4,
         "coldActions": 4,
         "editedActions": 4,
-        "coldBlockingFlags": 1,
-        "editedBlockingFlags": 1
+        "coldBlockingFlags": 0,
+        "editedBlockingFlags": 0
       },
       "headings": [
         "Quality and risk management",
@@ -205,8 +231,8 @@
         "editedDiscussionCards": 4,
         "coldActions": 4,
         "editedActions": 4,
-        "coldBlockingFlags": 1,
-        "editedBlockingFlags": 1
+        "coldBlockingFlags": 0,
+        "editedBlockingFlags": 0
       },
       "headings": [
         "Quality and risk management",
@@ -238,8 +264,8 @@
         "editedDiscussionCards": 4,
         "coldActions": 4,
         "editedActions": 4,
-        "coldBlockingFlags": 1,
-        "editedBlockingFlags": 1
+        "coldBlockingFlags": 0,
+        "editedBlockingFlags": 0
       },
       "headings": [
         "Quality and risk management",
@@ -281,8 +307,8 @@
         "editedDiscussionCards": 4,
         "coldActions": 4,
         "editedActions": 4,
-        "coldBlockingFlags": 1,
-        "editedBlockingFlags": 1
+        "coldBlockingFlags": 0,
+        "editedBlockingFlags": 0
       },
       "headings": [
         "Quality and risk management",
@@ -314,8 +340,8 @@
         "editedDiscussionCards": 4,
         "coldActions": 4,
         "editedActions": 4,
-        "coldBlockingFlags": 1,
-        "editedBlockingFlags": 1
+        "coldBlockingFlags": 0,
+        "editedBlockingFlags": 0
       },
       "headings": [
         "Quality and risk management",
@@ -347,8 +373,8 @@
         "editedDiscussionCards": 5,
         "coldActions": 4,
         "editedActions": 4,
-        "coldBlockingFlags": 1,
-        "editedBlockingFlags": 1
+        "coldBlockingFlags": 0,
+        "editedBlockingFlags": 0
       },
       "headings": [
         "Language support and localisation",
@@ -381,8 +407,8 @@
         "editedDiscussionCards": 4,
         "coldActions": 4,
         "editedActions": 4,
-        "coldBlockingFlags": 1,
-        "editedBlockingFlags": 1
+        "coldBlockingFlags": 0,
+        "editedBlockingFlags": 0
       },
       "headings": [
         "Quality and risk management",
@@ -414,8 +440,8 @@
         "editedDiscussionCards": 3,
         "coldActions": 3,
         "editedActions": 3,
-        "coldBlockingFlags": 1,
-        "editedBlockingFlags": 1
+        "coldBlockingFlags": 0,
+        "editedBlockingFlags": 0
       },
       "headings": [
         "Quality and risk indicators",

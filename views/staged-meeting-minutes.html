@@ -168,6 +168,12 @@ textarea { min-height:110px; resize:vertical; }
 .action-candidate-actions { display:flex; align-items:center; gap:.3rem; margin-left:auto; }
 .action-candidate-actions button { min-height:1.8rem; padding:.28rem .5rem; border-radius:8px; font-size:.78rem; }
 .resolved-checks { margin-top:.65rem; color:#596875; font-size:.86rem; }
+.confirmed-carried { margin-top:.65rem; color:#596875; font-size:.86rem; }
+.confirmed-carried summary { cursor:pointer; color:#3f5163; }
+.confirmed-carried .carried-item { padding:.15rem 0 .15rem .9rem; position:relative; }
+.confirmed-carried .carried-item::before { content:'\2713'; position:absolute; left:0; color:#2e7d5b; }
+.confirmed-carried .carried-item.is-missing::before { content:'\2013'; color:#a2601f; }
+.confirmed-carried .carried-label { color:#7c8894; }
 .discussion-table td ul {
   margin:.2rem 0;
   padding-left:1.15rem;
@@ -783,6 +789,7 @@ td select {
         </div>
         <div class="stage-decision-review">
           <div id="stageValidationFlags" class="stage-validation-flags review-only" aria-live="polite" hidden></div>
+          <details id="confirmedCarried" class="confirmed-carried review-only" aria-live="polite" hidden><summary id="confirmedCarriedSummary">Your earlier edits</summary><div id="confirmedCarriedList"></div></details>
           <section id="terminologyQa" class="terminology-qa review-only" aria-live="polite" hidden></section>
           <details id="resolvedChecks" class="resolved-checks review-only" hidden><summary>Resolved checks</summary><div id="resolvedChecksList"></div></details>
         </div>
@@ -857,6 +864,9 @@ td select {
   var previewClientPdfButton = document.getElementById('previewClientPdfBtn');
   var finalDocumentPreview = document.getElementById('finalDocumentPreview');
   var stageValidationFlags = document.getElementById('stageValidationFlags');
+  var confirmedCarried = document.getElementById('confirmedCarried');
+  var confirmedCarriedSummary = document.getElementById('confirmedCarriedSummary');
+  var confirmedCarriedList = document.getElementById('confirmedCarriedList');
   var actionReviewGroups = document.getElementById('actionReviewGroups');
   var confirmedActionCount = document.getElementById('confirmedActionCount');
   var remainingReviewCount = document.getElementById('remainingReviewCount');
@@ -2100,6 +2110,42 @@ td select {
     updateReviewToolbar();
   }
 
+  // What became of the reviewer's earlier corrections on this screen.
+  //
+  // A correction that was taken and one that was quietly dropped look the same otherwise,
+  // and that is the reason to distrust the tool. This says plainly which of their words
+  // this screen is built from, and names any that did not make it.
+  function renderConfirmedCarried(audit) {
+    if (!confirmedCarried || !confirmedCarriedList) return;
+    if (!audit || !audit.confirmedCount) {
+      confirmedCarried.hidden = true;
+      confirmedCarriedList.textContent = '';
+      return;
+    }
+    var carried = Array.isArray(audit.carried) ? audit.carried : [];
+    var missing = Array.isArray(audit.missing) ? audit.missing : [];
+    confirmedCarriedSummary.textContent = missing.length
+      ? 'Your earlier edits: ' + carried.length + ' of ' + audit.confirmedCount + ' used here'
+      : 'Your earlier edits: all ' + audit.confirmedCount + ' used here';
+    confirmedCarriedList.textContent = '';
+    var render = function (item, isMissing) {
+      var row = document.createElement('div');
+      row.className = 'carried-item' + (isMissing ? ' is-missing' : '');
+      var label = document.createElement('span');
+      label.className = 'carried-label';
+      label.textContent = item.label + ': ';
+      row.appendChild(label);
+      row.appendChild(document.createTextNode(item.value));
+      confirmedCarriedList.appendChild(row);
+    };
+    missing.forEach(function (item) { render(item, true); });
+    carried.forEach(function (item) { render(item, false); });
+    confirmedCarried.hidden = false;
+    // Opened only when something did not carry, so the reviewer is not asked to read a
+    // list every screen to be reassured that nothing went wrong.
+    confirmedCarried.open = missing.length > 0;
+  }
+
   function renderValidationFlags(flags, stage, payloadCandidates) {
     if (!stageValidationFlags) return;
     var list = Array.isArray(flags) ? flags.filter(Boolean) : [];
@@ -2798,6 +2844,7 @@ td select {
       generatedStageVersions.actions = cloneReviewValue(stagedState.actions);
     }
     renderValidationFlags(payload && payload.validationFlags, payload && payload.stagedStage, payload && payload.actionReviewCandidates);
+    renderConfirmedCarried(payload && payload.canonicalDiagnostics && payload.canonicalDiagnostics.confirmedValueAudit);
     markGeneratedStages(payload);
     if (payload && payload.jobId) stagedSourceJobId = String(payload.jobId);
     lastGeneratedPayload = payload;
@@ -3478,6 +3525,7 @@ td select {
     if (discussionList) discussionList.innerHTML = '';
     if (actionsTableBody) actionsTableBody.innerHTML = '';
     renderValidationFlags([]);
+    renderConfirmedCarried(null);
 
     params.delete('draftId');
     params.delete('stageJobId');

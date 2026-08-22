@@ -23,6 +23,59 @@ function auditSemanticLocks(state, minutes) {
   return { passed: failures.length === 0, failures };
 }
 
+// What became of each thing the reviewer corrected, for the stage just produced.
+//
+// Two jobs, one pass. It is the never-contradicted check - a confirmed value missing from
+// a stage that should carry it is a bug in us, reported as one. And it is the answer to
+// the question a reviewer actually has, which is whether the tool took any notice: a
+// correction that was honoured and one that vanished look identical on screen otherwise.
+//
+// It reports; it does not gate. The reviewer is not the one who should be held up by our
+// failing to carry their words forward.
+function auditConfirmedAgainstScreen(state, stage, screen) {
+  const text = (value) => {
+    if (value == null) return '';
+    if (typeof value === 'string') return value;
+    if (Array.isArray(value)) return value.map(text).join('\n');
+    if (typeof value === 'object') return Object.values(value).map(text).join('\n');
+    return String(value);
+  };
+  const haystack = text(screen);
+  const entries = [];
+  const check = (label, values) => {
+    for (const value of (Array.isArray(values) ? values : [values]).map((item) => String(item || '').trim()).filter(Boolean)) {
+      entries.push({ label, value, carried: haystack.includes(value) });
+    }
+  };
+
+  const confirmedText = (items) => (Array.isArray(items) ? items : [])
+    .map((item) => String(item?.humanFinal || item?.text || '').trim())
+    .filter(Boolean);
+
+  if (stage === 'summary') {
+    check('purpose', state.meeting?.purpose);
+    check('objective', confirmedText(state.objectives));
+    check('topic', confirmedText(state.topics));
+  }
+  if (stage === 'discussion') {
+    check('topic', confirmedText(state.topics));
+    check('key fact', (state.meetingUnderstanding?.criticalFacts || []).map((fact) => fact?.text));
+  }
+  if (stage === 'actions') {
+    check('action', (state.actions || []).map((item) => item?.humanFinal || item?.action));
+    check('owner', [...new Set((state.actions || []).map((item) => item?.owner).filter((owner) => owner && owner !== 'Not stated'))]);
+  }
+
+  const missing = entries.filter((entry) => !entry.carried);
+  return {
+    stage,
+    confirmedCount: entries.length,
+    carriedCount: entries.length - missing.length,
+    missing: missing.map(({ label, value }) => ({ label, value })),
+    carried: entries.filter((entry) => entry.carried).map(({ label, value }) => ({ label, value }))
+  };
+}
+
 function auditCompleteness(evidence, state, profile) {
   const captured = new Set([
     ...state.decisions.flatMap((item) => item.evidenceIds || []),
@@ -105,4 +158,4 @@ function runCanonicalNoEditPass(transcriptText, options = {}) {
   };
 }
 
-module.exports = { runCanonicalNoEditPass, auditSemanticLocks, auditCompleteness };
+module.exports = { runCanonicalNoEditPass, auditSemanticLocks, auditCompleteness, auditConfirmedAgainstScreen };
