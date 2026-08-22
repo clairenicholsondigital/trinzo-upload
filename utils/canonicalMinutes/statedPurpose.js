@@ -1,6 +1,7 @@
 'use strict';
 
 const { clean } = require('./evidence');
+const { stagedFinalActionQualityIssue } = require('../stagedEditorial');
 
 // Why the meeting was held, taken from someone saying so.
 //
@@ -29,7 +30,14 @@ const PURPOSE_CUES = [
   /\bthe (?:purpose|point|aim|goal|idea|objective|intention) of (?:this|the|today'?s?)\s+(?:call|meeting|session|chat|discussion)\b[^.?!]{0,30}?\bis\b\s*(?:to\s+)?(.+)/i,
   /\bwe(?:'re| are) here to\s+(.+)/i,
   /\bthe reason (?:for (?:this|today'?s?)|(?:we(?:'re| are)|I(?:'m| am)) (?:here|meeting|calling))\b[^.?!]{0,30}?\bis\b\s*(?:to\s+)?(.+)/i,
-  /\b(?:this|today'?s?)\s+(?:call|meeting|session)\s+is\s+(?:to|about)\s+(.+)/i
+  /\b(?:this|today'?s?)\s+(?:call|meeting|session)\s+is\s+(?:to|about)\s+(.+)/i,
+  // The plainest form, and the one people actually use: "this is just to generate leads
+  // of a sufficient quality". Requiring the word call/meeting/session after "this" missed
+  // it, which is how a stated purpose sitting in the fifth turn went unfound. The opening
+  // window is what stops it catching "this is just to tidy the numbers" mid-discussion.
+  /\bthis is\s+(?:just|really|basically|essentially|mainly|simply)?\s*(?:to|about)\s+(.+)/i,
+  /\bwe(?:'re| are) (?:trying|looking|hoping) to\s+(.+)/i,
+  /\bwe need (?:a way |some way )?to\s+(.+)/i
 ];
 
 // Trailing conversational tails. A purpose is over before these begin.
@@ -54,6 +62,29 @@ function openingEvents(events) {
   return list.slice(0, Math.max(MIN_OPENING_EVENTS, Math.ceil(list.length * OPENING_SHARE)));
 }
 
+// Two words run together by the recorder. The transcript that prompted this says
+// "generateleads of a sufficient quality"; "generateleads" appears once in the meeting
+// and "leads" six times. Splitting it is not guesswork if both halves are words the
+// meeting uses and the joined form is not - that is the same recurrence evidence used to
+// judge whether a purpose names its subject, applied at the word boundary. No dictionary
+// and no spelling rules: if the meeting does not corroborate the split, it is left alone.
+const MIN_SPLIT_PART = 4;
+
+function repairRunTogetherWords(text, events) {
+  const corpus = (Array.isArray(events) ? events : []).map((event) => clean(event && event.text).toLowerCase());
+  const usedElsewhere = (word) => corpus.filter((line) => new RegExp(`\\b${word}\\b`, 'i').test(line)).length;
+  return clean(text).split(/(\s+)/).map((token) => {
+    const bare = token.replace(/[^A-Za-z]/g, '');
+    if (bare.length < MIN_SPLIT_PART * 2 || usedElsewhere(bare.toLowerCase()) > 1) return token;
+    for (let cut = MIN_SPLIT_PART; cut <= bare.length - MIN_SPLIT_PART; cut += 1) {
+      const left = bare.slice(0, cut).toLowerCase();
+      const right = bare.slice(cut).toLowerCase();
+      if (usedElsewhere(left) && usedElsewhere(right)) return token.replace(bare, `${bare.slice(0, cut)} ${bare.slice(cut)}`);
+    }
+    return token;
+  }).join('');
+}
+
 function tidyClause(value) {
   let text = clean(value);
   // Keep the first sentence only: the speaker usually carries straight on.
@@ -72,6 +103,13 @@ function usableClause(value) {
   if (words.length < MIN_WORDS || words.length > MAX_WORDS) return false;
   // A clause that is still mid-thought reads as a fragment in the minutes.
   if (/\b(?:and|or|but|so|because|which|that)$/i.test(text)) return false;
+  // Damaged speech, not a purpose: one transcript yielded "And the the commas in the
+  // wrong place, or it's a combination of...". The presentation checks already name that
+  // fault, so this asks them rather than growing its own view of what debris looks like.
+  // Only the debris verdict is used - the actionable-verb rule is written for actions and
+  // rejects perfectly good purposes such as "Work out whether the pilot is worth
+  // extending".
+  if (stagedFinalActionQualityIssue({ owner: 'Not stated', action: text, deadline: 'Not stated' }) === 'transcript_debris') return false;
   return true;
 }
 
@@ -132,7 +170,7 @@ function statedPurposeFromOpening(evidence) {
     for (const cue of PURPOSE_CUES) {
       const match = cue.exec(text);
       if (!match) continue;
-      const clause = tidyClause(match[1]);
+      const clause = repairRunTogetherWords(tidyClause(match[1]), evidence && evidence.events);
       if (!usableClause(clause)) continue;
       // A purpose that names nothing the meeting returns to is worse than the meeting's
       // own title, which is what this then falls through to.
@@ -165,4 +203,4 @@ function purposeFromTitle(meeting = {}) {
   return { text: asPurposeSentence(title), evidenceIds: [], source: 'meeting_title' };
 }
 
-module.exports = { statedPurposeFromOpening, purposeFromTitle, namesARecurringSubject, PURPOSE_CUES };
+module.exports = { statedPurposeFromOpening, purposeFromTitle, namesARecurringSubject, repairRunTogetherWords, PURPOSE_CUES };

@@ -128,3 +128,40 @@ test('the recurrence test ignores the opening verb', () => {
   const senseCheckEverywhere = Array.from({ length: 8 }, (unused, index) => ({ id: `e${index}`, text: 'We should sense check that too.' }));
   assert.equal(namesARecurringSubject('sense check our academic theory', senseCheckEverywhere, 'src'), false);
 });
+
+test('the plainest way of stating a purpose is caught', () => {
+  // "This is just to generate leads of a sufficient quality" - the form people actually
+  // use. Requiring the word call/meeting/session after "this" missed it, which left a
+  // stated purpose sitting in the fifth turn unfound while a contentless one two turns
+  // later was published instead.
+  const aboutLeads = Array.from({ length: 30 }, (unused, index) => `Turn ${index}: how we qualify a lead before it reaches sales.`);
+  const found = statedPurposeFromOpening(events(
+    'Morning all.',
+    'This is just to generate leads of a sufficient quality to be put in front of the sales team.',
+    ...aboutLeads
+  ));
+  assert.equal(found.text, 'Generate leads of a sufficient quality to be put in front of the sales team.');
+});
+
+test('a word the recorder ran together is split when the meeting corroborates it', () => {
+  const { repairRunTogetherWords } = require('../utils/canonicalMinutes/statedPurpose');
+  const meeting = [
+    { id: 'a', text: 'We need to generate more of them this quarter.' },
+    { id: 'b', text: 'The leads coming through are not good enough.' },
+    { id: 'c', text: 'Quality of leads is the whole problem.' }
+  ];
+  assert.equal(repairRunTogetherWords('generateleads of a sufficient quality', meeting), 'generate leads of a sufficient quality');
+
+  // Not guesswork: with no corroboration for either half, the token is left alone.
+  assert.equal(repairRunTogetherWords('generateleads of a sufficient quality', [{ id: 'a', text: 'Nothing relevant here at all.' }]), 'generateleads of a sufficient quality');
+  // A word the meeting itself uses is never split, however long it is.
+  assert.equal(repairRunTogetherWords('recruitment strategy', [{ id: 'a', text: 'The recruitment plan is agreed.' }, { id: 'b', text: 'Recruitment is the bottleneck.' }]), 'recruitment strategy');
+});
+
+test('damaged speech is not published as a purpose', () => {
+  // From the corpus: a cue matched a turn that had come apart in transcription. The
+  // presentation checks already name that fault, so the purpose asks them.
+  const body30 = Array.from({ length: 30 }, (unused, index) => `Turn ${index}: more about the assessment tool and its scoring.`);
+  const damaged = "This is about the the commas in the wrong place, or it's a combination of an assessment tool and a";
+  assert.equal(statedPurposeFromOpening(events('Morning.', damaged, ...body30)), null);
+});
