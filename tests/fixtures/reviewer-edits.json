@@ -19,12 +19,16 @@
       "id": "rename-heading-keeps-fact-placement",
       "finding": "bestAuthoritativeTopicForFact scores a confirmed fact against the renamed label, falls below 0.18 and files it under 'Other' with no flag",
       "appliesTo": ["021_real_dita_importer_obligations_transcript"],
-      "intent": "The reviewer renames a topic heading into their own words.",
+      "intent": "The reviewer renames a topic heading into their own words, having also recorded the fact that belongs under it. Misfiling needs a fact to misfile, so the key fact is part of the case rather than incidental to it.",
       "edits": [
-        { "stage": "summary", "op": "replace", "path": "summary.overallTopics[0]", "to": "Where the goods physically go" }
+        { "stage": "summary", "op": "replace", "path": "summary.overallTopics[0]", "to": "Where the goods physically go" },
+        { "stage": "summary", "op": "append", "path": "summary.keyFacts", "to": "Final storage is at DITA Park West in Dublin." }
       ],
       "expect": {
-        "preserved": [{ "stage": "discussion", "text": "Where the goods physically go" }],
+        "preserved": [
+          { "stage": "discussion", "text": "Where the goods physically go" },
+          { "stage": "discussion", "text": "Final storage is at DITA Park West in Dublin." }
+        ],
         "noOtherBucket": 0
       }
     },
@@ -32,13 +36,15 @@
       "id": "reviewer-purpose-is-not-regenerated",
       "finding": "summaryScreen published the re-derived purpose and never state.meeting.purpose; the browser then copied it back over the reviewer's field",
       "appliesTo": ["021_real_dita_importer_obligations_transcript"],
-      "intent": "The reviewer rewrites the meeting purpose wholesale.",
+      "intent": "The reviewer rewrites the meeting purpose and regenerates the summary. The regenerate leg is the point: without it the stage never re-runs, so nothing could overwrite the purpose and the case would prove nothing.",
       "edits": [
-        { "stage": "summary", "op": "replace", "path": "summary.meetingPurpose", "to": "Agree who carries the importer obligations for DITA and what evidence HPRA will expect." }
+        { "stage": "summary", "op": "replace", "path": "summary.meetingPurpose", "to": "Agree who carries the importer obligations for DITA and what evidence HPRA will expect." },
+        { "stage": "summary", "op": "regenerate", "path": "summary" }
       ],
       "expect": {
         "preserved": [{ "stage": "summary", "text": "Agree who carries the importer obligations for DITA and what evidence HPRA will expect." }],
-        "absent": ["Coordinate the meeting's main workstreams"]
+        "$comment": "The generic 'Coordinate the meeting's main workstreams' fallback is deliberately not asserted absent here. It reaches the executive summary, which the reviewer can edit and in this scenario leaves alone - so its presence is the model being generic, not a correction being overridden. That is the meeting-type profile work, tested separately.",
+        "noStaleDerivedPurpose": true
       }
     },
     {
@@ -121,12 +127,13 @@
       "id": "corrected-attendee-name-is-not-renormalised",
       "finding": "entityNames was built from transcript speakers only, so a corrected spelling was normalised back to the recorder's",
       "appliesTo": ["021_real_dita_importer_obligations_transcript"],
-      "intent": "The reviewer fixes a name the recorder mis-transcribed.",
+      "intent": "The reviewer fixes a surname the recorder mis-transcribed. The transcript says Skally throughout; the person spells it Scally. Correcting it on screen 0 must not leave every action owner reading the recorder's spelling.",
       "edits": [
-        { "stage": "details", "op": "replace", "path": "details.internalAttendees", "to": ["Aoife Nic Gearailt"] }
+        { "stage": "details", "op": "replace", "path": "details.internalAttendees", "to": ["Orla Scally", "Mark Kelleher"] }
       ],
       "expect": {
-        "preserved": [{ "stage": "summary", "text": "Aoife Nic Gearailt" }]
+        "preserved": [{ "stage": "actions", "text": "Orla Scally" }],
+        "absent": ["Orla Skally"]
       }
     },
     {

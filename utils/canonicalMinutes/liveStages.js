@@ -6,7 +6,7 @@ const { createCanonicalState, acceptProposal } = require('./state');
 const semanticStages = require('./semanticStages');
 const { assessEvidenceTopology } = require('./topology');
 const { groundProposal } = require('./grounding');
-const { extractMentionedPeople } = require('../entityNormalization');
+const { extractMentionedPeople, damerauLevenshtein } = require('../entityNormalization');
 const { buildConfirmedUnderstanding } = require('../stagedSemanticAuthority');
 
 function strings(values) {
@@ -104,6 +104,9 @@ function buildConfirmedState(transcriptText, fileName, confirmed = {}) {
       meeting: {
         ...state.meeting,
         purpose: meetingUnderstanding.meetingPurpose,
+        // Stored so the overlay can tell "the reviewer wrote this summary" from "the
+        // reviewer left ours alone". Nothing generates from it; it is a lock, not an input.
+        executiveSummary: clean(summary.executiveSummary),
         criticalFacts: meetingUnderstanding.criticalFacts.map((fact) => fact.text)
       },
       meetingUnderstanding
@@ -177,6 +180,43 @@ function summaryScreen(proposal) {
 // Discussion and Actions are deliberately not overlaid: replacing those wholesale would
 // make "regenerate this stage" a no-op. They are covered by the confirmed-value audit,
 // which restores a changed value and reports it.
+// The reviewer's spelling of a person's name, for names the recorder got wrong.
+//
+// Adding the confirmed attendees alongside the transcript speakers is not enough on its
+// own: both spellings are then present, the transcript one matches the attribution
+// exactly, and every action owner keeps reading the recorder's version. A reviewer who
+// corrects "Skally" to "Scally" on screen 0 still gets Skally in the minutes.
+//
+// So a transcript name close enough to a confirmed name is replaced by it rather than
+// joined to it. Distance is bounded and ambiguity is refused: two confirmed names equally
+// close to one transcript name means we do not know which was meant, and guessing a
+// person's name wrong is worse than leaving the transcript's.
+function confirmedNameCorrections(confirmedNames, transcriptNames) {
+  const corrections = new Map();
+  for (const transcriptName of transcriptNames) {
+    const source = clean(transcriptName);
+    if (!source) continue;
+    const ranked = confirmedNames
+      .map((name) => ({ name: clean(name), distance: damerauLevenshtein(source.toLowerCase(), clean(name).toLowerCase()) }))
+      .filter((item) => item.name)
+      .sort((left, right) => left.distance - right.distance || left.name.localeCompare(right.name));
+    const [best, second] = ranked;
+    if (!best || best.distance === 0) continue;
+    // Two edits over a full name is a mis-transcribed syllable; more is a different person.
+    if (best.distance > 2 || source.length < 5) continue;
+    if (second && second.distance === best.distance) continue;
+    corrections.set(source, best.name);
+  }
+  return corrections;
+}
+
+function applyNameCorrections(value, corrections) {
+  if (!corrections.size) return value;
+  if (typeof value === 'string') return corrections.get(clean(value)) || value;
+  if (Array.isArray(value)) return value.map((item) => applyNameCorrections(item, corrections));
+  return value;
+}
+
 function applyConfirmedOverlay(stage, screen, state) {
   if (stage !== 'summary' || !screen || typeof screen !== 'object') return screen;
   const confirmedText = (items) => (Array.isArray(items) ? items : [])
@@ -194,6 +234,35 @@ function applyConfirmedOverlay(stage, screen, state) {
   if (purpose) {
     overlaid.meetingPurpose = purpose;
     overlaid.meetingPurposeConfirmed = true;
+    // initialUnderstanding carries its own copy of the derived purpose, and the screen
+    // ships both. Correcting only the top-level one leaves the model's sentence in the
+    // payload under a different key, where the pre-testing report and anything else
+    // reading the diagnostics still finds it - a stale copy of a value the reviewer has
+    // already corrected, which is the whole bug class this overlay exists to close.
+    if (overlaid.initialUnderstanding?.meetingPurpose) {
+      overlaid.initialUnderstanding = {
+        ...overlaid.initialUnderstanding,
+        meetingPurpose: {
+          ...overlaid.initialUnderstanding.meetingPurpose,
+          text: purpose,
+          provenance: 'reviewer_confirmed',
+          confidence: 1
+        }
+      };
+    }
+  }
+  // The executive summary is the purpose sentence followed by the meeting spine, so a
+  // corrected purpose that stops at the purpose field leaves the model's version still
+  // opening the summary the client reads. Rebuild it from the confirmed sentence - unless
+  // the reviewer wrote the summary too, in which case theirs stands untouched.
+  const confirmedExecutiveSummary = clean(state?.meeting?.executiveSummary);
+  if (confirmedExecutiveSummary) overlaid.executiveSummary = confirmedExecutiveSummary;
+  else if (purpose) {
+    const spineItems = (Array.isArray(screen.initialUnderstanding?.meetingSpine) ? screen.initialUnderstanding.meetingSpine : [])
+      .map((item) => clean(item?.text))
+      .filter(Boolean)
+      .slice(0, 4);
+    overlaid.executiveSummary = [purpose, ...spineItems].filter(Boolean).join(' ');
   }
   if (objectives.length) overlaid.objectives = objectives;
   if (topics.length) {
@@ -342,9 +411,16 @@ function runCanonicalLiveStage(transcriptText, options = {}) {
   if (stage === 'actions') proposal = semanticStages.actionsStage(evidence, state, profile, topology);
   // Final provenance gate: drop anything without evidence from THIS transcript.
   proposal = groundProposal(proposal, evidence);
+  const confirmedParticipants = strings(state.meeting?.participants);
+  const nameCorrections = confirmedNameCorrections(confirmedParticipants, evidence.participants);
   const generatedScreen = stage === 'summary' ? summaryScreen(proposal)
     : stage === 'discussion' ? discussionScreen(proposal)
-      : proposal.actions.map(({ owner, action, deadline, evidenceIds }) => ({ owner, action: capitaliseInitial(action), deadline: capitaliseInitial(deadline), evidenceIds }));
+      : proposal.actions.map(({ owner, action, deadline, evidenceIds }) => ({
+        owner: applyNameCorrections(owner, nameCorrections),
+        action: capitaliseInitial(action),
+        deadline: capitaliseInitial(deadline),
+        evidenceIds
+      }));
   const screen = applyConfirmedOverlay(stage, generatedScreen, state);
   const result = {
     pipeline: 'canonical_staged_v2',
@@ -374,8 +450,8 @@ function runCanonicalLiveStage(transcriptText, options = {}) {
       // to the spelling the recorder produced, and the flag that says "using the confirmed
       // participant list" was describing something that had not happened.
       entityNames: [...new Set([
-        ...strings(state.meeting?.participants),
-        ...evidence.participants,
+        ...confirmedParticipants,
+        ...evidence.participants.filter((name) => !nameCorrections.has(clean(name))),
         ...extractMentionedPeople(transcriptText, evidence.participants)
       ])],
       topology: topology.mode,

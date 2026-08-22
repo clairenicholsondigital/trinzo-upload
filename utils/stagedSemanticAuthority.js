@@ -269,7 +269,23 @@ function appendFactToDiscussion(discussion = [], fact, options = {}) {
   const authoritativeTopic = bestAuthoritativeTopicForFact(fact.text, options.authoritativeTopics);
   const topic = authoritativeTopic || (Array.isArray(options.authoritativeTopics) && options.authoritativeTopics.length ? 'Other' : topicForFact(fact.text));
   const evidenceIds = Array.isArray(fact.evidenceIds) ? fact.evidenceIds.filter(Boolean) : [];
-  const existing = cards.find((card) => textSimilarity(card.topic || '', topic) >= 0.35)
+  // Where the fact belongs is settled by the evidence it cites, not by how closely it
+  // reads like a heading. Scoring the fact against the label meant that renaming a
+  // heading - "Goods flow and storage" to "Where the goods physically go" - dropped the
+  // similarity below the threshold and filed the fact under a card called "Other". The
+  // reviewer improved the heading and the minutes got worse. The card assembled from the
+  // same evidence is the right home however they worded it.
+  const cardCitesFactEvidence = (card) => {
+    if (!evidenceIds.length) return false;
+    const cited = new Set([
+      ...(Array.isArray(card.evidenceIds) ? card.evidenceIds : []),
+      ...(Array.isArray(card.points) ? card.points : [])
+        .flatMap((point) => (point && typeof point === 'object' && Array.isArray(point.evidenceIds) ? point.evidenceIds : []))
+    ]);
+    return evidenceIds.some((id) => cited.has(id));
+  };
+  const existing = cards.find(cardCitesFactEvidence)
+    || cards.find((card) => textSimilarity(card.topic || '', topic) >= 0.35)
     || cards.find((card) => textSimilarity(`${card.topic || ''} ${(card.points || []).join(' ')}`, fact.text) >= 0.18);
   const point = cleanText(fact.text).replace(/[.?!]?$/, '.');
   const pointValue = evidenceIds.length ? { text: point, evidenceIds } : point;

@@ -1,0 +1,432 @@
+{
+  "rows": [
+    {
+      "scenario": "rename-heading-keeps-fact-placement",
+      "transcript": "021_real_dita_importer_obligations_transcript",
+      "violations": [],
+      "keyFactCount": 1,
+      "unpreservedFactCount": 0,
+      "unpreservedFacts": [],
+      "difference": {
+        "summaryChanged": true,
+        "discussionChanged": true,
+        "actionsChanged": false,
+        "headingsAdded": [
+          "Where the goods physically go"
+        ],
+        "headingsRemoved": [
+          "Quality and risk management"
+        ],
+        "coldDiscussionCards": 4,
+        "editedDiscussionCards": 4,
+        "coldActions": 4,
+        "editedActions": 4,
+        "coldBlockingFlags": 1,
+        "editedBlockingFlags": 1
+      },
+      "headings": [
+        "Where the goods physically go",
+        "Scope and requirements: MDR",
+        "Regulatory and compliance: HPRA",
+        "Product behaviour and design"
+      ],
+      "actions": [
+        "Orla Skally | Review document document as well | Not stated",
+        "Jacqui Fox | Flick this over to Orla | Not stated",
+        "Orla Skally | Bring that to the US team | Not stated",
+        "Orla Skally | Send a copy of the HPRA authorised representative bill | Not stated"
+      ]
+    },
+    {
+      "scenario": "reviewer-purpose-is-not-regenerated",
+      "transcript": "021_real_dita_importer_obligations_transcript",
+      "violations": [],
+      "keyFactCount": 0,
+      "unpreservedFactCount": 0,
+      "unpreservedFacts": [],
+      "difference": {
+        "summaryChanged": true,
+        "discussionChanged": true,
+        "actionsChanged": false,
+        "headingsAdded": [],
+        "headingsRemoved": [],
+        "coldDiscussionCards": 4,
+        "editedDiscussionCards": 4,
+        "coldActions": 4,
+        "editedActions": 4,
+        "coldBlockingFlags": 1,
+        "editedBlockingFlags": 0
+      },
+      "headings": [
+        "Quality and risk management",
+        "Scope and requirements: MDR",
+        "Regulatory and compliance: HPRA",
+        "Product behaviour and design"
+      ],
+      "actions": [
+        "Orla Skally | Review document document as well | Not stated",
+        "Jacqui Fox | Flick this over to Orla | Not stated",
+        "Orla Skally | Bring that to the US team | Not stated",
+        "Orla Skally | Send a copy of the HPRA authorised representative bill | Not stated"
+      ]
+    },
+    {
+      "scenario": "heading-with-a-pronoun-survives",
+      "transcript": "021_real_dita_importer_obligations_transcript",
+      "violations": [],
+      "keyFactCount": 0,
+      "unpreservedFactCount": 0,
+      "unpreservedFacts": [],
+      "difference": {
+        "summaryChanged": true,
+        "discussionChanged": true,
+        "actionsChanged": false,
+        "headingsAdded": [
+          "What we owe the client"
+        ],
+        "headingsRemoved": [
+          "Quality and risk management"
+        ],
+        "coldDiscussionCards": 4,
+        "editedDiscussionCards": 4,
+        "coldActions": 4,
+        "editedActions": 4,
+        "coldBlockingFlags": 1,
+        "editedBlockingFlags": 1
+      },
+      "headings": [
+        "What we owe the client",
+        "Scope and requirements: MDR",
+        "Regulatory and compliance: HPRA",
+        "Product behaviour and design"
+      ],
+      "actions": [
+        "Orla Skally | Review document document as well | Not stated",
+        "Jacqui Fox | Flick this over to Orla | Not stated",
+        "Orla Skally | Bring that to the US team | Not stated",
+        "Orla Skally | Send a copy of the HPRA authorised representative bill | Not stated"
+      ]
+    },
+    {
+      "scenario": "heading-containing-a-modal-survives",
+      "transcript": "025_real_t761_eakin_sw_weekly_transcript",
+      "violations": [],
+      "keyFactCount": 0,
+      "unpreservedFactCount": 0,
+      "unpreservedFacts": [],
+      "difference": {
+        "summaryChanged": true,
+        "discussionChanged": true,
+        "actionsChanged": false,
+        "headingsAdded": [
+          "CAN bus integration"
+        ],
+        "headingsRemoved": [
+          "Language support and localisation"
+        ],
+        "coldDiscussionCards": 4,
+        "editedDiscussionCards": 4,
+        "coldActions": 5,
+        "editedActions": 5,
+        "coldBlockingFlags": 1,
+        "editedBlockingFlags": 1
+      },
+      "headings": [
+        "CAN bus integration",
+        "Cybersecurity and access controls",
+        "Electrical compliance testing: IEC 60601",
+        "Other"
+      ],
+      "actions": [
+        "Jacqui Fox | Follow follow up with Colm as well | Not stated",
+        "Andrew Kane | Confirm the mute button behaviour and its effect on the flash | Not stated",
+        "Andrew Kane | Continue the update to the 12 additional languages. | Not stated",
+        "Andrew Kane | Complete electrical compliance testing by 23rd of July | Not stated",
+        "Rebecca Cuckoo | Continue reviewing the USB port controls | Not stated"
+      ]
+    },
+    {
+      "scenario": "key-fact-the-transcript-does-not-state",
+      "transcript": "021_real_dita_importer_obligations_transcript",
+      "violations": [
+        {
+          "kind": "flag_missing",
+          "type": "reviewer_confirmed_fact_unsupported_by_transcript"
+        },
+        {
+          "kind": "blocking_flags",
+          "count": 1,
+          "allowed": 0
+        }
+      ],
+      "keyFactCount": 1,
+      "unpreservedFactCount": 0,
+      "unpreservedFacts": [],
+      "difference": {
+        "summaryChanged": true,
+        "discussionChanged": true,
+        "actionsChanged": false,
+        "headingsAdded": [],
+        "headingsRemoved": [],
+        "coldDiscussionCards": 4,
+        "editedDiscussionCards": 4,
+        "coldActions": 4,
+        "editedActions": 4,
+        "coldBlockingFlags": 1,
+        "editedBlockingFlags": 1
+      },
+      "headings": [
+        "Quality and risk management",
+        "Scope and requirements: MDR",
+        "Regulatory and compliance: HPRA",
+        "Product behaviour and design"
+      ],
+      "actions": [
+        "Orla Skally | Review document document as well | Not stated",
+        "Jacqui Fox | Flick this over to Orla | Not stated",
+        "Orla Skally | Bring that to the US team | Not stated",
+        "Orla Skally | Send a copy of the HPRA authorised representative bill | Not stated"
+      ]
+    },
+    {
+      "scenario": "first-person-discussion-point-survives",
+      "transcript": "021_real_dita_importer_obligations_transcript",
+      "violations": [],
+      "keyFactCount": 0,
+      "unpreservedFactCount": 0,
+      "unpreservedFacts": [],
+      "difference": {
+        "summaryChanged": false,
+        "discussionChanged": true,
+        "actionsChanged": false,
+        "headingsAdded": [],
+        "headingsRemoved": [],
+        "coldDiscussionCards": 4,
+        "editedDiscussionCards": 4,
+        "coldActions": 4,
+        "editedActions": 4,
+        "coldBlockingFlags": 1,
+        "editedBlockingFlags": 1
+      },
+      "headings": [
+        "Quality and risk management",
+        "Scope and requirements: MDR",
+        "Regulatory and compliance: HPRA",
+        "Product behaviour and design"
+      ],
+      "actions": [
+        "Orla Skally | Review document document as well | Not stated",
+        "Jacqui Fox | Flick this over to Orla | Not stated",
+        "Orla Skally | Bring that to the US team | Not stated",
+        "Orla Skally | Send a copy of the HPRA authorised representative bill | Not stated"
+      ]
+    },
+    {
+      "scenario": "speaker-prefixed-point-survives",
+      "transcript": "021_real_dita_importer_obligations_transcript",
+      "violations": [],
+      "keyFactCount": 0,
+      "unpreservedFactCount": 0,
+      "unpreservedFacts": [],
+      "difference": {
+        "summaryChanged": false,
+        "discussionChanged": true,
+        "actionsChanged": false,
+        "headingsAdded": [],
+        "headingsRemoved": [],
+        "coldDiscussionCards": 4,
+        "editedDiscussionCards": 4,
+        "coldActions": 4,
+        "editedActions": 4,
+        "coldBlockingFlags": 1,
+        "editedBlockingFlags": 1
+      },
+      "headings": [
+        "Quality and risk management",
+        "Scope and requirements: MDR",
+        "Regulatory and compliance: HPRA",
+        "Product behaviour and design"
+      ],
+      "actions": [
+        "Orla Skally | Review document document as well | Not stated",
+        "Jacqui Fox | Flick this over to Orla | Not stated",
+        "Orla Skally | Bring that to the US team | Not stated",
+        "Orla Skally | Send a copy of the HPRA authorised representative bill | Not stated"
+      ]
+    },
+    {
+      "scenario": "single-name-owner-keeps-the-action",
+      "transcript": "021_real_dita_importer_obligations_transcript",
+      "violations": [
+        {
+          "kind": "not_preserved",
+          "stage": "actions",
+          "text": "Mark Kelleher"
+        },
+        {
+          "kind": "present_but_should_not_be",
+          "text": "Not stated"
+        }
+      ],
+      "keyFactCount": 0,
+      "unpreservedFactCount": 0,
+      "unpreservedFacts": [],
+      "difference": {
+        "summaryChanged": false,
+        "discussionChanged": false,
+        "actionsChanged": true,
+        "headingsAdded": [],
+        "headingsRemoved": [],
+        "coldDiscussionCards": 4,
+        "editedDiscussionCards": 4,
+        "coldActions": 4,
+        "editedActions": 4,
+        "coldBlockingFlags": 1,
+        "editedBlockingFlags": 1
+      },
+      "headings": [
+        "Quality and risk management",
+        "Scope and requirements: MDR",
+        "Regulatory and compliance: HPRA",
+        "Product behaviour and design"
+      ],
+      "actions": [
+        "Mark | Review document document as well | Not stated",
+        "Jacqui Fox | Flick this over to Orla | Not stated",
+        "Orla Skally | Bring that to the US team | Not stated",
+        "Orla Skally | Send a copy of the HPRA authorised representative bill | Not stated"
+      ]
+    },
+    {
+      "scenario": "corrected-attendee-name-is-not-renormalised",
+      "transcript": "021_real_dita_importer_obligations_transcript",
+      "violations": [],
+      "keyFactCount": 0,
+      "unpreservedFactCount": 0,
+      "unpreservedFacts": [],
+      "difference": {
+        "summaryChanged": false,
+        "discussionChanged": false,
+        "actionsChanged": true,
+        "headingsAdded": [],
+        "headingsRemoved": [],
+        "coldDiscussionCards": 4,
+        "editedDiscussionCards": 4,
+        "coldActions": 4,
+        "editedActions": 4,
+        "coldBlockingFlags": 1,
+        "editedBlockingFlags": 1
+      },
+      "headings": [
+        "Quality and risk management",
+        "Scope and requirements: MDR",
+        "Regulatory and compliance: HPRA",
+        "Product behaviour and design"
+      ],
+      "actions": [
+        "Orla Scally | Review document document as well | Not stated",
+        "Jacqui Fox | Flick this over to Orla | Not stated",
+        "Orla Scally | Bring that to the US team | Not stated",
+        "Orla Scally | Send a copy of the HPRA authorised representative bill | Not stated"
+      ]
+    },
+    {
+      "scenario": "confirmed-executive-summary-is-not-copy-edited",
+      "transcript": "024_real_dita_internal_followup_transcript",
+      "violations": [],
+      "keyFactCount": 0,
+      "unpreservedFactCount": 0,
+      "unpreservedFacts": [],
+      "difference": {
+        "summaryChanged": true,
+        "discussionChanged": false,
+        "actionsChanged": false,
+        "headingsAdded": [],
+        "headingsRemoved": [],
+        "coldDiscussionCards": 5,
+        "editedDiscussionCards": 5,
+        "coldActions": 4,
+        "editedActions": 4,
+        "coldBlockingFlags": 1,
+        "editedBlockingFlags": 1
+      },
+      "headings": [
+        "Language support and localisation",
+        "Quality and risk management",
+        "Customer and stakeholder feedback",
+        "Product behaviour and design",
+        "Other"
+      ],
+      "actions": [
+        "John-Paul Hughes | Have to review labels as well from a regulatory point of view | Not stated",
+        "Jacqui Fox | Schedule a weekly recurrence call with oral adjusting overall, aside from the working sessions, just to check in as well | Not stated",
+        "Mark Kelleher | Work around the rest of the team, yeah | Not stated",
+        "Jacqui Fox | Come prepared with a list of our discrete distinct questions for her | Not stated"
+      ]
+    },
+    {
+      "scenario": "emptied-card-is-not-refilled-with-a-placeholder",
+      "transcript": "021_real_dita_importer_obligations_transcript",
+      "violations": [],
+      "keyFactCount": 0,
+      "unpreservedFactCount": 0,
+      "unpreservedFacts": [],
+      "difference": {
+        "summaryChanged": false,
+        "discussionChanged": true,
+        "actionsChanged": false,
+        "headingsAdded": [],
+        "headingsRemoved": [],
+        "coldDiscussionCards": 4,
+        "editedDiscussionCards": 4,
+        "coldActions": 4,
+        "editedActions": 4,
+        "coldBlockingFlags": 1,
+        "editedBlockingFlags": 1
+      },
+      "headings": [
+        "Quality and risk management",
+        "Scope and requirements: MDR",
+        "Regulatory and compliance: HPRA",
+        "Product behaviour and design"
+      ],
+      "actions": [
+        "Orla Skally | Review document document as well | Not stated",
+        "Jacqui Fox | Flick this over to Orla | Not stated",
+        "Orla Skally | Bring that to the US team | Not stated",
+        "Orla Skally | Send a copy of the HPRA authorised representative bill | Not stated"
+      ]
+    },
+    {
+      "scenario": "confirmed-objectives-survive-a-summary-rerun",
+      "transcript": "027_real_abbott_audit_kickoff_transcript",
+      "violations": [],
+      "keyFactCount": 0,
+      "unpreservedFactCount": 0,
+      "unpreservedFacts": [],
+      "difference": {
+        "summaryChanged": true,
+        "discussionChanged": false,
+        "actionsChanged": false,
+        "headingsAdded": [],
+        "headingsRemoved": [],
+        "coldDiscussionCards": 3,
+        "editedDiscussionCards": 3,
+        "coldActions": 3,
+        "editedActions": 3,
+        "coldBlockingFlags": 1,
+        "editedBlockingFlags": 1
+      },
+      "headings": [
+        "Quality and risk indicators",
+        "Cybersecurity and access controls",
+        "Other"
+      ],
+      "actions": [
+        "Stuart Smith | Provide the applicable classifications and an overview of the products | Not stated",
+        "Not stated | Run code of conduct through the site in advance to make sure they're in alignment with it | Wednesday",
+        "Jacqui Fox | Send the code of conduct | Today"
+      ]
+    }
+  ]
+}
