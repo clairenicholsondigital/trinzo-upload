@@ -239,7 +239,12 @@ function prepareEvidence(transcriptText) {
   const recoveredTurns = recoverUnlabelledTurns(transcriptText);
   const structured = parseStructuredMinutes(transcriptText);
   const turns = [...recoveredTurns, ...parsedTurns, ...structured.turns].map((turn, index) => ({ ...turn, id: `turn_${index + 1}`, index }));
-  const invalidSpeakers = /^(?:yes|yeah|right|same|also|okay|great|no|well|and|client|trinzo|speakers|participants|attendees|not stated)$/i;
+  // Document labels are not people. A capitalised "Agenda:" passes the supported speaker
+  // grammar, so two committed transcripts publish "Agenda" as a meeting participant
+  // alongside Alex, Priya and Tom. The turn itself is left alone here - reading an agenda
+  // line as a purpose rather than as speech is a parser change with a much wider blast
+  // radius, and this half costs nothing.
+  const invalidSpeakers = /^(?:yes|yeah|right|same|also|okay|great|no|well|and|client|trinzo|speakers|participants|attendees|agenda|apologies|present|absent|topic|objective|objectives|purpose|not stated)$/i;
   const participants = [...new Set([...structured.participants, ...turns.filter((turn) => !turn.structuredSource).map((turn) => turn.speaker)].filter((name) => !invalidSpeakers.test(name)))];
   const events = [];
   for (const turn of turns) {

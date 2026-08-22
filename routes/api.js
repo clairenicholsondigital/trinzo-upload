@@ -575,15 +575,33 @@ function cleanStagedMeetingTitleCandidate(value, options = {}) {
   return title;
 }
 
+// What kind of meeting this is, decided from what it was called.
+//
+// Three of these tests used to read `combined`, which includes the whole transcript body,
+// and a meeting-type decision taken from the body is a decision taken from something
+// somebody happened to say. "Right, let's run through the AI programme items quickly"
+// made "Daily AI Check In" a webinar rehearsal, and the profile then published "Rehearse
+// the webinar flow, content, handovers and technical setup so the live session can run
+// smoothly" as its purpose - about a meeting that did not happen, and unflagged, because
+// only the inferred purposes carry a flag. Seven meetings in the committed corpus were
+// framed this way.
+//
+// The title is what a meeting is called; the body is what was said in it. Only the first
+// answers "what kind of meeting is this", so every test now reads titleHint.
 function inferStagedMeetingType(text, fileName = '', meetingTitle = '') {
-  const combined = `${text || ''}\n${fileName || ''}\n${meetingTitle || ''}`;
   const titleHint = `${fileName || ''} ${meetingTitle || ''}`.replace(/[_-]+/g, ' ');
   if (/\binternal\b.*\b(?:follow ?up|review from client call|debrief)\b/i.test(titleHint)) return 'Internal follow-up';
-  if (/\bimporter(?:['’]s)?\s+(?:obligations?|responsibilit(?:y|ies)|requirements?)\b/i.test(combined)) return 'Importer obligations review';
+  if (/\bimporter(?:['’]s)?\s+(?:obligations?|responsibilit(?:y|ies)|requirements?)\b/i.test(titleHint)) return 'Importer obligations review';
   if (/\baudit\b.*\b(?:kick ?off|planning|preparation|readiness)\b/i.test(titleHint)) return 'Audit kick-off / planning';
-  if (/\b(?:tech(?:nical)? file|\bSW\b|software)\b.*\b(?:weekly|check ?in|review)\b/i.test(titleHint)) return 'Technical file review';
-  if (/\b(webinar|rehearsal|dry run|run-through|run through)\b/i.test(combined)) return 'Webinar rehearsal';
-  if (/\bworkshop\b/i.test(combined)) return 'Workshop';
+  // Split deliberately. "Technical file review" names the artefact, so review is enough to
+  // identify it. "Software ... review" does not: "Software Release Review" is an ordinary
+  // release review, and it was being told it was closing a technical-file change package.
+  // A software technical-file review is a recurring commitment, so the recurrence words
+  // are what identify that one.
+  if (/\btech(?:nical)? file\b.*\b(?:weekly|check ?in|review|status)\b/i.test(titleHint)) return 'Technical file review';
+  if (/\b(?:sw|software)\b.*\b(?:weekly|check ?in)\b/i.test(titleHint)) return 'Technical file review';
+  if (/\b(webinar|rehearsal|dry run|run-through|run through)\b/i.test(titleHint)) return 'Webinar rehearsal';
+  if (/\bworkshop\b/i.test(titleHint)) return 'Workshop';
   if (/\b(client update|status update)\b/i.test(titleHint)) return 'Client update';
   if (/\bdecision\b/i.test(titleHint)) return 'Decision meeting';
   return 'Project review';
@@ -6694,7 +6712,12 @@ router.stagedEvaluation = {
   canonicalStagedResponse,
   extractStagedDetailsFromTranscript,
   buildStagedActionsResponse,
-  buildPreparedTranscriptForStagedAI
+  buildPreparedTranscriptForStagedAI,
+  // Exposed so the purpose baseline can ask the question that matters about a meeting
+  // type: would we still call it this if we could only see the title? A type that
+  // survives only while the transcript body is visible was inferred from something
+  // somebody happened to say, not from what the meeting is.
+  inferStagedMeetingType
 };
 
 module.exports = router;

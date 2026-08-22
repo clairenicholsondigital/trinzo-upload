@@ -341,7 +341,12 @@ function buildPurpose(meeting, profileId, mode, spine, workstreams, evidence, ac
     // concept description is always well-formed, so it carries the second
     // sentence while the objectives carry the detail.
     const covered = describeDiscussedConcepts(evidence);
-    return { text: covered ? `${text} ${covered}` : text, evidenceIds, provenance: 'model_inferred', confidence: 0.76, purposeSource: 'meeting_type_profile' };
+    // Flagged like every other purpose nobody stated. This sentence is keyed to the
+    // meeting type, so it is the same words for every meeting of that type and it is not
+    // drawn from this meeting at all - and until now it was the ONE purpose category that
+    // shipped without a flag, which meant the purposes we are least sure of were the only
+    // ones we asserted.
+    return { text: covered ? `${text} ${covered}` : text, evidenceIds, provenance: 'model_inferred', confidence: 0.76, inferred: true, purposeSource: 'meeting_type_profile' };
   }
 
   // No profile either, so fall back to what the meeting was called. The title is the

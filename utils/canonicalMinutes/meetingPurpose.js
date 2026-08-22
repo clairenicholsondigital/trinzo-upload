@@ -47,7 +47,10 @@ const MEETING_PROFILES = [
   {
     id: 'technical_file_review',
     matches: (type, title) => /\b(?:tech(?:nical)? file|technical documentation)\b.*\b(?:review|weekly|status|check-?in)\b/i.test(`${type} ${title}`)
-      || /\b(?:sw|software)\b.*\b(?:weekly|review|status|check[ -]?in)\b/i.test(`${type} ${title}`),
+      // Not `review|status`: "Software Release Review" is an ordinary release review and
+      // was being told it was closing a technical-file change package. A technical file
+      // review is a recurring commitment, so the recurrence words are what identify it.
+      || /\b(?:sw|software)\b.*\b(?:weekly|check[ -]?in)\b/i.test(`${type} ${title}`),
     topicHints: [
       { intent: 'Review', pattern: /\b(?:tech(?:nical)? file|tracker|status|progress|deliverables?|documents?|remediation|priorit(?:y|ies))\b/i },
       { intent: 'Confirm', pattern: /\b(?:risk management|risk matrix|hazards?|cybersecurity|usb port|fmea|mitigation)\b/i },

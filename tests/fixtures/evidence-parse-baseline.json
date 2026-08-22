@@ -157,12 +157,12 @@
     "file": "scripts/meeting-minutes-final-golden/001_decision_heavy_no_actions/transcript.txt",
     "turns": 8,
     "events": 8,
-    "participants": 4,
+    "participants": 3,
     "unattributedTurns": 0,
     "contentChars": 465,
     "parsedChars": 465,
     "coverage": 1,
-    "hash": "32a75528208a14d9"
+    "hash": "dbf1e7a7602e28f0"
   },
   {
     "file": "scripts/meeting-minutes-final-golden/002_incident_actions_decision/transcript.txt",
@@ -1213,12 +1213,12 @@
     "file": "scripts/transcript-tests/069_decision_heavy_internal/transcript.txt",
     "turns": 8,
     "events": 8,
-    "participants": 4,
+    "participants": 3,
     "unattributedTurns": 0,
     "contentChars": 465,
     "parsedChars": 465,
     "coverage": 1,
-    "hash": "32a75528208a14d9"
+    "hash": "dbf1e7a7602e28f0"
   },
   {
     "file": "scripts/transcript-tests/070_incident_bug_triage/transcript.txt",

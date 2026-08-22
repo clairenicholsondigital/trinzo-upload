@@ -98,3 +98,28 @@ test('a profile contributes ordering and an intent verb, never prose', () => {
     }
   }
 });
+
+test('a meeting type is decided by what the meeting was called, never by what was said in it', { timeout: 120000 }, async () => {
+  // Three of these tests used to read the transcript body. "Right, let's run through the
+  // AI programme items quickly" made "Daily AI Check In" a webinar rehearsal, and the
+  // profile then published "Rehearse the webinar flow, content, handovers and technical
+  // setup" as that meeting's purpose - about a meeting that never happened, and unflagged.
+  // Seven transcripts in the corpus were framed this way.
+  //
+  // Stated as an invariant rather than as seven fixed cases: the answer must not change
+  // when the body is taken away. The title has to be held constant to ask that, because
+  // the title is itself extracted from the text.
+  const { listTranscripts, readTranscript } = require('../scripts/evidence_parse_baseline');
+  const { extractStagedDetailsFromTranscript, inferStagedMeetingType } = require('../routes/api').stagedEvaluation;
+
+  const bodyDerived = [];
+  for (const file of listTranscripts()) {
+    const text = String(await readTranscript(file));
+    const fileName = path.basename(file);
+    const title = extractStagedDetailsFromTranscript(text, fileName).screens?.details?.meetingTitle || '';
+    const withBody = inferStagedMeetingType(text, fileName, title);
+    const titleOnly = inferStagedMeetingType('', fileName, title);
+    if (withBody !== titleOnly) bodyDerived.push(`${file}: "${title}" -> ${withBody} (from the title alone it is ${titleOnly})`);
+  }
+  assert.deepEqual(bodyDerived, [], `meeting types inferred from transcript body text:\n${bodyDerived.join('\n')}`);
+});

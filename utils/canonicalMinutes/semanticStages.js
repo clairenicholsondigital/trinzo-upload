@@ -654,7 +654,9 @@ function contextStage(evidence, profile, state = {}, reviewerGuidance = '', topo
         // a transcript that opens "what I want from you today is to sense check our
         // academic theory" it was simply untrue. A purpose is now looked for, so the flag
         // can report which source was used and let the reviewer judge it.
-        message: initialUnderstanding.meetingPurpose.purposeSource === 'meeting_title'
+        message: initialUnderstanding.meetingPurpose.purposeSource === 'meeting_type_profile'
+          ? 'This purpose comes from the meeting type, not from anything said in this meeting - every meeting of this type gets the same sentence. Replace it with why this one was held.'
+          : initialUnderstanding.meetingPurpose.purposeSource === 'meeting_title'
           ? 'This purpose is the meeting title, because no clear statement of why the meeting was held was found in it. Replace it if the title is not the real reason.'
           : initialUnderstanding.meetingPurpose.describedFromDiscussion
             ? 'No clear statement of why this meeting was held was found, so the summary describes what was discussed instead. Replace it with the real reason.'

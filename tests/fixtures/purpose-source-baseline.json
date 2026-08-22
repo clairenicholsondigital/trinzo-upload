@@ -1,0 +1,2191 @@
+{
+  "details": [
+    {
+      "file": "scripts/meeting-minutes-core-golden/cases/01_explicit_action_recap/transcript.docx",
+      "corpus": "synthetic",
+      "title": "Client M204 Larkfield MK Thursday Session",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/meeting-minutes-core-golden/cases/02_scattered_actions/transcript.docx",
+      "corpus": "synthetic",
+      "title": "Hartwell Site Catch Up",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/meeting-minutes-core-golden/cases/03_superseded_actions/transcript.docx",
+      "corpus": "synthetic",
+      "title": "Northbridge Release Planning",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/meeting-minutes-core-golden/cases/04_completed_vs_outstanding/transcript.docx",
+      "corpus": "synthetic",
+      "title": "Riverton Compliance Check In",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/meeting-minutes-core-golden/cases/05_hypothetical_language/transcript.docx",
+      "corpus": "synthetic",
+      "title": "Elmstead Options Workshop",
+      "type": "Workshop",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Workshop"
+    },
+    {
+      "file": "scripts/meeting-minutes-core-golden/cases/06_ownership_chaos/transcript.docx",
+      "corpus": "synthetic",
+      "title": "Kingswell Launch Recovery",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/meeting-minutes-core-golden/cases/07_deadline_torture/transcript.docx",
+      "corpus": "synthetic",
+      "title": "Alder Product Submission",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/meeting-minutes-core-golden/cases/08_attendee_provenance/transcript.docx",
+      "corpus": "synthetic",
+      "title": "Voss & Delaney Launch Weekly",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/meeting-minutes-core-golden/cases/09_no_action_meeting/transcript.docx",
+      "corpus": "synthetic",
+      "title": "Validation Close Out Review",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/meeting-minutes-core-golden/cases/10_chaos_goblin/transcript.docx",
+      "corpus": "synthetic",
+      "title": "Westmere Incident And Launch Call",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/meeting-minutes-core-golden/human_benchmarks/T733_eakin_tech_file/transcript.docx",
+      "corpus": "real",
+      "title": "Client Eakin T733 Tech File Review Weekly",
+      "type": "Technical file review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Technical file review"
+    },
+    {
+      "file": "scripts/meeting-minutes-core-golden/human_benchmarks/T761_eakin_software/transcript.docx",
+      "corpus": "real",
+      "title": "Client T761 Eakin SW Weekly Checkin",
+      "type": "Technical file review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Technical file review"
+    },
+    {
+      "file": "scripts/meeting-minutes-core-golden/human_benchmarks/T819_dita_client/transcript.docx",
+      "corpus": "real",
+      "title": "Client DITA T819 Importer Obligations Review Plan",
+      "type": "Importer obligations review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Importer obligations review"
+    },
+    {
+      "file": "scripts/meeting-minutes-core-golden/human_benchmarks/T819_dita_internal/transcript.docx",
+      "corpus": "real",
+      "title": "Internal DITA T819 Followup And Review From Client Call",
+      "type": "Internal follow-up",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Internal follow-up"
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/001_decision_heavy_no_actions/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Agenda: Internal Platform Decisions",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/002_incident_actions_decision/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Incident Bridge Payment Export Bug",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/003_low_substance_noise_abstention/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Participants: Claire, Bob",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/004_action_free_information_briefing/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Travel Policy Briefing",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/005_project_status_pending_leadership/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Delivery Status Review",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/006_client_onboarding_split_rollout/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Customer Onboarding Review",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/007_operations_review_internal_cover/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Operations Review",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/008_sales_pipeline_review/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Sales Pipeline Review",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/009_board_launch_delay/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Board Update",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/010_webinar_rehearsal_trim/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Webinar Rehearsal Review",
+      "type": "Webinar rehearsal",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Webinar rehearsal"
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/011_finance_budget_review/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Finance Budget Review",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/012_hiring_interview_debrief/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Hiring Interview Debrief",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/013_messy_speaker_timestamp_formats/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Attendees",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/014_status_update_discussion_only/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Status Update Meeting",
+      "type": "Client update",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Client update"
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/015_hidden_decision_meeting/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Weekly Check In Planning",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/016_document_review_discussion_only/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Document Review Meeting",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/017_dependency_risk_discussion_only/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Dependency Risk Meeting",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/018_support_metrics_action_heavy/transcript.txt",
+      "corpus": "synthetic",
+      "title": "James: Before We Start, Did Everyone See The Support Metrics From Last Month?rachel: Yeah. Complaints Are Down But Response Times Are Actually Worse.james: Exactly. We Closed More ",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/019_contract_negotiation_review/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Contract Negotiation Review",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/020_customer_complaint_review/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Customer Complaint Review",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/021_real_dita_importer_obligations_transcript/transcript.txt",
+      "corpus": "real",
+      "title": "Client DITA T819 Importer Obligations Review Plan",
+      "type": "Importer obligations review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Importer obligations review"
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/022_real_eakin_sw_minutes_pdf/transcript.txt",
+      "corpus": "real",
+      "title": "T761 Eakin Healthcare Tech File SW Review – SW Coding Changes",
+      "type": "Technical file review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Technical file review"
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/023_real_eakin_t733_weekly_transcript/transcript.txt",
+      "corpus": "real",
+      "title": "Client Eakin T733 Tech File Review Weekly",
+      "type": "Technical file review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Technical file review"
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/024_real_dita_internal_followup_transcript/transcript.txt",
+      "corpus": "real",
+      "title": "Internal DITA T819 Followup And Review From Client Call",
+      "type": "Internal follow-up",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Internal follow-up"
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/025_real_t761_eakin_sw_weekly_transcript/transcript.txt",
+      "corpus": "real",
+      "title": "Client T761 Eakin SW Weekly Checkin",
+      "type": "Technical file review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Technical file review"
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/026_real_qip_assessment_tool_case_study_transcript/transcript.txt",
+      "corpus": "real",
+      "title": "Untitled meeting",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/027_real_abbott_audit_kickoff_transcript/transcript.txt",
+      "corpus": "real",
+      "title": "Client Abbott T796 Audit Kick Off Sylmar",
+      "type": "Audit kick-off / planning",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Audit kick-off / planning"
+    },
+    {
+      "file": "scripts/transcript-tests/001_status_review/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Daily AI Check In",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/002_validation_decision/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Ciara",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/003_webinar_rehearsal/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Final Practice Call Before Webinar",
+      "type": "Webinar rehearsal",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Webinar rehearsal"
+    },
+    {
+      "file": "scripts/transcript-tests/004_contract_renewal/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Contract Renewal Review",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/005_office_relocation/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Office Relocation Planning",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/006_product_bug_triage/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Bug Triage",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/007_client_onboarding/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Client Onboarding Review",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/008_event_planning/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Event Planning Review",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/009_supplier_risk_review/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Supplier Risk Review",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/010_finance_budget_review/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Finance Budget Review",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/011_hiring_interview_debrief/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Hiring Debrief",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/012_training_rollout/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Training Rollout Review",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/013_low_substance_fallback/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Low Substance Catchup",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/014_request_acceptance/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Floor Plan Follow Up",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/015_ownership_assignment/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Negotiation Ownership",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/016_investigation_commitment/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Bug Investigation",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/017_orphan_commitment/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Loose Follow Up",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/018_sales_pipeline_review/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Sales Pipeline Review",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/019_supplier_review/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Supplier Review",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/020_contract_negotiation/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Contract Negotiation Review",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/021_hiring_interview_debrief/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Hiring Interview Debrief",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/022_candidate_screening/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Candidate Screening",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/023_finance_budget_review/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Finance Budget Review",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/024_board_update/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Board Update Prep",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/025_incident_response/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Incident Response Review",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/026_product_bug_triage/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Product Bug Triage",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/027_customer_complaint_review/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Customer Complaint Review",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/028_customer_onboarding/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Customer Onboarding Planning",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/029_office_relocation/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Office Relocation Review",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/030_webinar_rehearsal/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Webinar Rehearsal Review",
+      "type": "Webinar rehearsal",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Webinar rehearsal"
+    },
+    {
+      "file": "scripts/transcript-tests/031_event_planning/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Event Planning Review",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/032_training_rollout/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Training Rollout Review",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/033_marketing_campaign_review/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Marketing Campaign Review",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/034_software_release_review/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Software Release Review",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/035_procurement_discussion/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Procurement Discussion",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/036_project_retrospective/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Project Retrospective",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/037_partnership_discussion/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Partnership Discussion",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/038_grant_application_review/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Grant Application Review",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/039_risk_review/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Risk Review",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/040_governance_review/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Governance Review",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/041_operations_review/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Operations Review",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/042_support_escalation_review/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Support Escalation Review",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/043_release_go_no_go/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Release Readiness Review",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/044_budget_reforecast/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Budget Reforecast Review",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/045_board_launch_delay/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Board Update",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/046_customer_onboarding_split_rollout/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Customer Onboarding Review",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/047_supplier_renewal_rejection/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Supplier Review",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/048_status_review_pending_leadership/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Delivery Status Review",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/049_low_substance_noise/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Catch Up",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/050_partnership_mou_enablement/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Partnership Discussion",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/051_real_webinar_rehearsal/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Final Practice Call Before Webinar",
+      "type": "Webinar rehearsal",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Webinar rehearsal"
+    },
+    {
+      "file": "scripts/transcript-tests/052_status_update_meeting/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Status Update Meeting",
+      "type": "Client update",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Client update"
+    },
+    {
+      "file": "scripts/transcript-tests/053_hidden_decision_meeting/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Weekly Check In Planning",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/054_document_review_meeting/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Document Review Meeting",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/055_dependency_risk_meeting/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Dependency Risk Meeting",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/056_progress_dashboard_meeting/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Progress Dashboard Meeting",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/057_rehearsal_banter_filter/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Rehearsal Banter Filter",
+      "type": "Webinar rehearsal",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Webinar rehearsal"
+    },
+    {
+      "file": "scripts/transcript-tests/058_submission_date_priority/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Project Check In",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/059_partial_completion_allowed/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Project Check In",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/060_external_review_optional/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Project Check In",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/061_no_major_impact_dependency/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Project Check In",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/062_completed_and_approved_status/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Project Check In",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/063_rejection_test/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Meeting Title: Rejection Test",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/064_analytics_review/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Thank You. Something Else? My God It's So True Because I Think That's The One Slack On Friday. So... So I Guess Rewind Just A Bit. Have You Had Mineral Clay Say Anything At All To ",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/064_status_setup_clause_rejected/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Status Review",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/065_status_topic_date_casing/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Delivery Status Review",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/066_status_misrecognized_setup_rejected/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Status Review",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/067_banana_falcon_client_ready/transcript.txt",
+      "corpus": "synthetic",
+      "title": ": Project Banana Falcon",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/068_noisy_low_substance_sparse/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Participants: Claire, Bob",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/069_decision_heavy_internal/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Agenda: Internal Platform Decisions",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/070_incident_bug_triage/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Incident Bridge Payment Export Bug",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/071_messy_speaker_timestamp_formats/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Attendees",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/072_action_free_information_briefing/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Quarterly Policy Briefing",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/073_support_metrics_actions/transcript.txt",
+      "corpus": "synthetic",
+      "title": "James: Before We Start, Did Everyone See The Support Metrics From Last Month?rachel: Yeah. Complaints Are Down But Response Times Are Actually Worse.james: Exactly. We Closed More ",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Project review"
+    }
+  ],
+  "purposes": [
+    {
+      "file": "scripts/meeting-minutes-core-golden/cases/01_explicit_action_recap/transcript.docx",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Client M204 Larkfield MK Thursday Session.",
+      "words": 6,
+      "evidenceIdCount": 0,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/meeting-minutes-core-golden/cases/02_scattered_actions/transcript.docx",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Hartwell Site Catch Up.",
+      "words": 4,
+      "evidenceIdCount": 5,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/meeting-minutes-core-golden/cases/03_superseded_actions/transcript.docx",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Northbridge Release Planning.",
+      "words": 3,
+      "evidenceIdCount": 1,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/meeting-minutes-core-golden/cases/04_completed_vs_outstanding/transcript.docx",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Riverton Compliance Check In.",
+      "words": 4,
+      "evidenceIdCount": 0,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/meeting-minutes-core-golden/cases/05_hypothetical_language/transcript.docx",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Elmstead Options Workshop.",
+      "words": 3,
+      "evidenceIdCount": 3,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/meeting-minutes-core-golden/cases/06_ownership_chaos/transcript.docx",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Kingswell Launch Recovery.",
+      "words": 3,
+      "evidenceIdCount": 0,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/meeting-minutes-core-golden/cases/07_deadline_torture/transcript.docx",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Alder Product Submission.",
+      "words": 3,
+      "evidenceIdCount": 1,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/meeting-minutes-core-golden/cases/08_attendee_provenance/transcript.docx",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Voss & Delaney Launch Weekly.",
+      "words": 5,
+      "evidenceIdCount": 2,
+      "namesSubject": true,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/meeting-minutes-core-golden/cases/09_no_action_meeting/transcript.docx",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Validation Close Out Review.",
+      "words": 4,
+      "evidenceIdCount": 0,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/meeting-minutes-core-golden/cases/10_chaos_goblin/transcript.docx",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Westmere Incident And Launch Call.",
+      "words": 5,
+      "evidenceIdCount": 0,
+      "namesSubject": true,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/meeting-minutes-core-golden/human_benchmarks/T733_eakin_tech_file/transcript.docx",
+      "corpus": "real",
+      "purposeSource": "meeting_type_profile",
+      "purposeText": "Coordinate progress, evidence gaps, blockers and next steps for the software-change and technical-file programme so the change package can be closed properly. The meeting covered plans and timelines, software changes, and risks and dependencies.",
+      "words": 34,
+      "evidenceIdCount": 10,
+      "namesSubject": true,
+      "isBareTitle": false,
+      "flagged": true
+    },
+    {
+      "file": "scripts/meeting-minutes-core-golden/human_benchmarks/T761_eakin_software/transcript.docx",
+      "corpus": "real",
+      "purposeSource": "meeting_type_profile",
+      "purposeText": "Coordinate progress, evidence gaps, blockers and next steps for the software-change and technical-file programme so the change package can be closed properly. The meeting covered risks and dependencies, software changes, and scope and requirements.",
+      "words": 34,
+      "evidenceIdCount": 10,
+      "namesSubject": true,
+      "isBareTitle": false,
+      "flagged": true
+    },
+    {
+      "file": "scripts/meeting-minutes-core-golden/human_benchmarks/T819_dita_client/transcript.docx",
+      "corpus": "real",
+      "purposeSource": "meeting_type_profile",
+      "purposeText": "Understand DITA's actual operational processes so importer-obligation procedures can be designed around how the business works. The meeting covered operations and processes, plans and timelines, and product behaviour and design.",
+      "words": 30,
+      "evidenceIdCount": 10,
+      "namesSubject": true,
+      "isBareTitle": false,
+      "flagged": true
+    },
+    {
+      "file": "scripts/meeting-minutes-core-golden/human_benchmarks/T819_dita_internal/transcript.docx",
+      "corpus": "real",
+      "purposeSource": "meeting_type_profile",
+      "purposeText": "Align internally on the client call, outstanding information gaps and next working sessions. The meeting covered language support and localisation, scope and requirements, and regulatory and compliance.",
+      "words": 27,
+      "evidenceIdCount": 10,
+      "namesSubject": true,
+      "isBareTitle": false,
+      "flagged": true
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/001_decision_heavy_no_actions/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "stated_in_meeting",
+      "purposeText": "Choose the rollout approach for the billing portal.",
+      "words": 8,
+      "evidenceIdCount": 1,
+      "namesSubject": true,
+      "isBareTitle": false,
+      "flagged": false
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/002_incident_actions_decision/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "stated_in_meeting",
+      "purposeText": "Patch the mapper and replay the failed exports.",
+      "words": 8,
+      "evidenceIdCount": 1,
+      "namesSubject": true,
+      "isBareTitle": false,
+      "flagged": false
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/003_low_substance_noise_abstention/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Participants: Claire, Bob.",
+      "words": 3,
+      "evidenceIdCount": 0,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/004_action_free_information_briefing/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Travel Policy Briefing.",
+      "words": 3,
+      "evidenceIdCount": 1,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/005_project_status_pending_leadership/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Delivery Status Review.",
+      "words": 3,
+      "evidenceIdCount": 2,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/006_client_onboarding_split_rollout/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Customer Onboarding Review.",
+      "words": 3,
+      "evidenceIdCount": 1,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/007_operations_review_internal_cover/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Operations Review.",
+      "words": 2,
+      "evidenceIdCount": 0,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/008_sales_pipeline_review/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Sales Pipeline Review.",
+      "words": 3,
+      "evidenceIdCount": 1,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/009_board_launch_delay/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Board Update.",
+      "words": 2,
+      "evidenceIdCount": 1,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/010_webinar_rehearsal_trim/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_type_profile",
+      "purposeText": "Rehearse the webinar flow, content, handovers and technical setup so the live session can run smoothly. The meeting covered content and communications.",
+      "words": 22,
+      "evidenceIdCount": 3,
+      "namesSubject": false,
+      "isBareTitle": false,
+      "flagged": true
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/011_finance_budget_review/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Finance Budget Review.",
+      "words": 3,
+      "evidenceIdCount": 0,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/012_hiring_interview_debrief/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Hiring Interview Debrief.",
+      "words": 3,
+      "evidenceIdCount": 2,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/013_messy_speaker_timestamp_formats/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "described_from_discussion",
+      "purposeText": "The meeting covered operations and processes.",
+      "words": 6,
+      "evidenceIdCount": 1,
+      "namesSubject": false,
+      "isBareTitle": false,
+      "flagged": true
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/014_status_update_discussion_only/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Status Update Meeting.",
+      "words": 3,
+      "evidenceIdCount": 1,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/015_hidden_decision_meeting/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Weekly Check In Planning.",
+      "words": 4,
+      "evidenceIdCount": 4,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/016_document_review_discussion_only/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Document Review Meeting.",
+      "words": 3,
+      "evidenceIdCount": 0,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/017_dependency_risk_discussion_only/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Dependency Risk Meeting.",
+      "words": 3,
+      "evidenceIdCount": 1,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/018_support_metrics_action_heavy/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "described_from_discussion",
+      "purposeText": "The meeting covered plans and timelines.",
+      "words": 6,
+      "evidenceIdCount": 2,
+      "namesSubject": false,
+      "isBareTitle": false,
+      "flagged": true
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/019_contract_negotiation_review/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Contract Negotiation Review.",
+      "words": 3,
+      "evidenceIdCount": 1,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/020_customer_complaint_review/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Customer Complaint Review.",
+      "words": 3,
+      "evidenceIdCount": 2,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/021_real_dita_importer_obligations_transcript/transcript.txt",
+      "corpus": "real",
+      "purposeSource": "meeting_type_profile",
+      "purposeText": "Understand DITA's actual operational processes so importer-obligation procedures can be designed around how the business works. The meeting covered product behaviour and design, operations and processes, and plans and timelines.",
+      "words": 30,
+      "evidenceIdCount": 10,
+      "namesSubject": true,
+      "isBareTitle": false,
+      "flagged": true
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/022_real_eakin_sw_minutes_pdf/transcript.txt",
+      "corpus": "real",
+      "purposeSource": "meeting_type_profile",
+      "purposeText": "Coordinate progress, evidence gaps, blockers and next steps for the software-change and technical-file programme so the change package can be closed properly. The meeting covered testing and validation, software changes, and cybersecurity and access controls.",
+      "words": 35,
+      "evidenceIdCount": 10,
+      "namesSubject": true,
+      "isBareTitle": false,
+      "flagged": true
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/023_real_eakin_t733_weekly_transcript/transcript.txt",
+      "corpus": "real",
+      "purposeSource": "meeting_type_profile",
+      "purposeText": "Coordinate progress, evidence gaps, blockers and next steps for the software-change and technical-file programme so the change package can be closed properly. The meeting covered plans and timelines, software changes, and risks and dependencies.",
+      "words": 34,
+      "evidenceIdCount": 10,
+      "namesSubject": true,
+      "isBareTitle": false,
+      "flagged": true
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/024_real_dita_internal_followup_transcript/transcript.txt",
+      "corpus": "real",
+      "purposeSource": "meeting_type_profile",
+      "purposeText": "Align internally on the client call, outstanding information gaps and next working sessions. The meeting covered language support and localisation, scope and requirements, and regulatory and compliance.",
+      "words": 27,
+      "evidenceIdCount": 10,
+      "namesSubject": true,
+      "isBareTitle": false,
+      "flagged": true
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/025_real_t761_eakin_sw_weekly_transcript/transcript.txt",
+      "corpus": "real",
+      "purposeSource": "meeting_type_profile",
+      "purposeText": "Coordinate progress, evidence gaps, blockers and next steps for the software-change and technical-file programme so the change package can be closed properly. The meeting covered alarm behaviour and controls, software changes, and plans and timelines.",
+      "words": 35,
+      "evidenceIdCount": 10,
+      "namesSubject": true,
+      "isBareTitle": false,
+      "flagged": true
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/026_real_qip_assessment_tool_case_study_transcript/transcript.txt",
+      "corpus": "real",
+      "purposeSource": "meeting_title",
+      "purposeText": "Untitled meeting.",
+      "words": 2,
+      "evidenceIdCount": 10,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/027_real_abbott_audit_kickoff_transcript/transcript.txt",
+      "corpus": "real",
+      "purposeSource": "meeting_type_profile",
+      "purposeText": "Align the audit team on the Sylmar surveillance-audit plan, including specialist software coverage, preparation, access, timing, logistics and responsibilities. The meeting covered plans and timelines, regulatory and compliance, and scope and requirements.",
+      "words": 32,
+      "evidenceIdCount": 10,
+      "namesSubject": true,
+      "isBareTitle": false,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/001_status_review/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Daily AI Check In.",
+      "words": 4,
+      "evidenceIdCount": 1,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/002_validation_decision/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "described_from_discussion",
+      "purposeText": "The meeting covered testing and validation.",
+      "words": 6,
+      "evidenceIdCount": 0,
+      "namesSubject": true,
+      "isBareTitle": false,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/003_webinar_rehearsal/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_type_profile",
+      "purposeText": "Rehearse the webinar flow, content, handovers and technical setup so the live session can run smoothly. The meeting covered operations and processes, content and communications, and customer and stakeholder feedback.",
+      "words": 30,
+      "evidenceIdCount": 6,
+      "namesSubject": true,
+      "isBareTitle": false,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/004_contract_renewal/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Contract Renewal Review.",
+      "words": 3,
+      "evidenceIdCount": 0,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/005_office_relocation/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Office Relocation Planning.",
+      "words": 3,
+      "evidenceIdCount": 0,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/006_product_bug_triage/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Bug Triage.",
+      "words": 2,
+      "evidenceIdCount": 0,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/007_client_onboarding/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Client Onboarding Review.",
+      "words": 3,
+      "evidenceIdCount": 1,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/008_event_planning/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Event Planning Review.",
+      "words": 3,
+      "evidenceIdCount": 0,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/009_supplier_risk_review/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Supplier Risk Review.",
+      "words": 3,
+      "evidenceIdCount": 1,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/010_finance_budget_review/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Finance Budget Review.",
+      "words": 3,
+      "evidenceIdCount": 0,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/011_hiring_interview_debrief/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Hiring Debrief.",
+      "words": 2,
+      "evidenceIdCount": 1,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/012_training_rollout/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Training Rollout Review.",
+      "words": 3,
+      "evidenceIdCount": 2,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/013_low_substance_fallback/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Low Substance Catchup.",
+      "words": 3,
+      "evidenceIdCount": 0,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/014_request_acceptance/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Floor Plan Follow Up.",
+      "words": 4,
+      "evidenceIdCount": 0,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/015_ownership_assignment/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Negotiation Ownership.",
+      "words": 2,
+      "evidenceIdCount": 0,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/016_investigation_commitment/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Bug Investigation.",
+      "words": 2,
+      "evidenceIdCount": 0,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/017_orphan_commitment/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Loose Follow Up.",
+      "words": 3,
+      "evidenceIdCount": 0,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/018_sales_pipeline_review/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Sales Pipeline Review.",
+      "words": 3,
+      "evidenceIdCount": 1,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/019_supplier_review/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Supplier Review.",
+      "words": 2,
+      "evidenceIdCount": 0,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/020_contract_negotiation/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Contract Negotiation Review.",
+      "words": 3,
+      "evidenceIdCount": 1,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/021_hiring_interview_debrief/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Hiring Interview Debrief.",
+      "words": 3,
+      "evidenceIdCount": 2,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/022_candidate_screening/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Candidate Screening.",
+      "words": 2,
+      "evidenceIdCount": 1,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/023_finance_budget_review/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Finance Budget Review.",
+      "words": 3,
+      "evidenceIdCount": 0,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/024_board_update/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Board Update Prep.",
+      "words": 3,
+      "evidenceIdCount": 3,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/025_incident_response/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Incident Response Review.",
+      "words": 3,
+      "evidenceIdCount": 1,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/026_product_bug_triage/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Product Bug Triage.",
+      "words": 3,
+      "evidenceIdCount": 1,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/027_customer_complaint_review/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Customer Complaint Review.",
+      "words": 3,
+      "evidenceIdCount": 2,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/028_customer_onboarding/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Customer Onboarding Planning.",
+      "words": 3,
+      "evidenceIdCount": 3,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/029_office_relocation/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Office Relocation Review.",
+      "words": 3,
+      "evidenceIdCount": 1,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/030_webinar_rehearsal/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_type_profile",
+      "purposeText": "Rehearse the webinar flow, content, handovers and technical setup so the live session can run smoothly. The meeting covered content and communications.",
+      "words": 22,
+      "evidenceIdCount": 3,
+      "namesSubject": false,
+      "isBareTitle": false,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/031_event_planning/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Event Planning Review.",
+      "words": 3,
+      "evidenceIdCount": 0,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/032_training_rollout/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Training Rollout Review.",
+      "words": 3,
+      "evidenceIdCount": 2,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/033_marketing_campaign_review/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Marketing Campaign Review.",
+      "words": 3,
+      "evidenceIdCount": 1,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/034_software_release_review/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Software Release Review.",
+      "words": 3,
+      "evidenceIdCount": 0,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/035_procurement_discussion/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Procurement Discussion.",
+      "words": 2,
+      "evidenceIdCount": 2,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/036_project_retrospective/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Project Retrospective.",
+      "words": 2,
+      "evidenceIdCount": 0,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/037_partnership_discussion/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Partnership Discussion.",
+      "words": 2,
+      "evidenceIdCount": 3,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/038_grant_application_review/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Grant Application Review.",
+      "words": 3,
+      "evidenceIdCount": 1,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/039_risk_review/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Risk Review.",
+      "words": 2,
+      "evidenceIdCount": 1,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/040_governance_review/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Governance Review.",
+      "words": 2,
+      "evidenceIdCount": 1,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/041_operations_review/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Operations Review.",
+      "words": 2,
+      "evidenceIdCount": 0,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/042_support_escalation_review/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Support Escalation Review.",
+      "words": 3,
+      "evidenceIdCount": 3,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/043_release_go_no_go/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Release Readiness Review.",
+      "words": 3,
+      "evidenceIdCount": 0,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/044_budget_reforecast/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Budget Reforecast Review.",
+      "words": 3,
+      "evidenceIdCount": 2,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/045_board_launch_delay/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Board Update.",
+      "words": 2,
+      "evidenceIdCount": 1,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/046_customer_onboarding_split_rollout/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Customer Onboarding Review.",
+      "words": 3,
+      "evidenceIdCount": 1,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/047_supplier_renewal_rejection/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Supplier Review.",
+      "words": 2,
+      "evidenceIdCount": 1,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/048_status_review_pending_leadership/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Delivery Status Review.",
+      "words": 3,
+      "evidenceIdCount": 2,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/049_low_substance_noise/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "none",
+      "purposeText": "A clear purpose for this meeting was not stated in the discussion.",
+      "words": 12,
+      "evidenceIdCount": 0,
+      "namesSubject": false,
+      "isBareTitle": false,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/050_partnership_mou_enablement/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Partnership Discussion.",
+      "words": 2,
+      "evidenceIdCount": 1,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/051_real_webinar_rehearsal/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_type_profile",
+      "purposeText": "Rehearse the webinar flow, content, handovers and technical setup so the live session can run smoothly. The meeting covered operations and processes, content and communications, and customer and stakeholder feedback.",
+      "words": 30,
+      "evidenceIdCount": 6,
+      "namesSubject": true,
+      "isBareTitle": false,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/052_status_update_meeting/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Status Update Meeting.",
+      "words": 3,
+      "evidenceIdCount": 1,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/053_hidden_decision_meeting/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Weekly Check In Planning.",
+      "words": 4,
+      "evidenceIdCount": 4,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/054_document_review_meeting/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Document Review Meeting.",
+      "words": 3,
+      "evidenceIdCount": 0,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/055_dependency_risk_meeting/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Dependency Risk Meeting.",
+      "words": 3,
+      "evidenceIdCount": 1,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/056_progress_dashboard_meeting/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Progress Dashboard Meeting.",
+      "words": 3,
+      "evidenceIdCount": 0,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/057_rehearsal_banter_filter/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_type_profile",
+      "purposeText": "Rehearse the webinar flow, content, handovers and technical setup so the live session can run smoothly.",
+      "words": 16,
+      "evidenceIdCount": 3,
+      "namesSubject": false,
+      "isBareTitle": false,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/058_submission_date_priority/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Project Check In.",
+      "words": 3,
+      "evidenceIdCount": 0,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/059_partial_completion_allowed/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Project Check In.",
+      "words": 3,
+      "evidenceIdCount": 0,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/060_external_review_optional/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Project Check In.",
+      "words": 3,
+      "evidenceIdCount": 0,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/061_no_major_impact_dependency/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Project Check In.",
+      "words": 3,
+      "evidenceIdCount": 0,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/062_completed_and_approved_status/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Project Check In.",
+      "words": 3,
+      "evidenceIdCount": 0,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/063_rejection_test/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Meeting Title: Rejection Test.",
+      "words": 4,
+      "evidenceIdCount": 0,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/064_analytics_review/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "described_from_discussion",
+      "purposeText": "The meeting covered documentation and evidence, content and communications, and plans and timelines.",
+      "words": 13,
+      "evidenceIdCount": 10,
+      "namesSubject": true,
+      "isBareTitle": false,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/064_status_setup_clause_rejected/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Status Review.",
+      "words": 2,
+      "evidenceIdCount": 0,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/065_status_topic_date_casing/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Delivery Status Review.",
+      "words": 3,
+      "evidenceIdCount": 0,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/066_status_misrecognized_setup_rejected/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Status Review.",
+      "words": 2,
+      "evidenceIdCount": 0,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/067_banana_falcon_client_ready/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": ": Project Banana Falcon.",
+      "words": 4,
+      "evidenceIdCount": 4,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/068_noisy_low_substance_sparse/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Participants: Claire, Bob.",
+      "words": 3,
+      "evidenceIdCount": 0,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/069_decision_heavy_internal/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "stated_in_meeting",
+      "purposeText": "Choose the rollout approach for the billing portal.",
+      "words": 8,
+      "evidenceIdCount": 1,
+      "namesSubject": true,
+      "isBareTitle": false,
+      "flagged": false
+    },
+    {
+      "file": "scripts/transcript-tests/070_incident_bug_triage/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "stated_in_meeting",
+      "purposeText": "Patch the mapper and replay the failed exports.",
+      "words": 8,
+      "evidenceIdCount": 1,
+      "namesSubject": true,
+      "isBareTitle": false,
+      "flagged": false
+    },
+    {
+      "file": "scripts/transcript-tests/071_messy_speaker_timestamp_formats/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "described_from_discussion",
+      "purposeText": "The meeting covered operations and processes.",
+      "words": 6,
+      "evidenceIdCount": 1,
+      "namesSubject": false,
+      "isBareTitle": false,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/072_action_free_information_briefing/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Quarterly Policy Briefing.",
+      "words": 3,
+      "evidenceIdCount": 0,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/073_support_metrics_actions/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "described_from_discussion",
+      "purposeText": "The meeting covered plans and timelines.",
+      "words": 6,
+      "evidenceIdCount": 2,
+      "namesSubject": false,
+      "isBareTitle": false,
+      "flagged": true
+    }
+  ]
+}
