@@ -152,6 +152,38 @@ test('a confirmed meeting purpose survives re-running the summary stage', { time
   assert.deepEqual(summary.topicRefs.map((ref) => ref.text), overallTopics);
 });
 
+test('a confirmed action list is the action list, and a rewritten row does not come back', { timeout: 300000 }, () => {
+  const transcriptText = fs.readFileSync(DITA_TRANSCRIPT, 'utf8');
+  const details = { meetingTitle: 'Importer obligations' };
+  const cold = runCanonicalLiveStage(transcriptText, { stage: 'actions', fileName: 'transcript.txt', confirmed: { details }, includeEvidencePack: true }).screens.actions;
+  assert.ok(cold.length >= 2, 'the transcript must produce actions for this to mean anything');
+
+  // The reviewer rewrites the first row and assigns it by first name.
+  const confirmedActions = cold.map((action, index) => (index === 0
+    ? { owner: 'Mark', action: 'Send the importer procedure draft to the client', deadline: 'Friday' }
+    : action));
+  const rewritten = runCanonicalLiveStage(transcriptText, {
+    stage: 'actions',
+    fileName: 'transcript.txt',
+    confirmed: { details, actions: confirmedActions },
+    includeEvidencePack: true
+  }).screens.actions;
+
+  assert.deepEqual(
+    rewritten.map((item) => `${item.owner}|${item.action}`),
+    confirmedActions.map((item) => `${item.owner}|${item.action}`),
+    'the reviewer\'s list is the list'
+  );
+  // The wording they replaced must not reappear anywhere, in any position. Appending
+  // generated actions to a confirmed list resurrects exactly this.
+  assert.ok(
+    !rewritten.some((item) => item.action === cold[0].action),
+    'a row the reviewer rewrote must not return as an extra row'
+  );
+  // And their owner is left as typed rather than expanded to the full attendee name.
+  assert.equal(rewritten[0].owner, 'Mark');
+});
+
 test('an unconfirmed summary is still generated normally', { timeout: 300000 }, () => {
   // The contract must be inert without confirmed input, or it would suppress the tool's
   // actual job. This is the same assertion the corpus-wide no-edit sweep makes at scale.

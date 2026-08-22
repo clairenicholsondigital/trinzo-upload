@@ -11,6 +11,7 @@ const { buildInitialUnderstanding } = require('./initialUnderstanding');
 const { canHeadlineTopic, canStandAloneAsMinutesEvidence, isTranscriptMetaText, isCorrectionOrAcknowledgementFragment, isContextDependentText, isMalformedTranscriptText } = require('./publishability');
 const { resolveActionRecords } = require('./actionResolution');
 const { editorialTopicLabel, editorialTopics, publishableTopicCards } = require('./topicEditorial');
+const { isReviewerAuthored } = require('./state');
 const { repairDiscussionForConfirmedUnderstanding } = require('../stagedSemanticAuthority');
 const { enrichActionReviewCandidate, rankAndClusterActionReviewCandidates, hasImporterProcedureContext } = require('./actionReviewRanking');
 const { finaliseDiscussionPointForMinutes } = require('../stagedEditorial');
@@ -2184,8 +2185,45 @@ function actionsStage(evidence, state, profile, topology) {
       && !tieredCandidates.some((visible) => visible.reviewerUsefulnessTier !== 'low'
         && visible.evidenceIds?.some((id) => candidate.evidenceIds.includes(id)));
   });
+  // The reviewer's own action rows.
+  //
+  // actionsStage read state for topic and discussion text and ignored state.actions
+  // entirely, so re-running Actions rebuilt the list from evidence and every edit the
+  // reviewer had made to it - an owner they assigned, wording they fixed, a row they
+  // added - was simply gone. Their list is the base; a generated action is appended only
+  // if it is not already one of theirs.
+  //
+  // Their text does not go through canonicalActionText. That rewriter exists to turn
+  // transcript speech into a client-ready record, and the reviewer has already written a
+  // client-ready record.
+  const confirmedActions = (Array.isArray(state?.actions) ? state.actions : [])
+    .filter(isReviewerAuthored)
+    .map((item) => ({
+      owner: clean(item.owner) || 'Not stated',
+      action: clean(item.humanFinal || item.action),
+      deadline: clean(item.deadline) || 'Not stated',
+      evidenceIds: Array.isArray(item.evidenceIds) ? item.evidenceIds : [],
+      reviewerAuthored: true,
+      source: item.source
+    }))
+    .filter((item) => item.action);
+
+  // Where the reviewer has confirmed an action list, that list is the action list.
+  //
+  // Appending freshly generated actions to it sounds harmless and is not: a row the
+  // reviewer rewrote no longer matches its generated original, so the original returns
+  // as an extra row underneath their correction. Deleting a row and having it reappear
+  // is the same failure wearing a different position.
+  //
+  // This mirrors what Discussion already does, where confirmed topics suppress emergent
+  // ones. New suggestions are not lost - they continue to surface as review candidates,
+  // which is the right place for something the reviewer has not yet accepted.
+  const publishedActions = confirmedActions.length
+    ? confirmedActions
+    : actions.map((item) => ({ ...item, action: canonicalActionText(item.action) }));
+
   return {
-    actions: actions.map((item) => ({ ...item, action: canonicalActionText(item.action) })),
+    actions: publishedActions,
     actionCandidates: tieredCandidates.slice(0, 32).map((item) => ({
       ...item,
       action: item.semanticOnly ? clean(item.action) : canonicalActionText(item.action),

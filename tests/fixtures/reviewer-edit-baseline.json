@@ -283,17 +283,7 @@
     {
       "scenario": "single-name-owner-keeps-the-action",
       "transcript": "021_real_dita_importer_obligations_transcript",
-      "violations": [
-        {
-          "kind": "not_preserved",
-          "stage": "actions",
-          "text": "Mark Kelleher"
-        },
-        {
-          "kind": "present_but_should_not_be",
-          "text": "Not stated"
-        }
-      ],
+      "violations": [],
       "keyFactCount": 0,
       "unpreservedFactCount": 0,
       "unpreservedFacts": [],
@@ -317,7 +307,7 @@
         "Product behaviour and design"
       ],
       "actions": [
-        "Mark | Review document document as well | Not stated",
+        "Mark | Send the importer procedure draft to the client | Not stated",
         "Jacqui Fox | Flick this over to Orla | Not stated",
         "Orla Skally | Bring that to the US team | Not stated",
         "Orla Skally | Send a copy of the HPRA authorised representative bill | Not stated"

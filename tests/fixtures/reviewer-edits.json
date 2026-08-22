@@ -127,17 +127,20 @@
     },
     {
       "id": "single-name-owner-keeps-the-action",
-      "pending": "actionsStage does not read state.actions at all, so a confirmed owner never reaches the actions screen.",
-      "finding": "the recovered-owner regex required two capitalised words, so a first name became 'Not stated' and the publication gate then dropped the action",
+      "finding": "actionsStage never read state.actions, so re-running Actions rebuilt the list from evidence and discarded every edit the reviewer had made to it",
       "appliesTo": ["021_real_dita_importer_obligations_transcript"],
-      "intent": "The reviewer assigns an action to someone by first name.",
+      "intent": "The reviewer assigns an unowned action to someone by first name, then re-runs the stage. The owner stays as they typed it - expanding \"Mark\" to \"Mark Kelleher\" would be us overriding them, which is the thing this whole contract refuses - and the action is not dropped for having a one-word owner.",
       "edits": [
         { "stage": "details", "op": "replace", "path": "details.internalAttendees", "to": ["Mark Kelleher", "Jacqui Fox"] },
-        { "stage": "actions", "op": "replace", "path": "actions.0.owner", "to": "Mark" }
+        { "stage": "actions", "op": "replace", "path": "actions.0.owner", "to": "Mark" },
+        { "stage": "actions", "op": "replace", "path": "actions.0.action", "to": "Send the importer procedure draft to the client" },
+        { "stage": "actions", "op": "regenerate", "path": "actions" }
       ],
       "expect": {
-        "preserved": [{ "stage": "actions", "text": "Mark Kelleher" }],
-        "absent": ["Not stated"]
+        "preserved": [
+          { "stage": "actions", "text": "Mark" },
+          { "stage": "actions", "text": "Send the importer procedure draft to the client" }
+        ]
       }
     },
     {
