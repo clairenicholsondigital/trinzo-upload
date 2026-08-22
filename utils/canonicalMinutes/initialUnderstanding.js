@@ -4,6 +4,7 @@ const { clean } = require('./evidence');
 const { purposePlan } = require('./meetingPurpose');
 const { canHeadlineTopic, canSupportPurposeDimension, canStandAloneAsMinutesEvidence } = require('./publishability');
 const { editorialTopicLabel, isPublishableTopicLabel, CONCEPTS } = require('./topicEditorial');
+const { stagedFinalActionQualityIssue } = require('../stagedEditorial');
 
 // A concept counts as discussed only when several turns support it, so a single
 // stray word cannot put a subject into the meeting's purpose. Three is as many
@@ -326,12 +327,23 @@ function buildPurpose(meeting, profileId, mode, spine, workstreams, evidence, ac
     const covered = describeDiscussedConcepts(evidence);
     return { text: covered ? `${text} ${covered}` : text, evidenceIds, provenance: 'model_inferred', confidence: 0.76 };
   }
-  if (!text) {
-    const labels = workstreams.slice(0, 2).map((item) => item.label.toLowerCase());
-    text = labels.length
-      ? `Coordinate the meeting's main workstreams, dependencies and next steps around ${labels.join(' and ')}.`
-      : '';
-  }
+  // No profile purpose, so nothing frames this meeting for us. What was left here said
+  // "Coordinate the meeting's main workstreams, dependencies and next steps around X and
+  // Y" - our own vocabulary, describing our pipeline rather than the client's meeting,
+  // and the same sentence for every meeting that reached it. The commit that removed the
+  // other pipeline-shaped purpose left this one because it exits before that check.
+  //
+  // The labels are broad concept buckets, so joining two of them with "and" produced
+  // "around quality and risk management and customer and stakeholder feedback", which
+  // cannot be parsed: the labels contain "and" themselves. joinConceptLabels, forty lines
+  // above, exists precisely for that and was never called here.
+  //
+  // So it is removed rather than reworded, and an unprofiled meeting falls through to the
+  // block below - which already says what was discussed, marks the purpose as inferred
+  // rather than stated, and raises the flag that asks the reviewer for the real one. That
+  // is the honest answer to "we do not know why this meeting was held", and it was
+  // sitting one branch away the whole time.
+
   // A semicolon-spliced or report-shaped purpose is not usable prose either.
   const unusable = !text || /;\s/.test(text) || /^The meeting reviewed\b/i.test(text);
   if (!unusable) return { text, evidenceIds, provenance: 'model_inferred', confidence: config ? 0.76 : 0.45 };
@@ -371,12 +383,23 @@ function actionSubject(action) {
 // intent verb; the meeting's own actions supply the subject. Neither half is
 // written here, so a profile still contributes no content of its own — which is
 // the rule meetingPurpose.js states and MODE_CONFIG's fixed objectives broke.
+// An objective is read by the client, so it is held to the same presentation bar as a
+// published action. Drawing objectives from the meeting's own actions is what makes them
+// specific, but it inherits whatever debris the extractor left in the phrase: on one
+// weekly the first hinted action produced the objective "Follow follow up with Colm as
+// well". stagedFinalActionQualityIssue already names those faults - adjacent duplicated
+// words, a vague predicate, a conditional opening - so the objective builder asks it
+// rather than growing its own opinion about wording.
+function objectivePresentationFault(action) {
+  return Boolean(stagedFinalActionQualityIssue({ owner: 'Not stated', action, deadline: 'Not stated' }));
+}
+
 function deriveObjectivesFromActions(actions, topicHints) {
   const available = (Array.isArray(actions) ? actions : []).map(clean).filter(Boolean);
   const used = new Set();
   const derived = [];
   for (const hint of Array.isArray(topicHints) ? topicHints : []) {
-    const match = available.find((action) => hint.pattern.test(action) && !used.has(action));
+    const match = available.find((action) => hint.pattern.test(action) && !used.has(action) && !objectivePresentationFault(action));
     if (!match || match.split(/\s+/).length < 3) continue;
     used.add(match);
     // The action is already a well-formed phrase. Prefixing the hint's intent

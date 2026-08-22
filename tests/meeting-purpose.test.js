@@ -57,9 +57,19 @@ test('meeting-type classification is driven by type/title only', () => {
   assert.equal(meetingProfile({ type: 'Project review', title: 'Client Audit Kick Off' })?.id, 'audit_planning');
 });
 
-test('meeting-type policy abstains for unrelated meeting types', () => {
-  assert.equal(purposePlan({ type: 'Project review' }), null);
-  assert.equal(purposePlan({ type: 'Standup' }), null);
+test('meeting-type policy abstains for a meeting shape it does not recognise', () => {
+  // "Project review" and "Standup" used to abstain and now resolve to the general
+  // project_review profile. That was the point of adding it: the pre-selected default
+  // matched nothing, so the option most reviewers leave alone contributed no ordering and
+  // no objective verb. Abstaining still matters for a shape nothing describes - a profile
+  // that matched everything would order topics by a pattern that means nothing here.
+  assert.equal(purposePlan({ type: 'Coffee chat' }), null);
+  assert.equal(purposePlan({ type: 'One to one' }), null);
+  assert.equal(purposePlan({ type: 'Retrospective' }), null);
+  assert.equal(purposePlan({ type: '' }), null);
+
+  assert.equal(purposePlan({ type: 'Project review' })?.profileId, 'project_review');
+  assert.equal(purposePlan({ type: 'Standup' })?.profileId, 'project_review');
 });
 
 test('objective intent is drawn from the first matching hint, defaulting to Review', () => {

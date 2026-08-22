@@ -426,8 +426,8 @@
         "actionsChanged": false,
         "headingsAdded": [],
         "headingsRemoved": [],
-        "coldDiscussionCards": 3,
-        "editedDiscussionCards": 3,
+        "coldDiscussionCards": 4,
+        "editedDiscussionCards": 4,
         "coldActions": 3,
         "editedActions": 3,
         "coldBlockingFlags": 0,
@@ -436,6 +436,7 @@
       "headings": [
         "Quality and risk indicators",
         "Cybersecurity and access controls",
+        "Other",
         "Other"
       ],
       "actions": [

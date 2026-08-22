@@ -94,6 +94,65 @@ const MEETING_PROFILES = [
       { intent: 'Identify', pattern: /\b(?:software development|software validation|cybersecurity|risk analysis|risk management|s-?bom|software bill of materials|versions?|threat model|cves?)\b/i },
       { intent: 'Review', pattern: /\b(?:site walkthrough|gemba|record sampling|findings tracker|audit findings|production process|design owner|manufacturing site)\b/i }
     ]
+  },
+  // The general meeting shapes, deliberately last.
+  //
+  // Four of the ten options on the meeting-type dropdown matched no profile at all,
+  // including "Project review", which is the pre-selected default - so the option most
+  // reviewers leave alone bought no topic ordering, no objective verb, and no
+  // action-derived objectives. Choosing the right meeting type made the minutes no more
+  // specific, and leaving the default made them less so.
+  //
+  // Their hints are written from meeting shape rather than subject matter: progress,
+  // risks, decisions, next steps. A specific profile above still wins on either the type
+  // or the title, so a meeting left on the default and titled for what it actually was
+  // continues to resolve to the specific one. That ordering is pinned by
+  // meeting-type-mapping.test.js, because getting it wrong is invisible in the output.
+  {
+    id: 'workshop',
+    matches: (type, title) => /\b(?:workshop|working session|discovery session|design session)\b/i.test(`${type} ${title}`),
+    topicHints: [
+      { intent: 'Review', pattern: /\b(?:current|existing|today|as[- ]is|process(?:es)?|workflow|how it works|walk through)\b/i },
+      { intent: 'Identify', pattern: /\b(?:gap|problem|pain point|friction|issue|gets? in the way|difficult)\b/i },
+      { intent: 'Identify', pattern: /\b(?:idea|option|suggestion|possibilit|approach|alternative)\b/i },
+      { intent: 'Agree', pattern: /\b(?:priorit|shortlist|focus on|narrow|pick|scope)\b/i },
+      { intent: 'Confirm', pattern: /\b(?:next session|follow[- ]?up|owner|who will|take away|action)\b/i }
+    ]
+  },
+  {
+    id: 'decision_meeting',
+    matches: (type, title) => /\b(?:decision|decisions|approval|sign[- ]?off|go[/ ]no[- ]?go)\b/i.test(`${type} ${title}`),
+    topicHints: [
+      { intent: 'Identify', pattern: /\b(?:option|alternative|proposal|recommendation|approach|route)\b/i },
+      { intent: 'Review', pattern: /\b(?:criteria|trade[- ]?off|impact|cost|benefit|implication|consequence)\b/i },
+      { intent: 'Agree', pattern: /\b(?:decide|decision|agreed?|approve|approved|sign[- ]?off|go ahead|proceed)\b/i },
+      { intent: 'Identify', pattern: /\b(?:risk|concern|objection|reservation|unknown|assumption)\b/i },
+      { intent: 'Confirm', pattern: /\b(?:owner|responsib|next step|implement|communicate|action)\b/i }
+    ]
+  },
+  {
+    id: 'client_update',
+    matches: (type, title) => /\b(?:client update|client call|client meeting|customer update|update to the client)\b/i.test(`${type} ${title}`),
+    topicHints: [
+      { intent: 'Review', pattern: /\b(?:progress|status|completed|delivered|done|since (?:the )?last|this (?:week|month))\b/i },
+      { intent: 'Identify', pattern: /\b(?:risk|issue|blocker|delay|slip|dependency|waiting on)\b/i },
+      { intent: 'Confirm', pattern: /\b(?:question|feedback|concern|clarif|confirm|happy with)\b/i },
+      { intent: 'Agree', pattern: /\b(?:next step|next phase|timeline|schedule|milestone|deadline|date)\b/i },
+      { intent: 'Confirm', pattern: /\b(?:scope|change|budget|cost|contract|invoice|commercial)\b/i }
+    ]
+  },
+  {
+    id: 'project_review',
+    // Broadest, so it is last: it is the option a reviewer gets by not choosing one, and
+    // it must not shadow a profile that knows more about the meeting than it does.
+    matches: (type, title) => /\b(?:project review|status|progress|weekly|fortnightly|monthly|catch[- ]?up|check[- ]?in|stand[- ]?up|review meeting|project meeting)\b/i.test(`${type} ${title}`),
+    topicHints: [
+      { intent: 'Review', pattern: /\b(?:progress|status|completed|delivered|finished|done|underway|ongoing)\b/i },
+      { intent: 'Identify', pattern: /\b(?:risk|issue|blocker|blocked|dependency|constraint|delay|slip)\b/i },
+      { intent: 'Agree', pattern: /\b(?:plan|timeline|schedule|milestone|deadline|date|sequenc)\b/i },
+      { intent: 'Review', pattern: /\b(?:scope|requirement|change|priorit|resourc|capacity)\b/i },
+      { intent: 'Confirm', pattern: /\b(?:owner|responsib|next step|action|follow[- ]?up|who will)\b/i }
+    ]
   }
 ];
 
