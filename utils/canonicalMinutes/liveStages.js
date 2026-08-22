@@ -165,6 +165,52 @@ function summaryScreen(proposal) {
   };
 }
 
+// The confirmed value is the last write.
+//
+// summaryScreen derives its purpose from initialUnderstanding and its topics from the
+// proposal, and never consults what the reviewer confirmed - so re-running the summary
+// stage returned the model's purpose over the reviewer's own words, and the browser then
+// copied that back into the purpose field. Overlaying here rather than teaching each
+// builder about confirmed state keeps one place to look, and makes the regression
+// impossible for any field listed rather than merely fixed once.
+//
+// Discussion and Actions are deliberately not overlaid: replacing those wholesale would
+// make "regenerate this stage" a no-op. They are covered by the confirmed-value audit,
+// which restores a changed value and reports it.
+function applyConfirmedOverlay(stage, screen, state) {
+  if (stage !== 'summary' || !screen || typeof screen !== 'object') return screen;
+  const confirmedText = (items) => (Array.isArray(items) ? items : [])
+    .map((item) => clean(item?.humanFinal || item?.text))
+    .filter(Boolean);
+
+  const purpose = clean(state?.meeting?.purpose);
+  const objectives = confirmedText(state?.objectives);
+  const topics = confirmedText(state?.topics);
+  const criticalFacts = Array.isArray(state?.meetingUnderstanding?.criticalFacts)
+    ? state.meetingUnderstanding.criticalFacts.map((fact) => clean(fact?.text)).filter(Boolean)
+    : [];
+
+  const overlaid = { ...screen };
+  if (purpose) {
+    overlaid.meetingPurpose = purpose;
+    overlaid.meetingPurposeConfirmed = true;
+  }
+  if (objectives.length) overlaid.objectives = objectives;
+  if (topics.length) {
+    overlaid.overallTopics = topics;
+    overlaid.topicRefs = (state.topics || []).map((item) => ({
+      text: clean(item?.humanFinal || item?.text),
+      topicId: item?.topicId || '',
+      evidenceIds: Array.isArray(item?.evidenceIds) ? item.evidenceIds : []
+    })).filter((ref) => ref.text);
+  }
+  // The reviewer's key facts have never been returned to the screen, which is why the
+  // browser has to guard against the server blanking the field it just sent. Returning
+  // them makes the round trip honest and gives the audit something to compare.
+  if (criticalFacts.length) overlaid.keyFacts = criticalFacts;
+  return overlaid;
+}
+
 function discussionScreen(proposal) {
   const cards = proposal.discussion.map((card) => ({
     topic: card.topic,
@@ -296,9 +342,10 @@ function runCanonicalLiveStage(transcriptText, options = {}) {
   if (stage === 'actions') proposal = semanticStages.actionsStage(evidence, state, profile, topology);
   // Final provenance gate: drop anything without evidence from THIS transcript.
   proposal = groundProposal(proposal, evidence);
-  const screen = stage === 'summary' ? summaryScreen(proposal)
+  const generatedScreen = stage === 'summary' ? summaryScreen(proposal)
     : stage === 'discussion' ? discussionScreen(proposal)
       : proposal.actions.map(({ owner, action, deadline, evidenceIds }) => ({ owner, action: capitaliseInitial(action), deadline: capitaliseInitial(deadline), evidenceIds }));
+  const screen = applyConfirmedOverlay(stage, generatedScreen, state);
   const result = {
     pipeline: 'canonical_staged_v2',
     strategy: 'semantic_v2',
@@ -321,7 +368,16 @@ function runCanonicalLiveStage(transcriptText, options = {}) {
       evidenceEventCount: evidence.events.length,
       participantCount: evidence.participants.length,
       participants: evidence.participants,
-      entityNames: [...new Set([...evidence.participants, ...extractMentionedPeople(transcriptText, evidence.participants)])],
+      // The reviewer's attendee list first. Entity normalisation and the recovered-owner
+      // resolution both read this, and both have been working from transcript speakers
+      // only - so a name the reviewer corrected on screen 0 was normalised straight back
+      // to the spelling the recorder produced, and the flag that says "using the confirmed
+      // participant list" was describing something that had not happened.
+      entityNames: [...new Set([
+        ...strings(state.meeting?.participants),
+        ...evidence.participants,
+        ...extractMentionedPeople(transcriptText, evidence.participants)
+      ])],
       topology: topology.mode,
       modelName: profile.modelName,
       humanConfirmedInputIsAuthoritative: true,

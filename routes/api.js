@@ -4162,15 +4162,22 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
       confirmed.details?.meetingTitle || input.meetingTitle || ''
     );
     if (initialUnderstandingPolish.used) {
+      // A field the reviewer wrote is not ours to copy-edit. The polish is a presentation
+      // pass over model prose; run over confirmed text it silently rewrites the reviewer's
+      // own words back at them, which is the thing they came here to stop.
+      const confirmedSummary = confirmed.summary || {};
+      const keepConfirmed = (confirmedValue, polishedValue, presentedValue) => (
+        stagedAnalyticsText(confirmedValue) ? presentedValue : polishedValue
+      );
       result = {
         ...result,
         screens: {
           ...(result.screens || {}),
           summary: {
             ...presentationInitialSummary,
-            meetingPurpose: initialUnderstandingPolish.meetingPurpose,
-            objectives: initialUnderstandingPolish.objectives,
-            executiveSummary: initialUnderstandingPolish.executiveSummary
+            meetingPurpose: keepConfirmed(confirmedSummary.meetingPurpose, initialUnderstandingPolish.meetingPurpose, presentationInitialSummary.meetingPurpose),
+            objectives: keepConfirmed(confirmedSummary.objectives, initialUnderstandingPolish.objectives, presentationInitialSummary.objectives),
+            executiveSummary: keepConfirmed(confirmedSummary.executiveSummary, initialUnderstandingPolish.executiveSummary, presentationInitialSummary.executiveSummary)
           }
         }
       };
@@ -4178,7 +4185,9 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
   }
   let executiveSummaryGrammar = { used: false, reason: 'not_applicable' };
   const presentationSummary = result?.screens?.summary?.executiveSummary;
-  if (['summary', 'discussion'].includes(stage) && presentationSummary) {
+  const executiveSummaryIsConfirmed = Boolean(stagedAnalyticsText(confirmed.summary?.executiveSummary));
+  if (executiveSummaryIsConfirmed) executiveSummaryGrammar = { used: false, reason: 'reviewer_confirmed' };
+  if (!executiveSummaryIsConfirmed && ['summary', 'discussion'].includes(stage) && presentationSummary) {
     executiveSummaryGrammar = await grammarPolishStagedExecutiveSummary(presentationSummary);
     if (executiveSummaryGrammar.text) {
       result = {

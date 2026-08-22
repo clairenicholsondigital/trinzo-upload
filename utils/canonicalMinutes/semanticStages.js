@@ -1168,6 +1168,13 @@ function discussionCardsFromPlan(plan, evidence, state = {}) {
       points,
       evidenceIds: [...new Set(points.flatMap((point) => point.evidenceIds || []).concat(workstream.evidenceIds))],
       topicId: workstream.topicId || workstream.id,
+      // The reviewer's own heading. publishableTopicCards has always exempted a
+      // confirmed heading from the editorial gate, but the flag it reads was set only by
+      // applyConfirmedTopicAgenda, which runs on the branch taken when there is no
+      // planned discussion - never on this one, which is the branch taken precisely
+      // because the reviewer confirmed topics. So the exemption existed and missed the
+      // case it was written for.
+      confirmedTopic: workstream.provenance === 'reviewer_confirmed',
       cohesion: workstream.provenance === 'reviewer_confirmed' ? 1 : 0.85,
       plannedWorkstream: {
         id: workstream.id,
@@ -1330,7 +1337,11 @@ function distinctiveEvidenceScore(event, rule) {
 
 function refreshDistinctiveConfirmedDiscussion(discussion, state, evidence) {
   const cards = [...discussion];
-  const confirmedTopics = (state?.topics || []).map((item) => clean(item.text || item.topic || item)).filter(Boolean);
+  // humanFinal first, matching every other reader of a confirmed topic. Without it the
+  // lookup below misses whenever the reviewer reworded a heading - applyConfirmedTopicAgenda
+  // has already renamed the card to humanFinal by this point - and the miss appends a
+  // second card carrying the pre-edit heading beside the reviewer's own.
+  const confirmedTopics = (state?.topics || []).map((item) => clean(item.humanFinal || item.text || item.topic || item)).filter(Boolean);
   for (const topic of confirmedTopics) {
     const rule = DISTINCTIVE_DISCUSSION_EVIDENCE.find((item) => item.topic.test(topic));
     if (!rule) continue;

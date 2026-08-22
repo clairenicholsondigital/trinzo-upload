@@ -3,7 +3,7 @@
 const fetch = require('node-fetch');
 const { clean } = require('./evidence');
 const { deadlineFrom } = require('./stages');
-const { finaliseDiscussionPointForMinutes, normaliseFinalStagedActionCandidate } = require('../stagedEditorial');
+const { finaliseDiscussionPointForMinutes, normaliseFinalStagedActionCandidate, normaliseAndValidateActionOwner } = require('../stagedEditorial');
 const { normaliseAttendeeReferences } = require('../entityNormalization');
 const { enrichActionReviewCandidate, rankAndClusterActionReviewCandidates } = require('./actionReviewRanking');
 
@@ -342,6 +342,10 @@ function addRecoveredActionCandidates(payload, recovered = []) {
   if (clean(payload?.stagedStage).toLowerCase() !== 'actions') return payload;
   const pack = Array.isArray(payload._canonicalEvidencePack) ? [...payload._canonicalEvidencePack] : [];
   const signatures = new Set(pack.map((item) => `${clean(item.owner).toLowerCase()}|${clean(item.action).toLowerCase()}`));
+  const diagnostics = payload?.canonicalDiagnostics || {};
+  const recoveredOwnerCandidates = Array.isArray(diagnostics.entityNames)
+    ? diagnostics.entityNames
+    : (Array.isArray(diagnostics.participants) ? diagnostics.participants : []);
   for (const item of Array.isArray(recovered) ? recovered : []) {
     const rawAction = clean(item?.evidenceAction || item?.action);
     const canonicalRecoveredAction = clean(item?.action);
@@ -356,8 +360,14 @@ function addRecoveredActionCandidates(payload, recovered = []) {
     const action = clean(enriched?.action);
     const suggestedAction = clean(enriched?.suggestedAction || item?.action);
     if (!action || nonActionState(action)) continue;
+    // Resolve against the people actually in the meeting rather than by shape. The
+    // previous test required two capitalised words, so a meeting where everyone is
+    // referred to by first name lost every recovered owner - and an owner-less action
+    // is then held back by the publication gate. normaliseAndValidateActionOwner
+    // already matches a lone first name to a single participant; it only ever needed
+    // to be given the list.
     let owner = clean(item?.owner) || 'Not stated';
-    if (!/^(?:Not stated|All|[A-Z][\p{L}'’.-]+(?:[ ,/-]+[A-Z][\p{L}'’.-]+)+)$/u.test(owner)) owner = 'Not stated';
+    owner = normaliseAndValidateActionOwner(owner, recoveredOwnerCandidates).owner;
     const signature = `${owner.toLowerCase()}|${action.toLowerCase()}`;
     if (signatures.has(signature)) continue;
     const id = `recovered_${pack.length + 1}`;

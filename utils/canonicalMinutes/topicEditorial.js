@@ -2,6 +2,7 @@
 
 const { clean } = require('./evidence');
 const { DOMAIN_TERMS, escapeRegExp } = require('../domainTerms');
+const { isReviewerAuthored } = require('./state');
 
 // A small, meeting-agnostic vocabulary for turning extractive MiniLM clusters
 // into readable agenda labels. These are concepts, not meeting templates: a
@@ -142,7 +143,7 @@ function isPublishableTopicLabel(value) {
 // whatever produced it. A topic the reviewer confirmed themselves is theirs to
 // word however they like and is never second-guessed here.
 function publishableTopicCards(cards) {
-  return (Array.isArray(cards) ? cards : []).filter((card) => card?.confirmedTopic || isPublishableTopicLabel(card?.topic));
+  return (Array.isArray(cards) ? cards : []).filter((card) => isReviewerAuthored(card) || isPublishableTopicLabel(card?.topic));
 }
 
 function editorialTopics(topics, evidence, maximum = 8) {

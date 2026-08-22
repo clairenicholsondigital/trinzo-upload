@@ -43,6 +43,28 @@ function approvedItem(kind, item, version, index, options = {}) {
   };
 }
 
+// Whether an item is the reviewer's own words rather than the model's.
+//
+// approvedItem has stamped `locked: true` on every accepted item since this module was
+// written, and nothing has ever read it - the only references in the repository are
+// assertions in canonical-staged.test.js. It cannot be the discriminator either, because
+// it is set unconditionally, on model proposals as well. `source` is what actually
+// separates the two: buildConfirmedState passes stage_1|2|3_human_confirmation when a
+// screen came back from a reviewer, against the default stage_N_no_edit_acceptance.
+//
+// Cards assembled for a screen are plain objects rather than accepted items, so they
+// carry the intent as `reviewerAuthored` or, for topic cards, the older `confirmedTopic`.
+// All three mean the same thing to a gate: these words are the reviewer's and are not
+// ours to reword, filter or drop.
+const REVIEWER_SOURCE = /_human_confirmation$/;
+
+function isReviewerAuthored(item) {
+  if (!item || typeof item !== 'object') return false;
+  return item.reviewerAuthored === true
+    || item.confirmedTopic === true
+    || REVIEWER_SOURCE.test(String(item.source || ''));
+}
+
 function acceptProposal(state, proposal, options = {}) {
   const version = state.version + 1;
   const next = { ...state, version };
@@ -73,4 +95,4 @@ function lockedSemanticSnapshot(state) {
   };
 }
 
-module.exports = { createCanonicalState, acceptProposal, lockedSemanticSnapshot };
+module.exports = { createCanonicalState, acceptProposal, lockedSemanticSnapshot, isReviewerAuthored };

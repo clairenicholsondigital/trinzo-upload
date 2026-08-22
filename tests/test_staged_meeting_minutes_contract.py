@@ -684,8 +684,15 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("function publishableTopicCards", editorial)
         self.assertIn("discussion: publishableDiscussion", stages)
 
-        # A reviewer's own wording is never second-guessed.
-        self.assertIn("card?.confirmedTopic || isPublishableTopicLabel", editorial)
+        # A reviewer's own wording is never second-guessed. The exemption used to read
+        # card?.confirmedTopic directly, and that flag was set only by
+        # applyConfirmedTopicAgenda - which runs on the branch taken when there is no
+        # planned discussion, never on the branch taken because the reviewer confirmed
+        # topics. Going through isReviewerAuthored covers both, and cards built from a
+        # confirmed plan now carry the flag.
+        self.assertIn("isReviewerAuthored(card) || isPublishableTopicLabel", editorial)
+        self.assertIn("const { isReviewerAuthored } = require('./state')", editorial)
+        self.assertIn("confirmedTopic: workstream.provenance === 'reviewer_confirmed'", stages)
 
         # An empty discussion says why rather than showing a blank screen.
         self.assertIn("discussion_topics_not_publishable", stages)
