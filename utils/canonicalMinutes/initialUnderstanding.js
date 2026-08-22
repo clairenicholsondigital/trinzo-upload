@@ -2,6 +2,7 @@
 
 const { clean } = require('./evidence');
 const { purposePlan } = require('./meetingPurpose');
+const { statedPurposeFromOpening, purposeFromTitle } = require('./statedPurpose');
 const { canHeadlineTopic, canSupportPurposeDimension, canStandAloneAsMinutesEvidence } = require('./publishability');
 const { editorialTopicLabel, isPublishableTopicLabel, CONCEPTS } = require('./topicEditorial');
 const { stagedFinalActionQualityIssue } = require('../stagedEditorial');
@@ -314,6 +315,21 @@ function buildPurpose(meeting, profileId, mode, spine, workstreams, evidence, ac
     organisation: organisationFromMeeting(meeting),
     site: siteFromMeeting(meeting)
   };
+  // Somebody said why they were meeting. Nothing beats that: it is the meeting's own
+  // answer, it is grounded in a turn we can cite, and it is the one purpose that is
+  // certainly about this meeting rather than about meetings of this shape.
+  const stated = statedPurposeFromOpening(evidence);
+  if (stated) {
+    return {
+      text: stated.text,
+      evidenceIds: stated.evidenceIds.length ? stated.evidenceIds : evidenceIds,
+      provenance: 'transcript_emergent',
+      confidence: 0.9,
+      purposeSource: 'stated_in_meeting',
+      statedBy: stated.speaker
+    };
+  }
+
   let text = config?.purpose ? config.purpose(context) : '';
   // A profile purpose is identical for every meeting of that type, so on its
   // own it tells the reader nothing about the meeting in front of them. Keep
@@ -325,7 +341,24 @@ function buildPurpose(meeting, profileId, mode, spine, workstreams, evidence, ac
     // concept description is always well-formed, so it carries the second
     // sentence while the objectives carry the detail.
     const covered = describeDiscussedConcepts(evidence);
-    return { text: covered ? `${text} ${covered}` : text, evidenceIds, provenance: 'model_inferred', confidence: 0.76 };
+    return { text: covered ? `${text} ${covered}` : text, evidenceIds, provenance: 'model_inferred', confidence: 0.76, purposeSource: 'meeting_type_profile' };
+  }
+
+  // No profile either, so fall back to what the meeting was called. The title is the
+  // reviewer's own words - they confirm it on the first screen - and it is very often the
+  // best short statement of why people met that exists anywhere. It reached profile
+  // matching, organisation extraction and topic ordering, and never the purpose itself,
+  // which is why choosing a good title changed nothing about the sentence at the top.
+  const fromTitle = purposeFromTitle(meeting);
+  if (fromTitle) {
+    return {
+      text: fromTitle.text,
+      evidenceIds,
+      provenance: 'inferred_from_discussion',
+      confidence: 0.5,
+      inferred: true,
+      purposeSource: 'meeting_title'
+    };
   }
   // No profile purpose, so nothing frames this meeting for us. What was left here said
   // "Coordinate the meeting's main workstreams, dependencies and next steps around X and
@@ -361,7 +394,8 @@ function buildPurpose(meeting, profileId, mode, spine, workstreams, evidence, ac
     provenance: 'inferred_from_discussion',
     confidence: described ? 0.35 : 0.2,
     inferred: true,
-    describedFromDiscussion: Boolean(described)
+    describedFromDiscussion: Boolean(described),
+    purposeSource: described ? 'described_from_discussion' : 'none'
   };
 }
 
