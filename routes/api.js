@@ -4192,8 +4192,11 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
       // focused on a sense check of the academic theory" - vaguer than what was actually
       // said, and no longer the thing the cited turn supports. Only prose we composed
       // ourselves is ours to rewrite.
-      const purposeSource = presentationInitialSummary?.initialUnderstanding?.meetingPurpose?.purposeSource || '';
-      const purposeIsQuoted = purposeSource === 'stated_in_meeting' || purposeSource === 'meeting_title';
+      // The purpose decides for itself whether it is ours to rewrite, because the module
+      // that builds it is the only place that knows where its words came from. An
+      // enumerated list here describing objects constructed in another file is how
+      // MODE_CONFIG escaped the source check written to catch exactly that.
+      const purposeIsQuoted = Boolean(presentationInitialSummary?.initialUnderstanding?.meetingPurpose?.purposeIsAuthoredElsewhere);
       result = {
         ...result,
         screens: {

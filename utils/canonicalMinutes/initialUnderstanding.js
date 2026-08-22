@@ -2,7 +2,8 @@
 
 const { clean } = require('./evidence');
 const { purposePlan } = require('./meetingPurpose');
-const { statedPurposeFromOpening, purposeFromTitle } = require('./statedPurpose');
+const { statedPurposeFromOpening, purposeFromTitle, namesARecurringSubject } = require('./statedPurpose');
+const { purposeFromTitleShape } = require('./titlePurpose');
 const { canHeadlineTopic, canSupportPurposeDimension, canStandAloneAsMinutesEvidence } = require('./publishability');
 const { editorialTopicLabel, isPublishableTopicLabel, CONCEPTS } = require('./topicEditorial');
 const { stagedFinalActionQualityIssue } = require('../stagedEditorial');
@@ -304,6 +305,60 @@ function buildMeetingSpineItems(evidence, workstreams) {
 }
 
 
+// What a meeting was about, for a title that does not say - "Project Check In", "Status
+// Review". The object has to come from the meeting itself, and there are two places to
+// look, in this order:
+//
+//   the meeting's own actions, which are already screened for presentation and are the
+//   most concrete thing it produced; then
+//   the nouns the meeting keeps returning to, which is the same evidence
+//   namesARecurringSubject uses, read forwards instead of backwards.
+//
+// Deliberately NOT the curated concept buckets. Those are broad labels that produce
+// nothing for most transcripts and only twenty-six distinct sentences across the rest, and
+// a purpose built from them is the sentence commit 7c2d17aa deleted for being identical on
+// every meeting that reached it.
+function subjectFromMeeting(evidence, actions = []) {
+  const events = (evidence && evidence.events) || [];
+  const texts = (Array.isArray(actions) ? actions : [])
+    .map((item) => clean(typeof item === 'string' ? item : item && item.action))
+    .filter(Boolean);
+  for (const action of texts) {
+    if (objectivePresentationFault(action)) continue;
+    if (!namesARecurringSubject(action, events, null)) continue;
+    const subject = actionObjectPhrase(action);
+    if (subject) return subject;
+  }
+  return '';
+}
+
+// The object of an imperative, by grammar rather than by a list of known verbs - which is
+// why the dead actionSubject below never worked: its allowlist has no fix, call, update,
+// draft or chase. A leading word followed by a determiner is a verb; anything else is
+// declined rather than guessed at.
+const IMPERATIVE_THEN_DETERMINER = /^(?:[A-Za-z][a-z']*\s+and\s+)?[A-Za-z][a-z']*\s+(?=(?:the|a|an|our|their|its|his|her|this|these|those)\b)/i;
+
+function actionObjectPhrase(action) {
+  let text = clean(action)
+    // The deadline was cut off and left its preposition behind: "Draft and send the
+    // release note by". Published actions still carry these; fixing it at source moves
+    // every action in the corpus and belongs in its own change.
+    .replace(/\s+\b(?:by|on|at|to|for|with|in|from)\s*$/i, '');
+  if (!IMPERATIVE_THEN_DETERMINER.test(text)) return '';
+  text = text.replace(IMPERATIVE_THEN_DETERMINER, '');
+  text = text.split(/[;,]|\s+(?:once|after|before|until|when|unless|so that)\s+/i)[0];
+  text = text.split(/\sand\s(?=[a-z]+\s(?:the|a|an|it)\b)/)[0];
+  text = clean(text.split(/\s+(?:to|by|for|with|from|into|onto|about)\s+/i)[0]);
+  // When the action was due is not what it was about. "Rerun the regression suite tomorrow
+  // morning" is about the regression suite; the rest is a deadline that survived because
+  // the object extractor stops at prepositions and this one has none.
+  text = clean(text.replace(/\s+\b(?:today|tomorrow|tonight|yesterday|this|next|last)\b(?:\s+\b(?:morning|afternoon|evening|week|month|quarter|year|thing|monday|tuesday|wednesday|thursday|friday)\b)?\s*$/i, ''));
+  const parts = text.split(/\s+/).filter(Boolean);
+  if (parts.length < 2 || parts.length > 6) return '';
+  if (/\b(?:I|we|our|my|your|you)\b/i.test(text)) return '';
+  return text;
+}
+
 function buildPurpose(meeting, profileId, mode, spine, workstreams, evidence, actions = []) {
   const config = MODE_CONFIG[profileId];
   const evidenceIds = unique([
@@ -354,6 +409,27 @@ function buildPurpose(meeting, profileId, mode, spine, workstreams, evidence, ac
   // best short statement of why people met that exists anywhere. It reached profile
   // matching, organisation extraction and topic ordering, and never the purpose itself,
   // which is why choosing a good title changed nothing about the sentence at the top.
+  //
+  // Read first, quoted second. "Northbridge Release Planning" is a label; "Plan the
+  // Northbridge release" is a purpose, and the difference is only that the shape word at
+  // the end has been turned into a verb. Where the title names nothing of its own
+  // ("Project Check In") the object comes from the meeting instead.
+  const shaped = purposeFromTitleShape(meeting, evidence, () => subjectFromMeeting(evidence, actions));
+  if (shaped) {
+    return {
+      text: shaped.text,
+      evidenceIds,
+      provenance: 'inferred_from_discussion',
+      confidence: shaped.source === 'title_transform_enriched' ? 0.55 : 0.6,
+      inferred: true,
+      purposeSource: shaped.source,
+      // Every content word is the reviewer's title or this meeting's own; none of it is
+      // prose we composed, so the copy-edit pass leaves it alone. Carried on the object
+      // rather than listed in routes/api.js, because a list in one file describing objects
+      // built in another is exactly how MODE_CONFIG escaped its own source check.
+      purposeIsAuthoredElsewhere: true
+    };
+  }
   const fromTitle = purposeFromTitle(meeting);
   if (fromTitle) {
     return {
@@ -362,7 +438,8 @@ function buildPurpose(meeting, profileId, mode, spine, workstreams, evidence, ac
       provenance: 'inferred_from_discussion',
       confidence: 0.5,
       inferred: true,
-      purposeSource: 'meeting_title'
+      purposeSource: 'meeting_title',
+      purposeIsAuthoredElsewhere: true
     };
   }
   // No profile purpose, so nothing frames this meeting for us. What was left here said
@@ -578,5 +655,4 @@ module.exports = {
   buildInitialUnderstanding,
   describeDiscussedConcepts,
   organisationFromMeeting,
-  siteFromMeeting
-};
+  siteFromMeeting, subjectFromMeeting, actionObjectPhrase };
