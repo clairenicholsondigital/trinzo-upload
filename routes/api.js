@@ -5017,6 +5017,15 @@ router.post('/staged-meeting-minutes/review-events', requireAuth, async (req, re
         workflowDurationMs: Math.max(0, Number(req.body?.workflowDurationMs || 0)),
         stageDwellMsByStage: stagedAnalyticsObject(req.body?.stageDwellMsByStage),
         stageActiveEditMsByStage: stagedAnalyticsObject(req.body?.stageActiveEditMsByStage),
+        // Which kind of purpose the reviewer was shown, and what they did with it.
+        //
+        // fieldDiffs already grades summary.meetingPurpose as accepted_unchanged,
+        // wording_or_formatting_edit or substantive_rewrite. What was missing was where
+        // the purpose came from, so the two could not be crossed - and the acceptance rate
+        // by source is the only measure of this that runs on real meetings rather than on
+        // a corpus of invented ones.
+        purposeSource: firstString(req.body?.purposeSource).slice(0, 60),
+        purposeEdit: (fieldDiffs.find((diff) => diff.fieldPath === 'summary.meetingPurpose') || {}).editType || 'not_recorded',
         finalReviewCompleted
       },
       regenerationEvents: stagedAnalyticsArray(req.body?.regenerationEvents),
@@ -6716,6 +6725,10 @@ router.stagedEvaluation = {
   extractStagedDetailsFromTranscript,
   buildStagedActionsResponse,
   buildPreparedTranscriptForStagedAI,
+  // Exported so the review analytics can be tested as behaviour rather than by grepping
+  // the source for the field names.
+  buildStagedReviewDiffs,
+  summariseStagedReviewDiffs,
   // Exposed so the purpose baseline can ask the question that matters about a meeting
   // type: would we still call it this if we could only see the title? A type that
   // survives only while the transcript body is visible was inferred from something

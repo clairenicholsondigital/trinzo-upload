@@ -885,6 +885,11 @@ td select {
   var generatedStages = { details: false, summary: false, discussion: false, actions: false };
   var stagedState = { details: null, summary: null, discussion: null, actions: null };
   var generatedStageVersions = { details: null, summary: null, discussion: null, actions: null };
+  // Where the purpose the reviewer was shown came from - stated in the meeting, read off
+  // the title, the meeting type, or nothing. The review analytics already record whether
+  // they accepted or rewrote the purpose; without this there is no way to ask which kinds
+  // of purpose they keep, which is the only real measure of whether any of it works.
+  var generatedPurposeSource = '';
   var regenerationEvents = [];
   var terminologyDecisionEvents = [];
   var finalReviewCompleted = false;
@@ -2830,6 +2835,9 @@ td select {
         topicRefs: Array.isArray(summary.topicRefs) ? summary.topicRefs : []
       });
       generatedStageVersions.summary = cloneReviewValue(stagedState.summary);
+      generatedPurposeSource = (summary.initialUnderstanding
+        && summary.initialUnderstanding.meetingPurpose
+        && summary.initialUnderstanding.meetingPurpose.purposeSource) || '';
     }
     if (Object.prototype.hasOwnProperty.call(screensPayload, 'discussion')) {
       renderDiscussionCards(screensPayload.discussion);
@@ -3234,6 +3242,7 @@ td select {
     if (existing && existing.stagedState) {
       applySavedStageState(existing.stagedState);
     }
+    if (existing && typeof existing.purposeSource === 'string') generatedPurposeSource = existing.purposeSource;
     if (existing && existing.generatedStageVersions && typeof existing.generatedStageVersions === 'object') {
       generatedStageVersions = Object.assign(generatedStageVersions, existing.generatedStageVersions);
     }
@@ -3412,7 +3421,8 @@ td select {
       stageVisitCounts: stageVisitCounts,
       finalReviewCompleted: Boolean(completed || finalReviewCompleted),
       reviewDurationMs: currentReviewEditMs(),
-      reviewEditCount: reviewEditCount
+      reviewEditCount: reviewEditCount,
+      purposeSource: generatedPurposeSource
     };
   }
 
@@ -3581,6 +3591,7 @@ td select {
       stageVisitCounts: stageVisitCounts,
       generatedStages: generatedStages,
       generatedStageVersions: generatedStageVersions,
+      purposeSource: generatedPurposeSource,
       unresolvedWorkstreamFlags: unresolvedWorkstreamFlags,
       validationFlags: compactValidationFlagsForDraft(currentValidationFlags),
       validationStage: currentValidationStage,
