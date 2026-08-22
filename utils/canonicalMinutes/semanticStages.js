@@ -655,10 +655,10 @@ function contextStage(evidence, profile, state = {}, reviewerGuidance = '', topo
         // academic theory" it was simply untrue. A purpose is now looked for, so the flag
         // can report which source was used and let the reviewer judge it.
         message: initialUnderstanding.meetingPurpose.purposeSource === 'meeting_title'
-          ? 'This purpose is the meeting title. Nobody stated why the meeting was held, so replace it if the title is not the real reason.'
+          ? 'This purpose is the meeting title, because no clear statement of why the meeting was held was found in it. Replace it if the title is not the real reason.'
           : initialUnderstanding.meetingPurpose.describedFromDiscussion
-            ? 'Nobody stated why this meeting was held, so the summary describes what was discussed instead. Replace it with the real reason.'
-            : 'Nobody stated why this meeting was held and there was not enough discussion to describe one. Add the purpose before sharing these minutes.'
+            ? 'No clear statement of why this meeting was held was found, so the summary describes what was discussed instead. Replace it with the real reason.'
+            : 'No clear statement of why this meeting was held was found, and there was not enough discussion to describe one. Add the purpose before sharing these minutes.'
       }] : [])
     ]
   };

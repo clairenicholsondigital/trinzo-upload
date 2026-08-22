@@ -4169,13 +4169,22 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
       const keepConfirmed = (confirmedValue, polishedValue, presentedValue) => (
         stagedAnalyticsText(confirmedValue) ? presentedValue : polishedValue
       );
+      // A purpose somebody said in the meeting, or one taken from the title, is a quote.
+      // Copy-editing it is how "sense check our academic theory" became "The session
+      // focused on a sense check of the academic theory" - vaguer than what was actually
+      // said, and no longer the thing the cited turn supports. Only prose we composed
+      // ourselves is ours to rewrite.
+      const purposeSource = presentationInitialSummary?.initialUnderstanding?.meetingPurpose?.purposeSource || '';
+      const purposeIsQuoted = purposeSource === 'stated_in_meeting' || purposeSource === 'meeting_title';
       result = {
         ...result,
         screens: {
           ...(result.screens || {}),
           summary: {
             ...presentationInitialSummary,
-            meetingPurpose: keepConfirmed(confirmedSummary.meetingPurpose, initialUnderstandingPolish.meetingPurpose, presentationInitialSummary.meetingPurpose),
+            meetingPurpose: purposeIsQuoted
+              ? presentationInitialSummary.meetingPurpose
+              : keepConfirmed(confirmedSummary.meetingPurpose, initialUnderstandingPolish.meetingPurpose, presentationInitialSummary.meetingPurpose),
             objectives: keepConfirmed(confirmedSummary.objectives, initialUnderstandingPolish.objectives, presentationInitialSummary.objectives),
             executiveSummary: keepConfirmed(confirmedSummary.executiveSummary, initialUnderstandingPolish.executiveSummary, presentationInitialSummary.executiveSummary)
           }

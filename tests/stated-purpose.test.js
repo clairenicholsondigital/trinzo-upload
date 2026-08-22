@@ -16,8 +16,11 @@ const { statedPurposeFromOpening, purposeFromTitle } = require('../utils/canonic
 
 const events = (...texts) => ({ events: texts.map((text, index) => ({ id: `evt_${index}`, speaker: 'Conor Flynn', text })) });
 
-// A meeting body, so the opening window is a window rather than the whole transcript.
-const body = Array.from({ length: 30 }, (unused, index) => `Ordinary discussion turn number ${index} about the work in hand.`);
+// A meeting body, so the opening window is a window rather than the whole transcript. It
+// talks about the subject, because a real meeting returns to what it was called about -
+// and a purpose is only accepted when it names something the meeting comes back to.
+const bodyAbout = (subject) => Array.from({ length: 30 }, (unused, index) => `Turn ${index}: more on the ${subject} and where it goes next.`);
+const body = bodyAbout('theory');
 
 test('a purpose stated in the opening is found and attributed', () => {
   const found = statedPurposeFromOpening(events(
@@ -33,14 +36,14 @@ test('a purpose stated in the opening is found and attributed', () => {
 
 test('the other ways people say why they called a meeting', () => {
   const cases = [
-    ['The purpose of this call is to agree who owns the migration plan.', 'Agree who owns the migration plan.'],
-    ['So we are here to work out whether the pilot is worth extending.', 'Work out whether the pilot is worth extending.'],
-    ['The reason for this meeting is to close out the outstanding audit findings.', 'Close out the outstanding audit findings.'],
-    ['This session is about rebuilding the onboarding flow from scratch.', 'Rebuilding the onboarding flow from scratch.'],
-    ['What we are trying to do today is get the pricing model in front of the board.', 'Get the pricing model in front of the board.']
+    ['The purpose of this call is to agree who owns the migration plan.', 'Agree who owns the migration plan.', 'migration plan'],
+    ['So we are here to work out whether the pilot is worth extending.', 'Work out whether the pilot is worth extending.', 'pilot'],
+    ['The reason for this meeting is to close out the outstanding audit findings.', 'Close out the outstanding audit findings.', 'audit findings'],
+    ['This session is about rebuilding the onboarding flow from scratch.', 'Rebuilding the onboarding flow from scratch.', 'onboarding flow'],
+    ['What we are trying to do today is get the pricing model in front of the board.', 'Get the pricing model in front of the board.', 'pricing model']
   ];
-  for (const [said, expected] of cases) {
-    assert.equal(statedPurposeFromOpening(events('Morning all.', said, ...body))?.text, expected, said);
+  for (const [said, expected, subject] of cases) {
+    assert.equal(statedPurposeFromOpening(events('Morning all.', said, ...bodyAbout(subject)))?.text, expected, said);
   }
 });
 
@@ -61,9 +64,10 @@ test('a purpose is not read out of an ordinary mention of the word', () => {
 test('a purpose stated late in a meeting is a request, not the reason for meeting', () => {
   // Same sentence, different position. Past the opening it is somebody asking for
   // something, which belongs in the actions rather than at the top of the minutes.
-  const said = 'What I want from you today is to sense check our academic theory.';
-  assert.ok(statedPurposeFromOpening(events('Morning.', said, ...body)), 'found near the start');
-  assert.equal(statedPurposeFromOpening(events(...body, said)), null, 'ignored near the end');
+  const said = 'What I want from you today is to sense check the lead qualification process.';
+  const meeting = bodyAbout('lead qualification process');
+  assert.ok(statedPurposeFromOpening(events('Morning.', said, ...meeting)), 'found near the start');
+  assert.equal(statedPurposeFromOpening(events(...meeting, said)), null, 'ignored near the end');
 });
 
 test('a fragment or a question is not published as the purpose', () => {
@@ -100,4 +104,27 @@ test('the cues carry no meeting vocabulary', () => {
   for (const word of ['audit', 'importer', 'webinar', 'software', 'client', 'invoice', 'lead', 'pipeline']) {
     assert.doesNotMatch(source, new RegExp(`\\b${word}`, 'i'), `cues must not mention "${word}"`);
   }
+});
+
+test('a purpose that names nothing the meeting returns to is refused', () => {
+  // The case that prompted this. "Sense check our academic theory" is a well-formed
+  // purpose sentence about nothing: "academic" and "theory" appear once each in the whole
+  // transcript, in that sentence, while the meeting says "lead" ten times. It reads in the
+  // minutes as - academic theory of what? The meeting's own title is better than that, and
+  // is what the purpose falls through to.
+  const said = 'What I want from you today, Keon, is to sense check our academic theory.';
+  const aboutLeads = Array.from({ length: 30 }, (unused, index) => `Turn ${index}: how we qualify a lead and get it in front of sales.`);
+  assert.equal(statedPurposeFromOpening(events('Morning.', said, ...aboutLeads)), null);
+
+  // Name the subject the meeting actually keeps returning to and it is accepted.
+  const named = 'What I want from you today, Keon, is to sense check how we qualify a lead.';
+  assert.equal(statedPurposeFromOpening(events('Morning.', named, ...aboutLeads))?.text, 'Sense check how we qualify a lead.');
+});
+
+test('the recurrence test ignores the opening verb', () => {
+  // "sense check" is repeated constantly in that meeting and says nothing about what was
+  // being sense checked, so a purpose cannot qualify on its verb alone.
+  const { namesARecurringSubject } = require('../utils/canonicalMinutes/statedPurpose');
+  const senseCheckEverywhere = Array.from({ length: 8 }, (unused, index) => ({ id: `e${index}`, text: 'We should sense check that too.' }));
+  assert.equal(namesARecurringSubject('sense check our academic theory', senseCheckEverywhere, 'src'), false);
 });

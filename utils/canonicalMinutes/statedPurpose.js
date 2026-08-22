@@ -82,6 +82,47 @@ function asPurposeSentence(value) {
   return sentence.charAt(0).toUpperCase() + sentence.slice(1);
 }
 
+// Generic words carry no subject, so they cannot show that a purpose is about anything.
+const EMPTY_WORDS = new Set([
+  'about', 'actually', 'again', 'against', 'anything', 'around', 'because', 'been',
+  'being', 'better', 'call', 'come', 'could', 'doing', 'else', 'everyone', 'from',
+  'going', 'good', 'have', 'here', 'into', 'just', 'kind', 'know', 'like', 'looking',
+  'made', 'make', 'meeting', 'mean', 'more', 'much', 'need', 'other', 'ours', 'over',
+  'people', 'point', 'really', 'right', 'session', 'some', 'sort', 'stuff', 'sure',
+  'take', 'talk', 'team', 'that', 'their', 'them', 'then', 'there', 'these', 'they',
+  'thing', 'things', 'think', 'this', 'those', 'time', 'today', 'very', 'want', 'well',
+  'what', 'when', 'where', 'which', 'while', 'with', 'work', 'would', 'your'
+]);
+
+// Does the purpose name something the meeting comes back to?
+//
+// "Sense check our academic theory" is a perfectly formed purpose sentence about nothing:
+// "academic" and "theory" each appear exactly once in that transcript, in that sentence,
+// while the meeting says "lead" ten times and "sales" eleven. It is a figure of speech
+// standing where the subject should be, and it read in the minutes as - academic theory
+// of what?
+//
+// A purpose that names its subject will use a word the meeting uses again. This tests
+// that and nothing else: no vocabulary, no domain, no list of good subjects. The opening
+// words are skipped because they are the verb - "sense check" recurs constantly in that
+// meeting and says nothing about what was being sense checked.
+const VERB_WORDS_SKIPPED = 2;
+const SUBJECT_MUST_RECUR_IN_EVENTS = 2;
+
+function namesARecurringSubject(clause, events, sourceId) {
+  const words = clean(clause).toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  const subjectWords = [...new Set(words.slice(VERB_WORDS_SKIPPED))]
+    .filter((word) => word.length >= 4 && !EMPTY_WORDS.has(word));
+  if (!subjectWords.length) return false;
+  const elsewhere = (Array.isArray(events) ? events : [])
+    .filter((event) => event && event.id !== sourceId)
+    .map((event) => clean(event.text).toLowerCase());
+  return subjectWords.some((word) => {
+    const pattern = new RegExp(`\\b${word}`, 'i');
+    return elsewhere.filter((text) => pattern.test(text)).length >= SUBJECT_MUST_RECUR_IN_EVENTS;
+  });
+}
+
 // The purpose somebody stated, or nothing. Returns the evidence id so the sentence is
 // traceable to the moment it was said, like every other claim in the minutes.
 function statedPurposeFromOpening(evidence) {
@@ -93,6 +134,9 @@ function statedPurposeFromOpening(evidence) {
       if (!match) continue;
       const clause = tidyClause(match[1]);
       if (!usableClause(clause)) continue;
+      // A purpose that names nothing the meeting returns to is worse than the meeting's
+      // own title, which is what this then falls through to.
+      if (!namesARecurringSubject(clause, evidence && evidence.events, event.id)) continue;
       return {
         text: asPurposeSentence(clause),
         evidenceIds: [event.id].filter(Boolean),
@@ -121,4 +165,4 @@ function purposeFromTitle(meeting = {}) {
   return { text: asPurposeSentence(title), evidenceIds: [], source: 'meeting_title' };
 }
 
-module.exports = { statedPurposeFromOpening, purposeFromTitle, PURPOSE_CUES };
+module.exports = { statedPurposeFromOpening, purposeFromTitle, namesARecurringSubject, PURPOSE_CUES };
