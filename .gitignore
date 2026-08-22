@@ -9,3 +9,5 @@ __pycache__/
 reports/live-baseline/
 
 .minilm-cache/
+
+.claude/
