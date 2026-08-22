@@ -1,0 +1,173 @@
+{
+  "$comment": [
+    "Scripted reviewer corrections, replayed between stages to check that a correction is",
+    "honoured by everything downstream and never contradicted.",
+    "",
+    "`path` uses the same dotted vocabulary as flattenStagedReviewVersion in routes/api.js,",
+    "so fixtures, the production edit analytics and the replay harness all name a field the",
+    "same way. `appliesTo` names transcript directories under scripts/.",
+    "",
+    "Each scenario is a case that was observed failing, not an invented one. The finding it",
+    "covers is recorded so a change to the scenario has to argue with the bug it came from.",
+    "",
+    "expect.preserved  - text that must appear, verbatim, in the named downstream stage",
+    "expect.absent     - text that must not appear anywhere downstream",
+    "expect.noOtherBucket - confirmed facts must not be filed under a card titled 'Other'"
+  ],
+  "scenarios": [
+    {
+      "id": "rename-heading-keeps-fact-placement",
+      "finding": "bestAuthoritativeTopicForFact scores a confirmed fact against the renamed label, falls below 0.18 and files it under 'Other' with no flag",
+      "appliesTo": ["021_real_dita_importer_obligations_transcript"],
+      "intent": "The reviewer renames a topic heading into their own words.",
+      "edits": [
+        { "stage": "summary", "op": "replace", "path": "summary.overallTopics[0]", "to": "Where the goods physically go" }
+      ],
+      "expect": {
+        "preserved": [{ "stage": "discussion", "text": "Where the goods physically go" }],
+        "noOtherBucket": 0
+      }
+    },
+    {
+      "id": "reviewer-purpose-is-not-regenerated",
+      "finding": "summaryScreen published the re-derived purpose and never state.meeting.purpose; the browser then copied it back over the reviewer's field",
+      "appliesTo": ["021_real_dita_importer_obligations_transcript"],
+      "intent": "The reviewer rewrites the meeting purpose wholesale.",
+      "edits": [
+        { "stage": "summary", "op": "replace", "path": "summary.meetingPurpose", "to": "Agree who carries the importer obligations for DITA and what evidence HPRA will expect." }
+      ],
+      "expect": {
+        "preserved": [{ "stage": "summary", "text": "Agree who carries the importer obligations for DITA and what evidence HPRA will expect." }],
+        "absent": ["Coordinate the meeting's main workstreams"]
+      }
+    },
+    {
+      "id": "heading-with-a-pronoun-survives",
+      "finding": "isPublishableTopicLabel rejects a pronoun; the confirmedTopic exemption was set only on the branch the reviewer-confirmed path does not take",
+      "appliesTo": ["021_real_dita_importer_obligations_transcript"],
+      "intent": "The reviewer writes a heading the way a person would.",
+      "edits": [
+        { "stage": "summary", "op": "replace", "path": "summary.overallTopics[0]", "to": "What we owe the client" }
+      ],
+      "expect": {
+        "preserved": [{ "stage": "discussion", "text": "What we owe the client" }]
+      }
+    },
+    {
+      "id": "heading-containing-a-modal-survives",
+      "finding": "the same gate rejects any auxiliary or modal, so 'CAN bus integration' fails on the word 'can'",
+      "appliesTo": ["025_real_t761_eakin_sw_weekly_transcript"],
+      "intent": "A real subject whose name collides with a modal verb.",
+      "edits": [
+        { "stage": "summary", "op": "replace", "path": "summary.overallTopics[0]", "to": "CAN bus integration" }
+      ],
+      "expect": {
+        "preserved": [{ "stage": "discussion", "text": "CAN bus integration" }]
+      }
+    },
+    {
+      "id": "key-fact-the-transcript-does-not-state",
+      "finding": "stagedSemanticAuthority hits a bare `continue` when a confirmed fact has no lexical support, skipping both the repair and the flag",
+      "appliesTo": ["021_real_dita_importer_obligations_transcript"],
+      "intent": "The reviewer records something they know that the meeting only alluded to.",
+      "edits": [
+        { "stage": "summary", "op": "append", "path": "summary.keyFacts", "to": "The HPRA registration renewal falls due in November." }
+      ],
+      "expect": {
+        "preserved": [{ "stage": "summary", "text": "The HPRA registration renewal falls due in November." }],
+        "flags": ["reviewer_confirmed_fact_unsupported_by_transcript"],
+        "blockingFlags": 0
+      }
+    },
+    {
+      "id": "first-person-discussion-point-survives",
+      "finding": "finaliseDiscussionPointForMinutes deletes any point containing we/our/you via FIRST_PERSON_TRANSCRIPT_VOICE",
+      "appliesTo": ["021_real_dita_importer_obligations_transcript"],
+      "intent": "The reviewer writes a point in the voice they actually use.",
+      "edits": [
+        { "stage": "discussion", "op": "replace", "path": "discussion.0.points[0]", "to": "We owe the client a written procedure before the next call." }
+      ],
+      "expect": {
+        "preserved": [{ "stage": "final", "text": "We owe the client a written procedure before the next call." }]
+      }
+    },
+    {
+      "id": "speaker-prefixed-point-survives",
+      "finding": "cleanDiscussionDisplayText returns '' for any point with a speaker prefix, deleting it on re-render",
+      "appliesTo": ["021_real_dita_importer_obligations_transcript"],
+      "intent": "The reviewer notes who owes what, in the shorthand they would write by hand.",
+      "edits": [
+        { "stage": "discussion", "op": "replace", "path": "discussion.0.points[0]", "to": "Mark: chase the declaration of conformity pack." }
+      ],
+      "expect": {
+        "preserved": [{ "stage": "final", "text": "Mark: chase the declaration of conformity pack." }]
+      }
+    },
+    {
+      "id": "single-name-owner-keeps-the-action",
+      "finding": "the recovered-owner regex required two capitalised words, so a first name became 'Not stated' and the publication gate then dropped the action",
+      "appliesTo": ["021_real_dita_importer_obligations_transcript"],
+      "intent": "The reviewer assigns an action to someone by first name.",
+      "edits": [
+        { "stage": "details", "op": "replace", "path": "details.internalAttendees", "to": ["Mark Kelleher", "Jacqui Fox"] },
+        { "stage": "actions", "op": "replace", "path": "actions.0.owner", "to": "Mark" }
+      ],
+      "expect": {
+        "preserved": [{ "stage": "actions", "text": "Mark Kelleher" }],
+        "absent": ["Not stated"]
+      }
+    },
+    {
+      "id": "corrected-attendee-name-is-not-renormalised",
+      "finding": "entityNames was built from transcript speakers only, so a corrected spelling was normalised back to the recorder's",
+      "appliesTo": ["021_real_dita_importer_obligations_transcript"],
+      "intent": "The reviewer fixes a name the recorder mis-transcribed.",
+      "edits": [
+        { "stage": "details", "op": "replace", "path": "details.internalAttendees", "to": ["Aoife Nic Gearailt"] }
+      ],
+      "expect": {
+        "preserved": [{ "stage": "summary", "text": "Aoife Nic Gearailt" }]
+      }
+    },
+    {
+      "id": "confirmed-executive-summary-is-not-copy-edited",
+      "finding": "grammarPolishStagedExecutiveSummary ran over reviewer prose as well as model prose",
+      "appliesTo": ["024_real_dita_internal_followup_transcript"],
+      "intent": "The reviewer writes the executive summary themselves.",
+      "edits": [
+        { "stage": "summary", "op": "replace", "path": "summary.executiveSummary", "to": "We agreed the procedure work lands with us and the registration evidence lands with the client." }
+      ],
+      "expect": {
+        "preserved": [{ "stage": "summary", "text": "We agreed the procedure work lands with us and the registration evidence lands with the client." }]
+      }
+    },
+    {
+      "id": "emptied-card-is-not-refilled-with-a-placeholder",
+      "finding": "the browser injects 'Review this section against the transcript.' into an emptied card, and it persists into stagedState and the PDF",
+      "appliesTo": ["021_real_dita_importer_obligations_transcript"],
+      "intent": "The reviewer deletes a discussion section they judge not worth minuting.",
+      "edits": [
+        { "stage": "discussion", "op": "replace", "path": "discussion.0.points", "to": [] }
+      ],
+      "expect": {
+        "absent": ["Review this section against the transcript."]
+      }
+    },
+    {
+      "id": "confirmed-objectives-survive-a-summary-rerun",
+      "finding": "confirmed objectives were stored and never read back; a re-run returned the derived list",
+      "appliesTo": ["027_real_abbott_audit_kickoff_transcript"],
+      "intent": "The reviewer rewrites the objectives, then regenerates the summary.",
+      "edits": [
+        { "stage": "summary", "op": "replace", "path": "summary.objectives", "to": ["Agree the audit scope and who covers the software track", "Confirm what the client must have ready before we arrive"] },
+        { "stage": "summary", "op": "regenerate", "path": "summary" }
+      ],
+      "expect": {
+        "preserved": [
+          { "stage": "summary", "text": "Agree the audit scope and who covers the software track" },
+          { "stage": "summary", "text": "Confirm what the client must have ready before we arrive" }
+        ]
+      }
+    }
+  ]
+}

@@ -1,17 +1,16 @@
 [
   {
     "file": "scripts/meeting-minutes-core-golden/cases/01_explicit_action_recap/transcript.docx",
-    "topicCount": 5,
+    "topicCount": 3,
     "topics": [
       "Content and communications",
-      "Please belt and braces",
-      "Let's just nail the joins and the questions bit",
       "Decisions",
       "Risks"
     ],
-    "summaryTopicCount": 1,
+    "summaryTopicCount": 2,
     "summaryTopics": [
-      "Please belt and braces"
+      "Content and communications",
+      "Documentation and evidence"
     ]
   },
   {
@@ -124,13 +123,10 @@
   },
   {
     "file": "scripts/meeting-minutes-core-golden/cases/09_no_action_meeting/transcript.docx",
-    "topicCount": 7,
+    "topicCount": 4,
     "topics": [
       "Testing and validation",
       "Plans and timelines",
-      "All the acceptance criteria were met, I went through them",
-      "I don't think another round adds anything, it'd just delay",
-      "Fair enough, I just wanted to check",
       "The residual risk there is low, and the team would",
       "Decisions"
     ],
@@ -144,9 +140,8 @@
   },
   {
     "file": "scripts/meeting-minutes-core-golden/cases/10_chaos_goblin/transcript.docx",
-    "topicCount": 3,
+    "topicCount": 2,
     "topics": [
-      "I was going to email client contact Susan, but George,",
       "Decisions",
       "Risks"
     ],
@@ -322,10 +317,9 @@
   },
   {
     "file": "scripts/meeting-minutes-final-golden/009_board_launch_delay/transcript.txt",
-    "topicCount": 2,
+    "topicCount": 1,
     "topics": [
-      "Leah update the board pack tonight",
-      "Actually, the team should move the Spain launch to September"
+      "Leah update the board pack tonight"
     ],
     "summaryTopicCount": 1,
     "summaryTopics": [
@@ -604,12 +598,11 @@
   },
   {
     "file": "scripts/transcript-tests/001_status_review/transcript.txt",
-    "topicCount": 5,
+    "topicCount": 4,
     "topics": [
       "Operations and processes",
       "Budget and commercial matters",
       "Due end quarter",
-      "The repeatable AI use case library, I think the team",
       "Risks"
     ],
     "summaryTopicCount": 1,
@@ -633,14 +626,13 @@
   },
   {
     "file": "scripts/transcript-tests/003_webinar_rehearsal/transcript.txt",
-    "topicCount": 7,
+    "topicCount": 6,
     "topics": [
       "Roles and responsibilities",
       "Content and communications",
       "Documentation and evidence",
       "Opportunities for improvement here",
       "Operations and processes",
-      "And then can you delegate it to a junior member",
       "Decisions"
     ],
     "summaryTopicCount": 1,
@@ -746,16 +738,14 @@
   },
   {
     "file": "scripts/transcript-tests/012_training_rollout/transcript.txt",
-    "topicCount": 3,
+    "topicCount": 2,
     "topics": [
       "Louise split the material two forty-five minute",
-      "Please publish the revised timetable Thursday",
       "Keep the pilot group the Manchester site"
     ],
-    "summaryTopicCount": 3,
+    "summaryTopicCount": 2,
     "summaryTopics": [
       "Louise split the material two forty-five minute",
-      "Please publish the revised timetable Thursday",
       "Keep the pilot group the Manchester site"
     ]
   },
@@ -933,10 +923,9 @@
   },
   {
     "file": "scripts/transcript-tests/029_office_relocation/transcript.txt",
-    "topicCount": 2,
+    "topicCount": 1,
     "topics": [
-      "Sophie confirm the movers tomorrow",
-      "I don't think that works for the meeting rooms"
+      "Sophie confirm the movers tomorrow"
     ],
     "summaryTopicCount": 1,
     "summaryTopics": [
@@ -970,16 +959,14 @@
   },
   {
     "file": "scripts/transcript-tests/032_training_rollout/transcript.txt",
-    "topicCount": 3,
+    "topicCount": 2,
     "topics": [
       "Louise split the material two forty-minute sessions",
-      "Please publish the revised timetable Thursday",
       "Keep the pilot group the Manchester site"
     ],
-    "summaryTopicCount": 3,
+    "summaryTopicCount": 2,
     "summaryTopics": [
       "Louise split the material two forty-minute sessions",
-      "Please publish the revised timetable Thursday",
       "Keep the pilot group the Manchester site"
     ]
   },
@@ -1033,11 +1020,10 @@
   },
   {
     "file": "scripts/transcript-tests/037_partnership_discussion/transcript.txt",
-    "topicCount": 3,
+    "topicCount": 2,
     "topics": [
       "Run ninety-day pilot Northstar and review exclusivity",
-      "Dean draft the pilot terms Monday",
-      "I don't want us to lock the whole channel"
+      "Dean draft the pilot terms Monday"
     ],
     "summaryTopicCount": 2,
     "summaryTopics": [
@@ -1047,11 +1033,10 @@
   },
   {
     "file": "scripts/transcript-tests/038_grant_application_review/transcript.txt",
-    "topicCount": 3,
+    "topicCount": 2,
     "topics": [
       "Roles and responsibilities",
-      "Neil rewrite the summary Wednesday",
-      "I don't think that is strong enough"
+      "Neil rewrite the summary Wednesday"
     ],
     "summaryTopicCount": 1,
     "summaryTopics": [
@@ -1130,10 +1115,9 @@
   },
   {
     "file": "scripts/transcript-tests/045_board_launch_delay/transcript.txt",
-    "topicCount": 2,
+    "topicCount": 1,
     "topics": [
-      "Leah update the board pack tonight",
-      "Actually, the team should move the Spain launch to September"
+      "Leah update the board pack tonight"
     ],
     "summaryTopicCount": 1,
     "summaryTopics": [
@@ -1181,14 +1165,10 @@
   },
   {
     "file": "scripts/transcript-tests/049_low_substance_noise/transcript.txt",
-    "topicCount": 1,
-    "topics": [
-      "Let's run through the agenda"
-    ],
-    "summaryTopicCount": 1,
-    "summaryTopics": [
-      "Let's run through the agenda"
-    ]
+    "topicCount": 0,
+    "topics": [],
+    "summaryTopicCount": 0,
+    "summaryTopics": []
   },
   {
     "file": "scripts/transcript-tests/050_partnership_mou_enablement/transcript.txt",
@@ -1203,14 +1183,13 @@
   },
   {
     "file": "scripts/transcript-tests/051_real_webinar_rehearsal/transcript.txt",
-    "topicCount": 7,
+    "topicCount": 6,
     "topics": [
       "Roles and responsibilities",
       "Content and communications",
       "Documentation and evidence",
       "Opportunities for improvement here",
       "Operations and processes",
-      "And then can you delegate it to a junior member",
       "Decisions"
     ],
     "summaryTopicCount": 1,
