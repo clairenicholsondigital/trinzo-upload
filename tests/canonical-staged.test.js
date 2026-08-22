@@ -19,6 +19,16 @@ const {
   reviewerConfirmedFactMissingMessage
 } = require('../utils/stagedSemanticAuthority');
 
+// The DITA importer-obligations meeting, used by the reviewer-confirmed preservation
+// tests below. These previously read a sibling checkout outside the repository, so the
+// whole preservation group silently stopped running when that checkout was absent —
+// see tests/fixture-paths.test.js, which now makes that failure loud.
+const DITA_TRANSCRIPT_PATH = path.resolve(
+  __dirname,
+  '../scripts/meeting-minutes-final-golden/021_real_dita_importer_obligations_transcript/transcript.txt'
+);
+const ditaTranscriptText = () => fs.readFileSync(DITA_TRANSCRIPT_PATH, 'utf8');
+
 test('generic action gate rejects unresolved conversational references', () => {
   ['Send that out now', 'Copy her this time', 'Do it at the same time', 'Be there for really', 'Probably tomorrow?', 'Need before the audit starts', 'Be mid audit at that point', 'Run it through the site', 'Try and do is limit your stream', 'Quickly share so we can review it']
     .forEach((action) => assert.equal(semanticStages.isUnderspecifiedAction({ action }), true, action));
@@ -407,10 +417,7 @@ test('confirmed Summary purpose and key facts become semantic authority', () => 
 });
 
 test('repair preserves transcript-supported reviewer-confirmed DITA facts in Discussion', () => {
-  const ditaTranscript = fs.readFileSync(
-    path.resolve(__dirname, '../../trinzo-ui-test-transcripts/extracted-text/Client DITA T819 - Importer Obligations - Client connect-6-.txt'),
-    'utf8'
-  );
+  const ditaTranscript = ditaTranscriptText();
   const understanding = buildConfirmedUnderstanding({
     meetingPurpose: "The meeting was process discovery to understand DITA's actual operational processes so practical importer-obligation procedures could be designed around how the business works.",
     keyFacts: [
@@ -469,10 +476,7 @@ test('compound reviewer-confirmed facts require material component preservation'
 });
 
 test('canonical Discussion generation preserves reviewer-confirmed DITA semantic anchors', () => {
-  const ditaTranscript = fs.readFileSync(
-    path.resolve(__dirname, '../../trinzo-ui-test-transcripts/extracted-text/Client DITA T819 - Importer Obligations - Client connect-6-.txt'),
-    'utf8'
-  );
+  const ditaTranscript = ditaTranscriptText();
   const evidence = prepareEvidence(ditaTranscript);
   const firstQmsEvent = evidence.events.find((event) => /QMS manual/i.test(event.text)) || evidence.events[0];
   const state = buildConfirmedState(ditaTranscript, 'dita.txt', {
@@ -505,10 +509,7 @@ test('canonical Discussion generation preserves reviewer-confirmed DITA semantic
 });
 
 test('canonical Discussion API response preserves reviewer-confirmed DITA facts after grounding and polish', async () => {
-  const ditaTranscript = fs.readFileSync(
-    path.resolve(__dirname, '../../trinzo-ui-test-transcripts/extracted-text/Client DITA T819 - Importer Obligations - Client connect-6-.txt'),
-    'utf8'
-  );
+  const ditaTranscript = ditaTranscriptText();
   const previousTrooperKey = process.env.TROOPER_API_KEY;
   delete process.env.TROOPER_API_KEY;
   let result;
@@ -550,10 +551,7 @@ test('canonical Discussion API response preserves reviewer-confirmed DITA facts 
 });
 
 test('canonical Discussion planner allocates DITA evidence to reviewer-confirmed workstreams before prose', () => {
-  const ditaTranscript = fs.readFileSync(
-    path.resolve(__dirname, '../../trinzo-ui-test-transcripts/extracted-text/Client DITA T819 - Importer Obligations - Client connect-6-.txt'),
-    'utf8'
-  );
+  const ditaTranscript = ditaTranscriptText();
   const evidence = prepareEvidence(ditaTranscript);
   const ids = (pattern) => evidence.events.filter((event) => pattern.test(event.text)).slice(0, 10).map((event) => event.id);
   const state = buildConfirmedState(ditaTranscript, 'dita.txt', {
@@ -762,10 +760,7 @@ test('canonical Discussion planner keeps Abbott logistics out of Risk unless ris
 });
 
 test('canonical Actions ranking separates reviewer usefulness from automatic publication confidence for DITA', async () => {
-  const ditaTranscript = fs.readFileSync(
-    path.resolve(__dirname, '../../trinzo-ui-test-transcripts/extracted-text/Client DITA T819 - Importer Obligations - Client connect-6-.txt'),
-    'utf8'
-  );
+  const ditaTranscript = ditaTranscriptText();
   const previousTrooperKey = process.env.TROOPER_API_KEY;
   delete process.env.TROOPER_API_KEY;
   let result;

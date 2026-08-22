@@ -252,6 +252,11 @@ function flattenStagedReviewVersion(versions = {}) {
   fields.push(stagedReviewField('details', 'details.clientAttendees', 'Client participants', details.clientAttendees || details.allAttendees));
 
   const summary = stagedAnalyticsObject(versions.summary);
+  // The purpose and the key facts steer more of the later stages than anything else the
+  // reviewer touches, and until now neither was recorded — so the edit analytics were
+  // blind to the two fields most worth knowing about.
+  fields.push(stagedReviewField('summary', 'summary.meetingPurpose', 'Meeting purpose', summary.meetingPurpose));
+  fields.push(stagedReviewField('summary', 'summary.keyFacts', 'Key facts to preserve', summary.keyFacts));
   fields.push(stagedReviewField('summary', 'summary.objectives', 'Meeting objectives', summary.objectives));
   fields.push(stagedReviewField('summary', 'summary.executiveSummary', 'Executive summary', summary.executiveSummary));
   fields.push(stagedReviewField('summary', 'summary.overallTopics', 'Overall topics', summary.overallTopics));
