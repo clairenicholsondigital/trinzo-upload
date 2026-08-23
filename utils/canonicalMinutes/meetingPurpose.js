@@ -197,4 +197,12 @@ function topicOrderRank(topicHints, text) {
   return Number.MAX_SAFE_INTEGER;
 }
 
-module.exports = { meetingProfile, purposePlan, objectiveIntentForText, topicOrderRank };
+// A read-only view of the profiles for the evidence-based type suggestion. It exposes the
+// hint patterns and nothing else - the source slice between MEETING_PROFILES and
+// OBJECTIVE_INTENTS stays exactly as the source-grep contract tests pin it, and a
+// consumer of this catalogue can no more inject prose through it than a profile can.
+function profileHintCatalogue() {
+  return MEETING_PROFILES.map((profile) => ({ id: profile.id, topicHints: profile.topicHints || [] }));
+}
+
+module.exports = { meetingProfile, purposePlan, objectiveIntentForText, topicOrderRank, profileHintCatalogue };

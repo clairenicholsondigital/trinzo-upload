@@ -597,6 +597,36 @@
     ]
   },
   {
+    "file": "scripts/meeting-minutes-final-golden/028_real_m204_webinar_rehearsal_transcript/transcript.txt",
+    "topicCount": 3,
+    "topics": [
+      "Content and communications",
+      "Decisions",
+      "Risks"
+    ],
+    "summaryTopicCount": 2,
+    "summaryTopics": [
+      "Content and communications",
+      "Documentation and evidence"
+    ]
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/029_real_t761_tech_file_weekly_transcript/transcript.txt",
+    "topicCount": 4,
+    "topics": [
+      "Language support and localisation",
+      "Risks and dependencies",
+      "Software change traceability",
+      "Testing and validation"
+    ],
+    "summaryTopicCount": 3,
+    "summaryTopics": [
+      "Language support and localisation",
+      "Cybersecurity and access controls",
+      "Electrical compliance testing: IEC 60601"
+    ]
+  },
+  {
     "file": "scripts/transcript-tests/001_status_review/transcript.txt",
     "topicCount": 4,
     "topics": [

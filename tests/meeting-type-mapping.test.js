@@ -99,27 +99,59 @@ test('a profile contributes ordering and an intent verb, never prose', () => {
   }
 });
 
-test('a meeting type is decided by what the meeting was called, never by what was said in it', { timeout: 120000 }, async () => {
-  // Three of these tests used to read the transcript body. "Right, let's run through the
-  // AI programme items quickly" made "Daily AI Check In" a webinar rehearsal, and the
-  // profile then published "Rehearse the webinar flow, content, handovers and technical
-  // setup" as that meeting's purpose - about a meeting that never happened, and unflagged.
-  // Seven transcripts in the corpus were framed this way.
+test('a body-derived meeting type must carry an evidence trail that clears the gates', { timeout: 120000 }, async () => {
+  // The original invariant here was "the type must not change when the body is taken
+  // away", written after seven meetings were told they were webinar rehearsals because
+  // somebody said "run through". That fix was right about the seven and wrong about a
+  // real rehearsal titled "Client M204 Larkfield MK Thursday Session", whose content is
+  // unmistakable and whose title says nothing.
   //
-  // Stated as an invariant rather than as seven fixed cases: the answer must not change
-  // when the body is taken away. The title has to be held constant to ask that, because
-  // the title is itself extracted from the text.
+  // The invariant is reworded, not weakened: a type may now differ from the title-only
+  // answer ONLY when the evidence-gated suggestion accepted it - at least three of the
+  // type's topic areas each recurring in two or more turns, twice the support of any
+  // other type. A single phrase still cannot move the type, because a single phrase
+  // cannot support three independent patterns.
   const { listTranscripts, readTranscript } = require('../scripts/evidence_parse_baseline');
   const { extractStagedDetailsFromTranscript, inferStagedMeetingType } = require('../routes/api').stagedEvaluation;
+  const { MIN_SUPPORTED_HINTS, MIN_EVENTS_PER_HINT, DOMINANCE_RATIO } = require('../utils/canonicalMinutes/meetingTypeSuggestion');
 
-  const bodyDerived = [];
+  const unfenced = [];
   for (const file of listTranscripts()) {
     const text = String(await readTranscript(file));
     const fileName = path.basename(file);
-    const title = extractStagedDetailsFromTranscript(text, fileName).screens?.details?.meetingTitle || '';
-    const withBody = inferStagedMeetingType(text, fileName, title);
-    const titleOnly = inferStagedMeetingType('', fileName, title);
-    if (withBody !== titleOnly) bodyDerived.push(`${file}: "${title}" -> ${withBody} (from the title alone it is ${titleOnly})`);
+    const details = extractStagedDetailsFromTranscript(text, fileName).screens?.details || {};
+    const titleOnly = inferStagedMeetingType('', fileName, details.meetingTitle || '');
+    if (details.meetingType === titleOnly) continue;
+    const trail = details.meetingTypeSuggestion;
+    const gated = trail && trail.accepted
+      && trail.supportedHints.length >= MIN_SUPPORTED_HINTS
+      && trail.supportedHints.every((hint) => hint.eventCount >= MIN_EVENTS_PER_HINT)
+      && trail.marginRatio >= DOMINANCE_RATIO;
+    if (!gated) unfenced.push(`${file}: "${details.meetingTitle}" -> ${details.meetingType} with no qualifying evidence trail`);
   }
-  assert.deepEqual(bodyDerived, [], `meeting types inferred from transcript body text:\n${bodyDerived.join('\n')}`);
+  assert.deepEqual(unfenced, [], `body-derived types without a qualifying evidence trail:\n${unfenced.join('\n')}`);
+});
+
+test('the seven formerly misclassified meetings still resolve from their titles alone', { timeout: 120000 }, async () => {
+  // These fixtures are the reason the title-only rule existed. Each was told it was a
+  // webinar rehearsal or workshop off one stray phrase in the body. They are pinned by
+  // name: whatever the suggestion machinery becomes, it must stay quiet on every one.
+  const { extractStagedDetailsFromTranscript } = require('../routes/api').stagedEvaluation;
+  const mammoth = require('mammoth');
+  const cases = [
+    ['scripts/transcript-tests/001_status_review/transcript.txt', 'Project review'],
+    ['scripts/transcript-tests/002_validation_decision/transcript.txt', 'Project review'],
+    ['scripts/transcript-tests/008_event_planning/transcript.txt', 'Project review'],
+    ['scripts/transcript-tests/049_low_substance_noise/transcript.txt', 'Project review'],
+    ['scripts/transcript-tests/050_partnership_mou_enablement/transcript.txt', 'Project review'],
+    ['scripts/transcript-tests/064_analytics_review/transcript.txt', 'Project review'],
+    ['scripts/meeting-minutes-core-golden/cases/02_scattered_actions/transcript.docx', 'Project review']
+  ];
+  for (const [file, expected] of cases) {
+    const full = path.resolve(__dirname, '..', file);
+    const text = file.endsWith('.docx') ? (await mammoth.extractRawText({ path: full })).value : fs.readFileSync(full, 'utf8');
+    const details = extractStagedDetailsFromTranscript(String(text), path.basename(file)).screens?.details || {};
+    assert.equal(details.meetingType, expected, `${file} must not be reclassified from its body`);
+    assert.ok(!details.meetingTypeSuggestion?.accepted, `${file}: the suggestion must not fire`);
+  }
 });

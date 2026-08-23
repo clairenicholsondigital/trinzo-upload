@@ -4,8 +4,8 @@
       "file": "scripts/meeting-minutes-core-golden/cases/01_explicit_action_recap/transcript.docx",
       "corpus": "synthetic",
       "title": "Client M204 Larkfield MK Thursday Session",
-      "type": "Project review",
-      "typeFromBodyOnly": false,
+      "type": "Webinar rehearsal",
+      "typeFromBodyOnly": true,
       "typeFromTitle": "Project review"
     },
     {
@@ -316,8 +316,8 @@
       "file": "scripts/meeting-minutes-final-golden/026_real_qip_assessment_tool_case_study_transcript/transcript.txt",
       "corpus": "real",
       "title": "Untitled meeting",
-      "type": "Project review",
-      "typeFromBodyOnly": false,
+      "type": "Case study interview",
+      "typeFromBodyOnly": true,
       "typeFromTitle": "Project review"
     },
     {
@@ -327,6 +327,22 @@
       "type": "Audit kick-off / planning",
       "typeFromBodyOnly": false,
       "typeFromTitle": "Audit kick-off / planning"
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/028_real_m204_webinar_rehearsal_transcript/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Client M204 Larkfield MK Thursday Session",
+      "type": "Webinar rehearsal",
+      "typeFromBodyOnly": true,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/029_real_t761_tech_file_weekly_transcript/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Client T761 Eakin SW Weekly Checkin",
+      "type": "Technical file review",
+      "typeFromBodyOnly": false,
+      "typeFromTitle": "Technical file review"
     },
     {
       "file": "scripts/transcript-tests/001_status_review/transcript.txt",
@@ -925,12 +941,12 @@
     {
       "file": "scripts/meeting-minutes-core-golden/cases/01_explicit_action_recap/transcript.docx",
       "corpus": "synthetic",
-      "purposeSource": "meeting_title",
-      "purposeText": "Client M204 Larkfield MK Thursday Session.",
-      "words": 6,
-      "evidenceIdCount": 0,
-      "namesSubject": false,
-      "isBareTitle": true,
+      "purposeSource": "meeting_type_profile",
+      "purposeText": "Rehearse the webinar flow, content, handovers and technical setup so the live session can run smoothly. The meeting covered content and communications, technical setup, and documentation and evidence.",
+      "words": 28,
+      "evidenceIdCount": 4,
+      "namesSubject": true,
+      "isBareTitle": false,
       "flagged": true
     },
     {
@@ -1354,12 +1370,12 @@
     {
       "file": "scripts/meeting-minutes-final-golden/026_real_qip_assessment_tool_case_study_transcript/transcript.txt",
       "corpus": "real",
-      "purposeSource": "meeting_title",
-      "purposeText": "Untitled meeting.",
-      "words": 2,
+      "purposeSource": "meeting_type_profile",
+      "purposeText": "Understand the client experience, operating context and evidence needed to shape the case-study material. The meeting covered quality and risk management, plans and timelines, and product behaviour and design.",
+      "words": 29,
       "evidenceIdCount": 10,
-      "namesSubject": false,
-      "isBareTitle": true,
+      "namesSubject": true,
+      "isBareTitle": false,
       "flagged": true
     },
     {
@@ -1368,6 +1384,28 @@
       "purposeSource": "meeting_type_profile",
       "purposeText": "Align the audit team on the Sylmar surveillance-audit plan, including specialist software coverage, preparation, access, timing, logistics and responsibilities. The meeting covered plans and timelines, regulatory and compliance, and scope and requirements.",
       "words": 32,
+      "evidenceIdCount": 10,
+      "namesSubject": true,
+      "isBareTitle": false,
+      "flagged": true
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/028_real_m204_webinar_rehearsal_transcript/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_type_profile",
+      "purposeText": "Rehearse the webinar flow, content, handovers and technical setup so the live session can run smoothly. The meeting covered content and communications, technical setup, and documentation and evidence.",
+      "words": 28,
+      "evidenceIdCount": 4,
+      "namesSubject": true,
+      "isBareTitle": false,
+      "flagged": true
+    },
+    {
+      "file": "scripts/meeting-minutes-final-golden/029_real_t761_tech_file_weekly_transcript/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_type_profile",
+      "purposeText": "Coordinate progress, evidence gaps, blockers and next steps for the software-change and technical-file programme so the change package can be closed properly. The meeting covered alarm behaviour and controls, software changes, and plans and timelines.",
+      "words": 35,
       "evidenceIdCount": 10,
       "namesSubject": true,
       "isBareTitle": false,

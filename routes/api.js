@@ -43,6 +43,7 @@ const {
 const { getMeetingMinutesCoreGoldenStatus } = require('../utils/meetingMinutesCoreGolden');
 const { runCanonicalNoEditPass } = require('../utils/canonicalMinutes/runner');
 const { runCanonicalLiveStage } = require('../utils/canonicalMinutes/liveStages');
+const { suggestMeetingTypeFromEvidence } = require('../utils/canonicalMinutes/meetingTypeSuggestion');
 const { prepareEvidence } = require('../utils/canonicalMinutes/evidence');
 const { polishCanonicalStage, canonicalFallback, addRecoveredActionCandidates, clientReadyPresentation } = require('../utils/canonicalMinutes/trooperPolish');
 const { enrichActionReviewCandidate } = require('../utils/canonicalMinutes/actionReviewRanking');
@@ -959,6 +960,29 @@ function extractStagedDetailsFromTranscript(transcriptText, fileName = '') {
     return [{ type: 'possible_attendee_name_mismatch', severity: 'warning', blocking: false, message: `Check attendee name “${name}”. The first name matches known participant “${knownFirstName}”, but the transcript surname differs.` }];
   });
 
+  // The title decides the type when it can. When it cannot - the title-only inference
+  // returned the default - ask the discussion, gated on recurrence and dominance, and
+  // offer the answer as a pre-selected suggestion the reviewer can overrule. The evidence
+  // trail travels with the payload so the suggestion is auditable, and the flag makes it
+  // visible: a pre-selected dropdown with no note is indistinguishable from a default.
+  const titleOnlyType = inferStagedMeetingType(text, fileName, headerTitle || meetingTitle);
+  let meetingTypeSuggestion = null;
+  if (titleOnlyType === 'Project review') {
+    try {
+      meetingTypeSuggestion = suggestMeetingTypeFromEvidence(prepareEvidence(text));
+    } catch {
+      meetingTypeSuggestion = null;
+    }
+  }
+  const suggestedType = meetingTypeSuggestion && meetingTypeSuggestion.accepted ? meetingTypeSuggestion.type : null;
+  const typeSuggestionFlags = suggestedType ? [{
+    type: 'meeting_type_suggested',
+    severity: 'warning',
+    blocking: false,
+    resolutionKey: 'meeting-type-suggested',
+    message: `The meeting type was set to "${suggestedType}" from the discussion itself - ${meetingTypeSuggestion.supportedHints.length} of that type's topic areas recur across ${meetingTypeSuggestion.totalMatchedEvents} moments in the transcript, while the title alone reads as a general project review. Change it if that is not what this meeting was.`
+  }] : [];
+
   return {
     ok: true,
     staged: true,
@@ -969,13 +993,14 @@ function extractStagedDetailsFromTranscript(transcriptText, fileName = '') {
         meetingDate: headerDate || normaliseDateInput(rawDate),
         meetingLocation: rawLocation || (/teams|microsoft teams/i.test(text) ? 'Microsoft Teams' : 'Microsoft Teams'),
         organisation: rawOrganisation,
-        meetingType: inferStagedMeetingType(text, fileName, headerTitle || meetingTitle),
+        meetingType: suggestedType || titleOnlyType,
+        meetingTypeSuggestion,
         internalAttendees,
         clientAttendees,
         allAttendees: uniqueNames([...internalAttendees, ...clientAttendees, ...teamsSpeakers])
       }
     },
-    validationFlags: attendeeNameWarnings,
+    validationFlags: [...attendeeNameWarnings, ...typeSuggestionFlags],
     telemetryPreview: {
       stage: 'details',
       transcriptLength: text.length,

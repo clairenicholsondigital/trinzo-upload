@@ -451,6 +451,28 @@
     "hash": "ec1e1468d4c82729"
   },
   {
+    "file": "scripts/meeting-minutes-final-golden/028_real_m204_webinar_rehearsal_transcript/transcript.txt",
+    "turns": 174,
+    "events": 255,
+    "participants": 4,
+    "unattributedTurns": 0,
+    "contentChars": 12679,
+    "parsedChars": 12535,
+    "coverage": 0.989,
+    "hash": "1290b586532f4a74"
+  },
+  {
+    "file": "scripts/meeting-minutes-final-golden/029_real_t761_tech_file_weekly_transcript/transcript.txt",
+    "turns": 355,
+    "events": 660,
+    "participants": 4,
+    "unattributedTurns": 0,
+    "contentChars": 30439,
+    "parsedChars": 30303,
+    "coverage": 0.996,
+    "hash": "0a0e4b25db5222c1"
+  },
+  {
     "file": "scripts/transcript-tests/001_status_review/transcript.txt",
     "turns": 36,
     "events": 55,
