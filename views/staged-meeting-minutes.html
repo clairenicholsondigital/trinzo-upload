@@ -648,7 +648,7 @@ td select {
           <div class="field">
             <label for="meetingTitle">Meeting title</label>
             <input id="meetingTitle" placeholder="e.g. Northbridge release planning" />
-            <small id="meetingTitleHelp" class="attendee-help">Name the subject, not just the slot. "Larkfield Thursday session" tells the draft nothing; "Larkfield webinar rehearsal" shapes the purpose, the objectives and the meeting type.</small>
+            <small id="meetingTitleHelp" class="attendee-help"><strong>Give the draft the context it needs.</strong> “Thursday session” tells it very little; “webinar rehearsal” gives it enough context to understand the purpose, infer useful objectives and choose the right meeting type.</small>
           </div>
           <div class="field">
             <label for="meetingDate">Date</label>
@@ -719,7 +719,13 @@ td select {
           <textarea id="overallTopics" placeholder="Overall topics will appear here after generation."></textarea>
           <small>These are useful structure, but they are not the sole authority for the next stage.</small>
         </div>
-        <section class="key-facts-panel">
+        <!-- Key facts: HIDDEN, NOT REMOVED. Judged one field too many on a screen that
+             already asks a lot. Everything behind it is intact and still runs - the
+             server returns keyFacts, renderKeyFacts fills this list, keyFactsFromDom
+             reads it back, and a draft that already carries key facts keeps them and
+             still steers the discussion stage. TO REINSTATE: delete the `hidden`
+             attribute on the section below. Nothing else to change. -->
+        <section class="key-facts-panel" hidden>
           <h3>Key facts to preserve</h3>
           <p>Capture brief clarifications that would materially change the meaning of the minutes if they disappeared.</p>
           <div id="keyFactsList" class="key-facts-list"></div>
@@ -2116,7 +2122,11 @@ td select {
       updateReviewToolbar();
       return;
     }
-    actionReviewGroups.innerHTML = '<details class="action-review-group" open><summary>' + entries.length + ' transcript snippet' + (entries.length === 1 ? '' : 's') + ' that may contain actions</summary><p class="action-review-guidance">Review these snippets and turn any genuine commitments into actions.</p>' + entries.map(function (entry) {
+    // Collapsed by default: a long meeting can produce dozens of snippets, and an
+    // accordion that starts open turns the actions screen into a wall the reviewer has to
+    // scroll past to reach the actions themselves. The count is in the summary line, so
+    // nothing is hidden - it is one click to open.
+    actionReviewGroups.innerHTML = '<details class="action-review-group"><summary>' + entries.length + ' transcript snippet' + (entries.length === 1 ? '' : 's') + ' that may contain actions</summary><p class="action-review-guidance">Review these snippets and turn any genuine commitments into actions.</p>' + entries.map(function (entry) {
       var candidate = entry.candidate;
       var snippet = entry.visibleSnippet;
       var speaker = candidate.sourceSpeaker || 'Not identified';
@@ -2219,9 +2229,19 @@ td select {
     if (!meetingTitleHelp || !meetingTitleInput) return;
     var value = meetingTitleInput.value || '';
     var thin = value.trim() && !titleNamesASubject(value);
-    meetingTitleHelp.textContent = thin
-      ? 'This title is all process words. Add what the meeting is about - the project, client or decision - so the purpose and objectives have something to work from.'
-      : 'Name the subject, not just the slot. "Larkfield Thursday session" tells the draft nothing; "Larkfield webinar rehearsal" shapes the purpose, the objectives and the meeting type.';
+    // Built from nodes rather than assigned as text, because the lead sentence is bold
+    // and textContent would print the markup.
+    var lead = thin
+      ? 'This title is all process words.'
+      : 'Give the draft the context it needs.';
+    var rest = thin
+      ? ' Add what the meeting is about - the project, client or decision - so the purpose and objectives have something to work from.'
+      : ' “Thursday session” tells it very little; “webinar rehearsal” gives it enough context to understand the purpose, infer useful objectives and choose the right meeting type.';
+    meetingTitleHelp.textContent = '';
+    var strong = document.createElement('strong');
+    strong.textContent = lead;
+    meetingTitleHelp.appendChild(strong);
+    meetingTitleHelp.appendChild(document.createTextNode(rest));
     meetingTitleHelp.style.color = thin ? '#a2601f' : '';
   }
 
