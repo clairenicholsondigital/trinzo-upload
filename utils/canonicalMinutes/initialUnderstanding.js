@@ -108,7 +108,10 @@ const MODE_CONFIG = {
 
 const WORKSTREAM_CONCEPTS = [
   { label: 'Goods flow and storage', homeOnly: true, profiles: ['importer_obligations_review'], pattern: /\b(?:goods?|supplier|suppliers?|japan|netherlands|fiscal|clearance|warehouse|warehousing|stored?|storage|dublin|park west|dispatch|shipp(?:ed|ing)|country of origin|final destination)\b/i },
-  { label: 'Importer-obligation QMS procedure design', profiles: ['importer_obligations_review'], pattern: /\b(?:importer|obligation|procedure|procedures|qms|quality manual|operational|operations?|process(?:es)?|workflow|netsuite|erp|order flow|warehouse checks?|warehouse verification|scanner|scanners|barcode|document control|manual process(?:es)?)\b/i },
+  // homeOnly: "process", "workflow", "operations" recur in any meeting whatever, and the
+  // label asserts a domain - an AI status check-in was told to review importer-obligation
+  // QMS procedure design.
+  { label: 'Importer-obligation QMS procedure design', profiles: ['importer_obligations_review'], homeOnly: true, pattern: /\b(?:importer|obligation|procedure|procedures|qms|quality manual|operational|operations?|process(?:es)?|workflow|netsuite|erp|order flow|warehouse checks?|warehouse verification|scanner|scanners|barcode|document control|manual process(?:es)?)\b/i },
   { label: 'MDR, PPE and declarations of conformity', profiles: ['importer_obligations_review'], pattern: /\b(?:ppe|sunglasses?|declarations? of conformity|doc\b|conformity|category\s*(?:one|1)|risk rationale|eumdr|eu mdr|mdr)\b/i },
   { label: 'EUDAMED, HPRA and registration evidence', profiles: ['importer_obligations_review'], pattern: /\b(?:eudamed|udamed|hpra|srn|registration|authori[sz]ed representative|authori[sz]ed rep|regulatory|bill|invoice)\b/i },
   // requiredEvidencePattern on the two broad concepts below: their main patterns fire on

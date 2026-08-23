@@ -43,7 +43,17 @@ function startStubServer() {
   const form = multer();
   app.post('/api/staged-meeting-minutes/jobs', form.any(), (req, res) => {
     const stage = String(req.query.stage || 'details');
-    const text = String(req.body.transcriptText || req.body.storedTranscriptText || '');
+    // The page sends the transcript in a field named `text` - and this stub originally
+    // read `transcriptText`, which meant every stage ran on an EMPTY transcript and the
+    // whole test passed anyway: the empty-path purpose ("A clear purpose ... was not
+    // stated") is a non-empty string, confirmed topics survive with no evidence, and the
+    // panel renders counts of them. A rendering assertion on the objectives list is what
+    // finally caught it. The stub asserts against emptiness now, so a field rename in
+    // the page fails here as itself rather than as a quietly hollow test.
+    const text = String(req.body.text || req.body.transcriptText || req.body.storedTranscriptText || '');
+    if (stage !== 'details' || req.body.text) {
+      if (!text.trim()) return res.status(400).json({ success: false, error: 'stub received no transcript text' });
+    }
     const parse = (value) => { try { return JSON.parse(value); } catch { return undefined; } };
     const confirmed = {
       details: parse(req.body.confirmedDetails),
@@ -55,13 +65,13 @@ function startStubServer() {
 
     let payload;
     if (stage === 'details') {
-      payload = api.extractStagedDetailsFromTranscript(text, 'pasted-transcript.txt');
+      payload = api.extractStagedDetailsFromTranscript(text, '');
     } else {
       // The live stage, not canonicalStagedResponse: the LLM polish is a network call and
       // this test must be deterministic and offline.
       payload = runCanonicalLiveStage(text, {
         stage,
-        fileName: 'pasted-transcript.txt',
+        fileName: '',
         confirmed,
         includeEvidencePack: stage === 'actions'
       });
@@ -137,6 +147,20 @@ test('a reviewer can walk the staged flow and see their corrections acknowledged
     const generatedPurpose = await page.inputValue('#meetingPurpose');
     assert.ok(generatedPurpose.length > 0, 'a purpose is shown');
     assert.doesNotMatch(generatedPurpose, /Coordinate the meeting's main workstreams/, 'the deleted pipeline sentence stays deleted');
+
+    // The per-workstream objectives actually render - the enrichment work raised the cap
+    // to eight, and a list that is produced but not displayed is the class of gap this
+    // test exists for. This transcript yields several; the exact count is the pipeline's
+    // business, the rendering is this test's.
+    const objectiveLines = (await page.inputValue('#objectives')).split('\n').filter(Boolean);
+    assert.ok(objectiveLines.length >= 1, `objectives render as lines (got ${objectiveLines.length})`);
+
+    // The editorial flags render in the browser, not only in the payload: the purpose on
+    // this meeting is inferred, so its non-blocking flag must be visible - the same
+    // machinery that shows meeting_type_suggested and summary_machine_composed.
+    await page.waitForSelector('#stageValidationFlags:not([hidden])', { timeout: 30000 });
+    const flagText = await page.textContent('#stageValidationFlags');
+    assert.match(flagText, /purpose/i, `the purpose-inferred flag is shown to the reviewer: ${flagText.slice(0, 120)}`);
 
     // The reviewer corrects the purpose and the first topic - the exact gestures this
     // session's work promised would be honoured downstream.

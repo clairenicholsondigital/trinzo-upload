@@ -169,6 +169,10 @@ textarea { min-height:110px; resize:vertical; }
 .action-candidate-actions button { min-height:1.8rem; padding:.28rem .5rem; border-radius:8px; font-size:.78rem; }
 .resolved-checks { margin-top:.65rem; color:#596875; font-size:.86rem; }
 .confirmed-carried { margin-top:.65rem; color:#596875; font-size:.86rem; }
+.summary-evidence { margin-top:.4rem; color:#596875; font-size:.84rem; }
+.summary-evidence summary { cursor:pointer; color:#3f5163; }
+.summary-evidence .evidence-quote { padding:.3rem 0 .3rem .8rem; border-left:2px solid #d7dee6; margin:.3rem 0; }
+.summary-evidence .evidence-speaker { color:#7c8894; display:block; font-size:.8rem; }
 .confirmed-carried summary { cursor:pointer; color:#3f5163; }
 .confirmed-carried .carried-item { padding:.15rem 0 .15rem .9rem; position:relative; }
 .confirmed-carried .carried-item::before { content:'\2713'; position:absolute; left:0; color:#2e7d5b; }
@@ -643,7 +647,8 @@ td select {
         <div class="form-grid review-only">
           <div class="field">
             <label for="meetingTitle">Meeting title</label>
-            <input id="meetingTitle" placeholder="Meeting title" />
+            <input id="meetingTitle" placeholder="e.g. Northbridge release planning" />
+            <small id="meetingTitleHelp" class="attendee-help">Name the subject, not just the slot. "Larkfield Thursday session" tells the draft nothing; "Larkfield webinar rehearsal" shapes the purpose, the objectives and the meeting type.</small>
           </div>
           <div class="field">
             <label for="meetingDate">Date</label>
@@ -707,6 +712,7 @@ td select {
         <div class="field">
           <label for="executiveSummary">Executive summary</label>
           <textarea id="executiveSummary" placeholder="Executive summary will appear here after generation."></textarea>
+          <details id="summaryEvidence" class="summary-evidence review-only" hidden><summary id="summaryEvidenceSummary">Where this came from</summary><div id="summaryEvidenceList"></div></details>
         </div>
         <div class="field">
           <label for="overallTopics">Overall topics discussed</label>
@@ -836,6 +842,7 @@ td select {
   var stageAdditionalContextWrap = document.getElementById('stageAdditionalContextWrap');
   var stageAdditionalContextInput = document.getElementById('stageAdditionalContext');
   var meetingTitleInput = document.getElementById('meetingTitle');
+  var meetingTitleHelp = document.getElementById('meetingTitleHelp');
   var meetingDateInput = document.getElementById('meetingDate');
   var meetingLocationInput = document.getElementById('meetingLocation');
   var meetingTypeInput = document.getElementById('meetingType');
@@ -867,6 +874,9 @@ td select {
   var confirmedCarried = document.getElementById('confirmedCarried');
   var confirmedCarriedSummary = document.getElementById('confirmedCarriedSummary');
   var confirmedCarriedList = document.getElementById('confirmedCarriedList');
+  var summaryEvidence = document.getElementById('summaryEvidence');
+  var summaryEvidenceSummary = document.getElementById('summaryEvidenceSummary');
+  var summaryEvidenceList = document.getElementById('summaryEvidenceList');
   var actionReviewGroups = document.getElementById('actionReviewGroups');
   var confirmedActionCount = document.getElementById('confirmedActionCount');
   var remainingReviewCount = document.getElementById('remainingReviewCount');
@@ -2151,6 +2161,70 @@ td select {
     confirmedCarried.open = missing.length > 0;
   }
 
+  // The turns the composed summary drew on.
+  //
+  // The drafting model used to narrate its citations into the prose - "...the closing
+  // slide with the QR code and link (evt_0224)" - and the reviewer had to delete every
+  // one by hand before the minutes could be sent. The ids are stripped from the sentence
+  // and the evidence surfaces here instead: collapsed by default, each quote carrying
+  // its speaker, and the full turn in the title attribute so hovering shows it whole.
+  function renderSummaryEvidence(quotes) {
+    if (!summaryEvidence || !summaryEvidenceList) return;
+    var entries = [];
+    if (quotes && Array.isArray(quotes.executiveSummary)) entries = entries.concat(quotes.executiveSummary);
+    if (quotes && Array.isArray(quotes.purpose)) {
+      quotes.purpose.forEach(function (item) {
+        if (!entries.some(function (existing) { return existing.id === item.id; })) entries.push(item);
+      });
+    }
+    summaryEvidenceList.textContent = '';
+    if (!entries.length) { summaryEvidence.hidden = true; return; }
+    summaryEvidenceSummary.textContent = 'Where this came from (' + entries.length + ' moment' + (entries.length === 1 ? '' : 's') + ')';
+    entries.forEach(function (item) {
+      var row = document.createElement('div');
+      row.className = 'evidence-quote';
+      row.title = item.text;
+      if (item.speaker) {
+        var who = document.createElement('span');
+        who.className = 'evidence-speaker';
+        who.textContent = item.speaker;
+        row.appendChild(who);
+      }
+      row.appendChild(document.createTextNode(item.text));
+      summaryEvidenceList.appendChild(row);
+    });
+    summaryEvidence.hidden = false;
+    summaryEvidence.open = false;
+  }
+
+  // Whether the title names anything, checked as the reviewer types.
+  //
+  // The title is not decoration: it decides the meeting type, it is read as the purpose
+  // when nobody states one, and its words are what the purpose transform has to work
+  // with. A title made only of process and calendar words gives all of that nothing to
+  // hold, and the reviewer has no way to know that from looking at the field. This says
+  // so at the moment it can still be changed, and stays advisory - a thin title is
+  // allowed, it is just worth a sentence.
+  var TITLE_PROCESS_WORDS = /^(?:meeting|session|call|catch|up|check|in|review|update|sync|planning|plan|workshop|debrief|briefing|kickoff|kick|off|standup|stand|retrospective|triage|prep|discussion|handover|weekly|daily|monthly|quarterly|fortnightly|annual|internal|external|final|initial|regular|quick|the|and|with|for|a|an|of|on|project|status|progress|team|general|overall|ongoing|thursday|monday|tuesday|wednesday|friday|morning|afternoon|am|pm)$/i;
+
+  function titleNamesASubject(value) {
+    var words = String(value || '').trim().split(/\s+/).filter(Boolean);
+    return words.some(function (word) {
+      var bare = word.replace(/[^A-Za-z0-9]/g, '');
+      return bare.length > 1 && !TITLE_PROCESS_WORDS.test(bare) && !/^\d+$/.test(bare);
+    });
+  }
+
+  function refreshMeetingTitleHelp() {
+    if (!meetingTitleHelp || !meetingTitleInput) return;
+    var value = meetingTitleInput.value || '';
+    var thin = value.trim() && !titleNamesASubject(value);
+    meetingTitleHelp.textContent = thin
+      ? 'This title is all process words. Add what the meeting is about - the project, client or decision - so the purpose and objectives have something to work from.'
+      : 'Name the subject, not just the slot. "Larkfield Thursday session" tells the draft nothing; "Larkfield webinar rehearsal" shapes the purpose, the objectives and the meeting type.';
+    meetingTitleHelp.style.color = thin ? '#a2601f' : '';
+  }
+
   function renderValidationFlags(flags, stage, payloadCandidates) {
     if (!stageValidationFlags) return;
     var list = Array.isArray(flags) ? flags.filter(Boolean) : [];
@@ -2813,6 +2887,7 @@ td select {
     if (Object.prototype.hasOwnProperty.call(screensPayload, 'details')) {
       var mergedDetails = mergeGeneratedDetails(details, payload && payload.stagedStage === 'details');
       if (meetingTitleInput) meetingTitleInput.value = mergedDetails.meetingTitle || meetingTitleInput.value || 'Untitled meeting';
+      refreshMeetingTitleHelp();
       if (meetingDateInput && mergedDetails.meetingDate) meetingDateInput.value = mergedDetails.meetingDate.slice(0, 10);
       if (meetingLocationInput) meetingLocationInput.value = mergedDetails.meetingLocation || 'Microsoft Teams';
       if (meetingTypeInput && mergedDetails.meetingType) meetingTypeInput.value = mergedDetails.meetingType;
@@ -2838,6 +2913,7 @@ td select {
       generatedPurposeSource = (summary.initialUnderstanding
         && summary.initialUnderstanding.meetingPurpose
         && summary.initialUnderstanding.meetingPurpose.purposeSource) || '';
+      renderSummaryEvidence(summary.evidenceQuotes);
     }
     if (Object.prototype.hasOwnProperty.call(screensPayload, 'discussion')) {
       renderDiscussionCards(screensPayload.discussion);
@@ -3536,6 +3612,7 @@ td select {
     if (actionsTableBody) actionsTableBody.innerHTML = '';
     renderValidationFlags([]);
     renderConfirmedCarried(null);
+    renderSummaryEvidence(null);
 
     params.delete('draftId');
     params.delete('stageJobId');
@@ -4026,6 +4103,10 @@ td select {
     }
     if (activeIndex < screens.length - 1) goToScreen(activeIndex + 1);
   });
+  if (meetingTitleInput) {
+    meetingTitleInput.addEventListener('input', refreshMeetingTitleHelp);
+    meetingTitleInput.addEventListener('blur', refreshMeetingTitleHelp);
+  }
   if (generateButton) {
     generateButton.addEventListener('click', async function () {
       var transcriptText = transcriptTextInput ? transcriptTextInput.value.trim() : '';

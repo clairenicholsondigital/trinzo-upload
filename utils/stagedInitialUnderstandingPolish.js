@@ -5,7 +5,7 @@ const {
   transcriptShapedSummaryIssue,
   validateGrammarRevision
 } = require('./stagedExecutiveSummaryGrammar');
-const { packEntryIds, packCitedText } = require('./canonicalMinutes/evidenceCitations');
+const { packEntryIds, packCitedText, evidenceEntriesFor } = require('./canonicalMinutes/evidenceCitations');
 
 function clean(value) {
   return String(value == null ? '' : value).replace(/\s+/g, ' ').trim();
@@ -232,6 +232,17 @@ function validateCitedRevision(original, revised, evidencePack) {
   const anyAccepted = fieldOutcomes.purpose === 'accepted'
     || fieldOutcomes.summary === 'accepted'
     || acceptedObjectives.length > 0;
+  // The turns each accepted field drew on, carried out so the reviewer can see the
+  // evidence instead of deleting it. The model narrated ids into the prose because it
+  // had no other way to show its working; this is the other way.
+  const quotesFor = (field) => {
+    const entries = evidenceEntriesFor({ evidence: (evidencePack[0] || {}).evidence || [] });
+    const cited = new Set((field.evidenceIds || []).map(clean));
+    return entries
+      .filter((entry) => cited.has(clean(entry.id)))
+      .map((entry) => ({ id: clean(entry.id), speaker: clean(entry.speaker), text: clean(entry.text) }))
+      .filter((entry) => entry.text);
+  };
   if (!anyAccepted) return { ok: false, reason: 'no_cited_field_survived', fieldOutcomes };
   return {
     ok: true,
@@ -239,17 +250,45 @@ function validateCitedRevision(original, revised, evidencePack) {
     meetingPurpose: meetingPurpose || clean(original.meetingPurpose),
     objectives: objectives.length ? objectives : dedupeObjectives(original.objectives, 8),
     executiveSummary: executiveSummary || clean(original.executiveSummary),
-    fieldOutcomes
+    fieldOutcomes,
+    evidenceQuotes: {
+      purpose: fieldOutcomes.purpose === 'accepted' ? quotesFor(purposeField) : [],
+      executiveSummary: fieldOutcomes.summary === 'accepted' ? quotesFor(summaryField) : []
+    }
   };
+}
+
+// Evidence ids written into the prose itself: "...building the closing slide with the QR
+// code and link (evt_0224), developing three backup questions (evt_0227)...". The model
+// is asked to cite in the structured field and cites there too, but it also narrates the
+// ids, and the reviewer is then left deleting them by hand from every sentence.
+//
+// The ids are lifted out rather than discarded: an id the model bothered to write inline
+// is a citation it is making, so it joins the field's evidenceIds and still has to
+// survive validation. The prose loses the clutter; the grounding loses nothing.
+const INLINE_CITATION = /\s*[([]\s*(evt_[0-9a-z_]+(?:\s*[,;]\s*evt_[0-9a-z_]+)*)\s*[)\]]/gi;
+
+function stripInlineCitations(text) {
+  const ids = [];
+  const stripped = String(text || '').replace(INLINE_CITATION, (match, group) => {
+    for (const id of String(group).split(/[,;]/)) {
+      const trimmed = clean(id);
+      if (trimmed) ids.push(trimmed);
+    }
+    return '';
+  });
+  // Tidy the punctuation the removal leaves behind: "the link ." and "questions ,".
+  return { text: clean(stripped).replace(/\s+([.,;:])/g, '$1'), ids };
 }
 
 // The model may return the old flat shape ({meetingPurpose: "..."}) or the cited shape
 // ({meetingPurpose: {text, evidenceIds}}). Normalise both; citations are empty for flat.
 function fieldOf(value) {
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
-    return { text: clean(value.text), evidenceIds: Array.isArray(value.evidenceIds) ? value.evidenceIds : [] };
-  }
-  return { text: clean(value), evidenceIds: [] };
+  const raw = value && typeof value === 'object' && !Array.isArray(value)
+    ? { text: clean(value.text), evidenceIds: Array.isArray(value.evidenceIds) ? value.evidenceIds : [] }
+    : { text: clean(value), evidenceIds: [] };
+  const { text, ids } = stripInlineCitations(raw.text);
+  return { text, evidenceIds: [...new Set([...raw.evidenceIds.map(clean).filter(Boolean), ...ids])] };
 }
 
 // Per-field checks against the evidence the field cites. This is the discussion model:
@@ -398,6 +437,7 @@ async function polishInitialUnderstanding(input = {}, options = {}) {
                 'Write a meeting purpose of one to two sentences, four to eight concise meeting objectives, and a professional three to five sentence executive summary in natural British English.',
                 'The purpose says why the meeting was held. The executive summary reads like formal meeting minutes and says what the meeting covered and where the main threads got to.',
                 'Use the supplied evidence entries to add concrete detail that is directly supported, and cite the evidenceIds you used for each field.',
+                'Put the ids ONLY in the evidenceIds arrays. Never write an id such as evt_0224 inside the purpose, an objective or the summary - the reader sees that text and it is not for them.',
                 "Write 'agreed', 'decided' or 'confirmed' only when a cited entry says so; otherwise write 'discussed', 'reviewed' or 'tested'.",
                 'Third person, neutral. No first-person speech, no conversational fragments, no invented names, numbers or dates.',
                 'Return JSON only as {"meetingPurpose":{"text":"...","evidenceIds":["..."]},"objectives":[{"text":"...","evidenceIds":["..."]}],"executiveSummary":{"text":"...","evidenceIds":["..."]}}.',
@@ -435,7 +475,7 @@ async function polishInitialUnderstanding(input = {}, options = {}) {
     const parsed = typeof content === 'object' && content ? content : JSON.parse(String(content || '{}'));
     const validation = validateInitialUnderstandingRevision(original, parsed, evidencePack);
     return validation.ok
-      ? { ...original, meetingPurpose: validation.meetingPurpose, objectives: validation.objectives, executiveSummary: validation.executiveSummary, used: true, reason: validation.reason, overlap: validation.overlap, fieldOutcomes: validation.fieldOutcomes, cited: Boolean(evidencePack), timingMs: Date.now() - startedAt }
+      ? { ...original, meetingPurpose: validation.meetingPurpose, objectives: validation.objectives, executiveSummary: validation.executiveSummary, used: true, reason: validation.reason, overlap: validation.overlap, fieldOutcomes: validation.fieldOutcomes, evidenceQuotes: validation.evidenceQuotes || null, cited: Boolean(evidencePack), timingMs: Date.now() - startedAt }
       : { ...deterministicPresentationFallback(original, validation.reason), overlap: validation.overlap, fieldOutcomes: validation.fieldOutcomes, timingMs: Date.now() - startedAt };
   } catch {
     return { ...deterministicPresentationFallback(original, 'request_failed'), timingMs: Date.now() - startedAt };
@@ -450,5 +490,4 @@ module.exports = {
   objectiveSemanticKey,
   objectiveIssue,
   polishInitialUnderstanding,
-  validateInitialUnderstandingRevision
-};
+  validateInitialUnderstandingRevision, stripInlineCitations };

@@ -4250,7 +4250,11 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
               ? presentationInitialSummary.meetingPurpose
               : keepConfirmed(confirmedSummary.meetingPurpose, initialUnderstandingPolish.meetingPurpose, presentationInitialSummary.meetingPurpose),
             objectives: keepConfirmed(confirmedSummary.objectives, initialUnderstandingPolish.objectives, presentationInitialSummary.objectives),
-            executiveSummary: keepConfirmed(confirmedSummary.executiveSummary, initialUnderstandingPolish.executiveSummary, presentationInitialSummary.executiveSummary)
+            executiveSummary: keepConfirmed(confirmedSummary.executiveSummary, initialUnderstandingPolish.executiveSummary, presentationInitialSummary.executiveSummary),
+            // The turns behind the composed prose, for the screen to show on demand. The
+            // reviewer asked to see the evidence rather than delete id markers from the
+            // sentences; this is where the markers went.
+            evidenceQuotes: initialUnderstandingPolish.evidenceQuotes || null
           }
         }
       };
