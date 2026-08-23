@@ -29,7 +29,9 @@ export CANONICAL_MINILM_DISK_CACHE="${CANONICAL_MINILM_DISK_CACHE:-.minilm-cache
 say() { printf '%s\n' "deploy: $*"; }
 fail() { printf '%s\n' "deploy: FAILED - $*" >&2; exit 1; }
 
-[ -d .git ] || fail "run this from the live tree (no .git here)"
+# Not `[ -d .git ]`: the live tree's .git is a FILE - a gitdir pointer - and the first
+# live run of this script rejected exactly the directory it exists for. Ask git itself.
+git rev-parse --git-dir >/dev/null 2>&1 || fail "run this from the live tree (not a git checkout)"
 [ -f server.js ] || fail "run this from the live tree (no server.js here)"
 
 before="$(git rev-parse HEAD)"
