@@ -276,27 +276,32 @@ function materialEvents(evidence, ids = []) {
 }
 
 function conceptSentenceForWorkstream(label) {
-  const text = clean(label);
-  const rules = [
-    { re: /goods flow|storage/i, text: 'The goods-flow evidence covered supplier origin, fiscal clearance, warehousing and final storage arrangements.' },
-    { re: /importer-obligation|QMS|procedure/i, text: 'Procedure design depends on understanding the client\'s operational workflows, checks, document control and manual processes.' },
-    { re: /MDR|PPE|declarations? of conformity/i, text: 'The regulatory evidence covered MDR/PPE treatment, product rationale and declarations-of-conformity requirements.' },
-    { re: /EUDAMED|HPRA|registration/i, text: 'Registration evidence and authorised-representative follow-up were material to the importer-obligation work.' },
-    { re: /language|country/i, text: 'Country and language evidence was needed to assess translation, label and market requirements.' },
-    { re: /MedEnvoy|Cody/i, text: 'MedEnvoy/Cody alignment remained relevant to scope, existing activity and follow-up planning.' },
-    { re: /further process discovery|working sessions/i, text: 'Further process-discovery work was needed to complete the operational understanding.' },
-    { re: /audit scope|timing|logistics/i, text: 'Audit planning covered scope, timing, site logistics and the practical preparation timetable.' },
-    { re: /software deep-dive|responsibilities/i, text: 'The audit team needed to align the specialist software coverage and related responsibilities.' },
-    { re: /preparation|confidentiality|access/i, text: 'Preparation depended on confidentiality, training and document-access steps being in place.' },
-    { re: /risk analysis|audit-planning/i, text: 'Risk-analysis and audit-planning material shaped the preparation required before the audit.' },
-    { re: /alarm/i, text: 'Alarm-code and clinical-confirmation evidence was material to the software-change package.' },
-    { re: /debug|test-script/i, text: 'Debug and test-script evidence was needed to support the software-change record.' },
-    { re: /change control|version traceability/i, text: 'Change-control and version-traceability evidence was central to closing the software-change package.' },
-    { re: /electrical compliance/i, text: 'Electrical compliance evidence remained a material technical-file workstream.' },
-    { re: /cybersecurity|USB|GUI/i, text: 'Cybersecurity, USB and GUI-control evidence remained relevant to the technical-file review.' },
-    { re: /standards|risk-management/i, text: 'Standards and risk-management evidence remained part of the technical-file closure work.' }
-  ];
-  return rules.find((rule) => rule.re.test(text))?.text || '';
+  // Keyed by the EXACT workstream label each sentence was written for. These were loose
+  // substring regexes - /timing/, /preparation/, /responsibilities/ - and every new
+  // label was a collision waiting: "Timing and running order" on a webinar rehearsal
+  // matched /audit scope|timing|logistics/ and put "Audit planning covered scope, timing,
+  // site logistics..." into the rehearsal's summary. A canned sentence written for one
+  // concept must be reachable from that concept alone.
+  const rules = new Map([
+    ['Goods flow and storage', 'The goods-flow evidence covered supplier origin, fiscal clearance, warehousing and final storage arrangements.'],
+    ['Importer-obligation QMS procedure design', 'Procedure design depends on understanding the client\'s operational workflows, checks, document control and manual processes.'],
+    ['MDR, PPE and declarations of conformity', 'The regulatory evidence covered MDR/PPE treatment, product rationale and declarations-of-conformity requirements.'],
+    ['EUDAMED, HPRA and registration evidence', 'Registration evidence and authorised-representative follow-up were material to the importer-obligation work.'],
+    ['Language and country requirements', 'Country and language evidence was needed to assess translation, label and market requirements.'],
+    ['MedEnvoy and Cody alignment', 'MedEnvoy/Cody alignment remained relevant to scope, existing activity and follow-up planning.'],
+    ['Further process discovery and working sessions', 'Further process-discovery work was needed to complete the operational understanding.'],
+    ['Audit scope, timing and logistics', 'Audit planning covered scope, timing, site logistics and the practical preparation timetable.'],
+    ['Software deep-dive role and responsibilities', 'The audit team needed to align the specialist software coverage and related responsibilities.'],
+    ['Preparation, confidentiality and document access', 'Preparation depended on confidentiality, training and document-access steps being in place.'],
+    ['Risk analysis and audit-planning evidence', 'Risk-analysis and audit-planning material shaped the preparation required before the audit.'],
+    ['Alarm-code and clinical confirmation', 'Alarm-code and clinical-confirmation evidence was material to the software-change package.'],
+    ['Debug and test-script evidence', 'Debug and test-script evidence was needed to support the software-change record.'],
+    ['Change control and version traceability', 'Change-control and version-traceability evidence was central to closing the software-change package.'],
+    ['Electrical compliance evidence', 'Electrical compliance evidence remained a material technical-file workstream.'],
+    ['Cybersecurity, USB and GUI controls', 'Cybersecurity, USB and GUI-control evidence remained relevant to the technical-file review.'],
+    ['Standards and risk-management work', 'Standards and risk-management evidence remained part of the technical-file closure work.']
+  ]);
+  return rules.get(clean(label)) || '';
 }
 
 function sentenceFromWorkstream(workstream, evidence) {
@@ -417,7 +422,11 @@ function buildPurpose(meeting, profileId, mode, spine, workstreams, evidence, ac
       provenance: 'transcript_emergent',
       confidence: 0.9,
       purposeSource: 'stated_in_meeting',
-      statedBy: stated.speaker
+      statedBy: stated.speaker,
+      // Somebody said this. It is a quote, and no polish - however well cited - replaces
+      // a quote. Note this protection is NEW: the old boolean was set only by the title
+      // paths, so the one purpose that most deserved protecting never actually had it.
+      purposeReplacementPolicy: 'never'
     };
   }
 
@@ -459,11 +468,14 @@ function buildPurpose(meeting, profileId, mode, spine, workstreams, evidence, ac
       confidence: shaped.source === 'title_transform_enriched' ? 0.55 : 0.6,
       inferred: true,
       purposeSource: shaped.source,
-      // Every content word is the reviewer's title or this meeting's own; none of it is
-      // prose we composed, so the copy-edit pass leaves it alone. Carried on the object
-      // rather than listed in routes/api.js, because a list in one file describing objects
-      // built in another is exactly how MODE_CONFIG escaped its own source check.
-      purposeIsAuthoredElsewhere: true
+      // The title read as a purpose is a stand-in for a purpose nobody stated. It is not
+      // ours to copy-edit (purposeIsAuthoredElsewhere), but it IS replaceable by a
+      // better-evidenced paragraph, provided that paragraph cites the meeting's own turns
+      // and passes the citation validators - the reviewer asked for exactly this. The
+      // policy is carried on the object because a list in routes/api.js describing
+      // objects built here is how MODE_CONFIG escaped its own source check.
+      purposeIsAuthoredElsewhere: true,
+      purposeReplacementPolicy: 'evidence_grounded'
     };
   }
   const fromTitle = purposeFromTitle(meeting);
@@ -475,7 +487,8 @@ function buildPurpose(meeting, profileId, mode, spine, workstreams, evidence, ac
       confidence: 0.5,
       inferred: true,
       purposeSource: 'meeting_title',
-      purposeIsAuthoredElsewhere: true
+      purposeIsAuthoredElsewhere: true,
+      purposeReplacementPolicy: 'evidence_grounded'
     };
   }
   // No profile purpose, so nothing frames this meeting for us. What was left here said

@@ -353,6 +353,51 @@ function sampledIds(ids, maximum) {
   return [...new Set(Array.from({ length: maximum }, (_unused, index) => values[Math.round(index * (values.length - 1) / (maximum - 1))]))];
 }
 
+// The summary stage's evidence pack: what the meeting was about, bounded hard.
+//
+// The discussion pack answers "what supports each selected record"; this answers "what
+// was this meeting across". It reuses what contextStage already computed and previously
+// threw away - the spine's turns, the material clarifications, the unresolved needs, the
+// topics' representative turns and the actions' cited turns - each entry in the same
+// {id, speaker, current} shape the citation helpers resolve, so the same validators work.
+//
+// Bounds are tighter than the discussion pack because this all rides one prompt: at most
+// 32 distinct events, no context windows, 400 characters of current text.
+const SUMMARY_PACK_EVENT_LIMIT = 32;
+
+function boundedSummaryEvidencePack(proposal, evidence) {
+  const byId = new Map((evidence.events || []).map((event) => [event.id, event]));
+  const understanding = proposal.initialUnderstanding || {};
+  const orderedIds = [];
+  const pushIds = (ids) => {
+    for (const id of Array.isArray(ids) ? ids : []) {
+      if (id && byId.has(id) && !orderedIds.includes(id)) orderedIds.push(id);
+    }
+  };
+  for (const item of understanding.meetingSpine || []) pushIds(item.evidenceIds);
+  for (const item of understanding.materialClarifications || []) pushIds(item.evidenceIds);
+  for (const item of understanding.unresolvedNeeds || []) pushIds(item.evidenceIds);
+  for (const item of understanding.actionSignals || []) pushIds(item.evidenceIds);
+  for (const item of understanding.primaryWorkstreams || []) pushIds((item.evidenceIds || []).slice(0, 3));
+  for (const topic of proposal.topics || []) pushIds((topic.evidenceIds || []).slice(0, 2));
+  const selected = orderedIds.slice(0, SUMMARY_PACK_EVENT_LIMIT);
+  if (!selected.length) return [];
+  return [{
+    itemIndex: 0,
+    topic: 'meeting_summary_evidence',
+    evidence: selected.map((id) => {
+      const event = byId.get(id);
+      return {
+        id,
+        speaker: clean(event.speaker),
+        previous: '',
+        current: clean(event.text).slice(0, 400),
+        next: ''
+      };
+    })
+  }];
+}
+
 function boundedEvidencePack(items, evidence, profile, stage) {
   const byId = new Map(evidence.events.map((event) => [event.id, event]));
   const actionStage = stage === 'actions';
@@ -540,6 +585,9 @@ function runCanonicalLiveStage(transcriptText, options = {}) {
       evidenceClassifier: { used: true }
     }
   };
+  if (options.includeEvidencePack && stage === 'summary') {
+    result._canonicalEvidencePack = boundedSummaryEvidencePack(proposal, evidence);
+  }
   if (options.includeEvidencePack && ['discussion', 'actions'].includes(stage)) {
     const packItems = stage === 'actions' && Array.isArray(proposal.actionCandidates) && proposal.actionCandidates.length
       ? proposal.actionCandidates

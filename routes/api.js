@@ -1379,7 +1379,7 @@ async function grammarPolishStagedExecutiveSummary(value) {
   });
 }
 
-async function polishStagedInitialUnderstanding(summary, meetingTitle) {
+async function polishStagedInitialUnderstanding(summary, meetingTitle, evidencePack = null) {
   return polishInitialUnderstanding({
     meetingTitle,
     meetingPurpose: summary?.meetingPurpose,
@@ -1391,8 +1391,11 @@ async function polishStagedInitialUnderstanding(summary, meetingTitle) {
     model: String(process.env.TROOPER_MODEL || TROOPER_STAGE_MODEL_DEFAULT).trim() || TROOPER_STAGE_MODEL_DEFAULT,
     url: String(process.env.TROOPER_CHAT_COMPLETIONS_URL || TROOPER_STAGE_URL_DEFAULT).trim() || TROOPER_STAGE_URL_DEFAULT,
     fetchImpl: fetch,
-    maxTokens: Number(process.env.STAGED_INITIAL_UNDERSTANDING_MAX_TOKENS || 650),
-    timeoutMs: Number(process.env.STAGED_INITIAL_UNDERSTANDING_TIMEOUT_MS || 20000)
+    evidencePack,
+    // 900/30s with a pack: the same single call carries ~8-10k more prompt tokens and a
+    // three-to-five sentence summary back. Without a pack the old budget stands.
+    maxTokens: Number(process.env.STAGED_INITIAL_UNDERSTANDING_MAX_TOKENS || (evidencePack ? 900 : 650)),
+    timeoutMs: Number(process.env.STAGED_INITIAL_UNDERSTANDING_TIMEOUT_MS || (evidencePack ? 30000 : 20000))
   });
 }
 
@@ -4116,7 +4119,7 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
     fileName: transcript.fileName || 'transcript.txt',
     confirmed,
     reviewerGuidance: input.additionalContext || '',
-    includeEvidencePack: ['discussion', 'actions'].includes(stage)
+    includeEvidencePack: ['summary', 'discussion', 'actions'].includes(stage)
   });
   // Screen 0. A transcript the parser could only partly read produces thin
   // minutes at every later stage, so the reviewer needs to know before they
@@ -4200,9 +4203,13 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
   let initialUnderstandingPolish = { used: false, reason: 'not_applicable' };
   const presentationInitialSummary = result?.screens?.summary;
   if (stage === 'summary' && presentationInitialSummary) {
+    const summaryEvidencePack = stage === 'summary' && Array.isArray(payload._canonicalEvidencePack)
+      ? payload._canonicalEvidencePack
+      : null;
     initialUnderstandingPolish = await polishStagedInitialUnderstanding(
       presentationInitialSummary,
-      confirmed.details?.meetingTitle || input.meetingTitle || ''
+      confirmed.details?.meetingTitle || input.meetingTitle || '',
+      summaryEvidencePack
     );
     if (initialUnderstandingPolish.used) {
       // A field the reviewer wrote is not ours to copy-edit. The polish is a presentation
@@ -4221,7 +4228,18 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
       // that builds it is the only place that knows where its words came from. An
       // enumerated list here describing objects constructed in another file is how
       // MODE_CONFIG escaped the source check written to catch exactly that.
-      const purposeIsQuoted = Boolean(presentationInitialSummary?.initialUnderstanding?.meetingPurpose?.purposeIsAuthoredElsewhere);
+      // 'never'  - somebody said it; a quote is not replaced, however good the polish.
+      // 'evidence_grounded' - a title standing in for an absent purpose; replaceable by
+      //             a cited paragraph that passed the citation validators, which is what
+      //             fieldOutcomes.purpose === 'accepted' certifies.
+      // 'free'/absent - prose the pipeline composed; the polish may rewrite it.
+      const purposeMeta = presentationInitialSummary?.initialUnderstanding?.meetingPurpose || {};
+      const purposePolicy = purposeMeta.purposeReplacementPolicy
+        || (purposeMeta.purposeIsAuthoredElsewhere ? 'evidence_grounded' : 'free');
+      const citedPurposeAccepted = initialUnderstandingPolish.cited
+        && initialUnderstandingPolish.fieldOutcomes?.purpose === 'accepted';
+      const purposeIsQuoted = purposePolicy === 'never'
+        || (purposePolicy === 'evidence_grounded' && !citedPurposeAccepted);
       result = {
         ...result,
         screens: {
@@ -4242,7 +4260,31 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
   const presentationSummary = result?.screens?.summary?.executiveSummary;
   const executiveSummaryIsConfirmed = Boolean(stagedAnalyticsText(confirmed.summary?.executiveSummary));
   if (executiveSummaryIsConfirmed) executiveSummaryGrammar = { used: false, reason: 'reviewer_confirmed' };
-  if (!executiveSummaryIsConfirmed && ['summary', 'discussion'].includes(stage) && presentationSummary) {
+  // An evidence-cited summary is already minutes-ready prose validated claim by claim;
+  // re-polishing it would fight the enrichment (the grammar pass's own 1.3x length gate
+  // rejects sanctioned growth) and could reintroduce the outcome-summary drift the
+  // citation contract exists to prevent. The purpose-prefix invariant scopes to the
+  // deterministic path from here: a cited summary need not open with the purpose - the
+  // user's own exemplars do not - and the supersession is pinned by test.
+  const summaryWasCited = initialUnderstandingPolish.used && initialUnderstandingPolish.cited
+    && initialUnderstandingPolish.fieldOutcomes?.summary === 'accepted';
+  if (summaryWasCited) {
+    executiveSummaryGrammar = { used: false, reason: 'superseded_by_evidence_polish' };
+    result = {
+      ...result,
+      validationFlags: [
+        ...(result.validationFlags || []),
+        {
+          type: 'summary_machine_composed',
+          severity: 'info',
+          blocking: false,
+          resolutionKey: 'summary-machine-composed',
+          message: 'This summary was composed from the meeting\'s own evidence by the drafting model, with each statement tied to cited moments. Read it before sharing - it is a draft, not a record.'
+        }
+      ]
+    };
+  }
+  if (!executiveSummaryIsConfirmed && !summaryWasCited && ['summary', 'discussion'].includes(stage) && presentationSummary) {
     // The summary is built as purpose-sentence-then-spine, and the purpose field itself
     // is exempt from copy-editing when its words are quoted or the reviewer's. Sending
     // the whole summary through the grammar pass quietly undid that from the other side:
@@ -4292,7 +4334,12 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
       initialUnderstandingPolish: {
         attempted: stage === 'summary' && Boolean(presentationInitialSummary),
         used: Boolean(initialUnderstandingPolish.used),
+        cited: Boolean(initialUnderstandingPolish.cited),
         reason: initialUnderstandingPolish.reason,
+        // Per-field acceptance and every rejection reason - the failure mode this whole
+        // area keeps re-teaching is the invisible one, where a validator quietly refuses
+        // and the fallback reproduces the thin output that prompted the work.
+        fieldOutcomes: initialUnderstandingPolish.fieldOutcomes || null,
         overlap: initialUnderstandingPolish.overlap,
         timingMs: initialUnderstandingPolish.timingMs
       },

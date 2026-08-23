@@ -450,27 +450,10 @@ function promptFor(stage, payload, evidencePack, options = {}) {
   ].join('\n');
 }
 
-function evidenceIdsFor(item) {
-  return new Set((item?.evidence || []).flatMap((entry) => [entry?.id, ...(entry?.contextWindow || []).map((context) => context?.id)]).map(clean).filter(Boolean));
-}
-
-function validReferences(candidate, source) {
-  const allowed = evidenceIdsFor(source);
-  const cited = Array.isArray(candidate?.evidenceIds) ? candidate.evidenceIds.map(clean).filter(Boolean) : [];
-  return cited.length > 0 && cited.every((id) => allowed.has(id));
-}
-
-function evidenceEntriesFor(item) {
-  return (item?.evidence || []).flatMap((entry) => [
-    { id: entry?.id, speaker: entry?.speaker, text: entry?.current },
-    ...(entry?.contextWindow || []).map((context) => ({ id: context?.id, speaker: context?.speaker, text: context?.text }))
-  ]).filter((entry) => clean(entry.id));
-}
-
-function citedEntries(candidate, source) {
-  const cited = new Set((candidate?.evidenceIds || []).map(clean));
-  return evidenceEntriesFor(source).filter((entry) => cited.has(clean(entry.id)));
-}
+// Moved to evidenceCitations.js so the summary polish validates the same way this stage
+// always has - one implementation, two callers, and the pinned discussion behaviour
+// cannot drift from its sibling.
+const { evidenceIdsFor, validReferences, evidenceEntriesFor, citedEntries } = require('./evidenceCitations');
 
 function ownerSupported(candidate, source) {
   const proposed = clean(candidate.owner);

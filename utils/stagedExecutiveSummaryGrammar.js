@@ -59,7 +59,9 @@ function fallbackMinutesReadySummary(value) {
   for (const sentence of sentences) {
     if (output.some((existing) => existing.toLowerCase() === sentence.toLowerCase())) continue;
     output.push(sentence);
-    if (output.length >= 4) break;
+    // Five, raised from four alongside the richer summary contract: a fallback that
+    // truncates a five-sentence enriched summary to four silently undoes the enrichment.
+    if (output.length >= 5) break;
   }
   return clean(output.join(' '));
 }
