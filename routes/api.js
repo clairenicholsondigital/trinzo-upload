@@ -4218,18 +4218,36 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
   const executiveSummaryIsConfirmed = Boolean(stagedAnalyticsText(confirmed.summary?.executiveSummary));
   if (executiveSummaryIsConfirmed) executiveSummaryGrammar = { used: false, reason: 'reviewer_confirmed' };
   if (!executiveSummaryIsConfirmed && ['summary', 'discussion'].includes(stage) && presentationSummary) {
-    executiveSummaryGrammar = await grammarPolishStagedExecutiveSummary(presentationSummary);
-    if (executiveSummaryGrammar.text) {
-      result = {
-        ...result,
-        screens: {
-          ...(result.screens || {}),
-          summary: {
-            ...(result.screens?.summary || {}),
-            executiveSummary: executiveSummaryGrammar.text
+    // The summary is built as purpose-sentence-then-spine, and the purpose field itself
+    // is exempt from copy-editing when its words are quoted or the reviewer's. Sending
+    // the whole summary through the grammar pass quietly undid that from the other side:
+    // the purpose field said "Check in on progress for AI." while the summary opening
+    // said "The session focused on...". Same words, two renderings, one screen.
+    //
+    // So the purpose is an opaque prefix. The grammar pass polishes only what follows it,
+    // and the prefix is reattached byte-identical - which makes the divergence impossible
+    // rather than merely fixed, and is asserted as an invariant by
+    // executive-summary-prefix.test.js.
+    const summaryPurpose = String(result?.screens?.summary?.meetingPurpose || '').trim();
+    const protectPrefix = summaryPurpose && presentationSummary.startsWith(summaryPurpose);
+    const polishable = protectPrefix ? presentationSummary.slice(summaryPurpose.length).trim() : presentationSummary;
+    if (!polishable) {
+      executiveSummaryGrammar = { used: false, reason: 'purpose_only' };
+    } else {
+      executiveSummaryGrammar = await grammarPolishStagedExecutiveSummary(polishable);
+      if (executiveSummaryGrammar.text) {
+        const polished = protectPrefix ? `${summaryPurpose} ${executiveSummaryGrammar.text}` : executiveSummaryGrammar.text;
+        result = {
+          ...result,
+          screens: {
+            ...(result.screens || {}),
+            summary: {
+              ...(result.screens?.summary || {}),
+              executiveSummary: polished
+            }
           }
-        }
-      };
+        };
+      }
     }
   }
   return {

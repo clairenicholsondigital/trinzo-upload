@@ -2017,7 +2017,13 @@ function corroboratedClosingRecapActions(evidence) {
 }
 
 function canonicalActionText(value) {
-  const text = clean(value);
+  // A deadline that was cut off leaves its preposition behind, and the published table
+  // then reads "Draft and send the release note by". The quality gate does not catch a
+  // trailing preposition, so the last-touch rewriter removes it - the one place every
+  // published canonical action passes through. The corpus diff for this change was read
+  // line by line before it landed; the topic-label sweep records exactly which actions
+  // moved and nothing else did.
+  const text = clean(value).replace(/\s+\b(?:by|on|at|to|for|with|from|before|until)\s*$/i, '');
   const provideOverview = text.match(/^(?:also\s+)?give\s+(?:you|them|him|her)\s+the\s+(.+?)\s+and\s+an?\s+overall\s+view\s+of\s+the\s+(.+?)(?:\s+themselves)?[.!?]*$/i);
   if (provideOverview) {
     const subject = clean(provideOverview[1]).replace(/\s+need$/i, '');
@@ -2246,6 +2252,17 @@ function actionsStage(evidence, state, profile, topology) {
     commitmentThreads: threads,
     unresolvedThreads,
     warnings: [
+      // A reviewer who presses regenerate with a confirmed list gets their list back -
+      // that is the contract, and it is what stops a row they rewrote reappearing. But a
+      // button that visibly does nothing reads as broken, so the screen says what
+      // happened rather than leaving them to conclude the click was lost.
+      ...(confirmedActions.length ? [{
+        type: 'confirmed_actions_kept',
+        severity: 'info',
+        blocking: false,
+        resolutionKey: 'confirmed-actions-kept',
+        message: `Your ${confirmedActions.length} confirmed action${confirmedActions.length === 1 ? '' : 's'} are kept as you wrote them. Anything newly detected appears under the review candidates below rather than being mixed into your list.`
+      }] : []),
       ...(actions.length ? [] : [{
         type: 'no_actions_detected',
         severity: 'info',

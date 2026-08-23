@@ -182,6 +182,17 @@ test('a confirmed action list is the action list, and a rewritten row does not c
   );
   // And their owner is left as typed rather than expanded to the full attendee name.
   assert.equal(rewritten[0].owner, 'Mark');
+
+  // The screen says the list was kept. Keeping it is the contract; saying so is what
+  // stops the regenerate button reading as broken when it visibly changes nothing.
+  const keptFlag = (runCanonicalLiveStage(transcriptText, {
+    stage: 'actions',
+    fileName: 'transcript.txt',
+    confirmed: { details, actions: confirmedActions },
+    includeEvidencePack: true
+  }).validationFlags || []).find((flag) => flag.type === 'confirmed_actions_kept');
+  assert.ok(keptFlag, 'the kept-actions notice is raised');
+  assert.equal(keptFlag.blocking, false);
 });
 
 test('an unconfirmed summary is still generated normally', { timeout: 300000 }, () => {

@@ -161,7 +161,13 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("canonicalStagedResponse", api)
         self.assertIn("grammarPolishStagedExecutiveSummary", api)
         self.assertIn("executiveSummaryGrammar", api)
-        self.assertIn("await grammarPolishStagedExecutiveSummary(presentationSummary)", api)
+        # The grammar pass no longer receives the whole summary: the purpose sentence is
+        # split off as an opaque prefix, only the remainder is polished, and the prefix is
+        # reattached byte-identical. Sending the whole summary through let the LLM rewrite
+        # the opening into "The session focused on..." while the purpose field above it
+        # said something else - two renderings of one sentence on one screen.
+        self.assertIn("await grammarPolishStagedExecutiveSummary(polishable)", api)
+        self.assertIn("presentationSummary.startsWith(summaryPurpose)", api)
         self.assertIn("humanConfirmedInputIsAuthoritative", api)
         self.assertIn("return null;", api)
         self.assertIn("const evidenceFilteredDiscussion = filterDiscussionCardsByWorkstreamEvidence", api)

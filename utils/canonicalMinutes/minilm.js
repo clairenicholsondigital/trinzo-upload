@@ -73,6 +73,7 @@ function loadMiniLMProfileSync(evidence, options = {}) {
   const inputPath = path.join(directory, 'evidence.json');
   try {
     fs.writeFileSync(inputPath, payload);
+    const profileStartedAt = Date.now();
     const result = spawnSync(process.env.PYTHON_BIN || 'python3', [path.join(__dirname, '..', '..', 'scripts', 'canonical_minutes_minilm_profile.py'), inputPath], {
       // A backstop against a hung profiler, not a performance budget. One profile takes
       // about twenty-five seconds on an idle machine; several at once - which is what the
@@ -82,6 +83,14 @@ function loadMiniLMProfileSync(evidence, options = {}) {
       // still catches a genuine hang.
       cwd: path.join(__dirname, '..', '..'), encoding: 'utf8', timeout: Number(options.timeoutMs || process.env.CANONICAL_MINILM_TIMEOUT_MS || 600000), maxBuffer: 20 * 1024 * 1024
     });
+    // The kill limit sits at ten minutes because eight concurrent cold profiles genuinely
+    // take that long - but a single profile past two minutes on a quiet machine is a sign
+    // something is wrong, and with the higher limit that sign would otherwise arrive
+    // eight minutes late. Say so when it happens rather than only when it dies.
+    const profileMs = Date.now() - profileStartedAt;
+    if (profileMs > 120000) {
+      console.warn(`MiniLM profile took ${Math.round(profileMs / 1000)}s - expected ~25s; likely CPU contention, or a hang if the machine is idle`);
+    }
     if (result.status !== 0) throw new Error(result.stderr || `MiniLM profile process exited with ${result.status}`);
     const profile = JSON.parse(result.stdout);
     writeDiskCache(cacheKey, profile);
