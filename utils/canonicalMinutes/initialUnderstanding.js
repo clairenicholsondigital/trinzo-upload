@@ -1,7 +1,7 @@
 'use strict';
 
 const { clean } = require('./evidence');
-const { purposePlan } = require('./meetingPurpose');
+const { purposePlan, objectiveIntentForText } = require('./meetingPurpose');
 const { statedPurposeFromOpening, purposeFromTitle, namesARecurringSubject } = require('./statedPurpose');
 const { purposeFromTitleShape } = require('./titlePurpose');
 const { canHeadlineTopic, canSupportPurposeDimension, canStandAloneAsMinutesEvidence } = require('./publishability');
@@ -107,16 +107,23 @@ const MODE_CONFIG = {
 };
 
 const WORKSTREAM_CONCEPTS = [
-  { label: 'Goods flow and storage', profiles: ['importer_obligations_review'], pattern: /\b(?:goods?|supplier|suppliers?|japan|netherlands|fiscal|clearance|warehouse|warehousing|stored?|storage|dublin|park west|dispatch|shipp(?:ed|ing)|country of origin|final destination)\b/i },
+  { label: 'Goods flow and storage', homeOnly: true, profiles: ['importer_obligations_review'], pattern: /\b(?:goods?|supplier|suppliers?|japan|netherlands|fiscal|clearance|warehouse|warehousing|stored?|storage|dublin|park west|dispatch|shipp(?:ed|ing)|country of origin|final destination)\b/i },
   { label: 'Importer-obligation QMS procedure design', profiles: ['importer_obligations_review'], pattern: /\b(?:importer|obligation|procedure|procedures|qms|quality manual|operational|operations?|process(?:es)?|workflow|netsuite|erp|order flow|warehouse checks?|warehouse verification|scanner|scanners|barcode|document control|manual process(?:es)?)\b/i },
   { label: 'MDR, PPE and declarations of conformity', profiles: ['importer_obligations_review'], pattern: /\b(?:ppe|sunglasses?|declarations? of conformity|doc\b|conformity|category\s*(?:one|1)|risk rationale|eumdr|eu mdr|mdr)\b/i },
   { label: 'EUDAMED, HPRA and registration evidence', profiles: ['importer_obligations_review'], pattern: /\b(?:eudamed|udamed|hpra|srn|registration|authori[sz]ed representative|authori[sz]ed rep|regulatory|bill|invoice)\b/i },
-  { label: 'Language and country requirements', profiles: ['importer_obligations_review', 'technical_file_review'], pattern: /\b(?:language|languages?|country|countries|translation|translations?|locali[sz]ation|ifu|ifus|labels?|labelling|labeling|manufacturer information|market(?:s)?)\b/i },
+  // requiredEvidencePattern on the two broad concepts below: their main patterns fire on
+  // words almost any meeting uses ("market", "standards"), which was harmless while they
+  // were fenced to their home profiles and is not once concepts travel cross-profile.
+  { label: 'Language and country requirements', profiles: ['importer_obligations_review', 'technical_file_review'], pattern: /\b(?:language|languages?|country|countries|translation|translations?|locali[sz]ation|ifu|ifus|labels?|labelling|labeling|manufacturer information|market(?:s)?)\b/i, requiredEvidencePattern: /\b(?:language|languages|translation|translations|locali[sz]ation|ifu|labelling|labeling)\b/i },
   { label: 'MedEnvoy and Cody alignment', profiles: ['importer_obligations_review'], pattern: /\b(?:med\s*envoy|medenvoy|cody|alignment|scope|project plan|task list|side meetings?|consult Cody)\b/i },
-  { label: 'Further process discovery and working sessions', profiles: ['importer_obligations_review'], pattern: /\b(?:further|future|discovery|working sessions?|workshop|follow[- ]?up|next call|another call|go through|walk through|arrange|schedule)\b/i },
-  { label: 'Audit scope, timing and logistics', profiles: ['audit_planning'], pattern: /\b(?:audit scope|surveillance|audit plan|audit planning|sylmar|site|hotel|travel|hire car|logistics|key dates?|on site|report writing|timing|schedule)\b/i },
+  // homeOnly: the pattern is meeting-furniture vocabulary ("follow-up", "schedule",
+  // "go through") that recurs in any meeting whatever. Inside its own profile that is
+  // fine - the profile match already established the context - but travelling
+  // cross-profile it manufactures a workstream out of politeness.
+  { label: 'Further process discovery and working sessions', profiles: ['importer_obligations_review'], homeOnly: true, pattern: /\b(?:further|future|discovery|working sessions?|workshop|follow[- ]?up|next call|another call|go through|walk through|arrange|schedule)\b/i },
+  { label: 'Audit scope, timing and logistics', homeOnly: true, profiles: ['audit_planning'], pattern: /\b(?:audit scope|surveillance|audit plan|audit planning|sylmar|site|hotel|travel|hire car|logistics|key dates?|on site|report writing|timing|schedule)\b/i },
   { label: 'Software deep-dive role and responsibilities', profiles: ['audit_planning'], pattern: /\b(?:software deep[- ]?dive|software audit|separate track|audit team|lead auditor|co[- ]?auditor|responsibilit(?:y|ies)|role|coverage)\b/i },
-  { label: 'Preparation, confidentiality and document access', profiles: ['audit_planning'], pattern: /\b(?:code of conduct|confidentiality|training attestation|sharepoint|external access|document access|securely transmitting|tracker|preparation)\b/i },
+  { label: 'Preparation, confidentiality and document access', homeOnly: true, profiles: ['audit_planning'], pattern: /\b(?:code of conduct|confidentiality|training attestation|sharepoint|external access|document access|securely transmitting|tracker|preparation)\b/i },
   { label: 'Risk analysis and audit-planning evidence', profiles: ['audit_planning'], pattern: /\b(?:risk analysis|risk management|audit plan|s-bom|sbom|threat model|cves?|cybersecurity|software development|software validation)\b/i },
   { label: 'Alarm-code and clinical confirmation', profiles: ['technical_file_review'], pattern: /\b(?:alarm|mute button|clinical|flash|flashing|low priority|medium priority|high priority|code change)\b/i },
   { label: 'Debug and test-script evidence', profiles: ['technical_file_review'], pattern: /\b(?:debug|test script|testing|test results?|verification|validation|retrospective test data)\b/i },
@@ -128,7 +135,14 @@ const WORKSTREAM_CONCEPTS = [
     pattern: /\b(?:cyber\s*security|usb port|port lock|gui|password protect(?:ed|ion)?|unauthorised access|unauthorized access|unwarranted interference)\b/i,
     requiredEvidencePattern: /\b(?:usb|port lock|gui|password protect(?:ed|ion)?|unauthorised access|unauthorized access|unwarranted interference)\b/i
   },
-  { label: 'Standards and risk-management work', profiles: ['technical_file_review'], pattern: /\b(?:standards?|risk management|risk matrix|fmea|hazards?|mitigation)\b/i }
+  { label: 'Standards and risk-management work', profiles: ['technical_file_review'], pattern: /\b(?:standards?|risk management|risk matrix|fmea|hazards?|mitigation)\b/i, requiredEvidencePattern: /\b(?:risk management|risk matrix|fmea|hazards?|mitigation)\b/i },
+  // Webinar-domain concepts, labels written here and patterns lifted from the webinar
+  // profile's hints - the same evidence-gated-label idiom as every entry above. These are
+  // what let a rehearsal confirmed under a generic type still surface what it rehearsed.
+  { label: 'Presenter handovers and roles', profiles: ['webinar_rehearsal'], pattern: /\b(?:hand(?:ing)? over|handover|pass back|host|present(?:er|ing)?|facilitat(?:e|or)|safety net)\b/i },
+  { label: 'Audience questions and Q&A handling', profiles: ['webinar_rehearsal'], pattern: /\b(?:questions?|q\s*&\s*a|chat|audience|attendee|speech bubble|qr code|call to action)\b/i, requiredEvidencePattern: /\b(?:q\s*&\s*a|audience|attendee|chat)\b/i },
+  { label: 'Timing and running order', profiles: ['webinar_rehearsal'], pattern: /\b(?:timings?|hard stop|overrun|dead air|run(?:ning)? order|pace|agenda order|minutes? each)\b/i },
+  { label: 'Technical setup and contingencies', profiles: ['webinar_rehearsal'], pattern: /\b(?:screen shar(?:e|ing)|record(?:ing)?|red dot|connection|wi-?fi|broadband|animation|microphone|camera|contingenc|fallback|back[- ]?up plan)\b/i, requiredEvidencePattern: /\b(?:screen shar|record|microphone|camera|connection|contingenc)\b/i }
 ];
 
 const CLARIFICATION_CUES = /\b(?:actually|rather than|instead of|only|not substantive|the difference is|what I mean|I meant|no[, ]+it|no[, ]+that|correction|to clarify)\b/i;
@@ -190,17 +204,32 @@ function strongestEvidenceIdsForPattern(evidence, pattern, limit = 6) {
     .map((event) => event.id);
 }
 
+// A concept that belongs to another profile can still name what THIS meeting worked on.
+// The Eakin weekly, confirmed as a general project review, is genuinely about alarm
+// changes, change control, languages, electrical compliance and cybersecurity - all
+// technical-file concepts. Gating them on the selected profile made the meeting's
+// richness depend on a dropdown, when the reviewer's own steer was the opposite: the
+// dropdown names the meeting's shape, the evidence names its subjects.
+//
+// Cross-profile admission is stricter than home-profile admission - three supporting
+// events rather than any - because a foreign concept firing on a stray mention is
+// exactly the mislabelling the profile fence used to prevent.
+const CROSS_PROFILE_MIN_EVIDENCE = 3;
+
 function inferredWorkstreamsFromEvidence(evidence, topics = [], profileId = '') {
   const byLabel = new Map();
   for (const concept of WORKSTREAM_CONCEPTS) {
-    if (Array.isArray(concept.profiles) && concept.profiles.length && !concept.profiles.includes(profileId)) continue;
+    const homeProfile = !Array.isArray(concept.profiles) || !concept.profiles.length || concept.profiles.includes(profileId);
+    if (!homeProfile && concept.homeOnly) continue;
     const evidenceIds = strongestEvidenceIdsForPattern(evidence, concept.pattern, 8);
-    if (evidenceIds.length && concept.requiredEvidencePattern) {
+    if (!evidenceIds.length) continue;
+    if (!homeProfile && evidenceIds.length < CROSS_PROFILE_MIN_EVIDENCE) continue;
+    if (concept.requiredEvidencePattern) {
       const byId = eventByIdMap(evidence);
       const hasRequiredEvidence = evidenceIds.some((id) => concept.requiredEvidencePattern.test(byId.get(id)?.text || ''));
       if (!hasRequiredEvidence) continue;
     }
-    if (evidenceIds.length) byLabel.set(concept.label.toLowerCase(), { label: concept.label, evidenceIds, provenance: 'model_inferred' });
+    byLabel.set(concept.label.toLowerCase(), { label: concept.label, evidenceIds, provenance: 'model_inferred', homeProfile });
   }
   for (const topic of topics) {
     const label = clean(topic.text || topic.editorialText || topic.topic || editorialTopicLabel(topic, evidence));
@@ -271,7 +300,14 @@ function conceptSentenceForWorkstream(label) {
 }
 
 function sentenceFromWorkstream(workstream, evidence) {
-  const conceptSentence = conceptSentenceForWorkstream(workstream.label);
+  // The canned concept sentences are written for their home profile's subject matter -
+  // "The goods-flow evidence covered supplier origin, fiscal clearance..." is about
+  // importer meetings and nothing else. When cross-profile concepts were opened up, this
+  // table became reachable from any meeting, and a webinar rehearsal got that sentence in
+  // its summary: another domain's canned prose, the leakage class every guarantee in
+  // meetingPurpose.js exists to prevent. A workstream that travelled speaks only through
+  // this meeting's own evidence below.
+  const conceptSentence = workstream.homeProfile === false ? '' : conceptSentenceForWorkstream(workstream.label);
   if (conceptSentence) return conceptSentence;
   const events = materialEvents(evidence, workstream.evidenceIds);
   const consequential = events.find((event) => MATERIAL_CUES.test(event.text)) || events[0];
@@ -510,21 +546,65 @@ function objectivePresentationFault(action) {
   return Boolean(stagedFinalActionQualityIssue({ owner: 'Not stated', action, deadline: 'Not stated' }));
 }
 
+// Actions arrive as {action, evidenceIds} pairs; bare strings are tolerated for old
+// callers and tests, carrying no ids.
+function normaliseActionSignals(actions) {
+  return (Array.isArray(actions) ? actions : [])
+    .map((item) => (typeof item === 'string'
+      ? { action: clean(item), evidenceIds: [] }
+      : { action: clean(item && item.action), evidenceIds: Array.isArray(item && item.evidenceIds) ? item.evidenceIds : [] }))
+    .filter((item) => item.action);
+}
+
 function deriveObjectivesFromActions(actions, topicHints) {
-  const available = (Array.isArray(actions) ? actions : []).map(clean).filter(Boolean);
+  const available = normaliseActionSignals(actions);
   const used = new Set();
   const derived = [];
   for (const hint of Array.isArray(topicHints) ? topicHints : []) {
-    const match = available.find((action) => hint.pattern.test(action) && !used.has(action) && !objectivePresentationFault(action));
-    if (!match || match.split(/\s+/).length < 3) continue;
-    used.add(match);
+    const match = available.find((item) => hint.pattern.test(item.action) && !used.has(item.action) && !objectivePresentationFault(item.action));
+    if (!match || match.action.split(/\s+/).length < 3) continue;
+    used.add(match.action);
     // The action is already a well-formed phrase. Prefixing the hint's intent
     // verb produced "Confirm the continue reviewing the USB port controls";
     // the profile's job here is choosing and ordering which actions surface,
     // not supplying a second verb. A gerund opening is normalised so the list
     // reads as objectives rather than as a progress report.
-    derived.push(asObjectivePhrase(match));
-    if (derived.length >= 4) break;
+    // Each objective carries ITS OWN action's evidence - the pooled-ids shortcut made
+    // every objective cite the same generic set, which reads as citation and means
+    // nothing, and citation-checked composition downstream needs the real trail.
+    derived.push({ text: asObjectivePhrase(match.action), evidenceIds: match.evidenceIds });
+    if (derived.length >= 8) break;
+  }
+  return derived;
+}
+
+// One objective per detected workstream, action-first. The target shape came from a
+// reviewer's own exemplar for a multi-workstream weekly: eight lines, each "Review/
+// Confirm {the thing}", each a real thread of the meeting. An action that shares
+// evidence with the workstream states it best; where none does, the intent verb plus the
+// workstream's own label is a true, editable line - template verb plus evidence-derived
+// label, never profile prose.
+function objectivesPerWorkstream(workstreams, actions, topicHints, alreadyUsedTexts) {
+  const available = normaliseActionSignals(actions);
+  const used = new Set(alreadyUsedTexts);
+  const derived = [];
+  for (const workstream of Array.isArray(workstreams) ? workstreams : []) {
+    if (derived.length >= 8) break;
+    const workstreamIds = new Set(workstream.evidenceIds || []);
+    const match = available.find((item) => !used.has(item.action)
+      && !objectivePresentationFault(item.action)
+      && item.action.split(/\s+/).length >= 3
+      && item.evidenceIds.some((id) => workstreamIds.has(id)));
+    if (match) {
+      used.add(match.action);
+      derived.push({ text: asObjectivePhrase(match.action), evidenceIds: match.evidenceIds });
+      continue;
+    }
+    const intent = objectiveIntentForText(topicHints, workstream.label);
+    const text = `${intent} ${workstream.label.charAt(0).toLowerCase()}${workstream.label.slice(1)}.`;
+    if (used.has(text)) continue;
+    used.add(text);
+    derived.push({ text, evidenceIds: unique(workstream.evidenceIds || []).slice(0, 6) });
   }
   return derived;
 }
@@ -546,33 +626,31 @@ function asObjectivePhrase(action) {
 }
 
 function buildObjectives(profileId, workstreams, purpose, actions = [], topicHints = []) {
-  const configObjectives = MODE_CONFIG[profileId]?.objectives || [];
-  const evidenceIds = unique(workstreams.slice(0, 4).flatMap((item) => item.evidenceIds || [])).slice(0, 10);
+  const pooledIds = unique(workstreams.slice(0, 4).flatMap((item) => item.evidenceIds || [])).slice(0, 10);
   // Objectives drawn from this meeting's own actions beat a fixed list every
-  // time: the fixed list is identical for every meeting of the same type.
-  const derived = deriveObjectivesFromActions(actions, topicHints);
+  // time: the fixed list is identical for every meeting of the same type. Hint-selected
+  // actions first (profile ordering), then one line per remaining workstream, to eight.
+  const hinted = deriveObjectivesFromActions(actions, topicHints);
+  const perWorkstream = objectivesPerWorkstream(workstreams, actions, topicHints, hinted.map((item) => item.text));
+  const derived = [...hinted, ...perWorkstream].slice(0, 8);
   if (derived.length) {
-    return derived.map((text, index) => ({
-      text,
-      evidenceIds: evidenceIds.length ? evidenceIds : purpose.evidenceIds,
+    return derived.map((item, index) => ({
+      text: item.text,
+      evidenceIds: item.evidenceIds.length ? item.evidenceIds : (pooledIds.length ? pooledIds : purpose.evidenceIds),
       provenance: 'transcript_emergent',
       id: `initial_objective_${index + 1}`
     }));
   }
+  const configObjectives = MODE_CONFIG[profileId]?.objectives || [];
   if (configObjectives.length) {
     return configObjectives.slice(0, 4).map((text, index) => ({
       text,
-      evidenceIds: evidenceIds.length ? evidenceIds : purpose.evidenceIds,
+      evidenceIds: pooledIds.length ? pooledIds : purpose.evidenceIds,
       provenance: 'model_inferred',
       id: `initial_objective_${index + 1}`
     }));
   }
-  return workstreams.slice(0, 4).map((workstream, index) => ({
-    text: `Clarify ${workstream.label.charAt(0).toLowerCase()}${workstream.label.slice(1)} and related next steps.`,
-    evidenceIds: unique(workstream.evidenceIds).slice(0, 6),
-    provenance: 'model_inferred',
-    id: `initial_objective_${index + 1}`
-  }));
+  return [];
 }
 
 function buildClarifications(evidence) {
@@ -655,4 +733,4 @@ module.exports = {
   buildInitialUnderstanding,
   describeDiscussedConcepts,
   organisationFromMeeting,
-  siteFromMeeting, subjectFromMeeting, actionObjectPhrase };
+  siteFromMeeting, subjectFromMeeting, actionObjectPhrase, joinConceptLabels };

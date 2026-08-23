@@ -7,10 +7,12 @@
       "Decisions",
       "Risks"
     ],
-    "summaryTopicCount": 2,
+    "summaryTopicCount": 4,
     "summaryTopics": [
-      "Content and communications",
-      "Documentation and evidence"
+      "Presenter handovers and roles",
+      "Audience questions and Q&A handling",
+      "Timing and running order",
+      "Technical setup and contingencies"
     ]
   },
   {
@@ -130,12 +132,9 @@
       "The residual risk there is low, and the team would",
       "Decisions"
     ],
-    "summaryTopicCount": 4,
+    "summaryTopicCount": 1,
     "summaryTopics": [
-      "Plans and timelines",
-      "Risks and dependencies",
-      "Testing and validation",
-      "Scope and requirements"
+      "Debug and test-script evidence"
     ]
   },
   {
@@ -157,11 +156,15 @@
       "Plans and timelines",
       "Risks"
     ],
-    "summaryTopicCount": 3,
+    "summaryTopicCount": 7,
     "summaryTopics": [
-      "Language support and localisation",
-      "Cybersecurity and access controls",
-      "Scope and requirements: IEC 27427"
+      "Language and country requirements",
+      "Risk analysis and audit-planning evidence",
+      "Alarm-code and clinical confirmation",
+      "Debug and test-script evidence",
+      "Change control and version traceability",
+      "Electrical compliance evidence",
+      "Cybersecurity and access controls"
     ]
   },
   {
@@ -179,10 +182,14 @@
       "Technical setup",
       "And then as a consequence to that, does that mean"
     ],
-    "summaryTopicCount": 2,
+    "summaryTopicCount": 6,
     "summaryTopics": [
-      "Scope and requirements: ISO",
-      "Language support and localisation"
+      "Language and country requirements",
+      "Risk analysis and audit-planning evidence",
+      "Alarm-code and clinical confirmation",
+      "Debug and test-script evidence",
+      "Cybersecurity, USB and GUI controls",
+      "Standards and risk-management work"
     ]
   },
   {
@@ -196,11 +203,15 @@
       "Product behaviour and design",
       "Risks"
     ],
-    "summaryTopicCount": 4,
+    "summaryTopicCount": 8,
     "summaryTopics": [
+      "Importer-obligation QMS procedure design",
+      "MDR, PPE and declarations of conformity",
+      "EUDAMED, HPRA and registration evidence",
+      "Language and country requirements",
+      "MedEnvoy and Cody alignment",
+      "Software deep-dive role and responsibilities",
       "Quality and risk management",
-      "Scope and requirements: MDR",
-      "Regulatory and compliance: HPRA",
       "Product behaviour and design"
     ]
   },
@@ -216,9 +227,13 @@
       "Customer and stakeholder feedback",
       "Like, as the team is developing big"
     ],
-    "summaryTopicCount": 4,
+    "summaryTopicCount": 8,
     "summaryTopics": [
-      "Language support and localisation",
+      "Importer-obligation QMS procedure design",
+      "MDR, PPE and declarations of conformity",
+      "EUDAMED, HPRA and registration evidence",
+      "Language and country requirements",
+      "Audience questions and Q&A handling",
       "Quality and risk management",
       "Customer and stakeholder feedback",
       "Product behaviour and design"
@@ -478,11 +493,15 @@
       "Content and communications",
       "Risks"
     ],
-    "summaryTopicCount": 4,
+    "summaryTopicCount": 8,
     "summaryTopics": [
+      "Importer-obligation QMS procedure design",
+      "MDR, PPE and declarations of conformity",
+      "EUDAMED, HPRA and registration evidence",
+      "Language and country requirements",
+      "MedEnvoy and Cody alignment",
+      "Software deep-dive role and responsibilities",
       "Quality and risk management",
-      "Scope and requirements: MDR",
-      "Regulatory and compliance: HPRA",
       "Product behaviour and design"
     ]
   },
@@ -500,13 +519,16 @@
       "David noted the current setup the flash",
       "Andrew and Colm review applicability"
     ],
-    "summaryTopicCount": 5,
+    "summaryTopicCount": 8,
     "summaryTopics": [
-      "Cybersecurity and access controls",
-      "Language support and localisation",
-      "Electrical compliance testing: IEC 60601",
-      "Quality and risk indicators",
-      "Jacqui Fox David Didsbury Colm O’Rourke (absent)"
+      "Language and country requirements",
+      "Risk analysis and audit-planning evidence",
+      "Alarm-code and clinical confirmation",
+      "Debug and test-script evidence",
+      "Change control and version traceability",
+      "Electrical compliance evidence",
+      "Cybersecurity, USB and GUI controls",
+      "Standards and risk-management work"
     ]
   },
   {
@@ -520,10 +542,14 @@
       "Testing and validation",
       "Software change traceability"
     ],
-    "summaryTopicCount": 3,
+    "summaryTopicCount": 7,
     "summaryTopics": [
-      "Language support and localisation",
-      "Scope and requirements: IEC 27427",
+      "Language and country requirements",
+      "Risk analysis and audit-planning evidence",
+      "Alarm-code and clinical confirmation",
+      "Debug and test-script evidence",
+      "Change control and version traceability",
+      "Electrical compliance evidence",
       "Come here slightly higher percentage"
     ]
   },
@@ -538,12 +564,16 @@
       "Customer and stakeholder feedback",
       "Like, as the team is developing big"
     ],
-    "summaryTopicCount": 4,
+    "summaryTopicCount": 8,
     "summaryTopics": [
-      "Language support and localisation",
+      "Importer-obligation QMS procedure design",
+      "MDR, PPE and declarations of conformity",
+      "EUDAMED, HPRA and registration evidence",
+      "Language and country requirements",
+      "MedEnvoy and Cody alignment",
+      "Audience questions and Q&A handling",
       "Quality and risk management",
-      "Customer and stakeholder feedback",
-      "Product behaviour and design"
+      "Customer and stakeholder feedback"
     ]
   },
   {
@@ -556,11 +586,16 @@
       "Electrical compliance testing",
       "Testing and validation"
     ],
-    "summaryTopicCount": 3,
+    "summaryTopicCount": 8,
     "summaryTopics": [
-      "Language support and localisation",
-      "Cybersecurity and access controls",
-      "Electrical compliance testing: IEC 60601"
+      "Language and country requirements",
+      "Risk analysis and audit-planning evidence",
+      "Alarm-code and clinical confirmation",
+      "Debug and test-script evidence",
+      "Change control and version traceability",
+      "Electrical compliance evidence",
+      "Cybersecurity, USB and GUI controls",
+      "Standards and risk-management work"
     ]
   },
   {
@@ -573,8 +608,11 @@
       "Content and communications",
       "Risks"
     ],
-    "summaryTopicCount": 3,
+    "summaryTopicCount": 6,
     "summaryTopics": [
+      "Importer-obligation QMS procedure design",
+      "Debug and test-script evidence",
+      "Technical setup and contingencies",
       "Quality and risk management",
       "Customer and stakeholder feedback",
       "Product behaviour and design"
@@ -590,9 +628,13 @@
       "Plans and timelines",
       "Risks"
     ],
-    "summaryTopicCount": 2,
+    "summaryTopicCount": 6,
     "summaryTopics": [
-      "Quality and risk indicators",
+      "Importer-obligation QMS procedure design",
+      "MedEnvoy and Cody alignment",
+      "Software deep-dive role and responsibilities",
+      "Risk analysis and audit-planning evidence",
+      "Standards and risk-management work",
       "Cybersecurity and access controls"
     ]
   },
@@ -604,10 +646,12 @@
       "Decisions",
       "Risks"
     ],
-    "summaryTopicCount": 2,
+    "summaryTopicCount": 4,
     "summaryTopics": [
-      "Content and communications",
-      "Documentation and evidence"
+      "Presenter handovers and roles",
+      "Audience questions and Q&A handling",
+      "Timing and running order",
+      "Technical setup and contingencies"
     ]
   },
   {
@@ -619,11 +663,16 @@
       "Software change traceability",
       "Testing and validation"
     ],
-    "summaryTopicCount": 3,
+    "summaryTopicCount": 8,
     "summaryTopics": [
-      "Language support and localisation",
-      "Cybersecurity and access controls",
-      "Electrical compliance testing: IEC 60601"
+      "Language and country requirements",
+      "Risk analysis and audit-planning evidence",
+      "Alarm-code and clinical confirmation",
+      "Debug and test-script evidence",
+      "Change control and version traceability",
+      "Electrical compliance evidence",
+      "Cybersecurity, USB and GUI controls",
+      "Standards and risk-management work"
     ]
   },
   {
@@ -635,8 +684,9 @@
       "Due end quarter",
       "Risks"
     ],
-    "summaryTopicCount": 1,
+    "summaryTopicCount": 2,
     "summaryTopics": [
+      "Importer-obligation QMS procedure design",
       "Budget and commercial matters"
     ]
   },
@@ -647,11 +697,9 @@
       "Testing and validation",
       "Further actions one"
     ],
-    "summaryTopicCount": 3,
+    "summaryTopicCount": 1,
     "summaryTopics": [
-      "Testing and validation",
-      "Risks and dependencies",
-      "Further actions one"
+      "Debug and test-script evidence"
     ]
   },
   {
@@ -665,8 +713,10 @@
       "Operations and processes",
       "Decisions"
     ],
-    "summaryTopicCount": 1,
+    "summaryTopicCount": 3,
     "summaryTopics": [
+      "Importer-obligation QMS procedure design",
+      "EUDAMED, HPRA and registration evidence",
       "Opportunities for improvement here"
     ]
   },
@@ -1222,8 +1272,10 @@
       "Operations and processes",
       "Decisions"
     ],
-    "summaryTopicCount": 1,
+    "summaryTopicCount": 3,
     "summaryTopics": [
+      "Importer-obligation QMS procedure design",
+      "EUDAMED, HPRA and registration evidence",
       "Opportunities for improvement here"
     ]
   },
@@ -1356,8 +1408,9 @@
       "Plans and timelines",
       "There is no real difference"
     ],
-    "summaryTopicCount": 3,
+    "summaryTopicCount": 4,
     "summaryTopics": [
+      "Audience questions and Q&A handling",
       "Customer and stakeholder feedback",
       "The across all the selected sessions",
       "Maths the first two tables add together"

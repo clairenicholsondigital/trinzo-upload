@@ -4,6 +4,7 @@ const fetch = require('node-fetch');
 const { clean } = require('./evidence');
 const { deadlineFrom } = require('./stages');
 const { finaliseDiscussionPointForMinutes, normaliseFinalStagedActionCandidate, normaliseAndValidateActionOwner } = require('../stagedEditorial');
+const { isReviewerAuthored } = require('./state');
 const { normaliseAttendeeReferences } = require('../entityNormalization');
 const { enrichActionReviewCandidate, rankAndClusterActionReviewCandidates } = require('./actionReviewRanking');
 
@@ -244,7 +245,7 @@ function clientReadyPresentation(payload) {
         pointRefs.push(Array.isArray(card.pointRefs) ? card.pointRefs[pointIndex] || { evidenceIds: [] } : { evidenceIds: [] });
       });
       return { ...card, points, pointRefs };
-    }).filter((card) => card.points.length));
+    }).filter((card) => card.points.length || isReviewerAuthored(card)));
   }
   if (stage === 'actions' && Array.isArray(base.screens.actions)) {
     // How each action's owner was established, keyed by the evidence it cites.

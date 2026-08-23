@@ -5,7 +5,9 @@
       "corpus": "synthetic",
       "title": "Client M204 Larkfield MK Thursday Session",
       "type": "Webinar rehearsal",
-      "typeFromBodyOnly": true,
+      "typeFromBodyOnly": false,
+      "typeSuggested": true,
+      "suggestionMargin": 3.89,
       "typeFromTitle": "Project review"
     },
     {
@@ -14,6 +16,8 @@
       "title": "Hartwell Site Catch Up",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -22,6 +26,8 @@
       "title": "Northbridge Release Planning",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -30,6 +36,8 @@
       "title": "Riverton Compliance Check In",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -38,6 +46,8 @@
       "title": "Elmstead Options Workshop",
       "type": "Workshop",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Workshop"
     },
     {
@@ -46,6 +56,8 @@
       "title": "Kingswell Launch Recovery",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -54,6 +66,8 @@
       "title": "Alder Product Submission",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -62,6 +76,8 @@
       "title": "Voss & Delaney Launch Weekly",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -70,6 +86,8 @@
       "title": "Validation Close Out Review",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -78,6 +96,8 @@
       "title": "Westmere Incident And Launch Call",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -86,6 +106,8 @@
       "title": "Client Eakin T733 Tech File Review Weekly",
       "type": "Technical file review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Technical file review"
     },
     {
@@ -94,6 +116,8 @@
       "title": "Client T761 Eakin SW Weekly Checkin",
       "type": "Technical file review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Technical file review"
     },
     {
@@ -102,6 +126,8 @@
       "title": "Client DITA T819 Importer Obligations Review Plan",
       "type": "Importer obligations review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Importer obligations review"
     },
     {
@@ -110,6 +136,8 @@
       "title": "Internal DITA T819 Followup And Review From Client Call",
       "type": "Internal follow-up",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Internal follow-up"
     },
     {
@@ -118,6 +146,8 @@
       "title": "Agenda: Internal Platform Decisions",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -126,6 +156,8 @@
       "title": "Incident Bridge Payment Export Bug",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -134,6 +166,8 @@
       "title": "Participants: Claire, Bob",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -142,6 +176,8 @@
       "title": "Travel Policy Briefing",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -150,6 +186,8 @@
       "title": "Delivery Status Review",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -158,6 +196,8 @@
       "title": "Customer Onboarding Review",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -166,6 +206,8 @@
       "title": "Operations Review",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -174,6 +216,8 @@
       "title": "Sales Pipeline Review",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -182,6 +226,8 @@
       "title": "Board Update",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -190,6 +236,8 @@
       "title": "Webinar Rehearsal Review",
       "type": "Webinar rehearsal",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Webinar rehearsal"
     },
     {
@@ -198,6 +246,8 @@
       "title": "Finance Budget Review",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -206,6 +256,8 @@
       "title": "Hiring Interview Debrief",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -214,6 +266,8 @@
       "title": "Attendees",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -222,6 +276,8 @@
       "title": "Status Update Meeting",
       "type": "Client update",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Client update"
     },
     {
@@ -230,6 +286,8 @@
       "title": "Weekly Check In Planning",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -238,6 +296,8 @@
       "title": "Document Review Meeting",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -246,6 +306,8 @@
       "title": "Dependency Risk Meeting",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -254,6 +316,8 @@
       "title": "James: Before We Start, Did Everyone See The Support Metrics From Last Month?rachel: Yeah. Complaints Are Down But Response Times Are Actually Worse.james: Exactly. We Closed More ",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -262,6 +326,8 @@
       "title": "Contract Negotiation Review",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -270,6 +336,8 @@
       "title": "Customer Complaint Review",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -278,6 +346,8 @@
       "title": "Client DITA T819 Importer Obligations Review Plan",
       "type": "Importer obligations review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Importer obligations review"
     },
     {
@@ -286,6 +356,8 @@
       "title": "T761 Eakin Healthcare Tech File SW Review – SW Coding Changes",
       "type": "Technical file review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Technical file review"
     },
     {
@@ -294,6 +366,8 @@
       "title": "Client Eakin T733 Tech File Review Weekly",
       "type": "Technical file review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Technical file review"
     },
     {
@@ -302,6 +376,8 @@
       "title": "Internal DITA T819 Followup And Review From Client Call",
       "type": "Internal follow-up",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Internal follow-up"
     },
     {
@@ -310,6 +386,8 @@
       "title": "Client T761 Eakin SW Weekly Checkin",
       "type": "Technical file review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Technical file review"
     },
     {
@@ -317,7 +395,9 @@
       "corpus": "real",
       "title": "Untitled meeting",
       "type": "Case study interview",
-      "typeFromBodyOnly": true,
+      "typeFromBodyOnly": false,
+      "typeSuggested": true,
+      "suggestionMargin": 3.59,
       "typeFromTitle": "Project review"
     },
     {
@@ -326,6 +406,8 @@
       "title": "Client Abbott T796 Audit Kick Off Sylmar",
       "type": "Audit kick-off / planning",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Audit kick-off / planning"
     },
     {
@@ -333,7 +415,9 @@
       "corpus": "synthetic",
       "title": "Client M204 Larkfield MK Thursday Session",
       "type": "Webinar rehearsal",
-      "typeFromBodyOnly": true,
+      "typeFromBodyOnly": false,
+      "typeSuggested": true,
+      "suggestionMargin": 3.89,
       "typeFromTitle": "Project review"
     },
     {
@@ -342,6 +426,8 @@
       "title": "Client T761 Eakin SW Weekly Checkin",
       "type": "Technical file review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Technical file review"
     },
     {
@@ -350,6 +436,8 @@
       "title": "Daily AI Check In",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -358,6 +446,8 @@
       "title": "Ciara",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -366,6 +456,8 @@
       "title": "Final Practice Call Before Webinar",
       "type": "Webinar rehearsal",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Webinar rehearsal"
     },
     {
@@ -374,6 +466,8 @@
       "title": "Contract Renewal Review",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -382,6 +476,8 @@
       "title": "Office Relocation Planning",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -390,6 +486,8 @@
       "title": "Bug Triage",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -398,6 +496,8 @@
       "title": "Client Onboarding Review",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -406,6 +506,8 @@
       "title": "Event Planning Review",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -414,6 +516,8 @@
       "title": "Supplier Risk Review",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -422,6 +526,8 @@
       "title": "Finance Budget Review",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -430,6 +536,8 @@
       "title": "Hiring Debrief",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -438,6 +546,8 @@
       "title": "Training Rollout Review",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -446,6 +556,8 @@
       "title": "Low Substance Catchup",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -454,6 +566,8 @@
       "title": "Floor Plan Follow Up",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -462,6 +576,8 @@
       "title": "Negotiation Ownership",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -470,6 +586,8 @@
       "title": "Bug Investigation",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -478,6 +596,8 @@
       "title": "Loose Follow Up",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -486,6 +606,8 @@
       "title": "Sales Pipeline Review",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -494,6 +616,8 @@
       "title": "Supplier Review",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -502,6 +626,8 @@
       "title": "Contract Negotiation Review",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -510,6 +636,8 @@
       "title": "Hiring Interview Debrief",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -518,6 +646,8 @@
       "title": "Candidate Screening",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -526,6 +656,8 @@
       "title": "Finance Budget Review",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -534,6 +666,8 @@
       "title": "Board Update Prep",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -542,6 +676,8 @@
       "title": "Incident Response Review",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -550,6 +686,8 @@
       "title": "Product Bug Triage",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -558,6 +696,8 @@
       "title": "Customer Complaint Review",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -566,6 +706,8 @@
       "title": "Customer Onboarding Planning",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -574,6 +716,8 @@
       "title": "Office Relocation Review",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -582,6 +726,8 @@
       "title": "Webinar Rehearsal Review",
       "type": "Webinar rehearsal",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Webinar rehearsal"
     },
     {
@@ -590,6 +736,8 @@
       "title": "Event Planning Review",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -598,6 +746,8 @@
       "title": "Training Rollout Review",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -606,6 +756,8 @@
       "title": "Marketing Campaign Review",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -614,6 +766,8 @@
       "title": "Software Release Review",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -622,6 +776,8 @@
       "title": "Procurement Discussion",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -630,6 +786,8 @@
       "title": "Project Retrospective",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -638,6 +796,8 @@
       "title": "Partnership Discussion",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -646,6 +806,8 @@
       "title": "Grant Application Review",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -654,6 +816,8 @@
       "title": "Risk Review",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -662,6 +826,8 @@
       "title": "Governance Review",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -670,6 +836,8 @@
       "title": "Operations Review",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -678,6 +846,8 @@
       "title": "Support Escalation Review",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -686,6 +856,8 @@
       "title": "Release Readiness Review",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -694,6 +866,8 @@
       "title": "Budget Reforecast Review",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -702,6 +876,8 @@
       "title": "Board Update",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -710,6 +886,8 @@
       "title": "Customer Onboarding Review",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -718,6 +896,8 @@
       "title": "Supplier Review",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -726,6 +906,8 @@
       "title": "Delivery Status Review",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -734,6 +916,8 @@
       "title": "Catch Up",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -742,6 +926,8 @@
       "title": "Partnership Discussion",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -750,6 +936,8 @@
       "title": "Final Practice Call Before Webinar",
       "type": "Webinar rehearsal",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Webinar rehearsal"
     },
     {
@@ -758,6 +946,8 @@
       "title": "Status Update Meeting",
       "type": "Client update",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Client update"
     },
     {
@@ -766,6 +956,8 @@
       "title": "Weekly Check In Planning",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -774,6 +966,8 @@
       "title": "Document Review Meeting",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -782,6 +976,8 @@
       "title": "Dependency Risk Meeting",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -790,6 +986,8 @@
       "title": "Progress Dashboard Meeting",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -798,6 +996,8 @@
       "title": "Rehearsal Banter Filter",
       "type": "Webinar rehearsal",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Webinar rehearsal"
     },
     {
@@ -806,6 +1006,8 @@
       "title": "Project Check In",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -814,6 +1016,8 @@
       "title": "Project Check In",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -822,6 +1026,8 @@
       "title": "Project Check In",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -830,6 +1036,8 @@
       "title": "Project Check In",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -838,6 +1046,8 @@
       "title": "Project Check In",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -846,6 +1056,8 @@
       "title": "Meeting Title: Rejection Test",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -854,6 +1066,8 @@
       "title": "Thank You. Something Else? My God It's So True Because I Think That's The One Slack On Friday. So... So I Guess Rewind Just A Bit. Have You Had Mineral Clay Say Anything At All To ",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -862,6 +1076,8 @@
       "title": "Status Review",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -870,6 +1086,8 @@
       "title": "Delivery Status Review",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -878,6 +1096,8 @@
       "title": "Status Review",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -886,6 +1106,8 @@
       "title": ": Project Banana Falcon",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -894,6 +1116,8 @@
       "title": "Participants: Claire, Bob",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -902,6 +1126,8 @@
       "title": "Agenda: Internal Platform Decisions",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -910,6 +1136,8 @@
       "title": "Incident Bridge Payment Export Bug",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -918,6 +1146,8 @@
       "title": "Attendees",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -926,6 +1156,8 @@
       "title": "Quarterly Policy Briefing",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     },
     {
@@ -934,6 +1166,8 @@
       "title": "James: Before We Start, Did Everyone See The Support Metrics From Last Month?rachel: Yeah. Complaints Are Down But Response Times Are Actually Worse.james: Exactly. We Closed More ",
       "type": "Project review",
       "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
       "typeFromTitle": "Project review"
     }
   ],
@@ -944,7 +1178,7 @@
       "purposeSource": "meeting_type_profile",
       "purposeText": "Rehearse the webinar flow, content, handovers and technical setup so the live session can run smoothly. The meeting covered content and communications, technical setup, and documentation and evidence.",
       "words": 28,
-      "evidenceIdCount": 4,
+      "evidenceIdCount": 10,
       "namesSubject": true,
       "isBareTitle": false,
       "flagged": true
@@ -1032,7 +1266,7 @@
       "purposeSource": "title_transform",
       "purposeText": "Review the validation close out.",
       "words": 5,
-      "evidenceIdCount": 0,
+      "evidenceIdCount": 6,
       "namesSubject": true,
       "isBareTitle": false,
       "flagged": true
@@ -1395,7 +1629,7 @@
       "purposeSource": "meeting_type_profile",
       "purposeText": "Rehearse the webinar flow, content, handovers and technical setup so the live session can run smoothly. The meeting covered content and communications, technical setup, and documentation and evidence.",
       "words": 28,
-      "evidenceIdCount": 4,
+      "evidenceIdCount": 10,
       "namesSubject": true,
       "isBareTitle": false,
       "flagged": true
@@ -1417,7 +1651,7 @@
       "purposeSource": "title_transform",
       "purposeText": "Check in on progress for AI.",
       "words": 6,
-      "evidenceIdCount": 1,
+      "evidenceIdCount": 5,
       "namesSubject": false,
       "isBareTitle": false,
       "flagged": true
@@ -1428,7 +1662,7 @@
       "purposeSource": "described_from_discussion",
       "purposeText": "The meeting covered testing and validation.",
       "words": 6,
-      "evidenceIdCount": 0,
+      "evidenceIdCount": 4,
       "namesSubject": true,
       "isBareTitle": false,
       "flagged": true
@@ -1439,7 +1673,7 @@
       "purposeSource": "meeting_type_profile",
       "purposeText": "Rehearse the webinar flow, content, handovers and technical setup so the live session can run smoothly. The meeting covered operations and processes, content and communications, and customer and stakeholder feedback.",
       "words": 30,
-      "evidenceIdCount": 6,
+      "evidenceIdCount": 10,
       "namesSubject": true,
       "isBareTitle": false,
       "flagged": true
@@ -1967,7 +2201,7 @@
       "purposeSource": "meeting_type_profile",
       "purposeText": "Rehearse the webinar flow, content, handovers and technical setup so the live session can run smoothly. The meeting covered operations and processes, content and communications, and customer and stakeholder feedback.",
       "words": 30,
-      "evidenceIdCount": 6,
+      "evidenceIdCount": 10,
       "namesSubject": true,
       "isBareTitle": false,
       "flagged": true

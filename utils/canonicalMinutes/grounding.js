@@ -82,7 +82,10 @@ function groundProposal(proposal, evidence) {
         }
         return groundDiscussionCard(card, idSet, dropped);
       })
-      .filter((card) => card && card.points.length);
+      // An empty card survives only when the reviewer authored its heading: dropping it
+      // here was how a confirmed heading vanished by allocation luck. Model cards with
+      // nothing to say still go.
+      .filter((card) => card && (card.points.length || isReviewerAuthored(card)));
   }
   if (dropped.length) {
     grounded.warnings = [

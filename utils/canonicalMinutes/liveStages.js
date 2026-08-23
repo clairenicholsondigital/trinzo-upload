@@ -9,6 +9,7 @@ const { groundProposal } = require('./grounding');
 const { auditConfirmedAgainstScreen } = require('./runner');
 const { extractMentionedPeople, damerauLevenshtein } = require('../entityNormalization');
 const { buildConfirmedUnderstanding } = require('../stagedSemanticAuthority');
+const { joinConceptLabels } = require('./initialUnderstanding');
 
 function strings(values) {
   return (Array.isArray(values) ? values : []).map((value) => clean(value)).filter(Boolean);
@@ -131,9 +132,15 @@ function buildConfirmedState(transcriptText, fileName, confirmed = {}) {
 
 function summaryScreen(proposal) {
   const objectives = proposal.objectives.map((item) => item.text);
+  // Deriving topics from objectives was a stopgap for meetings with no topics at all,
+  // sized for the era of at most four objectives. Per-workstream derivation now produces
+  // up to eight, and eight manufactured topics dilute the discussion stage's evidence
+  // allocation - measured: a reviewer's own confirmed heading starved of points and
+  // vanished while seven derived siblings soaked up the evidence. The stopgap keeps its
+  // original scale.
   const rawTopicItems = Array.isArray(proposal.topics) && proposal.topics.length
     ? proposal.topics
-    : objectives.map((text) => ({ text: clean(text).replace(/^(?:Review|Confirm|Clarify|Identify|Agree)\s+/i, '') }));
+    : objectives.slice(0, 4).map((text) => ({ text: clean(text).replace(/^(?:Review|Confirm|Clarify|Identify|Agree)\s+/i, '') }));
   const visibleTopicItems = rawTopicItems
     .filter((item) => clean(item?.text))
     .filter((item) => !topicLooksLikeReportedSpeechFragment(item.text));
@@ -144,7 +151,18 @@ function summaryScreen(proposal) {
     .map((item) => clean(item.text))
     .filter(Boolean)
     .slice(0, 4);
-  const synthesis = [inferredPurpose, ...spineItems].filter(Boolean).join(' ');
+  // The floor: a summary of purpose-plus-nothing tells the reviewer nothing the title
+  // field two rows up does not. When the spine is thin, one sentence naming the detected
+  // workstreams - this meeting's own, evidence-gated labels - makes the summary say what
+  // the meeting was actually across. joinConceptLabels because the labels contain "and".
+  const workstreamLabels = (Array.isArray(initialUnderstanding?.primaryWorkstreams) ? initialUnderstanding.primaryWorkstreams : [])
+    .map((item) => clean(item.label))
+    .filter(Boolean)
+    .slice(0, 5);
+  const coveredSentence = spineItems.length < 2 && workstreamLabels.length >= 2
+    ? `It covered ${joinConceptLabels(workstreamLabels.map((label) => label.charAt(0).toLowerCase() + label.slice(1)))}.`
+    : '';
+  const synthesis = [inferredPurpose, coveredSentence, ...spineItems].filter(Boolean).join(' ');
   const meetingType = clean(proposal.meeting?.type).toLowerCase();
   return {
     objectives,
@@ -216,6 +234,19 @@ function applyNameCorrections(value, corrections) {
   if (typeof value === 'string') return corrections.get(clean(value)) || value;
   if (Array.isArray(value)) return value.map((item) => applyNameCorrections(item, corrections));
   return value;
+}
+
+// The same corrections, inside running prose. Owners are bare names so exact match works;
+// a discussion point says "Orla Skally is stuck in the middle" and the reviewer's
+// screen-0 spelling must hold there too - one corrected name, corrected everywhere,
+// which is the whole shape of the corrections contract.
+function replaceNamesInText(text, corrections) {
+  if (!corrections.size || typeof text !== 'string' || !text) return text;
+  let output = text;
+  for (const [from, to] of corrections) {
+    output = output.replace(new RegExp(`\\b${from.replace(/[.*+?^$\{\}()|[\\]\\\\]/g, '\\$&')}\\b`, 'g'), to);
+  }
+  return output;
 }
 
 function applyConfirmedOverlay(stage, screen, state) {
@@ -422,7 +453,14 @@ function runCanonicalLiveStage(transcriptText, options = {}) {
         deadline: capitaliseInitial(deadline),
         evidenceIds
       }));
-  const screen = applyConfirmedOverlay(stage, generatedScreen, state);
+  const correctedScreen = stage === 'discussion' && nameCorrections.size
+    ? (Array.isArray(generatedScreen) ? generatedScreen.map((card) => ({
+        ...card,
+        topic: replaceNamesInText(card.topic, nameCorrections),
+        points: (card.points || []).map((point) => replaceNamesInText(point, nameCorrections))
+      })) : generatedScreen)
+    : generatedScreen;
+  const screen = applyConfirmedOverlay(stage, correctedScreen, state);
   const confirmedValueAudit = auditConfirmedAgainstScreen(state, stage, screen);
   const result = {
     pipeline: 'canonical_staged_v2',

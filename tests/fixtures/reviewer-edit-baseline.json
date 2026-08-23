@@ -15,10 +15,10 @@
           "Where the goods physically go"
         ],
         "headingsRemoved": [
-          "Quality and risk management"
+          "Importer-obligation QMS procedure design"
         ],
-        "coldDiscussionCards": 4,
-        "editedDiscussionCards": 4,
+        "coldDiscussionCards": 8,
+        "editedDiscussionCards": 8,
         "coldActions": 4,
         "editedActions": 4,
         "coldBlockingFlags": 0,
@@ -26,8 +26,12 @@
       },
       "headings": [
         "Where the goods physically go",
-        "Scope and requirements: MDR",
-        "Regulatory and compliance: HPRA",
+        "MDR, PPE and declarations of conformity",
+        "EUDAMED, HPRA and registration evidence",
+        "Language and country requirements",
+        "MedEnvoy and Cody alignment",
+        "Software deep-dive role and responsibilities",
+        "Quality and risk management",
         "Product behaviour and design"
       ],
       "actions": [
@@ -50,17 +54,21 @@
         "actionsChanged": false,
         "headingsAdded": [],
         "headingsRemoved": [],
-        "coldDiscussionCards": 4,
-        "editedDiscussionCards": 4,
+        "coldDiscussionCards": 8,
+        "editedDiscussionCards": 8,
         "coldActions": 4,
         "editedActions": 4,
         "coldBlockingFlags": 0,
         "editedBlockingFlags": 0
       },
       "headings": [
+        "Importer-obligation QMS procedure design",
+        "MDR, PPE and declarations of conformity",
+        "EUDAMED, HPRA and registration evidence",
+        "Language and country requirements",
+        "MedEnvoy and Cody alignment",
+        "Software deep-dive role and responsibilities",
         "Quality and risk management",
-        "Scope and requirements: MDR",
-        "Regulatory and compliance: HPRA",
         "Product behaviour and design"
       ],
       "actions": [
@@ -85,10 +93,10 @@
           "What we owe the client"
         ],
         "headingsRemoved": [
-          "Quality and risk management"
+          "Importer-obligation QMS procedure design"
         ],
-        "coldDiscussionCards": 4,
-        "editedDiscussionCards": 4,
+        "coldDiscussionCards": 8,
+        "editedDiscussionCards": 8,
         "coldActions": 4,
         "editedActions": 4,
         "coldBlockingFlags": 0,
@@ -96,8 +104,12 @@
       },
       "headings": [
         "What we owe the client",
-        "Scope and requirements: MDR",
-        "Regulatory and compliance: HPRA",
+        "MDR, PPE and declarations of conformity",
+        "EUDAMED, HPRA and registration evidence",
+        "Language and country requirements",
+        "MedEnvoy and Cody alignment",
+        "Software deep-dive role and responsibilities",
+        "Quality and risk management",
         "Product behaviour and design"
       ],
       "actions": [
@@ -122,20 +134,24 @@
           "CAN bus integration"
         ],
         "headingsRemoved": [
-          "Language support and localisation"
+          "Language and country requirements"
         ],
-        "coldDiscussionCards": 4,
-        "editedDiscussionCards": 4,
+        "coldDiscussionCards": 8,
+        "editedDiscussionCards": 8,
         "coldActions": 5,
         "editedActions": 5,
         "coldBlockingFlags": 0,
         "editedBlockingFlags": 0
       },
       "headings": [
-        "CAN bus integration",
-        "Cybersecurity and access controls",
-        "Electrical compliance testing: IEC 60601",
-        "Other"
+        "Risk analysis and audit-planning evidence",
+        "Alarm-code and clinical confirmation",
+        "Debug and test-script evidence",
+        "Change control and version traceability",
+        "Electrical compliance evidence",
+        "Cybersecurity, USB and GUI controls",
+        "Standards and risk-management work",
+        "CAN bus integration"
       ],
       "actions": [
         "Jacqui Fox | Follow follow up with Colm as well | Not stated",
@@ -160,17 +176,21 @@
           "Other"
         ],
         "headingsRemoved": [],
-        "coldDiscussionCards": 4,
-        "editedDiscussionCards": 5,
+        "coldDiscussionCards": 8,
+        "editedDiscussionCards": 9,
         "coldActions": 4,
         "editedActions": 4,
         "coldBlockingFlags": 0,
         "editedBlockingFlags": 0
       },
       "headings": [
+        "Importer-obligation QMS procedure design",
+        "MDR, PPE and declarations of conformity",
+        "EUDAMED, HPRA and registration evidence",
+        "Language and country requirements",
+        "MedEnvoy and Cody alignment",
+        "Software deep-dive role and responsibilities",
         "Quality and risk management",
-        "Scope and requirements: MDR",
-        "Regulatory and compliance: HPRA",
         "Product behaviour and design",
         "Other"
       ],
@@ -194,17 +214,21 @@
         "actionsChanged": false,
         "headingsAdded": [],
         "headingsRemoved": [],
-        "coldDiscussionCards": 4,
-        "editedDiscussionCards": 4,
+        "coldDiscussionCards": 8,
+        "editedDiscussionCards": 8,
         "coldActions": 4,
         "editedActions": 4,
         "coldBlockingFlags": 0,
         "editedBlockingFlags": 0
       },
       "headings": [
+        "Importer-obligation QMS procedure design",
+        "MDR, PPE and declarations of conformity",
+        "EUDAMED, HPRA and registration evidence",
+        "Language and country requirements",
+        "MedEnvoy and Cody alignment",
+        "Software deep-dive role and responsibilities",
         "Quality and risk management",
-        "Scope and requirements: MDR",
-        "Regulatory and compliance: HPRA",
         "Product behaviour and design"
       ],
       "actions": [
@@ -227,17 +251,21 @@
         "actionsChanged": false,
         "headingsAdded": [],
         "headingsRemoved": [],
-        "coldDiscussionCards": 4,
-        "editedDiscussionCards": 4,
+        "coldDiscussionCards": 8,
+        "editedDiscussionCards": 8,
         "coldActions": 4,
         "editedActions": 4,
         "coldBlockingFlags": 0,
         "editedBlockingFlags": 0
       },
       "headings": [
+        "Importer-obligation QMS procedure design",
+        "MDR, PPE and declarations of conformity",
+        "EUDAMED, HPRA and registration evidence",
+        "Language and country requirements",
+        "MedEnvoy and Cody alignment",
+        "Software deep-dive role and responsibilities",
         "Quality and risk management",
-        "Scope and requirements: MDR",
-        "Regulatory and compliance: HPRA",
         "Product behaviour and design"
       ],
       "actions": [
@@ -260,17 +288,21 @@
         "actionsChanged": false,
         "headingsAdded": [],
         "headingsRemoved": [],
-        "coldDiscussionCards": 4,
-        "editedDiscussionCards": 4,
+        "coldDiscussionCards": 8,
+        "editedDiscussionCards": 8,
         "coldActions": 4,
         "editedActions": 4,
         "coldBlockingFlags": 0,
         "editedBlockingFlags": 0
       },
       "headings": [
+        "Importer-obligation QMS procedure design",
+        "MDR, PPE and declarations of conformity",
+        "EUDAMED, HPRA and registration evidence",
+        "Language and country requirements",
+        "MedEnvoy and Cody alignment",
+        "Software deep-dive role and responsibilities",
         "Quality and risk management",
-        "Scope and requirements: MDR",
-        "Regulatory and compliance: HPRA",
         "Product behaviour and design"
       ],
       "actions": [
@@ -293,17 +325,21 @@
         "actionsChanged": true,
         "headingsAdded": [],
         "headingsRemoved": [],
-        "coldDiscussionCards": 4,
-        "editedDiscussionCards": 4,
+        "coldDiscussionCards": 8,
+        "editedDiscussionCards": 8,
         "coldActions": 4,
         "editedActions": 4,
         "coldBlockingFlags": 0,
         "editedBlockingFlags": 0
       },
       "headings": [
+        "Importer-obligation QMS procedure design",
+        "MDR, PPE and declarations of conformity",
+        "EUDAMED, HPRA and registration evidence",
+        "Language and country requirements",
+        "MedEnvoy and Cody alignment",
+        "Software deep-dive role and responsibilities",
         "Quality and risk management",
-        "Scope and requirements: MDR",
-        "Regulatory and compliance: HPRA",
         "Product behaviour and design"
       ],
       "actions": [
@@ -322,21 +358,25 @@
       "unpreservedFacts": [],
       "difference": {
         "summaryChanged": false,
-        "discussionChanged": false,
+        "discussionChanged": true,
         "actionsChanged": true,
         "headingsAdded": [],
         "headingsRemoved": [],
-        "coldDiscussionCards": 4,
-        "editedDiscussionCards": 4,
+        "coldDiscussionCards": 8,
+        "editedDiscussionCards": 8,
         "coldActions": 4,
         "editedActions": 4,
         "coldBlockingFlags": 0,
         "editedBlockingFlags": 0
       },
       "headings": [
+        "Importer-obligation QMS procedure design",
+        "MDR, PPE and declarations of conformity",
+        "EUDAMED, HPRA and registration evidence",
+        "Language and country requirements",
+        "MedEnvoy and Cody alignment",
+        "Software deep-dive role and responsibilities",
         "Quality and risk management",
-        "Scope and requirements: MDR",
-        "Regulatory and compliance: HPRA",
         "Product behaviour and design"
       ],
       "actions": [
@@ -359,19 +399,22 @@
         "actionsChanged": false,
         "headingsAdded": [],
         "headingsRemoved": [],
-        "coldDiscussionCards": 5,
-        "editedDiscussionCards": 5,
+        "coldDiscussionCards": 8,
+        "editedDiscussionCards": 8,
         "coldActions": 4,
         "editedActions": 4,
         "coldBlockingFlags": 0,
         "editedBlockingFlags": 0
       },
       "headings": [
-        "Language support and localisation",
+        "Importer-obligation QMS procedure design",
+        "MDR, PPE and declarations of conformity",
+        "Language and country requirements",
+        "MedEnvoy and Cody alignment",
+        "Audience questions and Q&A handling",
         "Quality and risk management",
         "Customer and stakeholder feedback",
-        "Product behaviour and design",
-        "Other"
+        "EUDAMED, HPRA and registration evidence"
       ],
       "actions": [
         "John-Paul Hughes | Have to review labels as well from a regulatory point of view | Not stated",
@@ -393,17 +436,21 @@
         "actionsChanged": false,
         "headingsAdded": [],
         "headingsRemoved": [],
-        "coldDiscussionCards": 4,
-        "editedDiscussionCards": 4,
+        "coldDiscussionCards": 8,
+        "editedDiscussionCards": 8,
         "coldActions": 4,
         "editedActions": 4,
         "coldBlockingFlags": 0,
         "editedBlockingFlags": 0
       },
       "headings": [
+        "Importer-obligation QMS procedure design",
+        "MDR, PPE and declarations of conformity",
+        "EUDAMED, HPRA and registration evidence",
+        "Language and country requirements",
+        "MedEnvoy and Cody alignment",
+        "Software deep-dive role and responsibilities",
         "Quality and risk management",
-        "Scope and requirements: MDR",
-        "Regulatory and compliance: HPRA",
         "Product behaviour and design"
       ],
       "actions": [
@@ -426,18 +473,20 @@
         "actionsChanged": false,
         "headingsAdded": [],
         "headingsRemoved": [],
-        "coldDiscussionCards": 4,
-        "editedDiscussionCards": 4,
+        "coldDiscussionCards": 6,
+        "editedDiscussionCards": 6,
         "coldActions": 3,
         "editedActions": 3,
         "coldBlockingFlags": 0,
         "editedBlockingFlags": 0
       },
       "headings": [
-        "Quality and risk indicators",
+        "Importer-obligation QMS procedure design",
+        "MedEnvoy and Cody alignment",
+        "Software deep-dive role and responsibilities",
+        "Standards and risk-management work",
         "Cybersecurity and access controls",
-        "Other",
-        "Other"
+        "Risk analysis and audit-planning evidence"
       ],
       "actions": [
         "Stuart Smith | Provide the applicable classifications and an overview of the products | Not stated",

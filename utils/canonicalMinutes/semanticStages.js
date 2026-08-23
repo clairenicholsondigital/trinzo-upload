@@ -614,19 +614,25 @@ function contextStage(evidence, profile, state = {}, reviewerGuidance = '', topo
   // This meeting's own actions, so the summary can say what it worked on rather
   // than repeating a sentence fixed to the meeting type. Failure here must not
   // cost the summary: the purpose falls back to describing the discussion.
-  let actionSubjects = [];
+  let actionSignals = [];
   try {
-    actionSubjects = (actionsStage(evidence, state, profile, topology)?.actions || []).map((item) => item.action).filter(Boolean);
+    actionSignals = (actionsStage(evidence, state, profile, topology)?.actions || [])
+      .map((item) => ({ action: item.action, evidenceIds: Array.isArray(item.evidenceIds) ? item.evidenceIds : [] }))
+      .filter((item) => item.action)
+      .slice(0, 10);
   } catch (error) {
-    actionSubjects = [];
+    actionSignals = [];
   }
   const initialUnderstanding = buildInitialUnderstanding({
     evidence,
     meeting: state.meeting || {},
     topics,
     meetingSpine: spine,
-    actions: actionSubjects
+    actions: actionSignals
   });
+  // The pairs ride on the understanding so the summary evidence pack can cite the turns
+  // each action came from - computed here anyway, and previously thrown away.
+  if (initialUnderstanding) initialUnderstanding.actionSignals = actionSignals;
   return {
     meeting: state.meeting || { participants: evidence.participants },
     objectives: (initialUnderstanding.objectives && initialUnderstanding.objectives.length
@@ -1456,6 +1462,29 @@ function contentStage(evidence, state, profile) {
   if (plannedDiscussion.length) {
     if (reviewerPlannedCount > 0) {
       discussion = plannedDiscussion;
+      // A heading the reviewer confirmed survives even when no evidence could be
+      // allocated to it. discussionCardsFromPlan drops point-less cards, which is right
+      // for derived workstreams and a broken promise for confirmed ones: the reviewer
+      // wrote that heading, and whether it earns points depends on how thinly the
+      // evidence spread across its siblings - allocation luck, not their judgement. The
+      // card returns empty (an empty card is already a legitimate state: a reviewer may
+      // empty one themselves and it must stay emptied), and the existing non-blocking
+      // flag machinery names it for them to fill or remove.
+      const plannedTopicKeys = new Set(discussion.map((card) => clean(card.topic).toLowerCase()));
+      for (const workstream of discussionPlan.workstreams || []) {
+        if (workstream.provenance !== 'reviewer_confirmed') continue;
+        const key = clean(workstream.label).toLowerCase();
+        if (plannedTopicKeys.has(key)) continue;
+        plannedTopicKeys.add(key);
+        discussion.push({
+          topic: workstream.label,
+          points: [],
+          evidenceIds: [...(workstream.evidenceIds || [])],
+          topicId: workstream.topicId || workstream.id || null,
+          confirmedTopic: true,
+          plannedWorkstream: { id: workstream.id, provenance: workstream.provenance, evidenceCount: (workstream.evidenceIds || []).length }
+        });
+      }
     } else {
       const plannedIds = new Set(plannedDiscussion.map((card) => clean(card.topic).toLowerCase()));
       const transcriptEmergentRoom = Math.max(0, discussionLimit - plannedDiscussion.length);

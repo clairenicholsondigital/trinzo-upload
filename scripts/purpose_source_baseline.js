@@ -69,12 +69,19 @@ async function collectDetails() {
     // body-derived.
     const title = details.meetingTitle || '';
     const fromTitleOnly = api.inferStagedMeetingType('', fileName, title);
+    const suggestion = details.meetingTypeSuggestion;
     rows.push({
       file,
       corpus: corpusOf(file),
       title,
       type: details.meetingType || '',
-      typeFromBodyOnly: Boolean(details.meetingType) && details.meetingType !== fromTitleOnly,
+      // A type that differs from the title-only answer is a failure ONLY when it carries
+      // no qualifying evidence trail. The gated suggestion is the sanctioned exception -
+      // same rewording as the corpus invariant test - and is reported separately so a
+      // human still eyeballs every one it fires on.
+      typeFromBodyOnly: Boolean(details.meetingType) && details.meetingType !== fromTitleOnly && !(suggestion && suggestion.accepted),
+      typeSuggested: Boolean(suggestion && suggestion.accepted),
+      suggestionMargin: suggestion && suggestion.accepted ? suggestion.marginRatio : null,
       typeFromTitle: fromTitleOnly
     });
   }
@@ -129,7 +136,10 @@ function report(details, purposes) {
   const bodyOnly = details.filter((row) => row.typeFromBodyOnly);
   console.log('');
   console.log(`transcripts                                   : ${details.length}`);
-  console.log(`M1  type inferred from body text only         : ${bodyOnly.length}   (target 0)`);
+  console.log(`M1  ungated body-derived types                : ${bodyOnly.length}   (target 0)`);
+  const suggested = details.filter((row) => row.typeSuggested);
+  console.log(`    gated suggestions fired (eyeball these)   : ${suggested.length}`);
+  for (const row of suggested) console.log(`      ${row.type.padEnd(26)} margin ${String(row.suggestionMargin).padEnd(5)} ${row.title.slice(0, 40).padEnd(40)} ${row.file.split('/').slice(-2)[0]}`);
   for (const row of bodyOnly) console.log(`      ${row.type.padEnd(26)} would be ${String(row.typeFromTitle).padEnd(26)} ${row.title.slice(0, 34).padEnd(34)} ${row.file.split('/').slice(-2)[0]}`);
 
   if (!purposes.length) return bodyOnly.length;
