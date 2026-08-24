@@ -2508,66 +2508,10 @@ function stagedFastContextIsUsable(stage, context) {
   return false;
 }
 
-async function buildStagedGenerationContext(stage, transcript, req, onProgress = async () => {}) {
-  let fastContext = null;
-  let actionEvidenceContext = null;
-  let evidencePack = [];
-  let workstreamState = [];
-  if (stage === 'discussion') {
-    await onProgress(18, 'Building a semantic evidence pack for the confirmed discussion topics.');
-    fastContext = await buildStagedMiniLMContext(transcript);
-    const confirmedTopics = stagedContextFromRequest(req).overallTopics;
-    evidencePack = fillMissingStagedWorkstreamEvidence(
-      buildStagedMiniLMEvidencePack(fastContext, confirmedTopics),
-      transcript,
-      confirmedTopics
-    );
-    workstreamState = buildStagedWorkstreamState(evidencePack, fastContext, confirmedTopics);
-  }
-  if (stage === 'actions') {
-    await onProgress(18, 'Reviewing transcript evidence for actions.');
-    actionEvidenceContext = await buildStagedEvidenceClassifierContext(transcript);
-  }
-
-  await onProgress(25, stage === 'summary'
-    ? 'AI is drafting objectives, summary and topics from the confirmed meeting details.'
-    : `AI is drafting staged ${stage} content from the confirmed meeting details.`);
-  let trooperContext = await buildStagedTrooperContext(stage, transcript, req, { evidencePack, workstreamState, actionEvidenceContext });
-  if (stage === 'actions') {
-    trooperContext = attachStagedEvidenceClassifierContext(trooperContext, actionEvidenceContext);
-  }
-  if (stage === 'discussion' && trooperContext.ok && stagedDiscussionNeedsRetry(trooperContext, req, transcript, evidencePack, workstreamState)) {
-    await onProgress(45, 'AI discussion output was too thin, re-running against the semantic topic evidence.');
-    const retryContext = await buildStagedTrooperContext(stage, transcript, req, { strictTopicCoverage: true, evidencePack, workstreamState });
-    const originalCount = discussionFromStagedMiniLM(trooperContext).length;
-    const retryCount = discussionFromStagedMiniLM(retryContext).length;
-    const originalMissing = missingStagedWorkstreamsFromOutput(trooperContext, workstreamState).length;
-    const retryMissing = missingStagedWorkstreamsFromOutput(retryContext, workstreamState).length;
-    if (retryContext.ok && (!stagedDiscussionNeedsRetry(retryContext, req, transcript, evidencePack, workstreamState) || retryCount > originalCount || retryMissing < originalMissing)) {
-      trooperContext = retryContext;
-    }
-  }
-  if (trooperContext.ok) {
-    return { context: trooperContext, provider: 'trooper-stage', fallbackUsed: false };
-  }
-
-  await onProgress(45, stage === 'summary'
-    ? 'AI stage was unavailable, using the faster transcript scan for summary and topics.'
-    : `AI stage was unavailable, using the faster transcript scan for ${stage}.`);
-  if (!fastContext) fastContext = await buildStagedMiniLMContext(transcript);
-  if (stage === 'actions') {
-    fastContext = attachStagedEvidenceClassifierContext(fastContext, actionEvidenceContext);
-  }
-  if (stagedFastContextIsUsable(stage, fastContext)) {
-    return { context: fastContext, provider: 'fast-staged-analysis', fallbackUsed: true };
-  }
-
-  return {
-    context: fastContext.ok ? fastContext : trooperContext,
-    provider: fastContext.ok ? 'fast-staged-analysis' : 'trooper',
-    fallbackUsed: true
-  };
-}
+// buildStagedGenerationContext was the 60-line entry point of the pre-canonical staged path, deleted in the
+// Phase 5 consolidation when its last caller (runStagedSequenceForEvaluation) moved to
+// canonicalStagedResponse - the pipeline the reviewer actually sees. Its shared helpers
+// remain where other paths still use them.
 
 function transcriptForStagedAI(transcript, inputPayload = {}) {
   const prepared = transcript?.preparedTranscript || inputPayload?.preparedTranscript;
@@ -2686,59 +2630,10 @@ function stagedDetailsWithConfirmedContext(req, transcript) {
   };
 }
 
-async function buildStagedSummaryResponse(req, transcript, minilmContext = null) {
-  const details = stagedDetailsWithConfirmedContext(req, transcript);
-  const output = stagedMiniLMOutput(minilmContext);
-  const topics = topicsFromStagedMiniLM(minilmContext).length
-    ? topicsFromStagedMiniLM(minilmContext)
-    : extractOverallTopicsFromTranscript(transcript.text);
-  const objectiveReduction = buildTightStagedObjectives({
-    topics,
-    meetingTitle: details.meetingTitle,
-    meetingType: details.meetingType,
-    summary: output.executiveSummary || output.meetingDescription || output.summary,
-    maxObjectives: Math.min(7, Math.max(3, topics.length))
-  });
-  const objectives = objectiveReduction.objectives.length
-    ? objectiveReduction.objectives
-    : ['Review the confirmed meeting topics and agreed follow-up points.'];
-  const generatedSummary = cleanStagedExecutiveSummary(output.executiveSummary || output.meetingDescription || output.summary) ||
-    (topics.length
-      ? 'The transcript contains substantive project, technical and follow-up evidence for structured review. The discussion stage should confirm current positions, agreed changes, unresolved dependencies and time-critical actions before approval.'
-      : 'The project status, agreed changes, unresolved risks and timeline impact should be confirmed from the transcript before moving to detailed discussion points.');
-  const grammarPolish = await grammarPolishStagedExecutiveSummary(generatedSummary);
-  const summary = grammarPolish.text || generatedSummary;
-
-  return {
-    ok: true,
-    source: transcript.source,
-    fileName: transcript.fileName || null,
-    transcriptLength: transcript.text.length,
-    staged: true,
-    stagedStage: 'summary',
-    screens: {
-      summary: {
-        objectives,
-        executiveSummary: summary,
-        overallTopics: topics
-      }
-    },
-    telemetryPreview: {
-      stage: 'summary',
-      topicCount: topics.length,
-      transcriptLength: transcript.text.length,
-      embeddingClassifier: stagedMiniLMTelemetry(minilmContext),
-      executiveSummaryGrammar: {
-        attempted: true,
-        used: Boolean(grammarPolish.used),
-        reason: grammarPolish.reason,
-        overlap: grammarPolish.overlap,
-        timingMs: grammarPolish.timingMs
-      },
-      objectiveReducer: objectiveReduction.telemetry
-    }
-  };
-}
+// buildStagedSummaryResponse was the 53-line entry point of the pre-canonical staged path, deleted in the
+// Phase 5 consolidation when its last caller (runStagedSequenceForEvaluation) moved to
+// canonicalStagedResponse - the pipeline the reviewer actually sees. Its shared helpers
+// remain where other paths still use them.
 
 function topicKeywords(topic) {
   return String(topic || '')
@@ -3487,140 +3382,10 @@ function buildStagedWorkstreamCoverage(topics = [], discussion = [], workstreamS
   });
 }
 
-async function buildStagedDiscussionResponse(req, transcript, minilmContext = null) {
-  const context = stagedContextFromRequest(req);
-  const miniLmDiscussion = discussionFromStagedMiniLM(minilmContext);
-  const topicCandidates = context.overallTopics.length
-    ? context.overallTopics
-    : (topicsFromStagedMiniLM(minilmContext).length ? topicsFromStagedMiniLM(minilmContext) : extractOverallTopicsFromTranscript(transcript.text));
-  const topics = topicCandidates.map(cleanStagedGeneratedLine).filter((topic) => topic && !topicIsIncomplete(topic) && classifyStagedTopic(topic) !== 'administrative_only')
-    .filter((topic, index, all) => all.findIndex((candidate) => stagedTokenSimilarity(candidate, topic) >= 0.78) === index)
-    .slice(0, 8);
-  const details = stagedDetailsWithConfirmedContext(req, transcript);
-  const participants = context.participants.length ? context.participants : details.allAttendees;
-  const meetingType = context.meetingType || details.meetingType || 'Project review';
-  const confirmedWorkstreamState = minilmContext?.workstreamState || [];
-  const evidenceFilteredDiscussion = filterDiscussionCardsByWorkstreamEvidence(miniLmDiscussion, confirmedWorkstreamState);
-  const initiallyDroppedMisattributed = Array.isArray(evidenceFilteredDiscussion.droppedMisattributed)
-    ? evidenceFilteredDiscussion.droppedMisattributed
-    : [];
-  const alignedDiscussion = context.overallTopics.length
-    ? alignDiscussionCardsToConfirmedTopics(
-      evidenceFilteredDiscussion,
-      context.overallTopics,
-      transcript,
-      meetingType,
-      participants,
-      confirmedWorkstreamState
-    )
-    : evidenceFilteredDiscussion;
-  const leakageRepair = repairDiscussionPointWorkstreamLeakage(alignedDiscussion, confirmedWorkstreamState);
-  const rawDiscussion = leakageRepair.cards;
-  const droppedMisattributed = [
-    ...initiallyDroppedMisattributed,
-    ...leakageRepair.moved.map((item) => ({ topic: item.from, droppedPointCount: 1, reason: `reassigned_to:${item.to}` })),
-    ...leakageRepair.dropped.map((item) => ({ topic: item.from, droppedPointCount: 1, reason: 'wrong_section_leakage' }))
-  ];
-  const discussionCompaction = compactStagedDiscussionCards(rawDiscussion, { pointLimit: 4 });
-  const reshapedDiscussion = reshapeStagedDiscussionCardsForHumanMinutes(discussionCompaction.cards, { pointLimit: 6, processDetailPointLimit: 8 });
-  const semanticPreservation = repairDiscussionForConfirmedUnderstanding({
-    discussion: reshapedDiscussion,
-    understanding: context.confirmedUnderstanding,
-    transcriptText: transcript.text
-  });
-  const discussion = reshapeStagedDiscussionCardsForHumanMinutes(semanticPreservation.discussion, {
-    pointLimit: 6,
-    processDetailPointLimit: 8
-  });
-  const workstreamCoverage = buildStagedWorkstreamCoverage(topics, discussion, confirmedWorkstreamState);
-  const output = stagedMiniLMOutput(minilmContext);
-  const generatedExecutiveSummaryFromFindings = cleanStagedExecutiveSummary(
-    output.executiveSummaryFromFindings || output.summaryFromFindings || output.executiveSummary || ''
-  );
-  const grammarPolish = generatedExecutiveSummaryFromFindings
-    ? await grammarPolishStagedExecutiveSummary(generatedExecutiveSummaryFromFindings)
-    : { text: '', used: false, reason: 'empty_text' };
-  const executiveSummaryFromFindings = grammarPolish.text || generatedExecutiveSummaryFromFindings;
-  const screens = {
-    discussion: discussion.length ? discussion : []
-  };
-  if (executiveSummaryFromFindings) {
-    screens.summary = {
-      executiveSummary: executiveSummaryFromFindings,
-      overallTopics: topics
-    };
-  }
-
-  const droppedDuplicates = Array.isArray(miniLmDiscussion.droppedDuplicates) ? miniLmDiscussion.droppedDuplicates : [];
-  const validationFlags = [
-    ...buildStagedValidationFlags({
-    objectives: context.objectives,
-    discussion,
-    droppedDuplicates,
-    droppedMisattributed
-    }),
-    ...semanticPreservation.validationFlags
-  ];
-  for (const coverage of workstreamCoverage) {
-    if (!['missing', 'thin'].includes(coverage.status)) continue;
-    const discussionIndex = discussion.findIndex((card) => normaliseTopicKey(card?.topic) === normaliseTopicKey(coverage.topic));
-    validationFlags.push({
-      type: coverage.status === 'missing' ? 'unresolved_substantive_workstream' : 'thin_substantive_workstream',
-      severity: 'warning',
-      blocking: coverage.status === 'missing',
-      resolutionKey: `workstream:${normaliseTopicKey(coverage.topic)}`,
-      fieldPath: discussionIndex >= 0 ? `discussion.${discussionIndex}.points` : null,
-      message: coverage.status === 'missing'
-        ? `"${coverage.topic}" appears in the transcript but is not currently in the discussion notes. Add the suggested section, mark it as intentionally left out, or return to the summary topics.`
-        : `"${coverage.topic}" only has one discussion point. Scan the section and add any missing transcript-supported detail if needed.`,
-      discussionSuggestion: coverage.status === 'missing' && Array.isArray(confirmedWorkstreamState)
-        ? (() => {
-            const state = findWorkstreamStateForTopic(confirmedWorkstreamState, coverage.topic);
-            const point = discussionFallbackForWorkstreamState(state, coverage.topic)?.points?.[0] || '';
-            return point ? { topic: coverage.topic, point, source: 'workstream_evidence' } : null;
-          })()
-        : null
-    });
-  }
-
-  return {
-    ok: true,
-    source: transcript.source,
-    fileName: transcript.fileName || null,
-    transcriptLength: transcript.text.length,
-    staged: true,
-    stagedStage: 'discussion',
-    screens,
-    validationFlags,
-    workstreamCoverage,
-    contextUsed: {
-      meetingType,
-      participantCount: participants.length,
-      overallTopics: topics,
-      meetingPurpose: context.meetingPurpose,
-      keyFactCount: context.keyFacts.length,
-      confirmedUnderstanding: context.confirmedUnderstanding
-    },
-    telemetryPreview: {
-      stage: 'discussion',
-      topicCount: topics.length,
-      discussionCards: discussion.length,
-      reviewerConfirmedFactPreservation: semanticPreservation.telemetry,
-      droppedMisattributedDiscussionPoints: droppedMisattributed.length,
-      workstreamCoverage,
-      transcriptLength: transcript.text.length,
-      embeddingClassifier: stagedMiniLMTelemetry(minilmContext),
-      executiveSummaryGrammar: {
-        attempted: Boolean(generatedExecutiveSummaryFromFindings),
-        used: Boolean(grammarPolish.used),
-        reason: grammarPolish.reason,
-        overlap: grammarPolish.overlap,
-        timingMs: grammarPolish.timingMs
-      },
-      discussionCompaction: discussionCompaction.telemetry
-    }
-  };
-}
+// buildStagedDiscussionResponse was the 134-line entry point of the pre-canonical staged path, deleted in the
+// Phase 5 consolidation when its last caller (runStagedSequenceForEvaluation) moved to
+// canonicalStagedResponse - the pipeline the reviewer actually sees. Its shared helpers
+// remain where other paths still use them.
 
 function extractActionCandidatesFromTranscript(transcriptText) {
   const lines = String(transcriptText || '')
@@ -3811,21 +3576,10 @@ function buildStagedMeetingMinutesResponse(req, transcript, result) {
   };
 }
 
-function stagedEvaluationRequest(stage, state = {}) {
-  return {
-    query: { pipeline: MEETING_MINUTES_JOB_PIPELINE },
-    body: {
-      stage,
-      confirmedDetails: state.details || {},
-      confirmedSummary: state.summary || {},
-      confirmedDiscussion: Array.isArray(state.discussion) ? state.discussion : [],
-      confirmedActions: Array.isArray(state.actions) ? state.actions : [],
-      reviewObjectives: Array.isArray(state.summary?.objectives) ? state.summary.objectives : [],
-      reviewDiscussion: Array.isArray(state.discussion) ? state.discussion : [],
-      reviewActions: Array.isArray(state.actions) ? state.actions : []
-    }
-  };
-}
+// stagedEvaluationRequest was the 15-line entry point of the pre-canonical staged path, deleted in the
+// Phase 5 consolidation when its last caller (runStagedSequenceForEvaluation) moved to
+// canonicalStagedResponse - the pipeline the reviewer actually sees. Its shared helpers
+// remain where other paths still use them.
 
 function stagedEvaluationVisibleOutput(state = {}) {
   const discussion = Array.isArray(state.discussion) ? state.discussion : [];
@@ -3927,24 +3681,23 @@ function stagedNoEditReviewExperience(trace = []) {
 }
 
 async function runStagedSequenceForEvaluation(transcriptText, options = {}) {
+  // The evaluation sequence runs the pipeline that ships, because it used to run a
+  // different one. This function drove buildStagedSummaryResponse and its siblings - an
+  // older, parallel staged path - while every reviewer-facing screen was served by
+  // canonicalStagedResponse, so the no-edit pass and both evaluation scripts were
+  // measuring code the reviewer never saw. An evaluation of the wrong pipeline is worse
+  // than no evaluation: it produces confident numbers about nothing.
+  //
+  // The shape of the return is unchanged - state, visibleOutput, trace,
+  // deterministicActionInventoryCount - and the trace entries keep the two fields their
+  // consumers actually read (stage, validationFlags), now with each stage's
+  // pipelineHealth riding along, since the whole point of a no-edit pass is to see what
+  // served the screen.
   validateTranscriptText(transcriptText);
   const rawTranscript = {
     text: String(transcriptText || ''),
     source: 'staged-seven-case-evaluation',
     fileName: String(options.fileName || 'transcript.txt')
-  };
-  const prepared = buildPreparedTranscriptForStagedAI(rawTranscript.text);
-  const aiTranscript = {
-    text: prepared.text,
-    source: `${rawTranscript.source}-prepared`,
-    fileName: rawTranscript.fileName,
-    preparedTranscriptTelemetry: {
-      rawLength: prepared.rawLength,
-      preparedLength: prepared.preparedLength,
-      removedLineCount: prepared.removedLineCount,
-      removedReasons: prepared.removedReasons,
-      source: 'deterministic_stage_1_prep'
-    }
   };
   const detailsResponse = extractStagedDetailsFromTranscript(rawTranscript.text, rawTranscript.fileName);
   const evidenceLedger = buildStagedEvidenceLedger(rawTranscript.text);
@@ -3961,40 +3714,26 @@ async function runStagedSequenceForEvaluation(transcriptText, options = {}) {
     provider: 'deterministic_stage_1_prep',
     outputCount: 1,
     telemetry: detailsResponse.telemetryPreview,
-    preparedTranscriptTelemetry: aiTranscript.preparedTranscriptTelemetry
+    // contextMode chose between generation backends on the old path. The canonical
+    // pipeline has one backend, so the option is recorded as ignored rather than
+    // silently accepted - an evaluation flag that quietly does nothing is a trap for
+    // whoever reads the results.
+    ...(options.contextMode ? { ignoredOptions: { contextMode: String(options.contextMode) } } : {})
   }];
 
-  let deterministicContext = null;
-  if (options.contextMode === 'extractor') {
-    const result = await runPythonTranscriptScript(
-      'meeting_minutes_trooper.py',
-      aiTranscript.text,
-      ['--skip-rewrite', '--skip-diagnostics'],
-      { timeoutMs: Number(options.timeoutMs || MEETING_MINUTES_FINAL_TIMEOUT_MS) }
-    );
-    deterministicContext = {
-      ok: Boolean(result?.output && typeof result.output === 'object'),
-      output: result?.output || {},
-      counts: result?.counts || {},
-      diagnostics: {
-        provider: 'deterministic_trooper_extractor',
-        modelAvailable: Boolean(result?.modelAvailable),
-        modelName: result?.modelName || '',
-        modelReason: result?.modelReason || '',
-        timingMs: result?.timingMs || {}
-      }
-    };
-  }
-
+  const transcript = { text: rawTranscript.text, source: rawTranscript.source, fileName: rawTranscript.fileName };
   for (const stage of ['summary', 'discussion', 'actions']) {
-    const req = stagedEvaluationRequest(stage, state);
-    const generation = deterministicContext
-      ? { context: deterministicContext, provider: 'deterministic-trooper-extractor', fallbackUsed: true }
-      : await buildStagedGenerationContext(stage, aiTranscript, req);
-    let response;
-    if (stage === 'summary') response = await buildStagedSummaryResponse(req, aiTranscript, generation.context);
-    else if (stage === 'discussion') response = await buildStagedDiscussionResponse(req, aiTranscript, generation.context);
-    else response = buildStagedActionsResponse(req, aiTranscript, generation.context, rawTranscript.text);
+    const input = { confirmedDetails: state.details };
+    if (stage !== 'summary' && state.summary) {
+      input.confirmedSummary = {
+        meetingPurpose: state.summary.meetingPurpose,
+        objectives: state.summary.objectives || [],
+        executiveSummary: state.summary.executiveSummary,
+        overallTopics: state.summary.overallTopics || [],
+        topicRefs: (state.summary.topicRefs || []).map((ref) => ({ text: ref.text, topicId: ref.topicId, evidenceIds: ref.evidenceIds }))
+      };
+    }
+    const response = await canonicalStagedResponse(stage, transcript, input);
     const value = response.screens?.[stage];
     state[stage] = stage === 'summary'
       ? (value || {})
@@ -4011,8 +3750,8 @@ async function runStagedSequenceForEvaluation(transcriptText, options = {}) {
     }
     trace.push({
       stage,
-      provider: generation.provider,
-      fallbackUsed: Boolean(generation.fallbackUsed),
+      provider: 'canonical_staged_pipeline',
+      fallbackUsed: response.pipelineHealth?.served === 'degraded',
       inputTopicCount: Array.isArray(state.summary?.overallTopics) ? state.summary.overallTopics.length : 0,
       outputCount: stage === 'summary'
         ? (Array.isArray(state.summary?.overallTopics) ? state.summary.overallTopics.length : 0)
@@ -4022,7 +3761,7 @@ async function runStagedSequenceForEvaluation(transcriptText, options = {}) {
         : undefined,
       validationFlags,
       telemetry: response.telemetryPreview || {},
-      generationDiagnostics: generation.context?.diagnostics || {}
+      pipelineHealth: response.pipelineHealth || null
     });
   }
 

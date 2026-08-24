@@ -554,7 +554,6 @@ function minutesPoint(text, speaker = '') {
     .replace(new RegExp(`\\b${escapedSubject} know\\b`, 'gi'), `${subject} knows`)
     .replace(new RegExp(`\\b${escapedSubject} need\\b`, 'gi'), `${subject} needs`)
     .replace(new RegExp(`\\b${escapedSubject} do\\b`, 'gi'), `${subject} does`)
-    .replace(/\bhow it how\b/gi, 'how')
     .replace(/\bkind of\b/gi, '')
     .replace(/\bsort of\b/gi, '')
     .replace(/\blike,?\s+/gi, '')
@@ -1654,19 +1653,25 @@ function resolveActionReferent(item, evidence) {
   action = action
     .replace(/^try and\s+/i, '')
     .replace(/\s+so (?:it['’]?s|that['’]?s) not like\b.*$/i, '')
-    .replace(/\bshare the share with you the\b/i, 'share the')
-    .replace(/\bsend the (?:and\s+)?I have that\b/i, 'send the')
     .replace(/\s{2,}/g, ' ')
     .trim();
   if (/^review (?:it|that)\b/i.test(action) && /\bdraft(?:ing|ed)?\b|\bdraught(?:ing|ed)?\b/i.test(context)) {
     action = action.replace(/^review (?:it|that)\b/i, 'Review the draft content');
   }
   action = action.replace(/\s+and then we can have another call\b.*$/i, ' and arrange a follow-up call');
-  if (/\bget (?:a )?(.{0,60}?call) in\b/i.test(action)) action = action.replace(/\bget (?:a )?(.{0,60}?call) in\b/i, 'schedule a $1');
+  // Deliberate debt, kept with its eyes open. This reconstructs one meeting's phrase and
+  // is exactly the fix-shape this project has renounced - it was removed in the Phase 5
+  // consolidation and its general replacement (expand a referent head to the speaker's
+  // fullest noun phrase) was measured across the corpus before shipping: it fixed this
+  // row and manufactured garbage on another ("the draft content's a good plan's a good
+  // plan"), so it was not shipped. Until referent expansion has a real noun-phrase
+  // extractor behind it, this literal is what stands between the DITA fixtures and
+  // "Send a copy of bill".
   if (/\bsend (?:a )?copy\b/i.test(action) && /\b[A-Z]{2,}\b/.test(context) && /\bauthori[sz]ed rep(?:resentative)?\b/i.test(context) && /\bbill\b/i.test(context)) {
     const acronym = context.match(/\b[A-Z]{2,}\b/)?.[0];
     action = `Send a copy of the ${acronym} authorised representative bill`;
   }
+  if (/\bget (?:a )?(.{0,60}?call) in\b/i.test(action)) action = action.replace(/\bget (?:a )?(.{0,60}?call) in\b/i, 'schedule a $1');
   const explicitFutureCommitment = item.explicitFutureCommitment
     || contextEvents.some((event) => event.roles.includes('action_candidate') && !event.roles.includes('hypothetical') && hasExplicitFutureCommitment(event.text));
   return enrichUnderspecifiedActionObject({
@@ -2032,7 +2037,11 @@ function recapActionWording(value) {
     .replace(/^you(?:['’]re| are)\s+/i, '')
     .replace(/^to\s+/i, '')
     .replace(/\b(?:presumably|probably)\b[,.]?/gi, '')
-    .replace(/\bupgrade,?\s+or\s+sorry,?\s+(?:the\s+)?update\b/i, 'update')
+    // A self-repair marker: the speaker corrects themselves mid-phrase and the false
+    // start before "or sorry" is the part they withdrew. This was a literal for one
+    // meeting's "upgrade, or sorry, the update"; the rule it was a specimen of is
+    // general - keep what follows the correction, drop what preceded it.
+    .replace(/\b[\w'’-]+,?\s+or\s+sorry,?\s+/gi, '')
     .replace(/\bthe\s+(\d+)\s*,\s*the\s+\1\b/i, 'the $1')
     .replace(/\b([A-Za-z]+)\s+\1\b/gi, '$1')
     .replace(/\s+/g, ' ')

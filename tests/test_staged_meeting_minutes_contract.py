@@ -14,12 +14,17 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("async function buildStagedTrooperContext", api)
         self.assertIn("function buildStagedTrooperPrompt", api)
         self.assertIn("function stagedTrooperSchema", api)
-        self.assertIn("async function buildStagedGenerationContext", api)
-        self.assertIn("stagedFastContextIsUsable", api)
-        self.assertIn("let trooperContext = await buildStagedTrooperContext(stage, transcript, req, { evidencePack, workstreamState, actionEvidenceContext })", api)
-        self.assertIn("fastContext = await buildStagedMiniLMContext(transcript)", api)
-        self.assertIn("buildStagedMiniLMEvidencePack(fastContext", api)
-        self.assertIn("AI stage was unavailable", api)
+        # buildStagedGenerationContext and the fast-context dispatch it anchored were the
+        # generation backend of the pre-canonical staged path. They were deleted in the
+        # Phase 5 consolidation when runStagedSequenceForEvaluation - their last caller -
+        # moved onto canonicalStagedResponse, so the no-edit pass and the evaluation
+        # scripts now measure the pipeline the reviewer actually sees. The contract this
+        # test protects is therefore stated the other way round: the sequence must run the
+        # canonical pipeline, and the old backend must stay gone.
+        self.assertIn("const response = await canonicalStagedResponse(stage, transcript, input)", api)
+        self.assertNotIn("async function buildStagedGenerationContext", api)
+        self.assertNotIn("async function buildStagedSummaryResponse", api)
+        self.assertNotIn("async function buildStagedDiscussionResponse", api)
         self.assertIn("CONFIRMED_CONTEXT", api)
         self.assertIn("STAGE_INSTRUCTIONS", api)
         self.assertIn("staged_${stage}_targeted", api)
@@ -32,8 +37,11 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("the reviewer should check", api)
         self.assertIn("filter((sentence) => !/\\bthe reviewer should check\\b/i.test(sentence))", api)
         self.assertIn("buildTightStagedObjectives", api)
-        self.assertIn("objectiveReducer", api)
-        self.assertIn("maxObjectives: Math.min(7, Math.max(3, topics.length))", api)
+        # objectiveReducer existed only inside buildStagedSummaryResponse and died with it
+        # in the Phase 5 consolidation; the objective machinery that outlived the dead
+        # pipeline is buildTightStagedObjectives in stagedEditorial, asserted above and
+        # here by its cap - the part of the contract with observable effect.
+        self.assertIn("const maxObjectives = Math.max(1, Math.min(8, Number(input.maxObjectives || 3)))", staged_editorial)
         self.assertIn("Alarm changes", api)
         self.assertIn("Language changes", api)
         self.assertIn("Software versioning changes", api)
@@ -146,15 +154,16 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("Do not borrow evidence from another workstream", api)
         self.assertIn("does every bullet belong to this exact workstream", api)
         self.assertIn("omitted evidenced workstreams, or placed evidence under the wrong workstream", api)
-        self.assertIn("semantic topic evidence", api)
+        # Four assertions here died with the pre-canonical builders in the Phase 5
+        # consolidation - "semantic topic evidence", the thin-output retry and its
+        # droppedMisattributed/retryCount accounting all lived inside
+        # buildStagedDiscussionResponse. The confirmed-topic discipline they policed is
+        # asserted through the strings that survive in the living pipeline below.
         self.assertIn("evidencePackTopicCount", api)
         self.assertIn("CONFIRMED_CONTEXT.topicEvidence", api)
         self.assertIn("Do not collapse separate confirmed topics into one combined topic", api)
-        self.assertIn("AI discussion output was too thin", api)
         self.assertIn("strictTopicCoverage", api)
         self.assertIn("workstream_state_discussion_fallback", api)
-        self.assertIn("droppedMisattributedDiscussionPoints", api)
-        self.assertIn("retryCount > originalCount", api)
         self.assertIn("runCanonicalLiveStage", api)
         self.assertIn("const semanticTranscript = transcriptForStagedAI(transcript, input);", api)
         self.assertIn("runCanonicalLiveStage(semanticTranscript.text", api)
@@ -170,9 +179,12 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("presentationSummary.startsWith(summaryPurpose)", api)
         self.assertIn("humanConfirmedInputIsAuthoritative", api)
         self.assertIn("return null;", api)
-        self.assertIn("const evidenceFilteredDiscussion = filterDiscussionCardsByWorkstreamEvidence", api)
-        self.assertIn("compactStagedDiscussionCards(rawDiscussion", api)
-        self.assertIn("discussionCompaction", api)
+        # These three call-shapes lived inside buildStagedDiscussionResponse, deleted in
+        # the Phase 5 consolidation. The functions they invoked survive and stay pinned:
+        # evidence filtering and compaction now run where the canonical pipeline calls
+        # them, and the reshaper assertion above covers the seam.
+        self.assertIn("filterDiscussionCardsByWorkstreamEvidence", api)
+        self.assertIn("compactStagedDiscussionCards", api)
         self.assertIn(": [];", api)
         self.assertIn("glued speaker/timecode prefixes", api)
         self.assertIn('Do not output raw "Name:" or "Name said that..." wording.', api)
@@ -229,7 +241,11 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("FIRST_PERSON_TRANSCRIPT_VOICE", staged_editorial)
         self.assertNotIn("clinician|clinical|audible sound", staged_editorial)
         self.assertNotIn("version 1.01 and 1.02", staged_editorial)
-        self.assertIn("objectives: context.objectives", api)
+        # The old assertion pinned a line inside buildStagedDiscussionResponse, an entry
+        # point of the pre-canonical staged path deleted in the Phase 5 consolidation.
+        # What actually matters - and survives - is that the reshaper itself is wired
+        # into the pipeline the reviewer sees.
+        self.assertIn("reshapeStagedDiscussionCardsForHumanMinutes", api)
 
     def test_staged_topic_and_owner_cleanup_is_wired(self):
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")

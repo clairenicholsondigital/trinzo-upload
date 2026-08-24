@@ -1,5 +1,7 @@
 'use strict';
 
+const { minutesEnglishFaults, repairMechanicalFaults } = require('./minutesEnglish');
+
 function clean(value) {
   return String(value == null ? '' : value).replace(/\s+/g, ' ').trim();
 }
@@ -21,28 +23,43 @@ function splitSentences(value) {
   return clean(value).split(/(?<=[.!?])\s+/).map(clean).filter(Boolean);
 }
 
+// The general form of what a stack of per-transcript literals used to do here.
+//
+// sanitiseSummarySentence was the poster child for the fix-shape this project has
+// renounced: eight literal rewrites, each transcribed from one meeting - "were not too
+// keen to send them to to share them with us", "Call they", "I had taken a snapshot of
+// the label" - each dead the day its transcript left rotation, and each a promise that
+// the next transcript would need its own. The general layers now carry the load: a
+// mechanical stutter is repaired by the shared phrase-restart rule, and a sentence in the
+// speaker's voice is DROPPED rather than patched, because the fallback's job is to serve
+// only what already reads as minutes - rewriting speech is the polish's job, upstream,
+// with citations. Dropping where the literals used to patch trades a rescued sentence for
+// an honest absence, which is this pipeline's standing trade.
 function transcriptShapedSummaryIssue(value) {
   const text = clean(value);
   if (!text) return 'empty_text';
   if (/(?:^|[.!?]\s+)(?:obviously|basically|you know)\b/i.test(text)) return 'conversational_filler';
   if (/\b(?:I|we|we'd|we'll|we've|we're|our|ours|my|mine|me|us|you|your|yours|you're|you are)\b/i.test(text)) return 'first_or_second_person';
-  if (/\b(?:call\s+they|to\s+to|send\s+them\s+to\s+share|share\s+them\s+with\s+us|for\s+a\s+site\s+in\s+the\s+areas\s+of|quality\s+culture\s+operating)\b/i.test(text)) return 'malformed_transcript_join';
+  // The old rule here was six literal phrases from two transcripts. The general property
+  // they shared is the restarted phrase - "to to", "send them to share them with us" - and
+  // the shared detector tests for that property instead of for those strings.
+  if (minutesEnglishFaults(text).some((fault) => fault.code === 'phrase_restart')) return 'malformed_transcript_join';
+  // A fragment posing as a sentence: it opens with a preposition or subordinator and no
+  // finite verb ever arrives. "For a site in the areas of quality system, quality culture
+  // operating." was one of the six literals the old list named; this is the property all
+  // six shared. A prepositional opener with a real clause behind it survives - "For the
+  // avoidance of doubt, the tests must pass" carries its finite verb.
+  if (/^(?:for|with|from|in|on|at|of|as|by|into|onto)\b/i.test(text)
+    && !/\b(?:is|are|was|were|has|have|had|will|would|can|could|should|must|does|did|do|needs?|remains?|includes?|covers?|requires?)\b/i.test(text)) return 'sentence_fragment';
   if (/(?:^|[.!?]\s+)because\b/i.test(text)) return 'dependent_clause_start';
   return '';
 }
 
 function sanitiseSummarySentence(sentence) {
-  let text = clean(sentence)
-    .replace(/^(?:Obviously,\s*)?that depends on\s+how big a customer is,\s+or\s+the network that you(?:'re| are) selling to,\s+what their demands are\.?$/i, 'Requirements depend on customer size, sales network and customer demands.')
+  let text = repairMechanicalFaults(clean(sentence)
     .replace(/^Because\s+/i, '')
-    .replace(/^Call\s+they\b/i, 'The client')
-    .replace(/\bwere not too keen to send them to to share them with us\b/i, 'were not keen to share the materials')
-    .replace(/\bwere not too keen to send them to share with us\b/i, 'were not keen to share the materials')
-    .replace(/\bI (?:had|have) taken a snapshot of the label\b/i, 'a snapshot of the label had been taken')
-    .replace(/\byou(?:'re| are) selling to\b/i, 'the product is being sold to')
-    .replace(/\byour\b/gi, 'the')
     .replace(/\s+/g, ' ')
-    .trim();
+    .trim()).text;
   if (text && !/[.!?]$/.test(text)) text += '.';
   return text;
 }
