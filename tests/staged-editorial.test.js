@@ -484,3 +484,18 @@ test('stagedFinalActionQualityIssue rejects vague fragments while permitting an 
     'missing_concrete_object'
   );
 });
+
+test('a bare coordinator opener is speech even when a comma rides with it', () => {
+  // "Or, yeah, the authorized rep." survived onto a client's discussion screen and into a
+  // reviewer's bug report, because the opener check compared the raw first token - "Or,"
+  // with its comma attached - against a list of bare words, so the comma that marks the
+  // fragment as speech was exactly what let it through. The first word is stripped to
+  // letters before comparing, and Or joins And/But/So, which it always grammatically was.
+  const { isRawTranscriptDiscussionPoint } = require('../utils/stagedEditorial');
+  for (const raw of ['Or, yeah, the authorized rep.', 'And, well, the process continues', 'So, anyway, the next item']) {
+    assert.equal(isRawTranscriptDiscussionPoint(raw), true, raw);
+  }
+  // A sentence that opens on a coordinator but reports real minute content keeps its
+  // existing escape.
+  assert.equal(isRawTranscriptDiscussionPoint('And the team agreed the revised plan'), false);
+});

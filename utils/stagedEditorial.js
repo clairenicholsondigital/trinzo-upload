@@ -607,8 +607,13 @@ function isRawTranscriptDiscussionPoint(value) {
   if (!text) return false;
   if (STAGED_SPEAKER_TURN_PREFIX.test(text)) return true;
   if (RAW_TRANSCRIPT_DISCUSSION_PATTERNS.some((pattern) => pattern.test(text))) return true;
-  const firstWord = text.split(/\s+/)[0] || '';
-  if (/^(?:And|But|So)$/i.test(firstWord) && !/\b(?:agreed|confirmed|reviewed|noted|discussed|identified)\b/i.test(text)) return true;
+  // The first word arrives with its punctuation attached, and the old comparison kept it:
+  // "Or, yeah, the authorized rep." split to a first word of "Or," which matched nothing,
+  // so a bare-coordinator opener sailed through whenever a comma followed it - which is
+  // exactly where a spoken fragment puts one. Strip to letters before comparing, and "Or"
+  // joins the coordinators, which it always grammatically was.
+  const firstWord = (text.split(/\s+/)[0] || '').replace(/[^A-Za-z'’]/g, '');
+  if (/^(?:And|But|So|Or)$/i.test(firstWord) && !/\b(?:agreed|confirmed|reviewed|noted|discussed|identified)\b/i.test(text)) return true;
   if (FIRST_PERSON_TRANSCRIPT_VOICE.test(text) && !STANDALONE_MINUTES_SUBJECT.test(text)) return true;
   if (/\b(?:is|was|were|has|have|will|would|could|should)\s*,\s*(?:is|was|were|has|have|will|would|could|should)\b/i.test(text)) return true;
   if (/\b(\w+)\s+\1\b/i.test(text) && !/\b(?:had had|that that)\b/i.test(text)) return true;

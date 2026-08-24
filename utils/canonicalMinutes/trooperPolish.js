@@ -457,7 +457,11 @@ function promptFor(stage, payload, evidencePack, options = {}) {
   ] : [
     'Rewrite the supplied canonical discussion records as concise, formal meeting-minutes prose.',
     'Use the supplied bounded context windows to add concrete detail that is directly supported.',
-    'Return one to three points per topic when supported: prioritise the current position, concrete technical/process detail, decisions, dependencies and next steps over a generic summary.',
+    // Two to five, raised from one to three after measuring against human-written minutes:
+    // a person records 14-20 discussion points per meeting and the model was returning
+    // 7-15, with the instruction as the binding cap - there is no code cap on this path,
+    // and the downstream compaction already admits four to eight per topic.
+    'Return two to five points per topic when the cited evidence supports them: prioritise the current position, concrete technical/process detail, decisions, dependencies and next steps over a generic summary.',
     'Keep each supplied topic exactly unchanged. Do not create, merge, split or remove topics.',
     'Do not repeat transcript filler, first-person speech, unresolved pronouns or speaker narration.',
     'For each output record, preserve itemIndex and cite only evidenceIds supplied for that item.'
@@ -968,7 +972,7 @@ async function polishCanonicalStage(payload, options = {}) {
           { role: 'user', content: promptFor(stage, base, indexedPack, options) }
         ],
         temperature: 0.1,
-        max_tokens: stage === 'discussion' ? 2200 : 1400,
+        max_tokens: stage === 'discussion' ? 2600 : 1400,
         response_format: { type: 'json_object' }
       })
     });
