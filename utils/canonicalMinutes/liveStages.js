@@ -130,6 +130,38 @@ function buildConfirmedState(transcriptText, fileName, confirmed = {}) {
   return state;
 }
 
+// The executive summary's floor, when the polish does not land.
+//
+// The spine is one sentence per workstream, and it comes from one of two places. For a
+// concept the system recognises it is prose somebody wrote: "Registration evidence and
+// authorised-representative follow-up were material to the importer-obligation work."
+// For everything else it is a turn from the meeting with its leading "yeah" stripped and
+// a full stop added. That is exactly right for what the spine is - an index into the
+// evidence, and what the polish reads to find detail - and it is not writing.
+//
+// The summary was composed as purpose-plus-spine, so on any meeting outside the known
+// concepts, and on every meeting where the polish was rejected, the reviewer read the
+// transcript back:
+//
+//   "Client M204 Larkfield MK Thursday Session. Tom, you're presenting so you should have
+//    the green thing at the bottom. The plan is I open it, I do the housekeeping bit..."
+//   "Residents Association Parking. Cost, and the visitor access thing. Three cars and a
+//    caravan."
+//
+// Filtering those sentence by sentence is a losing game - "Three cars and a caravan" is
+// not first-person, not a speech opener, not malformed, and still not an executive
+// summary - and every filter added is one more rule shaped like one meeting. The
+// distinction that actually holds is the one above: a summary is written, so it is built
+// from the sentences we wrote. Quoted turns stay in the spine, where the evidence pack
+// and the polish still use them; they just stop being published as prose.
+function composedSpineSentences(spine) {
+  return (Array.isArray(spine) ? spine : [])
+    .filter((item) => item && item.composed)
+    .map((item) => clean(item.text))
+    .filter(Boolean)
+    .slice(0, 4);
+}
+
 function summaryScreen(proposal) {
   const objectives = proposal.objectives.map((item) => item.text);
   // Deriving topics from objectives was a stopgap for meetings with no topics at all,
@@ -147,10 +179,7 @@ function summaryScreen(proposal) {
   const overallTopics = visibleTopicItems.map((item) => clean(item.text)).filter(Boolean);
   const initialUnderstanding = proposal.initialUnderstanding || null;
   const inferredPurpose = clean(initialUnderstanding?.meetingPurpose?.text);
-  const spineItems = (Array.isArray(initialUnderstanding?.meetingSpine) ? initialUnderstanding.meetingSpine : [])
-    .map((item) => clean(item.text))
-    .filter(Boolean)
-    .slice(0, 4);
+  const spineItems = composedSpineSentences(initialUnderstanding?.meetingSpine);
   // The floor: a summary of purpose-plus-nothing tells the reviewer nothing the title
   // field two rows up does not. When the spine is thin, one sentence naming the detected
   // workstreams - this meeting's own, evidence-gated labels - makes the summary say what
@@ -159,10 +188,23 @@ function summaryScreen(proposal) {
     .map((item) => clean(item.label))
     .filter(Boolean)
     .slice(0, 5);
-  const coveredSentence = spineItems.length < 2 && workstreamLabels.length >= 2
+  // Counted after the voice filter, so a summary whose spine was all raw speech still gets
+  // a sentence saying what the meeting was across rather than a bare purpose.
+  // ...but not twice. Some purposes already end in a covered-clause of their own, and
+  // "The meeting covered X. It covered Y." reads as a fault even when both lists are true.
+  const purposeAlreadySaysCovered = /\b(?:the meeting|it|this (?:meeting|session))\s+covered\b/i.test(inferredPurpose);
+  const coveredSentence = spineItems.length < 2 && workstreamLabels.length >= 2 && !purposeAlreadySaysCovered
     ? `It covered ${joinConceptLabels(workstreamLabels.map((label) => label.charAt(0).toLowerCase() + label.slice(1)))}.`
     : '';
-  const synthesis = [inferredPurpose, coveredSentence, ...spineItems].filter(Boolean).join(' ');
+  // Last rung. Dropping quoted turns costs the informal meetings their only spine
+  // sentences, and a summary that is one purpose sentence long tells the reviewer nothing
+  // the field two rows above does not - the failure the covered-sentence was written for
+  // in the first place. The topics are this meeting's own, already filtered to labels that
+  // read as subjects, so naming them says what was on the table without quoting anybody.
+  const reviewedSentence = !coveredSentence && !spineItems.length && overallTopics.length
+    ? `The meeting reviewed ${joinConceptLabels(overallTopics.map(lowerInitialUnlessInitialism))}.`
+    : '';
+  const synthesis = [inferredPurpose, coveredSentence, reviewedSentence, ...spineItems].filter(Boolean).join(' ');
   const meetingType = clean(proposal.meeting?.type).toLowerCase();
   return {
     objectives,
@@ -290,10 +332,7 @@ function applyConfirmedOverlay(stage, screen, state) {
   const confirmedExecutiveSummary = clean(state?.meeting?.executiveSummary);
   if (confirmedExecutiveSummary) overlaid.executiveSummary = confirmedExecutiveSummary;
   else if (purpose) {
-    const spineItems = (Array.isArray(screen.initialUnderstanding?.meetingSpine) ? screen.initialUnderstanding.meetingSpine : [])
-      .map((item) => clean(item?.text))
-      .filter(Boolean)
-      .slice(0, 4);
+    const spineItems = composedSpineSentences(screen.initialUnderstanding?.meetingSpine);
     overlaid.executiveSummary = [purpose, ...spineItems].filter(Boolean).join(' ');
   }
   if (objectives.length) overlaid.objectives = objectives;

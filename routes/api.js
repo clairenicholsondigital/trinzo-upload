@@ -1379,7 +1379,7 @@ async function grammarPolishStagedExecutiveSummary(value) {
   });
 }
 
-async function polishStagedInitialUnderstanding(summary, meetingTitle, evidencePack = null) {
+async function polishStagedInitialUnderstanding(summary, meetingTitle, evidencePack = null, meetingText = '') {
   return polishInitialUnderstanding({
     meetingTitle,
     meetingPurpose: summary?.meetingPurpose,
@@ -1392,6 +1392,7 @@ async function polishStagedInitialUnderstanding(summary, meetingTitle, evidenceP
     url: String(process.env.TROOPER_CHAT_COMPLETIONS_URL || TROOPER_STAGE_URL_DEFAULT).trim() || TROOPER_STAGE_URL_DEFAULT,
     fetchImpl: fetch,
     evidencePack,
+    meetingText,
     // 900/30s with a pack: the same single call carries ~8-10k more prompt tokens and a
     // three-to-five sentence summary back. Without a pack the old budget stands.
     maxTokens: Number(process.env.STAGED_INITIAL_UNDERSTANDING_MAX_TOKENS || (evidencePack ? 900 : 650)),
@@ -4209,7 +4210,8 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
     initialUnderstandingPolish = await polishStagedInitialUnderstanding(
       presentationInitialSummary,
       confirmed.details?.meetingTitle || input.meetingTitle || '',
-      summaryEvidencePack
+      summaryEvidencePack,
+      semanticTranscript.text
     );
     if (initialUnderstandingPolish.used) {
       // A field the reviewer wrote is not ours to copy-edit. The polish is a presentation

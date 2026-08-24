@@ -132,6 +132,44 @@ const SPEECH_OPENER = /^(?:please|let['’]?s|let us|go ahead|carry on|sure|than
 //
 // Deliberately categorical: it tests the shape of the phrase, never a specific
 // wording. No transcript-specific phrase belongs here.
+// Whether a label can stand as the NAME of a workstream.
+//
+// A discussion card and a workstream are different surfaces with different conventions. A
+// card is a heading over some points, and this corpus is full of cards headed by a
+// statement - "Legal review is complete, but finance approval is still pending" - which
+// read perfectly well and which reviewers keep. A workstream label is reused: it becomes
+// the meeting purpose, an objective the reviewer is asked to accept, a topic, and a
+// sentence in the executive summary. "Lovely, that's one sorted" became "Review lovely,
+// that's one sorted." on the objectives list. One bad workstream label is not one bad
+// line, it is the same bad line on four screens, so this bar is higher than the card bar
+// and is applied only where labels get reused.
+//
+// Both tests are grammatical rather than lexical, because a list of banned phrases has to
+// be extended once per meeting and the meetings are all different. A copula or a
+// contraction means the label became a sentence; four capitalised words with no common
+// noun between them means it is an attendance list.
+//
+// Copulas and auxiliaries only, and deliberately no modals: "CAN bus integration testing"
+// is a real subject and "can" is a real auxiliary, and the same three letters cannot be
+// both here - the same goes for "Will" and "May". A sentence reaches for a copula or a
+// contraction long before it reaches for a modal, so dropping the ambiguous half costs
+// nothing.
+const LABEL_ASSERTS = /\b(?:is|are|was|were|has|have|had|does|did)\b|['\u2019](?:s|re|ve|ll)\b/i;
+
+function labelIsOnlyNames(text) {
+  const parts = text.split(/\s*(?:,|\band\b|&)\s*/i).map((part) => part.trim()).filter(Boolean);
+  if (parts.length < 3) return false;
+  return parts.every((part) => /^[A-Z][A-Za-z'\u2019-]*$/.test(part));
+}
+
+function labelNamesAWorkstream(value) {
+  const text = clean(value);
+  if (!text) return false;
+  if (LABEL_ASSERTS.test(text)) return false;
+  if (labelIsOnlyNames(text)) return false;
+  return true;
+}
+
 function isPublishableTopicLabel(value) {
   const text = clean(value);
   if (!text || /^substantive discussion$/i.test(text)) return false;
@@ -196,4 +234,5 @@ function editorialTopics(topics, evidence, maximum = 8) {
   });
 }
 
-module.exports = { CONCEPTS, clusterText, editorialTopicLabel, editorialTopics, extractiveLabel, labelIsClientReady, isPublishableTopicLabel, publishableTopicCards };
+module.exports = {
+  labelNamesAWorkstream, CONCEPTS, clusterText, editorialTopicLabel, editorialTopics, extractiveLabel, labelIsClientReady, isPublishableTopicLabel, publishableTopicCards };

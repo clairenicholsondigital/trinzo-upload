@@ -4,7 +4,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
-  validateInitialUnderstandingRevision
+  validateInitialUnderstandingRevision,
+  stripInlineCitations
 } = require('../utils/stagedInitialUnderstandingPolish');
 
 // The cited-revision validator: enrichment is earned per claim against the turns the
@@ -171,4 +172,107 @@ test('pack-less growth past 1.3x is rejected; compression is still sanctioned', 
     executiveSummary: 'Coordinate progress across the programme.'
   };
   assert.equal(validateInitialUnderstandingRevision(original, compressed).ok, true);
+});
+
+// ---------------------------------------------------------------------------------
+// What a reviewer actually saw, and why.
+//
+// The summary screen was printing the transcript back at people:
+//
+//   "Client M204 Larkfield MK Thursday Session. Tom, you're presenting so you should
+//    have the green thing at the bottom. The plan is I open it, I do the housekeeping
+//    bit, welcome everyone in, tell them mics are off..."
+//
+// Nothing was broken in the sense of throwing. The polish ran, produced a correct and
+// well-written summary, and this validator refused it - so the screen fell back to the
+// deterministic floor, which was built by quoting turns. Three separate rules in here
+// were each answering a slightly different question from the one they were for, and the
+// tests below pin the corrected questions.
+
+test('an inflection of a word the meeting used is not new substance', () => {
+  // The measured cause. On a real webinar rehearsal, nineteen of the summary's
+  // forty-one words were counted as unsupported and the field was thrown away at a ratio
+  // of 0.463 - for words like "rehearsing" beside "rehearse", "discussions" beside
+  // "discussed" and "presenter's" beside "presenter". The gate meant to ask whether a
+  // concept was in the meeting and was asking whether the model picked the same ending.
+  const result = validateInitialUnderstandingRevision(original, {
+    meetingPurpose: cited('Coordinate the software-change programme.', ['evt_1']),
+    objectives: [cited('Review the alarm sounds and colour changes.', ['evt_1'])],
+    executiveSummary: cited('Alarm sounds and colour changes were largely working. Muting behaviour still needed clinical reviews before sign-off. Electrical testing was scheduled for completion.', ['evt_1', 'evt_2', 'evt_3'])
+  }, pack);
+  assert.equal(result.fieldOutcomes.summary, 'accepted', JSON.stringify(result.fieldOutcomes));
+});
+
+test('prose about a different meeting is still refused', () => {
+  // The thing worth pinning is refusal, not which gate gets there first. Widening the
+  // vocabulary universe to the whole meeting is only safe because the gates around it
+  // hold, and here the protected-fact check reaches this sentence before the ratio does.
+  const result = validateInitialUnderstandingRevision(original, {
+    meetingPurpose: cited('Coordinate the software-change programme.', ['evt_1']),
+    objectives: [cited('Review alarm behaviour.', ['evt_1'])],
+    executiveSummary: cited('The webinar rehearsal covered presenter handovers, audience question grouping, the closing slide QR code, microphone checks and dead air between speakers.', ['evt_1', 'evt_2'])
+  }, pack);
+  assert.notEqual(result.fieldOutcomes.summary, 'accepted', JSON.stringify(result.fieldOutcomes));
+});
+
+test('the vocabulary gate by itself refuses off-topic prose', () => {
+  // The same sentence with nothing in it for the protected-fact or outcome-verb gates to
+  // catch - no initialisms, no numbers, no "agreed" - so the only thing standing between
+  // it and the summary field is the ratio. A summary of a rehearsal, cited against a
+  // technical-file meeting, shares almost none of its vocabulary: two content words in
+  // seventeen. That separation, not the threshold digit, is what the gate is.
+  const result = validateInitialUnderstandingRevision(original, {
+    meetingPurpose: cited('Coordinate the software-change programme.', ['evt_1']),
+    objectives: [cited('Review alarm behaviour.', ['evt_1'])],
+    executiveSummary: cited('The rehearsal covered presenter handovers, audience question grouping, the closing slide, microphone checks and dead air between speakers.', ['evt_1', 'evt_2'])
+  }, pack);
+  assert.equal(result.fieldOutcomes.summary, 'new_substantive_wording', JSON.stringify(result.fieldOutcomes));
+});
+
+test('one unresolvable citation does not throw away the ones that resolve', () => {
+  // A summary cited six real turns and the string "BASIC_NOTES" - a section label from
+  // our own prompt, echoed back - and the whole field was rejected. An id that resolves
+  // to nothing adds nothing to the evidence a claim is checked against, so it can be
+  // dropped instead of treated as a disqualification.
+  const result = validateInitialUnderstandingRevision(original, {
+    meetingPurpose: cited('Coordinate the software-change programme.', ['evt_1']),
+    objectives: [cited('Review alarm behaviour.', ['evt_1'])],
+    executiveSummary: cited('Alarm sounds and colour changes were largely working. Muting behaviour still needed clinical review.', ['evt_1', 'BASIC_NOTES', 'evt_2'])
+  }, pack);
+  assert.equal(result.fieldOutcomes.summary, 'accepted', JSON.stringify(result.fieldOutcomes));
+});
+
+test('a field whose citations all fail to resolve is still uncited', () => {
+  const result = validateInitialUnderstandingRevision(original, {
+    meetingPurpose: cited('Coordinate the software-change programme.', ['evt_1']),
+    objectives: [cited('Review alarm behaviour.', ['evt_1'])],
+    executiveSummary: cited('Alarm sounds and colour changes were largely working.', ['BASIC_NOTES', 'evt_999'])
+  }, pack);
+  assert.equal(result.fieldOutcomes.summary, 'invalid_citation', JSON.stringify(result.fieldOutcomes));
+});
+
+test('a claim still has to be carried by the turns it cites, not by the meeting at large', () => {
+  // The widening is deliberately confined to vocabulary. Protected facts and outcome
+  // verbs still read only the cited turns, because those are the checks that police
+  // fabrication - "everyone agreed" is in evt_4, and a summary citing evt_1 may not
+  // borrow it.
+  const result = validateInitialUnderstandingRevision(original, {
+    meetingPurpose: cited('Coordinate the software-change programme.', ['evt_1']),
+    objectives: [cited('Review alarm behaviour.', ['evt_1'])],
+    executiveSummary: cited('The team agreed the release plan for the seventeen historical changes.', ['evt_1'])
+  }, pack);
+  assert.equal(result.fieldOutcomes.summary, 'unsupported_outcome_verb', JSON.stringify(result.fieldOutcomes));
+});
+
+test('the prompt\'s own section labels never reach the reader', () => {
+  // A residents' association read "a review of budget and commercial matters
+  // (BASIC_NOTES)" on its summary screen. BASIC_NOTES is a heading this module writes into
+  // its own prompt; the model echoed it back as prose. It is removed on the way out, the
+  // same as a stray evt_0224, because what we put into the prompt is a closed set we can
+  // strip without touching a word the meeting said.
+  assert.equal(stripInlineCitations('a review of budget and commercial matters (BASIC_NOTES) and a discussion.').text,
+    'a review of budget and commercial matters and a discussion.');
+  assert.equal(stripInlineCitations('[MEETING_TITLE] Larkfield rehearsal').text, 'Larkfield rehearsal');
+  // And nothing that merely looks like an initialism is touched.
+  assert.equal(stripInlineCitations('A sentence about MDR and PPE conformity.').text, 'A sentence about MDR and PPE conformity.');
 });

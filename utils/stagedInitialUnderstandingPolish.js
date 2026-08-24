@@ -151,7 +151,7 @@ function deterministicPresentationFallback(original, reason = 'unsafe_presentati
 // kept; a failing purpose or summary keeps the deterministic original for that field
 // only. fieldOutcomes makes every decision visible - the failure mode this whole area
 // keeps re-teaching is the invisible one.
-function validateCitedRevision(original, revised, evidencePack) {
+function validateCitedRevision(original, revised, evidencePack, options = {}) {
   const sourceText = clean([
     original.meetingTitle,
     original.meetingPurpose,
@@ -173,7 +173,7 @@ function validateCitedRevision(original, revised, evidencePack) {
   };
 
   const purposeField = fieldOf(revised?.meetingPurpose);
-  const purposeIssue = shapeIssue(purposeField.text, false) || citedFieldIssue(purposeField, evidencePack, sourceText, allowedIds);
+  const purposeIssue = shapeIssue(purposeField.text, false) || citedFieldIssue(purposeField, evidencePack, sourceText, allowedIds, options);
   let meetingPurpose = purposeField.text;
   if (purposeIssue) {
     fieldOutcomes.purpose = purposeIssue;
@@ -181,7 +181,7 @@ function validateCitedRevision(original, revised, evidencePack) {
   }
 
   const summaryField = fieldOf(revised?.executiveSummary);
-  const summaryIssue = shapeIssue(summaryField.text, true) || citedFieldIssue(summaryField, evidencePack, sourceText, allowedIds);
+  const summaryIssue = shapeIssue(summaryField.text, true) || citedFieldIssue(summaryField, evidencePack, sourceText, allowedIds, options);
   let executiveSummary = summaryField.text;
   if (summaryIssue) {
     fieldOutcomes.summary = summaryIssue;
@@ -191,7 +191,7 @@ function validateCitedRevision(original, revised, evidencePack) {
   const objectiveFields = (Array.isArray(revised?.objectives) ? revised.objectives : []).map(fieldOf);
   const acceptedObjectives = [];
   for (const field of objectiveFields) {
-    const issue = objectiveIssue(field.text) || citedFieldIssue(field, evidencePack, sourceText, allowedIds);
+    const issue = objectiveIssue(field.text) || citedFieldIssue(field, evidencePack, sourceText, allowedIds, options);
     if (issue) {
       fieldOutcomes.objectives.rejected += 1;
       fieldOutcomes.objectives.reasons.push(issue);
@@ -268,9 +268,18 @@ function validateCitedRevision(original, revised, evidencePack) {
 // survive validation. The prose loses the clutter; the grounding loses nothing.
 const INLINE_CITATION = /\s*[([]\s*(evt_[0-9a-z_]+(?:\s*[,;]\s*evt_[0-9a-z_]+)*)\s*[)\]]/gi;
 
+// The section labels this module puts in its own prompt. The model is asked to read
+// [BASIC_NOTES] and write prose; sometimes it writes the label instead - a residents'
+// association got "a review of budget and commercial matters (BASIC_NOTES)" on its summary
+// screen. That is our word, in our brackets, and the reader has no idea what it means.
+// Handled the same way as a stray evt_0224: removed on the way out rather than argued
+// about, because the closed set of things we ourselves wrote into the prompt is exactly
+// the set we can strip without touching anything the meeting said.
+const PROMPT_SECTION_LABEL = /[[(\s]*\/?(?:BASIC_NOTES|CURRENT_OBJECTIVES|CURRENT_SUMMARY|MEETING_PURPOSE|MEETING_TITLE|BOUNDED_EVIDENCE|RETURN_SCHEMA)[\])]*/g;
+
 function stripInlineCitations(text) {
   const ids = [];
-  const stripped = String(text || '').replace(INLINE_CITATION, (match, group) => {
+  const stripped = String(text || '').replace(PROMPT_SECTION_LABEL, ' ').replace(INLINE_CITATION, (match, group) => {
     for (const id of String(group).split(/[,;]/)) {
       const trimmed = clean(id);
       if (trimmed) ids.push(trimmed);
@@ -278,7 +287,7 @@ function stripInlineCitations(text) {
     return '';
   });
   // Tidy the punctuation the removal leaves behind: "the link ." and "questions ,".
-  return { text: clean(stripped).replace(/\s+([.,;:])/g, '$1'), ids };
+  return { text: clean(stripped).replace(/\s+([.,;:])/g, '$1').replace(/\(\s*\)/g, '').replace(/\s{2,}/g, ' ').trim(), ids };
 }
 
 // The model may return the old flat shape ({meetingPurpose: "..."}) or the cited shape
@@ -308,18 +317,92 @@ const CITED_FRAMING_WORDS = new Set([
   'working', 'workstreams'
 ]);
 
-function citedFieldIssue(field, pack, sourceText, allowedIds) {
+// Whether a word the model wrote is a form of a word the meeting actually used.
+//
+// The vocabulary gate compared surface strings, so "rehearsing" was new substance beside
+// "rehearse", "discussions" beside "discussed", "presenter's" beside "presenter" and
+// "management" beside "manage". On a real webinar rehearsal that alone put nineteen of
+// the summary's forty-one words in the unsupported column - ratio 0.463 against a 0.45
+// threshold - and a correct, cited, well-written summary was thrown away for using
+// English inflection. What replaced it on screen was raw transcript.
+//
+// A shared root of at least five characters covering three quarters of the shorter word
+// is the general form of the question the gate meant to ask - is this concept in the
+// meeting - as opposed to the one it was asking, which was whether the model happened to
+// pick the same ending. It is deliberately not a word list: a list has to be extended
+// once per meeting, which is exactly the maintenance this is meant to end.
+const MIN_SHARED_ROOT = 5;
+
+function sharedRootLength(left, right) {
+  const limit = Math.min(left.length, right.length);
+  let shared = 0;
+  while (shared < limit && left[shared] === right[shared]) shared += 1;
+  return shared;
+}
+
+function isInflectionOf(token, universeTokens) {
+  if (token.length < MIN_SHARED_ROOT) return false;
+  const bare = token.replace(/['\u2019]s$/, '');
+  for (const candidate of universeTokens) {
+    if (candidate.length < MIN_SHARED_ROOT) continue;
+    const shared = sharedRootLength(bare, candidate);
+    if (shared >= MIN_SHARED_ROOT && shared >= 0.75 * Math.min(bare.length, candidate.length)) return true;
+  }
+  return false;
+}
+
+const UNSUPPORTED_TOKEN_LIMIT = 0.65;
+
+function citedFieldIssue(field, pack, sourceText, allowedIds, options = {}) {
   if (!field.evidenceIds.length) return 'missing_citation';
-  if (!field.evidenceIds.every((id) => allowedIds.has(clean(id)))) return 'invalid_citation';
-  const citedText = packCitedText(pack, field.evidenceIds);
-  const universe = `${sourceText} ${citedText}`.toLowerCase();
+  // One unresolvable token does not undo the citations that do resolve.
+  //
+  // A summary cited six real turns and the string "BASIC_NOTES" - a section label lifted
+  // from our own prompt, not an invented event - and the whole field was rejected, so the
+  // reviewer got raw transcript instead of an accurate summary anchored in six places.
+  // Rejecting outright reads like strictness but buys nothing: an id that resolves to
+  // nothing contributes nothing to the evidence a claim is checked against, so it can be
+  // dropped rather than treated as a disqualification. A field whose citations ALL fail
+  // to resolve is still uncited, and still rejected.
+  const resolvedIds = field.evidenceIds.filter((id) => allowedIds.has(clean(id)));
+  if (!resolvedIds.length) return 'invalid_citation';
+  const citedText = packCitedText(pack, resolvedIds);
+  // Claim-level gates stay tight against the turns the field actually cites: a number or
+  // a standard or an "agreed" has to be in the evidence offered for THIS sentence.
+  const claimUniverse = `${sourceText} ${citedText}`.toLowerCase();
   const facts = protectedFacts(field.text);
-  if ([...facts].some((fact) => !universe.includes(fact))) return 'new_protected_fact';
+  if ([...facts].some((fact) => !claimUniverse.includes(fact))) return 'new_protected_fact';
   if (unsupportedOutcomeVerb(field.text, citedText)) return 'unsupported_outcome_verb';
-  const universeTokens = contentTokens(universe);
+  // The vocabulary gate asks a different question - is this prose about this meeting - and
+  // its honest scope is therefore the meeting, not the handful of turns a sentence happened
+  // to cite. Judged against its citations, a five-sentence narrative had to draw four
+  // fifths of its words from 575 characters; on a small meeting the words it was rejected
+  // for were "furthermore", "were", "which", "noted", "discussion", "overall". That is
+  // register, not substance, and no threshold on that scale separates the two.
+  //
+  // The gate the comment below describes - wholesale off-topic prose - survives a universe
+  // of the whole meeting perfectly well, because prose about a different meeting still
+  // shares little vocabulary with this one. What does not survive is the pretence that the
+  // gate was policing fabrication: that is the job of the two checks above, which still
+  // read only the cited turns, and which are unchanged.
+  const vocabularyUniverse = `${sourceText} ${options.meetingText || ''} ${packCitedText(pack, [...allowedIds])}`.toLowerCase();
+  const universeTokens = contentTokens(vocabularyUniverse);
   const fieldTokens = [...contentTokens(field.text)];
-  const unsupported = fieldTokens.filter((token) => !universeTokens.has(token) && !EDITORIAL_WORDS.has(token) && !CITED_FRAMING_WORDS.has(token));
-  // 0.45, measured, and honest about what this gate is for. At 0.15 it rejected the
+  const unsupported = fieldTokens.filter((token) => !universeTokens.has(token)
+    && !EDITORIAL_WORDS.has(token)
+    && !CITED_FRAMING_WORDS.has(token)
+    && !isInflectionOf(token, universeTokens));
+  // 0.65, measured against what the gate is for, on a universe that is now the meeting
+  // rather than a handful of cited turns. With the honest universe, correct summaries of
+  // small meetings still measured 0.46-0.53, and the words they were failing on were
+  // "furthermore", "were", "which", "noted", "discussion", "overall", "regarding" - the
+  // register any summary is written in, not substance from anywhere. Prose about a
+  // DIFFERENT meeting measures around 0.9 on the same scale, which is the separation the
+  // test beside this pins: a real summary against its own meeting is accepted, the same
+  // summary against another meeting is rejected. That gap, not the digit, is the gate.
+  //
+  // The history is worth keeping, because the digit has moved twice and both times for
+  // the same underlying reason. At 0.15 it rejected the
   // exact register the reviewer asked for - "focused", "discussed", "areas", "ensure" -
   // because a narrative ABOUT evidence necessarily uses narrative words that are in
   // neither the evidence nor the input fields. And a token ratio never reliably caught
@@ -328,13 +411,14 @@ function citedFieldIssue(field, pack, sourceText, allowedIds) {
   // vocabulary comes from nowhere - and 0.45 still catches that. The real security for
   // cited fields is the three gates above: protected facts against cited turns, outcome
   // verbs against agreement cues, and citations that must resolve.
-  if (unsupported.length / Math.max(fieldTokens.length, 1) > 0.45) return 'new_substantive_wording';
+  //
+  if (unsupported.length / Math.max(fieldTokens.length, 1) > UNSUPPORTED_TOKEN_LIMIT) return 'new_substantive_wording';
   return '';
 }
 
-function validateInitialUnderstandingRevision(original, revised, evidencePack = null) {
+function validateInitialUnderstandingRevision(original, revised, evidencePack = null, options = {}) {
   if (Array.isArray(evidencePack) && evidencePack.length) {
-    return validateCitedRevision(original, revised, evidencePack);
+    return validateCitedRevision(original, revised, evidencePack, options);
   }
   const originalPurposeIssue = presentationTextIssue(original.meetingPurpose, 'purpose');
   const meetingPurpose = clean(fieldOf(revised?.meetingPurpose).text) || (originalPurposeIssue ? '' : clean(original.meetingPurpose));
@@ -412,70 +496,108 @@ async function polishInitialUnderstanding(input = {}, options = {}) {
   const fetchImpl = options.fetchImpl || global.fetch;
   if (!apiKey || typeof fetchImpl !== 'function') return { ...original, used: false, reason: 'unavailable' };
   const startedAt = Date.now();
-  const controller = typeof AbortController === 'function' ? new AbortController() : null;
-  const timeout = controller ? setTimeout(() => controller.abort(), Number(options.timeoutMs || 20000)) : null;
+  const attemptTimeoutMs = Number(options.timeoutMs || 20000);
+  let controller = null;
+  let timeout = null;
+  const openAttemptWindow = () => {
+    if (timeout) clearTimeout(timeout);
+    controller = typeof AbortController === 'function' ? new AbortController() : null;
+    timeout = controller ? setTimeout(() => controller.abort(), attemptTimeoutMs) : null;
+  };
+  openAttemptWindow();
+  // One retry, for the failure where the model does not manage to emit valid JSON.
+  //
+  // The router answers that with 422 json_generation_failed, which is not a bad request -
+  // the same prompt succeeds on the next attempt - and the reviewer's whole summary screen
+  // fell back to deterministic text because one sampling run produced a broken brace. It
+  // cost a client meeting its minutes in the measured set of thirteen. Retrying a
+  // structural formatting failure once is the ordinary handling for a stochastic decoder;
+  // it is bounded at one, it shares the existing abort controller so the timeout still
+  // governs, and every other status still fails through untouched, because a 401 or a 500
+  // will say the same thing twice.
+  const requestOnce = (pack) => fetchImpl(options.url, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    signal: controller?.signal,
+    body: JSON.stringify({
+      model: options.model,
+      messages: [
+      {
+        role: 'system',
+        content: 'You are a careful British English meeting-minutes editor. Improve wording only from the supplied title and notes. Never invent facts, people, decisions, actions, dates, purposes or technical detail.'
+      },
+      {
+        role: 'user',
+        content: [
+        ...(pack ? [
+          // The enriched contract: the model may draw concrete detail from the
+          // bounded evidence below, and must cite the ids it drew from per field.
+          // The validators then check every claim against exactly the turns it
+          // cites - the discussion stage's model, applied to the summary.
+          'Write a meeting purpose of one to two sentences, four to eight concise meeting objectives, and a professional three to five sentence executive summary in natural British English.',
+          'The purpose says why the meeting was held. The executive summary reads like formal meeting minutes and says what the meeting covered and where the main threads got to.',
+          'Use the supplied evidence entries to add concrete detail that is directly supported, and cite the evidenceIds you used for each field.',
+          'Put the ids ONLY in the evidenceIds arrays. Never write an id such as evt_0224 inside the purpose, an objective or the summary - the reader sees that text and it is not for them.',
+          "Write 'agreed', 'decided' or 'confirmed' only when a cited entry says so; otherwise write 'discussed', 'reviewed' or 'tested'.",
+          'Third person, neutral. No first-person speech, no conversational fragments, no invented names, numbers or dates.',
+          'Return JSON only as {"meetingPurpose":{"text":"...","evidenceIds":["..."]},"objectives":[{"text":"...","evidenceIds":["..."]}],"executiveSummary":{"text":"...","evidenceIds":["..."]}}.',
+          '',
+          'BOUNDED_EVIDENCE:',
+          JSON.stringify(pack)
+        ] : [
+          'Write one concise meeting purpose, 2-5 concise meeting objectives and a professional 2-3 sentence executive summary in natural British English.',
+          'The meeting purpose must explain why the meeting happened in one clean sentence.',
+          'The executive summary must read like formal meeting minutes, not copied transcript speech or a list of notes.',
+          'Synthesise and compress the supplied material. Use third-person, neutral wording and remove repetition, first-person speech, conversational fragments and plainly meaningless notes.',
+          'Use only meaning present in the supplied material. If a note is unclear, omit it rather than guessing.',
+          'Reuse the supplied terminology wherever possible; do not introduce new substantive concepts.',
+          'Do not add actions, owners, deadlines, decisions or outcomes.',
+          'Return JSON only as {"meetingPurpose":"...","objectives":["..."],"executiveSummary":"..."}.'
+        ]),
+        '',
+        `[MEETING_TITLE] ${original.meetingTitle || 'Not stated'} [/MEETING_TITLE]`,
+        `[MEETING_PURPOSE] ${original.meetingPurpose || 'Not stated'} [/MEETING_PURPOSE]`,
+        `[BASIC_NOTES] ${original.overallTopics.join(' | ') || 'Not stated'} [/BASIC_NOTES]`,
+        `[CURRENT_OBJECTIVES] ${original.objectives.join(' | ') || 'Not stated'} [/CURRENT_OBJECTIVES]`,
+        `[CURRENT_SUMMARY] ${original.executiveSummary || 'Not stated'} [/CURRENT_SUMMARY]`
+        ].join('\n')
+      }
+      ],
+      temperature: 0,
+      max_tokens: Number(options.maxTokens || 650),
+      response_format: { type: 'json_object' }
+    })
+  });
   try {
-    const response = await fetchImpl(options.url, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      signal: controller?.signal,
-      body: JSON.stringify({
-        model: options.model,
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a careful British English meeting-minutes editor. Improve wording only from the supplied title and notes. Never invent facts, people, decisions, actions, dates, purposes or technical detail.'
-          },
-          {
-            role: 'user',
-            content: [
-              ...(evidencePack ? [
-                // The enriched contract: the model may draw concrete detail from the
-                // bounded evidence below, and must cite the ids it drew from per field.
-                // The validators then check every claim against exactly the turns it
-                // cites - the discussion stage's model, applied to the summary.
-                'Write a meeting purpose of one to two sentences, four to eight concise meeting objectives, and a professional three to five sentence executive summary in natural British English.',
-                'The purpose says why the meeting was held. The executive summary reads like formal meeting minutes and says what the meeting covered and where the main threads got to.',
-                'Use the supplied evidence entries to add concrete detail that is directly supported, and cite the evidenceIds you used for each field.',
-                'Put the ids ONLY in the evidenceIds arrays. Never write an id such as evt_0224 inside the purpose, an objective or the summary - the reader sees that text and it is not for them.',
-                "Write 'agreed', 'decided' or 'confirmed' only when a cited entry says so; otherwise write 'discussed', 'reviewed' or 'tested'.",
-                'Third person, neutral. No first-person speech, no conversational fragments, no invented names, numbers or dates.',
-                'Return JSON only as {"meetingPurpose":{"text":"...","evidenceIds":["..."]},"objectives":[{"text":"...","evidenceIds":["..."]}],"executiveSummary":{"text":"...","evidenceIds":["..."]}}.',
-                '',
-                'BOUNDED_EVIDENCE:',
-                JSON.stringify(evidencePack)
-              ] : [
-                'Write one concise meeting purpose, 2-5 concise meeting objectives and a professional 2-3 sentence executive summary in natural British English.',
-                'The meeting purpose must explain why the meeting happened in one clean sentence.',
-                'The executive summary must read like formal meeting minutes, not copied transcript speech or a list of notes.',
-                'Synthesise and compress the supplied material. Use third-person, neutral wording and remove repetition, first-person speech, conversational fragments and plainly meaningless notes.',
-                'Use only meaning present in the supplied material. If a note is unclear, omit it rather than guessing.',
-                'Reuse the supplied terminology wherever possible; do not introduce new substantive concepts.',
-                'Do not add actions, owners, deadlines, decisions or outcomes.',
-                'Return JSON only as {"meetingPurpose":"...","objectives":["..."],"executiveSummary":"..."}.'
-              ]),
-              '',
-              `[MEETING_TITLE] ${original.meetingTitle || 'Not stated'} [/MEETING_TITLE]`,
-              `[MEETING_PURPOSE] ${original.meetingPurpose || 'Not stated'} [/MEETING_PURPOSE]`,
-              `[BASIC_NOTES] ${original.overallTopics.join(' | ') || 'Not stated'} [/BASIC_NOTES]`,
-              `[CURRENT_OBJECTIVES] ${original.objectives.join(' | ') || 'Not stated'} [/CURRENT_OBJECTIVES]`,
-              `[CURRENT_SUMMARY] ${original.executiveSummary || 'Not stated'} [/CURRENT_SUMMARY]`
-            ].join('\n')
-          }
-        ],
-        temperature: 0,
-        max_tokens: Number(options.maxTokens || 650),
-        response_format: { type: 'json_object' }
-      })
-    });
-    const raw = await response.text();
-    if (!response.ok) return { ...original, used: false, reason: `http_${response.status}`, timingMs: Date.now() - startedAt };
+    let attemptPack = evidencePack;
+    let response = await requestOnce(attemptPack);
+    let raw = await response.text();
+    if (!response.ok && response.status === 422 && /json_generation_failed|could not produce valid JSON/i.test(raw)) {
+      // A second attempt needs a second window. Sharing the first one meant the retry
+      // inherited whatever was left of a thirty-second budget after a seventeen-second
+      // failure, aborted, and turned a recoverable formatting failure into a request
+      // failure - the same lost summary, one round trip later. Worst case is now two full
+      // windows, which is the honest cost of retrying at all, and it is paid only on a
+      // 422.
+      openAttemptWindow();
+      // The second attempt drops the evidence pack and asks for the simpler shape.
+      //
+      // Repeating a request the decoder has already failed to satisfy tends to fail the
+      // same way - on one client meeting it did, twice - and the fallback from there is
+      // deterministic text. Asking instead for the smaller schema degrades along the axis
+      // that is failing: the reviewer loses the evidence-grounded detail and keeps written
+      // English, which is the better half to keep. It stays two round trips.
+      attemptPack = null;
+      response = await requestOnce(attemptPack);
+      raw = await response.text();
+    }
+    if (!response.ok) { if (process.env.POLISH_DEBUG) console.error('  HTTP ' + response.status + ' body=' + String(raw).slice(0, 600)); return { ...original, used: false, reason: `http_${response.status}`, timingMs: Date.now() - startedAt }; }
     const body = raw ? JSON.parse(raw) : {};
     const content = body?.choices?.[0]?.message?.content;
     const parsed = typeof content === 'object' && content ? content : JSON.parse(String(content || '{}'));
-    const validation = validateInitialUnderstandingRevision(original, parsed, evidencePack);
+    const validation = validateInitialUnderstandingRevision(original, parsed, attemptPack, { meetingText: clean(options.meetingText) });
     return validation.ok
-      ? { ...original, meetingPurpose: validation.meetingPurpose, objectives: validation.objectives, executiveSummary: validation.executiveSummary, used: true, reason: validation.reason, overlap: validation.overlap, fieldOutcomes: validation.fieldOutcomes, evidenceQuotes: validation.evidenceQuotes || null, cited: Boolean(evidencePack), timingMs: Date.now() - startedAt }
+      ? { ...original, meetingPurpose: validation.meetingPurpose, objectives: validation.objectives, executiveSummary: validation.executiveSummary, used: true, reason: validation.reason, overlap: validation.overlap, fieldOutcomes: validation.fieldOutcomes, evidenceQuotes: validation.evidenceQuotes || null, cited: Boolean(attemptPack), timingMs: Date.now() - startedAt }
       : { ...deterministicPresentationFallback(original, validation.reason), overlap: validation.overlap, fieldOutcomes: validation.fieldOutcomes, timingMs: Date.now() - startedAt };
   } catch {
     return { ...deterministicPresentationFallback(original, 'request_failed'), timingMs: Date.now() - startedAt };

@@ -46,13 +46,25 @@ function isolateEvaluationFromDatabase() {
 
 const FIXTURES = {
   m204: 'scripts/meeting-minutes-final-golden/028_real_m204_webinar_rehearsal_transcript/transcript.txt',
-  t761: 'scripts/meeting-minutes-final-golden/029_real_t761_tech_file_weekly_transcript/transcript.txt'
+  t761: 'scripts/meeting-minutes-final-golden/029_real_t761_tech_file_weekly_transcript/transcript.txt',
+  abbott: 'scripts/meeting-minutes-final-golden/027_real_abbott_audit_kickoff_transcript/transcript.txt',
+  dita: 'scripts/meeting-minutes-final-golden/021_real_dita_importer_obligations_transcript/transcript.txt',
+  // Deliberately unlike the client meetings, and the ones that exposed the summary
+  // printing the transcript back at the reviewer. A fix that only reads well on regulatory
+  // meetings is a fix shaped like those meetings.
+  allotment: 'scripts/transcript-tests/074_allotment_society_committee/transcript.txt',
+  pantomime: 'scripts/transcript-tests/075_pantomime_society_planning/transcript.txt',
+  brewery: 'scripts/transcript-tests/076_brewery_production_numbers/transcript.txt',
+  race: 'scripts/transcript-tests/077_race_committee_two_jos/transcript.txt',
+  parking: 'scripts/transcript-tests/078_parking_no_decision_reached/transcript.txt'
 };
 
 async function main() {
   isolateEvaluationFromDatabase();
   const api = require('../routes/api').stagedEvaluation;
   const wanted = process.argv[2] ? [process.argv[2]] : Object.keys(FIXTURES);
+  const { isRawTranscriptDiscussionPoint } = require('../utils/stagedEditorial');
+  const rows = [];
   for (const key of wanted) {
     const file = FIXTURES[key];
     if (!file) { console.error(`unknown fixture "${key}" - use one of: ${Object.keys(FIXTURES).join(', ')}`); process.exitCode = 2; return; }
@@ -74,7 +86,19 @@ async function main() {
     if (polish.fieldOutcomes) console.log(`outcomes : ${JSON.stringify(polish.fieldOutcomes)}`);
     const flags = (result.validationFlags || []).map((flag) => flag.type);
     console.log(`flags    : ${flags.join(', ') || 'none'}`);
+    // The failure this harness exists to make visible: a rejected polish used to fall back
+    // to purpose-plus-quoted-turns, so the reviewer read the meeting back at themselves.
+    const sentences = String(summary.executiveSummary || '').split(/(?<=[.!?])\s+/).map((item) => item.trim()).filter(Boolean);
+    const quoted = sentences.filter((item) => isRawTranscriptDiscussionPoint(item));
+    if (quoted.length) console.log(`QUOTED SPEECH IN SUMMARY: ${JSON.stringify(quoted)}`);
+    rows.push({ key, outcome: polish.fieldOutcomes?.summary || polish.reason, sentences: sentences.length, objectives: (summary.objectives || []).length, quoted: quoted.length });
   }
+  console.log('\n=== summary');
+  console.log('meeting'.padEnd(12), 'polish'.padEnd(26), 'sentences', 'objectives', 'quoted-speech');
+  for (const row of rows) {
+    console.log(row.key.padEnd(12), String(row.outcome).padEnd(26), String(row.sentences).padStart(9), String(row.objectives).padStart(10), String(row.quoted).padStart(13));
+  }
+  console.log(`\naccepted: ${rows.filter((row) => row.outcome === 'accepted').length}/${rows.length} | summaries quoting the transcript: ${rows.filter((row) => row.quoted > 0).length} (must be 0)`);
   console.log('\njudge the output against the reviewer exemplars, not against the previous run.');
 }
 

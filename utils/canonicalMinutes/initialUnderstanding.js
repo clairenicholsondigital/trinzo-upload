@@ -5,7 +5,7 @@ const { purposePlan, objectiveIntentForText } = require('./meetingPurpose');
 const { statedPurposeFromOpening, purposeFromTitle, namesARecurringSubject } = require('./statedPurpose');
 const { purposeFromTitleShape } = require('./titlePurpose');
 const { canHeadlineTopic, canSupportPurposeDimension, canStandAloneAsMinutesEvidence } = require('./publishability');
-const { editorialTopicLabel, isPublishableTopicLabel, CONCEPTS } = require('./topicEditorial');
+const { editorialTopicLabel, isPublishableTopicLabel, labelNamesAWorkstream, CONCEPTS } = require('./topicEditorial');
 const { stagedFinalActionQualityIssue } = require('../stagedEditorial');
 
 // A concept counts as discussed only when several turns support it, so a single
@@ -219,8 +219,31 @@ function strongestEvidenceIdsForPattern(evidence, pattern, limit = 6) {
 // exactly the mislabelling the profile fence used to prevent.
 const CROSS_PROFILE_MIN_EVIDENCE = 3;
 
+// A borrowed concept has to arrive with company.
+//
+// Counting matching events was never the question the cross-profile gate meant to ask. An
+// allotment society with a solar alarm on the shed says "alarm" three times and clears a
+// count of three, so its minutes were headed "Alarm-code and clinical confirmation" - a
+// medical-device workstream, in a meeting about a water butt and some marrows - and that
+// label went on to write the purpose, an objective and a sentence of the summary. A
+// webinar rehearsal picked up "EUDAMED, HPRA and registration evidence" the same way.
+//
+// The signal that separates those from the case this admission exists for is not how many
+// times one concept fired, it is whether the meeting looks like the profile the concept
+// came from. The Eakin weekly borrows technical-file concepts because it genuinely is one:
+// alarm behaviour, debug evidence, change control, electrical compliance and cybersecurity
+// all fire together. The allotment borrows one, on one word. So a foreign profile has to
+// place at least two concepts before any of them is admitted.
+//
+// Counting the concept's own vocabulary was tried first and was worse: it dropped "Debug
+// and test-script evidence" and "Electrical compliance evidence" from three real technical
+// file meetings, which say "testing" a great deal and "verification" not at all. Those are
+// their own subjects and the reviewer should see them.
+const CROSS_PROFILE_MIN_CONCEPTS = 2;
+
 function inferredWorkstreamsFromEvidence(evidence, topics = [], profileId = '') {
   const byLabel = new Map();
+  const admissible = [];
   for (const concept of WORKSTREAM_CONCEPTS) {
     const homeProfile = !Array.isArray(concept.profiles) || !concept.profiles.length || concept.profiles.includes(profileId);
     if (!homeProfile && concept.homeOnly) continue;
@@ -232,6 +255,19 @@ function inferredWorkstreamsFromEvidence(evidence, topics = [], profileId = '') 
       const hasRequiredEvidence = evidenceIds.some((id) => concept.requiredEvidencePattern.test(byId.get(id)?.text || ''));
       if (!hasRequiredEvidence) continue;
     }
+    admissible.push({ concept, evidenceIds, homeProfile });
+  }
+  const conceptsPlacedByProfile = new Map();
+  for (const { concept, homeProfile } of admissible) {
+    if (homeProfile) continue;
+    for (const profile of concept.profiles || []) {
+      conceptsPlacedByProfile.set(profile, (conceptsPlacedByProfile.get(profile) || 0) + 1);
+    }
+  }
+  for (const { concept, evidenceIds, homeProfile } of admissible) {
+    const profileIsRepresented = homeProfile
+      || (concept.profiles || []).some((profile) => (conceptsPlacedByProfile.get(profile) || 0) >= CROSS_PROFILE_MIN_CONCEPTS);
+    if (!profileIsRepresented) continue;
     byLabel.set(concept.label.toLowerCase(), { label: concept.label, evidenceIds, provenance: 'model_inferred', homeProfile });
   }
   for (const topic of topics) {
@@ -239,7 +275,7 @@ function inferredWorkstreamsFromEvidence(evidence, topics = [], profileId = '') 
     // canHeadlineTopic judges whether a sentence could head a topic; this also
     // requires the result to read as a subject rather than as something said,
     // so the summary screen holds to the same bar as the discussion screen.
-    if (!label || !canHeadlineTopic(label) || !isPublishableTopicLabel(label)) continue;
+    if (!label || !canHeadlineTopic(label) || !isPublishableTopicLabel(label) || !labelNamesAWorkstream(label)) continue;
     const key = label.toLowerCase();
     if (byLabel.has(key)) continue;
     const labelTokens = new Set(tokens(label));
@@ -316,7 +352,7 @@ function sentenceFromWorkstream(workstream, evidence) {
   // meetingPurpose.js exists to prevent. A workstream that travelled speaks only through
   // this meeting's own evidence below.
   const conceptSentence = workstream.homeProfile === false ? '' : conceptSentenceForWorkstream(workstream.label);
-  if (conceptSentence) return conceptSentence;
+  if (conceptSentence) return { text: conceptSentence, composed: true };
   const events = materialEvents(evidence, workstream.evidenceIds);
   const consequential = events.find((event) => MATERIAL_CUES.test(event.text)) || events[0];
   if (!consequential) return '';
@@ -325,17 +361,22 @@ function sentenceFromWorkstream(workstream, evidence) {
     .replace(/\s+/g, ' ')
     .replace(/[.?!]+$/, '');
   if (text.length > 190) text = `${text.slice(0, 187).replace(/\s+\S*$/, '')}...`;
-  return text ? `${text.charAt(0).toUpperCase()}${text.slice(1)}.` : '';
+  // Quoted, not composed. This is a turn from the meeting with its leading "yeah" removed
+  // and a full stop added, which is the right raw material for an index into the evidence
+  // and is not prose. Marked as such so the summary can tell the difference.
+  return text ? { text: `${text.charAt(0).toUpperCase()}${text.slice(1)}.`, composed: false } : null;
 }
 
 function buildMeetingSpineItems(evidence, workstreams) {
   return (workstreams || [])
     .map((workstream, index) => {
-      const text = sentenceFromWorkstream(workstream, evidence);
+      const sentence = sentenceFromWorkstream(workstream, evidence);
+      const text = sentence?.text || '';
       if (!text) return null;
       return {
         id: `initial_spine_${index + 1}`,
         text,
+        composed: Boolean(sentence.composed),
         role: UNRESOLVED_CUES.test(text) ? 'unresolved_need'
           : CLARIFICATION_CUES.test(text) ? 'material_clarification'
             : 'material_development',
@@ -706,7 +747,7 @@ function buildInitialUnderstanding({ evidence, meeting = {}, topics = [], meetin
     label: clean(topic.text || topic.editorialText || topic.topic),
     evidenceIds: topic.evidenceIds || [],
     provenance: 'transcript_emergent'
-  })).filter((item) => item.label && canHeadlineTopic(item.label) && isPublishableTopicLabel(item.label));
+  })).filter((item) => item.label && canHeadlineTopic(item.label) && isPublishableTopicLabel(item.label) && labelNamesAWorkstream(item.label));
   const workstreams = inferredWorkstreamsFromEvidence(evidence, [...topicWorkstreams, ...(topics || [])], profileId);
   const selectedWorkstreams = (workstreams.length ? workstreams : topicWorkstreams).slice(0, 8);
   const mode = inferMeetingMode(meeting, profileId, evidence);

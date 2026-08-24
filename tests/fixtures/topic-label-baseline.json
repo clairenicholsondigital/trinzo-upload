@@ -30,10 +30,9 @@
       "Decisions",
       "Risks"
     ],
-    "summaryTopicCount": 4,
+    "summaryTopicCount": 3,
     "summaryTopics": [
       "Customer and stakeholder feedback",
-      "Good, that's off the list",
       "One day, exactly, not today",
       "The mega-menu tested badly, people couldn't find"
     ]
@@ -117,10 +116,9 @@
       "Decisions",
       "Risks"
     ],
-    "summaryTopicCount": 2,
+    "summaryTopicCount": 1,
     "summaryTopics": [
-      "Budget and commercial matters",
-      "Brilliant, that's one less"
+      "Budget and commercial matters"
     ]
   },
   {
@@ -132,9 +130,12 @@
       "The residual risk there is low, and the team would",
       "Decisions"
     ],
-    "summaryTopicCount": 1,
+    "summaryTopicCount": 4,
     "summaryTopics": [
-      "Debug and test-script evidence"
+      "Plans and timelines",
+      "Risks and dependencies",
+      "Testing and validation",
+      "Scope and requirements"
     ]
   },
   {
@@ -156,10 +157,9 @@
       "Plans and timelines",
       "Risks"
     ],
-    "summaryTopicCount": 7,
+    "summaryTopicCount": 6,
     "summaryTopics": [
       "Language and country requirements",
-      "Risk analysis and audit-planning evidence",
       "Alarm-code and clinical confirmation",
       "Debug and test-script evidence",
       "Change control and version traceability",
@@ -182,10 +182,9 @@
       "Technical setup",
       "And then as a consequence to that, does that mean"
     ],
-    "summaryTopicCount": 6,
+    "summaryTopicCount": 5,
     "summaryTopics": [
       "Language and country requirements",
-      "Risk analysis and audit-planning evidence",
       "Alarm-code and clinical confirmation",
       "Debug and test-script evidence",
       "Cybersecurity, USB and GUI controls",
@@ -203,13 +202,12 @@
       "Product behaviour and design",
       "Risks"
     ],
-    "summaryTopicCount": 7,
+    "summaryTopicCount": 6,
     "summaryTopics": [
       "MDR, PPE and declarations of conformity",
       "EUDAMED, HPRA and registration evidence",
       "Language and country requirements",
       "MedEnvoy and Cody alignment",
-      "Software deep-dive role and responsibilities",
       "Quality and risk management",
       "Product behaviour and design"
     ]
@@ -226,12 +224,11 @@
       "Customer and stakeholder feedback",
       "Like, as the team is developing big"
     ],
-    "summaryTopicCount": 7,
+    "summaryTopicCount": 6,
     "summaryTopics": [
       "MDR, PPE and declarations of conformity",
       "EUDAMED, HPRA and registration evidence",
       "Language and country requirements",
-      "Audience questions and Q&A handling",
       "Quality and risk management",
       "Customer and stakeholder feedback",
       "Product behaviour and design"
@@ -491,13 +488,12 @@
       "Content and communications",
       "Risks"
     ],
-    "summaryTopicCount": 7,
+    "summaryTopicCount": 6,
     "summaryTopics": [
       "MDR, PPE and declarations of conformity",
       "EUDAMED, HPRA and registration evidence",
       "Language and country requirements",
       "MedEnvoy and Cody alignment",
-      "Software deep-dive role and responsibilities",
       "Quality and risk management",
       "Product behaviour and design"
     ]
@@ -519,13 +515,13 @@
     "summaryTopicCount": 8,
     "summaryTopics": [
       "Language and country requirements",
-      "Risk analysis and audit-planning evidence",
       "Alarm-code and clinical confirmation",
       "Debug and test-script evidence",
       "Change control and version traceability",
       "Electrical compliance evidence",
       "Cybersecurity, USB and GUI controls",
-      "Standards and risk-management work"
+      "Standards and risk-management work",
+      "Quality and risk indicators"
     ]
   },
   {
@@ -539,10 +535,9 @@
       "Testing and validation",
       "Software change traceability"
     ],
-    "summaryTopicCount": 7,
+    "summaryTopicCount": 6,
     "summaryTopics": [
       "Language and country requirements",
-      "Risk analysis and audit-planning evidence",
       "Alarm-code and clinical confirmation",
       "Debug and test-script evidence",
       "Change control and version traceability",
@@ -561,13 +556,12 @@
       "Customer and stakeholder feedback",
       "Like, as the team is developing big"
     ],
-    "summaryTopicCount": 8,
+    "summaryTopicCount": 7,
     "summaryTopics": [
       "MDR, PPE and declarations of conformity",
       "EUDAMED, HPRA and registration evidence",
       "Language and country requirements",
       "MedEnvoy and Cody alignment",
-      "Audience questions and Q&A handling",
       "Quality and risk management",
       "Customer and stakeholder feedback",
       "Product behaviour and design"
@@ -583,10 +577,9 @@
       "Electrical compliance testing",
       "Testing and validation"
     ],
-    "summaryTopicCount": 8,
+    "summaryTopicCount": 7,
     "summaryTopics": [
       "Language and country requirements",
-      "Risk analysis and audit-planning evidence",
       "Alarm-code and clinical confirmation",
       "Debug and test-script evidence",
       "Change control and version traceability",
@@ -605,10 +598,8 @@
       "Content and communications",
       "Risks"
     ],
-    "summaryTopicCount": 5,
+    "summaryTopicCount": 3,
     "summaryTopics": [
-      "Debug and test-script evidence",
-      "Technical setup and contingencies",
       "Quality and risk management",
       "Customer and stakeholder feedback",
       "Product behaviour and design"
@@ -624,12 +615,10 @@
       "Plans and timelines",
       "Risks"
     ],
-    "summaryTopicCount": 5,
+    "summaryTopicCount": 3,
     "summaryTopics": [
-      "MedEnvoy and Cody alignment",
       "Software deep-dive role and responsibilities",
       "Risk analysis and audit-planning evidence",
-      "Standards and risk-management work",
       "Cybersecurity and access controls"
     ]
   },
@@ -658,10 +647,9 @@
       "Software change traceability",
       "Testing and validation"
     ],
-    "summaryTopicCount": 8,
+    "summaryTopicCount": 7,
     "summaryTopics": [
       "Language and country requirements",
-      "Risk analysis and audit-planning evidence",
       "Alarm-code and clinical confirmation",
       "Debug and test-script evidence",
       "Change control and version traceability",
@@ -691,9 +679,11 @@
       "Testing and validation",
       "Further actions one"
     ],
-    "summaryTopicCount": 1,
+    "summaryTopicCount": 3,
     "summaryTopics": [
-      "Debug and test-script evidence"
+      "Testing and validation",
+      "Risks and dependencies",
+      "Further actions one"
     ]
   },
   {
@@ -707,9 +697,8 @@
       "Operations and processes",
       "Decisions"
     ],
-    "summaryTopicCount": 2,
+    "summaryTopicCount": 1,
     "summaryTopics": [
-      "EUDAMED, HPRA and registration evidence",
       "Opportunities for improvement here"
     ]
   },
@@ -1265,9 +1254,8 @@
       "Operations and processes",
       "Decisions"
     ],
-    "summaryTopicCount": 2,
+    "summaryTopicCount": 1,
     "summaryTopics": [
-      "EUDAMED, HPRA and registration evidence",
       "Opportunities for improvement here"
     ]
   },
@@ -1400,9 +1388,8 @@
       "Plans and timelines",
       "There is no real difference"
     ],
-    "summaryTopicCount": 4,
+    "summaryTopicCount": 3,
     "summaryTopics": [
-      "Audience questions and Q&A handling",
       "Customer and stakeholder feedback",
       "The across all the selected sessions",
       "Maths the first two tables add together"
@@ -1540,11 +1527,9 @@
       "And the team ringfence the extra for the water and",
       "Decisions"
     ],
-    "summaryTopicCount": 5,
+    "summaryTopicCount": 3,
     "summaryTopics": [
-      "Alarm-code and clinical confirmation",
       "Alarm behaviour and controls",
-      "Lovely, that's one sorted",
       "Now, the annual show",
       "Water butt, shed, marrows"
     ]
@@ -1561,11 +1546,9 @@
       "Tuesday works for",
       "The carpet lives to fight another year"
     ],
-    "summaryTopicCount": 3,
+    "summaryTopicCount": 1,
     "summaryTopics": [
-      "Sylvia, Nadeem, Fiona, Tom",
-      "The carpet lives fight another year",
-      "Goodness, that's the hard bit done"
+      "The carpet lives fight another year"
     ]
   },
   {
@@ -1577,9 +1560,10 @@
       "Decisions",
       "Risks"
     ],
-    "summaryTopicCount": 1,
+    "summaryTopicCount": 2,
     "summaryTopics": [
-      "Twelve hundred, that's full batch"
+      "Twelve hundred, that's full batch",
+      "Let get total"
     ]
   },
   {
