@@ -4195,7 +4195,84 @@ function topUpObjectivesFromNamedTopics(objectives, namedTopics, limit = 8) {
   return existing;
 }
 
+
+// The health record: one judgement per generation, built from signals that already exist.
+//
+// Every silent failure in this area followed the same script - a component degraded, said
+// nothing, and the output looked plausible. The summary polish was rejected invisibly and
+// the fallback reproduced the thin output that prompted the work; a token ceiling
+// presented as a complaint about wording; the wording repair failed over HTTP and nobody
+// could tell repaired rows from untouched ones. Each took an afternoon to dig out of pm2
+// logs and the database, and each would have been one line here.
+//
+// The rule for what counts as a degradation is narrow on purpose: a step that chose not
+// to run (wrong stage, nothing to do, reviewer already confirmed the text) is quiet,
+// because flagging the ordinary path teaches reviewers to ignore the flag - which is the
+// exact failure this exists to end. Only a step that TRIED to serve the screen and served
+// something lesser instead is a degradation.
+const HEALTH_QUIET_REASONS = new Set([
+  'Trooper is not used for this stage.',
+  'No bounded evidence pack.',
+  'No published actions to rewrite.',
+  'not_applicable',
+  'empty_notes',
+  'empty_text',
+  'reviewer_confirmed',
+  'superseded_by_evidence_polish',
+  'purpose_only'
+]);
+
+function assessGenerationHealth({ stage, trooper, summaryPolish, grammarPolish, wordingRepair }) {
+  const degradations = [];
+  const note = (step, reason, label) => degradations.push({ step, reason: String(reason || ''), label });
+
+  if (['discussion', 'actions'].includes(stage) && trooper && !trooper.used && !HEALTH_QUIET_REASONS.has(String(trooper.reason || ''))) {
+    note('trooper_rewrite', trooper.reason, 'the evidence-grounded rewrite (deterministic wording served instead)');
+  }
+  if (stage === 'summary' && summaryPolish?.attempted) {
+    const reason = String(summaryPolish.reason || '');
+    if (!summaryPolish.used && !HEALTH_QUIET_REASONS.has(reason)) {
+      note('summary_polish', reason, 'the summary polish (deterministic summary served instead)');
+    }
+    if (summaryPolish.truncated) note('summary_polish', 'response_truncated', 'a summary polish response that was cut short by its size limit');
+    if (summaryPolish.degraded) note('summary_polish', 'retried_without_evidence', 'the evidence-cited summary (the simpler uncited form served instead)');
+  }
+  // The grammar pass is judged by consequence, not symmetry with the summary polish. When
+  // the summary polish's validator refuses, the screen falls back to the deterministic
+  // floor - a genuinely lesser screen, and the original silent incident. When the grammar
+  // pass's validator refuses, the text it was HANDED serves unchanged - the guard working,
+  // nothing lost - so only a pass that could not run at all counts.
+  if (grammarPolish?.attempted && !grammarPolish.used) {
+    const reason = String(grammarPolish.reason || '');
+    if (/^(?:unavailable|request_failed|timeout)$/.test(reason) || reason.startsWith('http_')) {
+      note('summary_grammar', reason, 'the summary grammar pass');
+    }
+  }
+  // The repair failing its guards on a row is not a degradation - those rows carry their
+  // own flag. Only a repair that could not run at all is one.
+  if (stage === 'actions' && wordingRepair?.attempted > 0 && wordingRepair?.reason) {
+    note('wording_repair', wordingRepair.reason, `the wording repair (${wordingRepair.attempted} flagged row${wordingRepair.attempted === 1 ? '' : 's'} published as extracted)`);
+  }
+  return { served: degradations.length ? 'degraded' : 'full', degradations };
+}
+
+// The revision serving this generation. Workers were once found serving three-day-old
+// code across several deploys, and nothing in any payload said so; now every generation
+// records what it ran as. Read once - the file changes only on deploy, and a deploy
+// restarts the process.
+let SERVING_REVISION = '';
+function servingRevision() {
+  if (SERVING_REVISION) return SERVING_REVISION;
+  try {
+    SERVING_REVISION = require('fs').readFileSync(path.join(__dirname, '..', '.openclaw-deployed-revision'), 'utf8').trim().slice(0, 12) || 'dev';
+  } catch {
+    SERVING_REVISION = 'dev';
+  }
+  return SERVING_REVISION;
+}
+
 async function canonicalStagedResponse(stage, transcript, input = {}) {
+  const generationStartedAt = Date.now();
   const confirmed = canonicalConfirmedStages(input);
   const semanticTranscript = transcriptForStagedAI(transcript, input);
   const transcriptHealth = assessStagedTranscriptHealth(semanticTranscript.text);
@@ -4471,11 +4548,58 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
       }
     }
   }
+  const health = assessGenerationHealth({
+    stage,
+    trooper: { used: polished.used, reason: polished.reason },
+    summaryPolish: {
+      attempted: stage === 'summary' && Boolean(presentationInitialSummary),
+      used: Boolean(initialUnderstandingPolish.used),
+      reason: initialUnderstandingPolish.reason,
+      truncated: Boolean(initialUnderstandingPolish.truncated),
+      degraded: Boolean(initialUnderstandingPolish.degraded)
+    },
+    grammarPolish: {
+      attempted: ['summary', 'discussion'].includes(stage) && Boolean(presentationSummary),
+      used: Boolean(executiveSummaryGrammar.used),
+      reason: executiveSummaryGrammar.reason
+    },
+    wordingRepair: actionWordingRepair
+  });
+  const pipelineHealth = {
+    revision: servingRevision(),
+    stage,
+    served: health.served,
+    degradations: health.degradations,
+    durationMs: Date.now() - generationStartedAt,
+    actionAccounting: result?.canonicalDiagnostics?.actionAccounting || null,
+    wordingRepair: { attempted: actionWordingRepair.attempted || 0, repaired: actionWordingRepair.repaired || 0, reason: actionWordingRepair.reason || '' }
+  };
+  // One greppable line per generation, because the last five incidents in this area were
+  // each dug out of pm2 logs by hand. `grep staged_generation_health` now answers the
+  // first three questions of any dig - what ran, what degraded, what code served it.
+  console.log(JSON.stringify({ event: 'staged_generation_health', fileName: transcript.fileName || null, ...pipelineHealth }));
+  if (health.degradations.length) {
+    result = {
+      ...result,
+      validationFlags: [
+        ...(Array.isArray(result.validationFlags) ? result.validationFlags : []),
+        {
+          type: 'generation_degraded',
+          severity: 'warning',
+          blocking: false,
+          // Written for the reviewer, not the operator: what it means for their read.
+          message: `Part of this screen was generated in a reduced mode - without ${[...new Set(health.degradations.map((item) => item.label))].join('; and without ')}. The content is complete, but the wording is worth a closer read before sharing.`,
+          resolutionKey: `generation-degraded:${stage}:${crypto.createHash('sha256').update(health.degradations.map((item) => `${item.step}|${item.reason}`).join('|')).digest('hex').slice(0, 12)}`
+        }
+      ]
+    };
+  }
   return {
     source: transcript.source,
     fileName: transcript.fileName || null,
     transcriptLength: transcript.text.length,
     ...result,
+    pipelineHealth,
     telemetryPreview: {
       ...(result.telemetryPreview || {}),
       executiveSummaryGrammar: {
@@ -6970,6 +7094,8 @@ router.post('/copilot-chat', async (req, res) => {
 
 router.stagedEvaluation = {
   runStagedSequenceForEvaluation,
+  // The health judgement is pure so its rules can be tested without a pipeline run.
+  assessGenerationHealth,
   // Exposed so the merge can be tested for the property that matters - that a renamed
   // heading keeps the evidence the discussion stage allocates against - rather than by
   // running the whole stage and hoping.
