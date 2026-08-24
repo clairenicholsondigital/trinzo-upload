@@ -85,3 +85,43 @@ test('technical subjects that read like modals are not refused', () => {
   assert.equal(isPublishableTopicLabel('Can you send that over before Friday'), false,
     'still refused, for its pronoun rather than its opener');
 });
+
+// A heading that enumerates has to coordinate.
+//
+// English noun-phrase headings join the last item with a conjunction. A run of commas with
+// nothing joining them is not a list somebody wrote, it is a stretch of speech that
+// happened to contain commas - and each of these went on to be a topic, an objective the
+// reviewer was asked to keep, and a line of the executive summary:
+//
+//   "Water butt, shed, marrows"        an allotment committee
+//   "For route, properly, fourteen"    a race committee
+//   "Claire, Bob, Sarah, Mike ---"     an attendance list
+//
+// It is grammar rather than vocabulary, so it knows nothing about allotments or audits, and
+// every coordinated heading in the corpus passes it unchanged.
+test('a comma run with nothing joining it is not a heading', () => {
+  const { labelNamesAWorkstream } = require('../utils/canonicalMinutes/topicEditorial');
+  for (const fragment of [
+    'Water butt, shed, marrows',
+    'Now, the annual show',
+    'For route, properly, fourteen',
+    'Marsh, marshals, getting fourteen',
+    'One day, exactly, not today'
+  ]) {
+    assert.equal(labelNamesAWorkstream(fragment), false, `${JSON.stringify(fragment)} is speech, not a heading`);
+  }
+});
+
+test('a coordinated list is a heading, however many commas it has', () => {
+  const { labelNamesAWorkstream } = require('../utils/canonicalMinutes/topicEditorial');
+  for (const heading of [
+    'MDR, PPE and declarations of conformity',
+    'Audit scope, timing and logistics',
+    'Preparation, confidentiality and document access',
+    'Cybersecurity, USB and GUI controls',
+    'Audit scope, timing, and logistics',
+    'Alarm behaviour and controls'
+  ]) {
+    assert.equal(labelNamesAWorkstream(heading), true, `${JSON.stringify(heading)} must survive`);
+  }
+});

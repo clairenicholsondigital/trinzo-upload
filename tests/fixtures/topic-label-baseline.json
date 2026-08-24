@@ -30,11 +30,9 @@
       "Decisions",
       "Risks"
     ],
-    "summaryTopicCount": 3,
+    "summaryTopicCount": 1,
     "summaryTopics": [
-      "Customer and stakeholder feedback",
-      "One day, exactly, not today",
-      "The mega-menu tested badly, people couldn't find"
+      "Customer and stakeholder feedback"
     ]
   },
   {
@@ -102,9 +100,10 @@
       "Idris, send the draft end day tomorrow",
       "Risks"
     ],
-    "summaryTopicCount": 1,
+    "summaryTopicCount": 2,
     "summaryTopics": [
-      "Idris, send the draft end day tomorrow"
+      "Idris, send the draft end day tomorrow",
+      "Plans and timelines"
     ]
   },
   {
@@ -1437,11 +1436,10 @@
       "Customers won't Dave means",
       "Action for Mike investigate API numbers"
     ],
-    "summaryTopicCount": 4,
+    "summaryTopicCount": 3,
     "summaryTopics": [
       "Product behaviour and design",
       "Action for Mike investigate API numbers",
-      "Claire, Bob, Sarah, Mike ---",
       "Customers won't Dave means"
     ]
   },
@@ -1527,11 +1525,9 @@
       "And the team ringfence the extra for the water and",
       "Decisions"
     ],
-    "summaryTopicCount": 3,
+    "summaryTopicCount": 1,
     "summaryTopics": [
-      "Alarm behaviour and controls",
-      "Now, the annual show",
-      "Water butt, shed, marrows"
+      "Alarm behaviour and controls"
     ]
   },
   {
@@ -1578,11 +1574,9 @@
       "The date's locked, the twenty-eighth of September, and the team",
       "Risks"
     ],
-    "summaryTopicCount": 4,
+    "summaryTopicCount": 2,
     "summaryTopics": [
       "Budget and commercial matters",
-      "Marsh, marshals, getting fourteen",
-      "For route, properly, fourteen",
       "Barely enough last year and someone nearly"
     ]
   },

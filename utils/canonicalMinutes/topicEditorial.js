@@ -162,11 +162,28 @@ function labelIsOnlyNames(text) {
   return parts.every((part) => /^[A-Z][A-Za-z'\u2019-]*$/.test(part));
 }
 
+// A heading that enumerates has to coordinate.
+//
+// English noun-phrase headings join their last item with a conjunction: "MDR, PPE and
+// declarations of conformity", "Audit scope, timing and logistics", "Preparation,
+// confidentiality and document access". A run of commas with nothing joining them is not a
+// list somebody wrote, it is a stretch of speech that happened to contain commas - "Water
+// butt, shed, marrows", "Now, the annual show", "For route, properly, fourteen" - and each
+// of those went on to be a topic, an objective and a line of the executive summary.
+//
+// This is grammar, not vocabulary: it knows nothing about allotments or audits, and every
+// coordinated heading in the corpus passes it unchanged.
+function labelEnumeratesWithoutCoordinating(text) {
+  if (!/,/.test(text)) return false;
+  return !/\s(?:and|or|&)\s/i.test(text);
+}
+
 function labelNamesAWorkstream(value) {
   const text = clean(value);
   if (!text) return false;
   if (LABEL_ASSERTS.test(text)) return false;
   if (labelIsOnlyNames(text)) return false;
+  if (labelEnumeratesWithoutCoordinating(text)) return false;
   return true;
 }
 
