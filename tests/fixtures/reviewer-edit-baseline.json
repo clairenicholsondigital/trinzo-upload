@@ -15,10 +15,10 @@
           "Where the goods physically go"
         ],
         "headingsRemoved": [
-          "Importer-obligation QMS procedure design"
+          "MDR, PPE and declarations of conformity"
         ],
-        "coldDiscussionCards": 8,
-        "editedDiscussionCards": 8,
+        "coldDiscussionCards": 7,
+        "editedDiscussionCards": 7,
         "coldActions": 4,
         "editedActions": 4,
         "coldBlockingFlags": 0,
@@ -26,7 +26,6 @@
       },
       "headings": [
         "Where the goods physically go",
-        "MDR, PPE and declarations of conformity",
         "EUDAMED, HPRA and registration evidence",
         "Language and country requirements",
         "MedEnvoy and Cody alignment",
@@ -35,7 +34,7 @@
         "Product behaviour and design"
       ],
       "actions": [
-        "Orla Skally | Review document document as well | Not stated",
+        "Orla Skally | Review bill document as well | Not stated",
         "Jacqui Fox | Flick this over to Orla | Not stated",
         "Orla Skally | Bring that to the US team | Not stated",
         "Orla Skally | Send a copy of the HPRA authorised representative bill | Not stated"
@@ -54,15 +53,14 @@
         "actionsChanged": false,
         "headingsAdded": [],
         "headingsRemoved": [],
-        "coldDiscussionCards": 8,
-        "editedDiscussionCards": 8,
+        "coldDiscussionCards": 7,
+        "editedDiscussionCards": 7,
         "coldActions": 4,
         "editedActions": 4,
         "coldBlockingFlags": 0,
         "editedBlockingFlags": 0
       },
       "headings": [
-        "Importer-obligation QMS procedure design",
         "MDR, PPE and declarations of conformity",
         "EUDAMED, HPRA and registration evidence",
         "Language and country requirements",
@@ -72,7 +70,7 @@
         "Product behaviour and design"
       ],
       "actions": [
-        "Orla Skally | Review document document as well | Not stated",
+        "Orla Skally | Review bill document as well | Not stated",
         "Jacqui Fox | Flick this over to Orla | Not stated",
         "Orla Skally | Bring that to the US team | Not stated",
         "Orla Skally | Send a copy of the HPRA authorised representative bill | Not stated"
@@ -93,10 +91,10 @@
           "What we owe the client"
         ],
         "headingsRemoved": [
-          "Importer-obligation QMS procedure design"
+          "MDR, PPE and declarations of conformity"
         ],
-        "coldDiscussionCards": 8,
-        "editedDiscussionCards": 8,
+        "coldDiscussionCards": 7,
+        "editedDiscussionCards": 7,
         "coldActions": 4,
         "editedActions": 4,
         "coldBlockingFlags": 0,
@@ -104,7 +102,6 @@
       },
       "headings": [
         "What we owe the client",
-        "MDR, PPE and declarations of conformity",
         "EUDAMED, HPRA and registration evidence",
         "Language and country requirements",
         "MedEnvoy and Cody alignment",
@@ -113,7 +110,7 @@
         "Product behaviour and design"
       ],
       "actions": [
-        "Orla Skally | Review document document as well | Not stated",
+        "Orla Skally | Review bill document as well | Not stated",
         "Jacqui Fox | Flick this over to Orla | Not stated",
         "Orla Skally | Bring that to the US team | Not stated",
         "Orla Skally | Send a copy of the HPRA authorised representative bill | Not stated"
@@ -138,8 +135,8 @@
         ],
         "coldDiscussionCards": 8,
         "editedDiscussionCards": 8,
-        "coldActions": 5,
-        "editedActions": 5,
+        "coldActions": 4,
+        "editedActions": 4,
         "coldBlockingFlags": 0,
         "editedBlockingFlags": 0
       },
@@ -154,7 +151,6 @@
         "CAN bus integration"
       ],
       "actions": [
-        "Jacqui Fox | Follow follow up with Colm as well | Not stated",
         "Andrew Kane | Confirm the mute button behaviour and its effect on the flash | Not stated",
         "Andrew Kane | Continue the update to the 12 additional languages. | Not stated",
         "Andrew Kane | Complete electrical compliance testing by 23rd of July | Not stated",
@@ -176,15 +172,14 @@
           "Other"
         ],
         "headingsRemoved": [],
-        "coldDiscussionCards": 8,
-        "editedDiscussionCards": 9,
+        "coldDiscussionCards": 7,
+        "editedDiscussionCards": 8,
         "coldActions": 4,
         "editedActions": 4,
         "coldBlockingFlags": 0,
         "editedBlockingFlags": 0
       },
       "headings": [
-        "Importer-obligation QMS procedure design",
         "MDR, PPE and declarations of conformity",
         "EUDAMED, HPRA and registration evidence",
         "Language and country requirements",
@@ -195,7 +190,7 @@
         "Other"
       ],
       "actions": [
-        "Orla Skally | Review document document as well | Not stated",
+        "Orla Skally | Review bill document as well | Not stated",
         "Jacqui Fox | Flick this over to Orla | Not stated",
         "Orla Skally | Bring that to the US team | Not stated",
         "Orla Skally | Send a copy of the HPRA authorised representative bill | Not stated"
@@ -214,15 +209,14 @@
         "actionsChanged": false,
         "headingsAdded": [],
         "headingsRemoved": [],
-        "coldDiscussionCards": 8,
-        "editedDiscussionCards": 8,
+        "coldDiscussionCards": 7,
+        "editedDiscussionCards": 7,
         "coldActions": 4,
         "editedActions": 4,
         "coldBlockingFlags": 0,
         "editedBlockingFlags": 0
       },
       "headings": [
-        "Importer-obligation QMS procedure design",
         "MDR, PPE and declarations of conformity",
         "EUDAMED, HPRA and registration evidence",
         "Language and country requirements",
@@ -232,7 +226,7 @@
         "Product behaviour and design"
       ],
       "actions": [
-        "Orla Skally | Review document document as well | Not stated",
+        "Orla Skally | Review bill document as well | Not stated",
         "Jacqui Fox | Flick this over to Orla | Not stated",
         "Orla Skally | Bring that to the US team | Not stated",
         "Orla Skally | Send a copy of the HPRA authorised representative bill | Not stated"
@@ -251,15 +245,14 @@
         "actionsChanged": false,
         "headingsAdded": [],
         "headingsRemoved": [],
-        "coldDiscussionCards": 8,
-        "editedDiscussionCards": 8,
+        "coldDiscussionCards": 7,
+        "editedDiscussionCards": 7,
         "coldActions": 4,
         "editedActions": 4,
         "coldBlockingFlags": 0,
         "editedBlockingFlags": 0
       },
       "headings": [
-        "Importer-obligation QMS procedure design",
         "MDR, PPE and declarations of conformity",
         "EUDAMED, HPRA and registration evidence",
         "Language and country requirements",
@@ -269,7 +262,7 @@
         "Product behaviour and design"
       ],
       "actions": [
-        "Orla Skally | Review document document as well | Not stated",
+        "Orla Skally | Review bill document as well | Not stated",
         "Jacqui Fox | Flick this over to Orla | Not stated",
         "Orla Skally | Bring that to the US team | Not stated",
         "Orla Skally | Send a copy of the HPRA authorised representative bill | Not stated"
@@ -288,15 +281,14 @@
         "actionsChanged": false,
         "headingsAdded": [],
         "headingsRemoved": [],
-        "coldDiscussionCards": 8,
-        "editedDiscussionCards": 8,
+        "coldDiscussionCards": 7,
+        "editedDiscussionCards": 7,
         "coldActions": 4,
         "editedActions": 4,
         "coldBlockingFlags": 0,
         "editedBlockingFlags": 0
       },
       "headings": [
-        "Importer-obligation QMS procedure design",
         "MDR, PPE and declarations of conformity",
         "EUDAMED, HPRA and registration evidence",
         "Language and country requirements",
@@ -306,7 +298,7 @@
         "Product behaviour and design"
       ],
       "actions": [
-        "Orla Skally | Review document document as well | Not stated",
+        "Orla Skally | Review bill document as well | Not stated",
         "Jacqui Fox | Flick this over to Orla | Not stated",
         "Orla Skally | Bring that to the US team | Not stated",
         "Orla Skally | Send a copy of the HPRA authorised representative bill | Not stated"
@@ -325,15 +317,14 @@
         "actionsChanged": true,
         "headingsAdded": [],
         "headingsRemoved": [],
-        "coldDiscussionCards": 8,
-        "editedDiscussionCards": 8,
+        "coldDiscussionCards": 7,
+        "editedDiscussionCards": 7,
         "coldActions": 4,
         "editedActions": 4,
         "coldBlockingFlags": 0,
         "editedBlockingFlags": 0
       },
       "headings": [
-        "Importer-obligation QMS procedure design",
         "MDR, PPE and declarations of conformity",
         "EUDAMED, HPRA and registration evidence",
         "Language and country requirements",
@@ -362,15 +353,14 @@
         "actionsChanged": true,
         "headingsAdded": [],
         "headingsRemoved": [],
-        "coldDiscussionCards": 8,
-        "editedDiscussionCards": 8,
+        "coldDiscussionCards": 7,
+        "editedDiscussionCards": 7,
         "coldActions": 4,
         "editedActions": 4,
         "coldBlockingFlags": 0,
         "editedBlockingFlags": 0
       },
       "headings": [
-        "Importer-obligation QMS procedure design",
         "MDR, PPE and declarations of conformity",
         "EUDAMED, HPRA and registration evidence",
         "Language and country requirements",
@@ -380,7 +370,7 @@
         "Product behaviour and design"
       ],
       "actions": [
-        "Orla Scally | Review document document as well | Not stated",
+        "Orla Scally | Review bill document as well | Not stated",
         "Jacqui Fox | Flick this over to Orla | Not stated",
         "Orla Scally | Bring that to the US team | Not stated",
         "Orla Scally | Send a copy of the HPRA authorised representative bill | Not stated"
@@ -401,25 +391,26 @@
         "headingsRemoved": [],
         "coldDiscussionCards": 8,
         "editedDiscussionCards": 8,
-        "coldActions": 4,
-        "editedActions": 4,
+        "coldActions": 5,
+        "editedActions": 5,
         "coldBlockingFlags": 0,
         "editedBlockingFlags": 0
       },
       "headings": [
-        "Importer-obligation QMS procedure design",
         "MDR, PPE and declarations of conformity",
         "Language and country requirements",
         "MedEnvoy and Cody alignment",
         "Audience questions and Q&A handling",
         "Quality and risk management",
         "Customer and stakeholder feedback",
+        "Product behaviour and design",
         "EUDAMED, HPRA and registration evidence"
       ],
       "actions": [
         "John-Paul Hughes | Have to review labels as well from a regulatory point of view | Not stated",
         "Jacqui Fox | Schedule a weekly recurrence call with oral adjusting overall, aside from the working sessions, just to check in as well | Not stated",
         "Mark Kelleher | Work around the rest of the team, yeah | Not stated",
+        "Jacqui Fox | Trash out a few things | Not stated",
         "Jacqui Fox | Come prepared with a list of our discrete distinct questions for her | Not stated"
       ]
     },
@@ -436,15 +427,14 @@
         "actionsChanged": false,
         "headingsAdded": [],
         "headingsRemoved": [],
-        "coldDiscussionCards": 8,
-        "editedDiscussionCards": 8,
+        "coldDiscussionCards": 7,
+        "editedDiscussionCards": 7,
         "coldActions": 4,
         "editedActions": 4,
         "coldBlockingFlags": 0,
         "editedBlockingFlags": 0
       },
       "headings": [
-        "Importer-obligation QMS procedure design",
         "MDR, PPE and declarations of conformity",
         "EUDAMED, HPRA and registration evidence",
         "Language and country requirements",
@@ -454,7 +444,7 @@
         "Product behaviour and design"
       ],
       "actions": [
-        "Orla Skally | Review document document as well | Not stated",
+        "Orla Skally | Review bill document as well | Not stated",
         "Jacqui Fox | Flick this over to Orla | Not stated",
         "Orla Skally | Bring that to the US team | Not stated",
         "Orla Skally | Send a copy of the HPRA authorised representative bill | Not stated"
@@ -475,20 +465,21 @@
         "headingsRemoved": [],
         "coldDiscussionCards": 6,
         "editedDiscussionCards": 6,
-        "coldActions": 3,
-        "editedActions": 3,
+        "coldActions": 4,
+        "editedActions": 4,
         "coldBlockingFlags": 0,
         "editedBlockingFlags": 0
       },
       "headings": [
-        "Importer-obligation QMS procedure design",
-        "MedEnvoy and Cody alignment",
         "Software deep-dive role and responsibilities",
+        "Risk analysis and audit-planning evidence",
         "Standards and risk-management work",
         "Cybersecurity and access controls",
-        "Risk analysis and audit-planning evidence"
+        "Other",
+        "MedEnvoy and Cody alignment"
       ],
       "actions": [
+        "Stuart Smith | Share for complaints, Kappa, deviations, code of conduct sort of thing that we've got in advance | Not stated",
         "Stuart Smith | Provide the applicable classifications and an overview of the products | Not stated",
         "Not stated | Run code of conduct through the site in advance to make sure they're in alignment with it | Wednesday",
         "Jacqui Fox | Send the code of conduct | Today"

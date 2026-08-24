@@ -62,6 +62,25 @@ function topicIds(profile, evidenceIds) {
   }).map((topic) => topic.id));
 }
 
+// Whether a sentence can be read on its own, or only makes sense pointing at something
+// said a moment ago. "Chase it hard" and "Check it's open" name nothing once you take the
+// surrounding turns away, so they belong to whatever came before; "Take the social media"
+// carries its own subject.
+function standsAlone(value) {
+  const text = clean(value);
+  if (!/\b(?:it|its|that|this|them|those|these|there|one|ones)\b/i.test(text)) return true;
+  // A pronoun inside a sentence that also names things of its own is a detail, not the
+  // subject: "book the hall for Tuesdays before the yoga people snaffle it" stands alone.
+  return tokens(text).filter((token) => !/^(?:it|its|that|this|them|those|these|there|one|ones)$/.test(token)).length >= 3;
+}
+
+function nearestTurnDistance(left, right, options) {
+  const sourcesOf = (item) => (item.evidenceIds || []).map((id) => options.eventById?.get(id)).filter(Boolean);
+  const leftSources = sourcesOf(left);
+  const rightSources = sourcesOf(right);
+  return Math.min(...leftSources.flatMap((a) => rightSources.map((b) => Math.abs(Number(a.turnIndex) - Number(b.turnIndex)))), Infinity);
+}
+
 function sameGroup(left, right, options) {
   if (options.ownerOf && clean(options.ownerOf(left)).toLowerCase() !== clean(options.ownerOf(right)).toLowerCase()) return false;
   const leftText = options.textOf(left);
@@ -70,12 +89,26 @@ function sameGroup(left, right, options) {
   const learnedRelation = (left.evidenceIds || []).some((leftId) => (right.evidenceIds || []).some((rightId) => relationProbability(options.profile, leftId, rightId, 'same_item') >= 0.62));
   if (learnedRelation) return true;
   const leftTopics = topicIds(options.profile, left.evidenceIds);
-  if ([...topicIds(options.profile, right.evidenceIds)].some((id) => leftTopics.has(id))) return true;
+  if ([...topicIds(options.profile, right.evidenceIds)].some((id) => leftTopics.has(id))) {
+    // A shared topic is not, by itself, a shared commitment.
+    //
+    // A topic is a stretch of conversation about a subject; a commitment is a promise made
+    // inside it, and one stretch holds as many promises as people care to make. Treating
+    // co-membership as sufficient merged "I'll reorder the medals" with "I'll do a proper
+    // push, a post every couple of days from now till race day, and get the entry link out
+    // everywhere" - same speaker, same minute, two entirely different jobs - and the
+    // social-media push left the minutes altogether.
+    //
+    // So a shared topic still merges, alongside a reason to believe the two texts are the
+    // same thing: they say some of the same words, name the same person or number, sit a
+    // turn or two apart as a statement and its elaboration, or one of them cannot be read
+    // without the other. Seven turns apart, sharing nothing, both standing on their own -
+    // that is two actions, and the reviewer should see both.
+    if (!standsAlone(leftText) || !standsAlone(rightText)) return true;
+    return tokenOverlap(leftText, rightText) > 0 || sharesAnchor(leftText, rightText);
+  }
   if (!options.anchorGrouping || !sharesAnchor(leftText, rightText)) return false;
-  const leftSources = (left.evidenceIds || []).map((id) => options.eventById?.get(id)).filter(Boolean);
-  const rightSources = (right.evidenceIds || []).map((id) => options.eventById?.get(id)).filter(Boolean);
-  const turnDistance = Math.min(...leftSources.flatMap((a) => rightSources.map((b) => Math.abs(Number(a.turnIndex) - Number(b.turnIndex)))), Infinity);
-  return turnDistance <= Number(options.anchorTurnDistance || 24);
+  return nearestTurnDistance(left, right, options) <= Number(options.anchorTurnDistance || 24);
 }
 
 function consolidate(items, options) {
@@ -281,4 +314,4 @@ function deriveRoleDecisions(evidence, existingDecisions = []) {
   return derived;
 }
 
-module.exports = { actionHasConcreteObject, applyOperationalPhaseTiming, attachTemporalContext, composeDecision, composeRisk, consolidate, deriveRoleDecisions, entityAnchors, tokenOverlap };
+module.exports = { actionHasConcreteObject, applyOperationalPhaseTiming, attachTemporalContext, composeDecision, composeRisk, consolidate, contentTokens: tokens, deriveRoleDecisions, entityAnchors, tokenOverlap };

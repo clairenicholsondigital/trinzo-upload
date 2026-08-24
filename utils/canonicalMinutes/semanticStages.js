@@ -4,7 +4,7 @@ const { clean } = require('./evidence');
 const { semanticFor } = require('./minilm');
 const deterministicStages = require('./stages');
 const { deadlineFrom } = deterministicStages;
-const { actionHasConcreteObject, applyOperationalPhaseTiming, attachTemporalContext, composeDecision, composeRisk, consolidate, deriveRoleDecisions, tokenOverlap } = require('./canonicalResolver');
+const { actionHasConcreteObject, applyOperationalPhaseTiming, attachTemporalContext, composeDecision, composeRisk, consolidate, contentTokens, deriveRoleDecisions, entityAnchors, tokenOverlap } = require('./canonicalResolver');
 const { purposePlan, objectiveIntentForText, topicOrderRank } = require('./meetingPurpose');
 const { buildMeetingSpine } = require('./meetingSpine');
 const { buildInitialUnderstanding } = require('./initialUnderstanding');
@@ -1840,7 +1840,7 @@ function resolveEnrichedActions(items, evidence, profile) {
   const resolved = consolidate(eligible, {
     textOf: (item) => item.action,
     ownerOf: (item) => item.owner,
-    qualityOf: (item) => actionPublishability(item, evidence, profile) + (Math.min(clean(item.action).split(/\s+/).length, 15) * 0.025) + (item.deadline !== 'Not stated' ? 0.2 : 0) - (item.learnedSlot ? 0.35 : 0) - (/\?|\b(?:it|that)\b/i.test(item.action) ? 0.25 : 0),
+    qualityOf: (item) => actionRecordQuality(item, evidence, profile),
     profile,
     eventById,
     lexicalThreshold: 0.5,
@@ -1851,12 +1851,73 @@ function resolveEnrichedActions(items, evidence, profile) {
     const sameOwner = resolved.filter((other) => other !== item && clean(other.owner).toLowerCase() === clean(item.owner).toLowerCase());
     if (!sameOwner.length) return true;
     if (item.learnedSlot && !item.learnedAssignment && sameOwner.some((other) => other.learnedAssignment)) return false;
+    // A short row is not always a fragment. This dropped any action of three words or
+    // fewer whenever its owner had another row - so "Order six sacks", the only thing one
+    // brewer was asked to do all meeting, disappeared because he had also said "let you
+    // go" at the end of the call. Word count was standing in for specificity and getting
+    // it backwards: "Order six sacks" names a quantity and a thing, "Let you go" and
+    // "Look at that" name nothing at all, and all three are three words long.
+    //
+    // So a short row earns its place by naming something specific - a quantity, a date, a
+    // proper noun - measured past the opening verb, since the capital letter at the start
+    // of a sentence is not evidence of anything. Rows of four words or more are unchanged.
     const words = clean(item.action).split(/\s+/).filter(Boolean).length;
+    const pastTheVerb = clean(item.action).split(/\s+/).slice(1).join(' ');
+    const standsAsARecord = words > 3
+      || (words >= 2 && !isUnderspecifiedAction(item) && entityAnchors(pastTheVerb).size > 0);
     const source = (item.evidenceIds || []).map((id) => evidence.events.find((event) => event.id === id)).filter(Boolean);
     const recap = Math.max(...source.map((event) => enrichedProbability(profile, event, 'discourseRoleProbabilities', 'multi_item_recap')), 0);
     const commitment = Math.max(...source.map((event) => enrichedProbability(profile, event, 'discourseRoleProbabilities', 'canonical_commitment')), 0);
-    return words > 3 && !(recap >= 0.18 && recap > commitment);
+    return standsAsARecord && !(recap >= 0.18 && recap > commitment);
   });
+}
+
+// Which wording in a consolidated group becomes the published record.
+//
+// consolidate() uses qualityOf for exactly one thing: choosing the member whose text
+// speaks for the group. Every member's evidence is merged into the result either way. So
+// the question inside a group is not "is this really an action" - group membership has
+// already answered that - it is "which of these sentences tells the reader most". Scoring
+// it with actionPublishability answered the first question a second time, and the firmest
+// speech act is routinely the least informative sentence in the group. Measured on five
+// test meetings, four of them lost their best action row this way, every time by a margin
+// under 0.3:
+//
+//   "Sort that with Deborah"      1.146  beat  "Ring Deborah and book us in for Tuesday
+//                                               evenings from September to January"  1.080
+//   "Need a bit of budget if      0.880  beat  "Test all four mics and the desk before
+//    it's a new mic"                            October and either fix or replace the
+//                                               dodgy one"                           0.639
+//
+// In each case the winner is somebody committing, and the loser is what they committed
+// to. The reviewer then has to retype the detail from the transcript, which is precisely
+// the effort this tool exists to remove.
+//
+// So the group representative is chosen on informativeness: how much distinct content the
+// sentence carries, whether it can be read without its context, and only a quarter weight
+// on publishability - enough that a member with a genuinely negative signal cannot win on
+// length alone, not enough to outrank the sentence that carries the facts.
+function actionRecordQuality(item, evidence, profile) {
+  const text = clean(item.action);
+  // Distinct content, so a stammer does not read as detail.
+  const content = new Set(contentTokens(text));
+  // Speech that is repairing itself is not carrying more information, it is carrying the
+  // same information twice. Left unweighted, a longer sentence won on length alone and
+  // the published minute read "Get the revised quote over to Bellamy's, I just need to
+  // run the figures past, past *** first" where it had read "Get the revised quote over
+  // to Bellamy's".
+  const disfluent = /\b(\w+)[,\s]+\1\b/i.test(text) || /\*{3}/.test(text);
+  return (actionPublishability(item, evidence, profile) * 0.25)
+    + (Math.min(content.size, 12) * 0.12)
+    + (item.deadline !== 'Not stated' ? 0.2 : 0)
+    - (item.learnedSlot ? 0.35 : 0)
+    - (isUnderspecifiedAction(item) ? 1.5 : 0)
+    - (disfluent ? 0.9 : 0)
+    // An action record is an instruction: "Restore the animation", not "Putting the
+    // animation back". Small, so it only decides near-ties - which is where these swaps
+    // were being lost.
+    - (/^\w+ing\b/i.test(text) ? 0.35 : 0)
+    - (/\?/.test(text) ? 0.25 : 0);
 }
 
 function actionPublishability(item, evidence, profile) {

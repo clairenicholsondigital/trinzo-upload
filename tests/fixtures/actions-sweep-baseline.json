@@ -1,0 +1,659 @@
+{
+  "scripts/meeting-minutes-core-golden/cases/01_explicit_action_recap/transcript.docx": {
+    "published": [
+      "Callum Reid :: Build the closing slide with the QR code and the link; Re-share the deck once it's done :: Before the live session",
+      "Nadia Okonkwo :: Group chat questions and privately cue the presenter during the live session :: During the live session",
+      "Tom Whitfield :: Keep self-introduction and answers to roughly thirty seconds and omit the opening joke :: During the live session",
+      "Priya Sethi :: Handle the opening, the housekeeping, tap-the-speech-bubble line; Cover any dead air on the handovers :: During the live session",
+      "Callum Reid :: Restore the animation on the three-things slide :: Before the live session",
+      "Nadia Okonkwo :: Write and circulate three backup questions :: Tonight",
+      "Callum Reid :: Start and monitor the recording, verify the red dot and take a screenshot :: From Priya's first words",
+      "all attendees :: Run a short opening and first-handover warm-up :: 08:30 Tomorrow",
+      "Tom Whitfield :: Find that little clock top right :: Not stated"
+    ]
+  },
+  "scripts/meeting-minutes-core-golden/cases/02_scattered_actions/transcript.docx": {
+    "published": [
+      "Aisha Rahman :: Fix the staging config by swapping the connection string to the correct database :: Lunch",
+      "Marcus Bell :: Get the revised quote over to Bellamy's :: End of play Thursday",
+      "Deniz Yilmaz :: Rewrite the onboarding email and drop it in the shared folder for you two to check before it goes anywhere :: Not stated",
+      "Fern Whitlock :: Ring the hosting people and get the SSL renewed, they can do it same day usually :: Tomorrow morning",
+      "Not stated :: Just run through where the Hartwell site's at, I don't want this to take long :: Not stated"
+    ]
+  },
+  "scripts/meeting-minutes-core-golden/cases/03_superseded_actions/transcript.docx": {
+    "published": [
+      "Lucy Price :: Draft and send the release note :: Wednesday morning"
+    ]
+  },
+  "scripts/meeting-minutes-core-golden/cases/04_completed_vs_outstanding/transcript.docx": {
+    "published": [
+      "Ben Morris :: Upload the signed response to the controlled folder :: Close tomorrow"
+    ]
+  },
+  "scripts/meeting-minutes-core-golden/cases/05_hypothetical_language/transcript.docx": {
+    "published": [
+      "Ravi Shah :: Request the renewal quote :: Friday"
+    ]
+  },
+  "scripts/meeting-minutes-core-golden/cases/06_ownership_chaos/transcript.docx": {
+    "published": [
+      "Marta Silva :: Call the venue :: Today",
+      "Dan Wu :: Update the run sheet once Marta confirms :: Tomorrow morning",
+      "Neil Foster :: Send both of you the latest attendee count :: Four today"
+    ]
+  },
+  "scripts/meeting-minutes-core-golden/cases/07_deadline_torture/transcript.docx": {
+    "published": [
+      "Idris Moore :: Send the draft :: End of day tomorrow",
+      "Kate Evans :: Review the draft content :: Within two working days of receiving it",
+      "Grace Lin :: Submit the approved draft :: The next working day after Kate's approval"
+    ]
+  },
+  "scripts/meeting-minutes-core-golden/cases/08_attendee_provenance/transcript.docx": {
+    "published": [
+      "Raj Patel :: Send the artwork proofs to Kettleby Print :: Wednesday",
+      "Gemma Ashworth :: Reply to Marguerite and tell her the realistic date is the twentieth, not the fifteenth, and manage her expectations :: Today"
+    ]
+  },
+  "scripts/meeting-minutes-core-golden/cases/09_no_action_meeting/transcript.docx": {
+    "published": []
+  },
+  "scripts/meeting-minutes-core-golden/cases/10_chaos_goblin/transcript.docx": {
+    "published": [
+      "George Bell :: Publish the status page :: At nine thirty Thursday",
+      "Keira Long :: Watch the error dashboard for the first hour and alert Amina if it crosses two per cent :: First hour after Thursday 10:00 launch",
+      "George Bell :: Send Susan the launch confirmation :: Today"
+    ]
+  },
+  "scripts/meeting-minutes-core-golden/human_benchmarks/T733_eakin_tech_file/transcript.docx": {
+    "published": [
+      "Jacqui Fox :: Update ports table for the new set of minutes :: Not stated",
+      "Not stated :: Be, especially the response to the cars :: Today"
+    ]
+  },
+  "scripts/meeting-minutes-core-golden/human_benchmarks/T761_eakin_software/transcript.docx": {
+    "published": []
+  },
+  "scripts/meeting-minutes-core-golden/human_benchmarks/T819_dita_client/transcript.docx": {
+    "published": [
+      "Orla Skally :: Review bill document as well :: Not stated",
+      "Jacqui Fox :: Flick this over to Orla :: Not stated",
+      "Orla Skally :: Bring that to the US team :: Not stated",
+      "Orla Skally :: Send a copy of the HPRA authorised representative bill :: Not stated"
+    ]
+  },
+  "scripts/meeting-minutes-core-golden/human_benchmarks/T819_dita_internal/transcript.docx": {
+    "published": [
+      "John-Paul Hughes :: Have to review labels as well from a regulatory point of view :: Not stated",
+      "Jacqui Fox :: Schedule a weekly recurrence call with oral adjusting overall, aside from the working sessions, just to check in as well :: Not stated",
+      "Mark Kelleher :: Work around the rest of the team, yeah :: Not stated",
+      "Jacqui Fox :: Trash out a few things :: Not stated",
+      "Jacqui Fox :: Come prepared with a list of our discrete distinct questions for her :: Not stated"
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/001_decision_heavy_no_actions/transcript.txt": {
+    "published": []
+  },
+  "scripts/meeting-minutes-final-golden/002_incident_actions_decision/transcript.txt": {
+    "published": [
+      "Liam :: Patch the mapper :: Today",
+      "Noah :: Notify customer success :: Once the replay completes"
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/003_low_substance_noise_abstention/transcript.txt": {
+    "published": []
+  },
+  "scripts/meeting-minutes-final-golden/004_action_free_information_briefing/transcript.txt": {
+    "published": []
+  },
+  "scripts/meeting-minutes-final-golden/005_project_status_pending_leadership/transcript.txt": {
+    "published": [
+      "Not stated :: Finalise Stage gate templates :: Not stated",
+      "Not stated :: Draft The vendor strategy document :: Not stated",
+      "Not stated :: Follow up Innovation grant feedback :: Not stated",
+      "Not stated :: Provide Sales input for the AI pipeline dependency map :: Not stated"
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/006_client_onboarding_split_rollout/transcript.txt": {
+    "published": [
+      "Mina :: Send the missing-field list :: Today",
+      "Omar :: Start onboarding with finance first and hold warehouse until the mapping is complete :: Not stated"
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/007_operations_review_internal_cover/transcript.txt": {
+    "published": [
+      "Hana :: Update the rota :: This evening",
+      "Paul :: Keep weekend cover internal and rotate it across three teams :: Not stated"
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/008_sales_pipeline_review/transcript.txt": {
+    "published": [
+      "Omar :: Focus on the retail and logistics accounts instead :: Not stated"
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/009_board_launch_delay/transcript.txt": {
+    "published": [
+      "Leah :: Update the board pack :: Tonight"
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/010_webinar_rehearsal_trim/transcript.txt": {
+    "published": [
+      "Jack :: Remove two bullets from the registration slide :: Not stated",
+      "Conor :: Keep the live demo to seven minutes and trim the intro :: Not stated"
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/011_finance_budget_review/transcript.txt": {
+    "published": [
+      "Hannah :: Send the revised forecast :: Before lunch",
+      "Paul :: Defer the support analyst backfill until September month-end :: Not stated"
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/012_hiring_interview_debrief/transcript.txt": {
+    "published": [
+      "Lena :: Invite Maya to the final interview :: Not stated"
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/013_messy_speaker_timestamp_formats/transcript.txt": {
+    "published": [
+      "Ravi :: Request the insurance certificate :: Friday"
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/014_status_update_discussion_only/transcript.txt": {
+    "published": []
+  },
+  "scripts/meeting-minutes-final-golden/015_hidden_decision_meeting/transcript.txt": {
+    "published": [
+      "Grace :: Miss the usual weekly check-in :: Wednesday",
+      "Not stated :: Move the weekly check-in to Friday :: Noon",
+      "David :: Reschedule the weekly check-in :: Today"
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/016_document_review_discussion_only/transcript.txt": {
+    "published": []
+  },
+  "scripts/meeting-minutes-final-golden/017_dependency_risk_discussion_only/transcript.txt": {
+    "published": []
+  },
+  "scripts/meeting-minutes-final-golden/018_support_metrics_action_heavy/transcript.txt": {
+    "published": [
+      "Mark :: Set up a dashboard :: Not stated",
+      "Not stated :: Review the onboarding guide :: Next week"
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/019_contract_negotiation_review/transcript.txt": {
+    "published": [
+      "Jon :: Redline the exit clause :: Friday",
+      "Maya :: Sign the one-year extension and keep the exit clause unchanged :: Friday"
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/020_customer_complaint_review/transcript.txt": {
+    "published": []
+  },
+  "scripts/meeting-minutes-final-golden/021_real_dita_importer_obligations_transcript/transcript.txt": {
+    "published": [
+      "Orla Skally :: Review bill document as well :: Not stated",
+      "Jacqui Fox :: Flick this over to Orla :: Not stated",
+      "Orla Skally :: Bring that to the US team :: Not stated",
+      "Orla Skally :: Send a copy of the HPRA authorised representative bill :: Not stated"
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/022_real_eakin_sw_minutes_pdf/transcript.txt": {
+    "published": [
+      "Andrew :: Review the graphics driver as possible solution for uploading language symbols :: 22Nd June ‘26",
+      "Andrew :: Change request sign off :: 22Nd June ‘26",
+      "Andrew :: Complete Electrical compliance testing :: 23Rd July ‘26",
+      "Rebecca :: Clinical review of code changes for sounds, colour and flash :: 26Th June ‘26",
+      "Rebecca :: Change request sign off :: 22Nd June ‘26",
+      "David :: Review the debug commands in the debug screen :: 22Nd June ‘26",
+      "David :: Document software versioning traceability between v1.01 and v1.02 – Document :: 22Nd June ‘26",
+      "David :: IF SW change cannot be seem generate retrospective test data :: 30Th June ‘26",
+      "Andrew :: IF SW change cannot be seem generate retrospective test data :: 30Th June ‘26",
+      "Colm :: Review relevance of standards :: 22Nd June ‘26"
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/023_real_eakin_t733_weekly_transcript/transcript.txt": {
+    "published": [
+      "Jacqui Fox :: Update tracker table for the new set of minutes :: Not stated",
+      "Not stated :: Be, especially the response to the cars :: Today"
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/024_real_dita_internal_followup_transcript/transcript.txt": {
+    "published": [
+      "John-Paul Hughes :: Have to review labels as well from a regulatory point of view :: Not stated",
+      "Jacqui Fox :: Schedule a weekly recurrence call with oral adjusting overall, aside from the working sessions, just to check in as well :: Not stated",
+      "Mark Kelleher :: Work around the rest of the team, yeah :: Not stated",
+      "Jacqui Fox :: Trash out a few things :: Not stated",
+      "Jacqui Fox :: Come prepared with a list of our discrete distinct questions for her :: Not stated"
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/025_real_t761_eakin_sw_weekly_transcript/transcript.txt": {
+    "published": [
+      "Andrew Kane :: Confirm the mute button behaviour and its effect on the flash :: Not stated",
+      "Andrew Kane :: Continue the update to the 12 additional languages. :: Not stated",
+      "Andrew Kane :: Complete electrical compliance testing by 23rd of July :: Not stated",
+      "Rebecca Cuckoo :: Continue reviewing the USB port controls :: Not stated"
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/026_real_qip_assessment_tool_case_study_transcript/transcript.txt": {
+    "published": [
+      "Steve Martin :: Review the draft content and arrange a follow-up call :: Not stated",
+      "Hannah Quinn :: Have a read around :: Not stated",
+      "Hannah Quinn :: Draft content and send it for review :: Not stated"
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/027_real_abbott_audit_kickoff_transcript/transcript.txt": {
+    "published": [
+      "Stuart Smith :: Share for complaints, Kappa, deviations, code of conduct sort of thing that we've got in advance :: Not stated",
+      "Stuart Smith :: Provide the applicable classifications and an overview of the products :: Not stated",
+      "Not stated :: Run code of conduct through the site in advance to make sure they're in alignment with it :: Wednesday",
+      "Jacqui Fox :: Send the code of conduct :: Today"
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/028_real_m204_webinar_rehearsal_transcript/transcript.txt": {
+    "published": [
+      "Callum Reid :: Build the closing slide with the QR code and the link; Re-share the deck once it's done :: Before the live session",
+      "Nadia Okonkwo :: Group chat questions and privately cue the presenter during the live session :: During the live session",
+      "Tom Whitfield :: Keep self-introduction and answers to roughly thirty seconds and omit the opening joke :: During the live session",
+      "Priya Sethi :: Handle the opening, the housekeeping, tap-the-speech-bubble line; Cover any dead air on the handovers :: During the live session",
+      "Callum Reid :: Restore the animation on the three-things slide :: Before the live session",
+      "Nadia Okonkwo :: Write and circulate three backup questions :: Tonight",
+      "Callum Reid :: Start and monitor the recording, verify the red dot and take a screenshot :: From Priya's first words",
+      "all attendees :: Run a short opening and first-handover warm-up :: 08:30 Tomorrow",
+      "Tom Whitfield :: Find that little clock top right :: Not stated"
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/029_real_t761_tech_file_weekly_transcript/transcript.txt": {
+    "published": [
+      "Andrew Kane :: Confirm the mute button behaviour and its effect on the flash :: Not stated",
+      "Rebecca Cuckoo :: AndYou're continuing to review the USB port side of things :: Not stated"
+    ]
+  },
+  "scripts/transcript-tests/001_status_review/transcript.txt": {
+    "published": [
+      "Not stated :: Sales input :: Not stated"
+    ]
+  },
+  "scripts/transcript-tests/002_validation_decision/transcript.txt": {
+    "published": []
+  },
+  "scripts/transcript-tests/003_webinar_rehearsal/transcript.txt": {
+    "published": [
+      "Conor Flynn :: Show, I'll describe that much better, and then I'll bring it up :: Not stated",
+      "Conor Flynn :: Do one, two, three, or four examples :: Not stated"
+    ]
+  },
+  "scripts/transcript-tests/004_contract_renewal/transcript.txt": {
+    "published": []
+  },
+  "scripts/transcript-tests/005_office_relocation/transcript.txt": {
+    "published": [
+      "Nina :: Send the updated floor plan this afternoon :: Not stated"
+    ]
+  },
+  "scripts/transcript-tests/006_product_bug_triage/transcript.txt": {
+    "published": [
+      "Priya :: Reproduce it on Safari and capture logs by 3pm :: Not stated",
+      "Marco :: Prepare a hotfix branch if the logs confirm the token issue :: Not stated"
+    ]
+  },
+  "scripts/transcript-tests/007_client_onboarding/transcript.txt": {
+    "published": []
+  },
+  "scripts/transcript-tests/008_event_planning/transcript.txt": {
+    "published": []
+  },
+  "scripts/transcript-tests/009_supplier_risk_review/transcript.txt": {
+    "published": [
+      "Helen :: Stay with the current supplier for Q4 and hold two months of buffer stock :: Not stated"
+    ]
+  },
+  "scripts/transcript-tests/010_finance_budget_review/transcript.txt": {
+    "published": [
+      "Hannah :: Send the revised forecast :: Monday"
+    ]
+  },
+  "scripts/transcript-tests/011_hiring_interview_debrief/transcript.txt": {
+    "published": [
+      "Megan :: Make an offer to Priya for the senior platform role :: Not stated"
+    ]
+  },
+  "scripts/transcript-tests/012_training_rollout/transcript.txt": {
+    "published": [
+      "Louise :: Split the material into two forty-five minute sessions :: Not stated"
+    ]
+  },
+  "scripts/transcript-tests/013_low_substance_fallback/transcript.txt": {
+    "published": []
+  },
+  "scripts/transcript-tests/014_request_acceptance/transcript.txt": {
+    "published": [
+      "Nina :: Send the updated floor plan this afternoon :: Not stated"
+    ]
+  },
+  "scripts/transcript-tests/015_ownership_assignment/transcript.txt": {
+    "published": []
+  },
+  "scripts/transcript-tests/016_investigation_commitment/transcript.txt": {
+    "published": []
+  },
+  "scripts/transcript-tests/017_orphan_commitment/transcript.txt": {
+    "published": []
+  },
+  "scripts/transcript-tests/018_sales_pipeline_review/transcript.txt": {
+    "published": [
+      "Omar :: Focus on the retail and logistics accounts instead :: Not stated"
+    ]
+  },
+  "scripts/transcript-tests/019_supplier_review/transcript.txt": {
+    "published": [
+      "Helen :: Stay with the current supplier for Q1 and review pricing again in December :: Not stated"
+    ]
+  },
+  "scripts/transcript-tests/020_contract_negotiation/transcript.txt": {
+    "published": [
+      "Jon :: Redline the exit clause :: Friday",
+      "Maya :: Sign the one-year extension and keep the exit clause unchanged :: Friday"
+    ]
+  },
+  "scripts/transcript-tests/021_hiring_interview_debrief/transcript.txt": {
+    "published": [
+      "Lena :: Invite Maya to the final interview :: Not stated"
+    ]
+  },
+  "scripts/transcript-tests/022_candidate_screening/transcript.txt": {
+    "published": []
+  },
+  "scripts/transcript-tests/023_finance_budget_review/transcript.txt": {
+    "published": [
+      "Hannah :: Send the revised forecast :: Before lunch",
+      "Paul :: Defer the support analyst backfill until September month-end :: Not stated"
+    ]
+  },
+  "scripts/transcript-tests/024_board_update/transcript.txt": {
+    "published": [
+      "Tom :: Tighten the churn narrative :: Thursday",
+      "Tom :: Keep the board pack focused on revenue, margin and churn drivers :: Not stated"
+    ]
+  },
+  "scripts/transcript-tests/025_incident_response/transcript.txt": {
+    "published": [
+      "Noah :: Pull the API logs by 6pm :: Not stated",
+      "Noah :: Keep the status page open until the latency trend stabilises :: Not stated"
+    ]
+  },
+  "scripts/transcript-tests/026_product_bug_triage/transcript.txt": {
+    "published": [
+      "Lewis :: Ship the hotfix behind a feature flag tonight :: Tonight"
+    ]
+  },
+  "scripts/transcript-tests/027_customer_complaint_review/transcript.txt": {
+    "published": []
+  },
+  "scripts/transcript-tests/028_customer_onboarding/transcript.txt": {
+    "published": [
+      "Rhea :: Send the onboarding plan :: Friday",
+      "Miles :: Begin onboarding with CSV import first and defer SSO until phase two :: Not stated"
+    ]
+  },
+  "scripts/transcript-tests/029_office_relocation/transcript.txt": {
+    "published": [
+      "Sophie :: Confirm the movers :: Tomorrow",
+      "Gareth :: Move the office relocation to 19 September instead :: 19 September"
+    ]
+  },
+  "scripts/transcript-tests/030_webinar_rehearsal/transcript.txt": {
+    "published": [
+      "Jack :: Remove two bullets from the registration slide :: Not stated",
+      "Conor :: Keep the live demo to seven minutes and trim the intro :: Not stated"
+    ]
+  },
+  "scripts/transcript-tests/031_event_planning/transcript.txt": {
+    "published": [
+      "Leah :: Update the signage plan :: Tomorrow",
+      "Tom :: Move the breakout to the main hall and keep the sponsor lunch in the foyer :: Lunch"
+    ]
+  },
+  "scripts/transcript-tests/032_training_rollout/transcript.txt": {
+    "published": [
+      "Dan :: Keep the pilot group to the Manchester site for now :: Not stated"
+    ]
+  },
+  "scripts/transcript-tests/033_marketing_campaign_review/transcript.txt": {
+    "published": [
+      "Leo :: Rewrite the landing-page copy :: Tonight"
+    ]
+  },
+  "scripts/transcript-tests/034_software_release_review/transcript.txt": {
+    "published": [
+      "Sara :: Rerun the regression suite :: Tomorrow morning",
+      "Ben :: Delay the release until the accessibility fixes land :: Not stated"
+    ]
+  },
+  "scripts/transcript-tests/035_procurement_discussion/transcript.txt": {
+    "published": [
+      "Yasmin :: Request the revised quote :: Tuesday",
+      "Yasmin :: Buy the lower-volume option first and review usage after six weeks :: Not stated"
+    ]
+  },
+  "scripts/transcript-tests/036_project_retrospective/transcript.txt": {
+    "published": [
+      "Jen :: Update the team cadence note :: This week"
+    ]
+  },
+  "scripts/transcript-tests/037_partnership_discussion/transcript.txt": {
+    "published": [
+      "Dean :: Draft the pilot terms :: Monday",
+      "Ava :: Run a ninety-day pilot with Northstar and review exclusivity after the pilot :: Not stated"
+    ]
+  },
+  "scripts/transcript-tests/038_grant_application_review/transcript.txt": {
+    "published": [
+      "Mina :: Submit the digital-health angle as the lead narrative instead :: Not stated"
+    ]
+  },
+  "scripts/transcript-tests/039_risk_review/transcript.txt": {
+    "published": [
+      "Maria :: Update the register :: Tomorrow"
+    ]
+  },
+  "scripts/transcript-tests/040_governance_review/transcript.txt": {
+    "published": [
+      "Owen :: Circulate the final draft this afternoon :: Not stated",
+      "Owen :: Hold the rollout until policy sign-off :: Not stated"
+    ]
+  },
+  "scripts/transcript-tests/041_operations_review/transcript.txt": {
+    "published": [
+      "Hana :: Update the rota :: This evening",
+      "Paul :: Keep weekend cover internal and rotate it across three teams :: Not stated"
+    ]
+  },
+  "scripts/transcript-tests/042_support_escalation_review/transcript.txt": {
+    "published": [
+      "Drew :: Call the customer by 5pm :: Not stated",
+      "Drew :: Replace the workaround article with a direct escalation path for priority accounts :: Not stated"
+    ]
+  },
+  "scripts/transcript-tests/043_release_go_no_go/transcript.txt": {
+    "published": [
+      "Priya :: Rerun the regression pack by 4pm :: Friday"
+    ]
+  },
+  "scripts/transcript-tests/044_budget_reforecast/transcript.txt": {
+    "published": [
+      "Ben :: Send the revised forecast :: Wednesday"
+    ]
+  },
+  "scripts/transcript-tests/045_board_launch_delay/transcript.txt": {
+    "published": [
+      "Leah :: Update the board pack :: Tonight"
+    ]
+  },
+  "scripts/transcript-tests/046_customer_onboarding_split_rollout/transcript.txt": {
+    "published": [
+      "Mina :: Send the missing-field list :: Today",
+      "Omar :: Start onboarding with finance first and hold warehouse until the mapping is complete :: Not stated"
+    ]
+  },
+  "scripts/transcript-tests/047_supplier_renewal_rejection/transcript.txt": {
+    "published": [
+      "Mark :: Send the renewal note :: Tomorrow morning",
+      "Mark :: Renew with the existing supplier for Q2 instead of switching to Supplier A :: Not stated"
+    ]
+  },
+  "scripts/transcript-tests/048_status_review_pending_leadership/transcript.txt": {
+    "published": [
+      "Not stated :: Finalise Stage gate templates :: Not stated",
+      "Not stated :: Draft The vendor strategy document :: Not stated",
+      "Not stated :: Follow up Innovation grant feedback :: Not stated",
+      "Not stated :: Provide Sales input for the AI pipeline dependency map :: Not stated"
+    ]
+  },
+  "scripts/transcript-tests/049_low_substance_noise/transcript.txt": {
+    "published": []
+  },
+  "scripts/transcript-tests/050_partnership_mou_enablement/transcript.txt": {
+    "published": [
+      "Sara :: Confirm dates with them :: Friday",
+      "Joel :: Sign only the marketing MOU this month and defer the reseller clause to legal :: This month"
+    ]
+  },
+  "scripts/transcript-tests/051_real_webinar_rehearsal/transcript.txt": {
+    "published": [
+      "Conor Flynn :: Show, I'll describe that much better, and then I'll bring it up :: Not stated",
+      "Conor Flynn :: Do one, two, three, or four examples :: Not stated"
+    ]
+  },
+  "scripts/transcript-tests/052_status_update_meeting/transcript.txt": {
+    "published": []
+  },
+  "scripts/transcript-tests/053_hidden_decision_meeting/transcript.txt": {
+    "published": [
+      "Grace :: Miss the usual weekly check-in :: Wednesday",
+      "Not stated :: Move the weekly check-in to Friday :: Noon",
+      "David :: Reschedule the weekly check-in :: Today"
+    ]
+  },
+  "scripts/transcript-tests/054_document_review_meeting/transcript.txt": {
+    "published": []
+  },
+  "scripts/transcript-tests/055_dependency_risk_meeting/transcript.txt": {
+    "published": []
+  },
+  "scripts/transcript-tests/056_progress_dashboard_meeting/transcript.txt": {
+    "published": []
+  },
+  "scripts/transcript-tests/057_rehearsal_banter_filter/transcript.txt": {
+    "published": [
+      "Jack Cunningham :: Just take your top off :: Not stated"
+    ]
+  },
+  "scripts/transcript-tests/058_submission_date_priority/transcript.txt": {
+    "published": []
+  },
+  "scripts/transcript-tests/059_partial_completion_allowed/transcript.txt": {
+    "published": [
+      "Ciaran :: Send the updated clinical trace matrix and the related documents for review :: Monday"
+    ]
+  },
+  "scripts/transcript-tests/060_external_review_optional/transcript.txt": {
+    "published": []
+  },
+  "scripts/transcript-tests/061_no_major_impact_dependency/transcript.txt": {
+    "published": []
+  },
+  "scripts/transcript-tests/062_completed_and_approved_status/transcript.txt": {
+    "published": []
+  },
+  "scripts/transcript-tests/063_rejection_test/transcript.txt": {
+    "published": []
+  },
+  "scripts/transcript-tests/064_analytics_review/transcript.txt": {
+    "published": [
+      "Not stated :: Then make sure that the the chat information is :: Not stated",
+      "Not stated :: Keep you updated with what we first say :: Not stated"
+    ]
+  },
+  "scripts/transcript-tests/064_status_setup_clause_rejected/transcript.txt": {
+    "published": []
+  },
+  "scripts/transcript-tests/065_status_topic_date_casing/transcript.txt": {
+    "published": []
+  },
+  "scripts/transcript-tests/066_status_misrecognized_setup_rejected/transcript.txt": {
+    "published": []
+  },
+  "scripts/transcript-tests/067_banana_falcon_client_ready/transcript.txt": {
+    "published": []
+  },
+  "scripts/transcript-tests/068_noisy_low_substance_sparse/transcript.txt": {
+    "published": []
+  },
+  "scripts/transcript-tests/069_decision_heavy_internal/transcript.txt": {
+    "published": []
+  },
+  "scripts/transcript-tests/070_incident_bug_triage/transcript.txt": {
+    "published": [
+      "Liam :: Patch the mapper :: Today",
+      "Noah :: Notify customer success :: Once the replay completes"
+    ]
+  },
+  "scripts/transcript-tests/071_messy_speaker_timestamp_formats/transcript.txt": {
+    "published": [
+      "Ravi :: Request the insurance certificate :: Friday"
+    ]
+  },
+  "scripts/transcript-tests/072_action_free_information_briefing/transcript.txt": {
+    "published": []
+  },
+  "scripts/transcript-tests/073_support_metrics_actions/transcript.txt": {
+    "published": [
+      "Mark :: Set up a dashboard :: Not stated",
+      "Not stated :: Review the onboarding guide :: Next week"
+    ]
+  },
+  "scripts/transcript-tests/074_allotment_society_committee/transcript.txt": {
+    "published": [
+      "Barbara Finch :: Write to the council again, properly this time, cc the councillor, and I'll use the word liability because that usually gets them moving :: Not stated",
+      "Ken Ogden :: Get one from the, from the place on Mill Road, they're about eight quid :: Not stated",
+      "Priyanka Das :: Go down the list in order and email the top three, offer them a plot, give them a fortnight to say yes or they go to the back :: Not stated",
+      "Wesley Boothroyd :: Put the schedule together, the categories and the entry form, and get it up on the noticeboard and the Facebook by, let's say, mid-August, so people have time to grow for it :: Not stated",
+      "Ken Ogden :: Do the lot Saturday then, water butt, and the shed security :: Not stated"
+    ]
+  },
+  "scripts/transcript-tests/075_pantomime_society_planning/transcript.txt": {
+    "published": [
+      "Nadeem Chaudhry :: Test all four mics and the desk before October and either fix or replace the dodgy one :: Not stated",
+      "Not stated :: Land it because the rights take weeks :: Tonight",
+      "Gerald Pemberton :: Order the Cinderella script and performing rights, before anyone else in the county nabs the slot :: This week",
+      "Fiona Alcott :: An understudy for the prince this year, given the Malcolm situation :: Not stated",
+      "Fiona Alcott :: Do a draft poster for Cinderella once you give me the final show dates, and bring it to the next meeting for everyone to pick apart :: Not stated",
+      "Nadeem Chaudhry :: Need a bit of budget if it's a new mic, they're not cheap :: Not stated"
+    ]
+  },
+  "scripts/transcript-tests/076_brewery_production_numbers/transcript.txt": {
+    "published": [
+      "Josie Kaur :: Email them to confirm the fifteen casks for the twenty-second, with our terms :: Today",
+      "Mick Dolan :: Ring the refrigeration engineer :: Today",
+      "Ravi Menon :: Order, seven point two for the IPA dry hop, plus the bittering and the pale ale hops :: Not stated",
+      "Ravi Menon :: Place the hop order morning, all thirteen kilos :: Monday",
+      "Dan Threlfall :: Order six sacks :: Today",
+      "Mick Dolan :: Get the chiller serviced before we pitch the IPA on the fifteenth, non-negotiable :: Not stated"
+    ]
+  },
+  "scripts/transcript-tests/077_race_committee_two_jos/transcript.txt": {
+    "published": [
+      "Jo Marsh :: Sort the marshals, I've got the list from last year and I'll ring round and get us up to fourteen :: Not stated",
+      "Jo Bennett :: Get a quote from St John Ambulance for two crews for the day, and confirm it once you're all happy with the cost :: Not stated",
+      "Alan Pryce :: Get the road-closure application in , no later, and confirm the towpath's reopened :: This week",
+      "Jo Bennett :: Be Jo B if it helps :: Not stated",
+      "Alan Pryce :: A plan B route :: Not stated",
+      "Deepa Sharma :: Reorder the medals, same as last year, we need, if we're expecting three hundred runners, I'll order three hundred and fifty to be safe :: Not stated",
+      "Deepa Sharma :: Take the social media :: Not stated"
+    ]
+  },
+  "scripts/transcript-tests/078_parking_no_decision_reached/transcript.txt": {
+    "published": []
+  }
+}

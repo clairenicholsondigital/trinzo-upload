@@ -1285,5 +1285,60 @@
     "parsedChars": 1136,
     "coverage": 1,
     "hash": "9ff71f73346dcc6d"
+  },
+  {
+    "file": "scripts/transcript-tests/074_allotment_society_committee/transcript.txt",
+    "turns": 67,
+    "events": 132,
+    "participants": 4,
+    "unattributedTurns": 0,
+    "contentChars": 5359,
+    "parsedChars": 5229,
+    "coverage": 0.976,
+    "hash": "d0119f282be92b0a"
+  },
+  {
+    "file": "scripts/transcript-tests/075_pantomime_society_planning/transcript.txt",
+    "turns": 65,
+    "events": 113,
+    "participants": 5,
+    "unattributedTurns": 0,
+    "contentChars": 5337,
+    "parsedChars": 5209,
+    "coverage": 0.976,
+    "hash": "602cc8603c99dec1"
+  },
+  {
+    "file": "scripts/transcript-tests/076_brewery_production_numbers/transcript.txt",
+    "turns": 51,
+    "events": 100,
+    "participants": 4,
+    "unattributedTurns": 0,
+    "contentChars": 5013,
+    "parsedChars": 4887,
+    "coverage": 0.975,
+    "hash": "dd729d12323ded0e"
+  },
+  {
+    "file": "scripts/transcript-tests/077_race_committee_two_jos/transcript.txt",
+    "turns": 52,
+    "events": 103,
+    "participants": 4,
+    "unattributedTurns": 0,
+    "contentChars": 4225,
+    "parsedChars": 4100,
+    "coverage": 0.97,
+    "hash": "889506d1db6298e2"
+  },
+  {
+    "file": "scripts/transcript-tests/078_parking_no_decision_reached/transcript.txt",
+    "turns": 63,
+    "events": 118,
+    "participants": 5,
+    "unattributedTurns": 0,
+    "contentChars": 4170,
+    "parsedChars": 4035,
+    "coverage": 0.968,
+    "hash": "57574d524135bf72"
   }
 ]

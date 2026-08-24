@@ -1530,5 +1530,90 @@
       "The team keeps saying the same",
       "Account setup and permissions"
     ]
+  },
+  {
+    "file": "scripts/transcript-tests/074_allotment_society_committee/transcript.txt",
+    "topicCount": 4,
+    "topics": [
+      "Plans and timelines",
+      "Same always, biggest marrow, best jam, the",
+      "And the team ringfence the extra for the water and",
+      "Decisions"
+    ],
+    "summaryTopicCount": 5,
+    "summaryTopics": [
+      "Alarm-code and clinical confirmation",
+      "Alarm behaviour and controls",
+      "Lovely, that's one sorted",
+      "Now, the annual show",
+      "Water butt, shed, marrows"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/075_pantomime_society_planning/transcript.txt",
+    "topicCount": 7,
+    "topics": [
+      "Plans and timelines",
+      "Operations and processes",
+      "The licensing lot",
+      "Training and readiness",
+      "Testing and validation",
+      "Tuesday works for",
+      "The carpet lives to fight another year"
+    ],
+    "summaryTopicCount": 3,
+    "summaryTopics": [
+      "Sylvia, Nadeem, Fiona, Tom",
+      "The carpet lives fight another year",
+      "Goodness, that's the hard bit done"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/076_brewery_production_numbers/transcript.txt",
+    "topicCount": 4,
+    "topics": [
+      "Twelve hundred, that's full batch",
+      "Let get total",
+      "Decisions",
+      "Risks"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Twelve hundred, that's full batch"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/077_race_committee_two_jos/transcript.txt",
+    "topicCount": 7,
+    "topics": [
+      "Marsh, marshals, getting fourteen",
+      "Barely enough last year and someone nearly",
+      "Budget and commercial matters",
+      "Plans and timelines",
+      "For route, properly, fourteen",
+      "The date's locked, the twenty-eighth of September, and the team",
+      "Risks"
+    ],
+    "summaryTopicCount": 4,
+    "summaryTopics": [
+      "Budget and commercial matters",
+      "Marsh, marshals, getting fourteen",
+      "For route, properly, fourteen",
+      "Barely enough last year and someone nearly"
+    ]
+  },
+  {
+    "file": "scripts/transcript-tests/078_parking_no_decision_reached/transcript.txt",
+    "topicCount": 3,
+    "topics": [
+      "Budget and commercial matters",
+      "Three cars and caravan",
+      "Content and communications"
+    ],
+    "summaryTopicCount": 2,
+    "summaryTopics": [
+      "Budget and commercial matters",
+      "Three cars and caravan"
+    ]
   }
 ]

@@ -1169,6 +1169,56 @@
       "typeSuggested": false,
       "suggestionMargin": null,
       "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/074_allotment_society_committee/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Allotment Society Committee",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/075_pantomime_society_planning/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Panto Society Planning",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/076_brewery_production_numbers/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Brew Schedule Planning",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/077_race_committee_two_jos/transcript.txt",
+      "corpus": "synthetic",
+      "title": "10K Committee Catch Up",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
+      "typeFromTitle": "Project review"
+    },
+    {
+      "file": "scripts/transcript-tests/078_parking_no_decision_reached/transcript.txt",
+      "corpus": "synthetic",
+      "title": "Residents Association Parking",
+      "type": "Project review",
+      "typeFromBodyOnly": false,
+      "typeSuggested": false,
+      "suggestionMargin": null,
+      "typeFromTitle": "Project review"
     }
   ],
   "purposes": [
@@ -1651,7 +1701,7 @@
       "purposeSource": "title_transform",
       "purposeText": "Check in on progress for AI.",
       "words": 6,
-      "evidenceIdCount": 5,
+      "evidenceIdCount": 1,
       "namesSubject": false,
       "isBareTitle": false,
       "flagged": true
@@ -2457,6 +2507,61 @@
       "evidenceIdCount": 2,
       "namesSubject": false,
       "isBareTitle": false,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/074_allotment_society_committee/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Allotment Society Committee.",
+      "words": 3,
+      "evidenceIdCount": 6,
+      "namesSubject": false,
+      "isBareTitle": true,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/075_pantomime_society_planning/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "stated_in_meeting",
+      "purposeText": "Land it tonight because the rights take weeks.",
+      "words": 8,
+      "evidenceIdCount": 1,
+      "namesSubject": true,
+      "isBareTitle": false,
+      "flagged": false
+    },
+    {
+      "file": "scripts/transcript-tests/076_brewery_production_numbers/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "title_transform",
+      "purposeText": "Plan the brew schedule.",
+      "words": 4,
+      "evidenceIdCount": 1,
+      "namesSubject": true,
+      "isBareTitle": false,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/077_race_committee_two_jos/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "title_transform",
+      "purposeText": "Catch up on progress for 10K committee.",
+      "words": 7,
+      "evidenceIdCount": 10,
+      "namesSubject": false,
+      "isBareTitle": false,
+      "flagged": true
+    },
+    {
+      "file": "scripts/transcript-tests/078_parking_no_decision_reached/transcript.txt",
+      "corpus": "synthetic",
+      "purposeSource": "meeting_title",
+      "purposeText": "Residents Association Parking.",
+      "words": 3,
+      "evidenceIdCount": 9,
+      "namesSubject": true,
+      "isBareTitle": true,
       "flagged": true
     }
   ]
