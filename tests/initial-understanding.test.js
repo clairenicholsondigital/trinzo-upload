@@ -194,3 +194,53 @@ test('cold fixture sequence remains isolated across Abbott, T761 and DITA', () =
   assert.doesNotMatch(t761Text, /importer-obligation|MedEnvoy|sunglasses/i);
   assert.doesNotMatch(ditaText, /Sylmar|mute button|alarm-code|USB|GUI/i);
 });
+
+// The hint-free objective rung.
+//
+// Objectives had two rungs and both needed scaffolding the informal meetings lack: hints
+// come from a meeting-type profile, and per-workstream derivation needs workstreams. An
+// allotment committee has neither, so a meeting with six clean deterministic actions
+// published ONE objective while its human minutes listed five - each of which was one of
+// those actions abstracted ("Confirm repair action for the broken water butt tap"). The
+// meeting's own selected actions are the best statement of what it set out to do, and
+// they need no profile to say so.
+test('a meeting with no profile and no workstreams still gets objectives from its own actions', () => {
+  const { buildObjectives } = require('../utils/canonicalMinutes/initialUnderstanding');
+  const objectives = buildObjectives('', [], { evidenceIds: [] }, [
+    { action: 'Replace the broken water butt tap on Saturday', evidenceIds: ['e1'] },
+    { action: 'Email the top three people on the waiting list', evidenceIds: ['e2'] }
+  ], []);
+  const texts = objectives.map((item) => item.text.toLowerCase());
+  assert.ok(texts.some((text) => text.includes('water butt')), JSON.stringify(texts));
+  assert.ok(texts.some((text) => text.includes('waiting list')), JSON.stringify(texts));
+  // Each carries its own action's evidence, not a pooled set.
+  assert.deepEqual(objectives.map((item) => item.evidenceIds), [['e1'], ['e2']]);
+});
+
+test('the floor never publishes an objective in the speaker\'s voice', () => {
+  // An action can carry its speaker's voice onto the actions screen, where the rewrite
+  // and repair passes exist to fix it. An objective has no repair pass, so "and I'll use
+  // the word liability" must not become one - and mechanical redundancy is deleted first
+  // because deleting a repeated phrase never changes the claim.
+  const { buildObjectives } = require('../utils/canonicalMinutes/initialUnderstanding');
+  const objectives = buildObjectives('', [], { evidenceIds: [] }, [
+    { action: "Write to the council again, and I'll use the word liability", evidenceIds: ['e1'] },
+    { action: 'Get one from the, from the place on Mill Road', evidenceIds: ['e2'] }
+  ], []);
+  const texts = objectives.map((item) => item.text);
+  assert.ok(!texts.some((text) => /\bI'll\b/i.test(text)), JSON.stringify(texts));
+  assert.ok(texts.some((text) => /from the place on Mill Road/.test(text) && !/the, from the/.test(text)), JSON.stringify(texts));
+});
+
+test('an action-derived objective never becomes a topic heading', () => {
+  // The topics-from-objectives stopgap strips a leading verb and publishes the rest as a
+  // heading, which only makes sense for topic-shaped objectives. "Redline the exit
+  // clause" is an instruction; stripping its verb makes a worse instruction, not a
+  // subject - measured: 21 instructions became headings across 14 transcripts on the
+  // first draft of this rung, and the actionDerived flag is what pulled them back.
+  const { buildObjectives } = require('../utils/canonicalMinutes/initialUnderstanding');
+  const objectives = buildObjectives('', [], { evidenceIds: [] }, [
+    { action: 'Redline the exit clause by Friday', evidenceIds: ['e1'] }
+  ], []);
+  assert.equal(objectives[0].actionDerived, true);
+});

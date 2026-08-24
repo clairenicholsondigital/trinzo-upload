@@ -72,15 +72,27 @@ const MATCH_THRESHOLD = 0.5;
 // Coverage: how many expected items have a best-matching generated item over threshold.
 // Reported as {matched, total, unmatched} - a fraction with its own numerator and
 // denominator, never a lone percentage.
+const NEAR_THRESHOLD = 0.3;
+
 function coverage(expectedItems, generatedItems, matchFn) {
   const unmatched = [];
   const matched = [];
+  let near = 0;
   for (const expected of expectedItems) {
     const best = generatedItems.reduce((max, generated) => Math.max(max, matchFn(expected, generated)), 0);
     if (best >= MATCH_THRESHOLD) matched.push(expected);
-    else unmatched.push(expected);
+    else {
+      // The matcher is lexical, and a real paraphrase - "Practise the opening and
+      // handover from Priya to Tom" against "Confirm presenter handovers and roles" -
+      // scores as a miss. The near tier separates "found but worded differently" from
+      // "not found at all", so a coverage number can be read without re-deriving that
+      // distinction by hand from the printed pairs. The headline metric stays the strict
+      // one: near is context, not credit.
+      if (best >= NEAR_THRESHOLD) near += 1;
+      unmatched.push(expected);
+    }
   }
-  return { matched: matched.length, total: expectedItems.length, unmatched };
+  return { matched: matched.length, near, total: expectedItems.length, unmatched };
 }
 
 function actionMatch(expected, generated) {
@@ -186,7 +198,7 @@ function printReport(scores) {
   console.log('\nfixture'.padEnd(38), 'type', 'purpose', 'obj', 'topics', 'disc', 'actR', 'actP', 'wording');
   const totals = { objM: 0, objT: 0, topM: 0, topT: 0, discM: 0, discT: 0, actM: 0, actT: 0, actPM: 0, actPT: 0, wordFlagged: 0, wordChecked: 0 };
   for (const s of scores) {
-    const frac = (c) => `${c.matched}/${c.total}`;
+    const frac = (c) => `${c.matched}/${c.total}${c.near ? `+${c.near}n` : ''}`;
     console.log(
       s.name.padEnd(38),
       (s.typeMatch ? 'ok  ' : 'DIFF'),
@@ -207,7 +219,7 @@ function printReport(scores) {
   }
   console.log('\ntotals');
   console.log(`  type match          : ${scores.filter((s) => s.typeMatch).length}/${scores.length}`);
-  console.log(`  objective coverage  : ${totals.objM}/${totals.objT}`);
+  console.log(`  objective coverage  : ${totals.objM}/${totals.objT}  (+${scores.reduce((sum, s2) => sum + (s2.objectives.near || 0), 0)} near - found but worded differently)`);
   console.log(`  topic coverage      : ${totals.topM}/${totals.topT}`);
   console.log(`  discussion coverage : ${totals.discM}/${totals.discT}`);
   console.log(`  action recall       : ${totals.actM}/${totals.actT}  (of what a human minuted, how much did we find)`);

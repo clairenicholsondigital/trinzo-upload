@@ -5,7 +5,7 @@ const { purposePlan, objectiveIntentForText } = require('./meetingPurpose');
 const { statedPurposeFromOpening, purposeFromTitle, namesARecurringSubject } = require('./statedPurpose');
 const { purposeFromTitleShape } = require('./titlePurpose');
 const { canHeadlineTopic, canSupportPurposeDimension, canStandAloneAsMinutesEvidence } = require('./publishability');
-const { minutesEnglishFaults } = require('../minutesEnglish');
+const { minutesEnglishFaults, repairMechanicalFaults } = require('../minutesEnglish');
 const { editorialTopicLabel, isPublishableTopicLabel, labelIsTurnDerived, labelNamesAWorkstream, CONCEPTS } = require('./topicEditorial');
 const { stagedFinalActionQualityIssue } = require('../stagedEditorial');
 
@@ -704,12 +704,55 @@ function buildObjectives(profileId, workstreams, purpose, actions = [], topicHin
   // actions first (profile ordering), then one line per remaining workstream, to eight.
   const hinted = deriveObjectivesFromActions(actions, topicHints);
   const perWorkstream = objectivesPerWorkstream(workstreams, actions, topicHints, hinted.map((item) => item.text));
-  const derived = [...hinted, ...perWorkstream].slice(0, 8);
-  if (derived.length) {
-    return derived.map((item, index) => ({
+  const derived = [...hinted, ...perWorkstream];
+  // The hint-free rung. Both rungs above need scaffolding the informal meetings lack:
+  // hints come from a meeting-type profile, and per-workstream derivation needs
+  // workstreams - an allotment committee has neither, so a meeting with six clean
+  // deterministic actions published ONE objective while its human minutes listed five,
+  // each of which was one of those actions abstracted ("Confirm repair action for the
+  // broken water butt tap"). The meeting's own selected actions are the best statement
+  // of what it set out to do, and they need no profile to say so: same phrasing helper,
+  // same presentation gate, each carrying its own action's evidence.
+  const usedTexts = new Set(derived.map((item) => item.text.toLowerCase()));
+  const usedTokens = derived.map((item) => new Set(tokens(item.text)));
+  for (const signal of normaliseActionSignals(actions)) {
+    if (derived.length >= 8) break;
+    if (signal.action.split(/\s+/).length < 3) continue;
+    if (objectivePresentationFault(signal.action)) continue;
+    // The floor never publishes speech. An action can carry its speaker's voice onto the
+    // actions screen, where the rewrite and the repair exist to fix it - an OBJECTIVE has
+    // no repair pass, so "Write to the council... and I'll use the word liability" must
+    // not become one. Mechanical redundancy is deleted first (that never changes the
+    // claim); anything still in the speaker's voice or cut short is not objective
+    // material, and skipping it costs nothing because the polish composes cited
+    // objectives on top of whatever floor survives.
+    const repaired = repairMechanicalFaults(signal.action).text;
+    if (minutesEnglishFaults(repaired).some((fault) => ['voice', 'truncation'].includes(fault.severity))) continue;
+    const text = asObjectivePhrase(repaired);
+    if (!text || usedTexts.has(text.toLowerCase())) continue;
+    // An action already voiced by an earlier rung is the same objective in other words.
+    const textTokens = new Set(tokens(text));
+    const duplicate = usedTokens.some((existing) => {
+      if (!existing.size || !textTokens.size) return false;
+      const shared = [...textTokens].filter((token) => existing.has(token)).length;
+      return shared / Math.min(existing.size, textTokens.size) >= 0.6;
+    });
+    if (duplicate) continue;
+    usedTexts.add(text.toLowerCase());
+    usedTokens.push(textTokens);
+    // Marked, because an action wearing an objective's hat must not go on to wear a
+    // topic's: the topics-from-objectives stopgap strips the leading verb and publishes
+    // the rest as a heading, and "Redline the exit clause" is an instruction, not a
+    // subject the meeting was about.
+    derived.push({ text, evidenceIds: signal.evidenceIds, actionDerived: true });
+  }
+  const capped = derived.slice(0, 8);
+  if (capped.length) {
+    return capped.map((item, index) => ({
       text: item.text,
       evidenceIds: item.evidenceIds.length ? item.evidenceIds : (pooledIds.length ? pooledIds : purpose.evidenceIds),
       provenance: 'transcript_emergent',
+      ...(item.actionDerived ? { actionDerived: true } : {}),
       id: `initial_objective_${index + 1}`
     }));
   }
@@ -808,6 +851,7 @@ function buildInitialUnderstanding({ evidence, meeting = {}, topics = [], meetin
 }
 
 module.exports = {
+  buildObjectives,
   buildInitialUnderstanding,
   describeDiscussedConcepts,
   organisationFromMeeting,

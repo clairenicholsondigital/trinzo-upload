@@ -173,7 +173,15 @@ function summaryScreen(proposal) {
   // original scale.
   const rawTopicItems = Array.isArray(proposal.topics) && proposal.topics.length
     ? proposal.topics
-    : objectives.slice(0, 4).map((text) => ({ text: clean(text).replace(/^(?:Review|Confirm|Clarify|Identify|Agree)\s+/i, '') }));
+    // The stopgap derives a heading by stripping an objective's leading verb, which only
+    // makes sense for objectives that were topic-shaped to begin with. An action-derived
+    // objective is an instruction - "Redline the exit clause" - and stripping its verb
+    // makes a worse instruction, not a subject; those are excluded by the flag their rung
+    // sets.
+    : (proposal.objectives || [])
+        .filter((item) => !item.actionDerived)
+        .slice(0, 4)
+        .map((item) => ({ text: clean(item.text).replace(/^(?:Review|Confirm|Clarify|Identify|Agree)\s+/i, '') }));
   // The summary screen publishes these headings, and it was the one surface that did not
   // ask whether they were headings. topicLooksLikeReportedSpeechFragment is a narrow test;
   // the label gates - client-ready, not a statement, not an attendance list, coordinated if
