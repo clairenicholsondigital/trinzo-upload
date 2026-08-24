@@ -3,7 +3,7 @@
 const fetch = require('node-fetch');
 const { clean } = require('./evidence');
 const { deadlineFrom } = require('./stages');
-const { minutesEnglishFaults, repairMechanicalFaults } = require('../minutesEnglish');
+const { minutesEnglishFaults, repairMechanicalFaults, contentSet } = require('../minutesEnglish');
 const { openingVerbIsActionable } = require('../stagedEditorial');
 const { finaliseDiscussionPointForMinutes, normaliseFinalStagedActionCandidate, normaliseAndValidateActionOwner } = require('../stagedEditorial');
 const { isReviewerAuthored } = require('./state');
@@ -879,6 +879,19 @@ async function repairActionWording(payload, evidencePack, options = {}) {
       // not resolve, which is worse than leaving the pronoun, because a pronoun looks unfinished
       // and a placeholder looks deliberate. Only refused when the original did not have one.
       if (ANONYMOUS_PERSON.test(candidate) && !ANONYMOUS_PERSON.test(original)) continue;
+      // Changing only the function words is not a repair, it is passing the test.
+      //
+      // "Find that little clock top right" came back as "Find THE little clock top right" -
+      // the demonstrative swapped for a definite article, which clears the deixis detector
+      // and leaves the reader exactly as unable to find the clock. A repair that resolves a
+      // reference has to name the thing, and naming it changes the content words. If the
+      // content words are identical the row has not been repaired, so it keeps its fault and
+      // its flag rather than being quietly marked fixed.
+      const beforeContent = contentSet(original);
+      const afterContent = contentSet(candidate);
+      const unchanged = beforeContent.size === afterContent.size
+        && [...afterContent].every((token) => beforeContent.has(token));
+      if (unchanged) continue;
       const before = protectedFactsOf(original);
       if ([...protectedFactsOf(candidate)].some((fact) => !before.has(fact))) continue;
       next[index] = { ...next[index], action: candidate, wordingRepaired: true };

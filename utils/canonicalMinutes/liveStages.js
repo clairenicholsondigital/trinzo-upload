@@ -10,6 +10,7 @@ const { auditConfirmedAgainstScreen } = require('./runner');
 const { extractMentionedPeople, damerauLevenshtein } = require('../entityNormalization');
 const { buildConfirmedUnderstanding } = require('../stagedSemanticAuthority');
 const { joinConceptLabels } = require('./initialUnderstanding');
+const { isPublishableTopicLabel, labelNamesAWorkstream } = require('./topicEditorial');
 
 function strings(values) {
   return (Array.isArray(values) ? values : []).map((value) => clean(value)).filter(Boolean);
@@ -173,9 +174,21 @@ function summaryScreen(proposal) {
   const rawTopicItems = Array.isArray(proposal.topics) && proposal.topics.length
     ? proposal.topics
     : objectives.slice(0, 4).map((text) => ({ text: clean(text).replace(/^(?:Review|Confirm|Clarify|Identify|Agree)\s+/i, '') }));
+  // The summary screen publishes these headings, and it was the one surface that did not
+  // ask whether they were headings. topicLooksLikeReportedSpeechFragment is a narrow test;
+  // the label gates - client-ready, not a statement, not an attendance list, coordinated if
+  // it enumerates - were applied to workstream labels and to discussion cards and skipped
+  // here, so "Twelve hundred, that's full batch" and "Let get total" reached a brewery's
+  // minutes as topics while every other surface would have refused them. Same gates,
+  // applied to the surface that was missed.
   const visibleTopicItems = rawTopicItems
     .filter((item) => clean(item?.text))
-    .filter((item) => !topicLooksLikeReportedSpeechFragment(item.text));
+    .filter((item) => !topicLooksLikeReportedSpeechFragment(item.text))
+    // The two label-shaped gates only. canHeadlineTopic is deliberately not in this list:
+    // it delegates to a four-word minimum written for transcript evidence, and applying it
+    // to headings empties the topic list on 28 of 122 meetings - short subjects like
+    // "Technical setup" are real headings and a sentence floor is the wrong bar for them.
+    .filter((item) => isPublishableTopicLabel(clean(item.text)) && labelNamesAWorkstream(clean(item.text)));
   const overallTopics = visibleTopicItems.map((item) => clean(item.text)).filter(Boolean);
   const initialUnderstanding = proposal.initialUnderstanding || null;
   const inferredPurpose = clean(initialUnderstanding?.meetingPurpose?.text);

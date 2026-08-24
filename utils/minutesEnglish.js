@@ -216,6 +216,7 @@ function repairMechanicalFaults(value, options = {}) {
 }
 
 module.exports = {
+  contentSet,
   minutesEnglishFaults,
   repairMechanicalFaults,
   unresolvedDeixis,

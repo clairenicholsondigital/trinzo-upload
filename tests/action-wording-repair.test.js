@@ -100,3 +100,17 @@ test('a failed repair leaves the row, it never drops it', async () => {
   assert.equal(result.payload.screens.actions.length, 1, 'the commitment survives a failed repair');
   assert.equal(result.payload.screens.actions[0].action, original);
 });
+
+test('changing only the function words is not a repair', async () => {
+  // Measured live: "Find that little clock top right" came back as "Find THE little clock
+  // top right". The demonstrative was swapped for a definite article, which clears the
+  // deixis detector and leaves the reader exactly as unable to find the clock. A repair
+  // that resolves a reference has to name the thing, and naming it changes the content
+  // words - so an unchanged content-word set means the row was not repaired, it was
+  // reworded until it passed.
+  const original = 'Find that little clock top right';
+  assert.equal(await repairedAction(original, 'Find the little clock top right'), original);
+  // Naming the thing is a real repair and is accepted.
+  assert.equal(await repairedAction(original, 'Find the wall clock above the presenter view'),
+    'Find the wall clock above the presenter view');
+});
