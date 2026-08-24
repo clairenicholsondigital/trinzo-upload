@@ -587,6 +587,64 @@ function objectivePhraseForTopic(topic, topicHints, evidence) {
   return `${intent} ${title.charAt(0).toLowerCase()}${title.slice(1)}`;
 }
 
+
+// Decisions, collected for the summary the way actionSignals already are.
+//
+// The scorecard's remaining objective gaps have names, and most of them are decisions:
+// the allotment's plot-fee rise, the pantomime's choice of show. Human minutes write the
+// objective as the intent behind the decision - "Decide between Cinderella and Aladdin" -
+// and the model can compose that, but only from evidence it is shown, and the summary
+// pack carried actions, clarifications and unresolved needs while decisions never rode.
+//
+// Two sources, both deterministic. The explicit speech-act extraction that the discussion
+// stage already trusts, and one general grammatical form it misses: the impersonal
+// announcement - "it's decided", "that's agreed", "that's settled" - which is how a chair
+// closes a question without saying "we decided". When the announcement carries its own
+// clause ("so it's decided, we're doing Cinderella this year") that clause is the
+// decision; when it is bare ratification ("Good. That's decided then.") the decision is
+// the nearest preceding substantive turn, because a ratification ratifies something.
+const IMPERSONAL_DECISION = /(?:^|[,;:\s])(?:so\s+)?(?:it|that)[\u2019']?s\s+(?:decided|agreed|settled)\b[,.:]?\s*(.*)$/i;
+const RATIFICATION_ACK = /^(?:yes|yeah|yep|agreed|good|fine|okay|ok|right|perfect|lovely|great)[.,!\s]*$/i;
+
+function collectDecisionSignals(evidence, state) {
+  const signals = [];
+  const seen = new Set();
+  const push = (text, evidenceIds) => {
+    const cleaned = clean(text).replace(/[.]+$/, '');
+    if (cleaned.split(/\s+/).length < 4) return;
+    const key = cleaned.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    signals.push({ text: cleaned, evidenceIds: evidenceIds.filter(Boolean) });
+  };
+  try {
+    for (const decision of (deterministicStages.contentStage(evidence, state).decisions || [])) {
+      push(decision.text, decision.evidenceIds || []);
+    }
+  } catch {
+    // The explicit extractor failing must not cost the impersonal scan below.
+  }
+  const events = evidence.events || [];
+  events.forEach((event, index) => {
+    const match = clean(event.text).match(IMPERSONAL_DECISION);
+    if (!match) return;
+    const trailing = clean(match[1]);
+    if (trailing.split(/\s+/).filter(Boolean).length >= 4) {
+      push(trailing, [event.id]);
+      return;
+    }
+    for (let back = index - 1; back >= Math.max(0, index - 6); back -= 1) {
+      const prior = events[back];
+      const priorText = clean(prior.text);
+      if (RATIFICATION_ACK.test(priorText)) continue;
+      if (priorText.split(/\s+/).length < 8) continue;
+      push(priorText, [prior.id, event.id]);
+      break;
+    }
+  });
+  return signals.slice(0, 6);
+}
+
 function contextStage(evidence, profile, state = {}, reviewerGuidance = '', topology = { mode: 'standard' }) {
   // Topics ALWAYS come from this transcript's own MiniLM clusters. The
   // meeting-type profile (if any) is a thin classifier used only to order those
@@ -632,6 +690,13 @@ function contextStage(evidence, profile, state = {}, reviewerGuidance = '', topo
   // The pairs ride on the understanding so the summary evidence pack can cite the turns
   // each action came from - computed here anyway, and previously thrown away.
   if (initialUnderstanding) initialUnderstanding.actionSignals = actionSignals;
+  if (initialUnderstanding) {
+    try {
+      initialUnderstanding.decisionSignals = collectDecisionSignals(evidence, state);
+    } catch (error) {
+      initialUnderstanding.decisionSignals = [];
+    }
+  }
   return {
     meeting: state.meeting || { participants: evidence.participants },
     objectives: (initialUnderstanding.objectives && initialUnderstanding.objectives.length
@@ -2437,4 +2502,4 @@ function actionsStage(evidence, state, profile, topology) {
   };
 }
 
-module.exports = { contextStage, contentStage, actionsStage, actionConfidenceTier, buildCommitmentThreads, actionsFromThread, semanticActionCandidate, semanticThreadReviewCandidate, hasSemanticRole, learnedSlotActions, resolveEnrichedActions, isUnderspecifiedAction, canonicalActionText, canonicalRiskText, corroboratedClosingRecapActions, workstreamActionReviewCandidates };
+module.exports = { collectDecisionSignals, contextStage, contentStage, actionsStage, actionConfidenceTier, buildCommitmentThreads, actionsFromThread, semanticActionCandidate, semanticThreadReviewCandidate, hasSemanticRole, learnedSlotActions, resolveEnrichedActions, isUnderspecifiedAction, canonicalActionText, canonicalRiskText, corroboratedClosingRecapActions, workstreamActionReviewCandidates };

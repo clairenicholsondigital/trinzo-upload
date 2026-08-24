@@ -580,6 +580,7 @@ async function polishInitialUnderstanding(input = {}, options = {}) {
           // cites - the discussion stage's model, applied to the summary.
           'Write a meeting purpose of one to two sentences, four to eight concise meeting objectives, and a professional three to five sentence executive summary in natural British English.',
           'An objective states what the meeting set out to decide, fix or agree, in the meeting\'s own subjects - "Correct the festival order into the right cask quantity", not "Review operations and processes". Prefer the concrete thing the cited evidence names over a generic category, and use the supplied actions as objective material where they show what the meeting was for.',
+          'Where the cited evidence records a decision being made or a question left open, write the objective as the intent behind it - "Decide which production to stage", "Agree the plot-fee change", "Resolve the parking enforcement question" - citing the turns where it was decided or discussed.',
           'The purpose says why the meeting was held. The executive summary reads like formal meeting minutes and says what the meeting covered and where the main threads got to.',
           'Use the supplied evidence entries to add concrete detail that is directly supported, and cite the evidenceIds you used for each field.',
           'Put the ids ONLY in the evidenceIds arrays. Never write an id such as evt_0224 inside the purpose, an objective or the summary - the reader sees that text and it is not for them.',

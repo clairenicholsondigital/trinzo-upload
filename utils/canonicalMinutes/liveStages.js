@@ -448,6 +448,10 @@ function boundedSummaryEvidencePack(proposal, evidence) {
     }
   };
   for (const item of understanding.meetingSpine || []) pushIds(item.evidenceIds);
+  // Decisions ride early: the objective gaps with names on them - the plot-fee rise, the
+  // choice of show - are decisions, and the model can only write "Agree the plot-fee
+  // change" as an objective if the turn where it was agreed is in front of it.
+  for (const item of understanding.decisionSignals || []) pushIds(item.evidenceIds);
   for (const item of understanding.materialClarifications || []) pushIds(item.evidenceIds);
   for (const item of understanding.unresolvedNeeds || []) pushIds(item.evidenceIds);
   for (const item of understanding.actionSignals || []) pushIds(item.evidenceIds);
