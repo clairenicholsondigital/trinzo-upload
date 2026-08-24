@@ -3,6 +3,8 @@
 const fetch = require('node-fetch');
 const { clean } = require('./evidence');
 const { deadlineFrom } = require('./stages');
+const { minutesEnglishFaults, repairMechanicalFaults } = require('../minutesEnglish');
+const { openingVerbIsActionable } = require('../stagedEditorial');
 const { finaliseDiscussionPointForMinutes, normaliseFinalStagedActionCandidate, normaliseAndValidateActionOwner } = require('../stagedEditorial');
 const { isReviewerAuthored } = require('./state');
 const { normaliseAttendeeReferences } = require('../entityNormalization');
@@ -429,6 +431,11 @@ function promptFor(stage, payload, evidencePack, options = {}) {
     'Treat work described as ongoing, in progress, being worked on or having recently started as outstanding only when the evidence also identifies concrete remaining work or a deliverable.',
     'Consolidate repeated descriptions of the same underlying commitment into one canonical record.',
     'Rewrite each retained action into one complete, grammatical action with an explicit verb, specific object and supported purpose where the evidence establishes it.',
+    // The discussion contract has forbidden this since it was written; the actions contract
+    // never did, and first- or second-person voice is the single largest wording fault in
+    // the published corpus - 18 of 206 rows. It is the same clause, on the surface that was
+    // missed, rather than a new rule.
+    'Do not repeat transcript filler, first-person or second-person speech, unresolved pronouns or speaker narration. Write each action in the third person as it would appear in minutes.',
     'Resolve words such as it, this and that only from the supplied bounded context window.',
     'Replace the reference with the most specific supported workstream, document, deliverable or task. Generic substitutes such as "the matter", "the topic" or "the issue" are not acceptable.',
     'The object must distinguish the record from other documents or issues: retain supported names, acronyms, subject matter and purpose. For an email, state its supported subject; for an escalation, state the exact supported issue and system or team.',
@@ -650,6 +657,12 @@ function applyActionRewrite(payload, output, evidencePack) {
       if (!prospectiveEvidence(candidate, pack)) return [];
       const action = clean(candidate.action);
       if (!action || unresolvedReference(action) || nonActionState(action) || action.split(/\s+/).length < 4) return [];
+      // A rewrite that comes back in the speaker's own voice has not been rewritten. Asking
+      // for third person and then accepting first person regardless is how "Just run through
+      // where the Hartwell site's at, I don't want this to take long" reached a client
+      // action list. Refusing it here falls back to the source wording exactly as any other
+      // rejected rewrite does - nothing is dropped that would otherwise have been kept.
+      if (minutesEnglishFaults(action).some((fault) => fault.severity === 'voice')) return [];
       if (!actionVerbSupported(candidate, pack)) return [];
       if (unsupportedNamedParticipants(candidate, pack).length) return [];
       if (['completed_history', 'requirement', 'review_required'].includes(reviewDisposition)) return [];
@@ -751,6 +764,132 @@ function normaliseEvidencePackEntities(evidencePack, participants) {
   }));
 }
 
+
+// A second round, for the rows whose wording is still not fit to print.
+//
+// The first round is a selection pass: it decides which candidates are real commitments and
+// rewrites them. When its rewrite comes back in the speaker's own voice the rewrite is
+// refused, and the source wording stands - which is the raw transcript, and usually worse.
+// Measured live, that left 26% of published actions carrying a wording fault, including
+// every example the reviewer reported.
+//
+// So the residue gets one more round, asked for one thing only. It is a repair, not a
+// re-selection: every row supplied comes back, and the evidence window comes with it,
+// because the window is the only place "that" in "Bring that to the US team" can be
+// resolved from. A repair is accepted only if it clears the faults AND introduces no
+// protected fact - number, acronym or proper name - that the original did not have, which
+// is the same guard the summary grammar pass uses. Anything else leaves the row as it was.
+const REPAIR_ROW_LIMIT = 8;
+
+// Definite generic human reference: a noun phrase that points at a person and names none.
+const ANONYMOUS_PERSON = /\bthe\s+(?:speaker|recipient|individual|person|attendee|participant|user|requester|reader|addressee|action item)\b/i;
+
+function protectedFactsOf(value) {
+  return new Set([
+    ...(clean(value).match(/\b\d+(?:[.,:]\d+)*(?:%|st|nd|rd|th)?\b/g) || []),
+    ...(clean(value).match(/\b[A-Z][A-Z0-9&/-]{1,}\b/g) || []),
+    ...(clean(value).match(/\b[A-Z][a-z'\u2019-]+(?:\s+[A-Z][a-z'\u2019-]+)+\b/g) || [])
+  ].map((item) => item.toLowerCase()));
+}
+
+function wordingFaults(action) {
+  return minutesEnglishFaults(action).filter((fault) => ['voice', 'referential', 'truncation'].includes(fault.severity));
+}
+
+function repairPrompt(rows) {
+  return [
+    '[CMD: task=minutes_wording_repair; format=json]',
+    'Each supplied record is a real commitment from a meeting whose wording is not fit to print. Rewrite each one as one or two complete sentences of third-person meeting-minutes English.',
+    'Resolve every it, this and that from the supplied evidence window and name the thing referred to. Remove first-person and second-person speech, conversational asides and stray evaluations.',
+    'Keep every fact: owner, deadline, quantity, standard, document and name. Invent nothing and add no detail the evidence does not carry.',
+    'Write each record as an instruction beginning with a verb - "Write to the council...", "Service the chiller...". Never narrate the meeting: no "the speaker", no "the recipient", no "the action item is". Do not turn the person the work is about into the person doing it.',
+    'Return every supplied index. If a record cannot be resolved from its evidence, return its original text unchanged.',
+    'Return JSON only as {"repairs":[{"index":0,"action":"..."}]}.',
+    '',
+    'RECORDS:',
+    JSON.stringify(rows.map((row) => ({ index: row.index, action: row.action, evidence: row.evidence })))
+  ].join('\n');
+}
+
+async function repairActionWording(payload, evidencePack, options = {}) {
+  // Mechanical faults first, and without asking anybody: a repeated phrase is redundancy,
+  // and deleting the first copy cannot change what the row claims. "Get one from the, from
+  // the place on Mill Road" is fixed here rather than spent on a round trip.
+  const actions = (Array.isArray(payload?.screens?.actions) ? payload.screens.actions : [])
+    .map((item) => {
+      const repair = repairMechanicalFaults(clean(item.action));
+      return repair.applied.length ? { ...item, action: repair.text } : item;
+    });
+  const broken = actions
+    .map((action, index) => ({ action: clean(action.action), index, faults: wordingFaults(clean(action.action)) }))
+    .filter((row) => row.faults.length)
+    .slice(0, REPAIR_ROW_LIMIT);
+  if (!broken.length) return { payload: { ...payload, screens: { ...payload.screens, actions } }, repaired: 0, attempted: 0 };
+  const apiKey = clean(options.apiKey ?? process.env.TROOPER_API_KEY);
+  const fetchImpl = options.fetchImpl || fetch;
+  if (!apiKey || typeof fetchImpl !== 'function') return { payload, repaired: 0, attempted: broken.length, reason: 'unavailable' };
+
+  const textFor = (index) => evidenceEntriesFor({ evidence: (evidencePack || []).flatMap((item) => item.evidence || []) })
+    .filter((entry) => (actions[index].evidenceIds || []).map(String).includes(String(entry.id)))
+    .map((entry) => clean(entry.text))
+    .filter(Boolean)
+    .slice(0, 4)
+    .join(' ');
+
+  const rows = broken.map((row) => ({ index: row.index, action: row.action, evidence: textFor(row.index) }));
+  try {
+    const response = await fetchImpl(clean(options.url ?? process.env.TROOPER_CHAT_COMPLETIONS_URL) || DEFAULT_URL, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: clean(options.model ?? process.env.TROOPER_MODEL) || DEFAULT_MODEL,
+        messages: [
+          { role: 'system', content: 'Rewrite meeting records into client-ready minutes English. Return valid JSON only.' },
+          { role: 'user', content: repairPrompt(rows) }
+        ],
+        temperature: 0.1,
+        max_tokens: 900,
+        response_format: { type: 'json_object' }
+      })
+    });
+    if (!response.ok) return { payload, repaired: 0, attempted: broken.length, reason: `http_${response.status}` };
+    const body = await response.json();
+    const content = body?.choices?.[0]?.message?.content;
+    const output = typeof content === 'object' ? content : JSON.parse(String(content || '{}'));
+    const repairs = Array.isArray(output?.repairs) ? output.repairs : [];
+    const next = actions.slice();
+    let repaired = 0;
+    for (const repair of repairs) {
+      const index = Number(repair?.index);
+      if (!Number.isInteger(index) || !next[index]) continue;
+      const original = clean(next[index].action);
+      const candidate = clean(repair?.action);
+      if (!candidate || candidate.toLowerCase() === original.toLowerCase()) continue;
+      if (wordingFaults(candidate).length) continue;
+      // An action record is an instruction. Requiring the imperative is what stops the
+      // repair reframing a row into narration - "The speaker will bring one to show the
+      // recipient", "The action item is to locate the clock" - and, more seriously, what
+      // stops it moving the work onto the wrong person: "Service the chiller" became "The
+      // refrigeration engineer is to service the chiller", quietly making the engineer the
+      // owner of an action that belonged to the brewer who was going to ring them.
+      if (!openingVerbIsActionable(candidate)) continue;
+      // A repair may not introduce an anonymous person. "Bring the enormous item to show the
+      // recipient" is grammatical, third person and imperative, and tells the reader nothing
+      // about who anything is for - the repair substituted a placeholder for a name it could
+      // not resolve, which is worse than leaving the pronoun, because a pronoun looks unfinished
+      // and a placeholder looks deliberate. Only refused when the original did not have one.
+      if (ANONYMOUS_PERSON.test(candidate) && !ANONYMOUS_PERSON.test(original)) continue;
+      const before = protectedFactsOf(original);
+      if ([...protectedFactsOf(candidate)].some((fact) => !before.has(fact))) continue;
+      next[index] = { ...next[index], action: candidate, wordingRepaired: true };
+      repaired += 1;
+    }
+    return { payload: { ...payload, screens: { ...payload.screens, actions: next } }, repaired, attempted: broken.length };
+  } catch (error) {
+    return { payload: { ...payload, screens: { ...payload.screens, actions } }, repaired: 0, attempted: broken.length, reason: error?.message || 'request_failed' };
+  }
+}
+
 async function polishCanonicalStage(payload, options = {}) {
   const stage = clean(payload?.stagedStage).toLowerCase();
   const participants = Array.isArray(payload?.canonicalDiagnostics?.entityNames)
@@ -799,4 +938,4 @@ async function polishCanonicalStage(payload, options = {}) {
   return { payload: rewritten, used: true, reason: `Trooper rewrote ${packs.length} bounded MiniLM evidence pack(s).`, usage };
 }
 
-module.exports = { promptFor, polishCanonicalStage, applyActionRewrite, applyDiscussionRewrite, discussionPointGrounded, unresolvedReference, canonicalFallback, nonActionState, nearDuplicate, addRecoveredActionCandidates, clientReadyPresentation, normaliseActionPresentation, normaliseDiscussionPresentation };
+module.exports = { promptFor, polishCanonicalStage, repairActionWording, wordingFaults, applyActionRewrite, applyDiscussionRewrite, discussionPointGrounded, unresolvedReference, canonicalFallback, nonActionState, nearDuplicate, addRecoveredActionCandidates, clientReadyPresentation, normaliseActionPresentation, normaliseDiscussionPresentation };

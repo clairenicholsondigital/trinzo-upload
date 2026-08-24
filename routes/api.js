@@ -46,7 +46,7 @@ const { runCanonicalNoEditPass } = require('../utils/canonicalMinutes/runner');
 const { runCanonicalLiveStage } = require('../utils/canonicalMinutes/liveStages');
 const { suggestMeetingTypeFromEvidence } = require('../utils/canonicalMinutes/meetingTypeSuggestion');
 const { prepareEvidence } = require('../utils/canonicalMinutes/evidence');
-const { polishCanonicalStage, canonicalFallback, addRecoveredActionCandidates, clientReadyPresentation } = require('../utils/canonicalMinutes/trooperPolish');
+const { polishCanonicalStage, canonicalFallback, addRecoveredActionCandidates, clientReadyPresentation, repairActionWording, wordingFaults } = require('../utils/canonicalMinutes/trooperPolish');
 const { enrichActionReviewCandidate } = require('../utils/canonicalMinutes/actionReviewRanking');
 const { reviewGeneratedContent } = require('../utils/terminologyQa');
 const { generateStagedMinutesPdf, stagedMinutesPdfFilename } = require('../utils/stagedMinutesPdf');
@@ -4281,6 +4281,33 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
   if (stage === 'actions' && canonicalEvidencePack.length) {
     result = attachActionCandidateSourceSnippets({ ...result, _canonicalEvidencePack: canonicalEvidencePack });
     delete result._canonicalEvidencePack;
+  }
+  // Wording repair runs on what would otherwise ship: after the presentation pass, after the
+  // unassigned-action merge, on the exact rows the reviewer would have read. Rows with clean
+  // wording cost nothing, because the repair only fires when at least one row is broken.
+  let actionWordingRepair = { repaired: 0, attempted: 0 };
+  if (stage === 'actions') {
+    actionWordingRepair = await repairActionWording(result, canonicalEvidencePack, {});
+    result = actionWordingRepair.payload || result;
+    const stillBroken = (result?.screens?.actions || []).filter((item) => wordingFaults(String(item.action || '')).length);
+    if (stillBroken.length) {
+      result = {
+        ...result,
+        validationFlags: [
+          ...(Array.isArray(result.validationFlags) ? result.validationFlags : []),
+          {
+            type: 'action_wording_needs_review',
+            severity: 'warning',
+            blocking: false,
+            // Never silently. A row we could not phrase properly still reaches the reviewer,
+            // because deleting a real commitment to keep the prose tidy is the worse trade -
+            // but it is pointed at rather than left to be noticed.
+            message: `${stillBroken.length} action${stillBroken.length === 1 ? '' : 's'} below still read${stillBroken.length === 1 ? 's' : ''} like speech rather than a minute. The work is real; the wording needs a pass before sharing.`,
+            resolutionKey: `action-wording-needs-review:${crypto.createHash('sha256').update(stillBroken.map((item) => item.action).join('|')).digest('hex').slice(0, 16)}`
+          }
+        ]
+      };
+    }
   }
   let initialUnderstandingPolish = { used: false, reason: 'not_applicable' };
   const presentationInitialSummary = result?.screens?.summary;

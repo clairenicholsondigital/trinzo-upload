@@ -1101,6 +1101,7 @@ module.exports = {
   isRawTranscriptDiscussionPoint,
   finaliseDiscussionPointForMinutes,
   buildStagedValidationFlags,
+  openingVerbIsActionable,
   stagedFinalActionQualityIssue,
   normaliseFinalStagedActionCandidate,
   normaliseAndValidateActionOwner
