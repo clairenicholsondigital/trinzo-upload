@@ -10,7 +10,7 @@ const { buildMeetingSpine } = require('./meetingSpine');
 const { buildInitialUnderstanding } = require('./initialUnderstanding');
 const { canHeadlineTopic, canStandAloneAsMinutesEvidence, isTranscriptMetaText, isCorrectionOrAcknowledgementFragment, isContextDependentText, isMalformedTranscriptText } = require('./publishability');
 const { resolveActionRecords } = require('./actionResolution');
-const { editorialTopicLabel, editorialTopics, publishableTopicCards } = require('./topicEditorial');
+const { editorialTopicLabel, editorialTopics, labelIsTurnDerived, publishableTopicCards } = require('./topicEditorial');
 const { isReviewerAuthored } = require('./state');
 const { repairDiscussionForConfirmedUnderstanding } = require('../stagedSemanticAuthority');
 const { enrichActionReviewCandidate, rankAndClusterActionReviewCandidates, hasImporterProcedureContext } = require('./actionReviewRanking');
@@ -637,10 +637,32 @@ function contextStage(evidence, profile, state = {}, reviewerGuidance = '', topo
     meeting: state.meeting || { participants: evidence.participants },
     objectives: (initialUnderstanding.objectives && initialUnderstanding.objectives.length
       ? initialUnderstanding.objectives
-      : topics.slice(0, 4).map((topic) => ({ text: objectivePhraseForTopic(topic, topicHints, evidence), evidenceIds: topic.evidenceIds, topicId: topic.id }))),
+      // Same provenance bar as the topics below. A turn-derived label that cannot head a
+      // topic cannot become an objective either: "Let me get a total" was extracted to
+      // "Let get total", templated to "Review let get total.", and then the topics-from-
+      // objectives stopgap in summaryScreen stripped the verb back off and published the
+      // quotation as a heading after all - a fourth door, reached through the other three.
+      : topics
+          .filter((topic) => {
+            const label = clean(topic.editorialText);
+            return label && !labelIsTurnDerived(label, topic, evidence);
+          })
+          .slice(0, 4).map((topic) => ({ text: objectivePhraseForTopic(topic, topicHints, evidence), evidenceIds: topic.evidenceIds, topicId: topic.id }))),
     topics: (initialUnderstanding.primaryWorkstreams && initialUnderstanding.primaryWorkstreams.length
       ? initialUnderstanding.primaryWorkstreams.map((workstream) => ({ text: workstream.label, evidenceIds: workstream.evidenceIds, topicId: workstream.id, provenance: workstream.provenance }))
-      : topics.map((topic) => ({ text: topic.editorialText, evidenceIds: topic.evidenceIds, topicId: topic.id }))),
+      // The ungated back door. When no workstream survives - which is precisely the
+      // situation on informal meetings, where no domain concept matches - this fallback
+      // published raw editorialText labels straight to the summary screen, bypassing every
+      // admission gate above it. That is how "The carpet lives fight another year" and
+      // "Tuesday works for" stayed on screen after both workstream admissions refused
+      // them: they never went through an admission at all. Same bar as everywhere else,
+      // and absence beats a quotation - an unnamed cluster publishes no heading.
+      : topics
+          .filter((topic) => {
+            const label = clean(topic.editorialText);
+            return label && !labelIsTurnDerived(label, topic, evidence);
+          })
+          .map((topic) => ({ text: topic.editorialText, evidenceIds: topic.evidenceIds, topicId: topic.id }))),
     meetingSpine: spine,
     initialUnderstanding,
     purposeProfile: purpose?.profileId || null,

@@ -217,7 +217,20 @@ function summaryScreen(proposal) {
   const reviewedSentence = !coveredSentence && !spineItems.length && overallTopics.length
     ? `The meeting reviewed ${joinConceptLabels(overallTopics.map(lowerInitialUnlessInitialism))}.`
     : '';
-  const synthesis = [inferredPurpose, coveredSentence, reviewedSentence, ...spineItems].filter(Boolean).join(' ');
+  // The last rung of the floor, for meetings where nothing above it fired - no concept
+  // matched, no spine sentence was composed, and the emergent labels were quotations and
+  // are rightly gone. What remains that is both true and OURS to write is structure: how
+  // many commitments the discussion produced, and who was in the room. One sentence of
+  // that beats either a bare title or a quoted turn - the two things this floor used to
+  // fall back to.
+  const signalCount = Array.isArray(initialUnderstanding?.actionSignals) ? initialUnderstanding.actionSignals.length : 0;
+  const participants = (proposal.meeting?.participants || []).map((name) => clean(name)).filter(Boolean);
+  const structuralSentence = !coveredSentence && !reviewedSentence && !spineItems.length
+    ? (signalCount > 0
+      ? `The discussion recorded ${signalCount === 1 ? 'one follow-up commitment' : `${signalCount} follow-up commitments`}, listed under actions.`
+      : (participants.length >= 2 ? `Contributions came from ${joinConceptLabels(participants)}.` : ''))
+    : '';
+  const synthesis = [inferredPurpose, coveredSentence, reviewedSentence, structuralSentence, ...spineItems].filter(Boolean).join(' ');
   const meetingType = clean(proposal.meeting?.type).toLowerCase();
   return {
     objectives,

@@ -140,3 +140,23 @@ test('a clean line is returned untouched', () => {
   assert.equal(repairMechanicalFaults(clean).text, clean);
   assert.deepEqual(repairMechanicalFaults(clean).applied, []);
 });
+
+test('a bare pronoun with nothing before it to refer to is unresolved', () => {
+  // "Land it tonight because the rights take weeks." was a pantomime society's published
+  // meeting purpose. Nothing on the page says what "it" is; the referent was in the room.
+  // The rule is positional, not lexical: the pronoun is unresolved only when no noun-like
+  // token has appeared before it in the sentence.
+  const { unresolvedDeixis } = require('../utils/minutesEnglish');
+  for (const broken of [
+    'Land it tonight because the rights take weeks.',
+    'Email them to confirm the fifteen casks',
+    'Reproduce it on Safari and capture logs by 3pm'
+  ]) assert.equal(unresolvedDeixis(broken), true, broken);
+  for (const fine of [
+    'Submit the application before it lapses',
+    'Order the hop bill and confirm it on Monday',
+    // Anticipatory "it" is a dummy subject, not a reference.
+    'It may be cleaner to point them back to master reference documents instead.',
+    'It is important that the tests pass'
+  ]) assert.equal(unresolvedDeixis(fine), false, fine);
+});

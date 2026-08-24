@@ -88,8 +88,41 @@ function firstOrSecondPerson(text) {
 const COMPLEMENTISER_AFTER_THAT = /^(?:the|a|an|it|he|she|they|we|i|you|this|these|those|there|its|his|her|their|our|your|no|any|some|all|each|every)$/i;
 const TEMPORAL_NOUN = /^(?:morning|afternoon|evening|night|week|weekend|fortnight|month|year|quarter|time|times|day|days|monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december|session|meeting|phase|stage|round|end|point|stand-up|standup|sprint|cycle|period|term|summer|autumn|winter|spring)$/i;
 
+// A bare pronoun with nothing before it to refer to. "Land it tonight because the rights
+// take weeks" asks the reader to know what "it" is; nothing earlier in the sentence says.
+// The test is positional, not lexical: a pronoun is unresolved only when no noun-like
+// token has appeared before it, so "Submit the application before it lapses" is fine -
+// "application" came first and the pronoun has an antecedent to lean on.
+function earlyBarePronoun(words) {
+  let sawNounLike = false;
+  for (let index = 0; index < words.length; index += 1) {
+    const bare = words[index].replace(/[^A-Za-z'’-]/g, '');
+    if (!bare) continue;
+    if (/^(?:it|them)$/i.test(bare)) {
+      // Anticipatory "it" is a dummy subject, not a reference: "It may be cleaner to point
+      // them back" refers to nothing and needs nothing. The tell is the verb that follows -
+      // a copula, modal or seeming-verb - versus a content verb ("It provides flow"), which
+      // really is talking about some unnamed thing.
+      const next = (words[index + 1] || '').replace(/[^A-Za-z'’-]/g, '');
+      if (/^it$/i.test(bare) && /^(?:is|was|would|could|may|might|will|shall|should|must|can|seems?|appears?|becomes?|became|looks?|remains?)$/i.test(next)) { sawNounLike = true; continue; }
+      if (!sawNounLike) return true;
+      continue;
+    }
+    // A noun-like token: not a verb-ish opener, not a function word - approximated as any
+    // word of 3+ letters that is not on the small closed list below. Deliberately loose in
+    // the safe direction: over-counting nouns means under-flagging pronouns.
+    if (bare.length >= 3 && !/^(?:the|and|but|for|with|from|into|onto|that|this|then|than|will|would|shall|should|could|can|may|might|must|being|been|was|were|are|is|be|to|of|in|on|at|by|or|as|if|so|do|did|does|not|no|its|his|her|their|our|your|my)$/i.test(bare)) {
+      // Opening imperatives are verbs, not nouns: skip the first such token.
+      if (!sawNounLike && index === 0) continue;
+      sawNounLike = true;
+    }
+  }
+  return false;
+}
+
 function unresolvedDeixis(text) {
   const words = clean(text).split(/\s+/);
+  if (earlyBarePronoun(words)) return true;
   for (let index = 0; index < words.length; index += 1) {
     const bare = words[index].replace(/[^A-Za-z'’-]/g, '');
     if (!/^(?:that|this|these|those)$/i.test(bare)) continue;

@@ -4160,6 +4160,41 @@ function mergeNamedTopics(summary, namedTopics, confirmedTopics) {
   return { overallTopics: refs.map((ref) => ref.text).filter(Boolean), topicRefs: refs };
 }
 
+
+// Objectives topped up from the topics the model named and the validators accepted.
+//
+// Deterministic objectives derive from workstreams, and workstreams on informal meetings
+// are thin - the domain concepts don't match an allotment committee, and the emergent
+// labels that used to fill the gap were quotations and are now refused. The scorecard made
+// the cost concrete: the allotment's five expected objectives collapsed to one, for a
+// meeting about a water butt, a boundary fence, plot fees, a waiting list, a show and a
+// break-in. The named topics for those meetings are good - they passed the citation
+// validators and the heading gates - so each one not already covered by an objective
+// becomes "Review {topic}.", the same template the deterministic path has always used.
+// Composed from a validated heading, not quoted from anywhere.
+function topUpObjectivesFromNamedTopics(objectives, namedTopics, limit = 8) {
+  const existing = Array.isArray(objectives) ? objectives.slice() : [];
+  const text = (value) => String(value == null ? '' : value).replace(/\s+/g, ' ').trim();
+  const tokensOf = (value) => new Set((text(value).toLowerCase().match(/[a-z][a-z0-9'\u2019-]{2,}/g) || [])
+    .filter((token) => !['the', 'and', 'review', 'confirm', 'agree'].includes(token)));
+  for (const topic of Array.isArray(namedTopics) ? namedTopics : []) {
+    if (existing.length >= limit) break;
+    const label = text(topic?.text || topic);
+    if (!label) continue;
+    const labelTokens = tokensOf(label);
+    if (!labelTokens.size) continue;
+    const covered = existing.some((objective) => {
+      const objectiveTokens = tokensOf(objective);
+      const shared = [...labelTokens].filter((token) => objectiveTokens.has(token)).length;
+      return shared / labelTokens.size >= 0.5;
+    });
+    if (covered) continue;
+    const lowered = /^[A-Z][a-z]/.test(label) ? label.charAt(0).toLowerCase() + label.slice(1) : label;
+    existing.push(`Review ${lowered}.`);
+  }
+  return existing;
+}
+
 async function canonicalStagedResponse(stage, transcript, input = {}) {
   const confirmed = canonicalConfirmedStages(input);
   const semanticTranscript = transcriptForStagedAI(transcript, input);
@@ -4359,7 +4394,11 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
             meetingPurpose: purposeIsQuoted
               ? presentationInitialSummary.meetingPurpose
               : keepConfirmed(confirmedSummary.meetingPurpose, initialUnderstandingPolish.meetingPurpose, presentationInitialSummary.meetingPurpose),
-            objectives: keepConfirmed(confirmedSummary.objectives, initialUnderstandingPolish.objectives, presentationInitialSummary.objectives),
+            objectives: keepConfirmed(
+              confirmedSummary.objectives,
+              topUpObjectivesFromNamedTopics(initialUnderstandingPolish.objectives, initialUnderstandingPolish.namedTopics),
+              presentationInitialSummary.objectives
+            ),
             ...mergeNamedTopics(presentationInitialSummary, initialUnderstandingPolish.namedTopics, confirmedSummary.overallTopics),
             executiveSummary: keepConfirmed(confirmedSummary.executiveSummary, initialUnderstandingPolish.executiveSummary, presentationInitialSummary.executiveSummary),
             // The turns behind the composed prose, for the screen to show on demand. The

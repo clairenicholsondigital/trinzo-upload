@@ -5,7 +5,8 @@ const { purposePlan, objectiveIntentForText } = require('./meetingPurpose');
 const { statedPurposeFromOpening, purposeFromTitle, namesARecurringSubject } = require('./statedPurpose');
 const { purposeFromTitleShape } = require('./titlePurpose');
 const { canHeadlineTopic, canSupportPurposeDimension, canStandAloneAsMinutesEvidence } = require('./publishability');
-const { editorialTopicLabel, isPublishableTopicLabel, labelNamesAWorkstream, CONCEPTS } = require('./topicEditorial');
+const { minutesEnglishFaults } = require('../minutesEnglish');
+const { editorialTopicLabel, isPublishableTopicLabel, labelIsTurnDerived, labelNamesAWorkstream, CONCEPTS } = require('./topicEditorial');
 const { stagedFinalActionQualityIssue } = require('../stagedEditorial');
 
 // A concept counts as discussed only when several turns support it, so a single
@@ -276,6 +277,12 @@ function inferredWorkstreamsFromEvidence(evidence, topics = [], profileId = '') 
     // requires the result to read as a subject rather than as something said,
     // so the summary screen holds to the same bar as the discussion screen.
     if (!label || !canHeadlineTopic(label) || !isPublishableTopicLabel(label) || !labelNamesAWorkstream(label)) continue;
+    // A heading is a claim that somebody wrote this. A turn-derived label is a stopword
+    // filter's output, and publishing it as a workstream is how "The carpet lives fight
+    // another year" became a topic, an objective and a line of a summary. The cluster
+    // itself stays available to the discussion planner; it just doesn't get to head the
+    // summary screen on the strength of a quotation.
+    if (labelIsTurnDerived(label, topic, evidence)) continue;
     const key = label.toLowerCase();
     if (byLabel.has(key)) continue;
     const labelTokens = new Set(tokens(label));
@@ -460,6 +467,17 @@ function buildPurpose(meeting, profileId, mode, spine, workstreams, evidence, ac
   // certainly about this meeting rather than about meetings of this shape.
   const stated = statedPurposeFromOpening(evidence);
   if (stated) {
+    // Somebody said why they were meeting, and that stays the best source there is. But
+    // "the meeting's own answer" and "publishable as a sentence of minutes" are different
+    // properties, and conflating them put "Land it tonight because the rights take weeks."
+    // at the top of a pantomime society's minutes - an imperative with a bare "it" whose
+    // referent is in the room, not on the page. So the quote keeps its protection only
+    // when it reads as minutes: a stated purpose carrying a voice, reference or truncation
+    // fault stays the fallback text but downgrades to 'evidence_grounded', which lets the
+    // cited polish compose a purpose FROM the stated turn without ever losing it - the
+    // turn is in the evidence pack, and the citation validators hold the composition to it.
+    const statedFaults = minutesEnglishFaults(stated.text)
+      .filter((fault) => ['voice', 'referential', 'truncation'].includes(fault.severity));
     return {
       text: stated.text,
       evidenceIds: stated.evidenceIds.length ? stated.evidenceIds : evidenceIds,
@@ -467,10 +485,7 @@ function buildPurpose(meeting, profileId, mode, spine, workstreams, evidence, ac
       confidence: 0.9,
       purposeSource: 'stated_in_meeting',
       statedBy: stated.speaker,
-      // Somebody said this. It is a quote, and no polish - however well cited - replaces
-      // a quote. Note this protection is NEW: the old boolean was set only by the title
-      // paths, so the one purpose that most deserved protecting never actually had it.
-      purposeReplacementPolicy: 'never'
+      purposeReplacementPolicy: statedFaults.length ? 'evidence_grounded' : 'never'
     };
   }
 
@@ -746,8 +761,14 @@ function buildInitialUnderstanding({ evidence, meeting = {}, topics = [], meetin
   const topicWorkstreams = (topics || []).map((topic) => ({
     label: clean(topic.text || topic.editorialText || topic.topic),
     evidenceIds: topic.evidenceIds || [],
+    // Carried so labelIsTurnDerived can see where the label came from. This map used to
+    // strip the topic down to {label, evidenceIds}, which quietly defeated any provenance
+    // check downstream: with no representativeText the label could not be compared with
+    // its own extraction, so a quotation-derived heading sailed through here while the
+    // identical check caught it on the other admission path.
+    representativeText: topic.representativeText,
     provenance: 'transcript_emergent'
-  })).filter((item) => item.label && canHeadlineTopic(item.label) && isPublishableTopicLabel(item.label) && labelNamesAWorkstream(item.label));
+  })).filter((item) => item.label && canHeadlineTopic(item.label) && isPublishableTopicLabel(item.label) && labelNamesAWorkstream(item.label) && !labelIsTurnDerived(item.label, item, evidence));
   const workstreams = inferredWorkstreamsFromEvidence(evidence, [...topicWorkstreams, ...(topics || [])], profileId);
   const selectedWorkstreams = (workstreams.length ? workstreams : topicWorkstreams).slice(0, 8);
   const mode = inferMeetingMode(meeting, profileId, evidence);

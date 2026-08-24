@@ -125,3 +125,29 @@ test('a coordinated list is a heading, however many commas it has', () => {
     assert.equal(labelNamesAWorkstream(heading), true, `${JSON.stringify(heading)} must survive`);
   }
 });
+
+// A heading is a claim that somebody wrote this.
+//
+// The label ladder's extractive rung builds "headings" by stripping the lead-in and
+// stopwords from a spoken sentence, which is the right raw material for clustering and is
+// not writing: "The carpet lives to fight another year" became the heading "The carpet
+// lives fight another year" - ungrammatical precisely because the extraction dropped the
+// "to" - and "Let me get a total" became "Let get total". Both passed every grammar gate,
+// because grammar gates ask whether text is broken, and these are broken in a way only
+// their provenance reveals: nobody wrote them, a filter did. So the test is provenance.
+test('a label that is its own extraction is a quotation, not a heading', () => {
+  const { labelIsTurnDerived } = require('../utils/canonicalMinutes/topicEditorial');
+  const evidence = { events: [{ id: 'e1', text: 'The carpet lives to fight another year.' }] };
+  const topic = { representativeText: 'The carpet lives to fight another year.', evidenceIds: ['e1'] };
+  assert.equal(labelIsTurnDerived('The carpet lives fight another year', topic, evidence), true);
+  // Case changes on the way to the screen do not change where the words came from.
+  assert.equal(labelIsTurnDerived('the carpet lives fight another year', topic, evidence), true);
+});
+
+test('a concept label over the same cluster is written, and stays', () => {
+  const { labelIsTurnDerived } = require('../utils/canonicalMinutes/topicEditorial');
+  const evidence = { events: [{ id: 'e1', text: 'The alarm sound and the mute button flashing need review.' }] };
+  const topic = { representativeText: 'The alarm sound and the mute button flashing need review.', evidenceIds: ['e1'] };
+  // The concept rung matched, so whatever the label is, it was chosen rather than quoted.
+  assert.equal(labelIsTurnDerived('Alarm behaviour and controls', topic, evidence), false);
+});

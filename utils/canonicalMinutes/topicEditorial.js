@@ -96,6 +96,32 @@ function extractiveLabel(value) {
   return selected.charAt(0).toUpperCase() + selected.slice(1);
 }
 
+// Whether a label is a quotation wearing a heading's clothes.
+//
+// The label ladder's middle rung, extractiveLabel, builds a "heading" by stripping the
+// lead-in and stopwords from a spoken sentence. That is the right raw material for
+// clustering, and it is not writing: "The carpet lives to fight another year" became the
+// heading "The carpet lives fight another year" - ungrammatical precisely because the
+// extraction dropped the "to" - and "let's get the total" became "Let get total". Both
+// passed every grammar gate, because grammar gates ask whether text is broken and these
+// are broken in a way only their provenance reveals: nobody wrote them, a filter did.
+//
+// So the test is provenance, not grammar: a label is turn-derived when the concept rung
+// found nothing and the extractive rung produced exactly this text. Turn-derived labels
+// keep doing their real job - naming clusters internally, feeding the discussion planner -
+// they just stop being publishable as headings on the summary screen, where a heading is a
+// claim that somebody wrote this.
+function labelIsTurnDerived(label, topic, evidence) {
+  const text = clean(label);
+  if (!text) return false;
+  const source = clusterText(topic, evidence);
+  if (conceptLabel(source)) return false;
+  // Case-insensitive: presentation passes re-case labels ("Let get total" arrives as
+  // "let get total"), and a change of capital letter does not change where the words
+  // came from.
+  return clean(extractiveLabel(topic?.representativeText)).toLowerCase() === text.toLowerCase();
+}
+
 function editorialTopicLabel(topic, evidence) {
   const source = clusterText(topic, evidence);
   const concept = conceptLabel(source);
@@ -252,4 +278,5 @@ function editorialTopics(topics, evidence, maximum = 8) {
 }
 
 module.exports = {
+  labelIsTurnDerived,
   labelNamesAWorkstream, CONCEPTS, clusterText, editorialTopicLabel, editorialTopics, extractiveLabel, labelIsClientReady, isPublishableTopicLabel, publishableTopicCards };

@@ -73,10 +73,9 @@
       "There is one concrete follow-up",
       "Decisions"
     ],
-    "summaryTopicCount": 2,
+    "summaryTopicCount": 1,
     "summaryTopics": [
-      "Ravi owns the quote request for Friday",
-      "Migrate analytics platforms next year the licence"
+      "Plans and timelines"
     ]
   },
   {
@@ -241,7 +240,7 @@
     ],
     "summaryTopicCount": 1,
     "summaryTopics": [
-      "Choose the rollout approach for the billing"
+      "Roles and responsibilities"
     ]
   },
   {
@@ -251,11 +250,9 @@
       "Patch the mapper and replay the failed",
       "The payment export failed for three customers"
     ],
-    "summaryTopicCount": 3,
+    "summaryTopicCount": 1,
     "summaryTopics": [
-      "Customer and stakeholder feedback",
-      "Patch the mapper and replay the failed",
-      "The payment export failed for three customers"
+      "Customer and stakeholder feedback"
     ]
   },
   {
@@ -271,10 +268,8 @@
     "topics": [
       "The mileage rate changes July"
     ],
-    "summaryTopicCount": 1,
-    "summaryTopics": [
-      "The mileage rate changes July"
-    ]
+    "summaryTopicCount": 0,
+    "summaryTopics": []
   },
   {
     "file": "scripts/meeting-minutes-final-golden/005_project_status_pending_leadership/transcript.txt",
@@ -299,7 +294,7 @@
     ],
     "summaryTopicCount": 1,
     "summaryTopics": [
-      "Mina send the missing-field list today"
+      "Operations and processes"
     ]
   },
   {
@@ -318,7 +313,7 @@
     ],
     "summaryTopicCount": 1,
     "summaryTopics": [
-      "Focus the retail and logistics accounts instead"
+      "Risks and dependencies"
     ]
   },
   {
@@ -329,7 +324,7 @@
     ],
     "summaryTopicCount": 1,
     "summaryTopics": [
-      "Leah update the board pack tonight"
+      "Plans and timelines"
     ]
   },
   {
@@ -339,9 +334,8 @@
       "Content and communications",
       "Keep the live demo seven minutes and"
     ],
-    "summaryTopicCount": 2,
+    "summaryTopicCount": 1,
     "summaryTopics": [
-      "Keep the live demo seven minutes and",
       "Content and communications"
     ]
   },
@@ -376,9 +370,10 @@
       "Operations and processes",
       "Legal review is complete, but finance approval is still pending"
     ],
-    "summaryTopicCount": 1,
+    "summaryTopicCount": 2,
     "summaryTopics": [
-      "Request the insurance certificate Friday"
+      "Operations and processes",
+      "Documentation and evidence"
     ]
   },
   {
@@ -399,11 +394,8 @@
       "David reschedule the weekly check-in today",
       "Friday noon works best"
     ],
-    "summaryTopicCount": 2,
-    "summaryTopics": [
-      "David reschedule the weekly check-in today",
-      "Friday noon works best"
-    ]
+    "summaryTopicCount": 0,
+    "summaryTopics": []
   },
   {
     "file": "scripts/meeting-minutes-final-golden/016_document_review_discussion_only/transcript.txt",
@@ -426,7 +418,7 @@
     ],
     "summaryTopicCount": 1,
     "summaryTopics": [
-      "Continue the current information for now"
+      "Documentation and evidence"
     ]
   },
   {
@@ -438,10 +430,11 @@
       "Testing and validation",
       "Content and communications"
     ],
-    "summaryTopicCount": 2,
+    "summaryTopicCount": 3,
     "summaryTopics": [
-      "The team keeps saying the same",
-      "Account setup and permissions"
+      "Testing and validation",
+      "Content and communications",
+      "Plans and timelines"
     ]
   },
   {
@@ -453,10 +446,8 @@
       "That is cheaper on paper, but it would lock us",
       "Decisions"
     ],
-    "summaryTopicCount": 1,
-    "summaryTopics": [
-      "Jon redline the exit clause Friday"
-    ]
+    "summaryTopicCount": 0,
+    "summaryTopics": []
   },
   {
     "file": "scripts/meeting-minutes-final-golden/020_customer_complaint_review/transcript.txt",
@@ -531,14 +522,13 @@
       "Testing and validation",
       "Software change traceability"
     ],
-    "summaryTopicCount": 6,
+    "summaryTopicCount": 5,
     "summaryTopics": [
       "Language and country requirements",
       "Alarm-code and clinical confirmation",
       "Debug and test-script evidence",
       "Change control and version traceability",
-      "Electrical compliance evidence",
-      "Come here slightly higher percentage"
+      "Electrical compliance evidence"
     ]
   },
   {
@@ -675,11 +665,10 @@
       "Testing and validation",
       "Further actions one"
     ],
-    "summaryTopicCount": 3,
+    "summaryTopicCount": 2,
     "summaryTopics": [
       "Testing and validation",
-      "Risks and dependencies",
-      "Further actions one"
+      "Risks and dependencies"
     ]
   },
   {
@@ -693,9 +682,14 @@
       "Operations and processes",
       "Decisions"
     ],
-    "summaryTopicCount": 1,
+    "summaryTopicCount": 6,
     "summaryTopics": [
-      "Opportunities for improvement here"
+      "Roles and responsibilities",
+      "Risks and dependencies",
+      "Operations and processes",
+      "Content and communications",
+      "Documentation and evidence",
+      "Technical setup"
     ]
   },
   {
@@ -746,7 +740,7 @@
     ],
     "summaryTopicCount": 1,
     "summaryTopics": [
-      "Further actions for meeting"
+      "Operations and processes"
     ]
   },
   {
@@ -789,9 +783,10 @@
       "Regulatory and compliance",
       "Actions beyond preparing the offer pack"
     ],
-    "summaryTopicCount": 1,
+    "summaryTopicCount": 2,
     "summaryTopics": [
-      "Actions beyond preparing the offer pack"
+      "Roles and responsibilities",
+      "Regulatory and compliance"
     ]
   },
   {
@@ -801,10 +796,9 @@
       "Louise split the material two forty-five minute",
       "Keep the pilot group the Manchester site"
     ],
-    "summaryTopicCount": 2,
+    "summaryTopicCount": 1,
     "summaryTopics": [
-      "Louise split the material two forty-five minute",
-      "Keep the pilot group the Manchester site"
+      "Plans and timelines"
     ]
   },
   {
@@ -851,7 +845,7 @@
     ],
     "summaryTopicCount": 1,
     "summaryTopics": [
-      "Focus the retail and logistics accounts instead"
+      "Risks and dependencies"
     ]
   },
   {
@@ -876,10 +870,8 @@
       "That is cheaper on paper, but it would lock us",
       "Decisions"
     ],
-    "summaryTopicCount": 1,
-    "summaryTopics": [
-      "Jon redline the exit clause Friday"
-    ]
+    "summaryTopicCount": 0,
+    "summaryTopics": []
   },
   {
     "file": "scripts/transcript-tests/021_hiring_interview_debrief/transcript.txt",
@@ -923,10 +915,9 @@
       "Budget and commercial matters",
       "Tom tighten the churn narrative before Thursday"
     ],
-    "summaryTopicCount": 2,
+    "summaryTopicCount": 1,
     "summaryTopics": [
-      "Budget and commercial matters",
-      "Tom tighten the churn narrative before Thursday"
+      "Budget and commercial matters"
     ]
   },
   {
@@ -937,10 +928,8 @@
       "Noah pull the API logs 6pm",
       "The database failover worked, but API latency is still unstable"
     ],
-    "summaryTopicCount": 1,
-    "summaryTopics": [
-      "Noah pull the API logs 6pm"
-    ]
+    "summaryTopicCount": 0,
+    "summaryTopics": []
   },
   {
     "file": "scripts/transcript-tests/026_product_bug_triage/transcript.txt",
@@ -985,10 +974,8 @@
     "topics": [
       "Sophie confirm the movers tomorrow"
     ],
-    "summaryTopicCount": 1,
-    "summaryTopics": [
-      "Sophie confirm the movers tomorrow"
-    ]
+    "summaryTopicCount": 0,
+    "summaryTopics": []
   },
   {
     "file": "scripts/transcript-tests/030_webinar_rehearsal/transcript.txt",
@@ -997,9 +984,8 @@
       "Content and communications",
       "Keep the live demo seven minutes and"
     ],
-    "summaryTopicCount": 2,
+    "summaryTopicCount": 1,
     "summaryTopics": [
-      "Keep the live demo seven minutes and",
       "Content and communications"
     ]
   },
@@ -1022,10 +1008,9 @@
       "Louise split the material two forty-minute sessions",
       "Keep the pilot group the Manchester site"
     ],
-    "summaryTopicCount": 2,
+    "summaryTopicCount": 1,
     "summaryTopics": [
-      "Louise split the material two forty-minute sessions",
-      "Keep the pilot group the Manchester site"
+      "Plans and timelines"
     ]
   },
   {
@@ -1034,10 +1019,8 @@
     "topics": [
       "Leo rewrite the landing-page copy tonight"
     ],
-    "summaryTopicCount": 1,
-    "summaryTopics": [
-      "Leo rewrite the landing-page copy tonight"
-    ]
+    "summaryTopicCount": 0,
+    "summaryTopics": []
   },
   {
     "file": "scripts/transcript-tests/034_software_release_review/transcript.txt",
@@ -1059,10 +1042,9 @@
       "Yasmin request the revised quote Tuesday",
       "The larger hardware package includes support, but it commits us"
     ],
-    "summaryTopicCount": 2,
+    "summaryTopicCount": 1,
     "summaryTopics": [
-      "Yasmin request the revised quote Tuesday",
-      "Buy the lower-volume option first and review"
+      "Roles and responsibilities"
     ]
   },
   {
@@ -1083,11 +1065,8 @@
       "Run ninety-day pilot Northstar and review exclusivity",
       "Dean draft the pilot terms Monday"
     ],
-    "summaryTopicCount": 2,
-    "summaryTopics": [
-      "Run ninety-day pilot Northstar and review exclusivity",
-      "Dean draft the pilot terms Monday"
-    ]
+    "summaryTopicCount": 0,
+    "summaryTopics": []
   },
   {
     "file": "scripts/transcript-tests/038_grant_application_review/transcript.txt",
@@ -1098,7 +1077,7 @@
     ],
     "summaryTopicCount": 1,
     "summaryTopics": [
-      "Neil rewrite the summary Wednesday"
+      "Roles and responsibilities"
     ]
   },
   {
@@ -1109,9 +1088,10 @@
       "Maria update the register tomorrow",
       "Risks"
     ],
-    "summaryTopicCount": 1,
+    "summaryTopicCount": 2,
     "summaryTopics": [
-      "Maria update the register tomorrow"
+      "Operations and processes",
+      "Risks and dependencies"
     ]
   },
   {
@@ -1123,7 +1103,7 @@
     ],
     "summaryTopicCount": 1,
     "summaryTopics": [
-      "Owen circulate the final draft afternoon"
+      "Plans and timelines"
     ]
   },
   {
@@ -1140,10 +1120,9 @@
       "Customer and stakeholder feedback",
       "Replace the workaround article direct escalation path"
     ],
-    "summaryTopicCount": 2,
+    "summaryTopicCount": 1,
     "summaryTopics": [
-      "Customer and stakeholder feedback",
-      "Replace the workaround article direct escalation path"
+      "Customer and stakeholder feedback"
     ]
   },
   {
@@ -1167,8 +1146,8 @@
     ],
     "summaryTopicCount": 2,
     "summaryTopics": [
-      "Not deciding headcount today",
-      "Ben send the revised forecast Wednesday"
+      "Roles and responsibilities",
+      "Plans and timelines"
     ]
   },
   {
@@ -1179,7 +1158,7 @@
     ],
     "summaryTopicCount": 1,
     "summaryTopics": [
-      "Leah update the board pack tonight"
+      "Plans and timelines"
     ]
   },
   {
@@ -1191,7 +1170,7 @@
     ],
     "summaryTopicCount": 1,
     "summaryTopics": [
-      "Mina send the missing-field list today"
+      "Operations and processes"
     ]
   },
   {
@@ -1202,9 +1181,10 @@
       "Supplier A cut price by 8 percent, but migration and",
       "Risks"
     ],
-    "summaryTopicCount": 1,
+    "summaryTopicCount": 2,
     "summaryTopics": [
-      "Mark send the renewal note tomorrow morning"
+      "Risks and dependencies",
+      "Operations and processes"
     ]
   },
   {
@@ -1236,8 +1216,10 @@
       "The partner wants two enablement sessions July",
       "The co-branded webinar is fine, but legal review of the"
     ],
-    "summaryTopicCount": 0,
-    "summaryTopics": []
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Plans and timelines"
+    ]
   },
   {
     "file": "scripts/transcript-tests/051_real_webinar_rehearsal/transcript.txt",
@@ -1250,9 +1232,14 @@
       "Operations and processes",
       "Decisions"
     ],
-    "summaryTopicCount": 1,
+    "summaryTopicCount": 6,
     "summaryTopics": [
-      "Opportunities for improvement here"
+      "Roles and responsibilities",
+      "Risks and dependencies",
+      "Operations and processes",
+      "Content and communications",
+      "Documentation and evidence",
+      "Technical setup"
     ]
   },
   {
@@ -1273,11 +1260,8 @@
       "David reschedule the weekly check-in today",
       "Friday noon works best"
     ],
-    "summaryTopicCount": 2,
-    "summaryTopics": [
-      "David reschedule the weekly check-in today",
-      "Friday noon works best"
-    ]
+    "summaryTopicCount": 0,
+    "summaryTopics": []
   },
   {
     "file": "scripts/transcript-tests/054_document_review_meeting/transcript.txt",
@@ -1300,7 +1284,7 @@
     ],
     "summaryTopicCount": 1,
     "summaryTopics": [
-      "Continue the current information for now"
+      "Documentation and evidence"
     ]
   },
   {
@@ -1384,11 +1368,9 @@
       "Plans and timelines",
       "There is no real difference"
     ],
-    "summaryTopicCount": 3,
+    "summaryTopicCount": 1,
     "summaryTopics": [
-      "Customer and stakeholder feedback",
-      "The across all the selected sessions",
-      "Maths the first two tables add together"
+      "Customer and stakeholder feedback"
     ]
   },
   {
@@ -1433,11 +1415,9 @@
       "Customers won't Dave means",
       "Action for Mike investigate API numbers"
     ],
-    "summaryTopicCount": 3,
+    "summaryTopicCount": 1,
     "summaryTopics": [
-      "Product behaviour and design",
-      "Action for Mike investigate API numbers",
-      "Customers won't Dave means"
+      "Product behaviour and design"
     ]
   },
   {
@@ -1458,7 +1438,7 @@
     ],
     "summaryTopicCount": 1,
     "summaryTopics": [
-      "Choose the rollout approach for the billing"
+      "Roles and responsibilities"
     ]
   },
   {
@@ -1468,11 +1448,9 @@
       "Patch the mapper and replay the failed",
       "The payment export failed for three customers"
     ],
-    "summaryTopicCount": 3,
+    "summaryTopicCount": 1,
     "summaryTopics": [
-      "Customer and stakeholder feedback",
-      "Patch the mapper and replay the failed",
-      "The payment export failed for three customers"
+      "Customer and stakeholder feedback"
     ]
   },
   {
@@ -1482,9 +1460,10 @@
       "Operations and processes",
       "Legal review is complete, but finance approval is still pending"
     ],
-    "summaryTopicCount": 1,
+    "summaryTopicCount": 2,
     "summaryTopics": [
-      "Request the insurance certificate Friday"
+      "Operations and processes",
+      "Documentation and evidence"
     ]
   },
   {
@@ -1493,10 +1472,8 @@
     "topics": [
       "The mileage rate changes July and the"
     ],
-    "summaryTopicCount": 1,
-    "summaryTopics": [
-      "The mileage rate changes July and the"
-    ]
+    "summaryTopicCount": 0,
+    "summaryTopics": []
   },
   {
     "file": "scripts/transcript-tests/073_support_metrics_actions/transcript.txt",
@@ -1507,10 +1484,11 @@
       "Testing and validation",
       "Content and communications"
     ],
-    "summaryTopicCount": 2,
+    "summaryTopicCount": 3,
     "summaryTopics": [
-      "The team keeps saying the same",
-      "Account setup and permissions"
+      "Testing and validation",
+      "Content and communications",
+      "Plans and timelines"
     ]
   },
   {
@@ -1539,9 +1517,11 @@
       "Tuesday works for",
       "The carpet lives to fight another year"
     ],
-    "summaryTopicCount": 1,
+    "summaryTopicCount": 3,
     "summaryTopics": [
-      "The carpet lives fight another year"
+      "Plans and timelines",
+      "Testing and validation",
+      "Operations and processes"
     ]
   },
   {
@@ -1553,10 +1533,8 @@
       "Decisions",
       "Risks"
     ],
-    "summaryTopicCount": 1,
-    "summaryTopics": [
-      "Let get total"
-    ]
+    "summaryTopicCount": 0,
+    "summaryTopics": []
   },
   {
     "file": "scripts/transcript-tests/077_race_committee_two_jos/transcript.txt",
@@ -1570,10 +1548,9 @@
       "The date's locked, the twenty-eighth of September, and the team",
       "Risks"
     ],
-    "summaryTopicCount": 2,
+    "summaryTopicCount": 1,
     "summaryTopics": [
-      "Budget and commercial matters",
-      "Barely enough last year and someone nearly"
+      "Budget and commercial matters"
     ]
   },
   {
@@ -1584,10 +1561,9 @@
       "Three cars and caravan",
       "Content and communications"
     ],
-    "summaryTopicCount": 2,
+    "summaryTopicCount": 1,
     "summaryTopics": [
-      "Budget and commercial matters",
-      "Three cars and caravan"
+      "Budget and commercial matters"
     ]
   }
 ]
