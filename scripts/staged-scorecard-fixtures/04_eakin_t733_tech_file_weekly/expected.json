@@ -1,0 +1,99 @@
+{
+  "transcriptFile": "Client_Eakin_T733_Tech_File_review_weekly_NEW.docx",
+  "expected": {
+    "meetingType": "Technical file review",
+    "meetingTitle": "Client Eakin T733 Tech File review weekly",
+    "meetingPurpose": "Review the following week’s TF24 technical-file status and keep priority workstreams moving before holiday and submission deadlines.",
+    "meetingObjectives": [
+      "Review risk, software, contract-management, subcontractor and usability priorities.",
+      "Confirm alarm change status and language update progress.",
+      "Review electrical testing timeline and impact on software workstream dates.",
+      "Check subcontractor, usability, process map and PMS documentation progress.",
+      "Prompt the team to progress and share documentation for review quickly."
+    ],
+    "executiveSummary": "The meeting confirmed continued TF24 remediation priorities, with risk, software, contract management, subcontractors and usability still central. Alarm updates had been completed and clinically reviewed, language changes were ongoing, and in-house electrical testing would push the software workstream to the end of July. The team also reviewed subcontractor procedure updates, formative study planning, process-map responses, PMS alignment and the need to move documentation quickly because timelines were tightening.",
+    "overallTopicsDiscussed": [
+      "Documentation tracker",
+      "Risk management updates",
+      "USB cybersecurity mitigations",
+      "Alarm updates completed",
+      "Clinical review",
+      "Language symbol issues",
+      "New software version",
+      "Electrical compliance testing",
+      "Software workstream timing",
+      "Contractor GSOP",
+      "Subcontractor documentation",
+      "Formative study protocol",
+      "Mini masking problems protocol",
+      "Process maps",
+      "PMS and TF24 documents",
+      "Rule 9 alignment",
+      "Documentation urgency"
+    ],
+    "discussion": [
+      "Documentation tracker movement is expected, with priorities remaining risk, software, contract management, subcontractors and usability.",
+      "Risk-management updates are continuing after David's feedback, including ratings, the risk matrix and cybersecurity mitigations for the USB port.",
+      "Alarm software updates have been completed and clinically reviewed as acceptable for field use.",
+      "The alarm changes can proceed through the change request and will form part of the new software version.",
+      "Language updates are ongoing, with several languages loaded and others blocked by minor or more substantial symbol issues.",
+      "The language updates will also form part of the new software release.",
+      "Electrical compliance testing will be completed in-house and is expected to finish in the second-last week of July.",
+      "The software workstream end date is pushed to the end of July because electrical testing outputs feed into software deliverables.",
+      "Subcontractor and contract-management documentation is being finalised, including feedback and missing documentation.",
+      "The contractor GSOP has been updated to include Louise's feedback and other site-audit updates.",
+      "Formative usability study outputs are expected after the initial August submission but before notified body review in November.",
+      "Adil is preparing the formative study protocol while balancing mini-masking-problem protocol work.",
+      "Kevin is responding to comments and rewriting process-map related documents.",
+      "TFO3 has been submitted, and PMS-related documents now need to be adapted to TF24 specifics.",
+      "David's PMS comments include straightforward alignment items such as confirming Rule 9 across the documentation.",
+      "The team is running short on time, so documentation should be progressed and shared for review as soon as possible."
+    ],
+    "actions": [
+      {
+        "owner": "Rebecca",
+        "action": "Continue updating the risk management plan, ratings, matrix and USB-port cybersecurity mitigations."
+      },
+      {
+        "owner": "Andrew",
+        "action": "Continue resolving language symbol issues and complete the language updates for the new software version."
+      },
+      {
+        "owner": "Andrew",
+        "action": "Continue in-house electrical compliance testing, targeting completion in the second-last week of July."
+      },
+      {
+        "owner": "Christina",
+        "action": "Put the updated contractor GSOP into a folder for Louise to check."
+      },
+      {
+        "owner": "Christina",
+        "action": "Check in with Rebecca before the end of the week on missing subcontractor or contract-management updates."
+      },
+      {
+        "owner": "Jacqui",
+        "action": "Follow up on Louise's review of the updated contractor GSOP."
+      },
+      {
+        "owner": "Adil",
+        "action": "Progress the formative study protocol and agree with Colm and Grace how the study will be distributed across part one and part two."
+      },
+      {
+        "owner": "Kevin",
+        "action": "Finish responses and rewrites on process-map documents, then email Colm and Louise for review."
+      },
+      {
+        "owner": "Ciaran",
+        "action": "Convert the relevant submitted documents into TF24-specific versions and apply client-folder comments."
+      },
+      {
+        "owner": "Ciaran",
+        "action": "Incorporate David's PMS comments, including alignment on Rule 9 and summary-document consistency."
+      },
+      {
+        "owner": "Team",
+        "action": "Progress documentation quickly and share anything that needs Trinzo review."
+      }
+    ]
+  }
+}

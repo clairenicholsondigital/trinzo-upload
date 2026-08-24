@@ -1,0 +1,92 @@
+Client Eakin T733 Tech File review weekly-20260624_100230-Meeting Transcript
+
+24 June 2026, 09:02am
+
+10m 24s
+
+Jacqui Fox started transcription
+
+Jacqui Fox   0:03from last week just so we can kind of go through. So I haven't had a chance to review the tracker this morning but as of last week there was some slight movement in terms of updates in terms of status of the documentation.So I expect that we're kind of going to see fairly reasonable movement from here on out. Key priorities continue to remain risk and software, Christina, contract management and subcontractors. I know that Rebecca probably has some touch points that she needs to do with you now that you're back.around that and what needs to follow up on and then usability evidently. So in terms of risk, there was some feedback that David had put into the risk management plan that Rebecca, start again, that Rebecca had made amendments to the plan as a consequence too.and we review those on the software call with Rebecca and David and Andrew on Monday and there are some further updates that need to happen to that. So around the...ratings. I was trying to remember the word. And she's also working on the risk matrix and then there's some ongoing updates in relation to cybersecurity around the USB port and how you will handle that going forward and what the mitigations around that are. In terms of the software updates, in terms of the alarms thatAndrew has successfully managed to make all those updates. So I believe has had the clinical review with you all earlier on in the week in relation to those three different parameters, which seem acceptable for the field. So it's pretty much the go ahead for the change request in relation to that code update.
+
+Kevin Beattie   1:42E.
+
+Jacqui Fox   2:00that will give you the new version of software now in the field that will be will be in the field to that has those alarm updates in it. Concurrently to that, Andrew has also been making changes to the coding and around the languages. So I believeFour are John, three are.Three have some minor symbolic or symbol updates that need to happen before they can be loaded. And another four that have more consequential symbol issues that need to be resolved. So they're ongoing this week and next week. And that's similarly all of those language updates will form part of the new version of software that you will release. So it could be thetimes plus the languages.Then in relation to electrical compliance testing, confirm that that will all be done in-house. So Andrew is working on that as well. With the view to we anticipate that the completion of all of that testing will be done by this second last week of July. So that evidently will all push out.this software work stream end date to the end of July now because the testing output will feed into some of the deliverables from a software perspective. Okay, and then Lauren, sorry, Christina to subcontract.contractor points. I know that the update from Rebecca kind of last week was that you were finalising a lot of the feedback and the missing documentation and the justifications. So she was going to touch base with you just to, I suppose,where we are on that right now and then understand kind of any additional support that you may need to share with Louise on that. Sorry, go ahead.
+
+Christina McLean   3:59Yeah, no, I was just going to say she had mentioned that she needed to catch up with me yesterday, so I was only back yesterday, but we haven't chatted on any of this yet. But one thing I do know for sure is the procedure was updated a few weeks ago. It was just before I went off. So that was taken into account a lot of Louise's feedback. So any of the sort of comments that she had made, I've
+
+Jacqui Fox   4:16Okay.
+
+Christina McLean   4:19embedded that into the procedure now. There were other updates that needed to be made for one of the other sites audits. So that has been done now. So I'm wondering maybe should I just pop that into a folder for Louise just to cheque through to make sure that I haven't missed anything or there's nothing else outstanding for the GSOP at least.
+
+Jacqui Fox   4:38Yeah, pop it in, absolutely, and I'll follow up on that as well then, yeah, yeah.
+
+Christina McLean   4:42No problem. And I'll cheque in with Rebecca before the end of this week, just so that we have more updates for next week for anything else that's maybe missing.
+
+Colm O'Rourke   4:42Yep.
+
+Jacqui Fox   4:46No problem.Excellent, thanks.Okay, and then Adil from a usability perspective, I know that you, the task analysis were done and you were looking into the plan and the execution of the study.I did have a conversation with Rebecca around the formative, the dates, the timelines in relation to the results of the formative study will likely be after your initial submission in August with a view to having that window until it's pulled for review in November to allow the
+
+Colm O'Rourke   5:26Okay.
+
+Jacqui Fox   5:27the formative, completed formative study information to be updated into it. So, and that's like, that's the agreed path that you guys are taking. So, just in terms of how our planning, how is planning going?
+
+Adil Kauim   5:42Yes, I started the protocol. I'm trying to get as much as I can sort of done this week, because next week I'll be focusing on the protocol prep for the mini masking problems, because I'll be executing that study in the first week of July. So next week I'm going to try to just solely focus on mini masking problems next week. SoThis week, I'm just trying to get what I can done and then get Colm and Grace to kind of go through how to actually distribute the study from part one to part 2 and so on.So, yeah, this is not bad.
+
+Jacqui Fox   6:12Okay.Cool.Okay, then down to process maps, I know last we spoke, Kevin, you were, I think the plan was a catch up with Christina again when she returned around finalising the process maps. I imagine, given she's only back, that hasn't happened.
+
+Kevin Beattie   6:36Yeah, no, not not just yet, like, but we'll get there. We'll get that. I've got some on some other replied to some of that other feedback that Colm and Louise put on the other documents as well, so that's work in progress, like, so yeah.
+
+Jacqui Fox   6:36What is planned likely?And is there, in your reply to their comments, is there a review that they need to do on your replies to understand?
+
+Kevin Beattie   6:54Galvin.
+
+Jacqui Fox   7:05Do they need to look at those?
+
+Kevin Beattie   7:05Yeah, well, I've sort of, yeah, if they don't mind, once I get, once I get finished, I'm sorry, yeah, I'll sure, maybe I'll...A message to you, but want some.
+
+Colm O'Rourke   7:21Yeah, just send us an e-mail. That's fine.
+
+Kevin Beattie   7:21Abby, that that's us, yeah, and then then you can write 'cause I'm reviewing or rewriting the documents on there, so yeah, and reword a few things like so, so, so hopefully that makes makes sense, like so, yeah.
+
+Colm O'Rourke   7:33Mhm.Yep, no bother.
+
+Jacqui Fox   7:37Perfect. And then Ciaran, how are we getting on PMS? Did you? Well, firstly, did you get your submission in for three?
+
+Kevin Beattie   7:42Shh.
+
+Ciaran Ryan   7:48Yeah, it wasn't too bad in the end up. Yeah, it's all gone now, so hopefully it doesn't come back too quickly. So we started yesterday, Megan and Kathryn from our team, they're starting to try and flip.I think there was like 12 maybe key documents that we had sent as part of that submission that required the update. So they're trying to flip them now that they're DF24 specific and that's the case of just seeing what's in the client folder and applying any comments and see how we get on over the next few weeks.Yeah.
+
+Jacqui Fox   8:28And in terms of the feedback that David had given in relation to the PMS file that's in the SharePoint right now, did you get a chance and opportunity to review that?
+
+Ciaran Ryan   8:38Yeah, I think I think it's mostly straightforward stuff, just like confirming the correct rule and things like that, which I think now we know that that's been confirmed anyway. Rule 9, that's just the case of making sure that's across the board, but again, as I said last week, it was it must be a alignment piece anyway on the Bible that we're using.
+
+Jacqui Fox   8:51Okay.
+
+Ciaran Ryan   8:59The summary document.
+
+Jacqui Fox   9:00Okay.Okay. Okay.Okay, that was kind of covered off pretty much everything that we discussed last week. Limited actions out of this week, it sounds like, but...more to the point, just the focus from your perspective to progress kind of any documentation as much as is possible and share anything with us that we can review for you. So you're now at the end of June, you've probably got two weeks before you go on holidays and when you come back you've got a month left. SoYou're getting ties on time.I would say.Anybody, anything else?Nope.Okay.
+
+Colm O'Rourke   9:51The teacher has spoken. Now everyone has to go and do their homework.
+
+Jacqui Fox   9:51Thanks, Fox. Yes.
+
+Colm O'Rourke   9:59Yeah.
+
+Adil Kauim   10:03****.
+
+Colm O'Rourke   10:03That's for sure.
+
+Adil Kauim   10:03Thank you.
+
+Jacqui Fox   10:07Okay, folks. Thanks. Have a good one. Bye. Bye. Bye. Thanks.
+
+Colm O'Rourke   10:09Alright, see you guys. Take it easy. Bye, bye.
+
+Ciaran Ryan   10:10Take care. Thank you. Bye-bye.
+
+Kevin Beattie   10:10Okay, thanks then. Bye, bye.
+
+Andrew Kane   10:12Thanks, babe.
+
+Jacqui Fox stopped transcription
+

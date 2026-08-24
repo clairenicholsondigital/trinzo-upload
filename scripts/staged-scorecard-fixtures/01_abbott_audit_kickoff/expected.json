@@ -1,0 +1,91 @@
+{
+  "transcriptFile": "Client_Abbott_T796_Audit_kick_off_Sylmar_NEW.docx",
+  "expected": {
+    "meetingType": "Audit kick-off / planning",
+    "meetingTitle": "Client Abbott T796 - Audit kick off Sylmar",
+    "meetingPurpose": "Plan the Abbott T796 Sylmar surveillance audit and clarify Niamh’s specialist software audit role, preparation needs and logistics.",
+    "meetingObjectives": [
+      "Confirm audit timing, location and travel arrangements.",
+      "Clarify audit scope, product context and applicable standards.",
+      "Define Niamh’s value-add and software audit focus.",
+      "Plan document access, training and confidentiality requirements.",
+      "Discuss audit execution, trackers, SBOMs, CVE review and reporting approach."
+    ],
+    "executiveSummary": "The group planned the Sylmar surveillance audit, including timing, hotel and site logistics, training, document access and Niamh’s specialist software role. Stuart described the device context, expected standards and risk areas, and confirmed the audit would be a full routine surveillance audit with findings. Niamh’s work is expected to focus on software management, validation, purchasing controls, SBOMs, version rollout and related software risks, with final logistics depending on Stuart’s risk analysis and document access arrangements.",
+    "overallTopicsDiscussed": [
+      "Audit logistics",
+      "Training and preparation timeline",
+      "Audit scope and standards",
+      "Product and software context",
+      "No AI claim expected",
+      "Routine surveillance audit",
+      "Software management deep dive",
+      "Document access and SharePoint",
+      "Code of conduct and training attestation",
+      "Risk assessment and audit plan",
+      "Audit tracker and findings",
+      "SBOM and CVE considerations",
+      "Separate software track",
+      "End-of-day coordination",
+      "AI-assisted report writing"
+    ],
+    "discussion": [
+      "Audit logistics, including hotel reservation, site attendance and travel arrangements for the Sylmar audit.",
+      "Training and preparation work is due to start the following Monday, ahead of the on-site audit from the 20th.",
+      "Report writing is planned after the return to Ireland, from 27 July to 7 August.",
+      "Stuart is leading the audit with Karen, while Niamh will provide specialist software audit support.",
+      "The audited products include pacemakers, data controllers and bedside transmitters with embedded software and automated monitoring.",
+      "Initial risk areas include transmission, software rollout, software versions, cybersecurity and related regulatory requirements.",
+      "No AI claim is expected for the product; the system appears to interpret data through programmed logic and display rather than AI.",
+      "The audit is a routine surveillance audit with full findings and ratings, not an assessment-style audit.",
+      "Stuart's main value from Niamh is a deep dive into the software management system.",
+      "Software audit areas may include software development, validation, purchasing controls, software of unknown provenance, SBOMs and rollout of new versions.",
+      "Document access may require secure sharing or external access to Abbott's audit SharePoint because Niamh is not on the Abbott network.",
+      "Code of conduct and training attestation must be completed before confidential audit material is shared or before the audit formally starts.",
+      "Stuart's risk assessment will feed into the audit plan and is needed before the Wednesday planning meeting.",
+      "Audit findings and queries will be managed through the audit tracker rather than checklist auditing.",
+      "SBOM review and CVE/threat checks may depend on what is available on site and on corporate threat-monitoring processes.",
+      "Niamh may run a separate software track during the second week, depending on Stuart's risk analysis and audit logistics.",
+      "End-of-day audit coordination is expected to happen after site time or during travel back to the hotel.",
+      "AI prompts may be used by the audit team to help speed report writing and locate standards clauses."
+    ],
+    "actions": [
+      {
+        "owner": "Stuart",
+        "action": "Build the audit scope, standards list, classifications, product overview and risk assessment to support the audit plan."
+      },
+      {
+        "owner": "Stuart",
+        "action": "Confirm after the Wednesday meeting what documents can be shared with Niamh before she arrives on site."
+      },
+      {
+        "owner": "Stuart",
+        "action": "Arrange secure document sharing or external SharePoint access for Niamh if needed."
+      },
+      {
+        "owner": "Niamh",
+        "action": "Complete the code of conduct and training attestation before audit material is shared and before the audit starts."
+      },
+      {
+        "owner": "Jacqui",
+        "action": "Send the code of conduct to Niamh today."
+      },
+      {
+        "owner": "Jacqui and Niamh",
+        "action": "Plan Niamh's preparation timeline around Stuart being unavailable while on site from the 14th to the 17th."
+      },
+      {
+        "owner": "Stuart",
+        "action": "Share the risk analysis, audit tracker and available data such as complaints, CAPA and deviations once confidentiality requirements are in place."
+      },
+      {
+        "owner": "Stuart and Niamh",
+        "action": "Hold a face-to-face catch-up at the hotel before Niamh starts the on-site audit week."
+      },
+      {
+        "owner": "Stuart",
+        "action": "Decide whether Niamh should run a separate software audit track based on the risk analysis and logistics."
+      }
+    ]
+  }
+}

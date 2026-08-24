@@ -1,0 +1,224 @@
+{
+  "transcriptFile": "Client_DITA_T819_Importer_Obligations_Client_connect.docx",
+  "expected": {
+    "meetingType": "Importer obligations review",
+    "meetingTitle": "T819 DITA Eyewear Importer Obligations - Client connect",
+    "meetingPurpose": "Clarify DITA importer-obligation processes, business workflows and regulatory gaps so Trinzo can build usable compliance documents and follow-up actions.",
+    "meetingObjectives": [
+      "Review the draft QMS manual and how it should align to DITA processes.",
+      "Understand product flow, warehouse, order, picking and packing processes.",
+      "Clarify UDI, EUDAMED, MedEnvoy and importer verification responsibilities.",
+      "Discuss labels, lot numbering, IFU/MIN and DoC requirements.",
+      "Identify follow-up actions for scope, languages, HPRA fees and internal working sessions."
+    ],
+    "executiveSummary": "The client call clarified DITA’s product and information flow from Japanese suppliers through Netherlands fiscal clearance to Park West storage and European dispatch. The team discussed how QMS procedures should match real business processes, and reviewed UDI, lot numbering, label design, EUDAMED responsibilities, MedEnvoy oversight, DoCs, language considerations and HPRA fees. The internal follow-up added scope clarity around sunglasses/PPE, working-session planning, site-visit planning and the need for client clarification questions.",
+    "overallTopicsDiscussed": [
+      "QMS manual",
+      "Business-process alignment",
+      "Goods movement from Japan to Dublin",
+      "Netherlands fiscal clearance",
+      "Park West warehouse",
+      "Manual warehouse picking",
+      "NetSuite and RF Smart order flow",
+      "Repacking and customer-facing labelling",
+      "UPC and lot numbering",
+      "2D data matrix transition",
+      "EUDAMED registration",
+      "MedEnvoy responsibilities",
+      "US FDA GUDID",
+      "Manufacturer information notes and IFU rationale",
+      "DoCs for MDR and PPE",
+      "Country and language requirements",
+      "HPRA invoice",
+      "SOW scope for sunglasses",
+      "Internal working sessions",
+      "Site visit planning"
+    ],
+    "discussion": [
+      "The QMS manual is being used as a building block for importer-obligation compliance documents.",
+      "DITA's product flow involves goods purchased from suppliers in Japan, fiscally cleared in the Netherlands and then shipped to Dublin.",
+      "The Netherlands step is a short customs or airport clearance hold rather than substantive warehousing.",
+      "Final storage takes place at DITA's Park West warehouse in Dublin.",
+      "The Park West warehouse is mostly manual, with scanners and RF Smart handheld devices used for picking.",
+      "Customer orders can come through B2B, sales reps or customer service and are processed through ERP and warehouse picking flows.",
+      "Products are picked, packed into branded cases, labelled, invoiced and dispatched through DHL to stores.",
+      "The QMS and procedures need to reflect both regulatory requirements and DITA's actual business processes.",
+      "Orla had not received the QMS manual email, so it needs to be resent to her.",
+      "Current barcode use is UPC-based, with lot numbering and UDI-related updates being implemented.",
+      "New products must be registered in EUDAMED immediately and existing products by 28 November.",
+      "Importer and authorised representative obligations include checking that manufacturer product data is present in EUDAMED.",
+      "MedEnvoy may be handling EUDAMED device registration for the manufacturer, but DITA needs oversight of the plan and timelines.",
+      "US FDA GUDID records may also need to be checked for distributed US products.",
+      "Label updates should include production information, potentially through a 2D data matrix barcode and lot number.",
+      "Manufacturer information notes or warranty booklets are used, but the team discussed whether any IFU justification is needed from the manufacturer.",
+      "Class I glasses may not need IFUs if justified, but the manufacturer needs the rationale if no IFU is provided.",
+      "Declaration of conformity updates may need to include sunglasses and risk rationale for both EU MDR and PPE Category I.",
+      "DOC translation and country/language coverage need to be clarified based on where products are shipped.",
+      "The HPRA authorised representative invoice and SRN registration correspondence need to be reviewed before payment."
+    ],
+    "actions": [
+      {
+        "owner": "Jacqui",
+        "action": "Resend the QMS manual to Orla."
+      },
+      {
+        "owner": "Orla",
+        "action": "Review the QMS manual this week and raise any questions."
+      },
+      {
+        "owner": "Orla",
+        "action": "Speak to Cody about the MedEnvoy task list, EUDAMED registration plan and who is responsible for each activity."
+      },
+      {
+        "owner": "Orla",
+        "action": "Share or confirm the list of countries DITA ships to so language and DOC translation requirements can be checked."
+      },
+      {
+        "owner": "Orla",
+        "action": "Continue work with suppliers and RF Smart on lot numbering and label updates over the next two to three weeks."
+      },
+      {
+        "owner": "Jenny",
+        "action": "Review label or barcode details if DITA wants a regulatory check on the proposed format."
+      },
+      {
+        "owner": "John-Paul",
+        "action": "Update declarations of conformity for sunglasses to include the required risk rationale for EU MDR and PPE Category I where applicable."
+      },
+      {
+        "owner": "Orla",
+        "action": "Send the HPRA invoice and SRN confirmation email to Jacqui and Colm for review."
+      },
+      {
+        "owner": "Jacqui and Colm",
+        "action": "Review the HPRA invoice and SRN correspondence with Liam before payment guidance is given."
+      },
+      {
+        "owner": "Jacqui",
+        "action": "Arrange a follow-up call with Orla for the following week."
+      }
+    ],
+    "humanGeneratedMinutes": {
+      "files": [
+        {
+          "label": "Human generated minutes - client connect",
+          "file": "human_generated_minutes_client_connect.pdf"
+        },
+        {
+          "label": "Human generated minutes - internal connect",
+          "file": "human_generated_minutes_internal_connect.pdf"
+        }
+      ],
+      "meetingTitle": "T819 DITA Eyewear Importer Obligations - Client connect",
+      "meetingDate": "17 June 2026",
+      "objective": [
+        "Plan approach and initial activities"
+      ],
+      "minutesDiscussion": [
+        "Mark drafted a QMS manual and emphasised that QMS procedures need to align with existing business processes for usability and sustainability.",
+        "The QMS manual will serve as the building block for required compliance documents and was shared to Orla for review.",
+        "Goods are purchased by DITA Inc directly from Japanese suppliers.",
+        "The first EU point of entry is the Netherlands, where goods are fiscally cleared by a third party and held temporarily at the airport.",
+        "Goods are then released and transported to Ireland, with final storage at the Park West warehouse.",
+        "The warehouse process is primarily manual, with scanners used for picking.",
+        "Products are stored in original packaging and are already barcoded at the factory.",
+        "Incoming product checks are performed but are not comprehensive.",
+        "Wholesale opticians place orders through B2B, sales reps or customer service, and orders are processed in NetSuite.",
+        "Products are picked using RF Smart handheld barcode scanners and bin-number storage.",
+        "Products are repacked into DITA branded packaging with warranty booklet or manufacturer's information note where applicable.",
+        "Customer-facing outer shipping labels are applied before DHL dispatch, normally same day or next day.",
+        "DITA currently uses UPC codes and is implementing lot numbering and a transition to 2D data matrix.",
+        "The US team is managing label design and barcode format.",
+        "Jenny outlined UDI compliance, including production identifiers and EUDAMED registration dates.",
+        "New devices must now be registered in EUDAMED and existing products by 28 November 2026.",
+        "The legal manufacturer owns device registration, while the importer and authorised representative must verify completion.",
+        "MedEnvoy, acting for the manufacturer, should complete registrations, but Orla and Trinzo need oversight of timelines for HPRA audit readiness.",
+        "Jenny checked the US FDA database and found no products registered, recommending DITA Inc complete the US registration work.",
+        "John-Paul noted that sunglasses DoCs need updating to include EU MDR and PPE in one rationale.",
+        "The team needs a list of countries where devices are shipped to assess translation considerations for DoCs.",
+        "Orla asked for advice on an HPRA annual-fee invoice and will forward it to Jacqui and Colm for review."
+      ],
+      "internalMinutesDiscussion": [
+        "The internal team needs to understand on-the-ground business operations, workflows, responsibilities and systems to define clear procedures.",
+        "Jacqui should set up daily working sessions with Orla and the team on Wednesday, Thursday and Friday afternoons.",
+        "Team members should attend only relevant working sessions to avoid unnecessary use of hours.",
+        "The team should schedule internal working sessions as needed and compile a question or clarification list.",
+        "Mark suggested a site visit may be beneficial, and Jacqui should follow up with Orla to plan it.",
+        "Sunglasses are not explicitly listed in the SOW scope, but Jacqui instructed the team to include PPE because it is inferred by the second SOW.",
+        "Documents should therefore consider both opticals and sunglasses for importer obligations.",
+        "Jacqui will confirm with Orla whether sunglasses should be inferred as in scope.",
+        "John-Paul noted that the current draft documents for the earlier SOW are MDR-focused because the first SOW covered optical only.",
+        "Colm outlined that the SOW 2 DoCs were dual DoCs covering opticals and sunglasses under MDR and PPE regulations.",
+        "The team discussed whether DoCs need translation or whether English-only DoCs are sufficient.",
+        "Colm and Jenny shared experience that English-only DoCs have been accepted across device classes and notified body audits.",
+        "MDR refers to a European language or languages where products are sold, and English is an official EU language.",
+        "Translation is not typically required unless a specific competent authority requests it.",
+        "John-Paul noted country-specific regulations, databases or local markets may still demand translated DoCs."
+      ],
+      "minutesActions": [
+        {
+          "owner": "Orla",
+          "action": "Review the QMS manual from the team.",
+          "deadline": "24 March 2026"
+        },
+        {
+          "owner": "Orla",
+          "action": "Follow up with Cody for a copy of the MedEnvoy project plan for manufacturer EO.",
+          "deadline": "17 June 2026"
+        },
+        {
+          "owner": "Orla",
+          "action": "Share a copy of the new label with Jenny for review.",
+          "deadline": "24 March 2026"
+        },
+        {
+          "owner": "Orla",
+          "action": "Share a list of all languages for DoCs.",
+          "deadline": "24 March 2026"
+        },
+        {
+          "owner": "John-Paul",
+          "action": "Review the DoCs for sunglasses for MDR and PPE compliance.",
+          "deadline": "24 March 2026"
+        },
+        {
+          "owner": "Jacqui",
+          "action": "Review the HPRA invoice fee.",
+          "deadline": "24 March 2026"
+        }
+      ],
+      "internalMinutesActions": [
+        {
+          "owner": "Jacqui",
+          "action": "Follow up internally to understand what the MDR regulation demands for DoC language publications.",
+          "deadline": "19 June 2026"
+        },
+        {
+          "owner": "Jacqui",
+          "action": "Schedule client working calls on Wednesday, Thursday and Friday.",
+          "deadline": "Done"
+        },
+        {
+          "owner": "Jacqui",
+          "action": "Schedule the weekly client connect.",
+          "deadline": "Done"
+        },
+        {
+          "owner": "Jacqui",
+          "action": "Follow up with Orla on the SOW scope and whether it includes sunglasses.",
+          "deadline": "19 June 2026"
+        },
+        {
+          "owner": "All",
+          "action": "Generate a question and clarification list for the client.",
+          "deadline": "24 June 2026"
+        },
+        {
+          "owner": "Jacqui",
+          "action": "Follow up with Orla to coordinate a site visit for Mark and Jacqui.",
+          "deadline": "Done"
+        }
+      ]
+    }
+  }
+}

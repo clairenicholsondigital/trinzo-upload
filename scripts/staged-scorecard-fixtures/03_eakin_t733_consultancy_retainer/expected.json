@@ -1,0 +1,164 @@
+{
+  "transcriptFile": "Client_Eakin_T733_Consultancy_Retainer_Tech_File_review_weekly.docx",
+  "expected": {
+    "meetingType": "Technical file review",
+    "meetingTitle": "T733/T817 Eakin Healthcare Consultancy Retainer - Client project checkin for TF24",
+    "meetingPurpose": "Review TF24 technical-file remediation status and agree next actions across risk, software, subcontractors, usability, testing and PMS.",
+    "meetingObjectives": [
+      "Review tracker movement and key priorities.",
+      "Confirm risk and cybersecurity updates.",
+      "Review alarm, language and software-version changes.",
+      "Track electrical compliance testing and subcontractor documentation.",
+      "Review usability, process maps, marketing, accelerated testing, biocomp, PMS and TF03 submission dependencies."
+    ],
+    "executiveSummary": "The TF24 weekly check-in reviewed progress against the technical-file remediation tracker. Key priorities remained risk/software, subcontractors and usability. Software alarm changes were largely complete but needed mute-button, clinical and usability review; language changes and versioning work remained in progress; and electrical compliance testing would now be completed in-house. The meeting also covered risk management, cybersecurity, subcontractor justifications, usability study planning, process maps, marketing, accelerated testing, biocomp, PMS comments and the TF03 MDR findings submission.",
+    "overallTopicsDiscussed": [
+      "Tracker status",
+      "End of August submission and November review",
+      "Risk and software priority",
+      "Technical file summary",
+      "Risk management plan updates",
+      "Risk matrix",
+      "USB cybersecurity risk",
+      "Alarm coding changes",
+      "Clinical and usability alarm review",
+      "Language updates",
+      "Change request",
+      "Electrical compliance testing",
+      "Subcontractor spreadsheet",
+      "Usability specifications",
+      "Task analysis",
+      "Formative study timing",
+      "Process maps",
+      "Marketing materials",
+      "Accelerated testing",
+      "Biocomp testing",
+      "PMS comments",
+      "TF03 MDR findings submission"
+    ],
+    "discussion": [
+      "The tracker has moved positively, with fewer documents in the 20 to 39 percent completion band.",
+      "The main technical-file priorities remain risk and software.",
+      "Cybersecurity updates are needed because of USB ports on the back of the CPAP machine.",
+      "Rebecca is updating the risk management plan and matrix, including more detail on FMEAs across software, hardware and related areas.",
+      "Andrew has progressed alarm-related software changes across sound, flash and colour.",
+      "The remaining alarm issue is how the mute button affects the flash sequence.",
+      "Clinical review with Janine and Adil is needed to confirm whether the alarm changes are acceptable in the field.",
+      "The alarm changes are expected to be handled through a change request review.",
+      "The firmware appears to have capacity for the 12 additional languages.",
+      "Arabic, Vietnamese and Greek may need symbol or font support before the translated GUI files can be fully loaded.",
+      "The alarm and language updates will produce a new software version.",
+      "The new software version should also document the retrospective update from version 1.01 to 1.02.",
+      "David is tracing the 17 historical software changes from version 1.01 to 1.02 and identifying any test-scenario gaps.",
+      "Retrospective test scenarios may be needed where changes cannot be supported from existing traceability.",
+      "Electrical compliance testing will be completed in-house and is expected to finish in the second-last week of July.",
+      "Subcontractor documentation is mostly available, with missing items to be handled through justifications or further actions.",
+      "Formative usability study timing is expected to fall after the initial August submission but before notified body review.",
+      "Task analysis is mostly complete and Adil is planning how to execute the study.",
+      "Operational process maps and procedures are awaiting finalisation with Christina.",
+      "PMS comments from David need to feed into the relevant summary or PMS documentation."
+    ],
+    "actions": [
+      {
+        "owner": "Rebecca",
+        "action": "Update the risk management plan and matrix, including the cybersecurity and FMEA detail."
+      },
+      {
+        "owner": "David",
+        "action": "Review Rebecca's updated risk-management wording and confirm it is on the right lines."
+      },
+      {
+        "owner": "Andrew",
+        "action": "Confirm the mute-button flash behaviour and progress the clinical review of the alarm changes with Janine and Adil."
+      },
+      {
+        "owner": "Andrew",
+        "action": "Resolve symbol or font issues for Arabic, Vietnamese and Greek so the translated language files can be loaded."
+      },
+      {
+        "owner": "David",
+        "action": "Trace the 17 software changes from version 1.01 to 1.02 and identify where retrospective test scenarios are needed."
+      },
+      {
+        "owner": "Andrew",
+        "action": "Work through the in-house electrical compliance testing so outputs are available for David's final software and technical-file deliverables."
+      },
+      {
+        "owner": "Rebecca",
+        "action": "Work through subcontractor documentation gaps and agree any justifications or further actions with Louise."
+      },
+      {
+        "owner": "Adil",
+        "action": "Plan execution of the formative usability study and align the timing with the MDR submission and notified body review window."
+      },
+      {
+        "owner": "Kevin and Christina",
+        "action": "Finalise the operational process maps and procedures once Christina returns."
+      },
+      {
+        "owner": "Ciaran",
+        "action": "Review David's PMS comments and incorporate them into the relevant PMS or summary documentation."
+      }
+    ],
+    "humanGeneratedMinutes": {
+      "files": [
+        {
+          "label": "Human generated minutes",
+          "file": "human_generated_minutes.pdf"
+        }
+      ],
+      "meetingTitle": "T733/T817 Eakin Healthcare Consultancy Retainer - Client project checkin for TF24",
+      "meetingDate": "17 June 2026",
+      "objective": [
+        "Review status of TF24"
+      ],
+      "minutesDiscussion": [
+        "SGS approved the end of August submission date, with review planned for November 2026.",
+        "Tracker status showed slight progress improvement and the status report was updated by owner.",
+        "Microsoft disabled SharePoint alerts, so the Eakin team should email Trinzo when files are uploaded for review.",
+        "Key priorities are risk and software, contract manufacturing/subcontractors and usability.",
+        "Rebecca is actioning feedback from Colm and Louise on the technical file summary document.",
+        "Rebecca reviewed David's risk management plan feedback and requested David to check the updates.",
+        "Rebecca is updating the risk matrix.",
+        "Rebecca and Andrew are reviewing cybersecurity risk and mitigation options for the USB port.",
+        "Andrew completed the alarm coding changes across sound, flash and colour.",
+        "One alarm issue remains around mute button behaviour.",
+        "Clinical and usability review is needed for the changed alarm sound, flash and colour.",
+        "Andrew proved the software has memory capacity to accept 12 additional languages.",
+        "Full translations have been received and Andrew is updating translated files, including Greek, Arabic and Vietnamese symbol updates.",
+        "A change request has been raised and will be reviewed by the Eakin team this week.",
+        "Andrew will complete all electrical compliance testing in-house, starting this week.",
+        "Electrical compliance testing is expected to complete in the second-last week of July.",
+        "David will review the electrical compliance test results to complete final deliverables.",
+        "Lorna provided a subcontractor missing-documentation summary, and the team is reviewing gaps for justifications.",
+        "Subcontractor work will be finalised once Christina returns from holiday and follows up with Louise.",
+        "Both usability specifications are complete.",
+        "Adil completed the task analysis with input from Alan and Abby and now needs to plan and execute the study.",
+        "The formative study is likely to be ready after the August MDR submission, with August to November used for updates.",
+        "Process maps remain ongoing, with Christina's review complete and a call planned with Kevin and Christina.",
+        "Marketing brochures and related materials are under ongoing completeness review.",
+        "Accelerated testing remains on track for week three of July.",
+        "Biocomp testing will be managed by Chorley, with Rebecca reviewing Louise's feedback.",
+        "David reviewed the PMS and added comments for Ciaran to integrate after the TF03 submission.",
+        "TF03 MDR findings submission is due on 21 June."
+      ],
+      "minutesActions": [
+        {
+          "owner": "David",
+          "action": "Review Rebecca's updates to the risk management plan.",
+          "deadline": "22 June 2026"
+        },
+        {
+          "owner": "Andrew",
+          "action": "Complete clinical and usability review of the alarm changes.",
+          "deadline": "26 June 2026"
+        },
+        {
+          "owner": "Rebecca and Christina",
+          "action": "Complete the subcontractor spreadsheet and justifications.",
+          "deadline": "26 June 2026"
+        }
+      ]
+    }
+  }
+}

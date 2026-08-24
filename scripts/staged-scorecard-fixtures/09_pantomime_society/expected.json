@@ -1,0 +1,62 @@
+{
+  "transcriptFile": "Random2_pantomime_society_transcript.docx",
+  "expected": {
+    "meetingType": "Decision meeting",
+    "meetingTitle": "Panto Society planning",
+    "meetingPurpose": "Choose the pantomime production and agree the main planning actions for rehearsal, casting, publicity, technical setup and performances.",
+    "meetingObjectives": [
+      "Decide between Cinderella and Aladdin.",
+      "Confirm budget and licensing implications.",
+      "Agree rehearsal-night arrangements.",
+      "Discuss casting risks and understudy needs.",
+      "Plan publicity, sound checks, ticket pricing and performance schedule."
+    ],
+    "executiveSummary": "The group selected Cinderella over Aladdin because it was lower risk, more affordable and likely to sell better locally. They agreed follow-up actions for rights, hall booking, casting discussions, poster preparation and sound checks. The production plan also covered ticket pricing, two Saturday performances and contingency around the Prince role and faulty radio microphone.",
+    "overallTopicsDiscussed": [
+      "Production choice",
+      "Budget constraints",
+      "Script and rights licensing",
+      "Rehearsal venue and Tuesday-night booking",
+      "Casting availability",
+      "Prince understudy",
+      "Poster and publicity",
+      "Radio microphone reliability",
+      "Ticket pricing",
+      "Performance schedule"
+    ],
+    "discussion": [
+      "Choice between Cinderella and Aladdin, with Cinderella selected.",
+      "Production budget constraints.",
+      "Performing rights and script licensing.",
+      "Rehearsal-night conflict at the church hall and switch to Tuesdays.",
+      "Casting concerns around Malcolm's availability for the Prince role.",
+      "Need for a Prince understudy.",
+      "Cinderella poster and publicity.",
+      "Faulty radio microphone and sound-system reliability.",
+      "Ticket pricing, agreed at GBP 8 adults and GBP 5 concessions.",
+      "Two performances, Saturday matinee and evening."
+    ],
+    "actions": [
+      {
+        "owner": "Gerald",
+        "action": "Order the Cinderella script and performing rights this week."
+      },
+      {
+        "owner": "Fiona",
+        "action": "Contact Deborah tomorrow and book the church hall for Tuesday evenings, October through January."
+      },
+      {
+        "owner": "Gerald",
+        "action": "Speak to Malcolm about taking the smaller Baron Hardup role instead of the Prince."
+      },
+      {
+        "owner": "Fiona",
+        "action": "Draft the Cinderella poster once the final show dates are confirmed, for review at the next meeting."
+      },
+      {
+        "owner": "Nadeem",
+        "action": "Test all four radio mics and the sound desk before October, then provide the exact replacement cost if a mic needs replacing."
+      }
+    ]
+  }
+}

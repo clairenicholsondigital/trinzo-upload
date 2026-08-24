@@ -1,0 +1,74 @@
+Review Lean Generation Pipeline-Meeting Transcript
+
+12 August 2026, 01:03pm
+
+9m 42s
+
+◉  Kathryn Cullen started transcription
+
+  Conor Flynn   0:03gets information to Keon and Liam in a state at a time that is valuable for them to bring forward from there. So, Jack and I have been working on this in terms of, well, what would a good process work like? And Jack obviously has a plan for the overall sales operating system, but this is a subsection of that. This is just to generateleads of a sufficient quality to be put in front of Keon and Liam. What I want from you today on the call, Keon, is to sense check our academic theory, if you know what I mean. Is that what real life would, if we did that, would it be a good thing?And from Kathryn, because we believe that the best leads probably come from her and client delivery because they're talking with customers on live projects who are currently buying and happy with us. We need a way to be able to qualify her leads.
+
+  Keon Fox   0:58Okay.
+
+  Conor Flynn   1:04To prioritize them better than stuff we found in a in a in a report. Does that make sense?
+
+  Keon Fox   1:11Makes sense.
+
+  Conor Flynn   1:12Okay, you can see my screen there. Okay, it's probably pretty small, is it? Can you see? Can you read it?
+
+  Kathryn Cullen   1:20It's all good.
+
+  Keon Fox   1:21Yep, that's good.
+
+  Conor Flynn   1:22Okay, so the way that Jack and I are going to go about this is, we've come up with an idea, we want to check it with you guys. If you guys say that's not stupid, what we want to do is take a really, really small slice and manually do it, and then if that is successful in producing what we want it to.produce. We do a four-week pilot where we'd have a mix of manual and AI in order to see was it still creating the right volume and the right quality of leads for you. And then if that worked, we could look at automating it. Does that make sense?Now, like, what's going to happen here is we're going to look at this, Keon is going to go, you're all idiots, go back to the drawing board, or he's going to go change this, that, or whatever, so we'll do that. But what's going to happen once we start manually doing it is we're going to notice that a lot of the meetings you have in sales at the moment are at the wrong time, in the wrong place, on the wrong subject.if you know what I mean. So that kind of thinking needs to be done in parallel. And Keon, you'll obviously be critical in that. But hopefully it'll give us some ideas anyway. I'm going to move you off this screen so you're not looking at yourselves. OK, right.So again, what we're looking at here is, does this make sense, Keon?
+
+  Keon Fox   2:48Yeah, I would agree.
+
+  Conor Flynn   2:50And let's have a look at it. And then we're going to test it. Okay, so what are we looking at? This is what Jack and I came up with. And it looks a little bit convoluted and long and whatnot. But you've got to remember, we're going to automate an awful lot of these stages.So if you think about it, the first step is to capture the signal. And that could be a signal coming from inbound, from a referral, from client deliveries team, from an event that we're at. It could come from Zoom info, or we want to set up agents scraping clients' websites and newsletters and news sources in order to identify opportunities in the broader market.But of course, what this is likely to do is it's going to flood a lot of nonsense information. So that needs to be triaged. We think a human needs to have a quick look around that. ICP means the ideal client profile. It needs to look at the output ofpulling all of that information into one place and to kind of clean up the noise manually. Then what they would do is they'd match and check what we already have in Salesforce around that.
+
+  Keon Fox   4:02I.
+
+  Conor Flynn   4:04And then they would use AI in order to generate a pack for any opportunities that look like good opportunities. But we'll obviously have tier one, tier 2, tier 3 opportunities. You can imagine that pack would have information about Medtronic are currently getting a warning letter from the FDA for this sort ofthing, you know what I mean? That sort of pack would be in place. There'd be then Keon, Liam, Kate, and this operations sales person. What did you call them again, Kathryn? Business something or other.
+
+  Keon Fox   4:41India.
+
+  Kathryn Cullen   4:41BD Rep.
+
+  Conor Flynn   4:43BD rep, this person, would talk together and go, that's an opportunity, that's not really an opportunity, would prioritize really quickly. And then you dig into the top three, I don't know what number you dig into, and you talk about, well, what do we want to do with this opportunity? We think that is an opportunity in med.
+
+  Keon Fox   4:43Yeah.Mhm.
+
+  Conor Flynn   5:02What do we want to do with that? So then what they do is they'd try to see who do we know, and that would be verbally with you and Liam. Oh, I know Johnny in Medtronic and he's in that department, or I know Peter, who knows, you know what I mean? And we'd look through LinkedIn to see.
+
+  Keon Fox   5:12Pun.
+
+  Conor Flynn   5:23Do we have any connections with the people in there? And then that sales and execution person, along with whoever was going to be chasing it, would make out the plan, which could be emails or call them or meet them at a conference. I don't know what a sales plan would be. And then we'd feedback how that has gone back in for our learning and see if we can improve it from there.
+
+  Keon Fox   5:46Click.
+
+  Conor Flynn   5:48Jack, if you did I miss anything there?
+
+  Jack Cunningham   5:53No, I would say like the important things for me and there's something that would need to be defined as a team is exactly how we set the criteria for the ICP fit in that so that we mitigate too much nonsense coming in the front end. And I suppose similar to manufacturing you.aim to build quality in as opposed to inspect defects output at the start, as Conor said, there's going to be a lot of inspecting defects output. I think it'll be an iterative process that we'll learn about the different signal paths and how to refine them as we keep moving forward. But no, I think, yeah, just that there's a bit of...upstream work that needs to be defined in order to enable this to run, but that's in the plan too.
+
+  Conor Flynn   6:39So before we give you your feedback, Keon, so just to reiterate there, capture signal means collect all the information we have and anything we can find. Do the find some way of doing an appropriate defect, get rid of the rubbish and get proper stuff. Check that the information we have is correct.
+
+  Keon Fox   6:40SN.
+
+  Conor Flynn   6:58Bring that information to you and Liam so that we can reprioritize and decide what we're going to go after, what our plan for the different ones are. Build out a plan for whatever we're going after, go after them and feed back into the funnel again, the result of that so that we can get better at it.
+
+  Keon Fox   7:21Okay, so one question I have is, now I know that we're in the, like more or less the building phase of this, but in that first capture stage, there's client delivery in there. And what you said, Conor, was that's more or less feedback from like Kathryn's group of like, what's going on at the client, this is what's happening, they need help here.How are we capturing that until now in our consultants providing that feedback on a regular basis? Is it something that we're currently either incentivizing or we're getting regularly? Or are we now through this process going to basicallyencourage our folks on the ground to really push like lead like lead generation that we we don't want them to turn into salespeople, just just more or less feedback and lead generation. Is that is that part of this? Or maybe that's a.
+
+  Conor Flynn   8:14Kathryn, do you want to?
+
+  Kathryn Cullen   8:15Yeah, like, and it today it depends on the project, so, for example, um...There's projects that we're holding the pen on so that we're intimately involved with it so even we can identify the opportunities there. There are projects where we are providing resources to clients and we would have a monthly check-in with them and those meetings are recorded and any ideas orAny leads that are coming out of those are sent on to Liam via e-mail.I would say that they're probably not always tracked in Salesforce. There's some which I would, if I had felt there was a really hot lead that I was involved in, I would put a task in Salesforce for either for sales to look at or for sales to have a call with the actual client.and incentivizing, we did look at that and we have socialized that with a lot of clients as they onboard, but it's never been utilized yet, I would say. Yeah.
+
+  Keon Fox   9:20Yeah, yeah, yeah. I've seen it where sometimes incentivizing really doesn't change or encourage the behavior. It doesn't really move the needle, but the source of information, like webinars and websites and all of this stuff, that's
+
+  Kathryn Cullen   9:29Yeah.
+
+  Keon Fox   9:38all great lead generation, but the biggest leads come from our client delivery on the ground.
+
+  Kathryn Cullen   9:43Yeah, yeah.
+
+  Keon Fox   9:44Yeah.
+

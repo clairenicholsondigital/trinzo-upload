@@ -1,0 +1,106 @@
+{
+  "transcriptFile": "Client_T761_Eakin_SW_weekly_checkin_NEW.docx",
+  "expected": {
+    "meetingType": "Technical file review",
+    "meetingTitle": "Client T761 Eakin SW - weekly checkin",
+    "meetingPurpose": "Follow up on T761 software technical-file risks, standards applicability, alarm change close-out, language updates and cybersecurity controls.",
+    "meetingObjectives": [
+      "Clarify risk probability justification in the risk plan.",
+      "Agree the preferred format for the software list.",
+      "Review standards applicability for cybersecurity and nebulizer flow.",
+      "Close out alarm mute and change-request status.",
+      "Track debug, language, electrical testing and software-version traceability actions.",
+      "Document the USB and GUI cybersecurity approach."
+    ],
+    "executiveSummary": "The team clarified several technical-file points for the T761 software workstream. David challenged the justification behind probability ratings, and the team agreed the software list could remain in Excel with explanatory context. The group considered standards applicability, especially 81001-5-1 and ISO 27427, reviewed the approved alarm change and clinical feedback, and tracked remaining language, debug, electrical testing and version-traceability work. Cybersecurity discussion focused on documenting a proportionate USB and GUI-control approach without creating clinical usability risk.",
+    "overallTopicsDiscussed": [
+      "Risk probability justification",
+      "Software list format",
+      "Real-time clock risk capture",
+      "81001-5-1 applicability",
+      "ISO 27427 nebulizer applicability",
+      "Nebulizer flow specification",
+      "Alarm mute-button behaviour",
+      "Clinical alarm review",
+      "Debug command testing",
+      "Language font-driver issues",
+      "Font creator tool access",
+      "IEC 60601-1 review",
+      "Electrical compliance testing",
+      "Version 1.01 to 1.02 traceability",
+      "USB and GUI cybersecurity controls"
+    ],
+    "discussion": [
+      "David queried how the probability-table numbers in the risk management plan are justified, including what one event represents.",
+      "Rebecca needs to add clarity to the risk rationale while updating the risk documentation.",
+      "The software list can remain in Excel, with a front page explaining the tabs and folder structure for the auditor.",
+      "The real-time clock battery alarm issue may already be covered in the risk analysis but should be checked.",
+      "IEC 81001-5-1 is not considered applicable to TF24 because IEC 62304 already covers the relevant medical device software lifecycle.",
+      "ISO 27427 applicability depends on whether the standard covers gas supplied to a nebulizer and whether FD140i's six-litre flow falls within scope.",
+      "The FD140i supplies flow to a connected nebulizer but does not itself nebulize.",
+      "The alarm mute-button behaviour has been reviewed, with a proposed approach where unmuted alarms show priority-specific flash behaviour and muted alarms use the familiar slow ramp.",
+      "The clinical team reviewed the alarm changes and considered them acceptable or an upgrade.",
+      "The alarm change request has been approved.",
+      "David still needs to provide debug command letters so Andrew can confirm what happens in the debug screen.",
+      "Five additional languages have been added, while the remaining languages need character or font-driver work.",
+      "Access to a font-creator tool is blocked by the firewall and has been raised with IT.",
+      "Andrew is part-way through the IEC 60601-1 versus MDD documentation review and the testing scope is still being defined.",
+      "Electrical compliance testing remains on track, with existing UL testing covering some of the reviewed areas.",
+      "David is prioritising traceability for the 17 software changes between versions 1.01 and 1.02.",
+      "If a software change has no visible code trace, retrospective test data may need to be generated.",
+      "Cybersecurity discussion focused on USB port access, GUI access, possible port locks, password controls and the risk of introducing usability delays.",
+      "A password may help software access control but could introduce clinical risk if it delays therapy changes.",
+      "Cybersecurity controls need to be documented clearly in the risk plan and matrix."
+    ],
+    "actions": [
+      {
+        "owner": "Rebecca",
+        "action": "Add clarity to the risk management plan around probability-table number justification and what counts as an event."
+      },
+      {
+        "owner": "David",
+        "action": "Add a front page to the software-list Excel explaining what each tab represents and the purpose of the file."
+      },
+      {
+        "owner": "Jacqui",
+        "action": "Check whether the real-time clock battery alarm issue is captured in the risk analysis."
+      },
+      {
+        "owner": "Andrew",
+        "action": "Confirm the nebulizer flow-rate specification so David and Colm can assess ISO 27427 applicability."
+      },
+      {
+        "owner": "David and Colm",
+        "action": "Review ISO 27427 again once Andrew confirms the nebulizer flow-rate specification."
+      },
+      {
+        "owner": "David",
+        "action": "Send additional debug command letters to Andrew."
+      },
+      {
+        "owner": "Andrew",
+        "action": "Test the debug commands and report what happens on the debug screen."
+      },
+      {
+        "owner": "Andrew",
+        "action": "Resolve the remaining language character and font-driver issues, including access to the font-creator tool."
+      },
+      {
+        "owner": "Andrew",
+        "action": "Complete the IEC 60601-1 versus MDD documentation review and define the remaining electrical compliance testing."
+      },
+      {
+        "owner": "David",
+        "action": "Review the alarm code changes and later repeat the review for the language-selection software changes."
+      },
+      {
+        "owner": "David",
+        "action": "Prioritise tracing the 17 software changes from version 1.01 to 1.02 and identify any retrospective test-data needs."
+      },
+      {
+        "owner": "Rebecca",
+        "action": "Update the risk files, plan and matrix with the agreed cybersecurity and USB-port-lock approach."
+      }
+    ]
+  }
+}

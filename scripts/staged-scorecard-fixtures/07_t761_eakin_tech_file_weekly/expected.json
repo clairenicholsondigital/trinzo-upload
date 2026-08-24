@@ -1,0 +1,216 @@
+{
+  "transcriptFile": "Client_T761_Eakin_Tech_File_SW_Weekly_checkin.docx",
+  "expected": {
+    "meetingType": "Technical file review",
+    "meetingTitle": "T761 Eakin Healthcare Tech File SW review - SW coding changes",
+    "meetingPurpose": "Review T761 Eakin software coding changes and related technical-file dependencies for alarms, languages, versioning, electrical safety and cybersecurity.",
+    "meetingObjectives": [
+      "Review completed alarm sound, colour and flash changes.",
+      "Confirm remaining mute-button and clinical-review actions.",
+      "Plan debug-command and code-review work.",
+      "Track language-change and software-versioning dependencies.",
+      "Confirm electrical compliance testing approach and timeline.",
+      "Review cybersecurity risks and mitigation options."
+    ],
+    "executiveSummary": "The meeting reviewed software changes for the Eakin technical file, with alarm changes largely completed and language changes underway. Remaining work included mute-button behaviour, clinical review, debug testing, traceability for the 17 historic software changes, and possible retrospective test data. Electrical compliance testing will be completed in-house, while cybersecurity discussion focused on USB-port and GUI controls, including whether physical locks, software controls or benefit-risk rationale are appropriate.",
+    "overallTopicsDiscussed": [
+      "Alarm code changes",
+      "Mute button LED behaviour",
+      "Clinical and usability review",
+      "Alarm code review",
+      "Debug commands",
+      "Software versioning",
+      "Change request",
+      "Language capacity and font limitations",
+      "Electrical compliance testing",
+      "IEC 60601-1 gap review",
+      "Cybersecurity controls",
+      "USB port lock",
+      "GUI security",
+      "Benefit-risk analysis",
+      "Standards 81001-5-1 and 27427"
+    ],
+    "discussion": [
+      "Andrew has implemented and demonstrated alarm sound changes for low, medium and high priority alarms.",
+      "Low, medium and high priority alarm visuals have been updated with colour and LED flash behaviour.",
+      "The remaining alarm question is what happens to the LED flashing behaviour when the mute button is pressed.",
+      "A clinician mini-review of the audible alarm changes has been pushed to next week because clinical staff are unavailable.",
+      "Feedback from clinicians and Adil may determine whether a longer-term usability update is needed.",
+      "David wants to confirm which debug commands are physically visible or effective before test scripts are written.",
+      "The software change request has been submitted and is expected to be reviewed on Wednesday.",
+      "The change request covers alarm code changes, language changes and the retrospective software version change from 1.01 to 1.02.",
+      "A further software release will be needed after the change request work is complete.",
+      "The change is expected to be treated as non-significant or non-substantial through the regulatory process.",
+      "The 17 historic software changes from version 1.01 to 1.02 need a gap assessment to confirm what changed and whether they are visible in code.",
+      "If the 17 changes are not all battery-related, additional explanation or retrospective test data may be needed for traceability.",
+      "Electrical compliance testing is being brought in-house and is expected to complete by around 23 July in the conservative timeline.",
+      "Andrew has started reviewing the 60601-1 compliance document and identifying possible test gaps.",
+      "The additional language work can load 18 language files, but Arabic, Vietnamese and Greek may require character or font support.",
+      "Cybersecurity and risk discussion covered USB port access, screen access, unauthorised interference, therapy-mode changes and whether a lock, password or benefit-risk rationale is appropriate.",
+      "Password protection may introduce clinical usability risk if clinicians need to intervene quickly.",
+      "Risk scoring for third-party interference may have high severity in neonatal scenarios but low occurrence based on field experience.",
+      "Rebecca is updating the risk management file and has purchased standards that may inform cybersecurity and nebuliser-port assessment.",
+      "Fan logic and PMS/risk-management plan updates were also reviewed as part of the technical-file follow-up."
+    ],
+    "actions": [
+      {
+        "owner": "Andrew",
+        "action": "Confirm what happens to the alarm LED flashing behaviour when the mute button is pressed."
+      },
+      {
+        "owner": "Rebecca and clinical team",
+        "action": "Complete the clinician mini-review of the alarm sound changes next week, including any usability input from Adil."
+      },
+      {
+        "owner": "David",
+        "action": "Send or agree further debug commands for Andrew to test against the software."
+      },
+      {
+        "owner": "Andrew",
+        "action": "Test the additional debug commands and confirm what is physically visible or produced on screen."
+      },
+      {
+        "owner": "Rebecca",
+        "action": "Progress the submitted change request through the Wednesday review and gather the required close-out information."
+      },
+      {
+        "owner": "David",
+        "action": "Complete the gap assessment of the 17 changes from software version 1.01 to 1.02 and identify where they are visible in the code."
+      },
+      {
+        "owner": "Rebecca",
+        "action": "Incorporate David's output on the 17 software changes into the design-change or technical-file summary."
+      },
+      {
+        "owner": "Andrew",
+        "action": "Continue the electrical compliance testing review and flag any support needed from David."
+      },
+      {
+        "owner": "Andrew",
+        "action": "Continue the additional-language update, including character or font support for Arabic, Vietnamese and Greek, and load the translated files."
+      },
+      {
+        "owner": "Rebecca",
+        "action": "Update the risk management file with USB port and screen-interference risks and proposed controls by Wednesday."
+      },
+      {
+        "owner": "Andrew",
+        "action": "Review David's fan-logic document and decide whether it needs to be added to Cognidocs."
+      },
+      {
+        "owner": "Rebecca",
+        "action": "Email the purchased standards, including 81001-5-1 and 27427, for assessment."
+      },
+      {
+        "owner": "Jacqui",
+        "action": "Follow up with Colm to review whether the 27427 standard is applicable."
+      },
+      {
+        "owner": "Jacqui",
+        "action": "Add Rebecca to the regular Tuesday follow-up call."
+      }
+    ],
+    "humanGeneratedMinutes": {
+      "files": [
+        {
+          "label": "Human generated minutes",
+          "file": "human_generated_minutes.pdf"
+        }
+      ],
+      "meetingTitle": "T761 Eakin Healthcare Tech File SW review - SW coding changes",
+      "meetingDate": "15 June 2026",
+      "objective": [
+        "Alarm changes",
+        "Language changes",
+        "SW versioning changes",
+        "Electrical safety testing and timeframe dependency",
+        "Cybersecurity",
+        "Document tracking",
+        "SW workstream timeline delay"
+      ],
+      "minutesDiscussion": [
+        "Andrew completed the sound, screen-colour and flash changes for low, medium and high priority alarms with no issues noted.",
+        "There was uncertainty around alarm mute button LED behaviour because the existing setup changes flash behaviour when muted.",
+        "Clinical review of the code changes was pushed to the following week and should include nursing and usability input from Adil.",
+        "David should review the new alarm code once it is complete.",
+        "Andrew advised that the audio debug menu does not appear on the display screen, and Andrew and David need to connect on debug test scripts.",
+        "David is reviewing the code to identify the 17 Marturion-listed changes from version 1.01 to 1.02 and provide traceability.",
+        "If the 17 changes cannot be clearly identified in code, retrospective test data may need to be generated.",
+        "One change request has been raised to document alarms, languages and the retrospective version 1.01 to 1.02 update.",
+        "The change request is due for internal review in the week ending 19 June.",
+        "Andrew replicated and uploaded 12 languages, proving memory capacity is available.",
+        "Driver and font limitations may affect symbols for languages such as Greek, Arabic and Vietnamese.",
+        "David suggested updating the graphics display driver to include additional fonts.",
+        "Andrew and Rebecca confirmed electrical compliance testing will be completed in-house, with no UL requirement.",
+        "Electrical compliance testing is planned for completion by 23 July.",
+        "Andrew is reviewing IEC 60601-1 compliance documents against previous MDD documentation to capture testing gaps.",
+        "Rebecca and Andrew are evaluating USB-port security options, including physical port locks and software controls.",
+        "Cybersecurity risk discussion included unauthorised software overwrite, incorrect therapy settings, neonatal-patient harm scenarios, alarms, physical limits and password protection.",
+        "If residual risk remains high after controls, a benefit-risk analysis may justify not adding usability-impacting controls such as password protection.",
+        "Rebecca purchased standards 81001-5-1 and 27427 for review by Colm and Andrew."
+      ],
+      "minutesActions": [
+        {
+          "owner": "Andrew",
+          "action": "Review the mute button flash sequence against the existing setup.",
+          "deadline": "19 June 2026"
+        },
+        {
+          "owner": "Rebecca",
+          "action": "Complete clinical review of the code changes for sounds, colour and flash.",
+          "deadline": "26 June 2026"
+        },
+        {
+          "owner": "Andrew and Rebecca",
+          "action": "Sign off the change request.",
+          "deadline": "22 June 2026"
+        },
+        {
+          "owner": "Andrew and David",
+          "action": "Review the debug commands in the debug screen.",
+          "deadline": "22 June 2026"
+        },
+        {
+          "owner": "Andrew",
+          "action": "Review the graphics driver as a possible solution for uploading language symbols.",
+          "deadline": "22 June 2026"
+        },
+        {
+          "owner": "Andrew",
+          "action": "Review IEC 60601-1 against MDD documentation and outline the electrical compliance testing needed.",
+          "deadline": "26 June 2026"
+        },
+        {
+          "owner": "Andrew",
+          "action": "Complete electrical compliance testing.",
+          "deadline": "23 July 2026"
+        },
+        {
+          "owner": "David",
+          "action": "Trace software to identify changes between version 1.01 and version 1.02 and document the findings.",
+          "deadline": "22 June 2026"
+        },
+        {
+          "owner": "David and Andrew",
+          "action": "Generate retrospective test data if software changes cannot be seen.",
+          "deadline": "30 June 2026"
+        },
+        {
+          "owner": "Rebecca",
+          "action": "Update the risk management file addressing USB port lock and GUI security controls, including competitor-control review.",
+          "deadline": "22 June 2026"
+        },
+        {
+          "owner": "Rebecca",
+          "action": "Share standards 81001-5-1 and 27427 for review.",
+          "deadline": "16 June 2026"
+        },
+        {
+          "owner": "Colm",
+          "action": "Review relevance of the shared standards.",
+          "deadline": "22 June 2026"
+        }
+      ]
+    }
+  }
+}

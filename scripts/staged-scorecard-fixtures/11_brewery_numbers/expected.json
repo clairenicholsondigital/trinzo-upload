@@ -1,0 +1,58 @@
+{
+  "transcriptFile": "Weakness1_brewery_numbers_transcript.docx",
+  "expected": {
+    "meetingType": "Project review (general)",
+    "meetingTitle": "Brew schedule planning",
+    "meetingPurpose": "Plan the next two weeks of brewery production, including brew schedule, ingredient ordering, festival supply and equipment risk.",
+    "meetingObjectives": [
+      "Confirm fermenter availability and brew timing.",
+      "Agree pale ale and IPA batch volumes and expected yields.",
+      "Confirm hop and malt requirements.",
+      "Correct the festival order into the right cask quantity and delivery plan.",
+      "Address glycol chiller reliability before the IPA brew."
+    ],
+    "executiveSummary": "The brewery team agreed a two-week production plan around fermenter availability, with a 1,200-litre pale ale batch followed by a 1,200-litre IPA batch. They confirmed hop and malt ordering needs, corrected the festival order from kegs to 15 nine-gallon casks and identified glycol chiller servicing as a critical dependency before the IPA brew. Clear actions were assigned to Ravi, Dan, Josie and Mick.",
+    "overallTopicsDiscussed": [
+      "Two-week brew schedule",
+      "Fermenter availability",
+      "Pale ale batch and yield",
+      "IPA batch timing",
+      "Dry hopping increase",
+      "Hop cost and availability",
+      "Malt stock shortage",
+      "Festival order correction",
+      "Festival delivery terms",
+      "Glycol chiller servicing risk"
+    ],
+    "discussion": [
+      "Two-week brewing schedule and fermenter availability.",
+      "1,200-litre pale ale batch and expected usable yield.",
+      "1,200-litre IPA batch from the 15th.",
+      "Increasing IPA dry hopping from 4 g/L to 6 g/L.",
+      "Hop requirements, availability and cost.",
+      "Maris Otter stock shortage and additional malt requirement.",
+      "Festival order corrected from the originally requested 40 kegs to 15 nine-gallon firkins/casks.",
+      "Festival delivery on the 22nd.",
+      "Glycol chiller reliability as a major production risk.",
+      "IPA brew conditional on the chiller being serviced first."
+    ],
+    "actions": [
+      {
+        "owner": "Ravi",
+        "action": "Order the full 13 kg hop bill on Monday morning."
+      },
+      {
+        "owner": "Dan",
+        "action": "Order six sacks of Maris Otter malt today."
+      },
+      {
+        "owner": "Josie",
+        "action": "Email the festival today confirming 15 casks of 4.2% pale ale for delivery on the 22nd, with terms."
+      },
+      {
+        "owner": "Mick",
+        "action": "Contact the refrigeration engineer today and arrange for the glycol chiller to be serviced before the IPA brew on the 15th."
+      }
+    ]
+  }
+}

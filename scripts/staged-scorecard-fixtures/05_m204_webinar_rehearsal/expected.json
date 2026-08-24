@@ -1,0 +1,101 @@
+{
+  "transcriptFile": "Client_M204_Larkfield_MK_Thursday_session_1.docx",
+  "expected": {
+    "meetingType": "Webinar rehearsal",
+    "meetingTitle": "Client M204 Larkfield MK - Thursday session",
+    "meetingPurpose": "Rehearse the webinar flow and agree final presenter, Q&A, timing and technical-contingency arrangements.",
+    "meetingObjectives": [
+      "Practise the opening and handover from Priya to Tom.",
+      "Check screen-sharing and case-study handovers.",
+      "Agree timing controls for content and Q&A.",
+      "Plan chat moderation and backup questions.",
+      "Confirm recording, closing slide and technical fallback arrangements."
+    ],
+    "executiveSummary": "The team rehearsed the webinar opening, handovers, Q&A flow and contingency plan. They agreed that Priya would handle the opening, housekeeping, handovers and close; Tom would keep his intro and answers tight; Nadia would manage questions and timing prompts; and Callum would handle technical safety-net duties, recording and the closing slide. A short warm-up was agreed for 08:30 before the live 11:00 session.",
+    "overallTopicsDiscussed": [
+      "Webinar opening",
+      "Presenter handover",
+      "Slide animation issue",
+      "Case-study handover",
+      "Screen-share dead air",
+      "Chat question moderation",
+      "Timing and Q&A split",
+      "Mobile chat instruction",
+      "Backup questions",
+      "Closing slide and QR code",
+      "Recording process",
+      "Presenter drop-off contingency",
+      "Morning warm-up"
+    ],
+    "discussion": [
+      "Priya will open the webinar with housekeeping, muted microphones, cameras off and questions in chat.",
+      "Tom should wait for Priya's handover cue before starting.",
+      "Slide-two animation has been removed and needs to be restored.",
+      "Priya will take over briefly for the case study and then hand back to Tom.",
+      "The screen-sharing handover creates a short dead-air risk, so Priya will cover the gap verbally.",
+      "Nadia will monitor and group chat questions, then feed Priya the best questions privately.",
+      "Callum will act as technical safety net on a separate connection.",
+      "Content should finish by 35 minutes, leaving 20 minutes for questions.",
+      "Nadia will message Tom a five-minute warning while he is presenting.",
+      "The opening script should mention the speech-bubble icon for mobile attendees.",
+      "The team will spot-check the joins and question section rather than rerun all content.",
+      "Q&A should open with an easy question, such as whether the recording and slides will be sent afterwards.",
+      "Nadia will prepare planted questions in case the live audience does not ask any.",
+      "Priya will close with a clear thank-you, recording/slides follow-up, contact route and next step.",
+      "A closing slide should include the booking link and QR code.",
+      "Callum will start recording as Priya begins, confirm the red recording indicator and take a screenshot.",
+      "If Tom drops off, Priya will fill verbally while Callum contacts Tom and can take over sharing from a backup deck.",
+      "A short warm-up run of the opening and first handover is planned for 08:30 before the 11:00 live session."
+    ],
+    "actions": [
+      {
+        "owner": "Callum",
+        "action": "Restore the animation on the three-things slide."
+      },
+      {
+        "owner": "Callum",
+        "action": "Build the closing slide with the booking link and QR code, then re-share the deck."
+      },
+      {
+        "owner": "Nadia",
+        "action": "Write three backup questions tonight and circulate them to the team."
+      },
+      {
+        "owner": "Nadia",
+        "action": "Monitor and group the chat questions during the webinar."
+      },
+      {
+        "owner": "Nadia",
+        "action": "Send Tom a private five-minute timing warning during the webinar."
+      },
+      {
+        "owner": "Tom",
+        "action": "Keep the personal introduction to about 30 seconds."
+      },
+      {
+        "owner": "Tom",
+        "action": "Keep Q&A answers concise and avoid overrunning."
+      },
+      {
+        "owner": "Tom",
+        "action": "Drop the not-see-you joke from the opening."
+      },
+      {
+        "owner": "Priya",
+        "action": "Use the opening housekeeping script, including the tap-the-speech-bubble instruction for mobile attendees."
+      },
+      {
+        "owner": "Priya",
+        "action": "Cover dead air during screen-sharing handovers and handle the closing."
+      },
+      {
+        "owner": "Callum",
+        "action": "Start recording when Priya begins, check the red recording indicator, take a screenshot and monitor the recording."
+      },
+      {
+        "owner": "Team",
+        "action": "Run a short warm-up at 08:30 covering the opening and first handover."
+      }
+    ]
+  }
+}

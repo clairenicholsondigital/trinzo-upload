@@ -1,0 +1,436 @@
+Client T761 Eakin SW - weekly checkin-20260623_100122-Meeting Transcript
+
+23 June 2026, 09:01am
+
+27m 42s
+
+Jacqui Fox started transcription
+
+David Didsbury   0:03I've got a question for you. I have a question for you, Rebecca. Right. I don't quite understand your answer to my to my question. Right. OK, so it's this one. You know where I ask, can you justify the numbers in the?
+
+Jacqui Fox   0:03What?
+
+Rebecca Gill   0:07Mm-hmm.Okay.
+
+David Didsbury   0:23In the probability table.
+
+Rebecca Gill   0:24Yes.
+
+David Didsbury   0:26Right.
+
+Rebecca Gill   0:27Mhm.
+
+David Didsbury   0:28OK, you said that go and look at columns KK&U in the screen analysis. I presume that's what you mean. Yes.
+
+Rebecca Gill   0:33Oh, um, yeah, yeah, in the risk matrix, sorry.
+
+David Didsbury   0:39In the risk matrix.
+
+Rebecca Gill   0:41So that's the, there's in that same folder where that plan is, there's an Excel file.And in the Excel file in columns K and U, that will be the justification for the numbers before and the numbers after the control measures.
+
+David Didsbury   1:00Right, yes. So those numbers, so that justification is your justification for giving either a severity or a probability score, right? Okay. That's not the same as the justification for saying frequency is 1 in 100 or probability is 1 in...
+
+Rebecca Gill   1:01Yes.Mhm.
+
+David Didsbury   1:21One in 1000, I believe it's meant to say, is it right? That's a different, this is a different justification, right?
+
+Rebecca Gill   1:24Mhm.Yeah.Yeah.Are you saying basically if this was to happen, we need to include a justification or something that says that if it fails one in 100, like how we know that?
+
+David Didsbury   1:43Well, yeah, you've categorised one in 100 as being frequent, haven't you? Right, right. So, right. So, what have you, what have you based that on? I'm only asking because I've been, I've been asked for another client how to justify these numbers because these numbers are sort of the standard ones you find in 14971.
+
+Rebecca Gill   1:45Or, no.Yeah.Mm.
+
+Jacqui Fox   2:00Yeah.
+
+Rebecca Gill   2:03Yeah.
+
+David Didsbury   2:03Alright, alright. OK, so how do you justify A1 in 100 or one in the loop?I don't know if someone's accidentally edited this, but yeah, right, but your numbers. So how do you justify one in 100, one in one in 1000, one in?
+
+Jacqui Fox   2:20Mm-hmm.
+
+David Didsbury   2:21100,000, right? And, you know, because around that, there should be a discussion and it should be in the risk management plan, right?It is one in 100. What counts as a one event? Is it someone turning on the machine?Or is it, or is it the number of patients, or is it the number of treatments, or is it the number of?
+
+Rebecca Gill   2:39The.Big feet.Oh, I see, yeah.
+
+David Didsbury   2:47Right.Right.
+
+Rebecca Gill   2:51Mhm.
+
+David Didsbury   2:51You know, so that, so you can get asked really awkward questions about what does warning 100 mean, and have you actually have you actually got a rationale for it?
+
+Rebecca Gill   2:53As well.
+
+Jacqui Fox   2:58Yeah.
+
+Rebecca Gill   3:02Right, I'll have a look at that, and...
+
+David Didsbury   3:05Yep.I thought it was easier to talk to you face to face rather than put it try and write, try and write an essay.
+
+Rebecca Gill   3:07Add a bit of clarity.Yeah.I kind of word it. I find that all this week. I've been having conversations with people. I like conversations that we've been having going back and forward and then I've just been phoning them going like what? And then you get an easier, simpler answer much quicker and you're like, oh, right, that makes much more sense. So yeah, appreciate that, David. Thank you.
+
+David Didsbury   3:29OK.
+
+Rebecca Gill   3:30Yeah, I'll make a note of that and I'll have a look at that whilst I'm looking at the risk.
+
+David Didsbury   3:35Right.
+
+Jacqui Fox   3:36Perfect. Thank you, David. Okay, so also very quickly, I'm going to share my screen. So David has shared the software list and I have a very quick question. So the software list is currently in this format of an Excel. So with each tab kind of relevant to each area.But in terms of the format that you want to have this file in overall, is it okay to stay in an Excel? Would it be preferable to be in Word? From my perspective, reading it, I would have assumed the Excel might be an easier format forAn order to follow Bush.So I'm happy to send this over and you can have a look at it to see and I don't know if you have a predetermined format as to what that should look like.That okay?
+
+Rebecca Gill   4:28Yeah, no, I'm happy. I don't know for Andrew if it matters for him, but I'm happy for it to be Excel, because when we upload to Cogni Docs or share the file to the auditor, we'll share the Excel file anyway. So, see if you follow using that and I'm happy with that.
+
+David Didsbury   4:43Yeah, I mean...I could put front page in saying that each of the tab represents the main the main folders within the software. All right. So the auditor has a has an understanding of what each folder represents. Right. OK, I can do that. Right.
+
+Rebecca Gill   4:52Mhm.and the purpose of the file.Yeah.
+
+Jacqui Fox   5:00Okay, perfect. Thanks, David.
+
+Rebecca Gill   5:02Okay.
+
+David Didsbury   5:02Okay, Janine.
+
+Jacqui Fox   5:04Okay, and then where is my other questions?Second question is around, I know previously we had looked at the fan logic battery alarms and the kind of justification around those. And one of the things that's come up again, Andrew, question for you around the real time clock. I know we looked at it at the time.Is that documented anywhere, and if not, does it need to be documented?
+
+Andrew Kane   5:34What, what around the real-time clock?
+
+Jacqui Fox   5:37Cause I know you.
+
+David Didsbury   5:37Well, if you remember, if you remember back, Andrew, this came up when we did our first sort of software software analysis with the clinical team. They said there was a fault around the real time clock and it was.
+
+Andrew Kane   5:52Yes, yeah.Um...Yeah, so they were getting the...
+
+David Didsbury   5:57And then I...
+
+Andrew Kane   6:00A lot of real-time clock alarms, because the battery of the real-time clock circuit was failing early, so it moved that.Yeah, so they changed that so that...So the service interval was less. I think that's maybe covered as a mitigation in the risk analysis.
+
+David Didsbury   6:20Yeah.
+
+Jacqui Fox   6:23Risk.
+
+David Didsbury   6:24Okay, great.
+
+Jacqui Fox   6:27Okay, I think we should just do a cheque that we have captured this in the risk and the risk analysis.
+
+Andrew Kane   6:32Yeah, yeah, I'm not sure for this, but definitely could be.
+
+Jacqui Fox   6:36Okay, I'll have a quick look as well to see if that's the case. And if I have any problem finding it, I might reach out to you guys on it. And then, and this really before Rebecca goes in case she has to go is Rebecca, I know you shared those two standards with us. And Colm and David have both had a review of it.
+
+Andrew Kane   6:42Yeah.
+
+Rebecca Gill   6:52Mhm.
+
+Jacqui Fox   6:56So, in relation to the um, IEC, AC, cricky, I can't remember what it was, IEC AC1001, um.The review both Colm and Andrew have, sorry, David have come to the conclusion that because it's for the life cycle requirements for the development and maintenance of the health software to support conformance, they don't think that it's necessarily applicable to TF24.
+
+Rebecca Gill   7:27Okay.
+
+Jacqui Fox   7:28So you don't need to worry about it.
+
+David Didsbury   7:29We've got 62304, right, which is the medical device lifecycle aimed at firmware and medical device applications. If you were plugged, if your product was plugged in full-time into the hospital infrastructure IT system, then that would then then that standard.
+
+Rebecca Gill   7:34Mhm.Mhm.
+
+David Didsbury   7:46Would then become applicable, right? OK.
+
+Rebecca Gill   7:47Bye bye.Yeah.
+
+David Didsbury   7:50Right, that.
+
+Jacqui Fox   7:50And then in relation to, thanks David for that, and then in relation to the second one, which is the ISO 27427 2023, it's more around the nebulization. So we're just trying to get clarity to understandhow the FD140i may work in terms of nebulizing. Yeah, it's not necessarily clear to us because we kind of have a different opinion, differing opinions in terms of whether it does or doesn't apply. So could you explain to us?
+
+Rebecca Gill   8:15Is this, is this similar? Yeah, messed up the accident.Right, well...Steve 24, get your done.Time to ask anything.
+
+Jacqui Fox   8:30just where potential nebulizing, it might be used in a nebulizing way.
+
+Rebecca Gill   8:32And with.So there's a little port on the front of the FD140i and it's...It.It's connected to the breathing circuit to.I suppose, provide.Let me get this right. Let me get the eye view.
+
+David Didsbury   8:57Yeah.
+
+Andrew Kane   8:57It provides flow for a nebulizer.
+
+Rebecca Gill   9:02Is it flow for a nebulizer?
+
+Andrew Kane   9:04I think so. So you press, there's a button you press during therapy and you can power, you can send out flow out of that port for a nebulizer.
+
+Rebecca Gill   9:12Okay, so it doesn't actually nebulize itself.
+
+Andrew Kane   9:15No, so it would be connected to the nebulizer.
+
+Rebecca Gill   9:18Okay.
+
+David Didsbury   9:19Right, so the question, so the question I was giving.Jacqui this morning.
+
+Jacqui Fox   9:24I don't understand.
+
+David Didsbury   9:26Yeah, right, Jacqui, this morning was, I was giving her a hard time. I was trying to see this. I mean, I haven't read the standard in full depth, but the question we've got to ask ourselves is, does the standard cover the supply of gas to a nebulizer? All right. OK, or right.
+
+Rebecca Gill   9:43Oh.
+
+David Didsbury   9:46And then in that case, we could be considered to be within the circuit. Or is it just a standard about how you take gas in, nebulize the drug and export it effectively to the patient?
+
+Rebecca Gill   10:00Mhm.
+
+David Didsbury   10:02All right, and if you know if there's purely that last case, then the standard wouldn't wouldn't apply.Right.
+
+Andrew Kane   10:11Sorry, could you repeat that again? Sorry, I'll ask you.
+
+David Didsbury   10:13Yeah, so, so...So the question is, with that standard.Does it does it include the specification for the input of the gas to the nebulizer? So does it have to be at one bar, 4 bar, with a flow of, I don't know, 20 litres a minute? Right. OK.Right. And if it does, then you could say, if we're supplying the gas, all right, then we have to meet that import import requirement.
+
+Andrew Kane   10:43Okay.
+
+David Didsbury   10:43And that's about the only thing we need to test, right?
+
+Andrew Kane   10:47Yeah.
+
+Rebecca Gill   10:48Very link.
+
+Andrew Kane   10:48We're probably testing that anyway, what the...I put as a manipulator.
+
+David Didsbury   10:54Yeah.
+
+Jacqui Fox   10:55So.
+
+David Didsbury   10:56Well, it's the input and the nebulizer, isn't it, that you were talking about? And that's what you're saying the gas supplied.
+
+Andrew Kane   11:02Yeah.
+
+Jacqui Fox   11:05So...I've just, sorry, I've changed my sentence with the teams and confused stuff. They've just popped into the chat there that the ISO scope statement of the standards, what it is around general purpose nebulizing and electrically powered nebulizers and what the user manual says in relation to the use.
+
+Rebecca Gill   11:10Liam.I love you.
+
+Jacqui Fox   11:28of the FT140i with a nebulizing system. So to say that the FT140i can be used in conjunction with a jet nebulizer to add medical aerosol to the breathing circuit during therapy. I suppose it's to understand
+
+Rebecca Gill   11:38First one.
+
+Jacqui Fox   11:44how exactly that happens to make a determination.
+
+David Didsbury   11:48Yeah.
+
+Jacqui Fox   11:48Of the applicability of the standard.
+
+Andrew Kane   11:54So, the output from our devices is just six litres per minute flow goes out of that port, and it's based on a button that you can press during therapy, so it's on or off.
+
+Jacqui Fox   12:01Okay.Mmh.
+
+Andrew Kane   12:08Hello.
+
+David Didsbury   12:08Okay.OK, and that goes, and that goes into the nebulizer, doesn't it?
+
+Andrew Kane   12:10So I don't know if that.And that would go into an nebulizer, yeah.
+
+David Didsbury   12:16Yeah, OK.So.
+
+Andrew Kane   12:19We don't produce the nebulizers or anything like that.
+
+David Didsbury   12:19On the face.No, no, well, yeah, so on the face of it, the only the only requirement we've got to cheque with the standard is, do they specify an import?Flow rate, so you're saying it's up six liters?My eye.
+
+Andrew Kane   12:34A smoke we provide.
+
+Jacqui Fox   12:34A minute.
+
+David Didsbury   12:36Yeah, yeah, you provide 6 litres, don't you? Right, a minute. Right, and it's that one bar, is it?
+
+Andrew Kane   12:45Not sure.
+
+David Didsbury   12:45Oh.And does that meet the spec?
+
+Andrew Kane   12:50S.
+
+David Didsbury   12:51Or is it within the range of the spec?
+
+Andrew Kane   12:56Yeah, I don't know if we...I think it says somewhere in the technical knowledge.I can go away and look at that, anyway.
+
+David Didsbury   13:07OK, anyway, yeah, yeah.
+
+Jacqui Fox   13:08I was going to say, if we take it offline, so Andrew, if you could just confirm what the spec of flow rate is. And then once we know that, we can review, David and Colm can review the standard again, just to understand, is that flow rate within the range of applicability within the standard?
+
+Andrew Kane   13:16Yeah.
+
+Jacqui Fox   13:28as to whether you need to consider. Perfect. Okay.
+
+Andrew Kane   13:29Yeah.
+
+Jacqui Fox   13:32Okay, back to last week and the follow-up actions that we had last week. The status of the mute button on the flash sequence.
+
+Andrew Kane   13:42Cuckoo.Yes, I was looking at that and I kind of proposed a solution. So at the minute the mute button, the mute alarm LED flashes, so it's solid whenever there's an alarm and then it flashes whenever you've pressed the mute alarm button.So my proposal was then that I would...When it's not pressed, it would flash at the rate that shows what kind of alarm it is. So it would be solid for a low priority, flash slowly for a medium priority, and flash quickly for a high priority. And then when you press it, they would all go into the same thing where it just ramps slowly off and slowly on. So we chatted.
+
+David Didsbury   14:29Pass.
+
+Andrew Kane   14:30So, we chatted to the clinical team like that yesterday and are making them they were they were pretty happy with that, so.So, I would propose.
+
+David Didsbury   14:40And that ramping up and down, that's what people have learned over time means it's been muted, the alarm's been muted.
+
+Andrew Kane   14:48Yeah.
+
+David Didsbury   14:50OK, so then.
+
+Andrew Kane   14:50But there's alignment.
+
+David Didsbury   14:52Yep.
+
+Andrew Kane   14:53So, I think that button goes up, that I that goes off totally when the alarm is acknowledged.Is it not muted anymore? It's just acknowledged it's gone.
+
+David Didsbury   15:07Fine.
+
+Andrew Kane   15:11So, I'll be in there.In the latest bit of software.
+
+David Didsbury   15:17OK.
+
+Jacqui Fox   15:20Okay.So then by the sounds of it, Andrew, in relation to the clinical review that happens already this week.
+
+Andrew Kane   15:30Yeah.
+
+Jacqui Fox   15:31and everything's okay in terms of all of those three parameter changes.
+
+Andrew Kane   15:36Yeah, so they, I think they see it as an upgrade.
+
+Jacqui Fox   15:36Project.Okay, perfect. And then as a consequence to that, does that mean that the change request then is signed off?
+
+Andrew Kane   15:49Yes, that's approved.
+
+Jacqui Fox   15:49or can be signed off because you've got approved. Yeah, okay.
+
+Andrew Kane   15:52It's approved, yeah, it was approved for Wednesday.
+
+Jacqui Fox   15:54Excellent. Okay. And then in terms of the next one was around the debug commands on the screen. So I think David is going to reach out to you on some additional command letters to understand when you use those command letters in the debug screen.
+
+David Didsbury   16:01And that's my fault.
+
+Jacqui Fox   16:13what actually happens so that we can document that.
+
+Andrew Kane   16:16Yeah.
+
+David Didsbury   16:18Okay.
+
+Jacqui Fox   16:18Okay.And then we move on to the languages. I know that there are the languages themselves in the test ones uploaded and the translated files I believe are uploaded, but you had some restrictions around characters in relation to three of the languages and that the possible solution was toto review the graphics driver in relation to fonts for Greek, Arabic and Vietnamese. Has that been resolved or?
+
+Andrew Kane   16:51Yeah, so I've added five of those languages that didn't have any issues into the code. There's another, I think there's another four, that there's some characters that aren't in the drivers at the minute. And there's another three that not like none of the characters are in the drivers at the minute.
+
+Jacqui Fox   17:01Yes.OK.
+
+Andrew Kane   17:11So, I've been looking at that code, and I think those were generated using this tool, that font creator.
+
+David Didsbury   17:18Yeah, that was about to say, yeah, there's a folder in there that you can, well, I don't have it.
+
+Andrew Kane   17:22So, I'm trying to get access to that. Their website is blocked by our firewall here at the minute, but I've raised that with IT, just have a look at that, 'cause I got so we would generate the new drivers.
+
+Jacqui Fox   17:27No.
+
+David Didsbury   17:36Right, OK. Good.
+
+Jacqui Fox   17:38Okay.Okay, so for five done, 7 to go, three of which are easier, sorry, four of which are maybe slightly easier than the last three, and that's dependent on the access to that.Soft with that tool that you're resolving with your IT in terms of access perfect.
+
+Andrew Kane   17:57Yeah.
+
+Jacqui Fox   18:07What did I say there? So the next one was around the review of the IEC 6061-1 standard compared to MDD documentation outline what testing needs to be completed for the electrical compliance testing. So that's.
+
+Andrew Kane   18:21Yeah.Part way through that, I'm trying to finish up this week.
+
+Jacqui Fox   18:27Okay, perfect. And to that point, then, that's still defining the parameters of the testing for the compliance, electrical compliance testing. So I'm assuming from that the actual testing itself has not started or has it?
+
+Andrew Kane   18:45No, so the stuff I've covered so far is, yeah, it's covered by the testing that was done previously.The U.L. like drill testing, so I'm not, yeah, I haven't done it since. Additionally, just going through this bank, it's a...Like, document to go through, really.
+
+Jacqui Fox   19:05So in terms of where does that put you at in terms of the time frames for the actual completion of testing?Are you still on track to finish? Yeah, yeah, yeah.
+
+Andrew Kane   19:16Yeah, oh, it's still on track. Yeah, I sorted it too.
+
+Jacqui Fox   19:19Okay. And then David has been working through the tracing the software changes between version 101 to 102 of those 17 listed ones from Marturion to document them. So they're now his kind of priority action for the remainder of this week.Um, so, and if software can change and to the point if...through that review, it's identified that there is no visibility of that change within the code, that we will have to generate the retrospective test data to support the change. And then around the USB port lock and the GUI security controls.I know, Rebecca, you were looking at possibly the competitors controls and how they got round it.Han.Did you get anything of substance from that that might give you a steer on approach?You're muted.The.
+
+Rebecca Gill   20:25Sorry, I've been looking at images and stuff around competitors devices and I can't see anything that's physically there. So the only thing I can anticipate is there's some sort of USB key that has to go in to kind of unlock the device. It was similar to devices I work with.My last firm, clinical chemical analyzers, where you required the USB key.And to unlock the device, and then another one don't need the software, um, so it's maybe around that, but when we were looking, when I was looking at the overall risk still, um...It would be no different to putting it on to if the device was on a neonate.It would be no different to putting it onto an adult therapy and then putting up the pressures as to overriding it through the USB port. So the risk is both from...The front and the back. The only thing I can imagine, the only thing I can think of is if we were to put like a password on the GUI. So like a four digit code or something that they just typed in to prevent that interference. And then some sort of a port lock on the back.
+
+David Didsbury   21:22Okay.
+
+Andrew Kane   21:36Yeah.
+
+Rebecca Gill   21:38That's what I sort of looked into since the last time.
+
+Jacqui Fox   21:42And pardon me there for being stupid. If you did go down that route and introduce a password.That would only be necessary if there was need to access the port to do updates. It wouldn't necessarily, the password wouldn't be needed by clinicians on a day-to-day basis.
+
+Rebecca Gill   22:06Well, there's two ways. Yes, it could be just to access the software to update it on the screen, or there would be maybe if you're looking to change therapy, I'm just being mindful that you could still change therapy on the screen without.
+
+Andrew Kane   22:11Yeah.Thank you.
+
+Rebecca Gill   22:25you know, any kind of controls in place.Not sure what your thoughts are around that, Andrew.
+
+Andrew Kane   22:34Yeah, I do.If we were changing on the actual screen to change the therapy, I don't think that kind of go people would like that now, but
+
+Rebecca Gill   22:38I think it's fairly rural risk.So that's what I was thinking. I was thinking that's probably going to cause a bit of a delay, especially if there's like newly trained people or people swap and shift and unless it was like a universal password in the IFU or something.
+
+Andrew Kane   22:59Yeah, and then that could actually under just more risk because it's delayed and changing the therapy, so...
+
+Rebecca Gill   23:03Yeah.So the risk-benefit analysis of that would not be valuable.
+
+Andrew Kane   23:07Thanks, so maybe we just need to talk to you about that one.
+
+Rebecca Gill   23:12Mm.I have got a few notes jotted down just when I was looking through all of that.but I'll put it into our risk matrix and then I'll circulate it with you, Andrew, just to review then before it circulates a wider team.
+
+Jacqui Fox   23:30Okay, so that would be suggested that you're going to roll out on that approach to use a password.
+
+Rebecca Gill   23:40Possibly for the software, yeah.
+
+Jacqui Fox   23:40From.Okay. And so the only need, well, need from, let's say, this piece of work then is to document that approach in terms of risk to analyse the...
+
+Andrew Kane   23:46Sir.
+
+Jacqui Fox   24:01Oh my god, I can't remember the words that I'm trying to say right now.rate them, sorry, to rate those risks and it would be in view to mitigating any cybersecurity risk.
+
+Rebecca Gill   24:07Mhm.
+
+Jacqui Fox   24:16And there's nothing else that we need to consider, David, if they, from a cybersecurity point of view, if they choose that approach.
+
+David Didsbury   24:27No, I mean, you know, they've done a...They've done, well, they've done an inverted comma cyber security threat analysis and said the only threat is, you know, there's only one that someone plugging the device into the USB socket and trying to take control of the software. And they've got plans around plans around how to mitigate it, right? And they've looked at the overall risk. So, yeah, as long as it's documented.And, and we make it obvious for the user to user to see it, right?
+
+Rebecca Gill   24:55I know what you said.
+
+Jacqui Fox   25:00Mm.
+
+David Didsbury   25:00In the end. So perhaps you might need to go back to your plan, Rebecca, and put a line in about cyber security.
+
+Rebecca Gill   25:08Yeah.
+
+David Didsbury   25:08Okay.Right.
+
+Jacqui Fox   25:12Okay.Okay, so in terms of actions out of here, the main focus for David obviously is that that software route through. He's also reviewing the alarm code coding, the changes that have done, so just reviewing that code, but noting that that's for the alarms only and then we probably have to do that again for the languages once the languages areComplete it.
+
+Andrew Kane   25:38Yeah, Liam is more simple.
+
+David Didsbury   25:38On that.Yeah, the, yeah, the language is looking at the don't necessarily need to look at each individual language file. It's looking at the little bit of menu-driven software that selects it, isn't it? Because it's about two other files that you change to, you know, to include it.
+
+Andrew Kane   25:54Yep.
+
+Jacqui Fox   25:55Okay.
+
+David Didsbury   25:59Right.
+
+Jacqui Fox   26:00Okay. And then last action for you this week, prioritise wise, David, is the debug commands, debug command letters through to Andrew so he can come back to you on it. And Andrew, your main focus then really is to resolve those
+
+David Didsbury   26:01Yeah.Yes.Okay.Yeah.
+
+Jacqui Fox   26:19create those two language characterization situations, complete your review of the MDD documentation in relation to IEC 6060 and the testing, presumably early next week to start the testing at least. And you're also.Going to...Have a look, ***.Are you going to have a look at that you said earlier on?
+
+Andrew Kane   26:49I was thinking of the nebulizer spec, was it?
+
+Jacqui Fox   26:51Thank you. Yeah, yep. Perfect. And Rebecca, then you're just going to update any of the risk files like plan and matrix around the decision that you guys go with from a cybersecurity USB port lock position.
+
+David Didsbury   26:53Yep.
+
+Rebecca Gill   27:10And also just the numbers that David mentioned about justifying that element.
+
+Jacqui Fox   27:17Yes, yes.
+
+Rebecca Gill   27:18Ex.
+
+Jacqui Fox   27:20Okay.
+
+David Didsbury   27:20Right.
+
+Jacqui Fox   27:22Alright folks, thank you. Cheers, see ya. Bye bye bye.
+
+David Didsbury   27:22Lovely, right, OK.
+
+Rebecca Gill   27:23Thank you. Take care. Bye now.
+
+Andrew Kane   27:25It's good.
+
+David Didsbury   27:26Bye.
+
+Jacqui Fox stopped transcription
+

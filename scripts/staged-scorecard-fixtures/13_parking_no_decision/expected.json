@@ -1,0 +1,41 @@
+{
+  "transcriptFile": "Weakness3_parking_no_decision_transcript.docx",
+  "expected": {
+    "meetingType": "Decision meeting",
+    "meetingTitle": "Residents Association - parking",
+    "meetingPurpose": "Discuss the residents association visitor-parking problem and consider possible solutions.",
+    "meetingObjectives": [
+      "Describe the visitor-parking issue.",
+      "Consider a permit scheme.",
+      "Consider marked visitor bays.",
+      "Consider barrier or gated access.",
+      "Consider council adoption or further communication.",
+      "Decide whether any option should be progressed."
+    ],
+    "executiveSummary": "The group discussed several possible responses to residents using visitor parking spaces, including permits, marked bays, barriers, reminder letters and asking the council to adopt the road. Each option had practical drawbacks, especially around enforcement, cost or effectiveness. No solution, decision or owner was agreed, and the issue was effectively deferred until the following month.",
+    "overallTopicsDiscussed": [
+      "Residents using visitor spaces",
+      "Permit scheme",
+      "Enforcement problem",
+      "Marked visitor bays",
+      "Barrier or gated access",
+      "Reminder letters",
+      "Council adoption",
+      "Small number of households causing the issue",
+      "No agreed solution",
+      "Deferred parking discussion"
+    ],
+    "discussion": [
+      "Residents using visitor parking spaces.",
+      "Permit scheme proposed, but no practical enforcement mechanism.",
+      "Clearly marked visitor bays proposed, but considered ineffective without enforcement.",
+      "Barrier/gated access proposed, but rejected as expensive and problematic for visitors.",
+      "General reminder letters considered ineffective based on previous experience.",
+      "Possibility of asking the council to adopt the road.",
+      "Recognition that the underlying issue concerns a small number of households rather than the physical parking setup.",
+      "No solution agreed. Parking discussion deferred until next month."
+    ],
+    "actions": [],
+    "actionNotes": "No concrete assigned actions. The group explicitly fails to reach a decision or assign an owner. Tentative, unassigned ideas such as asking the council should not be extracted as action items."
+  }
+}

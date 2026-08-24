@@ -1,0 +1,63 @@
+{
+  "transcriptFile": "Weakness2_two_Jos_nameclash_transcript.docx",
+  "expected": {
+    "meetingType": "Project review (general)",
+    "meetingTitle": "10K committee catch-up",
+    "meetingPurpose": "Review planning status for the 10K event and assign responsibilities for safety, route, medals and promotion.",
+    "meetingObjectives": [
+      "Confirm race date and entry fee.",
+      "Resolve marshal and first-aid coverage gaps.",
+      "Review route and road-closure dependencies.",
+      "Choose medals or shirts and confirm ordering quantity.",
+      "Agree the social media push needed to support entries."
+    ],
+    "executiveSummary": "The committee confirmed the 10K date and entry fee, then focused on practical event risks. Marshal recruitment and first-aid cover were identified as priorities, with Jo Marsh and Jo Bennett taking separate responsibilities. The group also discussed road-closure timing, the need for a Plan B route, medal ordering and increased social media activity to reach the break-even entry level.",
+    "overallTopicsDiscussed": [
+      "Race date",
+      "Entry fee",
+      "Marshal shortage",
+      "First-aid coverage",
+      "Route and towpath status",
+      "Road-closure application",
+      "Plan B route",
+      "Medals versus shirts",
+      "Medal order quantity",
+      "Social media promotion",
+      "Break-even entry numbers"
+    ],
+    "discussion": [
+      "Race date and GBP 15 entry fee.",
+      "Marshal shortage and requirement for 14 marshals.",
+      "Inadequate first-aid coverage and need for two crews.",
+      "Route status and resurfaced towpath.",
+      "Road-closure application and risk of it not being approved in time.",
+      "Need for a Plan B route if the permit is unresolved two weeks before the race.",
+      "Medals versus shirts, with medals selected.",
+      "Order quantity of 350 medals for an expected 300 runners.",
+      "Low social-media activity and its possible effect on entries.",
+      "Need for roughly 280 entries to break even."
+    ],
+    "actions": [
+      {
+        "owner": "Jo Marsh",
+        "action": "Recruit enough marshals to reach 14."
+      },
+      {
+        "owner": "Jo Bennett",
+        "action": "Get a quote from St John Ambulance for two first-aid crews, then confirm once the cost is approved."
+      },
+      {
+        "owner": "Alan",
+        "action": "Submit the road-closure application this week and confirm the towpath has reopened."
+      },
+      {
+        "owner": "Deepa",
+        "action": "Reorder 350 medals."
+      },
+      {
+        "owner": "Deepa",
+        "action": "Run the social media push, posting every couple of days through to race day and distributing the entry link."
+      }
+    ]
+  }
+}

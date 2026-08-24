@@ -1,0 +1,64 @@
+{
+  "transcriptFile": "Random1_allotment_society_transcript.docx",
+  "expected": {
+    "meetingType": "Internal follow-up",
+    "meetingTitle": "Allotment Society committee",
+    "meetingPurpose": "Review Allotment Society site issues, agree practical maintenance tasks and confirm upcoming administration and event arrangements.",
+    "meetingObjectives": [
+      "Confirm repair action for the broken water butt tap.",
+      "Address the damaged railway-side boundary fence and related safety concern.",
+      "Agree plot-fee and waiting-list administration updates.",
+      "Plan annual show arrangements and publicity.",
+      "Discuss the shed break-in and improve site security."
+    ],
+    "executiveSummary": "The committee worked through a set of operational site issues and agreed several practical follow-up tasks. Maintenance actions were assigned for the water butt, boundary fence and shed security. Administrative updates were also agreed for plot fees and waiting-list allocation, alongside planning for the annual show. The main risk left open is continued site-security exposure if break-ins persist.",
+    "overallTopicsDiscussed": [
+      "Water butt repair",
+      "Boundary fence safety risk",
+      "Plot fee increase",
+      "Waiting-list plot allocation",
+      "Annual show planning",
+      "Show prizes and rosettes budget",
+      "Shed break-in",
+      "Shed security improvements",
+      "Ongoing site security risk"
+    ],
+    "discussion": [
+      "Broken water butt tap.",
+      "Damaged railway-side boundary fence and associated safety risk.",
+      "Increase in annual plot fees from GBP 25 to GBP 30.",
+      "Allocation of three vacant plots from the waiting list.",
+      "Annual show date, categories and publicity.",
+      "GBP 50 budget for show prizes and rosettes.",
+      "Communal shed break-in and stolen equipment.",
+      "Improved shed security.",
+      "Ongoing site-security risk if break-ins continue."
+    ],
+    "actions": [
+      {
+        "owner": "Ken",
+        "action": "Replace the broken water butt tap on Saturday."
+      },
+      {
+        "owner": "Barbara",
+        "action": "Photograph the damaged boundary fence and write to the council this week, copying in the councillor."
+      },
+      {
+        "owner": "Priyanka",
+        "action": "Update the renewal letter to reflect the GBP 30 annual plot fee from January."
+      },
+      {
+        "owner": "Priyanka",
+        "action": "Email the top three people on the waiting list by the end of the week, giving them 14 days to accept a plot."
+      },
+      {
+        "owner": "Wesley",
+        "action": "Prepare the annual show schedule, categories and entry form, and publish them on the noticeboard and Facebook by mid-August."
+      },
+      {
+        "owner": "Ken",
+        "action": "Buy and fit a new hasp, padlock and solar alarm on Saturday, keeping spend under GBP 50."
+      }
+    ]
+  }
+}

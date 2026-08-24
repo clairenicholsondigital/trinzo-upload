@@ -1,0 +1,64 @@
+{
+  "transcriptFile": "Review_Lean_Generation_Pipeline_Meeting_Transcript_2.docx",
+  "expected": {
+    "meetingType": "Workshop",
+    "meetingTitle": "Review Lean Generation Pipeline",
+    "meetingPurpose": "Sense-check a proposed lean lead-generation pipeline before running a manual test and potential AI-supported pilot.",
+    "meetingObjectives": [
+      "Validate the proposed lead-generation process with sales and client-delivery stakeholders.",
+      "Identify likely signal sources and triage needs.",
+      "Discuss how client-delivery leads are currently captured.",
+      "Define what needs to happen before a pilot.",
+      "Confirm whether the approach could produce useful lead quality and volume."
+    ],
+    "executiveSummary": "The team reviewed a proposed pipeline for turning market and client-delivery signals into qualified sales opportunities for Keon and Liam. The process would capture signals, triage noise, check Salesforce, create opportunity packs, prioritise opportunities with sales input, plan outreach and feed results back into the funnel. Keon confirmed that client delivery is likely the strongest lead source, while Jack emphasised the need to define ICP criteria and build quality into the process before automation.",
+    "overallTopicsDiscussed": [
+      "Lead-generation pipeline",
+      "Manual slice and four-week pilot",
+      "Signal capture sources",
+      "Noise triage",
+      "ICP fit criteria",
+      "Salesforce checking",
+      "AI opportunity packs",
+      "Opportunity prioritisation",
+      "Client-delivery lead capture",
+      "Consultant incentives",
+      "Feedback loop for learning"
+    ],
+    "discussion": [
+      "Lead-generation process designed to produce sufficiently qualified leads for Keon and Liam.",
+      "Need to sense-check the proposed process against real sales practice before scaling it.",
+      "Client delivery is expected to be a strong source of high-quality leads because consultants are close to active customer needs.",
+      "Proposed phased approach: small manual slice, four-week mixed manual and AI pilot, then automation if quality and volume are acceptable.",
+      "Signal sources include inbound enquiries, referrals, client delivery, events, ZoomInfo, client websites, newsletters and market news.",
+      "Need to triage noisy signal sources and manually clean or filter low-quality information.",
+      "ICP fit criteria need to be defined clearly to reduce poor inputs at the start of the process.",
+      "Salesforce matching and checking is needed before opportunity packs are generated.",
+      "AI-generated opportunity packs would support prioritisation of tiered opportunities.",
+      "Keon, Liam, Kathryn and a BD representative would review opportunities and decide which to pursue.",
+      "Opportunity planning may include known contacts, LinkedIn connections, email, calls or conference outreach.",
+      "Outcomes from pursued opportunities should feed back into the funnel so the process can improve.",
+      "Current client-delivery leads are sometimes emailed to Liam or logged as Salesforce tasks, but tracking is inconsistent.",
+      "Incentivising consultants for lead generation has been considered but has not yet been used and may not change behaviour.",
+      "Keon confirms that the strongest leads are likely to come from client delivery on the ground."
+    ],
+    "actions": [
+      {
+        "owner": "Conor and Jack",
+        "action": "Take a small manual slice of the proposed lead-generation process and test whether it produces the required lead quality."
+      },
+      {
+        "owner": "Conor and Jack",
+        "action": "Run a four-week mixed manual and AI pilot if the manual test produces useful volume and quality."
+      },
+      {
+        "owner": "Team",
+        "action": "Define the ICP fit criteria so poor-quality signals can be filtered earlier in the process."
+      },
+      {
+        "owner": "Sales and client-delivery team",
+        "action": "Clarify how client-delivery lead signals should be captured and tracked, including whether they should be recorded consistently in Salesforce."
+      }
+    ]
+  }
+}
