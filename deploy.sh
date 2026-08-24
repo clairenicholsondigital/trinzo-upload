@@ -58,8 +58,23 @@ if ! npm test; then
   fail "the new revision does not pass its own tests"
 fi
 
-say "tests green - restarting $APP_NAME"
+# Everything this tree runs, not just the web process.
+#
+# deploy.sh restarted "trinzo" alone, and three other pm2 processes run from this same
+# directory: the minutes job worker, the MiniLM worker and the rewriter. They were found
+# serving three- and four-day-old code after several deploys, which is exactly the state
+# that makes "have you actually deployed?" a reasonable question - the answer was yes for
+# the web process and no for everything beside it.
+#
+# The staged review is unaffected either way: its stages run in-process (181 staged-stage
+# completions logged by trinzo, none by the worker). The /meeting-minutes-final queue is
+# not, and neither are the two helpers.
+say "tests green - restarting $APP_NAME and its workers"
 pm2 restart "$APP_NAME" --update-env >/dev/null
+for worker in $(pm2 jlist 2>/dev/null | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{try{JSON.parse(d).forEach(p=>{if(p.name&&p.name.startsWith("trinzo-"))console.log(p.name)})}catch{}})'); do
+  say "restarting worker $worker"
+  pm2 restart "$worker" --update-env >/dev/null || say "warning: could not restart $worker"
+done
 sleep 5
 
 status="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$SMOKE_URL" || echo 000)"
