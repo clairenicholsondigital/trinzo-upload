@@ -273,6 +273,20 @@ function clientReadyPresentation(payload) {
         .find((value) => /^(?:self_commitment|direct_request)$/i.test(String(value || ''))) || null;
       const polished = normaliseFinalStagedActionCandidate({ ...item, action: presented, ownerEvidenceType });
       if (polished && polished.owner !== 'Not stated') return { ...item, ...polished };
+      // A row the deterministic layer selected is not the wording gate's to remove.
+      //
+      // With selection split from writing, the published count is supposed to be a
+      // property of the pipeline - and it was, right up to this gate, which dropped or
+      // diverted rows on wording quality. The wording varies run to run because a model
+      // wrote it, so the same meeting published three actions on one run and four on the
+      // next with selection already stable: the variance had just moved one gate later.
+      // A selected row with a real owner therefore publishes regardless of its wording -
+      // the repair pass and the action_wording_needs_review flag exist precisely for the
+      // rows this gate would have held - while ownerless rows keep their existing rules,
+      // which are deterministic.
+      if (item.selectionFinal && clean(item.owner) && clean(item.owner) !== 'Not stated') {
+        return { ...item, action: clean(presented) || clean(item.action) };
+      }
       // An action nobody was named for is still an action.
       //
       // This gate held back every row whose owner could not be resolved, which is right for
@@ -353,7 +367,8 @@ function canonicalFallback(payload) {
       .map((item) => ({ owner: item.owner || 'Not stated', action: item.action, deadline: item.deadline || 'Not stated', evidenceIds: (item.evidence || []).map((evidence) => evidence.id).filter(Boolean) }));
     base.screens.actions = dedupeActions([...base.screens.actions, ...recovered]
       .filter((item) => clean(item.owner) && clean(item.owner) !== 'Not stated')
-      .filter((item) => !unresolvedReference(item.action) && !nonActionState(item.action)));
+      .filter((item) => !unresolvedReference(item.action) && !nonActionState(item.action)))
+      .map((item) => ({ ...item, selectionFinal: true }));
   }
   return base;
 }
@@ -426,26 +441,18 @@ function promptFor(stage, payload, evidencePack, options = {}) {
       discussion: [{ itemIndex: 0, topic: 'exact supplied topic', points: ['formal, self-contained minutes point'], evidenceIds: ['supplied evidence id'] }]
     };
   const instructions = stage === 'actions' ? [
-    'Review every supplied MiniLM action candidate. Return each candidate that is a real minute-worthy commitment or active outstanding deliverable; omit completed work, passive status with no remaining work, availability, hypotheticals, suggestions without assignment, regulatory/process requirements without an accepted owner, and conversational noise.',
-    'A retained action must be supported by an explicit prospective commitment, assignment, request or obligation, or by clear evidence that specific work remains active and incomplete. Do not turn a question, recommendation, possible option, process description, audit scope, travel fact or meeting discussion into a commitment.',
-    'Treat work described as ongoing, in progress, being worked on or having recently started as outstanding only when the evidence also identifies concrete remaining work or a deliverable.',
-    'Consolidate repeated descriptions of the same underlying commitment into one canonical record.',
-    'Rewrite each retained action into one complete, grammatical action with an explicit verb, specific object and supported purpose where the evidence establishes it.',
-    // The discussion contract has forbidden this since it was written; the actions contract
-    // never did, and first- or second-person voice is the single largest wording fault in
-    // the published corpus - 18 of 206 rows. It is the same clause, on the surface that was
-    // missed, rather than a new rule.
-    'Do not repeat transcript filler, first-person or second-person speech, unresolved pronouns or speaker narration. Write each action in the third person as it would appear in minutes.',
-    'Resolve words such as it, this and that only from the supplied bounded context window.',
-    'Replace the reference with the most specific supported workstream, document, deliverable or task. Generic substitutes such as "the matter", "the topic" or "the issue" are not acceptable.',
-    'The object must distinguish the record from other documents or issues: retain supported names, acronyms, subject matter and purpose. For an email, state its supported subject; for an escalation, state the exact supported issue and system or team.',
-    'Preserve every supplied acronym exactly as written unless its expansion appears verbatim in the cited evidence; never guess an acronym expansion.',
-    'If the concrete object cannot be established from the supplied evidence, omit the action.',
-    'Do not create commitments. Preserve supplied owners and deadlines unless the cited evidence explicitly assigns a different owner. You may fill a Not stated owner or deadline only when the cited evidence explicitly assigns that owner or contains that exact deadline.',
-    'Respect reviewDisposition. completed_history, requirement and review_required candidates must not be published as final actions. A needs_assignment candidate may be published only if the cited evidence explicitly resolves the owner.',
-    'Do not introduce a named recipient or participant unless that person is explicitly present in the evidenceIds cited for that output record.',
-    'A supplied item may represent a contextual commitment thread rather than finished action wording. Resolve it only from its cited evidence.',
-    'If one supplied item contains multiple distinct explicit commitments in its cited evidence, you may return up to three records with the same itemIndex; each must cite the evidence for its own commitment.',
+    // Rewriting, not selecting. The old contract opened with "Return each candidate that
+    // is a real minute-worthy commitment; omit..." - a veto over what exists, which made
+    // the published action count a sample from the model rather than a property of the
+    // pipeline: the same transcript shipped three actions on one run and five on the
+    // next, and the live path routinely published fewer actions than the deterministic
+    // list it was given. Which actions exist is decided before this call and is not this
+    // call's business; every supplied record comes back, reworded or untouched.
+    'Every supplied record is already a confirmed action from this meeting. Rewrite each one as a single complete, grammatical instruction in minutes English. Return every itemIndex exactly once; never omit a record and never add one.',
+    'Write each action in the third person as an instruction beginning with a verb. Do not repeat transcript filler, first-person or second-person speech, unresolved pronouns or speaker narration.',
+    'Resolve words such as it, this and that only from the supplied bounded context window, and replace them with the specific supported workstream, document, deliverable or task. If the reference cannot be resolved from the cited evidence, return the record\'s text unchanged rather than guessing.',
+    'The object must distinguish the record from other documents or issues: retain supported names, acronyms, quantities, subject matter and purpose. Preserve every supplied acronym exactly as written unless its expansion appears verbatim in the cited evidence; never guess an acronym expansion.',
+    'Keep every fact. Do not change the owner or the deadline, and do not introduce a name, number or date that is not in the record or its cited evidence.',
     'For each output record, preserve itemIndex and cite only evidenceIds supplied for that item.'
   ] : [
     'Rewrite the supplied canonical discussion records as concise, formal meeting-minutes prose.',
@@ -628,17 +635,39 @@ function dedupeActions(items) {
 }
 
 function applyActionRewrite(payload, output, evidencePack) {
+  // The published rows go in; the published rows come out. Count preservation is
+  // structural - a map over the sources, never over the model's output - because any
+  // implementation that iterates what the model returned inherits the model's omissions,
+  // and omissions are exactly the variance this exists to remove: the same transcript
+  // shipping three actions on one run and five on the next, and the live path publishing
+  // fewer actions than the deterministic selection it was handed.
+  //
+  // What did NOT change is the slot discipline. Owner and deadline are facts, not
+  // wording: a proposed owner stands only on explicit cited assignment evidence, a
+  // deadline only when the cited evidence contains it, and a named recipient the
+  // evidence never mentions refuses the whole rewrite. Those rules predate this
+  // function's rewrite and their tests pass unchanged - the difference is that refusing
+  // a rewrite now leaves the row standing with its source wording, where it used to
+  // leave a hole.
+  const anyMarked = evidencePack.some((pack) => pack && pack.published);
+  const sources = evidencePack
+    .map((pack, index) => ({ pack, index }))
+    .filter(({ pack }) => pack && (anyMarked
+      ? pack.published
+      // Compatibility for packs built before the marking existed: every entry is a
+      // source EXCEPT recovery candidates - both kinds - which were never published rows.
+      // They are review material, and auto-publishing them here would resurrect exactly
+      // the ownerless-candidate leak the old selection logic guarded against.
+      : !['evidence_bound_candidate', 'review_required_candidate'].includes(pack.selectionMode)));
+
   const candidates = Array.isArray(output?.actions) ? output.actions : [];
   const byIndex = new Map();
   for (const candidate of candidates) {
     const index = Number(candidate.itemIndex);
-    if (!byIndex.has(index)) byIndex.set(index, []);
-    byIndex.get(index).push(candidate);
+    if (!byIndex.has(index)) byIndex.set(index, candidate);
   }
-  const actions = evidencePack.flatMap((pack, index) => {
-    if (!pack) return [];
-    const reviewDisposition = pack.reviewDisposition || '';
-    const selectionMode = pack.selectionMode || '';
+
+  const actions = sources.map(({ pack, index }) => {
     const source = {
       owner: pack.owner || 'Not stated',
       action: pack.action,
@@ -646,65 +675,59 @@ function applyActionRewrite(payload, output, evidencePack) {
       evidenceIds: (pack.evidence || []).map((item) => item.id).filter(Boolean),
       ...(pack.recapCorroborated ? { recapCorroborated: true } : {})
     };
-    // Closing-recap promotions have already passed a stricter two-source
-    // corroboration gate: one concrete earlier workstream record plus the
-    // later recap. Keep those records one-for-one. Letting Trooper rewrite
-    // several neighbouring recap items can merge distinct workstreams into a
-    // plausible-sounding but unsupported composite action.
-    if (source.recapCorroborated) return [source];
-    const proposed = (byIndex.get(index) || []).slice(0, 3).flatMap((candidate) => {
-      if (!validReferences(candidate, pack)) return [];
-      if (!prospectiveEvidence(candidate, pack)) return [];
-      const action = clean(candidate.action);
-      if (!action || unresolvedReference(action) || nonActionState(action) || action.split(/\s+/).length < 4) return [];
-      // A rewrite that comes back in the speaker's own voice has not been rewritten. Asking
-      // for third person and then accepting first person regardless is how "Just run through
-      // where the Hartwell site's at, I don't want this to take long" reached a client
-      // action list. Refusing it here falls back to the source wording exactly as any other
-      // rejected rewrite does - nothing is dropped that would otherwise have been kept.
-      if (minutesEnglishFaults(action).some((fault) => fault.severity === 'voice')) return [];
-      if (!actionVerbSupported(candidate, pack)) return [];
-      if (unsupportedNamedParticipants(candidate, pack).length) return [];
-      if (['completed_history', 'requirement', 'review_required'].includes(reviewDisposition)) return [];
-      let owner = 'Not stated';
-      if (ownerSupported(candidate, pack)) owner = clean(candidate.owner) || source.owner;
-      else if (source.owner !== 'Not stated' && ownerSupported({ ...candidate, owner: source.owner }, pack)) owner = source.owner;
-      if (owner === 'Not stated') return [];
-      const proposedDeadline = clean(candidate.deadline) || source.deadline;
-      const deadline = deadlineSupported({ ...candidate, deadline: proposedDeadline }, pack) ? proposedDeadline : 'Not stated';
-      const citedIds = Array.isArray(candidate.evidenceIds) ? candidate.evidenceIds : [];
-      const ownerEvidenceIds = owner === 'Not stated' ? [] : citedEntries(candidate, pack)
-        .filter((entry) => clean(entry.speaker).split(/\s+/)[0].toLowerCase() === owner.split(/\s+/)[0].toLowerCase()
-          || new RegExp(`\\b${owner.split(/\s+/)[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(clean(entry.text)))
-        .map((entry) => entry.id);
-      const deadlineEvidenceIds = deadline === 'Not stated' ? [] : citedEntries(candidate, pack)
-        .filter((entry) => deadlineFrom(entry.text).toLowerCase() === deadline.toLowerCase())
-        .map((entry) => entry.id);
-      return [{ ...source, owner, action, deadline, evidenceIds: citedIds, provenance: { actionEvidenceIds: citedIds, ownerEvidenceIds, deadlineEvidenceIds } }];
-    });
-    // Confirmed evidence-bound candidates survive a language-model omission,
-    // but review-only recovery candidates never become final actions by default.
-    // For canonical selected actions, preserve the source only when its wording
-    // is already specific enough to be safe.
-    if (!proposed.length && selectionMode === 'evidence_bound_candidate'
-        && !unresolvedReference(source.action) && !nonActionState(source.action)
-        && clean(source.action).split(/\s+/).length >= 4) return [source];
-    if (!proposed.length && selectionMode === 'canonical_selected_action'
-        && source.owner !== 'Not stated'
-        && !unresolvedReference(source.action) && !nonActionState(source.action)
-        && clean(source.action).split(/\s+/).length >= 4) return [{ ...source, deadline: 'Not stated' }];
-    return proposed;
+    // Closing-recap promotions passed a stricter two-source corroboration gate; their
+    // wording is kept one-for-one, as before.
+    if (source.recapCorroborated) return { ...source, selectionFinal: true };
+    const candidate = byIndex.get(index);
+    if (!candidate) return { ...source, selectionFinal: true };
+    const rewritten = clean(candidate.action);
+    // Wording guards. A rewrite that fails any of them leaves the source text standing -
+    // the row itself is never at stake. The contract says resolve the reference or return
+    // the text unchanged, so a rewrite that is still unresolved is refused outright
+    // rather than compared for improvement.
+    const wordingAcceptable = rewritten
+      && rewritten.split(/\s+/).length >= 4
+      && !nonActionState(rewritten)
+      && !unresolvedReference(rewritten)
+      && !minutesEnglishFaults(rewritten).some((fault) => ['voice', 'truncation'].includes(fault.severity))
+      && openingVerbIsActionable(rewritten)
+      && !(ANONYMOUS_PERSON.test(rewritten) && !ANONYMOUS_PERSON.test(source.action))
+      && (!candidate.evidenceIds?.length || validReferences(candidate, pack))
+      && !unsupportedNamedParticipants({ ...candidate, action: rewritten }, pack).length;
+    const action = wordingAcceptable ? rewritten : source.action;
+    // Slot validation, unchanged in substance from the old selection path. A proposed
+    // owner needs explicit cited assignment; failing that the supplied owner stands if
+    // the evidence supports it; otherwise the supplied owner simply stands - unlike the
+    // old path, an unresolvable owner no longer deletes the row, because whether the row
+    // exists is not this function's question any more.
+    let owner = source.owner;
+    if (clean(candidate.owner) && ownerSupported({ ...candidate, owner: clean(candidate.owner) }, pack)) owner = clean(candidate.owner);
+    const proposedDeadline = clean(candidate.deadline) || source.deadline;
+    const deadline = proposedDeadline !== 'Not stated' && deadlineSupported({ ...candidate, deadline: proposedDeadline }, pack)
+      ? proposedDeadline
+      : 'Not stated';
+    const citedIds = wordingAcceptable && Array.isArray(candidate.evidenceIds) && candidate.evidenceIds.length
+      ? candidate.evidenceIds
+      : source.evidenceIds;
+    const ownerEvidenceIds = owner === 'Not stated' ? [] : citedEntries({ ...candidate, evidenceIds: citedIds }, pack)
+      .filter((entry) => clean(entry.speaker).split(/\s+/)[0].toLowerCase() === owner.split(/\s+/)[0].toLowerCase()
+        || new RegExp(`\\b${owner.split(/\\s+/)[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(clean(entry.text)))
+      .map((entry) => entry.id);
+    const deadlineEvidenceIds = deadline === 'Not stated' ? [] : citedEntries({ ...candidate, evidenceIds: citedIds }, pack)
+      .filter((entry) => deadlineFrom(entry.text).toLowerCase() === deadline.toLowerCase())
+      .map((entry) => entry.id);
+    return { ...source, owner, action, deadline, evidenceIds: citedIds, selectionFinal: true, provenance: { actionEvidenceIds: citedIds, ownerEvidenceIds, deadlineEvidenceIds } };
   });
-  const finalActions = dedupeActions(actions);
+
   return {
     ...payload,
-    screens: { ...payload.screens, actions: finalActions },
+    screens: { ...payload.screens, actions },
     canonicalDiagnostics: {
       ...(payload.canonicalDiagnostics || {}),
       actionAccounting: {
-        supplied: evidencePack.length,
-        evidenceBound: evidencePack.filter((item) => item.selectionMode === 'evidence_bound_candidate').length,
-        published: finalActions.length
+        supplied: sources.length,
+        rewritten: actions.filter((item, position) => clean(item.action) !== clean(sources[position].pack.action)).length,
+        published: actions.length
       }
     }
   };
@@ -915,9 +938,21 @@ async function polishCanonicalStage(payload, options = {}) {
   const apiKey = clean(options.apiKey ?? process.env.TROOPER_API_KEY);
   if (!apiKey) return { payload: canonicalFallback(payload), used: false, reason: 'TROOPER_API_KEY is not configured.' };
   const fetchImpl = options.fetchImpl || fetch;
-  const packs = stage === 'actions' && evidencePack.length > 8
-    ? Array.from({ length: Math.ceil(evidencePack.length / 8) }, (_unused, index) => evidencePack.slice(index * 8, (index + 1) * 8))
-    : [evidencePack];
+  // For actions, only the published rows travel to the model - the candidates stay in the
+  // payload's pack for the review screen's source snippets, but they are not the model's
+  // to publish, and chunking them in would spend the token budget rewriting rows that
+  // nothing displays.
+  const anyMarked = stage === 'actions' && evidencePack.some((item) => item && item.published);
+  const rewritePack = anyMarked ? evidencePack.filter((item) => item && item.published) : evidencePack;
+  // A meeting whose deterministic selection is empty has nothing to reword - candidates
+  // alone are the review screen's business, and a round trip over zero rows is a chance
+  // for the model to invent one.
+  if (stage === 'actions' && anyMarked && !rewritePack.length) {
+    return { payload: base, used: false, reason: 'No published actions to rewrite.' };
+  }
+  const packs = stage === 'actions' && rewritePack.length > 8
+    ? Array.from({ length: Math.ceil(rewritePack.length / 8) }, (_unused, index) => rewritePack.slice(index * 8, (index + 1) * 8))
+    : [rewritePack];
   const actionResults = [];
   const usage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
   let discussionResult = null;
@@ -946,7 +981,18 @@ async function polishCanonicalStage(payload, options = {}) {
     else discussionResult = applyDiscussionRewrite(base, output, indexedPack);
   }
   const rewritten = stage === 'actions'
-    ? { ...base, screens: { ...base.screens, actions: dedupeActions(actionResults) } }
+    // No dedupe. The deterministic selection was already deduplicated when it was made,
+    // and a near-duplicate pass over the rewrites can merge two distinct rows the model
+    // happened to word similarly - which is a count change, and the count is now the
+    // pipeline's property, not the model's.
+    ? {
+      ...base,
+      screens: { ...base.screens, actions: actionResults },
+      canonicalDiagnostics: {
+        ...(base.canonicalDiagnostics || {}),
+        actionAccounting: { supplied: rewritePack.length, published: actionResults.length }
+      }
+    }
     : discussionResult;
   return { payload: rewritten, used: true, reason: `Trooper rewrote ${packs.length} bounded MiniLM evidence pack(s).`, usage };
 }

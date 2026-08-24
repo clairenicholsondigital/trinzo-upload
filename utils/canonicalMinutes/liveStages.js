@@ -481,6 +481,7 @@ function boundedEvidencePack(items, evidence, profile, stage) {
     ];
     return ({
     itemIndex,
+    published: Boolean(item.published),
     topic: clean(item.topic),
     owner: clean(item.owner),
     action: clean(item.action),
@@ -654,8 +655,22 @@ function runCanonicalLiveStage(transcriptText, options = {}) {
     result._canonicalEvidencePack = boundedSummaryEvidencePack(proposal, evidence);
   }
   if (options.includeEvidencePack && ['discussion', 'actions'].includes(stage)) {
-    const packItems = stage === 'actions' && Array.isArray(proposal.actionCandidates) && proposal.actionCandidates.length
-      ? proposal.actionCandidates
+    // Selection and writing are separate jobs, and the pack now says which is which.
+    //
+    // The pack used to carry the CANDIDATES, and the model chose which became actions -
+    // its instructions began "Return each candidate that is a real minute-worthy
+    // commitment; omit...". That gave the model a veto over what exists, which is why the
+    // same transcript published three actions on one run and five on the next, and why the
+    // live path routinely shipped fewer actions than the deterministic list it started
+    // from. Selection is what the deterministic layer is good at: stable, measured by the
+    // sweep, testable. So the published rows ride first, marked, and they are the only
+    // rows the model is asked to touch - the candidates stay in the pack for the review
+    // screen's source snippets, which match against pack evidence.
+    const packItems = stage === 'actions'
+      ? [
+        ...screen.map((item) => ({ ...item, published: true })),
+        ...(Array.isArray(proposal.actionCandidates) ? proposal.actionCandidates : [])
+      ]
       : screen;
     result._canonicalEvidencePack = boundedEvidencePack(packItems, evidence, profile, stage);
   }

@@ -52,7 +52,14 @@ test('large action packs are reviewed in bounded batches', async () => {
     }
   });
   assert.equal(calls, 2);
-  assert.equal(result.payload.screens.actions.length, 1);
+  // Phase 3 changed what an omission means. The model answered for one record out of
+  // nine; under the old contract that was a selection - eight rows silently gone - and it
+  // is why the same transcript published three actions on one run and five on the next.
+  // Which rows exist is the deterministic layer's decision now: the eight unanswered rows
+  // keep their source wording, and the count is a property of the pipeline, not a sample
+  // from the model.
+  assert.equal(result.payload.screens.actions.length, 9);
+  assert.equal(result.payload.canonicalDiagnostics.actionAccounting.published, 9);
 });
 
 test('Trooper action rewrite resolves a deictic action from cited context', async () => {
@@ -82,7 +89,16 @@ test('Trooper action rewrite cannot change owner or retain unresolved references
       json: async () => ({ choices: [{ message: { content: JSON.stringify({ actions: [{ itemIndex: 0, owner: 'Orla', action: 'Flick this over to her', deadline: 'Friday', evidenceIds: ['evt_2'] }] }) } }] })
     })
   });
-  assert.deepEqual(result.payload.screens.actions, []);
+  // Everything about the model's answer is refused: the rewrite is still unresolved, the
+  // owner change has no cited assignment, the deadline is not in the evidence. Under the
+  // old contract refusal deleted the row; now refusal means the deterministic row stands
+  // exactly as supplied, and the still-imperfect wording is the repair pass's business
+  // downstream - a real commitment is never the price of a bad rewrite.
+  const [action] = result.payload.screens.actions;
+  assert.equal(result.payload.screens.actions.length, 1);
+  assert.equal(action.action, 'Flick this over to Orla');
+  assert.equal(action.owner, 'Jacqui Fox');
+  assert.equal(action.deadline, 'Not stated');
   assert.equal(unresolvedReference('Discuss it with Louise and see what she says'), true);
 });
 
@@ -97,6 +113,9 @@ test('unsupported slot changes fall back without discarding a supported action',
   });
   assert.deepEqual(result.payload.screens.actions[0], {
     owner: 'Jacqui Fox', action: 'Send the QMS manual to Orla for review', deadline: 'Not stated', evidenceIds: ['evt_2'],
+    // selectionFinal marks a row the deterministic layer selected, so the presentation
+    // wording gate may repair or flag it but never remove it.
+    selectionFinal: true,
     provenance: { actionEvidenceIds: ['evt_2'], ownerEvidenceIds: ['evt_2'], deadlineEvidenceIds: [] }
   });
 });
@@ -132,6 +151,7 @@ test('Trooper may fill only owner and deadline slots explicitly supported by cit
   });
   assert.deepEqual(result.payload.screens.actions[0], {
     owner: 'Jacqui Fox', action: 'Send the QMS manual to Orla for review', deadline: 'Friday', evidenceIds: ['evt_2'],
+    selectionFinal: true,
     provenance: { actionEvidenceIds: ['evt_2'], ownerEvidenceIds: ['evt_2'], deadlineEvidenceIds: ['evt_2'] }
   });
 });
@@ -222,7 +242,12 @@ test('a named recipient introduced without cited support is rejected', async () 
       json: async () => ({ choices: [{ message: { content: JSON.stringify({ actions: [{ itemIndex: 0, owner: 'Jacqui Fox', action: 'Send the code of conduct to Stuart Smith today', deadline: 'today', evidenceIds: ['evt_2'] }] }) } }] })
     })
   });
-  assert.deepEqual(result.payload.screens.actions, []);
+  // Stuart Smith appears in the wider transcript but not in the evidence cited for this
+  // record, so the rewrite naming him as the recipient is refused - and refusal keeps the
+  // source wording rather than deleting the commitment.
+  const [action] = result.payload.screens.actions;
+  assert.equal(result.payload.screens.actions.length, 1);
+  assert.ok(!/Stuart Smith/.test(action.action), action.action);
 });
 
 test('recap-corroborated actions stay one-record-per-workstream even if Trooper tries to merge them', async () => {
