@@ -11,20 +11,7 @@ const { startProjectKnowledgeEmbedInterval } = require('./utils/knowledge');
 const app = express();
 const PORT = process.env.PORT || 3978;
 
-function addReviewSnippet(html) {
-  if (!/<\/body>/i.test(html) || html.includes('/static/review-snippet.js')) return html;
-  const snippet = [
-    '<script',
-    '  defer',
-    '  src="/static/review-snippet.js"',
-    '  data-endpoint="/api/review-feedback"',
-    '  data-project="trinzo"',
-    '  data-accent="#17D0C4"',
-    '  data-max-image-width="1600"',
-    '></script>'
-  ].join('\n');
-  return html.replace(/<\/body>/i, `${snippet}\n</body>`);
-}
+const { addReviewSnippet } = require('./utils/reviewSnippet');
 
 app.use('/api/review-feedback', express.json({ limit: '14mb' }));
 // 4mb comfortably covers the largest legitimate JSON payload today (a ~2MB-char

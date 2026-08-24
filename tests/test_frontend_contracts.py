@@ -98,10 +98,19 @@ class FrontendContractTest(unittest.TestCase):
         route = (REPO_DIR / "routes" / "reviewFeedback.js").read_text(encoding="utf-8")
         store = (REPO_DIR / "utils" / "reviewFeedbackStore.js").read_text(encoding="utf-8")
         snippet = (REPO_DIR / "public" / "review-snippet.js").read_text(encoding="utf-8")
+        # The injector moved out of server.js into its own module when it turned out to be
+        # anchoring on the first `</body>` in a file, which on /jobs is inside a template
+        # literal - the snippet's own `></script>` closed the page's script and dumped the
+        # rest of the JS on screen as text. What this contract cares about is that every
+        # served view goes through it and that it still carries the right attributes, so it
+        # asserts the wiring rather than which file the function lives in.
+        injector = (REPO_DIR / "utils" / "reviewSnippet.js").read_text(encoding="utf-8")
 
-        self.assertIn("function addReviewSnippet", server)
-        self.assertIn('src="/static/review-snippet.js"', server)
-        self.assertIn('data-endpoint="/api/review-feedback"', server)
+        self.assertIn("function addReviewSnippet", injector)
+        self.assertIn("const { addReviewSnippet } = require('./utils/reviewSnippet')", server)
+        self.assertIn("res.type('html').send(addReviewSnippet(html))", server)
+        self.assertIn('src="/static/review-snippet.js"', injector)
+        self.assertIn('data-endpoint="/api/review-feedback"', injector)
         self.assertIn("app.get('/review-feedback', authRoutes.requireAuth", server)
         self.assertIn("app.use('/api/review-feedback', authRoutes.requireAuth, reviewFeedbackRoutes)", server)
         self.assertIn("app.get('/api/review-feedback/summary', reviewFeedbackRoutes.summaryHandler)", server)
