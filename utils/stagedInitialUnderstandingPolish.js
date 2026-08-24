@@ -636,11 +636,54 @@ async function polishInitialUnderstanding(input = {}, options = {}) {
       response = await requestOnce(attemptPack);
       raw = await response.text();
     }
-    if (!response.ok) { if (process.env.POLISH_DEBUG) console.error('  HTTP ' + response.status + ' body=' + String(raw).slice(0, 600)); return { ...original, used: false, reason: `http_${response.status}`, timingMs: Date.now() - startedAt }; }
+    if (!response.ok) {
+      if (process.env.POLISH_DEBUG) console.error('  HTTP ' + response.status + ' body=' + String(raw).slice(0, 600));
+      // "http_422" on its own sent a reader looking for a bad request. What it means here
+      // is that the decoder could not finish a JSON object, twice, which in practice is a
+      // response with no room left to finish in - so the status carries what was tried.
+      const jsonFailure = response.status === 422 && /json_generation_failed|could not produce valid JSON/i.test(raw);
+      const retried = attemptPack !== evidencePack;
+      const reason = [`http_${response.status}`, jsonFailure ? 'json_generation_failed' : '', retried ? 'after_retry_without_evidence' : ''].filter(Boolean).join(':');
+      return { ...original, used: false, reason, degraded: retried, timingMs: Date.now() - startedAt };
+    }
     const body = raw ? JSON.parse(raw) : {};
+    // Say which of three different things went wrong.
+    //
+    // When the response outgrew maxTokens, every symptom pointed somewhere else: the router
+    // answered 422 json_generation_failed on a truncated object, the retry dropped the
+    // evidence pack, the pack-less validator refused the result on its much stricter token
+    // ratio, and the telemetry recorded "new_substantive_wording" - a complaint about the
+    // model's choice of words for what was actually a size limit. Three meetings shipped
+    // deterministic text and the reason field sent the next reader down the wrong path.
+    //
+    // Nothing here changes what is returned. It records which attempt produced it and
+    // whether the model ran out of room, so a budget problem cannot present as a wording
+    // problem again.
+    const finishReason = clean(body?.choices?.[0]?.finish_reason);
+    const truncated = /^(?:length|max_tokens)$/i.test(finishReason);
+    const degraded = attemptPack !== evidencePack;
+    const annotate = (reason) => [
+      truncated ? 'response_truncated' : '',
+      degraded ? 'retried_without_evidence' : '',
+      clean(reason)
+    ].filter(Boolean).join(':');
     const content = body?.choices?.[0]?.message?.content;
-    const parsed = typeof content === 'object' && content ? content : JSON.parse(String(content || '{}'));
+    let parsed;
+    try {
+      parsed = typeof content === 'object' && content ? content : JSON.parse(String(content || '{}'));
+    } catch {
+      // A truncated object is not malformed JSON in the interesting sense; it is a response
+      // that was cut off, and naming it that is the difference between raising maxTokens and
+      // hunting a parser bug.
+      return { ...deterministicPresentationFallback(original, annotate('unparsable_response')), cited: false, truncated, degraded, finishReason, timingMs: Date.now() - startedAt };
+    }
     const validation = validateInitialUnderstandingRevision(original, parsed, attemptPack, { meetingText: clean(options.meetingText) });
+    if (!validation.ok || truncated || degraded) {
+      const outcome = validation.ok
+        ? { ...original, meetingPurpose: validation.meetingPurpose, objectives: validation.objectives, executiveSummary: validation.executiveSummary, namedTopics: validation.overallTopics || [], used: true, reason: annotate(validation.reason), overlap: validation.overlap, fieldOutcomes: validation.fieldOutcomes, evidenceQuotes: validation.evidenceQuotes || null, cited: Boolean(attemptPack) }
+        : { ...deterministicPresentationFallback(original, annotate(validation.reason)), overlap: validation.overlap, fieldOutcomes: validation.fieldOutcomes, cited: false };
+      return { ...outcome, truncated, degraded, finishReason, timingMs: Date.now() - startedAt };
+    }
     return validation.ok
       ? { ...original, meetingPurpose: validation.meetingPurpose, objectives: validation.objectives, executiveSummary: validation.executiveSummary, namedTopics: validation.overallTopics || [], used: true, reason: validation.reason, overlap: validation.overlap, fieldOutcomes: validation.fieldOutcomes, evidenceQuotes: validation.evidenceQuotes || null, cited: Boolean(attemptPack), timingMs: Date.now() - startedAt }
       : { ...deterministicPresentationFallback(original, validation.reason), overlap: validation.overlap, fieldOutcomes: validation.fieldOutcomes, timingMs: Date.now() - startedAt };

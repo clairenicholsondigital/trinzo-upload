@@ -4429,6 +4429,12 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
         // and the fallback reproduces the thin output that prompted the work.
         fieldOutcomes: initialUnderstandingPolish.fieldOutcomes || null,
         overlap: initialUnderstandingPolish.overlap,
+        // Whether the model ran out of room, and whether what came back was the fallback
+        // request rather than the one we meant to make. Both were invisible, and their
+        // absence is why a maxTokens ceiling presented as a complaint about wording.
+        truncated: Boolean(initialUnderstandingPolish.truncated),
+        degraded: Boolean(initialUnderstandingPolish.degraded),
+        finishReason: initialUnderstandingPolish.finishReason || '',
         timingMs: initialUnderstandingPolish.timingMs
       },
       transcriptHealth,

@@ -276,3 +276,72 @@ test('the prompt\'s own section labels never reach the reader', () => {
   // And nothing that merely looks like an initialism is touched.
   assert.equal(stripInlineCitations('A sentence about MDR and PPE conformity.').text, 'A sentence about MDR and PPE conformity.');
 });
+
+// A budget problem must not present as a wording problem.
+//
+// When the response outgrew maxTokens every symptom pointed elsewhere: the router answered
+// 422 json_generation_failed on a truncated object, the retry dropped the evidence pack,
+// the pack-less validator refused the result on its far stricter token ratio, and the
+// telemetry recorded "new_substantive_wording". Three meetings shipped deterministic text
+// and the reason field sent the next reader looking at the model's vocabulary instead of
+// at a size limit. Reproducing that took reading the router's raw body by hand.
+test('the reason says which attempt produced the answer', async () => {
+  const { polishInitialUnderstanding } = require('../utils/stagedInitialUnderstandingPolish');
+  const pack = [{
+    itemIndex: 0,
+    topic: 'meeting_summary_evidence',
+    evidence: [{ id: 'evt_1', speaker: 'Colm', previous: '', current: 'The alarm sound and colour changes are largely working now.', next: '' }]
+  }];
+  let call = 0;
+  const fetchImpl = async () => {
+    call += 1;
+    // First attempt: the decoder gives up on the larger schema, as it does on a response
+    // with no room left to finish in. Second attempt: the smaller shape succeeds.
+    if (call === 1) {
+      return { ok: false, status: 422, text: async () => JSON.stringify({ error: { code: 'json_generation_failed' } }) };
+    }
+    return {
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({
+        choices: [{
+          finish_reason: 'stop',
+          message: { content: JSON.stringify({ meetingPurpose: 'Coordinate the alarm work.', objectives: ['Review the alarm sound changes.'], executiveSummary: 'The alarm sound and colour changes were largely working.' }) }
+        }]
+      })
+    };
+  };
+  const result = await polishInitialUnderstanding({
+    meetingTitle: 'Eakin weekly',
+    meetingPurpose: 'Coordinate progress.',
+    objectives: ['Review alarm behaviour.'],
+    overallTopics: ['Alarm behaviour and controls'],
+    executiveSummary: 'Coordinate progress. It covered alarm behaviour.'
+  }, { apiKey: 'test-key', model: 'test', url: 'https://example.invalid/v1/chat/completions', fetchImpl, evidencePack: pack, timeoutMs: 5000 });
+
+  assert.equal(call, 2, 'the retry ran');
+  assert.equal(result.degraded, true, 'the answer came from the fallback request, and says so');
+  assert.match(result.reason, /retried_without_evidence/, `the reason names the degradation: ${result.reason}`);
+  assert.equal(result.cited, false, 'and it is not claimed as cited');
+});
+
+test('a response the model could not finish is named as truncated', async () => {
+  const { polishInitialUnderstanding } = require('../utils/stagedInitialUnderstandingPolish');
+  const fetchImpl = async () => ({
+    ok: true,
+    status: 200,
+    text: async () => JSON.stringify({
+      choices: [{ finish_reason: 'length', message: { content: '{"meetingPurpose":"Coordinate the alarm wo' } }]
+    })
+  });
+  const result = await polishInitialUnderstanding({
+    meetingTitle: 'Eakin weekly',
+    meetingPurpose: 'Coordinate progress.',
+    objectives: ['Review alarm behaviour.'],
+    overallTopics: ['Alarm behaviour and controls'],
+    executiveSummary: 'Coordinate progress. It covered alarm behaviour.'
+  }, { apiKey: 'test-key', model: 'test', url: 'https://example.invalid/v1/chat/completions', fetchImpl, timeoutMs: 5000 });
+
+  assert.equal(result.truncated, true, 'a cut-off response is recorded as cut off');
+  assert.match(result.reason, /response_truncated/, `the reason names the size, not the wording: ${result.reason}`);
+});
