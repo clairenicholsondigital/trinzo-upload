@@ -23,6 +23,7 @@ const {
 } = require('../utils/stagedIdentity');
 const {
   buildEvidenceBoundStagedActionInventory,
+  unassignedActionsWorthPublishing,
   parseDeadlineEvidence
 } = require('../utils/stagedActionRecovery');
 const { buildStagedEvidenceLedger } = require('../utils/stagedEvidenceLedger');
@@ -4130,10 +4131,18 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
     if (healthFlag) payload.validationFlags = [...(payload.validationFlags || []), healthFlag];
   }
   if (stage === 'actions') payload = attachActionCandidateSourceSnippets(payload);
+  let unassignedActions = [];
   if (stage === 'actions') {
     const recoveredActions = buildEvidenceBoundStagedActionInventory(semanticTranscript.text);
-    payload = addRecoveredActionCandidates(payload, recoveredActions);
-    const reviewOnly = recoveredActions.filter((item) => item.reviewDisposition && item.reviewDisposition !== 'confirmed_action');
+    // Decided here, before the candidate list is built, so a row that is going to be
+    // published does not also appear underneath as something to consider adding. The
+    // reviewer seeing the same action twice, once as theirs and once as a suggestion, is
+    // its own kind of noise.
+    unassignedActions = unassignedActionsWorthPublishing(recoveredActions, payload?.screens?.actions || []);
+    const promoted = new Set(unassignedActions.map((item) => String(item.action || '').toLowerCase()));
+    const stillCandidates = recoveredActions.filter((item) => !promoted.has(String(item.action || '').toLowerCase()));
+    payload = addRecoveredActionCandidates(payload, stillCandidates);
+    const reviewOnly = stillCandidates.filter((item) => item.reviewDisposition && item.reviewDisposition !== 'confirmed_action');
     if (reviewOnly.length) {
       const counts = reviewOnly.reduce((summary, item) => {
         const key = item.reviewDisposition || 'review_required';
@@ -4195,6 +4204,30 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
         reviewerConfirmedFactPreservationAfterPolish: semanticPreservation.telemetry
       }
     };
+  }
+  if (stage === 'actions') {
+    // Published after the rewrite, not before it. These records are already composed - the
+    // recovery rules built them from cited turns and they match the human minutes almost
+    // word for word - so there is nothing for the polish to improve and a real risk it
+    // drops them, since its own contract tells it requirements are not final actions.
+    const published = polished.payload?.screens?.actions || [];
+    const unassigned = unassignedActions;
+    if (unassigned.length) {
+      polished.payload = {
+        ...polished.payload,
+        screens: { ...(polished.payload?.screens || {}), actions: [...published, ...unassigned] },
+        validationFlags: [
+          ...(Array.isArray(polished.payload?.validationFlags) ? polished.payload.validationFlags : []),
+          {
+            type: 'actions_need_an_owner',
+            severity: 'warning',
+            blocking: false,
+            message: `${unassigned.length} action${unassigned.length === 1 ? '' : 's'} below ${unassigned.length === 1 ? 'has' : 'have'} no owner: the meeting agreed the work without naming anybody. Assign ${unassigned.length === 1 ? 'it' : 'them'} before sharing, or delete ${unassigned.length === 1 ? 'it' : 'them'} if ${unassigned.length === 1 ? 'it is' : 'they are'} not yours to track.`,
+            resolutionKey: `actions-need-an-owner:${crypto.createHash('sha256').update(unassigned.map((item) => item.action).join('|')).digest('hex').slice(0, 16)}`
+          }
+        ]
+      };
+    }
   }
   let result = clientReadyPresentation(polished.payload);
   if (stage === 'actions' && canonicalEvidencePack.length) {

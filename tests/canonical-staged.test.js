@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { runCanonicalNoEditPass } = require('../utils/canonicalMinutes/runner');
+const { readsAsAnActionRecord } = require('../utils/stagedActionRecovery');
 const { createCanonicalState, acceptProposal } = require('../utils/canonicalMinutes/state');
 const { finalMinutes } = require('../utils/canonicalMinutes/stages');
 const { prepareEvidence } = require('../utils/canonicalMinutes/evidence');
@@ -812,12 +813,37 @@ test('canonical Actions ranking separates reviewer usefulness from automatic pub
   const allText = candidates.map((candidate) => candidate.suggestedAction || candidate.action).join('\n');
   const clusterKeys = new Set(candidates.map((candidate) => candidate.clusterKey));
 
-  assert.ok(confirmedActions.length <= 2, `automatic publication should stay conservative: ${confirmedActions.length}`);
-  assert.ok(high.length >= 5 && high.length <= 8, `expected a small high-priority set, got ${high.length}`);
-  assert.match(highText, /Med Envoy project plan|task list/i);
-  assert.match(highText, /country and language information/i);
-  assert.match(highText, /PPE\/sunglasses declarations of conformity|Category I risk rationale/i);
-  assert.match(highText, /further process-discovery|working sessions/i);
+  // Conservative about OWNERS, which is what this always meant, rather than about the
+  // number of rows.
+  //
+  // The rule used to be that nothing published without a resolvable owner, so this counted
+  // total rows. Checked against the minutes a person wrote for one of these client
+  // meetings, that cost the reviewer eight of their nine actions: the work was found, and
+  // withheld because nobody in the room said "I'll do it". A well-formed requirement now
+  // publishes with the owner blank and a flag asking for a name, so the count this asserts
+  // is the count of rows the tool claims to have attributed - which must stay small - and
+  // anything unattributed has to have passed readsAsAnActionRecord.
+  const ownerOf = (item) => String(item.owner || '').trim();
+  const attributed = confirmedActions.filter((item) => ownerOf(item) && ownerOf(item) !== 'Not stated');
+  const unattributed = confirmedActions.filter((item) => !ownerOf(item) || ownerOf(item) === 'Not stated');
+  assert.ok(attributed.length <= 2, `automatic attribution should stay conservative: ${attributed.length}`);
+  for (const item of unattributed) {
+    assert.ok(readsAsAnActionRecord(item.action), `an unattributed row must read as an action record: ${JSON.stringify(item.action)}`);
+  }
+  if (unattributed.length) {
+    assert.ok((result.validationFlags || []).some((flag) => flag.type === 'actions_need_an_owner'),
+      'publishing an owner-less action tells the reviewer it needs a name');
+  }
+  // The meeting's real work has to reach the reviewer somewhere they will act on it. It
+  // used to reach them only as a high-priority candidate, so these matched the candidate
+  // text; three of them are now published rows instead, which is a promotion rather than a
+  // loss. The union is what matters, and the high-priority set staying small still does.
+  const surfaced = [highText, unattributed.map((item) => item.action).join('\n')].join('\n');
+  assert.ok(high.length >= 2 && high.length <= 8, `expected a small high-priority set, got ${high.length}`);
+  assert.match(surfaced, /Med Envoy project plan|task list/i);
+  assert.match(surfaced, /country and language/i);
+  assert.match(surfaced, /PPE\/sunglasses declarations of conformity|Category I risk rationale|PPE risk rationale/i);
+  assert.match(surfaced, /further process-discovery|working sessions/i);
   assert.match(highText, /QMS Manual/i);
   assert.ok([...clusterKeys].some((key) => /medenvoy|project_plan/i.test(key)));
   assert.ok([...clusterKeys].some((key) => /ppe_doc/i.test(key)));
@@ -826,9 +852,14 @@ test('canonical Actions ranking separates reviewer usefulness from automatic pub
   assert.doesNotMatch(highText, /has to meet MDR requirements|will have lot numbering process/i);
   assert.doesNotMatch(highText, /10 units|box(?:\.| )?big enough|handheld devices|pick into that box/i);
   assert.match(allText, /updated label from the importer perspective/i);
-  assert.equal(
-    confirmedActions.some((action) => /Med Envoy|Cody|project plan|task list/i.test(action.action || action.meetingActionPoint || '')),
-    false
+  // Never under a name the meeting did not give it. The Med Envoy follow-up is real work
+  // and may now be published, but it must arrive unattributed - inventing an owner is the
+  // failure this line was written to catch, and that has not changed.
+  assert.ok(
+    confirmedActions
+      .filter((action) => /Med Envoy|Cody|project plan|task list/i.test(action.action || action.meetingActionPoint || ''))
+      .every((action) => ownerOf(action) === 'Not stated'),
+    'a Med Envoy follow-up may be published, but only without an invented owner'
   );
   assert.equal(
     confirmedActions.some((action) => /QMS Manual/i.test(action.action || action.meetingActionPoint || '') && /Orla Skally/i.test(action.owner || action.meetingActionPointOwner || '')),

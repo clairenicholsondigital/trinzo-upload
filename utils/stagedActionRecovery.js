@@ -1,6 +1,7 @@
 'use strict';
 
 const { prepareEvidence } = require('./canonicalMinutes/evidence');
+const { actionHasConcreteObject, contentTokens } = require('./canonicalMinutes/canonicalResolver');
 
 const ACTION_CUE = /\b(?:action(?:s)?|will|i['’]?ll|we['’]?ll|can you|could you|please|need(?:s)? to|must|going to|hoping|follow[- ]?up|sign off|approve|review|complete|update|share|send|confirm|trace|generate|schedule|set up|add in)\b/i;
 const FIRST_PERSON_COMMITMENT = /\b(?:i['’]?ll|i will|i can (?:review|send|share|update|complete|confirm|prepare|add)|i could (?:review|check|have a look)|i need to|i['’]?m going to|i was going to|i was in the middle of|i['’]?m (?:in the middle of|working on|hoping)|i am (?:in the middle of|working on|hoping|tidying|updating|reviewing|preparing|completing|sharing|sending|adding)|i go away|i['’]?ve sent|i sent)\b/i;
@@ -325,6 +326,83 @@ const RECOVERY_RULES = [
   }
 ];
 
+
+// Actions the meeting agreed on but never gave a name to.
+//
+// candidateDisposition calls an impersonally-stated piece of work a 'requirement' - "the
+// clinical review needs doing", "electrical compliance testing has to be completed" - and
+// the publication contract said requirements must never be published as final actions. The
+// reasoning is sound for a meeting where somebody muses that a thing ought to happen. It is
+// wrong for a regulatory review, where the entire meeting is a list of outstanding work
+// nobody phrases in the first person, and the effect was that those meetings shipped an
+// empty actions table.
+//
+// Measured against the minutes a person wrote for the same meeting: of the nine actions in
+// the T761 human minutes, eight were already being produced here and every one was withheld
+// for want of an owner. "Complete Electrical compliance testing" was generated word for
+// word and shown to the reviewer as a snippet to consider. The tool was not failing to find
+// the actions; it was refusing to write them down.
+//
+// So an owner-less action is published as a row with the owner left blank, and the reviewer
+// is told how many need a name. Typing "Andrew" into a row that already says the right thing
+// is a different job from finding that row in a list of snippets. It is also the honest
+// division of labour: the human minutes assign owners from knowing who runs which
+// workstream, which the transcript does not say and this should not invent.
+//
+// Two dispositions only. review_required covers the tentative and the half-formed, and
+// completed_history covers work already done; neither becomes more publishable for having
+// no owner. Measured across thirteen transcripts, nothing here fires on the informal
+// meetings at all - the no-decision parking meeting produces no candidates of any kind and
+// still publishes no actions.
+const UNASSIGNED_PUBLISHABLE_DISPOSITIONS = new Set(['requirement', 'needs_assignment']);
+
+function readsAsAnActionRecord(text) {
+  const action = cleanLine(text);
+  const words = action.split(/\s+/).filter(Boolean);
+  if (words.length < 3 || words.length > 26) return false;
+  // An instruction, not a remark: it opens with a verb rather than a name or a pronoun.
+  if (!/^[A-Z][a-z]+\b/.test(action)) return false;
+  if (/^(?:I|We|You|He|She|They|It|That|This|So|And|But|Yeah|Okay)\b/.test(action)) return false;
+  // A record instructs, so its opening verb takes an object. "Be, especially the response
+  // to the cars" opens with a copula and then a comma, which is a fragment of speech that
+  // happens to start with a capital letter.
+  if (/^(?:Be|Been|Being|Is|Are|Was|Were|Am)\b/.test(action)) return false;
+  if (/^\w+\s*,/.test(action)) return false;
+  if (/\b(?:by|on|at|to|for|with|in|from|and|or)\s*$/i.test(action)) return false;
+  if (/\?\s*$/.test(action)) return false;
+  return actionHasConcreteObject(action);
+}
+
+function alreadyPublished(action, publishedActions) {
+  const tokens = new Set(contentTokens(action));
+  if (!tokens.size) return true;
+  return (Array.isArray(publishedActions) ? publishedActions : []).some((item) => {
+    const existing = new Set(contentTokens(item?.humanFinal || item?.action));
+    if (!existing.size) return false;
+    const shared = [...tokens].filter((token) => existing.has(token)).length;
+    return shared / Math.min(tokens.size, existing.size) >= 0.6;
+  });
+}
+
+function unassignedActionsWorthPublishing(recovered, publishedActions) {
+  const chosen = [];
+  for (const item of Array.isArray(recovered) ? recovered : []) {
+    if (!UNASSIGNED_PUBLISHABLE_DISPOSITIONS.has(cleanLine(item?.reviewDisposition))) continue;
+    const action = cleanLine(item?.action);
+    if (!readsAsAnActionRecord(action)) continue;
+    if (alreadyPublished(action, [...(publishedActions || []), ...chosen])) continue;
+    chosen.push({
+      owner: 'Not stated',
+      action,
+      deadline: cleanLine(item?.deadline) || 'Not stated',
+      evidenceIds: Array.isArray(item?.sourceTurnIds) ? item.sourceTurnIds : (Array.isArray(item?.evidenceIds) ? item.evidenceIds : []),
+      ownerUnassigned: true,
+      source: 'evidence_bound_requirement'
+    });
+  }
+  return chosen;
+}
+
 function buildEvidenceBoundStagedActionInventory(transcriptText) {
   const turns = parseTranscriptTurns(transcriptText);
   const actions = [];
@@ -374,6 +452,8 @@ function buildEvidenceBoundStagedActionInventory(transcriptText) {
 
 module.exports = {
   buildEvidenceBoundStagedActionInventory,
+  unassignedActionsWorthPublishing,
+  readsAsAnActionRecord,
   deadlineFromEvidence,
   parseDeadlineEvidence,
   ownerFromEvidence,

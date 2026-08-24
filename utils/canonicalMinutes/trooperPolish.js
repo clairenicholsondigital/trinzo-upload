@@ -271,6 +271,23 @@ function clientReadyPresentation(payload) {
         .find((value) => /^(?:self_commitment|direct_request)$/i.test(String(value || ''))) || null;
       const polished = normaliseFinalStagedActionCandidate({ ...item, action: presented, ownerEvidenceType });
       if (polished && polished.owner !== 'Not stated') return { ...item, ...polished };
+      // An action nobody was named for is still an action.
+      //
+      // This gate held back every row whose owner could not be resolved, which is right for
+      // a half-heard aside and wrong for a regulatory review, where the work is real, agreed
+      // and stated impersonally: "the clinical review needs doing". Checked against the
+      // minutes a person wrote for the same meeting, eight of the nine actions in the T761
+      // human minutes were being generated and all eight were held here - "Complete
+      // Electrical compliance testing" was produced word for word and shown as a snippet to
+      // consider rather than a row to own.
+      //
+      // Rows marked ownerUnassigned have already been through readsAsAnActionRecord, so they
+      // are composed instructions rather than fragments, and they arrive with a non-blocking
+      // flag telling the reviewer how many need a name. Assigning an owner to a row that
+      // already says the right thing is a different task from finding it in a candidate list.
+      if (item.ownerUnassigned) {
+        return { ...item, ...(polished || {}), owner: 'Not stated', action: polished?.action || presented || clean(item.action) };
+      }
       retainedForReview.push({
         section: 'Actions',
         text: clean(item.action),
