@@ -80,6 +80,7 @@ async function main() {
     console.log(`type     : ${details.meetingType}${details.meetingTypeSuggestion?.accepted ? ` (suggested, margin ${details.meetingTypeSuggestion.marginRatio})` : ''}`);
     console.log(`purpose  : ${summary.meetingPurpose}`);
     console.log(`summary  : ${summary.executiveSummary}`);
+    console.log(`topics   : ${(summary.overallTopics || []).join(' | ')}`);
     console.log('objectives:');
     for (const objective of summary.objectives || []) console.log(`  - ${objective}`);
     console.log(`polish   : used=${polish.used} cited=${polish.cited} reason=${polish.reason} timingMs=${polish.timingMs} totalMs=${Date.now() - startedAt}`);
@@ -91,12 +92,13 @@ async function main() {
     const sentences = String(summary.executiveSummary || '').split(/(?<=[.!?])\s+/).map((item) => item.trim()).filter(Boolean);
     const quoted = sentences.filter((item) => isRawTranscriptDiscussionPoint(item));
     if (quoted.length) console.log(`QUOTED SPEECH IN SUMMARY: ${JSON.stringify(quoted)}`);
-    rows.push({ key, outcome: polish.fieldOutcomes?.summary || polish.reason, sentences: sentences.length, objectives: (summary.objectives || []).length, quoted: quoted.length });
+    rows.push({ key, outcome: polish.fieldOutcomes?.summary || polish.reason, sentences: sentences.length, objectives: (summary.objectives || []).length, topics: (summary.overallTopics || []).length, namedTopics: polish.fieldOutcomes?.topics || null, quoted: quoted.length });
   }
   console.log('\n=== summary');
-  console.log('meeting'.padEnd(12), 'polish'.padEnd(26), 'sentences', 'objectives', 'quoted-speech');
+  console.log('meeting'.padEnd(12), 'polish'.padEnd(26), 'sent', 'obj', 'topics', 'named(ok/no)', 'quoted');
   for (const row of rows) {
-    console.log(row.key.padEnd(12), String(row.outcome).padEnd(26), String(row.sentences).padStart(9), String(row.objectives).padStart(10), String(row.quoted).padStart(13));
+    const named = row.namedTopics ? `${row.namedTopics.accepted}/${row.namedTopics.rejected}` : '-';
+    console.log(row.key.padEnd(12), String(row.outcome).padEnd(26), String(row.sentences).padStart(4), String(row.objectives).padStart(3), String(row.topics).padStart(6), named.padStart(12), String(row.quoted).padStart(6));
   }
   console.log(`\naccepted: ${rows.filter((row) => row.outcome === 'accepted').length}/${rows.length} | summaries quoting the transcript: ${rows.filter((row) => row.quoted > 0).length} (must be 0)`);
   console.log('\njudge the output against the reviewer exemplars, not against the previous run.');

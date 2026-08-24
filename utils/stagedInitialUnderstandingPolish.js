@@ -6,6 +6,8 @@ const {
   validateGrammarRevision
 } = require('./stagedExecutiveSummaryGrammar');
 const { packEntryIds, packCitedText, evidenceEntriesFor } = require('./canonicalMinutes/evidenceCitations');
+const { canHeadlineTopic } = require('./canonicalMinutes/publishability');
+const { isPublishableTopicLabel, labelNamesAWorkstream } = require('./canonicalMinutes/topicEditorial');
 
 function clean(value) {
   return String(value == null ? '' : value).replace(/\s+/g, ' ').trim();
@@ -160,7 +162,12 @@ function validateCitedRevision(original, revised, evidencePack, options = {}) {
     original.executiveSummary
   ].join(' '));
   const allowedIds = packEntryIds(evidencePack);
-  const fieldOutcomes = { purpose: 'accepted', summary: 'accepted', objectives: { accepted: 0, rejected: 0, reasons: [] } };
+  const fieldOutcomes = {
+    purpose: 'accepted',
+    summary: 'accepted',
+    objectives: { accepted: 0, rejected: 0, reasons: [] },
+    topics: { accepted: 0, rejected: 0, reasons: [] }
+  };
 
   const shapeIssue = (text, isSummary) => {
     if (!text) return 'empty';
@@ -200,6 +207,42 @@ function validateCitedRevision(original, revised, evidencePack, options = {}) {
     fieldOutcomes.objectives.accepted += 1;
     acceptedObjectives.push(field.text);
   }
+  // Topic headings, named by the model and held to the heading bar as well as the citation
+  // bar.
+  //
+  // Headings used to come from a closed list of twenty-three concepts, so a meeting could
+  // only be about something the list already knew: a residents' association arguing about
+  // visitor parking was headed "Budget and commercial matters" because somebody said "cost"
+  // once, and an audit kick-off that spent the morning on hotels, SBOMs and surveillance
+  // findings had no heading for any of them. Naming what a stretch of conversation is about
+  // is the one job in this pipeline that a language model does better than counting words -
+  // measured, distributional naming on raw speech tops out around sixty per cent precision,
+  // and a wrong heading is the same wrong line on four screens.
+  //
+  // So the model proposes them and they are checked twice. Once as claims, by exactly the
+  // gates every other cited field goes through - the ids must resolve, protected facts and
+  // outcome verbs are read against the cited turns. Once as headings, by the same
+  // predicates the deterministic labels have always had to pass, so a heading that has
+  // become a sentence or a list of attendees is refused whoever wrote it.
+  const topicFields = (Array.isArray(revised?.overallTopics) ? revised.overallTopics : []).map(fieldOf);
+  const acceptedTopics = [];
+  for (const field of topicFields) {
+    const heading = clean(field.text);
+    const issue = !heading ? 'empty'
+      : !canHeadlineTopic(heading) ? 'not_a_heading'
+        : !isPublishableTopicLabel(heading) ? 'not_client_ready'
+          : !labelNamesAWorkstream(heading) ? 'not_a_subject'
+            : citedFieldIssue(field, evidencePack, sourceText, allowedIds, options);
+    if (issue) {
+      fieldOutcomes.topics.rejected += 1;
+      fieldOutcomes.topics.reasons.push(issue);
+      continue;
+    }
+    if (acceptedTopics.some((item) => item.text.toLowerCase() === heading.toLowerCase())) continue;
+    fieldOutcomes.topics.accepted += 1;
+    acceptedTopics.push({ text: heading, evidenceIds: field.evidenceIds });
+  }
+
   // Survivors first, then the deterministic floor fills back to eight. A rejected cited
   // objective is the model's loss, not the meeting's: on the Eakin weekly three cited
   // objectives failed and the field shipped five where the floor had eight - punishing
@@ -250,6 +293,7 @@ function validateCitedRevision(original, revised, evidencePack, options = {}) {
     meetingPurpose: meetingPurpose || clean(original.meetingPurpose),
     objectives: objectives.length ? objectives : dedupeObjectives(original.objectives, 8),
     executiveSummary: executiveSummary || clean(original.executiveSummary),
+    overallTopics: acceptedTopics,
     fieldOutcomes,
     evidenceQuotes: {
       purpose: fieldOutcomes.purpose === 'accepted' ? quotesFor(purposeField) : [],
@@ -540,7 +584,8 @@ async function polishInitialUnderstanding(input = {}, options = {}) {
           'Put the ids ONLY in the evidenceIds arrays. Never write an id such as evt_0224 inside the purpose, an objective or the summary - the reader sees that text and it is not for them.',
           "Write 'agreed', 'decided' or 'confirmed' only when a cited entry says so; otherwise write 'discussed', 'reviewed' or 'tested'.",
           'Third person, neutral. No first-person speech, no conversational fragments, no invented names, numbers or dates.',
-          'Return JSON only as {"meetingPurpose":{"text":"...","evidenceIds":["..."]},"objectives":[{"text":"...","evidenceIds":["..."]}],"executiveSummary":{"text":"...","evidenceIds":["..."]}}.',
+          'Also name the meeting\'s topics: four to eight short subject headings for what this meeting was about, each cited. A heading names a subject as it would appear in minutes - "Audit scope, timing and logistics", "Visitor parking enforcement" - and is not a sentence, not a question, not a list of attendees, and never says what happened.',
+          'Return JSON only as {"meetingPurpose":{"text":"...","evidenceIds":["..."]},"objectives":[{"text":"...","evidenceIds":["..."]}],"overallTopics":[{"text":"...","evidenceIds":["..."]}],"executiveSummary":{"text":"...","evidenceIds":["..."]}}.',
           '',
           'BOUNDED_EVIDENCE:',
           JSON.stringify(pack)
@@ -597,7 +642,7 @@ async function polishInitialUnderstanding(input = {}, options = {}) {
     const parsed = typeof content === 'object' && content ? content : JSON.parse(String(content || '{}'));
     const validation = validateInitialUnderstandingRevision(original, parsed, attemptPack, { meetingText: clean(options.meetingText) });
     return validation.ok
-      ? { ...original, meetingPurpose: validation.meetingPurpose, objectives: validation.objectives, executiveSummary: validation.executiveSummary, used: true, reason: validation.reason, overlap: validation.overlap, fieldOutcomes: validation.fieldOutcomes, evidenceQuotes: validation.evidenceQuotes || null, cited: Boolean(attemptPack), timingMs: Date.now() - startedAt }
+      ? { ...original, meetingPurpose: validation.meetingPurpose, objectives: validation.objectives, executiveSummary: validation.executiveSummary, namedTopics: validation.overallTopics || [], used: true, reason: validation.reason, overlap: validation.overlap, fieldOutcomes: validation.fieldOutcomes, evidenceQuotes: validation.evidenceQuotes || null, cited: Boolean(attemptPack), timingMs: Date.now() - startedAt }
       : { ...deterministicPresentationFallback(original, validation.reason), overlap: validation.overlap, fieldOutcomes: validation.fieldOutcomes, timingMs: Date.now() - startedAt };
   } catch {
     return { ...deterministicPresentationFallback(original, 'request_failed'), timingMs: Date.now() - startedAt };

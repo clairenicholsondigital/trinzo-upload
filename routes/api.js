@@ -1394,9 +1394,14 @@ async function polishStagedInitialUnderstanding(summary, meetingTitle, evidenceP
     fetchImpl: fetch,
     evidencePack,
     meetingText,
-    // 900/30s with a pack: the same single call carries ~8-10k more prompt tokens and a
-    // three-to-five sentence summary back. Without a pack the old budget stands.
-    maxTokens: Number(process.env.STAGED_INITIAL_UNDERSTANDING_MAX_TOKENS || (evidencePack ? 900 : 650)),
+    // 1300/30s with a pack: the same single call carries ~8-10k more prompt tokens and
+    // brings back a three-to-five sentence summary, up to eight objectives and now the
+    // topic headings too. At 900 the response no longer fit, and the tell was indirect -
+    // the router answered 422 json_generation_failed on a truncated object, the retry
+    // dropped the pack, and three meetings quietly fell back to deterministic text with a
+    // reason that pointed at the wording rather than the size. Without a pack the old
+    // budget stands.
+    maxTokens: Number(process.env.STAGED_INITIAL_UNDERSTANDING_MAX_TOKENS || (evidencePack ? 1300 : 650)),
     timeoutMs: Number(process.env.STAGED_INITIAL_UNDERSTANDING_TIMEOUT_MS || (evidencePack ? 30000 : 20000))
   });
 }
@@ -4112,6 +4117,49 @@ function attachActionCandidateSourceSnippets(payload = {}) {
   return payload;
 }
 
+
+// Topic headings the model named, merged onto the ones the pipeline derived.
+//
+// A heading is not just a line on the summary screen: the discussion stage allocates
+// evidence per topic, so replacing the text and losing the ids would leave the reviewer
+// with better headings over empty cards. So a named heading that covers ground the
+// pipeline already found REPLACES that topic's wording and keeps its id and evidence; one
+// that covers new ground is ADDED with the turns it cited. Nothing the reviewer confirmed
+// is touched - that contract is older than this feature and outranks it.
+function mergeNamedTopics(summary, namedTopics, confirmedTopics) {
+  const text = (value) => String(value == null ? '' : value).replace(/\s+/g, ' ').replace(/[.\u2026]+$/, '').trim();
+  const named = Array.isArray(namedTopics) ? namedTopics.filter((item) => text(item?.text)) : [];
+  if (!named.length || (Array.isArray(confirmedTopics) && confirmedTopics.length)) return {};
+  const refs = Array.isArray(summary?.topicRefs) ? summary.topicRefs.map((item) => ({ ...item })) : [];
+  const used = new Set();
+  for (const topic of named) {
+    const ids = new Set(Array.isArray(topic.evidenceIds) ? topic.evidenceIds.map(String) : []);
+    let bestIndex = -1;
+    let bestOverlap = 0;
+    refs.forEach((ref, index) => {
+      if (used.has(index)) return;
+      const existing = Array.isArray(ref.evidenceIds) ? ref.evidenceIds.map(String) : [];
+      if (!existing.length || !ids.size) return;
+      const shared = existing.filter((id) => ids.has(id)).length / Math.min(existing.length, ids.size);
+      if (shared > bestOverlap) { bestOverlap = shared; bestIndex = index; }
+    });
+    if (bestIndex >= 0 && bestOverlap >= 0.34) {
+      used.add(bestIndex);
+      refs[bestIndex] = { ...refs[bestIndex], text: text(topic.text) };
+      continue;
+    }
+    refs.push({ text: text(topic.text), topicId: '', evidenceIds: [...ids] });
+  }
+  // Additive, deliberately. Letting the named list stand alone was tried and measured: on
+  // the Eakin weekly the model named three headings well and the meeting lost four correct
+  // derived ones - debug evidence, change control, electrical compliance, cybersecurity -
+  // because naming three subjects is not the same as saying the other four were wrong. The
+  // model summarises at whatever grain it chooses; the derived labels come from patterns
+  // that matched real evidence. A heading is only replaced when a named one demonstrably
+  // covers the same turns.
+  return { overallTopics: refs.map((ref) => ref.text).filter(Boolean), topicRefs: refs };
+}
+
 async function canonicalStagedResponse(stage, transcript, input = {}) {
   const confirmed = canonicalConfirmedStages(input);
   const semanticTranscript = transcriptForStagedAI(transcript, input);
@@ -4285,6 +4333,7 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
               ? presentationInitialSummary.meetingPurpose
               : keepConfirmed(confirmedSummary.meetingPurpose, initialUnderstandingPolish.meetingPurpose, presentationInitialSummary.meetingPurpose),
             objectives: keepConfirmed(confirmedSummary.objectives, initialUnderstandingPolish.objectives, presentationInitialSummary.objectives),
+            ...mergeNamedTopics(presentationInitialSummary, initialUnderstandingPolish.namedTopics, confirmedSummary.overallTopics),
             executiveSummary: keepConfirmed(confirmedSummary.executiveSummary, initialUnderstandingPolish.executiveSummary, presentationInitialSummary.executiveSummary),
             // The turns behind the composed prose, for the screen to show on demand. The
             // reviewer asked to see the evidence rather than delete id markers from the
@@ -6849,6 +6898,10 @@ router.post('/copilot-chat', async (req, res) => {
 
 router.stagedEvaluation = {
   runStagedSequenceForEvaluation,
+  // Exposed so the merge can be tested for the property that matters - that a renamed
+  // heading keeps the evidence the discussion stage allocates against - rather than by
+  // running the whole stage and hoping.
+  mergeNamedTopics,
   stagedNoEditReviewExperience,
   canonicalStagedResponse,
   extractStagedDetailsFromTranscript,
