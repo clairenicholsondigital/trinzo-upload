@@ -1,0 +1,931 @@
+{
+  "scripts/meeting-minutes-core-golden/cases/01_explicit_action_recap/transcript.docx": {
+    "published": [
+      "Content and communications :: Can the team say, the content is done by thirty-five minutes, hard stop, and then the last, the team has got a full twenty for questions.",
+      "Decisions :: Finish content by 35 minutes and reserve 20 minutes for questions",
+      "Decisions :: Hold a short warm-up at 08:30 before the live session",
+      "Decisions :: Use Priya Sethi as host and closer",
+      "Risks :: Screen-share transfer can create dead air",
+      "Risks :: Presenter connection could drop",
+      "Risks :: The session could overrun and crowd out questions",
+      "Risks :: Recording could miss the opening or stop"
+    ]
+  },
+  "scripts/meeting-minutes-core-golden/cases/02_scattered_actions/transcript.docx": {
+    "published": [
+      "One day, exactly, not today :: One day, exactly, not today.",
+      "Good, that's off the list :: Aisha Rahman is good to be quick, Aisha Rahman has got another one at half past.",
+      "Good, that's off the list :: Oh good, because that was, that was really dragging.",
+      "Good, that's off the list :: Good, that's off the list.",
+      "Good, that's off the list :: Good, do that early, don't let it slip.",
+      "Plans and timelines :: It expires at the end of the month, and if it lapses the whole site goes to that scary not-secure warning.",
+      "Product behaviour and design :: The team should probably tidy up all those old feature branches at some point, there's about forty of them cluttering it up.",
+      "The mega-menu tested badly, people couldn't find :: The mega-menu tested badly, people couldn't find anything on mobile.",
+      "Less build well :: Less to build as well.",
+      "Customer and stakeholder feedback :: The client hated the tone of the current ones, said they read a robot wrote them.",
+      "The SSL certificate :: Oh yeah, the SSL certificate.",
+      "Decisions :: Adopt the simple dropdown navigation (option B) over the mega-menu",
+      "Risks :: SSL certificate expiry could cause a not-secure site warning"
+    ]
+  },
+  "scripts/meeting-minutes-core-golden/cases/03_superseded_actions/transcript.docx": {
+    "published": [
+      "Software changes :: Lucy owns the final note for Wednesday morning.",
+      "Software changes :: Decision: release stays on Friday, provided Lucy's note is ready.",
+      "Plans and timelines :: Omar Khan could update the help centre if the team has time.",
+      "The security review was completed yesterday and signed off :: The security review was completed yesterday and signed off.",
+      "Decisions :: Keep release scheduled for Friday"
+    ]
+  },
+  "scripts/meeting-minutes-core-golden/cases/04_completed_vs_outstanding/transcript.docx": {
+    "published": [
+      "Ben, please upload the signed response the :: Eva Novak signed it yesterday.",
+      "Ben, please upload the signed response the :: Ben, please upload the signed response to the controlled folder by close tomorrow.",
+      "Operations and processes :: The supplier questionnaire went out last Thursday and Ben received the response Monday.",
+      "Possibly, but no commitment today :: Possibly, but no commitment today.",
+      "Decisions :: The supplier remains approved"
+    ]
+  },
+  "scripts/meeting-minutes-core-golden/cases/05_hypothetical_language/transcript.docx": {
+    "published": [
+      "Ravi owns the quote request for Friday :: Ravi owns the quote request for Friday.",
+      "Migrate analytics platforms next year the licence :: The team could migrate analytics platforms next year if the licence rises again.",
+      "No action on that today :: No action on that today.",
+      "There is one concrete follow-up :: There is one concrete follow-up.",
+      "Decisions :: Stay with the current platform"
+    ]
+  },
+  "scripts/meeting-minutes-core-golden/cases/06_ownership_chaos/transcript.docx": {
+    "published": [
+      "Marta owns the venue call, Dan the :: Someone needs to call the venue.",
+      "Marta owns the venue call, Dan the :: Marta owns the venue call, Dan the run sheet, Neil the count.",
+      "Technical setup :: Dan, can you update the run sheet after Marta Silva confirm access?."
+    ]
+  },
+  "scripts/meeting-minutes-core-golden/cases/07_deadline_torture/transcript.docx": {
+    "published": [
+      "Idris, send the draft end day tomorrow :: Idris, send the draft by end of day tomorrow.",
+      "Risks :: Submission timing depends on the review and approval sequence"
+    ]
+  },
+  "scripts/meeting-minutes-core-golden/cases/08_attendee_provenance/transcript.docx": {
+    "published": [
+      "Budget and commercial matters :: Louise Corrigan already sent the signed contract back to Voss and Delaney as well, so that side's all closed off.",
+      "Brilliant, that's one less :: Oh brilliant, that's one less thing.",
+      "Decisions :: Move the launch to the twentieth",
+      "Risks :: Kettleby Print has slipped timings before; a two-day slip risks the revised launch date"
+    ]
+  },
+  "scripts/meeting-minutes-core-golden/cases/09_no_action_meeting/transcript.docx": {
+    "published": [
+      "Testing and validation :: The real question today is just, are the team happy to approve the validation report for release.",
+      "Testing and validation :: Can Sana Iqbal ask, should the team get another round of testing on it, just to be safe?.",
+      "Testing and validation :: The team would be testing for the sake of testing.",
+      "Plans and timelines :: Sana Iqbal confirmed the labelling change with the team and it's in.",
+      "The residual risk there is low, and the team would :: The residual risk there is low, and the team would already agreed it's acceptable, so the team is just formally accepting it, there's nothing to action.",
+      "Decisions :: Approve the validation report for release",
+      "Decisions :: Do not carry out a further round of testing",
+      "Decisions :: Accept the residual risk on the temperature excursion",
+      "Decisions :: Confirm selection of supplier B"
+    ]
+  },
+  "scripts/meeting-minutes-core-golden/cases/10_chaos_goblin/transcript.docx": {
+    "published": [
+      "Decisions :: Launch Thursday at ten",
+      "Decisions :: Pause only if the error rate exceeds two per cent",
+      "Risks :: Launch error rate may exceed the two per cent pause threshold"
+    ]
+  },
+  "scripts/meeting-minutes-core-golden/human_benchmarks/T733_eakin_tech_file/transcript.docx": {
+    "published": [
+      "Documentation and evidence :: Summary documents, so once they are finalized, they.",
+      "Documentation and evidence :: That document, but Ciaran Ryan is gonna.",
+      "Language support and localisation :: From the software perspective, there's Andrew who has been doing work on the changes, so of the identify changes that need to happen, one specifically around alarms and the other around languages.",
+      "Plans and timelines :: Rebecca Gill said to Kevin, the team will schedule a call for as soon as Christina's back.",
+      "Risks :: Okay, yeah, so your main focus, I think, Rebecca, risk and electrical compliance and working through with David and Andrew"
+    ]
+  },
+  "scripts/meeting-minutes-core-golden/human_benchmarks/T761_eakin_software/transcript.docx": {
+    "published": [
+      "Risks and dependencies :: Oh, um, yeah, yeah, in the risk matrix, sorry.",
+      "Plans and timelines :: Jacqui Fox thinks the team should just do a cheque that the team has captured this in the risk and the risk analysis.",
+      "Plans and timelines :: The risk-benefit analysis of that would not be valuable.",
+      "Mhm.and the purpose the file :: Mhm.and the purpose of the file.",
+      "Content and communications :: What, what around the real-time clock?.",
+      "Content and communications :: They said there was a fault around the real time clock and it was.",
+      "Scope and requirements: ISO :: It provides flow for a nebulizer.",
+      "Scope and requirements: ISO :: David Didsbury mean, David Didsbury has not read the standard in full depth, but the question the team has got to ask ourselves is, does the standard cover the supply of gas to a nebulizer?.",
+      "Scope and requirements: ISO :: Or is it just a standard about how you take gas in, nebulize the drug and export it effectively to the patient?.",
+      "Software change traceability :: Andrew Kane has been looking at that code, and Andrew Kane thinks those were generated using this tool, that font creator.",
+      "Software change traceability :: Jacqui Fox is assuming from that the actual testing itself has not started or has it?.",
+      "Language support and localisation :: The team move on to the languages.",
+      "Language support and localisation :: The, yeah, the language is looking at the don't necessarily need to look at each individual language file.",
+      "Cybersecurity and access controls :: Oh Jacqui Fox's god, Jacqui Fox can't remember the words that Jacqui Fox is trying to say right now.rate them, sorry, to rate those risks and it would be in view to mitigating any cybersecurity risk.",
+      "Technical setup :: Soft with that tool that you're resolving with your IT in terms of access perfect.",
+      "And then as a consequence to that, does that mean :: As a consequence to that, does that mean that the change request then is signed off?."
+    ]
+  },
+  "scripts/meeting-minutes-core-golden/human_benchmarks/T819_dita_client/transcript.docx": {
+    "published": [
+      "Plans and timelines :: Their first ports of arrival in Europe is in Netherlands, whereby they're cleared by a third party.",
+      "Plans and timelines :: The team has 1 supplier who got some EU experts to do it for, because they distribute directly into Europe.",
+      "Content and communications :: The final storage arrangement for the opticals.",
+      "Content and communications :: Storage, there is none really, they're just kept aside while the goods are being cleared, maybe a day or two depending actually.",
+      "Quality and risk management :: This is in the draft quality manual is regulated, and Mark Kelleher found this is in the from the previous phases.",
+      "Quality and risk management :: The only documentation Jacqui Fox thinks that's contained within it is the MIN, which comes from the suppliers.",
+      "Operations and processes :: The team has scanners for picking, but yeah, it's all human operators.",
+      "Operations and processes :: Mark Kelleher guess from the team's perspective, the in terms of establishing QMS.",
+      "Product behaviour and design :: They can order via a B2B platform, or they can contact a sales rep within the region who places the order on their behalf.",
+      "Risks :: So can I ask you, I suppose, look, we don't have a date for the audit yet, but like, obviously we're working on the registration right now, but what's the consequence or risk if we don't have everything in when the audit?",
+      "Risks :: So on the declarations of conformity, if we're including the sunglasses, we just need to update those, include the risk rationale on those",
+      "Risks :: What I saw is that we had the risk rationale for the EUMDR, but not for the PPE category one"
+    ]
+  },
+  "scripts/meeting-minutes-core-golden/human_benchmarks/T819_dita_internal/transcript.docx": {
+    "published": [
+      "Plans and timelines :: Just when Jacqui and Mark Kelleher spoke last week, the team had discussed possibly visiting on site just to see if ourselves how the process works.",
+      "Plans and timelines :: Mark Kelleher is sorry, Jacqui, go ahead.",
+      "Plans and timelines :: Would be, or the team has a Jacqui, do the team?.",
+      "Language support and localisation :: Colm O'Rourke was looking again at the translation because Colm O'Rourke has not come across before a manufacturer translating the DOC into all the European languages.",
+      "Quality and risk management :: What will happen is, especially with big countries, so internally, all of the staff, quality people, the registered people are dealing with generally FDA and deliverables for FDA and BSI.",
+      "Quality and risk management :: All of these countries, especially for medical devices, have registrations, internal registrations, and most of the big companies will have internally, it's not done through a distributor or a third party.",
+      "Quality and risk management :: Because a lot of these company authorities will have their own databases, and so there will be information that needs to be submitted to health authorities.",
+      "Content and communications :: Mark Kelleher does not want to waste all this time either, obviously, so the team need to come prepared with a list of the team's discrete distinct questions for her.",
+      "Option cancel days not needed, option cancel :: Option to cancel on days not needed, option to cancel on days not needed.",
+      "Customer and stakeholder feedback :: Obviously, that depends onhow big a customer is, or the network that you're selling to, what their demands are.",
+      "Like, as the team is developing big :: As the team is developing big."
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/001_decision_heavy_no_actions/transcript.txt": {
+    "published": [
+      "Roles and responsibilities :: Option A is a single launch, but support will be overloaded.",
+      "Decision confirmed: phased regional launch and legacy :: The team should keep the legacy portal read-only for four weeks.",
+      "Decision confirmed: phased regional launch and legacy :: Decision confirmed: phased regional launch and legacy portal read-only for four weeks.",
+      "Choose the rollout approach for the billing :: The team need to choose the rollout approach for the billing portal.",
+      "Agreed, four weeks gives customer success enough cover :: Agreed, four weeks gives customer success enough cover."
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/002_incident_actions_decision/transcript.txt": {
+    "published": [
+      "Patch the mapper and replay the failed :: The root cause looks a missing currency code in the new mapper.",
+      "Patch the mapper and replay the failed :: The team need to patch the mapper and replay the failed exports.",
+      "The payment export failed for three customers :: The payment export failed for three customers after the overnight batch."
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/003_low_substance_noise_abstention/transcript.txt": {
+    "published": []
+  },
+  "scripts/meeting-minutes-final-golden/004_action_free_information_briefing/transcript.txt": {
+    "published": [
+      "The mileage rate changes July :: The mileage rate changes in July."
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/005_project_status_pending_leadership/transcript.txt": {
+    "published": [
+      "Documentation and evidence :: The vendor strategy document is absent and leadership review is still pending.",
+      "Documentation and evidence :: The team is awaiting leadership approval on the vendor strategy before procurement starts.",
+      "Budget and commercial matters :: Sales input is still missing for the AI pipeline dependency map.",
+      "Customer and stakeholder feedback :: Innovation grant follow-up feedback is still pending."
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/006_client_onboarding_split_rollout/transcript.txt": {
+    "published": [
+      "Operations and processes :: Data mapping for finance is ready, but warehouse is still missing three required fields.",
+      "Operations and processes :: The team will start onboarding with finance first and hold warehouse until the mapping is complete.",
+      "Mina send the missing-field list today :: Mina to send the missing-field list today."
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/007_operations_review_internal_cover/transcript.txt": {
+    "published": []
+  },
+  "scripts/meeting-minutes-final-golden/008_sales_pipeline_review/transcript.txt": {
+    "published": [
+      "Focus the retail and logistics accounts instead :: The team will focus on the retail and logistics accounts instead.",
+      "Risks :: I agree the legal cycle is the blocker"
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/009_board_launch_delay/transcript.txt": {
+    "published": [
+      "Leah update the board pack tonight :: Leah to update the board pack tonight."
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/010_webinar_rehearsal_trim/transcript.txt": {
+    "published": [
+      "Content and communications :: The opening still runs too long and the registration slide feels crowded.",
+      "Keep the live demo seven minutes and :: The team will keep the live demo to seven minutes and trim the intro."
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/011_finance_budget_review/transcript.txt": {
+    "published": [
+      "Plans and timelines :: Travel costs are below plan, but contractor spend is still above forecast.",
+      "Plans and timelines :: The team will defer the support analyst backfill until September month-end."
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/012_hiring_interview_debrief/transcript.txt": {
+    "published": [
+      "Product behaviour and design :: Maya was strong on system design and stakeholder communication.",
+      "Product behaviour and design :: The team will invite Maya to the final interview.",
+      "Her gap is depth on incident management at larger scale :: Her gap is depth on incident management at larger scale."
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/013_messy_speaker_timestamp_formats/transcript.txt": {
+    "published": [
+      "Operations and processes :: First topic is supplier onboarding.",
+      "Operations and processes :: Decision confirmed: the team will onboard the supplier only after finance approval lands.",
+      "Legal review is complete, but finance approval is still pending :: Legal review is complete, but finance approval is still pending."
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/014_status_update_discussion_only/transcript.txt": {
+    "published": [
+      "Product behaviour and design :: The device description has been updated in the latest pack."
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/015_hidden_decision_meeting/transcript.txt": {
+    "published": [
+      "David reschedule the weekly check-in today :: Grace am offsite next Wednesday so Grace will miss the usual weekly check-in.",
+      "David reschedule the weekly check-in today :: David to reschedule the weekly check-in today.",
+      "Friday noon works best :: Friday at noon works best."
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/016_document_review_discussion_only/transcript.txt": {
+    "published": [
+      "Risks and dependencies :: The trace matrix still references the old risk documents.",
+      "Documentation and evidence :: It may be cleaner to point them back to master reference documents instead."
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/017_dependency_risk_discussion_only/transcript.txt": {
+    "published": [
+      "Continue the current information for now :: The team can continue with the current information for now."
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/018_support_metrics_action_heavy/transcript.txt": {
+    "published": [
+      "The team keeps saying the same :: The team keeps saying the same thing.",
+      "Six months ago :: The team $1 that six months ago.",
+      "Testing and validation :: The team should probably monitor the results weekly as well.",
+      "Content and communications :: Also, the onboarding guide is still generating questions from new customers."
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/019_contract_negotiation_review/transcript.txt": {
+    "published": [
+      "Sign the one-year extension and keep the :: The team will sign the one-year extension and keep the exit clause unchanged.",
+      "Jon redline the exit clause Friday :: Jon to redline the exit clause by Friday.",
+      "That is cheaper on paper, but it would lock us :: That is cheaper on paper, but it would lock us in for too long.",
+      "Decisions :: Accept a three-year commitment"
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/020_customer_complaint_review/transcript.txt": {
+    "published": [
+      "Budget and commercial matters :: The team will refund the last invoice and assign a named success manager.",
+      "Customer and stakeholder feedback :: Dan to call the customer before noon.",
+      "The customer has raised a second complaint about missed handover :: The customer has raised a second complaint about missed handover notes and slow follow-up."
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/021_real_dita_importer_obligations_transcript/transcript.txt": {
+    "published": [
+      "Plans and timelines :: Lands in the Netherlands and is processed through Europe from a financial perspective, the financial clearinghouse in the Netherlands, but the product, in Jacqui Fox's understanding, doesn't necessarily stay in a warehouse in the Netherlands at any point, and then it moves on to Ireland.",
+      "Plans and timelines :: Transaction that goes down and the goods are shipped from Japan via Netherlands where they're fiscally cleared.",
+      "Plans and timelines :: The paperwork is sent for clearance, brokerage, and then it's released and the goods then go on to Dublin, to Deta here in Dublin.",
+      "Plans and timelines :: Their first ports of arrival in Europe is in Netherlands, whereby they're cleared by a third party.",
+      "Product behaviour and design :: Accounts, then a product allocates to the sales order, and it goes into a shipping queue here in the warehouse, and the team print a shipping list, which is a series of barcodes which details the sales order number, the total number of units to be picked, all the products.",
+      "Operations and processes :: The team has scanners for picking, but yeah, it's all human operators.",
+      "Operations and processes :: This is in the draft quality manual is regulated, and Mark Kelleher found this is in the from the previous phases.",
+      "Operations and processes :: Mark Kelleher guess from the team's perspective, the in terms of establishing QMS.",
+      "Content and communications :: That although Jacqui Fox has probably given the background to those questions from Jacqui Fox's perspective, haven't been working with you for a while, Jacqui Fox suppose. Jacqui Fox's understanding and Jacqui Fox's interpretation, haven't been working with you guys, but just so there may be nuances to the questions that Jacqui Fox can't necessarily feed over.",
+      "Content and communications :: The final storage arrangement for the opticals. But yes, just to understand what's the final storage scenario for the devices, because that Jacqui Fox thinks will feed into some of the questions that the guys have around transportation, but also warehousing.",
+      "Content and communications :: Maybe Orla Skally will have some questions on that also.",
+      "Risks :: So can I ask you, I suppose, look, we don't have a date for the audit yet, but like, obviously we're working on the registration right now, but what's the consequence or risk if we don't have everything in when the audit?",
+      "Risks :: So on the declarations of conformity, if we're including the sunglasses, we just need to update those, include the risk rationale on those",
+      "Risks :: What I saw is that we had the risk rationale for the EUMDR, but not for the PPE category one"
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/022_real_eakin_sw_minutes_pdf/transcript.txt": {
+    "published": [
+      "Plans and timelines :: Andrew and David to connect this week on the Debug test scripts to see what happens when the Debug is given particular commands.",
+      "Language support and localisation :: Document Change request Andrew has raised the change request for the 3 changes below: 1) 1 Change request form to document all 3 changes Alarms 2) Languages 3) Retrospective v1.01 to v1.02 (comprising the 17 changes listed from Marturion (Andrew Barr) on 20th May ’26) Change Request for review internally this week – W/E 19th June Language Changes Andrew has replicated 12 languages and upload – No issues with memory capacity.",
+      "Electrical compliance testing :: Testing is planned for completion by 23 rd July.",
+      "Electrical compliance testing :: Electrical Compliance testing Andrew/Rebecca have confirmed all Electrical Compliance testing will be completed in house, no requirements for UL.",
+      "Electrical compliance testing :: David will use the test reports to complete his deliverables.",
+      "Software change control :: The risk management file was being updated to reflect both hardware and software control measures, with a focus on preventing unwarranted interference with the device.",
+      "Software change control :: SW Versioning David reviewing the code to identify the presence of the 17 listed changes from Marturion within the code.",
+      "Software change control :: Purpose to confirm where they are visible/implemented in the code – provide traceability.",
+      "Software change control :: If changes cannot be clearly identified in the code then may need to retrospectively generate test data.",
+      "Electrical compliance testing: IEC 60601 :: Andrew is reviewing IEC60601-1 compliance documents and gap assessing against previous MDD documentation to captured testing gaps.",
+      "Quality and risk indicators :: Some concerns around driver and font limitations for certain languages symbols, Greek, Arabic and Vietnamese.",
+      "Jacqui Fox David Didsbury Colm O’Rourke (absent) :: Jacqui Fox David Didsbury Colm O’Rourke (absent).",
+      "David noted the current setup the flash :: David noted in the current setup - the flash goes from flash to solid when muted.",
+      "David noted the current setup the flash :: Rebecca clarified that if residual risk remains high after implementing controls, a benefit-risk analysis would be conducted to justify not adding features password protection, citing the need for rapid clinical intervention and the lack of field incidents.",
+      "Andrew and Colm review applicability :: Andrew and Colm to review their applicability."
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/023_real_eakin_t733_weekly_transcript/transcript.txt": {
+    "published": [
+      "Risks and dependencies :: The focus still remains on risk and software.",
+      "Risks and dependencies :: The team Rebecca has joined the weekly call with Andrew and Steve to progress some of the software pieces of it and updating the risks.",
+      "Documentation and evidence :: Summary documents, so once they are finalized, they.",
+      "Documentation and evidence :: That document, but Ciaran Ryan is gonna.",
+      "Language support and localisation :: From the software perspective, there's Andrew who has been doing work on the changes, so of the identify changes that need to happen, one specifically around alarms and the other around languages.",
+      "Plans and timelines :: Rebecca Gill said to Kevin, the team will schedule a call for as soon as Christina's back.",
+      "Testing and validation :: Testing that needs to happen.",
+      "Testing and validation :: Or additional testing for that matter, then the team will look to take further actions on those, but Rebecca Gill thinks largely the team, the team has got everything the team need.",
+      "Software change traceability :: In effect, the two code changes that were needed should be completed in total by the end of next week."
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/024_real_dita_internal_followup_transcript/transcript.txt": {
+    "published": [
+      "Plans and timelines :: Just when Jacqui and Mark Kelleher spoke last week, the team had discussed possibly visiting on site just to see if ourselves how the process works.",
+      "Plans and timelines :: Mark Kelleher is sorry, Jacqui, go ahead.",
+      "Plans and timelines :: Would be, or the team has a Jacqui, do the team?.",
+      "Language support and localisation :: Colm O'Rourke was looking again at the translation because Colm O'Rourke has not come across before a manufacturer translating the DOC into all the European languages.",
+      "Language support and localisation :: Or languages where they're sold.",
+      "Quality and risk management :: What will happen is, especially with big countries, so internally, all of the staff, quality people, the registered people are dealing with generally FDA and deliverables for FDA and BSI.",
+      "Quality and risk management :: All of these countries, especially for medical devices, have registrations, internal registrations, and most of the big companies will have internally, it's not done through a distributor or a third party.",
+      "Quality and risk management :: Because a lot of these company authorities will have their own databases, and so there will be information that needs to be submitted to health authorities.",
+      "Content and communications :: Mark Kelleher does not want to waste all this time either, obviously, so the team need to come prepared with a list of the team's discrete distinct questions for her.",
+      "Customer and stakeholder feedback :: Obviously, that depends on how big a customer is, or the network that you're selling to, what their demands are.",
+      "Like, as the team is developing big :: As the team is developing big."
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/025_real_t761_eakin_sw_weekly_transcript/transcript.txt": {
+    "published": [
+      "Language support and localisation :: Andrew Kane has got these three alarms now.",
+      "Language support and localisation :: The alarm code changes, the language changes, and the retrospective from version 101 to 102.",
+      "Language support and localisation :: Further side of the software changes in relation to all the alarm stuff and to look then at the languages as the next step.",
+      "Language support and localisation :: There's three languages in particular might be a problem is Arabic, Vietnamese and Greek.",
+      "Risks and dependencies :: Rebecca Cuckoo was in the middle of inputting it onto the risk management file, but the team were talking about initial risks and control measures.",
+      "Software change traceability :: The color and the flash for each of the low, medium, and high code changes appear to have been made and are working successfully, and the only outstanding thing then to confirm is this: what happens when the mute?.",
+      "Software change traceability :: Andrew, Jacqui Fox knows that the team had looked at starting to document that change within the on a change request form.",
+      "Software change traceability :: Does how does completion of that feed into that change request or vice versa as the case may be?.",
+      "Software change traceability :: Seen at within the code.",
+      "Electrical compliance testing :: First step was going through that, the big 60601-1 compliance document and went through that based off of the one the team did for the MDD and just to find why the team would meet everything.",
+      "Electrical compliance testing :: That needs still to be done and then the electrical compliance testing has started or will start shortly with a view to be within the 23rd of July dates.",
+      "Testing and validation :: How are you getting on with the debug?."
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/026_real_qip_assessment_tool_case_study_transcript/transcript.txt": {
+    "published": [
+      "Quality and risk management :: They focus on building a very mature quality system.",
+      "Quality and risk management :: It's to create that connection, but at the same time, the team is also assessing the quality system.",
+      "Quality and risk management :: Maturity is the quality system as it's designed able.",
+      "Testing and validation :: Do they have a backlog of kappas?.",
+      "Testing and validation :: They had just rewritten the Kappa procedure.",
+      "Product behaviour and design :: There are videos about the products that you're making there.",
+      "Product behaviour and design :: Make that connection and a lot of people just don't understand that a lot of senior management, they just want to go into a plant, produce product, produce it quick, get it in korza was a good example.",
+      "Product behaviour and design :: The operators view and it's amazing how sometimes senior management thinks the team is doing a great job and then the operators are the team don't know anything about the product.",
+      "Product behaviour and design :: In Japan, the team had products that were being recalled, products on hold and products released and product with dirt and dust all over it in the same area.",
+      "Content and communications :: The team is looking around looking at site cleanliness.",
+      "Content and communications :: Looking at how well how neat the site is.",
+      "Risks :: Much more robust, much more compliant, much more compliant with the current expectations of what a good validation or a capital looks like, but at the same time too, there are also gaps in the culture, so it's really that two pronged thing frankly, we tend to find more issues in the cultural part of it and I think more of some of well it depends on the company"
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/027_real_abbott_audit_kickoff_transcript/transcript.txt": {
+    "published": [
+      "Scope and requirements :: Jacqui Fox has never seen that pack before.",
+      "Scope and requirements :: It's a pack and it's got to be standalone, which means it will have some various standards.",
+      "Quality and risk indicators :: There isn't much you can find out really without going to the software developer or the design owner.",
+      "Quality and risk indicators :: This is the design owner.",
+      "Quality and risk indicators :: Niamh Lynch did say the team need the design site in order to really assess this.",
+      "Risks and dependencies :: There'll be cybersecurity risks and things that in there, but then they're aligned to the ISOs anyway, so they'll be pretty much standard, industry standard.",
+      "Plans and timelines :: The planning or the planning leasing that Jacqui Fox presume is scheduled.",
+      "Risks :: Required information or actions may be missed while the responsible team member is unavailable."
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/028_real_m204_webinar_rehearsal_transcript/transcript.txt": {
+    "published": [
+      "Content and communications :: Can the team say, the content is done by thirty-five minutes, hard stop, and then the last, the team has got a full twenty for questions.",
+      "Decisions :: Finish content by 35 minutes and reserve 20 minutes for questions",
+      "Decisions :: Hold a short warm-up at 08:30 before the live session",
+      "Decisions :: Use Priya Sethi as host and closer",
+      "Risks :: Screen-share transfer can create dead air",
+      "Risks :: Presenter connection could drop",
+      "Risks :: The session could overrun and crowd out questions",
+      "Risks :: Recording could miss the opening or stop"
+    ]
+  },
+  "scripts/meeting-minutes-final-golden/029_real_t761_tech_file_weekly_transcript/transcript.txt": {
+    "published": [
+      "Language support and localisation :: Andrew Kane has got these three alarms now.",
+      "Language support and localisation :: The alarm code changes, the language changes, and the retrospective from version 101 to 102.",
+      "Language support and localisation :: Further side of the software changes in relation to all the alarm stuff and to look then at the languages as the next step.",
+      "Language support and localisation :: There's three languages in particular might be a problem is Arabic, Vietnamese and Greek.",
+      "Risks and dependencies :: Rebecca Cuckoo was in the middle of inputting it onto the risk management file, but the team were talking about initial risks and control measures.",
+      "Software change traceability :: The color and the flash for each of the low, medium, and high code changes appear to have been made and are working successfully, and the only outstanding thing then to confirm is this: what happens when the mute?.",
+      "Software change traceability :: Andrew, Jacqui Fox knows that the team had looked at starting to document that change within the on a change request form.",
+      "Software change traceability :: Does how does completion of that feed into that change request or vice versa as the case may be?.",
+      "Software change traceability :: Seen at within the code.",
+      "Testing and validation :: How are you getting on with the debug?."
+    ]
+  },
+  "scripts/transcript-tests/001_status_review/transcript.txt": {
+    "published": [
+      "Operations and processes :: The intake workflow and request funnel?.",
+      "Budget and commercial matters :: The team need sales input and the team don't have it.",
+      "Due end quarter :: Still due end of quarter.",
+      "Risks :: Recording could miss the opening or stop"
+    ]
+  },
+  "scripts/transcript-tests/002_validation_decision/transcript.txt": {
+    "published": [
+      "Testing and validation :: Most attendees won't be from validation teams.",
+      "Further actions one :: No further actions on that one."
+    ]
+  },
+  "scripts/transcript-tests/003_webinar_rehearsal/transcript.txt": {
+    "published": [
+      "Roles and responsibilities :: Process that the team went in and mapped out and then found areas for opportunity for AI.",
+      "Roles and responsibilities :: The team then transformed it into looking at transactional processes and the natural evaluation.",
+      "Roles and responsibilities :: The approach the team took then was an on-site workshop to really understand the workflow that the team is looking at.",
+      "Roles and responsibilities :: The team do this on site, structured three day, very collaborative, with three main rules on this and that the opportunities that the team identify here are really driven by the people who do the work, who understand the workflow, who live with it day and day.",
+      "Content and communications :: All of the team's work is done on the walls and the team use those slides to get the people engaged and get them up and get them thinking really about how the work is done and how it needs to be done.",
+      "Content and communications :: Workshop really engages the team.",
+      "Documentation and evidence :: From that, then the team then map out the core process, and the team will do this as a function of what happened during the Gemba observation, not what is in the procedure.",
+      "Documentation and evidence :: The team then spend some time doing some Gemba observation.",
+      "Opportunities for improvement here :: The team kicked this off a week or two before the team is on site to ensure that the team is looking at the right area here, the right need for the business at the right time, and that the team has a clear defined problem statement that the team will use to validate all of the team's improvement opportunities against.",
+      "Operations and processes :: Jack Cunningham suppose Jack Cunningham just want to say that, yeah, look, as Ciara said, the team go through an example of a use case of how the team support a client in identifying opportunities for AI enablement in a regulated workflow.",
+      "Operations and processes :: For this specific example, it was a complaints handling process.",
+      "Operations and processes :: The team look at the performance of the targeted workflow as a function of its output.",
+      "Decisions :: An upskill team, because throughout the session we would have guided them on AI, what it is, what it's not, and where it would fit into their process"
+    ]
+  },
+  "scripts/transcript-tests/004_contract_renewal/transcript.txt": {
+    "published": [
+      "Operations and processes :: There would also be migration effort and retraining if the team changed supplier now.",
+      "A three-year term would reduce the increase, but it locks :: A three-year term would reduce the increase, but it locks us in for too long."
+    ]
+  },
+  "scripts/transcript-tests/005_office_relocation/transcript.txt": {
+    "published": [
+      "Plans and timelines :: Nina to send the updated floor plan this afternoon.",
+      "Roles and responsibilities :: The current office is too small for the support team and the meeting rooms are over capacity.",
+      "Plans and timelines :: The team is not choosing a move date until IT confirms the cabling schedule."
+    ]
+  },
+  "scripts/transcript-tests/006_product_bug_triage/transcript.txt": {
+    "published": [
+      "Risks and dependencies :: Marco to prepare a hotfix branch if the logs confirm the token issue.",
+      "Software changes :: No release decision until the team see the logs."
+    ]
+  },
+  "scripts/transcript-tests/007_client_onboarding/transcript.txt": {
+    "published": [
+      "Operations and processes :: The finance team is ready to start next Monday, but the warehouse team still has missing data fields.",
+      "Operations and processes :: The team will begin onboarding with finance first and delay warehouse until the data mapping is complete.",
+      "Further actions for meeting :: No further actions for this meeting."
+    ]
+  },
+  "scripts/transcript-tests/008_event_planning/transcript.txt": {
+    "published": [
+      "Registration is already at one hundred and eighty people, so :: Registration is already at one hundred and eighty people, so the breakout room will be too small."
+    ]
+  },
+  "scripts/transcript-tests/009_supplier_risk_review/transcript.txt": {
+    "published": [
+      "Operations and processes :: The current supplier is more expensive, but they have confirmed capacity for the autumn volume.",
+      "The backup supplier cannot guarantee September delivery and their latest :: The backup supplier cannot guarantee September delivery and their latest audit raised concerns about component traceability."
+    ]
+  },
+  "scripts/transcript-tests/010_finance_budget_review/transcript.txt": {
+    "published": [
+      "Plans and timelines :: Revenue is tracking plan, but support costs are higher than forecast because contractor spend has doubled."
+    ]
+  },
+  "scripts/transcript-tests/011_hiring_interview_debrief/transcript.txt": {
+    "published": [
+      "Roles and responsibilities :: Priya handled the architecture discussion well and gave clear examples of mentoring junior engineers.",
+      "Roles and responsibilities :: The team will make an offer to Priya for the senior platform role.",
+      "Regulatory and compliance :: Her only gap is limited experience with payment compliance.",
+      "Actions beyond preparing the offer pack :: No actions beyond preparing the offer pack."
+    ]
+  },
+  "scripts/transcript-tests/012_training_rollout/transcript.txt": {
+    "published": [
+      "Louise split the material two forty-five minute :: Louise to split the material into two forty-five minute sessions.",
+      "Keep the pilot group the Manchester site :: The team will keep the pilot group to the Manchester site for now."
+    ]
+  },
+  "scripts/transcript-tests/013_low_substance_fallback/transcript.txt": {
+    "published": []
+  },
+  "scripts/transcript-tests/014_request_acceptance/transcript.txt": {
+    "published": []
+  },
+  "scripts/transcript-tests/015_ownership_assignment/transcript.txt": {
+    "published": []
+  },
+  "scripts/transcript-tests/016_investigation_commitment/transcript.txt": {
+    "published": []
+  },
+  "scripts/transcript-tests/017_orphan_commitment/transcript.txt": {
+    "published": []
+  },
+  "scripts/transcript-tests/018_sales_pipeline_review/transcript.txt": {
+    "published": [
+      "Focus the retail and logistics accounts instead :: The team will focus on the retail and logistics accounts instead.",
+      "Risks :: I agree the legal cycle is the blocker"
+    ]
+  },
+  "scripts/transcript-tests/019_supplier_review/transcript.txt": {
+    "published": [
+      "Operations and processes :: The current supplier costs more, but their SLA has held for the last two quarters.",
+      "Risks :: Late shipments from the backup supplier are still creating risk for the October plan"
+    ]
+  },
+  "scripts/transcript-tests/020_contract_negotiation/transcript.txt": {
+    "published": [
+      "Sign the one-year extension and keep the :: The team will sign the one-year extension and keep the exit clause unchanged.",
+      "Jon redline the exit clause Friday :: Jon to redline the exit clause by Friday.",
+      "That is cheaper on paper, but it would lock us :: That is cheaper on paper, but it would lock us in for too long.",
+      "Decisions :: Accept a three-year commitment"
+    ]
+  },
+  "scripts/transcript-tests/021_hiring_interview_debrief/transcript.txt": {
+    "published": [
+      "Product behaviour and design :: Maya was strong on system design and stakeholder communication.",
+      "Product behaviour and design :: The team will invite Maya to the final interview.",
+      "Her gap is depth on incident management at larger scale :: Her gap is depth on incident management at larger scale."
+    ]
+  },
+  "scripts/transcript-tests/022_candidate_screening/transcript.txt": {
+    "published": [
+      "Customer and stakeholder feedback :: The team will not progress Ben to interview this round."
+    ]
+  },
+  "scripts/transcript-tests/023_finance_budget_review/transcript.txt": {
+    "published": [
+      "Plans and timelines :: Travel costs are below plan, but contractor spend is still above forecast.",
+      "Plans and timelines :: The team will defer the support analyst backfill until September month-end."
+    ]
+  },
+  "scripts/transcript-tests/024_board_update/transcript.txt": {
+    "published": [
+      "Budget and commercial matters :: The revenue slide is ready, but the churn commentary is still too vague.",
+      "Tom tighten the churn narrative before Thursday :: Tom to tighten the churn narrative before Thursday."
+    ]
+  },
+  "scripts/transcript-tests/025_incident_response/transcript.txt": {
+    "published": [
+      "Keep the status page open until the :: The team will keep the status page open until the latency trend stabilises.",
+      "Noah pull the API logs 6pm :: Noah to pull the API logs by 6pm.",
+      "The database failover worked, but API latency is still unstable :: The database failover worked, but API latency is still unstable for customers in Europe."
+    ]
+  },
+  "scripts/transcript-tests/026_product_bug_triage/transcript.txt": {
+    "published": [
+      "Product behaviour and design :: The team will ship the hotfix behind a feature flag tonight.",
+      "The checkout bug only appears when saved cards and discount :: The checkout bug only appears when saved cards and discount codes are used together."
+    ]
+  },
+  "scripts/transcript-tests/027_customer_complaint_review/transcript.txt": {
+    "published": [
+      "Budget and commercial matters :: The team will refund the last invoice and assign a named success manager.",
+      "Customer and stakeholder feedback :: Dan to call the customer before noon.",
+      "The customer has raised a second complaint about missed handover :: The customer has raised a second complaint about missed handover notes and slow follow-up."
+    ]
+  },
+  "scripts/transcript-tests/028_customer_onboarding/transcript.txt": {
+    "published": [
+      "Customer and stakeholder feedback :: The customer wants SSO on day one, but the identity mapping is not ready yet.",
+      "Customer and stakeholder feedback :: Can the team still include SSO in phase one?.",
+      "Customer and stakeholder feedback :: The team will begin onboarding with CSV import first and defer SSO until phase two."
+    ]
+  },
+  "scripts/transcript-tests/029_office_relocation/transcript.txt": {
+    "published": [
+      "Sophie confirm the movers tomorrow :: Sophie to confirm the movers tomorrow."
+    ]
+  },
+  "scripts/transcript-tests/030_webinar_rehearsal/transcript.txt": {
+    "published": [
+      "Content and communications :: The opening still runs too long and the registration slide feels crowded.",
+      "Keep the live demo seven minutes and :: The team will keep the live demo to seven minutes and trim the intro."
+    ]
+  },
+  "scripts/transcript-tests/031_event_planning/transcript.txt": {
+    "published": [
+      "Plans and timelines :: Leah to update the signage plan by tomorrow.",
+      "Registration is at two hundred and twenty and the breakout :: Registration is at two hundred and twenty and the breakout room will be too small."
+    ]
+  },
+  "scripts/transcript-tests/032_training_rollout/transcript.txt": {
+    "published": [
+      "Louise split the material two forty-minute sessions :: Louise to split the material into two forty-minute sessions.",
+      "Keep the pilot group the Manchester site :: The team will keep the pilot group to the Manchester site for now."
+    ]
+  },
+  "scripts/transcript-tests/033_marketing_campaign_review/transcript.txt": {
+    "published": [
+      "Leo rewrite the landing-page copy tonight :: Leo to rewrite the landing-page copy tonight."
+    ]
+  },
+  "scripts/transcript-tests/034_software_release_review/transcript.txt": {
+    "published": [
+      "Software changes :: The team will delay the release until the accessibility fixes land.",
+      "Accessibility fixes are still open and the analytics dashboard has :: Accessibility fixes are still open and the analytics dashboard has one unresolved export bug."
+    ]
+  },
+  "scripts/transcript-tests/035_procurement_discussion/transcript.txt": {
+    "published": [
+      "Buy the lower-volume option first and review :: The team will buy the lower-volume option first and review usage after six weeks.",
+      "Yasmin request the revised quote Tuesday :: Yasmin to request the revised quote by Tuesday.",
+      "The larger hardware package includes support, but it commits us :: The larger hardware package includes support, but it commits us to volume the team do not need yet."
+    ]
+  },
+  "scripts/transcript-tests/036_project_retrospective/transcript.txt": {
+    "published": [
+      "Plans and timelines :: Jen to update the team cadence note this week."
+    ]
+  },
+  "scripts/transcript-tests/037_partnership_discussion/transcript.txt": {
+    "published": [
+      "Run ninety-day pilot Northstar and review exclusivity :: Northstar wants exclusivity in healthcare, but the team is not ready to commit beyond a pilot.",
+      "Run ninety-day pilot Northstar and review exclusivity :: The team will run a ninety-day pilot with Northstar and review exclusivity after the pilot.",
+      "Dean draft the pilot terms Monday :: Dean to draft the pilot terms by Monday."
+    ]
+  },
+  "scripts/transcript-tests/038_grant_application_review/transcript.txt": {
+    "published": [
+      "Roles and responsibilities :: The first draft leans heavily on carbon reduction, but the assessor notes favour digital-health outcomes.",
+      "Neil rewrite the summary Wednesday :: Neil to rewrite the summary by Wednesday."
+    ]
+  },
+  "scripts/transcript-tests/039_risk_review/transcript.txt": {
+    "published": [
+      "Operations and processes :: The vendor dependency is still a single point of failure for the reporting workflow.",
+      "Maria update the register tomorrow :: Maria to update the register by tomorrow.",
+      "Risks :: We will escalate that dependency to red on the risk register"
+    ]
+  },
+  "scripts/transcript-tests/040_governance_review/transcript.txt": {
+    "published": [
+      "Plans and timelines :: Can the team still roll out the workflow this week?.",
+      "Plans and timelines :: The team will hold the rollout until policy sign-off.",
+      "Owen circulate the final draft afternoon :: Owen to circulate the final draft this afternoon."
+    ]
+  },
+  "scripts/transcript-tests/041_operations_review/transcript.txt": {
+    "published": []
+  },
+  "scripts/transcript-tests/042_support_escalation_review/transcript.txt": {
+    "published": [
+      "Customer and stakeholder feedback :: The customer has been bounced across three queues and the workaround article is making things worse.",
+      "Replace the workaround article direct escalation path :: The team will replace the workaround article with a direct escalation path for priority accounts."
+    ]
+  },
+  "scripts/transcript-tests/043_release_go_no_go/transcript.txt": {
+    "published": [
+      "Software changes :: The team should delay the Friday release until QA confirms the fix."
+    ]
+  },
+  "scripts/transcript-tests/044_budget_reforecast/transcript.txt": {
+    "published": [
+      "Ben send the revised forecast Wednesday :: Ben to send the revised forecast by Wednesday.",
+      "Not deciding headcount today :: The team is not deciding on headcount today.",
+      "Risks :: The session could overrun and crowd out questions"
+    ]
+  },
+  "scripts/transcript-tests/045_board_launch_delay/transcript.txt": {
+    "published": [
+      "Leah update the board pack tonight :: Leah to update the board pack tonight."
+    ]
+  },
+  "scripts/transcript-tests/046_customer_onboarding_split_rollout/transcript.txt": {
+    "published": [
+      "Operations and processes :: Data mapping for finance is ready, but warehouse is still missing three required fields.",
+      "Operations and processes :: The team will start onboarding with finance first and hold warehouse until the mapping is complete.",
+      "Mina send the missing-field list today :: Mina to send the missing-field list today."
+    ]
+  },
+  "scripts/transcript-tests/047_supplier_renewal_rejection/transcript.txt": {
+    "published": [
+      "Mark send the renewal note tomorrow morning :: Mark to send the renewal note tomorrow morning.",
+      "Supplier A cut price by 8 percent, but migration and :: Supplier A cut price by 8 percent, but migration and retraining would add operational risk.",
+      "Risks :: Supplier A cut price by 8 percent, but migration and retraining would add operational risk"
+    ]
+  },
+  "scripts/transcript-tests/048_status_review_pending_leadership/transcript.txt": {
+    "published": [
+      "Documentation and evidence :: The vendor strategy document is absent and leadership review is still pending.",
+      "Documentation and evidence :: The team is awaiting leadership approval on the vendor strategy before procurement starts.",
+      "Budget and commercial matters :: Sales input is still missing for the AI pipeline dependency map.",
+      "Customer and stakeholder feedback :: Innovation grant follow-up feedback is still pending."
+    ]
+  },
+  "scripts/transcript-tests/049_low_substance_noise/transcript.txt": {
+    "published": []
+  },
+  "scripts/transcript-tests/050_partnership_mou_enablement/transcript.txt": {
+    "published": [
+      "Plans and timelines :: Sara to send the redlined MOU by Thursday.",
+      "Plans and timelines :: Sara to confirm dates with them by Friday.",
+      "The partner wants two enablement sessions July :: The partner also wants two enablement sessions in July.",
+      "The co-branded webinar is fine, but legal review of the :: The co-branded webinar is fine, but legal review of the reseller clause is still open."
+    ]
+  },
+  "scripts/transcript-tests/051_real_webinar_rehearsal/transcript.txt": {
+    "published": [
+      "Roles and responsibilities :: Process that the team went in and mapped out and then found areas for opportunity for AI.",
+      "Roles and responsibilities :: The team then transformed it into looking at transactional processes and the natural evaluation.",
+      "Roles and responsibilities :: The approach the team took then was an on-site workshop to really understand the workflow that the team is looking at.",
+      "Roles and responsibilities :: The team do this on site, structured three day, very collaborative, with three main rules on this and that the opportunities that the team identify here are really driven by the people who do the work, who understand the workflow, who live with it day and day.",
+      "Content and communications :: All of the team's work is done on the walls and the team use those slides to get the people engaged and get them up and get them thinking really about how the work is done and how it needs to be done.",
+      "Content and communications :: Workshop really engages the team.",
+      "Documentation and evidence :: From that, then the team then map out the core process, and the team will do this as a function of what happened during the Gemba observation, not what is in the procedure.",
+      "Documentation and evidence :: The team then spend some time doing some Gemba observation.",
+      "Opportunities for improvement here :: The team kicked this off a week or two before the team is on site to ensure that the team is looking at the right area here, the right need for the business at the right time, and that the team has a clear defined problem statement that the team will use to validate all of the team's improvement opportunities against.",
+      "Operations and processes :: Jack Cunningham suppose Jack Cunningham just want to say that, yeah, look, as Ciara said, the team go through an example of a use case of how the team support a client in identifying opportunities for AI enablement in a regulated workflow.",
+      "Operations and processes :: For this specific example, it was a complaints handling process.",
+      "Operations and processes :: The team look at the performance of the targeted workflow as a function of its output.",
+      "Decisions :: An upskill team, because throughout the session we would have guided them on AI, what it is, what it's not, and where it would fit into their process"
+    ]
+  },
+  "scripts/transcript-tests/052_status_update_meeting/transcript.txt": {
+    "published": [
+      "Product behaviour and design :: The device description has been updated in the latest pack."
+    ]
+  },
+  "scripts/transcript-tests/053_hidden_decision_meeting/transcript.txt": {
+    "published": [
+      "David reschedule the weekly check-in today :: Grace am offsite next Wednesday so Grace will miss the usual weekly check-in.",
+      "David reschedule the weekly check-in today :: David to reschedule the weekly check-in today.",
+      "Friday noon works best :: Friday at noon works best."
+    ]
+  },
+  "scripts/transcript-tests/054_document_review_meeting/transcript.txt": {
+    "published": [
+      "Risks and dependencies :: The trace matrix still references the old risk documents.",
+      "Documentation and evidence :: It may be cleaner to point them back to master reference documents instead."
+    ]
+  },
+  "scripts/transcript-tests/055_dependency_risk_meeting/transcript.txt": {
+    "published": [
+      "Continue the current information for now :: The team can continue with the current information for now."
+    ]
+  },
+  "scripts/transcript-tests/056_progress_dashboard_meeting/transcript.txt": {
+    "published": [
+      "Documentation and evidence :: The team has 38 documents complete.",
+      "Documentation and evidence :: Only one document is still untouched."
+    ]
+  },
+  "scripts/transcript-tests/057_rehearsal_banter_filter/transcript.txt": {
+    "published": []
+  },
+  "scripts/transcript-tests/058_submission_date_priority/transcript.txt": {
+    "published": [
+      "Plans and timelines :: The SGS submission date is confirmed as 12 Sept 2025.",
+      "Plans and timelines :: Risk and Clinical documents are the most at risk and need the priority focus this week.",
+      "Documentation and evidence :: Some documents are complete already, while others are still in progress.",
+      "Risks :: Risk and Clinical documents are the most at risk and need the priority focus this week"
+    ]
+  },
+  "scripts/transcript-tests/059_partial_completion_allowed/transcript.txt": {
+    "published": []
+  },
+  "scripts/transcript-tests/060_external_review_optional/transcript.txt": {
+    "published": []
+  },
+  "scripts/transcript-tests/061_no_major_impact_dependency/transcript.txt": {
+    "published": [
+      "Plans and timelines :: Some of the data may spill into next week, but this is not expected to have any major impact on the timelines."
+    ]
+  },
+  "scripts/transcript-tests/062_completed_and_approved_status/transcript.txt": {
+    "published": []
+  },
+  "scripts/transcript-tests/063_rejection_test/transcript.txt": {
+    "published": []
+  },
+  "scripts/transcript-tests/064_analytics_review/transcript.txt": {
+    "published": [
+      "The across all the selected sessions :: The across all of the selected sessions.",
+      "The across all the selected sessions :: You have the list of sessions.",
+      "The across all the selected sessions :: How good is ONT sessions?.",
+      "The across all the selected sessions :: How good are ONT sessions at drawing in there?.",
+      "Customer and stakeholder feedback :: To delegate just click on the booth and then they arrived at the booth thought this is rubbish and left or did they actually click on the stuff in the booth And if they did, that then made them a engaged delegate.",
+      "Customer and stakeholder feedback :: 16 delegates went from that partner booth to look at their swag bag.",
+      "Customer and stakeholder feedback :: How many delegates were actually used it?\" type of thing.",
+      "Customer and stakeholder feedback :: 73 delegate 14, 0 and T, which made how many in total?.",
+      "Plans and timelines :: The research hub as well.",
+      "Plans and timelines :: People basically didn't use the search by research area but they did use the research area hub which is just an interesting thing considering that where the search by research area was on the auditorium page.",
+      "Plans and timelines :: The majority, well the team can track it, the majority of people went from the research hub and then they clicked From there, into the auditorium live, they added sessions to their schedule and then they went back to the research hub.",
+      "Plans and timelines :: On Wednesday it switched a bit more to, they went to the auditorium and then to the research hub and then to join the live session via the research hub.",
+      "There is no real difference :: There is no real difference."
+    ]
+  },
+  "scripts/transcript-tests/064_status_setup_clause_rejected/transcript.txt": {
+    "published": [
+      "Documentation and evidence :: Emma has got the latest report open, the 18th March one remains in progress."
+    ]
+  },
+  "scripts/transcript-tests/065_status_topic_date_casing/transcript.txt": {
+    "published": [
+      "Documentation and evidence :: March Migration Report remains in progress."
+    ]
+  },
+  "scripts/transcript-tests/066_status_misrecognized_setup_rejected/transcript.txt": {
+    "published": [
+      "Documentation and evidence :: The Emma got report open, soundtrack remains blocked."
+    ]
+  },
+  "scripts/transcript-tests/067_banana_falcon_client_ready/transcript.txt": {
+    "published": [
+      "Claire, Bob, Sarah, Mike --- :: Claire, Bob, Sarah, Mike ---.",
+      "Product behaviour and design :: The team still haven't decided whether the team is calling the new feature \"Smart Search\", \"Intelligent Search\" or \"Dave\".",
+      "Customers won't Dave means :: Customers won't know what Dave means.",
+      "Action for Mike investigate API numbers :: Action for Mike to investigate API numbers."
+    ]
+  },
+  "scripts/transcript-tests/068_noisy_low_substance_sparse/transcript.txt": {
+    "published": []
+  },
+  "scripts/transcript-tests/069_decision_heavy_internal/transcript.txt": {
+    "published": [
+      "Roles and responsibilities :: Option A is a single launch, but support will be overloaded.",
+      "Decision confirmed: phased regional launch and legacy :: The team should keep the legacy portal read-only for four weeks.",
+      "Decision confirmed: phased regional launch and legacy :: Decision confirmed: phased regional launch and legacy portal read-only for four weeks.",
+      "Choose the rollout approach for the billing :: The team need to choose the rollout approach for the billing portal.",
+      "Agreed, four weeks gives customer success enough cover :: Agreed, four weeks gives customer success enough cover."
+    ]
+  },
+  "scripts/transcript-tests/070_incident_bug_triage/transcript.txt": {
+    "published": [
+      "Patch the mapper and replay the failed :: The root cause looks a missing currency code in the new mapper.",
+      "Patch the mapper and replay the failed :: The team need to patch the mapper and replay the failed exports.",
+      "The payment export failed for three customers :: The payment export failed for three customers after the overnight batch."
+    ]
+  },
+  "scripts/transcript-tests/071_messy_speaker_timestamp_formats/transcript.txt": {
+    "published": [
+      "Operations and processes :: First topic is supplier onboarding.",
+      "Operations and processes :: Decision confirmed: the team will onboard the supplier only after finance approval lands.",
+      "Legal review is complete, but finance approval is still pending :: Legal review is complete, but finance approval is still pending."
+    ]
+  },
+  "scripts/transcript-tests/072_action_free_information_briefing/transcript.txt": {
+    "published": [
+      "The mileage rate changes July and the :: The mileage rate changes from July and the approval threshold stays the same."
+    ]
+  },
+  "scripts/transcript-tests/073_support_metrics_actions/transcript.txt": {
+    "published": [
+      "The team keeps saying the same :: The team keeps saying the same thing.",
+      "Six months ago :: The team $1 that six months ago.",
+      "Testing and validation :: The team should probably monitor the results weekly as well.",
+      "Content and communications :: Also, the onboarding guide is still generating questions from new customers."
+    ]
+  },
+  "scripts/transcript-tests/074_allotment_society_committee/transcript.txt": {
+    "published": [
+      "Plans and timelines :: Bertie's dog got out through it last week.",
+      "Same always, biggest marrow, best jam, the :: Same as always, biggest marrow, best jam, the kids' sunflower thing.",
+      "Same always, biggest marrow, best jam, the :: The sunflower one's always a laugh.",
+      "And the team ringfence the extra for the water and :: And the team ringfence the extra for the water and the fence repairs.",
+      "Decisions :: So are we agreed, we put the annual plot fee up from twenty-five to thirty pounds, starting the new membership year in January?"
+    ]
+  },
+  "scripts/transcript-tests/075_pantomime_society_planning/transcript.txt": {
+    "published": [
+      "Plans and timelines :: It's between Cinderella and Aladdin, and the team need to land it tonight because the rights take weeks.",
+      "Plans and timelines :: Tom Hardacre still say Aladdin.",
+      "Plans and timelines :: The costumes for Cinders are largely in the store, whereas Aladdin the team would be starting from scratch, and the budget's tight this year.",
+      "Plans and timelines :: Oh, Cinderella, Fiona Alcott thinks, if the costumes are there.",
+      "Operations and processes :: The team has got about six hundred to play with for the whole production.",
+      "The licensing lot :: Which isn't a lot when you factor the hall, the rights, the costumes, the printing.",
+      "The licensing lot :: Gerald Pemberton knows the licensing lot.",
+      "Training and readiness :: The church hall's the team's usual, but the Brownies have moved to Wednesdays, which is the team's rehearsal night.",
+      "Testing and validation :: A decent radio mic's about ninety pounds.",
+      "Tuesday works for :: But Gerald Pemberton thinks Tuesdays are free now, and actually Tuesday suits me better.",
+      "The carpet lives to fight another year :: The carpet lives to fight another year."
+    ]
+  },
+  "scripts/transcript-tests/076_brewery_production_numbers/transcript.txt": {
+    "published": [
+      "Twelve hundred, that's full batch :: Twelve hundred, that's a full batch.",
+      "Let get total :: The team need another, if it's twenty-one total and the team has got eighteen, get another, say, six sacks to have a buffer.",
+      "Decisions :: Fifteen casks, not kegs, casks, the nine-gallon firkins, because it's a real ale festival",
+      "Decisions :: Fifteen",
+      "Risks :: If it goes mid-ferment we've got a real problem, temperature control on the IPA especially, it wants holding at nineteen degrees; That's the risk that scares me; If the chiller dies during the IPA ferment we could lose the whole twelve hundred litres"
+    ]
+  },
+  "scripts/transcript-tests/077_race_committee_two_jos/transcript.txt": {
+    "published": [
+      "Marsh, marshals, getting fourteen :: Jo Marsh is doing marshals.",
+      "Marsh, marshals, getting fourteen :: Jo Bennett's on first aid, Jo Marsh is on marshals, everyone clear which Jo's doing what?.",
+      "Barely enough last year and someone nearly :: The team had barely enough last year and someone nearly went the wrong way at the river turn.",
+      "Budget and commercial matters :: Jo Bennett, first aid, quote from St John's for two crews.",
+      "Plans and timelines :: The route's basically last year's, but they've resurfaced part of the towpath and Alan Pryce needs to check it's open.",
+      "Plans and timelines :: Alan, road-closure application in this week and check the towpath.",
+      "For route, properly, fourteen :: For that route, properly, fourteen.",
+      "The date's locked, the twenty-eighth of September, and the team :: The date's locked, the twenty-eighth of September, and the team said fifteen pounds entry, that hasn't changed?.",
+      "Risks :: And the big risk we're all watching is the road-closure permit, because no permit, no start"
+    ]
+  },
+  "scripts/transcript-tests/078_parking_no_decision_reached/transcript.txt": {
+    "published": [
+      "Budget and commercial matters :: Baljit Sanghera's thing is, the visitor spaces get taken by residents who've got three cars, and then actual visitors have got nowhere to go.",
+      "Budget and commercial matters :: One of those, a gate with a fob, so only residents can get in the car park at all.",
+      "Three cars and caravan :: Three cars and a caravan.",
+      "Content and communications :: The question is what do the team do about it."
+    ]
+  }
+}
