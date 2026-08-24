@@ -4212,14 +4212,15 @@ td select {
   setReviewStarted(reviewStarted);
   hydratingSavedDraft = true;
   hydrateSavedDraftContext();
-  showScreen(Number.isFinite(requestedScreen) ? requestedScreen : 0);
+  var resumedScreen = Number.isFinite(requestedScreen) ? requestedScreen : 0;
+  showScreen(resumedScreen);
   hydratingSavedDraft = false;
   if (reviewStarted || draftId) {
     recordStageEntered(draftId ? 'draft_loaded' : 'initial_load');
     if (draftId) {
       recordWorkflowInteraction('draft_resumed', {
         viaDraftId: true,
-        requestedScreen: Number.isFinite(requestedScreen) ? requestedScreen : 0
+        requestedScreen: resumedScreen
       }, { source: 'draft_url' });
     }
   }
@@ -4227,6 +4228,19 @@ td select {
   renderFinalDocument();
   updateReviewToolbar();
   loadQueuedStageResult();
+  // Resuming a draft lands on the requested screen directly, and used to do so whether or
+  // not that screen had ever been generated. Continue-to-next-screen has always asked
+  // stageNeedsGeneration first; this path skipped the question, so opening a draft at
+  // Discussion when Discussion had never run showed an empty table, offered no
+  // explanation, and never generated anything - the reviewer's only clue was a screen
+  // with nothing on it. Four meetings were reported this way; the server had produced
+  // cards for none of them, because it had never been asked.
+  //
+  // Same question, same answer as Continue. It fires at most once per stage, because the
+  // stage stops needing generation as soon as it has run.
+  if (draftId && reviewStarted && stageNeedsGeneration(resumedScreen) && !stageInFlight) {
+    requestStagedStage(stageForScreen(resumedScreen), resumedScreen);
+  }
 })();
 </script>
 </body>
