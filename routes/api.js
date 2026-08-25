@@ -50,6 +50,8 @@ const { prepareEvidence } = require('../utils/canonicalMinutes/evidence');
 const { polishCanonicalStage, canonicalFallback, addRecoveredActionCandidates, clientReadyPresentation, repairActionWording, repairDiscussionWording, wordingFaults } = require('../utils/canonicalMinutes/trooperPolish');
 const { proposeActions } = require('../utils/canonicalMinutes/proposedActions');
 const { meetingRecordAdminAction } = require('../utils/canonicalMinutes/semanticStages');
+const { proposeDiscussionPoints } = require('../utils/canonicalMinutes/proposedDiscussion');
+const { isPublishableTopicLabel, labelNamesAWorkstream } = require('../utils/canonicalMinutes/topicEditorial');
 const { enrichActionReviewCandidate } = require('../utils/canonicalMinutes/actionReviewRanking');
 const { reviewGeneratedContent } = require('../utils/terminologyQa');
 const { generateStagedMinutesPdf, stagedMinutesPdfFilename } = require('../utils/stagedMinutesPdf');
@@ -4376,6 +4378,67 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
   if (stage === 'discussion') {
     discussionWordingRepair = await repairDiscussionWording(result, canonicalEvidencePack, {});
     result = discussionWordingRepair.payload || result;
+    // Discussion by proposal, restraint by validation - the actions architecture applied
+    // here for the same measured reason. The deterministic path selects representative
+    // sentences from MiniLM clusters, and a narrated story fragments across them:
+    // Andrew's alarm demonstration split into five micro-clusters, so the card surfaced
+    // "I'm gonna try and include sound" (screen-share mechanics) while the demonstration
+    // itself scattered. A model reading the whole transcript keeps the story together;
+    // every proposed point must quote a turn that resolves to this transcript, must pass
+    // the wording detectors, and must not duplicate a point already on the screen.
+    // DISCUSSION_PROPOSALS=0 turns the pass off.
+    if (process.env.DISCUSSION_PROPOSALS !== '0') {
+      const existingCards = Array.isArray(result?.screens?.discussion) ? result.screens.discussion : [];
+      const existingPoints = existingCards.flatMap((card) => (card.points || []).map((point) => (typeof point === 'string' ? point : point?.text || '')));
+      const proposal = await proposeDiscussionPoints(semanticTranscript.text, prepareEvidence(semanticTranscript.text), existingPoints, {});
+      if (proposal.grounded.length) {
+        const tokensOf = (value) => new Set(String(value || '').toLowerCase().match(/[a-z][a-z0-9'’-]{2,}/g) || []);
+        const overlapOf = (a, b) => {
+          if (!a.size || !b.size) return 0;
+          let shared = 0;
+          for (const token of a) if (b.has(token)) shared += 1;
+          return shared / Math.min(a.size, b.size);
+        };
+        const cards = existingCards.map((card) => ({ ...card, points: [...(card.points || [])] }));
+        const newCards = new Map();
+        for (const item of proposal.grounded) {
+          const pointText = item.point;
+          const topicTokens = tokensOf(item.topic);
+          // Attach to the existing card whose heading this point's proposed topic best
+          // matches; a new heading is only minted when nothing existing fits, and it must
+          // read as a heading - the same bar every other label source passes.
+          let bestCard = null;
+          let bestScore = 0;
+          for (const card of cards) {
+            const score = overlapOf(topicTokens, tokensOf(card.topic));
+            if (score > bestScore) { bestScore = score; bestCard = card; }
+          }
+          if (bestCard && bestScore >= 0.34) {
+            bestCard.points.push(pointText);
+            bestCard.evidenceIds = [...new Set([...(bestCard.evidenceIds || []), ...item.evidenceIds])];
+          } else if (item.topic.split(/\s+/).length >= 2 && labelNamesAWorkstream(item.topic) && isPublishableTopicLabel(item.topic)) {
+            // Not canHeadlineTopic: its 4-word floor and meta-text screen are calibrated
+            // for stopword-strip debris ("Let get total"), and both were measured before
+            // being kept - but a model-written heading is different provenance. The floor
+            // refused "Change request documentation", and the meta screen refused "Alarm
+            // mute button behaviour" because "mute button" usually means Teams mechanics -
+            // here it is the product's own mute button. The heading still has to read as a
+            // workstream and be client-ready, and the points under it are quote-grounded.
+            const key = item.topic.toLowerCase();
+            if (!newCards.has(key)) newCards.set(key, { topic: item.topic, points: [], evidenceIds: [], modelProposed: true });
+            const card = newCards.get(key);
+            card.points.push(pointText);
+            card.evidenceIds = [...new Set([...card.evidenceIds, ...item.evidenceIds])];
+          }
+          // A point whose topic neither matches a card nor survives the heading gates is
+          // dropped - coverage is not worth a heading that reads as speech.
+        }
+        result = {
+          ...result,
+          screens: { ...result.screens, discussion: [...cards, ...newCards.values()] }
+        };
+      }
+    }
     const stillBrokenPoints = (result?.screens?.discussion || [])
       .flatMap((card) => (card.points || []).map((point) => (typeof point === 'string' ? point : point?.text)))
       .filter((point) => wordingFaults(String(point || '')).length);

@@ -62,7 +62,12 @@ const MONTH = '(?:January|February|March|April|May|June|July|August|September|Oc
 // unanchored capitaliser reached past "09:30" and capitalised the first letter it found.
 // That same reach turned "23rd of July" into "23Rd of July", so the casing is done here,
 // by name, and the capitaliser is anchored.
-const DAY_OR_MONTH = /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december)\b/gi;
+// "may" is deliberately absent: it is a modal far more often than a month, and blind
+// casing turned "languages that may present a problem" into "that May present a problem".
+// A date containing May is still normalised by the phrase rules above, which see the
+// day-number context; only the bare-word casing skips it. "march" stays because the verb
+// reading is rare in minutes and the month reading is common.
+const DAY_OR_MONTH = /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|june|july|august|september|october|november|december)\b/gi;
 
 function normaliseDatePhrases(value) {
   let text = String(value || '');

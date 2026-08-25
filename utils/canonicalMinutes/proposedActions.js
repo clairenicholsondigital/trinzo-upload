@@ -107,6 +107,32 @@ async function requestProposals(transcript, participants, options = {}) {
   }
 }
 
+// Where a quote's support lives. prepareEvidence splits turns into per-sentence events,
+// and a verbatim quote legitimately spans several sentences of one turn - Andrew's alarm
+// demonstration quote scored 0.41 against its best single sentence and was refused, while
+// the whole turn contains it entirely. So support is measured against each event AND each
+// whole turn; the threshold itself never moves.
+function bestQuoteSupport(quote, evidence) {
+  const events = (evidence?.events || []).filter((event) => clean(event.text));
+  let best = { score: 0, evidenceIds: [] };
+  for (const event of events) {
+    const score = quoteSupport(quote, event.text);
+    if (score > best.score) best = { score, evidenceIds: [event.id] };
+  }
+  const byTurn = new Map();
+  for (const event of events) {
+    const key = event.turnId ?? event.turnIndex;
+    if (!byTurn.has(key)) byTurn.set(key, []);
+    byTurn.get(key).push(event);
+  }
+  for (const turnEvents of byTurn.values()) {
+    if (turnEvents.length < 2) continue;
+    const score = quoteSupport(quote, turnEvents.map((event) => event.text).join(' '));
+    if (score > best.score) best = { score, evidenceIds: turnEvents.slice(0, 6).map((event) => event.id) };
+  }
+  return best;
+}
+
 // The referee. A proposal survives only if its quote resolves to a turn in THIS transcript.
 // Returns { grounded, ungrounded } so the caller can report what was refused rather than
 // discarding it silently.
@@ -121,14 +147,9 @@ function groundProposals(items, evidence) {
       ? String(item.disposition).toLowerCase()
       : 'requirement';
     if (!action || !quote) { ungrounded.push({ ...item, reason: 'missing_action_or_quote' }); continue; }
-    let best = null;
-    let bestScore = 0;
-    for (const event of events) {
-      const score = quoteSupport(quote, event.text);
-      if (score > bestScore) { bestScore = score; best = event; }
-    }
-    if (!best || bestScore < QUOTE_GROUNDING) {
-      ungrounded.push({ ...item, reason: 'quote_not_found_in_transcript', bestScore: Number(bestScore.toFixed(2)) });
+    const best = bestQuoteSupport(quote, evidence);
+    if (best.score < QUOTE_GROUNDING) {
+      ungrounded.push({ ...item, reason: 'quote_not_found_in_transcript', bestScore: Number(best.score.toFixed(2)) });
       continue;
     }
     grounded.push({
@@ -136,10 +157,10 @@ function groundProposals(items, evidence) {
       action,
       deadline: 'Not stated',
       disposition,
-      evidenceIds: [best.id],
+      evidenceIds: best.evidenceIds,
       quote,
       source: 'model_proposed',
-      proposalGrounding: Number(bestScore.toFixed(2))
+      proposalGrounding: Number(best.score.toFixed(2))
     });
   }
   return { grounded, ungrounded };
@@ -197,4 +218,4 @@ async function proposeActions(transcript, evidence, options = {}) {
   };
 }
 
-module.exports = { proposeActions, groundProposals, quoteSupport, resolveProposedOwner, stripOwnerPrefix, promptFor, QUOTE_GROUNDING };
+module.exports = { proposeActions, groundProposals, quoteSupport, bestQuoteSupport, resolveProposedOwner, stripOwnerPrefix, promptFor, QUOTE_GROUNDING };
