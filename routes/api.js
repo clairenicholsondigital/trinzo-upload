@@ -982,6 +982,20 @@ function extractStagedDetailsFromTranscript(transcriptText, fileName = '') {
     if (parts.length < 2 || STAGED_ATTENDEE_BUCKET_BY_NAME.has(stagedKnownAttendeeKey(name))) return [];
     const knownFirstName = STAGED_KNOWN_PERSON_BY_FIRST_NAME.get(parts[0]);
     if (!knownFirstName) return [];
+    // The message has to describe what the document now says, not what the transcript
+    // said. This flag used to read "Check attendee name X, the surname differs" while the
+    // attendee list already showed the corrected name - so the reviewer was asked to fix
+    // something that was not there, against a name that appeared nowhere on the screen.
+    // Now the correction is applied, the flag reports the decision and offers the way back.
+    const corrected = canonicalKnownStagedPersonName(name);
+    if (corrected && stagedKnownAttendeeKey(corrected) !== stagedKnownAttendeeKey(name)) {
+      return [{
+        type: 'attendee_name_corrected',
+        severity: 'info',
+        blocking: false,
+        message: `The transcript says “${name}”, which is not a known participant. It has been recorded as “${corrected}” because the first name matches. Edit the attendee if that is wrong.`
+      }];
+    }
     return [{ type: 'possible_attendee_name_mismatch', severity: 'warning', blocking: false, message: `Check attendee name “${name}”. The first name matches known participant “${knownFirstName}”, but the transcript surname differs.` }];
   });
 
