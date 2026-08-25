@@ -60,11 +60,49 @@ test('mechanical faults are fixed without spending a model call', async () => {
   assert.equal(result.payload.screens.discussion[0].points[0], 'The part came from the supplier on Mill Road');
 });
 
-test('a clean screen costs nothing', async () => {
-  const fetchImpl = async () => { throw new Error('no call expected'); };
+test('a clean point is offered for polish - the same trade actions made', async () => {
+  // The old contract was "a clean screen costs nothing", and it was also a no-fix rule:
+  // "Andrew Kane has got these three alarms now" carries no detectable fault, so the
+  // fault-gated rounds never saw it and it published as spoken. A clean point now gets
+  // ONE offer; a refusal keeps the original, unmarked.
+  let called = 0;
   const result = await repairDiscussionWording(payloadWith('The audit plan was agreed and the tracker will be shared before arrival.'), pack, {
-    apiKey: 'test', url: 'https://example.invalid', fetchImpl
+    apiKey: 'test', url: 'https://example.invalid',
+    fetchImpl: async () => { called += 1; return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: '{"repairs":[]}' } }] }) }; }
   });
-  assert.equal(result.attempted, 0);
-  assert.equal(result.repaired, 0);
+  assert.equal(called, 1, 'one polish round, no retry');
+  assert.equal(result.attempted, 0, 'attempted still counts detector-faulted points only');
+  assert.equal(result.payload.screens.discussion[0].points[0], 'The audit plan was agreed and the tracker will be shared before arrival.');
+});
+
+test('DISCUSSION_POLISH=0 restores the no-cost behaviour', async () => {
+  process.env.DISCUSSION_POLISH = '0';
+  try {
+    let called = 0;
+    const result = await repairDiscussionWording(payloadWith('The audit plan was agreed and the tracker will be shared.'), pack, {
+      apiKey: 'test', url: 'https://example.invalid',
+      fetchImpl: async () => { called += 1; return { ok: true, status: 200, json: async () => ({}) }; }
+    });
+    assert.equal(called, 0);
+    assert.equal(result.repaired, 0);
+  } finally {
+    delete process.env.DISCUSSION_POLISH;
+  }
+});
+
+test('a polish restating spoken register lands; one that loses a fact is refused', async () => {
+  const original = 'Andrew Kane has got the three alarms ready for the review on Friday.';
+  // Restates the register, keeps Andrew Kane and Friday - accepted.
+  const good = await repairDiscussionWording(payloadWith(original), pack, {
+    apiKey: 'test', url: 'https://example.invalid',
+    fetchImpl: stubReturning('Andrew Kane prepared the three alarms for the review on Friday.')
+  });
+  assert.equal(good.payload.screens.discussion[0].points[0], 'Andrew Kane prepared the three alarms for the review on Friday.');
+  assert.equal(good.repaired, 1);
+  // Loses "Friday" - refused even though it reads fine.
+  const losing = await repairDiscussionWording(payloadWith(original), pack, {
+    apiKey: 'test', url: 'https://example.invalid',
+    fetchImpl: stubReturning('Andrew Kane prepared the three alarms for the review.')
+  });
+  assert.equal(losing.payload.screens.discussion[0].points[0], original);
 });

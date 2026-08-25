@@ -839,7 +839,8 @@ function wordingFaults(action) {
 function repairPrompt(rows, retry) {
   return [
     '[CMD: task=minutes_wording_repair; format=json]',
-    'Each supplied record is a real commitment from a meeting whose wording is not fit to print. Rewrite each one as one or two complete sentences of third-person meeting-minutes English.',
+    'Each supplied record is a real commitment from a meeting. Restate each one as one or two complete sentences of third-person meeting-minutes English.',
+    'Restate the INTENT, never transliterate the speech: "Confirm the decision on the mute-button behaviour", not "Compute a firm decision on the mute aspect". Use the supplied evidence window to complete a fragment - a record whose meaning is finished by the surrounding turns should be restated whole.',
     'Resolve every it, this and that from the supplied evidence window and name the thing referred to. Remove first-person and second-person speech, conversational asides and stray evaluations.',
     'Keep every fact: owner, deadline, quantity, standard, document and name. Invent nothing and add no detail the evidence does not carry.',
     'Write each record as an instruction beginning with a verb - "Write to the council...", "Service the chiller...". Never narrate the meeting: no "the speaker", no "the recipient", no "the action item is". Do not turn the person the work is about into the person doing it.',
@@ -857,7 +858,8 @@ function repairPrompt(rows, retry) {
 function discussionRepairPrompt(rows, retry) {
   return [
     '[CMD: task=minutes_wording_repair; format=json]',
-    'Each supplied record is a discussion point from meeting minutes whose wording is not fit to print. Rewrite each one as one or two complete sentences of third-person meeting-minutes prose.',
+    'Each supplied record is a discussion point from meeting minutes. Restate each one as one or two complete sentences of third-person meeting-minutes prose.',
+    'Restate the WHOLE point, never transliterate the speech: "There were two sound-related items to address", not "You were a couple of things to do in relation to the sound". Use the supplied evidence window to complete a fragment - a sentence whose meaning is finished by the surrounding turns should be restated whole.',
     'Resolve every it, this and that from the supplied evidence window and name the thing referred to. Remove first-person and second-person speech, conversational asides, restarts, repetition and circular phrasing.',
     'Keep every fact: name, quantity, standard, document and date. Invent nothing and add no detail the evidence does not carry.',
     'These are records of what was discussed or agreed, not instructions: never write an imperative, and never narrate ("the speaker said...").',
@@ -975,6 +977,25 @@ async function runWordingRepairRounds(entries, promptBuilder, imperative, option
   return { fixed, reason };
 }
 
+// The polish acceptor both surfaces share. Stricter than repair in one respect: facts
+// must survive in BOTH directions. protectedFactsOf covers digits, initialisms and
+// multi-word names - but "by Friday" and "to David" are facts too, and it is blind to
+// single capitalised words, so every mid-sentence capitalised token of the original must
+// survive into the candidate. The leading token is exempt so a better opening verb
+// ("Get" -> "Ask") is not refused for replacing itself.
+function makePolishAcceptor({ imperative, people }) {
+  return (original, candidate) => {
+    if (!acceptWordingRepair(original, candidate, { imperative, people })) return false;
+    const before = protectedFactsOf(original);
+    const after = protectedFactsOf(candidate);
+    if (![...before].every((fact) => after.has(fact))) return false;
+    const capitalised = clean(original).split(/\s+/).slice(1)
+      .map((word) => word.replace(/[^A-Za-z0-9'\u2019-]/g, ''))
+      .filter((word) => /^[A-Z][a-z]/.test(word));
+    return capitalised.every((word) => candidate.includes(word));
+  };
+}
+
 async function repairActionWording(payload, evidencePack, options = {}) {
   // Mechanical faults first, and without asking anybody: a repeated phrase is redundancy,
   // and deleting the first copy cannot change what the row claims. "Get one from the, from
@@ -1021,23 +1042,7 @@ async function repairActionWording(payload, evidencePack, options = {}) {
       .filter((row) => row.text && !brokenIndexes.has(row.index) && !fixed.has(row.index));
     if (cleanRows.length) {
       const polishEntries = cleanRows.map((row) => ({ index: row.index, text: row.text, evidence: textFor(row.index) }));
-      const acceptPolish = (original, candidate) => {
-        if (!acceptWordingRepair(original, candidate, { imperative: true, people })) return false;
-        // Facts must survive in BOTH directions for a polish. protectedFactsOf covers
-        // digits, initialisms and multi-word names - but "by Friday" and "to David" are
-        // facts too, and it is blind to single capitalised words. Every mid-sentence
-        // capitalised token of the original must survive into the candidate; the leading
-        // token is exempt so a better opening verb ("Get" -> "Ask") is not refused for
-        // replacing itself.
-        const before = protectedFactsOf(original);
-        const after = protectedFactsOf(candidate);
-        if (![...before].every((fact) => after.has(fact))) return false;
-        const capitalised = clean(original).split(/\s+/).slice(1)
-          .map((word) => word.replace(/[^A-Za-z0-9'\u2019-]/g, ''))
-          .filter((word) => /^[A-Z][a-z]/.test(word));
-        return capitalised.every((word) => candidate.includes(word));
-      };
-      const result = await runWordingRepairRounds(polishEntries, repairPrompt, true, { ...options, rounds: 1, accept: acceptPolish });
+      const result = await runWordingRepairRounds(polishEntries, repairPrompt, true, { ...options, rounds: 1, accept: makePolishAcceptor({ imperative: true, people }) });
       polished = result.fixed;
     }
   }
@@ -1089,12 +1094,44 @@ async function repairDiscussionWording(payload, evidencePack, options = {}) {
     });
   });
   const withCards = { ...payload, screens: { ...payload.screens, discussion: repairedCards } };
-  if (!entries.length) return { payload: withCards, repaired: 0, attempted: 0 };
-  const { fixed, reason } = await runWordingRepairRounds(entries, discussionRepairPrompt, false, options);
+  const { fixed, reason } = entries.length
+    ? await runWordingRepairRounds(entries, discussionRepairPrompt, false, options)
+    : { fixed: new Map(), reason: '' };
   for (const entry of entries) {
     if (fixed.has(entry.index)) repairedCards[entry.cardIndex].points[entry.pointIndex] = fixed.get(entry.index);
   }
-  return { payload: withCards, repaired: fixed.size, attempted: entries.length, ...(reason ? { reason } : {}) };
+  // The universal polish, exactly as actions received it. The detector set is blind to
+  // spoken register by construction - "Andrew Kane has got these three alarms now" and
+  // "You were a couple of things to do in relation to the sound" carry no detectable
+  // fault, so the fault-gated rounds above never see them and they published as spoken.
+  // Every remaining clean point is OFFERED one round, no retry: a refusal keeps the
+  // original, unmarked, because the point was never broken. Facts must survive in both
+  // directions (makePolishAcceptor). DISCUSSION_POLISH=0 turns the pass off.
+  let polishedCount = 0;
+  if (process.env.DISCUSSION_POLISH !== '0' && reason !== 'unavailable') {
+    const people = Array.isArray(options.people) ? options.people : [];
+    const faultedKeys = new Set(entries.map((entry) => `${entry.cardIndex}:${entry.pointIndex}`));
+    const cleanEntries = [];
+    repairedCards.forEach((card, cardIndex) => {
+      card.points.forEach((point, pointIndex) => {
+        const text = clean(typeof point === 'string' ? point : point?.text);
+        if (!text || faultedKeys.has(`${cardIndex}:${pointIndex}`)) return;
+        cleanEntries.push({ index: cleanEntries.length, cardIndex, pointIndex, text, evidence: evidenceTextFor(card) });
+      });
+    });
+    if (cleanEntries.length) {
+      const polish = await runWordingRepairRounds(cleanEntries, discussionRepairPrompt, false, {
+        ...options, rounds: 1, accept: makePolishAcceptor({ imperative: false, people })
+      });
+      for (const entry of cleanEntries) {
+        if (polish.fixed.has(entry.index)) {
+          repairedCards[entry.cardIndex].points[entry.pointIndex] = polish.fixed.get(entry.index);
+          polishedCount += 1;
+        }
+      }
+    }
+  }
+  return { payload: withCards, repaired: fixed.size + polishedCount, attempted: entries.length, ...(reason ? { reason } : {}) };
 }
 
 async function polishCanonicalStage(payload, options = {}) {

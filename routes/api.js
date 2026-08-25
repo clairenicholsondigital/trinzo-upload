@@ -4376,7 +4376,9 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
   // touched it.
   let discussionWordingRepair = { repaired: 0, attempted: 0 };
   if (stage === 'discussion') {
-    discussionWordingRepair = await repairDiscussionWording(result, canonicalEvidencePack, {});
+    discussionWordingRepair = await repairDiscussionWording(result, canonicalEvidencePack, {
+      people: result?.canonicalDiagnostics?.entityNames || []
+    });
     result = discussionWordingRepair.payload || result;
     // Discussion by proposal, restraint by validation - the actions architecture applied
     // here for the same measured reason. The deterministic path selects representative
