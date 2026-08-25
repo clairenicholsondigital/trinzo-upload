@@ -260,13 +260,35 @@ function candidateReviewScore(item, evidence, profile) {
   return actionPublishability(item, evidence, profile) + (bestSemantic * 0.45);
 }
 
+// An action whose object is the meeting record itself.
+//
+// "I'll update that table for the new set of minutes" is a genuine commitment and still
+// has no place as a row IN those minutes: it is the minute-taker describing their own
+// admin, and every reviewer deletes it. This is a category, not a phrase list - the
+// object is the document being produced (the minutes, these notes, the action log, the
+// agenda), which is the same kind of self-reference isTranscriptMetaText already screens
+// out for "started transcription".
+//
+// Writing the record is caught; DOING something with it afterwards is not. "Circulate the
+// minutes to the client" and "Approve the minutes" are real work somebody owes somebody
+// else, so the dispatch verbs are an explicit exemption rather than an oversight.
+const MEETING_RECORD_OBJECT = /\b(?:minutes|these notes|the notes|action (?:list|log)|the agenda|write[- ]?up)\b/i;
+const RECORD_AUTHORING_VERB = /\b(?:update|updating|write|writing|prepare|preparing|produce|producing|complete|completing|finalise|finalising|finalize|finalizing|draft|drafting|tidy|tidying)\b/i;
+const RECORD_DISPATCH_VERB = /\b(?:send|sends|sending|share|shares|sharing|circulate|circulating|distribute|distributing|email|emailing|issue|issuing|approve|approving|sign|signing|review|reviewing)\b/i;
+
+function meetingRecordAdminAction(value) {
+  const text = clean(value);
+  if (!MEETING_RECORD_OBJECT.test(text)) return false;
+  return RECORD_AUTHORING_VERB.test(text) && !RECORD_DISPATCH_VERB.test(text);
+}
+
 function reviewCandidateNoise(item, evidence) {
   if (item && item.source === 'workstream_dependency_review_candidate') return false;
   const text = clean(item.action);
   const sourceText = (item.evidenceIds || []).map((id) => evidence.events.find((event) => event.id === id)?.text || '').join(' ');
   const malformed = /,\s*I['’]m\b|\bbecause I['’]m\b/i.test(text);
   const unresolvedObject = /\b(?:review|send|share|update|complete)\s+(?:it|that|this)(?:\s+as well)?$/i.test(text);
-  return malformed || unresolvedObject || nonMinuteActionText(`${text} ${sourceText}`) || isUnderspecifiedAction(item);
+  return malformed || unresolvedObject || meetingRecordAdminAction(text) || nonMinuteActionText(`${text} ${sourceText}`) || isUnderspecifiedAction(item);
 }
 
 function actionWorkstreamFamilies(value) {
@@ -2613,4 +2635,4 @@ function actionsStage(evidence, state, profile, topology) {
   };
 }
 
-module.exports = { collectDecisionSignals, discussionCardsFromPlan, minutesPointAllowingDiscourseOpener, contextStage, contentStage, actionsStage, actionConfidenceTier, buildCommitmentThreads, actionsFromThread, semanticActionCandidate, semanticThreadReviewCandidate, hasSemanticRole, learnedSlotActions, resolveEnrichedActions, isUnderspecifiedAction, canonicalActionText, canonicalRiskText, corroboratedClosingRecapActions, workstreamActionReviewCandidates };
+module.exports = { collectDecisionSignals, meetingRecordAdminAction, discussionCardsFromPlan, minutesPointAllowingDiscourseOpener, contextStage, contentStage, actionsStage, actionConfidenceTier, buildCommitmentThreads, actionsFromThread, semanticActionCandidate, semanticThreadReviewCandidate, hasSemanticRole, learnedSlotActions, resolveEnrichedActions, isUnderspecifiedAction, canonicalActionText, canonicalRiskText, corroboratedClosingRecapActions, workstreamActionReviewCandidates };

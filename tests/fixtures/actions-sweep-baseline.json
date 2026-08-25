@@ -68,7 +68,6 @@
   },
   "scripts/meeting-minutes-core-golden/human_benchmarks/T733_eakin_tech_file/transcript.docx": {
     "published": [
-      "Jacqui Fox :: Update that table for the new set of minutes :: Not stated",
       "Not stated :: Be, especially the response to the cars :: Today"
     ]
   },
@@ -214,7 +213,6 @@
   },
   "scripts/meeting-minutes-final-golden/023_real_eakin_t733_weekly_transcript/transcript.txt": {
     "published": [
-      "Jacqui Fox :: Update that table for the new set of minutes :: Not stated",
       "Not stated :: Be, especially the response to the cars :: Today"
     ]
   },

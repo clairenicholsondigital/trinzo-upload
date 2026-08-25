@@ -746,7 +746,13 @@ function bucketKnownStagedAttendees(names) {
   const client = [];
   const unknown = [];
   for (const rawName of uniqueNames(names)) {
-    const canonicalName = canonicalStagedAttendeeAlias(rawName);
+    // canonicalKnownStagedPersonName, not just the literal alias map: the alias map only
+    // knows spellings somebody wrote down in advance ("Smith, Stuart M"), while the
+    // registry can repair a first-name match with an invented surname. Without this the
+    // action OWNER read "Rebecca Gill" and the attendee list on the details screen still
+    // read "Rebecca Cuckoo" - the same person, spelled two ways on two screens of the
+    // same document.
+    const canonicalName = canonicalKnownStagedPersonName(rawName) || canonicalStagedAttendeeAlias(rawName);
     const known = STAGED_ATTENDEE_BUCKET_BY_NAME.get(stagedKnownAttendeeKey(canonicalName));
     if (known?.bucket === 'internal') {
       internal.push(known.name);
@@ -1016,7 +1022,11 @@ function extractStagedDetailsFromTranscript(transcriptText, fileName = '') {
         meetingTypeSuggestion,
         internalAttendees,
         clientAttendees,
-        allAttendees: uniqueNames([...internalAttendees, ...clientAttendees, ...teamsSpeakers])
+        // teamsSpeakers carries the transcript's own spelling, so a name repaired in the
+        // bucketed lists reappeared here beside its broken twin: "Rebecca Gill" and
+        // "Rebecca Cuckoo" both listed as attendees of the same meeting. Canonicalise
+        // before the union so the dedupe can actually see they are one person.
+        allAttendees: uniqueNames([...internalAttendees, ...clientAttendees, ...teamsSpeakers.map((name) => canonicalKnownStagedPersonName(name) || name)])
       }
     },
     validationFlags: [...attendeeNameWarnings, ...typeSuggestionFlags],
