@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { groundProposals, quoteSupport, resolveProposedOwner, promptFor, QUOTE_GROUNDING } = require('../utils/canonicalMinutes/proposedActions');
+const { groundProposals, quoteSupport, resolveProposedOwner, stripOwnerPrefix, promptFor, QUOTE_GROUNDING } = require('../utils/canonicalMinutes/proposedActions');
 
 // Discovery by proposal, restraint by validation.
 //
@@ -81,4 +81,39 @@ test('the prompt distinguishes agreed from considered and forbids invention', ()
   assert.match(prompt, /reached no decision has NO agreed items/i);
   assert.match(prompt, /Invent nothing/i);
   assert.match(prompt, /VERBATIM/);
+});
+
+// The owner has its own column. Repeating the name inside the action is redundancy the
+// reviewer deletes on every row, and the model produces it despite being asked not to.
+
+test('a leading owner name is stripped from the action text', () => {
+  assert.equal(stripOwnerPrefix('Stuart Smith will share the risk analysis with Niamh', 'Stuart Smith'),
+    'Share the risk analysis with Niamh');
+  assert.equal(stripOwnerPrefix('Stuart will provide the audit plan on Wednesday', 'Stuart Smith'),
+    'Provide the audit plan on Wednesday');
+});
+
+test('a different person named in the action is information, not repetition', () => {
+  // Only THIS row's owner is stripped - "Rebecca will review David's comments" under owner
+  // Rebecca loses "Rebecca", never "David".
+  const stripped = stripOwnerPrefix('Rebecca will review David comments on the PMS file', 'Rebecca Gill');
+  assert.equal(stripped, 'Review David comments on the PMS file');
+  assert.match(stripped, /David/);
+});
+
+test('stripping never leaves a stub behind', () => {
+  // "Stuart Smith will go" would become "Go", which reads as broken rather than terse.
+  assert.equal(stripOwnerPrefix('Stuart Smith will go', 'Stuart Smith'), 'Stuart Smith will go');
+});
+
+test('an action that already starts with its verb is untouched', () => {
+  assert.equal(stripOwnerPrefix('Share the risk analysis before she arrives', 'Stuart Smith'),
+    'Share the risk analysis before she arrives');
+  assert.equal(stripOwnerPrefix('Send the report to Colm', 'Not stated'), 'Send the report to Colm');
+});
+
+test('the grounding threshold sits between fabrication and a trimmed real quote', () => {
+  // Measured: a fabricated quote scores 0.17 against the nearest turn; genuine proposals
+  // the model trimmed scored 0.46-0.59. The threshold has to sit in that empty band.
+  assert.ok(QUOTE_GROUNDING > 0.17 && QUOTE_GROUNDING <= 0.46);
 });

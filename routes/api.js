@@ -4167,14 +4167,52 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
       evidenceIds: item.evidenceIds,
       ownerUnassigned: item.owner === 'Not stated',
       modelProposed: true,
+      // Composed against a cited turn and already checked for grounding and owner safety,
+      // so the presentation wording gate must not silently remove it - the same treatment
+      // deterministically selected rows get. Without this, Abbott produced seven grounded
+      // proposals and published two: the gate dropped five real actions on wording alone.
+      selectionFinal: true,
       reviewDisposition: item.disposition === 'requirement' ? 'requirement' : 'confirmed_action'
     }));
-    if (added.length || actionProposals.considered.length) {
+    // Corroboration filter, applied only when the proposal call actually succeeded.
+    //
+    // The model reads the whole transcript and lists everything actionable in it. A
+    // deterministic row with no counterpart anywhere in that reading - not among the
+    // agreed items, the requirements, the options, or even the proposals refused for
+    // grounding - is a row the model saw the evidence for and did not think was work.
+    // That is what "Prepare the response to the cars" and "Update the ports table for the
+    // new set of minutes" are: mis-transcribed fragments the pattern layer shaped into
+    // instructions. Never applied when proposals were unavailable, because then the
+    // absence of corroboration means nothing.
+    const everythingProposed = [
+      ...actionProposals.agreed, ...actionProposals.requirements,
+      ...actionProposals.considered, ...(actionProposals.ungrounded || [])
+    ].map((item) => new Set(String(item.action || '').toLowerCase().match(/[a-z][a-z0-9'’-]{2,}/g) || []));
+    const corroborated = (item) => {
+      if (item.reviewerAuthored || item.ownerUnassigned) return true;
+      const tokens = new Set(String(item.action || '').toLowerCase().match(/[a-z][a-z0-9'’-]{2,}/g) || []);
+      if (!tokens.size) return false;
+      return everythingProposed.some((other) => {
+        if (!other.size) return false;
+        let shared = 0;
+        for (const token of tokens) if (other.has(token)) shared += 1;
+        return shared / Math.min(tokens.size, other.size) >= 0.34;
+      });
+    };
+    const uncorroborated = [];
+    const keptExisting = process.env.ACTION_CORROBORATION === '0' || !actionProposals.agreed.length
+      ? existing
+      : existing.filter((item) => {
+        if (corroborated(item)) return true;
+        uncorroborated.push(item);
+        return false;
+      });
+    if (added.length || actionProposals.considered.length || uncorroborated.length) {
       polished.payload = {
         ...polished.payload,
         screens: {
           ...(polished.payload?.screens || {}),
-          actions: [...existing, ...added],
+          actions: [...keptExisting, ...added],
           // The third bucket. A meeting that weighed options and agreed nothing produced no
           // actions and plenty of content, and forcing that into the actions table was how
           // a residents' parking meeting published seven commitments nobody made.

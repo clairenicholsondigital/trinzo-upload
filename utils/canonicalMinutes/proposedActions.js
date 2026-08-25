@@ -25,9 +25,15 @@ const DEFAULT_URL = 'https://eu.router.trooper.ai/v1/chat/completions';
 const DEFAULT_MODEL = 'gpt-4o-mini';
 
 // How much of the quoted span has to be found in a single transcript turn before the
-// proposal counts as grounded. Deliberately high: a proposal whose support cannot be
-// located is exactly the shape a fabricated action takes.
-const QUOTE_GROUNDING = 0.6;
+// proposal counts as grounded.
+//
+// Set from the measured gap rather than picked: a fabricated action ("we agreed to fly to
+// the moon next Tuesday") scores 0.17 against the nearest real turn, while genuine
+// proposals refused at 0.6 scored 0.46-0.59 - the model had quoted the turn accurately but
+// trimmed or lightly smoothed it ("I'm gonna focus on TFO3 this week"). 0.45 sits in the
+// empty band between the two, so real support still has to exist and invention still has
+// nowhere to hide.
+const QUOTE_GROUNDING = 0.45;
 
 const DISPOSITIONS = new Set(['agreed', 'requirement', 'considered']);
 
@@ -53,7 +59,8 @@ function promptFor(transcript, participants) {
     '',
     'For each item give:',
     '  owner       - the person responsible, exactly as named in the transcript, or "Not stated".',
-    '  action      - a short instruction in third-person minutes English.',
+    '  action      - a short instruction, starting with the verb. Do NOT begin with the owner\'s name:',
+    '                write "Share the risk analysis before she arrives", not "Stuart will share the risk analysis".',
     '  quote       - a VERBATIM span copied from the transcript that shows this item. Copy it exactly; do not paraphrase.',
     '  disposition - one of:',
     '      "agreed"      somebody committed to do this, or was asked and accepted.',
@@ -138,6 +145,26 @@ function groundProposals(items, evidence) {
   return { grounded, ungrounded };
 }
 
+// The owner has its own column, so repeating the name inside the action is redundancy the
+// reviewer has to delete on every row: "Stuart Smith will share the risk analysis" under an
+// owner cell already reading Stuart Smith. Stripped deterministically rather than trusted
+// to the prompt, and only when the name being stripped is THIS row's owner - a different
+// person named in the action is information, not repetition.
+function stripOwnerPrefix(action, owner) {
+  const text = clean(action);
+  const name = clean(owner);
+  if (!text || !name || /^not stated$/i.test(name)) return text;
+  const parts = [name, name.split(/\s+/)[0]].filter(Boolean).map((item) => item.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  for (const part of parts) {
+    const match = text.match(new RegExp(`^${part}\\s+(?:will|is to|should|to|needs to|has to)\\s+(.+)$`, 'i'));
+    if (match) {
+      const rest = clean(match[1]);
+      if (rest.split(/\s+/).length >= 3) return rest.charAt(0).toUpperCase() + rest.slice(1);
+    }
+  }
+  return text;
+}
+
 // An owner the transcript never mentions is a fabricated attribution even when the action
 // itself is real, so it is downgraded rather than published as though somebody accepted it.
 function resolveProposedOwner(owner, participants) {
@@ -157,7 +184,10 @@ async function proposeActions(transcript, evidence, options = {}) {
   const result = await requestProposals(transcript, participants, options);
   if (!result.ok) return { agreed: [], requirements: [], considered: [], ungrounded: [], reason: result.reason };
   const { grounded, ungrounded } = groundProposals(result.items, evidence);
-  const owned = grounded.map((item) => ({ ...item, owner: resolveProposedOwner(item.owner, participants) }));
+  const owned = grounded.map((item) => {
+    const owner = resolveProposedOwner(item.owner, participants);
+    return { ...item, owner, action: stripOwnerPrefix(item.action, owner) };
+  });
   return {
     agreed: owned.filter((item) => item.disposition === 'agreed'),
     requirements: owned.filter((item) => item.disposition === 'requirement'),
@@ -167,4 +197,4 @@ async function proposeActions(transcript, evidence, options = {}) {
   };
 }
 
-module.exports = { proposeActions, groundProposals, quoteSupport, resolveProposedOwner, promptFor, QUOTE_GROUNDING };
+module.exports = { proposeActions, groundProposals, quoteSupport, resolveProposedOwner, stripOwnerPrefix, promptFor, QUOTE_GROUNDING };

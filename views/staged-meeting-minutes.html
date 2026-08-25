@@ -1373,6 +1373,11 @@ td select {
   function validReviewerOwner(value) {
     var owner = String(value || '').replace(/\s+/g, ' ').trim();
     if (!owner || /^not stated$/i.test(owner)) return '';
+    // The dropdown's own control values are not people. "__add_owner__" is the sentinel for
+    // "Add someone new..." and the change handler swaps it for a typed name - but any path
+    // that reads the select without that handler (a restored draft, a save taken mid-
+    // selection) would otherwise publish the sentinel as the action's owner.
+    if (/^__[a-z_]+__$/i.test(owner)) return '';
     if (/^(?:it(?:['’]s| is)?|i|i['’]m|me|my|mine|we|we['’]re|us|our|ours|you|you['’]re|they|they['’]re|them|their|theirs|he|he['’]s|him|his|she|she['’]s|her|hers|this|that|there|here|someone|somebody|anyone|anybody|everyone|everybody|unknown|tbc|tbd|review|complete|update|share|send|confirm|action|owner)$/i.test(owner)) return '';
     if (/^[^A-Za-zÀ-ÖØ-öø-ÿ]+$/.test(owner) || /[.!?]$/.test(owner) || owner.split(/\s+/).length > 8) return '';
     return owner;
