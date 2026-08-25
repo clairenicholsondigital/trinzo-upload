@@ -88,6 +88,14 @@ test('a road-closure application is not a software change', () => {
   assert.equal(conceptFor('the software application needs a new release'), 'Software changes');
 });
 
+test('a solar shed alarm is not medtech alarm behaviour, a mute-button discussion is', () => {
+  // Fourth measured case of the class: an allotment society bought a fifteen-quid solar
+  // alarm for the shed, and bare "alarm" named the cluster "Alarm behaviour and controls" -
+  // which then minted the objective and the meeting-purpose sentence mechanically.
+  assert.equal(conceptFor('a proper hasp and a decent padlock, and maybe one of those solar alarm things for the shed'), '');
+  assert.equal(conceptFor('the mute button LED flash sequence and the low priority alarm chirp were reviewed'), 'Alarm behaviour and controls');
+});
+
 test('confirming venue access is not technical setup, screen sharing is', () => {
   assert.equal(conceptFor('Dan can update the run sheet after access is confirmed with the venue'), '');
   assert.equal(conceptFor('check screen sharing and camera access before the session'), 'Technical setup');

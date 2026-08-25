@@ -350,12 +350,12 @@
     "file": "scripts/meeting-minutes-final-golden/012_hiring_interview_debrief/transcript.txt",
     "topicCount": 2,
     "topics": [
-      "Product behaviour and design",
+      "Customer and stakeholder feedback",
       "Her gap is depth on incident management at larger scale"
     ],
     "summaryTopicCount": 1,
     "summaryTopics": [
-      "Product behaviour and design"
+      "Customer and stakeholder feedback"
     ]
   },
   {
@@ -876,12 +876,12 @@
     "file": "scripts/transcript-tests/021_hiring_interview_debrief/transcript.txt",
     "topicCount": 2,
     "topics": [
-      "Product behaviour and design",
+      "Customer and stakeholder feedback",
       "Her gap is depth on incident management at larger scale"
     ],
     "summaryTopicCount": 1,
     "summaryTopics": [
-      "Product behaviour and design"
+      "Customer and stakeholder feedback"
     ]
   },
   {
@@ -1500,7 +1500,7 @@
     ],
     "summaryTopicCount": 1,
     "summaryTopics": [
-      "Alarm behaviour and controls"
+      "Plans and timelines"
     ]
   },
   {

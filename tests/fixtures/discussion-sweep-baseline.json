@@ -238,8 +238,8 @@
   },
   "scripts/meeting-minutes-final-golden/012_hiring_interview_debrief/transcript.txt": {
     "published": [
-      "Product behaviour and design :: Maya was strong on system design and stakeholder communication.",
-      "Product behaviour and design :: The team will invite Maya to the final interview.",
+      "Customer and stakeholder feedback :: Maya was strong on system design and stakeholder communication.",
+      "Customer and stakeholder feedback :: The team will invite Maya to the final interview.",
       "Her gap is depth on incident management at larger scale :: Her gap is depth on incident management at larger scale."
     ]
   },
@@ -566,8 +566,8 @@
   },
   "scripts/transcript-tests/021_hiring_interview_debrief/transcript.txt": {
     "published": [
-      "Product behaviour and design :: Maya was strong on system design and stakeholder communication.",
-      "Product behaviour and design :: The team will invite Maya to the final interview.",
+      "Customer and stakeholder feedback :: Maya was strong on system design and stakeholder communication.",
+      "Customer and stakeholder feedback :: The team will invite Maya to the final interview.",
       "Her gap is depth on incident management at larger scale :: Her gap is depth on incident management at larger scale."
     ]
   },

@@ -25,7 +25,11 @@ const { isReviewerAuthored } = require('./state');
 // are added one measured mislabel at a time: "cost" named a parking dispute
 // commercial, "application" (road-closure) named a race committee "Software
 // changes", "access" (a gate fob) named it "Technical setup". Each anchor's diff
-// was read line by line before it stayed.
+// was read line by line before it stayed. Fourth case: "alarm" named an allotment
+// society's solar shed alarm "Alarm behaviour and controls" - a medtech label wearing a
+// garden shed - and the mislabelled topic then minted the objective and the purpose
+// sentence mechanically. The anchor tokens are the vocabulary of product-alarm discussion
+// (mute button, flash, priorities, chirp), which a burglar alarm never attracts.
 const CONCEPTS = [
   { label: 'Quality and risk indicators', pattern: /\b(?:alarm bells?|red flags?|warning signs?|early warnings?|risk indicators?|concerns?)\b/i },
   { label: 'Cybersecurity and access controls', pattern: /\b(?:cyber\s*security|usb port|port lock|password protect(?:ed|ion)?|unwarranted interference|unauthorised access|unauthorized access)\b/i },
@@ -33,7 +37,7 @@ const CONCEPTS = [
   { label: 'Electrical compliance testing', pattern: /\b(?:iec\s*60601|60601-1|electrical compliance)\b/i },
   { label: 'Software change traceability', pattern: /\b(?:17 changes|visibility within the code|device file history|software traceability|version traceability|retrospective test data)\b/i },
   { label: 'Software change control', pattern: /\b(?:change request|change control|software versions?|version\s*1\.0|non-significant change|non-substantial change)\b/i },
-  { label: 'Alarm behaviour and controls', pattern: /\b(?:alarm|mute button|led flash|flashing|low priority|medium priority|high priority)\b/i },
+  { label: 'Alarm behaviour and controls', pattern: /\b(?:alarm|mute button|led flash|flashing|low priority|medium priority|high priority)\b/i, anchor: /\b(?:mute button|led|flash(?:ing)?|(?:low|medium|high) priority|alarm code|audible|chirp)\b/i },
   { label: 'Scope and requirements', pattern: /\b(?:scope|requirements?|specifications?|criteria|standards?|regulations?)\b/i },
   { label: 'Plans and timelines', pattern: /\b(?:plan(?:ning)?|schedule|timeline|milestones?|dates?|deadline|week|month|delivery)\b/i },
   { label: 'Roles and responsibilities', pattern: /\b(?:owner(?:ship)?|roles?|responsibilit(?:y|ies)|lead|support|handover)\b/i },
@@ -43,7 +47,7 @@ const CONCEPTS = [
   { label: 'Quality and risk management', pattern: /\b(?:quality|qms|risk management|risk matrix|fmea|capa)\b/i },
   { label: 'Regulatory and compliance', pattern: /\b(?:regulatory|compliance|mdr|mdsap|fda|hpra|notified body|audit)\b/i },
   { label: 'Documentation and evidence', pattern: /\b(?:documents?|documentation|technical file|report|records?|evidence|tracker|spreadsheet|procedure)\b/i },
-  { label: 'Product behaviour and design', pattern: /\b(?:product|device|design|feature|behaviour|alarm|button|interface|usability)\b/i },
+  { label: 'Product behaviour and design', pattern: /\b(?:product|device|design|feature|behaviour|alarm|button|interface|usability)\b/i, anchor: /\b(?:products?|devices?|interface|usability|features?)\b/i },
   { label: 'Operations and processes', pattern: /\b(?:operations?|process(?:es)?|workflow|production|manufacturing|warehouse|supplier)\b/i },
   { label: 'Customer and stakeholder feedback', pattern: /\b(?:customer|client|stakeholder|feedback|complaint|interview|testimonial)\b/i },
   { label: 'Budget and commercial matters', pattern: /\b(?:budget|costs?|pricing|commercial|contract|invoice|revenue|sales)\b/i, anchor: /\b(?:budget|pricing|commercial|contract|invoice|revenue)\b/i },
