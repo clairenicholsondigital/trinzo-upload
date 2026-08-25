@@ -439,11 +439,18 @@ function actionsFromThread(thread, evidence, profile) {
   const acceptedCollectivePlan = acceptedAfterProposal || reaffirmedCollectivePlan;
   const requiredUnassignedWork = thread.events.some((event) => actionShape(event, evidence)?.speechAct === 'required_unassigned_work');
   const acceptedProposal = acceptedPronounProposal || acceptedCollectivePlan;
+  // Veto reasons are recorded when ACTION_FUNNEL is set so the attribution harness can rank
+  // them by how many human-minuted actions each one costs. Behaviour-neutral: the tap only
+  // observes the same conditions the returns already evaluate.
+  const vetoTap = (reason) => {
+    if (!process.env.ACTION_FUNNEL) return;
+    require('fs').appendFileSync(`${process.env.ACTION_FUNNEL}.vetoes`, `${JSON.stringify({ reason, events: thread.events.map((event) => event.text) })}\n`);
+  };
   if (thread.topologyMode !== 'distributed_recap') {
-    if (!explicitActionForm && !acceptedProposal && !requiredUnassignedWork && trainedCompleted > trainedConfirmed + 0.12) return [];
-    if (!explicitActionForm && !acceptedProposal && !requiredUnassignedWork && trainedNotAction > trainedConfirmed + 0.2 && trainedConfirmed < 0.28) return [];
-    if (!acceptedProposal && !strongExplicitAction && thread.semanticScores.hypothetical >= 0.7 && thread.semanticScores.hypothetical > positive + 0.08) return [];
-    if (thread.semanticScores.rejection >= 0.6 && thread.semanticScores.rejection > positive + 0.08) return [];
+    if (!explicitActionForm && !acceptedProposal && !requiredUnassignedWork && trainedCompleted > trainedConfirmed + 0.12) { vetoTap('completed_history_outranks_confirmed'); return []; }
+    if (!explicitActionForm && !acceptedProposal && !requiredUnassignedWork && trainedNotAction > trainedConfirmed + 0.2 && trainedConfirmed < 0.28) { vetoTap('not_action_outranks_confirmed'); return []; }
+    if (!acceptedProposal && !strongExplicitAction && thread.semanticScores.hypothetical >= 0.7 && thread.semanticScores.hypothetical > positive + 0.08) { vetoTap('hypothetical_veto'); return []; }
+    if (thread.semanticScores.rejection >= 0.6 && thread.semanticScores.rejection > positive + 0.08) { vetoTap('rejection_veto'); return []; }
   }
   const shapedEvents = thread.events.map((event) => ({ event, shape: actionShape(event, evidence) })).filter((item) => item.shape?.action && item.shape?.owner && (!item.event.roles.includes('hypothetical') || acceptedProposal || item.shape.speechAct === 'required_unassigned_work'));
   const concrete = shapedEvents.filter((item) => !pronominalTask(item.shape.action));
@@ -489,7 +496,7 @@ function actionsFromThread(thread, evidence, profile) {
         .find(Boolean);
       if (priorObject) action = `${genericObject[1]}${priorObject[1]}${genericObject[3]}`.replace(/\bthe\s+the\b/gi, 'the');
     }
-    if (action.split(/\s+/).length < 2 || action.split(/\s+/).length > 32) return null;
+    if (action.split(/\s+/).length < 2 || action.split(/\s+/).length > 32) { vetoTap(`word_bounds_${action.split(/\s+/).length}`); return null; }
     return {
       owner: shaped.shape.owner,
       action: action.charAt(0).toUpperCase() + action.slice(1),
