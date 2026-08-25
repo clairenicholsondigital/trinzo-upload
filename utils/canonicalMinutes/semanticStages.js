@@ -2316,6 +2316,22 @@ function workstreamActionReviewCandidates(evidence, state = {}) {
   return candidates;
 }
 
+// The floor separating "published as a row" from "held as a review candidate", for
+// meetings of 100+ events. Rows scoring between the survival floor (0.08) and this one
+// were found but not shown.
+//
+// Measured with scripts/action_recall_attribution.js: this band holds exactly THREE of the
+// 102 ground-truth actions, so lowering it is a small, cheap recall gain and not the
+// answer to under-extraction - 56 of the 74 lost actions never reach this decision at all.
+// Left at 0.22. The reviewer asked for weakly-detected actions to be published as rows,
+// and this is the switch that would do it - but measured, dropping it to the survival
+// floor adds 15 rows across the 122-transcript corpus and recovers NONE of the 102
+// ground-truth actions, because the three the harness attributes to this area are lost to
+// isUnderspecifiedAction and the 0.08 survival floor rather than to the band. Publishing
+// them would be pure noise against a reviewer whose actual goal is less editing time.
+// ACTION_PUBLISH_FLOOR makes the dial available without guessing at it in code.
+const PUBLISH_FLOOR = Number(process.env.ACTION_PUBLISH_FLOOR || 0.22);
+
 function actionsStage(evidence, state, profile, topology) {
   const threads = buildCommitmentThreads(evidence, profile, topology);
   const deterministic = deterministicStages.actionsStage(evidence, state, topology).actions;
@@ -2394,7 +2410,7 @@ function actionsStage(evidence, state, profile, topology) {
     actionCandidates = [...mandatory, ...optional]
       .sort((left, right) => left.index - right.index)
       .map((candidate) => candidate.item);
-    actions = [...mandatory, ...optional.filter((candidate) => candidate.publishability >= 0.22)]
+    actions = [...mandatory, ...optional.filter((candidate) => candidate.publishability >= PUBLISH_FLOOR)]
       .sort((left, right) => left.index - right.index)
       .map((candidate) => candidate.item);
   }
