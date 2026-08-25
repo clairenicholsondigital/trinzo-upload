@@ -355,6 +355,8 @@ tr .review-field-note { color:#27323a; background:#f2fbfb; }
   border-radius:6px;
 }
 .stage-validation-warning .stage-validation-tag { background:#f5e2b8; color:#7a5b12; }
+tr.wording-unresolved td:first-child { box-shadow:inset 3px 0 0 #d9a514; }
+.wording-unresolved-note { display:inline-block; margin-bottom:4px; padding:1px 8px; border-radius:6px; background:#f5e2b8; color:#7a5b12; font-size:0.72rem; font-weight:600; }
 .stage-validation-info .stage-validation-tag { background:#d8ecf2; color:#22697e; }
 @media (max-width:760px) {
   .stage-validation-flag { grid-template-columns:1fr; }
@@ -1616,9 +1618,12 @@ td select {
     }
     var actionText = capitaliseInitial(action.action);
     if (!actionText && !action.startBlank) actionText = 'Review action wording';
-    return '<tr>' +
+    // A row the wording repair could not resolve publishes as transcript wording, marked -
+    // never dressed as a finished minute and never dropped. The reviewer edits it in place.
+    var unresolved = Boolean(action.wordingUnresolved);
+    return '<tr' + (unresolved ? ' class="wording-unresolved"' : '') + '>' +
       '<td><select class="action-owner-select" data-owner="' + escapeHtml(validReviewerOwner(action.owner)) + '" aria-label="Action owner">' + actionOwnerOptions(action.owner) + '</select></td>' +
-      '<td><textarea placeholder="Describe the action…">' + escapeHtml(actionText) + '</textarea></td>' +
+      '<td>' + (unresolved ? '<span class="wording-unresolved-note">Transcript wording — rephrase before sharing</span>' : '') + '<textarea placeholder="Describe the action…">' + escapeHtml(actionText) + '</textarea></td>' +
       '<td><input value="' + escapeHtml(capitaliseInitial(action.deadline)) + '" placeholder="e.g. 14 August 2026 or next Monday" aria-label="Action date or deadline" /></td>' +
       '<td><button class="secondary" type="button" data-action-row="duplicate">Duplicate</button> <button class="secondary" type="button" data-action-row="delete">Delete</button></td>' +
     '</tr>';

@@ -120,12 +120,29 @@ function earlyBarePronoun(words) {
   return false;
 }
 
+// The same positional doctrine earlyBarePronoun documents, applied to demonstratives: a
+// deictic is unresolved only when nothing has come before it to point at. "Find that
+// little clock" opens with a verb and flags; "The risk analysis will be shared prior to
+// arrival, but access to this information is subject to control" carries its antecedent in
+// the same sentence and reads fine as a minute. Measured on the 2026-08-25 baseline: 13 of
+// the 17 unresolved_deixis flags were sentences of the second kind - real minutes English
+// flagged for containing the word "this" - and a mandatory presentation gate cannot sit on
+// a detector that rewrites good sentences.
 function unresolvedDeixis(text) {
   const words = clean(text).split(/\s+/);
   if (earlyBarePronoun(words)) return true;
+  let sawNounLike = false;
   for (let index = 0; index < words.length; index += 1) {
     const bare = words[index].replace(/[^A-Za-z'’-]/g, '');
-    if (!/^(?:that|this|these|those)$/i.test(bare)) continue;
+    if (!/^(?:that|this|these|those)$/i.test(bare)) {
+      // The same loose noun approximation as earlyBarePronoun, and loose in the same safe
+      // direction: over-counting nouns under-flags demonstratives.
+      if (bare.length >= 3 && !/^(?:the|and|but|for|with|from|into|onto|then|than|will|would|shall|should|could|can|may|might|must|being|been|was|were|are|not|its|his|her|their|our|your|my)$/i.test(bare)) {
+        if (!(index === 0 && !sawNounLike)) sawNounLike = true;
+      }
+      continue;
+    }
+    if (sawNounLike) continue;
     const next = (words[index + 1] || '').replace(/[^A-Za-z'’-]/g, '');
     // "Confirm that the invoice was paid", "three items that are still outstanding", "the
     // plan is that testing is complete" - a clause follows, not a thing. A finite verb close

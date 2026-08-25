@@ -114,3 +114,78 @@ test('changing only the function words is not a repair', async () => {
   assert.equal(await repairedAction(original, 'Find the wall clock above the presenter view'),
     'Find the wall clock above the presenter view');
 });
+
+// --- the publication promise: no broken row is beyond the repair's reach, and nothing
+// broken ships dressed as a minute.
+
+test('a tautology is inside the repair trigger, not outside it', async () => {
+  // "The ICP is defined as the ideal client profile" shipped for weeks because its fault
+  // was mechanical-severity and the trigger stopped at voice/referential/truncation.
+  const payload = {
+    stagedStage: 'actions',
+    screens: { actions: [{ owner: 'Priya', action: 'The Ideal Client Profile (ICP) is defined as the ideal client profile.', deadline: 'Not stated', evidenceIds: ['evt_1'] }] }
+  };
+  const result = await repairActionWording(payload, pack, {
+    apiKey: 'test', url: 'https://example.invalid',
+    fetchImpl: stubReturning('Agree a working definition of the ideal client profile (ICP).')
+  });
+  assert.equal(result.attempted, 1);
+  assert.equal(result.repaired, 1);
+  assert.deepEqual(wordingFaults(result.payload.screens.actions[0].action), []);
+});
+
+test('the ninth broken row is offered for repair too, in a second chunk', async () => {
+  // The old REPAIR_ROW_LIMIT of 8 meant the ninth broken row shipped broken without ever
+  // being offered - an arbitrary place for a publication promise to stop.
+  const actions = Array.from({ length: 9 }, (_unused, i) => ({
+    owner: 'Barbara Finch', action: `Bring one to show you at plot ${i + 1}`, deadline: 'Not stated', evidenceIds: ['evt_1']
+  }));
+  let calls = 0;
+  const fetchImpl = async (_url, request) => {
+    calls += 1;
+    const prompt = JSON.parse(request.body).messages[1].content;
+    const rows = JSON.parse(prompt.slice(prompt.indexOf('RECORDS:') + 9).trim());
+    return {
+      ok: true, status: 200,
+      json: async () => ({ choices: [{ message: { content: JSON.stringify({
+        repairs: rows.map((row) => ({ index: row.index, action: `Confirm the council letter for plot ${row.index + 1}.` }))
+      }) } }] })
+    };
+  };
+  const result = await repairActionWording({ stagedStage: 'actions', screens: { actions } }, pack, { apiKey: 'test', url: 'https://example.invalid', fetchImpl });
+  assert.equal(result.attempted, 9);
+  assert.equal(result.repaired, 9);
+  assert.equal(calls, 2, 'nine rows travel as a chunk of eight and a chunk of one');
+});
+
+test('a refused repair gets a second round, and the second round says why', async () => {
+  // Round one plays the metric-gaming move the content-word guard exists for: swapping
+  // the demonstrative for an article. Refused. Round two must carry the retry nudge -
+  // at temperature 0.1 an unchanged prompt mostly reproduces the rejected answer.
+  const prompts = [];
+  const answers = ['Find the little clock top right', 'Find the small wall clock at the top right of the studio.'];
+  const fetchImpl = async (_url, request) => {
+    prompts.push(JSON.parse(request.body).messages[1].content);
+    const answer = answers[prompts.length - 1];
+    return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: JSON.stringify({ repairs: [{ index: 0, action: answer }] }) } }] }) };
+  };
+  const result = await repairActionWording(payloadWith('Find that little clock top right'), pack, { apiKey: 'test', url: 'https://example.invalid', fetchImpl });
+  assert.equal(prompts.length, 2);
+  assert.ok(!/previous rewrite/i.test(prompts[0]));
+  assert.ok(/previous rewrite/i.test(prompts[1]));
+  assert.equal(result.repaired, 1);
+  assert.equal(result.payload.screens.actions[0].action, 'Find the small wall clock at the top right of the studio.');
+});
+
+test('a row that survives both rounds publishes marked, never dropped', async () => {
+  const original = 'Find that little clock top right';
+  const result = await repairActionWording(payloadWith(original), pack, {
+    apiKey: 'test', url: 'https://example.invalid',
+    fetchImpl: stubReturning('The speaker will find the clock for the recipient.')
+  });
+  const row = result.payload.screens.actions[0];
+  assert.equal(row.action, original, 'the row is never dropped for its wording');
+  assert.equal(row.wordingUnresolved, true, 'but it is marked, so the UI can present it as transcript wording');
+  assert.equal(result.repaired, 0);
+  assert.equal(result.attempted, 1);
+});

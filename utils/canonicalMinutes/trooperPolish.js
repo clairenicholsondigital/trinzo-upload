@@ -800,13 +800,12 @@ function normaliseEvidencePackEntities(evidencePack, participants) {
 // Measured live, that left 26% of published actions carrying a wording fault, including
 // every example the reviewer reported.
 //
-// So the residue gets one more round, asked for one thing only. It is a repair, not a
+// So the residue gets repair rounds, asked for one thing only. It is a repair, not a
 // re-selection: every row supplied comes back, and the evidence window comes with it,
 // because the window is the only place "that" in "Bring that to the US team" can be
-// resolved from. A repair is accepted only if it clears the faults AND introduces no
-// protected fact - number, acronym or proper name - that the original did not have, which
-// is the same guard the summary grammar pass uses. Anything else leaves the row as it was.
-const REPAIR_ROW_LIMIT = 8;
+// resolved from. A repair is accepted only through the acceptWordingRepair guard chain
+// below; anything refused twice publishes marked wordingUnresolved rather than dressed
+// as a minute, and nothing is ever dropped for its wording.
 
 // Definite generic human reference: a noun phrase that points at a person and names none.
 const ANONYMOUS_PERSON = /\bthe\s+(?:speaker|recipient|individual|person|attendee|participant|user|requester|reader|addressee|action item)\b/i;
@@ -820,10 +819,17 @@ function protectedFactsOf(value) {
 }
 
 function wordingFaults(action) {
-  return minutesEnglishFaults(action).filter((fault) => ['voice', 'referential', 'truncation'].includes(fault.severity));
+  // Every fault the detectors can find, not a severity subset. The mechanical deletion
+  // repair runs before this is consulted in the repair flow, so anything still present -
+  // a tautology, an empty adjunct, raw speech, a dangling deictic - is exactly what the
+  // model round exists to fix. This list used to stop at voice/referential/truncation,
+  // which is why "The ICP is defined as the ideal client profile" and "review the risk
+  // whilst looking at the risk" shipped: their faults were mechanical-severity, outside
+  // the trigger, and the deletion repair had no rule for them either.
+  return minutesEnglishFaults(action);
 }
 
-function repairPrompt(rows) {
+function repairPrompt(rows, retry) {
   return [
     '[CMD: task=minutes_wording_repair; format=json]',
     'Each supplied record is a real commitment from a meeting whose wording is not fit to print. Rewrite each one as one or two complete sentences of third-person meeting-minutes English.',
@@ -831,11 +837,128 @@ function repairPrompt(rows) {
     'Keep every fact: owner, deadline, quantity, standard, document and name. Invent nothing and add no detail the evidence does not carry.',
     'Write each record as an instruction beginning with a verb - "Write to the council...", "Service the chiller...". Never narrate the meeting: no "the speaker", no "the recipient", no "the action item is". Do not turn the person the work is about into the person doing it.',
     'Return every supplied index. If a record cannot be resolved from its evidence, return its original text unchanged.',
+    // The retry line earns its place: at temperature 0.1 an unchanged prompt mostly
+    // reproduces the rejected answer, so a second round without it is a wasted call.
+    retry ? 'A previous rewrite of these records was rejected for keeping speech-like wording or changing too little. Rewrite each record thoroughly, in fresh words.' : '',
     'Return JSON only as {"repairs":[{"index":0,"action":"..."}]}.',
     '',
     'RECORDS:',
     JSON.stringify(rows.map((row) => ({ index: row.index, action: row.action, evidence: row.evidence })))
-  ].join('\n');
+  ].filter(Boolean).join('\n');
+}
+
+function discussionRepairPrompt(rows, retry) {
+  return [
+    '[CMD: task=minutes_wording_repair; format=json]',
+    'Each supplied record is a discussion point from meeting minutes whose wording is not fit to print. Rewrite each one as one or two complete sentences of third-person meeting-minutes prose.',
+    'Resolve every it, this and that from the supplied evidence window and name the thing referred to. Remove first-person and second-person speech, conversational asides, restarts, repetition and circular phrasing.',
+    'Keep every fact: name, quantity, standard, document and date. Invent nothing and add no detail the evidence does not carry.',
+    'These are records of what was discussed or agreed, not instructions: never write an imperative, and never narrate ("the speaker said...").',
+    'Return every supplied index. If a record cannot be resolved from its evidence, return its original text unchanged.',
+    retry ? 'A previous rewrite of these records was rejected for keeping speech-like wording or changing too little. Rewrite each record thoroughly, in fresh words.' : '',
+    'Return JSON only as {"repairs":[{"index":0,"action":"..."}]}.',
+    '',
+    'RECORDS:',
+    JSON.stringify(rows.map((row) => ({ index: row.index, action: row.action, evidence: row.evidence })))
+  ].filter(Boolean).join('\n');
+}
+
+// The guard chain every accepted repair passes, shared by the action and discussion
+// rounds. Each rule was added after a live failure and keeps its story:
+function acceptWordingRepair(original, candidate, { imperative } = {}) {
+  if (!candidate || candidate.toLowerCase() === original.toLowerCase()) return false;
+  if (wordingFaults(candidate).length) return false;
+  // An action record is an instruction. Requiring the imperative is what stops the
+  // repair reframing a row into narration - "The speaker will bring one to show the
+  // recipient", "The action item is to locate the clock" - and, more seriously, what
+  // stops it moving the work onto the wrong person: "Service the chiller" became "The
+  // refrigeration engineer is to service the chiller", quietly making the engineer the
+  // owner of an action that belonged to the brewer who was going to ring them.
+  if (imperative && !openingVerbIsActionable(candidate)) return false;
+  // A repair may not introduce an anonymous person. "Bring the enormous item to show the
+  // recipient" is grammatical, third person and imperative, and tells the reader nothing
+  // about who anything is for - the repair substituted a placeholder for a name it could
+  // not resolve, which is worse than leaving the pronoun, because a pronoun looks unfinished
+  // and a placeholder looks deliberate. Only refused when the original did not have one.
+  if (ANONYMOUS_PERSON.test(candidate) && !ANONYMOUS_PERSON.test(original)) return false;
+  // Changing only the function words is not a repair, it is passing the test.
+  //
+  // "Find that little clock top right" came back as "Find THE little clock top right" -
+  // the demonstrative swapped for a definite article, which clears the deixis detector
+  // and leaves the reader exactly as unable to find the clock. A repair that resolves a
+  // reference has to name the thing, and naming it changes the content words. If the
+  // content words are identical the row has not been repaired, so it keeps its fault and
+  // its flag rather than being quietly marked fixed.
+  const beforeContent = contentSet(original);
+  const afterContent = contentSet(candidate);
+  const unchanged = beforeContent.size === afterContent.size
+    && [...afterContent].every((token) => beforeContent.has(token));
+  if (unchanged) return false;
+  const before = protectedFactsOf(original);
+  if ([...protectedFactsOf(candidate)].some((fact) => !before.has(fact))) return false;
+  return true;
+}
+
+const REPAIR_ROWS_PER_CALL = 8;
+const REPAIR_ROUNDS = 2;
+
+async function requestWordingRepairs(rows, prompt, options) {
+  const apiKey = clean(options.apiKey ?? process.env.TROOPER_API_KEY);
+  const fetchImpl = options.fetchImpl || fetch;
+  if (!apiKey || typeof fetchImpl !== 'function') return { ok: false, reason: 'unavailable' };
+  try {
+    const response = await fetchImpl(clean(options.url ?? process.env.TROOPER_CHAT_COMPLETIONS_URL) || DEFAULT_URL, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: clean(options.model ?? process.env.TROOPER_MODEL) || DEFAULT_MODEL,
+        messages: [
+          { role: 'system', content: 'Rewrite meeting records into client-ready minutes English. Return valid JSON only.' },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.1,
+        max_tokens: Math.min(1600, 300 + rows.length * 140),
+        response_format: { type: 'json_object' }
+      })
+    });
+    if (!response.ok) return { ok: false, reason: `http_${response.status}` };
+    const body = await response.json();
+    const content = body?.choices?.[0]?.message?.content;
+    const output = typeof content === 'object' ? content : JSON.parse(String(content || '{}'));
+    return { ok: true, repairs: Array.isArray(output?.repairs) ? output.repairs : [] };
+  } catch (error) {
+    return { ok: false, reason: error?.message || 'request_failed' };
+  }
+}
+
+// The driver both repair surfaces share. Rows arrive faulted; each round sends what is
+// still broken (chunked, so a meeting with twenty broken rows is not a single oversized
+// call), applies whatever passes acceptWordingRepair, and the second round retries the
+// refusals with the retry nudge in the prompt. No row cap: the old REPAIR_ROW_LIMIT of 8
+// meant the ninth broken row shipped broken without ever being offered for repair, which
+// is an arbitrary place for a publication promise to stop.
+async function runWordingRepairRounds(entries, promptBuilder, imperative, options) {
+  const fixed = new Map();
+  let reason = '';
+  let remaining = entries;
+  for (let round = 0; round < REPAIR_ROUNDS && remaining.length; round += 1) {
+    const next = [];
+    for (let at = 0; at < remaining.length; at += REPAIR_ROWS_PER_CALL) {
+      const chunk = remaining.slice(at, at + REPAIR_ROWS_PER_CALL);
+      const rows = chunk.map((entry) => ({ index: entry.index, action: entry.text, evidence: entry.evidence }));
+      const result = await requestWordingRepairs(rows, promptBuilder(rows, round > 0), options);
+      if (!result.ok) { reason = result.reason; next.push(...chunk); continue; }
+      const byIndex = new Map(result.repairs.map((repair) => [Number(repair?.index), clean(repair?.action)]));
+      for (const entry of chunk) {
+        const candidate = byIndex.get(entry.index);
+        if (candidate && acceptWordingRepair(entry.text, candidate, { imperative })) fixed.set(entry.index, candidate);
+        else next.push(entry);
+      }
+    }
+    remaining = next;
+    if (reason === 'unavailable') break;
+  }
+  return { fixed, reason };
 }
 
 async function repairActionWording(payload, evidencePack, options = {}) {
@@ -849,12 +972,9 @@ async function repairActionWording(payload, evidencePack, options = {}) {
     });
   const broken = actions
     .map((action, index) => ({ action: clean(action.action), index, faults: wordingFaults(clean(action.action)) }))
-    .filter((row) => row.faults.length)
-    .slice(0, REPAIR_ROW_LIMIT);
-  if (!broken.length) return { payload: { ...payload, screens: { ...payload.screens, actions } }, repaired: 0, attempted: 0 };
-  const apiKey = clean(options.apiKey ?? process.env.TROOPER_API_KEY);
-  const fetchImpl = options.fetchImpl || fetch;
-  if (!apiKey || typeof fetchImpl !== 'function') return { payload, repaired: 0, attempted: broken.length, reason: 'unavailable' };
+    .filter((row) => row.faults.length);
+  const withActions = (rows) => ({ ...payload, screens: { ...payload.screens, actions: rows } });
+  if (!broken.length) return { payload: withActions(actions), repaired: 0, attempted: 0 };
 
   const textFor = (index) => evidenceEntriesFor({ evidence: (evidencePack || []).flatMap((item) => item.evidence || []) })
     .filter((entry) => (actions[index].evidenceIds || []).map(String).includes(String(entry.id)))
@@ -863,71 +983,57 @@ async function repairActionWording(payload, evidencePack, options = {}) {
     .slice(0, 4)
     .join(' ');
 
-  const rows = broken.map((row) => ({ index: row.index, action: row.action, evidence: textFor(row.index) }));
-  try {
-    const response = await fetchImpl(clean(options.url ?? process.env.TROOPER_CHAT_COMPLETIONS_URL) || DEFAULT_URL, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: clean(options.model ?? process.env.TROOPER_MODEL) || DEFAULT_MODEL,
-        messages: [
-          { role: 'system', content: 'Rewrite meeting records into client-ready minutes English. Return valid JSON only.' },
-          { role: 'user', content: repairPrompt(rows) }
-        ],
-        temperature: 0.1,
-        max_tokens: 900,
-        response_format: { type: 'json_object' }
-      })
+  const entries = broken.map((row) => ({ index: row.index, text: row.action, evidence: textFor(row.index) }));
+  const { fixed, reason } = await runWordingRepairRounds(entries, repairPrompt, true, options);
+  const brokenIndexes = new Set(broken.map((row) => row.index));
+  const next = actions.map((item, index) => {
+    if (fixed.has(index)) return { ...item, action: fixed.get(index), wordingRepaired: true };
+    // A row that survived both rounds still publishes - dropping a real commitment to
+    // keep the prose tidy is the worse trade - but it publishes marked, so the UI can
+    // present it as transcript wording under review rather than dressed as a minute.
+    if (brokenIndexes.has(index)) return { ...item, wordingUnresolved: true };
+    return item;
+  });
+  return { payload: withActions(next), repaired: fixed.size, attempted: broken.length, ...(reason ? { reason } : {}) };
+}
+
+// The same promise for discussion prose. Until now a broken discussion point - "the team
+// had looked at starting to document that change within the on a change record" - had no
+// second chance anywhere: the rewrite that produced it was also the last pass that
+// touched it. Mechanical deletion first, then the shared repair rounds, prose rules.
+async function repairDiscussionWording(payload, evidencePack, options = {}) {
+  const cards = Array.isArray(payload?.screens?.discussion) ? payload.screens.discussion : [];
+  const repairedCards = cards.map((card) => ({
+    ...card,
+    points: (card.points || []).map((point) => {
+      const text = clean(typeof point === 'string' ? point : point?.text);
+      const repair = repairMechanicalFaults(text);
+      return repair.applied.length ? repair.text : text;
+    })
+  }));
+  const entriesById = new Map(
+    evidenceEntriesFor({ evidence: (evidencePack || []).flatMap((item) => item.evidence || []) })
+      .map((entry) => [String(entry.id), clean(entry.text)])
+  );
+  const evidenceTextFor = (card) => (Array.isArray(card.evidenceIds) ? card.evidenceIds : [])
+    .map((id) => entriesById.get(String(id)))
+    .filter(Boolean)
+    .slice(0, 4)
+    .join(' ');
+  const entries = [];
+  repairedCards.forEach((card, cardIndex) => {
+    card.points.forEach((point, pointIndex) => {
+      if (!wordingFaults(point).length) return;
+      entries.push({ index: entries.length, cardIndex, pointIndex, text: point, evidence: evidenceTextFor(card) });
     });
-    if (!response.ok) return { payload, repaired: 0, attempted: broken.length, reason: `http_${response.status}` };
-    const body = await response.json();
-    const content = body?.choices?.[0]?.message?.content;
-    const output = typeof content === 'object' ? content : JSON.parse(String(content || '{}'));
-    const repairs = Array.isArray(output?.repairs) ? output.repairs : [];
-    const next = actions.slice();
-    let repaired = 0;
-    for (const repair of repairs) {
-      const index = Number(repair?.index);
-      if (!Number.isInteger(index) || !next[index]) continue;
-      const original = clean(next[index].action);
-      const candidate = clean(repair?.action);
-      if (!candidate || candidate.toLowerCase() === original.toLowerCase()) continue;
-      if (wordingFaults(candidate).length) continue;
-      // An action record is an instruction. Requiring the imperative is what stops the
-      // repair reframing a row into narration - "The speaker will bring one to show the
-      // recipient", "The action item is to locate the clock" - and, more seriously, what
-      // stops it moving the work onto the wrong person: "Service the chiller" became "The
-      // refrigeration engineer is to service the chiller", quietly making the engineer the
-      // owner of an action that belonged to the brewer who was going to ring them.
-      if (!openingVerbIsActionable(candidate)) continue;
-      // A repair may not introduce an anonymous person. "Bring the enormous item to show the
-      // recipient" is grammatical, third person and imperative, and tells the reader nothing
-      // about who anything is for - the repair substituted a placeholder for a name it could
-      // not resolve, which is worse than leaving the pronoun, because a pronoun looks unfinished
-      // and a placeholder looks deliberate. Only refused when the original did not have one.
-      if (ANONYMOUS_PERSON.test(candidate) && !ANONYMOUS_PERSON.test(original)) continue;
-      // Changing only the function words is not a repair, it is passing the test.
-      //
-      // "Find that little clock top right" came back as "Find THE little clock top right" -
-      // the demonstrative swapped for a definite article, which clears the deixis detector
-      // and leaves the reader exactly as unable to find the clock. A repair that resolves a
-      // reference has to name the thing, and naming it changes the content words. If the
-      // content words are identical the row has not been repaired, so it keeps its fault and
-      // its flag rather than being quietly marked fixed.
-      const beforeContent = contentSet(original);
-      const afterContent = contentSet(candidate);
-      const unchanged = beforeContent.size === afterContent.size
-        && [...afterContent].every((token) => beforeContent.has(token));
-      if (unchanged) continue;
-      const before = protectedFactsOf(original);
-      if ([...protectedFactsOf(candidate)].some((fact) => !before.has(fact))) continue;
-      next[index] = { ...next[index], action: candidate, wordingRepaired: true };
-      repaired += 1;
-    }
-    return { payload: { ...payload, screens: { ...payload.screens, actions: next } }, repaired, attempted: broken.length };
-  } catch (error) {
-    return { payload: { ...payload, screens: { ...payload.screens, actions } }, repaired: 0, attempted: broken.length, reason: error?.message || 'request_failed' };
+  });
+  const withCards = { ...payload, screens: { ...payload.screens, discussion: repairedCards } };
+  if (!entries.length) return { payload: withCards, repaired: 0, attempted: 0 };
+  const { fixed, reason } = await runWordingRepairRounds(entries, discussionRepairPrompt, false, options);
+  for (const entry of entries) {
+    if (fixed.has(entry.index)) repairedCards[entry.cardIndex].points[entry.pointIndex] = fixed.get(entry.index);
   }
+  return { payload: withCards, repaired: fixed.size, attempted: entries.length, ...(reason ? { reason } : {}) };
 }
 
 async function polishCanonicalStage(payload, options = {}) {
@@ -1001,4 +1107,4 @@ async function polishCanonicalStage(payload, options = {}) {
   return { payload: rewritten, used: true, reason: `Trooper rewrote ${packs.length} bounded MiniLM evidence pack(s).`, usage };
 }
 
-module.exports = { promptFor, polishCanonicalStage, repairActionWording, wordingFaults, applyActionRewrite, applyDiscussionRewrite, discussionPointGrounded, unresolvedReference, canonicalFallback, nonActionState, nearDuplicate, addRecoveredActionCandidates, clientReadyPresentation, normaliseActionPresentation, normaliseDiscussionPresentation };
+module.exports = { promptFor, polishCanonicalStage, repairActionWording, repairDiscussionWording, acceptWordingRepair, wordingFaults, applyActionRewrite, applyDiscussionRewrite, discussionPointGrounded, unresolvedReference, canonicalFallback, nonActionState, nearDuplicate, addRecoveredActionCandidates, clientReadyPresentation, normaliseActionPresentation, normaliseDiscussionPresentation };

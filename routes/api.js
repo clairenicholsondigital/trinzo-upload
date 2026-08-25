@@ -46,7 +46,7 @@ const { runCanonicalNoEditPass } = require('../utils/canonicalMinutes/runner');
 const { runCanonicalLiveStage } = require('../utils/canonicalMinutes/liveStages');
 const { suggestMeetingTypeFromEvidence } = require('../utils/canonicalMinutes/meetingTypeSuggestion');
 const { prepareEvidence } = require('../utils/canonicalMinutes/evidence');
-const { polishCanonicalStage, canonicalFallback, addRecoveredActionCandidates, clientReadyPresentation, repairActionWording, wordingFaults } = require('../utils/canonicalMinutes/trooperPolish');
+const { polishCanonicalStage, canonicalFallback, addRecoveredActionCandidates, clientReadyPresentation, repairActionWording, repairDiscussionWording, wordingFaults } = require('../utils/canonicalMinutes/trooperPolish');
 const { enrichActionReviewCandidate } = require('../utils/canonicalMinutes/actionReviewRanking');
 const { reviewGeneratedContent } = require('../utils/terminologyQa');
 const { generateStagedMinutesPdf, stagedMinutesPdfFilename } = require('../utils/stagedMinutesPdf');
@@ -3989,7 +3989,7 @@ function assessGenerationHealth({ stage, trooper, summaryPolish, grammarPolish, 
   }
   // The repair failing its guards on a row is not a degradation - those rows carry their
   // own flag. Only a repair that could not run at all is one.
-  if (stage === 'actions' && wordingRepair?.attempted > 0 && wordingRepair?.reason) {
+  if (['actions', 'discussion'].includes(stage) && wordingRepair?.attempted > 0 && wordingRepair?.reason) {
     note('wording_repair', wordingRepair.reason, `the wording repair (${wordingRepair.attempted} flagged row${wordingRepair.attempted === 1 ? '' : 's'} published as extracted)`);
   }
   return { served: degradations.length ? 'degraded' : 'full', degradations };
@@ -4160,6 +4160,34 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
       };
     }
   }
+  // Discussion prose gets the same publication promise as actions: broken wording is
+  // mechanically repaired, then sent to the model, and whatever survives both rounds is
+  // pointed at rather than left to be noticed. Until this block a broken discussion point
+  // had no second chance anywhere - the rewrite that produced it was the last pass that
+  // touched it.
+  let discussionWordingRepair = { repaired: 0, attempted: 0 };
+  if (stage === 'discussion') {
+    discussionWordingRepair = await repairDiscussionWording(result, canonicalEvidencePack, {});
+    result = discussionWordingRepair.payload || result;
+    const stillBrokenPoints = (result?.screens?.discussion || [])
+      .flatMap((card) => (card.points || []).map((point) => (typeof point === 'string' ? point : point?.text)))
+      .filter((point) => wordingFaults(String(point || '')).length);
+    if (stillBrokenPoints.length) {
+      result = {
+        ...result,
+        validationFlags: [
+          ...(Array.isArray(result.validationFlags) ? result.validationFlags : []),
+          {
+            type: 'discussion_wording_needs_review',
+            severity: 'warning',
+            blocking: false,
+            message: `${stillBrokenPoints.length} discussion point${stillBrokenPoints.length === 1 ? '' : 's'} below still read${stillBrokenPoints.length === 1 ? 's' : ''} like speech rather than a minute. The content is real; the wording needs a pass before sharing.`,
+            resolutionKey: `discussion-wording-needs-review:${crypto.createHash('sha256').update(stillBrokenPoints.join('|')).digest('hex').slice(0, 16)}`
+          }
+        ]
+      };
+    }
+  }
   let initialUnderstandingPolish = { used: false, reason: 'not_applicable' };
   const presentationInitialSummary = result?.screens?.summary;
   if (stage === 'summary' && presentationInitialSummary) {
@@ -4302,7 +4330,7 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
       used: Boolean(executiveSummaryGrammar.used),
       reason: executiveSummaryGrammar.reason
     },
-    wordingRepair: actionWordingRepair
+    wordingRepair: stage === 'discussion' ? discussionWordingRepair : actionWordingRepair
   });
   const pipelineHealth = {
     revision: servingRevision(),
@@ -4311,7 +4339,7 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
     degradations: health.degradations,
     durationMs: Date.now() - generationStartedAt,
     actionAccounting: result?.canonicalDiagnostics?.actionAccounting || null,
-    wordingRepair: { attempted: actionWordingRepair.attempted || 0, repaired: actionWordingRepair.repaired || 0, reason: actionWordingRepair.reason || '' }
+    wordingRepair: (({ attempted = 0, repaired = 0, reason = '' }) => ({ attempted, repaired, reason }))(stage === 'discussion' ? discussionWordingRepair : actionWordingRepair)
   };
   // One greppable line per generation, because the last five incidents in this area were
   // each dug out of pm2 logs by hand. `grep staged_generation_health` now answers the
