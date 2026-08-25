@@ -68,7 +68,7 @@
   },
   "scripts/meeting-minutes-core-golden/human_benchmarks/T733_eakin_tech_file/transcript.docx": {
     "published": [
-      "Jacqui Fox :: Update ports table for the new set of minutes :: Not stated",
+      "Jacqui Fox :: Update that table for the new set of minutes :: Not stated",
       "Not stated :: Be, especially the response to the cars :: Today"
     ]
   },
@@ -214,7 +214,7 @@
   },
   "scripts/meeting-minutes-final-golden/023_real_eakin_t733_weekly_transcript/transcript.txt": {
     "published": [
-      "Jacqui Fox :: Update tracker table for the new set of minutes :: Not stated",
+      "Jacqui Fox :: Update that table for the new set of minutes :: Not stated",
       "Not stated :: Be, especially the response to the cars :: Today"
     ]
   },
@@ -229,10 +229,10 @@
   },
   "scripts/meeting-minutes-final-golden/025_real_t761_eakin_sw_weekly_transcript/transcript.txt": {
     "published": [
+      "Rebecca Cuckoo :: Continue reviewing the USB port controls :: Today",
       "Andrew Kane :: Confirm the mute button behaviour and its effect on the flash :: Not stated",
       "Andrew Kane :: Continue the update to the 12 additional languages. :: Not stated",
-      "Andrew Kane :: Complete electrical compliance testing by 23rd of July :: Not stated",
-      "Rebecca Cuckoo :: Continue reviewing the USB port controls :: Not stated"
+      "Andrew Kane :: Complete electrical compliance testing by 23rd of July :: Not stated"
     ]
   },
   "scripts/meeting-minutes-final-golden/026_real_qip_assessment_tool_case_study_transcript/transcript.txt": {
@@ -244,8 +244,9 @@
   },
   "scripts/meeting-minutes-final-golden/027_real_abbott_audit_kickoff_transcript/transcript.txt": {
     "published": [
-      "Stuart Smith :: Share for complaints, Kappa, deviations, code of conduct sort of thing that we've got in advance :: Not stated",
+      "Stuart Smith :: Share for complaints, Kappa, deviations, that sort of thing that we've got in advance :: Not stated",
       "Stuart Smith :: Provide the applicable classifications and an overview of the products :: Not stated",
+      "Stuart Smith :: Just have to make sure that there's stuff in place before I head out for California :: Not stated",
       "Not stated :: Run code of conduct through the site in advance to make sure they're in alignment with it :: Wednesday",
       "Jacqui Fox :: Send the code of conduct :: Today"
     ]
@@ -265,8 +266,8 @@
   },
   "scripts/meeting-minutes-final-golden/029_real_t761_tech_file_weekly_transcript/transcript.txt": {
     "published": [
-      "Andrew Kane :: Confirm the mute button behaviour and its effect on the flash :: Not stated",
-      "Rebecca Cuckoo :: AndYou're continuing to review the USB port side of things :: Not stated"
+      "Rebecca Cuckoo :: AndYou're continuing to review the USB port side of things :: Today",
+      "Andrew Kane :: Confirm the mute button behaviour and its effect on the flash :: Not stated"
     ]
   },
   "scripts/transcript-tests/001_status_review/transcript.txt": {

@@ -104,8 +104,55 @@ function findAttendeeTextCorrections(text, attendees = []) {
   return corrections;
 }
 
+// A transcription that gets the first name right and the surname wrong.
+//
+// Teams wrote "Rebecca Cuckoo" 388 times across this corpus where the attendee is Rebecca
+// Gill, and nothing corrected it: findAttendeeTextCorrections compares FIRST names by edit
+// distance, and "Rebecca" is already right - it is the surname that is invented, and no
+// edit distance connects "Cuckoo" to "Gill".
+//
+// So the first name is the anchor and the confirmed attendee list is the authority. This
+// only fires when the first name matches exactly one attendee: attendeeFirstNames already
+// drops first names shared by two people, which is what keeps a meeting with two Jos from
+// having one silently renamed into the other.
+function findAttendeeSurnameCorrections(text, attendees = []) {
+  const source = String(text || '');
+  if (!source) return [];
+  const byFirst = new Map(attendeeFirstNames(attendees)
+    .filter((candidate) => candidate.fullName.split(/\s+/).length >= 2)
+    .map((candidate) => [key(candidate.firstName), candidate]));
+  if (!byFirst.size) return [];
+  const corrections = [];
+  const pattern = /\b([A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’-]{1,19})\s+([A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’-]{1,19})\b/g;
+  for (const match of source.matchAll(pattern)) {
+    const candidate = byFirst.get(key(match[1]));
+    if (!candidate) continue;
+    // Already the attendee's own name - nothing to correct.
+    if (key(match[0]) === key(candidate.fullName)) continue;
+    corrections.push({
+      original: match[0],
+      replacement: candidate.fullName,
+      attendee: candidate.fullName,
+      distance: null,
+      start: match.index,
+      end: match.index + match[0].length,
+      confidence: 0.9,
+      kind: 'surname'
+    });
+  }
+  return corrections;
+}
+
 function normaliseAttendeeReferences(text, attendees = []) {
-  const corrections = findAttendeeTextCorrections(text, attendees);
+  const firstNameCorrections = findAttendeeTextCorrections(text, attendees);
+  const surnameCorrections = findAttendeeSurnameCorrections(text, attendees);
+  // A surname correction spans two tokens and can overlap a first-name one. The surname
+  // fix carries more information, so it wins and the overlapping first-name fix is dropped
+  // rather than both being applied to the same span.
+  const corrections = [
+    ...surnameCorrections,
+    ...firstNameCorrections.filter((item) => !surnameCorrections.some((other) => item.start < other.end && other.start < item.end))
+  ].sort((left, right) => left.start - right.start);
   if (!corrections.length) return { text: String(text || ''), corrections: [] };
   let output = String(text || '');
   for (const correction of [...corrections].sort((left, right) => right.start - left.start)) {
@@ -118,5 +165,6 @@ module.exports = {
   damerauLevenshtein,
   extractMentionedPeople,
   findAttendeeTextCorrections,
+  findAttendeeSurnameCorrections,
   normaliseAttendeeReferences
 };

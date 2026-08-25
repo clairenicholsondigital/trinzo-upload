@@ -1758,7 +1758,15 @@ function resolveActionReferent(item, evidence) {
       .replace(/\barrange that\b/i, `arrange ${referent}`)
       .replace(/\breview (?:it|that)\b/i, `review ${referent}`)
       .replace(/\bfollow up on that\b/i, `follow up on ${referent}`)
-      .replace(/\b(?:it|that|them)\b/i, referent);
+      // "it" and "them" are unambiguously pronouns. "that" is not - it is equally a
+      // determiner ("that table"), a complementiser ("make sure that there's"), and a
+      // temporal ("this year"), and the catch-all cannot tell which. Substituting it
+      // blindly turned "I'll update that table for the new set of minutes" into "Update
+      // the ports table", reaching back to a turn about USB ports on a CPAP machine for
+      // the only noun in its vocabulary. The pronoun readings of "that" are already
+      // handled by the specific rules above ("review that", "arrange that", "set that
+      // up", "get that over"), so the catch-all no longer needs it.
+      .replace(/\b(?:it|them)\b/i, referent);
     if (/\bsend (?:a )?copy\b/i.test(action)) action = action.replace(/\bsend (?:a )?copy\b/i, `send a copy of ${referent}`);
   }
   action = action

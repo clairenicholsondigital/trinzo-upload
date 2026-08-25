@@ -722,6 +722,22 @@ function canonicalKnownStagedPersonName(value) {
     const byFirstName = STAGED_KNOWN_PERSON_BY_FIRST_NAME.get(stagedKnownAttendeeKey(cleaned));
     if (byFirstName) return byFirstName;
   }
+  // A transcription that gets the first name right and invents the surname.
+  //
+  // Teams wrote "Rebecca Cuckoo" 388 times across this corpus where the attendee is
+  // Rebecca Gill, and the existing check only WARNED about it
+  // (possible_attendee_name_mismatch) - the correction was detected and never applied, so
+  // the invented surname travelled into owners, discussion prose and the final document.
+  // The first name is the anchor and the known-people registry is the authority.
+  //
+  // The ambiguity guard is already built into that registry: it stores null when two known
+  // people share a first name, so a shared first name resolves to nothing and the
+  // transcript's own spelling stands rather than one person being renamed into another.
+  const parts = stagedKnownAttendeeKey(cleaned).split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    const byFirstName = STAGED_KNOWN_PERSON_BY_FIRST_NAME.get(parts[0]);
+    if (byFirstName) return byFirstName;
+  }
   return cleaned;
 }
 
@@ -4252,6 +4268,23 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
     }
   }
   let result = clientReadyPresentation(polished.payload);
+  if (stage === 'actions' && Array.isArray(result?.screens?.actions)) {
+    // The owner is a person, and the known-people registry is the authority on how that
+    // person's name is spelled. Teams wrote "Rebecca Cuckoo" 388 times across this corpus
+    // where the attendee is Rebecca Gill; the mismatch was detected and only warned about,
+    // so the invented surname reached the owner column. canonicalKnownStagedPersonName
+    // resolves it, and declines when two known people share a first name.
+    result = {
+      ...result,
+      screens: {
+        ...result.screens,
+        actions: result.screens.actions.map((item) => {
+          const owner = canonicalKnownStagedPersonName(item.owner || '');
+          return owner && owner !== item.owner ? { ...item, owner } : item;
+        })
+      }
+    };
+  }
   if (stage === 'actions' && canonicalEvidencePack.length) {
     result = attachActionCandidateSourceSnippets({ ...result, _canonicalEvidencePack: canonicalEvidencePack });
     delete result._canonicalEvidencePack;
