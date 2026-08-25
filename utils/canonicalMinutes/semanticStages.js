@@ -1241,6 +1241,35 @@ function concisePlannerPointForEvents(label, events) {
   return '';
 }
 
+// A turn that opens on a discourse marker is still a fact.
+//
+// Measured across the thirteen ground-truth fixtures: the editorial gate rejected 113 of
+// 194 candidate discussion points (58%), and reading them showed the rejections were
+// mostly about HOW a turn began rather than whether it said anything - "And so the goods
+// are ultimately stored here in Dublin" is a fact the human minutes record, refused for
+// its leading "And". Minutes drop that conjunction as a matter of course; the meaning is
+// carried by the clause after it.
+//
+// So a rejected point gets one more attempt with the opener removed, and it is published
+// only if it then passes the SAME gate as everything else. Nothing is admitted raw and no
+// rule is relaxed: the alternative - retaining refused turns and trusting a rewrite pass
+// to clean them - was measured too and published speech like "And storage, storage
+// arrangements, so.", which is why the gate keeps the last word. Junk still fails: the
+// clause after the marker has to stand on its own.
+const DISCOURSE_OPENER = /^(?:(?:and|but|so|or|now|yeah|yes|well|okay|right)[,\s]+)+/i;
+
+function minutesPointAllowingDiscourseOpener(raw, label) {
+  const direct = finaliseDiscussionPointForMinutes(raw, label);
+  if (direct) return direct;
+  const trimmed = clean(raw).replace(DISCOURSE_OPENER, '');
+  if (!trimmed || trimmed === clean(raw)) return '';
+  // A question is not a minute. Removing the opener from "So is all the content here?"
+  // leaves a grammatical sentence that the gate accepts, and it still records only that
+  // somebody asked something rather than what the meeting established.
+  if (/\?/.test(trimmed)) return '';
+  return finaliseDiscussionPointForMinutes(trimmed.replace(/^([a-z])/, (letter) => letter.toUpperCase()), label);
+}
+
 function discussionCardsFromPlan(plan, evidence, state = {}) {
   const byId = plan.evidenceById || new Map(evidence.events.map((event) => [event.id, event]));
   return plan.workstreams.map((workstream) => {
@@ -1257,10 +1286,20 @@ function discussionCardsFromPlan(plan, evidence, state = {}) {
     }
     let points = concise ? [{ text: concise, evidenceIds: topEvents.map((event) => event.id) }] : [];
     if (!points.length) {
-      points = topEvents
-        .map((event) => ({ text: finaliseDiscussionPointForMinutes(minutesPoint(event.text, event.speaker), workstream.label), evidenceIds: [event.id] }))
-        .filter((item) => item.text)
-        .slice(0, 4);
+      // A point that already passes the gate keeps its slot. The opener-stripped rescues
+      // are a floor against losing content, never a reason to push out a point that was
+      // publishable as spoken: ordering by turn alone cost a real language-support point
+      // its place when the rescues were first measured.
+      const graded = topEvents.map((event) => {
+        const raw = minutesPoint(event.text, event.speaker);
+        const direct = finaliseDiscussionPointForMinutes(raw, workstream.label);
+        const text = direct || minutesPointAllowingDiscourseOpener(raw, workstream.label);
+        return { text, evidenceIds: [event.id], turnIndex: event.turnIndex, direct: Boolean(direct) };
+      }).filter((item) => item.text);
+      points = [...graded.filter((item) => item.direct), ...graded.filter((item) => !item.direct)]
+        .slice(0, 4)
+        .sort((left, right) => (left.turnIndex || 0) - (right.turnIndex || 0))
+        .map(({ text, evidenceIds }) => ({ text, evidenceIds }));
     }
     if (workstream.provenance === 'reviewer_confirmed' && /procedure|qms|operational|process|importer|obligation/i.test(workstream.label)) {
       const fact = facts.find((item) => /erp|order flow|warehouse|scanner|barcode|document control|manual/i.test(item));
@@ -2502,4 +2541,4 @@ function actionsStage(evidence, state, profile, topology) {
   };
 }
 
-module.exports = { collectDecisionSignals, contextStage, contentStage, actionsStage, actionConfidenceTier, buildCommitmentThreads, actionsFromThread, semanticActionCandidate, semanticThreadReviewCandidate, hasSemanticRole, learnedSlotActions, resolveEnrichedActions, isUnderspecifiedAction, canonicalActionText, canonicalRiskText, corroboratedClosingRecapActions, workstreamActionReviewCandidates };
+module.exports = { collectDecisionSignals, discussionCardsFromPlan, minutesPointAllowingDiscourseOpener, contextStage, contentStage, actionsStage, actionConfidenceTier, buildCommitmentThreads, actionsFromThread, semanticActionCandidate, semanticThreadReviewCandidate, hasSemanticRole, learnedSlotActions, resolveEnrichedActions, isUnderspecifiedAction, canonicalActionText, canonicalRiskText, corroboratedClosingRecapActions, workstreamActionReviewCandidates };

@@ -588,9 +588,10 @@
   },
   {
     "file": "scripts/meeting-minutes-final-golden/027_real_abbott_audit_kickoff_transcript/transcript.txt",
-    "topicCount": 5,
+    "topicCount": 6,
     "topics": [
       "Scope and requirements",
+      "Software changes",
       "Quality and risk indicators",
       "Risks and dependencies",
       "Plans and timelines",
