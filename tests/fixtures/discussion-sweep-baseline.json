@@ -58,8 +58,7 @@
   "scripts/meeting-minutes-core-golden/cases/06_ownership_chaos/transcript.docx": {
     "published": [
       "Marta owns the venue call, Dan the :: Someone needs to call the venue.",
-      "Marta owns the venue call, Dan the :: Marta owns the venue call, Dan the run sheet, Neil the count.",
-      "Technical setup :: Dan, can you update the run sheet after Marta Silva confirm access?."
+      "Marta owns the venue call, Dan the :: Marta owns the venue call, Dan the run sheet, Neil the count."
     ]
   },
   "scripts/meeting-minutes-core-golden/cases/07_deadline_torture/transcript.docx": {
@@ -120,7 +119,6 @@
       "Language support and localisation :: The team move on to the languages.",
       "Language support and localisation :: The, yeah, the language is looking at the don't necessarily need to look at each individual language file.",
       "Cybersecurity and access controls :: Oh Jacqui Fox's god, Jacqui Fox can't remember the words that Jacqui Fox is trying to say right now.rate them, sorry, to rate those risks and it would be in view to mitigating any cybersecurity risk.",
-      "Technical setup :: Soft with that tool that you're resolving with your IT in terms of access perfect.",
       "And then as a consequence to that, does that mean :: As a consequence to that, does that mean that the change request then is signed off?."
     ]
   },
@@ -183,8 +181,8 @@
     "published": [
       "Documentation and evidence :: The vendor strategy document is absent and leadership review is still pending.",
       "Documentation and evidence :: The team is awaiting leadership approval on the vendor strategy before procurement starts.",
-      "Budget and commercial matters :: Sales input is still missing for the AI pipeline dependency map.",
-      "Customer and stakeholder feedback :: Innovation grant follow-up feedback is still pending."
+      "Customer and stakeholder feedback :: Innovation grant follow-up feedback is still pending.",
+      "Risks :: Sales input is still missing for the AI pipeline dependency map"
     ]
   },
   "scripts/meeting-minutes-final-golden/006_client_onboarding_split_rollout/transcript.txt": {
@@ -416,7 +414,6 @@
   "scripts/transcript-tests/001_status_review/transcript.txt": {
     "published": [
       "Operations and processes :: The intake workflow and request funnel?.",
-      "Budget and commercial matters :: The team need sales input and the team don't have it.",
       "Due end quarter :: Still due end of quarter.",
       "Risks :: Recording could miss the opening or stop"
     ]
@@ -703,8 +700,8 @@
     "published": [
       "Documentation and evidence :: The vendor strategy document is absent and leadership review is still pending.",
       "Documentation and evidence :: The team is awaiting leadership approval on the vendor strategy before procurement starts.",
-      "Budget and commercial matters :: Sales input is still missing for the AI pipeline dependency map.",
-      "Customer and stakeholder feedback :: Innovation grant follow-up feedback is still pending."
+      "Customer and stakeholder feedback :: Innovation grant follow-up feedback is still pending.",
+      "Risks :: Sales input is still missing for the AI pipeline dependency map"
     ]
   },
   "scripts/transcript-tests/049_low_substance_noise/transcript.txt": {
@@ -909,9 +906,9 @@
       "Marsh, marshals, getting fourteen :: Jo Marsh is doing marshals.",
       "Marsh, marshals, getting fourteen :: Jo Bennett's on first aid, Jo Marsh is on marshals, everyone clear which Jo's doing what?.",
       "Barely enough last year and someone nearly :: The team had barely enough last year and someone nearly went the wrong way at the river turn.",
-      "Budget and commercial matters :: Jo Bennett, first aid, quote from St John's for two crews.",
       "Plans and timelines :: The route's basically last year's, but they've resurfaced part of the towpath and Alan Pryce needs to check it's open.",
       "Plans and timelines :: Alan, road-closure application in this week and check the towpath.",
+      "Operations and processes :: He said, the chap at the council, he said the application takes four weeks to process, so the team is cutting it fine actually.",
       "For route, properly, fourteen :: For that route, properly, fourteen.",
       "The date's locked, the twenty-eighth of September, and the team :: The date's locked, the twenty-eighth of September, and the team said fifteen pounds entry, that hasn't changed?.",
       "Risks :: And the big risk we're all watching is the road-closure permit, because no permit, no start"
@@ -919,8 +916,8 @@
   },
   "scripts/transcript-tests/078_parking_no_decision_reached/transcript.txt": {
     "published": [
-      "Budget and commercial matters :: Baljit Sanghera's thing is, the visitor spaces get taken by residents who've got three cars, and then actual visitors have got nowhere to go.",
-      "Budget and commercial matters :: One of those, a gate with a fob, so only residents can get in the car park at all.",
+      "Cost, and the visitor access :: Baljit Sanghera's thing is, the visitor spaces get taken by residents who've got three cars, and then actual visitors have got nowhere to go.",
+      "Cost, and the visitor access :: One of those, a gate with a fob, so only residents can get in the car park at all.",
       "Three cars and caravan :: Three cars and a caravan.",
       "Content and communications :: The question is what do the team do about it."
     ]

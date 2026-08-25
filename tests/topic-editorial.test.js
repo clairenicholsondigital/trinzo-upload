@@ -64,3 +64,31 @@ test('editorial topics consolidate duplicate generic concepts without losing evi
   assert.equal(topics[0].editorialText, 'Software changes');
   assert.deepEqual(topics[0].evidenceIds, [evidence.events[0].id, evidence.events[1].id]);
 });
+
+// --- concept anchors: one everyday token must not name a cluster.
+//
+// Each anchor below was added for a measured live mislabel, and the broad
+// alternatives (anchor everything; global two-hit floor) were measured and
+// rejected - 61 and 44 corpus sections changed respectively, with emptied
+// screens, because broad labels do real rescue work in-domain.
+
+const { CONCEPTS } = require('../utils/canonicalMinutes/topicEditorial');
+const conceptFor = (text) => CONCEPTS.find((c) => c.pattern.test(text) && (!c.anchor || c.anchor.test(text)))?.label || '';
+
+test('one mention of "cost" does not make a parking dispute commercial', () => {
+  assert.equal(conceptFor('the permit cost is about forty pounds a year and residents object'), '');
+});
+
+test('a real budget discussion keeps its label', () => {
+  assert.equal(conceptFor('the budget is tight with the hall, rights and costume costs'), 'Budget and commercial matters');
+});
+
+test('a road-closure application is not a software change', () => {
+  assert.equal(conceptFor('get the road-closure application submitted to the council'), '');
+  assert.equal(conceptFor('the software application needs a new release'), 'Software changes');
+});
+
+test('confirming venue access is not technical setup, screen sharing is', () => {
+  assert.equal(conceptFor('Dan can update the run sheet after access is confirmed with the venue'), '');
+  assert.equal(conceptFor('check screen sharing and camera access before the session'), 'Technical setup');
+});

@@ -7,6 +7,25 @@ const { isReviewerAuthored } = require('./state');
 // A small, meeting-agnostic vocabulary for turning extractive MiniLM clusters
 // into readable agenda labels. These are concepts, not meeting templates: a
 // label is only available when the current cluster contains matching evidence.
+//
+// `anchor`: a pattern may include everyday words because inside a genuinely
+// matching cluster those words are part of the evidence - but one everyday token
+// must not be enough to NAME the cluster. A residents' association arguing about
+// visitor parking was headed "Budget and commercial matters" because somebody
+// said "cost" once in the whole meeting; "cost" describes almost any subject and
+// never by itself makes a discussion commercial. Where an anchor is present, one
+// of its domain-anchoring tokens must also appear before the label is available.
+// Same mitigation WORKSTREAM_CONCEPTS uses (requiredEvidencePattern), same reason.
+//
+// Measured before anchoring broadly (2026-08-25): anchoring every broad label
+// changed 61 corpus sections and emptied 7 screens, and a global two-hit floor
+// changed 44 and emptied 4 - both overreach, because these labels do real rescue
+// work: a deadline-torture meeting talks about its subject in exactly the
+// everyday words ("date", "week", "month") a tightened rule refuses. So anchors
+// are added one measured mislabel at a time: "cost" named a parking dispute
+// commercial, "application" (road-closure) named a race committee "Software
+// changes", "access" (a gate fob) named it "Technical setup". Each anchor's diff
+// was read line by line before it stayed.
 const CONCEPTS = [
   { label: 'Quality and risk indicators', pattern: /\b(?:alarm bells?|red flags?|warning signs?|early warnings?|risk indicators?|concerns?)\b/i },
   { label: 'Cybersecurity and access controls', pattern: /\b(?:cyber\s*security|usb port|port lock|password protect(?:ed|ion)?|unwarranted interference|unauthorised access|unauthorized access)\b/i },
@@ -19,7 +38,7 @@ const CONCEPTS = [
   { label: 'Plans and timelines', pattern: /\b(?:plan(?:ning)?|schedule|timeline|milestones?|dates?|deadline|week|month|delivery)\b/i },
   { label: 'Roles and responsibilities', pattern: /\b(?:owner(?:ship)?|roles?|responsibilit(?:y|ies)|lead|support|handover)\b/i },
   { label: 'Risks and dependencies', pattern: /\b(?:risks?|issues?|blockers?|dependencies|dependent|constraints?|mitigat(?:e|ion)|outstanding)\b/i },
-  { label: 'Software changes', pattern: /\b(?:software|code changes?|change request|version(?:ing)?|release|firmware|application)\b/i },
+  { label: 'Software changes', pattern: /\b(?:software|code changes?|change request|version(?:ing)?|release|firmware|application)\b/i, anchor: /\b(?:software|code changes?|firmware|release|version(?:ing)?|change request)\b/i },
   { label: 'Testing and validation', pattern: /\b(?:testing|tests?|validation|verification|results?|qualification)\b/i },
   { label: 'Quality and risk management', pattern: /\b(?:quality|qms|risk management|risk matrix|fmea|capa)\b/i },
   { label: 'Regulatory and compliance', pattern: /\b(?:regulatory|compliance|mdr|mdsap|fda|hpra|notified body|audit)\b/i },
@@ -27,10 +46,10 @@ const CONCEPTS = [
   { label: 'Product behaviour and design', pattern: /\b(?:product|device|design|feature|behaviour|alarm|button|interface|usability)\b/i },
   { label: 'Operations and processes', pattern: /\b(?:operations?|process(?:es)?|workflow|production|manufacturing|warehouse|supplier)\b/i },
   { label: 'Customer and stakeholder feedback', pattern: /\b(?:customer|client|stakeholder|feedback|complaint|interview|testimonial)\b/i },
-  { label: 'Budget and commercial matters', pattern: /\b(?:budget|costs?|pricing|commercial|contract|invoice|revenue|sales)\b/i },
+  { label: 'Budget and commercial matters', pattern: /\b(?:budget|costs?|pricing|commercial|contract|invoice|revenue|sales)\b/i, anchor: /\b(?:budget|pricing|commercial|contract|invoice|revenue)\b/i },
   { label: 'Training and readiness', pattern: /\b(?:training|readiness|rehearsal|practice|preparation|attestation)\b/i },
   { label: 'Content and communications', pattern: /\b(?:content|slides?|presentation|webinar|questions?|communications?|message)\b/i },
-  { label: 'Technical setup', pattern: /\b(?:technical setup|screen sharing|recording|connection|microphone|camera|access)\b/i }
+  { label: 'Technical setup', pattern: /\b(?:technical setup|screen sharing|recording|connection|microphone|camera|access)\b/i, anchor: /\b(?:technical setup|screen sharing|microphone|camera|recording|connection)\b/i }
 ];
 
 const LEAD_IN = /^(?:(?:yeah|yes|okay|ok|right|so|well|no|like|ohh?|thanks?|thank you)[,;:\s]+|(?:and|but)\s+|(?:I|we|they|you|the team)\s+(?:think|know|guess|suppose|discussed|reviewed|covered|noted|said|have|has|had|were|are|will|would|can|could|need to)\s+(?:that\s+)?)/i;
@@ -43,7 +62,7 @@ function clusterText(topic, evidence) {
 }
 
 function conceptLabel(text) {
-  return CONCEPTS.find((concept) => concept.pattern.test(text))?.label || '';
+  return CONCEPTS.find((concept) => concept.pattern.test(text) && (!concept.anchor || concept.anchor.test(text)))?.label || '';
 }
 
 const SALIENT_TERMS = [

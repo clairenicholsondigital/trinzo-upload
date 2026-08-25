@@ -31,6 +31,10 @@ function describeDiscussedConcepts(evidence) {
   const events = (evidence && evidence.events) || [];
   if (!events.length) return '';
   const ranked = CONCEPTS
+    // The anchor contract travels with the vocabulary: a concept whose pattern fires on
+    // everyday words ("cost", "month") may not describe the meeting unless its anchoring
+    // token actually appears somewhere in the evidence.
+    .filter((concept) => !concept.anchor || events.some((event) => concept.anchor.test(event.text || '')))
     .map((concept) => ({ label: concept.label, support: events.filter((event) => concept.pattern.test(event.text || '')).length }))
     .filter((item) => item.support >= MIN_EVENTS_PER_CONCEPT)
     .sort((left, right) => right.support - left.support)

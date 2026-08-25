@@ -80,15 +80,12 @@
   },
   {
     "file": "scripts/meeting-minutes-core-golden/cases/06_ownership_chaos/transcript.docx",
-    "topicCount": 2,
+    "topicCount": 1,
     "topics": [
-      "Marta owns the venue call, Dan the",
-      "Technical setup"
+      "Marta owns the venue call, Dan the"
     ],
-    "summaryTopicCount": 1,
-    "summaryTopics": [
-      "Technical setup"
-    ]
+    "summaryTopicCount": 0,
+    "summaryTopics": []
   },
   {
     "file": "scripts/meeting-minutes-core-golden/cases/07_deadline_torture/transcript.docx",
@@ -164,7 +161,7 @@
   },
   {
     "file": "scripts/meeting-minutes-core-golden/human_benchmarks/T761_eakin_software/transcript.docx",
-    "topicCount": 10,
+    "topicCount": 9,
     "topics": [
       "Risks and dependencies",
       "Plans and timelines",
@@ -174,7 +171,6 @@
       "Software change traceability",
       "Language support and localisation",
       "Cybersecurity and access controls",
-      "Technical setup",
       "And then as a consequence to that, does that mean"
     ],
     "summaryTopicCount": 5,
@@ -276,13 +272,12 @@
     "topicCount": 3,
     "topics": [
       "Documentation and evidence",
-      "Budget and commercial matters",
-      "Customer and stakeholder feedback"
-    ],
-    "summaryTopicCount": 2,
-    "summaryTopics": [
       "Customer and stakeholder feedback",
-      "Budget and commercial matters"
+      "Risks"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Customer and stakeholder feedback"
     ]
   },
   {
@@ -646,16 +641,19 @@
   },
   {
     "file": "scripts/transcript-tests/001_status_review/transcript.txt",
-    "topicCount": 4,
+    "topicCount": 3,
     "topics": [
       "Operations and processes",
-      "Budget and commercial matters",
       "Due end quarter",
       "Risks"
     ],
-    "summaryTopicCount": 1,
+    "summaryTopicCount": 5,
     "summaryTopics": [
-      "Budget and commercial matters"
+      "Operations and processes",
+      "Risks and dependencies",
+      "Plans and timelines",
+      "Documentation and evidence",
+      "Software changes"
     ]
   },
   {
@@ -1192,13 +1190,12 @@
     "topicCount": 3,
     "topics": [
       "Documentation and evidence",
-      "Budget and commercial matters",
-      "Customer and stakeholder feedback"
-    ],
-    "summaryTopicCount": 2,
-    "summaryTopics": [
       "Customer and stakeholder feedback",
-      "Budget and commercial matters"
+      "Risks"
+    ],
+    "summaryTopicCount": 1,
+    "summaryTopics": [
+      "Customer and stakeholder feedback"
     ]
   },
   {
@@ -1542,28 +1539,31 @@
     "topics": [
       "Marsh, marshals, getting fourteen",
       "Barely enough last year and someone nearly",
-      "Budget and commercial matters",
       "Plans and timelines",
+      "Operations and processes",
       "For route, properly, fourteen",
       "The date's locked, the twenty-eighth of September, and the team",
       "Risks"
     ],
-    "summaryTopicCount": 1,
+    "summaryTopicCount": 2,
     "summaryTopics": [
-      "Budget and commercial matters"
+      "Plans and timelines",
+      "Operations and processes"
     ]
   },
   {
     "file": "scripts/transcript-tests/078_parking_no_decision_reached/transcript.txt",
     "topicCount": 3,
     "topics": [
-      "Budget and commercial matters",
+      "Cost, and the visitor access",
       "Three cars and caravan",
       "Content and communications"
     ],
-    "summaryTopicCount": 1,
+    "summaryTopicCount": 3,
     "summaryTopics": [
-      "Budget and commercial matters"
+      "Risks and dependencies",
+      "Content and communications",
+      "Plans and timelines"
     ]
   }
 ]
