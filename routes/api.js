@@ -47,6 +47,7 @@ const { runCanonicalLiveStage } = require('../utils/canonicalMinutes/liveStages'
 const { suggestMeetingTypeFromEvidence } = require('../utils/canonicalMinutes/meetingTypeSuggestion');
 const { prepareEvidence } = require('../utils/canonicalMinutes/evidence');
 const { polishCanonicalStage, canonicalFallback, addRecoveredActionCandidates, clientReadyPresentation, repairActionWording, repairDiscussionWording, wordingFaults } = require('../utils/canonicalMinutes/trooperPolish');
+const { proposeActions } = require('../utils/canonicalMinutes/proposedActions');
 const { enrichActionReviewCandidate } = require('../utils/canonicalMinutes/actionReviewRanking');
 const { reviewGeneratedContent } = require('../utils/terminologyQa');
 const { generateStagedMinutesPdf, stagedMinutesPdfFilename } = require('../utils/stagedMinutesPdf');
@@ -4125,6 +4126,62 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
             resolutionKey: `actions-need-an-owner:${crypto.createHash('sha256').update(unassigned.map((item) => item.action).join('|')).digest('hex').slice(0, 16)}`
           }
         ]
+      };
+    }
+  }
+  // Discovery by proposal, restraint by validation.
+  //
+  // The deterministic layer reached 29 of 102 ground-truth actions and four attempts to
+  // tune its gates recovered none; one plain request to the model reached 39-40. So the
+  // model proposes here, and every veto stays deterministic: a proposal must quote a turn
+  // that resolves to THIS transcript or it is refused, an owner the transcript never names
+  // becomes "Not stated", and an option the meeting never agreed is filed as considered
+  // rather than published as a commitment.
+  //
+  // Merged after the rewrite for the same reason the recovered rows are: these records are
+  // already composed against cited turns, and applyActionRewrite's contract would treat
+  // them as candidates rather than final rows.
+  let actionProposals = { agreed: [], requirements: [], considered: [], ungrounded: [], reason: 'not_attempted' };
+  if (stage === 'actions') {
+    // Same parse the stage itself ran on, so a quote resolves against the events the
+    // pipeline actually saw rather than a second, differently-parsed view of the meeting.
+    actionProposals = await proposeActions(semanticTranscript.text, prepareEvidence(semanticTranscript.text), {});
+    const existing = polished.payload?.screens?.actions || [];
+    // Same duplicate rule the recovery path uses, so a proposal cannot restate a row the
+    // deterministic layer already published.
+    const seen = existing.map((item) => new Set(String(item.action || '').toLowerCase().match(/[a-z][a-z0-9'’-]{2,}/g) || []));
+    const isNew = (item) => {
+      const tokens = new Set(String(item.action || '').toLowerCase().match(/[a-z][a-z0-9'’-]{2,}/g) || []);
+      if (!tokens.size) return false;
+      return !seen.some((other) => {
+        if (!other.size) return false;
+        let shared = 0;
+        for (const token of tokens) if (other.has(token)) shared += 1;
+        return shared / Math.min(tokens.size, other.size) >= 0.6;
+      });
+    };
+    const added = [...actionProposals.agreed, ...actionProposals.requirements].filter(isNew).map((item) => ({
+      owner: item.owner,
+      action: item.action,
+      deadline: 'Not stated',
+      evidenceIds: item.evidenceIds,
+      ownerUnassigned: item.owner === 'Not stated',
+      modelProposed: true,
+      reviewDisposition: item.disposition === 'requirement' ? 'requirement' : 'confirmed_action'
+    }));
+    if (added.length || actionProposals.considered.length) {
+      polished.payload = {
+        ...polished.payload,
+        screens: {
+          ...(polished.payload?.screens || {}),
+          actions: [...existing, ...added],
+          // The third bucket. A meeting that weighed options and agreed nothing produced no
+          // actions and plenty of content, and forcing that into the actions table was how
+          // a residents' parking meeting published seven commitments nobody made.
+          consideredOptions: actionProposals.considered.map((item) => ({
+            option: item.action, raisedBy: item.owner, evidenceIds: item.evidenceIds
+          }))
+        }
       };
     }
   }

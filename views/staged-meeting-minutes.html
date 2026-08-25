@@ -356,6 +356,12 @@ tr .review-field-note { color:#27323a; background:#f2fbfb; }
 }
 .stage-validation-warning .stage-validation-tag { background:#f5e2b8; color:#7a5b12; }
 tr.wording-unresolved td:first-child { box-shadow:inset 3px 0 0 #d9a514; }
+.considered-options { margin-top:1.1rem; padding:.85rem 1rem; border:1px solid #d8dee6; border-radius:8px; background:#f7f9fb; }
+.considered-options h3 { margin:0 0 .2rem; font-size:.92rem; }
+.considered-options p.considered-intro { margin:0 0 .6rem; font-size:.82rem; color:#4a5560; }
+.considered-options ul { margin:0; padding-left:1.15rem; }
+.considered-options li { margin-bottom:.35rem; font-size:.88rem; }
+.considered-options .considered-by { color:#4a5560; font-size:.8rem; }
 .wording-unresolved-note { display:inline-block; margin-bottom:4px; padding:1px 8px; border-radius:6px; background:#f5e2b8; color:#7a5b12; font-size:0.72rem; font-weight:600; }
 .stage-validation-info .stage-validation-tag { background:#d8ecf2; color:#22697e; }
 @media (max-width:760px) {
@@ -774,6 +780,7 @@ td select {
         <div class="actions" style="margin-top:.85rem;">
           <button id="addActionRowBtn" type="button">Add action</button>
         </div>
+        <div id="consideredOptions" class="considered-options" hidden></div>
         <div id="actionReviewGroups" class="action-review-groups"></div>
       </article>
 
@@ -1545,6 +1552,7 @@ td select {
       stagedState.actions = state.actions;
       generatedStages.actions = true;
       renderActions(state.actions);
+      renderConsideredOptions(state.consideredOptions);
     }
   }
 
@@ -1596,6 +1604,29 @@ td select {
       '<div class="table-wrap"><table class="discussion-table"><thead><tr><th>Topic</th><th>Discussion points</th></tr></thead><tbody>' +
       rows +
       '</tbody></table></div>';
+  }
+
+  // Options the meeting discussed and did not agree.
+  //
+  // These used to have nowhere to go, so they were either published as actions nobody had
+  // committed to - a residents' parking meeting that agreed nothing produced seven action
+  // rows - or dropped, which lost the only substantive thing that meeting produced. They
+  // are deliberately not editable rows: nobody agreed to them, so they are a record, not work.
+  function renderConsideredOptions(options) {
+    var host = document.getElementById('consideredOptions');
+    if (!host) return;
+    var items = Array.isArray(options) ? options.filter(Boolean) : [];
+    if (!items.length) { host.hidden = true; host.innerHTML = ''; return; }
+    host.hidden = false;
+    host.innerHTML = '<h3>Considered, not agreed</h3>' +
+      '<p class="considered-intro">' + items.length + ' option' + (items.length === 1 ? ' was' : 's were') +
+      ' discussed without a decision. ' + (items.length === 1 ? 'It is' : 'They are') +
+      ' recorded here rather than as actions, because nobody committed to ' + (items.length === 1 ? 'it' : 'them') + '.</p>' +
+      '<ul>' + items.map(function (item) {
+        var by = item && item.raisedBy && item.raisedBy !== 'Not stated'
+          ? ' <span class="considered-by">- raised by ' + escapeHtml(item.raisedBy) + '</span>' : '';
+        return '<li>' + escapeHtml(String((item && item.option) || '')) + by + '</li>';
+      }).join('') + '</ul>';
   }
 
   function renderActions(actions) {
@@ -2949,6 +2980,7 @@ td select {
     }
     if (Object.prototype.hasOwnProperty.call(screensPayload, 'actions')) {
       renderActions(screensPayload.actions);
+      renderConsideredOptions(screensPayload.consideredOptions);
       stagedState.actions = actionsFromReview();
       generatedStageVersions.actions = cloneReviewValue(stagedState.actions);
     }
