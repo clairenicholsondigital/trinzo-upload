@@ -1,5 +1,5 @@
 {
-  "scoredAt": "2026-08-24",
+  "scoredAt": "2026-08-25",
   "scores": [
     {
       "name": "01_abbott_audit_kickoff",
@@ -9,6 +9,7 @@
       "purposeOverlap": 0.5,
       "objectives": {
         "matched": 2,
+        "near": 1,
         "total": 5,
         "unmatched": [
           "Clarify audit scope, product context and applicable standards.",
@@ -16,17 +17,34 @@
           "Discuss audit execution, trackers, SBOMs, CVE review and reporting approach."
         ],
         "generated": [
-          "To run the code of conduct through the site in advance to ensure alignment.",
-          "To confirm the audit scope, timing, and logistics.",
-          "To review the role and responsibilities for specialist software coverage.",
-          "To confirm preparation requirements concerning confidentiality and document access.",
+          "Run the code of conduct through the site in advance to ensure alignment.",
+          "Confirm the audit scope, timing, and logistics.",
+          "Review the role and responsibilities for specialist software coverage.",
+          "Confirm the requirements for preparation, confidentiality, and document access.",
           "Run code of conduct through the site in advance to make sure they're in alignment with it",
           "Review software deep-dive role and responsibilities.",
-          "Provide the applicable classifications and an overview of the products"
-        ]
+          "Provide the applicable classifications and an overview of the products",
+          "Review risk analysis and audit-planning evidence."
+        ],
+        "sem": {
+          "matched": 2,
+          "pairs": [
+            {
+              "expected": "Clarify audit scope, product context and applicable standards.",
+              "generated": "Confirm the audit scope, timing, and logistics.",
+              "sim": 0.6854
+            },
+            {
+              "expected": "Discuss audit execution, trackers, SBOMs, CVE review and reporting approach.",
+              "generated": "Confirm the audit scope, timing, and logistics.",
+              "sim": 0.6307
+            }
+          ]
+        }
       },
       "topics": {
         "matched": 3,
+        "near": 5,
         "total": 15,
         "unmatched": [
           "Training and preparation timeline",
@@ -47,10 +65,31 @@
           "Software deep-dive role and responsibilities",
           "Preparation, confidentiality, and document access",
           "Risk analysis and audit-planning evidence"
-        ]
+        ],
+        "sem": {
+          "matched": 3,
+          "pairs": [
+            {
+              "expected": "Software management deep dive",
+              "generated": "Software deep-dive role and responsibilities",
+              "sim": 0.714
+            },
+            {
+              "expected": "Risk assessment and audit plan",
+              "generated": "Risk analysis and audit-planning evidence",
+              "sim": 0.8873
+            },
+            {
+              "expected": "Audit tracker and findings",
+              "generated": "Audit scope, timing, and logistics",
+              "sim": 0.6147
+            }
+          ]
+        }
       },
       "discussion": {
         "matched": 1,
+        "near": 1,
         "total": 18,
         "unmatched": [
           "Audit logistics, including hotel reservation, site attendance and travel arrangements for the Sylmar audit.",
@@ -72,31 +111,43 @@
           "AI prompts may be used by the audit team to help speed report writing and locate standards clauses."
         ],
         "generated": [
-          "The meeting's purpose was to align the audit team regarding the Sylmar surveillance-audit plan, establishing plans for specialist software coverage, preparation requirements, site access, timing, logistics, and responsibilities.",
-          "Karen and Jacqui Fox will be part of the audit team, with Jacqui Fox joining from Costa Rica based in the US.",
-          "Logistics for the hotel stay were discussed, including the presence of another person staying there who would be part of the audit.",
-          "Jacqui Fox is aware that the team requires the audit process for internal quality audits and the AQR Global Compliance and Audit Program guidance.",
-          "Niamh Lynch understands that these processes must be completed for every audit.",
-          "Access to folders for a desktop audit was discussed, with Stuart Smith indicating that access would be provided.",
+          "The meeting was convened to align the audit team regarding the Sylmar surveillance-audit plan, which encompasses specialist software coverage, preparation, access, timing, logistics, and responsibilities.",
+          "Karen and Jacqui Fox will be part of the audit team, with Jacqui Fox joining despite being based in the US.",
+          "The team reviewed specific points relating to the hotel arrangements for the audit.",
+          "Jacqui Fox confirmed that the team requires the audit process for internal quality audits and the AQR Global Compliance and Audit Program guidance for the previous audit.",
+          "Niamh Lynch confirmed that the required audit process documentation must be completed for every audit.",
+          "Access to folders for a desktop audit was discussed, with Stuart Smith indicating that access would be granted.",
           "The training attestation is required from Stuart Smith before the audit formally commences.",
-          "The risk analysis will be shared with the team before arrival, subject to strict and confidential requirements, necessitating the confidentiality agreement and code of conduct to be in place.",
-          "Niamh Lynch plans to front-end activities for the first week provided access to necessary documentation is granted.",
+          "The risk analysis will be shared prior to arrival, but access to this information is subject to strict and confidential requirements, necessitating the confidentiality agreement and code of conduct to be in place.",
+          "Niamh Lynch intends to front-end activities for the first week provided access to necessary documentation is granted.",
           "Stuart Smith previously expressed concerns regarding the software development process at a fundamental Quality System (QS) level during a prior audit.",
-          "Stuart Smith conducted a follow-up audit in Penang, where he confirmed the entity was the legal manufacturer of the products made there.",
-          "It is difficult to determine the risk analysis until the Software Bill of Materials (SBOM) is physically reviewed, as the item has configuration management that can be shifted.",
-          "The team start date is scheduled for Monday, with a contingency plan allowing for the second week up to the 17th.",
-          "The team will be present the weekend before the start date, with Stuart Smith and Niamh connecting on the Saturday afternoon, followed by travel together on Sunday.",
+          "Stuart Smith conducted a follow-up audit in Penang after Niamh Lynch and Teresa were present, confirming that the entity is the legal manufacturer of the items produced there.",
+          "The ability to determine the risk analysis is limited until the Software Bill of Materials (SBOM) is physically reviewed, as the item involves configuration management that can be shifted.",
+          "The team start date is scheduled for Monday, with a contingency plan allowing for a second week up to the 17th.",
+          "The team is scheduled to be present the weekend before the start date, with Stuart Smith and Niamh Lynch connecting on the Saturday afternoon, followed by travel together on Sunday.",
           "A catch-up meeting is suggested to plan the schedule, as the process is considered 'Normic'."
-        ]
+        ],
+        "sem": {
+          "matched": 2,
+          "pairs": [
+            {
+              "expected": "Audit logistics, including hotel reservation, site attendance and travel arrangements for the Sylmar audit.",
+              "generated": "The meeting was convened to align the audit team regarding the Sylmar surveillance-audit plan, which encompasses specialist software coverage, preparation, access, timing, logistics, and responsibilities.",
+              "sim": 0.6358
+            },
+            {
+              "expected": "SBOM review and CVE/threat checks may depend on what is available on site and on corporate threat-monitoring processes.",
+              "generated": "The ability to determine the risk analysis is limited until the Software Bill of Materials (SBOM) is physically reviewed, as the item involves configuration management that can be shifted.",
+              "sim": 0.6429
+            }
+          ]
+        }
       },
       "actionRecall": {
         "matched": 2,
+        "near": 0,
         "total": 9,
         "unmatched": [
-          {
-            "owner": "Stuart",
-            "action": "Build the audit scope, standards list, classifications, product overview and risk assessment to support the audit plan."
-          },
           {
             "owner": "Stuart",
             "action": "Confirm after the Wednesday meeting what documents can be shared with Niamh before she arrives on site."
@@ -114,6 +165,10 @@
             "action": "Plan Niamh's preparation timeline around Stuart being unavailable while on site from the 14th to the 17th."
           },
           {
+            "owner": "Stuart",
+            "action": "Share the risk analysis, audit tracker and available data such as complaints, CAPA and deviations once confidentiality requirements are in place."
+          },
+          {
             "owner": "Stuart and Niamh",
             "action": "Hold a face-to-face catch-up at the hotel before Niamh starts the on-site audit week."
           },
@@ -121,17 +176,25 @@
             "owner": "Stuart",
             "action": "Decide whether Niamh should run a separate software audit track based on the risk analysis and logistics."
           }
-        ]
+        ],
+        "generated": [
+          "Stuart Smith :: Provide the applicable classifications and an overview of the products",
+          "Jacqui Fox :: Send the code of conduct"
+        ],
+        "sem": {
+          "matched": 0,
+          "pairs": []
+        }
       },
       "actionPrecision": {
         "matched": 2,
-        "total": 3
+        "total": 2
       },
       "wording": {
         "checked": 31,
-        "flagged": 2,
+        "flagged": 1,
         "counts": {
-          "unresolved_deixis": 2
+          "unresolved_deixis": 1
         }
       }
     },
@@ -140,9 +203,10 @@
       "typeMatch": true,
       "expectedType": "Importer obligations review",
       "generatedType": "Importer obligations review",
-      "purposeOverlap": 0.25,
+      "purposeOverlap": 0.21,
       "objectives": {
         "matched": 0,
+        "near": 2,
         "total": 5,
         "unmatched": [
           "Review the draft QMS manual and how it should align to DITA processes.",
@@ -152,20 +216,32 @@
           "Identify follow-up actions for scope, languages, HPRA fees and internal working sessions."
         ],
         "generated": [
-          "Send a copy of the HPRA authorised representative bill",
-          "Review goods flow and storage.",
-          "Review importer-obligation QMS procedure design.",
-          "Review mDR, PPE and declarations of conformity.",
-          "Review bill document as well",
+          "Review the final storage arrangement for the optical devices.",
+          "Review the goods flow and storage arrangements.",
+          "Review the requirements for MDR, PPE, and declarations of conformity.",
+          "Review the bill document.",
           "Review language and country requirements.",
-          "Review medEnvoy and Cody alignment.",
-          "Review further process discovery and working sessions."
-        ]
+          "Review the alignment between MedEnvoy and Cody.",
+          "Conduct further process discovery and working sessions.",
+          "Send a copy of the HPRA authorised representative bill"
+        ],
+        "sem": {
+          "matched": 1,
+          "pairs": [
+            {
+              "expected": "Understand product flow, warehouse, order, picking and packing processes.",
+              "generated": "Review the goods flow and storage arrangements.",
+              "sim": 0.6288
+            }
+          ]
+        }
       },
       "topics": {
-        "matched": 8,
+        "matched": 6,
+        "near": 2,
         "total": 20,
         "unmatched": [
+          "Business-process alignment",
           "Goods movement from Japan to Dublin",
           "Netherlands fiscal clearance",
           "Park West warehouse",
@@ -176,26 +252,32 @@
           "2D data matrix transition",
           "US FDA GUDID",
           "Manufacturer information notes and IFU rationale",
+          "Country and language requirements",
           "SOW scope for sunglasses",
           "Site visit planning"
         ],
         "generated": [
-          "Goods flow and storage",
-          "Importer-obligation QMS procedure design",
-          "MDR, PPE and declarations of conformity",
+          "Warehousing scenario and product movement from supplier to Ireland",
+          "Importer obligations related to QMS procedure design",
+          "Regulatory requirements concerning MDR, PPE, and declarations of conformity",
           "EUDAMED, HPRA and registration evidence",
-          "Language and country requirements",
-          "MedEnvoy and Cody alignment",
+          "Documentation and shipping procedures",
+          "Authorised representative responsibilities and data submission",
           "Further process discovery and working sessions",
-          "Product behaviour and design"
-        ]
+          "Product behaviour and design",
+          "Final storage arrangements for optical devices"
+        ],
+        "sem": {
+          "matched": 0,
+          "pairs": []
+        }
       },
       "discussion": {
-        "matched": 2,
+        "matched": 1,
+        "near": 5,
         "total": 20,
         "unmatched": [
           "The QMS manual is being used as a building block for importer-obligation compliance documents.",
-          "DITA's product flow involves goods purchased from suppliers in Japan, fiscally cleared in the Netherlands and then shipped to Dublin.",
           "The Netherlands step is a short customs or airport clearance hold rather than substantive warehousing.",
           "Final storage takes place at DITA's Park West warehouse in Dublin.",
           "The Park West warehouse is mostly manual, with scanners and RF Smart handheld devices used for picking.",
@@ -205,39 +287,71 @@
           "Orla had not received the QMS manual email, so it needs to be resent to her.",
           "Current barcode use is UPC-based, with lot numbering and UDI-related updates being implemented.",
           "New products must be registered in EUDAMED immediately and existing products by 28 November.",
+          "Importer and authorised representative obligations include checking that manufacturer product data is present in EUDAMED.",
           "MedEnvoy may be handling EUDAMED device registration for the manufacturer, but DITA needs oversight of the plan and timelines.",
           "US FDA GUDID records may also need to be checked for distributed US products.",
           "Label updates should include production information, potentially through a 2D data matrix barcode and lot number.",
           "Manufacturer information notes or warranty booklets are used, but the team discussed whether any IFU justification is needed from the manufacturer.",
           "Class I glasses may not need IFUs if justified, but the manufacturer needs the rationale if no IFU is provided.",
+          "Declaration of conformity updates may need to include sunglasses and risk rationale for both EU MDR and PPE Category I.",
           "DOC translation and country/language coverage need to be clarified based on where products are shipped.",
           "The HPRA authorised representative invoice and SRN registration correspondence need to be reviewed before payment."
         ],
         "generated": [
-          "Jacqui Fox confirmed that John Paul is aware of the listed items for storage.",
-          "The final storage arrangement for the opticals requires consideration.",
-          "Understand DITA's actual operational processes so importer-obligation procedures can be designed around how the business works. The meeting covered operations and processes, plans and timelines, and product behaviour and design.",
-          "Clarification was sought regarding whether the warehouse is automated or fully manual, with the response indicating it is pretty manual.",
-          "The team utilizes scanners for picking, but operations are conducted by human operators.",
-          "The process for lot numbering is expected to be established by early July.",
-          "When including sunglasses on declarations of conformity, the risk rationale must be updated accordingly.",
-          "The approach for declarations of conformity requires certainty that both elements are included.",
+          "The final storage arrangement for the opticals requires definition.",
+          "Goods are ultimately stored in Dublin.",
+          "The warehousing facility location was queried, specifically regarding Park West.",
+          "The team utilizes scanners for picking, but operations are conducted by human operators, indicating a manual warehouse.",
+          "The process for goods movement involves being held for clearance, brokerage, and then being released to Dublin.",
+          "The legal manufacturer is responsible for putting data into Udemed, and the importer and authorised representative must verify its presence.",
           "The team ship and invoice the goods using DHL and insert a hard copy of the invoice inside the box.",
-          "Or, yeah, the authorized rep.",
           "As far as Europe's concerned, they're responsible for putting the data into Udemed and then the importer and the authorised rep have to check it's there.",
-          "Orla Skally is currently positioned in the middle of the process and needs to consult Cody for updates, as Cody is the one working with Med Envoy.",
-          "DJ Inc. holds responsibility for Med Envoy, and authorized representatives may upload data if it is not their legal responsibility, depending on prior contracts with Cody.",
-          "Orla Skally has a call scheduled with Cody to review a list of required items from the envoy.",
-          "For Europe, the legal manufacturer is responsible for inputting data into Udemed, and the importer and authorized representative must check it is present.",
-          "Follow-up on the SRN documentation regarding company size information has not yielded any updates.",
-          "A follow-up call is scheduled for the following week to discuss potential crossovers in the workstreams.",
-          "Customers, who are wholesale opticians in Europe, can place orders via a B2B platform or contact a regional sales representative for order placement.",
-          "Orders are generally placed through the B2B platform, submitted, and then reviewed by the customer service team in a pending approval queue.",
-          "Once an order is processed, a shipping list with barcodes detailing the sales order number, unit count, and products is printed for the warehouse."
-        ]
+          "Labels are printed and applied to shipping boxes using handheld devices.",
+          "A box is prepared for picking based on the order quantity, and the team uses handheld devices to pick items into that box.",
+          "Products are stored by bin number, and picked items are then moved to packing.",
+          "Label design and barcode format are subject to external control, as the team acknowledges that aspects of the label are outside their direct control.",
+          "As far as Europe's concerned, they're responsible for putting the data into Udemed and then the importer and the authorised rep have to check it's there.",
+          "The meeting was held to understand DITA's actual operational processes to enable the design of importer-obligation procedures that align with the business's workflow.",
+          "As far as Europe's concerned, they're responsible for putting the data into Udemed and then the importer and the authorised rep have to check it's there.",
+          "Now, and Jacqui Fox knows the guys have listed them here, so Jacqui Fox is hi, John Paul.",
+          "Have Jacqui Fox addressed that right and is that the correct reflection of how it works?.",
+          "The final storage arrangement for the opticals requires definition.",
+          "The final storage arrangement for the opticals is a key point of discussion."
+        ],
+        "sem": {
+          "matched": 5,
+          "pairs": [
+            {
+              "expected": "Final storage takes place at DITA's Park West warehouse in Dublin.",
+              "generated": "Goods are ultimately stored in Dublin.",
+              "sim": 0.6113
+            },
+            {
+              "expected": "The Park West warehouse is mostly manual, with scanners and RF Smart handheld devices used for picking.",
+              "generated": "The team utilizes scanners for picking, but operations are conducted by human operators, indicating a manual warehouse.",
+              "sim": 0.7306
+            },
+            {
+              "expected": "Products are picked, packed into branded cases, labelled, invoiced and dispatched through DHL to stores.",
+              "generated": "The team ship and invoice the goods using DHL and insert a hard copy of the invoice inside the box.",
+              "sim": 0.7011
+            },
+            {
+              "expected": "The QMS and procedures need to reflect both regulatory requirements and DITA's actual business processes.",
+              "generated": "The meeting was held to understand DITA's actual operational processes to enable the design of importer-obligation procedures that align with the business's workflow.",
+              "sim": 0.6772
+            },
+            {
+              "expected": "Importer and authorised representative obligations include checking that manufacturer product data is present in EUDAMED.",
+              "generated": "The legal manufacturer is responsible for putting data into Udemed, and the importer and authorised representative must verify its presence.",
+              "sim": 0.7853
+            }
+          ]
+        }
       },
       "actionRecall": {
         "matched": 2,
+        "near": 2,
         "total": 10,
         "unmatched": [
           {
@@ -272,16 +386,42 @@
             "owner": "Jacqui",
             "action": "Arrange a follow-up call with Orla for the following week."
           }
-        ]
+        ],
+        "generated": [
+          "Orla Skally :: Review the bill document as well",
+          "Jacqui Fox :: Flick the item over to Orla.",
+          "Orla Skally :: Bring the item to the US team.",
+          "Orla Skally :: Send a copy of the HPRA authorised representative bill",
+          "Not stated :: Prepare the country and language list",
+          "Not stated :: Follow up on the Med Envoy project plan or task list",
+          "Not stated :: Update the declarations of conformity with the PPE risk rationale"
+        ],
+        "sem": {
+          "matched": 2,
+          "pairs": [
+            {
+              "expected": "Orla Send the HPRA invoice and SRN confirmation email to Jacqui and Colm for review.",
+              "generated": "Orla Skally :: Send a copy of the HPRA authorised representative bill",
+              "sim": 0.6621
+            },
+            {
+              "expected": "Jacqui Arrange a follow-up call with Orla for the following week.",
+              "generated": "Jacqui Fox :: Flick the item over to Orla.",
+              "sim": 0.6683
+            }
+          ]
+        }
       },
       "actionPrecision": {
         "matched": 2,
-        "total": 4
+        "total": 7
       },
       "wording": {
-        "checked": 42,
-        "flagged": 0,
-        "counts": {}
+        "checked": 45,
+        "flagged": 4,
+        "counts": {
+          "unresolved_deixis": 4
+        }
       }
     },
     {
@@ -292,6 +432,7 @@
       "purposeOverlap": 0.07,
       "objectives": {
         "matched": 3,
+        "near": 0,
         "total": 5,
         "unmatched": [
           "Review tracker movement and key priorities.",
@@ -304,11 +445,17 @@
           "Review change control and version traceability.",
           "Confirm electrical compliance evidence.",
           "Confirm cybersecurity, USB and GUI controls.",
-          "Review standards and risk-management work."
-        ]
+          "Review standards and risk-management work.",
+          "Update ports table for the new set of minutes."
+        ],
+        "sem": {
+          "matched": 0,
+          "pairs": []
+        }
       },
       "topics": {
         "matched": 4,
+        "near": 3,
         "total": 22,
         "unmatched": [
           "Tracker status",
@@ -318,7 +465,7 @@
           "Risk management plan updates",
           "Risk matrix",
           "Alarm coding changes",
-          "Change request",
+          "Clinical and usability alarm review",
           "Subcontractor spreadsheet",
           "Usability specifications",
           "Task analysis",
@@ -331,28 +478,46 @@
           "TF03 MDR findings submission"
         ],
         "generated": [
-          "Software changes and language implementation",
-          "Alarm functionality and clinical confirmation",
+          "Software changes and language requirements",
+          "Alarm-code and clinical confirmation",
           "Debug and test-script evidence",
-          "Version traceability and retrospective updates",
+          "Change control and version traceability",
           "Electrical compliance evidence",
-          "Cybersecurity and USB port mitigation",
+          "Cybersecurity, USB and GUI controls",
           "Standards and risk-management work"
-        ]
+        ],
+        "sem": {
+          "matched": 3,
+          "pairs": [
+            {
+              "expected": "Risk management plan updates",
+              "generated": "Standards and risk-management work",
+              "sim": 0.6231
+            },
+            {
+              "expected": "Alarm coding changes",
+              "generated": "Alarm-code and clinical confirmation",
+              "sim": 0.6749
+            },
+            {
+              "expected": "Clinical and usability alarm review",
+              "generated": "Alarm-code and clinical confirmation",
+              "sim": 0.6494
+            }
+          ]
+        }
       },
       "discussion": {
-        "matched": 0,
+        "matched": 3,
+        "near": 5,
         "total": 20,
         "unmatched": [
           "The tracker has moved positively, with fewer documents in the 20 to 39 percent completion band.",
           "The main technical-file priorities remain risk and software.",
-          "Cybersecurity updates are needed because of USB ports on the back of the CPAP machine.",
           "Rebecca is updating the risk management plan and matrix, including more detail on FMEAs across software, hardware and related areas.",
           "Andrew has progressed alarm-related software changes across sound, flash and colour.",
           "The remaining alarm issue is how the mute button affects the flash sequence.",
-          "Clinical review with Janine and Adil is needed to confirm whether the alarm changes are acceptable in the field.",
           "The alarm changes are expected to be handled through a change request review.",
-          "The firmware appears to have capacity for the 12 additional languages.",
           "Arabic, Vietnamese and Greek may need symbol or font support before the translated GUI files can be fully loaded.",
           "The alarm and language updates will produce a new software version.",
           "The new software version should also document the retrospective update from version 1.01 to 1.02.",
@@ -366,19 +531,62 @@
           "PMS comments from David need to feed into the relevant summary or PMS documentation."
         ],
         "generated": [
-          "There was, Rebecca Gill thinks David had put in two comments.",
-          "From the software perspective, there's Andrew who has been doing work on the changes, so of the identify changes that need to happen, one specifically around alarms and the other around languages.",
-          "It's just a matter of review and approval for them to then be saved into the file and make sure there's no final changes needed to them.",
-          "The purpose of this meeting was to coordinate progress, identify evidence gaps, and resolve blockers for the software change and technical file programme to ensure the change package can be closed properly.",
-          "The alarm changes seem to have gone through successfully.",
-          "He's just looking into that with a view as well to connecting with the clinical.",
-          "In effect, the two code changes that were needed should be completed in total by the end of next week.",
-          "Following on from that, the alarms feed into or were directly independent into the electrical compliance.testing that needs to happen.",
-          "It's focused really now on that cybersecurity update."
-        ]
+          "David has submitted two comments regarding the software changes.",
+          "Work on changes is progressing, specifically concerning alarms and language requirements.",
+          "Review and approval are required to save the changes to the file and confirm no final amendments are necessary.",
+          "The meeting's objective was to coordinate progress, identify evidence gaps, and resolve blockers for the software change and technical file programme to ensure the change package can be closed properly.",
+          "Andrew has demonstrated that the firmware memory capacity is sufficient to accommodate the 12 additional languages.",
+          "The changes to the alarm settings appear to have been successfully processed.",
+          "Further investigation is required regarding the mute button function or the flash sequence in the current setup.",
+          "Janine and Adil are scheduled to review the changes from a clinical perspective next week to assess field implications and acceptability.",
+          "David has submitted two comments concerning the required code changes.",
+          "The two necessary code changes are scheduled for completion by the end of next week.",
+          "A review of the software code is required to trace changes and generate retrospective test scenarios to provide justification for the changes from a traceability perspective.",
+          "The alarms feed into or are independent of the electrical compliance testing that must be performed.",
+          "Rebecca's primary focus is on risk and electrical compliance, involving collaboration with David and Andrew.",
+          "The current focus is concentrated on the cybersecurity update.",
+          "Updates are required concerning cybersecurity risks resulting from the USB ports on the CPAP machine and mitigation strategies.",
+          "The hazard analysis has been updated to identify additional requirements."
+        ],
+        "sem": {
+          "matched": 6,
+          "pairs": [
+            {
+              "expected": "Andrew has progressed alarm-related software changes across sound, flash and colour.",
+              "generated": "Work on changes is progressing, specifically concerning alarms and language requirements.",
+              "sim": 0.6119
+            },
+            {
+              "expected": "The remaining alarm issue is how the mute button affects the flash sequence.",
+              "generated": "Further investigation is required regarding the mute button function or the flash sequence in the current setup.",
+              "sim": 0.7994
+            },
+            {
+              "expected": "The alarm changes are expected to be handled through a change request review.",
+              "generated": "The changes to the alarm settings appear to have been successfully processed.",
+              "sim": 0.6514
+            },
+            {
+              "expected": "The alarm and language updates will produce a new software version.",
+              "generated": "Work on changes is progressing, specifically concerning alarms and language requirements.",
+              "sim": 0.6542
+            },
+            {
+              "expected": "David is tracing the 17 historical software changes from version 1.01 to 1.02 and identifying any test-scenario gaps.",
+              "generated": "A review of the software code is required to trace changes and generate retrospective test scenarios to provide justification for the changes from a traceability perspective.",
+              "sim": 0.6454
+            },
+            {
+              "expected": "Retrospective test scenarios may be needed where changes cannot be supported from existing traceability.",
+              "generated": "A review of the software code is required to trace changes and generate retrospective test scenarios to provide justification for the changes from a traceability perspective.",
+              "sim": 0.7969
+            }
+          ]
+        }
       },
       "actionRecall": {
         "matched": 0,
+        "near": 0,
         "total": 10,
         "unmatched": [
           {
@@ -421,18 +629,24 @@
             "owner": "Ciaran",
             "action": "Review David's PMS comments and incorporate them into the relevant PMS or summary documentation."
           }
-        ]
+        ],
+        "generated": [
+          "Jacqui Fox :: Update the ports table for the new set of minutes",
+          "Rebecca Gill :: Prepare the response to the cars"
+        ],
+        "sem": {
+          "matched": 0,
+          "pairs": []
+        }
       },
       "actionPrecision": {
         "matched": 0,
-        "total": 1
+        "total": 2
       },
       "wording": {
-        "checked": 26,
-        "flagged": 4,
-        "counts": {
-          "unresolved_deixis": 4
-        }
+        "checked": 35,
+        "flagged": 0,
+        "counts": {}
       }
     },
     {
@@ -443,6 +657,7 @@
       "purposeOverlap": 0.07,
       "objectives": {
         "matched": 0,
+        "near": 2,
         "total": 5,
         "unmatched": [
           "Review risk, software, contract-management, subcontractor and usability priorities.",
@@ -458,14 +673,27 @@
           "Review change control and version traceability.",
           "Confirm electrical compliance evidence.",
           "Confirm cybersecurity, USB and GUI controls.",
-          "Review standards and risk-management work."
-        ]
+          "Review standards and risk-management work.",
+          "Review software coding and language updates."
+        ],
+        "sem": {
+          "matched": 1,
+          "pairs": [
+            {
+              "expected": "Review risk, software, contract-management, subcontractor and usability priorities.",
+              "generated": "Review standards and risk-management work.",
+              "sim": 0.6532
+            }
+          ]
+        }
       },
       "topics": {
-        "matched": 4,
+        "matched": 3,
+        "near": 5,
         "total": 17,
         "unmatched": [
           "Documentation tracker",
+          "USB cybersecurity mitigations",
           "Alarm updates completed",
           "Language symbol issues",
           "New software version",
@@ -485,18 +713,21 @@
           "Debug and test-script evidence",
           "Change control and version traceability",
           "Electrical compliance evidence",
-          "Cybersecurity, USB and GUI controls",
-          "Risk management plan amendments"
-        ]
+          "Risk management and cybersecurity",
+          "Standards and risk-management work"
+        ],
+        "sem": {
+          "matched": 0,
+          "pairs": []
+        }
       },
       "discussion": {
-        "matched": 1,
+        "matched": 3,
+        "near": 2,
         "total": 16,
         "unmatched": [
           "Documentation tracker movement is expected, with priorities remaining risk, software, contract management, subcontractors and usability.",
-          "Risk-management updates are continuing after David's feedback, including ratings, the risk matrix and cybersecurity mitigations for the USB port.",
           "Alarm software updates have been completed and clinically reviewed as acceptable for field use.",
-          "The alarm changes can proceed through the change request and will form part of the new software version.",
           "Language updates are ongoing, with several languages loaded and others blocked by minor or more substantial symbol issues.",
           "The language updates will also form part of the new software release.",
           "The software workstream end date is pushed to the end of July because electrical testing outputs feed into software deliverables.",
@@ -510,20 +741,35 @@
           "The team is running short on time, so documentation should be progressed and shared for review as soon as possible."
         ],
         "generated": [
-          "Andrew is currently making changes to the coding and languages.",
-          "Updates are being made concurrently to the software coding and languages.",
-          "Other updates were required for one of the other sites audits.",
-          "The purpose of this meeting was to coordinate progress, identify evidence gaps, and resolve blockers for the software-change and technical-file programme to ensure the change package can be closed appropriately.",
+          "Andrew is concurrently making changes to the coding and languages.",
+          "The meeting aimed to coordinate progress, identify evidence gaps, and resolve blockers for the software-change and technical-file programme to ensure the change package can be closed properly.",
+          "There were other updates required for one of the other sites audits.",
           "The change request for the code update is approved.",
+          "This decision relates to the code update that will result in the new version of software containing the alarm updates.",
           "In relation to electrical compliance testing, confirm that that will all be done in-house.",
-          "Amendments have been made to the risk management plan following feedback from David.",
-          "A clinical review was conducted regarding three different parameters, which were deemed acceptable for the field.",
-          "The new version of software will include the alarm updates, and Andrew is concurrently making changes to the coding and languages.",
-          "Ongoing updates are being addressed regarding cybersecurity concerning the USB port and necessary mitigations."
-        ]
+          "Ongoing updates are being managed concerning the risk matrix and cybersecurity, specifically regarding the USB port handling and associated mitigations.",
+          "The clinical review regarding the three different parameters was conducted, and they were deemed acceptable for the field.",
+          "The code update will result in a new version of software that includes the alarm updates."
+        ],
+        "sem": {
+          "matched": 2,
+          "pairs": [
+            {
+              "expected": "Alarm software updates have been completed and clinically reviewed as acceptable for field use.",
+              "generated": "This decision relates to the code update that will result in the new version of software containing the alarm updates.",
+              "sim": 0.633
+            },
+            {
+              "expected": "The language updates will also form part of the new software release.",
+              "generated": "The code update will result in a new version of software that includes the alarm updates.",
+              "sim": 0.6039
+            }
+          ]
+        }
       },
       "actionRecall": {
-        "matched": 1,
+        "matched": 3,
+        "near": 1,
         "total": 11,
         "unmatched": [
           {
@@ -537,14 +783,6 @@
           {
             "owner": "Christina",
             "action": "Put the updated contractor GSOP into a folder for Louise to check."
-          },
-          {
-            "owner": "Christina",
-            "action": "Check in with Rebecca before the end of the week on missing subcontractor or contract-management updates."
-          },
-          {
-            "owner": "Jacqui",
-            "action": "Follow up on Louise's review of the updated contractor GSOP."
           },
           {
             "owner": "Adil",
@@ -566,16 +804,31 @@
             "owner": "Team",
             "action": "Progress documentation quickly and share anything that needs Trinzo review."
           }
-        ]
+        ],
+        "generated": [
+          "Jacqui Fox :: Follow up on the item.",
+          "Adil Kauim :: Complete current tasks and focus on protocol preparation for mini masking problems in the first week of July.",
+          "Christina McLean :: Check in with Rebecca before the end of this week to obtain updates for next week.",
+          "Kevin Beattie :: Review and rewrite the documents, reword a few things, and ensure clarity.",
+          "Kevin Beattie :: Write the documents, reviewing or rewriting them and rewording sections for clarity.",
+          "Not stated :: Complete clinical review of code changes for sounds, colour and flash",
+          "Not stated :: Complete Electrical compliance testing"
+        ],
+        "sem": {
+          "matched": 0,
+          "pairs": []
+        }
       },
       "actionPrecision": {
-        "matched": 1,
-        "total": 3
+        "matched": 3,
+        "total": 7
       },
       "wording": {
-        "checked": 29,
-        "flagged": 0,
-        "counts": {}
+        "checked": 33,
+        "flagged": 2,
+        "counts": {
+          "unresolved_deixis": 2
+        }
       }
     },
     {
@@ -586,6 +839,7 @@
       "purposeOverlap": 0.33,
       "objectives": {
         "matched": 0,
+        "near": 2,
         "total": 5,
         "unmatched": [
           "Practise the opening and handover from Priya to Tom.",
@@ -597,16 +851,27 @@
         "generated": [
           "Build the closing slide with the QR code and the link and re-share the deck once completed.",
           "Group chat questions and privately cue the presenter during the live session.",
-          "Keep self-introduction and answers to roughly thirty seconds and omit the opening joke.",
-          "Handle the opening, the housekeeping, the tap-the-speech-bubble line, and cover any dead air on the handovers.",
-          "Build the closing slide with the QR code and the link; Re-share the deck once it's done",
-          "Start and monitor the recording, verify the red dot and take a screenshot",
+          "Keep the self-introduction and answers to approximately thirty seconds and omit the opening joke.",
+          "Start and monitor the recording, verify the red dot, and take a screenshot.",
           "Confirm presenter handovers and roles.",
-          "Review audience questions and Q&A handling."
-        ]
+          "Review audience questions and Q&A handling.",
+          "Handle the opening, housekeeping, and the 'tap-the-speech-bubble' line, and cover any dead air during handovers.",
+          "Review technical setup and contingencies."
+        ],
+        "sem": {
+          "matched": 1,
+          "pairs": [
+            {
+              "expected": "Check screen-sharing and case-study handovers.",
+              "generated": "Confirm presenter handovers and roles.",
+              "sim": 0.6625
+            }
+          ]
+        }
       },
       "topics": {
         "matched": 4,
+        "near": 2,
         "total": 13,
         "unmatched": [
           "Webinar opening",
@@ -624,10 +889,15 @@
           "Audience questions and Q&A handling",
           "Timing and running order",
           "Technical setup and contingencies"
-        ]
+        ],
+        "sem": {
+          "matched": 0,
+          "pairs": []
+        }
       },
       "discussion": {
-        "matched": 3,
+        "matched": 2,
+        "near": 6,
         "total": 18,
         "unmatched": [
           "Priya will open the webinar with housekeeping, muted microphones, cameras off and questions in chat.",
@@ -635,6 +905,7 @@
           "Slide-two animation has been removed and needs to be restored.",
           "Priya will take over briefly for the case study and then hand back to Tom.",
           "The screen-sharing handover creates a short dead-air risk, so Priya will cover the gap verbally.",
+          "Nadia will monitor and group chat questions, then feed Priya the best questions privately.",
           "Nadia will message Tom a five-minute warning while he is presenting.",
           "The opening script should mention the speech-bubble icon for mobile attendees.",
           "The team will spot-check the joins and question section rather than rerun all content.",
@@ -647,27 +918,51 @@
           "A short warm-up run of the opening and first handover is planned for 08:30 before the 11:00 live session."
         ],
         "generated": [
-          "All participants must practice the handover procedure.",
-          "The meeting's objective is to rehearse the webinar flow, content, handovers, and technical setup to ensure a smooth live session.",
-          "Callum Reid serves as the technical safety net; he is equipped with a separate connection to maintain communication if the venue Wi-Fi fails.",
-          "Priya Sethi will manage the introduction, housekeeping, and instruct attendees to submit questions via the chat.",
-          "Nadia Okonkwo will privately collect and group the questions, focusing on high-value inquiries.",
-          "The session will conclude with a dedicated period for questions, with the plan being for Priya Sethi to manage the final collection.",
-          "The content presentation is scheduled to conclude by thirty-five minutes, followed by a twenty-minute slot for questions.",
-          "A contingency plan exists to cover dead air during transitions, such as when a presenter is recovering their connection.",
-          "The opening sequence will involve Priya Sethi handling the introduction, housekeeping, and managing any dead air during handovers.",
-          "The animation sequence was found to be incorrectly displayed and required correction.",
-          "Callum Reid will join the session with his camera and microphone disabled to function as a standard attendee.",
-          "Callum Reid maintains a separate, dedicated broadband connection to ensure continuity of communication if the primary venue Wi-Fi is unavailable."
-        ]
+          "All participants must practice the handover process to ensure smooth execution.",
+          "The objective of the meeting was to rehearse the webinar flow, content delivery, handovers, and technical setup to guarantee a seamless live session.",
+          "Callum Reid is designated as the technical safety net; if primary connections fail, he is responsible for stepping in to manage the session.",
+          "Callum Reid is equipped with a separate connection and different broadband to ensure connectivity even if the venue Wi-Fi fails, allowing him to maintain contact with participants.",
+          "Priya Sethi will manage the introduction, including welcoming attendees, managing audio settings, and directing participants to submit questions via the chat.",
+          "Nadia Okonkwo will privately collect and curate the questions, focusing on selecting high-quality inquiries to present later.",
+          "The audience experience will involve Priya Sethi reading out questions, ensuring a tidy presentation format.",
+          "Nadia Okonkwo will prepare three backup questions in advance to address potential audience queries.",
+          "The content presentation is scheduled to conclude by thirty-five minutes, which is set as a hard stop.",
+          "A dedicated period of twenty minutes is allocated for audience questions following the content delivery.",
+          "To mitigate dead air during transitions, a contingency plan involves the presenter speaking over any gaps while a technical element is being restored.",
+          "The overall structure requires a comprehensive plan covering the opening, housekeeping, dead air management during handovers, and the closing procedures.",
+          "Confirmation was made that someone had removed the animation from the presentation.",
+          "Callum Reid will join the session with his camera and microphone turned off, using a standard setup.",
+          "Callum Reid's role as a technical safety net is supported by his ability to operate on a separate connection and different broadband.",
+          "The team must be prepared for technical issues, including the possibility of animation errors, and contingency plans must be in place."
+        ],
+        "sem": {
+          "matched": 2,
+          "pairs": [
+            {
+              "expected": "Slide-two animation has been removed and needs to be restored.",
+              "generated": "Confirmation was made that someone had removed the animation from the presentation.",
+              "sim": 0.6698
+            },
+            {
+              "expected": "Nadia will monitor and group chat questions, then feed Priya the best questions privately.",
+              "generated": "Nadia Okonkwo will privately collect and curate the questions, focusing on selecting high-quality inquiries to present later.",
+              "sim": 0.6523
+            }
+          ]
+        }
       },
       "actionRecall": {
-        "matched": 3,
+        "matched": 5,
+        "near": 4,
         "total": 12,
         "unmatched": [
           {
             "owner": "Callum",
             "action": "Restore the animation on the three-things slide."
+          },
+          {
+            "owner": "Nadia",
+            "action": "Write three backup questions tonight and circulate them to the team."
           },
           {
             "owner": "Nadia",
@@ -682,37 +977,52 @@
             "action": "Keep Q&A answers concise and avoid overrunning."
           },
           {
-            "owner": "Tom",
-            "action": "Drop the not-see-you joke from the opening."
-          },
-          {
             "owner": "Priya",
             "action": "Use the opening housekeeping script, including the tap-the-speech-bubble instruction for mobile attendees."
-          },
-          {
-            "owner": "Priya",
-            "action": "Cover dead air during screen-sharing handovers and handle the closing."
-          },
-          {
-            "owner": "Callum",
-            "action": "Start recording when Priya begins, check the red recording indicator, take a screenshot and monitor the recording."
           },
           {
             "owner": "Team",
             "action": "Run a short warm-up at 08:30 covering the opening and first handover."
           }
-        ]
+        ],
+        "generated": [
+          "Callum Reid :: Build the closing slide with the QR code and the link and re-share the deck once completed",
+          "Nadia Okonkwo :: Group the chat questions and privately cue the presenter during the live session",
+          "Tom Whitfield :: Keep the self-introduction and answers to roughly thirty seconds and omit the opening joke",
+          "Priya Sethi :: Handle the opening, the housekeeping, the tap-the-speech-bubble line, and cover any dead air on the handovers",
+          "Callum Reid :: Start and monitor the recording, verify the red dot, and take a screenshot",
+          "all attendees :: Run a short opening and first-handover warm-up",
+          "Tom Whitfield :: Find the little clock top right"
+        ],
+        "sem": {
+          "matched": 3,
+          "pairs": [
+            {
+              "expected": "Tom Keep the personal introduction to about 30 seconds.",
+              "generated": "Tom Whitfield :: Keep the self-introduction and answers to roughly thirty seconds and omit the opening joke",
+              "sim": 0.6204
+            },
+            {
+              "expected": "Priya Use the opening housekeeping script, including the tap-the-speech-bubble instruction for mobile attendees.",
+              "generated": "Priya Sethi :: Handle the opening, the housekeeping, the tap-the-speech-bubble line, and cover any dead air on the handovers",
+              "sim": 0.6931
+            },
+            {
+              "expected": "Team Run a short warm-up at 08:30 covering the opening and first handover.",
+              "generated": "all attendees :: Run a short opening and first-handover warm-up",
+              "sim": 0.6848
+            }
+          ]
+        }
       },
       "actionPrecision": {
-        "matched": 2,
-        "total": 4
+        "matched": 5,
+        "total": 7
       },
       "wording": {
-        "checked": 30,
-        "flagged": 1,
-        "counts": {
-          "unresolved_deixis": 1
-        }
+        "checked": 37,
+        "flagged": 0,
+        "counts": {}
       }
     },
     {
@@ -723,6 +1033,7 @@
       "purposeOverlap": 0.14,
       "objectives": {
         "matched": 2,
+        "near": 0,
         "total": 6,
         "unmatched": [
           "Clarify risk probability justification in the risk plan.",
@@ -737,10 +1048,15 @@
           "Confirm electrical compliance evidence.",
           "Confirm cybersecurity, USB and GUI controls.",
           "Review standards and risk-management work."
-        ]
+        ],
+        "sem": {
+          "matched": 0,
+          "pairs": []
+        }
       },
       "topics": {
         "matched": 2,
+        "near": 3,
         "total": 15,
         "unmatched": [
           "Risk probability justification",
@@ -764,10 +1080,26 @@
           "Electrical compliance evidence",
           "Cybersecurity, USB and GUI controls",
           "Standards and risk-management work"
-        ]
+        ],
+        "sem": {
+          "matched": 2,
+          "pairs": [
+            {
+              "expected": "Clinical alarm review",
+              "generated": "Alarm-code and clinical confirmation",
+              "sim": 0.8366
+            },
+            {
+              "expected": "Debug command testing",
+              "generated": "Debug and test-script evidence",
+              "sim": 0.7511
+            }
+          ]
+        }
       },
       "discussion": {
         "matched": 3,
+        "near": 3,
         "total": 20,
         "unmatched": [
           "David queried how the probability-table numbers in the risk management plan are justified, including what one event represents.",
@@ -785,25 +1117,37 @@
           "Access to a font-creator tool is blocked by the firewall and has been raised with IT.",
           "Electrical compliance testing remains on track, with existing UL testing covering some of the reviewed areas.",
           "David is prioritising traceability for the 17 software changes between versions 1.01 and 1.02.",
-          "A password may help software access control but could introduce clinical risk if it delays therapy changes.",
-          "Cybersecurity controls need to be documented clearly in the risk plan and matrix."
+          "If a software change has no visible code trace, retrospective test data may need to be generated.",
+          "A password may help software access control but could introduce clinical risk if it delays therapy changes."
         ],
         "generated": [
-          "The software list can be classified based on priority: low for flash slowly, medium for flash slowly, and high for flash quickly.",
+          "The software list is categorised based on priority: low priority for flash slowly, medium priority for flash slowly, and high priority for flash quickly.",
           "The team has consulted with the clinical team, who expressed satisfaction with the current approach.",
-          "A follow-up action is required for David to contact the relevant party regarding additional command letters to understand the use of debug screen command letters.",
-          "If software changes are identified without visibility in the code, retrospective test data must be generated to support the change.",
-          "The parameters for electrical compliance testing are being defined through a review of the IEC 6061-1 standard against the MDD documentation.",
-          "The actual electrical compliance testing has not yet commenced, as previous testing has already covered the necessary aspects.",
+          "A query was raised regarding the debug commands available on the screen.",
+          "David is scheduled to contact the relevant party to obtain additional command letters to understand the usage of these commands in the debug screen.",
+          "The next step involves reviewing the IEC 6061-1 standard against the MDD documentation to define the necessary testing for electrical compliance.",
+          "It was confirmed that the actual electrical testing has not yet commenced, as previous testing has already been covered.",
+          "The parameters for the compliance testing are currently being defined.",
           "The team reviewed the implementation of USB port locks and GUI security controls.",
-          "There are two potential methods for access: either accessing the software to update on screen, or allowing therapy changes on screen without a password.",
-          "The cybersecurity threat analysis identified plugging a device into the USB socket as the sole threat vector.",
-          "A reference was made to the risk matrix in relation to the discussion.",
-          "A review was planned for the standard to confirm if the specified flow rate falls within the range of applicability."
-        ]
+          "Considerations included the potential for password protection on the GUI and physical port locks.",
+          "Cybersecurity threat analysis identified plugging a device into the USB socket as the primary threat vector.",
+          "The status of the risk matrix was acknowledged.",
+          "A review of the standard was planned to ascertain if the specified flow rate falls within the range of applicability defined by the standard."
+        ],
+        "sem": {
+          "matched": 1,
+          "pairs": [
+            {
+              "expected": "David still needs to provide debug command letters so Andrew can confirm what happens in the debug screen.",
+              "generated": "David is scheduled to contact the relevant party to obtain additional command letters to understand the usage of these commands in the debug screen.",
+              "sim": 0.8423
+            }
+          ]
+        }
       },
       "actionRecall": {
-        "matched": 1,
+        "matched": 2,
+        "near": 3,
         "total": 12,
         "unmatched": [
           {
@@ -813,10 +1157,6 @@
           {
             "owner": "David",
             "action": "Add a front page to the software-list Excel explaining what each tab represents and the purpose of the file."
-          },
-          {
-            "owner": "Jacqui",
-            "action": "Check whether the real-time clock battery alarm issue is captured in the risk analysis."
           },
           {
             "owner": "Andrew",
@@ -850,16 +1190,49 @@
             "owner": "Rebecca",
             "action": "Update the risk files, plan and matrix with the agreed cybersecurity and USB-port-lock approach."
           }
-        ]
+        ],
+        "generated": [
+          "Jacqui Fox :: consider, David, if they, from a cybersecurity point of view, if they choose that approach",
+          "Rebecca Gill :: Make a note of the discussion and review the risk whilst looking at the risk",
+          "Jacqui Fox :: have a quick look as well to see if that's the case",
+          "Andrew Kane :: Confirm the specification of the flow rate if the item is taken offline.",
+          "Rebecca Gill :: anticipate is there's some sort of USB key that has to go in to kind of unlock the device",
+          "Andrew Kane :: Ask the relevant person for clarification.",
+          "Jacqui Fox :: Verify the specification related to IEC AC1001.",
+          "Jacqui Fox :: Perform a check to confirm that the risk has been captured in the risk and risk analysis.",
+          "Not stated :: Review the mute button flash sequence against the existing setup",
+          "Not stated :: Confirm which debug commands and outputs are visible on screen",
+          "Not stated :: Review the graphics driver as a possible route for supporting the required language symbols",
+          "Not stated :: Complete Electrical compliance testing",
+          "Not stated :: Generate retrospective test data if the software changes cannot be identified clearly"
+        ],
+        "sem": {
+          "matched": 2,
+          "pairs": [
+            {
+              "expected": "Andrew Test the debug commands and report what happens on the debug screen.",
+              "generated": "Not stated :: Confirm which debug commands and outputs are visible on screen",
+              "sim": 0.6557
+            },
+            {
+              "expected": "David Prioritise tracing the 17 software changes from version 1.01 to 1.02 and identify any retrospective test-data needs.",
+              "generated": "Not stated :: Generate retrospective test data if the software changes cannot be identified clearly",
+              "sim": 0.6975
+            }
+          ]
+        }
       },
       "actionPrecision": {
-        "matched": 1,
-        "total": 5
+        "matched": 2,
+        "total": 13
       },
       "wording": {
-        "checked": 30,
-        "flagged": 0,
-        "counts": {}
+        "checked": 39,
+        "flagged": 3,
+        "counts": {
+          "unresolved_deixis": 2,
+          "empty_adjunct": 1
+        }
       }
     },
     {
@@ -870,6 +1243,7 @@
       "purposeOverlap": 0.07,
       "objectives": {
         "matched": 1,
+        "near": 0,
         "total": 6,
         "unmatched": [
           "Review completed alarm sound, colour and flash changes.",
@@ -882,39 +1256,78 @@
           "Confirm the behaviour of the mute button and its effect on the flash.",
           "Review language and country requirements.",
           "Review alarm-code and clinical confirmation.",
-          "Review standards and risk-management work.",
           "Review debug and test-script evidence.",
           "Review change control and version traceability.",
           "Confirm electrical compliance evidence.",
-          "Confirm cybersecurity, USB and GUI controls."
-        ]
+          "Confirm cybersecurity, USB, and GUI controls.",
+          "Review standards and risk-management work."
+        ],
+        "sem": {
+          "matched": 2,
+          "pairs": [
+            {
+              "expected": "Plan debug-command and code-review work.",
+              "generated": "Review debug and test-script evidence.",
+              "sim": 0.6338
+            },
+            {
+              "expected": "Track language-change and software-versioning dependencies.",
+              "generated": "Review change control and version traceability.",
+              "sim": 0.6039
+            }
+          ]
+        }
       },
       "topics": {
-        "matched": 7,
+        "matched": 5,
+        "near": 4,
         "total": 15,
         "unmatched": [
           "Alarm code changes",
           "Mute button LED behaviour",
           "Clinical and usability review",
           "Alarm code review",
+          "Debug commands",
           "Language capacity and font limitations",
           "IEC 60601-1 gap review",
           "USB port lock",
+          "GUI security",
           "Benefit-risk analysis"
         ],
         "generated": [
           "Software changes and version traceability",
           "Alarm behaviour and controls",
-          "Debug and test-script evidence",
+          "Debugging and testing evidence",
           "Change control and version traceability",
           "Electrical compliance evidence",
-          "Cybersecurity, USB and GUI controls",
+          "Cybersecurity and hardware controls",
           "Standards and risk-management work",
           "Language and country requirements"
-        ]
+        ],
+        "sem": {
+          "matched": 3,
+          "pairs": [
+            {
+              "expected": "Alarm code changes",
+              "generated": "Alarm behaviour and controls",
+              "sim": 0.6648
+            },
+            {
+              "expected": "Alarm code review",
+              "generated": "Alarm behaviour and controls",
+              "sim": 0.6498
+            },
+            {
+              "expected": "Debug commands",
+              "generated": "Debugging and testing evidence",
+              "sim": 0.6114
+            }
+          ]
+        }
       },
       "discussion": {
-        "matched": 2,
+        "matched": 1,
+        "near": 6,
         "total": 20,
         "unmatched": [
           "Andrew has implemented and demonstrated alarm sound changes for low, medium and high priority alarms.",
@@ -928,30 +1341,66 @@
           "A further software release will be needed after the change request work is complete.",
           "The change is expected to be treated as non-significant or non-substantial through the regulatory process.",
           "The 17 historic software changes from version 1.01 to 1.02 need a gap assessment to confirm what changed and whether they are visible in code.",
-          "If the 17 changes are not all battery-related, additional explanation or retrospective test data may be needed for traceability.",
+          "Electrical compliance testing is being brought in-house and is expected to complete by around 23 July in the conservative timeline.",
           "Andrew has started reviewing the 60601-1 compliance document and identifying possible test gaps.",
           "The additional language work can load 18 language files, but Arabic, Vietnamese and Greek may require character or font support.",
+          "Cybersecurity and risk discussion covered USB port access, screen access, unauthorised interference, therapy-mode changes and whether a lock, password or benefit-risk rationale is appropriate.",
           "Password protection may introduce clinical usability risk if clinicians need to intervene quickly.",
           "Risk scoring for third-party interference may have high severity in neonatal scenarios but low occurrence based on field experience.",
           "Rebecca is updating the risk management file and has purchased standards that may inform cybersecurity and nebuliser-port assessment.",
           "Fan logic and PMS/risk-management plan updates were also reviewed as part of the technical-file follow-up."
         ],
         "generated": [
-          "The purpose of the meeting was to coordinate progress, identify evidence gaps, and resolve blockers for the software change and technical file programme to ensure the change package can be closed appropriately.",
-          "Actions were required regarding the sound settings.",
-          "Andrew Kane believes there is an alarm software load.",
-          "Andrew Kane will attempt to include sound in the configuration.",
-          "A query was raised regarding the progress of the debug.",
-          "Jacqui Fox noted that the team had reviewed documenting the change within an on-change request form, and David's output regarding the review of 17 changes and their visibility in the code was to be incorporated.",
-          "The initial step involved reviewing the 60601-1 compliance document against the MDD documentation to identify compliance points.",
-          "Testing for the update to the 12 additional languages is pending, with electrical compliance testing scheduled to commence shortly, aiming for completion by the 23rd of July.",
-          "The team is taking the electrical compliance testing in-house.",
-          "A port lock was suggested for consideration.",
-          "The team is investigating unwarranted interference with the device as a potential approach."
-        ]
+          "Andrew, Jacqui Fox knows that the team had looked at starting to document that change within the on a change request form.",
+          "The meeting was held to coordinate progress, identify evidence gaps, and resolve blockers for the software change and technical file programme to ensure the change package can be closed appropriately.",
+          "There were several items requiring attention related to the sound functionality.",
+          "Andrew Kane adjusted the alarm visual presentation by applying different colours, establishing a standard where cyan, blue, or yellow are used for low priority alarms.",
+          "The alarm system functionality was demonstrated by confirming that pressing the mute button changes the alarm state from flashing to solid.",
+          "Jacqui Fox raised the point that if changes are not battery-related, explanation documentation is required, and worst-case test data may need to be generated.",
+          "Andrew Kane noted that the audio debug menu does not appear on the screen, but it becomes accessible upon pressing a specific key.",
+          "Jacqui Fox noted that the team had previously considered documenting the change within a change request form.",
+          "Jacqui Fox directed that David's output regarding the review of 17 changes and their visibility within the code should be incorporated.",
+          "The initial step involved reviewing the 60601-1 compliance document against the MDD documentation to ascertain compliance.",
+          "Electrical compliance testing has commenced or will commence shortly, targeting completion by the 23rd of July.",
+          "Jacqui Fox confirmed that the team is taking responsibility for conducting the electrical compliance testing internally.",
+          "Port luck.to consider a port lock to be used.",
+          "Unwarranted interference with the device is the way the team were looking at it.",
+          "There's the hardware aspect of it, and then there's GUI aspect of it."
+        ],
+        "sem": {
+          "matched": 5,
+          "pairs": [
+            {
+              "expected": "Andrew has implemented and demonstrated alarm sound changes for low, medium and high priority alarms.",
+              "generated": "The alarm system functionality was demonstrated by confirming that pressing the mute button changes the alarm state from flashing to solid.",
+              "sim": 0.6066
+            },
+            {
+              "expected": "Low, medium and high priority alarm visuals have been updated with colour and LED flash behaviour.",
+              "generated": "Andrew Kane adjusted the alarm visual presentation by applying different colours, establishing a standard where cyan, blue, or yellow are used for low priority alarms.",
+              "sim": 0.6024
+            },
+            {
+              "expected": "The remaining alarm question is what happens to the LED flashing behaviour when the mute button is pressed.",
+              "generated": "The alarm system functionality was demonstrated by confirming that pressing the mute button changes the alarm state from flashing to solid.",
+              "sim": 0.7519
+            },
+            {
+              "expected": "Electrical compliance testing is being brought in-house and is expected to complete by around 23 July in the conservative timeline.",
+              "generated": "Electrical compliance testing has commenced or will commence shortly, targeting completion by the 23rd of July.",
+              "sim": 0.7449
+            },
+            {
+              "expected": "Andrew has started reviewing the 60601-1 compliance document and identifying possible test gaps.",
+              "generated": "The initial step involved reviewing the 60601-1 compliance document against the MDD documentation to ascertain compliance.",
+              "sim": 0.6843
+            }
+          ]
+        }
       },
       "actionRecall": {
-        "matched": 4,
+        "matched": 3,
+        "near": 4,
         "total": 14,
         "unmatched": [
           {
@@ -969,6 +1418,10 @@
           {
             "owner": "David",
             "action": "Complete the gap assessment of the 17 changes from software version 1.01 to 1.02 and identify where they are visible in the code."
+          },
+          {
+            "owner": "Rebecca",
+            "action": "Incorporate David's output on the 17 software changes into the design-change or technical-file summary."
           },
           {
             "owner": "Andrew",
@@ -994,16 +1447,31 @@
             "owner": "Jacqui",
             "action": "Add Rebecca to the regular Tuesday follow-up call."
           }
-        ]
+        ],
+        "generated": [
+          "Jacqui Fox :: Get Colm to review the port as well",
+          "Andrew Kane :: Confirm the mute button behaviour and its effect on the flash",
+          "Rebecca Cuckoo :: Continue reviewing the USB port side of things",
+          "Not stated :: Complete clinical review of code changes for sounds, colour and flash",
+          "Not stated :: Confirm which debug commands and outputs are visible on screen",
+          "Not stated :: Review IEC 60601-1 against the MDD documentation to identify electrical-compliance testing gaps",
+          "Not stated :: Review the fan logic document and confirm whether it should be added to Cognidocs"
+        ],
+        "sem": {
+          "matched": 0,
+          "pairs": []
+        }
       },
       "actionPrecision": {
-        "matched": 4,
-        "total": 9
+        "matched": 3,
+        "total": 7
       },
       "wording": {
-        "checked": 38,
-        "flagged": 0,
-        "counts": {}
+        "checked": 40,
+        "flagged": 3,
+        "counts": {
+          "unresolved_deixis": 3
+        }
       }
     },
     {
@@ -1011,9 +1479,10 @@
       "typeMatch": false,
       "expectedType": "Internal follow-up",
       "generatedType": "Project review",
-      "purposeOverlap": 0.25,
+      "purposeOverlap": 0.23,
       "objectives": {
         "matched": 0,
+        "near": 1,
         "total": 5,
         "unmatched": [
           "Confirm repair action for the broken water butt tap.",
@@ -1023,14 +1492,21 @@
           "Discuss the shed break-in and improve site security."
         ],
         "generated": [
-          "Review alarm behaviour and controls."
-        ]
+          "Procure a replacement tap unit from the place on Mill Road.",
+          "Review alarm behaviour and controls.",
+          "Get one from the place on Mill Road, they're about eight quid",
+          "Review water butt maintenance and security."
+        ],
+        "sem": {
+          "matched": 0,
+          "pairs": []
+        }
       },
       "topics": {
-        "matched": 0,
+        "matched": 1,
+        "near": 1,
         "total": 9,
         "unmatched": [
-          "Water butt repair",
           "Boundary fence safety risk",
           "Plot fee increase",
           "Waiting-list plot allocation",
@@ -1041,35 +1517,61 @@
           "Ongoing site security risk"
         ],
         "generated": [
-          "Alarm behaviour and controls"
-        ]
+          "Alarm behaviour and controls",
+          "Water butt maintenance and security"
+        ],
+        "sem": {
+          "matched": 0,
+          "pairs": []
+        }
       },
       "discussion": {
-        "matched": 2,
+        "matched": 1,
+        "near": 3,
         "total": 9,
         "unmatched": [
           "Damaged railway-side boundary fence and associated safety risk.",
           "Increase in annual plot fees from GBP 25 to GBP 30.",
           "Allocation of three vacant plots from the waiting list.",
           "Annual show date, categories and publicity.",
+          "GBP 50 budget for show prizes and rosettes.",
           "Communal shed break-in and stolen equipment.",
           "Improved shed security.",
           "Ongoing site-security risk if break-ins continue."
         ],
         "generated": [
-          "The team requires a proper hasp and a suitable padlock, along with consideration for solar alarm systems.",
-          "The team reviewed the current alarm behaviour and controls for the site.",
-          "A decision was made to purchase a hasp, padlock, and alarm, keeping the total cost under fifty pounds, to be fitted during the water butt installation on Saturday.",
-          "The status of the boundary fence along the railway side was reviewed, noting that the council has not yet inspected it, which has been ongoing for approximately three months.",
-          "The date for the show was confirmed as the thirteenth of September.",
-          "Wesley Boothroyd is responsible for compiling the schedule, categories, and entry form, with a target completion date of mid-August for publication.",
-          "A budget of up to fifty pounds was allocated for prizes and rosettes, with reimbursement contingent upon receipt of documentation."
-        ]
+          "The team has requested the installation of a proper hasp and a suitable padlock, along with considering solar alarm systems.",
+          "The alarm system requires an additional fifteen units.",
+          "It was agreed to purchase the hasp, padlock, and alarm, keeping the total cost under fifty pounds, to be fitted during the water butt installation on Saturday.",
+          "The water butt located by the top gate has a snapped tap, leading to complaints that residents cannot fill their containers.",
+          "The team has not installed water butts for six years, resulting in the water bill nearly doubling.",
+          "The recurring break-ins highlight a risk, suggesting that the site security, including cameras, may require further consideration.",
+          "The meeting was convened to review the current alarm behaviour and controls and to address necessary maintenance and security improvements for the site.",
+          "The council has not attended to the boundary fence along the railway side for approximately three months.",
+          "Wesley Boothroyd proposed the second Saturday in September, which corresponds to the thirteenth of September, for the show.",
+          "It was confirmed that the thirteenth of September is agreed upon for the show date.",
+          "Wesley Boothroyd is responsible for compiling the schedule, categories, and entry form, with a target completion date of mid-August."
+        ],
+        "sem": {
+          "matched": 1,
+          "pairs": [
+            {
+              "expected": "Ongoing site-security risk if break-ins continue.",
+              "generated": "The recurring break-ins highlight a risk, suggesting that the site security, including cameras, may require further consideration.",
+              "sim": 0.7189
+            }
+          ]
+        }
       },
       "actionRecall": {
-        "matched": 2,
+        "matched": 1,
+        "near": 2,
         "total": 6,
         "unmatched": [
+          {
+            "owner": "Ken",
+            "action": "Replace the broken water butt tap on Saturday."
+          },
           {
             "owner": "Barbara",
             "action": "Photograph the damaged boundary fence and write to the council this week, copying in the councillor."
@@ -1086,16 +1588,34 @@
             "owner": "Ken",
             "action": "Buy and fit a new hasp, padlock and solar alarm on Saturday, keeping spend under GBP 50."
           }
-        ]
+        ],
+        "generated": [
+          "Barbara Finch :: Write to the council again, properly this time, copying the councillor, and use the word liability because it usually gets them moving.",
+          "Ken Ogden :: Obtain a new tap unit from the place on Mill Road, noting the cost is about eight quid.",
+          "Priyanka Das :: Go down the list in order and email the top three, offer them a plot, give them a fortnight to say yes or they go to the back",
+          "Wesley Boothroyd :: Compile the schedule, categories, and the entry form, and post them on the noticeboard and Facebook by mid-August to allow time for growth."
+        ],
+        "sem": {
+          "matched": 1,
+          "pairs": [
+            {
+              "expected": "Priyanka Email the top three people on the waiting list by the end of the week, giving them 14 days to accept a plot.",
+              "generated": "Priyanka Das :: Go down the list in order and email the top three, offer them a plot, give them a fortnight to say yes or they go to the back",
+              "sim": 0.7379
+            }
+          ]
+        }
       },
       "actionPrecision": {
-        "matched": 2,
-        "total": 5
+        "matched": 1,
+        "total": 4
       },
       "wording": {
-        "checked": 16,
-        "flagged": 0,
-        "counts": {}
+        "checked": 23,
+        "flagged": 1,
+        "counts": {
+          "unresolved_deixis": 1
+        }
       }
     },
     {
@@ -1103,32 +1623,37 @@
       "typeMatch": false,
       "expectedType": "Decision meeting",
       "generatedType": "Project review",
-      "purposeOverlap": 0,
+      "purposeOverlap": 0.08,
       "objectives": {
-        "matched": 0,
+        "matched": 1,
+        "near": 0,
         "total": 5,
         "unmatched": [
-          "Decide between Cinderella and Aladdin.",
           "Confirm budget and licensing implications.",
           "Agree rehearsal-night arrangements.",
           "Discuss casting risks and understudy needs.",
           "Plan publicity, sound checks, ticket pricing and performance schedule."
         ],
         "generated": [
-          "Review the status of the 'Carpet Lives Fight Another Year'.",
-          "Finalise the production schedule for the upcoming year.",
-          "Secure the performing rights for the production.",
-          "Determine the necessary casting arrangements, including an understudy for the prince.",
-          "Review the carpet lives fight another year."
-        ]
+          "Decide which production to stage between Cinderella and Aladdin.",
+          "Order the Cinderella script and performing rights promptly to secure the slot.",
+          "Test all four microphones and the desk before October to either fix or replace the faulty equipment.",
+          "Test all four mics and the desk before October and either fix or replace the dodgy one"
+        ],
+        "sem": {
+          "matched": 0,
+          "pairs": []
+        }
       },
       "topics": {
-        "matched": 2,
+        "matched": 1,
+        "near": 0,
         "total": 10,
         "unmatched": [
+          "Production choice",
           "Budget constraints",
-          "Script and rights licensing",
           "Rehearsal venue and Tuesday-night booking",
+          "Casting availability",
           "Prince understudy",
           "Poster and publicity",
           "Radio microphone reliability",
@@ -1136,18 +1661,21 @@
           "Performance schedule"
         ],
         "generated": [
-          "The carpet lives fight another year",
-          "Production scheduling and rights acquisition",
-          "Casting and personnel planning"
-        ]
+          "Plans and timelines",
+          "Testing and validation",
+          "Operations and processes",
+          "Script and rights acquisition"
+        ],
+        "sem": {
+          "matched": 0,
+          "pairs": []
+        }
       },
       "discussion": {
-        "matched": 0,
+        "matched": 3,
+        "near": 3,
         "total": 10,
         "unmatched": [
-          "Choice between Cinderella and Aladdin, with Cinderella selected.",
-          "Production budget constraints.",
-          "Performing rights and script licensing.",
           "Rehearsal-night conflict at the church hall and switch to Tuesdays.",
           "Casting concerns around Malcolm's availability for the Prince role.",
           "Need for a Prince understudy.",
@@ -1157,26 +1685,36 @@
           "Two performances, Saturday matinee and evening."
         ],
         "generated": [
-          "The main thing, what are the team doing this year.",
-          "The carpet lives to fight another year.",
-          "The decision is between 'Cinderella' and 'Aladdin', with a need to secure the rights promptly as they require several weeks.",
-          "Tom Hardacre maintains his preference for 'Aladdin'.",
-          "The budget is constrained, as costumes for 'Aladdin' would require starting from scratch, whereas 'Cinderella' costumes are largely available in stock.",
-          "Land it tonight because the rights take weeks.",
-          "Now, casting, and this is delicate.",
-          "The team's usual rehearsal venue, the church hall, has been moved to Wednesdays, which is the designated rehearsal night.",
-          "There is a noted risk regarding the leading man's availability for the role.",
-          "Gerald Pemberton will speak with Malcolm regarding the possibility of him taking the role of Baron Hardup to secure a younger prince."
-        ]
+          "It's between Cinderella and Aladdin, and the team need to land it tonight because the rights take weeks.",
+          "Tom Hardacre still say Aladdin.",
+          "It's a safer sell, the families love it, and the team has got the costumes mostly already from three years back.",
+          "The costumes for Cinders are largely in the store, whereas Aladdin the team would be starting from scratch, and the budget's tight this year.",
+          "A decent radio microphone is estimated to cost approximately ninety pounds.",
+          "Nadeem Chaudhry will conduct the initial testing of the microphones.",
+          "Nadeem Chaudhry plans to test all four microphones and the desk before October to either repair or replace the faulty unit.",
+          "The production currently has an allocated budget of approximately six hundred pounds for the entire production.",
+          "This budget is considered tight when factoring in the costs associated with the hall, rights, costumes, and printing.",
+          "The primary objective of the meeting was to secure a decision on the production for the upcoming season, as securing necessary rights requires a significant lead time.",
+          "The choice is between Cinderella and Aladdin, necessitating a decision tonight due to the time required to secure the rights.",
+          "The team intends to order the Cinderella script and performing rights this week to prevent other county groups from securing the slot.",
+          "Tom Hardacre advocates for Aladdin, noting that the costumes for Cinderella are readily available, while Aladdin would require new sourcing."
+        ],
+        "sem": {
+          "matched": 1,
+          "pairs": [
+            {
+              "expected": "Faulty radio microphone and sound-system reliability.",
+              "generated": "Nadeem Chaudhry plans to test all four microphones and the desk before October to either repair or replace the faulty unit.",
+              "sim": 0.6027
+            }
+          ]
+        }
       },
       "actionRecall": {
-        "matched": 1,
+        "matched": 3,
+        "near": 0,
         "total": 5,
         "unmatched": [
-          {
-            "owner": "Gerald",
-            "action": "Order the Cinderella script and performing rights this week."
-          },
           {
             "owner": "Fiona",
             "action": "Contact Deborah tomorrow and book the church hall for Tuesday evenings, October through January."
@@ -1184,19 +1722,26 @@
           {
             "owner": "Gerald",
             "action": "Speak to Malcolm about taking the smaller Baron Hardup role instead of the Prince."
-          },
-          {
-            "owner": "Fiona",
-            "action": "Draft the Cinderella poster once the final show dates are confirmed, for review at the next meeting."
           }
-        ]
+        ],
+        "generated": [
+          "Nadeem Chaudhry :: Test all four microphones and the desk before October and either fix or replace the faulty one",
+          "Gerald Pemberton :: Order the Cinderella script and performing rights, before anyone else in the county nabs the slot",
+          "Fiona Alcott :: Arrange an understudy for the prince this year due to the Malcolm situation",
+          "Fiona Alcott :: Prepare a draft poster for Cinderella once final show dates are provided and present it to the next meeting for review",
+          "Nadeem Chaudhry :: Need a bit of budget if it's a new mic, they're not cheap"
+        ],
+        "sem": {
+          "matched": 0,
+          "pairs": []
+        }
       },
       "actionPrecision": {
-        "matched": 1,
-        "total": 1
+        "matched": 3,
+        "total": 5
       },
       "wording": {
-        "checked": 21,
+        "checked": 28,
         "flagged": 1,
         "counts": {
           "unresolved_deixis": 1
@@ -1211,6 +1756,7 @@
       "purposeOverlap": 0,
       "objectives": {
         "matched": 0,
+        "near": 0,
         "total": 5,
         "unmatched": [
           "Validate the proposed lead-generation process with sales and client-delivery stakeholders.",
@@ -1220,12 +1766,20 @@
           "Confirm whether the approach could produce useful lead quality and volume."
         ],
         "generated": [
+          "Generate leads of a sufficient quality to be presented to Keon and Liam.",
+          "Sense-check the academic theory.",
+          "Reprioritise and decide on the plan for different leads.",
           "Identify quality and risk management.",
           "Review customer and stakeholder feedback."
-        ]
+        ],
+        "sem": {
+          "matched": 0,
+          "pairs": []
+        }
       },
       "topics": {
         "matched": 0,
+        "near": 1,
         "total": 11,
         "unmatched": [
           "Lead-generation pipeline",
@@ -1243,10 +1797,15 @@
         "generated": [
           "Quality and risk management",
           "Customer and stakeholder feedback"
-        ]
+        ],
+        "sem": {
+          "matched": 0,
+          "pairs": []
+        }
       },
       "discussion": {
         "matched": 0,
+        "near": 5,
         "total": 15,
         "unmatched": [
           "Lead-generation process designed to produce sufficiently qualified leads for Keon and Liam.",
@@ -1267,14 +1826,35 @@
         ],
         "generated": [
           "The Ideal Client Profile (ICP) is defined as the ideal client profile.",
-          "A human review is required to look at the output of pulling information into one place and manually clean up the noise.",
-          "Feedback on sales plans should be provided for learning purposes to identify areas for improvement.",
-          "Hot leads involving Kathryn Cullen would result in a task being created in Salesforce for sales review or a direct client call, with incentives.",
-          "The largest leads originate from the team's client delivery on the ground, rather than just lead generation efforts."
-        ]
+          "The output requires manual review to consolidate information and clean up noise.",
+          "Feedback on sales plans should be incorporated for learning and subsequent improvement.",
+          "Hot leads involving Kathryn Cullen would result in a task being created in Salesforce for sales review or client contact, with incentivisation.",
+          "Lead generation is strong, but the most significant leads originate from client delivery on the ground."
+        ],
+        "sem": {
+          "matched": 3,
+          "pairs": [
+            {
+              "expected": "Lead-generation process designed to produce sufficiently qualified leads for Keon and Liam.",
+              "generated": "Lead generation is strong, but the most significant leads originate from client delivery on the ground.",
+              "sim": 0.6421
+            },
+            {
+              "expected": "Client delivery is expected to be a strong source of high-quality leads because consultants are close to active customer needs.",
+              "generated": "Lead generation is strong, but the most significant leads originate from client delivery on the ground.",
+              "sim": 0.695
+            },
+            {
+              "expected": "Keon confirms that the strongest leads are likely to come from client delivery on the ground.",
+              "generated": "Lead generation is strong, but the most significant leads originate from client delivery on the ground.",
+              "sim": 0.6958
+            }
+          ]
+        }
       },
       "actionRecall": {
         "matched": 0,
+        "near": 0,
         "total": 4,
         "unmatched": [
           {
@@ -1293,14 +1873,19 @@
             "owner": "Sales and client-delivery team",
             "action": "Clarify how client-delivery lead signals should be captured and tracked, including whether they should be recorded consistently in Salesforce."
           }
-        ]
+        ],
+        "generated": [],
+        "sem": {
+          "matched": 0,
+          "pairs": []
+        }
       },
       "actionPrecision": {
         "matched": 0,
         "total": 0
       },
       "wording": {
-        "checked": 11,
+        "checked": 14,
         "flagged": 1,
         "counts": {
           "tautology": 1
@@ -1312,9 +1897,10 @@
       "typeMatch": true,
       "expectedType": "Project review (general)",
       "generatedType": "Project review",
-      "purposeOverlap": 0.33,
+      "purposeOverlap": 0.27,
       "objectives": {
         "matched": 0,
+        "near": 3,
         "total": 5,
         "unmatched": [
           "Confirm fermenter availability and brew timing.",
@@ -1324,18 +1910,36 @@
           "Address glycol chiller reliability before the IPA brew."
         ],
         "generated": [
-          "Review the status of the twelve hundred batch.",
-          "Review the total material requirements.",
-          "Review twelve hundred, that's full batch"
-        ]
+          "Confirm the quantity of casks required for the real ale festival.",
+          "Decide on the quantity of pale ale to be brewed.",
+          "Arrange for the delivery of fifteen casks of four point two for the twenty-second.",
+          "Order the necessary hops for the IPA dry hop, bittering, and pale ale.",
+          "Order six sacks of Maris Otter malt.",
+          "Arrange for the chiller to be serviced before pitching the IPA on the fifteenth.",
+          "Ring the refrigeration engineer"
+        ],
+        "sem": {
+          "matched": 2,
+          "pairs": [
+            {
+              "expected": "Agree pale ale and IPA batch volumes and expected yields.",
+              "generated": "Decide on the quantity of pale ale to be brewed.",
+              "sim": 0.7456
+            },
+            {
+              "expected": "Address glycol chiller reliability before the IPA brew.",
+              "generated": "Arrange for the chiller to be serviced before pitching the IPA on the fifteenth.",
+              "sim": 0.6326
+            }
+          ]
+        }
       },
       "topics": {
-        "matched": 0,
+        "matched": 2,
+        "near": 2,
         "total": 10,
         "unmatched": [
-          "Two-week brew schedule",
           "Fermenter availability",
-          "Pale ale batch and yield",
           "IPA batch timing",
           "Dry hopping increase",
           "Hop cost and availability",
@@ -1345,56 +1949,92 @@
           "Glycol chiller servicing risk"
         ],
         "generated": [
-          "Let get total"
-        ]
+          "Pale ale brewing schedule",
+          "Hop order and procurement"
+        ],
+        "sem": {
+          "matched": 1,
+          "pairs": [
+            {
+              "expected": "Hop cost and availability",
+              "generated": "Hop order and procurement",
+              "sim": 0.6545
+            }
+          ]
+        }
       },
       "discussion": {
-        "matched": 2,
+        "matched": 4,
+        "near": 3,
         "total": 10,
         "unmatched": [
           "Two-week brewing schedule and fermenter availability.",
           "1,200-litre pale ale batch and expected usable yield.",
-          "1,200-litre IPA batch from the 15th.",
           "Hop requirements, availability and cost.",
           "Maris Otter stock shortage and additional malt requirement.",
           "Festival order corrected from the originally requested 40 kegs to 15 nine-gallon firkins/casks.",
-          "Glycol chiller reliability as a major production risk.",
           "IPA brew conditional on the chiller being serviced first."
         ],
         "generated": [
-          "The plan is to brew the pale ale first, which is the four point two, in fermenter one, targeting completion on Thursday.",
-          "Ravi is required to order the full hop bill, thirteen kilos, by Monday to ensure delivery before the fifteenth.",
-          "A buffer of six sacks of Maris Otter is required, as the current stock of eighteen sacks will not cover the twenty-one total needed.",
-          "The purpose of this meeting was to plan the forthcoming brew schedule. This involved reviewing current batch status and determining necessary material orders to ensure timely production.",
-          "The pale ale is scheduled for ten days of fermentation followed by four or five conditioning stages, with kegging anticipated around the twentieth.",
-          "The IPA, designated as the dry-hopped beer, is scheduled for fermentation in fermenter three, with a target date of the fifteenth.",
-          "Ravi Menon is tasked with ordering seven point two for the IPA dry hop, in addition to the bittering and pale ale hops."
-        ]
+          "The team has decided to brew the pale ale first, scheduled for twelve hundred litres in fermenter one on Thursday.",
+          "The meeting's objective was to plan the brew schedule for the upcoming festival, focusing on confirming material quantities and scheduling key brewing activities.",
+          "The subsequent step involves brewing the IPA in fermenter three from the fifteenth, with a dry hop rate of six grams per litre.",
+          "The overall schedule involves brewing the pale ale first, targeting twelve hundred litres at fifty-litre kegs, equating to approximately twenty-four kegs, accounting for potential loss.",
+          "The IPA is scheduled for brewing in fermenter three from the fifteenth.",
+          "The required hop quantity for the IPA dry hop is seven point two kilograms, in addition to the hops needed for bittering and the pale ale.",
+          "The pale ale is projected to require ten days of fermentation followed by four to five conditioning stages, targeting kegging around the twentieth.",
+          "The pale ale batch size is twelve hundred litres, constituting a full batch.",
+          "A concern was raised regarding equipment reliability, as the glycol chiller had tripped twice in the preceding week.",
+          "If the chiller fails mid-fermentation, there is a significant risk to temperature control for the IPA, which requires holding at nineteen degrees Celsius."
+        ],
+        "sem": {
+          "matched": 3,
+          "pairs": [
+            {
+              "expected": "Two-week brewing schedule and fermenter availability.",
+              "generated": "The IPA is scheduled for brewing in fermenter three from the fifteenth.",
+              "sim": 0.6185
+            },
+            {
+              "expected": "1,200-litre pale ale batch and expected usable yield.",
+              "generated": "The pale ale batch size is twelve hundred litres, constituting a full batch.",
+              "sim": 0.8221
+            },
+            {
+              "expected": "IPA brew conditional on the chiller being serviced first.",
+              "generated": "If the chiller fails mid-fermentation, there is a significant risk to temperature control for the IPA, which requires holding at nineteen degrees Celsius.",
+              "sim": 0.6829
+            }
+          ]
+        }
       },
       "actionRecall": {
-        "matched": 2,
+        "matched": 4,
+        "near": 0,
         "total": 4,
-        "unmatched": [
-          {
-            "owner": "Ravi",
-            "action": "Order the full 13 kg hop bill on Monday morning."
-          },
-          {
-            "owner": "Dan",
-            "action": "Order six sacks of Maris Otter malt today."
-          }
-        ]
+        "unmatched": [],
+        "generated": [
+          "Josie Kaur :: Email the fifteen casks of four point two for delivery on the twenty-second to confirm terms to the relevant parties.",
+          "Mick Dolan :: Ring the refrigeration engineer today",
+          "Ravi Menon :: Order, seven point two for the IPA dry hop, plus the bittering and the pale ale hops",
+          "Ravi Menon :: Place the hop order morning, all thirteen kilos",
+          "Dan Threlfall :: Order six sacks",
+          "Mick Dolan :: Get the chiller serviced before pitching the IPA on the fifteenth, non-negotiable"
+        ],
+        "sem": {
+          "matched": 0,
+          "pairs": []
+        }
       },
       "actionPrecision": {
-        "matched": 3,
-        "total": 3
+        "matched": 5,
+        "total": 6
       },
       "wording": {
-        "checked": 16,
-        "flagged": 3,
+        "checked": 27,
+        "flagged": 1,
         "counts": {
-          "unresolved_deixis": 2,
-          "first_or_second_person": 1
+          "unresolved_deixis": 1
         }
       }
     },
@@ -1403,9 +2043,10 @@
       "typeMatch": true,
       "expectedType": "Project review (general)",
       "generatedType": "Project review",
-      "purposeOverlap": 0.1,
+      "purposeOverlap": 0,
       "objectives": {
         "matched": 0,
+        "near": 0,
         "total": 5,
         "unmatched": [
           "Confirm race date and entry fee.",
@@ -1416,13 +2057,18 @@
         ],
         "generated": [
           "To obtain a quote from St John Ambulance for two crews for the day and confirm the cost once approval is given.",
-          "To arrange for fourteen marshals by contacting the existing list and confirming numbers.",
+          "To submit the road-closure application this week and confirm the towpath's reopening.",
           "Get a quote from St John Ambulance for two crews for the day, and confirm it once you're all happy with the cost",
-          "Sort the marshals, I've got the list from last year and I'll ring round and get us up to fourteen"
-        ]
+          "Get the road-closure application in , no later, and confirm the towpath's reopened"
+        ],
+        "sem": {
+          "matched": 0,
+          "pairs": []
+        }
       },
       "topics": {
         "matched": 0,
+        "near": 0,
         "total": 11,
         "unmatched": [
           "Race date",
@@ -1438,63 +2084,91 @@
           "Break-even entry numbers"
         ],
         "generated": [
-          "Budget and commercial matters",
-          "Barely enough last year and someone nearly"
-        ]
+          "Budget and commercial matters"
+        ],
+        "sem": {
+          "matched": 0,
+          "pairs": []
+        }
       },
       "discussion": {
-        "matched": 3,
+        "matched": 0,
+        "near": 3,
         "total": 10,
         "unmatched": [
           "Race date and GBP 15 entry fee.",
           "Marshal shortage and requirement for 14 marshals.",
           "Inadequate first-aid coverage and need for two crews.",
+          "Route status and resurfaced towpath.",
           "Road-closure application and risk of it not being approved in time.",
           "Need for a Plan B route if the permit is unresolved two weeks before the race.",
+          "Medals versus shirts, with medals selected.",
           "Order quantity of 350 medals for an expected 300 runners.",
-          "Low social-media activity and its possible effect on entries."
+          "Low social-media activity and its possible effect on entries.",
+          "Need for roughly 280 entries to break even."
         ],
         "generated": [
-          "The treasurer indicated that approximately two-eighty entries are required to break even after accounting for costs.",
-          "A quote will be obtained from St John Ambulance for two crews, pending agreement on the cost.",
-          "The purpose of the meeting was to review the progress of the 10K committee and address key operational and financial matters.",
-          "The team had insufficient entries last year, resulting in a near incident at the river turn.",
-          "The route is similar to the previous year, but the towpath has been partially resurfaced, requiring Alan Pryce to confirm its accessibility.",
-          "Discussion confirmed that medals were preferred over finisher's shirts, as medals are more cost-effective and popular.",
-          "Jo Marsh has been assigned responsibility for marshals.",
-          "Alan Pryce is tasked with obtaining the road-closure application this week to confirm the towpath reopening.",
-          "The priority is to secure the required number of marshals, with a target of fourteen for the route."
-        ]
+          "The treasurer indicated that approximately two-eighty entries are required to achieve the break-even point after accounting for costs.",
+          "A social media push is planned to increase entries.",
+          "Jo Bennett will obtain a quote from St John Ambulance for two crews and confirm the cost once approval is received.",
+          "Jo Marsh is assigned the role of marshals.",
+          "Previous year's participation levels were insufficient, resulting in near-incidents at the river turn.",
+          "The entry fee of fifteen pounds for the twenty-eighth of September has been confirmed.",
+          "The priority is to secure marshals, as the team had nine participants last year and the target is fourteen.",
+          "Jo Marsh has agreed to take responsibility for securing the marshals.",
+          "The purpose of the meeting was to catch up on the progress of the 10K committee activities."
+        ],
+        "sem": {
+          "matched": 1,
+          "pairs": [
+            {
+              "expected": "Marshal shortage and requirement for 14 marshals.",
+              "generated": "The priority is to secure marshals, as the team had nine participants last year and the target is fourteen.",
+              "sim": 0.665
+            }
+          ]
+        }
       },
       "actionRecall": {
-        "matched": 2,
+        "matched": 4,
+        "near": 0,
         "total": 5,
         "unmatched": [
           {
             "owner": "Jo Marsh",
             "action": "Recruit enough marshals to reach 14."
-          },
-          {
-            "owner": "Deepa",
-            "action": "Reorder 350 medals."
-          },
-          {
-            "owner": "Deepa",
-            "action": "Run the social media push, posting every couple of days through to race day and distributing the entry link."
           }
-        ]
+        ],
+        "generated": [
+          "Jo Marsh :: Sort the marshals using the list from last year and contact individuals to increase the number to fourteen.",
+          "Jo Bennett :: Obtain a quote from St John Ambulance for two crews for the day and confirm the cost once the price is agreed.",
+          "Alan Pryce :: Obtain the road-closure application this week, no later, and confirm the towpath has been reopened.",
+          "Jo Bennett :: Be Jo B if it helps",
+          "Alan Pryce :: Develop a plan B route.",
+          "Deepa Sharma :: Reorder the medals, same as last year, we need, if we're expecting three hundred runners, I'll order three hundred and fifty to be safe",
+          "Deepa Sharma :: Take the social media"
+        ],
+        "sem": {
+          "matched": 1,
+          "pairs": [
+            {
+              "expected": "Jo Marsh Recruit enough marshals to reach 14.",
+              "generated": "Jo Marsh :: Sort the marshals using the list from last year and contact individuals to increase the number to fourteen.",
+              "sim": 0.6396
+            }
+          ]
+        }
       },
       "actionPrecision": {
-        "matched": 3,
-        "total": 3
+        "matched": 4,
+        "total": 7
       },
       "wording": {
-        "checked": 20,
-        "flagged": 5,
+        "checked": 23,
+        "flagged": 4,
         "counts": {
-          "unresolved_deixis": 2,
           "first_or_second_person": 2,
-          "truncated_premodifier": 1
+          "unresolved_deixis": 2
         }
       }
     },
@@ -1506,6 +2180,7 @@
       "purposeOverlap": 0.13,
       "objectives": {
         "matched": 0,
+        "near": 0,
         "total": 6,
         "unmatched": [
           "Describe the visitor-parking issue.",
@@ -1516,12 +2191,25 @@
           "Decide whether any option should be progressed."
         ],
         "generated": [
-          "To review the situation regarding three cars and a caravan.",
+          "Review the current visitor parking situation.",
+          "Examine the impact of resident parking on visitor access.",
+          "Determine the method for granting temporary access to visitors.",
           "Review budget and commercial matters."
-        ]
+        ],
+        "sem": {
+          "matched": 1,
+          "pairs": [
+            {
+              "expected": "Describe the visitor-parking issue.",
+              "generated": "Review the current visitor parking situation.",
+              "sim": 0.8566
+            }
+          ]
+        }
       },
       "topics": {
         "matched": 0,
+        "near": 0,
         "total": 10,
         "unmatched": [
           "Residents using visitor spaces",
@@ -1536,12 +2224,16 @@
           "Deferred parking discussion"
         ],
         "generated": [
-          "Budget and commercial matters",
-          "Three cars and caravan"
-        ]
+          "Budget and commercial matters"
+        ],
+        "sem": {
+          "matched": 0,
+          "pairs": []
+        }
       },
       "discussion": {
-        "matched": 1,
+        "matched": 2,
+        "near": 1,
         "total": 8,
         "unmatched": [
           "Permit scheme proposed, but no practical enforcement mechanism.",
@@ -1549,36 +2241,47 @@
           "Barrier/gated access proposed, but rejected as expensive and problematic for visitors.",
           "General reminder letters considered ineffective based on previous experience.",
           "Possibility of asking the council to adopt the road.",
-          "Recognition that the underlying issue concerns a small number of households rather than the physical parking setup.",
           "No solution agreed. Parking discussion deferred until next month."
         ],
         "generated": [
-          "Visitor spaces are occupied by residents with multiple vehicles, leaving no space for actual visitors.",
-          "A gate with a fob is proposed to restrict car park access solely to residents.",
-          "The meeting's objective was to address current issues regarding visitor parking arrangements within the residents' association area.",
-          "Consideration was given to marking out visitor bays with a different colour, though this was deemed insufficient to prevent parking by multi-car households.",
-          "The situation involves households with three cars and a caravan.",
-          "This specific vehicle composition is noted in relation to the occupation of visitor spaces.",
-          "Barriers are identified as problematic, with associated concerns regarding cost and visitor access.",
-          "The core issue is identified as a people problem rather than a physical infrastructure issue like painting or barriers.",
-          "Previous attempts to address etiquette via letters have been unsuccessful, as nobody reads them."
-        ]
+          "Visitor parking spaces are being occupied by residents with multiple vehicles, leaving insufficient space for actual visitors.",
+          "A proposed solution involved installing a gate with a fob access system to restrict car park entry solely to residents.",
+          "The meeting's objective was to address and resolve the existing issues pertaining to visitor parking arrangements within the residents' association area.",
+          "The team reviewed marking out visitor bays with a different colour, which was deemed insufficient to prevent parking by multi-car households.",
+          "Physical barriers are identified as problematic, with the core issue being a small number of households rather than infrastructure solutions.",
+          "The current situation is characterised as a people-related issue, rather than a problem solvable by painting lines or installing barriers.",
+          "The cost associated with barriers was raised, with current funds noted as four hundred pounds in the account."
+        ],
+        "sem": {
+          "matched": 1,
+          "pairs": [
+            {
+              "expected": "Clearly marked visitor bays proposed, but considered ineffective without enforcement.",
+              "generated": "The team reviewed marking out visitor bays with a different colour, which was deemed insufficient to prevent parking by multi-car households.",
+              "sim": 0.6872
+            }
+          ]
+        }
       },
       "actionRecall": {
         "matched": 0,
+        "near": 0,
         "total": 0,
-        "unmatched": []
+        "unmatched": [],
+        "generated": [],
+        "sem": {
+          "matched": 0,
+          "pairs": []
+        }
       },
       "actionPrecision": {
         "matched": 0,
         "total": 0
       },
       "wording": {
-        "checked": 15,
-        "flagged": 3,
-        "counts": {
-          "unresolved_deixis": 3
-        }
+        "checked": 14,
+        "flagged": 0,
+        "counts": {}
       }
     }
   ]

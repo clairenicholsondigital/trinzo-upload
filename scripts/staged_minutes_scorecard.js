@@ -95,6 +95,88 @@ function coverage(expectedItems, generatedItems, matchFn) {
   return { matched: matched.length, near, total: expectedItems.length, unmatched };
 }
 
+// --- semantic tier -----------------------------------------------------------------
+//
+// The strict matcher above is lexical, and the corpus-wide measurement (2026-08-25) showed
+// how much that hides: at MiniLM similarity >= 0.6, discussion coverage moved 19/194 ->
+// 53/194 and objectives 11/68 -> 20/68, while a cross-meeting control - every expected
+// item scored against a DIFFERENT meeting's output, 373 pairs - fired zero times. So the
+// tier is real signal, not a softer ruler. Two rules keep it honest: the strict number
+// stays the headline (this tier can never be "tuned up" to make a regression disappear),
+// and every semantic match is printed beside its similarity so the soft 0.60-0.65
+// boundary band - which contains some same-topic-not-same-point echoes - stays auditable.
+// 0.6 is the same threshold run_meeting_minutes_final_golden_eval.py already uses.
+const SEM_THRESHOLD = 0.6;
+const SEM_COLUMNS = ['objectives', 'topics', 'discussion', 'actionRecall'];
+
+// One text form per item, shared by request building and pair printing. Action rows carry
+// the owner so "Ravi order the hops" vs "Dan order the hops" are not the same sentence.
+function semanticText(item) {
+  if (item && typeof item === 'object') return `${item.owner ? `${item.owner} ` : ''}${item.action || ''}`.trim() || String(item);
+  return String(item);
+}
+
+function semanticRequestsFrom(scores) {
+  const requests = [];
+  for (const score of scores) {
+    for (const column of SEM_COLUMNS) {
+      const block = score[column];
+      if (!block || !block.unmatched?.length || !block.generated?.length) continue;
+      requests.push({
+        id: `${score.name}::${column}`,
+        expected: block.unmatched.map(semanticText),
+        candidates: block.generated.map(String)
+      });
+    }
+  }
+  return requests;
+}
+
+// Pure: annotates each column with { matched, pairs } for everything the bridge scored at
+// or above the threshold. Strict fields are never touched - the tier is additive.
+function applySemanticMatches(scores, results, threshold = SEM_THRESHOLD) {
+  const byId = new Map((results || []).map((result) => [result.id, result]));
+  for (const score of scores) {
+    for (const column of SEM_COLUMNS) {
+      const block = score[column];
+      if (!block) continue;
+      const result = byId.get(`${score.name}::${column}`);
+      const pairs = [];
+      if (result) {
+        (result.best || []).forEach((best, index) => {
+          if (best && best.sim >= threshold && best.index >= 0) {
+            pairs.push({
+              expected: semanticText(block.unmatched[index]),
+              generated: String(block.generated[best.index]),
+              sim: best.sim
+            });
+          }
+        });
+      }
+      block.sem = { matched: pairs.length, pairs };
+    }
+  }
+  return scores;
+}
+
+function runSemanticBridge(requests) {
+  if (!requests.length) return { ok: true, results: [] };
+  const { spawnSync } = require('child_process');
+  const bridge = path.join(__dirname, 'semantic_pair_bridge.py');
+  const run = spawnSync('python3', [bridge], {
+    input: JSON.stringify({ requests }),
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
+    timeout: 300000
+  });
+  if (run.status !== 0 || !run.stdout) return { ok: false, reason: (run.stderr || 'bridge produced no output').trim().slice(-300) };
+  try {
+    return JSON.parse(run.stdout.trim().split('\n').pop());
+  } catch (error) {
+    return { ok: false, reason: `unparseable bridge output: ${error.message}` };
+  }
+}
+
 function actionMatch(expected, generated) {
   // An owner-blank action is not a mismatch: the unassigned-actions work deliberately
   // publishes real work without guessing who it belongs to, and the scorer must not
@@ -166,6 +248,7 @@ async function scoreFixture(name) {
   objectiveCoverage.generated = summary.objectives || [];
   topicCoverage.generated = summary.overallTopics || [];
   const actionCoverage = coverage(expected.actions || [], actions, actionMatch);
+  actionCoverage.generated = actions.map((item) => `${item.owner || 'Not stated'} :: ${item.action}`);
   // Precision the other way: how many published actions correspond to something a human
   // actually minuted, versus how many are the tool's own invention or noise.
   const actionPrecision = coverage(actions, expected.actions || [], (generated, exp) => actionMatch(exp, generated));
@@ -217,12 +300,15 @@ function printReport(scores) {
     totals.actPM += s.actionPrecision.matched; totals.actPT += s.actionPrecision.total;
     totals.wordFlagged += s.wording.flagged; totals.wordChecked += s.wording.checked;
   }
+  const semRan = scores.some((s) => SEM_COLUMNS.some((column) => s[column]?.sem));
+  const semOf = (column) => scores.reduce((sum, s2) => sum + (s2[column]?.sem?.matched || 0), 0);
+  const withSem = (strictMatched, total, column) => (semRan ? `  |  ${strictMatched + semOf(column)}/${total} with semantic tier` : '');
   console.log('\ntotals');
   console.log(`  type match          : ${scores.filter((s) => s.typeMatch).length}/${scores.length}`);
-  console.log(`  objective coverage  : ${totals.objM}/${totals.objT}  (+${scores.reduce((sum, s2) => sum + (s2.objectives.near || 0), 0)} near - found but worded differently)`);
-  console.log(`  topic coverage      : ${totals.topM}/${totals.topT}`);
-  console.log(`  discussion coverage : ${totals.discM}/${totals.discT}`);
-  console.log(`  action recall       : ${totals.actM}/${totals.actT}  (of what a human minuted, how much did we find)`);
+  console.log(`  objective coverage  : ${totals.objM}/${totals.objT}${withSem(totals.objM, totals.objT, 'objectives')}  (+${scores.reduce((sum, s2) => sum + (s2.objectives.near || 0), 0)} near - found but worded differently)`);
+  console.log(`  topic coverage      : ${totals.topM}/${totals.topT}${withSem(totals.topM, totals.topT, 'topics')}`);
+  console.log(`  discussion coverage : ${totals.discM}/${totals.discT}${withSem(totals.discM, totals.discT, 'discussion')}`);
+  console.log(`  action recall       : ${totals.actM}/${totals.actT}${withSem(totals.actM, totals.actT, 'actionRecall')}  (of what a human minuted, how much did we find)`);
   console.log(`  action precision    : ${totals.actPM}/${totals.actPT}  (of what we published, how much corresponds to something real)`);
   const wordCounts = {};
   for (const s of scores) for (const [code, count] of Object.entries(s.wording.counts)) wordCounts[code] = (wordCounts[code] || 0) + count;
@@ -240,7 +326,12 @@ function printReport(scores) {
     for (const s of scores) {
       if (!s[key].unmatched.length) continue;
       console.log(`  ${s.name}:`);
-      for (const item of s[key].unmatched) console.log(`      missing :: ${String(item.action || item).slice(0, 88)}`);
+      const semPairs = new Map((s[key].sem?.pairs || []).map((pair) => [pair.expected, pair]));
+      for (const item of s[key].unmatched) {
+        const pair = semPairs.get(semanticText(item));
+        if (pair) console.log(`      sem ${pair.sim.toFixed(2)} :: ${pair.expected.slice(0, 70)}  <=>  ${pair.generated.slice(0, 70)}`);
+        else console.log(`      missing :: ${String(item.action || item).slice(0, 88)}`);
+      }
       if (s[key].generated?.length) console.log(`      generated had: ${s[key].generated.map((g) => String(g).slice(0, 50)).join(' | ')}`);
     }
   };
@@ -250,7 +341,7 @@ function printReport(scores) {
   section('actions', 'actionRecall');
 }
 
-module.exports = { overlap, coverage, actionMatch, wordingFaultsAcross, MATCH_THRESHOLD };
+module.exports = { overlap, coverage, actionMatch, wordingFaultsAcross, MATCH_THRESHOLD, SEM_THRESHOLD, semanticText, semanticRequestsFrom, applySemanticMatches };
 
 async function main() {
   const write = process.argv.includes('--write');
@@ -262,7 +353,22 @@ async function main() {
     process.stderr.write(`scoring ${name}...\n`);
     scores.push(await scoreFixture(name));
   }
+  // Semantic tier: one bridge call for the whole corpus (~15s, dominated by model load).
+  // SCORECARD_NO_SEM=1 skips it; an unavailable backend degrades to the strict-only report.
+  if (!process.env.SCORECARD_NO_SEM) {
+    process.stderr.write('scoring unmatched pairs semantically...\n');
+    const bridge = runSemanticBridge(semanticRequestsFrom(scores));
+    if (bridge.ok) applySemanticMatches(scores, bridge.results);
+    else console.log(`\nsemantic tier unavailable (strict-only report): ${bridge.reason}`);
+  }
   printReport(scores);
+  // Full, untruncated pairs for offline analysis - the printed report clips generated
+  // lists for readability, which is right for a human and useless for feeding the pairs
+  // to a semantic matcher or a judge. SCORECARD_DUMP names a file; absent, nothing extra.
+  if (process.env.SCORECARD_DUMP) {
+    fs.writeFileSync(process.env.SCORECARD_DUMP, `${JSON.stringify(scores, null, 2)}\n`);
+    console.log(`\nfull pairs dumped to ${process.env.SCORECARD_DUMP}`);
+  }
   if (write) {
     fs.writeFileSync(BASELINE_PATH, `${JSON.stringify({ scoredAt: new Date().toISOString().slice(0, 10), scores }, null, 2)}\n`);
     console.log(`\nwrote ${scores.length} scores to ${path.relative(REPO_ROOT, BASELINE_PATH)}`);
