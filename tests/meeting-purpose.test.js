@@ -110,10 +110,15 @@ test('classification of the real golden transcripts resolves the expected frames
   await fs.access(path.join(__dirname, '..', 'scripts', 'meeting-minutes-final-golden', '025_real_t761_eakin_sw_weekly_transcript', 'transcript.txt'));
 });
 
-test('action grammar capitalises the first letter without changing the remaining wording', () => {
+test('action grammar capitalises a leading lowercase letter and nothing else', () => {
   assert.equal(capitaliseInitial('before the live session'), 'Before the live session');
-  assert.equal(capitaliseInitial('09:30 thursday'), '09:30 Thursday');
   assert.equal(capitaliseInitial('build the QR code slide'), 'Build the QR code slide');
+  // Anchored. The unanchored version capitalised the first letter ANYWHERE, which read as
+  // helpful on "09:30 thursday" and turned a deadline of "23rd of July" into "23Rd of
+  // July". Day-name casing is a proper-noun job and now belongs to normaliseDatePhrases,
+  // which the deadline column passes through - see tests/spoken-forms.test.js.
+  assert.equal(capitaliseInitial('23rd of July'), '23rd of July');
+  assert.equal(capitaliseInitial('09:30 thursday'), '09:30 thursday');
 });
 
 test('executive-summary grammar lowercases ordinary topics but preserves initialisms', () => {

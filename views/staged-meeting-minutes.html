@@ -1650,7 +1650,9 @@ td select {
   function renderActionRow(action) {
     action = action || {};
     function capitaliseInitial(value) {
-      return String(value || '').trim().replace(/[a-z]/i, function (letter) { return letter.toUpperCase(); });
+      // Anchored: the unanchored /[a-z]/i matched the first letter anywhere, which turned
+      // a deadline of "23rd of July" into "23Rd of July".
+      return String(value || '').trim().replace(/^[a-z]/, function (letter) { return letter.toUpperCase(); });
     }
     var actionText = capitaliseInitial(action.action);
     if (!actionText && !action.startBlank) actionText = 'Review action wording';

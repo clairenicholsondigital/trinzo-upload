@@ -135,7 +135,11 @@ test('mechanical repair removes redundancy without changing the claim', () => {
 });
 
 test('a clean line is returned untouched', () => {
-  const clean = 'Complete the electrical compliance testing before the 23rd of July.';
+  // No date in this one: the mechanical stage now also normalises spoken date shapes, so
+  // a line containing "the 23rd of July" is legitimately rewritten to "23rd July" and is
+  // no longer an example of "untouched". That behaviour is pinned in
+  // tests/spoken-forms.test.js; this test is about faults, and there are none here.
+  const clean = 'Complete the electrical compliance testing before the deadline.';
   assert.deepEqual(codes(clean), []);
   assert.equal(repairMechanicalFaults(clean).text, clean);
   assert.deepEqual(repairMechanicalFaults(clean).applied, []);

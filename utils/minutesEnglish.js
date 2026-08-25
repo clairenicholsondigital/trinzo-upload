@@ -243,6 +243,7 @@ function minutesEnglishFaults(value, options = {}) {
 // Deletions and normalisations only. Every repair here removes redundancy or restores a
 // separator; none of them can change what the sentence claims.
 const { convertSpokenNumbers } = require('./spokenNumbers');
+const { expandSpokenContractions, normaliseDatePhrases } = require('./spokenForms');
 
 function repairMechanicalFaults(value, options = {}) {
   let text = clean(value);
@@ -256,6 +257,19 @@ function repairMechanicalFaults(value, options = {}) {
   if (numbers.conversions.length) {
     text = numbers.text;
     applied.push('spoken_number');
+  }
+  // Colloquial contractions and spoken date shapes. Both are spelling rather than
+  // editing - there is no minute that wants "gonna", and "the 23rd of July" is written
+  // "23rd July" - so neither needs the reviewer's involvement or a model round trip.
+  const contractions = expandSpokenContractions(text);
+  if (contractions.applied.length) {
+    text = contractions.text;
+    applied.push('spoken_contraction');
+  }
+  const dates = normaliseDatePhrases(text);
+  if (dates.changed) {
+    text = dates.text;
+    applied.push('date_format');
   }
   if (PHRASE_RESTART.test(text)) {
     text = clean(text.replace(new RegExp(PHRASE_RESTART.source, 'gi'), '$1'));

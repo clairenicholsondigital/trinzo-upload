@@ -1,6 +1,7 @@
 'use strict';
 
 const { prepareEvidence, clean } = require('./evidence');
+const { normaliseDatePhrases } = require('../spokenForms');
 const { loadMiniLMProfileSync } = require('./minilm');
 const { createCanonicalState, acceptProposal } = require('./state');
 const semanticStages = require('./semanticStages');
@@ -16,8 +17,20 @@ function strings(values) {
   return (Array.isArray(values) ? values : []).map((value) => clean(value)).filter(Boolean);
 }
 
+// The deadline column is a date, not a sentence: "23rd of July" belongs in minutes as
+// "23rd July". Normalised at presentation because the deadline never passes through
+// repairMechanicalFaults - that runs on the action text only.
+function presentableDeadline(value) {
+  const text = normaliseDatePhrases(clean(value)).text;
+  return text.replace(/^[a-z]/, (letter) => letter.toUpperCase());
+}
+
 function capitaliseInitial(value) {
-  return clean(value).replace(/[a-z]/i, (letter) => letter.toUpperCase());
+  // Anchored. /[a-z]/i without an anchor matches the first letter ANYWHERE, so a deadline
+  // of "23rd of July" had its "r" capitalised into "23Rd of July" - the reviewer saw the
+  // result and reasonably read it as a broken date formatter. A string that does not
+  // start with a letter is left exactly as it is.
+  return clean(value).replace(/^[a-z]/, (letter) => letter.toUpperCase());
 }
 
 function lowerInitialUnlessInitialism(value) {
@@ -76,7 +89,7 @@ function approvedActions(values) {
   return (Array.isArray(values) ? values : []).map((item) => ({
     owner: clean(item?.owner) || 'Not stated',
     action: capitaliseInitial(item?.action),
-    deadline: capitaliseInitial(item?.deadline) || 'Not stated',
+    deadline: presentableDeadline(item?.deadline) || 'Not stated',
     humanFinal: capitaliseInitial(item?.action),
     aiOriginal: clean(item?.action)
   })).filter((item) => item.action);
