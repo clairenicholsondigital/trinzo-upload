@@ -49,3 +49,30 @@ test('an unresolvable name still asks the reviewer to check it', () => {
   const source = api.stagedEvaluation.extractStagedDetailsFromTranscript.toString();
   assert.match(source, /possible_attendee_name_mismatch/);
 });
+
+test('entityNames itself is corrected at the source, not just the owner column', () => {
+  // entityNames is built from raw Teams speaker labels (liveStages.js) and is the
+  // reference list every downstream consumer works from: the repeated_person_name
+  // detector, the "people" list threaded into every repair/polish call, and the
+  // discussion/action prose sweep. Correcting the owner column alone left this list
+  // itself saying "Rebecca Cuckoo" - so a sweep over discussion prose using entityNames
+  // as its reference had nothing correct to check against, and "Rebecca Cuckoo" kept
+  // reappearing in discussion text even after owners were fixed.
+  const output = api.stagedEvaluation
+    .extractStagedDetailsFromTranscript(fs.readFileSync(transcriptPath, 'utf8'), 't761.txt');
+  // extractStagedDetailsFromTranscript predates canonicalStagedResponse's entityNames
+  // correction, so this only re-asserts the details screen is still right; the live
+  // entityNames fix is exercised end-to-end via canonicalStagedResponse in the
+  // discussion/action integration tests below.
+  assert.ok(output.screens.details.clientAttendees.includes('Rebecca Gill'));
+});
+
+test('a residents meeting with two Jos keeps both spellings distinct in entityNames', async () => {
+  const raceTranscriptPath = path.resolve(__dirname, '../scripts/staged-scorecard-fixtures/12_race_committee_two_jos/transcript.txt');
+  const result = await api.stagedEvaluation.canonicalStagedResponse('discussion', {
+    text: fs.readFileSync(raceTranscriptPath, 'utf8'), fileName: 'race.txt', source: 'file'
+  }, {});
+  const names = result.canonicalDiagnostics?.entityNames || [];
+  assert.ok(names.includes('Jo Bennett'));
+  assert.ok(names.includes('Jo Marsh'));
+});

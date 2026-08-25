@@ -51,6 +51,7 @@ const { polishCanonicalStage, canonicalFallback, addRecoveredActionCandidates, c
 const { proposeActions } = require('../utils/canonicalMinutes/proposedActions');
 const { meetingRecordAdminAction } = require('../utils/canonicalMinutes/semanticStages');
 const { proposeDiscussionPoints } = require('../utils/canonicalMinutes/proposedDiscussion');
+const { normaliseAttendeeReferences } = require('../utils/entityNormalization');
 const { isPublishableTopicLabel, labelNamesAWorkstream } = require('../utils/canonicalMinutes/topicEditorial');
 const { enrichActionReviewCandidate } = require('../utils/canonicalMinutes/actionReviewRanking');
 const { reviewGeneratedContent } = require('../utils/terminologyQa');
@@ -4067,6 +4068,19 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
     reviewerGuidance: input.additionalContext || '',
     includeEvidencePack: ['summary', 'discussion', 'actions'].includes(stage)
   });
+  // canonicalDiagnostics.entityNames is built from raw Teams speaker labels
+  // (liveStages.js), so an invented surname lived here at the source: "Rebecca Cuckoo" was
+  // the canonical name every downstream consumer worked from - the repeated_person_name
+  // detector, the "people" list threaded into every repair/polish call, and the entity
+  // sweep below. Correcting the owner column alone left the reference list itself wrong,
+  // so anything correcting discussion or action TEXT against that list had nothing to
+  // correct against. Fixed at the source: every consumer downstream inherits it free.
+  if (payload?.canonicalDiagnostics?.entityNames) {
+    const correctedNames = payload.canonicalDiagnostics.entityNames.map((name) => canonicalKnownStagedPersonName(name) || name);
+    if (correctedNames.some((name, index) => name !== payload.canonicalDiagnostics.entityNames[index])) {
+      payload = { ...payload, canonicalDiagnostics: { ...payload.canonicalDiagnostics, entityNames: [...new Set(correctedNames)] } };
+    }
+  }
   // Screen 0. A transcript the parser could only partly read produces thin
   // minutes at every later stage, so the reviewer needs to know before they
   // spend time editing them, not after.
@@ -4368,6 +4382,25 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
         ]
       };
     }
+    // A last, whole-screen sweep for an invented surname. The owner column is corrected
+    // above (canonicalKnownStagedPersonName), but the ACTION TEXT can carry a name too -
+    // "Ask Rebecca Cuckoo to review it" - and that text is written by three different
+    // sources (deterministic selection, the model rewrite, the model proposal), each
+    // reading the raw transcript rather than a normalised copy. One sweep over the
+    // finished rows catches every source at once rather than patching each upstream.
+    const actionEntityNames = result?.canonicalDiagnostics?.entityNames || [];
+    if (actionEntityNames.length) {
+      result = {
+        ...result,
+        screens: {
+          ...result.screens,
+          actions: (result.screens.actions || []).map((item) => {
+            const action = normaliseAttendeeReferences(item.action, actionEntityNames).text;
+            return action !== item.action ? { ...item, action } : item;
+          })
+        }
+      };
+    }
   }
   // Discussion prose gets the same publication promise as actions: broken wording is
   // mechanically repaired, then sent to the model, and whatever survives both rounds is
@@ -4457,6 +4490,33 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
             resolutionKey: `discussion-wording-needs-review:${crypto.createHash('sha256').update(stillBrokenPoints.join('|')).digest('hex').slice(0, 16)}`
           }
         ]
+      };
+    }
+    // A last, whole-screen sweep for an invented surname, over both the topic heading and
+    // every point. "Rebecca Cuckoo" was corrected to "Rebecca Gill" in owners and
+    // attendees, but discussion PROSE is written by four different sources by this point
+    // (the deterministic presentation pass, the fault-gated repair, the universal polish,
+    // and the model proposal) and each reads the raw transcript rather than a normalised
+    // copy - so a name fixed upstream could still resurface downstream. One sweep over the
+    // finished cards catches every source at once, wherever the bad spelling came from.
+    const discussionEntityNames = result?.canonicalDiagnostics?.entityNames || [];
+    if (discussionEntityNames.length) {
+      result = {
+        ...result,
+        screens: {
+          ...result.screens,
+          discussion: (result.screens.discussion || []).map((card) => {
+            const topic = normaliseAttendeeReferences(card.topic, discussionEntityNames).text;
+            const points = (card.points || []).map((point) => {
+              if (typeof point === 'string') return normaliseAttendeeReferences(point, discussionEntityNames).text;
+              const text = normaliseAttendeeReferences(point?.text || '', discussionEntityNames).text;
+              return text !== point?.text ? { ...point, text } : point;
+            });
+            return topic !== card.topic || points.some((point, index) => point !== card.points[index])
+              ? { ...card, topic, points }
+              : card;
+          })
+        }
       };
     }
   }
