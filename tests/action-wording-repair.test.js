@@ -81,15 +81,54 @@ test('a mechanical fault is repaired without asking anybody', async () => {
   assert.equal(result.payload.screens.actions[0].action, 'Get one from the place on Mill Road');
 });
 
-test('clean actions cost nothing', async () => {
+test('a clean action is offered for polish - the reviewer chose spend over stability', async () => {
+  // The old contract here was "clean actions cost nothing". Measured against the
+  // reviewer's broken-wording list, 8 of 10 examples carried no detectable fault, so the
+  // no-cost rule was also a no-fix rule: spoken wording published untouched. The reviewer
+  // approved a universal pass; a clean row now gets ONE offer, and a refusal keeps the
+  // original, unmarked.
   let called = 0;
   const result = await repairActionWording(
     payloadWith('Send the code of conduct to the audit team'),
     pack,
-    { apiKey: 'test', url: 'https://example.invalid', fetchImpl: async () => { called += 1; return { ok: true, status: 200, json: async () => ({}) }; } }
+    { apiKey: 'test', url: 'https://example.invalid', fetchImpl: async () => { called += 1; return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: '{"repairs":[]}' } }] }) }; } }
   );
-  assert.equal(called, 0, 'no request is made when nothing is broken');
-  assert.equal(result.attempted, 0);
+  assert.equal(called, 1, 'exactly one polish round, no retry for a row that was never broken');
+  assert.equal(result.attempted, 0, 'attempted still counts only detector-faulted rows');
+  assert.equal(result.payload.screens.actions[0].action, 'Send the code of conduct to the audit team');
+  assert.equal(result.payload.screens.actions[0].wordingRepaired, undefined, 'a refused polish leaves no mark');
+});
+
+test('ACTION_POLISH=0 restores the no-cost behaviour', async () => {
+  process.env.ACTION_POLISH = '0';
+  try {
+    let called = 0;
+    await repairActionWording(
+      payloadWith('Send the code of conduct to the audit team'),
+      pack,
+      { apiKey: 'test', url: 'https://example.invalid', fetchImpl: async () => { called += 1; return { ok: true, status: 200, json: async () => ({}) }; } }
+    );
+    assert.equal(called, 0);
+  } finally {
+    delete process.env.ACTION_POLISH;
+  }
+});
+
+test('a polish that loses a fact is refused; one that improves wording and keeps facts lands', async () => {
+  const original = 'Send the IEC 60601-1 outputs to David by Friday';
+  // Loses "Friday" - refused even though it reads fine.
+  const losing = await repairActionWording(payloadWith(original), pack, {
+    apiKey: 'test', url: 'https://example.invalid',
+    fetchImpl: stubReturning('Send the IEC 60601-1 outputs to David')
+  });
+  assert.equal(losing.payload.screens.actions[0].action, original);
+  // Keeps every fact, changes the wording - accepted and marked.
+  const keeping = await repairActionWording(payloadWith(original), pack, {
+    apiKey: 'test', url: 'https://example.invalid',
+    fetchImpl: stubReturning('Send the IEC 60601-1 electrical outputs to David by Friday')
+  });
+  assert.equal(keeping.payload.screens.actions[0].action, 'Send the IEC 60601-1 electrical outputs to David by Friday');
+  assert.equal(keeping.payload.screens.actions[0].wordingRepaired, true);
 });
 
 test('a failed repair leaves the row, it never drops it', async () => {

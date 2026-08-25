@@ -242,9 +242,21 @@ function minutesEnglishFaults(value, options = {}) {
 
 // Deletions and normalisations only. Every repair here removes redundancy or restores a
 // separator; none of them can change what the sentence claims.
+const { convertSpokenNumbers } = require('./spokenNumbers');
+
 function repairMechanicalFaults(value, options = {}) {
   let text = clean(value);
   const applied = [];
+  // Spoken numbers first: "three hundred and fifty" -> 350, "seven point two" -> 7.2.
+  // Deterministic and conservative (see utils/spokenNumbers.js for the must-not-convert
+  // list), and it has to run before any model pass - the fact guard treats a digit that
+  // was not in the original as a suspected invention, so a rewrite that converted a
+  // number correctly was refused for doing so.
+  const numbers = convertSpokenNumbers(text);
+  if (numbers.conversions.length) {
+    text = numbers.text;
+    applied.push('spoken_number');
+  }
   if (PHRASE_RESTART.test(text)) {
     text = clean(text.replace(new RegExp(PHRASE_RESTART.source, 'gi'), '$1'));
     applied.push('phrase_restart');

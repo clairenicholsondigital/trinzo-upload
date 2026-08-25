@@ -49,6 +49,7 @@ const { suggestMeetingTypeFromEvidence } = require('../utils/canonicalMinutes/me
 const { prepareEvidence } = require('../utils/canonicalMinutes/evidence');
 const { polishCanonicalStage, canonicalFallback, addRecoveredActionCandidates, clientReadyPresentation, repairActionWording, repairDiscussionWording, wordingFaults } = require('../utils/canonicalMinutes/trooperPolish');
 const { proposeActions } = require('../utils/canonicalMinutes/proposedActions');
+const { meetingRecordAdminAction } = require('../utils/canonicalMinutes/semanticStages');
 const { enrichActionReviewCandidate } = require('../utils/canonicalMinutes/actionReviewRanking');
 const { reviewGeneratedContent } = require('../utils/terminologyQa');
 const { generateStagedMinutesPdf, stagedMinutesPdfFilename } = require('../utils/stagedMinutesPdf');
@@ -4080,6 +4081,23 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
     // reviewer seeing the same action twice, once as theirs and once as a suggestion, is
     // its own kind of noise.
     unassignedActions = unassignedActionsWorthPublishing(recoveredActions, payload?.screens?.actions || []);
+    // Recovered rows carry NUMERIC turn indices from the recovery parser, while the
+    // evidence pack keys everything by evt_* event ids - so the wording repair's evidence
+    // window lookup never matched and these rows were repaired blind, with an empty
+    // window in the prompt. Map turn index to the event ids of that turn here, where both
+    // id schemes are in scope.
+    if (unassignedActions.length) {
+      const eventsByTurnIndex = new Map();
+      for (const event of prepareEvidence(semanticTranscript.text).events) {
+        if (!eventsByTurnIndex.has(event.turnIndex)) eventsByTurnIndex.set(event.turnIndex, []);
+        eventsByTurnIndex.get(event.turnIndex).push(event.id);
+      }
+      unassignedActions = unassignedActions.map((item) => {
+        const mapped = (Array.isArray(item.evidenceIds) ? item.evidenceIds : [])
+          .flatMap((id) => (typeof id === 'number' ? (eventsByTurnIndex.get(id) || []) : [id]));
+        return mapped.length ? { ...item, evidenceIds: mapped } : item;
+      });
+    }
     const promoted = new Set(unassignedActions.map((item) => String(item.action || '').toLowerCase()));
     const stillCandidates = recoveredActions.filter((item) => !promoted.has(String(item.action || '').toLowerCase()));
     payload = addRecoveredActionCandidates(payload, stillCandidates);
@@ -4208,7 +4226,11 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
     // ("Limit risk for them", "Think about how to execute the study") is held back as a
     // candidate rather than published as work. This is a CONTENT check, not a wording one:
     // it asks whether the row states a task, never whether it is phrased nicely.
-    const proposalIsPublishable = (item) => readsAsAnActionRecord(String(item.action || ''));
+    // meetingRecordAdminAction: the deterministic path already refuses "update the
+    // minutes"-class rows via reviewCandidateNoise, but the model proposes the same
+    // commitment independently and this path was its way back in.
+    const proposalIsPublishable = (item) => readsAsAnActionRecord(String(item.action || ''))
+      && !meetingRecordAdminAction(String(item.action || ''));
     // The model sometimes proposes the same commitment twice in different words. Deduped
     // against each other on the same overlap rule used against the deterministic rows, so
     // one commitment produces one row.
@@ -4318,7 +4340,12 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
   // wording cost nothing, because the repair only fires when at least one row is broken.
   let actionWordingRepair = { repaired: 0, attempted: 0 };
   if (stage === 'actions') {
-    actionWordingRepair = await repairActionWording(result, canonicalEvidencePack, {});
+    // The participant list travels with the repair so the repeated_person_name detector
+    // can actually fire on this path - wordingFaults without options.people can never
+    // detect a doubled roster name, whatever the row says.
+    actionWordingRepair = await repairActionWording(result, canonicalEvidencePack, {
+      people: result?.canonicalDiagnostics?.entityNames || []
+    });
     result = actionWordingRepair.payload || result;
     const stillBroken = (result?.screens?.actions || []).filter((item) => wordingFaults(String(item.action || '')).length);
     if (stillBroken.length) {

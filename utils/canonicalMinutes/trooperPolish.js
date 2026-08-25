@@ -4,6 +4,7 @@ const fetch = require('node-fetch');
 const { clean } = require('./evidence');
 const { deadlineFrom } = require('./stages');
 const { minutesEnglishFaults, repairMechanicalFaults, contentSet } = require('../minutesEnglish');
+const { numericFactsOf } = require('../spokenNumbers');
 const { openingVerbIsActionable } = require('../stagedEditorial');
 const { finaliseDiscussionPointForMinutes, normaliseFinalStagedActionCandidate, normaliseAndValidateActionOwner } = require('../stagedEditorial');
 const { isReviewerAuthored } = require('./state');
@@ -811,7 +812,13 @@ function normaliseEvidencePackEntities(evidencePack, participants) {
 const ANONYMOUS_PERSON = /\bthe\s+(?:speaker|recipient|individual|person|attendee|participant|user|requester|reader|addressee|action item)\b/i;
 
 function protectedFactsOf(value) {
+  // Numbers are compared in digit form whichever way they were written: "three hundred
+  // and fifty" and "350" are the same fact, so a rewrite that converts one to the other
+  // is preserving it, not inventing it. numericFactsOf handles the spoken forms; the
+  // digit regex below still catches formats the converter does not touch (percentages,
+  // times, ordinal digits).
   return new Set([
+    ...numericFactsOf(value),
     ...(clean(value).match(/\b\d+(?:[.,:]\d+)*(?:%|st|nd|rd|th)?\b/g) || []),
     ...(clean(value).match(/\b[A-Z][A-Z0-9&/-]{1,}\b/g) || []),
     ...(clean(value).match(/\b[A-Z][a-z'\u2019-]+(?:\s+[A-Z][a-z'\u2019-]+)+\b/g) || [])
@@ -865,9 +872,9 @@ function discussionRepairPrompt(rows, retry) {
 
 // The guard chain every accepted repair passes, shared by the action and discussion
 // rounds. Each rule was added after a live failure and keeps its story:
-function acceptWordingRepair(original, candidate, { imperative } = {}) {
+function acceptWordingRepair(original, candidate, { imperative, people } = {}) {
   if (!candidate || candidate.toLowerCase() === original.toLowerCase()) return false;
-  if (wordingFaults(candidate).length) return false;
+  if (minutesEnglishFaults(candidate, { people: Array.isArray(people) ? people : [] }).length) return false;
   // An action record is an instruction. Requiring the imperative is what stops the
   // repair reframing a row into narration - "The speaker will bring one to show the
   // recipient", "The action item is to locate the clock" - and, more seriously, what
@@ -941,7 +948,14 @@ async function runWordingRepairRounds(entries, promptBuilder, imperative, option
   const fixed = new Map();
   let reason = '';
   let remaining = entries;
-  for (let round = 0; round < REPAIR_ROUNDS && remaining.length; round += 1) {
+  // options.rounds caps the passes (the universal polish uses 1 - a clean row that was
+  // not improved first time does not deserve a retry nudge); options.accept swaps the
+  // acceptance test (the polish adds fact preservation in BOTH directions).
+  const rounds = Number(options.rounds) >= 1 ? Number(options.rounds) : REPAIR_ROUNDS;
+  const accept = typeof options.accept === 'function'
+    ? options.accept
+    : (original, candidate) => acceptWordingRepair(original, candidate, { imperative, people: options.people });
+  for (let round = 0; round < rounds && remaining.length; round += 1) {
     const next = [];
     for (let at = 0; at < remaining.length; at += REPAIR_ROWS_PER_CALL) {
       const chunk = remaining.slice(at, at + REPAIR_ROWS_PER_CALL);
@@ -951,7 +965,7 @@ async function runWordingRepairRounds(entries, promptBuilder, imperative, option
       const byIndex = new Map(result.repairs.map((repair) => [Number(repair?.index), clean(repair?.action)]));
       for (const entry of chunk) {
         const candidate = byIndex.get(entry.index);
-        if (candidate && acceptWordingRepair(entry.text, candidate, { imperative })) fixed.set(entry.index, candidate);
+        if (candidate && accept(entry.text, candidate)) fixed.set(entry.index, candidate);
         else next.push(entry);
       }
     }
@@ -964,17 +978,18 @@ async function runWordingRepairRounds(entries, promptBuilder, imperative, option
 async function repairActionWording(payload, evidencePack, options = {}) {
   // Mechanical faults first, and without asking anybody: a repeated phrase is redundancy,
   // and deleting the first copy cannot change what the row claims. "Get one from the, from
-  // the place on Mill Road" is fixed here rather than spent on a round trip.
+  // the place on Mill Road" is fixed here rather than spent on a round trip. The people
+  // list rides along so repeated roster names are seen and repaired too.
+  const people = Array.isArray(options.people) ? options.people : [];
   const actions = (Array.isArray(payload?.screens?.actions) ? payload.screens.actions : [])
     .map((item) => {
-      const repair = repairMechanicalFaults(clean(item.action));
+      const repair = repairMechanicalFaults(clean(item.action), { people });
       return repair.applied.length ? { ...item, action: repair.text } : item;
     });
   const broken = actions
-    .map((action, index) => ({ action: clean(action.action), index, faults: wordingFaults(clean(action.action)) }))
+    .map((action, index) => ({ action: clean(action.action), index, faults: minutesEnglishFaults(clean(action.action), { people }) }))
     .filter((row) => row.faults.length);
   const withActions = (rows) => ({ ...payload, screens: { ...payload.screens, actions: rows } });
-  if (!broken.length) return { payload: withActions(actions), repaired: 0, attempted: 0 };
 
   const textFor = (index) => evidenceEntriesFor({ evidence: (evidencePack || []).flatMap((item) => item.evidence || []) })
     .filter((entry) => (actions[index].evidenceIds || []).map(String).includes(String(entry.id)))
@@ -986,8 +1001,54 @@ async function repairActionWording(payload, evidencePack, options = {}) {
   const entries = broken.map((row) => ({ index: row.index, text: row.action, evidence: textFor(row.index) }));
   const { fixed, reason } = await runWordingRepairRounds(entries, repairPrompt, true, options);
   const brokenIndexes = new Set(broken.map((row) => row.index));
+
+  // The universal polish. The detector set is blind to spoken register by construction -
+  // "Andrew Kane is gonna try and include sound", "Take the social media" and "Get Colm
+  // to review the port as well" carry no detectable fault, so the fault-gated repair
+  // above never sees them and they published exactly as spoken. Measured on the
+  // reviewer's list: 8 of 10 broken rows were invisible to the trigger.
+  //
+  // So every remaining published row is OFFERED for rewrite, one round, no retry: these
+  // rows are not broken, so a refusal simply keeps the original, unmarked and unflagged.
+  // Acceptance is stricter than repair in one respect - a polish of a healthy row must
+  // not LOSE facts either, so the original's protected facts have to survive into the
+  // candidate. (Repair of faulted rows keeps the one-directional check, because deleting
+  // debris is part of repair.) Skippable with ACTION_POLISH=0.
+  let polished = new Map();
+  if (process.env.ACTION_POLISH !== '0' && reason !== 'unavailable') {
+    const cleanRows = actions
+      .map((action, index) => ({ index, text: clean(action.action) }))
+      .filter((row) => row.text && !brokenIndexes.has(row.index) && !fixed.has(row.index));
+    if (cleanRows.length) {
+      const polishEntries = cleanRows.map((row) => ({ index: row.index, text: row.text, evidence: textFor(row.index) }));
+      const acceptPolish = (original, candidate) => {
+        if (!acceptWordingRepair(original, candidate, { imperative: true, people })) return false;
+        // Facts must survive in BOTH directions for a polish. protectedFactsOf covers
+        // digits, initialisms and multi-word names - but "by Friday" and "to David" are
+        // facts too, and it is blind to single capitalised words. Every mid-sentence
+        // capitalised token of the original must survive into the candidate; the leading
+        // token is exempt so a better opening verb ("Get" -> "Ask") is not refused for
+        // replacing itself.
+        const before = protectedFactsOf(original);
+        const after = protectedFactsOf(candidate);
+        if (![...before].every((fact) => after.has(fact))) return false;
+        const capitalised = clean(original).split(/\s+/).slice(1)
+          .map((word) => word.replace(/[^A-Za-z0-9'\u2019-]/g, ''))
+          .filter((word) => /^[A-Z][a-z]/.test(word));
+        return capitalised.every((word) => candidate.includes(word));
+      };
+      const result = await runWordingRepairRounds(polishEntries, repairPrompt, true, { ...options, rounds: 1, accept: acceptPolish });
+      polished = result.fixed;
+    }
+  }
+  // An accepted rewrite is model text that never passed the mechanical stage, so spoken
+  // numbers the model kept ("arrange for fourteen marshals") would ship unconverted.
+  // The deterministic pass runs on the accepted text too - deletions and number
+  // formatting only, so it cannot undo what the acceptance guards just approved.
+  const finished = (text) => repairMechanicalFaults(clean(text), { people }).text;
   const next = actions.map((item, index) => {
-    if (fixed.has(index)) return { ...item, action: fixed.get(index), wordingRepaired: true };
+    if (fixed.has(index)) return { ...item, action: finished(fixed.get(index)), wordingRepaired: true };
+    if (polished.has(index)) return { ...item, action: finished(polished.get(index)), wordingRepaired: true };
     // A row that survived both rounds still publishes - dropping a real commitment to
     // keep the prose tidy is the worse trade - but it publishes marked, so the UI can
     // present it as transcript wording under review rather than dressed as a minute.
