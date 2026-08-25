@@ -2322,6 +2322,9 @@ function actionsStage(evidence, state, profile, topology) {
     ...learnedSlotActions(evidence, profile),
     ...recapCorroborated
   ].map((item) => resolveActionReferent(item, evidence)), (item) => `${item.owner}|${item.action}`);
+  // Captured before enriched eligibility so the funnel can tell "no source ever built a
+  // row from this thread" apart from "a row existed and resolveEnrichedActions dropped it".
+  const preEnrichedActions = process.env.ACTION_FUNNEL ? actions.map((item) => `${item.owner} :: ${item.action}`) : null;
   if (enrichedEvidenceEnabled()) {
     actions = applyOperationalPhaseTiming(attachTemporalContext(resolveActionRecords(resolveEnrichedActions(actions, evidence, profile), evidence, {
       deadlineFrom,
@@ -2334,6 +2337,26 @@ function actionsStage(evidence, state, profile, topology) {
     ...recapCorroborated.map((item) => resolveActionReferent(item, evidence))
   ], (item) => `${item.owner}|${item.action}`);
   let actionCandidates = actions;
+  // Funnel tap: env-gated, behaviour-neutral. Every count between "a source proposed this"
+  // and "the reviewer sees it" is computed here and then discarded, so when a real action
+  // goes missing there is no way to say which gate took it. ACTION_FUNNEL names a file and
+  // the stage records each population; scripts/action_recall_attribution.js reads it back
+  // and reports which gate kills the most ground-truth actions.
+  const funnel = process.env.ACTION_FUNNEL ? { preEnriched: preEnrichedActions, generated: actions.map((item) => `${item.owner} :: ${item.action}`) } : null;
+  if (funnel) {
+    // Discovery-stage populations. "Never proposed" is not one gate - it is the whole
+    // discovery chain (thread admission, semanticActionCandidate, the thread vetoes, the
+    // word bounds, enriched eligibility), and knowing WHICH of them dropped the turn a
+    // human minuted is what decides where the work goes.
+    const inThread = new Set(threads.flatMap((thread) => (thread.events || []).map((event) => event.id)));
+    funnel.events = evidence.events.map((event) => ({
+      id: event.id,
+      text: event.text,
+      inThread: inThread.has(event.id),
+      semanticCandidate: semanticActionCandidate(event, profile),
+      roles: event.roles || []
+    }));
+  }
   const structuredEvidenceIds = new Set(evidence.events.filter((event) => event.structuredSource === 'actions_owner_deadline_table').map((event) => event.id));
   if (structuredEvidenceIds.size) {
     actions = unique(actions.filter((item) => item.learnedSlot || (item.evidenceIds || []).some((id) => structuredEvidenceIds.has(id)) || actionPublishability(item, evidence, profile) >= 0.45).map((item) => ({
@@ -2352,6 +2375,12 @@ function actionsStage(evidence, state, profile, topology) {
         return event?.roles.includes('action_candidate') && !event.roles.includes('hypothetical') && !/\?\s*$/.test(event.text) && (/\bI\s+(?:need to|must|have to)\b/i.test(event.text) || hasExplicitFutureCommitment(event.text));
       }) }))
       .filter((candidate) => candidate.publishability >= 0.08);
+    if (funnel) {
+      const scored = actions.map((item) => ({ item, under: isUnderspecifiedAction(item), p: actionPublishability(item, evidence, profile) }));
+      funnel.underspecified = scored.filter((x) => x.under).map((x) => `${x.item.owner} :: ${x.item.action}`);
+      funnel.belowSurvivalFloor = scored.filter((x) => !x.under && x.p < 0.08).map((x) => `${x.p.toFixed(3)} ${x.item.owner} :: ${x.item.action}`);
+      funnel.candidateBand = scored.filter((x) => !x.under && x.p >= 0.08 && x.p < 0.22).map((x) => `${x.p.toFixed(3)} ${x.item.owner} :: ${x.item.action}`);
+    }
     const mandatory = ranked.filter((candidate) => candidate.strongCommitment);
     const optional = ranked.filter((candidate) => !candidate.strongCommitment)
       .sort((left, right) => right.publishability - left.publishability || left.index - right.index);
@@ -2391,6 +2420,10 @@ function actionsStage(evidence, state, profile, topology) {
   // The same generic noise gate used for reviewer candidates must also protect
   // the published list. Otherwise a high classifier score can promote an
   // absence/status remark (for example, “out for the next few days”) as a task.
+  if (funnel) {
+    funnel.afterFloor = actions.map((item) => `${item.owner} :: ${item.action}`);
+    funnel.noiseDropped = actions.filter((item) => reviewCandidateNoise(item, evidence)).map((item) => `${item.owner} :: ${item.action}`);
+  }
   actions = actions.filter((item) => !reviewCandidateNoise(item, evidence));
   const demotedCompoundActions = [];
   actions = actions.filter((item) => {
@@ -2466,6 +2499,14 @@ function actionsStage(evidence, state, profile, topology) {
     ? confirmedActions
     : actions.map((item) => ({ ...item, action: canonicalActionText(item.action) }));
 
+  if (funnel) {
+    funnel.compoundDropped = demotedCompoundActions.map((item) => `${item.owner} :: ${item.action}`);
+    funnel.published = publishedActions.map((item) => `${item.owner} :: ${item.action}`);
+    funnel.reviewCandidates = tieredCandidates.slice(0, 32).map((item) => `${item.owner} :: ${item.action}`);
+    funnel.eventCount = evidence.events.length;
+    funnel.topologyMode = topology?.mode || '';
+    require('fs').appendFileSync(process.env.ACTION_FUNNEL, `${JSON.stringify(funnel)}\n`);
+  }
   return {
     actions: publishedActions,
     actionCandidates: tieredCandidates.slice(0, 32).map((item) => ({
