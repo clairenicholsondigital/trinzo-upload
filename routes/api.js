@@ -52,6 +52,8 @@ const { proposeActions } = require('../utils/canonicalMinutes/proposedActions');
 const { meetingRecordAdminAction } = require('../utils/canonicalMinutes/semanticStages');
 const { proposeDiscussionPoints } = require('../utils/canonicalMinutes/proposedDiscussion');
 const { normaliseAttendeeReferences } = require('../utils/entityNormalization');
+const { duplicateGroups } = require('../utils/canonicalMinutes/semanticDedupe');
+const { isReviewerAuthored } = require('../utils/canonicalMinutes/state');
 const { isPublishableTopicLabel, labelNamesAWorkstream } = require('../utils/canonicalMinutes/topicEditorial');
 const { enrichActionReviewCandidate } = require('../utils/canonicalMinutes/actionReviewRanking');
 const { reviewGeneratedContent } = require('../utils/terminologyQa');
@@ -4262,7 +4264,49 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
       if (!duplicate) distinct.push({ item, tokens });
     }
     const heldBack = [];
+    // The paraphrase band, closed at its source. isNew drops a proposal that overlaps an
+    // existing row at >= 0.6; the corroboration filter keeps a deterministic row that a
+    // proposal overlaps at >= 0.34. Between the two, the same commitment published twice,
+    // once in each wording - Abbott's "Provide the applicable classifications and an
+    // overview of the products" beside "Provide overall view of products". A proposal in
+    // that band is now treated as the same commitment: its minutes-English wording
+    // REPLACES the deterministic row's, the row keeps its owner when the proposal lacks
+    // one, and the evidence of both is united on one row.
+    const bandOverlap = (a, b) => {
+      if (!a.size || !b.size) return 0;
+      let shared = 0;
+      for (const token of a) if (b.has(token)) shared += 1;
+      return shared / Math.min(a.size, b.size);
+    };
+    const replacements = new Map();
+    const isBandMatch = (item) => {
+      const tokens = new Set(String(item.action || '').toLowerCase().match(/[a-z][a-z0-9'’-]{2,}/g) || []);
+      if (!tokens.size) return false;
+      for (let index = 0; index < existing.length; index += 1) {
+        if (replacements.has(index)) continue;
+        const row = existing[index];
+        if (row.reviewerAuthored) continue;
+        // Different real owners are different commitments, whatever the words say.
+        const rowOwner = String(row.owner || 'Not stated');
+        const itemOwner = String(item.owner || 'Not stated');
+        if (rowOwner !== 'Not stated' && itemOwner !== 'Not stated' && rowOwner !== itemOwner) continue;
+        const overlap = bandOverlap(tokens, new Set(String(row.action || '').toLowerCase().match(/[a-z][a-z0-9'’-]{2,}/g) || []));
+        if (overlap >= 0.34 && overlap < 0.6) {
+          replacements.set(index, {
+            ...row,
+            action: item.action,
+            owner: rowOwner !== 'Not stated' ? rowOwner : itemOwner,
+            evidenceIds: [...new Set([...(row.evidenceIds || []), ...(item.evidenceIds || [])])],
+            modelProposed: true,
+            wordingRepaired: true
+          });
+          return true;
+        }
+      }
+      return false;
+    };
     const added = distinct.map((entry) => entry.item).filter(isNew).filter((item) => {
+      if (isBandMatch(item)) return false;
       if (proposalIsPublishable(item)) return true;
       heldBack.push(item);
       return false;
@@ -4306,13 +4350,13 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
       });
     };
     const uncorroborated = [];
-    const keptExisting = process.env.ACTION_CORROBORATION === '0' || !actionProposals.agreed.length
-      ? existing
-      : existing.filter((item) => {
-        if (corroborated(item)) return true;
+    const keptExisting = (process.env.ACTION_CORROBORATION === '0' || !actionProposals.agreed.length
+      ? existing.map((item, index) => replacements.get(index) || item)
+      : existing.map((item, index) => replacements.get(index) || item).filter((item, index) => {
+        if (replacements.has(index) || corroborated(item)) return true;
         uncorroborated.push(item);
         return false;
-      });
+      }));
     if (added.length || actionProposals.considered.length || uncorroborated.length) {
       polished.payload = {
         ...polished.payload,
@@ -4400,6 +4444,55 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
           })
         }
       };
+    }
+    // Final semantic near-duplicate pass, the safety net behind the paraphrase-band
+    // merge: rows the lexical rules cannot see as the same commitment. Threshold 0.80 -
+    // above every observed distinct pair on the reviewer-named fixtures - so only
+    // near-restatements merge, and judgement calls ("thirty-second intro cap" beside
+    // "drop the nervous comment") stay on the screen. Rows with different real owners
+    // never merge; reviewer-authored rows are never dropped; the survivor is chosen by
+    // owner > minutes-English wording > earliest, and inherits the dropped rows'
+    // evidence. DEDUP_PASS=0 disables.
+    if (process.env.DEDUP_PASS !== '0' && (result?.screens?.actions || []).length > 1) {
+      const rows = result.screens.actions;
+      const dedupe = await duplicateGroups(rows.map((item) => String(item.action || '')));
+      const drop = new Set();
+      for (const group of dedupe.groups) {
+        const members = group.filter((index) => !rows[index].reviewerAuthored);
+        // Split by real owner: only same-owner (or ownerless) members may merge.
+        const owners = new Map();
+        for (const index of members) {
+          const key = String(rows[index].owner || 'Not stated');
+          if (!owners.has(key)) owners.set(key, []);
+          owners.get(key).push(index);
+        }
+        const named = [...owners.entries()].filter(([key]) => key !== 'Not stated');
+        const unowned = owners.get('Not stated') || [];
+        const clusters = named.length
+          ? named.map(([, indexes], position) => (position === 0 ? [...indexes, ...unowned] : indexes))
+          : (unowned.length ? [unowned] : []);
+        for (const cluster of clusters) {
+          if (cluster.length < 2) continue;
+          const survivor = [...cluster].sort((a, b) => {
+            const ownerA = String(rows[a].owner || 'Not stated') !== 'Not stated' ? 0 : 1;
+            const ownerB = String(rows[b].owner || 'Not stated') !== 'Not stated' ? 0 : 1;
+            if (ownerA !== ownerB) return ownerA - ownerB;
+            const polishedA = rows[a].wordingRepaired || rows[a].modelProposed ? 0 : 1;
+            const polishedB = rows[b].wordingRepaired || rows[b].modelProposed ? 0 : 1;
+            if (polishedA !== polishedB) return polishedA - polishedB;
+            return a - b;
+          })[0];
+          const merged = [...new Set(cluster.flatMap((index) => rows[index].evidenceIds || []))];
+          rows[survivor] = { ...rows[survivor], evidenceIds: merged };
+          for (const index of cluster) if (index !== survivor) drop.add(index);
+        }
+      }
+      if (drop.size) {
+        // Auditable, because a merge that cannot be audited is a merge that hides a bug:
+        // one greppable line per generation naming exactly what merged and at what score.
+        console.log(JSON.stringify({ event: 'staged_dedupe', stage: 'actions', dropped: [...drop].map((index) => rows[index].action), pairs: dedupe.pairs }));
+        result = { ...result, screens: { ...result.screens, actions: rows.filter((item, index) => !drop.has(index)) } };
+      }
     }
   }
   // Discussion prose gets the same publication promise as actions: broken wording is
@@ -4518,6 +4611,40 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
           })
         }
       };
+    }
+    // Final semantic near-duplicate pass across ALL cards' points - the proposal dedupe
+    // only compared against points that existed at merge time, so a paraphrase could land
+    // in a NEW card while its twin sat in another (DITA's B2B-ordering point appeared
+    // under two headings). Same 0.80 near-restatement bar as actions; first occurrence
+    // wins; a card emptied by the pass is removed unless it is reviewer-authored or a
+    // confirmed topic. Card HEADINGS never merge - "Alarm functionality testing" and
+    // "Alarm visual and auditory configuration" are legitimately different topics.
+    if (process.env.DEDUP_PASS !== '0') {
+      const cards = (result?.screens?.discussion || []).map((card) => ({ ...card, points: [...(card.points || [])] }));
+      const flat = [];
+      cards.forEach((card, cardIndex) => card.points.forEach((point, pointIndex) => {
+        flat.push({ cardIndex, pointIndex, text: String(typeof point === 'string' ? point : point?.text || '') });
+      }));
+      if (flat.length > 1) {
+        const dedupe = await duplicateGroups(flat.map((entry) => entry.text));
+        const dropKeys = new Set();
+        for (const group of dedupe.groups) {
+          for (const memberIndex of group.slice(1)) {
+            const entry = flat[memberIndex];
+            dropKeys.add(`${entry.cardIndex}:${entry.pointIndex}`);
+          }
+        }
+        if (dropKeys.size) {
+          console.log(JSON.stringify({ event: 'staged_dedupe', stage: 'discussion', dropped: [...dropKeys].map((key) => { const [c, i] = key.split(':').map(Number); const point = cards[c].points[i]; return typeof point === 'string' ? point : point?.text; }), pairs: dedupe.pairs }));
+          const deduped = cards
+            .map((card, cardIndex) => ({
+              ...card,
+              points: card.points.filter((point, pointIndex) => !dropKeys.has(`${cardIndex}:${pointIndex}`))
+            }))
+            .filter((card) => card.points.length || isReviewerAuthored(card) || card.confirmedTopic);
+          result = { ...result, screens: { ...result.screens, discussion: deduped } };
+        }
+      }
     }
   }
   let initialUnderstandingPolish = { used: false, reason: 'not_applicable' };
