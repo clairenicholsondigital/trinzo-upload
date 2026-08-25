@@ -24,6 +24,7 @@ const {
 const {
   buildEvidenceBoundStagedActionInventory,
   unassignedActionsWorthPublishing,
+  readsAsAnActionRecord,
   parseDeadlineEvidence
 } = require('../utils/stagedActionRecovery');
 const { buildStagedEvidenceLedger } = require('../utils/stagedEvidenceLedger');
@@ -4160,7 +4161,34 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
         return shared / Math.min(tokens.size, other.size) >= 0.6;
       });
     };
-    const added = [...actionProposals.agreed, ...actionProposals.requirements].filter(isNew).map((item) => ({
+    // Proposals carry selectionFinal so the wording gate cannot remove them, which also
+    // means no quality bar applies unless one is applied here. The content bar is the same
+    // predicate recovered rows already pass - an instruction of 3-26 words, opening on a
+    // verb rather than a name or pronoun, with a concrete object - so a vague proposal
+    // ("Limit risk for them", "Think about how to execute the study") is held back as a
+    // candidate rather than published as work. This is a CONTENT check, not a wording one:
+    // it asks whether the row states a task, never whether it is phrased nicely.
+    const proposalIsPublishable = (item) => readsAsAnActionRecord(String(item.action || ''));
+    // The model sometimes proposes the same commitment twice in different words. Deduped
+    // against each other on the same overlap rule used against the deterministic rows, so
+    // one commitment produces one row.
+    const distinct = [];
+    for (const item of [...actionProposals.agreed, ...actionProposals.requirements]) {
+      const tokens = new Set(String(item.action || '').toLowerCase().match(/[a-z][a-z0-9'’-]{2,}/g) || []);
+      if (!tokens.size) continue;
+      const duplicate = distinct.some((other) => {
+        let shared = 0;
+        for (const token of tokens) if (other.tokens.has(token)) shared += 1;
+        return shared / Math.min(tokens.size, other.tokens.size) >= 0.6;
+      });
+      if (!duplicate) distinct.push({ item, tokens });
+    }
+    const heldBack = [];
+    const added = distinct.map((entry) => entry.item).filter(isNew).filter((item) => {
+      if (proposalIsPublishable(item)) return true;
+      heldBack.push(item);
+      return false;
+    }).map((item) => ({
       owner: item.owner,
       action: item.action,
       deadline: 'Not stated',
