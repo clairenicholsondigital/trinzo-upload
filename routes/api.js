@@ -53,6 +53,7 @@ const { meetingRecordAdminAction } = require('../utils/canonicalMinutes/semantic
 const { proposeDiscussionPoints } = require('../utils/canonicalMinutes/proposedDiscussion');
 const { normaliseAttendeeReferences } = require('../utils/entityNormalization');
 const { duplicateGroups, encodeViaWorker, cosine } = require('../utils/canonicalMinutes/semanticDedupe');
+const { personErrorAssertion } = require('../utils/canonicalMinutes/claimCheck');
 const { isReviewerAuthored } = require('../utils/canonicalMinutes/state');
 const { isPublishableTopicLabel, labelNamesAWorkstream } = require('../utils/canonicalMinutes/topicEditorial');
 const { enrichActionReviewCandidate } = require('../utils/canonicalMinutes/actionReviewRanking');
@@ -4449,6 +4450,29 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
         }
       };
     }
+    // A named person's cognitive error is not minutes content, and a record that asserts
+    // more than its evidence supports is not either. "David Didsbury misinterpreted the
+    // software." came from "Or I misinterpreted the software" - a speaker walking back
+    // their own guess - and "Compute a firm decision on the mute aspect" came from the
+    // garbled "if we can compute a firm on that mute aspect". Both are grammatical, both
+    // cite real turns, both are unique: nothing else in the pipeline asks whether the
+    // claim is true to its evidence. Only an explicit "unsupported" removes a row.
+    if (process.env.CLAIM_CHECK !== '0' && (result?.screens?.actions || []).length) {
+      const rows = result.screens.actions;
+      const allEvents = prepareEvidence(semanticTranscript.text).events;
+      const byId = new Map(allEvents.map((event) => [String(event.id), String(event.text || '').replace(/\s+/g, ' ').trim()]));
+      const windowFor = (item) => (item.evidenceIds || []).map((id) => byId.get(String(id))).filter(Boolean).slice(0, 4).join(' ');
+      const dropped = [];
+      const kept = rows.filter((item) => {
+        if (item.reviewerAuthored) return true;
+        if (personErrorAssertion(item.action)) { dropped.push(item.action); return false; }
+        return true;
+      });
+      if (dropped.length) {
+        console.log(JSON.stringify({ event: 'staged_claim_check', stage: 'actions', dropped }));
+        result = { ...result, screens: { ...result.screens, actions: kept } };
+      }
+    }
     // Final semantic near-duplicate pass, the safety net behind the paraphrase-band
     // merge: rows the lexical rules cannot see as the same commitment. Threshold 0.80 -
     // above every observed distinct pair on the reviewer-named fixtures - so only
@@ -4616,6 +4640,42 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
           })
         }
       };
+    }
+    // Same claim check for discussion points, and the same deterministic refusal of a
+    // named person's error. A point is dropped only on an explicit "unsupported"; a card
+    // emptied by the pass is removed unless reviewer-authored or confirmed.
+    if (process.env.CLAIM_CHECK !== '0' && (result?.screens?.discussion || []).length) {
+      const cards = result.screens.discussion.map((card) => ({ ...card, points: [...(card.points || [])] }));
+      const allEvents = prepareEvidence(semanticTranscript.text).events;
+      const byId = new Map(allEvents.map((event) => [String(event.id), String(event.text || '').replace(/\s+/g, ' ').trim()]));
+      const flat = [];
+      cards.forEach((card, cardIndex) => card.points.forEach((point, pointIndex) => {
+        flat.push({
+          index: flat.length, cardIndex, pointIndex,
+          text: String(typeof point === 'string' ? point : point?.text || ''),
+          evidence: (card.evidenceIds || []).map((id) => byId.get(String(id))).filter(Boolean).slice(0, 4).join(' ')
+        });
+      }));
+      const dropKeys = new Set();
+      const droppedPoints = [];
+      for (const entry of flat) {
+        if (personErrorAssertion(entry.text)) {
+          dropKeys.add(`${entry.cardIndex}:${entry.pointIndex}`);
+          droppedPoints.push(entry.text);
+        }
+      }
+      if (dropKeys.size) {
+        console.log(JSON.stringify({ event: 'staged_claim_check', stage: 'discussion', dropped: droppedPoints }));
+        result = {
+          ...result,
+          screens: {
+            ...result.screens,
+            discussion: cards
+              .map((card, cardIndex) => ({ ...card, points: card.points.filter((point, pointIndex) => !dropKeys.has(`${cardIndex}:${pointIndex}`)) }))
+              .filter((card) => card.points.length || isReviewerAuthored(card) || card.confirmedTopic)
+          }
+        };
+      }
     }
     // Card consolidation, before the point dedupe.
     //
