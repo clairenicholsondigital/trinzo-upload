@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { duplicateGroups, cosine, DEDUPE_THRESHOLD } = require('../utils/canonicalMinutes/semanticDedupe');
+const { duplicateGroups, cosine, splitDedupeGroupsByOwner, DEDUPE_THRESHOLD } = require('../utils/canonicalMinutes/semanticDedupe');
 
 // Semantic near-duplicate detection, pinned without the worker. The threshold decision is
 // the load-bearing part: calibrated on live pairs from the reviewer-named fixtures,
@@ -51,4 +51,43 @@ test('every match is recorded as an auditable pair', async () => {
 test('empty and blank texts never group', async () => {
   const { groups } = await duplicateGroups(['', '   ', 'real point here'], { vectors: null });
   assert.deepEqual(groups, []);
+});
+
+// splitDedupeGroupsByOwner: the fixture-06 danger shape. "Andrew: Confirm the nebulizer
+// flow-rate specification" and "David and Colm: Review ISO 27427 once Andrew confirms it"
+// share nearly all their vocabulary - a semantic group WILL contain both - and they are
+// two commitments the human minutes list separately. Different real owners never merge.
+
+test('two named owners in one group never merge with each other', () => {
+  const owners = ['Andrew', 'David and Colm'];
+  const clusters = splitDedupeGroupsByOwner([0, 1], (index) => owners[index], [{ a: 0, b: 1, score: 0.84, via: 'semantic' }]);
+  assert.deepEqual(clusters.map((cluster) => [...cluster].sort()), [[0], [1]]);
+});
+
+test('an ownerless row joins the cluster of its scored partner, not cluster 0', () => {
+  const owners = ['Andrew', 'David', 'Not stated'];
+  // The ownerless row's only scored link is to David (index 1).
+  const clusters = splitDedupeGroupsByOwner([0, 1, 2], (index) => owners[index], [
+    { a: 1, b: 2, score: 0.9, via: 'semantic' }
+  ]);
+  const withOwnerless = clusters.find((cluster) => cluster.includes(2));
+  assert.ok(withOwnerless.includes(1), 'ownerless row must sit with David, its evidenced partner');
+  assert.ok(!withOwnerless.includes(0), 'not with Andrew, who merely came first');
+});
+
+test('an ownerless row with no scored link and several named owners stays unmerged', () => {
+  const owners = ['Andrew', 'David', 'Not stated'];
+  const clusters = splitDedupeGroupsByOwner([0, 1, 2], (index) => owners[index], []);
+  assert.ok(!clusters.some((cluster) => cluster.includes(2)), 'a visible near-duplicate beats a silent wrong-owner absorption');
+});
+
+test('with exactly one named owner the ownerless rows attach to it', () => {
+  const owners = ['Rebecca', 'Not stated', 'Not stated'];
+  const clusters = splitDedupeGroupsByOwner([0, 1, 2], (index) => owners[index], []);
+  assert.deepEqual(clusters.map((cluster) => [...cluster].sort()), [[0, 1, 2]]);
+});
+
+test('ownerless-only groups still merge as one cluster', () => {
+  const clusters = splitDedupeGroupsByOwner([0, 1], () => 'Not stated', []);
+  assert.deepEqual(clusters, [[0, 1]]);
 });

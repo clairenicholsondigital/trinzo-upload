@@ -78,7 +78,7 @@ function promptFor(transcript, participants) {
   ].filter(Boolean).join('\n');
 }
 
-async function requestProposals(transcript, participants, options = {}) {
+async function requestItems(promptText, options = {}) {
   const apiKey = clean(options.apiKey ?? process.env.TROOPER_API_KEY);
   const fetchImpl = options.fetchImpl || fetch;
   if (!apiKey || typeof fetchImpl !== 'function') return { ok: false, reason: 'unavailable' };
@@ -90,10 +90,10 @@ async function requestProposals(transcript, participants, options = {}) {
         model: clean(options.model ?? process.env.TROOPER_MODEL) || DEFAULT_MODEL,
         messages: [
           { role: 'system', content: 'You extract action items from meeting transcripts. Return valid JSON only.' },
-          { role: 'user', content: promptFor(transcript, participants) }
+          { role: 'user', content: promptText }
         ],
         temperature: 0.1,
-        max_tokens: 2400,
+        max_tokens: Number(options.maxTokens || 2400),
         response_format: { type: 'json_object' }
       })
     });
@@ -200,11 +200,9 @@ function resolveProposedOwner(owner, participants) {
   return match || 'Not stated';
 }
 
-async function proposeActions(transcript, evidence, options = {}) {
-  const participants = (evidence?.participants || []).map((item) => clean(item?.name || item)).filter(Boolean);
-  const result = await requestProposals(transcript, participants, options);
-  if (!result.ok) return { agreed: [], requirements: [], considered: [], ungrounded: [], reason: result.reason };
-  const { grounded, ungrounded } = groundProposals(result.items, evidence);
+// Shared tail of both proposal calls: ground, resolve owners, strip prefixes, bucket.
+function refereeItems(items, evidence, participants) {
+  const { grounded, ungrounded } = groundProposals(items, evidence);
   const owned = grounded.map((item) => {
     const owner = resolveProposedOwner(item.owner, participants);
     return { ...item, owner, action: stripOwnerPrefix(item.action, owner) };
@@ -218,4 +216,64 @@ async function proposeActions(transcript, evidence, options = {}) {
   };
 }
 
-module.exports = { proposeActions, groundProposals, quoteSupport, bestQuoteSupport, resolveProposedOwner, stripOwnerPrefix, promptFor, QUOTE_GROUNDING };
+async function proposeActions(transcript, evidence, options = {}) {
+  const participants = (evidence?.participants || []).map((item) => clean(item?.name || item)).filter(Boolean);
+  const result = await requestItems(promptFor(transcript, participants), options);
+  if (!result.ok) return { agreed: [], requirements: [], considered: [], ungrounded: [], reason: result.reason };
+  return refereeItems(result.items, evidence, participants);
+}
+
+// The completeness sweep: a second reading aimed only at what the first pass missed.
+//
+// Measured need (2026-08-26, one-run loss attribution across the 13 ground-truth
+// fixtures): of 53 expected actions the scorecard missed, 23 were never discovered by
+// ANY source and 5 more were real commitments the corroboration filter dropped because
+// the model's single reading happened not to mention them. One reading of a transcript
+// is one sample; the misses cluster in long meetings where the first call's attention
+// (and its 2400-token budget) ran out before the small commitments.
+//
+// The sweep shows the model what is already captured and asks ONLY for commitments not
+// covered - so a row the corroboration filter removed is fair game again (it is no
+// longer on the list), and everything that comes back faces the same referee: verbatim
+// quote, grounding against this transcript's turns, owner resolution, disposition
+// strictness. A meeting that agreed nothing gets no sweep at all (the caller skips it),
+// and the prompt's own empty-permission keeps the model from inventing coverage.
+function missedPromptFor(transcript, participants, alreadyCaptured) {
+  const captured = (alreadyCaptured || []).map((item, index) => `  ${index + 1}. ${clean(item.owner) && !/^not stated$/i.test(clean(item.owner)) ? `${clean(item.owner)}: ` : ''}${clean(item.action)}`);
+  return [
+    '[CMD: task=action_completeness_sweep; format=json]',
+    'Below is a meeting transcript and the list of action items already captured from it.',
+    'List ONLY commitments or requirements in the transcript that are NOT covered by that list.',
+    'An item is covered if the list already records the same work, even in different words -',
+    'do not restate, reword or improve anything already on the list.',
+    'If everything is covered, return {"items":[]}.',
+    '',
+    'For each missed item give:',
+    '  owner       - the person responsible, exactly as named in the transcript, or "Not stated".',
+    '  action      - a short instruction, starting with the verb. Do NOT begin with the owner\'s name.',
+    '  quote       - a VERBATIM span copied from the transcript that shows this item. Copy it exactly; do not paraphrase.',
+    '  disposition - "agreed" (somebody committed), "requirement" (must happen, nobody named),',
+    '                or "considered" (discussed and NOT agreed).',
+    '',
+    'Be strict about the difference between agreed and considered. A meeting that weighed several',
+    'options and reached no decision has NO agreed items - file every option as "considered".',
+    'Invent nothing. Every item must be supported by its quote.',
+    participants.length ? `Participants: ${participants.join(', ')}.` : '',
+    'Return JSON only as {"items":[{"owner":"...","action":"...","quote":"...","disposition":"..."}]}.',
+    '',
+    'ALREADY CAPTURED:',
+    captured.length ? captured.join('\n') : '  (nothing captured yet)',
+    '',
+    'TRANSCRIPT:',
+    transcript
+  ].filter(Boolean).join('\n');
+}
+
+async function proposeMissedActions(transcript, evidence, alreadyCaptured, options = {}) {
+  const participants = (evidence?.participants || []).map((item) => clean(item?.name || item)).filter(Boolean);
+  const result = await requestItems(missedPromptFor(transcript, participants, alreadyCaptured), { maxTokens: 1200, ...options });
+  if (!result.ok) return { agreed: [], requirements: [], considered: [], ungrounded: [], reason: result.reason };
+  return refereeItems(result.items, evidence, participants);
+}
+
+module.exports = { proposeActions, proposeMissedActions, groundProposals, quoteSupport, bestQuoteSupport, resolveProposedOwner, stripOwnerPrefix, promptFor, missedPromptFor, QUOTE_GROUNDING };

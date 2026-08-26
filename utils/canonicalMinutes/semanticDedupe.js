@@ -96,4 +96,48 @@ async function duplicateGroups(texts, options = {}) {
   return { groups: groups.filter((group) => group.length > 1), groupOf, pairs, semantic: Boolean(vectors) };
 }
 
-module.exports = { encodeViaWorker, duplicateGroups, cosine, DEDUPE_THRESHOLD };
+// Splits one near-duplicate group into clusters that may actually merge, honouring
+// owners. Two rows with different REAL owners are different commitments whatever the
+// words say - that rule already held. What did not hold: ownerless rows were attached
+// wholesale to the FIRST named cluster, so with two named owners in a group an ownerless
+// row merged into an arbitrary one - and the survivor's owner then spoke for content
+// that may belong to the other person.
+//
+// Now an ownerless row joins a named cluster only on evidence: the group's `pairs`
+// (every scored match duplicateGroups recorded) must link it to a member of that
+// cluster. duplicateGroups matches members against the group SEED, so the pair graph is
+// a star - which means the link exists exactly when the seed is involved; with more than
+// one named owner and no direct link, the row is left unmerged. A visible near-duplicate
+// beats a silent wrong-owner absorption, and an unmerged ownerless row costs nothing
+// downstream - "Not stated" passes every owner gate.
+//
+// With exactly ONE named owner in the group the ownerless rows attach to it, which is
+// both today's behaviour and the only owner the content could belong to.
+function splitDedupeGroupsByOwner(members, ownerOf, pairs = []) {
+  const named = new Map();
+  const unowned = [];
+  for (const index of members) {
+    const owner = String(ownerOf(index) || 'Not stated');
+    if (owner === 'Not stated') { unowned.push(index); continue; }
+    if (!named.has(owner)) named.set(owner, []);
+    named.get(owner).push(index);
+  }
+  if (!named.size) return unowned.length ? [unowned] : [];
+  const clusters = [...named.values()].map((indexes) => [...indexes]);
+  const clusterOf = new Map();
+  clusters.forEach((cluster, at) => cluster.forEach((index) => clusterOf.set(index, at)));
+  for (const index of unowned) {
+    if (named.size === 1) { clusters[0].push(index); continue; }
+    let best = null;
+    for (const pair of pairs) {
+      const partner = pair.a === index ? pair.b : (pair.b === index ? pair.a : null);
+      if (partner === null || !clusterOf.has(partner)) continue;
+      if (!best || (pair.score ?? 0) > (best.score ?? 0)) best = { cluster: clusterOf.get(partner), score: pair.score };
+    }
+    if (best) clusters[best.cluster].push(index);
+    // No link and several possible owners: the row stays on the screen, unmerged.
+  }
+  return clusters;
+}
+
+module.exports = { encodeViaWorker, duplicateGroups, cosine, splitDedupeGroupsByOwner, DEDUPE_THRESHOLD };

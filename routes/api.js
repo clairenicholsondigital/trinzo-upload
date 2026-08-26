@@ -48,11 +48,11 @@ const { runCanonicalLiveStage } = require('../utils/canonicalMinutes/liveStages'
 const { suggestMeetingTypeFromEvidence } = require('../utils/canonicalMinutes/meetingTypeSuggestion');
 const { prepareEvidence } = require('../utils/canonicalMinutes/evidence');
 const { polishCanonicalStage, canonicalFallback, addRecoveredActionCandidates, clientReadyPresentation, repairActionWording, repairDiscussionWording, wordingFaults } = require('../utils/canonicalMinutes/trooperPolish');
-const { proposeActions } = require('../utils/canonicalMinutes/proposedActions');
+const { proposeActions, proposeMissedActions } = require('../utils/canonicalMinutes/proposedActions');
 const { meetingRecordAdminAction } = require('../utils/canonicalMinutes/semanticStages');
 const { proposeDiscussionPoints } = require('../utils/canonicalMinutes/proposedDiscussion');
 const { normaliseAttendeeReferences } = require('../utils/entityNormalization');
-const { duplicateGroups, encodeViaWorker, cosine } = require('../utils/canonicalMinutes/semanticDedupe');
+const { duplicateGroups, encodeViaWorker, cosine, splitDedupeGroupsByOwner } = require('../utils/canonicalMinutes/semanticDedupe');
 const { personErrorAssertion } = require('../utils/canonicalMinutes/claimCheck');
 const { isReviewerAuthored } = require('../utils/canonicalMinutes/state');
 const { isPublishableTopicLabel, labelNamesAWorkstream } = require('../utils/canonicalMinutes/topicEditorial');
@@ -4061,6 +4061,29 @@ function servingRevision() {
 
 async function canonicalStagedResponse(stage, transcript, input = {}) {
   const generationStartedAt = Date.now();
+  // One-run loss attribution (scripts/action_loss_attribution.js). ACTION_TRACE names a
+  // file; every snapshot and row-eating mutation in the actions stage is recorded there,
+  // so a single scorecard run can say, for each expected action the scorecard missed,
+  // which pass lost it and what survived in its place. The stage-level ACTION_FUNNEL tap
+  // stops at actionsStage's return value - every pass in THIS function (band merge,
+  // claim check, wording repair, dedupe) runs after that, and the recall those passes
+  // cost was invisible to both instruments. Dead code when the env var is unset.
+  const actionTrace = stage === 'actions' && process.env.ACTION_TRACE
+    ? { fileName: transcript.fileName || 'transcript.txt', snapshots: [], proposals: null, mutations: [] }
+    : null;
+  const traceSnap = (pass, rows) => {
+    if (!actionTrace) return;
+    actionTrace.snapshots.push({
+      pass,
+      rows: (Array.isArray(rows) ? rows : []).map((item) => ({
+        owner: item.owner || 'Not stated',
+        action: String(item.action || ''),
+        modelProposed: Boolean(item.modelProposed),
+        ownerUnassigned: Boolean(item.ownerUnassigned),
+        reviewerAuthored: Boolean(item.reviewerAuthored)
+      }))
+    });
+  };
   const confirmed = canonicalConfirmedStages(input);
   const semanticTranscript = transcriptForStagedAI(transcript, input);
   const transcriptHealth = assessStagedTranscriptHealth(semanticTranscript.text);
@@ -4146,6 +4169,7 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
       ];
     }
   }
+  if (stage === 'actions') traceSnap('stage_published', payload?.screens?.actions);
   const canonicalEvidencePack = Array.isArray(payload._canonicalEvidencePack) ? payload._canonicalEvidencePack : [];
   let polished = { payload, used: false, reason: 'Trooper is not used for this stage.' };
   if (['discussion', 'actions'].includes(stage)) {
@@ -4225,6 +4249,18 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
     // pipeline actually saw rather than a second, differently-parsed view of the meeting.
     actionProposals = await proposeActions(semanticTranscript.text, prepareEvidence(semanticTranscript.text), {});
     const existing = polished.payload?.screens?.actions || [];
+    traceSnap('after_polish', existing);
+    if (actionTrace) {
+      const population = (items) => (Array.isArray(items) ? items : []).map((item) => ({
+        owner: item.owner || 'Not stated', action: String(item.action || '')
+      }));
+      actionTrace.proposals = {
+        agreed: population(actionProposals.agreed),
+        requirements: population(actionProposals.requirements),
+        considered: population(actionProposals.considered),
+        ungrounded: population(actionProposals.ungrounded)
+      };
+    }
     // Same duplicate rule the recovery path uses, so a proposal cannot restate a row the
     // deterministic layer already published.
     const seen = existing.map((item) => new Set(String(item.action || '').toLowerCase().match(/[a-z][a-z0-9'’-]{2,}/g) || []));
@@ -4280,7 +4316,11 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
       return shared / Math.min(a.size, b.size);
     };
     const replacements = new Map();
+    const bandMerges = [];
     const isBandMatch = (item) => {
+      // BAND_MERGE=0 reverts a proposal in the band to the normal isNew/publishable path:
+      // worst case a visible duplicate on the screen, never a silently replaced wording.
+      if (process.env.BAND_MERGE === '0') return false;
       const tokens = new Set(String(item.action || '').toLowerCase().match(/[a-z][a-z0-9'’-]{2,}/g) || []);
       if (!tokens.size) return false;
       for (let index = 0; index < existing.length; index += 1) {
@@ -4300,6 +4340,12 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
             evidenceIds: [...new Set([...(row.evidenceIds || []), ...(item.evidenceIds || [])])],
             modelProposed: true,
             wordingRepaired: true
+          });
+          bandMerges.push({
+            before: String(row.action || ''),
+            after: String(item.action || ''),
+            owner: rowOwner !== 'Not stated' ? rowOwner : itemOwner,
+            overlap: Number(overlap.toFixed(3))
           });
           return true;
         }
@@ -4358,7 +4404,7 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
         uncorroborated.push(item);
         return false;
       }));
-    if (added.length || actionProposals.considered.length || uncorroborated.length) {
+    if (added.length || actionProposals.considered.length || uncorroborated.length || replacements.size) {
       polished.payload = {
         ...polished.payload,
         screens: {
@@ -4372,6 +4418,80 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
           }))
         }
       };
+    }
+    // `applied` records whether the guard above actually took the merges. It always does
+    // now that replacements.size is part of the condition - before that, a generation
+    // where EVERY distinct proposal was a band match silently discarded the replacements.
+    const proposalMergeApplied = Boolean(added.length || actionProposals.considered.length || uncorroborated.length || replacements.size);
+    if (bandMerges.length) {
+      console.log(JSON.stringify({ event: 'staged_band_merge', stage: 'actions', applied: proposalMergeApplied, merges: bandMerges }));
+    }
+    if (uncorroborated.length) {
+      console.log(JSON.stringify({ event: 'staged_corroboration', stage: 'actions', dropped: uncorroborated.map((item) => String(item.action || '')) }));
+    }
+    if (actionTrace) {
+      for (const merge of bandMerges) actionTrace.mutations.push({ type: 'band_replace', applied: proposalMergeApplied, ...merge });
+      for (const item of uncorroborated) actionTrace.mutations.push({ type: 'corroboration_drop', owner: item.owner || 'Not stated', action: String(item.action || '') });
+      for (const item of heldBack) actionTrace.mutations.push({ type: 'held_back', owner: item.owner || 'Not stated', action: String(item.action || '') });
+    }
+    traceSnap('after_proposal_merge', polished.payload?.screens?.actions);
+    // The completeness sweep: one reading of a transcript is one sample, and the loss
+    // attribution measured 23 of 53 missing expected actions as never discovered by any
+    // source plus 5 more eaten by the corroboration filter because that single reading
+    // happened not to mention them. A second call sees what is already captured and may
+    // only name commitments NOT covered; everything it returns faces the same referee
+    // (verbatim quote grounding, owner resolution, content bar, duplicate rule), and the
+    // claim check and dedupe still run after it. Skipped entirely on the no-decision
+    // shape - nothing published and nothing agreed - where a "what's missing" question
+    // invites invention. Opt-in (ACTION_COMPLETENESS_SWEEP=1) until the scorecard run
+    // with it on shows recall gain without a precision cost; flipped to default after.
+    if (process.env.ACTION_COMPLETENESS_SWEEP === '1' && !actionProposals.reason) {
+      const currentRows = polished.payload?.screens?.actions || [];
+      if (currentRows.length || actionProposals.agreed.length) {
+        const sweep = await proposeMissedActions(semanticTranscript.text, prepareEvidence(semanticTranscript.text), currentRows.map((item) => ({ owner: item.owner, action: item.action })), {});
+        const currentTokens = currentRows.map((item) => new Set(String(item.action || '').toLowerCase().match(/[a-z][a-z0-9'’-]{2,}/g) || []));
+        const coveredByCurrent = (item) => {
+          const tokens = new Set(String(item.action || '').toLowerCase().match(/[a-z][a-z0-9'’-]{2,}/g) || []);
+          if (!tokens.size) return true;
+          return currentTokens.some((other) => {
+            if (!other.size) return false;
+            let shared = 0;
+            for (const token of tokens) if (other.has(token)) shared += 1;
+            return shared / Math.min(tokens.size, other.size) >= 0.6;
+          });
+        };
+        const sweepRefused = [];
+        const sweepRows = [...sweep.agreed, ...sweep.requirements].filter((item) => {
+          if (coveredByCurrent(item)) { sweepRefused.push({ action: item.action, reason: 'already_covered' }); return false; }
+          if (!proposalIsPublishable(item)) { sweepRefused.push({ action: item.action, reason: 'content_bar' }); return false; }
+          return true;
+        }).map((item) => ({
+          owner: item.owner,
+          action: item.action,
+          deadline: 'Not stated',
+          evidenceIds: item.evidenceIds,
+          ownerUnassigned: item.owner === 'Not stated',
+          modelProposed: true,
+          completenessSweep: true,
+          selectionFinal: true,
+          reviewDisposition: item.disposition === 'requirement' ? 'requirement' : 'confirmed_action'
+        }));
+        if (sweepRows.length || sweepRefused.length || (sweep.ungrounded || []).length) {
+          console.log(JSON.stringify({
+            event: 'staged_completeness_sweep',
+            added: sweepRows.map((item) => item.action),
+            refused: sweepRefused,
+            ungrounded: (sweep.ungrounded || []).length
+          }));
+        }
+        if (sweepRows.length) {
+          polished.payload = {
+            ...polished.payload,
+            screens: { ...(polished.payload?.screens || {}), actions: [...currentRows, ...sweepRows] }
+          };
+        }
+        traceSnap('after_completeness_sweep', polished.payload?.screens?.actions);
+      }
     }
   }
   let result = clientReadyPresentation(polished.payload);
@@ -4401,6 +4521,7 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
   // wording cost nothing, because the repair only fires when at least one row is broken.
   let actionWordingRepair = { repaired: 0, attempted: 0 };
   if (stage === 'actions') {
+    traceSnap('after_presentation', result?.screens?.actions);
     // The participant list travels with the repair so the repeated_person_name detector
     // can actually fire on this path - wordingFaults without options.people can never
     // detect a doubled roster name, whatever the row says.
@@ -4450,6 +4571,7 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
         }
       };
     }
+    traceSnap('after_wording_repair', result?.screens?.actions);
     // A named person's cognitive error is not minutes content, and a record that asserts
     // more than its evidence supports is not either. "David Didsbury misinterpreted the
     // software." came from "Or I misinterpreted the software" - a speaker walking back
@@ -4470,9 +4592,11 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
       });
       if (dropped.length) {
         console.log(JSON.stringify({ event: 'staged_claim_check', stage: 'actions', dropped }));
+        if (actionTrace) for (const action of dropped) actionTrace.mutations.push({ type: 'claim_drop', action });
         result = { ...result, screens: { ...result.screens, actions: kept } };
       }
     }
+    traceSnap('after_claim_check', result?.screens?.actions);
     // Final semantic near-duplicate pass, the safety net behind the paraphrase-band
     // merge: rows the lexical rules cannot see as the same commitment. Threshold 0.80 -
     // above every observed distinct pair on the reviewer-named fixtures - so only
@@ -4485,20 +4609,13 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
       const rows = result.screens.actions;
       const dedupe = await duplicateGroups(rows.map((item) => String(item.action || '')));
       const drop = new Set();
+      const dropRecords = [];
       for (const group of dedupe.groups) {
         const members = group.filter((index) => !rows[index].reviewerAuthored);
-        // Split by real owner: only same-owner (or ownerless) members may merge.
-        const owners = new Map();
-        for (const index of members) {
-          const key = String(rows[index].owner || 'Not stated');
-          if (!owners.has(key)) owners.set(key, []);
-          owners.get(key).push(index);
-        }
-        const named = [...owners.entries()].filter(([key]) => key !== 'Not stated');
-        const unowned = owners.get('Not stated') || [];
-        const clusters = named.length
-          ? named.map(([, indexes], position) => (position === 0 ? [...indexes, ...unowned] : indexes))
-          : (unowned.length ? [unowned] : []);
+        // Split by real owner: only same-owner (or ownerless) members may merge, and an
+        // ownerless row joins a named cluster only on scored-pair evidence - with two
+        // named owners in a group it must not be absorbed into an arbitrary one.
+        const clusters = splitDedupeGroupsByOwner(members, (index) => rows[index].owner, dedupe.pairs);
         for (const cluster of clusters) {
           if (cluster.length < 2) continue;
           const survivor = [...cluster].sort((a, b) => {
@@ -4512,15 +4629,31 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
           })[0];
           const merged = [...new Set(cluster.flatMap((index) => rows[index].evidenceIds || []))];
           rows[survivor] = { ...rows[survivor], evidenceIds: merged };
-          for (const index of cluster) if (index !== survivor) drop.add(index);
+          for (const index of cluster) {
+            if (index === survivor) continue;
+            drop.add(index);
+            dropRecords.push({
+              dropped: String(rows[index].action || ''),
+              owner: rows[index].owner || 'Not stated',
+              survivor: String(rows[survivor].action || ''),
+              survivorOwner: rows[survivor].owner || 'Not stated'
+            });
+          }
         }
       }
       if (drop.size) {
         // Auditable, because a merge that cannot be audited is a merge that hides a bug:
-        // one greppable line per generation naming exactly what merged and at what score.
-        console.log(JSON.stringify({ event: 'staged_dedupe', stage: 'actions', dropped: [...drop].map((index) => rows[index].action), pairs: dedupe.pairs }));
+        // one greppable line per generation naming exactly what merged, into what, and at
+        // what score. The survivor mapping matters: a dropped row whose survivor no longer
+        // carries its content is a lost action, and only this line can show that.
+        console.log(JSON.stringify({ event: 'staged_dedupe', stage: 'actions', dropped: [...drop].map((index) => rows[index].action), merges: dropRecords, pairs: dedupe.pairs }));
+        if (actionTrace) for (const record of dropRecords) actionTrace.mutations.push({ type: 'dedupe_drop', ...record });
         result = { ...result, screens: { ...result.screens, actions: rows.filter((item, index) => !drop.has(index)) } };
       }
+    }
+    traceSnap('final', result?.screens?.actions);
+    if (actionTrace) {
+      try { require('fs').appendFileSync(process.env.ACTION_TRACE, `${JSON.stringify(actionTrace)}\n`); } catch { /* tracing must never break generation */ }
     }
   }
   // Discussion prose gets the same publication promise as actions: broken wording is

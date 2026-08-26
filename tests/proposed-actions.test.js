@@ -117,3 +117,64 @@ test('the grounding threshold sits between fabrication and a trimmed real quote'
   // the model trimmed scored 0.46-0.59. The threshold has to sit in that empty band.
   assert.ok(QUOTE_GROUNDING > 0.17 && QUOTE_GROUNDING <= 0.46);
 });
+
+// The completeness sweep: a second reading that may only name commitments NOT already
+// captured. Same referee as the first pass - these tests pin the sweep-specific parts:
+// the prompt carries the captured list and the empty permission, and everything returned
+// still has to ground against this transcript.
+
+const { proposeMissedActions, missedPromptFor } = require('../utils/canonicalMinutes/proposedActions');
+
+function stubFetch(items) {
+  return async () => ({
+    ok: true,
+    json: async () => ({ choices: [{ message: { content: JSON.stringify({ items }) } }] })
+  });
+}
+
+test('the sweep prompt shows the model what is already captured and permits an empty answer', () => {
+  const prompt = missedPromptFor('TRANSCRIPT TEXT', ['Stuart Smith'], [
+    { owner: 'Stuart Smith', action: 'Share the risk analysis' },
+    { owner: 'Not stated', action: 'Book the room' }
+  ]);
+  assert.match(prompt, /1\. Stuart Smith: Share the risk analysis/);
+  assert.match(prompt, /2\. Book the room/, 'a Not stated owner is not printed as a name');
+  assert.match(prompt, /return \{"items":\[\]\}/i);
+  assert.match(prompt, /NOT covered/);
+});
+
+test('a swept item still has to ground against this transcript', async () => {
+  const result = await proposeMissedActions('ignored', evidence, [], {
+    apiKey: 'test',
+    fetchImpl: stubFetch([
+      { owner: 'Stuart Smith', action: 'Share the risk analysis before she arrives', quote: 'we will share the risk analysis with you before you arrive', disposition: 'agreed' },
+      { owner: 'Stuart Smith', action: 'Fly to the moon', quote: 'we agreed to fly to the moon next Tuesday', disposition: 'agreed' }
+    ])
+  });
+  assert.equal(result.agreed.length, 1);
+  assert.match(result.agreed[0].action, /risk analysis/);
+  assert.equal(result.ungrounded.length, 1);
+  assert.match(result.ungrounded[0].action, /moon/);
+});
+
+test('an empty sweep answer is an empty result, not an error', async () => {
+  const result = await proposeMissedActions('ignored', evidence, [{ owner: 'Stuart Smith', action: 'Everything' }], {
+    apiKey: 'test',
+    fetchImpl: stubFetch([])
+  });
+  assert.deepEqual(result.agreed, []);
+  assert.deepEqual(result.requirements, []);
+  assert.equal(result.reason, '');
+});
+
+test('a sweep with no API key reports unavailable rather than throwing', async () => {
+  const previous = process.env.TROOPER_API_KEY;
+  delete process.env.TROOPER_API_KEY;
+  try {
+    const result = await proposeMissedActions('ignored', evidence, [], { fetchImpl: async () => { throw new Error('must not be called'); } });
+    assert.equal(result.reason, 'unavailable');
+    assert.deepEqual(result.agreed, []);
+  } finally {
+    if (previous !== undefined) process.env.TROOPER_API_KEY = previous;
+  }
+});

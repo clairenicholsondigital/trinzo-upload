@@ -2395,7 +2395,7 @@ function actionsStage(evidence, state, profile, topology) {
   // goes missing there is no way to say which gate took it. ACTION_FUNNEL names a file and
   // the stage records each population; scripts/action_recall_attribution.js reads it back
   // and reports which gate kills the most ground-truth actions.
-  const funnel = process.env.ACTION_FUNNEL ? { preEnriched: preEnrichedActions, generated: actions.map((item) => `${item.owner} :: ${item.action}`) } : null;
+  const funnel = process.env.ACTION_FUNNEL ? { fileName: state?.transcript?.fileName || '', preEnriched: preEnrichedActions, generated: actions.map((item) => `${item.owner} :: ${item.action}`) } : null;
   if (funnel) {
     // Discovery-stage populations. "Never proposed" is not one gate - it is the whole
     // discovery chain (thread admission, semanticActionCandidate, the thread vetoes, the
