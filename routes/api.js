@@ -52,7 +52,7 @@ const { proposeActions } = require('../utils/canonicalMinutes/proposedActions');
 const { meetingRecordAdminAction } = require('../utils/canonicalMinutes/semanticStages');
 const { proposeDiscussionPoints } = require('../utils/canonicalMinutes/proposedDiscussion');
 const { normaliseAttendeeReferences } = require('../utils/entityNormalization');
-const { duplicateGroups } = require('../utils/canonicalMinutes/semanticDedupe');
+const { duplicateGroups, encodeViaWorker, cosine } = require('../utils/canonicalMinutes/semanticDedupe');
 const { isReviewerAuthored } = require('../utils/canonicalMinutes/state');
 const { isPublishableTopicLabel, labelNamesAWorkstream } = require('../utils/canonicalMinutes/topicEditorial');
 const { enrichActionReviewCandidate } = require('../utils/canonicalMinutes/actionReviewRanking');
@@ -4617,6 +4617,45 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
         }
       };
     }
+    // Card consolidation, before the point dedupe.
+    //
+    // The attach rule is lexical min-set overlap >= 0.34, and THREE-word headings sharing
+    // exactly one word score 0.333 every time - so "Alarm code review" / "Alarm
+    // functionality testing" / "Alarm visual indication" each minted their own card,
+    // missing by a hundredth. Measured on the reviewer's live rerun: four separate alarm
+    // cards, and the demonstration restated across five of them. "Benefit-risk analysis"
+    // and "Risk assessment conclusion" share NO tokens at all (lexical 0.00) yet are
+    // plainly one subject (cosine 0.597).
+    //
+    // So cards merge on heading MEANING as well as tokens. 0.62 sits below the alarm
+    // family (0.610-0.736) and above the closest pair that reads as genuinely separate.
+    // Reviewer-authored and confirmed cards are never absorbed - they keep their heading
+    // and their identity. Points move; headings never blend.
+    if (process.env.CARD_MERGE !== '0') {
+      const cards = (result?.screens?.discussion || []).map((card) => ({ ...card, points: [...(card.points || [])] }));
+      if (cards.length > 1) {
+        const headingVectors = await encodeViaWorker(cards.map((card) => String(card.topic || '')));
+        if (headingVectors) {
+          const absorbed = new Set();
+          for (let i = 0; i < cards.length; i += 1) {
+            if (absorbed.has(i)) continue;
+            for (let j = i + 1; j < cards.length; j += 1) {
+              if (absorbed.has(j)) continue;
+              if (isReviewerAuthored(cards[j]) || cards[j].confirmedTopic) continue;
+              if (!headingVectors[i] || !headingVectors[j]) continue;
+              if (cosine(headingVectors[i], headingVectors[j]) < 0.62) continue;
+              cards[i].points.push(...cards[j].points);
+              cards[i].evidenceIds = [...new Set([...(cards[i].evidenceIds || []), ...(cards[j].evidenceIds || [])])];
+              absorbed.add(j);
+            }
+          }
+          if (absorbed.size) {
+            console.log(JSON.stringify({ event: 'staged_card_merge', absorbed: [...absorbed].map((index) => cards[index].topic) }));
+            result = { ...result, screens: { ...result.screens, discussion: cards.filter((card, index) => !absorbed.has(index)) } };
+          }
+        }
+      }
+    }
     // Final semantic near-duplicate pass across ALL cards' points - the proposal dedupe
     // only compared against points that existed at merge time, so a paraphrase could land
     // in a NEW card while its twin sat in another (DITA's B2B-ordering point appeared
@@ -4631,7 +4670,12 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
         flat.push({ cardIndex, pointIndex, text: String(typeof point === 'string' ? point : point?.text || '') });
       }));
       if (flat.length > 1) {
-        const dedupe = await duplicateGroups(flat.map((entry) => entry.text));
+        // Discussion restatements measured on the reviewer's live rerun cluster at
+        // 0.71-0.78 - every one under the 0.80 action bar, which is why five versions of
+        // the alarm demonstration all published. Discussion gets its own threshold; the
+        // 0.708 distinct pair that set the action bar was an ACTIONS pair, so lowering
+        // here does not reopen it.
+        const dedupe = await duplicateGroups(flat.map((entry) => entry.text), { threshold: Number(process.env.DISCUSSION_DEDUPE_THRESHOLD || 0.72) });
         const dropKeys = new Set();
         for (const group of dedupe.groups) {
           for (const memberIndex of group.slice(1)) {
