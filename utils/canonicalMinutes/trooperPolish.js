@@ -912,7 +912,7 @@ function discussionRepairPrompt(rows, retry) {
 
 // The guard chain every accepted repair passes, shared by the action and discussion
 // rounds. Each rule was added after a live failure and keeps its story:
-function acceptWordingRepair(original, candidate, { imperative, people } = {}) {
+function acceptWordingRepair(original, candidate, { imperative, people, evidence } = {}) {
   if (!candidate || candidate.toLowerCase() === original.toLowerCase()) return false;
   if (minutesEnglishFaults(candidate, { people: Array.isArray(people) ? people : [] }).length) return false;
   // An action record is an instruction. Requiring the imperative is what stops the
@@ -941,8 +941,24 @@ function acceptWordingRepair(original, candidate, { imperative, people } = {}) {
   const unchanged = beforeContent.size === afterContent.size
     && [...afterContent].every((token) => beforeContent.has(token));
   if (unchanged) return false;
+  // A fragment may be COMPLETED from its own evidence; a record may never be extended
+  // with facts from nowhere.
+  //
+  // "Pop into folder" is a real commitment the pattern layer compressed into three words,
+  // and no rewrite could rescue it: saying what it means needs "the updated contractor
+  // GSOP" and "Louise", and both are protected facts the import guard refused. So the
+  // guard that stops fusion was also what kept the telegraphic rows telegraphic - and
+  // those rows are the ones the reviewer's burden table calls junk ("Buy security items",
+  // "Execute task analysis", "Send training attestation").
+  //
+  // The distinction is invention, not addition: a fact already present in THIS row's own
+  // evidence window is being resolved, not invented. Fragments therefore may take facts
+  // the window contains; complete records may not grow at all (below), and no record of
+  // any length may take a fact the window does not carry.
+  const isFragment = contentWordCount(original) < COMPLETE_RECORD_CONTENT_WORDS;
   const before = protectedFactsOf(original);
-  if ([...protectedFactsOf(candidate)].some((fact) => !before.has(fact))) return false;
+  const fromEvidence = isFragment ? protectedFactsOf(evidence || '') : new Set();
+  if ([...protectedFactsOf(candidate)].some((fact) => !before.has(fact) && !fromEvidence.has(fact))) return false;
   // A complete record may be restated, not extended. The loss attribution measured five
   // real expected actions eaten by rewrites that fused a second commitment onto a row
   // that was already a full sentence - grammatical, fact-guard-clean (single first names
@@ -1014,7 +1030,7 @@ async function runWordingRepairRounds(entries, promptBuilder, imperative, option
   const rounds = Number(options.rounds) >= 1 ? Number(options.rounds) : REPAIR_ROUNDS;
   const accept = typeof options.accept === 'function'
     ? options.accept
-    : (original, candidate) => acceptWordingRepair(original, candidate, { imperative, people: options.people });
+    : (original, candidate, evidence) => acceptWordingRepair(original, candidate, { imperative, people: options.people, evidence });
   for (let round = 0; round < rounds && remaining.length; round += 1) {
     const next = [];
     for (let at = 0; at < remaining.length; at += REPAIR_ROWS_PER_CALL) {
@@ -1025,7 +1041,7 @@ async function runWordingRepairRounds(entries, promptBuilder, imperative, option
       const byIndex = new Map(result.repairs.map((repair) => [Number(repair?.index), clean(repair?.action)]));
       for (const entry of chunk) {
         const candidate = byIndex.get(entry.index);
-        if (candidate && accept(entry.text, candidate)) fixed.set(entry.index, candidate);
+        if (candidate && accept(entry.text, candidate, entry.evidence)) fixed.set(entry.index, candidate);
         else next.push(entry);
       }
     }
@@ -1104,15 +1120,40 @@ function buildContextWindow(rowText, citedIds, allEvents, vectors) {
 // survive into the candidate. The leading token is exempt so a better opening verb
 // ("Get" -> "Ask") is not refused for replacing itself.
 function makePolishAcceptor({ imperative, people }) {
-  return (original, candidate) => {
-    if (!acceptWordingRepair(original, candidate, { imperative, people })) return false;
+  return (original, candidate, evidence) => {
+    if (!acceptWordingRepair(original, candidate, { imperative, people, evidence })) return false;
     const before = protectedFactsOf(original);
     const after = protectedFactsOf(candidate);
     if (![...before].every((fact) => after.has(fact))) return false;
     const capitalised = clean(original).split(/\s+/).slice(1)
       .map((word) => word.replace(/[^A-Za-z0-9'\u2019-]/g, ''))
       .filter((word) => /^[A-Z][a-z]/.test(word));
-    return capitalised.every((word) => candidate.includes(word));
+    if (!capitalised.every((word) => candidate.includes(word))) return false;
+    // A polish must still be about the same work: the row's own subject survives, every
+    // content word except the opening verb (which a polish may legitimately replace -
+    // "Set the fee" -> "Agree to put the fee up"), stem-matched.
+    //
+    // Precautionary, and honestly labelled as such: letting fragments take facts from a
+    // window that reaches two turns either side gives them somewhere to drift, and the
+    // corpus run that prompted this rail turned out NOT to contain a drift - "Do the
+    // renewals" became "Handle plot renewals", which is right. The rail costs nothing
+    // measurable and closes the gap the widened window opens, but no observed failure
+    // justifies it, so do not treat it as load-bearing when reworking this area.
+    //
+    // This lives in the POLISH acceptor, not in repair: repair operates on rows that are
+    // BROKEN, where deleting debris is the job ("Find that little clock top right" ->
+    // "Find the wall clock above the presenter view" legitimately drops three of them).
+    // A polished row carries no fault, so nothing in it is debris.
+    //
+    // Fragments only. They are the rows allowed to take facts from the evidence window,
+    // so they are the only rows that can drift onto a neighbour. A longer record is
+    // already held by the growth limit and the import guard, and demanding every content
+    // word survive there would refuse ordinary verb-phrase restatement - "has got the
+    // three alarms ready" -> "prepared the three alarms" is exactly what polish is for.
+    if (contentWordCount(original) >= COMPLETE_RECORD_CONTENT_WORDS) return true;
+    const subject = contentSet(clean(original).split(/\s+/).slice(1).join(' '));
+    const kept = contentSet(candidate);
+    return ![...subject].some((token) => !kept.has(token));
   };
 }
 
@@ -1373,4 +1414,4 @@ async function polishCanonicalStage(payload, options = {}) {
   return { payload: rewritten, used: true, reason: `Trooper rewrote ${packs.length} bounded MiniLM evidence pack(s).`, usage };
 }
 
-module.exports = { promptFor, polishCanonicalStage, repairActionWording, repairDiscussionWording, acceptWordingRepair, wordingFaults, applyActionRewrite, applyDiscussionRewrite, discussionPointGrounded, unresolvedReference, canonicalFallback, nonActionState, nearDuplicate, addRecoveredActionCandidates, clientReadyPresentation, normaliseActionPresentation, normaliseDiscussionPresentation };
+module.exports = { promptFor, polishCanonicalStage, makePolishAcceptor, repairActionWording, repairDiscussionWording, acceptWordingRepair, wordingFaults, applyActionRewrite, applyDiscussionRewrite, discussionPointGrounded, unresolvedReference, canonicalFallback, nonActionState, nearDuplicate, addRecoveredActionCandidates, clientReadyPresentation, normaliseActionPresentation, normaliseDiscussionPresentation };

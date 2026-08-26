@@ -228,3 +228,92 @@ test('a row that survives both rounds publishes marked, never dropped', async ()
   assert.equal(result.repaired, 0);
   assert.equal(result.attempted, 1);
 });
+
+// A fragment may be COMPLETED from its own evidence; a record may never be EXTENDED with
+// facts from nowhere.
+//
+// "Pop into folder" is a real commitment the pattern layer compressed to three words, and
+// no rewrite could rescue it: saying what it means needs "GSOP" and "Louise", both
+// protected facts the import guard refused. That guard is what stops fusion, so it cannot
+// simply be dropped - the distinction is invention, not addition. A fact already in THIS
+// row's evidence window is being resolved; a fact from nowhere is being invented.
+
+const { acceptWordingRepair: acceptRepair } = require('../utils/canonicalMinutes/trooperPolish');
+const folderEvidence = 'Jacqui Fox: Christina can pop the updated contractor GSOP into the folder for Louise to check. Louise: I will review it once it is there.';
+
+test('a fragment may take facts its own evidence window carries', () => {
+  assert.equal(
+    acceptRepair('Pop into folder', 'Place the updated contractor GSOP in the folder for Louise to check.', { imperative: true, people: [], evidence: folderEvidence }),
+    true
+  );
+});
+
+test('a fragment may not take facts the evidence does not carry', () => {
+  assert.equal(
+    acceptRepair('Pop into folder', 'Place the updated ISO 13485 file in the folder for Deborah to check.', { imperative: true, people: [], evidence: folderEvidence }),
+    false
+  );
+});
+
+test('a complete record is still refused an extension even when the evidence carries it', () => {
+  // The fusion class the growth guard exists for: both Janine and Adil are in the window,
+  // and the row is still a complete sentence that may be restated, not extended.
+  assert.equal(
+    acceptRepair(
+      'Start working through electrical compliance testing',
+      'Start working through electrical compliance testing and investigate the mute button with Janine and Adil next week.',
+      { imperative: true, people: [], evidence: 'Andrew: I will start the electrical compliance testing. Janine and Adil will look at the mute button.' }
+    ),
+    false
+  );
+});
+
+test('with no evidence window a fragment still cannot gain a protected fact', () => {
+  assert.equal(
+    acceptRepair('Pop into folder', 'Place the GSOP in the folder.', { imperative: true, people: [], evidence: '' }),
+    false
+  );
+});
+
+// A completion must still be about the same work.
+//
+// Precautionary: letting fragments take facts from a window reaching two turns either side
+// gives them somewhere to drift. No corpus run has produced such a drift - the case that
+// prompted this rail, "Do the renewals", completed correctly to "Handle plot renewals" -
+// so these tests pin an invariant rather than a fixed bug.
+
+const { makePolishAcceptor } = require('../utils/canonicalMinutes/trooperPolish');
+const polishAccepts = makePolishAcceptor({ imperative: true, people: [] });
+const renewalWindow = 'Barbara Finch: we should do the renewals soon. Barbara Finch: write to the council again, copying the councillor, and use the word liability.';
+
+test('a fragment may not drift onto a neighbouring commitment in its own window', () => {
+  assert.equal(
+    polishAccepts('Do the renewals', 'Write to the council again, copying the councillor, and use the word liability.', renewalWindow),
+    false
+  );
+});
+
+test('a fragment completed with its own subject intact is accepted', () => {
+  assert.equal(
+    polishAccepts('Pop into folder', 'Place the update into a folder for Louise to check for the GSOP.',
+      'Christina can pop the updated contractor GSOP into the folder for Louise to check.'),
+    true
+  );
+});
+
+test('a polish may replace the opening verb but not the subject', () => {
+  // "Set the fee" -> "Agree to put the fee up" is a legitimate restatement.
+  assert.equal(
+    polishAccepts('Set plot fee to 30 pounds', 'Agree to put the annual plot fee up from 25 pounds to 30 pounds.',
+      'Ken: put the annual plot fee up from 25 pounds to 30 pounds.'),
+    true
+  );
+});
+
+test('subject survival is stem-matched, so a plural may become a singular', () => {
+  assert.equal(
+    polishAccepts('Email top three plots', 'Email the top three on the list and offer them a plot.',
+      'Priyanka: email the top three, offer them a plot.'),
+    true
+  );
+});
