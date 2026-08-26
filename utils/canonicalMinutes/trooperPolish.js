@@ -818,13 +818,50 @@ function protectedFactsOf(value) {
   // is preserving it, not inventing it. numericFactsOf handles the spoken forms; the
   // digit regex below still catches formats the converter does not touch (percentages,
   // times, ordinal digits).
+  //
+  // Acronyms match their plural too: "FMEAs" is the same fact as "FMEA", and the old
+  // pattern's word boundary could not reach past the trailing s - which is exactly how a
+  // rewrite bolted "the use of FMEAs to measure risk" onto a row about font symbols
+  // without the import guard noticing. The plural is canonicalised before comparison.
   return new Set([
     ...numericFactsOf(value),
     ...(clean(value).match(/\b\d+(?:[.,:]\d+)*(?:%|st|nd|rd|th)?\b/g) || []),
-    ...(clean(value).match(/\b[A-Z][A-Z0-9&/-]{1,}\b/g) || []),
+    ...(clean(value).match(/\b[A-Z][A-Z0-9&/-]{1,}s?\b/g) || []).map((item) => item.replace(/(?<=[A-Z0-9])s$/, '')),
     ...(clean(value).match(/\b[A-Z][a-z'\u2019-]+(?:\s+[A-Z][a-z'\u2019-]+)+\b/g) || [])
   ].map((item) => item.toLowerCase()));
 }
+
+// Mid-sentence capitalised words - single names, months, standards bodies - normalised
+// for the import/keep comparisons below. The first word is skipped because sentence case
+// puts a capital there regardless of what the word is.
+function midSentenceCapitalised(value) {
+  return clean(value).split(/\s+/).slice(1)
+    .map((word) => word.replace(/[^A-Za-z0-9'\u2019-]/g, ''))
+    .filter((word) => /^[A-Z][a-z]/.test(word))
+    .map((word) => word.toLowerCase());
+}
+
+// Function words are excluded so "Find the small wall clock at the top right of the
+// studio" is not measured as longer than "Find that little clock top right" by three
+// occurrences of "the" - the growth limit is about content, and articles are not it.
+const GROWTH_STOP_WORDS = new Set(['the', 'and', 'for', 'with', 'that', 'this', 'these', 'those', 'from', 'into', 'are', 'was', 'were', 'been', 'its', 'their', 'our', 'your', 'not', 'has', 'have', 'had', 'will', 'per']);
+
+function contentWordCount(value) {
+  return (clean(value).toLowerCase().match(/[a-z][a-z0-9'\u2019-]{2,}/g) || [])
+    .filter((word) => !GROWTH_STOP_WORDS.has(word)).length;
+}
+
+// The boundary between a fragment and a complete record, measured on every accepted
+// rewrite of a full corpus run (2026-08-26, 51 pairs): good rewrites complete SHORT
+// fragments - "Confirm show date" (3 content words) legitimately became "Confirm the
+// annual show date as the second Saturday in September" - while every fused rewrite the
+// loss attribution caught bolted a second commitment onto an ALREADY-COMPLETE sentence
+// of 6+ content words ("Start working through electrical compliance testing" grew to 23
+// words and absorbed the mute-button investigation, Janine and Adil included). Below the
+// boundary the evidence window is there to be used; at or above it the record already
+// says what it means, and growth or new names is importation, not repair.
+const COMPLETE_RECORD_CONTENT_WORDS = 6;
+const COMPLETE_RECORD_GROWTH_LIMIT = 1.5;
 
 function wordingFaults(action) {
   // Every fault the detectors can find, not a severity subset. The mechanical deletion
@@ -906,6 +943,26 @@ function acceptWordingRepair(original, candidate, { imperative, people } = {}) {
   if (unchanged) return false;
   const before = protectedFactsOf(original);
   if ([...protectedFactsOf(candidate)].some((fact) => !before.has(fact))) return false;
+  // A complete record may be restated, not extended. The loss attribution measured five
+  // real expected actions eaten by rewrites that fused a second commitment onto a row
+  // that was already a full sentence - grammatical, fact-guard-clean (single first names
+  // and plural acronyms slipped the patterns), and wrong. A fragment (under the boundary)
+  // keeps its licence to grow from the evidence window; a complete record may not grow
+  // past the limit and may not gain a name, month or standard it did not carry.
+  const originalLength = contentWordCount(original);
+  if (originalLength >= COMPLETE_RECORD_CONTENT_WORDS) {
+    if (contentWordCount(candidate) > originalLength * COMPLETE_RECORD_GROWTH_LIMIT) return false;
+    const beforeCaps = new Set(midSentenceCapitalised(original));
+    if (midSentenceCapitalised(candidate).some((word) => !beforeCaps.has(word))) return false;
+  }
+  // Names survive at every length: "Send the code of conduct to Niamh today" once came
+  // back with the training attestation added and Niamh gone - a rewrite that loses WHO
+  // the work is for has changed the commitment, not the wording. The check is on the
+  // WORD surviving, not its casing, so decapitalising a tautology's "Ideal Client
+  // Profile" into ordinary prose is still a repair. Zero of the measured good rewrites
+  // trip this; the one that did was real.
+  const candidateWords = new Set(clean(candidate).toLowerCase().match(/[a-z][a-z0-9'’-]+/g) || []);
+  if (midSentenceCapitalised(original).some((word) => !candidateWords.has(word))) return false;
   return true;
 }
 
