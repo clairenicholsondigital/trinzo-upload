@@ -47,13 +47,14 @@ const { runCanonicalNoEditPass } = require('../utils/canonicalMinutes/runner');
 const { runCanonicalLiveStage } = require('../utils/canonicalMinutes/liveStages');
 const { suggestMeetingTypeFromEvidence } = require('../utils/canonicalMinutes/meetingTypeSuggestion');
 const { prepareEvidence } = require('../utils/canonicalMinutes/evidence');
-const { polishCanonicalStage, canonicalFallback, addRecoveredActionCandidates, clientReadyPresentation, repairActionWording, repairDiscussionWording, wordingFaults } = require('../utils/canonicalMinutes/trooperPolish');
+const { polishCanonicalStage, canonicalFallback, addRecoveredActionCandidates, clientReadyPresentation, repairActionWording, repairDiscussionWording, wordingFaults, ownerSupported, unresolvedReference } = require('../utils/canonicalMinutes/trooperPolish');
 const { proposeActions, proposeMissedActions } = require('../utils/canonicalMinutes/proposedActions');
 const { meetingRecordAdminAction } = require('../utils/canonicalMinutes/semanticStages');
 const { proposeDiscussionPoints } = require('../utils/canonicalMinutes/proposedDiscussion');
 const { normaliseAttendeeReferences } = require('../utils/entityNormalization');
 const { duplicateGroups, encodeViaWorker, cosine, splitDedupeGroupsByOwner } = require('../utils/canonicalMinutes/semanticDedupe');
 const { personErrorAssertion } = require('../utils/canonicalMinutes/claimCheck');
+const { minutesEnglishFaults } = require('../utils/minutesEnglish');
 const { isReviewerAuthored } = require('../utils/canonicalMinutes/state');
 const { isPublishableTopicLabel, labelNamesAWorkstream } = require('../utils/canonicalMinutes/topicEditorial');
 const { enrichActionReviewCandidate } = require('../utils/canonicalMinutes/actionReviewRanking');
@@ -4713,6 +4714,71 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
         result = { ...result, screens: { ...result.screens, actions: rows.filter((item, index) => !drop.has(index)) } };
       }
     }
+    // The reviewer's three-proof rule for a confirmed action, applied to what would
+    // otherwise ship. Commitment is already proven upstream (disposition strictness and
+    // the corroboration of two readings); these are the other two proofs.
+    //
+    // Concreteness: a record whose reference cannot be resolved by a reader is not a
+    // task. "Limit risk for them" was published as a confirmed action from a
+    // conversational aside - grammatical, verb-initial, concrete-object-shaped, and
+    // useless, because "them" names nobody. Such a row is demoted to a review
+    // candidate, never silently dropped. ACTION_CONCRETENESS=0 disables.
+    if (process.env.ACTION_CONCRETENESS !== '0' && (result?.screens?.actions || []).length) {
+      const demoted = [];
+      const kept = result.screens.actions.filter((item) => {
+        if (item.reviewerAuthored) return true;
+        if (!unresolvedReference(item.action)) return true;
+        demoted.push(item);
+        return false;
+      });
+      if (demoted.length) {
+        console.log(JSON.stringify({ event: 'staged_concreteness_gate', stage: 'actions', demoted: demoted.map((item) => item.action) }));
+        if (actionTrace) for (const item of demoted) actionTrace.mutations.push({ type: 'concreteness_demotion', owner: item.owner || 'Not stated', action: String(item.action || '') });
+        result = {
+          ...result,
+          screens: {
+            ...result.screens,
+            actions: kept,
+            actionCandidates: [
+              ...(result.screens.actionCandidates || []),
+              ...demoted.map((item) => ({ owner: item.owner, action: item.action, suggestedAction: item.action, reviewDisposition: 'review_required', evidenceIds: item.evidenceIds }))
+            ]
+          }
+        };
+      }
+    }
+    // Owner support - BUILT, MEASURED, AND OFF BY DEFAULT. The idea: a name on a row is
+    // an assertion, and an unsupported one should become an honest blank ("Send training
+    // attestation" carried Stuart's name when the transcript shows Stuart telling NIAMH
+    // she needs to complete it). The measurement: with the evidence correctly flattened,
+    // the full corpus run still demoted ~44 owners and many were plainly CORRECT -
+    // "Priya Sethi: Handle the opening" and "Callum Reid: Hit record" are their own
+    // explicit commitments. ownerSupported was designed as a PROMOTION gate, where a
+    // false negative costs nothing; as a demotion gate every false negative blanks a
+    // right name, and evidence citations are too noisy for absence-of-proof to mean
+    // wrongness. Re-enable (OWNER_SUPPORT_GATE=1) only with a version that demotes on
+    // POSITIVE contrary evidence - the cited turns showing a DIFFERENT person committing
+    // - rather than on absence of support.
+    if (process.env.OWNER_SUPPORT_GATE === '1' && (result?.screens?.actions || []).length && canonicalEvidencePack.length) {
+      // Flattened to the entry shape citedEntries reads. Passing the pack unflattened
+      // resolved zero cited turns, which read as "no owner is supported" and demoted 89
+      // of 95 named owners in one run - the scorecard's blank-owner escape hatch kept
+      // recall LOOKING fine while the screens filled with blank owner cells. Measured
+      // before shipping, which is the only reason it did not ship.
+      const ownerEvidence = { evidence: canonicalEvidencePack.flatMap((item) => item.evidence || []) };
+      const demotions = [];
+      const gated = result.screens.actions.map((item) => {
+        if (item.reviewerAuthored || !item.owner || item.owner === 'Not stated') return item;
+        if (ownerSupported({ owner: item.owner, evidenceIds: item.evidenceIds || [] }, ownerEvidence)) return item;
+        demotions.push({ owner: item.owner, action: String(item.action || '') });
+        return { ...item, owner: 'Not stated', ownerUnassigned: true, ownerDemoted: item.owner };
+      });
+      if (demotions.length) {
+        console.log(JSON.stringify({ event: 'staged_owner_demotion', stage: 'actions', demotions }));
+        if (actionTrace) for (const item of demotions) actionTrace.mutations.push({ type: 'owner_demotion', ...item });
+        result = { ...result, screens: { ...result.screens, actions: gated } };
+      }
+    }
     traceSnap('final', result?.screens?.actions);
     if (actionTrace) {
       try { require('fs').appendFileSync(process.env.ACTION_TRACE, `${JSON.stringify(actionTrace)}\n`); } catch { /* tracing must never break generation */ }
@@ -4950,6 +5016,48 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
         }
       }
     }
+    // The reviewer's hard rule, applied last: no published sentence may read as spoken
+    // transcript language. Every point above has already been OFFERED repair and polish;
+    // one that still carries a voice-severity fault here is one the model could not
+    // restate within the acceptance guards - "Limit the risk for them, yeah, okay." -
+    // and until now it published anyway, because the finaliser's rejection was undone by
+    // a fallback that restored the raw text. It moves to the wording flag as a review
+    // candidate, never silently: the flag names each removed point in full. Cards
+    // emptied by the gate follow the existing empty-card contract.
+    // DISCUSSION_SPEECH_GATE=0 disables.
+    if (process.env.DISCUSSION_SPEECH_GATE !== '0' && Array.isArray(result?.screens?.discussion)) {
+      const people = result?.canonicalDiagnostics?.entityNames || [];
+      const removed = [];
+      const gatedCards = result.screens.discussion.map((card) => {
+        if (isReviewerAuthored(card)) return card;
+        const points = (card.points || []).filter((point) => {
+          const text = typeof point === 'string' ? point : String(point?.text || '');
+          const spoken = minutesEnglishFaults(text, { people, spokenRegister: true })
+            .some((fault) => fault.severity === 'voice');
+          if (spoken) removed.push({ section: card.topic || 'Discussion', text });
+          return !spoken;
+        });
+        return points.length === (card.points || []).length ? card : { ...card, points };
+      }).filter((card) => (card.points || []).length || isReviewerAuthored(card) || card.confirmedTopic);
+      if (removed.length) {
+        console.log(JSON.stringify({ event: 'staged_speech_gate', stage: 'discussion', removed }));
+        result = {
+          ...result,
+          screens: { ...result.screens, discussion: gatedCards },
+          validationFlags: [
+            ...(Array.isArray(result.validationFlags) ? result.validationFlags : []),
+            {
+              type: 'discussion_speech_removed',
+              severity: 'warning',
+              blocking: false,
+              message: `${removed.length} discussion point${removed.length === 1 ? '' : 's'} read as spoken transcript language and could not be restated, so ${removed.length === 1 ? 'it was' : 'they were'} moved here for a decision rather than published as minutes.`,
+              resolutionKey: `discussion-speech-removed:${crypto.createHash('sha256').update(removed.map((item) => item.text).join('|')).digest('hex').slice(0, 16)}`,
+              repairCandidates: removed
+            }
+          ]
+        };
+      }
+    }
   }
   let initialUnderstandingPolish = { used: false, reason: 'not_applicable' };
   const presentationInitialSummary = result?.screens?.summary;
@@ -5013,6 +5121,34 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
             // sentences; this is where the markers went.
             evidenceQuotes: initialUnderstandingPolish.evidenceQuotes || null
           }
+        }
+      };
+    }
+  }
+  // Objectives are derived from the meeting's own action phrases, so two near-identical
+  // commitments produce two near-identical objectives - Abbott published "Run the code
+  // of conduct through the site in advance to ensure alignment." beside "Run code of
+  // conduct through the site in advance to make sure they're in alignment with it" -
+  // and the existing dedupe compares normalised string KEYS, which different wordings
+  // sail straight past. Semantic near-restatements collapse here, first occurrence
+  // kept, live path only (the corpus baselines call runCanonicalLiveStage directly and
+  // never reach this). Reviewer-confirmed objectives are never touched: their list IS
+  // the list. OBJECTIVE_DEDUPE=0 disables.
+  if (stage === 'summary' && process.env.OBJECTIVE_DEDUPE !== '0'
+      && !stagedAnalyticsText(confirmed.summary?.objectives)
+      && Array.isArray(result?.screens?.summary?.objectives)
+      && result.screens.summary.objectives.length > 1) {
+    const objectives = result.screens.summary.objectives;
+    const dedupe = await duplicateGroups(objectives.map((item) => String(item || '')));
+    const drop = new Set();
+    for (const group of dedupe.groups) for (const index of group.slice(1)) drop.add(index);
+    if (drop.size) {
+      console.log(JSON.stringify({ event: 'staged_objective_dedupe', dropped: [...drop].map((index) => objectives[index]), pairs: dedupe.pairs }));
+      result = {
+        ...result,
+        screens: {
+          ...result.screens,
+          summary: { ...result.screens.summary, objectives: objectives.filter((item, index) => !drop.has(index)) }
         }
       };
     }

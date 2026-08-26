@@ -31,7 +31,11 @@ function unresolvedReference(value) {
     || /\b(?:send|share|provide|flick|forward|discuss|review)\b[^.]{0,80}\b(?:to|with)\s+you\b/i.test(text)
     || /\b(?:it|that|this)\s+(?:over|through|with)\b/i.test(text)
     || /\bkind of\b|\bsort of\b|\byeah\b|\byep\b|\bunspecified\b|\[[^\]]+\]/i.test(text)
-    || /\b(?:assigned|do|complete)\s+homework\b/i.test(text);
+    || /\b(?:assigned|do|complete)\s+homework\b/i.test(text)
+    // A bare "them" names nobody. "Limit risk for them" published as a confirmed action
+    // from a conversational aside; a reader cannot know who "them" is, so the record is
+    // not a concrete task whoever wrote it.
+    || /\b(?:for|to|with|at)\s+them\b/i.test(text);
 }
 
 function nonActionState(value) {
@@ -1165,11 +1169,11 @@ async function repairActionWording(payload, evidencePack, options = {}) {
   const people = Array.isArray(options.people) ? options.people : [];
   const actions = (Array.isArray(payload?.screens?.actions) ? payload.screens.actions : [])
     .map((item) => {
-      const repair = repairMechanicalFaults(clean(item.action), { people });
+      const repair = repairMechanicalFaults(clean(item.action), { people, spokenRegister: true });
       return repair.applied.length ? { ...item, action: repair.text } : item;
     });
   const broken = actions
-    .map((action, index) => ({ action: clean(action.action), index, faults: minutesEnglishFaults(clean(action.action), { people }) }))
+    .map((action, index) => ({ action: clean(action.action), index, faults: minutesEnglishFaults(clean(action.action), { people, spokenRegister: true }) }))
     .filter((row) => row.faults.length);
   const withActions = (rows) => ({ ...payload, screens: { ...payload.screens, actions: rows } });
 
@@ -1256,11 +1260,19 @@ async function repairActionWording(payload, evidencePack, options = {}) {
 // touched it. Mechanical deletion first, then the shared repair rounds, prose rules.
 async function repairDiscussionWording(payload, evidencePack, options = {}) {
   const cards = Array.isArray(payload?.screens?.discussion) ? payload.screens.discussion : [];
+  // The roster travels with EVERY fault consultation on this path. The action path has
+  // threaded { people } since the repeated_person_name work, with a comment saying the
+  // detector cannot fire without it - this path never did, which is how "Stuart Smith
+  // knows when Stuart Smith was there last time, Stuart Smith had concerns" published:
+  // the detector that exists for exactly that sentence was a no-op here. spokenRegister
+  // turns on the filler/contraction detectors - live wording paths only, never the
+  // deterministic corpus paths.
+  const faultOptions = { people: Array.isArray(options.people) ? options.people : [], spokenRegister: true };
   const repairedCards = cards.map((card) => ({
     ...card,
     points: (card.points || []).map((point) => {
       const text = clean(typeof point === 'string' ? point : point?.text);
-      const repair = repairMechanicalFaults(text);
+      const repair = repairMechanicalFaults(text, faultOptions);
       return repair.applied.length ? repair.text : text;
     })
   }));
@@ -1298,7 +1310,7 @@ async function repairDiscussionWording(payload, evidencePack, options = {}) {
   const entries = [];
   repairedCards.forEach((card, cardIndex) => {
     card.points.forEach((point, pointIndex) => {
-      if (!wordingFaults(point).length) return;
+      if (!minutesEnglishFaults(point, faultOptions).length) return;
       entries.push({ index: entries.length, cardIndex, pointIndex, text: point, evidence: evidenceTextFor(card) });
     });
   });
@@ -1414,4 +1426,4 @@ async function polishCanonicalStage(payload, options = {}) {
   return { payload: rewritten, used: true, reason: `Trooper rewrote ${packs.length} bounded MiniLM evidence pack(s).`, usage };
 }
 
-module.exports = { promptFor, polishCanonicalStage, makePolishAcceptor, repairActionWording, repairDiscussionWording, acceptWordingRepair, wordingFaults, applyActionRewrite, applyDiscussionRewrite, discussionPointGrounded, unresolvedReference, canonicalFallback, nonActionState, nearDuplicate, addRecoveredActionCandidates, clientReadyPresentation, normaliseActionPresentation, normaliseDiscussionPresentation };
+module.exports = { promptFor, polishCanonicalStage, makePolishAcceptor, ownerSupported, repairActionWording, repairDiscussionWording, acceptWordingRepair, wordingFaults, applyActionRewrite, applyDiscussionRewrite, discussionPointGrounded, unresolvedReference, canonicalFallback, nonActionState, nearDuplicate, addRecoveredActionCandidates, clientReadyPresentation, normaliseActionPresentation, normaliseDiscussionPresentation };

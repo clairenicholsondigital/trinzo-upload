@@ -224,6 +224,18 @@ function repeatedPersonName(text, people) {
   return '';
 }
 
+// Spoken register that no other detector sees, measured on the Abbott review: "Limit the
+// risk for them, yeah, okay." carried no detectable fault (the interjections are unknown
+// tokens), and "It's a deep dive into their software management system." opened with a
+// contraction that earlyBarePronoun cannot see because its token strip keeps apostrophes.
+// Both are speech, not minutes.
+//
+// OPT-IN via options.spokenRegister, never default: minutesEnglishFaults is consulted on
+// the deterministic corpus paths (initialUnderstanding.js), where a new default fault
+// would silently change 122 baselines. Only live wording-repair callsites set the flag.
+const FILLER_INTERJECTION = /\b(?:yeah|yep)\b|\byou know\b|(?:^|,\s*)(?:okay|ok)\s*(?:[,.!?]|$)|,\s*(?:right|well)\s*[,.!?]?\s*$/i;
+const SPOKEN_CONTRACTION_OPENER = /^(?:it['’]s|that['’]s|there['’]s|here['’]s|they['’]re|we['’]re|you['’]re|i['’]m|he['’]s|she['’]s)\b/i;
+
 function minutesEnglishFaults(value, options = {}) {
   const text = clean(value);
   const faults = [];
@@ -237,6 +249,10 @@ function minutesEnglishFaults(value, options = {}) {
   if (TRUNCATED_PREMODIFIER.test(text)) faults.push({ code: 'truncated_premodifier', severity: 'truncation', repairable: false });
   if (firstOrSecondPerson(text)) faults.push({ code: 'first_or_second_person', severity: 'voice', repairable: false });
   if (unresolvedDeixis(text)) faults.push({ code: 'unresolved_deixis', severity: 'referential', repairable: false });
+  if (options.spokenRegister) {
+    if (FILLER_INTERJECTION.test(text)) faults.push({ code: 'conversational_filler', severity: 'voice', repairable: false });
+    if (SPOKEN_CONTRACTION_OPENER.test(text)) faults.push({ code: 'spoken_contraction_opener', severity: 'voice', repairable: false });
+  }
   return faults;
 }
 
