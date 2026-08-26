@@ -66,7 +66,10 @@ function termSuggestions(field, terms, learned, scope) {
   const tokens = text.match(/\b[A-Za-z][A-Za-z0-9-]{2,15}\b/g) || [];
   const candidates = [];
   for (const mapping of AUTO_CORRECTIONS) {
-    const pattern = new RegExp(`\\b${mapping.original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+    // Multi-word originals tolerate a hyphen in place of the space ("call-me-docs"),
+    // since Teams' own rendering of a mishearing is not stable across runs.
+    const escaped = mapping.original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/ /g, '[\\s-]+');
+    const pattern = new RegExp(`\\b${escaped}\\b`, 'i');
     const matched = text.match(pattern)?.[0];
     if (matched && key(matched) !== key(mapping.replacement)) {
       candidates.push(suggestion(field, matched, mapping.replacement, mapping.reason, 1, scope, { autoApply: true }));

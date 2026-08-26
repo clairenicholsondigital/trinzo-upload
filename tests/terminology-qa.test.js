@@ -134,6 +134,39 @@ test('attendee-name transcript variants are auto-corrected only in person-shaped
   assert.equal(medicalSuggestions.some((item) => item.original.toLowerCase() === 'oral' && item.replacement === 'Orla'), false);
 });
 
+test('terminology QA auto-corrects Teams\' "call me docs" mishearing of Cognidox', () => {
+  const suggestions = reviewGeneratedContent({
+    stage: 'discussion',
+    content: [{
+      topic: 'Document control',
+      points: [
+        'The team will upload the file to call me docs before Friday.',
+        'Andrew confirmed call-me-doc access for the new starter.'
+      ]
+    }],
+    scope: { type: 'project', key: 'T761' }
+  });
+  const automatic = suggestions.filter((item) => item.autoApply).map((item) => `${item.original}->${item.replacement}`);
+  assert.ok(automatic.includes('call me docs->Cognidox'));
+  assert.ok(automatic.includes('call-me-doc->Cognidox'));
+});
+
+test('terminology QA auto-corrects American labeling/labeled to British spelling', () => {
+  const suggestions = reviewGeneratedContent({
+    stage: 'discussion',
+    content: [{
+      topic: 'Labelling',
+      points: [
+        'The labeling artwork was labeled for review before submission.'
+      ]
+    }],
+    scope: { type: 'project', key: 'T761' }
+  });
+  const automatic = suggestions.filter((item) => item.autoApply).map((item) => `${item.original}->${item.replacement}`);
+  assert.ok(automatic.includes('labeling->labelling'));
+  assert.ok(automatic.includes('labeled->labelled'));
+});
+
 test('accepted project mapping is reusable without altering source evidence', () => {
   const content = { objectives: [], executiveSummary: 'Review the Med Envoy handoff.', overallTopics: [] };
   const before = JSON.stringify(content);
