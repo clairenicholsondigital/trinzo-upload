@@ -4442,12 +4442,16 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
     // only name commitments NOT covered; everything it returns faces the same referee
     // (verbatim quote grounding, owner resolution, content bar, duplicate rule), and the
     // claim check and dedupe still run after it. Skipped entirely on the no-decision
-    // shape - nothing published and nothing agreed - where a "what's missing" question
-    // invites invention. Opt-in (ACTION_COMPLETENESS_SWEEP=1) until the scorecard run
-    // with it on shows recall gain without a precision cost; flipped to default after.
-    if (process.env.ACTION_COMPLETENESS_SWEEP === '1' && !actionProposals.reason) {
+    // shape, where a "what's missing" question invites invention. The gate is the FIRST
+    // reading's own disposition judgement: a meeting whose full-attention reading found
+    // ZERO agreed items is a meeting that agreed nothing, and the sweep does not run -
+    // measured directly on the parking fixture, where rows awaiting the presentation
+    // gate's cull made any published-row-count guard see work that was never real, the
+    // sweep ran, and two "commitments" were published for a meeting that agreed none.
+    // ACTION_COMPLETENESS_SWEEP=0 disables.
+    if (process.env.ACTION_COMPLETENESS_SWEEP !== '0' && !actionProposals.reason && actionProposals.agreed.length) {
       const currentRows = polished.payload?.screens?.actions || [];
-      if (currentRows.length || actionProposals.agreed.length) {
+      {
         const sweep = await proposeMissedActions(semanticTranscript.text, prepareEvidence(semanticTranscript.text), currentRows.map((item) => ({ owner: item.owner, action: item.action })), {});
         const currentTokens = currentRows.map((item) => new Set(String(item.action || '').toLowerCase().match(/[a-z][a-z0-9'’-]{2,}/g) || []));
         const coveredByCurrent = (item) => {
@@ -4460,9 +4464,26 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
             return shared / Math.min(tokens.size, other.size) >= 0.6;
           });
         };
+        // Disposition consistency: the first reading saw the whole meeting with its
+        // attention on agreed-vs-considered, and an item it filed as an OPTION must not
+        // come back through the sweep re-badged as a commitment. Measured: the sweep
+        // re-proposed "Think about parking" - filed considered by the first reading,
+        // correctly - as an agreed item on the no-decision fixture.
+        const consideredTokens = actionProposals.considered.map((item) => new Set(String(item.action || '').toLowerCase().match(/[a-z][a-z0-9'’-]{2,}/g) || []));
+        const consideredByFirstReading = (item) => {
+          const tokens = new Set(String(item.action || '').toLowerCase().match(/[a-z][a-z0-9'’-]{2,}/g) || []);
+          if (!tokens.size) return false;
+          return consideredTokens.some((other) => {
+            if (!other.size) return false;
+            let shared = 0;
+            for (const token of tokens) if (other.has(token)) shared += 1;
+            return shared / Math.min(tokens.size, other.size) >= 0.6;
+          });
+        };
         const sweepRefused = [];
         const sweepRows = [...sweep.agreed, ...sweep.requirements].filter((item) => {
           if (coveredByCurrent(item)) { sweepRefused.push({ action: item.action, reason: 'already_covered' }); return false; }
+          if (consideredByFirstReading(item)) { sweepRefused.push({ action: item.action, reason: 'considered_by_first_reading' }); return false; }
           if (!proposalIsPublishable(item)) { sweepRefused.push({ action: item.action, reason: 'content_bar' }); return false; }
           return true;
         }).map((item) => ({
