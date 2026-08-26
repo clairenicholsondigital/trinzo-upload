@@ -155,10 +155,15 @@ function actionShape(event, evidence) {
     { re: /^(.+? document) is absent\b.*$/i, owner: () => 'Not stated', action: (match) => `Draft ${match[1]}` },
     { re: /^(.+?)\s+follow-up feedback is still pending[.!]?$/i, owner: () => 'Not stated', action: (match) => `Follow up ${match[1]} feedback` },
     { re: /^(?:yeah|yes|yep|agreed)[,;]?\s+(?:and\s+)?([a-z][a-z-]+ing\s+.+?)(?:,\s+and\s+I['’]ll\b|$)/i, owner: () => event.speaker, action: (match) => match[1] },
-    { re: /\bI\s*(?:['’]ll|will|shall|can|need to|must|have to|am going to)\s+(.+)/i, owner: () => event.speaker, action: (match) => match[1] },
-    { re: /\bI(?:['’]ve| have)\s+got to\s+(.+)/i, owner: () => event.speaker, action: (match) => match[1] },
-    { re: /(?:^|[.!?]\s+)([A-Z][A-Za-z'’.-]+),\s*(?:can|could|will|would)\s+you\s+(.+)/i, owner: (match) => participantByFirstName(match[1], evidence.participants), action: (match) => match[2] },
-    { re: /(?:^|[.!?]\s+)([A-Z][A-Za-z'’.-]+),\s*please\s+(.+)/i, owner: (match) => participantByFirstName(match[1], evidence.participants), action: (match) => match[2] },
+    // Delegation is tried BEFORE the first-person shapes, and the first-person captures
+    // stop at a delegation boundary. Ordered the other way round - as they were - a turn
+    // that commits and then delegates ("I'll pick that up - Niamh, can you send the
+    // invoice?") matched the first-person shape, whose greedy capture swallowed the
+    // delegated clause into the action text AND owned the whole thing to the speaker.
+    { re: /(?:^|[.!?;,]\s*|\s+[-–—]\s+)([A-Z][A-Za-z'’.-]+),\s*(?:can|could|will|would)\s+you\s+(.+)/i, owner: (match) => participantByFirstName(match[1], evidence.participants), action: (match) => match[2] },
+    { re: /(?:^|[.!?;,]\s*|\s+[-–—]\s+)([A-Z][A-Za-z'’.-]+),\s*please\s+(.+)/i, owner: (match) => participantByFirstName(match[1], evidence.participants), action: (match) => match[2] },
+    { re: /\bI\s*(?:['’]ll|will|shall|can|need to|must|have to|am going to)\s+(.+?)(?=(?:[.!?;,]\s*|\s+[-–—]\s+)[A-Z][A-Za-z'’.-]+,\s*(?:can|could|will|would)\s+you\b|$)/i, owner: () => event.speaker, action: (match) => match[1] },
+    { re: /\bI(?:['’]ve| have)\s+got to\s+(.+?)(?=(?:[.!?;,]\s*|\s+[-–—]\s+)[A-Z][A-Za-z'’.-]+,\s*(?:can|could|will|would)\s+you\b|$)/i, owner: () => event.speaker, action: (match) => match[1] },
     { re: /(?:^|[.;]\s*|\bactions?[:,.]?\s*)([A-Z][A-Za-z'’.-]+)\s+to\s+(.+)/i, owner: (match) => participantByFirstName(match[1], evidence.participants), action: (match) => match[2] },
     { re: /(?:^|\bactions?[:,.]?\s*)([A-Z][A-Za-z'’.-]+),\s*you(?:['’]re| are)\s+(.+)/i, owner: (match) => participantByFirstName(match[1], evidence.participants), action: (match) => match[2] },
     { re: /\b(?:let['’]s|we need(?: to)?|we should)\s+(.+)/i, owner: () => 'Not stated', action: (match) => match[1] },

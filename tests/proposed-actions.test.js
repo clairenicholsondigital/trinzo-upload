@@ -178,3 +178,45 @@ test('a sweep with no API key reports unavailable rather than throwing', async (
     if (previous !== undefined) process.env.TROOPER_API_KEY = previous;
   }
 });
+
+// Delegation beats a first-person marker elsewhere in the same turn.
+//
+// "I'll pick that up - Niamh, can you send the invoice?" is the shape a chair produces
+// every few turns, and the first-person test used to run first over the WHOLE turn: the
+// chair owned the invoice, and the greedy capture swallowed the delegated clause into
+// the action text. Measured on the ground-truth fixtures, that put one chair's name on
+// three actions belonging to three different people.
+
+const { explicitOwner } = require('../utils/canonicalMinutes/actionResolution');
+const delegationEvidence = { participants: ['Niamh Lynch', 'Jacqui Fox', 'Rebecca Gill'] };
+
+test('work delegated after a commitment belongs to the person it was delegated to', () => {
+  assert.equal(
+    explicitOwner({ text: "I'll pick that up - Niamh, can you send the invoice?", speaker: 'Jacqui Fox' }, delegationEvidence),
+    'Niamh Lynch'
+  );
+  assert.equal(
+    explicitOwner({ text: "I'll do the plan. Niamh, please review it", speaker: 'Jacqui Fox' }, delegationEvidence),
+    'Niamh Lynch'
+  );
+});
+
+test('a plain first-person commitment still belongs to the speaker', () => {
+  assert.equal(
+    explicitOwner({ text: "I'll send the invoice myself.", speaker: 'Jacqui Fox' }, delegationEvidence),
+    'Jacqui Fox'
+  );
+  assert.equal(
+    explicitOwner({ text: 'I will handle the risk file', speaker: 'Rebecca Gill' }, delegationEvidence),
+    'Rebecca Gill'
+  );
+});
+
+test('an unknown addressee does not silently become the speaker', () => {
+  // participantByFirstName declines when the name is not a single known participant, and
+  // the turn plainly delegated - so the row goes out ownerless rather than mis-owned.
+  assert.equal(
+    explicitOwner({ text: 'Malcolm, can you take the smaller role?', speaker: 'Jacqui Fox' }, delegationEvidence),
+    ''
+  );
+});

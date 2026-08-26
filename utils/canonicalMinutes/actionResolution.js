@@ -11,15 +11,23 @@ function participantByFirstName(value, participants = []) {
   return matches.length === 1 ? matches[0] : '';
 }
 
+// A turn that names the person being asked has said who owns the work, and that is
+// stronger evidence than a first-person marker somewhere else in the same turn. The
+// first-person test used to run first, over the WHOLE turn, so a chair saying "I'll pick
+// that up - Niamh, can you send the invoice?" owned the invoice: the delegation branch
+// was never reached. Measured on the ground-truth fixtures, that put one talkative
+// chair's name on three actions belonging to three different people.
 function explicitOwner(event, evidence) {
   const text = clean(event?.text);
   if (!text) return '';
-  if (/\bI\s*(?:['’]ll|will|shall|can|need to|must|have to|am going to)\b/i.test(text)) return event.speaker;
-  const named = text.match(/(?:^|[.!?;]\s+)([A-Z][A-Za-z'’.-]+),\s*(?:can|could|will|would)\s+you\b/i)
-    || text.match(/(?:^|[.!?;]\s+)([A-Z][A-Za-z'’.-]+),\s*please\b/i)
+  const named = text.match(/(?:^|[.!?;,]\s*|\s+[-–—]\s+)([A-Z][A-Za-z'’.-]+),\s*(?:can|could|will|would)\s+you\b/i)
+    || text.match(/(?:^|[.!?;,]\s*|\s+[-–—]\s+)([A-Z][A-Za-z'’.-]+),\s*please\b/i)
     || text.match(/(?:^|\bactions?[:,.]?\s*)([A-Z][A-Za-z'’.-]+)\s+to\s+[a-z]/i)
     || text.match(/\b(?:assigned to|owner is|action for)\s+([A-Z][A-Za-z'’.-]+)/i);
-  return named ? participantByFirstName(named[1], evidence.participants) : '';
+  const addressee = named ? participantByFirstName(named[1], evidence.participants) : '';
+  if (addressee) return addressee;
+  if (/\bI\s*(?:['’]ll|will|shall|can|need to|must|have to|am going to)\b/i.test(text)) return event.speaker;
+  return '';
 }
 
 function looksLikeNewCommitment(event) {

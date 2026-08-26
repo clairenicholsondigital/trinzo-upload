@@ -4396,14 +4396,23 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
         return shared / Math.min(tokens.size, other.size) >= 0.34;
       });
     };
-    const uncorroborated = [];
+    // The verdict is deferred, not skipped. One reading is one sample: the loss
+    // attribution measured six real expected actions dropped here because the single
+    // reading happened not to mention them ("Continue updating the risk management
+    // plan", "Get a quote from St John Ambulance"). The completeness sweep below is a
+    // SECOND independent reading, so a row it names is corroborated after all - and a
+    // row neither reading names is still exactly what this filter was built to remove.
+    // Rows are withheld here and either restored or dropped once the sweep has spoken.
+    const withheld = new Map();
+    const corroborationRestored = [];
     const keptExisting = (process.env.ACTION_CORROBORATION === '0' || !actionProposals.agreed.length
       ? existing.map((item, index) => replacements.get(index) || item)
       : existing.map((item, index) => replacements.get(index) || item).filter((item, index) => {
         if (replacements.has(index) || corroborated(item)) return true;
-        uncorroborated.push(item);
+        withheld.set(index, item);
         return false;
       }));
+    const uncorroborated = [...withheld.values()];
     if (added.length || actionProposals.considered.length || uncorroborated.length || replacements.size) {
       polished.payload = {
         ...polished.payload,
@@ -4426,12 +4435,8 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
     if (bandMerges.length) {
       console.log(JSON.stringify({ event: 'staged_band_merge', stage: 'actions', applied: proposalMergeApplied, merges: bandMerges }));
     }
-    if (uncorroborated.length) {
-      console.log(JSON.stringify({ event: 'staged_corroboration', stage: 'actions', dropped: uncorroborated.map((item) => String(item.action || '')) }));
-    }
     if (actionTrace) {
       for (const merge of bandMerges) actionTrace.mutations.push({ type: 'band_replace', applied: proposalMergeApplied, ...merge });
-      for (const item of uncorroborated) actionTrace.mutations.push({ type: 'corroboration_drop', owner: item.owner || 'Not stated', action: String(item.action || '') });
       for (const item of heldBack) actionTrace.mutations.push({ type: 'held_back', owner: item.owner || 'Not stated', action: String(item.action || '') });
     }
     traceSnap('after_proposal_merge', polished.payload?.screens?.actions);
@@ -4505,14 +4510,50 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
             ungrounded: (sweep.ungrounded || []).length
           }));
         }
-        if (sweepRows.length) {
+        // The withheld rows' second chance. A row the corroboration filter could not
+        // find in the FIRST reading is restored when the sweep's reading names it -
+        // two independent readings both seeing work is corroboration, and the rows
+        // neither reading names are still dropped, which is the whole point of the
+        // filter. Skipped when the sweep already published the same content as a row
+        // of its own, so a rescue never produces a duplicate.
+        const sweepUniverse = [...sweep.agreed, ...sweep.requirements, ...sweep.considered, ...(sweep.ungrounded || [])]
+          .map((item) => new Set(String(item.action || '').toLowerCase().match(/[a-z][a-z0-9'’-]{2,}/g) || []));
+        const sweepRowTokens = sweepRows.map((item) => new Set(String(item.action || '').toLowerCase().match(/[a-z][a-z0-9'’-]{2,}/g) || []));
+        const overlapAgainst = (tokens, others, bar) => others.some((other) => {
+          if (!other.size || !tokens.size) return false;
+          let shared = 0;
+          for (const token of tokens) if (other.has(token)) shared += 1;
+          return shared / Math.min(tokens.size, other.size) >= bar;
+        });
+        for (const [index, item] of withheld) {
+          const tokens = new Set(String(item.action || '').toLowerCase().match(/[a-z][a-z0-9'’-]{2,}/g) || []);
+          if (!overlapAgainst(tokens, sweepUniverse, 0.34)) continue;
+          if (overlapAgainst(tokens, sweepRowTokens, 0.6)) continue;
+          corroborationRestored.push(item);
+          withheld.delete(index);
+        }
+        if (sweepRows.length || corroborationRestored.length) {
           polished.payload = {
             ...polished.payload,
-            screens: { ...(polished.payload?.screens || {}), actions: [...currentRows, ...sweepRows] }
+            screens: { ...(polished.payload?.screens || {}), actions: [...keptExisting, ...corroborationRestored, ...added, ...sweepRows] }
           };
         }
         traceSnap('after_completeness_sweep', polished.payload?.screens?.actions);
       }
+    }
+    // Reported after both readings have spoken, so the line says what was actually
+    // dropped rather than what was provisionally withheld.
+    if (withheld.size || corroborationRestored.length) {
+      console.log(JSON.stringify({
+        event: 'staged_corroboration',
+        stage: 'actions',
+        dropped: [...withheld.values()].map((item) => String(item.action || '')),
+        restoredBySweep: corroborationRestored.map((item) => String(item.action || ''))
+      }));
+    }
+    if (actionTrace) {
+      for (const item of withheld.values()) actionTrace.mutations.push({ type: 'corroboration_drop', owner: item.owner || 'Not stated', action: String(item.action || '') });
+      for (const item of corroborationRestored) actionTrace.mutations.push({ type: 'corroboration_restored', owner: item.owner || 'Not stated', action: String(item.action || '') });
     }
   }
   let result = clientReadyPresentation(polished.payload);
