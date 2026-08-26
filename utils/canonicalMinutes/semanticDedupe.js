@@ -16,7 +16,10 @@
 // today's behaviour, never worse.
 
 const { clean } = require('./evidence');
-const { nearDuplicate } = require('./trooperPolish');
+// Required lazily: trooperPolish requires this module for `cosine`, so a top-level
+// require here would be circular and would resolve `nearDuplicate` to undefined -
+// silently disabling the lexical fallback exactly when the worker is down.
+const lexicalNearDuplicate = (left, right) => require('./trooperPolish').nearDuplicate(left, right);
 
 const WORKER_URL = () => (process.env.MINUTES_MINILM_WORKER_URL || 'http://127.0.0.1:8767').replace(/\/$/, '');
 
@@ -79,7 +82,7 @@ async function duplicateGroups(texts, options = {}) {
       if (score >= threshold) { pairs.push({ a: i, b: j, score: Number(score.toFixed(3)), via: 'semantic' }); return true; }
       return false;
     }
-    if (nearDuplicate(cleaned[i], cleaned[j])) { pairs.push({ a: i, b: j, score: null, via: 'lexical' }); return true; }
+    if (lexicalNearDuplicate(cleaned[i], cleaned[j])) { pairs.push({ a: i, b: j, score: null, via: 'lexical' }); return true; }
     return false;
   };
   for (let i = 0; i < cleaned.length; i += 1) {

@@ -5,6 +5,7 @@ const { clean } = require('./evidence');
 const { deadlineFrom } = require('./stages');
 const { minutesEnglishFaults, repairMechanicalFaults, contentSet } = require('../minutesEnglish');
 const { numericFactsOf } = require('../spokenNumbers');
+const { cosine, encodeViaWorker } = require('./semanticDedupe');
 const { openingVerbIsActionable } = require('../stagedEditorial');
 const { finaliseDiscussionPointForMinutes, normaliseFinalStagedActionCandidate, normaliseAndValidateActionOwner } = require('../stagedEditorial');
 const { isReviewerAuthored } = require('./state');
@@ -840,7 +841,7 @@ function repairPrompt(rows, retry) {
   return [
     '[CMD: task=minutes_wording_repair; format=json]',
     'Each supplied record is a real commitment from a meeting. Restate each one as one or two complete sentences of third-person meeting-minutes English.',
-    'Restate the INTENT, never transliterate the speech: "Confirm the decision on the mute-button behaviour", not "Compute a firm decision on the mute aspect". Use the supplied evidence window to complete a fragment - a record whose meaning is finished by the surrounding turns should be restated whole.',
+    'Restate the INTENT, never transliterate the speech: "Confirm the decision on the mute-button behaviour", not "Compute a firm decision on the mute aspect". Use the supplied evidence window to complete a fragment - a record whose meaning is finished by the surrounding turns should be restated whole. The evidence window is CONTEXT for understanding what the record means - including a later turn where the meeting summarises the same thing, and the surrounding turns where a garbled phrase becomes clear. Use it to say what was meant; do not import facts, dates or names that the record itself does not carry.',
     'Resolve every it, this and that from the supplied evidence window and name the thing referred to. Remove first-person and second-person speech, conversational asides and stray evaluations.',
     'Keep every fact: owner, deadline, quantity, standard, document and name. Invent nothing and add no detail the evidence does not carry.',
     'Write each record as an instruction beginning with a verb - "Write to the council...", "Service the chiller...". Never narrate the meeting: no "the speaker", no "the recipient", no "the action item is". Do not turn the person the work is about into the person doing it.',
@@ -859,7 +860,7 @@ function discussionRepairPrompt(rows, retry) {
   return [
     '[CMD: task=minutes_wording_repair; format=json]',
     'Each supplied record is a discussion point from meeting minutes. Restate each one as one or two complete sentences of third-person meeting-minutes prose.',
-    'Restate the WHOLE point, never transliterate the speech: "There were two sound-related items to address", not "You were a couple of things to do in relation to the sound". Use the supplied evidence window to complete a fragment - a sentence whose meaning is finished by the surrounding turns should be restated whole.',
+    'Restate the WHOLE point, never transliterate the speech: "There were two sound-related items to address", not "You were a couple of things to do in relation to the sound". Use the supplied evidence window to complete a fragment - a sentence whose meaning is finished by the surrounding turns should be restated whole. The evidence window is CONTEXT for understanding what the record means - including a later turn where the meeting summarises the same thing, and the surrounding turns where a garbled phrase becomes clear. Use it to say what was meant; do not import facts, dates or names that the record itself does not carry.',
     'Resolve every it, this and that from the supplied evidence window and name the thing referred to. Remove first-person and second-person speech, conversational asides, restarts, repetition and circular phrasing.',
     'Keep every fact: name, quantity, standard, document and date. Invent nothing and add no detail the evidence does not carry.',
     'These are records of what was discussed or agreed, not instructions: never write an imperative, and never narrate ("the speaker said...").',
@@ -977,6 +978,68 @@ async function runWordingRepairRounds(entries, promptBuilder, imperative, option
   return { fixed, reason };
 }
 
+// The context window a rewrite gets to work from.
+//
+// It used to be the CITED turns only, capped at four - the local micro-cluster and nothing
+// else. That is why three reviewer-reported failures survived every wording pass: a minute
+// reading "Andrew Kane has got these three alarms now" could not reach Jacqui's summary
+// four minutes later ("the colour and the flash for each of the low, medium and high code
+// changes appear to have been made and are working successfully"), which says exactly what
+// the minute should have said; and "compute a firm decision on the mute aspect" - a
+// transcription corruption of "compute a firm on that mute aspect" - could not reach
+// Andrew saying, a few turns earlier, "I haven't looked at the mute button, like how the
+// LED acts in that scenario". The meeting disambiguates itself; the window hid it.
+//
+// So the window now carries three things: the cited turns, their immediate NEIGHBOURS
+// (conversation resolves corruption locally), and the most semantically similar turns from
+// ANYWHERE in the meeting (a later recap is the same topic stated properly). The last part
+// reuses the MiniLM worker already wired for dedupe; without it the window is simply
+// cited-plus-neighbours, which is still strictly more than before.
+const CONTEXT_NEIGHBOUR_TURNS = 2;
+const CONTEXT_SEMANTIC_MATCHES = 2;
+const CONTEXT_SEMANTIC_FLOOR = 0.45;
+const CONTEXT_MAX_ENTRIES = 8;
+
+function buildContextWindow(rowText, citedIds, allEvents, vectors) {
+  const events = Array.isArray(allEvents) ? allEvents : [];
+  if (!events.length) return '';
+  const cited = new Set((citedIds || []).map(String));
+  const chosen = new Map();
+  const citedTurns = [];
+  for (const event of events) {
+    if (!cited.has(String(event.id))) continue;
+    chosen.set(event.id, event);
+    citedTurns.push(event.turnIndex);
+  }
+  // Neighbours: the turns either side of a cited one. "Compute a firm on that mute aspect"
+  // is only interpretable beside the turns around it.
+  if (citedTurns.length) {
+    for (const event of events) {
+      if (chosen.has(event.id)) continue;
+      if (citedTurns.some((turn) => Math.abs(event.turnIndex - turn) <= CONTEXT_NEIGHBOUR_TURNS)) chosen.set(event.id, event);
+    }
+  }
+  // Semantic matches from anywhere: the later recap that states the topic properly.
+  if (vectors && vectors.row && vectors.byId) {
+    const scored = [];
+    for (const event of events) {
+      if (chosen.has(event.id)) continue;
+      const vector = vectors.byId.get(String(event.id));
+      if (!vector) continue;
+      const score = cosine(vectors.row, vector);
+      if (score >= CONTEXT_SEMANTIC_FLOOR) scored.push({ event, score });
+    }
+    scored.sort((left, right) => right.score - left.score);
+    for (const item of scored.slice(0, CONTEXT_SEMANTIC_MATCHES)) chosen.set(item.event.id, item.event);
+  }
+  return [...chosen.values()]
+    .sort((left, right) => (left.turnIndex || 0) - (right.turnIndex || 0))
+    .slice(0, CONTEXT_MAX_ENTRIES)
+    .map((event) => `${event.speaker ? `${event.speaker}: ` : ''}${clean(event.text)}`)
+    .filter(Boolean)
+    .join(' ');
+}
+
 // The polish acceptor both surfaces share. Stricter than repair in one respect: facts
 // must survive in BOTH directions. protectedFactsOf covers digits, initialisms and
 // multi-word names - but "by Friday" and "to David" are facts too, and it is blind to
@@ -1012,13 +1075,39 @@ async function repairActionWording(payload, evidencePack, options = {}) {
     .filter((row) => row.faults.length);
   const withActions = (rows) => ({ ...payload, screens: { ...payload.screens, actions: rows } });
 
-  const textFor = (index) => evidenceEntriesFor({ evidence: (evidencePack || []).flatMap((item) => item.evidence || []) })
+  const packEntries = evidenceEntriesFor({ evidence: (evidencePack || []).flatMap((item) => item.evidence || []) });
+  // Only the real pipeline passes the whole meeting; without it the window stays the
+  // cited turns exactly as before, which also keeps unit tests free of a worker call.
+  const allEvents = Array.isArray(options.allEvents) ? options.allEvents : [];
+  const textFor = (index) => (allEvents.length ? buildContextWindow(
+    clean(actions[index].action),
+    actions[index].evidenceIds || [],
+    allEvents,
+    contextVectors.get(index)
+  ) : '') || packEntries
     .filter((entry) => (actions[index].evidenceIds || []).map(String).includes(String(entry.id)))
     .map((entry) => clean(entry.text))
     .filter(Boolean)
     .slice(0, 4)
     .join(' ');
 
+  // One encode batch for the whole meeting: every row text plus every event, so each
+  // window can find its semantic neighbours without a call per row.
+  const contextVectors = new Map();
+  if (process.env.CONTEXT_WINDOW !== '0' && allEvents.length) {
+    const rowTexts = actions.map((item) => clean(item.action));
+    const eventTexts = allEvents.map((event) => clean(event.text));
+    const encoded = await encodeViaWorker([...new Set([...rowTexts, ...eventTexts])].filter(Boolean), options);
+    if (encoded) {
+      const unique = [...new Set([...rowTexts, ...eventTexts])].filter(Boolean);
+      const byText = new Map(unique.map((text, position) => [text, encoded[position]]));
+      const byId = new Map(allEvents.map((event) => [String(event.id), byText.get(clean(event.text))]).filter(([, vector]) => vector));
+      actions.forEach((item, index) => {
+        const vector = byText.get(clean(item.action));
+        if (vector) contextVectors.set(index, { row: vector, byId });
+      });
+    }
+  }
   const entries = broken.map((row) => ({ index: row.index, text: row.action, evidence: textFor(row.index) }));
   const { fixed, reason } = await runWordingRepairRounds(entries, repairPrompt, true, options);
   const brokenIndexes = new Set(broken.map((row) => row.index));
@@ -1081,11 +1170,33 @@ async function repairDiscussionWording(payload, evidencePack, options = {}) {
     evidenceEntriesFor({ evidence: (evidencePack || []).flatMap((item) => item.evidence || []) })
       .map((entry) => [String(entry.id), clean(entry.text)])
   );
-  const evidenceTextFor = (card) => (Array.isArray(card.evidenceIds) ? card.evidenceIds : [])
-    .map((id) => entriesById.get(String(id)))
-    .filter(Boolean)
-    .slice(0, 4)
-    .join(' ');
+  const allEvents = Array.isArray(options.allEvents) && options.allEvents.length ? options.allEvents : [];
+  // One encode batch for the meeting, same as actions: point texts plus every event.
+  let discussionVectors = null;
+  if (process.env.CONTEXT_WINDOW !== '0' && allEvents.length) {
+    const pointTexts = repairedCards.flatMap((card) => card.points.map((point) => clean(typeof point === 'string' ? point : point?.text)));
+    const eventTexts = allEvents.map((event) => clean(event.text));
+    const unique = [...new Set([...pointTexts, ...eventTexts])].filter(Boolean);
+    const encoded = await encodeViaWorker(unique, options);
+    if (encoded) {
+      const byText = new Map(unique.map((text, position) => [text, encoded[position]]));
+      const byId = new Map(allEvents.map((event) => [String(event.id), byText.get(clean(event.text))]).filter(([, vector]) => vector));
+      discussionVectors = { byText, byId };
+    }
+  }
+  const evidenceTextFor = (card, pointText) => {
+    const vectors = discussionVectors && pointText
+      ? { row: discussionVectors.byText.get(clean(pointText)), byId: discussionVectors.byId }
+      : null;
+    const window = allEvents.length
+      ? buildContextWindow(clean(pointText || ''), card.evidenceIds || [], allEvents, vectors && vectors.row ? vectors : null)
+      : '';
+    return window || (Array.isArray(card.evidenceIds) ? card.evidenceIds : [])
+      .map((id) => entriesById.get(String(id)))
+      .filter(Boolean)
+      .slice(0, 4)
+      .join(' ');
+  };
   const entries = [];
   repairedCards.forEach((card, cardIndex) => {
     card.points.forEach((point, pointIndex) => {
@@ -1116,7 +1227,7 @@ async function repairDiscussionWording(payload, evidencePack, options = {}) {
       card.points.forEach((point, pointIndex) => {
         const text = clean(typeof point === 'string' ? point : point?.text);
         if (!text || faultedKeys.has(`${cardIndex}:${pointIndex}`)) return;
-        cleanEntries.push({ index: cleanEntries.length, cardIndex, pointIndex, text, evidence: evidenceTextFor(card) });
+        cleanEntries.push({ index: cleanEntries.length, cardIndex, pointIndex, text, evidence: evidenceTextFor(card, text) });
       });
     });
     if (cleanEntries.length) {

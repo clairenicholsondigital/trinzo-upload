@@ -4404,7 +4404,11 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
     // can actually fire on this path - wordingFaults without options.people can never
     // detect a doubled roster name, whatever the row says.
     actionWordingRepair = await repairActionWording(result, canonicalEvidencePack, {
-      people: result?.canonicalDiagnostics?.entityNames || []
+      people: result?.canonicalDiagnostics?.entityNames || [],
+      // The whole meeting, so a rewrite's context window can reach the later turn where
+      // the meeting summarises the same thing and the neighbours that disambiguate a
+      // garbled phrase. The evidence pack carries only each row's own cited turns.
+      allEvents: prepareEvidence(semanticTranscript.text).events
     });
     result = actionWordingRepair.payload || result;
     const stillBroken = (result?.screens?.actions || []).filter((item) => wordingFaults(String(item.action || '')).length);
@@ -4503,7 +4507,8 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
   let discussionWordingRepair = { repaired: 0, attempted: 0 };
   if (stage === 'discussion') {
     discussionWordingRepair = await repairDiscussionWording(result, canonicalEvidencePack, {
-      people: result?.canonicalDiagnostics?.entityNames || []
+      people: result?.canonicalDiagnostics?.entityNames || [],
+      allEvents: prepareEvidence(semanticTranscript.text).events
     });
     result = discussionWordingRepair.payload || result;
     // Discussion by proposal, restraint by validation - the actions architecture applied
