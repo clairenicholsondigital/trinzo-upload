@@ -3738,6 +3738,65 @@ function stagedNoEditReviewExperience(trace = []) {
   };
 }
 
+function buildStagedUiMirror(sequence = {}, metadata = {}, options = {}) {
+  const state = sequence.state || {};
+  const reviewExperience = stagedNoEditReviewExperience(sequence.trace || []);
+  const reviewByStage = new Map(reviewExperience.stages.map((item) => [item.stage, item]));
+  const definitions = [
+    { key: 'details', label: 'Details' },
+    { key: 'summary', label: 'Summary' },
+    { key: 'discussion', label: 'Discussion' },
+    { key: 'actions', label: 'Actions' }
+  ];
+  const screens = definitions.map((definition, index) => {
+    const review = reviewByStage.get(definition.key) || {};
+    return {
+      index,
+      key: definition.key,
+      label: definition.label,
+      generated: true,
+      statusMessage: review.statusMessage || stagedNoEditStageMessage(definition.key),
+      editorialChecks: Array.isArray(review.flags) ? review.flags : [],
+      data: state[definition.key] ?? (definition.key === 'summary' ? {} : [])
+    };
+  });
+  screens.push({
+    index: 4,
+    key: 'finalReview',
+    label: 'Final review',
+    generated: true,
+    statusMessage: reviewExperience.finalReviewMessage,
+    editorialChecks: reviewExperience.requiredReviewerActions,
+    data: {
+      readyForFinalApproval: reviewExperience.readyForFinalApproval,
+      details: state.details || {},
+      summary: state.summary || {},
+      discussion: Array.isArray(state.discussion) ? state.discussion : [],
+      actions: Array.isArray(state.actions) ? state.actions : []
+    }
+  });
+  return {
+    ok: true,
+    contractVersion: 'staged-meeting-minutes-ui-mirror-v1',
+    mode: 'browserless_ui_mirror',
+    browserRoute: '/staged-meeting-minutes',
+    source: metadata.source || 'text',
+    fileName: metadata.fileName || null,
+    transcriptLength: Number(metadata.transcriptLength || 0),
+    ui: {
+      screenOrder: screens.map((screen) => screen.key),
+      activeScreen: 4,
+      activeScreenKey: 'finalReview',
+      generationState: 'complete',
+      generatedStages: { details: true, summary: true, discussion: true, actions: true },
+      screens
+    },
+    visibleOutput: sequence.visibleOutput || stagedEvaluationVisibleOutput(state),
+    reviewExperience,
+    ...(options.includeDiagnostics ? { diagnostics: { trace: sequence.trace || [] } } : {})
+  };
+}
+
 async function runStagedSequenceForEvaluation(transcriptText, options = {}) {
   // The evaluation sequence runs the pipeline that ships, because it used to run a
   // different one. This function drove buildStagedSummaryResponse and its siblings - an
@@ -3791,6 +3850,10 @@ async function runStagedSequenceForEvaluation(transcriptText, options = {}) {
         topicRefs: (state.summary.topicRefs || []).map((ref) => ({ text: ref.text, topicId: ref.topicId, evidenceIds: ref.evidenceIds }))
       };
     }
+    // This is the same hand-off the browser makes before requesting Actions. The
+    // reviewer-visible discussion headings are authoritative at that point, including
+    // any heading edits made during the preceding screen.
+    if (stage === 'actions') input.confirmedDiscussion = state.discussion;
     const response = await canonicalStagedResponse(stage, transcript, input);
     const value = response.screens?.[stage];
     state[stage] = stage === 'summary'
@@ -6426,6 +6489,46 @@ router.post('/staged-meeting-minutes/no-edit-pass', requireAuth, withTestUpload(
   }
 }));
 
+// A machine-readable rendering contract for browserless user simulations. It executes
+// the same no-edit staged sequence as the reviewer-facing flow and returns the ordered
+// screen state that the page hydrates, without pretending to reproduce layout, CSS or
+// browser accessibility behaviour. Diagnostics remain opt-in so agents see client-facing
+// minutes by default rather than internal evidence and model traces.
+router.post('/staged-meeting-minutes/ui-mirror', requireAuth, withTestUpload(async (req, res) => {
+  const startedAt = Date.now();
+  try {
+    const transcript = await readTestTranscript(req);
+    validateTranscriptText(transcript.text);
+    const sequence = await runStagedSequenceForEvaluation(transcript.text, {
+      fileName: transcript.fileName || 'transcript.txt'
+    });
+    const payload = buildStagedUiMirror(sequence, {
+      source: transcript.source,
+      fileName: transcript.fileName,
+      transcriptLength: transcript.text.length
+    }, {
+      includeDiagnostics: truthyFlag(req.query?.includeDiagnostics) || truthyFlag(req.body?.includeDiagnostics)
+    });
+    console.info(JSON.stringify({
+      event: 'staged_meeting_minutes_ui_mirror_completed',
+      source: transcript.source,
+      fileName: transcript.fileName || null,
+      transcriptLength: transcript.text.length,
+      readyForFinalApproval: payload.reviewExperience.readyForFinalApproval,
+      durationMs: Date.now() - startedAt
+    }));
+    return res.json(payload);
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: 'staged_meeting_minutes_ui_mirror_failed',
+      message: error?.message || String(error),
+      statusCode: error?.statusCode || null,
+      durationMs: Date.now() - startedAt
+    }));
+    return sendTestError(res, error);
+  }
+}));
+
 router.post('/staged-meeting-minutes/canonical-no-edit-pass', requireAuth, withTestUpload(async (req, res) => {
   const startedAt = Date.now();
   try {
@@ -7961,6 +8064,7 @@ router.stagedEvaluation = {
   buildStagedActionsResponse,
   buildPreparedTranscriptForStagedAI,
   applySimplifiedStagedOverride,
+  buildStagedUiMirror,
   // Exported so the review analytics can be tested as behaviour rather than by grepping
   // the source for the field names.
   buildStagedReviewDiffs,
