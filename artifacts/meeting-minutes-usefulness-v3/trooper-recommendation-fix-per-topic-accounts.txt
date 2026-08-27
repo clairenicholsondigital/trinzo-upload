@@ -1,0 +1,12 @@
+{
+  "recommendedPrompt": "Generate a factual account based *only* on the provided source snippets for the confirmed topic. Adhere strictly to the following constraints: 1. Maintain high fidelity to the source wording; minimize paraphrasing. 2. Do not convert questions, suggestions, possibilities, or conditionals into definitive conclusions. 3. Avoid including or inventing action-like wording when describing discussion context. 4. Avoid presenting statements as confirmed facts if the source implies discussion or uncertainty. 5. Structure the output by presenting evidence snippets in sequence rather than synthesizing a narrative account. 6. Use only short, neutral connective sentences if absolutely necessary to maintain flow.",
+  "recommendedOutputShape": "Ordered list of evidence snippets, each corresponding directly to a distinct piece of source material, potentially preceded by a minimal, neutral connector.",
+  "keyRules": [
+    "Strict adherence to source wording (minimize paraphrasing).",
+    "Preserve the original logical structure of statements (do not infer conclusions).",
+    "Explicitly separate discussion points from confirmed actions.",
+    "Present information as direct evidence rather than synthesized narrative.",
+    "Maintain explicit representation of uncertainty (questions, possibilities, conditionals)."
+  ],
+  "reasoning": "The core issues stem from the model's tendency to synthesize, infer, and over-assert certainty when generating a narrative account. To counteract this, the prompt must enforce strict constraints on synthesis and inference. Changing the output shape to an ordered list of evidence snippets directly addresses the need to preserve the original strength of each statement and reduce meaning-changing combinations. The prompt explicitly bans the problematic behaviors (paraphrasing, concluding, inventing actions, over-confirming) and mandates a structure that favors fidelity to the input, thereby stabilizing the output against the identified errors."
+}
