@@ -60,6 +60,18 @@ class UsefulnessClassifierTests(unittest.TestCase):
         self.assertEqual(MODULE.clean_speech_text("Oh, clinical clinical settings, yeah yeah."), "clinical settings, yeah.")
         self.assertEqual(MODULE.clean_speech_text("We could lock it, lock it."), "We could lock it.")
 
+    def test_full_name_clean_render_preserves_owner_identity_without_timestamps(self):
+        rows = [
+            {"speaker": "Rebecca Cuckoo", "timestamp": "33:30", "text": "Oh, review review the risk plan."},
+            {"speaker": "Andrew Kane", "timestamp": "34:06", "text": "I will verify the debug command."},
+        ]
+        rendered = MODULE.render_full_name_clean_transcript(rows)
+        self.assertEqual(
+            rendered,
+            "Rebecca Cuckoo: review the risk plan.\nAndrew Kane: I will verify the debug command.",
+        )
+        self.assertNotIn("33:30", rendered)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -208,6 +208,14 @@ def render_first_name_clean_transcript(rows: list[dict], separator: str = "\n") 
     )
 
 
+def render_full_name_clean_transcript(rows: list[dict], separator: str = "\n") -> str:
+    """Render denoised speech with full speaker names and no timestamps."""
+    return separator.join(
+        f"{compact(row.get('speaker', '')) or 'Speaker'}: {clean_speech_text(row.get('text', ''))}"
+        for row in rows if clean_speech_text(row.get("text", ""))
+    )
+
+
 def train(args: argparse.Namespace) -> int:
     joblib, np, SentenceTransformer, LogisticRegression, classification_report, GroupShuffleSplit = load_dependencies()
     transcript_paths = discover_transcripts(Path(args.transcripts))
@@ -298,12 +306,13 @@ def classify(args: argparse.Namespace) -> int:
     marker_free = render_marker_free_transcript(kept)
     first_name_transcript = render_first_name_transcript(kept)
     first_name_clean_transcript = render_first_name_clean_transcript(kept)
+    full_name_clean_transcript = render_full_name_clean_transcript(kept)
     if args.output:
         output_path = Path(args.output)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         rendered = first_name_clean_transcript if args.output_mode == "first-name-clean" else first_name_transcript if args.output_mode == "first-name" else marker_free
         output_path.write_text(rendered + "\n", encoding="utf-8")
-    output = {"executed": True, "model": str(args.model), "input": str(path), "counts": {label: sum(row["classification"] == label for row in results) for label in LABELS}, "units": results, "cleaned_transcript": cleaned, "marker_free_transcript": marker_free, "first_name_transcript": first_name_transcript, "first_name_clean_transcript": first_name_clean_transcript}
+    output = {"executed": True, "model": str(args.model), "input": str(path), "counts": {label: sum(row["classification"] == label for row in results) for label in LABELS}, "units": results, "cleaned_transcript": cleaned, "marker_free_transcript": marker_free, "first_name_transcript": first_name_transcript, "first_name_clean_transcript": first_name_clean_transcript, "full_name_clean_transcript": full_name_clean_transcript}
     print(json.dumps(output, indent=2, ensure_ascii=False))
     return 0
 

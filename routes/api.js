@@ -64,6 +64,11 @@ const { polishExecutiveSummaryGrammar } = require('../utils/stagedExecutiveSumma
 const { polishInitialUnderstanding } = require('../utils/stagedInitialUnderstandingPolish');
 const { assessStagedTranscriptHealth, stagedTranscriptHealthFlag } = require('../utils/stagedTranscriptHealth');
 const {
+  generateTopics: generateSimplifiedTopics,
+  generateDiscussion: generateSimplifiedDiscussion,
+  generateActions: generateSimplifiedActions
+} = require('../utils/simplifiedStagedMinutes');
+const {
   buildConfirmedUnderstanding,
   repairDiscussionForConfirmedUnderstanding
 } = require('../utils/stagedSemanticAuthority');
@@ -3837,6 +3842,102 @@ function canonicalConfirmedStages(input = {}) {
   };
 }
 
+function confirmedTopicsForSimplifiedStage(stage, confirmed = {}) {
+  if (stage === 'actions' && Array.isArray(confirmed.discussion) && confirmed.discussion.length) {
+    const discussionTopics = confirmed.discussion.map((item) => cleanStagedGeneratedLine(item?.topic)).filter(Boolean);
+    if (discussionTopics.length) return discussionTopics.slice(0, 8);
+  }
+  return stringListFromAny(confirmed.summary?.overallTopics, ['topic', 'text', 'title']).slice(0, 8);
+}
+
+function validationFlagsAfterSimplifiedOverride(flags, stage, output = []) {
+  const existing = Array.isArray(flags) ? flags : [];
+  const filtered = existing.filter((flag) => {
+    const type = String(flag?.type || '').toLowerCase();
+    if (stage === 'discussion') return !/(?:discussion|workstream|confirmed_fact)/.test(type);
+    if (stage === 'actions') return !/(?:action|owner|deadline)/.test(type);
+    return true;
+  });
+  if (stage === 'actions' && !output.length) filtered.push({
+    type: 'no_actions_detected',
+    severity: 'info',
+    blocking: false,
+    message: 'No evidence-grounded actions were found under the confirmed meeting topics. Add an action manually if the transcript contains a follow-up that should be tracked.'
+  });
+  return filtered;
+}
+
+async function applySimplifiedStagedOverride(stage, result, transcript, confirmed, options = {}) {
+  const enabled = process.env.STAGED_SIMPLIFIED_PIPELINE !== '0';
+  if (!enabled || !['summary', 'discussion', 'actions'].includes(stage)) {
+    return { result, telemetry: { enabled, used: false, fallback: false, reason: enabled ? 'not_applicable' : 'disabled' } };
+  }
+  try {
+    if (stage === 'summary') {
+      if (stringListFromAny(confirmed.summary?.overallTopics, ['topic', 'text', 'title']).length) {
+        return { result, telemetry: { enabled: true, used: false, fallback: false, reason: 'reviewer_confirmed_topics' } };
+      }
+      const generated = await (options.generateTopics || generateSimplifiedTopics)(transcript.text, options);
+      return {
+        result: {
+          ...result,
+          pipeline: 'simplified_staged_minilm_trooper_v1',
+          strategy: 'simplified_topics_v1',
+          screens: {
+            ...(result.screens || {}),
+            summary: {
+              ...(result.screens?.summary || {}),
+              overallTopics: generated.topics,
+              topicRefs: generated.topics.map((topic) => ({ text: topic, topicId: crypto.createHash('sha1').update(topic).digest('hex').slice(0, 12), evidenceIds: [] }))
+            }
+          }
+        },
+        telemetry: { enabled: true, used: true, fallback: false, stage, ...generated.telemetry }
+      };
+    }
+
+    const topics = confirmedTopicsForSimplifiedStage(stage, confirmed);
+    if (!topics.length) throw new Error(`No reviewer-confirmed topics were available for the simplified ${stage} stage.`);
+    if (stage === 'discussion') {
+      const generated = await (options.generateDiscussion || generateSimplifiedDiscussion)(transcript.text, topics, options);
+      return {
+        result: {
+          ...result,
+          pipeline: 'simplified_staged_minilm_trooper_v1',
+          strategy: 'simplified_per_topic_discussion_v1',
+          screens: { ...(result.screens || {}), discussion: generated.discussion },
+          validationFlags: validationFlagsAfterSimplifiedOverride(result.validationFlags, stage, generated.discussion)
+        },
+        telemetry: { enabled: true, used: true, fallback: false, stage, ...generated.telemetry }
+      };
+    }
+
+    const generated = await (options.generateActions || generateSimplifiedActions)(transcript.text, topics, options);
+    return {
+      result: {
+        ...result,
+        pipeline: 'simplified_staged_minilm_trooper_v1',
+        strategy: 'simplified_per_topic_actions_v1',
+        screens: { ...(result.screens || {}), actions: generated.actions },
+        validationFlags: validationFlagsAfterSimplifiedOverride(result.validationFlags, stage, generated.actions)
+      },
+      telemetry: { enabled: true, used: true, fallback: false, stage, ...generated.telemetry }
+    };
+  } catch (error) {
+    safeLogError('[Simplified staged minutes override failed; canonical stage retained]', error, { stage });
+    return {
+      result,
+      telemetry: {
+        enabled: true,
+        used: false,
+        fallback: true,
+        stage,
+        reason: error?.message || 'Simplified staged generation failed.'
+      }
+    };
+  }
+}
+
 function stableActionCandidateHash(candidate = {}) {
   const payload = {
     owner: cleanStagedGeneratedLine(candidate.owner || 'Not stated') || 'Not stated',
@@ -5293,6 +5394,8 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
       }
     }
   }
+  const simplifiedOverride = await applySimplifiedStagedOverride(stage, result, transcript, confirmed);
+  result = simplifiedOverride.result;
   const health = assessGenerationHealth({
     stage,
     trooper: { used: polished.used, reason: polished.reason },
@@ -5317,7 +5420,13 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
     degradations: health.degradations,
     durationMs: Date.now() - generationStartedAt,
     actionAccounting: result?.canonicalDiagnostics?.actionAccounting || null,
-    wordingRepair: (({ attempted = 0, repaired = 0, reason = '' }) => ({ attempted, repaired, reason }))(stage === 'discussion' ? discussionWordingRepair : actionWordingRepair)
+    wordingRepair: (({ attempted = 0, repaired = 0, reason = '' }) => ({ attempted, repaired, reason }))(stage === 'discussion' ? discussionWordingRepair : actionWordingRepair),
+    simplifiedPipeline: {
+      enabled: Boolean(simplifiedOverride.telemetry?.enabled),
+      used: Boolean(simplifiedOverride.telemetry?.used),
+      fallback: Boolean(simplifiedOverride.telemetry?.fallback),
+      reason: simplifiedOverride.telemetry?.reason || ''
+    }
   };
   // One greppable line per generation, because the last five incidents in this area were
   // each dug out of pm2 logs by hand. `grep staged_generation_health` now answers the
@@ -5373,6 +5482,7 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
         timingMs: initialUnderstandingPolish.timingMs
       },
       transcriptHealth,
+      simplifiedPipeline: simplifiedOverride.telemetry,
       trooper: { used: polished.used, reason: polished.reason, usage: polished.usage || null, input: 'bounded_minilm_evidence' }
     },
     preparedTranscriptTelemetry: semanticTranscript.preparedTranscriptTelemetry || transcript.preparedTranscriptTelemetry || null
@@ -7850,6 +7960,7 @@ router.stagedEvaluation = {
   extractStagedDetailsFromTranscript,
   buildStagedActionsResponse,
   buildPreparedTranscriptForStagedAI,
+  applySimplifiedStagedOverride,
   // Exported so the review analytics can be tested as behaviour rather than by grepping
   // the source for the field names.
   buildStagedReviewDiffs,
