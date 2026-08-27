@@ -3854,7 +3854,7 @@ async function runStagedSequenceForEvaluation(transcriptText, options = {}) {
     // reviewer-visible discussion headings are authoritative at that point, including
     // any heading edits made during the preceding screen.
     if (stage === 'actions') input.confirmedDiscussion = state.discussion;
-    const response = await canonicalStagedResponse(stage, transcript, input);
+    const response = await (options.stageRunner || stagedWorkflowResponse)(stage, transcript, input);
     const value = response.screens?.[stage];
     state[stage] = stage === 'summary'
       ? (value || {})
@@ -3871,8 +3871,8 @@ async function runStagedSequenceForEvaluation(transcriptText, options = {}) {
     }
     trace.push({
       stage,
-      provider: 'canonical_staged_pipeline',
-      fallbackUsed: response.pipelineHealth?.served === 'degraded',
+      provider: response.pipeline || 'staged_workflow',
+      fallbackUsed: Boolean(response.pipelineHealth?.simplifiedPipeline?.fallback),
       inputTopicCount: Array.isArray(state.summary?.overallTopics) ? state.summary.overallTopics.length : 0,
       outputCount: stage === 'summary'
         ? (Array.isArray(state.summary?.overallTopics) ? state.summary.overallTopics.length : 0)
@@ -3996,6 +3996,113 @@ async function applySimplifiedStagedOverride(stage, result, transcript, confirme
         fallback: true,
         stage,
         reason: error?.message || 'Simplified staged generation failed.'
+      }
+    };
+  }
+}
+
+function aggregateSimplifiedTokenUsage(usages = []) {
+  return (Array.isArray(usages) ? usages : []).reduce((totals, usage) => ({
+    prompt_tokens: totals.prompt_tokens + Number(usage?.prompt_tokens || 0),
+    completion_tokens: totals.completion_tokens + Number(usage?.completion_tokens || 0),
+    total_tokens: totals.total_tokens + Number(usage?.total_tokens || 0)
+  }), { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 });
+}
+
+function simplifiedConfirmedCollections(confirmed = {}) {
+  return {
+    details: Object.keys(confirmed.details || {}).length,
+    objectives: Array.isArray(confirmed.summary?.objectives) ? confirmed.summary.objectives.length : 0,
+    topics: Array.isArray(confirmed.summary?.overallTopics) ? confirmed.summary.overallTopics.length : 0,
+    discussion: Array.isArray(confirmed.discussion) ? confirmed.discussion.length : 0,
+    actions: Array.isArray(confirmed.actions) ? confirmed.actions.length : 0
+  };
+}
+
+async function stagedWorkflowResponse(stage, transcript, input = {}, options = {}) {
+  const startedAt = Date.now();
+  const simplifiedEnabled = process.env.STAGED_SIMPLIFIED_PIPELINE !== '0';
+  if (!simplifiedEnabled || stage === 'summary' || !['discussion', 'actions'].includes(stage)) {
+    return (options.canonicalFallback || canonicalStagedResponse)(stage, transcript, input);
+  }
+  const confirmed = canonicalConfirmedStages(input);
+  const topics = confirmedTopicsForSimplifiedStage(stage, confirmed);
+  try {
+    if (!topics.length) throw new Error(`No reviewer-confirmed topics were available for the simplified ${stage} stage.`);
+    const generated = stage === 'discussion'
+      ? await (options.generateDiscussion || generateSimplifiedDiscussion)(transcript.text, topics, options)
+      : await (options.generateActions || generateSimplifiedActions)(transcript.text, topics, options);
+    const output = stage === 'discussion' ? generated.discussion : generated.actions;
+    if (!Array.isArray(output) || (stage === 'discussion' && !output.length)) {
+      throw new Error(`Simplified ${stage} generation returned no valid output.`);
+    }
+    const usage = aggregateSimplifiedTokenUsage(generated.telemetry?.tokenUsage);
+    const actionAccounting = stage === 'actions'
+      ? { supplied: output.length, published: output.length }
+      : null;
+    const simplifiedTelemetry = {
+      enabled: true,
+      used: true,
+      fallback: false,
+      stage,
+      ...(generated.telemetry || {})
+    };
+    const pipelineHealth = {
+      revision: servingRevision(),
+      stage,
+      served: 'full',
+      degradations: [],
+      durationMs: Date.now() - startedAt,
+      actionAccounting,
+      wordingRepair: { attempted: 0, repaired: 0, reason: '' },
+      simplifiedPipeline: { enabled: true, used: true, fallback: false, reason: '' }
+    };
+    return {
+      source: transcript.source,
+      fileName: transcript.fileName || null,
+      transcriptLength: transcript.text.length,
+      pipeline: 'simplified_staged_minilm_trooper_v1',
+      strategy: stage === 'discussion' ? 'simplified_per_topic_discussion_v1' : 'simplified_per_topic_actions_v1',
+      stagedStage: stage,
+      screens: { [stage]: output },
+      validationFlags: validationFlagsAfterSimplifiedOverride([], stage, output),
+      canonicalDiagnostics: {
+        architecture: 'simplified_primary_with_canonical_fallback',
+        humanConfirmedInputIsAuthoritative: true,
+        confirmedCollections: simplifiedConfirmedCollections(confirmed),
+        actionAccounting
+      },
+      pipelineHealth,
+      telemetryPreview: {
+        transcriptHealth: assessStagedTranscriptHealth(transcript.text),
+        simplifiedPipeline: simplifiedTelemetry,
+        trooper: {
+          used: true,
+          reason: `${stage === 'discussion' ? output.reduce((sum, card) => sum + (card.points || []).length, 0) : output.length} grounded ${stage === 'discussion' ? 'discussion point(s)' : 'action(s)'} returned across ${topics.length} topic call(s).`,
+          usage,
+          input: 'per_topic_minilm_evidence'
+        }
+      }
+    };
+  } catch (error) {
+    safeLogError('[Simplified primary stage failed; running canonical fallback]', error, { stage });
+    const fallback = await (options.canonicalFallback || canonicalStagedResponse)(stage, transcript, { ...input, _skipSimplifiedOverride: true });
+    const fallbackTelemetry = {
+      enabled: true,
+      used: false,
+      fallback: true,
+      stage,
+      reason: error?.message || `Simplified ${stage} generation failed.`
+    };
+    return {
+      ...fallback,
+      pipelineHealth: {
+        ...(fallback.pipelineHealth || {}),
+        simplifiedPipeline: { enabled: true, used: false, fallback: true, reason: fallbackTelemetry.reason }
+      },
+      telemetryPreview: {
+        ...(fallback.telemetryPreview || {}),
+        simplifiedPipeline: fallbackTelemetry
       }
     };
   }
@@ -5457,7 +5564,9 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
       }
     }
   }
-  const simplifiedOverride = await applySimplifiedStagedOverride(stage, result, transcript, confirmed);
+  const simplifiedOverride = input._skipSimplifiedOverride
+    ? { result, telemetry: { enabled: true, used: false, fallback: false, stage, reason: 'canonical_fallback_requested' } }
+    : await applySimplifiedStagedOverride(stage, result, transcript, confirmed);
   result = simplifiedOverride.result;
   const health = assessGenerationHealth({
     stage,
@@ -5642,7 +5751,7 @@ async function runQueuedStagedMeetingMinutesStage(jobId) {
           ? 'Reviewing discussion evidence.'
           : 'Reviewing summary evidence.';
       await updateGenerationJobProgress(jobId, stage, 35, evidenceProgressMessage);
-      payload = await canonicalStagedResponse(stage, transcript, input);
+      payload = await stagedWorkflowResponse(stage, transcript, input);
     }
 
     const priorScreens = {};
@@ -6599,7 +6708,7 @@ router.post('/staged-meeting-minutes', requireAuth, withTestUpload(async (req, r
         confirmedActions: parseStagedJsonArray(req.body?.confirmedActions),
         additionalContext: firstString(req.body?.additionalContext, req.query?.additionalContext)
       };
-      const response = await canonicalStagedResponse(requestedStage, {
+      const response = await stagedWorkflowResponse(requestedStage, {
         ...transcript,
         preparedTranscriptTelemetry: aiTranscript.preparedTranscriptTelemetry
       }, confirmed);
@@ -8060,6 +8169,7 @@ router.stagedEvaluation = {
   mergeNamedTopics,
   stagedNoEditReviewExperience,
   canonicalStagedResponse,
+  stagedWorkflowResponse,
   extractStagedDetailsFromTranscript,
   buildStagedActionsResponse,
   buildPreparedTranscriptForStagedAI,

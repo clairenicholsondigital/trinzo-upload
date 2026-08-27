@@ -21,7 +21,7 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         # scripts now measure the pipeline the reviewer actually sees. The contract this
         # test protects is therefore stated the other way round: the sequence must run the
         # canonical pipeline, and the old backend must stay gone.
-        self.assertIn("const response = await canonicalStagedResponse(stage, transcript, input)", api)
+        self.assertIn("const response = await (options.stageRunner || stagedWorkflowResponse)(stage, transcript, input)", api)
         self.assertNotIn("async function buildStagedGenerationContext", api)
         self.assertNotIn("async function buildStagedSummaryResponse", api)
         self.assertNotIn("async function buildStagedDiscussionResponse", api)
@@ -475,7 +475,7 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("prepared.push(spoken ? `${speaker}: ${spoken}`", api)
         self.assertIn("function transcriptForStagedAI", api)
         self.assertIn("sourceJob.preparedTranscript", api)
-        self.assertIn("canonicalStagedResponse(stage, transcript, input)", api)
+        self.assertIn("stagedWorkflowResponse(stage, transcript, input)", api)
         self.assertIn("runCanonicalLiveStage(semanticTranscript.text", api)
         self.assertIn("rawTranscriptLength: transcript.text.length", api)
         self.assertIn("preparedTranscriptLength", api)

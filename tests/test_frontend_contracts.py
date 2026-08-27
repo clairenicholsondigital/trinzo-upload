@@ -380,7 +380,7 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("allAttendees", api)
         self.assertIn("requestedStage === 'details'", api)
         self.assertIn("['summary', 'discussion', 'actions'].includes(requestedStage)", api)
-        self.assertIn("canonicalStagedResponse(requestedStage", api)
+        self.assertIn("stagedWorkflowResponse(requestedStage", api)
         self.assertIn("runCanonicalLiveStage", api)
         canonical_live = (REPO_DIR / "utils" / "canonicalMinutes" / "liveStages.js").read_text(encoding="utf-8")
         self.assertIn("semanticStages.contextStage", canonical_live)

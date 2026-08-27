@@ -53,3 +53,81 @@ test('UI mirror route is authenticated and uses the real staged sequence', () =>
   assert.match(source, /buildStagedUiMirror\(sequence/);
   assert.match(source, /if \(stage === 'actions'\) input\.confirmedDiscussion = state\.discussion/);
 });
+
+test('shared workflow serves simplified Actions directly with self-consistent telemetry', async () => {
+  const actions = [{ owner: 'Alex Smith', action: 'Complete release verification.', deadline: 'Friday' }];
+  const output = await api.stagedEvaluation.stagedWorkflowResponse(
+    'actions',
+    { text: 'Alex Smith: I will complete release verification by Friday. '.repeat(4), source: 'test', fileName: 'release.txt' },
+    {
+      confirmedSummary: { overallTopics: ['Release verification'] },
+      confirmedDiscussion: [{ topic: 'Release verification', points: ['Verification remained open.'] }]
+    },
+    {
+      generateActions: async () => ({
+        actions,
+        telemetry: {
+          topicCount: 1,
+          calls: 1,
+          actionCount: 1,
+          tokenUsage: [{ prompt_tokens: 120, completion_tokens: 30, total_tokens: 150 }]
+        }
+      })
+    }
+  );
+  assert.equal(output.pipeline, 'simplified_staged_minilm_trooper_v1');
+  assert.deepEqual(output.screens.actions, actions);
+  assert.deepEqual(output.pipelineHealth.actionAccounting, { supplied: 1, published: 1 });
+  assert.deepEqual(output.telemetryPreview.trooper.usage, { prompt_tokens: 120, completion_tokens: 30, total_tokens: 150 });
+  assert.equal(output.telemetryPreview.simplifiedPipeline.fallback, false);
+});
+
+test('shared workflow invokes canonical only after simplified validation fails', async () => {
+  let fallbackCalls = 0;
+  const output = await api.stagedEvaluation.stagedWorkflowResponse(
+    'discussion',
+    { text: 'Alex Smith: Release verification remains open. '.repeat(4), source: 'test', fileName: 'release.txt' },
+    { confirmedSummary: { overallTopics: ['Release verification'] } },
+    {
+      generateDiscussion: async () => { throw new Error('invalid simplified response'); },
+      canonicalFallback: async (_stage, _transcript, input) => {
+        fallbackCalls += 1;
+        assert.equal(input._skipSimplifiedOverride, true);
+        return {
+          pipeline: 'canonical_staged_v2',
+          screens: { discussion: [{ topic: 'Release verification', points: ['Canonical fallback.'] }] },
+          pipelineHealth: { served: 'full' },
+          telemetryPreview: { trooper: { usage: { total_tokens: 50 } } }
+        };
+      }
+    }
+  );
+  assert.equal(fallbackCalls, 1);
+  assert.equal(output.pipeline, 'canonical_staged_v2');
+  assert.equal(output.pipelineHealth.simplifiedPipeline.fallback, true);
+  assert.match(output.telemetryPreview.simplifiedPipeline.reason, /invalid simplified response/);
+});
+
+test('browserless sequence passes the same confirmed screens through the shared stage runner', async () => {
+  const calls = [];
+  const stageRunner = async (stage, _transcript, input) => {
+    calls.push({ stage, input });
+    if (stage === 'summary') return {
+      pipeline: 'shared-test', screens: { summary: { meetingPurpose: 'Review release readiness.', objectives: [], executiveSummary: 'Readiness was reviewed.', overallTopics: ['Release verification'], topicRefs: [] } }, validationFlags: []
+    };
+    if (stage === 'discussion') return {
+      pipeline: 'shared-test', screens: { discussion: [{ topic: 'Release verification', points: ['Verification remained open.'] }] }, validationFlags: []
+    };
+    return {
+      pipeline: 'shared-test', screens: { actions: [{ owner: 'Alex Smith', action: 'Complete release verification.', deadline: 'Friday' }] }, validationFlags: []
+    };
+  };
+  const sequence = await api.stagedEvaluation.runStagedSequenceForEvaluation(
+    'Alex Smith 0:01 Release verification remains open.\nAlex Smith 0:05 I will complete it by Friday.',
+    { fileName: 'release.txt', stageRunner }
+  );
+  assert.deepEqual(calls.map((item) => item.stage), ['summary', 'discussion', 'actions']);
+  assert.deepEqual(calls[1].input.confirmedSummary.overallTopics, ['Release verification']);
+  assert.deepEqual(calls[2].input.confirmedDiscussion, sequence.state.discussion);
+  assert.deepEqual(sequence.state.actions, [{ owner: 'Alex Smith', action: 'Complete release verification.', deadline: 'Friday' }]);
+});
