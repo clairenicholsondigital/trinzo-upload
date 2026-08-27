@@ -34,7 +34,15 @@ function deadlineCorrect(expected, generated) {
 }
 
 function parseArgs(argv) {
-  const options = { command: 'run', runs: 3, baseUrl: process.env.STAGED_BENCHMARK_BASE_URL || DEFAULT_BASE_URL, output: '', resume: '' };
+  const options = {
+    command: 'run',
+    runs: 3,
+    baseUrl: process.env.STAGED_BENCHMARK_BASE_URL || DEFAULT_BASE_URL,
+    output: '',
+    resume: '',
+    cooldownMs: Number(process.env.STAGED_BENCHMARK_COOLDOWN_MS || 5000),
+    reliabilityRetries: Number(process.env.STAGED_BENCHMARK_RELIABILITY_RETRIES || 3)
+  };
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index];
     if (['run', 'validate', 'score'].includes(value) && index === 0) options.command = value;
@@ -42,13 +50,19 @@ function parseArgs(argv) {
     else if (value === '--base-url') options.baseUrl = argv[++index];
     else if (value === '--output') options.output = argv[++index];
     else if (value === '--resume') options.resume = argv[++index];
+    else if (value === '--cooldown-ms') options.cooldownMs = Number(argv[++index]);
+    else if (value === '--reliability-retries') options.reliabilityRetries = Number(argv[++index]);
     else if (value.startsWith('--runs=')) options.runs = Number(value.slice(7));
     else if (value.startsWith('--base-url=')) options.baseUrl = value.slice(11);
     else if (value.startsWith('--output=')) options.output = value.slice(9);
     else if (value.startsWith('--resume=')) options.resume = value.slice(9);
+    else if (value.startsWith('--cooldown-ms=')) options.cooldownMs = Number(value.slice(14));
+    else if (value.startsWith('--reliability-retries=')) options.reliabilityRetries = Number(value.slice(22));
     else if (index !== 0 || !['run', 'validate', 'score'].includes(value)) throw new Error(`Unknown argument: ${value}`);
   }
   if (!Number.isInteger(options.runs) || options.runs < 1 || options.runs > 10) throw new Error('--runs must be between 1 and 10.');
+  if (!Number.isFinite(options.cooldownMs) || options.cooldownMs < 0) throw new Error('--cooldown-ms must be zero or greater.');
+  if (!Number.isInteger(options.reliabilityRetries) || options.reliabilityRetries < 0 || options.reliabilityRetries > 10) throw new Error('--reliability-retries must be between 0 and 10.');
   return options;
 }
 
@@ -453,6 +467,12 @@ function validateMirrorPayload(payload, status, expectedRevision = '') {
   return revision;
 }
 
+function simplifiedFallbackReasons(payload) {
+  return (payload?.diagnostics?.trace || [])
+    .filter((stage) => ['discussion', 'actions'].includes(stage.stage) && stage.telemetry?.simplifiedPipeline?.fallback)
+    .map((stage) => compact(stage.telemetry?.simplifiedPipeline?.reason));
+}
+
 async function runRemote(options, corpus, outputDir) {
   const cookie = await login(options.baseUrl);
   const rawDir = path.join(outputDir, 'raw');
@@ -469,21 +489,40 @@ async function runRemote(options, corpus, outputDir) {
       if (checkpoint.completed.includes(id) && fs.existsSync(file)) {
         const saved = safeJson(file); records.push(saved); continue;
       }
-      const started = Date.now();
-      const form = new FormData(); form.append('text', item.transcript); form.append('includeDiagnostics', '1');
-      const response = await fetch(`${options.baseUrl.replace(/\/$/, '')}/api/staged-meeting-minutes/ui-mirror?includeDiagnostics=1`, { method: 'POST', headers: { cookie }, body: form });
-      const payload = await response.json().catch(() => null);
-      let revision;
-      try { revision = validateMirrorPayload(payload, response.status, checkpoint.servingRevision); }
-      catch (error) { throw new Error(`${id}: ${error.message}`); }
-      checkpoint.servingRevision = revision;
-      const saved = { id, caseId: item.caseId, run, durationMs: Date.now() - started, receivedAt: new Date().toISOString(), transcriptSha256: item.transcriptSha256, servingRevision: revision, payload };
+      let saved = null;
+      for (let attempt = 1; attempt <= options.reliabilityRetries + 1; attempt += 1) {
+        const started = Date.now();
+        const form = new FormData(); form.append('text', item.transcript); form.append('includeDiagnostics', '1');
+        const response = await fetch(`${options.baseUrl.replace(/\/$/, '')}/api/staged-meeting-minutes/ui-mirror?includeDiagnostics=1`, { method: 'POST', headers: { cookie }, body: form });
+        const payload = await response.json().catch(() => null);
+        let revision;
+        try { revision = validateMirrorPayload(payload, response.status, checkpoint.servingRevision); }
+        catch (error) { throw new Error(`${id}: ${error.message}`); }
+        const reasons = simplifiedFallbackReasons(payload);
+        if (reasons.length) {
+          const attemptPath = path.join(outputDir, 'reliability-attempts', `run-${String(run).padStart(2, '0')}`, item.caseId, `attempt-${String(attempt).padStart(2, '0')}.json`);
+          await fsp.mkdir(path.dirname(attemptPath), { recursive: true });
+          await fsp.writeFile(attemptPath, `${JSON.stringify({ id, attempt, durationMs: Date.now() - started, servingRevision: revision, reasons, payload }, null, 2)}\n`, 'utf8');
+          const transient = reasons.every((reason) => /status (?:422|429|500|502|503|504)|rate.?limit|json_generation_failed/i.test(reason));
+          if (transient && attempt <= options.reliabilityRetries) {
+            process.stderr.write(`${id}: reliability retry ${attempt}/${options.reliabilityRetries} after ${reasons.join('; ')}\n`);
+            await new Promise((resolve) => setTimeout(resolve, Math.max(options.cooldownMs, 15000 * attempt)));
+            continue;
+          }
+          throw new Error(`${id}: simplified pipeline fallback remained after ${attempt} attempt(s): ${reasons.join('; ')}`);
+        }
+        saved = { id, caseId: item.caseId, run, durationMs: Date.now() - started, receivedAt: new Date().toISOString(), transcriptSha256: item.transcriptSha256, servingRevision: revision, payload };
+        break;
+      }
+      if (!saved) throw new Error(`${id}: no clean benchmark response was produced.`);
+      checkpoint.servingRevision = saved.servingRevision;
       await fsp.mkdir(path.dirname(file), { recursive: true });
       await fsp.writeFile(file, `${JSON.stringify(saved, null, 2)}\n`, 'utf8');
       checkpoint.completed.push(id);
       await fsp.writeFile(checkpointPath, `${JSON.stringify(checkpoint, null, 2)}\n`, 'utf8');
       records.push(saved);
-      process.stderr.write(`${id}: ${saved.durationMs}ms, revision ${revision}\n`);
+      process.stderr.write(`${id}: ${saved.durationMs}ms, revision ${saved.servingRevision}\n`);
+      if (options.cooldownMs) await new Promise((resolve) => setTimeout(resolve, options.cooldownMs));
     }
   }
   return records;
@@ -535,5 +574,5 @@ async function main() {
   console.log(JSON.stringify({ ok: true, outputDir, ...paths, summary: report.summary }, null, 2));
 }
 
-module.exports = { loadCorpus, validateCorpus, verifyCloudAssets, semanticMatrices, oneToOneAssignment, matchCollection, calibrateThreshold, extractOutput, scoreRecords, classifyVerdict, renderDashboard, parseArgs, validateMirrorPayload };
+module.exports = { loadCorpus, validateCorpus, verifyCloudAssets, semanticMatrices, oneToOneAssignment, matchCollection, calibrateThreshold, extractOutput, scoreRecords, classifyVerdict, renderDashboard, parseArgs, validateMirrorPayload, simplifiedFallbackReasons };
 if (require.main === module) main().catch((error) => { console.error(error.stack || error.message || error); process.exitCode = 1; });

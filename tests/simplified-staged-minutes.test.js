@@ -126,6 +126,31 @@ test('actions use one whole-transcript call and reject unsupported owner and dea
   assert.equal(result.actions[1].deadline, 'Not stated');
 });
 
+test('a 422 action window is split and retried without falling back the whole stage', async () => {
+  const actionPrepared = prepared([]);
+  actionPrepared.units = Array.from({ length: 16 }, (_, index) => ({
+    id: `line_${index + 1}_unit_0`,
+    speaker: 'Alex Smith',
+    text: `I will verify release item ${index + 1} tomorrow.`
+  }));
+  let calls = 0;
+  const fetchImpl = async (_url, options) => {
+    calls += 1;
+    if (calls === 1) return { ok: false, status: 422, json: async () => ({ error: 'json_generation_failed' }) };
+    const prompt = JSON.parse(options.body).messages[1].content;
+    const evidenceId = prompt.match(/line_\d+_unit_0/)?.[0];
+    return response({ actions: [{ owner: 'Alex Smith', action: `Verify the release item supported by ${evidenceId}`, deadline: 'tomorrow', evidenceIds: [evidenceId] }] });
+  };
+  const result = await simplified.generateActions('transcript', ['Release verification'], {
+    apiKey: 'test', fetchImpl, prepared: actionPrepared
+  });
+  assert.equal(calls, 3);
+  assert.equal(result.telemetry.evidenceWindowCount, 1);
+  assert.equal(result.telemetry.perWindow.length, 2);
+  assert.ok(result.telemetry.perWindow.every((window) => window.splitDepth === 1));
+  assert.equal(result.actions.length, 1, 'overlapping split results are still deduplicated after recovery');
+});
+
 test('action publication gate accepts ongoing work, unresolved prerequisites and accepted proposals', () => {
   assert.equal(simplified.actionCommitmentSupported([
     { speaker: 'Andrew Kane', text: 'I am currently working on the electrical compliance testing.' }

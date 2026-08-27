@@ -6,6 +6,7 @@ const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 const fetch = require('node-fetch');
+const { trooperFetch } = require('./trooperTransport');
 
 const DEFAULT_MODEL = path.join(__dirname, '..', 'artifacts', 'meeting-minutes-usefulness-v3', 'classifier.joblib');
 const DEFAULT_URL = 'https://eu.router.trooper.ai/v1/chat/completions';
@@ -128,12 +129,9 @@ async function callTrooper(prompt, options = {}) {
   const apiKey = clean(options.apiKey || process.env.TROOPER_API_KEY);
   if (!apiKey) throw new Error('TROOPER_API_KEY is not configured.');
   const fetchImpl = options.fetchImpl || fetch;
-  const controller = new AbortController();
   const timeoutMs = Number(options.timeoutMs || process.env.STAGED_SIMPLIFIED_TROOPER_TIMEOUT_MS || 120000);
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
   const startedAt = Date.now();
-  try {
-    const response = await fetchImpl(options.url || process.env.TROOPER_CHAT_COMPLETIONS_URL || DEFAULT_URL, {
+  const response = await trooperFetch(options.url || process.env.TROOPER_CHAT_COMPLETIONS_URL || DEFAULT_URL, {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -145,17 +143,25 @@ async function callTrooper(prompt, options = {}) {
         temperature: 0.1,
         max_tokens: Number(options.maxTokens || 1800),
         response_format: { type: 'json_object' }
-      }),
-      signal: controller.signal
+      })
+    }, {
+      fetchImpl,
+      timeoutMs,
+      minIntervalMs: options.minIntervalMs ?? (options.fetchImpl ? 0 : undefined),
+      maxRetries: options.maxRetries ?? (options.fetchImpl ? 0 : undefined),
+      baseDelayMs: options.baseDelayMs,
+      jitterMs: options.jitterMs,
+      waitImpl: options.waitImpl
     });
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(`Trooper simplified staged request failed with status ${response.status}.`);
-    const output = extractJson(body?.choices?.[0]?.message?.content);
-    if (!output) throw new Error('Trooper simplified staged request returned invalid JSON.');
-    return { output, usage: body.usage || null, timingMs: Date.now() - startedAt };
-  } finally {
-    clearTimeout(timer);
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(`Trooper simplified staged request failed with status ${response.status}.`);
+    error.statusCode = response.status;
+    throw error;
   }
+  const output = extractJson(body?.choices?.[0]?.message?.content);
+  if (!output) throw new Error('Trooper simplified staged request returned invalid JSON.');
+  return { output, usage: body.usage || null, timingMs: Date.now() - startedAt, transport: response.trooperTransport || null };
 }
 
 function validTopic(value) {
@@ -250,6 +256,44 @@ function inventoryChunks(units = [], maxRows = 28, maxChars = 7000) {
   return chunks;
 }
 
+async function mapBounded(items, worker, options = {}) {
+  const requested = Number(options.concurrency ?? process.env.STAGED_TROOPER_CONCURRENCY ?? 1);
+  const concurrency = Math.max(1, Math.min(items.length || 1, Number.isFinite(requested) ? requested : 1));
+  const output = Array(items.length);
+  let cursor = 0;
+  async function runNext() {
+    while (cursor < items.length) {
+      const index = cursor;
+      cursor += 1;
+      output[index] = await worker(items[index], index);
+    }
+  }
+  await Promise.all(Array.from({ length: concurrency }, runNext));
+  return output;
+}
+
+async function callEvidenceWithAdaptiveSplit(evidence, promptBuilder, options, maxTokens, depth = 0) {
+  try {
+    const call = await callTrooper(promptBuilder(evidence), { ...options, maxTokens });
+    return [{ ...call, evidence, splitDepth: depth }];
+  } catch (error) {
+    if (Number(error?.statusCode) !== 422 || evidence.length < 8 || depth >= 2) throw error;
+    const middle = Math.ceil(evidence.length / 2);
+    const halves = [evidence.slice(0, middle), evidence.slice(middle)].filter((rows) => rows.length);
+    const nested = await mapBounded(halves, (rows) => callEvidenceWithAdaptiveSplit(rows, promptBuilder, options, maxTokens, depth + 1), { concurrency: 1 });
+    return nested.flat();
+  }
+}
+
+async function retryJsonGenerationOnce(prompt, options, maxTokens) {
+  try {
+    return await callTrooper(prompt, { ...options, maxTokens });
+  } catch (error) {
+    if (Number(error?.statusCode) !== 422) throw error;
+    return callTrooper(prompt, { ...options, maxTokens: Math.ceil(maxTokens * 1.25) });
+  }
+}
+
 function discussionGroupingPrompt(points) {
   return [
     'Organise the supplied factual meeting-minutes points into 4 to 10 useful, substantive topic groups.',
@@ -270,17 +314,19 @@ async function generateDiscussionInventory(transcriptText, options = {}) {
   const prepared = options.prepared || await prepareTranscript(transcriptText, [], options);
   const chunks = inventoryChunks(prepared.units);
   if (!chunks.length) throw new Error('Simplified discussion inventory had no retained transcript evidence.');
-  const calls = await Promise.all(chunks.map((evidence) => callTrooper(
-    discussionInventoryPrompt(evidence),
-    { ...options, maxTokens: 2400 }
-  )));
+  const calls = (await mapBounded(chunks, (evidence) => callEvidenceWithAdaptiveSplit(
+    evidence,
+    discussionInventoryPrompt,
+    options,
+    2400
+  ), options)).flat();
   const points = [];
   const seenPoints = new Set();
   calls.forEach((call, callIndex) => {
     if (!Array.isArray(call.output.discussionPoints)) {
       throw new Error(`Malformed discussion inventory response returned for chunk ${callIndex + 1}.`);
     }
-    const evidence = chunks[callIndex];
+    const evidence = call.evidence;
     for (const candidate of call.output.discussionPoints) {
       const text = cleanPublicDiscussionPoint(candidate?.text);
       const cited = citedEvidence(candidate, evidence);
@@ -291,7 +337,11 @@ async function generateDiscussionInventory(transcriptText, options = {}) {
     }
   });
   if (!seenPoints.size) throw new Error('Simplified discussion inventory returned no grounded points.');
-  const groupingCall = await callTrooper(discussionGroupingPrompt(points.map(({ id, text }) => ({ id, text }))), { ...options, maxTokens: 1200 });
+  const groupingCall = await retryJsonGenerationOnce(
+    discussionGroupingPrompt(points.map(({ id, text }) => ({ id, text }))),
+    options,
+    1200
+  );
   if (!Array.isArray(groupingCall.output.groups)) throw new Error('Malformed discussion grouping response.');
   const pointById = new Map(points.map((point) => [point.id, point]));
   const assigned = new Set();
@@ -340,11 +390,13 @@ async function generateDiscussionInventory(transcriptText, options = {}) {
       calls: calls.length + 1,
       perChunk: calls.map((call, index) => ({
         chunk: index + 1,
-        evidenceCount: chunks[index].length,
+        evidenceCount: call.evidence.length,
+        splitDepth: call.splitDepth || 0,
         timingMs: call.timingMs,
-        tokenUsage: call.usage || null
+        tokenUsage: call.usage || null,
+        transport: call.transport || null
       })),
-      grouping: { timingMs: groupingCall.timingMs, tokenUsage: groupingCall.usage || null },
+      grouping: { timingMs: groupingCall.timingMs, tokenUsage: groupingCall.usage || null, transport: groupingCall.transport || null },
       tokenUsage: [...calls.map((call) => call.usage), groupingCall.usage].filter(Boolean),
       timingMs: calls.reduce((sum, call) => sum + Number(call.timingMs || 0), 0) + Number(groupingCall.timingMs || 0)
     }
@@ -492,11 +544,12 @@ function actionEvidenceChunks(evidence, size = 32, overlap = 8) {
 }
 
 async function generateDiscussion(transcriptText, topics, options = {}) {
+  const startedAt = Date.now();
   assertTrooperConfigured(options);
   const topicList = uniqueStrings(topics, 8);
   if (!topicList.length) throw new Error('Simplified discussion generation needs confirmed topics.');
   const prepared = options.prepared || await prepareTranscript(transcriptText, topicList, options);
-  const calls = await Promise.all(topicList.map(async (topic) => {
+  const calls = await mapBounded(topicList, async (topic) => {
     const evidence = evidenceRows(prepared, topic).slice(0, 40);
     const call = await callTrooper(discussionPrompt(topic, evidence), { ...options, maxTokens: 900 });
     if (!Array.isArray(call.output.discussionPoints)) {
@@ -513,9 +566,9 @@ async function generateDiscussion(transcriptText, topics, options = {}) {
       if (points.length >= 3) break;
     }
     if (!points.length) throw new Error(`No grounded discussion points returned for ${topic}.`);
-    return { topic, points, topicId: crypto.createHash('sha1').update(topic).digest('hex').slice(0, 12), evidenceIds: uniqueStrings(pointRefs.flatMap((item) => item.evidenceIds), 40), pointRefs, usage: call.usage, timingMs: call.timingMs };
-  }));
-  const discussion = calls.map(({ usage, timingMs, ...card }) => card).filter((card) => card.points.length);
+    return { topic, points, topicId: crypto.createHash('sha1').update(topic).digest('hex').slice(0, 12), evidenceIds: uniqueStrings(pointRefs.flatMap((item) => item.evidenceIds), 40), pointRefs, usage: call.usage, timingMs: call.timingMs, transport: call.transport };
+  }, options);
+  const discussion = calls.map(({ usage, timingMs, transport, ...card }) => card).filter((card) => card.points.length);
   if (!discussion.length) throw new Error('Simplified discussion generation returned no grounded cards.');
   return {
     discussion,
@@ -529,15 +582,17 @@ async function generateDiscussion(transcriptText, topics, options = {}) {
         evidenceCount: item.evidenceIds.length,
         outputCount: item.points.length,
         timingMs: item.timingMs,
-        tokenUsage: item.usage || null
+        tokenUsage: item.usage || null,
+        transport: item.transport || null
       })),
       tokenUsage: calls.map((item) => item.usage).filter(Boolean),
-      timingMs: Math.max(0, ...calls.map((item) => Number(item.timingMs || 0)))
+      timingMs: Date.now() - startedAt
     }
   };
 }
 
 async function generateActions(transcriptText, topics, options = {}) {
+  const startedAt = Date.now();
   assertTrooperConfigured(options);
   const topicList = uniqueStrings(topics, 24);
   const prepared = options.prepared || await prepareTranscript(transcriptText, [], options);
@@ -549,11 +604,13 @@ async function generateActions(transcriptText, topics, options = {}) {
   // Overlapping chronological windows prevent long responses from silently dropping
   // workstreams near the end while preserving action threads that cross a boundary.
   const evidenceChunks = actionEvidenceChunks(evidence);
-  const calls = await Promise.all(evidenceChunks.map(async (chunk, index) => {
-    const call = await callTrooper(actionPrompt(topicList, chunk), { ...options, maxTokens: 1800 });
-    if (!Array.isArray(call.output.actions)) throw new Error(`Malformed whole-transcript action response for evidence window ${index + 1}.`);
-    return { ...call, evidence: chunk, index };
-  }));
+  const calls = (await mapBounded(evidenceChunks, async (chunk, index) => {
+    const splitCalls = await callEvidenceWithAdaptiveSplit(chunk, (rows) => actionPrompt(topicList, rows), options, 1800);
+    for (const call of splitCalls) {
+      if (!Array.isArray(call.output.actions)) throw new Error(`Malformed whole-transcript action response for evidence window ${index + 1}.`);
+    }
+    return splitCalls.map((call) => ({ ...call, index }));
+  }, options)).flat();
 
   const rejected = { invalidText: 0, missingEvidence: 0, unsupportedCommitment: 0 };
   const accepted = [];
@@ -609,12 +666,14 @@ async function generateActions(transcriptText, topics, options = {}) {
       perWindow: calls.map((item) => ({
         window: item.index + 1,
         evidenceCount: item.evidence.length,
+        splitDepth: item.splitDepth || 0,
         rawCandidateCount: item.output.actions.length,
         timingMs: item.timingMs,
-        tokenUsage: item.usage || null
+        tokenUsage: item.usage || null,
+        transport: item.transport || null
       })),
       tokenUsage: calls.map((item) => item.usage).filter(Boolean),
-      timingMs: Math.max(0, ...calls.map((item) => Number(item.timingMs || 0)))
+      timingMs: Date.now() - startedAt
     }
   };
 }

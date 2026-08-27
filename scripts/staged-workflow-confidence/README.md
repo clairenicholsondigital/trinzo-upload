@@ -25,6 +25,16 @@ node scripts/staged-workflow-confidence/benchmark.js run \
   --resume benchmark-results/staged-workflow-confidence/2026-08-27T18-00-00-000Z
 ```
 
+Live benchmark runs are reliability-strict by default. Discussion or Actions output that
+used the canonical fallback is stored under `reliability-attempts/`, cooled down and
+retried; it is never silently included in a completed quality report. Control pacing with
+`STAGED_BENCHMARK_COOLDOWN_MS` and the bounded retry count with
+`STAGED_BENCHMARK_RELIABILITY_RETRIES`.
+
+Production staged Trooper calls are process-wide serialised by default. The request gap,
+transport retries and initial retry delay can be configured with
+`TROOPER_MIN_INTERVAL_MS`, `TROOPER_MAX_RETRIES` and `TROOPER_RETRY_BASE_MS`.
+
 Score a complete raw result directory again only when it does not already contain an
 immutable report:
 

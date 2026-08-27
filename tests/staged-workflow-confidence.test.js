@@ -55,6 +55,15 @@ test('deployed mirror validation rejects malformed payloads and revision drift',
   }, 200), '0af9f95f95c0');
 });
 
+test('benchmark identifies simplified fallback output as a reliability attempt', () => {
+  const reasons = benchmark.simplifiedFallbackReasons({ diagnostics: { trace: [
+    { stage: 'summary', telemetry: { simplifiedPipeline: { fallback: true, reason: 'ignored' } } },
+    { stage: 'discussion', telemetry: { simplifiedPipeline: { fallback: true, reason: 'status 429' } } },
+    { stage: 'actions', telemetry: { simplifiedPipeline: { fallback: false } } }
+  ] } });
+  assert.deepEqual(reasons, ['status 429']);
+});
+
 test('verdict bands keep critical false actions and low recall in major edit', () => {
   const base = {
     criticalFalseClaims: 0,

@@ -4151,7 +4151,12 @@ async function stagedWorkflowResponse(stage, transcript, input = {}, options = {
     };
   } catch (error) {
     safeLogError('[Simplified primary stage failed; running canonical fallback]', error, { stage });
-    const fallback = await (options.canonicalFallback || canonicalStagedResponse)(stage, transcript, { ...input, _skipSimplifiedOverride: true });
+    const externalFailure = [422, 429, 500, 502, 503, 504].includes(Number(error?.statusCode));
+    const fallback = await (options.canonicalFallback || canonicalStagedResponse)(stage, transcript, {
+      ...input,
+      _skipSimplifiedOverride: true,
+      _skipTrooperExternal: externalFailure
+    });
     const fallbackTelemetry = {
       enabled: true,
       used: false,
@@ -4401,6 +4406,10 @@ function servingRevision() {
 
 async function canonicalStagedResponse(stage, transcript, input = {}) {
   const generationStartedAt = Date.now();
+  // A simplified request that has exhausted its transport retries must not trigger a
+  // second burst through canonical proposal, polish and wording calls. The deterministic
+  // canonical path remains available, but external Trooper calls stay off for this stage.
+  const skipTrooperExternal = Boolean(input._skipTrooperExternal);
   // One-run loss attribution (scripts/action_loss_attribution.js). ACTION_TRACE names a
   // file; every snapshot and row-eating mutation in the actions stage is recorded there,
   // so a single scorecard run can say, for each expected action the scorecard missed,
@@ -4512,7 +4521,7 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
   if (stage === 'actions') traceSnap('stage_published', payload?.screens?.actions);
   const canonicalEvidencePack = Array.isArray(payload._canonicalEvidencePack) ? payload._canonicalEvidencePack : [];
   let polished = { payload, used: false, reason: 'Trooper is not used for this stage.' };
-  if (['discussion', 'actions'].includes(stage)) {
+  if (['discussion', 'actions'].includes(stage) && !skipTrooperExternal) {
     try {
       polished = await polishCanonicalStage(payload, { reviewerGuidance: input.additionalContext || '' });
     } catch (error) {
@@ -4584,7 +4593,7 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
   // already composed against cited turns, and applyActionRewrite's contract would treat
   // them as candidates rather than final rows.
   let actionProposals = { agreed: [], requirements: [], considered: [], ungrounded: [], reason: 'not_attempted' };
-  if (stage === 'actions') {
+  if (stage === 'actions' && !skipTrooperExternal) {
     // Same parse the stage itself ran on, so a quote resolves against the events the
     // pipeline actually saw rather than a second, differently-parsed view of the meeting.
     actionProposals = await proposeActions(semanticTranscript.text, prepareEvidence(semanticTranscript.text), {});
@@ -4922,7 +4931,7 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
   // unassigned-action merge, on the exact rows the reviewer would have read. Rows with clean
   // wording cost nothing, because the repair only fires when at least one row is broken.
   let actionWordingRepair = { repaired: 0, attempted: 0 };
-  if (stage === 'actions') {
+  if (stage === 'actions' && !skipTrooperExternal) {
     traceSnap('after_presentation', result?.screens?.actions);
     // The participant list travels with the repair so the repeated_person_name detector
     // can actually fire on this path - wordingFaults without options.people can never
@@ -5129,7 +5138,7 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
   // had no second chance anywhere - the rewrite that produced it was the last pass that
   // touched it.
   let discussionWordingRepair = { repaired: 0, attempted: 0 };
-  if (stage === 'discussion') {
+  if (stage === 'discussion' && !skipTrooperExternal) {
     discussionWordingRepair = await repairDiscussionWording(result, canonicalEvidencePack, {
       people: result?.canonicalDiagnostics?.entityNames || [],
       allEvents: prepareEvidence(semanticTranscript.text).events
@@ -5144,7 +5153,7 @@ async function canonicalStagedResponse(stage, transcript, input = {}) {
     // every proposed point must quote a turn that resolves to this transcript, must pass
     // the wording detectors, and must not duplicate a point already on the screen.
     // DISCUSSION_PROPOSALS=0 turns the pass off.
-    if (process.env.DISCUSSION_PROPOSALS !== '0') {
+    if (!skipTrooperExternal && process.env.DISCUSSION_PROPOSALS !== '0') {
       const existingCards = Array.isArray(result?.screens?.discussion) ? result.screens.discussion : [];
       const existingPoints = existingCards.flatMap((card) => (card.points || []).map((point) => (typeof point === 'string' ? point : point?.text || '')));
       const proposal = await proposeDiscussionPoints(semanticTranscript.text, prepareEvidence(semanticTranscript.text), existingPoints, {});

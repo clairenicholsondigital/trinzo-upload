@@ -115,6 +115,26 @@ test('shared workflow invokes canonical only after simplified validation fails',
   assert.match(output.telemetryPreview.simplifiedPipeline.reason, /invalid simplified response/);
 });
 
+test('a rate-limited simplified stage suppresses further Trooper calls in canonical fallback', async () => {
+  let fallbackInput;
+  const rateLimit = new Error('rate limited');
+  rateLimit.statusCode = 429;
+  await api.stagedEvaluation.stagedWorkflowResponse(
+    'actions',
+    { text: 'Alex Smith: I will verify the release tomorrow. '.repeat(4), source: 'test', fileName: 'release.txt' },
+    { confirmedDiscussion: [{ topic: 'Release verification', points: ['Verification remained open.'] }] },
+    {
+      generateActions: async () => { throw rateLimit; },
+      canonicalFallback: async (_stage, _transcript, input) => {
+        fallbackInput = input;
+        return { pipeline: 'canonical_staged_v2', screens: { actions: [] }, pipelineHealth: {}, telemetryPreview: {} };
+      }
+    }
+  );
+  assert.equal(fallbackInput._skipSimplifiedOverride, true);
+  assert.equal(fallbackInput._skipTrooperExternal, true);
+});
+
 test('browserless sequence passes the same confirmed screens through the shared stage runner', async () => {
   const calls = [];
   const stageRunner = async (stage, _transcript, input) => {
