@@ -173,6 +173,21 @@ def render_marker_free_transcript(rows: list[dict], separator: str = "\n---\n") 
     return separator.join(compact(row.get("text", "")) for row in rows if compact(row.get("text", "")))
 
 
+def first_name(speaker: str) -> str:
+    value = compact(speaker)
+    if "," in value:
+        value = value.split(",", 1)[1].strip()
+    return value.split()[0] if value else "Speaker"
+
+
+def render_first_name_transcript(rows: list[dict], separator: str = "\n---\n") -> str:
+    """Render retained/uncertain units with first-name speaker labels only."""
+    return separator.join(
+        f"{first_name(row.get('speaker', ''))}: {compact(row.get('text', ''))}"
+        for row in rows if compact(row.get("text", ""))
+    )
+
+
 def train(args: argparse.Namespace) -> int:
     joblib, np, SentenceTransformer, LogisticRegression, classification_report, GroupShuffleSplit = load_dependencies()
     transcript_paths = discover_transcripts(Path(args.transcripts))
@@ -261,11 +276,12 @@ def classify(args: argparse.Namespace) -> int:
     kept = [row for row in results if row["classification"] != "remove"]
     cleaned = "\n".join(f"{row['speaker']} {row['timestamp']} {row['text']}" for row in kept)
     marker_free = render_marker_free_transcript(kept)
+    first_name_transcript = render_first_name_transcript(kept)
     if args.output:
         output_path = Path(args.output)
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(marker_free + "\n", encoding="utf-8")
-    output = {"executed": True, "model": str(args.model), "input": str(path), "counts": {label: sum(row["classification"] == label for row in results) for label in LABELS}, "units": results, "cleaned_transcript": cleaned, "marker_free_transcript": marker_free}
+        output_path.write_text((first_name_transcript if args.output_mode == "first-name" else marker_free) + "\n", encoding="utf-8")
+    output = {"executed": True, "model": str(args.model), "input": str(path), "counts": {label: sum(row["classification"] == label for row in results) for label in LABELS}, "units": results, "cleaned_transcript": cleaned, "marker_free_transcript": marker_free, "first_name_transcript": first_name_transcript}
     print(json.dumps(output, indent=2, ensure_ascii=False))
     return 0
 
@@ -284,6 +300,7 @@ def main() -> int:
     classify_parser.add_argument("--model", required=True)
     classify_parser.add_argument("--remove-threshold", type=float, default=0.85)
     classify_parser.add_argument("--output", help="write the marker-free transcript to this text file")
+    classify_parser.add_argument("--output-mode", choices=["marker-free", "first-name"], default="marker-free")
     classify_parser.set_defaults(function=classify)
     args = parser.parse_args()
     result = args.function(args)

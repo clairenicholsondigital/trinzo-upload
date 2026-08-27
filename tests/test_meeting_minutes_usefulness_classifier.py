@@ -46,6 +46,16 @@ class UsefulnessClassifierTests(unittest.TestCase):
         self.assertNotIn("Rebecca Cuckoo", rendered)
         self.assertNotIn("34:06", rendered)
 
+    def test_first_name_render_keeps_only_first_names(self):
+        rows = [
+            {"speaker": "Rebecca Cuckoo", "text": "The risk remains under review."},
+            {"speaker": "Smith, Stuart M", "text": "I will check the test result."},
+        ]
+        self.assertEqual(
+            MODULE.render_first_name_transcript(rows),
+            "Rebecca: The risk remains under review.\n---\nStuart: I will check the test result.",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
