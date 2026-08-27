@@ -261,6 +261,10 @@ def classify(args: argparse.Namespace) -> int:
     kept = [row for row in results if row["classification"] != "remove"]
     cleaned = "\n".join(f"{row['speaker']} {row['timestamp']} {row['text']}" for row in kept)
     marker_free = render_marker_free_transcript(kept)
+    if args.output:
+        output_path = Path(args.output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(marker_free + "\n", encoding="utf-8")
     output = {"executed": True, "model": str(args.model), "input": str(path), "counts": {label: sum(row["classification"] == label for row in results) for label in LABELS}, "units": results, "cleaned_transcript": cleaned, "marker_free_transcript": marker_free}
     print(json.dumps(output, indent=2, ensure_ascii=False))
     return 0
@@ -279,9 +283,11 @@ def main() -> int:
     classify_parser.add_argument("transcript")
     classify_parser.add_argument("--model", required=True)
     classify_parser.add_argument("--remove-threshold", type=float, default=0.85)
+    classify_parser.add_argument("--output", help="write the marker-free transcript to this text file")
     classify_parser.set_defaults(function=classify)
     args = parser.parse_args()
-    return args.function(args)
+    result = args.function(args)
+    return result
 
 
 if __name__ == "__main__":
