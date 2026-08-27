@@ -56,6 +56,10 @@ class UsefulnessClassifierTests(unittest.TestCase):
             "Rebecca: The risk remains under review.\n---\nStuart: I will check the test result.",
         )
 
+    def test_speech_cleanup_removes_fillers_and_adjacent_repetition(self):
+        self.assertEqual(MODULE.clean_speech_text("Oh, clinical clinical settings, yeah yeah."), "clinical settings, yeah.")
+        self.assertEqual(MODULE.clean_speech_text("We could lock it, lock it."), "We could lock it.")
+
 
 if __name__ == "__main__":
     unittest.main()
