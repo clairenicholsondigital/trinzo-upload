@@ -1,0 +1,372 @@
+{
+  "topics": [
+    {
+      "heading": "1. Alarm system changes and clinical review",
+      "evidence": [
+        {
+          "text": "The color and the flash for each of the low, medium, and high code changes appear to have been made and are working successfully, and the only outstanding thing then to confirm is this: what happens when the mute?",
+          "status": "confirmed"
+        },
+        {
+          "text": "what happens when the mute button is pressed in terms of the LED flash only.",
+          "status": "confirmed"
+        },
+        {
+          "text": "The sound... Are doing anymore?",
+          "status": "questioned"
+        },
+        {
+          "text": "The color and the flash for each of the low, medium, and high code changes appear to have been made and are working successfully",
+          "status": "confirmed"
+        },
+        {
+          "text": "what happens when the mute? Not of a group that is for the fake. button is pressed in terms of the LED flash only.",
+          "status": "confirmed"
+        },
+        {
+          "text": "I can't even remember that mini review that needs to happen from a clinician's point of view in relation to the three changes that have now been done within the coding and Andrew to just confirm in terms of the mute button and what that what happens to the flash in relation to that.",
+          "status": "confirmed"
+        }
+      ]
+    },
+    {
+      "heading": "2. Debug and software verification",
+      "evidence": [
+        {
+          "text": "How are you getting on with the debug?",
+          "status": "confirmed"
+        },
+        {
+          "text": "I think I have an alarm software load here.",
+          "status": "confirmed"
+        },
+        {
+          "text": "Seems to be working.",
+          "status": "confirmed"
+        },
+        {
+          "text": "I've tested them on the scope and they look, you know, I haven't got a test report or anything, but they look, they're a great thing.",
+          "status": "reported"
+        },
+        {
+          "text": "So play this one, see if you can hear it.",
+          "status": "confirmed"
+        },
+        {
+          "text": "That's just a single chirp for low priority stops.",
+          "status": "confirmed"
+        },
+        {
+          "text": "That's the medium priority.",
+          "status": "confirmed"
+        },
+        {
+          "text": "That's 10, that's the high priority.",
+          "status": "confirmed"
+        },
+        {
+          "text": "So those are all working.",
+          "status": "confirmed"
+        },
+        {
+          "text": "So it comes in on the scope as chirps and you can measure the distance between them and stuff.",
+          "status": "confirmed"
+        },
+        {
+          "text": "So the existing alarm, there's the wrong priority.",
+          "status": "confirmed"
+        },
+        {
+          "text": "So I've put these different colors in.",
+          "status": "confirmed"
+        },
+        {
+          "text": "So there's now a standard, let's use cyan, blue, or yellow for low priority.",
+          "status": "confirmed"
+        },
+        {
+          "text": "So I figured it's the biggest contrast is if we do blue for the low priority, yellow for the medium priority, and red for the high priority.",
+          "status": "confirmed"
+        },
+        {
+          "text": "No, I've done the LEDs flashing.",
+          "status": "confirmed"
+        },
+        {
+          "text": "I've done the flashing a little bit.",
+          "status": "confirmed"
+        },
+        {
+          "text": "Definitely, I thought it's a lot easier to do it flashing from the LEDs, so the screen stays solid as the LEDs that flash.",
+          "status": "confirmed"
+        },
+        {
+          "text": "So, there's an alarm LED, say the alarm mute button.",
+          "status": "confirmed"
+        },
+        {
+          "text": "So, it's solid.",
+          "status": "confirmed"
+        },
+        {
+          "text": "So, a low priority has a cyan blue screen and a solid LED, and the yellow and the medium is a yellow flashing 0.6 Hertz LED with a yellow screen that's a solid, and then the high priority is red screen, but it's...",
+          "status": "confirmed"
+        },
+        {
+          "text": "Flashing at 2 hertz, so twice a second, and so that is working as well.",
+          "status": "confirmed"
+        },
+        {
+          "text": "And then you press the mute and it goes solid.",
+          "status": "confirmed"
+        },
+        {
+          "text": "I'm not, I'm not actually sure what it does at the minute.",
+          "status": "uncertain"
+        },
+        {
+          "text": "Um, I really looked at when you press the mute button.",
+          "status": "confirmed"
+        },
+        {
+          "text": "We could look at that.",
+          "status": "suggested"
+        },
+        {
+          "text": "So, you're saying at the minute it's solid?",
+          "status": "confirmed"
+        },
+        {
+          "text": "And then you press the mute on it.",
+          "status": "confirmed"
+        },
+        {
+          "text": "All right, it's flashing, then you press the mute and it goes solid.",
+          "status": "confirmed"
+        },
+        {
+          "text": "I haven't looked at the mute button, like how it like how the LED acts in that scenario, so that's probably something I need to look at.",
+          "status": "confirmed"
+        },
+        {
+          "text": "So that's whereby there is a list of what the software says is available from a debug perspective and you just need to get confirmation based on that command what is physically seen on the screen.",
+          "status": "confirmed"
+        }
+      ]
+    },
+    {
+      "heading": "3. Software change control, versioning and traceability",
+      "evidence": [
+        {
+          "text": "I know that we had looked at starting to document that change within the on a change request form.",
+          "status": "confirmed"
+        },
+        {
+          "text": "Yeah, so I submitted that last week, so I think they're going to discuss that in their meeting on Wednesday.",
+          "status": "confirmed"
+        },
+        {
+          "text": "So it lists all three of the changes, i.e. the alarm code changes, the language changes, and the retrospective from version 101 to 102.",
+          "status": "confirmed"
+        },
+        {
+          "text": "So it lists all three.",
+          "status": "confirmed"
+        },
+        {
+          "text": "And then from Rebecca, I got your update from a UL perspective.",
+          "status": "confirmed"
+        },
+        {
+          "text": "I've shared that over to Ciaran, whereas comments have been added and Any feedback, Rebecca, from you in terms of the updates that David has had put in last week to the risk management plan?",
+          "status": "confirmed"
+        },
+        {
+          "text": "David has reviewed that document as well.",
+          "status": "confirmed"
+        }
+      ]
+    },
+    {
+      "heading": "4. Language implementation and character support",
+      "evidence": [
+        {
+          "text": "Andrew: Yeah, I started learning the languages.",
+          "status": "confirmed"
+        },
+        {
+          "text": "I got, so I put 18 language files in there, and it's able to take 18 language files, but they don't have, you know, they don't have the latest translated, but those translations yet.",
+          "status": "confirmed"
+        },
+        {
+          "text": "I've kind of identified we might have a roadblock in terms of... the symbols that are needed for some of those languages.",
+          "status": "confirmed"
+        },
+        {
+          "text": "So for example, Arabic has a lot of different symbols and stuff, but it wouldn't have.",
+          "status": "confirmed"
+        },
+        {
+          "text": "So there's three languages in particular might be a problem is Arabic, Vietnamese and Greek.",
+          "status": "confirmed"
+        },
+        {
+          "text": "because they have all these different characters.",
+          "status": "confirmed"
+        },
+        {
+          "text": "David: We might be able to add a particular font for those countries, because at the moment, at the top of my head, I think it's all Arial or something, right?",
+          "status": "suggested"
+        },
+        {
+          "text": "That would be the only roadblock for that one, because, like, I think the structure is there already.",
+          "status": "confirmed"
+        },
+        {
+          "text": "So the next steps are twofold. To look at the addition of any. specific language characters based on what David has said, but also then to load the fully translated. languages which I believe you've received from my recollection from last week.",
+          "status": "confirmed"
+        }
+      ]
+    },
+    {
+      "heading": "5. Electrical compliance testing",
+      "evidence": [
+        {
+          "text": "You're effectively taking all that electrical compliance testing in-house.",
+          "status": "confirmed"
+        },
+        {
+          "text": "It looks like the final, it's my interpretation of the final. piece of that testing will be the 23rd of July, I think you've said to me, which would tie in for the end of July.",
+          "status": "confirmed"
+        },
+        {
+          "text": "So to give David obviously that bandwidth to be able to review the output or the results of that testing and where that feeds into all his, I suppose, final documents.",
+          "status": "confirmed"
+        },
+        {
+          "text": "Andrew: Yeah, I started going through the... First step was going through that, the big 60601-1 compliance document and went through that based off of the one we did for the MDD and just to find why we'd meet everything.",
+          "status": "confirmed"
+        }
+      ]
+    },
+    {
+      "heading": "6. Cybersecurity, device access and risk assessment",
+      "evidence": [
+        {
+          "text": "I know that the other thing that had come up last week was around the cybersecurity concern, in particular in relation to the USB port.",
+          "status": "confirmed"
+        },
+        {
+          "text": "I know you guys were looking at potentially looking for a Port lock to consider a port lock to be used.",
+          "status": "confirmed"
+        },
+        {
+          "text": "We're looking at for two elements, one port lock for the USB on the back of the device, you know, how you, I was gonna say, how you... stringent do you make that over the fact that the screen element can also be accessed?",
+          "status": "confirmed"
+        },
+        {
+          "text": "And if the attempt is to put any USB, you know, to overwrite the software in so much way that it becomes harmful, you know, likewise, there would be maybe some control needed on the screen to prevent somebody increasing, you know, oxygen concentration flows, flow rates or something passed and approved or for the matter of swapping from a neonatal to like an adult therapy, which would then cause harm.",
+          "status": "confirmed"
+        },
+        {
+          "text": "So we're like looking at building that out.",
+          "status": "confirmed"
+        },
+        {
+          "text": "I suppose unwarranted interference with the device is the way we were kind of looking at it.",
+          "status": "confirmed"
+        },
+        {
+          "text": "So yeah, cyber security is one of those avenues in, right?",
+          "status": "confirmed"
+        },
+        {
+          "text": "I'm not suggesting, but I mean, given Rebecca's example of someone going to, you know, someone going to the LED screen and it's currently in on a neonatal.",
+          "status": "reported"
+        },
+        {
+          "text": "So assuming someone comes along and sets a, you know, tries to take it outside that limit, two things should happen. One on alarm should sound, right?",
+          "status": "confirmed"
+        },
+        {
+          "text": "OK, so assuming someone comes along and sets a, you know, tries to take it outside that limit, two things should happen. One on alarm should sound, right?",
+          "status": "confirmed"
+        },
+        {
+          "text": "Right, and two, you could, you could in theory, lock it at the higher, you know, lock it at the higher limit, right, or say that any, you know, or any changes like that should be.",
+          "status": "confirmed"
+        },
+        {
+          "text": "So you could go out to see Bob bubble.",
+          "status": "confirmed"
+        },
+        {
+          "text": "But will the overpressure valves kick in on the adult for a neonatal before it does damage is what I'm saying.",
+          "status": "confirmed"
+        },
+        {
+          "text": "But a similar thing for your NCPAP, you'll have the overpressure valves for NCPAP like pressure levels.",
+          "status": "confirmed"
+        },
+        {
+          "text": "I know we do have the, once you set the therapy, we do have the little lock that you have to press and go, do you want, and it brings up a setting to say, do you want to stop this therapy or something?",
+          "status": "confirmed"
+        },
+        {
+          "text": "It's quite instructive as well.",
+          "status": "confirmed"
+        },
+        {
+          "text": "So anybody that is trying to cause harm might just go, yeah, of course I want to stop therapy.",
+          "status": "confirmed"
+        }
+      ]
+    },
+    {
+      "heading": "7. Standards and regulatory applicability",
+      "evidence": [
+        {
+          "text": "I purchased 2 standards, 81001, which is I think the cyber security one.",
+          "status": "confirmed"
+        },
+        {
+          "text": "So I purchased 2 standards, 81001-5-1, which was the health software and health IT system safety, effectiveness and security.",
+          "status": "confirmed"
+        },
+        {
+          "text": "And then the other was 27427 anaesthetic and respiratory equipment and nebulizing systems.",
+          "status": "confirmed"
+        },
+        {
+          "text": "Opponents, I think Colm had mentioned about looking at that standard to see if it was applicable. With regards to the nebulizing port, so Andrew, I'll send that on and we can maybe just get an assessment of that.",
+          "status": "confirmed"
+        },
+        {
+          "text": "The cyber security one might give a bit of guidance about what we're talking about there.",
+          "status": "confirmed"
+        },
+        {
+          "text": "I can follow up with Colm as well.",
+          "status": "confirmed"
+        }
+      ]
+    },
+    {
+      "heading": "8. Supporting technical records and Cognidocs",
+      "evidence": [
+        {
+          "text": "David did sent on today two documents, one in relation to the fan logic, Andrew, that he shared with you.",
+          "status": "confirmed"
+        },
+        {
+          "text": "So just for that need, that needs to probably be reviewed from your perspective and if that needs to be added to your Cognidocs perspective. just not sure if it does.",
+          "status": "confirmed"
+        },
+        {
+          "text": "I've shared that over to Ciaran, whereas comments have been added and Any feedback, Rebecca, from you in terms of the updates that David has had put in last week to the risk management plan?",
+          "status": "confirmed"
+        }
+      ]
+    }
+  ]
+}
