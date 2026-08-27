@@ -1,0 +1,19 @@
+text,label,reason,source
+"The occurrence rating can remain low because we have not seen third parties interact with or complain about interference with the machines.",retain,"risk-rating rationale evidence",ai_rationale
+"This evidence supports the low occurrence score even though the severity for the neonatal population is high.",retain,"risk-rating rationale evidence",ai_rationale
+"The benefit-risk conclusion depends on the likelihood of the event and the controls already considered.",retain,"risk-rating rationale evidence",ai_rationale
+"If the risk remains high after controls, the team must document the benefit-risk analysis and its justification.",retain,"risk-rating rationale evidence",ai_rationale
+"Adding a password to the screen would itself introduce another software change and could affect scope and timing.",retain,"project-impact consequence",ai_impact
+"A password could create clinical delay because a clinician may need to intervene quickly.",retain,"clinical consequence of proposed mitigation",ai_impact
+"The final decision needs to explain why the proposed control is not being added.",retain,"decision rationale",ai_rationale
+"The proposed control is being assessed against the risk, its occurrence, its severity, and possible new risks.",retain,"risk-assessment evidence",ai_rationale
+"The finding has not yet become an action, but it is evidence needed to support the documented conclusion.",retain,"supporting evidence",ai_rationale
+"The person will be on the same call so the clinician feedback can be gathered together.",retain,"context supporting follow-up",ai_context
+"Before writing the test script, verify the commands against the software code so the script reflects actual behaviour.",retain,"verification rationale",ai_context
+"I used to go there all the time.",remove,"unrelated side conversation",ai_noise
+"That is a lovely mug.",remove,"unrelated side conversation",ai_noise
+"Someone got the job, apparently.",remove,"unrelated side conversation",ai_noise
+"The connection is breaking up and I cannot hear you.",remove,"audio logistics",ai_noise
+"Sorry, I was going to sneeze there.",remove,"physical interruption",ai_noise
+"Jacqui Fox stopped transcription",remove,"transcription marker",ai_noise
+"Rebecca Cuckoo started transcription",remove,"transcription marker",ai_noise
