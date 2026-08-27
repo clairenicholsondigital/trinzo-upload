@@ -351,16 +351,25 @@ async function generateDiscussionInventory(transcriptText, options = {}) {
   };
 }
 
-function actionPrompt(topic, evidence) {
+function actionPrompt(topics, evidence) {
   return [
-    `Extract explicit or strongly supported follow-up actions for the confirmed topic: ${topic}`,
-    'Use only the supplied evidence, including commitments that develop across multiple supplied turns.',
+    'Read the complete denoised meeting transcript evidence and extract all explicit or strongly supported outstanding follow-up actions suitable for official meeting minutes.',
+    'Scan the full evidence; do not rely on a closing recap or restrict retrieval to the reviewer topic groups.',
+    'Identify action threads that develop across multiple turns or different parts of the meeting and combine related fragments into one clear action when the combined evidence supports the same follow-up.',
+    'Treat repeated references, clarifications, dependencies, proposed next steps and later recaps as supporting evidence for the same action thread.',
+    'Treat an unresolved prerequisite as an action when the discussion makes clear that a verification, review, investigation, documentation or other concrete step still needs to happen before work can be completed, even when phrased conversationally.',
+    'Treat clearly ongoing work as an action when the evidence shows that a concrete deliverable or step remains to be completed.',
+    'Before returning, audit every evidence row for current work, accepted proposals, requested follow-ups and unfinished concrete steps so that quieter workstreams are not omitted.',
     'Keep actions separate when owner, deliverable, verb, document, system, standard or deadline differs.',
-    'Do not turn completed work, discussion, possibilities, unresolved questions, proposed options, general needs, exploratory “look at/consider/determine” language or meeting administration into actions.',
-    'An action must be supported by an explicit commitment or assignment in the evidence, such as a first-person future commitment, a named assignment, an accepted request, or an explicit action recap. A useful idea or necessary task without a commitment is not an action.',
+    'When one person accepts a proposal and separately commits to follow up, return the proposer’s task and the follow-up as separate actions and cite all supporting turns.',
+    'Do not turn completed-only history, rejected or unaccepted hypothetical suggestions, general discussion, speculative possibilities or meeting administration into actions.',
+    'An action may be supported by a direct commitment, named assignment, accepted request or proposal, explicit action recap, clearly ongoing work, or a concrete unresolved prerequisite.',
     'Begin each action with a clear verb. Include an owner or deadline only when the cited evidence explicitly supports it; otherwise use Not stated.',
     'Each action must cite one or more supplied evidence IDs. Return JSON only:',
     '{"actions":[{"owner":"Not stated","action":"...","deadline":"Not stated","evidenceIds":["line_1_unit_0"]}]}',
+    '',
+    'REVIEWER TOPIC GROUPS (context only; they are not an exhaustive retrieval boundary):',
+    JSON.stringify(uniqueStrings(topics, 24)),
     '',
     'EVIDENCE:',
     JSON.stringify(evidence)
@@ -369,7 +378,11 @@ function actionPrompt(topic, evidence) {
 
 function citedEvidence(candidate, evidence) {
   const allowed = new Map(evidence.map((item) => [clean(item.id), item]));
-  const ids = uniqueStrings(candidate?.evidenceIds, 12).filter((id) => allowed.has(id));
+  const ids = uniqueStrings(candidate?.evidenceIds, 12).map((id) => {
+    if (allowed.has(id)) return id;
+    const repaired = id.replace(/^(line_\d+)_(\d+)$/i, '$1_unit_$2');
+    return allowed.has(repaired) ? repaired : '';
+  }).filter(Boolean);
   return { ids, rows: ids.map((id) => allowed.get(id)) };
 }
 
@@ -381,32 +394,52 @@ function ownerIsSupported(owner, rows) {
   const proposed = normalisePerson(owner);
   if (!proposed || proposed === 'not stated') return proposed === 'not stated';
   if (proposed === 'all') {
-    return rows.some((row) => /\bwe\s*(?:['’]ll|will|shall|need to|must|have to|are going to)\b/i.test(clean(row.text)));
+    return rows.some((row) => /\bwe\s*(?:['’]ll|will|shall|need to|must|have to|are going to|are (?:currently )?(?:working|updating|preparing|reviewing|rewriting|finalising|resolving|progressing|completing|testing|developing|incorporating|converting|applying))\b/i.test(clean(row.text)));
   }
   const first = proposed.split(/\s+/)[0];
-  return rows.some((row) => {
+  const directlySupported = rows.some((row) => {
     const speaker = normalisePerson(row.speaker);
     const text = clean(row.text);
     if (speaker === proposed || speaker.split(/\s+/)[0] === first) {
-      return /\b(?:i|we)\s*(?:['’]ll|will|shall|can|need to|must|have to|am going to)\b/i.test(text);
+      return /\b(?:i|we)\s*(?:['’]ll|will|shall|can|need to|must|have to|am going to|are going to|am (?:currently )?(?:working|updating|preparing|reviewing|rewriting|finalising|resolving|progressing|completing|testing|developing|incorporating|converting|applying|trying)|are (?:currently )?(?:working|updating|preparing|reviewing|rewriting|finalising|resolving|progressing|completing|testing|developing|incorporating|converting|applying|trying)|have (?:started|begun)|started|began)\b/i.test(text)
+        || /\bshould\s+i\s+[a-z]/i.test(text);
     }
-    return new RegExp(`\\b${first.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b\\s+(?:to|will|must|needs? to|can you|could you)\\b`, 'i').test(text);
+    return new RegExp(`\\b${first.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b\\s+(?:to|will|must|needs? to|can|is going to|is (?:currently )?(?:working|updating|preparing|reviewing|rewriting|finalising|resolving|progressing|completing|testing|developing|incorporating|converting|applying)|has (?:started|begun)|has (?:also )?been (?:working|updating|preparing|reviewing|rewriting|finalising|resolving|progressing|completing|testing|developing|incorporating|converting|applying|making)|was (?:working|updating|preparing|reviewing|rewriting|finalising|resolving|progressing|completing|testing|developing|incorporating|converting|applying))\\b`, 'i').test(text);
   });
+  if (directlySupported) return true;
+  const proposedByOwner = rows.some((row) => {
+    const speaker = normalisePerson(row.speaker);
+    return (speaker === proposed || speaker.split(/\s+/)[0] === first) && /\bshould\s+i\s+[a-z]/i.test(clean(row.text));
+  });
+  return proposedByOwner && rows.some((row) => /^(?:yes|yeah|yep|absolutely|correct|please do|do that|that(?:'s| is) fine)\b/i.test(clean(row.text)));
 }
 
 function actionCommitmentSupported(rows) {
-  return rows.some((row) => {
+  const directlySupported = rows.some((row) => {
     const text = clean(row.text);
     return /\b(?:I|we)\s*(?:['’]ll|will|shall|need to|must|have to|am going to|are going to)\b/i.test(text)
       || /\b[A-Z][A-Za-z'’.-]+\s+(?:to|will|shall|must|needs? to|is going to)\s+[a-z]/.test(text)
       || /\b(?:can|could|will|would)\s+you\s+[a-z]/i.test(text)
-      || /\b(?:action|next step|follow[- ]?up)\b[^.!?]{0,100}\b(?:is|are|to|will|needs? to)\b/i.test(text);
+      || /\b(?:action|next step|follow[- ]?up)\b[^.!?]{0,100}\b(?:is|are|to|will|needs? to)\b/i.test(text)
+      || /\b(?:I\s+am|I'm|we\s+are|we're|they're|she's|he's|[A-Z][A-Za-z'’.-]+\s+is)\s+(?:currently\s+)?(?:working|updating|preparing|reviewing|rewriting|finalising|resolving|progressing|completing|testing|developing|incorporating|converting|applying|trying)\b/i.test(text)
+      || /\b(?:I|we|you|he|she|they|[A-Z][A-Za-z'’.-]+)\s+(?:am|are|is|was|were|have been|has been)\s+(?:also\s+|currently\s+)?(?:working|updating|preparing|reviewing|rewriting|finalising|resolving|progressing|completing|testing|developing|incorporating|converting|applying|trying|making)\b/i.test(text)
+      || /\b(?:I|we|[A-Z][A-Za-z'’.-]+)\s+(?:have|has)\s+(?:started|begun)\b/i.test(text)
+      || /\b(?:I|we|they|[A-Z][A-Za-z'’.-]+)\s+(?:started|began)\b/i.test(text)
+      || /\b(?:still|further|additional|remaining)\b[^.!?]{0,100}\b(?:needs? to|must|requires?|to be)\b/i.test(text)
+      || /\b(?:needs? to|must)\s+(?:happen|be (?:checked|verified|reviewed|investigated|documented|resolved|completed|finished|updated|tested|incorporated|converted|provided|shared))\b/i.test(text)
+      || /^(?:yeah,?\s+)?(?:just\s+)?(?:send|share|check|review|verify|update|finish|complete|prepare|provide|put|follow up)\b/i.test(text)
+      || /\bwork\s+in\s+progress\b/i.test(text);
   });
+  if (directlySupported) return true;
+  const hasProposal = rows.some((row) => /\b(?:should\s+i|shall\s+i|do\s+you\s+want\s+me\s+to)\s+[a-z]/i.test(clean(row.text)));
+  const hasAcceptance = rows.some((row) => /^(?:yes|yeah|yep|absolutely|correct|please do|do that|that(?:'s| is) fine)\b/i.test(clean(row.text)));
+  return hasProposal && hasAcceptance;
 }
 
 function publishableActionText(value) {
   const text = clean(value);
   if (!text || text.split(/\s+/).length < 3 || text.split(/\s+/).length > 32) return '';
+  if (/^(?:just\s+)?(?:send|write)\s+(?:an?\s+)?(?:e-?mail|message)\.?$/i.test(text)) return '';
   if (/\b(?:track the actions?|review the meeting|schedule the (?:meeting|call)|add .* to the (?:meeting|call))\b/i.test(text)) return '';
   if (/\b(?:learn the languages?|put \d+ .* files? in|look at the languages?)\b/i.test(text)) return '';
   if (/(?:\b(?:and|or|to|that)\b|\bshould be)\.?$/i.test(text)) return '';
@@ -440,8 +473,22 @@ function duplicateAction(left, right) {
   if (!a.size || !b.size) return false;
   let shared = 0;
   for (const token of a) if (b.has(token)) shared += 1;
-  return shared / Math.min(a.size, b.size) >= 0.7
+  const evidenceOverlap = new Set(left.evidenceIds || []).size > 0
+    && (right.evidenceIds || []).some((id) => (left.evidenceIds || []).includes(id));
+  return (shared / Math.min(a.size, b.size) >= 0.7 || (evidenceOverlap && shared / Math.min(a.size, b.size) >= 0.35))
     && (left.owner === right.owner || left.owner === 'Not stated' || right.owner === 'Not stated');
+}
+
+function actionEvidenceChunks(evidence, size = 32, overlap = 8) {
+  if (!Array.isArray(evidence) || !evidence.length) return [];
+  if (evidence.length <= size) return [evidence];
+  const chunks = [];
+  const step = Math.max(1, size - overlap);
+  for (let start = 0; start < evidence.length; start += step) {
+    chunks.push(evidence.slice(start, start + size));
+    if (start + size >= evidence.length) break;
+  }
+  return chunks;
 }
 
 async function generateDiscussion(transcriptText, topics, options = {}) {
@@ -492,56 +539,58 @@ async function generateDiscussion(transcriptText, topics, options = {}) {
 
 async function generateActions(transcriptText, topics, options = {}) {
   assertTrooperConfigured(options);
-  const topicList = uniqueStrings(topics, 8);
-  if (!topicList.length) throw new Error('Simplified action generation needs confirmed topics.');
-  let prepared = options.prepared || await prepareTranscript(transcriptText, options.discussionGroups ? [] : topicList, options);
-  if (Array.isArray(options.discussionGroups) && options.discussionGroups.length) {
-    const unitById = new Map((prepared.units || []).map((unit) => [clean(unit.id), unit]));
-    prepared = {
-      ...prepared,
-      evidenceByTopic: topicList.map((topic) => {
-        const group = options.discussionGroups.find((item) => clean(item?.topic).toLowerCase() === clean(topic).toLowerCase());
-        const ids = uniqueStrings([
-          ...(Array.isArray(group?.evidenceIds) ? group.evidenceIds : []),
-          ...(Array.isArray(group?.pointRefs) ? group.pointRefs.flatMap((ref) => Array.isArray(ref?.evidenceIds) ? ref.evidenceIds : []) : [])
-        ], 80);
-        return { topic, evidence: ids.map((id) => unitById.get(id)).filter(Boolean) };
-      })
-    };
-  }
-  const calls = await Promise.all(topicList.map(async (topic) => {
-    const evidence = evidenceRows(prepared, topic).slice(0, 40);
-    const call = await callTrooper(actionPrompt(topic, evidence), { ...options, maxTokens: 900 });
-    if (!Array.isArray(call.output.actions)) {
-      throw new Error(`Malformed action response returned for ${topic}.`);
-    }
-    const actions = [];
-    for (const candidate of Array.isArray(call.output.actions) ? call.output.actions : []) {
+  const topicList = uniqueStrings(topics, 24);
+  const prepared = options.prepared || await prepareTranscript(transcriptText, [], options);
+  const evidence = Array.isArray(prepared.units) ? prepared.units.filter((unit) => clean(unit?.id) && clean(unit?.text)) : [];
+  if (!evidence.length) throw new Error('Simplified action generation needs denoised transcript evidence.');
+
+  // Reviewer groups help Trooper understand the meeting, but they must never hide an
+  // action whose source point was omitted or placed in a different discussion group.
+  // Overlapping chronological windows prevent long responses from silently dropping
+  // workstreams near the end while preserving action threads that cross a boundary.
+  const evidenceChunks = actionEvidenceChunks(evidence);
+  const calls = await Promise.all(evidenceChunks.map(async (chunk, index) => {
+    const call = await callTrooper(actionPrompt(topicList, chunk), { ...options, maxTokens: 1800 });
+    if (!Array.isArray(call.output.actions)) throw new Error(`Malformed whole-transcript action response for evidence window ${index + 1}.`);
+    return { ...call, evidence: chunk, index };
+  }));
+
+  const rejected = { invalidText: 0, missingEvidence: 0, unsupportedCommitment: 0 };
+  const accepted = [];
+  for (const call of calls) {
+    for (const candidate of call.output.actions.slice(0, 40)) {
       const action = publishableActionText(clean(candidate?.action).replace(/[.]+$/, ''));
-      const cited = citedEvidence(candidate, evidence);
-      if (!action || !cited.ids.length || !actionCommitmentSupported(cited.rows)) continue;
+      if (!action) {
+        rejected.invalidText += 1;
+        continue;
+      }
+      const cited = citedEvidence(candidate, call.evidence);
+      if (!cited.ids.length) {
+        rejected.missingEvidence += 1;
+        continue;
+      }
+      if (!actionCommitmentSupported(cited.rows)) {
+        rejected.unsupportedCommitment += 1;
+        continue;
+      }
       const proposedOwner = clean(candidate.owner) || 'Not stated';
       const proposedDeadline = clean(candidate.deadline) || 'Not stated';
-      actions.push({
+      accepted.push({
         owner: ownerIsSupported(proposedOwner, cited.rows) ? proposedOwner : 'Not stated',
         action: action.charAt(0).toUpperCase() + action.slice(1) + '.',
         deadline: deadlineIsSupported(proposedDeadline, cited.rows) ? proposedDeadline : 'Not stated',
-        evidenceIds: cited.ids,
-        topic
+        evidenceIds: cited.ids
       });
     }
-    return { topic, actions, usage: call.usage, timingMs: call.timingMs };
-  }));
+  }
   const actions = [];
-  for (const call of calls) {
-    for (const candidate of call.actions) {
-      const existing = actions.find((item) => duplicateAction(item, candidate));
-      if (!existing) actions.push(candidate);
-      else {
-        existing.evidenceIds = uniqueStrings([...(existing.evidenceIds || []), ...(candidate.evidenceIds || [])], 20);
-        if (existing.owner === 'Not stated' && candidate.owner !== 'Not stated') existing.owner = candidate.owner;
-        if (existing.deadline === 'Not stated' && candidate.deadline !== 'Not stated') existing.deadline = candidate.deadline;
-      }
+  for (const candidate of accepted) {
+    const existing = actions.find((item) => duplicateAction(item, candidate));
+    if (!existing) actions.push(candidate);
+    else {
+      existing.evidenceIds = uniqueStrings([...(existing.evidenceIds || []), ...(candidate.evidenceIds || [])], 20);
+      if (existing.owner === 'Not stated' && candidate.owner !== 'Not stated') existing.owner = candidate.owner;
+      if (existing.deadline === 'Not stated' && candidate.deadline !== 'Not stated') existing.deadline = candidate.deadline;
     }
   }
   return {
@@ -549,13 +598,18 @@ async function generateActions(transcriptText, topics, options = {}) {
     telemetry: {
       denoiser: denoiserTelemetry(prepared),
       topicCount: topicList.length,
+      mode: 'whole_transcript_action_sweep',
       calls: calls.length,
       actionCount: actions.length,
-      perTopic: calls.map((item) => ({
-        topic: item.topic,
-        success: true,
-        evidenceCount: evidenceRows(prepared, item.topic).length,
-        outputCount: item.actions.length,
+      evidenceCount: evidence.length,
+      evidenceWindowCount: evidenceChunks.length,
+      rawCandidateCount: calls.reduce((sum, item) => sum + item.output.actions.length, 0),
+      acceptedCandidateCount: accepted.length,
+      rejected,
+      perWindow: calls.map((item) => ({
+        window: item.index + 1,
+        evidenceCount: item.evidence.length,
+        rawCandidateCount: item.output.actions.length,
         timingMs: item.timingMs,
         tokenUsage: item.usage || null
       })),
@@ -598,5 +652,5 @@ module.exports = {
   deadlineIsSupported,
   duplicateAction,
   clearPreparedCache,
-  _private: { callTrooper, validTopic, uniqueStrings, evidenceRows, validatePreparedResult, inventoryChunks }
+  _private: { callTrooper, validTopic, uniqueStrings, evidenceRows, validatePreparedResult, inventoryChunks, actionEvidenceChunks }
 };

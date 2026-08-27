@@ -81,11 +81,15 @@ test('discussion-first inventory groups grounded points without requiring confir
   assert.deepEqual(result.discussion[1].pointRefs[0].evidenceIds, ['line_2_unit_0']);
 });
 
-test('actions use evidence carried with reviewer-organised discussion groups', async () => {
+test('actions scan all denoised evidence even when reviewer-organised groups omit it', async () => {
   const actionPrepared = prepared([]);
-  actionPrepared.units = [{ id: 'line_9_unit_0', speaker: 'Christina McLean', text: 'I will put the revised GSOP in the folder.' }];
+  actionPrepared.units = [
+    { id: 'line_8_unit_0', speaker: 'Andrew Kane', text: 'The language symbols remain under review.' },
+    { id: 'line_9_unit_0', speaker: 'Christina McLean', text: 'I will put the revised GSOP in the folder.' }
+  ];
   const fetchImpl = async (_url, options) => {
     const prompt = JSON.parse(options.body).messages[1].content;
+    assert.match(prompt, /line_8_unit_0/);
     assert.match(prompt, /line_9_unit_0/);
     return response({ actions: [{ owner: 'Christina McLean', action: 'Put the revised GSOP in the folder', deadline: 'Not stated', evidenceIds: ['line_9_unit_0'] }] });
   };
@@ -96,27 +100,65 @@ test('actions use evidence carried with reviewer-organised discussion groups', a
   assert.deepEqual(result.actions, [{ owner: 'Christina McLean', action: 'Put the revised GSOP in the folder.', deadline: 'Not stated' }]);
 });
 
-test('actions run once per topic, merge duplicates, and reject unsupported owner and deadline claims', async () => {
+test('actions use one whole-transcript call and reject unsupported owner and deadline claims', async () => {
   const topics = ['Debug verification', 'Language support', 'Electrical compliance', 'Risk management'];
   let calls = 0;
   const testPrepared = prepared(topics);
-  testPrepared.evidenceByTopic[1].evidence[0].text = 'We will load the translated language files after verification.';
+  testPrepared.units[1].text = 'We will load the translated language files after verification.';
   const fetchImpl = async (_url, options) => {
     calls += 1;
     const prompt = JSON.parse(options.body).messages[1].content;
-    const topicIndex = topics.findIndex((topic) => prompt.includes(`confirmed topic: ${topic}`));
-    if (topicIndex === 0) return response({ actions: [{ owner: 'Andrew Kane', action: 'Verify the debug command', deadline: 'Wednesday', evidenceIds: ['line_1_unit_0'] }] });
-    if (topicIndex === 1) return response({ actions: [{ owner: 'Invented Person', action: 'Load the translated language files', deadline: 'Friday', evidenceIds: ['line_2_unit_0'] }] });
-    return response({ actions: [] });
+    assert.match(prompt, /REVIEWER TOPIC GROUPS/);
+    assert.ok(topics.every((topic) => prompt.includes(topic)));
+    return response({ actions: [
+      { owner: 'Andrew Kane', action: 'Verify the debug command', deadline: 'Wednesday', evidenceIds: ['line_1_unit_0'] },
+      { owner: 'Invented Person', action: 'Load the translated language files', deadline: 'Friday', evidenceIds: ['line_2_0'] }
+    ] });
   };
   const result = await simplified.generateActions('transcript', topics, { apiKey: 'test', fetchImpl, prepared: testPrepared });
-  assert.equal(calls, topics.length);
+  assert.equal(calls, 1);
+  assert.equal(result.telemetry.mode, 'whole_transcript_action_sweep');
   assert.equal(result.actions.length, 2);
   assert.deepEqual(result.actions[0], {
     owner: 'Andrew Kane', action: 'Verify the debug command.', deadline: 'Wednesday'
   });
   assert.equal(result.actions[1].owner, 'Not stated');
   assert.equal(result.actions[1].deadline, 'Not stated');
+});
+
+test('action publication gate accepts ongoing work, unresolved prerequisites and accepted proposals', () => {
+  assert.equal(simplified.actionCommitmentSupported([
+    { speaker: 'Andrew Kane', text: 'I am currently working on the electrical compliance testing.' }
+  ]), true);
+  assert.equal(simplified.ownerIsSupported('Andrew Kane', [
+    { speaker: 'Jacqui Fox', text: 'Andrew has been making the language code changes.' }
+  ]), true);
+  assert.equal(simplified.actionCommitmentSupported([
+    { speaker: 'Rebecca Cuckoo', text: 'There are further updates that need to happen before the risk file is complete.' }
+  ]), true);
+  assert.equal(simplified.actionCommitmentSupported([
+    { speaker: 'Christina McLean', text: 'Should I put the revised GSOP in the folder for Louise?' },
+    { speaker: 'Jacqui Fox', text: 'Yes, absolutely.' }
+  ]), true);
+  assert.equal(simplified.ownerIsSupported('Christina McLean', [
+    { speaker: 'Christina McLean', text: 'Should I put the revised GSOP in the folder for Louise?' },
+    { speaker: 'Jacqui Fox', text: 'Yes, absolutely.' }
+  ]), true);
+  assert.equal(simplified.actionCommitmentSupported([
+    { speaker: 'Andrew Kane', text: 'I completed the electrical testing last week.' }
+  ]), false);
+  assert.equal(simplified.actionCommitmentSupported([
+    { speaker: 'Ciaran Ryan', text: 'We started yesterday and the team are trying to convert the documents.' }
+  ]), true);
+  assert.deepEqual(
+    simplified._private.actionEvidenceChunks(Array.from({ length: 70 }, (_, index) => index)).map((chunk) => chunk.length),
+    [32, 32, 22]
+  );
+  assert.equal(simplified.publishableActionText('Send an email'), '');
+  assert.equal(simplified.duplicateAction(
+    { owner: 'Not stated', action: 'Complete feedback and rewrite the documents', evidenceIds: ['line_1_unit_0'] },
+    { owner: 'Kevin', action: 'Review and rewrite documents', evidenceIds: ['line_1_unit_0'] }
+  ), true);
 });
 
 test('denoiser safety validation fails open for parser failure and unsafe removal', () => {
