@@ -1,0 +1,130 @@
+MiniLM topic split of Trooper output
+Source: t761-eakin-tech-file-weekly-trooper-chunks-overall-actions-removed.txt
+
+Method: each sentence was embedded with all-MiniLM-L6-v2 and assigned to the closest topic anchor. Sentences close to two anchors are repeated in both sections; low-confidence sentences are placed under Unallocated substantive content.
+
+===== Alarm-system functionality and visual/audible feedback =====
+
+[1] Andrew reported on debugging, stating he had an alarm software load that seemed to be working.
+[1] He played an existing alarm, confirming that every alarm was signed out.
+[1] He had three alarms and tested them on the scope; although no test report was available, they appeared satisfactory.
+[1] He demonstrated the different alarm types: a single chirp for low priority stops, a medium priority, and a high priority.
+[1] Rebecca emphasized the high priority alarm as FD140.
+[1] Andrew acknowledged an error and confirmed he had changed a slide, noting that linking the alarms within PowerPoint allowed them to play, but they could not be turned off.
+[1] David suggested comparing the existing medium alarm to the high priority alarm, noting they sounded similar, while Andrew confirmed the high priority alarm was different.
+[1] Andrew stated that when the mute button was pressed, the alarm was flashing, and pressing mute caused it to go solid.
+[1] Jacqui raised two further questions: one concerning a mini-review with clinicians regarding the audible sound's acceptability in the field, and another regarding a long-term usability update needed from a usability perspective to check with the deal, which was presumed to be dependent on clinician feedback.
+[1] Jacqui noted that the change request listed the three changes: alarm code changes, language changes, and the retrospective from version 101 to 102, confirming it listed all three.
+[2] Further work on software changes related to alarm systems and languages was planned for the following week, which was reported to be on track.
+[2] Key forward items included a mini-review from a clinician's perspective on three coding changes, Andrew confirming the mute button and flash behavior, continuing the update of the 12 additional languages, and the commencement or scheduling of electrical compliance testing for the 23rd of July.
+
+===== Software change-request documentation and versioning =====
+
+[1] Jacqui asked Andrew if he had started documenting the change within a change request form, to which Andrew confirmed submission last week, anticipating discussion in a meeting on Wednesday.
+[1] Rebecca confirmed the change would be approved on Wednesday, followed by gathering information to close out.
+[1] Jacqui noted that the change request listed the three changes: alarm code changes, language changes, and the retrospective from version 101 to 102, confirming it listed all three.
+[1] Jacqui interpreted the output of this change request as the release of a final version of the software, Version 1.03.
+[1] Rebecca confirmed they had referenced the other changes in the change control and would compile them as design changes or changes throughout the tech file in the summary report.
+[1] Jacqui instructed that David incorporate his output regarding the review of the 17 changes and their visibility within the code into David's documentation.
+
+===== 17-change review and traceability for the MDR device file history =====
+
+[1] David expressed curiosity about the software debug, hoping that Andrew's debugging of the first sound change would provide a full understanding, as physical access to the software was limited.
+[1] Regarding the gap assessment of the 17 changes between version 1.01 and 1.02, David noted that the current documentation lacked the necessary granularity for the MDR device file history, which could lead to auditor questions.
+[1] Jacqui stated that if changes are not all battery-related, explanation documentation for any unauthorized changes, or worst-case test data, might need to be generated for traceability.
+
+===== Electrical compliance testing and timeline =====
+
+[1] Jacqui then received an update from Rebecca regarding UL compliance testing, noting that Rebecca was handling all electrical compliance testing in-house.
+[1] Based on dates provided, Jacqui interpreted the final piece of testing to be around July 23rd, which would align with the end of July, providing David bandwidth to review the output and results for his final documents.
+[1] Jacqui confirmed Andrew was set up to start the testing, having reviewed the 60601-1 compliance document against the MDD testing.
+[1] Andrew confirmed starting by reviewing the 60601-1 compliance document based on the MDD test.
+[2] Key forward items included a mini-review from a clinician's perspective on three coding changes, Andrew confirming the mute button and flash behavior, continuing the update of the 12 additional languages, and the commencement or scheduling of electrical compliance testing for the 23rd of July.
+
+===== Language-file updates and symbol roadblocks =====
+
+[2] Andrew reported that he had begun learning the languages, successfully testing the system with 18 language files, which confirmed the system could handle 18 files, although the latest translations were not yet available.
+[2] A potential roadblock was identified concerning the symbols required for certain languages, specifically noting that Arabic, Vietnamese, and Greek might present issues due to the variety of characters.
+[2] Andrew indicated this might be the only roadblock for that specific language implementation, as the structure was believed to be in place.
+[2] Jacqui confirmed that the replicated 12 languages had been tested to assess memory capacity, suggesting the memory capacity was sufficient.
+[2] The next steps were twofold: examining the addition of specific language characters based on David's input and loading the fully translated languages received from Jacqui.
+
+===== Cybersecurity and USB-port protection =====
+
+[2] Regarding cybersecurity concerns, specifically concerning the USB port, the team discussed considering a port lock.
+[2] Andrew and Rebecca had reviewed options, including a port lock for the USB on the back of the device, and considerations for stringent controls to prevent the screen element from being accessed.
+[2] Potential controls discussed included measures to prevent software overwrites that could cause harm, such as controls on the screen to prevent changes to oxygen concentration flows or flow rates, or preventing swaps between neonatal and adult therapy settings that could cause harm.
+
+===== Risk management and benefit-risk analysis =====
+
+[2] Rebecca planned to finalize updates to the risk management file, including adding the discussed elements, aiming for completion by Wednesday to focus on risk for the Wednesday meeting.
+[2] The team discussed the benefit-risk analysis, suggesting that if risk remained high after implementing controls, a benefit-risk analysis would determine if benefits outweighed risks, potentially negating the need for a password if clinicians could intervene quickly.
+[2] Rebecca confirmed she had responded to David's comments on the risk management plan and had purchased two standards: 81001-5-1 (health software and health IT system safety, effectiveness and security) and 27427 (anaesthetic and respiratory equipment and nebulizing systems).
+
+===== Regulatory-standard applicability review =====
+
+[1] Rebecca confirmed that the regulatory team would confirm if it was a non-substantial change, as required by the form.
+[2] Rebecca confirmed she had responded to David's comments on the risk management plan and had purchased two standards: 81001-5-1 (health software and health IT system safety, effectiveness and security) and 27427 (anaesthetic and respiratory equipment and nebulizing systems).
+
+===== Unallocated substantive content =====
+
+[0.212] Jacqui initiated a conversation with Bob, followed by a review of status.
+[0.034] Rebecca mentioned a potential frequency of interaction, suggesting at least a couple, three times a week, which David questioned, thinking a single day was anticipated.
+[0.113] Jacqui clarified that at the current stage, the frequency might be approximately three times a day.
+[0.022] Rebecca stated she had intended to suggest a couple of times a day already.
+[0.132] Jacqui then transitioned to reviewing actions from the previous week, noting Andrew was busy.
+[0.091] Andrew reported turning up something and apologized.
+[0.035] Rebecca noted a specific name and instructed him to run.
+[0.204] Jacqui acknowledged Andrew's busy week and mentioned he had two tasks related to sound.
+[0.297] He offered to share his screen and intended to include sound to test it.
+[0.160] He confirmed these were all working.
+[0.146] Andrew explained that the chirps appeared on the scope, allowing measurement of distance.
+[0.230] He implemented color coding: cyan, blue, or yellow for low priority; blue for low priority, yellow for medium priority, and red for high priority.
+[0.208] Andrew also implemented LED flashing, preferring this method so the screen remained solid.
+[0.172] The configuration was: low priority had a cyan blue screen and a solid LED; medium priority had a yellow flashing 0.6 Hertz LED with a solid yellow screen; and high priority had a red screen flashing at 2 Hertz.
+[0.139] Rebecca noted that she had previously used flashing at 2 Hertz.
+[0.331] David questioned whether pressing the mute button to mute the alarm resulted in a solid LED, as he had previously observed, but Andrew was unsure of the current behavior.
+[0.044] Rebecca suggested David look into this behavior next time, as she was uncertain.
+[0.240] Andrew acknowledged he had not examined the mute button's LED behavior in that specific scenario and identified it as something he needed to look into.
+[0.323] Jacqui summarized that the color and flash changes for low, medium, and high codes appeared to be made and working, with the only outstanding confirmation being what happens when the mute button is pressed regarding the LED flash.
+[0.239] Rebecca confirmed that the clinician review had been postponed until the following week because clinical nurses were currently in the field or on leave.
+[0.160] She stated that they could proceed with the rest of the work on both sides and revisit the mute aspect and the usability review after the clinicians returned.
+[0.252] Jacqui confirmed that the usability update was dependent on clinician feedback, and Rebecca confirmed that the deal was on that call as well, ensuring everyone would be aligned.
+[0.204] Jacqui then discussed David's actions, noting David was documenting the debug process.
+[0.261] David inquired if the debug program Andrew was running contained the necessary commands, referencing a screenshot Andrew had sent of the debug menu for an O2 sensor.
+[0.086] Andrew confirmed sending the screenshot.
+[0.231] Rebecca noted that the audio debug menu did not appear on the screen but that executing a specific command (C or capital C, as instructed in the test plan) would cause it to work, though it was not visible.
+[0.117] David sought confirmation that if Andrew entered the letters, a result would be physically seen.
+[0.309] Rebecca clarified that there was a list of available debug options based on the software's description, requiring confirmation based on the command entered.
+[0.168] David expressed a desire to physically see the results and stated he did not want to commit to writing a test script based on what he found in the software code.
+[0.047] Rebecca expressed doubt about the interpretation.
+[0.337] Rebecca indicated that Ciaran Ryan from her team would attend the meeting to approve the change, and Andrew would track the actions as the change owner.
+[0.176] Rebecca suggested that the bulk of the work was being done by her and a few clinical staff, making the call sufficient, but they could set up follow-up meetings if needed.
+[0.240] David suggested the final version might be called 1.1.5 or 2.0, with Rebecca favoring 2.0.
+[0.254] Jacqui noted that there was an indicator that some changes might relate to the battery, but others might not.
+[0.239] Rebecca noted that this timeline accounted for worst-case scenarios, with a best-case of four weeks, but she provided a grace period for potential further testing information to be fed to Adil.
+[0.334] The team identified gaps in testing that require addressing.
+[0.275] A request was made for support from David regarding resource perspective and potential impacts.
+[0.235] David suggested that a particular font could potentially be added for those countries, as the current default font was noted as Arial.
+[0.209] This was anticipated to be completed the following week.
+[0.312] The focus was considered to be on preventing unwarranted interference with the device.
+[0.228] Jacqui noted that progress on this required a two-pronged approach: hardware and GUI aspects.
+[0.223] David confirmed he had not encountered competitor information regarding this issue, suggesting the concerns were specific to each company's approach to unwarranted, unintentional interference.
+[0.277] David further elaborated on the risk, citing an example where an individual might adjust settings on the LED screen in a neonatal setting to cause harm.
+[0.314] David suggested that the system should have high and low defined limits, and that two outcomes should occur if limits are exceeded: an alarm sounding, and the potential to lock the setting at a defined limit.
+[0.130] Andrew noted that current settings make it difficult to exceed certain limits, requiring a mode change.
+[0.118] Rebecca suggested that if a therapy were stopped and switched to an adult therapy for a neonate, the overpressure valves for the neonatal therapy would still engage.
+[0.212] Regarding the therapy stop function, the existing mechanism involves pressing a lock button to stop therapy, which was considered intuitive.
+[0.295] The severity rating for a potential incident involving a switch from neonatal to adult therapy was assessed as a high severity rating with low occurrence, with severity potentially being lower for the adult scenario, noting issues related to back-to-somber pressure valves.
+[0.303] It was concluded that based on no reported incidences of third-party interaction, the overall benefit-risk was deemed acceptable.
+[0.282] Andrew was to review documents sent by David regarding fan logic and determine if they needed inclusion in Cognidocs, which David had reviewed from a PMS perspective.
+[0.309] Rebecca planned to send the 27427 standard to Andrew for assessment regarding the nebulizing port.
+[0.323] Jacqui would follow up with Colm regarding the standards.
+[0.141] Andrew was advised to be out for the next couple of days, with a tech call scheduled for Wednesday and a return to normal on Tuesday.
+[0.135] Rebecca was added to the tech call.
+
+===== Assignment diagnostics =====
+
+Sentences analysed: 90
+Sentence-topic assignments: 39
+Low-confidence/unallocated sentences: 54
