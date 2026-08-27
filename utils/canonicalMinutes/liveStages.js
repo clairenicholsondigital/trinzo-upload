@@ -404,7 +404,16 @@ function discussionScreen(proposal) {
     points: card.points.map((point) => point.text).filter(Boolean),
     pointRefs: card.points.map((point) => ({ evidenceIds: point.evidenceIds || [] })),
     evidenceIds: card.evidenceIds || [],
-    topicId: card.topicId || null
+    topicId: card.topicId || null,
+    // Carried, not dropped. This rebuild lists its fields explicitly, and confirmedTopic
+    // was not among them - so the flag the planner sets on a reviewer-confirmed
+    // workstream (semanticStages: discussionCardsFromPlan, applyConfirmedTopicAgenda)
+    // died here and no consumer downstream ever saw a confirmed card. Every rule written
+    // to protect one - the card merge's absorb guard, the empty-card retention in both
+    // dedupe passes, the speech gate - was reading a field that was always undefined,
+    // which is why a reviewer's fifteen confirmed themes shipped beside sixteen
+    // generated mini-headings with nothing able to tell them apart.
+    ...(card.confirmedTopic ? { confirmedTopic: true } : {})
   }));
   if (proposal.summaryTopicsAuthoritative) return cards;
   if (proposal.decisions.length) cards.push({ topic: 'Decisions', points: proposal.decisions.map((item) => item.text), evidenceIds: proposal.decisions.flatMap((item) => item.evidenceIds || []), topicId: 'canonical_decisions' });
