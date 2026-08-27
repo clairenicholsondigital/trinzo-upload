@@ -1431,6 +1431,7 @@ async function grammarPolishStagedExecutiveSummary(value) {
     model: String(process.env.TROOPER_MODEL || TROOPER_STAGE_MODEL_DEFAULT).trim() || TROOPER_STAGE_MODEL_DEFAULT,
     url: String(process.env.TROOPER_CHAT_COMPLETIONS_URL || TROOPER_STAGE_URL_DEFAULT).trim() || TROOPER_STAGE_URL_DEFAULT,
     fetchImpl: fetch,
+    sharedTransport: true,
     maxTokens: Number(process.env.STAGED_SUMMARY_GRAMMAR_MAX_TOKENS || 700),
     timeoutMs: Number(process.env.STAGED_SUMMARY_GRAMMAR_TIMEOUT_MS || 20000)
   });
@@ -1448,6 +1449,7 @@ async function polishStagedInitialUnderstanding(summary, meetingTitle, evidenceP
     model: String(process.env.TROOPER_MODEL || TROOPER_STAGE_MODEL_DEFAULT).trim() || TROOPER_STAGE_MODEL_DEFAULT,
     url: String(process.env.TROOPER_CHAT_COMPLETIONS_URL || TROOPER_STAGE_URL_DEFAULT).trim() || TROOPER_STAGE_URL_DEFAULT,
     fetchImpl: fetch,
+    sharedTransport: true,
     evidencePack,
     meetingText,
     // 1300/30s with a pack: the same single call carries ~8-10k more prompt tokens and

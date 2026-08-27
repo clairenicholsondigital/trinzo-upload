@@ -1,5 +1,7 @@
 'use strict';
 
+const { trooperFetch } = require('./trooperTransport');
+
 const {
   fallbackMinutesReadySummary,
   transcriptShapedSummaryIssue,
@@ -541,14 +543,6 @@ async function polishInitialUnderstanding(input = {}, options = {}) {
   if (!apiKey || typeof fetchImpl !== 'function') return { ...original, used: false, reason: 'unavailable' };
   const startedAt = Date.now();
   const attemptTimeoutMs = Number(options.timeoutMs || 20000);
-  let controller = null;
-  let timeout = null;
-  const openAttemptWindow = () => {
-    if (timeout) clearTimeout(timeout);
-    controller = typeof AbortController === 'function' ? new AbortController() : null;
-    timeout = controller ? setTimeout(() => controller.abort(), attemptTimeoutMs) : null;
-  };
-  openAttemptWindow();
   // One retry, for the failure where the model does not manage to emit valid JSON.
   //
   // The router answers that with 422 json_generation_failed, which is not a bad request -
@@ -556,13 +550,11 @@ async function polishInitialUnderstanding(input = {}, options = {}) {
   // fell back to deterministic text because one sampling run produced a broken brace. It
   // cost a client meeting its minutes in the measured set of thirteen. Retrying a
   // structural formatting failure once is the ordinary handling for a stochastic decoder;
-  // it is bounded at one, it shares the existing abort controller so the timeout still
-  // governs, and every other status still fails through untouched, because a 401 or a 500
-  // will say the same thing twice.
-  const requestOnce = (pack) => fetchImpl(options.url, {
+  // it is bounded at one, each attempt has its own transport timeout, and every other
+  // non-transient status still fails through untouched.
+  const requestOnce = (pack) => trooperFetch(options.url, {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    signal: controller?.signal,
     body: JSON.stringify({
       model: options.model,
       messages: [
@@ -614,6 +606,14 @@ async function polishInitialUnderstanding(input = {}, options = {}) {
       max_tokens: Number(options.maxTokens || 650),
       response_format: { type: 'json_object' }
     })
+  }, {
+    fetchImpl,
+    timeoutMs: attemptTimeoutMs,
+    minIntervalMs: options.sharedTransport ? options.minIntervalMs : 0,
+    maxRetries: options.sharedTransport ? options.maxRetries : 0,
+    baseDelayMs: options.baseDelayMs,
+    jitterMs: options.jitterMs,
+    waitImpl: options.waitImpl
   });
   try {
     let attemptPack = evidencePack;
@@ -626,7 +626,6 @@ async function polishInitialUnderstanding(input = {}, options = {}) {
       // failure - the same lost summary, one round trip later. Worst case is now two full
       // windows, which is the honest cost of retrying at all, and it is paid only on a
       // 422.
-      openAttemptWindow();
       // The second attempt drops the evidence pack and asks for the simpler shape.
       //
       // Repeating a request the decoder has already failed to satisfy tends to fail the
@@ -691,8 +690,6 @@ async function polishInitialUnderstanding(input = {}, options = {}) {
       : { ...deterministicPresentationFallback(original, validation.reason), overlap: validation.overlap, fieldOutcomes: validation.fieldOutcomes, timingMs: Date.now() - startedAt };
   } catch {
     return { ...deterministicPresentationFallback(original, 'request_failed'), timingMs: Date.now() - startedAt };
-  } finally {
-    if (timeout) clearTimeout(timeout);
   }
 }
 

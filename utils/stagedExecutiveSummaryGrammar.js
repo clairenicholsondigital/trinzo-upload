@@ -1,5 +1,7 @@
 'use strict';
 
+const { trooperFetch } = require('./trooperTransport');
+
 const { minutesEnglishFaults, repairMechanicalFaults } = require('./minutesEnglish');
 
 function clean(value) {
@@ -125,13 +127,10 @@ async function polishExecutiveSummaryGrammar(text, options = {}) {
   const fetchImpl = options.fetchImpl || global.fetch;
   if (!apiKey || typeof fetchImpl !== 'function') return { text: original, used: false, reason: 'unavailable' };
   const startedAt = Date.now();
-  const controller = typeof AbortController === 'function' ? new AbortController() : null;
-  const timeout = controller ? setTimeout(() => controller.abort(), Number(options.timeoutMs || 20000)) : null;
   try {
-    const response = await fetchImpl(options.url, {
+    const response = await trooperFetch(options.url, {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      signal: controller?.signal,
       body: JSON.stringify({
         model: options.model,
         messages: [
@@ -160,6 +159,14 @@ async function polishExecutiveSummaryGrammar(text, options = {}) {
         max_tokens: Number(options.maxTokens || 700),
         response_format: { type: 'json_object' }
       })
+    }, {
+      fetchImpl,
+      timeoutMs: Number(options.timeoutMs || 20000),
+      minIntervalMs: options.sharedTransport ? options.minIntervalMs : 0,
+      maxRetries: options.sharedTransport ? options.maxRetries : 0,
+      baseDelayMs: options.baseDelayMs,
+      jitterMs: options.jitterMs,
+      waitImpl: options.waitImpl
     });
     const raw = await response.text();
     if (!response.ok) return { text: original, used: false, reason: `http_${response.status}`, timingMs: Date.now() - startedAt };
@@ -183,8 +190,6 @@ async function polishExecutiveSummaryGrammar(text, options = {}) {
   } catch (error) {
     const fallback = fallbackMinutesReadySummary(original);
     return { text: fallback || original, used: false, reason: fallback ? 'deterministic_request_failed' : 'request_failed', timingMs: Date.now() - startedAt };
-  } finally {
-    if (timeout) clearTimeout(timeout);
   }
 }
 
