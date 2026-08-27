@@ -1,0 +1,249 @@
+{
+  "topics": [
+    {
+      "topic": "Alarm system changes and clinical review",
+      "summary": "Changes were made to alarm coding, including color-coding (cyan/blue for low priority, yellow for medium, red for high priority) and LED flashing patterns (solid/flashing at 0.6Hz or 2Hz). The behavior of the mute button pressing on the LED was uncertain. A mini-review with clinicians regarding audible sound acceptability was postponed. A usability update dependent on clinician feedback was also pending.",
+      "discussionPoints": [
+        {
+          "text": "Andrew confirmed that the color and flash changes for low, medium, and high codes appeared to be made and working.",
+          "certainty": "confirmed"
+        },
+        {
+          "text": "The only outstanding confirmation was what happens when the mute button is pressed regarding the LED flash.",
+          "certainty": "unresolved"
+        },
+        {
+          "text": "David questioned whether pressing the mute button to mute the alarm resulted in a solid LED, as he had previously observed, but Andrew was unsure of the current behavior.",
+          "certainty": "questioned"
+        },
+        {
+          "text": "Andrew stated that when the mute button was pressed, the alarm was flashing, and pressing mute caused it to go solid.",
+          "certainty": "reported"
+        },
+        {
+          "text": "Rebecca suggested David look into this behavior next time, as she was uncertain.",
+          "certainty": "suggested"
+        },
+        {
+          "text": "The clinician review regarding audible sound acceptability was postponed until the following week because clinical nurses were currently in the field or on leave.",
+          "certainty": "reported"
+        },
+        {
+          "text": "The usability update was dependent on clinician feedback.",
+          "certainty": "confirmed"
+        }
+      ],
+      "unresolvedPoints": [
+        "The exact behavior of the LED when the mute button is pressed remains uncertain.",
+        "The usability update is dependent on clinician feedback."
+      ]
+    },
+    {
+      "topic": "Debug and software verification",
+      "summary": "Andrew reported debugging an alarm software load, confirming it was working. He tested three alarms, which appeared satisfactory on the scope, and demonstrated different alarm types. He implemented color coding and LED flashing configurations. Debugging involved executing a specific command (C or capital C) to make the audio debug menu visible, although it was not visible otherwise.",
+      "discussionPoints": [
+        {
+          "text": "Andrew reported on debugging, stating he had an alarm software load that seemed to be working.",
+          "certainty": "reported"
+        },
+        {
+          "text": "He played an existing alarm, confirming that every alarm was signed out.",
+          "certainty": "confirmed"
+        },
+        {
+          "text": "He had three alarms and tested them on the scope; although no test report was available, they appeared satisfactory.",
+          "certainty": "reported"
+        },
+        {
+          "text": "He demonstrated the different alarm types: a single chirp for low priority stops, a medium priority, and a high priority. He confirmed these were all working.",
+          "certainty": "confirmed"
+        },
+        {
+          "text": "Andrew acknowledged an error and confirmed he had changed a slide, noting that linking the alarms within PowerPoint allowed them to play, but they could not be turned off.",
+          "certainty": "reported"
+        },
+        {
+          "text": "Andrew confirmed sending the screenshot of the debug menu for an O2 sensor.",
+          "certainty": "confirmed"
+        },
+        {
+          "text": "The audio debug menu did not appear on the screen but executing a specific command (C or capital C, as instructed in the test plan) would cause it to work, though it was not visible.",
+          "certainty": "reported"
+        },
+        {
+          "text": "David expressed a desire to physically see the results and stated he did not want to commit to writing a test script based on what he found in the software code.",
+          "certainty": "reported"
+        }
+      ],
+      "unresolvedPoints": [
+        "David expressed a desire to physically see the results of the debug process."
+      ]
+    },
+    {
+      "topic": "Software change control, versioning and traceability",
+      "summary": "The change request listed three changes: alarm code changes, language changes, and a retrospective from version 101 to 102. This change request was interpreted as the release of software Version 1.03. David suggested potential final versions (1.1.5 or 2.0), with Rebecca favoring 2.0. The documentation lacked granularity for the MDR device file history between versions 1.01 and 1.02, raising concerns for auditors. Documentation for unauthorized changes or worst-case test data might be needed if changes were not all battery-related.",
+      "discussionPoints": [
+        {
+          "text": "Jacqui noted that the change request listed the three changes: alarm code changes, language changes, and the retrospective from version 101 to 102, confirming it listed all three.",
+          "certainty": "confirmed"
+        },
+        {
+          "text": "Jacqui interpreted the output of this change request as the release of a final version of the software, Version 1.03.",
+          "certainty": "reported"
+        },
+        {
+          "text": "David suggested the final version might be called 1.1.5 or 2.0, with Rebecca favoring 2.0.",
+          "certainty": "suggested"
+        },
+        {
+          "text": "The regulatory team would confirm if it was a non-substantial change, as required by the form.",
+          "certainty": "confirmed"
+        },
+        {
+          "text": "Regarding the gap assessment of the 17 changes between version 1.01 and 1.02, David noted that the current documentation lacked the necessary granularity for the MDR device file history, which could lead to auditor questions.",
+          "certainty": "reported"
+        },
+        {
+          "text": "If changes are not all battery-related, explanation documentation for any unauthorized changes, or worst-case test data, might need to be generated for traceability.",
+          "certainty": "suggested"
+        },
+        {
+          "text": "Andrew confirmed submission of documentation within a change request form last week, anticipating discussion in a meeting on Wednesday.",
+          "certainty": "confirmed"
+        },
+        {
+          "text": "Andrew would track the actions as the change owner.",
+          "certainty": "confirmed"
+        }
+      ],
+      "unresolvedPoints": [
+        "The documentation lacks the necessary granularity for the MDR device file history between version 1.01 and 1.02.",
+        "It remains unclear if all changes listed in the change request were battery-related."
+      ]
+    },
+    {
+      "topic": "Language implementation and character support",
+      "summary": "Andrew successfully tested the system with 18 language files, confirming the system could handle 18 files, although the latest translations were not yet available. A potential roadblock was identified concerning symbols for Arabic, Vietnamese, and Greek characters, suggesting a potential need for a specific font addition, as the default font was Arial.",
+      "discussionPoints": [
+        {
+          "text": "Andrew reported that he had begun learning the languages, successfully testing the system with 18 language files, which confirmed the system could handle 18 files, although the latest translations were not yet available.",
+          "certainty": "reported"
+        },
+        {
+          "text": "A potential roadblock was identified concerning the symbols required for certain languages, specifically noting Arabic, Vietnamese, and Greek might present issues due to the variety of characters.",
+          "certainty": "reported"
+        },
+        {
+          "text": "David suggested that a particular font could potentially be added for those countries, as the current default font was noted as Arial.",
+          "certainty": "suggested"
+        },
+        {
+          "text": "Andrew indicated this might be the only roadblock for that specific language implementation, as the structure was believed to be in place.",
+          "certainty": "suggested"
+        },
+        {
+          "text": "The replicated 12 languages had been tested to assess memory capacity, suggesting the memory capacity was sufficient.",
+          "certainty": "confirmed"
+        },
+        {
+          "text": "The next steps were examining the addition of specific language characters based on David's input and loading the fully translated languages received from Jacqui.",
+          "certainty": "confirmed"
+        }
+      ],
+      "unresolvedPoints": [
+        "The availability of the latest translations is pending.",
+        "The feasibility of adding a specific font for Arabic, Vietnamese, and Greek characters remains to be confirmed."
+      ]
+    },
+    {
+      "topic": "Electrical compliance testing",
+      "summary": "Rebecca was handling all electrical compliance testing in-house. The final piece of testing was interpreted to be around July 23rd, aligning with the end of July, which provided David bandwidth to review the output and results for his final documents. Andrew was set up to start testing by reviewing the 60601-1 compliance document against the MDD test.",
+      "discussionPoints": [
+        {
+          "text": "Rebecca was handling all electrical compliance testing in-house.",
+          "certainty": "confirmed"
+        },
+        {
+          "text": "Jacqui interpreted the final piece of testing to be around July 23rd, which would align with the end of July, providing David bandwidth to review the output and results for his final documents.",
+          "certainty": "reported"
+        },
+        {
+          "text": "Andrew was set up to start the testing, having reviewed the 60601-1 compliance document based on the MDD test.",
+          "certainty": "confirmed"
+        }
+      ],
+      "unresolvedPoints": [
+        "The final results of the electrical compliance testing are not yet available for review."
+      ]
+    },
+    {
+      "topic": "Cybersecurity, device access and risk assessment",
+      "summary": "The team discussed considering a port lock for the USB port on the back of the device and implementing stringent controls to prevent screen element access. Potential controls considered included preventing software overwrites that could harm the device (e.g., controls on oxygen concentration flows or flow rates) or preventing swaps between neonatal and adult therapy settings. A benefit-risk analysis concluded that the overall benefit-risk was deemed acceptable based on no reported incidences of third-party interaction.",
+      "discussionPoints": [
+        {
+          "text": "The team discussed considering a port lock for the USB on the back of the device, and considerations for stringent controls to prevent the screen element from being accessed.",
+          "certainty": "suggested"
+        },
+        {
+          "text": "Potential controls discussed included measures to prevent software overwrites that could cause harm, such as controls on the screen to prevent changes to oxygen concentration flows or flow rates, or preventing swaps between neonatal and adult therapy settings that could cause harm.",
+          "certainty": "suggested"
+        },
+        {
+          "text": "The severity rating for a potential incident involving a switch from neonatal to adult therapy was assessed as a high severity rating with low occurrence, with severity potentially being lower for the adult scenario, noting issues related to back-to-somber pressure valves.",
+          "certainty": "reported"
+        },
+        {
+          "text": "Based on no reported incidences of third-party interaction, the overall benefit-risk was deemed acceptable.",
+          "certainty": "confirmed"
+        }
+      ],
+      "unresolvedPoints": [
+        "The implementation of the proposed cybersecurity controls (port lock, software overwrites prevention) is pending finalisation.",
+        "A benefit-risk analysis would determine if benefits outweighed risks if risk remained high after implementing controls."
+      ]
+    },
+    {
+      "topic": "Standards and regulatory applicability",
+      "summary": "Rebecca purchased two standards: 81001-5-1 (health software and health IT system safety, effectiveness and security) and 27427 (anaesthetic and respiratory equipment and nebulizing systems). She planned to send the 27427 standard to Andrew for assessment regarding the nebulizing port. Jacqui would follow up with Colm regarding the standards.",
+      "discussionPoints": [
+        {
+          "text": "Rebecca had purchased two standards: 81001-5-1 (health software and health IT system safety, effectiveness and security) and 27427 (anaesthetic and respiratory equipment and nebulizing systems).",
+          "certainty": "confirmed"
+        },
+        {
+          "text": "Rebecca planned to send the 27427 standard to Andrew for assessment regarding the nebulizing port.",
+          "certainty": "confirmed"
+        },
+        {
+          "text": "Jacqui would follow up with Colm regarding the standards.",
+          "certainty": "confirmed"
+        }
+      ],
+      "unresolvedPoints": [
+        "Assessment of the 27427 standard regarding the nebulizing port is pending.",
+        "Follow-up action by Jacqui with Colm regarding the standards is pending."
+      ]
+    },
+    {
+      "topic": "Supporting technical documentation",
+      "summary": "David was documenting the debug process and expressed curiosity about the software debug, hoping Andrew's debugging would provide a full understanding due to limited physical access. David was instructed to incorporate his output regarding the review of the 17 changes and their visibility within the code into his documentation.",
+      "discussionPoints": [
+        {
+          "text": "David was documenting the debug process.",
+          "certainty": "reported"
+        },
+        {
+          "text": "David expressed curiosity about the software debug, hoping that Andrew's debugging of the first sound change would provide a full understanding, as physical access to the software was limited.",
+          "certainty": "reported"
+        },
+        {
+          "text": "Jacqui instructed that David incorporate his output regarding the review of the 17 changes and their visibility within the code into David's documentation.",
+          "certainty": "confirmed"
+        }
+      ],
+      "unresolvedPoints": [
+        "The final structure and content of David's documentation incorporating the review of the 17 changes are pending."
+      ]
+    }
+  ]
+}
