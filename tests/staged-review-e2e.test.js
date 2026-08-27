@@ -162,32 +162,33 @@ test('a reviewer can walk the staged flow and see their corrections acknowledged
     const flagText = await page.textContent('#stageValidationFlags');
     assert.match(flagText, /purpose/i, `the purpose-inferred flag is shown to the reviewer: ${flagText.slice(0, 120)}`);
 
-    // The reviewer corrects the purpose and the first topic - the exact gestures this
-    // session's work promised would be honoured downstream.
+    // Summary no longer asks the reviewer to predict the meeting's topic structure.
+    // The reviewer corrects the purpose, then organises the factual points on Discussion.
     const reviewerPurpose = 'Check in on the AI programme and unblock the stalled items.';
     await page.fill('#meetingPurpose', reviewerPurpose);
-    const topics = (await page.inputValue('#overallTopics')).split('\n').filter(Boolean);
-    const reviewerTopic = 'What we owe the client next';
-    await page.fill('#overallTopics', [reviewerTopic, ...topics.slice(1)].join('\n'));
+    assert.equal(await page.locator('#overallTopics').count(), 0, 'the Summary topics field is not shown');
 
     // Continue to the discussion.
     await page.click('#nextScreenBtn');
     await page.waitForFunction(() => document.body.getAttribute('data-stage') === 'discussion', null, { timeout: 300000 });
 
-    // The panel this session added, rendered for the first time anywhere: it must appear,
-    // count the confirmed values, and show the reviewer's own words.
-    await page.waitForSelector('#confirmedCarried:not([hidden])', { timeout: 30000 });
-    const carriedSummary = await page.textContent('#confirmedCarriedSummary');
-    assert.match(carriedSummary, /Your earlier edits: (?:all )?\d+/, `panel summary reads: ${carriedSummary}`);
-    // The discussion screen is audited on what it can carry - topics and key facts, not
-    // the purpose; a summary field reported missing from Discussion would be noise, and
-    // noise is how a real miss gets ignored. So the panel lists the corrected heading.
-    const carriedText = await page.textContent('#confirmedCarriedList');
-    assert.ok(carriedText.includes(reviewerTopic), 'the corrected heading is listed in the panel');
+    await page.waitForSelector('.discussion-card', { timeout: 30000 });
+    assert.ok(await page.locator('.discussion-card').count() >= 2, 'suggested groups and Unassigned render');
+    assert.ok(await page.locator('.discussion-topic-input[value="Unassigned"]').count(), 'Unassigned remains visible');
+    const reviewerTopic = 'What we owe the client next';
+    const firstTopic = page.locator('.discussion-topic-input:not([readonly])').first();
+    await firstTopic.fill(reviewerTopic);
+    await firstTopic.dispatchEvent('input');
+    assert.equal(await page.locator('.discussion-card-title').first().textContent(), reviewerTopic);
 
-    // The reviewer's heading survived the editorial gate despite its pronoun.
-    const discussionText = await page.textContent('main');
-    assert.ok(discussionText.includes(reviewerTopic), 'the reviewer heading appears on the discussion screen');
+    const firstPoint = page.locator('.discussion-point-item').first();
+    if (await firstPoint.count()) {
+      await firstPoint.locator('.discussion-point-move').selectOption('Unassigned');
+      await page.waitForFunction(() => {
+        const unassigned = Array.from(document.querySelectorAll('.discussion-card')).find((card) => card.querySelector('.discussion-topic-input')?.value === 'Unassigned');
+        return Boolean(unassigned && unassigned.querySelector('.discussion-point-item'));
+      });
+    }
 
     // And the purpose box still holds their words, not a regeneration.
     assert.equal(await page.inputValue('#meetingPurpose'), reviewerPurpose);

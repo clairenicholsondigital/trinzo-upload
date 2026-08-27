@@ -162,6 +162,7 @@ function validTopic(value) {
   const text = clean(value).replace(/^\d+[.)]\s*/, '');
   if (!text || text.length > 100 || text.split(/\s+/).length > 14) return '';
   if (/\b(?:actions?|follow[- ]?ups?|next steps?|meeting logistics|introductions?|agenda|recap)\b/i.test(text)) return '';
+  if (/^(?:general|administrative|miscellaneous|other)(?:\s|$)|\b(?:general updates?|administrative updates?|status updates?|key priorities|document mention|summary document mention)\b/i.test(text)) return '';
   return text.replace(/[.?!]+$/, '');
 }
 
@@ -211,6 +212,143 @@ function discussionPrompt(topic, evidence) {
     'EVIDENCE:',
     JSON.stringify(evidence)
   ].join('\n');
+}
+
+function discussionInventoryPrompt(evidence) {
+  return [
+    'Create a complete first-pass inventory of substantive discussion points from the supplied denoised transcript evidence.',
+    'Do not group or categorise the points yet. A later step will do that without being allowed to remove them.',
+    'Aim to represent every substantive evidence item in this chunk. Return separate points for distinct responsibilities, documents, systems, tests, decisions, questions or workstreams.',
+    'Cover open work, current position, completed changes that matter to the record, decisions, dependencies, risks, uncertainty and material questions.',
+    'Do not omit a substantive point merely because it does not fit another point. Combine only evidence about the same underlying matter.',
+    'Write factual third-person meeting-minutes prose. Preserve uncertainty, questions, conditional reasoning and responsibility attribution exactly; do not upgrade them into facts.',
+    'Do not create actions, deadlines or conclusions that are not stated.',
+    'Exclude greetings, transcription notices, filler, meeting administration, thanks, farewells, jokes, metaphors, teasing and isolated fragments that do not describe substantive meeting work.',
+    'Each point must cite one or more supplied evidence IDs. Return JSON only:',
+    '{"discussionPoints":[{"text":"...","evidenceIds":["line_1_unit_0"]}]}',
+    '',
+    'DENOISED TRANSCRIPT EVIDENCE:',
+    JSON.stringify(evidence)
+  ].join('\n');
+}
+
+function inventoryChunks(units = [], maxRows = 28, maxChars = 7000) {
+  const chunks = [];
+  let current = [];
+  let chars = 0;
+  for (const unit of Array.isArray(units) ? units : []) {
+    const size = clean(unit?.text).length + clean(unit?.speaker).length + 80;
+    if (current.length && (current.length >= maxRows || chars + size > maxChars)) {
+      chunks.push(current);
+      current = [];
+      chars = 0;
+    }
+    current.push(unit);
+    chars += size;
+  }
+  if (current.length) chunks.push(current);
+  return chunks;
+}
+
+function discussionGroupingPrompt(points) {
+  return [
+    'Organise the supplied factual meeting-minutes points into 4 to 10 useful, substantive topic groups.',
+    'This is classification only: do not rewrite, merge, omit or invent any point. Assign every supplied point ID exactly once.',
+    'Use concise concrete workstream headings. Consolidate related items, but keep materially different documents, systems, testing, risk, regulatory, usability and contractor work separate when supported.',
+    'Do not use headings such as General, Status update, Key priorities, Mention, Actions, Follow-ups, Meeting administration or Miscellaneous.',
+    'If a point is incidental or cannot responsibly be assigned, put its ID in unassignedPointIds instead of inventing a topic.',
+    'Return JSON only:',
+    '{"groups":[{"topic":"...","pointIds":["point_1"]}],"unassignedPointIds":["point_9"]}',
+    '',
+    'POINTS:',
+    JSON.stringify(points)
+  ].join('\n');
+}
+
+async function generateDiscussionInventory(transcriptText, options = {}) {
+  assertTrooperConfigured(options);
+  const prepared = options.prepared || await prepareTranscript(transcriptText, [], options);
+  const chunks = inventoryChunks(prepared.units);
+  if (!chunks.length) throw new Error('Simplified discussion inventory had no retained transcript evidence.');
+  const calls = await Promise.all(chunks.map((evidence) => callTrooper(
+    discussionInventoryPrompt(evidence),
+    { ...options, maxTokens: 2400 }
+  )));
+  const points = [];
+  const seenPoints = new Set();
+  calls.forEach((call, callIndex) => {
+    if (!Array.isArray(call.output.discussionPoints)) {
+      throw new Error(`Malformed discussion inventory response returned for chunk ${callIndex + 1}.`);
+    }
+    const evidence = chunks[callIndex];
+    for (const candidate of call.output.discussionPoints) {
+      const text = cleanPublicDiscussionPoint(candidate?.text);
+      const cited = citedEvidence(candidate, evidence);
+      const pointKey = text.toLowerCase();
+      if (!text || !cited.ids.length || seenPoints.has(pointKey)) continue;
+      seenPoints.add(pointKey);
+      points.push({ id: `point_${points.length + 1}`, text, evidenceIds: cited.ids });
+    }
+  });
+  if (!seenPoints.size) throw new Error('Simplified discussion inventory returned no grounded points.');
+  const groupingCall = await callTrooper(discussionGroupingPrompt(points.map(({ id, text }) => ({ id, text }))), { ...options, maxTokens: 1200 });
+  if (!Array.isArray(groupingCall.output.groups)) throw new Error('Malformed discussion grouping response.');
+  const pointById = new Map(points.map((point) => [point.id, point]));
+  const assigned = new Set();
+  const groups = [];
+  for (const candidate of groupingCall.output.groups) {
+    const topic = validTopic(candidate?.topic);
+    if (!topic || /^unassigned$/i.test(topic)) continue;
+    const groupedPoints = uniqueStrings(candidate?.pointIds, points.length)
+      .filter((id) => pointById.has(id) && !assigned.has(id))
+      .map((id) => { assigned.add(id); return pointById.get(id); });
+    if (!groupedPoints.length) continue;
+    groups.push({
+      topic,
+      points: groupedPoints.map((point) => point.text),
+      topicId: crypto.createHash('sha1').update(topic).digest('hex').slice(0, 12),
+      evidenceIds: uniqueStrings(groupedPoints.flatMap((point) => point.evidenceIds), 80),
+      pointRefs: groupedPoints.map((point) => ({ evidenceIds: point.evidenceIds })),
+      suggested: true
+    });
+  }
+  const unassigned = points.filter((point) => !assigned.has(point.id));
+  groups.push({
+    topic: 'Unassigned',
+    points: unassigned.map((point) => point.text),
+    topicId: 'unassigned',
+    evidenceIds: uniqueStrings(unassigned.flatMap((point) => point.evidenceIds), 80),
+    pointRefs: unassigned.map((point) => ({ evidenceIds: point.evidenceIds })),
+    suggested: false
+  });
+  const unassignedCount = unassigned.length;
+  return {
+    discussion: groups,
+    organizer: {
+      mode: 'discussion_first',
+      pointCount: seenPoints.size,
+      groupCount: groups.filter((card) => card.topic !== 'Unassigned').length,
+      unassignedCount
+    },
+    telemetry: {
+      denoiser: denoiserTelemetry(prepared),
+      mode: 'discussion_inventory',
+      retainedEvidenceCount: prepared.units.length,
+      pointCount: seenPoints.size,
+      groupCount: groups.length,
+      unassignedCount,
+      calls: calls.length + 1,
+      perChunk: calls.map((call, index) => ({
+        chunk: index + 1,
+        evidenceCount: chunks[index].length,
+        timingMs: call.timingMs,
+        tokenUsage: call.usage || null
+      })),
+      grouping: { timingMs: groupingCall.timingMs, tokenUsage: groupingCall.usage || null },
+      tokenUsage: [...calls.map((call) => call.usage), groupingCall.usage].filter(Boolean),
+      timingMs: calls.reduce((sum, call) => sum + Number(call.timingMs || 0), 0) + Number(groupingCall.timingMs || 0)
+    }
+  };
 }
 
 function actionPrompt(topic, evidence) {
@@ -356,7 +494,21 @@ async function generateActions(transcriptText, topics, options = {}) {
   assertTrooperConfigured(options);
   const topicList = uniqueStrings(topics, 8);
   if (!topicList.length) throw new Error('Simplified action generation needs confirmed topics.');
-  const prepared = options.prepared || await prepareTranscript(transcriptText, topicList, options);
+  let prepared = options.prepared || await prepareTranscript(transcriptText, options.discussionGroups ? [] : topicList, options);
+  if (Array.isArray(options.discussionGroups) && options.discussionGroups.length) {
+    const unitById = new Map((prepared.units || []).map((unit) => [clean(unit.id), unit]));
+    prepared = {
+      ...prepared,
+      evidenceByTopic: topicList.map((topic) => {
+        const group = options.discussionGroups.find((item) => clean(item?.topic).toLowerCase() === clean(topic).toLowerCase());
+        const ids = uniqueStrings([
+          ...(Array.isArray(group?.evidenceIds) ? group.evidenceIds : []),
+          ...(Array.isArray(group?.pointRefs) ? group.pointRefs.flatMap((ref) => Array.isArray(ref?.evidenceIds) ? ref.evidenceIds : []) : [])
+        ], 80);
+        return { topic, evidence: ids.map((id) => unitById.get(id)).filter(Boolean) };
+      })
+    };
+  }
   const calls = await Promise.all(topicList.map(async (topic) => {
     const evidence = evidenceRows(prepared, topic).slice(0, 40);
     const call = await callTrooper(actionPrompt(topic, evidence), { ...options, maxTokens: 900 });
@@ -437,6 +589,7 @@ module.exports = {
   prepareTranscript,
   generateTopics,
   generateDiscussion,
+  generateDiscussionInventory,
   generateActions,
   ownerIsSupported,
   actionCommitmentSupported,
@@ -445,5 +598,5 @@ module.exports = {
   deadlineIsSupported,
   duplicateAction,
   clearPreparedCache,
-  _private: { callTrooper, validTopic, uniqueStrings, evidenceRows, validatePreparedResult }
+  _private: { callTrooper, validTopic, uniqueStrings, evidenceRows, validatePreparedResult, inventoryChunks }
 };

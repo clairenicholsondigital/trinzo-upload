@@ -19,6 +19,7 @@ function prepared(topics) {
     rawLength: 1000,
     preparedLength: 800,
     preparedTranscript: 'Andrew Kane: The debug command remains to be verified.',
+    units: topics.map((topic, index) => ({ id: `line_${index + 1}_unit_0`, speaker: index === 0 ? 'Andrew Kane' : 'Rebecca Cuckoo', text: index === 0 ? 'I will verify the debug command on Wednesday.' : `Evidence for ${topic}.` })),
     evidenceByTopic: topics.map((topic, index) => ({
       topic,
       evidence: [{ id: `line_${index + 1}_unit_0`, speaker: index === 0 ? 'Andrew Kane' : 'Rebecca Cuckoo', text: index === 0 ? 'I will verify the debug command on Wednesday.' : `Evidence for ${topic}.` }]
@@ -34,8 +35,8 @@ function response(content, delay = 0) {
   }), delay));
 }
 
-test('topic generation accepts four to eight workstream headings and rejects action buckets', async () => {
-  const fetchImpl = async () => response({ topics: ['Debug verification', 'Language support', 'Electrical compliance', 'Risk management', 'Follow-up actions'] });
+test('topic generation accepts four to eight workstream headings and rejects action or generic buckets', async () => {
+  const fetchImpl = async () => response({ topics: ['Debug verification', 'Language support', 'Electrical compliance', 'Risk management', 'Follow-up actions', 'General updates'] });
   const result = await simplified.generateTopics('transcript', { apiKey: 'test', fetchImpl, prepared: prepared([]) });
   assert.deepEqual(result.topics, ['Debug verification', 'Language support', 'Electrical compliance', 'Risk management']);
 });
@@ -54,6 +55,45 @@ test('discussion runs once per topic and preserves confirmed topic order', async
   assert.deepEqual(result.discussion.map((item) => item.topic), topics);
   assert.deepEqual(result.discussion.map((item) => item.points.length), [1, 1, 1, 1]);
   assert.ok(result.discussion.every((item) => !item.points[0].includes('[line_')));
+});
+
+test('discussion-first inventory groups grounded points without requiring confirmed topics', async () => {
+  const inventoryPrepared = prepared(['Unused']);
+  inventoryPrepared.units = [
+    { id: 'line_1_unit_0', speaker: 'Andrew Kane', text: 'The language symbols remain under review.' },
+    { id: 'line_2_unit_0', speaker: 'Christina McLean', text: 'I will put the revised procedure in the review folder.' }
+  ];
+  const fetchImpl = async (_url, options) => {
+    const prompt = JSON.parse(options.body).messages[1].content;
+    if (prompt.includes('Organise the supplied factual')) return response({
+      groups: [{ topic: 'Language support', pointIds: ['point_1'] }],
+      unassignedPointIds: ['point_2']
+    });
+    return response({ discussionPoints: [
+      { text: 'Language-symbol issues remained under review.', evidenceIds: ['line_1_unit_0'] },
+      { text: 'Christina would place the revised procedure in the review folder.', evidenceIds: ['line_2_unit_0'] }
+    ] });
+  };
+  const result = await simplified.generateDiscussionInventory('transcript', { apiKey: 'test', fetchImpl, prepared: inventoryPrepared });
+  assert.deepEqual(result.discussion.map((card) => card.topic), ['Language support', 'Unassigned']);
+  assert.equal(result.organizer.pointCount, 2);
+  assert.equal(result.organizer.unassignedCount, 1);
+  assert.deepEqual(result.discussion[1].pointRefs[0].evidenceIds, ['line_2_unit_0']);
+});
+
+test('actions use evidence carried with reviewer-organised discussion groups', async () => {
+  const actionPrepared = prepared([]);
+  actionPrepared.units = [{ id: 'line_9_unit_0', speaker: 'Christina McLean', text: 'I will put the revised GSOP in the folder.' }];
+  const fetchImpl = async (_url, options) => {
+    const prompt = JSON.parse(options.body).messages[1].content;
+    assert.match(prompt, /line_9_unit_0/);
+    return response({ actions: [{ owner: 'Christina McLean', action: 'Put the revised GSOP in the folder', deadline: 'Not stated', evidenceIds: ['line_9_unit_0'] }] });
+  };
+  const result = await simplified.generateActions('transcript', ['Contractor records'], {
+    apiKey: 'test', fetchImpl, prepared: actionPrepared,
+    discussionGroups: [{ topic: 'Contractor records', evidenceIds: ['line_9_unit_0'], pointRefs: [{ evidenceIds: ['line_9_unit_0'] }] }]
+  });
+  assert.deepEqual(result.actions, [{ owner: 'Christina McLean', action: 'Put the revised GSOP in the folder.', deadline: 'Not stated' }]);
 });
 
 test('actions run once per topic, merge duplicates, and reject unsupported owner and deadline claims', async () => {
@@ -95,7 +135,7 @@ test('malformed per-topic response triggers the whole-stage canonical fallback',
   const output = await api.stagedEvaluation.applySimplifiedStagedOverride(
     'discussion', legacy, { text: 'transcript' }, { summary: { overallTopics: ['Topic'] }, discussion: [] },
     {
-      generateDiscussion: async () => simplified.generateDiscussion('transcript', ['Topic'], {
+      generateDiscussionInventory: async () => simplified.generateDiscussionInventory('transcript', {
         apiKey: 'test',
         prepared: prepared(['Topic']),
         fetchImpl: async () => response({ unexpected: [] })
@@ -110,7 +150,7 @@ test('stage override retains the canonical stage when simplified generation fail
   const legacy = { pipeline: 'canonical_staged_v2', screens: { discussion: [{ topic: 'Legacy', points: ['Safe fallback.'] }] } };
   const output = await api.stagedEvaluation.applySimplifiedStagedOverride(
     'discussion', legacy, { text: 'transcript' }, { summary: { overallTopics: ['Topic'] }, discussion: [] },
-    { generateDiscussion: async () => { throw new Error('malformed response'); } }
+    { generateDiscussionInventory: async () => { throw new Error('malformed response'); } }
   );
   assert.equal(output.telemetry.fallback, true);
   assert.deepEqual(output.result, legacy);

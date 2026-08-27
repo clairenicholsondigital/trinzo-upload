@@ -66,6 +66,7 @@ const { assessStagedTranscriptHealth, stagedTranscriptHealthFlag } = require('..
 const {
   generateTopics: generateSimplifiedTopics,
   generateDiscussion: generateSimplifiedDiscussion,
+  generateDiscussionInventory: generateSimplifiedDiscussionInventory,
   generateActions: generateSimplifiedActions
 } = require('../utils/simplifiedStagedMinutes');
 const {
@@ -3671,15 +3672,15 @@ function stagedEvaluationVisibleOutput(state = {}) {
 
 function stagedNoEditStageMessage(stage) {
   if (stage === 'details') return 'Meeting details generated. Review or edit this screen before continuing.';
-  if (stage === 'summary') return 'Topics generated. Review or edit them before continuing.';
-  if (stage === 'discussion') return 'Discussion points generated from the topic context.';
+  if (stage === 'summary') return 'Objectives and summary generated. Review or edit them before continuing.';
+  if (stage === 'discussion') return 'Discussion points grouped from the complete denoised transcript for reviewer organisation.';
   if (stage === 'actions') return 'Actions generated. Check owners and dates before continuing.';
   return 'This staged screen has been generated.';
 }
 
 function stagedReviewerChoicesForFlag(flag = {}) {
   if (flag.type === 'unresolved_substantive_workstream') {
-    return ['add_to_discussion', 'intentionally_omit', 'return_to_summary_topics'];
+    return ['add_to_discussion', 'intentionally_omit', 'open_discussion_organizer'];
   }
   if (flag.discussionSuggestion) return ['add_to_discussion', 'review_manually'];
   if (flag.repairCandidates) return ['approve_repair', 'reject_candidate', 'review_evidence'];
@@ -3689,7 +3690,7 @@ function stagedReviewerChoicesForFlag(flag = {}) {
 function stagedNoEditReviewExperience(trace = []) {
   const stageLabels = {
     details: 'Meeting details',
-    summary: 'Summary and topics',
+    summary: 'Objectives and summary',
     discussion: 'Discussion points',
     actions: 'Actions'
   };
@@ -3740,7 +3741,14 @@ function stagedNoEditReviewExperience(trace = []) {
 
 function buildStagedUiMirror(sequence = {}, metadata = {}, options = {}) {
   const state = sequence.state || {};
-  const reviewExperience = stagedNoEditReviewExperience(sequence.trace || []);
+  const noEditExperience = stagedNoEditReviewExperience(sequence.trace || []);
+  const reviewExperience = options.reviewerOrganisedDiscussion
+    ? {
+        ...noEditExperience,
+        mode: 'simulated_reviewer_edits',
+        description: 'Browser automation supplied reviewer-organised discussion groups before the Actions stage.'
+      }
+    : noEditExperience;
   const reviewByStage = new Map(reviewExperience.stages.map((item) => [item.stage, item]));
   const definitions = [
     { key: 'details', label: 'Details' },
@@ -3750,6 +3758,12 @@ function buildStagedUiMirror(sequence = {}, metadata = {}, options = {}) {
   ];
   const screens = definitions.map((definition, index) => {
     const review = reviewByStage.get(definition.key) || {};
+    let data = state[definition.key] ?? (definition.key === 'summary' ? {} : []);
+    if (definition.key === 'summary') {
+      data = { ...(data || {}) };
+      delete data.overallTopics;
+      delete data.topicRefs;
+    }
     return {
       index,
       key: definition.key,
@@ -3757,7 +3771,36 @@ function buildStagedUiMirror(sequence = {}, metadata = {}, options = {}) {
       generated: true,
       statusMessage: review.statusMessage || stagedNoEditStageMessage(definition.key),
       editorialChecks: Array.isArray(review.flags) ? review.flags : [],
-      data: state[definition.key] ?? (definition.key === 'summary' ? {} : [])
+      data,
+      ...(definition.key === 'summary' ? {
+        visibleFields: ['meetingPurpose', 'objectives', 'executiveSummary']
+      } : {}),
+      ...(definition.key === 'discussion' ? {
+        organizer: {
+          mode: 'discussion_first',
+          instructions: 'Review suggested groups, rename topics, move points between groups, and resolve anything left in Unassigned.',
+          groups: (Array.isArray(state.discussion) ? state.discussion : []).map((card, groupIndex) => ({
+            topic: cleanStagedGeneratedLine(card?.topic) || 'Unassigned',
+            topicId: cleanStagedGeneratedLine(card?.topicId) || `group_${groupIndex + 1}`,
+            suggested: card?.suggested !== false && !/^unassigned$/i.test(cleanStagedGeneratedLine(card?.topic)),
+            unassigned: /^unassigned$/i.test(cleanStagedGeneratedLine(card?.topic)),
+            points: (Array.isArray(card?.points) ? card.points : []).map((point, pointIndex) => ({
+              id: `${cleanStagedGeneratedLine(card?.topicId) || `group_${groupIndex + 1}`}_point_${pointIndex + 1}`,
+              text: typeof point === 'string' ? point : cleanStagedGeneratedLine(point?.text),
+              evidenceIds: Array.isArray(card?.pointRefs?.[pointIndex]?.evidenceIds) ? card.pointRefs[pointIndex].evidenceIds : []
+            }))
+          })),
+          operations: {
+            renameTopic: true,
+            createTopic: true,
+            deleteEmptyTopic: true,
+            movePoint: true,
+            editPoint: true,
+            unassignedGroup: true
+          },
+          automationSubmitField: 'confirmedDiscussion'
+        }
+      } : {})
     };
   });
   screens.push({
@@ -3770,14 +3813,19 @@ function buildStagedUiMirror(sequence = {}, metadata = {}, options = {}) {
     data: {
       readyForFinalApproval: reviewExperience.readyForFinalApproval,
       details: state.details || {},
-      summary: state.summary || {},
+      summary: (() => {
+        const summary = { ...(state.summary || {}) };
+        delete summary.overallTopics;
+        delete summary.topicRefs;
+        return summary;
+      })(),
       discussion: Array.isArray(state.discussion) ? state.discussion : [],
       actions: Array.isArray(state.actions) ? state.actions : []
     }
   });
   return {
     ok: true,
-    contractVersion: 'staged-meeting-minutes-ui-mirror-v1',
+    contractVersion: 'staged-meeting-minutes-ui-mirror-v2',
     mode: 'browserless_ui_mirror',
     browserRoute: '/staged-meeting-minutes',
     source: metadata.source || 'text',
@@ -3859,6 +3907,9 @@ async function runStagedSequenceForEvaluation(transcriptText, options = {}) {
     state[stage] = stage === 'summary'
       ? (value || {})
       : (Array.isArray(value) ? value : []);
+    if (stage === 'discussion' && Array.isArray(options.confirmedDiscussion) && options.confirmedDiscussion.length) {
+      state.discussion = options.confirmedDiscussion;
+    }
     const validationFlags = Array.isArray(response.validationFlags) ? [...response.validationFlags] : [];
     if (stage === 'actions') {
       const surfaced = new Set(state.actions.map((item) => cleanStagedActionText(item?.action).toLowerCase()));
@@ -3882,7 +3933,8 @@ async function runStagedSequenceForEvaluation(transcriptText, options = {}) {
         : undefined,
       validationFlags,
       telemetry: response.telemetryPreview || {},
-      pipelineHealth: response.pipelineHealth || null
+      pipelineHealth: response.pipelineHealth || null,
+      reviewerOrganisationApplied: stage === 'discussion' && Array.isArray(options.confirmedDiscussion) && options.confirmedDiscussion.length > 0
     });
   }
 
@@ -3908,7 +3960,7 @@ function canonicalConfirmedStages(input = {}) {
 function confirmedTopicsForSimplifiedStage(stage, confirmed = {}) {
   if (stage === 'actions' && Array.isArray(confirmed.discussion) && confirmed.discussion.length) {
     const discussionTopics = confirmed.discussion.map((item) => cleanStagedGeneratedLine(item?.topic)).filter(Boolean);
-    if (discussionTopics.length) return discussionTopics.slice(0, 8);
+    if (discussionTopics.length) return discussionTopics.slice(0, 16);
   }
   return stringListFromAny(confirmed.summary?.overallTopics, ['topic', 'text', 'title']).slice(0, 8);
 }
@@ -3937,37 +3989,31 @@ async function applySimplifiedStagedOverride(stage, result, transcript, confirme
   }
   try {
     if (stage === 'summary') {
-      if (stringListFromAny(confirmed.summary?.overallTopics, ['topic', 'text', 'title']).length) {
-        return { result, telemetry: { enabled: true, used: false, fallback: false, reason: 'reviewer_confirmed_topics' } };
-      }
-      const generated = await (options.generateTopics || generateSimplifiedTopics)(transcript.text, options);
       return {
         result: {
           ...result,
           pipeline: 'simplified_staged_minilm_trooper_v1',
-          strategy: 'simplified_topics_v1',
+          strategy: 'discussion_first_summary_v2',
           screens: {
             ...(result.screens || {}),
             summary: {
               ...(result.screens?.summary || {}),
-              overallTopics: generated.topics,
-              topicRefs: generated.topics.map((topic) => ({ text: topic, topicId: crypto.createHash('sha1').update(topic).digest('hex').slice(0, 12), evidenceIds: [] }))
+              overallTopics: [],
+              topicRefs: []
             }
           }
         },
-        telemetry: { enabled: true, used: true, fallback: false, stage, ...generated.telemetry }
+        telemetry: { enabled: true, used: true, fallback: false, stage, mode: 'discussion_first', reason: 'summary_topics_deferred_to_discussion_organizer' }
       };
     }
 
-    const topics = confirmedTopicsForSimplifiedStage(stage, confirmed);
-    if (!topics.length) throw new Error(`No reviewer-confirmed topics were available for the simplified ${stage} stage.`);
     if (stage === 'discussion') {
-      const generated = await (options.generateDiscussion || generateSimplifiedDiscussion)(transcript.text, topics, options);
+      const generated = await (options.generateDiscussionInventory || generateSimplifiedDiscussionInventory)(transcript.text, options);
       return {
         result: {
           ...result,
           pipeline: 'simplified_staged_minilm_trooper_v1',
-          strategy: 'simplified_per_topic_discussion_v1',
+          strategy: 'simplified_discussion_inventory_v2',
           screens: { ...(result.screens || {}), discussion: generated.discussion },
           validationFlags: validationFlagsAfterSimplifiedOverride(result.validationFlags, stage, generated.discussion)
         },
@@ -3975,12 +4021,17 @@ async function applySimplifiedStagedOverride(stage, result, transcript, confirme
       };
     }
 
-    const generated = await (options.generateActions || generateSimplifiedActions)(transcript.text, topics, options);
+    const topics = confirmedTopicsForSimplifiedStage(stage, confirmed);
+    if (!topics.length) throw new Error(`No reviewer-confirmed topics were available for the simplified ${stage} stage.`);
+    const generated = await (options.generateActions || generateSimplifiedActions)(transcript.text, topics, {
+      ...options,
+      discussionGroups: confirmed.discussion
+    });
     return {
       result: {
         ...result,
         pipeline: 'simplified_staged_minilm_trooper_v1',
-        strategy: 'simplified_per_topic_actions_v1',
+        strategy: 'simplified_per_reviewed_group_actions_v2',
         screens: { ...(result.screens || {}), actions: generated.actions },
         validationFlags: validationFlagsAfterSimplifiedOverride(result.validationFlags, stage, generated.actions)
       },
@@ -4026,12 +4077,17 @@ async function stagedWorkflowResponse(stage, transcript, input = {}, options = {
     return (options.canonicalFallback || canonicalStagedResponse)(stage, transcript, input);
   }
   const confirmed = canonicalConfirmedStages(input);
-  const topics = confirmedTopicsForSimplifiedStage(stage, confirmed);
+  const topics = stage === 'discussion' ? [] : confirmedTopicsForSimplifiedStage(stage, confirmed);
   try {
-    if (!topics.length) throw new Error(`No reviewer-confirmed topics were available for the simplified ${stage} stage.`);
     const generated = stage === 'discussion'
-      ? await (options.generateDiscussion || generateSimplifiedDiscussion)(transcript.text, topics, options)
-      : await (options.generateActions || generateSimplifiedActions)(transcript.text, topics, options);
+      ? await (options.generateDiscussionInventory || generateSimplifiedDiscussionInventory)(transcript.text, options)
+      : await (async () => {
+          if (!topics.length) throw new Error('No reviewer-organised discussion groups were available for the simplified actions stage.');
+          return (options.generateActions || generateSimplifiedActions)(transcript.text, topics, {
+            ...options,
+            discussionGroups: confirmed.discussion
+          });
+        })();
     const output = stage === 'discussion' ? generated.discussion : generated.actions;
     if (!Array.isArray(output) || (stage === 'discussion' && !output.length)) {
       throw new Error(`Simplified ${stage} generation returned no valid output.`);
@@ -4062,7 +4118,7 @@ async function stagedWorkflowResponse(stage, transcript, input = {}, options = {
       fileName: transcript.fileName || null,
       transcriptLength: transcript.text.length,
       pipeline: 'simplified_staged_minilm_trooper_v1',
-      strategy: stage === 'discussion' ? 'simplified_per_topic_discussion_v1' : 'simplified_per_topic_actions_v1',
+      strategy: stage === 'discussion' ? 'simplified_discussion_inventory_v2' : 'simplified_per_reviewed_group_actions_v2',
       stagedStage: stage,
       screens: { [stage]: output },
       validationFlags: validationFlagsAfterSimplifiedOverride([], stage, output),
@@ -4078,9 +4134,11 @@ async function stagedWorkflowResponse(stage, transcript, input = {}, options = {
         simplifiedPipeline: simplifiedTelemetry,
         trooper: {
           used: true,
-          reason: `${stage === 'discussion' ? output.reduce((sum, card) => sum + (card.points || []).length, 0) : output.length} grounded ${stage === 'discussion' ? 'discussion point(s)' : 'action(s)'} returned across ${topics.length} topic call(s).`,
+          reason: stage === 'discussion'
+            ? `${output.reduce((sum, card) => sum + (card.points || []).length, 0)} grounded discussion point(s) returned as a whole-transcript inventory.`
+            : `${output.length} grounded action(s) returned across ${topics.length} reviewer-organised group call(s).`,
           usage,
-          input: 'per_topic_minilm_evidence'
+          input: stage === 'discussion' ? 'whole_denoised_transcript_inventory' : 'reviewer_organised_evidence'
         }
       }
     };
@@ -6608,21 +6666,33 @@ router.post('/staged-meeting-minutes/ui-mirror', requireAuth, withTestUpload(asy
   try {
     const transcript = await readTestTranscript(req);
     validateTranscriptText(transcript.text);
+    const confirmedDiscussion = parseStagedReviewArray(
+      req.body?.confirmedDiscussion || req.body?.discussionReview || req.query?.confirmedDiscussion
+    ).map((item) => ({
+      topic: cleanStagedGeneratedLine(item?.topic) || 'Unassigned',
+      points: uniqueCleanDiscussionItems(item?.points || item?.bullets || []),
+      topicId: cleanStagedGeneratedLine(item?.topicId),
+      evidenceIds: Array.isArray(item?.evidenceIds) ? item.evidenceIds : [],
+      pointRefs: Array.isArray(item?.pointRefs) ? item.pointRefs : []
+    })).filter((item) => item.points.length);
     const sequence = await runStagedSequenceForEvaluation(transcript.text, {
-      fileName: transcript.fileName || 'transcript.txt'
+      fileName: transcript.fileName || 'transcript.txt',
+      confirmedDiscussion
     });
     const payload = buildStagedUiMirror(sequence, {
       source: transcript.source,
       fileName: transcript.fileName,
       transcriptLength: transcript.text.length
     }, {
-      includeDiagnostics: truthyFlag(req.query?.includeDiagnostics) || truthyFlag(req.body?.includeDiagnostics)
+      includeDiagnostics: truthyFlag(req.query?.includeDiagnostics) || truthyFlag(req.body?.includeDiagnostics),
+      reviewerOrganisedDiscussion: confirmedDiscussion.length > 0
     });
     console.info(JSON.stringify({
       event: 'staged_meeting_minutes_ui_mirror_completed',
       source: transcript.source,
       fileName: transcript.fileName || null,
       transcriptLength: transcript.text.length,
+      reviewerOrganisedDiscussion: confirmedDiscussion.length > 0,
       readyForFinalApproval: payload.reviewExperience.readyForFinalApproval,
       durationMs: Date.now() - startedAt
     }));

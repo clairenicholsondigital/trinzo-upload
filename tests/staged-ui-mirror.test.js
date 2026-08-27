@@ -28,12 +28,16 @@ function sequenceFixture() {
 test('UI mirror returns the browser screen order and exact staged screen data', () => {
   const sequence = sequenceFixture();
   const output = api.stagedEvaluation.buildStagedUiMirror(sequence, { source: 'text', fileName: 'meeting.txt', transcriptLength: 500 });
-  assert.equal(output.contractVersion, 'staged-meeting-minutes-ui-mirror-v1');
+  assert.equal(output.contractVersion, 'staged-meeting-minutes-ui-mirror-v2');
   assert.deepEqual(output.ui.screenOrder, ['details', 'summary', 'discussion', 'actions', 'finalReview']);
   assert.equal(output.ui.activeScreenKey, 'finalReview');
   assert.deepEqual(output.ui.screens[0].data, sequence.state.details);
-  assert.deepEqual(output.ui.screens[1].data, sequence.state.summary);
+  assert.equal(Object.prototype.hasOwnProperty.call(output.ui.screens[1].data, 'overallTopics'), false);
+  assert.deepEqual(output.ui.screens[1].visibleFields, ['meetingPurpose', 'objectives', 'executiveSummary']);
   assert.deepEqual(output.ui.screens[2].data, sequence.state.discussion);
+  assert.equal(output.ui.screens[2].organizer.mode, 'discussion_first');
+  assert.equal(output.ui.screens[2].organizer.operations.movePoint, true);
+  assert.equal(output.ui.screens[2].organizer.automationSubmitField, 'confirmedDiscussion');
   assert.deepEqual(output.ui.screens[3].data, sequence.state.actions);
   assert.deepEqual(output.ui.screens[4].data.actions, sequence.state.actions);
   assert.equal(output.ui.screens[2].editorialChecks[0].message, 'Check wording.');
@@ -89,7 +93,7 @@ test('shared workflow invokes canonical only after simplified validation fails',
     { text: 'Alex Smith: Release verification remains open. '.repeat(4), source: 'test', fileName: 'release.txt' },
     { confirmedSummary: { overallTopics: ['Release verification'] } },
     {
-      generateDiscussion: async () => { throw new Error('invalid simplified response'); },
+      generateDiscussionInventory: async () => { throw new Error('invalid simplified response'); },
       canonicalFallback: async (_stage, _transcript, input) => {
         fallbackCalls += 1;
         assert.equal(input._skipSimplifiedOverride, true);
@@ -130,4 +134,28 @@ test('browserless sequence passes the same confirmed screens through the shared 
   assert.deepEqual(calls[1].input.confirmedSummary.overallTopics, ['Release verification']);
   assert.deepEqual(calls[2].input.confirmedDiscussion, sequence.state.discussion);
   assert.deepEqual(sequence.state.actions, [{ owner: 'Alex Smith', action: 'Complete release verification.', deadline: 'Friday' }]);
+});
+
+test('browserless sequence applies reviewer-organised discussion before generating actions', async () => {
+  const reviewed = [{
+    topic: 'Reviewer topic',
+    points: ['The reviewer moved this point.'],
+    topicId: 'reviewer-topic',
+    evidenceIds: ['line_1_unit_0'],
+    pointRefs: [{ evidenceIds: ['line_1_unit_0'] }]
+  }];
+  let actionsInput;
+  await api.stagedEvaluation.runStagedSequenceForEvaluation(
+    'Alex Smith 0:01 I will complete the review.',
+    {
+      confirmedDiscussion: reviewed,
+      stageRunner: async (stage, _transcript, input) => {
+        if (stage === 'summary') return { screens: { summary: { objectives: [], executiveSummary: 'Review.', overallTopics: [] } }, validationFlags: [] };
+        if (stage === 'discussion') return { screens: { discussion: [{ topic: 'Suggested', points: ['Generated point.'] }] }, validationFlags: [] };
+        actionsInput = input;
+        return { screens: { actions: [] }, validationFlags: [] };
+      }
+    }
+  );
+  assert.deepEqual(actionsInput.confirmedDiscussion, reviewed);
 });

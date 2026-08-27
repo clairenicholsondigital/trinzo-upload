@@ -153,6 +153,19 @@ textarea { min-height:110px; resize:vertical; }
 .discussion-card-chevron svg { width:.95rem; height:.95rem; }
 .discussion-card-body { padding:.85rem; display:grid; gap:.65rem; }
 .discussion-card textarea, .discussion-card input { background:#fff !important; color:#17222c !important; border-color:#c3ced8 !important; }
+.discussion-card.is-drag-over { border-color:#17D0C4; box-shadow:0 0 0 3px rgba(23,208,196,.16); }
+.discussion-topic-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:.55rem; align-items:end; }
+.discussion-points-dropzone { display:grid; gap:.55rem; min-height:3.3rem; padding:.25rem; border:1px dashed #cbd7df; border-radius:10px; background:#fbfdfe; }
+.discussion-points-dropzone:empty::after { content:'Drop a discussion point here'; display:grid; place-items:center; min-height:2.6rem; color:#71808c; font-size:.84rem; }
+.discussion-point-item { display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:.5rem; align-items:start; padding:.6rem; border:1px solid #d7e0e7; border-radius:10px; background:#fff; }
+.discussion-point-item.dragging { opacity:.45; }
+.discussion-point-handle { cursor:grab; color:#60717e; padding:.55rem .15rem; user-select:none; }
+.discussion-point-item textarea { min-height:74px; resize:vertical; }
+.discussion-point-tools { display:grid; gap:.35rem; min-width:9rem; }
+.discussion-point-tools label { color:#435466; font-size:.76rem; }
+.discussion-point-tools select { padding:.45rem; background:#fff; color:#17222c; border-color:#c3ced8; }
+.discussion-point-tools button { padding:.4rem .55rem; font-size:.78rem; }
+.discussion-organizer-note { margin:0 0 .75rem; padding:.7rem .8rem; border:1px solid #b9dde4; border-radius:10px; background:#f8fcfd; color:#334752; font-size:.9rem; }
 .discussion-controls { display:flex; gap:.5rem; justify-content:flex-end; margin-bottom:.75rem; flex-wrap:wrap; }
 .discussion-controls button { padding:.45rem .7rem; }
 .action-review-groups { display:grid; gap:.7rem; margin-top:1rem; }
@@ -367,6 +380,10 @@ tr.wording-unresolved td:first-child { box-shadow:inset 3px 0 0 #d9a514; }
 @media (max-width:760px) {
   .stage-validation-flag { grid-template-columns:1fr; }
   .stage-validation-actions { justify-content:flex-start; }
+  .discussion-topic-row,
+  .discussion-point-item { grid-template-columns:1fr; }
+  .discussion-point-handle { display:none; }
+  .discussion-point-tools { min-width:0; grid-template-columns:minmax(0,1fr) auto; align-items:end; }
 }
 .terminology-qa { margin-top:1rem; border:1px solid #cfe2e8; border-radius:8px; background:#f8fcfd; color:#27323a; padding:.75rem; display:grid; gap:.45rem; }
 .terminology-qa[hidden] { display:none; }
@@ -722,11 +739,6 @@ td select {
           <textarea id="executiveSummary" placeholder="Executive summary will appear here after generation."></textarea>
           <details id="summaryEvidence" class="summary-evidence review-only" hidden><summary id="summaryEvidenceSummary">Where this came from</summary><div id="summaryEvidenceList"></div></details>
         </div>
-        <div class="field">
-          <label for="overallTopics">Overall topics discussed</label>
-          <textarea id="overallTopics" placeholder="Overall topics will appear here after generation."></textarea>
-          <small>These are useful structure, but they are not the sole authority for the next stage.</small>
-        </div>
         <!-- Key facts: HIDDEN, NOT REMOVED. Judged one field too many on a screen that
              already asks a lot. Everything behind it is intact and still runs - the
              server returns keyFacts, renderKeyFacts fills this list, keyFactsFromDom
@@ -750,9 +762,11 @@ td select {
           <div class="screen-header-meta"><span class="progress-pill">3 of 5</span><small class="stage-autosave-status">Autosave ready</small></div>
         </div>
         <div class="discussion-controls">
+          <button id="addDiscussionTopicBtn" class="secondary" type="button">Add topic</button>
           <button id="expandDiscussionBtn" class="secondary" type="button">Expand all</button>
           <button id="collapseDiscussionBtn" class="secondary" type="button">Collapse all</button>
         </div>
+        <p class="discussion-organizer-note"><strong>First-pass grouping:</strong> rename the suggested topics, drag points between groups, or use each point's “Move to” menu. Anything uncertain stays visible under Unassigned until you place it.</p>
         <div id="discussionList" class="discussion-list"></div>
       </article>
 
@@ -879,6 +893,7 @@ td select {
   var useExternalAttendeeLabel = document.getElementById('useExternalAttendeeLabel');
   var expandDiscussionButton = document.getElementById('expandDiscussionBtn');
   var collapseDiscussionButton = document.getElementById('collapseDiscussionBtn');
+  var addDiscussionTopicButton = document.getElementById('addDiscussionTopicBtn');
   var discussionList = document.getElementById('discussionList');
   var actionsTableBody = document.getElementById('actionsTableBody');
   var addActionRowButton = document.getElementById('addActionRowBtn');
@@ -1286,9 +1301,9 @@ td select {
   function stageLoadingMessage(stage, isRegeneration) {
     var prefix = isRegeneration ? 'Re-running AI generation step: ' : 'Generating: ';
     if (stage === 'details') return prefix + 'meeting details are being refreshed.';
-    if (stage === 'summary' && !isRegeneration) return 'Generating summary and topics with AI';
-    if (stage === 'summary') return prefix + 'summary and topics are being written.';
-    if (stage === 'discussion') return prefix + 'discussion points are being formatted.';
+    if (stage === 'summary' && !isRegeneration) return 'Generating objectives and summary with AI';
+    if (stage === 'summary') return prefix + 'objectives and summary are being written.';
+    if (stage === 'discussion') return prefix + 'a complete discussion inventory is being grouped.';
     if (stage === 'actions') return prefix + 'actions, owners and dates are being checked.';
     return prefix + 'this staged screen is being generated.';
   }
@@ -1296,8 +1311,8 @@ td select {
   function stageReadyMessage(stage, isRegeneration) {
     var prefix = isRegeneration ? 'AI generation step re-run complete. ' : '';
     if (stage === 'details') return prefix + 'Meeting details generated. Review or edit this screen before continuing.';
-    if (stage === 'summary') return prefix + 'Topics generated. Review or edit them before continuing.';
-    if (stage === 'discussion') return prefix + 'Discussion points generated from the topic context.';
+    if (stage === 'summary') return prefix + 'Objectives and summary generated. Review or edit them before continuing.';
+    if (stage === 'discussion') return prefix + 'Discussion points grouped for review. Assign or move anything that needs a different topic.';
     if (stage === 'actions') return prefix + 'Actions generated. Check owners and dates before continuing.';
     return prefix + 'This staged screen has been generated.';
   }
@@ -1563,29 +1578,73 @@ td select {
 
   function renderDiscussionCards(cards) {
     if (!discussionList) return;
-    var items = Array.isArray(cards) && cards.length ? cards : [{ topic: 'No substantive discussion sections generated', points: ['No topic had enough transcript evidence to include automatically.'] }];
+    var items = Array.isArray(cards) ? cards.slice() : [];
+    if (!items.some(function (card) { return /^unassigned$/i.test(String(card && card.topic || '').trim()); })) {
+      items.push({ topic: 'Unassigned', topicId: 'unassigned', points: [], pointRefs: [], suggested: false });
+    }
     discussionList.innerHTML = items.map(function (card, index) {
       var points = Array.isArray(card.points) ? card.points : [];
       var bulletPoints = [card.whatWasDiscussed, card.currentPosition, card.decisionOrAgreement, card.dependencyOrRisk, card.nextStep].concat(points).filter(Boolean);
       var seen = {};
       var bullets = bulletPoints.map(cleanDiscussionDisplayText).filter(function (point) { var key = point.toLowerCase(); if (!point || seen[key]) return false; seen[key] = true; return true; });
-      // An empty card stays empty. This used to inject "Review this section against the
-      // transcript." as a POINT - written into the textarea below, harvested straight back
-      // out by discussionRowsFromReview, and published into the client's minutes and the
-      // PDF. A reviewer-confirmed heading with no evidence allocated to it is a deliberate,
-      // legitimate state: the planner keeps the card, grounding preserves it, and the flag
-      // machinery names it for the reviewer to fill or remove. Three mechanisms exist to
-      // protect that state and this line defeated all of them by filling the card with an
-      // instruction written to ourselves. Guidance now lives in the textarea's placeholder,
-      // which the reviewer sees and nothing can harvest.
       var pointRefs = bullets.map(function (point, pointIndex) {
         var supplied = Array.isArray(card.pointRefs) ? card.pointRefs[pointIndex] : null;
         return { text: point, evidenceIds: supplied && Array.isArray(supplied.evidenceIds) ? supplied.evidenceIds : [] };
       });
-      return '<details class="discussion-card"' + (index === 0 ? ' open' : '') + ' data-discussion-index="' + index + '" data-topic-id="' + escapeHtml(card.topicId || '') + '" data-evidence-ids="' + escapeHtml(JSON.stringify(Array.isArray(card.evidenceIds) ? card.evidenceIds : [])) + '" data-point-refs="' + escapeHtml(JSON.stringify(pointRefs)) + '"><summary><span class="discussion-card-title">' + escapeHtml(card.topic || 'Discussion') + '</span><span class="discussion-card-summary-actions"><span class="muted">' + bullets.length + ' point' + (bullets.length === 1 ? '' : 's') + '</span><span class="discussion-card-chevron" aria-hidden="true"><i data-lucide="chevron-down"></i></span><button class="discussion-card-delete" type="button" data-discussion-delete aria-label="Remove discussion row"><i data-lucide="trash-2" aria-hidden="true"></i></button></span></summary><div class="discussion-card-body"><label>Topic<input class="discussion-topic-input" value="' + escapeHtml(card.topic || 'Discussion') + '" aria-label="Discussion topic ' + (index + 1) + '" /></label><label>Discussion points<textarea class="discussion-points-input" placeholder="No transcript evidence was allocated to this heading. Add points, or remove the section." aria-label="Discussion points ' + (index + 1) + '">' + escapeHtml(bullets.map(function (point) { return '- ' + point; }).join('\n')) + '</textarea></label></div></details>';
+      var topic = String(card.topic || 'Unassigned').trim() || 'Unassigned';
+      var isUnassigned = /^unassigned$/i.test(topic);
+      var pointsHtml = bullets.map(function (point, pointIndex) {
+        var ref = pointRefs[pointIndex] || { evidenceIds: [] };
+        return '<div class="discussion-point-item" draggable="true" data-evidence-ids="' + escapeHtml(JSON.stringify(ref.evidenceIds || [])) + '">' +
+          '<span class="discussion-point-handle" title="Drag to another topic" aria-hidden="true">⋮⋮</span>' +
+          '<textarea class="discussion-point-input" aria-label="Discussion point ' + (pointIndex + 1) + '">' + escapeHtml(point) + '</textarea>' +
+          '<div class="discussion-point-tools"><label>Move to<select class="discussion-point-move" aria-label="Move discussion point to another topic"></select></label><button class="secondary" type="button" data-discussion-point-delete>Remove point</button></div>' +
+        '</div>';
+      }).join('');
+      return '<details class="discussion-card" open data-discussion-index="' + index + '" data-topic-id="' + escapeHtml(card.topicId || (isUnassigned ? 'unassigned' : '')) + '" data-suggested="' + (card.suggested === false ? 'false' : 'true') + '">' +
+        '<summary><span class="discussion-card-title">' + escapeHtml(topic) + '</span><span class="discussion-card-summary-actions"><span class="discussion-card-count muted">' + bullets.length + ' point' + (bullets.length === 1 ? '' : 's') + '</span><span class="discussion-card-chevron" aria-hidden="true"><i data-lucide="chevron-down"></i></span>' + (isUnassigned ? '' : '<button class="discussion-card-delete" type="button" data-discussion-delete aria-label="Remove empty topic"><i data-lucide="trash-2" aria-hidden="true"></i></button>') + '</span></summary>' +
+        '<div class="discussion-card-body"><div class="discussion-topic-row"><label>Topic<input class="discussion-topic-input" value="' + escapeHtml(topic) + '" aria-label="Discussion topic ' + (index + 1) + '" ' + (isUnassigned ? 'readonly' : '') + ' /></label><button class="secondary" type="button" data-discussion-point-add>Add point</button></div><div class="discussion-points-dropzone" data-discussion-dropzone>' + pointsHtml + '</div></div></details>';
     }).join('');
+    refreshDiscussionOrganizer();
     renderIcons();
     applyReviewFlagAnnotations(currentValidationFlags, currentValidationStage || 'discussion');
+  }
+
+  function discussionTopicOptions() {
+    return Array.prototype.slice.call(discussionList ? discussionList.querySelectorAll('.discussion-card') : []).map(function (card) {
+      var input = card.querySelector('.discussion-topic-input');
+      return { value: input ? input.value.trim() : 'Unassigned', card: card };
+    }).filter(function (item) { return item.value; });
+  }
+
+  function refreshDiscussionOrganizer() {
+    var topics = discussionTopicOptions();
+    topics.forEach(function (entry) {
+      var count = entry.card.querySelectorAll('.discussion-point-item').length;
+      var title = entry.card.querySelector('.discussion-card-title');
+      var badge = entry.card.querySelector('.discussion-card-count');
+      if (title) title.textContent = entry.value;
+      if (badge) badge.textContent = count + ' point' + (count === 1 ? '' : 's');
+    });
+    Array.prototype.slice.call(discussionList ? discussionList.querySelectorAll('.discussion-point-move') : []).forEach(function (select) {
+      var ownerCard = select.closest('.discussion-card');
+      select.innerHTML = topics.map(function (entry) {
+        return '<option value="' + escapeHtml(entry.value) + '"' + (entry.card === ownerCard ? ' selected' : '') + '>' + escapeHtml(entry.value) + '</option>';
+      }).join('');
+    });
+  }
+
+  function moveDiscussionPoint(point, targetCard) {
+    if (!point || !targetCard) return;
+    var dropzone = targetCard.querySelector('[data-discussion-dropzone]');
+    if (!dropzone) return;
+    dropzone.appendChild(point);
+    targetCard.open = true;
+    refreshDiscussionOrganizer();
+    commitStageState('discussion');
+    renderFinalDocument();
+    updateReviewToolbar();
+    saveDraft();
   }
 
   function legacyRenderDiscussionCardsUnused(cards) {
@@ -1688,17 +1747,20 @@ td select {
   function discussionRowsFromReview() {
     return Array.prototype.slice.call(discussionList ? discussionList.querySelectorAll('.discussion-card') : []).map(function (card) {
       var topicInput = card.querySelector('.discussion-topic-input');
-      var pointsInput = card.querySelector('.discussion-points-input');
-      var bullets = pointsInput ? linesFromDiscussionTextarea(pointsInput.value) : [];
-      var originalRefs = [];
-      var cardEvidenceIds = [];
-      try { originalRefs = JSON.parse(card.getAttribute('data-point-refs') || '[]'); } catch (_error) { originalRefs = []; }
-      try { cardEvidenceIds = JSON.parse(card.getAttribute('data-evidence-ids') || '[]'); } catch (_error) { cardEvidenceIds = []; }
-      var sameShape = bullets.length === originalRefs.length;
-      var pointRefs = bullets.map(function (point, index) {
-        var matched = sameShape ? originalRefs[index] : originalRefs.find(function (ref) { return String(ref && ref.text || '').trim() === point; });
-        return { evidenceIds: matched && Array.isArray(matched.evidenceIds) ? matched.evidenceIds : [] };
+      var pointItems = Array.prototype.slice.call(card.querySelectorAll('.discussion-point-item'));
+      var bullets = [];
+      var pointRefs = [];
+      pointItems.forEach(function (item) {
+        var input = item.querySelector('.discussion-point-input');
+        var text = cleanDiscussionDisplayText(input ? input.value : '');
+        if (!text) return;
+        var evidenceIds = [];
+        try { evidenceIds = JSON.parse(item.getAttribute('data-evidence-ids') || '[]'); } catch (_error) { evidenceIds = []; }
+        bullets.push(text);
+        pointRefs.push({ evidenceIds: Array.isArray(evidenceIds) ? evidenceIds : [] });
       });
+      var cardEvidenceIds = [];
+      pointRefs.forEach(function (ref) { (ref.evidenceIds || []).forEach(function (id) { if (!cardEvidenceIds.includes(id)) cardEvidenceIds.push(id); }); });
       return {
         topic: topicInput ? topicInput.value.trim() : 'Discussion',
         bullets: bullets,
@@ -1706,7 +1768,7 @@ td select {
         evidenceIds: Array.isArray(cardEvidenceIds) ? cardEvidenceIds : [],
         pointRefs: pointRefs
       };
-    }).filter(function (item) { return item.bullets.length && item.topic !== 'No substantive discussion sections generated'; });
+    }).filter(function (item) { return item.bullets.length; });
   }
 
   function actionsFromReview() {
@@ -2513,12 +2575,12 @@ td select {
           saveDraft();
         });
         actions.appendChild(omitButton);
-        var summaryButton = document.createElement('button');
-        summaryButton.type = 'button';
-        summaryButton.className = 'secondary stage-validation-add';
-        summaryButton.textContent = 'Return to summary topics';
-        summaryButton.addEventListener('click', function () { showScreen(1); });
-        actions.appendChild(summaryButton);
+        var organizerButton = document.createElement('button');
+        organizerButton.type = 'button';
+        organizerButton.className = 'secondary stage-validation-add';
+        organizerButton.textContent = 'Open discussion organiser';
+        organizerButton.addEventListener('click', function () { showScreen(2); });
+        actions.appendChild(organizerButton);
       }
       row.appendChild(actions);
       stageValidationFlags.appendChild(row);
@@ -4022,26 +4084,112 @@ td select {
       Array.prototype.slice.call(document.querySelectorAll('.discussion-card')).forEach(function (card) { card.open = false; });
     });
   }
+  if (addDiscussionTopicButton) {
+    addDiscussionTopicButton.addEventListener('click', function () {
+      var topic = window.prompt('Name the new discussion topic:');
+      topic = String(topic || '').trim();
+      if (!topic) return;
+      var cards = discussionRowsFromReview().map(function (item) {
+        return { topic: item.topic, points: item.bullets, topicId: item.topicId, evidenceIds: item.evidenceIds, pointRefs: item.pointRefs };
+      });
+      cards.push({ topic: topic, points: [], topicId: 'reviewer-' + Date.now(), pointRefs: [], evidenceIds: [], suggested: false });
+      renderDiscussionCards(cards);
+      recordWorkflowInteraction('discussion_topic_added', { topic: topic }, { source: 'discussion_organizer' });
+      saveDraft();
+    });
+  }
   if (discussionList) {
     discussionList.addEventListener('click', function (event) {
+      var addPointButton = event.target.closest('[data-discussion-point-add]');
+      if (addPointButton) {
+        event.preventDefault();
+        var addCard = addPointButton.closest('.discussion-card');
+        var dropzone = addCard && addCard.querySelector('[data-discussion-dropzone]');
+        if (!dropzone) return;
+        dropzone.insertAdjacentHTML('beforeend', '<div class="discussion-point-item" draggable="true" data-evidence-ids="[]"><span class="discussion-point-handle" title="Drag to another topic" aria-hidden="true">⋮⋮</span><textarea class="discussion-point-input" aria-label="Discussion point" placeholder="Add a factual discussion point"></textarea><div class="discussion-point-tools"><label>Move to<select class="discussion-point-move" aria-label="Move discussion point to another topic"></select></label><button class="secondary" type="button" data-discussion-point-delete>Remove point</button></div></div>');
+        refreshDiscussionOrganizer();
+        var newInput = dropzone.lastElementChild && dropzone.lastElementChild.querySelector('.discussion-point-input');
+        if (newInput) newInput.focus();
+        return;
+      }
+      var removePointButton = event.target.closest('[data-discussion-point-delete]');
+      if (removePointButton) {
+        event.preventDefault();
+        var point = removePointButton.closest('.discussion-point-item');
+        if (point) point.remove();
+        refreshDiscussionOrganizer();
+        commitStageState('discussion'); renderFinalDocument(); saveDraft();
+        return;
+      }
       var deleteButton = event.target.closest('[data-discussion-delete]');
       if (!deleteButton) return;
       event.preventDefault();
       event.stopPropagation();
       var card = deleteButton.closest('.discussion-card');
       if (!card) return;
-      if (!window.confirm('Are you sure you want to remove this row?')) return;
+      var unassigned = Array.prototype.slice.call(discussionList.querySelectorAll('.discussion-card')).find(function (candidate) {
+        var input = candidate.querySelector('.discussion-topic-input');
+        return input && /^unassigned$/i.test(input.value.trim());
+      });
+      var points = Array.prototype.slice.call(card.querySelectorAll('.discussion-point-item'));
+      if (points.length && !window.confirm('Remove this topic and move its points to Unassigned?')) return;
+      points.forEach(function (point) { moveDiscussionPoint(point, unassigned); });
       recordWorkflowInteraction('discussion_row_deleted', {
         topic: card.querySelector('.discussion-topic-input') ? card.querySelector('.discussion-topic-input').value : '',
-        pointCount: card.querySelectorAll('textarea').length
+        pointCount: points.length
       }, { source: 'discussion_delete' });
       card.remove();
-      if (!discussionRowsFromReview().length) renderDiscussionCards([]);
+      refreshDiscussionOrganizer();
       commitStageState('discussion');
       renderFinalDocument();
       renderTerminologyQa();
       updateReviewToolbar();
       saveDraft();
+    });
+    discussionList.addEventListener('change', function (event) {
+      var moveSelect = event.target.closest('.discussion-point-move');
+      if (!moveSelect) return;
+      var target = discussionTopicOptions().find(function (entry) { return entry.value === moveSelect.value; });
+      if (target) {
+        recordWorkflowInteraction('discussion_point_moved', { toTopic: target.value }, { source: 'discussion_organizer' });
+        moveDiscussionPoint(moveSelect.closest('.discussion-point-item'), target.card);
+      }
+    });
+    discussionList.addEventListener('input', function (event) {
+      if (event.target.matches('.discussion-topic-input')) refreshDiscussionOrganizer();
+    });
+    discussionList.addEventListener('dragstart', function (event) {
+      var point = event.target.closest('.discussion-point-item');
+      if (!point) return;
+      point.classList.add('dragging');
+      if (event.dataTransfer) event.dataTransfer.setData('text/plain', 'discussion-point');
+    });
+    discussionList.addEventListener('dragend', function (event) {
+      var point = event.target.closest('.discussion-point-item');
+      if (point) point.classList.remove('dragging');
+      discussionList.querySelectorAll('.discussion-card').forEach(function (card) { card.classList.remove('is-drag-over'); });
+    });
+    discussionList.addEventListener('dragover', function (event) {
+      var card = event.target.closest('.discussion-card');
+      if (!card) return;
+      event.preventDefault();
+      card.open = true;
+      card.classList.add('is-drag-over');
+    });
+    discussionList.addEventListener('dragleave', function (event) {
+      var card = event.target.closest('.discussion-card');
+      if (card && !card.contains(event.relatedTarget)) card.classList.remove('is-drag-over');
+    });
+    discussionList.addEventListener('drop', function (event) {
+      var card = event.target.closest('.discussion-card');
+      var point = discussionList.querySelector('.discussion-point-item.dragging');
+      if (!card || !point) return;
+      event.preventDefault();
+      card.classList.remove('is-drag-over');
+      recordWorkflowInteraction('discussion_point_dragged', {
+        toTopic: card.querySelector('.discussion-topic-input') ? card.querySelector('.discussion-topic-input').value : ''
+      }, { source: 'discussion_organizer' });
+      moveDiscussionPoint(point, card);
     });
   }
   if (actionReviewGroups) {
@@ -4231,7 +4379,7 @@ td select {
       recordWorkflowInteraction('stage_continue_blocked', {
         reason: 'unresolved_workstreams'
       }, { source: 'next_button', immediate: true });
-      setReviewStatus('Resolve each missing substantive workstream before moving on: add it, intentionally omit it, or return to summary topics.', true);
+      setReviewStatus('Resolve each missing substantive workstream before moving on: add it to a discussion group, leave it in Unassigned for review, or intentionally omit it.', true);
       drawAttentionToEditorialChecks();
       return;
     }

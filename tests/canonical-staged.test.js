@@ -1060,7 +1060,7 @@ test('staged details extracts unpunctuated meeting title before generic overview
   assert.equal(result.screens.details.meetingType, 'Technical file review');
 });
 
-test('live Summary screen hides reported-speech topic labels from Overall topics', async () => {
+test('live Summary defers topic grouping to the Discussion organiser', async () => {
   const previousApiKey = process.env.TROOPER_API_KEY;
   process.env.TROOPER_API_KEY = '';
   try {
@@ -1076,9 +1076,9 @@ test('live Summary screen hides reported-speech topic labels from Overall topics
       }
     });
     const topics = result.screens.summary.overallTopics;
-    assert.ok(topics.some((topic) => /alarm-code|clinical confirmation/i.test(topic)), topics.join(' | '));
-    assert.equal(topics.some((topic) => /David noted the current setup the flash/i.test(topic)), false, topics.join(' | '));
-    assert.equal((result.screens.summary.topicRefs || []).length, topics.length);
+    assert.deepEqual(topics, []);
+    assert.deepEqual(result.screens.summary.topicRefs || [], []);
+    assert.equal(result.strategy, 'discussion_first_summary_v2');
   } finally {
     if (previousApiKey) process.env.TROOPER_API_KEY = previousApiKey;
     else delete process.env.TROOPER_API_KEY;
@@ -1107,8 +1107,8 @@ test('live Summary screen does not turn QIP alarm-bells idiom into device-alarm 
       ...(result.screens.summary.overallTopics || [])
     ].join('\n');
     assert.doesNotMatch(text, /alarm-code|clinical confirmation|software-change package/i);
-    assert.equal((result.screens.summary.overallTopics || []).some((topic) => /alarm behaviour|alarm controls/i.test(topic)), false, (result.screens.summary.overallTopics || []).join(' | '));
-    assert.ok((result.screens.summary.overallTopics || []).some((topic) => /quality|risk indicators|assessment/i.test(topic)), (result.screens.summary.overallTopics || []).join(' | '));
+    assert.deepEqual(result.screens.summary.overallTopics || [], []);
+    assert.deepEqual(result.screens.summary.topicRefs || [], []);
   } finally {
     if (previousApiKey) process.env.TROOPER_API_KEY = previousApiKey;
     else delete process.env.TROOPER_API_KEY;
